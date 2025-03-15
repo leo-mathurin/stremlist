@@ -1,0 +1,553 @@
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+const { fetchWatchlist } = require('./scripts/fetch_watchlist');
+const db = require('./database');
+const config = require('./database/config');
+
+// Create addon server
+const app = express();
+
+// Configure logging
+let logCount = 0;
+const MAX_LOGS_BEFORE_ROTATION = parseInt(process.env.MAX_LOGS_BEFORE_ROTATION || 1000);
+const VERBOSE_MODE = process.env.VERBOSE === 'true' || process.env.VERBOSE === '1';
+const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+
+// Override console.log to add timestamps and handle log rotation
+console.log = function() {
+    logCount++;
+    if (logCount > MAX_LOGS_BEFORE_ROTATION) {
+        // Clear console and reset counter on rotation (only on non-production environments)
+        if (process.env.NODE_ENV !== 'production') {
+            console.clear();
+            originalConsoleLog('Log rotated due to high volume. Previous logs cleared.');
+        }
+        logCount = 0;
+    }
+    
+    const timestamp = new Date().toISOString();
+    originalConsoleLog.apply(console, [`[${timestamp}]`, ...arguments]);
+};
+
+// Add verbose logging function
+console.verbose = function() {
+    // Only log if verbose mode is enabled
+    if (!VERBOSE_MODE) {
+        return;
+    }
+    
+    const timestamp = new Date().toISOString();
+    originalConsoleLog.apply(console, [`[${timestamp}] VERBOSE:`, ...arguments]);
+};
+
+// Override console.error to add timestamps
+console.error = function() {
+    const timestamp = new Date().toISOString();
+    originalConsoleError.apply(console, [`[${timestamp}] ERROR:`, ...arguments]);
+};
+
+// Log configuration at startup
+originalConsoleLog(`[${new Date().toISOString()}] Starting addon ${VERBOSE_MODE ? 'in verbose mode' : 'in default mode'}`);
+
+// Use configuration from centralized config module (convert seconds to milliseconds)
+const SYNC_INTERVAL = config.SYNC_INTERVAL * 1000;
+const CACHE_TTL = config.CACHE_TTL * 1000;
+
+// Track syncing state
+let syncIntervalId = null;
+const syncedUsers = new Set(); // Local reference for quick lookups, persisted to DB
+
+// Base manifest without user data
+const manifest = {
+    id: 'org.imdb.watchlist',
+    version: '1.0.0',
+    name: 'IMDb Watchlist',
+    description: 'Your IMDb Watchlist in Stremio',
+    resources: ['catalog'],
+    types: ['movie', 'series'],
+    catalogs: [
+        {
+            id: 'imdb-watchlist-movies',
+            name: 'IMDb Movie Watchlist',
+            type: 'movie'
+        },
+        {
+            id: 'imdb-watchlist-series',
+            name: 'IMDb Series Watchlist', 
+            type: 'series'
+        }
+    ],
+    logo: 'https://upload.wikimedia.org/wikipedia/commons/6/69/IMDB_Logo_2016.svg',
+    behaviorHints: {
+        configurable: true,
+        configurationRequired: true
+    }
+};
+
+// Initialize database connection
+(async function() {
+    try {
+        const success = await db.initialize();
+        if (success) {
+            console.log('Database initialized successfully');
+            
+            // Restore active users from database
+            const activeUsers = await db.getActiveUsers();
+            console.log(`Loaded ${activeUsers.length} active users from database`);
+            
+            // Populate local Set for quick access
+            activeUsers.forEach(userId => syncedUsers.add(userId));
+            
+            // Start background sync if we have users
+            if (syncedUsers.size > 0) {
+                startBackgroundSync();
+            }
+        } else {
+            console.error('Failed to initialize database');
+        }
+    } catch (error) {
+        console.error('Error during database initialization:', error);
+    }
+})();
+
+// Helper function to set CORS headers and respond with JSON
+function respond(res, data) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', '*');
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'max-age=86400'); // one day
+    res.send(data);
+}
+
+// Setup CORS middleware
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Origin', 'Accept']
+}));
+
+// Serve static files from public directory
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Add OPTIONS handler for all routes to support CORS preflight
+app.options('*', cors());
+
+// Simple rate limiter middleware
+const rateLimit = {};
+const RATE_LIMIT_WINDOW = 15 * 60 * 1000; // 15 minutes
+const MAX_REQUESTS_PER_WINDOW = 100; // 100 requests per 15 minutes
+
+function rateLimiter(req, res, next) {
+    const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+    const now = Date.now();
+    
+    // Initialize or clear old rate limit data
+    if (!rateLimit[ip] || rateLimit[ip].resetTime < now) {
+        rateLimit[ip] = {
+            count: 0,
+            resetTime: now + RATE_LIMIT_WINDOW
+        };
+    }
+    
+    // Increment request count
+    rateLimit[ip].count++;
+    
+    // If limit exceeded, return 429 Too Many Requests
+    if (rateLimit[ip].count > MAX_REQUESTS_PER_WINDOW) {
+        return res.status(429).json({
+            error: 'Too many requests',
+            message: 'Rate limit exceeded. Please try again later.'
+        });
+    }
+    
+    next();
+}
+
+// Apply rate limiter to all requests
+app.use(rateLimiter);
+
+// Background syncing function
+async function syncAllWatchlists() {
+    // Check health of database connection
+    await db.checkHealth();
+    
+    // Get all user IDs that have been accessing the addon from recent requests
+    const users = [...syncedUsers];
+    
+    if (users.length === 0) {
+        console.log('No known users to sync. Waiting for user connections...');
+        return;
+    }
+
+    console.log(`===== SYNC STARTED: ${new Date().toISOString()} =====`);
+    console.log(`Syncing watchlists for ${users.length} users: ${users.join(', ')}`);
+    
+    // Persist active users to database
+    await db.storeActiveUsers(syncedUsers);
+    
+    // Process users one by one to avoid rate limiting
+    for (const userId of users) {
+        try {
+            console.log(`--------------------`);
+            console.log(`Background sync: Updating watchlist for user ${userId}`);
+            const startTime = Date.now();
+            // Force refresh by passing true as second parameter
+            const watchlistData = await getWatchlist(userId, true); 
+            const endTime = Date.now();
+            
+            console.log(`Sync completed for ${userId} in ${(endTime - startTime)/1000}s`);
+            console.verbose(`Updated ${watchlistData.metas.length} items (${watchlistData.metas.filter(i => i.type === 'movie').length} movies, ${watchlistData.metas.filter(i => i.type === 'series').length} series)`);
+            
+            // Add a small delay between requests to be nice to IMDb servers
+            await new Promise(resolve => setTimeout(resolve, 5000));
+        } catch (error) {
+            console.error(`Background sync: Error updating watchlist for user ${userId}:`, error.message);
+        }
+    }
+    
+    console.log(`===== SYNC COMPLETED: ${new Date().toISOString()} =====`);
+}
+
+// Start the background sync process
+function startBackgroundSync() {
+    if (syncIntervalId) {
+        console.log('Background sync already running');
+        return; // Already running
+    }
+    
+    console.log(`Starting background sync with interval of ${SYNC_INTERVAL/60000} minutes`);
+    console.log(`Cache TTL: ${CACHE_TTL/60000} minutes`);
+    
+    // Run an initial sync immediately
+    console.log('Running initial sync...');
+    syncAllWatchlists().then(() => {
+        console.log('Initial sync completed');
+    }).catch(err => {
+        console.error('Error during initial sync:', err);
+    });
+    
+    // Then set up the interval for future syncs
+    syncIntervalId = setInterval(syncAllWatchlists, SYNC_INTERVAL);
+    console.log(`Background sync scheduled for every ${SYNC_INTERVAL/60000} minutes`);
+}
+
+// Stop the background sync process
+function stopBackgroundSync() {
+    if (syncIntervalId) {
+        clearInterval(syncIntervalId);
+        syncIntervalId = null;
+        console.log('Background sync stopped');
+    }
+}
+
+// Function to get watchlist for an IMDb user
+async function getWatchlist(userId, forceRefresh = false) {
+    // Update user activity timestamp in the database
+    await db.updateUserActivity(userId);
+    
+    // Track this user for syncing in local memory for quick access
+    if (!syncedUsers.has(userId)) {
+        syncedUsers.add(userId);
+        console.log(`Added user ${userId} to syncing list (total users: ${syncedUsers.size})`);
+        
+        // Persist to database
+        await db.storeActiveUsers(syncedUsers);
+        
+        // Start background sync if it's not already running
+        if (!syncIntervalId) {
+            startBackgroundSync();
+        }
+    }
+
+    // Check if we have a cached watchlist
+    const cachedData = await db.getCachedWatchlist(userId);
+    
+    // Log time since last cache update
+    if (cachedData) {
+        const cacheAge = Math.round((Date.now() - cachedData.timestamp)/1000/60);
+        console.log(`Cache for ${userId} is ${cacheAge} minutes old (TTL: ${CACHE_TTL/60000} minutes)`);
+    }
+    
+    // Force refresh ignores cache, or check if cache doesn't exist or is older than TTL
+    if (forceRefresh || !cachedData || cachedData.timestamp < Date.now() - CACHE_TTL) {
+        console.log(`${forceRefresh ? 'Force refreshing' : 'Cache expired, refreshing'} watchlist for user ${userId}...`);
+        
+        try {
+            // Use our JavaScript scraper to fetch the watchlist
+            const watchlistData = await fetchWatchlist(userId);
+            
+            // Log the watchlist content details in verbose mode
+            if (watchlistData && watchlistData.metas) {
+                const movies = watchlistData.metas.filter(item => item.type === 'movie');
+                const series = watchlistData.metas.filter(item => item.type === 'series');
+                
+                console.verbose(`Watchlist for ${userId} contains ${watchlistData.metas.length} items:`);
+                console.verbose(`- ${movies.length} movies`);
+                console.verbose(`- ${series.length} series`);
+                
+                // Log the first 5 items of each type for visibility
+                if (movies.length > 0) {
+                    console.verbose(`\nMovies sample (first ${Math.min(5, movies.length)}):`);
+                    movies.slice(0, 5).forEach((movie, i) => {
+                        console.verbose(`  ${i+1}. ${movie.name} (${movie.id})`);
+                    });
+                    if (movies.length > 5) {
+                        console.verbose(`  ... and ${movies.length - 5} more movies`);
+                    }
+                }
+                
+                if (series.length > 0) {
+                    console.verbose(`\nSeries sample (first ${Math.min(5, series.length)}):`);
+                    series.slice(0, 5).forEach((show, i) => {
+                        console.verbose(`  ${i+1}. ${show.name} (${show.id})`);
+                    });
+                    if (series.length > 5) {
+                        console.verbose(`  ... and ${series.length - 5} more series`);
+                    }
+                }
+            }
+            
+            // Cache the watchlist data
+            await db.cacheWatchlist(userId, watchlistData);
+            
+            return watchlistData;
+        } catch (err) {
+            console.error(`Error fetching watchlist: ${err.message}`);
+            
+            // If we have a previous cache, use it as fallback even if expired
+            if (cachedData) {
+                console.log(`Using expired cache as fallback for user ${userId}`);
+                return cachedData.data;
+            }
+            
+            throw err;
+        }
+    } else {
+        console.log(`Using cached watchlist for user ${userId} (${cachedData.data.metas.length} items, cached ${Math.round((Date.now() - cachedData.timestamp)/1000/60)} minutes ago)`);
+        return cachedData.data;
+    }
+}
+
+// Helper function to activate a user ID for syncing
+function activateUserForSync(userId) {
+    if (!userId || typeof userId !== 'string' || !userId.startsWith('ur')) {
+        return false; // Invalid user ID
+    }
+
+    // Track this user for syncing
+    if (!syncedUsers.has(userId)) {
+        syncedUsers.add(userId);
+        console.log(`Activated user ${userId} for syncing (total users: ${syncedUsers.size})`);
+        
+        // Persist to database
+        db.storeActiveUsers(syncedUsers);
+        db.updateUserActivity(userId);
+        
+        // Start background sync if it's not already running
+        if (!syncIntervalId) {
+            startBackgroundSync();
+        }
+        return true;
+    }
+    
+    // Just update the timestamp for existing users
+    db.updateUserActivity(userId);
+    return true;
+}
+
+// ==========================================
+// IMPORTANT: Order of routes matters in Express
+// More specific routes should come first
+// ==========================================
+
+// User-specific manifest endpoint - MUST BE DEFINED BEFORE GENERIC ROUTES
+app.get('/:userId/manifest.json', (req, res) => {
+    const userId = req.params.userId;
+    console.log(`Serving user-specific manifest for: ${userId}`);
+    
+    // Activate this user for background syncing
+    activateUserForSync(userId);
+    
+    // Clone the manifest and customize it for this user
+    const userManifest = JSON.parse(JSON.stringify(manifest));
+    userManifest.id = `org.imdb.watchlist.${userId}`;
+    
+    // Set the name WITHOUT the user ID
+    userManifest.name = 'IMDb Watchlist';
+    
+    // Put the user ID in the description instead
+    userManifest.description = `Your IMDb Watchlist for user ${userId}`;
+    
+    // Update catalog IDs to be specific to this user
+    userManifest.catalogs = userManifest.catalogs.map(catalog => {
+        return {
+            ...catalog,
+            id: `${catalog.id}-${userId}`
+        };
+    });
+    
+    respond(res, userManifest);
+});
+
+// User-specific catalog endpoint
+app.get('/:userId/catalog/:type/:id.json', async (req, res) => {
+    const userId = req.params.userId;
+    const type = req.params.type;
+    
+    // Activate this user for background syncing
+    activateUserForSync(userId);
+    
+    // Handle failures
+    function fail(err) {
+        console.error(err);
+        res.status(500);
+        respond(res, { err: 'handler error' });
+    }
+
+    try {
+        // Get the watchlist data
+        const watchlistData = await getWatchlist(userId);
+        
+        // Filter metas by type
+        const metas = watchlistData.metas.filter(item => item.type === type);
+        
+        // Respond with the filtered data
+        respond(res, { metas });
+    } catch (err) {
+        fail(`Error serving catalog: ${err.message}`);
+    }
+});
+
+// Root endpoint returns the base manifest (without user data)
+app.get('/manifest.json', (req, res) => {
+    console.log(`Serving base manifest (requires configuration)`);
+    respond(res, manifest);
+});
+
+// Configure page - this will redirect to our web UI
+app.get('/configure', (req, res) => {
+    res.redirect('/');
+});
+
+// User-specific configure page - also redirects to our web UI
+app.get('/:userId/configure', (req, res) => {
+    // Activate this user for background syncing
+    activateUserForSync(req.params.userId);
+    
+    // Pass the userId as a query parameter to pre-populate the form
+    res.redirect(`/?userId=${req.params.userId}`);
+});
+
+// API endpoint to validate if an IMDb user ID exists and has a watchlist
+app.get('/api/validate/:userId', async (req, res) => {
+    const userId = req.params.userId;
+    
+    try {
+        // Try to fetch the watchlist to validate the user ID
+        await getWatchlist(userId);
+        respond(res, { valid: true });
+    } catch (err) {
+        console.error(`Validation error for ${userId}: ${err.message}`);
+        respond(res, { valid: false, error: err.message });
+    }
+});
+
+// Debug endpoint to check if manifests are properly served
+app.get('/api/debug/:userId', (req, res) => {
+    const userId = req.params.userId;
+    
+    // Return details about the URLs and their expected behavior
+    respond(res, {
+        userManifestUrl: `${req.protocol}://${req.get('host')}/${userId}/manifest.json`,
+        baseManifestUrl: `${req.protocol}://${req.get('host')}/manifest.json`,
+        stremioProtocolUrl: `stremio://${req.get('host')}/${userId}/manifest.json`,
+        message: "Use these URLs to test different configurations. The userManifestUrl should work directly in Stremio."
+    });
+});
+
+// API endpoint to get storage stats
+app.get('/api/stats', async (req, res) => {
+    try {
+        // Get stats
+        const activeUsers = await db.getActiveUsers();
+        const cachedUserIds = await db.getCachedUserIds();
+        const storageType = await db.checkHealth();
+        
+        respond(res, {
+            activeUsers: activeUsers.length,
+            cachedUsers: cachedUserIds.length,
+            storageType,
+            syncActive: syncIntervalId !== null,
+            syncInterval: SYNC_INTERVAL / 60000,
+            cacheTTL: CACHE_TTL / 60000
+        });
+    } catch (err) {
+        console.error(`Error getting stats: ${err.message}`);
+        respond(res, { error: err.message });
+    }
+});
+
+// Route for the web interface homepage
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Start the server
+const PORT = process.env.PORT || 7001;
+
+// For serverless environments like Vercel
+if (process.env.VERCEL || process.env.RENDER) {
+    // Export the Express app directly for serverless use
+    module.exports = app;
+} else {
+    // Traditional server startup
+    app.listen(PORT, () => {
+        console.log(`\nAddon server running at http://127.0.0.1:${PORT}`);
+        console.log(`\nTo manually install in Stremio:`);
+        console.log(`1. Open Stremio`);
+        console.log(`2. Go to the Addons section`);
+        console.log(`3. Click "Add Addon URL"`);
+        console.log(`4. Enter: http://127.0.0.1:${PORT}/manifest.json`);
+    });
+}
+
+// Handle graceful shutdown
+process.on('SIGINT', () => {
+    console.log('Received SIGINT. Shutting down gracefully...');
+    stopBackgroundSync();
+    console.log('Background sync stopped.');
+    
+    // Close database connections
+    db.closeConnections().then(() => {
+        console.log('Database connections closed.');
+        // Give time for any pending operations to complete
+        setTimeout(() => {
+            console.log('Exiting process...');
+            process.exit(0);
+        }, 1000);
+    }).catch(err => {
+        console.error('Error closing database connections:', err);
+        process.exit(1);
+    });
+});
+
+process.on('SIGTERM', () => {
+    console.log('Received SIGTERM. Shutting down gracefully...');
+    stopBackgroundSync();
+    console.log('Background sync stopped.');
+    
+    // Close database connections
+    db.closeConnections().then(() => {
+        console.log('Database connections closed.');
+        // Give time for any pending operations to complete
+        setTimeout(() => {
+            console.log('Exiting process...');
+            process.exit(0);
+        }, 1000);
+    }).catch(err => {
+        console.error('Error closing database connections:', err);
+        process.exit(1);
+    });
+}); 

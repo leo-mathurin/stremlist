@@ -1,0 +1,438 @@
+:root {
+    --imdb-yellow: #f5c518;
+    --dark-bg: #1a1a1a;
+    --light-bg: #f9f9f9;
+    --border-radius: 4px;
+    --primary-text: #333;
+    --secondary-text: #666;
+    --success-color: #4caf50;
+    --error-color: #f44336;
+    --info-color: #2196f3;
+    --accent-color: #0d8aee;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    color: var(--primary-text);
+    background-color: #f0f0f0;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    background-color: white;
+    min-height: 100vh;
+}
+
+header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #eee;
+}
+
+.logo {
+    width: 60px;
+    height: auto;
+    margin-right: 15px;
+}
+
+h1 {
+    font-size: 1.8rem;
+    font-weight: 600;
+    color: var(--primary-text);
+}
+
+main {
+    padding: 20px 0;
+}
+
+.description {
+    margin-bottom: 2rem;
+    text-align: center;
+}
+
+.form-container {
+    background-color: var(--light-bg);
+    padding: 20px;
+    border-radius: var(--border-radius);
+    margin-bottom: 2rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.form-group {
+    margin-bottom: 1.5rem;
+}
+
+label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    color: var(--primary-text);
+}
+
+.input-help {
+    position: relative;
+}
+
+.input-instructions {
+    font-size: 0.85rem;
+    color: var(--secondary-text);
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background-color: rgba(0,0,0,0.03);
+    border-radius: var(--border-radius);
+}
+
+input[type="text"] {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: var(--border-radius);
+    font-size: 1rem;
+    transition: border-color 0.2s;
+    outline: none;
+}
+
+input[type="text"]:focus {
+    border-color: var(--imdb-yellow);
+    box-shadow: 0 0 0 2px rgba(245, 197, 24, 0.2);
+}
+
+/* Prevent selection style from affecting the form appearance */
+input[type="text"]::selection {
+    background: rgba(0, 0, 0, 0.1);
+    color: inherit;
+}
+
+.actions {
+    text-align: center;
+    margin: 1.5rem 0;
+}
+
+button {
+    background-color: var(--imdb-yellow);
+    color: black;
+    border: none;
+    padding: 10px 20px;
+    font-size: 1rem;
+    font-weight: bold;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+button:hover {
+    background-color: #e0b000;
+    transform: translateY(-1px);
+}
+
+button:disabled {
+    background-color: #ddd;
+    color: #999;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.hidden {
+    display: none;
+}
+
+/* Status Messages */
+.status-message {
+    padding: 10px 15px;
+    margin: 10px 0;
+    border-radius: var(--border-radius);
+    text-align: center;
+}
+
+.status-message.error {
+    background-color: #ffebee;
+    color: var(--error-color);
+    border-left: 4px solid var(--error-color);
+}
+
+.status-message.success {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+    border-left: 4px solid var(--success-color);
+}
+
+.status-message.info {
+    background-color: var(--accent-color);
+    color: white;
+    border-color: #0d8aee;
+}
+
+/* Installation Options */
+#installation-options {
+    margin-top: 20px;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+#installation-options.hidden {
+    display: none;
+}
+
+#installation-options:not(.hidden) {
+    opacity: 1;
+}
+
+.options-container {
+    background-color: var(--light-bg);
+    border-radius: var(--border-radius);
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.installation-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.install-btn {
+    display: block;
+    width: 100%;
+    padding: 12px 15px;
+    background-color: var(--imdb-yellow);
+    color: black;
+    text-align: center;
+    text-decoration: none;
+    border-radius: var(--border-radius);
+    font-weight: bold;
+    transition: background-color 0.3s, transform 0.2s;
+}
+
+.install-btn:hover {
+    background-color: #e0b000;
+    transform: translateY(-2px);
+}
+
+.install-btn.web {
+    background-color: var(--info-color);
+    color: white;
+}
+
+.install-btn.web:hover {
+    background-color: #0d8aee;
+}
+
+.install-btn.desktop {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.install-btn.desktop:hover {
+    background-color: #43a047;
+}
+
+.manual-installation {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #ddd;
+    text-align: center;
+}
+
+.url-container {
+    display: flex;
+    margin-top: 10px;
+}
+
+.url-container input {
+    flex: 1;
+    padding: 8px 10px;
+    font-family: monospace;
+    border: 1px solid #ddd;
+    border-right: none;
+    border-radius: var(--border-radius) 0 0 var(--border-radius);
+    user-select: all; /* Makes the text easier to select all at once */
+}
+
+.url-container button {
+    padding: 8px 15px;
+    background-color: var(--imdb-yellow);
+    border-radius: 0 var(--border-radius) var(--border-radius) 0;
+}
+
+/* Instructions Section */
+.instructions {
+    margin-top: 30px;
+}
+
+.instructions h2 {
+    margin-bottom: 20px;
+    text-align: center;
+    color: var(--primary-text);
+}
+
+.instructions ol {
+    list-style-type: decimal;
+    padding-left: 20px;
+}
+
+.method-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.method {
+    background-color: var(--light-bg);
+    padding: 15px;
+    border-radius: var(--border-radius);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.method h3 {
+    margin-bottom: 10px;
+    font-size: 1.1rem;
+    color: var(--primary-text);
+}
+
+.quick-start, .troubleshooting {
+    background-color: var(--light-bg);
+    padding: 15px 20px;
+    border-radius: var(--border-radius);
+    margin-top: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.quick-start {
+    border-left: 4px solid var(--info-color);
+}
+
+.troubleshooting {
+    border-left: 4px solid var(--imdb-yellow);
+}
+
+.quick-start h3, .troubleshooting h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 1.1rem;
+}
+
+.troubleshooting ul {
+    padding-left: 20px;
+    margin-top: 10px;
+}
+
+.troubleshooting li {
+    margin-bottom: 5px;
+}
+
+code {
+    background-color: #f5f5f5;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 14px;
+    word-break: break-all;
+    display: inline-block;
+    margin: 5px 0;
+}
+
+#copy-direct-url {
+    background-color: var(--imdb-yellow);
+    color: black;
+    border: none;
+    padding: 3px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    vertical-align: middle;
+    margin-left: 5px;
+}
+
+/* Configuration Page Styles */
+.config-title {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 1.5rem;
+    text-align: center;
+    color: var(--imdb-yellow);
+    background-color: rgba(0, 0, 0, 0.05);
+    padding: 0.5rem;
+    border-radius: var(--border-radius);
+}
+
+body.configure-page {
+    padding-top: 1rem;
+}
+
+body.configure-page .container {
+    max-width: 500px;
+}
+
+body.configure-page .description {
+    margin-bottom: 1rem;
+}
+
+/* Footer */
+footer {
+    margin-top: 40px;
+    text-align: center;
+    font-size: 14px;
+    color: var(--secondary-text);
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+}
+
+/* Ko-fi Link Styles */
+.kofi-link {
+    display: inline-block;
+    color: #29abe0;
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    margin: 0.5rem 0;
+}
+
+.kofi-link:hover {
+    color: #FF5E5B;
+    transform: scale(1.05);
+}
+
+/* Responsive Adjustments */
+@media (max-width: 600px) {
+    .container {
+        padding: 15px;
+    }
+    
+    main {
+        padding: 10px 0;
+    }
+    
+    .method-container {
+        grid-template-columns: 1fr;
+    }
+    
+    header {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .logo {
+        margin-right: 0;
+        margin-bottom: 10px;
+    }
+}
+
+.url-note {
+    font-size: 13px;
+    color: var(--secondary-text);
+    margin-top: 8px;
+    font-style: italic;
+} 

@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  # Redis service
+  redis:
+    image: redis:7.0-alpine
+    container_name: imdb-watchlist-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - imdb-watchlist-network
+
+  # Application service
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: imdb-watchlist-app
+    env_file:
+      - docker.env
+    ports:
+      - "7001:7001"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - imdb-watchlist-network
+
+networks:
+  imdb-watchlist-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+    driver: local 

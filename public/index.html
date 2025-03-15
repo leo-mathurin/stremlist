@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IMDb Watchlist for Stremio</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" href="https://upload.wikimedia.org/wikipedia/commons/6/69/IMDB_Logo_2016.svg" type="image/svg+xml">
+    <script>
+        // Add a class to body if this is the configure page
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.location.pathname === '/configure' || window.location.pathname.includes('/configure')) {
+                document.body.classList.add('configure-page');
+            }
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <img src="https://upload.wikimedia.org/wikipedia/commons/6/69/IMDB_Logo_2016.svg" alt="IMDb Logo" class="logo">
+            <h1>IMDb Watchlist for Stremio</h1>
+        </header>
+
+        <main>
+            <section class="description">
+                <p>This addon brings your IMDb watchlist directly into Stremio.</p>
+                <p>Enter your IMDb User ID below to access your watchlist in Stremio.</p>
+            </section>
+
+            <section class="form-container">
+                <form id="config-form">
+                    <div class="form-group">
+                        <label for="imdb-id">IMDb User ID:</label>
+                        <div class="input-help">
+                            <input type="text" id="imdb-id" name="imdb-id" required placeholder="ur12345678">
+                            <div class="input-instructions">
+                                Your IMDb User ID starts with "ur" and can be found in your IMDb profile URL.<br>
+                                Example: In https://www.imdb.com/user/ur12345678/watchlist, the ID is ur12345678.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Installation options will appear here when a valid ID is entered -->
+                    <div id="installation-options" class="hidden">
+                        <!-- This will be populated by JavaScript when a valid ID is entered -->
+                    </div>
+                </form>
+            </section>
+
+            <section class="instructions">
+                <h2>How it works</h2>
+                <ol>
+                    <li>Enter your IMDb User ID</li>
+                    <li>Choose how to install the addon in Stremio</li>
+                    <li>Your watchlist will appear in Stremio's homepage and as a catalog in the discover section</li>
+                </ol>
+                <script>
+                    document.addEventListener('DOMContentLoaded', function() {
+                        const directUrlEl = document.getElementById('direct-url');
+                        const copyDirectUrlBtn = document.getElementById('copy-direct-url');
+                        
+                        // Set the direct URL using current host
+                        const host = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+                            ? `${window.location.hostname}:${window.location.port}`
+                            : window.location.host;
+                        directUrlEl.textContent = `http://${host}/manifest.json`;
+                        
+                        // Copy button functionality
+                        copyDirectUrlBtn.addEventListener('click', function() {
+                            // Store the original IMDb ID input value
+                            const imdbIdInput = document.getElementById('imdb-id');
+                            const originalValue = imdbIdInput ? imdbIdInput.value : '';
+                            
+                            // Use the Clipboard API for copying
+                            navigator.clipboard.writeText(directUrlEl.textContent)
+                                .then(() => {
+                                    this.textContent = 'Copied!';
+                                    setTimeout(() => {
+                                        this.textContent = 'Copy';
+                                    }, 2000);
+                                    
+                                    // Make sure IMDb ID still has its value
+                                    if (imdbIdInput) imdbIdInput.value = originalValue;
+                                })
+                                .catch(err => {
+                                    console.error('Could not copy text: ', err);
+                                    // Try fallback method
+                                    try {
+                                        const tempInput = document.createElement('input');
+                                        tempInput.value = directUrlEl.textContent;
+                                        document.body.appendChild(tempInput);
+                                        tempInput.select();
+                                        document.execCommand('copy');
+                                        document.body.removeChild(tempInput);
+                                        
+                                        this.textContent = 'Copied!';
+                                        setTimeout(() => {
+                                            this.textContent = 'Copy';
+                                        }, 2000);
+                                        
+                                        // Make sure IMDb ID still has its value
+                                        if (imdbIdInput) imdbIdInput.value = originalValue;
+                                    } catch (e) {
+                                        console.error('Fallback copy failed:', e);
+                                    }
+                                });
+                        });
+                    });
+                </script>
+            </section>
+            
+            <section class="troubleshooting">
+                <h3>Troubleshooting</h3>
+                <p>If you experience any issues:</p>
+                <ul>
+                    <li>Make sure your IMDb watchlist is public</li>
+                    <li>Try using Stremio Web instead of Stremio Desktop</li>
+                    <li>If Stremio shows "Failed to fetch," try restarting Stremio after adding the addon</li>
+                    <li>Ensure your IMDb ID starts with "ur" and is entered correctly</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer>
+            <p>This addon is not affiliated with IMDb or Stremio. It's a community project.</p>
+            <p><a href="https://ko-fi.com/lelemathrin" target="_blank" class="kofi-link">❤️ Like this project? Buy me a coffee</a></p>
+            <p>&copy; 2025 - IMDb Watchlist for Stremio</p>
+        </footer>
+    </div>
+
+    <script src="js/script.js"></script>
+</body>
+</html> 
