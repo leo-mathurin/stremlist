@@ -114,34 +114,42 @@ function processWatchlist(watchlist) {
             }
         }
         
-        // Extract directors and cast
-        if (movieData.principalCredits) {
-            const principalCredits = movieData.principalCredits;
-            for (const creditGroup of principalCredits) {
-                if (typeof creditGroup === 'object' && 'category' in creditGroup) {
-                    const category = creditGroup.category?.id;
-                    
-                    if (category === 'director' && 'credits' in creditGroup) {
-                        for (const director of creditGroup.credits || []) {
-                            if (typeof director === 'object' && 'name' in director) {
-                                const directorName = director.name?.nameText?.text;
-                                if (directorName) {
-                                    movie.directors.push(directorName);
-                                }
-                            }
+        // Extract directors and cast - improved to better match IMDb structure
+        if (movieData.principalCredits && Array.isArray(movieData.principalCredits)) {
+            // Process each credit category (director, cast, etc.)
+            for (const creditGroup of movieData.principalCredits) {
+                // Make sure we have a valid credit group with category ID
+                if (!creditGroup || !creditGroup.category || !creditGroup.category.id) {
+                    continue;
+                }
+                
+                const categoryId = creditGroup.category.id;
+                const credits = creditGroup.credits || [];
+                
+                // Process directors
+                if (categoryId === 'director') {
+                    for (const director of credits) {
+                        if (director && director.name && director.name.nameText && director.name.nameText.text) {
+                            movie.directors.push(director.name.nameText.text);
                         }
-                    } else if (category === 'cast' && 'credits' in creditGroup) {
-                        for (const actor of creditGroup.credits || []) {
-                            if (typeof actor === 'object' && 'name' in actor) {
-                                const actorName = actor.name?.nameText?.text;
-                                if (actorName) {
-                                    movie.cast.push(actorName);
-                                }
-                            }
+                    }
+                }
+                // Process cast
+                else if (categoryId === 'cast') {
+                    for (const actor of credits) {
+                        if (actor && actor.name && actor.name.nameText && actor.name.nameText.text) {
+                            movie.cast.push(actor.name.nameText.text);
                         }
                     }
                 }
             }
+        }
+        
+        // Log extraction for debugging
+        if (typeof console.verbose === 'function') {
+            console.verbose(`Extracted data for ${movie.title}:`);
+            console.verbose(`- Directors: ${movie.directors.join(', ') || 'None'}`);
+            console.verbose(`- Cast: ${movie.cast.slice(0, 3).join(', ')}${movie.cast.length > 3 ? '...' : '' || 'None'}`);
         }
         
         movies.push(movie);
@@ -179,20 +187,44 @@ function convertToStremioFormat(movies) {
     const stremioItems = [];
     
     for (const movie of movies) {
-        if (movie.type === 'Movie' && movie.id) {
-            stremioItems.push({
-                "id": movie.id,
-                "type": "movie",
-                "name": movie.title,
-                "poster": movie.image_url
-            });
-        } else if (movie.id && ['TV Series', 'TV Mini Series'].includes(movie.type)) {
-            stremioItems.push({
-                "id": movie.id,
-                "type": "series",
-                "name": movie.title,
-                "poster": movie.image_url
-            });
+        if (!movie.id) continue;
+        
+        // Base meta object with required fields
+        const metaObj = {
+            "id": movie.id,
+            "name": movie.title,
+            "poster": movie.image_url,
+            "posterShape": "poster",
+            "type": (movie.type === 'Movie') ? "movie" : "series",
+            "genres": movie.genres || [],
+            "description": movie.plot || "",
+        };
+        
+        // Add optional fields if available
+        if (movie.rating) {
+            metaObj.imdbRating = movie.rating.toString();
+        }
+        
+        if (movie.year) {
+            metaObj.releaseInfo = movie.year.toString();
+        }
+        
+        if (movie.directors && movie.directors.length > 0) {
+            metaObj.director = movie.directors;
+        }
+        
+        if (movie.cast && movie.cast.length > 0) {
+            metaObj.cast = movie.cast;
+        }
+        
+        // Add runtime if available
+        if (movie.runtime_seconds) {
+            metaObj.runtime = formatRuntime(movie.runtime_seconds);
+        }
+        
+        // Add only if it's a valid movie or series type
+        if (movie.type === 'Movie' || ['TV Series', 'TV Mini Series'].includes(movie.type)) {
+            stremioItems.push(metaObj);
         }
     }
     

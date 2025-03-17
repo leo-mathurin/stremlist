@@ -65,7 +65,7 @@ const manifest = {
     version: '1.0.0',
     name: 'IMDb Watchlist',
     description: 'Your IMDb Watchlist in Stremio',
-    resources: ['catalog'],
+    resources: ['catalog', 'meta'],
     types: ['movie', 'series'],
     catalogs: [
         {
@@ -117,7 +117,14 @@ function respond(res, data) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', '*');
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Cache-Control', 'max-age=86400'); // one day
+    // Set cache control to no-cache for manifest endpoints to prevent stale configuration state
+    if (res.req.path.endsWith('manifest.json')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+    } else {
+        res.setHeader('Cache-Control', 'max-age=86400'); // one day for non-manifest endpoints
+    }
     res.send(data);
 }
 
@@ -182,32 +189,38 @@ async function syncAllWatchlists() {
     }
 
     console.log(`===== SYNC STARTED: ${new Date().toISOString()} =====`);
-    console.log(`Syncing watchlists for ${users.length} users: ${users.join(', ')}`);
+    console.log(`Scheduling sync jobs for ${users.length} users`);
     
     // Persist active users to database
     await db.storeActiveUsers(syncedUsers);
     
-    // Process users one by one to avoid rate limiting
-    for (const userId of users) {
-        try {
-            console.log(`--------------------`);
-            console.log(`Background sync: Updating watchlist for user ${userId}`);
-            const startTime = Date.now();
-            // Force refresh by passing true as second parameter
-            const watchlistData = await getWatchlist(userId, true); 
-            const endTime = Date.now();
-            
-            console.log(`Sync completed for ${userId} in ${(endTime - startTime)/1000}s`);
-            console.verbose(`Updated ${watchlistData.metas.length} items (${watchlistData.metas.filter(i => i.type === 'movie').length} movies, ${watchlistData.metas.filter(i => i.type === 'series').length} series)`);
-            
-            // Add a small delay between requests to be nice to IMDb servers
-            await new Promise(resolve => setTimeout(resolve, 5000));
-        } catch (error) {
-            console.error(`Background sync: Error updating watchlist for user ${userId}:`, error.message);
-        }
-    }
+    // Calculate user priorities based on activity timestamps
+    const userActivityTimestamps = await db.getUserActivityTimestamps();
     
-    console.log(`===== SYNC COMPLETED: ${new Date().toISOString()} =====`);
+    // Calculate priority for each user based on activity recency
+    const priorityCalculator = (userId) => {
+        const lastActivity = userActivityTimestamps[userId] || 0;
+        const hoursSinceLastActivity = (Date.now() - lastActivity) / (1000 * 60 * 60);
+        
+        // High priority for recently active users (last 2 hours)
+        if (hoursSinceLastActivity <= 2) {
+            return 'high';
+        }
+        // Normal priority for users active in the last 24 hours
+        else if (hoursSinceLastActivity <= 24) {
+            return 'normal';
+        }
+        // Low priority for everyone else
+        else {
+            return 'low';
+        }
+    };
+    
+    // Schedule jobs for all users with appropriate priorities
+    const result = await db.scheduleBulkSync(users, priorityCalculator);
+    
+    console.log(`Job scheduling results: ${result.message}`);
+    console.log(`===== SYNC SCHEDULED: ${new Date().toISOString()} =====`);
 }
 
 // Start the background sync process
@@ -259,6 +272,9 @@ async function getWatchlist(userId, forceRefresh = false) {
         if (!syncIntervalId) {
             startBackgroundSync();
         }
+        
+        // Schedule an immediate sync job for this new user with high priority
+        await db.scheduleSyncForUser(userId, 'high');
     }
 
     // Check if we have a cached watchlist
@@ -275,57 +291,37 @@ async function getWatchlist(userId, forceRefresh = false) {
         console.log(`${forceRefresh ? 'Force refreshing' : 'Cache expired, refreshing'} watchlist for user ${userId}...`);
         
         try {
-            // Use our JavaScript scraper to fetch the watchlist
-            const watchlistData = await fetchWatchlist(userId);
+            // Use the rate limiter to fetch the watchlist
+            const watchlistData = await db.makeRateLimitedRequest(async () => {
+                return await fetchWatchlist(userId);
+            });
             
             // Log the watchlist content details in verbose mode
             if (watchlistData && watchlistData.metas) {
                 const movies = watchlistData.metas.filter(item => item.type === 'movie');
                 const series = watchlistData.metas.filter(item => item.type === 'series');
-                
-                console.verbose(`Watchlist for ${userId} contains ${watchlistData.metas.length} items:`);
-                console.verbose(`- ${movies.length} movies`);
-                console.verbose(`- ${series.length} series`);
-                
-                // Log the first 5 items of each type for visibility
-                if (movies.length > 0) {
-                    console.verbose(`\nMovies sample (first ${Math.min(5, movies.length)}):`);
-                    movies.slice(0, 5).forEach((movie, i) => {
-                        console.verbose(`  ${i+1}. ${movie.name} (${movie.id})`);
-                    });
-                    if (movies.length > 5) {
-                        console.verbose(`  ... and ${movies.length - 5} more movies`);
-                    }
-                }
-                
-                if (series.length > 0) {
-                    console.verbose(`\nSeries sample (first ${Math.min(5, series.length)}):`);
-                    series.slice(0, 5).forEach((show, i) => {
-                        console.verbose(`  ${i+1}. ${show.name} (${show.id})`);
-                    });
-                    if (series.length > 5) {
-                        console.verbose(`  ... and ${series.length - 5} more series`);
-                    }
-                }
+                console.verbose(`Fetched ${watchlistData.metas.length} items (${movies.length} movies, ${series.length} series)`);
             }
             
-            // Cache the watchlist data
+            // Cache the watchlist
             await db.cacheWatchlist(userId, watchlistData);
             
             return watchlistData;
-        } catch (err) {
-            console.error(`Error fetching watchlist: ${err.message}`);
+        } catch (error) {
+            console.error(`Error fetching watchlist for user ${userId}:`, error);
             
-            // If we have a previous cache, use it as fallback even if expired
+            // If we have a cached version, use it despite being outdated
             if (cachedData) {
-                console.log(`Using expired cache as fallback for user ${userId}`);
+                console.log(`Using outdated cache for user ${userId} due to fetch error`);
                 return cachedData.data;
             }
             
-            throw err;
+            // No cache, propagate the error
+            throw error;
         }
     } else {
-        console.log(`Using cached watchlist for user ${userId} (${cachedData.data.metas.length} items, cached ${Math.round((Date.now() - cachedData.timestamp)/1000/60)} minutes ago)`);
+        // Use cached data
+        console.log(`Using cached watchlist for user ${userId}`);
         return cachedData.data;
     }
 }
@@ -363,32 +359,54 @@ function activateUserForSync(userId) {
 // ==========================================
 
 // User-specific manifest endpoint - MUST BE DEFINED BEFORE GENERIC ROUTES
-app.get('/:userId/manifest.json', (req, res) => {
+app.get('/:userId/manifest.json', async (req, res) => {
     const userId = req.params.userId;
     console.log(`Serving user-specific manifest for: ${userId}`);
     
-    // Activate this user for background syncing
-    activateUserForSync(userId);
-    
-    // Clone the manifest and customize it for this user
-    const userManifest = JSON.parse(JSON.stringify(manifest));
-    userManifest.id = `org.imdb.watchlist.${userId}`;
-    
-    // Set the name WITHOUT the user ID
-    userManifest.name = 'IMDb Watchlist';
-    
-    // Put the user ID in the description instead
-    userManifest.description = `Your IMDb Watchlist for user ${userId}`;
-    
-    // Update catalog IDs to be specific to this user
-    userManifest.catalogs = userManifest.catalogs.map(catalog => {
-        return {
-            ...catalog,
-            id: `${catalog.id}-${userId}`
+    try {
+        // First validate if the user exists and has a watchlist
+        await getWatchlist(userId);
+        
+        // Only proceed with manifest if user is valid
+        // Clone the manifest and customize it for this user
+        const userManifest = JSON.parse(JSON.stringify(manifest));
+        userManifest.id = `org.imdb.watchlist.${userId}`;
+        userManifest.version = '1.0.0'; // Ensure version is always fresh
+        
+        // Set the name WITHOUT the user ID
+        userManifest.name = 'IMDb Watchlist';
+        
+        // Put the user ID in the description instead
+        userManifest.description = `Your IMDb Watchlist for user ${userId}`;
+        
+        // Update catalog IDs to be specific to this user
+        userManifest.catalogs = userManifest.catalogs.map(catalog => {
+            return {
+                ...catalog,
+                id: `${catalog.id}-${userId}`
+            };
+        });
+
+        // Remove configuration hints since we have a valid user ID
+        userManifest.behaviorHints = {
+            configurable: false,
+            configurationRequired: false
         };
-    });
-    
-    respond(res, userManifest);
+        
+        // Activate this user for background syncing
+        activateUserForSync(userId);
+        
+        respond(res, userManifest);
+    } catch (err) {
+        console.error(`Error serving manifest for ${userId}:`, err.message);
+        // If user is invalid, serve the base manifest that requires configuration
+        const baseManifest = JSON.parse(JSON.stringify(manifest));
+        baseManifest.behaviorHints = {
+            configurable: true,
+            configurationRequired: true
+        };
+        respond(res, baseManifest);
+    }
 });
 
 // User-specific catalog endpoint
@@ -413,10 +431,54 @@ app.get('/:userId/catalog/:type/:id.json', async (req, res) => {
         // Filter metas by type
         const metas = watchlistData.metas.filter(item => item.type === type);
         
+        // Log what we're serving for debugging
+        console.log(`Serving catalog for user ${userId}, type: ${type}, found: ${metas.length} items`);
+        if (metas.length > 0 && typeof console.verbose === 'function') {
+            console.verbose(`First catalog item example: ${JSON.stringify(metas[0], null, 2)}`);
+        }
+        
         // Respond with the filtered data
         respond(res, { metas });
     } catch (err) {
         fail(`Error serving catalog: ${err.message}`);
+    }
+});
+
+// User-specific meta endpoint to fetch detailed metadata for an item
+app.get('/:userId/meta/:type/:id.json', async (req, res) => {
+    const userId = req.params.userId;
+    const type = req.params.type;
+    const id = req.params.id;
+    
+    // Activate this user for background syncing
+    activateUserForSync(userId);
+    
+    // Handle failures
+    function fail(err) {
+        console.error(err);
+        res.status(500);
+        respond(res, { err: 'handler error' });
+    }
+
+    try {
+        // Get the watchlist data
+        const watchlistData = await getWatchlist(userId);
+        
+        // Find the specific item by ID
+        const item = watchlistData.metas.find(item => item.id === id && item.type === type);
+        
+        if (!item) {
+            // If item not found in watchlist
+            console.error(`Meta not found for ${type}/${id} in user ${userId}'s watchlist`);
+            return respond(res, { meta: null });
+        }
+        
+        console.log(`Serving meta for ${userId}, type: ${type}, id: ${id}`);
+        
+        // Return the meta object
+        respond(res, { meta: item });
+    } catch (err) {
+        fail(`Error serving meta: ${err.message}`);
     }
 });
 

@@ -6,10 +6,13 @@
 const config = require('./config');
 const redisHandler = require('./redis-handler');
 const memoryHandler = require('./memory-handler');
+const backgroundSync = require('./background-sync');
+const { fetchWatchlist } = require('../scripts/fetch_watchlist');
 
 // Track which storage backend is currently in use
 let currentBackend = null;
 let isRedisActive = false;
+let isBackgroundSyncInitialized = false;
 
 /**
  * Initialize the database connection and select the appropriate backend
@@ -24,6 +27,8 @@ async function initialize() {
             if (isRedisActive) {
                 console.log('Using Redis for persistent storage');
                 currentBackend = redisHandler;
+                // Initialize background sync after storage is ready
+                await initializeBackgroundSync();
                 return true;
             } else {
                 console.log('Redis is not available');
@@ -39,9 +44,36 @@ async function initialize() {
     if (config.USE_MEMORY_FALLBACK) {
         console.log('Using in-memory storage (fallback)');
         currentBackend = memoryHandler;
+        // Try to initialize background sync even with memory backend
+        await initializeBackgroundSync();
         return true;
     } else {
         console.error('All storage backends failed and fallback is disabled');
+        return false;
+    }
+}
+
+/**
+ * Initialize the background sync system if it's enabled
+ */
+async function initializeBackgroundSync() {
+    if (!config.WORKER_ENABLED) {
+        console.log('Background sync system is disabled in configuration');
+        return false;
+    }
+    
+    try {
+        // Set up background sync with dependencies from this module
+        isBackgroundSyncInitialized = await backgroundSync.initialize({
+            fetchWatchlist: fetchImdbWatchlist, // This needs to be implemented in your code
+            storeWatchlist: async (userId, watchlistData) => {
+                return await getHandler().cacheWatchlist(userId, watchlistData);
+            }
+        });
+        
+        return isBackgroundSyncInitialized;
+    } catch (error) {
+        console.error('Failed to initialize background sync:', error);
         return false;
     }
 }
@@ -96,13 +128,34 @@ function getHandler() {
  */
 async function closeConnections() {
     try {
-        // Always try to close Redis connection if it was used
+        // Shutdown background sync system first
+        if (isBackgroundSyncInitialized) {
+            await backgroundSync.shutdown();
+        }
+        
+        // Then close database connections
         if (isRedisActive) {
             await redisHandler.closeConnection();
         }
+        
         console.log('Database connections closed');
     } catch (error) {
         console.error('Error closing database connections:', error);
+    }
+}
+
+/**
+ * Fetch a user's IMDb watchlist
+ * This function connects to the actual implementation in scripts/fetch_watchlist.js
+ * @param {string} userId - The IMDb user ID
+ * @returns {Promise<Object>} - The watchlist data
+ */
+async function fetchImdbWatchlist(userId) {
+    try {
+        return await fetchWatchlist(userId);
+    } catch (error) {
+        console.error(`Error fetching watchlist for user ${userId}:`, error);
+        throw error;
     }
 }
 
@@ -139,5 +192,38 @@ module.exports = {
     
     getUserActivityTimestamps: async () => {
         return await getHandler().getUserActivityTimestamps();
-    }
+    },
+    
+    // Background sync operations
+    scheduleSyncForUser: async (userId, priority = 'normal') => {
+        if (!isBackgroundSyncInitialized) return false;
+        return await backgroundSync.scheduleSyncForUser(userId, priority);
+    },
+    
+    scheduleBulkSync: async (userIds, priorityCalculator = null) => {
+        if (!isBackgroundSyncInitialized) {
+            return { success: false, message: 'Background sync not initialized' };
+        }
+        return await backgroundSync.scheduleBulkSync(userIds, priorityCalculator);
+    },
+    
+    makeRateLimitedRequest: async (requestFn) => {
+        if (!isBackgroundSyncInitialized) return requestFn();
+        return await backgroundSync.makeRateLimitedRequest(requestFn);
+    },
+    
+    canMakeImdbRequest: async () => {
+        if (!isBackgroundSyncInitialized) return true;
+        return await backgroundSync.canMakeImdbRequest();
+    },
+    
+    getBackgroundSyncStatus: async () => {
+        if (!isBackgroundSyncInitialized) {
+            return { isInitialized: false };
+        }
+        return await backgroundSync.getStatus();
+    },
+    
+    // Expose background sync directly for advanced usage
+    backgroundSync
 }; 

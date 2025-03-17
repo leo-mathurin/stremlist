@@ -88,8 +88,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Create all the different URLs
                     const httpUrl = `http://${host}/${imdbId}/manifest.json`;
                     
-                    // For Stremio Web (app.strem.io)
-                    const webUrl = `https://app.strem.io/#/?addonOpen=${encodeURIComponent(httpUrl)}`;
+                    // For Stremio Web (web.stremio.com)
+                    const webUrl = `https://web.stremio.com/#/addons?addon=${encodeURIComponent(httpUrl)}`;
                     
                     // For Stremio desktop app
                     const stremioProtocolUrl = `stremio://${httpUrl.replace(/^https?:\/\//, '')}`;
