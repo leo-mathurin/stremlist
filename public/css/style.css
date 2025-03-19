@@ -35,6 +35,7 @@ body {
 header {
     display: flex;
     align-items: center;
+    justify-content: center;
     margin-bottom: 2rem;
     padding-bottom: 1rem;
     border-bottom: 1px solid #eee;

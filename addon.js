@@ -61,25 +61,25 @@ const syncedUsers = new Set(); // Local reference for quick lookups, persisted t
 
 // Base manifest without user data
 const manifest = {
-    id: 'org.imdb.watchlist',
+    id: 'com.stremlist',
     version: '1.0.0',
-    name: 'IMDb Watchlist',
+    name: 'Stremlist',
     description: 'Your IMDb Watchlist in Stremio',
     resources: ['catalog', 'meta'],
     types: ['movie', 'series'],
     catalogs: [
         {
-            id: 'imdb-watchlist-movies',
-            name: 'IMDb Movie Watchlist',
+            id: 'stremlist-movies',
+            name: 'Stremlist Movies',
             type: 'movie'
         },
         {
-            id: 'imdb-watchlist-series',
-            name: 'IMDb Series Watchlist', 
+            id: 'stremlist-series',
+            name: 'Stremlist Series', 
             type: 'series'
         }
     ],
-    logo: 'https://upload.wikimedia.org/wikipedia/commons/6/69/IMDB_Logo_2016.svg',
+    logo: 'https://stremlist.com/icon.png',
     behaviorHints: {
         configurable: true,
         configurationRequired: true
@@ -370,11 +370,11 @@ app.get('/:userId/manifest.json', async (req, res) => {
         // Only proceed with manifest if user is valid
         // Clone the manifest and customize it for this user
         const userManifest = JSON.parse(JSON.stringify(manifest));
-        userManifest.id = `org.imdb.watchlist.${userId}`;
+        userManifest.id = `com.stremlist.${userId}`;
         userManifest.version = '1.0.0'; // Ensure version is always fresh
         
         // Set the name WITHOUT the user ID
-        userManifest.name = 'IMDb Watchlist';
+        userManifest.name = 'Stremlist';
         
         // Put the user ID in the description instead
         userManifest.description = `Your IMDb Watchlist for user ${userId}`;

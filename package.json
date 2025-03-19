@@ -1,17 +1,20 @@
 {
-  "name": "imdb-watchlist-stremio",
+  "name": "stremlist",
   "version": "1.0.0",
-  "description": "IMDb Watchlist for Stremio - Browse your IMDb watchlist in Stremio",
+  "description": "Stremlist - Sync your IMDb watchlist with Stremio",
   "main": "addon.js",
   "scripts": {
     "start": "node addon.js",
     "dev": "nodemon addon.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "docker:redis": "docker-compose -f docker-compose.dev.yml up -d",
+    "docker:redis": "docker-compose -f docker-compose.dev.yml up -d redis",
     "docker:redis:stop": "docker-compose -f docker-compose.dev.yml down",
     "docker:all": "docker-compose up -d",
     "docker:all:stop": "docker-compose down",
-    "docker:logs": "docker-compose logs -f"
+    "docker:logs": "docker-compose logs -f",
+    "dev:docker": "dev.bat",
+    "dev:docker:rebuild": "dev.bat --rebuild",
+    "dev:docker:clean": "dev.bat --clean --rebuild"
   },
   "repository": {
     "type": "git",
@@ -21,7 +24,8 @@
     "stremio",
     "addon",
     "imdb",
-    "watchlist"
+    "watchlist",
+    "stremlist"
   ],
   "author": "",
   "license": "ISC",

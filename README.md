@@ -1,6 +1,6 @@
-# IMDb Watchlist for Stremio
+# Stremlist
 
-This is a Stremio addon that creates a catalog from your IMDb watchlist, allowing you to browse your saved movies and TV shows directly in Stremio.
+A Stremio addon that creates a catalog from your IMDb watchlist, allowing you to browse your saved movies and TV shows directly in Stremio.
 
 ## Features
 
