@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  # Redis service
+  redis:
+    image: redis:7.0-alpine
+    container_name: stremlist-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data-dev:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+    networks:
+      - stremlist-network-dev
+
+  # Application service for development
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: stremlist-app-dev
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - REDIS_URL=redis://redis:6379
+      - REDIS_ENABLED=true
+      - USE_MEMORY_FALLBACK=true
+      - VERBOSE=true
+      - SYNC_INTERVAL=30
+      - CACHE_TTL=15
+      - WORKER_ENABLED=true
+      - PORT=7001
+    ports:
+      - "7001:7001"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - stremlist-network-dev
+    command: npm run dev
+
+networks:
+  stremlist-network-dev:
+    driver: bridge
+
+volumes:
+  redis-data-dev:
+    driver: local
