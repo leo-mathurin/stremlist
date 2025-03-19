@@ -6,3 +6,5 @@
 /tmp
 .env
 docker.env
+nginx/ssl/key.pem
+nginx/ssl/cert.pem

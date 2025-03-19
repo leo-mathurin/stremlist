@@ -1,10 +1,26 @@
 version: '3.8'
 
 services:
+  # Nginx reverse proxy for SSL termination
+  nginx:
+    image: nginx:1.23-alpine
+    container_name: stremlist-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - stremlist-network
+
   # Redis service
   redis:
     image: redis:7.0-alpine
-    container_name: imdb-watchlist-redis
+    container_name: stremlist-redis
     ports:
       - "6379:6379"
     volumes:
@@ -17,14 +33,14 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - imdb-watchlist-network
+      - stremlist-network
 
   # Application service
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: imdb-watchlist-app
+    container_name: stremlist-app
     env_file:
       - docker.env
     ports:
@@ -34,10 +50,10 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - imdb-watchlist-network
+      - stremlist-network
 
 networks:
-  imdb-watchlist-network:
+  stremlist-network:
     driver: bridge
 
 volumes:
