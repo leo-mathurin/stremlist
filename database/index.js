@@ -159,11 +159,20 @@ async function fetchImdbWatchlist(userId) {
     }
 }
 
+/**
+ * Check if Redis is currently active and being used as storage backend
+ * @returns {boolean} - Whether Redis is active
+ */
+function getRedisStatus() {
+    return isRedisActive && currentBackend === redisHandler;
+}
+
 // Export functions that proxy to the selected backend
 module.exports = {
     initialize,
     checkHealth,
     closeConnections,
+    isRedisActive: getRedisStatus,
     
     // Data operations - these proxy to the currently active backend
     cacheWatchlist: async (userId, watchlistData) => {
