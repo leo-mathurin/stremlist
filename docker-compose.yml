@@ -1,22 +1,6 @@
 version: '3.8'
 
 services:
-  # Nginx reverse proxy for SSL termination
-  nginx:
-    image: nginx:1.23-alpine
-    container_name: stremlist-nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d
-      - ./nginx/ssl:/etc/nginx/ssl
-    depends_on:
-      - app
-    restart: unless-stopped
-    networks:
-      - stremlist-network
-
   # Redis service
   redis:
     image: redis:7.0-alpine
@@ -58,4 +42,4 @@ networks:
 
 volumes:
   redis-data:
-    driver: local 
+    driver: local

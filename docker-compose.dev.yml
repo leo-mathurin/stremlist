@@ -15,6 +15,7 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
+      retries: 5
     networks:
       - stremlist-network-dev
 
@@ -35,6 +36,7 @@ services:
       - VERBOSE=true
       - SYNC_INTERVAL=30
       - CACHE_TTL=15
+      - WORKER_CONCURRENCY=2
       - WORKER_ENABLED=true
       - PORT=7001
     ports:
