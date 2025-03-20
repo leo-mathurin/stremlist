@@ -465,6 +465,22 @@ footer {
     transform: scale(1.05);
 }
 
+.footer-text {
+    padding-bottom: 0.75rem;
+}
+
+/* Email Link Style */
+.email-link {
+    color: var(--accent-color);
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.email-link:hover {
+    text-decoration: underline;
+}
+
 /* Responsive Adjustments */
 @media (max-width: 600px) {
     .container {
