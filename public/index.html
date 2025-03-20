@@ -50,11 +50,29 @@
 
             <section class="instructions">
                 <h2>How it works</h2>
-                <ol>
-                    <li>Enter your IMDb User ID</li>
-                    <li>Choose how to install the addon in Stremio</li>
-                    <li>Your watchlist will appear in Stremio's homepage and as a catalog in the discover section</li>
-                </ol>
+                <div class="workflow-container">
+                    <div class="workflow-step">
+                        <div class="step-icon">1</div>
+                        <div class="step-content">
+                            <h4>Enter your IMDb ID</h4>
+                            <p>Provide your IMDb User ID to connect your watchlist</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-icon">2</div>
+                        <div class="step-content">
+                            <h4>Install in Stremio</h4>
+                            <p>Choose your preferred installation method</p>
+                        </div>
+                    </div>
+                    <div class="workflow-step">
+                        <div class="step-icon">3</div>
+                        <div class="step-content">
+                            <h4>Enjoy your watchlist</h4>
+                            <p>Access your IMDb watchlist directly in Stremio</p>
+                        </div>
+                    </div>
+                </div>
                 <script>
                     document.addEventListener('DOMContentLoaded', function() {
                         const directUrlEl = document.getElementById('direct-url');
@@ -108,6 +126,28 @@
                         });
                     });
                 </script>
+            </section>
+            
+            <section class="how-it-works">
+                <h3>What happens behind the scenes</h3>
+                <div class="process-steps">
+                    <div class="step">
+                        <span class="step-number">1</span>
+                        <p>When you add this addon to Stremio, it securely retrieves your public IMDb watchlist data</p>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">2</span>
+                        <p>Your watchlist is converted into a format that Stremio can understand and display</p>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">3</span>
+                        <p>The addon automatically checks for updates to your watchlist every 30 minutes</p>
+                    </div>
+                    <div class="step">
+                        <span class="step-number">4</span>
+                        <p>Everything happens in real-time – no data is stored permanently, protecting your privacy</p>
+                    </div>
+                </div>
             </section>
             
             <section class="troubleshooting">
