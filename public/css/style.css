@@ -9,6 +9,7 @@
     --error-color: #f44336;
     --info-color: #2196f3;
     --accent-color: #0d8aee;
+    --warning-color: #ff9800;
 }
 
 * {
@@ -374,7 +375,7 @@ button:disabled {
 }
 
 .troubleshooting {
-    border-left: 4px solid var(--imdb-yellow);
+    border-left: 4px solid var(--warning-color);
 }
 
 .quick-start h3, .troubleshooting h3 {
@@ -585,6 +586,29 @@ footer iframe {
 .step p {
     margin: 0;
     padding-top: 4px;
+}
+
+/* Access Instructions */
+.access-instructions {
+    margin: 20px 0;
+    padding: 15px 20px;
+    background-color: var(--light-bg);
+    border-radius: var(--border-radius);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border-left: 4px solid var(--imdb-yellow);
+}
+
+.access-instructions ul {
+    padding-left: 20px;
+    margin-top: 10px;
+}
+
+.access-instructions li {
+    margin-bottom: 8px;
+}
+
+.access-instructions h2 {
+    text-align: left;
 }
 
 /* Responsive Adjustments */
