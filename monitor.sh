@@ -22,6 +22,26 @@ else
     echo "❌ Stremlist service is NOT running"
 fi
 
+# Check if Nginx is running
+echo ""
+echo "Nginx Status:"
+if systemctl is-active nginx >/dev/null 2>&1; then
+    echo "✅ Nginx is running"
+else
+    echo "❌ Nginx is NOT running"
+fi
+
+# Check Nginx config validity
+echo ""
+echo "Nginx Config Check:"
+nginx -t &> /tmp/nginx_test
+if [ $? -eq 0 ]; then
+    echo "✅ Nginx configuration is valid"
+else
+    echo "❌ Nginx configuration has errors:"
+    cat /tmp/nginx_test
+fi
+
 # Check Docker Containers
 echo ""
 echo "Container Status:"
