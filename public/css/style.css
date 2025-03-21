@@ -490,6 +490,19 @@ footer iframe {
     text-decoration: underline;
 }
 
+/* Terms Link Style */
+.terms-link {
+    color: var(--secondary-text);
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+}
+
+.terms-link:hover {
+    color: var(--accent-color);
+    text-decoration: underline;
+}
+
 /* Responsive Adjustments */
 @media (max-width: 600px) {
     .container {
@@ -616,4 +629,42 @@ footer iframe {
     .how-it-works {
         padding: 15px;
     }
+}
+
+/* Legal pages (Terms and Privacy Policy) */
+.legal-section {
+    margin-bottom: 40px;
+    background-color: var(--light-bg);
+    padding: 20px;
+    border-radius: var(--border-radius);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.legal-section h2 {
+    color: var(--primary-text);
+    border-bottom: 2px solid var(--imdb-yellow);
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+    text-align: left;
+}
+
+.legal-section h3 {
+    color: var(--primary-text);
+    margin-top: 25px;
+    margin-bottom: 10px;
+    font-size: 1.2rem;
+}
+
+.legal-section p {
+    margin-bottom: 15px;
+    line-height: 1.6;
+}
+
+.legal-section a {
+    color: var(--accent-color);
+    text-decoration: none;
+}
+
+.legal-section a:hover {
+    text-decoration: underline;
 }
