@@ -11,27 +11,31 @@ DEPLOYMENT_LOG_FILE=${DEPLOYMENT_LOG_FILE:-"$PROJECT_ROOT/deployment.log"}
 GITHUB_DEPLOY_KEY_PATH=${GITHUB_DEPLOY_KEY_PATH:-"/home/opc/.ssh/github_deploy_key"}
 NOTIFICATION_EMAIL=${NOTIFICATION_EMAIL:-"lelemathrin69@gmail.com"}
 
-# Function to send email on deployment failure
+# Mailgun settings - add these to your .env file with real values
+MAILGUN_API_KEY=${MAILGUN_API_KEY:-"your-mailgun-api-key"}
+MAILGUN_DOMAIN=${MAILGUN_DOMAIN:-"your-mailgun-domain"}
+MAILGUN_FROM=${MAILGUN_FROM:-"Deployment <deployment@your-domain.com>"}
+
+# Function to send email on deployment failure using Mailgun
 send_failure_notification() {
     local error_message="$1"
     local hostname=$(hostname)
     local subject="[ALERT] Deployment Failed on $hostname"
     local body="Deployment failed on $hostname at $TIMESTAMP.\n\nError: $error_message\n\nSee $LOG_FILE for more details."
     
-    # Try multiple methods to send mail for RHEL-based systems
-    if command -v mailx &> /dev/null; then
-        echo -e "$body" | mailx -s "$subject" "$NOTIFICATION_EMAIL"
-        echo "[$TIMESTAMP] Failure notification sent to $NOTIFICATION_EMAIL using mailx" >> "$LOG_FILE"
-    elif command -v s-nail &> /dev/null; then
-        echo -e "$body" | s-nail -s "$subject" "$NOTIFICATION_EMAIL"
-        echo "[$TIMESTAMP] Failure notification sent to $NOTIFICATION_EMAIL using s-nail" >> "$LOG_FILE"
-    elif command -v sendmail &> /dev/null; then
-        (echo "Subject: $subject"; echo "To: $NOTIFICATION_EMAIL"; echo -e "\n$body") | sendmail -t
-        echo "[$TIMESTAMP] Failure notification sent to $NOTIFICATION_EMAIL using sendmail" >> "$LOG_FILE"
+    # Use curl to send email via Mailgun API
+    if command -v curl &> /dev/null; then
+        curl -s --user "api:$MAILGUN_API_KEY" \
+            https://api.mailgun.net/v3/$MAILGUN_DOMAIN/messages \
+            -F from="$MAILGUN_FROM" \
+            -F to="$NOTIFICATION_EMAIL" \
+            -F subject="$subject" \
+            -F text="$body" > /dev/null
+        
+        echo "[$TIMESTAMP] Failure notification sent to $NOTIFICATION_EMAIL using Mailgun" >> "$LOG_FILE"
     else
-        echo "[$TIMESTAMP] WARNING: No mail command found. Could not send email notification." >> "$LOG_FILE"
-        echo "[$TIMESTAMP] Please install mailx with: sudo dnf install mailx" >> "$LOG_FILE"
-        echo "[$TIMESTAMP] Or configure an external notification service." >> "$LOG_FILE"
+        echo "[$TIMESTAMP] WARNING: 'curl' command not found. Could not send email notification." >> "$LOG_FILE"
+        echo "[$TIMESTAMP] Please install curl with: sudo dnf install curl" >> "$LOG_FILE"
         
         # Write to a notification file as a fallback
         local notification_file="$PROJECT_ROOT/deployment_failures.txt"
