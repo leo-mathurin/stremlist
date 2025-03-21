@@ -86,6 +86,32 @@ const manifest = {
     }
 };
 
+// Helper function to determine the correct protocol for URLs
+function getProtocol(req) {
+    // Use HTTPS for production domains or if forwarded from HTTPS
+    if (req.get('host').includes('stremlist.com') || 
+        req.get('x-forwarded-proto') === 'https') {
+        return 'https';
+    }
+    return req.protocol;
+}
+
+// Helper function to set CORS headers and respond with JSON
+function respond(res, data) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', '*');
+    res.setHeader('Content-Type', 'application/json');
+    // Set cache control to no-cache for manifest endpoints to prevent stale configuration state
+    if (res.req.path.endsWith('manifest.json')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+    } else {
+        res.setHeader('Cache-Control', 'max-age=86400'); // one day for non-manifest endpoints
+    }
+    res.send(data);
+}
+
 // Initialize database connection
 (async function() {
     try {
@@ -111,22 +137,6 @@ const manifest = {
         console.error('Error during database initialization:', error);
     }
 })();
-
-// Helper function to set CORS headers and respond with JSON
-function respond(res, data) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', '*');
-    res.setHeader('Content-Type', 'application/json');
-    // Set cache control to no-cache for manifest endpoints to prevent stale configuration state
-    if (res.req.path.endsWith('manifest.json')) {
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        res.setHeader('Pragma', 'no-cache');
-        res.setHeader('Expires', '0');
-    } else {
-        res.setHeader('Cache-Control', 'max-age=86400'); // one day for non-manifest endpoints
-    }
-    res.send(data);
-}
 
 // Setup CORS middleware
 app.use(cors({
@@ -393,6 +403,10 @@ app.get('/:userId/manifest.json', async (req, res) => {
             configurationRequired: false
         };
         
+        // Set the self URL to ensure it uses HTTPS for production
+        const protocol = getProtocol(req);
+        userManifest.selfUrl = `${protocol}://${req.get('host')}/${userId}/manifest.json`;
+        
         // Activate this user for background syncing
         activateUserForSync(userId);
         
@@ -405,6 +419,10 @@ app.get('/:userId/manifest.json', async (req, res) => {
             configurable: true,
             configurationRequired: true
         };
+        // Set the self URL for the base manifest too
+        const protocol = getProtocol(req);
+        baseManifest.selfUrl = `${protocol}://${req.get('host')}/manifest.json`;
+        
         respond(res, baseManifest);
     }
 });
@@ -485,7 +503,15 @@ app.get('/:userId/meta/:type/:id.json', async (req, res) => {
 // Root endpoint returns the base manifest (without user data)
 app.get('/manifest.json', (req, res) => {
     console.log(`Serving base manifest (requires configuration)`);
-    respond(res, manifest);
+    
+    // Create a copy of the manifest to modify
+    const baseManifest = JSON.parse(JSON.stringify(manifest));
+    
+    // Set the self URL for the base manifest to ensure it uses HTTPS for production
+    const protocol = getProtocol(req);
+    baseManifest.selfUrl = `${protocol}://${req.get('host')}/manifest.json`;
+    
+    respond(res, baseManifest);
 });
 
 // Configure page - this will redirect to our web UI
@@ -520,10 +546,14 @@ app.get('/api/validate/:userId', async (req, res) => {
 app.get('/api/debug/:userId', (req, res) => {
     const userId = req.params.userId;
     
+    // Get the protocol, preferring HTTPS for production domains
+    const protocol = (req.get('host').includes('stremlist.com') || 
+                     req.get('x-forwarded-proto') === 'https') ? 'https' : req.protocol;
+    
     // Return details about the URLs and their expected behavior
     respond(res, {
-        userManifestUrl: `${req.protocol}://${req.get('host')}/${userId}/manifest.json`,
-        baseManifestUrl: `${req.protocol}://${req.get('host')}/manifest.json`,
+        userManifestUrl: `${protocol}://${req.get('host')}/${userId}/manifest.json`,
+        baseManifestUrl: `${protocol}://${req.get('host')}/manifest.json`,
         stremioProtocolUrl: `stremio://${req.get('host')}/${userId}/manifest.json`,
         message: "Use these URLs to test different configurations. The userManifestUrl should work directly in Stremio."
     });
@@ -609,7 +639,12 @@ if (process.env.VERCEL || process.env.RENDER) {
         console.log(`1. Open Stremio`);
         console.log(`2. Go to the Addons section`);
         console.log(`3. Click "Add Addon URL"`);
-        console.log(`4. Enter: http://127.0.0.1:${PORT}/manifest.json`);
+        
+        // Use HTTPS for production domains
+        const isProduction = process.env.NODE_ENV === 'production';
+        const protocol = isProduction ? 'https' : 'http';
+        const host = isProduction ? 'stremlist.com' : `127.0.0.1:${PORT}`;
+        console.log(`4. Enter: ${protocol}://${host}/manifest.json`);
     });
 }
 
