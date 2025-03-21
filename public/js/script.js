@@ -85,20 +85,26 @@ document.addEventListener('DOMContentLoaded', function() {
                         ? `${window.location.hostname}:${window.location.port}`
                         : window.location.host;
                     
+                    // Determine if we're in production environment based on hostname
+                    const isProduction = host.includes('stremlist.com');
+                    
+                    // Use HTTPS in production, HTTP otherwise
+                    const protocol = isProduction ? 'https' : 'http';
+                    
                     // Create all the different URLs
-                    const httpUrl = `http://${host}/${imdbId}/manifest.json`;
+                    const addonUrl = `${protocol}://${host}/${imdbId}/manifest.json`;
                     
                     // For Stremio Web (web.stremio.com)
-                    const webUrl = `https://web.stremio.com/#/addons?addon=${encodeURIComponent(httpUrl)}`;
+                    const webUrl = `https://web.stremio.com/#/addons?addon=${encodeURIComponent(addonUrl)}`;
                     
                     // For Stremio desktop app
-                    const stremioProtocolUrl = `stremio://${httpUrl.replace(/^https?:\/\//, '')}`;
+                    const stremioProtocolUrl = `stremio://${addonUrl.replace(/^https?:\/\//, '')}`;
                     
                     // Show success message
                     showStatusMessage('success', `IMDb watchlist found! Choose how to install below:`);
                     
                     // Create installation options
-                    createInstallationOptions(imdbId, httpUrl, webUrl, stremioProtocolUrl);
+                    createInstallationOptions(imdbId, addonUrl, webUrl, stremioProtocolUrl);
                 } else {
                     showError('Could not find an IMDb watchlist for this ID. Please check and try again.');
                     installationOptions.classList.add('hidden');
@@ -113,7 +119,7 @@ document.addEventListener('DOMContentLoaded', function() {
             });
     }
     
-    function createInstallationOptions(imdbId, httpUrl, webUrl, stremioProtocolUrl) {
+    function createInstallationOptions(imdbId, addonUrl, webUrl, stremioProtocolUrl) {
         // Clear and show the installation options container
         installationOptions.innerHTML = '';
         installationOptions.classList.remove('hidden');
@@ -129,7 +135,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="manual-installation">
                     <p>Or copy this URL and add it manually in Stremio:</p>
                     <div class="url-container">
-                        <input type="text" readonly value="${httpUrl}" id="addon-url">
+                        <input type="text" readonly value="${addonUrl}" id="addon-url">
                         <button id="copy-url-btn">Copy</button>
                     </div>
                     <p class="url-note">This URL already contains your IMDb ID and will install directly without configuration.</p>
