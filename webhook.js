@@ -1,9 +1,20 @@
 const http = require('http');
 const crypto = require('crypto');
 const { exec } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+const dotenv = require('dotenv');
 
-// Replace with your GitHub webhook secret
-const SECRET = 'your_github_webhook_secret';
+// Load environment variables from .env file
+dotenv.config();
+
+// Get the secret from environment variables
+const SECRET = process.env.GITHUB_WEBHOOK_SECRET;
+
+if (!SECRET) {
+  console.error('Error: GITHUB_WEBHOOK_SECRET not found in .env file');
+  process.exit(1);
+}
 
 const server = http.createServer((req, res) => {
   if (req.method === 'POST' && req.url === '/webhook') {
