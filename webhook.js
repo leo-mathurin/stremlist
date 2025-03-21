@@ -48,7 +48,7 @@ const server = http.createServer((req, res) => {
       const branch = payload.ref ? payload.ref.split('/').pop() : '';
       if (branch === 'main' || branch === 'master') {
         console.log('Deploying latest changes...');
-        exec('/home/opc/deploy.sh', (error, stdout, stderr) => {
+        exec('/home/opc/imdb-watchlist-stremio/deploy.sh', (error, stdout, stderr) => {
           if (error) {
             console.error(`Exec error: ${error}`);
             return;
