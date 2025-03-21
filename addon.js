@@ -560,34 +560,35 @@ app.get('/', (req, res) => {
 app.get('/health', async (req, res) => {
     try {
         // Check database/Redis connectivity
-        const dbHealthy = await db.checkHealth();
+        const dbBackend = await db.checkHealth();
+        const isRedisActive = db.isRedisActive();
         
-        // Return appropriate status based on health checks
-        if (dbHealthy) {
-            // All systems operational
+        if (isRedisActive) {
+            // All systems operational with Redis
             return res.status(200).json({
                 status: 'healthy',
-                redis: db.isRedisActive() ? 'connected' : 'fallback-memory',
+                redis: 'connected',
+                backend: dbBackend,
                 uptime: process.uptime(),
                 timestamp: new Date().toISOString()
             });
         } else {
-            // Database connectivity issues
-            return res.status(503).json({
+            // Redis is down, but memory fallback is working
+            return res.status(207).json({
                 status: 'degraded',
                 redis: 'disconnected',
-                message: 'Database connectivity issues',
+                backend: 'memory',
+                message: 'Redis unavailable, using memory fallback',
                 uptime: process.uptime(),
                 timestamp: new Date().toISOString()
             });
         }
     } catch (error) {
-        // Critical failure
-        console.error('Health check failed:', error);
-        return res.status(500).json({
+        // Critical system failure
+        return res.status(503).json({
             status: 'unhealthy',
-            message: 'Health check failed',
             error: error.message,
+            uptime: process.uptime(),
             timestamp: new Date().toISOString()
         });
     }

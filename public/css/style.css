@@ -448,6 +448,18 @@ footer {
     color: var(--secondary-text);
     padding-top: 20px;
     border-top: 1px solid #eee;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.footer-text {
+    padding-bottom: 0.75rem;
+}
+
+footer iframe {
+    margin-top: 2rem;
+    padding-left: 2.5rem;
 }
 
 /* Ko-fi Link Styles */
@@ -463,10 +475,6 @@ footer {
 .kofi-link:hover {
     color: #FF5E5B;
     transform: scale(1.05);
-}
-
-.footer-text {
-    padding-bottom: 0.75rem;
 }
 
 /* Email Link Style */
