@@ -2,9 +2,15 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install development dependencies
+# Install development dependencies and wget for healthcheck
+RUN apk add --no-cache wget
+
+# Copy package files and install both regular and dev dependencies
 COPY package*.json ./
-RUN npm install
+RUN npm install --include=dev
+
+# Install nodemon globally to ensure it's in PATH
+RUN npm install -g nodemon
 
 # Expose the port the app runs on
 EXPOSE 7001

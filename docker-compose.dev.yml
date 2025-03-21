@@ -42,10 +42,15 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    restart: unless-stopped
+    restart: on-failure:3
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:7001/health"]
+      interval: 10s
+      timeout: 10s
+      start_period: 15s
     networks:
       - stremlist-network-dev
-    command: npm run dev
+    command: ["npm", "run", "dev"]
 
 networks:
   stremlist-network-dev:

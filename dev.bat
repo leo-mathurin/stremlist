@@ -132,10 +132,16 @@ echo       - "7001:7001">> docker-compose.dev.yml
 echo     depends_on:>> docker-compose.dev.yml
 echo       redis:>> docker-compose.dev.yml
 echo         condition: service_healthy>> docker-compose.dev.yml
-echo     restart: unless-stopped>> docker-compose.dev.yml
+echo     restart: on-failure:3>> docker-compose.dev.yml
+echo     healthcheck:>> docker-compose.dev.yml
+echo       test: ["CMD", "wget", "--spider", "-q", "http://localhost:7001/health"]>> docker-compose.dev.yml
+echo       interval: 10s>> docker-compose.dev.yml
+echo       timeout: 10s>> docker-compose.dev.yml
+echo       retries: 3>> docker-compose.dev.yml
+echo       start_period: 15s>> docker-compose.dev.yml
 echo     networks:>> docker-compose.dev.yml
 echo       - stremlist-network-dev>> docker-compose.dev.yml
-echo     command: npm run dev>> docker-compose.dev.yml
+echo     command: ["npm", "run", "dev"]>> docker-compose.dev.yml
 echo.>> docker-compose.dev.yml
 echo networks:>> docker-compose.dev.yml
 echo   stremlist-network-dev:>> docker-compose.dev.yml
@@ -150,9 +156,15 @@ echo FROM node:18-alpine> Dockerfile.dev
 echo.>> Dockerfile.dev
 echo WORKDIR /app>> Dockerfile.dev
 echo.>> Dockerfile.dev
-echo # Install development dependencies>> Dockerfile.dev
+echo # Install development dependencies and wget for healthcheck>> Dockerfile.dev
+echo RUN apk add --no-cache wget>> Dockerfile.dev
+echo.>> Dockerfile.dev
+echo # Copy package files and install both regular and dev dependencies>> Dockerfile.dev
 echo COPY package*.json ./>> Dockerfile.dev
-echo RUN npm install>> Dockerfile.dev
+echo RUN npm install --include=dev>> Dockerfile.dev
+echo.>> Dockerfile.dev
+echo # Install nodemon globally to ensure it's in PATH>> Dockerfile.dev
+echo RUN npm install -g nodemon>> Dockerfile.dev
 echo.>> Dockerfile.dev
 echo # Expose the port the app runs on>> Dockerfile.dev
 echo EXPOSE 7001>> Dockerfile.dev
@@ -178,10 +190,10 @@ if "%REBUILD%"=="true" (
         docker-compose -f docker-compose.dev.yml up -d --build redis
     ) else if "%NODE_ONLY%"=="true" (
         echo Rebuilding Node.js container only...
-        docker-compose -f docker-compose.dev.yml up -d --build app
+        docker-compose -f docker-compose.dev.yml up -d --build app --force-recreate
     ) else (
         echo Rebuilding all containers...
-        docker-compose -f docker-compose.dev.yml up -d --build
+        docker-compose -f docker-compose.dev.yml up -d --build --force-recreate
     )
 ) else (
     if "%REDIS_ONLY%"=="true" (
