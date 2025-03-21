@@ -8,3 +8,6 @@
 docker.env
 nginx/ssl/key.pem
 nginx/ssl/cert.pem
+
+# Deployment logs
+deployment.log

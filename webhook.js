@@ -6,15 +6,21 @@ const path = require('path');
 const dotenv = require('dotenv');
 
 // Load environment variables from .env file
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '.env') });
 
-// Get the secret from environment variables
+// Get values from environment variables
 const SECRET = process.env.GITHUB_WEBHOOK_SECRET;
+const PROJECT_ROOT = process.env.PROJECT_ROOT || '/home/opc/imdb-watchlist-stremio';
+const DEPLOY_SCRIPT = path.join(PROJECT_ROOT, 'deploy.sh');
 
 if (!SECRET) {
   console.error('Error: GITHUB_WEBHOOK_SECRET not found in .env file');
   process.exit(1);
 }
+
+console.log(`Webhook server starting with configuration:`);
+console.log(`- Project root: ${PROJECT_ROOT}`);
+console.log(`- Deploy script: ${DEPLOY_SCRIPT}`);
 
 const server = http.createServer((req, res) => {
   if (req.method === 'POST' && req.url === '/webhook') {
@@ -48,7 +54,7 @@ const server = http.createServer((req, res) => {
       const branch = payload.ref ? payload.ref.split('/').pop() : '';
       if (branch === 'main' || branch === 'master') {
         console.log('Deploying latest changes...');
-        exec('/home/opc/imdb-watchlist-stremio/deploy.sh', (error, stdout, stderr) => {
+        exec(DEPLOY_SCRIPT, (error, stdout, stderr) => {
           if (error) {
             console.error(`Exec error: ${error}`);
             return;
