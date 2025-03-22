@@ -226,6 +226,31 @@ async function getUserActivityTimestamps() {
 }
 
 /**
+ * Get the current count of active Redis connections
+ * @returns {Promise<number>} - Number of active clients
+ */
+async function getActiveConnectionsCount() {
+    if (!redisClient || redisClient.status !== 'ready') {
+        return 0;
+    }
+
+    try {
+        // Get Redis client list info
+        const clientInfo = await redisClient.client('LIST');
+        // Count the number of client connections (each client is on a new line)
+        const clientCount = clientInfo.split('\n').filter(line => line.trim().length > 0).length;
+        // Subtract 1 to exclude our own connection
+        const activeCount = Math.max(0, clientCount - 1);
+        
+        logVerbose(`Redis: Retrieved active connection count: ${activeCount}`);
+        return activeCount;
+    } catch (error) {
+        console.error('Redis: Error retrieving active connections count:', error);
+        return 0;
+    }
+}
+
+/**
  * Close Redis connection gracefully
  */
 async function closeConnection() {
@@ -248,5 +273,6 @@ module.exports = {
     getActiveUsers,
     updateUserActivity,
     getUserActivityTimestamps,
+    getActiveConnectionsCount,
     closeConnection
 }; 

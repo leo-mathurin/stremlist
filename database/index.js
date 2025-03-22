@@ -203,6 +203,23 @@ module.exports = {
         return await getHandler().getUserActivityTimestamps();
     },
     
+    // Redis-specific operations
+    getActiveConnectionsCount: async () => {
+        // Only call this on Redis handler, as memory doesn't have connections
+        if (isRedisActive && currentBackend === redisHandler) {
+            return await redisHandler.getActiveConnectionsCount();
+        }
+        return 0;
+    },
+    
+    // Redis availability check
+    isRedisAvailable: async () => {
+        if (config.REDIS_ENABLED) {
+            return await redisHandler.isRedisAvailable();
+        }
+        return false;
+    },
+    
     // Background sync operations
     scheduleSyncForUser: async (userId, priority = 'normal') => {
         if (!isBackgroundSyncInitialized) return false;

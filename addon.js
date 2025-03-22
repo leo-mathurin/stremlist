@@ -566,6 +566,8 @@ app.get('/api/stats', async (req, res) => {
         const activeUsers = await db.getActiveUsers();
         const cachedUserIds = await db.getCachedUserIds();
         const storageType = await db.checkHealth();
+        const redisIsAvailable = await db.isRedisAvailable();
+        const redisActiveConnections = redisIsAvailable ? await db.getActiveConnectionsCount() : 0;
         
         respond(res, {
             activeUsers: activeUsers.length,
@@ -573,7 +575,11 @@ app.get('/api/stats', async (req, res) => {
             storageType,
             syncActive: syncIntervalId !== null,
             syncInterval: SYNC_INTERVAL / 60000,
-            cacheTTL: CACHE_TTL / 60000
+            cacheTTL: CACHE_TTL / 60000,
+            redis: {
+                available: redisIsAvailable,
+                activeConnections: redisActiveConnections
+            }
         });
     } catch (err) {
         console.error(`Error getting stats: ${err.message}`);
@@ -621,6 +627,47 @@ app.get('/health', async (req, res) => {
             uptime: process.uptime(),
             timestamp: new Date().toISOString()
         });
+    }
+});
+
+// Add Redis monitoring endpoint
+app.get('/api/redis-stats', async (req, res) => {
+    try {
+        const redisIsAvailable = await db.isRedisAvailable();
+        
+        if (!redisIsAvailable) {
+            return respond(res, {
+                available: false,
+                error: 'Redis is not available'
+            });
+        }
+        
+        // Get Redis info
+        const activeConnections = await db.getActiveConnectionsCount();
+        const activeUsers = await db.getActiveUsers();
+        const cachedUserIds = await db.getCachedUserIds();
+        const activityTimestamps = await db.getUserActivityTimestamps();
+        
+        // Calculate active users in the last hour
+        const now = Date.now();
+        const oneHourAgo = now - (60 * 60 * 1000);
+        const activeInLastHour = Object.values(activityTimestamps).filter(
+            timestamp => timestamp > oneHourAgo
+        ).length;
+        
+        respond(res, {
+            available: true,
+            activeConnections,
+            userStats: {
+                total: cachedUserIds.length,
+                activeUsers: activeUsers.length,
+                activeInLastHour
+            },
+            timestamp: now
+        });
+    } catch (err) {
+        console.error(`Error getting Redis stats: ${err.message}`);
+        respond(res, { error: err.message });
     }
 });
 

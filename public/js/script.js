@@ -32,21 +32,57 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 
+    // Extract IMDb ID from text using regex
+    function extractImdbId(text) {
+        if (!text) return '';
+        
+        // Match 'ur' followed by numbers in any context (URL, plain text, etc.)
+        const match = text.match(/ur\d+/);
+        return match ? match[0] : '';
+    }
+
     // Validate and show options when IMDb ID changes
     const debouncedValidate = debounce(function(value) {
-        const imdbId = value.trim();
+        const input = value.trim();
         
-        // Hide installation options and clear previous options if ID is invalid
-        if (!(imdbId && imdbId.startsWith('ur') && imdbId.length > 3)) {
-            installationOptions.classList.add('hidden');
-            installationOptions.innerHTML = '';
-            
-            // Remove any existing status messages
-            const statusMessages = document.querySelectorAll('.status-message');
-            statusMessages.forEach(el => el.remove());
+        // Hide installation options and clear previous options
+        installationOptions.classList.add('hidden');
+        installationOptions.innerHTML = '';
+        
+        // Remove any existing status messages
+        const statusMessages = document.querySelectorAll('.status-message');
+        statusMessages.forEach(el => el.remove());
+        
+        // Check if input is empty
+        if (!input) {
             return;
         }
         
+        // Try to extract IMDb ID if user pasted a URL or other text containing the ID
+        const imdbId = extractImdbId(input);
+        
+        // Check if we could extract a valid ID
+        if (!imdbId) {
+            showError('Could not find a valid IMDb ID. ID should start with "ur" followed by numbers (e.g., ur12345678)');
+            return;
+        }
+        
+        // Validate the extracted ID format
+        if (imdbId.length <= 3) {
+            showError('Invalid IMDb ID format. ID should have more characters after "ur" (e.g., ur12345678)');
+            return;
+        }
+        
+        // Show what ID was extracted if it differs from input
+        if (imdbId !== input) {
+            showStatusMessage('info', `Extracted IMDb ID: ${imdbId}`);
+            
+            // Update the input field with the extracted ID
+            imdbIdInput.value = imdbId;
+            imdbIdInput.dataset.previousValue = imdbId;
+        }
+        
+        // Proceed with validation
         validateAndShowOptions(imdbId);
     }, 500); // 500ms debounce
 
@@ -72,8 +108,19 @@ document.addEventListener('DOMContentLoaded', function() {
         showStatusMessage('info', 'Validating IMDb ID...');
         
         // Validate ID exists on IMDb
-        fetch(`/api/validate/${imdbId}`)
-            .then(response => response.json())
+        fetch(`/api/validate/${imdbId}`, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'Cache-Control': 'no-cache'
+            },
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Server responded with status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
                 // Remove info message
                 const infoMessages = document.querySelectorAll('.status-message.info');
@@ -106,14 +153,87 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Create installation options
                     createInstallationOptions(imdbId, addonUrl, webUrl, stremioProtocolUrl);
                 } else {
-                    showError('Could not find an IMDb watchlist for this ID. Please check and try again.');
+                    // Show more specific error based on server response
+                    const errorMessage = data.message || 'Could not find an IMDb watchlist for this ID. Please check and try again.';
+                    showError(errorMessage);
                     installationOptions.classList.add('hidden');
                     installationOptions.innerHTML = '';
                 }
             })
             .catch(error => {
                 console.error('Validation error:', error);
-                showError('An error occurred. Please try again later.');
+                
+                // Determine type of error for better user feedback
+                let errorMessage;
+                if (error.name === 'TypeError' && error.message.includes('NetworkError')) {
+                    errorMessage = 'Network error. Please check your internet connection and try again.';
+                } else if (error.message.includes('status: 429')) {
+                    errorMessage = 'Too many requests. Please wait a moment and try again.';
+                } else if (error.message.includes('status: 5')) {
+                    errorMessage = 'Server error. Please try again later.';
+                } else {
+                    errorMessage = 'An error occurred. Please check your IMDb ID and try again.';
+                }
+                
+                showError(errorMessage);
+                installationOptions.classList.add('hidden');
+                installationOptions.innerHTML = '';
+                
+                // Try once more after a delay for transient errors
+                if (error.name === 'TypeError' && error.message.includes('NetworkError')) {
+                    setTimeout(() => {
+                        showStatusMessage('info', 'Retrying validation...');
+                        retryValidation(imdbId);
+                    }, 2000);
+                }
+            });
+    }
+    
+    // Function to retry validation after a network error
+    function retryValidation(imdbId) {
+        fetch(`/api/validate/${imdbId}`, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+                'Cache-Control': 'no-cache'
+            },
+            // Increase timeout for retry
+            signal: AbortSignal.timeout(10000)
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Server responded with status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Remove info message
+                const infoMessages = document.querySelectorAll('.status-message.info');
+                infoMessages.forEach(el => el.remove());
+                
+                if (data.valid) {
+                    // Same processing as original function
+                    const host = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+                        ? `${window.location.hostname}:${window.location.port}`
+                        : window.location.host;
+                    const isProduction = host.includes('stremlist.com');
+                    const protocol = isProduction ? 'https' : 'http';
+                    const addonUrl = `${protocol}://${host}/${imdbId}/manifest.json`;
+                    const webUrl = `https://web.stremio.com/#/addons?addon=${encodeURIComponent(addonUrl)}`;
+                    const stremioProtocolUrl = `stremio://${addonUrl.replace(/^https?:\/\//, '')}`;
+                    
+                    showStatusMessage('success', `IMDb watchlist found! Choose how to install below:`);
+                    createInstallationOptions(imdbId, addonUrl, webUrl, stremioProtocolUrl);
+                } else {
+                    const errorMessage = data.message || 'Could not find an IMDb watchlist for this ID. Please check and try again.';
+                    showError(errorMessage);
+                    installationOptions.classList.add('hidden');
+                    installationOptions.innerHTML = '';
+                }
+            })
+            .catch(error => {
+                console.error('Retry validation error:', error);
+                showError('Validation failed. Please verify your IMDb ID format (should start with "ur") and try again later.');
                 installationOptions.classList.add('hidden');
                 installationOptions.innerHTML = '';
             });
