@@ -10,6 +10,7 @@
     --info-color: #2196f3;
     --accent-color: #0d8aee;
     --warning-color: #ff9800;
+    --warning-bg: #fff3e0;
 }
 
 * {
@@ -667,4 +668,11 @@ footer iframe {
 
 .legal-section a:hover {
     text-decoration: underline;
+}
+
+.addon-warning {
+    background-color: var(--warning-bg);
+    padding: 15px;
+    border-radius: var(--border-radius);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
