@@ -31,22 +31,46 @@ async function getImdbWatchlist(userId) {
         try {
             const jsonData = response.data;
             
+            // Check for FORBIDDEN error indicating a private list
+            if (jsonData.errors && jsonData.errors.length > 0) {
+                const forbiddenError = jsonData.errors.find(
+                    err => err.message && err.message.includes('FORBIDDEN') && 
+                           err.extensions && err.extensions.code === 'FORBIDDEN'
+                );
+                
+                if (forbiddenError) {
+                    console.error("Private watchlist detected. Access denied.");
+                    throw new Error("This IMDb watchlist is private. Please make your watchlist public in your IMDb settings.");
+                }
+            }
+            
             // Navigate to the watchlist items
             const watchlist = jsonData?.data?.predefinedList?.titleListItemSearch?.edges || [];
             
             if (!watchlist || watchlist.length === 0) {
                 console.error("No items found in watchlist or unexpected JSON structure");
                 console.error("This could be due to an empty watchlist or invalid user ID");
+                return null;
             }
             
             return watchlist;
         } catch (e) {
+            // Only propagate specific errors we've explicitly thrown (like the private list error)
+            // For other processing errors, return null to maintain the original flow
+            if (e.message && e.message.includes("private")) {
+                throw e;
+            }
             console.error(`Error processing response data: ${e.message}`);
             return null;
         }
     } catch (error) {
         console.error(`Error fetching watchlist: ${error.message}`);
-        throw error;
+        // If this is our specific private list error, propagate it
+        if (error.message && error.message.includes("private")) {
+            throw error;
+        }
+        // For network errors or other issues, throw a more user-friendly message
+        throw new Error("Could not find an IMDb watchlist for this ID. Please check and try again.");
     }
 }
 
@@ -299,14 +323,15 @@ async function fetchWatchlist(imdbUserId) {
                 return stremioWatchlist;
             } else {
                 console.error("No movies were processed from the watchlist");
-                throw new Error("No movies were processed from the watchlist");
+                throw new Error("This watchlist appears to be empty or may not contain any compatible movies or series.");
             }
         } else {
             console.error("Failed to retrieve watchlist data.");
-            throw new Error("Failed to retrieve watchlist data");
+            throw new Error("Could not find an IMDb watchlist for this ID. Please check and try again.");
         }
     } catch (error) {
         console.error(`An error occurred: ${error.message}`);
+        // Pass through any specific errors (like private list error)
         throw error;
     }
 }

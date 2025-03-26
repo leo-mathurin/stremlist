@@ -6,7 +6,7 @@ const db = require('./database');
 const config = require('./database/config');
 
 // Define the addon version in one place
-const ADDON_VERSION = '1.1.0';
+const ADDON_VERSION = '1.1.1';
 
 // Create addon server
 const app = express();

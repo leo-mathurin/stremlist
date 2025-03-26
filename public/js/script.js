@@ -154,7 +154,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     createInstallationOptions(imdbId, addonUrl, webUrl, stremioProtocolUrl);
                 } else {
                     // Show more specific error based on server response
-                    const errorMessage = data.message || 'Could not find an IMDb watchlist for this ID. Please check and try again.';
+                    const errorMessage = data.error || data.message || 'Could not find an IMDb watchlist for this ID. Please check and try again.';
                     showError(errorMessage);
                     installationOptions.classList.add('hidden');
                     installationOptions.innerHTML = '';
@@ -225,7 +225,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     showStatusMessage('success', `IMDb watchlist found! Choose how to install below:`);
                     createInstallationOptions(imdbId, addonUrl, webUrl, stremioProtocolUrl);
                 } else {
-                    const errorMessage = data.message || 'Could not find an IMDb watchlist for this ID. Please check and try again.';
+                    const errorMessage = data.error || data.message || 'Could not find an IMDb watchlist for this ID. Please check and try again.';
                     showError(errorMessage);
                     installationOptions.classList.add('hidden');
                     installationOptions.innerHTML = '';
