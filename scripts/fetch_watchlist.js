@@ -9,45 +9,34 @@ const os = require('os');
  * @returns {Promise<Array>} - The raw watchlist data
  */
 async function getImdbWatchlist(userId) {
-    // URL and headers for the request
-    const url = `https://www.imdb.com/user/${userId}/watchlist/`;
+    // Construct the GraphQL API URL with the user ID
+    const apiUrl = `https://api.graphql.imdb.com/?operationName=WatchListPageRefiner&variables=%7B%22first%22%3A10000%2C%22jumpToPosition%22%3A1%2C%22locale%22%3A%22en-US%22%2C%22sort%22%3A%7B%22by%22%3A%22LIST_ORDER%22%2C%22order%22%3A%22ASC%22%7D%2C%22urConst%22%3A%22${userId}%22%7D&extensions=%7B%22persistedQuery%22%3A%7B%22sha256Hash%22%3A%22e3a92358d3c04bf74bfad96d3eb7808e88fbcbfe5c9f2108b494a4a893f51400%22%2C%22version%22%3A1%7D%7D`;
     
-    // Simplified headers
+    // Headers for the API request
     const headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-        "Referer": `https://www.imdb.com/user/${userId}/watchlist/?ref_=login`
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
     };
     
     try {
-        // Making the request
-        const response = await axios.get(url, { headers });
+        // Making the API request
+        const response = await axios.get(apiUrl, { headers });
         
         if (response.status !== 200) {
             console.error(`Failed to retrieve data: Status code ${response.status}`);
             return null;
         }
         
-        // Find the script tag containing the watchlist data
-        const html = response.data;
-        const scriptTagMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/s);
-        
-        if (!scriptTagMatch || !scriptTagMatch[1]) {
-            console.error("Could not find watchlist data in the response");
-            console.error("This could be due to the user having a private watchlist or an invalid user ID");
-            return null;
-        }
-        
-        // Extract the JSON data
+        // Extract the watchlist items directly from the GraphQL response
         try {
-            const jsonData = JSON.parse(scriptTagMatch[1]);
+            const jsonData = response.data;
             
             // Navigate to the watchlist items
-            const watchlist = jsonData?.props?.pageProps?.mainColumnData?.predefinedList?.titleListItemSearch?.edges || [];
+            const watchlist = jsonData?.data?.predefinedList?.titleListItemSearch?.edges || [];
             
             if (!watchlist || watchlist.length === 0) {
                 console.error("No items found in watchlist or unexpected JSON structure");
-                console.error("This could be due to an empty watchlist or a change in IMDb's website structure");
+                console.error("This could be due to an empty watchlist or invalid user ID");
             }
             
             return watchlist;
