@@ -5,6 +5,9 @@ const { fetchWatchlist } = require('./scripts/fetch_watchlist');
 const db = require('./database');
 const config = require('./database/config');
 
+// Define the addon version in one place
+const ADDON_VERSION = '1.1.0';
+
 // Create addon server
 const app = express();
 
@@ -62,7 +65,7 @@ const syncedUsers = new Set(); // Local reference for quick lookups, persisted t
 // Base manifest without user data
 const manifest = {
     id: 'com.stremlist',
-    version: '1.0.0',
+    version: ADDON_VERSION,
     name: 'Stremlist',
     description: 'Your IMDb Watchlist in Stremio',
     resources: ['catalog', 'meta'],
@@ -381,13 +384,13 @@ app.get('/:userId/manifest.json', async (req, res) => {
         // Clone the manifest and customize it for this user
         const userManifest = JSON.parse(JSON.stringify(manifest));
         userManifest.id = `com.stremlist.${userId}`;
-        userManifest.version = '1.0.0'; // Ensure version is always fresh
+        userManifest.version = ADDON_VERSION; // Use the same version constant
         
         // Set the name WITHOUT the user ID
         userManifest.name = 'Stremlist';
         
-        // Put the user ID in the description instead
-        userManifest.description = `Your IMDb Watchlist for user ${userId}`;
+        // Put the user ID in the description instead and add changelog link
+        userManifest.description = `Your IMDb Watchlist for user ${userId}. See changelog at https://stremlist.com/changelog`;
         
         // Update catalog IDs to be specific to this user
         userManifest.catalogs = userManifest.catalogs.map(catalog => {

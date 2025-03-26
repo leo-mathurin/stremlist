@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Changelog - Stremlist - IMDb Watchlist for Stremio</title>
+    <meta name="description" content="Changelog for Stremlist - The IMDb Watchlist addon for Stremio. View updates and improvements to the addon.">
+    <meta name="keywords" content="IMDb, Stremio, watchlist, streaming, changelog, updates">
+    <meta name="robots" content="index, follow">
+    <meta name="author" content="Stremlist">
+    <link rel="canonical" href="https://stremlist.com/changelog" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://stremlist.com/changelog">
+    <meta property="og:title" content="Changelog - Stremlist - IMDb Watchlist for Stremio">
+    <meta property="og:description" content="View the history of updates and improvements to the Stremlist IMDb Watchlist addon for Stremio.">
+    <meta property="og:image" content="https://stremlist.com/og-image.png">
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="https://stremlist.com/changelog">
+    <meta property="twitter:title" content="Changelog - Stremlist - IMDb Watchlist for Stremio">
+    <meta property="twitter:description" content="View the history of updates and improvements to the Stremlist IMDb Watchlist addon for Stremio.">
+    <meta property="twitter:image" content="https://stremlist.com/og-image.png">
+    
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="icon" href="../favicon.ico" type="image/x-icon">
+    <link rel="apple-touch-icon" href="../apple-touch-icon.png">
+    <style>
+        .changelog-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .version-entry {
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .version-header {
+            display: flex;
+            align-items: baseline;
+            margin-bottom: 15px;
+        }
+        
+        .version-number {
+            font-size: 1.4rem;
+            font-weight: bold;
+            margin-right: 15px;
+            color: var(--accent-color);
+        }
+        
+        .release-date {
+            font-size: 0.9rem;
+            color: var(--secondary-text-color);
+        }
+        
+        .changes-list {
+            padding-left: 20px;
+        }
+        
+        .change-item {
+            margin-bottom: 8px;
+            line-height: 1.5;
+        }
+        
+        .change-type {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        
+        .enhancement {
+            background-color: #4CAF50;
+            color: white;
+        }
+        
+        .bugfix {
+            background-color: #2196F3;
+            color: white;
+        }
+        
+        .performance {
+            background-color: #FF9800;
+            color: black;
+        }
+        
+        .security {
+            background-color: #F44336;
+            color: white;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-top: 20px;
+            margin-bottom: 20px;
+            color: var(--accent-color);
+            text-decoration: none;
+        }
+        
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <img src="../icon.png" alt="Stremlist Logo" class="logo" width="64" height="64">
+            <h1>Stremlist</h1>
+        </header>
+
+        <main>
+            <a href="/" class="back-link">← Back to Home</a>
+            
+            <section class="changelog-container">
+                <h2>Changelog</h2>
+                <p>A history of updates and improvements to the Stremlist IMDb Watchlist addon.</p>
+                
+                <div class="version-entry">
+                    <div class="version-header">
+                        <span class="version-number">v1.1.0</span>
+                        <span class="release-date">March 26, 2024</span>
+                    </div>
+                    <ul class="changes-list">
+                        <li class="change-item">
+                            <span class="change-type performance">Performance</span>
+                            Replaced HTML scraping with direct GraphQL API calls to improve reliability and efficiency
+                        </li>
+                        <li class="change-item">
+                            <span class="change-type bugfix">Bugfix</span>
+                            Fixed issue where posters and titles were displayed in French instead of English
+                        </li>
+                        <li class="change-item">
+                            <span class="change-type enhancement">Enhancement</span>
+                            Increased the watchlist item limit from 250 to 10,000 items
+                        </li>
+                    </ul>
+                </div>
+                
+                <div class="version-entry">
+                    <div class="version-header">
+                        <span class="version-number">v1.0.0</span>
+                        <span class="release-date">March 19, 2024</span>
+                    </div>
+                    <ul class="changes-list">
+                        <li class="change-item">
+                            <span class="change-type enhancement">Enhancement</span>
+                            Initial release of Stremlist
+                        </li>
+                        <li class="change-item">
+                            <span class="change-type enhancement">Feature</span>
+                            Connect IMDb watchlist to Stremio through user ID
+                        </li>
+                        <li class="change-item">
+                            <span class="change-type enhancement">Feature</span>
+                            Automatic refresh of watchlist data every 30 minutes
+                        </li>
+                        <li class="change-item">
+                            <span class="change-type enhancement">Feature</span>
+                            Support for movies and TV series from IMDb watchlists
+                        </li>
+                    </ul>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Have questions or suggestions? Contact me at <a href="mailto:lelemathrin69@gmail.com" class="email-link">lelemathrin69@gmail.com</a></p>
+            <p class="footer-text">This addon is not affiliated with IMDb or Stremio. It's a community project.</p>
+            <p><a href="/terms" class="terms-link">Terms and Privacy Policy</a> | <a href="/changelog" class="changelog-link">Changelog</a></p>
+            <p>&copy; 2025 - IMDb Watchlist for Stremio</p>
+            <p><a href="https://ko-fi.com/lelemathrin" target="_blank" class="kofi-link" rel="noopener">❤️ Like this project? Buy me a coffee</a></p>
+            <iframe src="https://status.stremlist.com/badge?theme=light" title="Stremlist Status" width="250" height="30" frameborder="0" scrolling="no" style="color-scheme: normal"></iframe>
+        </footer>
+    </div>
+</body>
+</html> 
