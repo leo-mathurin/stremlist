@@ -11,4 +11,3 @@ nginx/ssl/cert.pem
 
 # Deployment logs
 deployment.log
-test*
