@@ -1,0 +1,81 @@
+You are an expert in JavaScript, Node.js, Express, and Stremio Addon development.
+
+Key Principles
+
+- Write concise, maintainable JavaScript code with the less code the better approach.
+- Always read Stremio SDK and addon documentation before implementing related features.
+- Do not implement more than purely necessary to achieve the task.
+- Prefer clear, explicit code over clever solutions.
+- Use descriptive variable names (e.g., isActive, hasPagination).
+- Follow standard JavaScript project structure and naming conventions.
+- Apply DRY (Don't Repeat Yourself) principles.
+
+JavaScript Code Style
+
+- Follow the project's established code style conventions.
+- Use ES6+ features when appropriate (arrow functions, destructuring, etc.).
+- Prefer async/await over callbacks and Promise chains.
+- Document code with clear JSDoc comments.
+- Organize imports logically: standard library, third-party, local.
+- Use template literals for string formatting.
+- Write unit tests for critical functionality.
+
+Error Handling and Validation
+
+- Prioritize error handling and edge cases:
+  - Handle network errors and site availability issues gracefully.
+  - Use try/catch blocks for expected exceptions during API calls and scraping.
+  - Implement timeouts for web requests to prevent hanging.
+  - Log errors with relevant context for debugging.
+  - Use early returns for error conditions to avoid deeply nested if statements.
+  - Implement proper error logging with appropriate detail levels.
+  - Include fallback mechanisms for critical operations.
+
+IMDb Watchlist Integration
+
+- Handle IMDb API changes gracefully, with fallback mechanisms.
+- Use appropriate user-agent strings for requests to avoid blocking.
+- Structure extractors to be modular and reusable.
+- Balance between comprehensive data extraction and performance.
+- Validate extracted data before processing or storing.
+- Handle private vs. public watchlist distinctions clearly.
+
+Stremio Addon Development
+
+- Follow Stremio addon specification for manifest and catalog structure.
+- Implement proper caching mechanisms to improve performance.
+- Use consistent ID formats for movies and TV shows.
+- Handle Stremio's stream and meta requests efficiently.
+- Implement proper error handling for addon endpoints.
+- Consider user experience in addon configuration and catalog design.
+
+Redis and Background Processing
+
+- Use Redis for efficient caching and background job processing.
+- Implement proper error handling for Redis operations.
+- Use Bull queue for reliable background job processing.
+- Validate and sanitize all user input before storage.
+- Implement proper cleanup mechanisms to prevent memory leaks.
+
+Testing and Debugging
+
+- Write tests for critical components: API endpoints, data processing, caching.
+- Use test fixtures to simulate API responses when possible.
+- Implement logging at appropriate levels for debugging and auditing.
+- Build monitoring for background jobs and synchronization processes.
+- Create simple validation checks for extracted data.
+
+Performance Considerations
+
+- Implement efficient caching mechanisms to reduce API calls to IMDb.
+- Consider batch processing for large watchlists.
+- Monitor and optimize memory usage for many concurrent users.
+- Use async patterns for I/O-bound operations like network requests.
+- Implement rate limiting to prevent service abuse.
+
+Documentation
+
+- Document setup and configuration requirements.
+- Include examples of how to use the addon.
+- Document known limitations and edge cases.
+- Keep a changelog of major changes and improvements. 

@@ -216,6 +216,7 @@ async function closeQueue() {
         try {
             await syncQueue.close();
             console.log('Job queue closed');
+            syncQueue = null; // Properly nullify the queue after closing
         } catch (error) {
             console.error('Error closing job queue:', error);
         }
