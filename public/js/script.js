@@ -350,4 +350,37 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 5000);
         }
     }
+
+    // User counter functionality
+    const userCountElement = document.getElementById('active-users');
+    
+    function fetchUserCount() {
+        // Determine API URL based on environment
+        const apiUrl = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+            ? `http://${window.location.hostname}:${window.location.port}/api/stats`
+            : `https://${window.location.host}/api/stats`;
+        
+        fetch(apiUrl)
+            .then(response => response.json())
+            .then(data => {
+                if (data && data.activeUsers !== undefined) {
+                    userCountElement.textContent = `Powering ${data.activeUsers.toLocaleString()}`;
+                    // Add animation class to highlight the update
+                    userCountElement.classList.add('updated');
+                    setTimeout(() => {
+                        userCountElement.classList.remove('updated');
+                    }, 1000);
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching user count:', error);
+                userCountElement.textContent = 'Powering many';
+            });
+    }
+    
+    // Initial fetch
+    fetchUserCount();
+    
+    // Refresh count every 60 seconds
+    setInterval(fetchUserCount, 60000);
 }); 

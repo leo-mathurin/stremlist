@@ -676,3 +676,20 @@ footer iframe {
     border-radius: var(--border-radius);
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
+
+.user-counter {
+    font-size: 1.2rem;
+    margin-bottom: 1.5rem;
+    color: #4a4a4a;
+    font-weight: 500;
+}
+
+#active-users {
+    color: var(--info-color);
+    font-weight: 700;
+    transition: color 0.3s ease;
+}
+
+#active-users.updated {
+    color: var(--success-color);
+}
