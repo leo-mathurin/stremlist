@@ -8,9 +8,9 @@ const config = require('./config');
 
 // Default rate limits
 const DEFAULT_LIMITS = {
-    tokensPerInterval: 30,  // Number of requests
-    interval: 60 * 1000,    // 1 minute in milliseconds
-    maxTokens: 30           // Maximum number of tokens that can be accumulated
+    tokensPerInterval: config.RATE_LIMIT_REQUESTS,  // Number of requests
+    interval: config.RATE_LIMIT_INTERVAL,           // Interval in milliseconds
+    maxTokens: config.RATE_LIMIT_REQUESTS           // Maximum number of tokens that can be accumulated
 };
 
 // Redis client for distributed rate limiting
@@ -36,9 +36,9 @@ const memoryState = {
 async function initialize(options = {}) {
     // Set rate limiting parameters
     const limits = {
-        tokensPerInterval: options.tokensPerInterval || DEFAULT_LIMITS.tokensPerInterval,
-        interval: options.interval || DEFAULT_LIMITS.interval,
-        maxTokens: options.maxTokens || DEFAULT_LIMITS.maxTokens
+        tokensPerInterval: options.tokensPerInterval || config.RATE_LIMIT_REQUESTS,
+        interval: options.interval || config.RATE_LIMIT_INTERVAL,
+        maxTokens: options.maxTokens || config.RATE_LIMIT_REQUESTS
     };
     
     Object.assign(DEFAULT_LIMITS, limits);

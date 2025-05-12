@@ -1,9 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const constants = require('../constants');
 
 module.exports = function(db, getWatchlist, respond, getProtocol, options = {}) {
-    // Destructure options
-    const { syncIntervalId, SYNC_INTERVAL, CACHE_TTL } = options;
+    // Get sync interval ID from options
+    const { syncIntervalId } = options;
     
     // API endpoint to validate if an IMDb user ID exists and has a watchlist
     router.get('/api/validate/:userId', async (req, res) => {
@@ -84,8 +85,8 @@ module.exports = function(db, getWatchlist, respond, getProtocol, options = {}) 
                 cachedUsers: cachedUserIds.length,
                 storageType,
                 syncActive: syncIntervalId !== null,
-                syncInterval: SYNC_INTERVAL ? SYNC_INTERVAL / 60000 : null,
-                cacheTTL: CACHE_TTL ? CACHE_TTL / 60000 : null,
+                syncInterval: constants.SYNC_INTERVAL / 60, // Convert to minutes
+                cacheTTL: constants.CACHE_TTL / 60, // Convert to minutes
                 redis: {
                     available: redisIsAvailable,
                     activeConnections: redisActiveConnections

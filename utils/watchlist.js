@@ -1,5 +1,4 @@
-// Default sorting options
-const DEFAULT_SORT_OPTIONS = { by: 'title', order: 'asc' };
+const constants = require('../constants');
 
 /**
  * Function to parse a sort option string into sort parameters
@@ -7,11 +6,11 @@ const DEFAULT_SORT_OPTIONS = { by: 'title', order: 'asc' };
  * @returns {Object} - Sort options object with by and order properties
  */
 function parseSortOption(sortOption) {
-    if (!sortOption) return DEFAULT_SORT_OPTIONS;
+    if (!sortOption) return constants.DEFAULT_SORT_OPTIONS;
     
     const [by, order] = sortOption.split('-');
     if (!by || !['title', 'year', 'rating'].includes(by)) {
-        return DEFAULT_SORT_OPTIONS;
+        return constants.DEFAULT_SORT_OPTIONS;
     }
     
     if (!order || !['asc', 'desc'].includes(order)) {
@@ -72,14 +71,13 @@ async function getUserConfig(userId, req) {
     
     // If still nothing, use default
     if (!sortOption) {
-        sortOption = 'title-asc';
+        sortOption = constants.DEFAULT_SORT_OPTION;
     }
     
     return { sortOption };
 }
 
 module.exports = {
-    DEFAULT_SORT_OPTIONS,
     parseSortOption,
     getUserConfig
 }; 

@@ -1,7 +1,5 @@
 const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+const constants = require('../constants');
 
 /**
  * Fetches the IMDb watchlist for the given user ID
@@ -10,12 +8,12 @@ const os = require('os');
  */
 async function getImdbWatchlist(userId) {
     // Construct the GraphQL API URL with the user ID
-    const apiUrl = `https://api.graphql.imdb.com/?operationName=WatchListPageRefiner&variables=%7B%22first%22%3A10000%2C%22jumpToPosition%22%3A1%2C%22locale%22%3A%22en-US%22%2C%22sort%22%3A%7B%22by%22%3A%22LIST_ORDER%22%2C%22order%22%3A%22ASC%22%7D%2C%22urConst%22%3A%22${userId}%22%7D&extensions=%7B%22persistedQuery%22%3A%7B%22sha256Hash%22%3A%2236d16110719e05e125798dec569721248a88835c64a7e853d3a80be8775eea92%22%2C%22version%22%3A1%7D%7D`;
+    const apiUrl = `${constants.IMDB_API_URL}?operationName=WatchListPageRefiner&variables=%7B%22first%22%3A10000%2C%22jumpToPosition%22%3A1%2C%22locale%22%3A%22en-US%22%2C%22sort%22%3A%7B%22by%22%3A%22LIST_ORDER%22%2C%22order%22%3A%22ASC%22%7D%2C%22urConst%22%3A%22${userId}%22%7D&extensions=%7B%22persistedQuery%22%3A%7B%22sha256Hash%22%3A%2236d16110719e05e125798dec569721248a88835c64a7e853d3a80be8775eea92%22%2C%22version%22%3A1%7D%7D`;
     
     // Headers for the API request
     const headers = {
         "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+        "User-Agent": constants.IMDB_USER_AGENT
     };
     
     try {

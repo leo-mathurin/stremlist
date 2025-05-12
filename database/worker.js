@@ -52,7 +52,7 @@ function initializeWorker(dependencies) {
  * @param {number} concurrency - Number of jobs to process concurrently
  * @returns {Promise<boolean>} - Whether worker started successfully
  */
-async function startWorker(concurrency = 3) {
+async function startWorker(concurrency = config.WORKER_CONCURRENCY) {
     const queue = getSyncQueue();
     if (!queue) {
         console.error('Worker start failed: Queue not initialized');

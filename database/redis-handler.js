@@ -54,19 +54,17 @@ async function cacheWatchlist(userId, watchlistData) {
         return false;
     }
 
-    const cacheKey = `watchlist_${userId}`;
-    const cacheData = {
-        timestamp: Date.now(),
-        data: watchlistData
-    };
-
     try {
-        await redisClient.set(
-            cacheKey, 
-            JSON.stringify(cacheData),
-            'EX',
-            config.CACHE_TTL
-        );
+        const cacheKey = `watchlist_${userId}`;
+        const cacheData = {
+            timestamp: Date.now(),
+            data: watchlistData
+        };
+        
+        await redisClient.set(cacheKey, JSON.stringify(cacheData));
+        // Set expiration time based on configured TTL
+        await redisClient.expire(cacheKey, config.CACHE_TTL);
+        
         logVerbose(`Redis: Cached watchlist for user ${userId}`);
         return true;
     } catch (error) {
@@ -78,25 +76,32 @@ async function cacheWatchlist(userId, watchlistData) {
 /**
  * Get cached watchlist data from Redis
  * @param {string} userId - The IMDb user ID
- * @returns {Promise<Object|null>} - The cached watchlist data, or null if not found
+ * @returns {Promise<Object|null>} - The cached watchlist data, or null if not found or expired
  */
 async function getCachedWatchlist(userId) {
     if (!redisClient || redisClient.status !== 'ready') {
         return null;
     }
 
-    const cacheKey = `watchlist_${userId}`;
-    
     try {
-        const cachedData = await redisClient.get(cacheKey);
-        if (!cachedData) {
+        const cacheKey = `watchlist_${userId}`;
+        const cachedDataStr = await redisClient.get(cacheKey);
+        
+        if (!cachedDataStr) {
             logVerbose(`Redis: No cached data found for user ${userId}`);
             return null;
         }
-
-        const parsedData = JSON.parse(cachedData);
-        logVerbose(`Redis: Retrieved cached watchlist for user ${userId}, cached ${Math.round((Date.now() - parsedData.timestamp)/1000/60)} minutes ago`);
-        return parsedData;
+        
+        const cachedData = JSON.parse(cachedDataStr);
+        
+        // Check if cache is expired (shouldn't happen with Redis TTL, but just in case)
+        if (cachedData.timestamp < Date.now() - (config.CACHE_TTL * 1000)) {
+            logVerbose(`Redis: Cache expired for user ${userId}`);
+            return null;
+        }
+        
+        logVerbose(`Redis: Retrieved cached watchlist for user ${userId}, cached ${Math.round((Date.now() - cachedData.timestamp)/1000/60)} minutes ago`);
+        return cachedData;
     } catch (error) {
         console.error(`Redis: Error retrieving cached watchlist for user ${userId}:`, error);
         return null;

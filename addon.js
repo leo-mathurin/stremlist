@@ -3,14 +3,14 @@ const cors = require('cors');
 const path = require('path');
 const { fetchWatchlist } = require('./scripts/fetch_watchlist');
 const db = require('./database');
-const config = require('./database/config');
+const constants = require('./constants');
 
 // Make db available globally for the getUserConfig function
 global.db = db;
 
 // Import utilities
 const { getProtocol, respond, activateUserForSync } = require('./utils/helpers');
-const { DEFAULT_SORT_OPTIONS, parseSortOption, getUserConfig } = require('./utils/watchlist');
+const { parseSortOption, getUserConfig } = require('./utils/watchlist');
 const createRateLimiter = require('./utils/middleware/rateLimiter');
 
 // Import route handlers
@@ -20,23 +20,18 @@ const metaRoutes = require('./routes/meta');
 const apiRoutes = require('./routes/api');
 const staticRoutes = require('./routes/static');
 
-// Define the addon version in one place
-const ADDON_VERSION = '1.1.1';
-
 // Create addon server
 const app = express();
 
 // Configure logging
 let logCount = 0;
-const MAX_LOGS_BEFORE_ROTATION = parseInt(process.env.MAX_LOGS_BEFORE_ROTATION || 1000);
-const VERBOSE_MODE = process.env.VERBOSE === 'true' || process.env.VERBOSE === '1';
 const originalConsoleLog = console.log;
 const originalConsoleError = console.error;
 
 // Override console.log to add timestamps and handle log rotation
 console.log = function() {
     logCount++;
-    if (logCount > MAX_LOGS_BEFORE_ROTATION) {
+    if (logCount > constants.MAX_LOGS_BEFORE_ROTATION) {
         // Clear console and reset counter on rotation (only on non-production environments)
         if (process.env.NODE_ENV !== 'production') {
             console.clear();
@@ -52,7 +47,7 @@ console.log = function() {
 // Add verbose logging function
 console.verbose = function() {
     // Only log if verbose mode is enabled
-    if (!VERBOSE_MODE) {
+    if (!constants.VERBOSE_MODE) {
         return;
     }
     
@@ -67,61 +62,11 @@ console.error = function() {
 };
 
 // Log configuration at startup
-originalConsoleLog(`[${new Date().toISOString()}] Starting addon ${VERBOSE_MODE ? 'in verbose mode' : 'in default mode'}`);
-
-// Use configuration from centralized config module (convert seconds to milliseconds)
-const SYNC_INTERVAL = config.SYNC_INTERVAL * 1000;
-const CACHE_TTL = config.CACHE_TTL * 1000;
+originalConsoleLog(`[${new Date().toISOString()}] Starting addon ${constants.VERBOSE_MODE ? 'in verbose mode' : 'in default mode'}`);
 
 // Track syncing state
 let syncIntervalId = null;
 const syncedUsers = new Set(); // Local reference for quick lookups, persisted to DB
-
-// Available sort options for the config UI
-const SORT_OPTIONS = [
-    { value: 'title-asc', label: 'Title (A-Z)' },
-    { value: 'title-desc', label: 'Title (Z-A)' },
-    { value: 'year-desc', label: 'Newest First' },
-    { value: 'year-asc', label: 'Oldest First' },
-    { value: 'rating-desc', label: 'Highest Rated' },
-    { value: 'rating-asc', label: 'Lowest Rated' }
-];
-
-// Base manifest without user data
-const manifest = {
-    id: 'com.stremlist',
-    version: ADDON_VERSION,
-    name: 'Stremlist',
-    description: 'Your IMDb Watchlist in Stremio',
-    resources: ['catalog', 'meta'],
-    types: ['movie', 'series'],
-    catalogs: [
-        {
-            id: 'stremlist-movies',
-            name: 'Stremlist Movies',
-            type: 'movie'
-        },
-        {
-            id: 'stremlist-series',
-            name: 'Stremlist Series', 
-            type: 'series'
-        }
-    ],
-    logo: 'https://stremlist.com/icon.png',
-    behaviorHints: {
-        configurable: true,
-        configurationRequired: false
-    },
-    config: [
-        {
-            key: 'sortOption',
-            type: 'select',
-            title: 'Sort Watchlist By',
-            options: SORT_OPTIONS.map(option => option.value),
-            default: 'title-asc'
-        }
-    ]
-};
 
 // Initialize database connection
 (async function() {
@@ -220,8 +165,8 @@ function startBackgroundSync() {
         return; // Already running
     }
     
-    console.log(`Starting background sync with interval of ${SYNC_INTERVAL/60000} minutes`);
-    console.log(`Cache TTL: ${CACHE_TTL/60000} minutes`);
+    console.log(`Starting background sync with interval of ${constants.SYNC_INTERVAL_MS/60000} minutes`);
+    console.log(`Cache TTL: ${constants.CACHE_TTL_MS/60000} minutes`);
     
     // Run an initial sync immediately
     console.log('Running initial sync...');
@@ -232,8 +177,8 @@ function startBackgroundSync() {
     });
     
     // Then set up the interval for future syncs
-    syncIntervalId = setInterval(syncAllWatchlists, SYNC_INTERVAL);
-    console.log(`Background sync scheduled for every ${SYNC_INTERVAL/60000} minutes`);
+    syncIntervalId = setInterval(syncAllWatchlists, constants.SYNC_INTERVAL_MS);
+    console.log(`Background sync scheduled for every ${constants.SYNC_INTERVAL_MS/60000} minutes`);
 }
 
 // Stop the background sync process
@@ -291,11 +236,11 @@ async function getWatchlist(userId, forceRefresh = false, sortOption = null) {
     // Log time since last cache update
     if (cachedData) {
         const cacheAge = Math.round((Date.now() - cachedData.timestamp)/1000/60);
-        console.log(`Cache for ${userId} is ${cacheAge} minutes old (TTL: ${CACHE_TTL/60000} minutes)`);
+        console.log(`Cache for ${userId} is ${cacheAge} minutes old (TTL: ${constants.CACHE_TTL_MS/60000} minutes)`);
     }
     
     // Force refresh ignores cache, or check if cache doesn't exist or is older than TTL
-    if (forceRefresh || !cachedData || cachedData.timestamp < Date.now() - CACHE_TTL) {
+    if (forceRefresh || !cachedData || cachedData.timestamp < Date.now() - constants.CACHE_TTL_MS) {
         console.log(`${forceRefresh ? 'Force refreshing' : 'Cache expired, refreshing'} watchlist for user ${userId}...`);
         
         try {
@@ -340,15 +285,15 @@ function activateUser(userId) {
     return activateUserForSync(userId, syncedUsers, db, startBackgroundSync, syncIntervalId);
 }
 
-// Database and API routes
-app.use('/', manifestRoutes(manifest, db, respond, getProtocol));
-app.use('/', catalogRoutes(manifest, db, getWatchlist, respond));
-app.use('/', metaRoutes(manifest, db, respond));
-app.use('/', apiRoutes(db, getWatchlist, respond, getProtocol, { syncIntervalId, SYNC_INTERVAL, CACHE_TTL }));
-app.use('/', staticRoutes(manifest, SORT_OPTIONS, respond));
+// Register route handlers
+app.use(manifestRoutes(constants.BASE_MANIFEST, db, respond, getProtocol));
+app.use(catalogRoutes(constants.BASE_MANIFEST, db, getWatchlist, respond));
+app.use(metaRoutes(constants.BASE_MANIFEST, db, respond));
+app.use(apiRoutes(db, getWatchlist, respond, getProtocol, { syncIntervalId }));
+app.use(staticRoutes(constants.BASE_MANIFEST, constants.SORT_OPTIONS, respond));
 
 // Start the server
-const PORT = process.env.PORT || 7001;
+const PORT = process.env.PORT || constants.DEFAULT_PORT;
 
 // For serverless environments like Vercel
 if (process.env.VERCEL || process.env.RENDER) {
