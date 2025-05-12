@@ -158,13 +158,6 @@ function processWatchlist(watchlist) {
             }
         }
         
-        // Log extraction for debugging
-        if (typeof console.verbose === 'function') {
-            console.verbose(`Extracted data for ${movie.title}:`);
-            console.verbose(`- Directors: ${movie.directors.join(', ') || 'None'}`);
-            console.verbose(`- Cast: ${movie.cast.slice(0, 3).join(', ')}${movie.cast.length > 3 ? '...' : '' || 'None'}`);
-        }
-        
         movies.push(movie);
     }
     
@@ -194,12 +187,19 @@ function formatRuntime(seconds) {
 /**
  * Converts the watchlist to Stremio format
  * @param {Array} movies - Processed movie data
+ * @param {Object} sortOptions - Sorting options (optional)
  * @returns {Object} - Stremio-formatted watchlist
  */
-function convertToStremioFormat(movies) {
+function convertToStremioFormat(movies, sortOptions = { by: 'title', order: 'asc' }) {
+    // Clone the array to avoid modifying the original
+    const sortedMovies = [...movies];
+    
+    // Sort the movies based on the provided options
+    sortMovies(sortedMovies, sortOptions);
+    
     const stremioItems = [];
     
-    for (const movie of movies) {
+    for (const movie of sortedMovies) {
         if (!movie.id) continue;
         
         // Base meta object with required fields
@@ -247,6 +247,40 @@ function convertToStremioFormat(movies) {
 }
 
 /**
+ * Sorts movies array based on provided options
+ * @param {Array} movies - Array of movies to sort (will be sorted in-place)
+ * @param {Object} options - Sorting options
+ * @param {string} options.by - Field to sort by ('title', 'year', 'rating')
+ * @param {string} options.order - Sort order ('asc' or 'desc')
+ */
+function sortMovies(movies, options = {}) {
+    const { by = 'title', order = 'asc' } = options;
+    const multiplier = order.toLowerCase() === 'desc' ? -1 : 1;
+    
+    movies.sort((a, b) => {
+        let valueA, valueB;
+        
+        switch (by.toLowerCase()) {
+            case 'year':
+                valueA = a.year || 0;
+                valueB = b.year || 0;
+                return (valueA - valueB) * multiplier;
+                
+            case 'rating':
+                valueA = a.rating || 0;
+                valueB = b.rating || 0;
+                return (valueA - valueB) * multiplier;
+                
+            case 'title':
+            default:
+                valueA = a.title || '';
+                valueB = b.title || '';
+                return valueA.localeCompare(valueB) * multiplier;
+        }
+    });
+}
+
+/**
  * Prints a summary of the watchlist
  * @param {Array} movies - Processed movie data
  */
@@ -281,9 +315,10 @@ function printWatchlistSummary(movies) {
 /**
  * Main function to fetch and process an IMDb watchlist
  * @param {string} imdbUserId - The IMDb user ID
+ * @param {Object} sortOptions - Sorting options (optional)
  * @returns {Promise<Object>} - Stremio-formatted watchlist
  */
-async function fetchWatchlist(imdbUserId) {
+async function fetchWatchlist(imdbUserId, sortOptions = { by: 'title', order: 'asc' }) {
     console.log(`Fetching IMDb watchlist for user ${imdbUserId}...`);
     
     try {
@@ -311,9 +346,9 @@ async function fetchWatchlist(imdbUserId) {
                     }
                 }
                 
-                // Convert to Stremio format
-                const stremioWatchlist = convertToStremioFormat(movies);
-                console.log(`Converted ${stremioWatchlist.metas.length} items to Stremio format`);
+                // Convert to Stremio format with sorting applied
+                const stremioWatchlist = convertToStremioFormat(movies, sortOptions);
+                console.log(`Converted ${stremioWatchlist.metas.length} items to Stremio format (sorted by ${sortOptions.by}, ${sortOptions.order})`);
                 
                 // Print summary to console (only if verbose)
                 if (typeof console.verbose === 'function') {
@@ -337,5 +372,6 @@ async function fetchWatchlist(imdbUserId) {
 }
 
 module.exports = {
-    fetchWatchlist
+    fetchWatchlist,
+    sortMovies
 }; 

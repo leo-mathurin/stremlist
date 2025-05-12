@@ -244,9 +244,26 @@ document.addEventListener('DOMContentLoaded', function() {
         installationOptions.innerHTML = '';
         installationOptions.classList.remove('hidden');
         
+        // Check if we're in a configuration context
+        const isConfiguration = window.location.pathname === '/configure' || window.location.pathname.includes('/configure') || window.location.search.includes('userId=');
+        
         // Create the installation options HTML
         installationOptions.innerHTML = `
             <div class="options-container">
+                <div class="sort-configuration">
+                    <h3>${isConfiguration ? 'Configure Your Watchlist' : 'Choose Sorting Options'}</h3>
+                    <div class="sort-options">
+                        <label for="sort-by">Sort by:</label>
+                        <select id="sort-by" name="sort-by">
+                            <option value="title-asc">Title (A-Z)</option>
+                            <option value="title-desc">Title (Z-A)</option>
+                            <option value="year-desc">Year (Newest First)</option>
+                            <option value="year-asc">Year (Oldest First)</option>
+                            <option value="rating-desc">Rating (Highest First)</option>
+                            <option value="rating-asc">Rating (Lowest First)</option>
+                        </select>
+                    </div>
+                </div>
                 <div class="installation-buttons">
                     <a href="${webUrl}" target="_blank" class="install-btn web">Open in Stremio Web</a>
                     <a href="${stremioProtocolUrl}" class="install-btn desktop">Open in Stremio Desktop</a>
@@ -259,7 +276,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         <button id="copy-url-btn">Copy</button>
                     </div>
                     <p class="url-note">This URL already contains your IMDb ID and will install directly without configuration.</p>
-                    <p class="url-note"><strong>Note:</strong> If Stremio still shows a "Configure" button instead of "Install", try refreshing your browser and then adding the URL again.</p>
                 </div>
             </div>
         `;
@@ -318,6 +334,119 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
             }, 100);
         });
+
+        // Add auto-save functionality when in config mode
+        const sortBySelect = document.getElementById('sort-by');
+        
+        // Try to load any existing configuration
+        try {
+            const existingConfig = localStorage.getItem(`stremlist-config-${imdbId}`);
+            if (existingConfig) {
+                const config = JSON.parse(existingConfig);
+                if (config.sortBy) {
+                    sortBySelect.value = config.sortBy;
+                }
+            }
+        } catch (e) {
+            console.error('Error loading existing configuration', e);
+        }
+        
+        // Update URLs and save config when sort option changes
+        sortBySelect.addEventListener('change', function() {
+            const sortBy = this.value;
+            
+            // Save configuration to localStorage
+            try {
+                localStorage.setItem(`stremlist-config-${imdbId}`, JSON.stringify({
+                    sortBy: sortBy
+                }));
+            } catch (e) {
+                console.error('Error saving configuration', e);
+            }
+            
+            // Create configuration object matching server-side expected format
+            const configObj = { sortOption: sortBy };
+            const encodedConfig = encodeURIComponent(JSON.stringify(configObj));
+            
+            // Only show the saving message and make the API call if we're in configuration mode
+            if (isConfiguration) {
+                showStatusMessage('info', 'Saving sort preference...');
+                
+                // Call API to save the configuration and refresh the watchlist
+                fetch(`/api/config/${imdbId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache'
+                    },
+                    body: JSON.stringify(configObj)
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Server responded with status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Remove the info message
+                    const infoMessages = document.querySelectorAll('.status-message.info');
+                    infoMessages.forEach(el => el.remove());
+                    
+                    // Show success message for both sorting and refresh
+                    showStatusMessage('success', `Sorting preference saved: ${sortBySelect.options[sortBySelect.selectedIndex].text}. Watchlist will reflect changes on next refresh.`);
+                })
+                .catch(error => {
+                    console.error('Error saving configuration:', error);
+                    
+                    // Remove the info message
+                    const infoMessages = document.querySelectorAll('.status-message.info');
+                    infoMessages.forEach(el => el.remove());
+                    
+                    // Show error message
+                    showStatusMessage('error', `Error saving sorting preference. Please try again.`);
+                });
+            } else {
+                // For initial installation, just update the installation URLs with the selected sort option
+                const updatedConfigObj = { sortOption: sortBy };
+                const updatedEncodedConfig = encodeURIComponent(JSON.stringify(updatedConfigObj));
+                
+                // Get the current host
+                const host = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+                    ? `${window.location.hostname}:${window.location.port}`
+                    : window.location.host;
+                
+                // Determine if we're in production environment
+                const isProduction = host.includes('stremlist.com');
+                const protocol = isProduction ? 'https' : 'http';
+                
+                // First save the configuration to server, but don't show a message
+                fetch(`/api/config/${imdbId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache'
+                    },
+                    body: JSON.stringify(configObj)
+                }).then(() => {
+                    console.log(`Sort preference saved: ${sortBy} (no UI notification during pre-installation)`);
+                }).catch(error => {
+                    console.error('Error saving pre-installation configuration:', error);
+                });
+                
+                // Update the URLs with the new sort option
+                const updatedAddonUrl = `${protocol}://${host}/${imdbId}/manifest.json`;
+                const updatedWebUrl = `https://web.stremio.com/#/addons?addon=${encodeURIComponent(updatedAddonUrl)}`;
+                const updatedStremioProtocolUrl = `stremio://${updatedAddonUrl.replace(/^https?:\/\//, '')}`;
+                
+                // Update the URLs in the UI
+                document.getElementById('addon-url').value = updatedAddonUrl;
+                document.querySelector('.install-btn.web').href = updatedWebUrl;
+                document.querySelector('.install-btn.desktop').href = updatedStremioProtocolUrl;
+            }
+        });
+        
+        // Trigger change event to update URLs with saved sort option on page load
+        sortBySelect.dispatchEvent(new Event('change'));
     }
     
     // Show error message

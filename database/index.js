@@ -203,6 +203,15 @@ module.exports = {
         return await getHandler().getUserActivityTimestamps();
     },
     
+    // User configuration functions
+    saveUserConfig: async (userId, config) => {
+        return await getHandler().saveUserConfig(userId, config);
+    },
+    
+    getUserConfig: async (userId) => {
+        return await getHandler().getUserConfig(userId);
+    },
+    
     // Redis-specific operations
     getActiveConnectionsCount: async () => {
         // Only call this on Redis handler, as memory doesn't have connections

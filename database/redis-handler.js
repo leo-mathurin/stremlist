@@ -226,6 +226,52 @@ async function getUserActivityTimestamps() {
 }
 
 /**
+ * Save user configuration to Redis
+ * @param {string} userId - The IMDb user ID
+ * @param {Object} config - The configuration to save
+ * @returns {Promise<boolean>} - Whether saving was successful
+ */
+async function saveUserConfig(userId, config) {
+    if (!redisClient || redisClient.status !== 'ready') {
+        return false;
+    }
+
+    try {
+        await redisClient.hset(`user_config_${userId}`, ...Object.entries(config).flat());
+        logVerbose(`Redis: Saved configuration for user ${userId}`);
+        return true;
+    } catch (error) {
+        console.error(`Redis: Error saving configuration for user ${userId}:`, error);
+        return false;
+    }
+}
+
+/**
+ * Get user configuration from Redis
+ * @param {string} userId - The IMDb user ID
+ * @returns {Promise<Object|null>} - The user configuration, or null if not found
+ */
+async function getUserConfig(userId) {
+    if (!redisClient || redisClient.status !== 'ready') {
+        return null;
+    }
+
+    try {
+        const config = await redisClient.hgetall(`user_config_${userId}`);
+        if (!config || Object.keys(config).length === 0) {
+            logVerbose(`Redis: No configuration found for user ${userId}`);
+            return null;
+        }
+        
+        logVerbose(`Redis: Retrieved configuration for user ${userId}`);
+        return config;
+    } catch (error) {
+        console.error(`Redis: Error retrieving configuration for user ${userId}:`, error);
+        return null;
+    }
+}
+
+/**
  * Get the current count of active Redis connections
  * @returns {Promise<number>} - Number of active clients
  */
@@ -264,6 +310,7 @@ async function closeConnection() {
     }
 }
 
+// Helper functions that work only for this module
 module.exports = {
     cacheWatchlist,
     getCachedWatchlist,
@@ -274,5 +321,7 @@ module.exports = {
     updateUserActivity,
     getUserActivityTimestamps,
     getActiveConnectionsCount,
-    closeConnection
+    closeConnection,
+    saveUserConfig,
+    getUserConfig
 }; 

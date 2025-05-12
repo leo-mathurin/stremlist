@@ -198,6 +198,57 @@ button:disabled {
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
+/* Sort Configuration Styles */
+.sort-configuration {
+    margin-bottom: 20px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #ddd;
+}
+
+.sort-configuration h3 {
+    font-size: 1.2rem;
+    margin-bottom: 15px;
+    color: var(--primary-text);
+}
+
+.sort-options {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.sort-options label {
+    margin-bottom: 0;
+    white-space: nowrap;
+}
+
+#sort-by {
+    flex: 1;
+    padding: 8px 10px;
+    border: 1px solid #ddd;
+    border-radius: var(--border-radius);
+    font-size: 0.95rem;
+    background-color: white;
+}
+
+.save-btn {
+    background-color: var(--success-color);
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    font-size: 0.95rem;
+    font-weight: bold;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.save-btn:hover {
+    background-color: #43a047;
+}
+
+/* Installation Buttons */
 .installation-buttons {
     display: flex;
     flex-direction: column;
@@ -692,4 +743,71 @@ footer iframe {
 
 #active-users.updated {
     color: var(--success-color);
+}
+
+/* Features Section */
+.features {
+    margin: 30px 0;
+    background-color: var(--light-bg);
+    border-radius: var(--border-radius);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    padding: 20px;
+    border-left: 4px solid var(--info-color);
+}
+
+.features h2 {
+    text-align: center;
+    margin-bottom: 20px;
+    color: var(--primary-text);
+}
+
+.feature {
+    margin-bottom: 25px;
+}
+
+.feature h3 {
+    color: var(--info-color);
+    margin-bottom: 10px;
+    font-size: 1.2rem;
+}
+
+.feature p {
+    margin-bottom: 12px;
+}
+
+.feature ol, .feature ul {
+    padding-left: 25px;
+    margin-bottom: 15px;
+}
+
+.feature li {
+    margin-bottom: 8px;
+}
+
+.feature ul li {
+    list-style-type: disc;
+    margin-left: 15px;
+    margin-top: 5px;
+    margin-bottom: 5px;
+}
+
+.feature-note {
+    font-style: italic;
+    color: var(--secondary-text);
+    font-size: 0.9rem;
+    background-color: rgba(0,0,0,0.03);
+    padding: 8px 12px;
+    border-radius: var(--border-radius);
+    display: inline-block;
+}
+
+/* Responsive adjustments for features section */
+@media (max-width: 600px) {
+    .features {
+        padding: 15px;
+    }
+    
+    .feature h3 {
+        font-size: 1.1rem;
+    }
 }

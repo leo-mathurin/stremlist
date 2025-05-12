@@ -4,7 +4,8 @@ const config = require('./config');
 const storage = {
     watchlistCache: {},      // User watchlists: { userId: { timestamp, data } }
     activeUsers: new Set(),  // Set of active user IDs
-    userActivity: {}         // User activity timestamps: { userId: timestamp }
+    userActivity: {},        // User activity timestamps: { userId: timestamp }
+    userConfigs: {}          // User configurations: { userId: { sortOption, etc } }
 };
 
 // Helper function to log verbose database operations
@@ -147,6 +148,44 @@ async function getUserActivityTimestamps() {
 }
 
 /**
+ * Save user configuration to memory
+ * @param {string} userId - The IMDb user ID
+ * @param {Object} config - The configuration to save
+ * @returns {Promise<boolean>} - Whether saving was successful
+ */
+async function saveUserConfig(userId, config) {
+    try {
+        storage.userConfigs[userId] = {...config};
+        logVerbose(`Memory: Saved configuration for user ${userId}`);
+        return true;
+    } catch (error) {
+        console.error(`Memory: Error saving configuration for user ${userId}:`, error);
+        return false;
+    }
+}
+
+/**
+ * Get user configuration from memory
+ * @param {string} userId - The IMDb user ID
+ * @returns {Promise<Object|null>} - The user configuration, or null if not found
+ */
+async function getUserConfig(userId) {
+    try {
+        const userConfig = storage.userConfigs[userId];
+        if (!userConfig) {
+            logVerbose(`Memory: No configuration found for user ${userId}`);
+            return null;
+        }
+        
+        logVerbose(`Memory: Retrieved configuration for user ${userId}`);
+        return {...userConfig}; // Return a copy to prevent external modification
+    } catch (error) {
+        console.error(`Memory: Error retrieving configuration for user ${userId}:`, error);
+        return null;
+    }
+}
+
+/**
  * Close memory storage (no-op for memory storage)
  */
 async function closeConnection() {
@@ -163,5 +202,7 @@ module.exports = {
     getActiveUsers,
     updateUserActivity,
     getUserActivityTimestamps,
+    saveUserConfig,
+    getUserConfig,
     closeConnection
 }; 
