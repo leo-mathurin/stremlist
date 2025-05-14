@@ -5,7 +5,7 @@
 
 // Application metadata
 const APP_NAME = 'Stremlist';
-const ADDON_VERSION = '1.2.0';
+const ADDON_VERSION = '1.2.1';
 const APP_DESCRIPTION = 'Your IMDb Watchlist in Stremio';
 const APP_LOGO = 'https://stremlist.com/icon.png';
 const APP_ID_PREFIX = 'com.stremlist';
