@@ -188,7 +188,7 @@ function formatRuntime(seconds) {
  * @param {Object} sortOptions - Sorting options (optional)
  * @returns {Object} - Stremio-formatted watchlist
  */
-function convertToStremioFormat(movies, sortOptions = { by: 'title', order: 'asc' }) {
+function convertToStremioFormat(movies, sortOptions = { by: 'added_at', order: 'asc' }) {
     // Clone the array to avoid modifying the original
     const sortedMovies = [...movies];
     
@@ -248,12 +248,23 @@ function convertToStremioFormat(movies, sortOptions = { by: 'title', order: 'asc
  * Sorts movies array based on provided options
  * @param {Array} movies - Array of movies to sort (will be sorted in-place)
  * @param {Object} options - Sorting options
- * @param {string} options.by - Field to sort by ('title', 'year', 'rating')
+ * @param {string} options.by - Field to sort by ('title', 'year', 'rating', 'added_at')
  * @param {string} options.order - Sort order ('asc' or 'desc')
  */
 function sortMovies(movies, options = {}) {
-    const { by = 'title', order = 'asc' } = options;
+    const { by = 'added_at', order = 'asc' } = options;
     const multiplier = order.toLowerCase() === 'desc' ? -1 : 1;
+    
+    // For 'added_at' sort, we respect the original order from IMDb API
+    // (which is the order items were added to the watchlist)
+    if (by.toLowerCase() === 'added_at') {
+        // For 'desc' order, we reverse the array
+        if (order.toLowerCase() === 'desc') {
+            movies.reverse();
+        }
+        // For 'asc' order, we keep the original order
+        return;
+    }
     
     movies.sort((a, b) => {
         let valueA, valueB;
@@ -316,7 +327,7 @@ function printWatchlistSummary(movies) {
  * @param {Object} sortOptions - Sorting options (optional)
  * @returns {Promise<Object>} - Stremio-formatted watchlist
  */
-async function fetchWatchlist(imdbUserId, sortOptions = { by: 'title', order: 'asc' }) {
+async function fetchWatchlist(imdbUserId, sortOptions = { by: 'added_at', order: 'asc' }) {
     console.log(`Fetching IMDb watchlist for user ${imdbUserId}...`);
     
     try {

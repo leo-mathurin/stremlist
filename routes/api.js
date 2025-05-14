@@ -109,8 +109,9 @@ module.exports = function(db, getWatchlist, respond, getProtocol, options = {}) 
                 return respond(res, { success: false, error: 'Invalid configuration format' }, 400);
             }
             
-            // Make sure the sortOption is valid
-            if (config.sortOption && !config.sortOption.match(/^(title|year|rating)-(asc|desc)$/)) {
+            // Get valid sort options from constants
+            const validOptions = constants.SORT_OPTIONS.map(option => option.value);
+            if (config.sortOption && !validOptions.includes(config.sortOption)) {
                 return respond(res, { success: false, error: 'Invalid sort option format' }, 400);
             }
             

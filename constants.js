@@ -11,11 +11,13 @@ const APP_LOGO = 'https://stremlist.com/icon.png';
 const APP_ID_PREFIX = 'com.stremlist';
 
 // Configuration
-const DEFAULT_SORT_OPTION = 'title-asc';
-const DEFAULT_SORT_OPTIONS = { by: 'title', order: 'asc' };
+const DEFAULT_SORT_OPTION = 'added_at-asc';
+const DEFAULT_SORT_OPTIONS = { by: 'added_at', order: 'asc' };
 
 // Sorting options for the UI and manifest
 const SORT_OPTIONS = [
+    { value: 'added_at-asc', label: 'Date Added (Oldest First) - (IMDb Order)' },
+    { value: 'added_at-desc', label: 'Date Added (Newest First)' },
     { value: 'title-asc', label: 'Title (A-Z)' },
     { value: 'title-desc', label: 'Title (Z-A)' },
     { value: 'year-desc', label: 'Newest First' },

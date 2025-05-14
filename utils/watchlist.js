@@ -9,7 +9,7 @@ function parseSortOption(sortOption) {
     if (!sortOption) return constants.DEFAULT_SORT_OPTIONS;
     
     const [by, order] = sortOption.split('-');
-    if (!by || !['title', 'year', 'rating'].includes(by)) {
+    if (!by || !['title', 'year', 'rating', 'added_at'].includes(by)) {
         return constants.DEFAULT_SORT_OPTIONS;
     }
     

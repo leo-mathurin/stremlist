@@ -255,6 +255,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="sort-options">
                         <label for="sort-by">Sort by:</label>
                         <select id="sort-by" name="sort-by">
+                            <option value="added_at-asc">Date Added (Oldest First) - (IMDb Order)</option>
+                            <option value="added_at-desc">Date Added (Newest First)</option>
                             <option value="title-asc">Title (A-Z)</option>
                             <option value="title-desc">Title (Z-A)</option>
                             <option value="year-desc">Year (Newest First)</option>
