@@ -64,7 +64,14 @@ const BASE_MANIFEST = {
     version: ADDON_VERSION,
     name: APP_NAME,
     description: APP_DESCRIPTION,
-    resources: ['catalog', 'meta'],
+    resources: [
+        'catalog',
+        {
+            name: 'meta',
+            types: ['movie', 'series'],
+            idPrefixes: ['tt']  // IMDb IDs start with 'tt'
+        }
+    ],
     types: ['movie', 'series'],
     catalogs: [
         {
