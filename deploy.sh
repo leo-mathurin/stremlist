@@ -16,7 +16,7 @@ MAILGUN_API_KEY=${MAILGUN_API_KEY:-"your-mailgun-api-key"}
 MAILGUN_DOMAIN=${MAILGUN_DOMAIN:-"your-mailgun-domain"}
 MAILGUN_FROM=${MAILGUN_FROM:-"Deployment <deployment@your-domain.com>"}
 
-# Function to send email on deployment failure using Mailgun
+# Function to send email on deployment failure using Mailgun (later Resend)
 send_failure_notification() {
     local error_message="$1"
     local hostname=$(hostname)
