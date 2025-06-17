@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # Load environment variables from .env file if it exists
-if [ -f "/home/opc/imdb-watchlist-stremio/.env" ]; then
-    source "/home/opc/imdb-watchlist-stremio/.env"
+if [ -f "/home/opc/stremlist/.env" ]; then
+    source "/home/opc/stremlist/.env"
 fi
 
 # Set default values if environment variables are not set
-PROJECT_ROOT=${PROJECT_ROOT:-"/home/opc/imdb-watchlist-stremio"}
+PROJECT_ROOT=${PROJECT_ROOT:-"/home/opc/stremlist"}
 DEPLOYMENT_LOG_FILE=${DEPLOYMENT_LOG_FILE:-"$PROJECT_ROOT/deployment.log"}
 GITHUB_DEPLOY_KEY_PATH=${GITHUB_DEPLOY_KEY_PATH:-"/home/opc/.ssh/github_deploy_key"}
 NOTIFICATION_EMAIL=${NOTIFICATION_EMAIL:-"lelemathrin69@gmail.com"}
