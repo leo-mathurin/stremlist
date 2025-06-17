@@ -514,4 +514,74 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Refresh count every 60 seconds
     setInterval(fetchUserCount, 60000);
+
+    // Newsletter subscription functionality
+    function setupNewsletterForm(formId, emailId, buttonId, statusId, defaultButtonText = 'Subscribe') {
+        const form = document.getElementById(formId);
+        if (!form) return;
+        
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const emailInput = document.getElementById(emailId);
+            const subscribeBtn = document.getElementById(buttonId);
+            const statusDiv = document.getElementById(statusId);
+            
+            const email = emailInput.value.trim();
+            
+            // Validate email
+            if (!email || !email.includes('@')) {
+                showFormStatus(statusDiv, 'error', 'Please enter a valid email address');
+                return;
+            }
+            
+            // Disable button and show loading state
+            subscribeBtn.disabled = true;
+            subscribeBtn.textContent = 'Subscribing...';
+            statusDiv.textContent = '';
+            statusDiv.className = statusDiv.className.replace(/success|error/g, '').trim();
+            
+            try {
+                const response = await fetch('/api/newsletter/subscribe', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showFormStatus(statusDiv, 'success', data.message);
+                    emailInput.value = '';
+                    subscribeBtn.textContent = 'Subscribed!';
+                    
+                    // Reset button after 3 seconds
+                    setTimeout(() => {
+                        subscribeBtn.textContent = defaultButtonText;
+                        subscribeBtn.disabled = false;
+                    }, 3000);
+                } else {
+                    showFormStatus(statusDiv, 'error', data.error || 'Failed to subscribe');
+                    subscribeBtn.disabled = false;
+                    subscribeBtn.textContent = defaultButtonText;
+                }
+            } catch (error) {
+                console.error('Newsletter subscription error:', error);
+                showFormStatus(statusDiv, 'error', 'Network error. Please try again.');
+                subscribeBtn.disabled = false;
+                subscribeBtn.textContent = defaultButtonText;
+            }
+        });
+    }
+    
+    function showFormStatus(statusDiv, type, message) {
+        statusDiv.textContent = message;
+        statusDiv.className = statusDiv.className.replace(/success|error/g, '').trim() + ` ${type}`;
+    }
+    
+    // Setup both newsletter forms
+    setupNewsletterForm('newsletter-form', 'newsletter-email', 'subscribe-btn', 'newsletter-status', 'Notify Me');
+    setupNewsletterForm('footer-newsletter-form', 'footer-newsletter-email', 'footer-subscribe-btn', 'footer-newsletter-status', 'Subscribe');
 }); 

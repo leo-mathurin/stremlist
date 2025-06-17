@@ -38,6 +38,22 @@
 </head>
 <body>
     <div class="container">
+        <!-- Service Outage Banner -->
+        <div class="outage-banner">
+            <div class="outage-content">
+                <h2>⚠️ Service Temporarily Unavailable</h2>
+                <p>Stremlist is currently down due to changes in IMDb's API. I'm actively working on a fix, but with limited time available, it may take a few days to resolve. Thank you for your patience!</p>
+                
+                <div class="newsletter-signup">
+                    <p class="signup-text">Get notified when we're back online:</p>
+                    <form id="newsletter-form" class="newsletter-form">
+                        <input type="email" id="newsletter-email" placeholder="your@email.com" required>
+                        <button type="submit" id="subscribe-btn">Notify Me</button>
+                    </form>
+                    <div id="newsletter-status" class="newsletter-status"></div>
+                </div>
+            </div>
+        </div>
         <header>
             <img src="icon.png" alt="Stremlist Logo" class="logo" width="64" height="64">
             <h1>Stremlist</h1>
@@ -223,6 +239,16 @@
         </main>
 
         <footer>
+            <div class="footer-newsletter">
+                <h3>Stay Updated</h3>
+                <p>Get notified about Stremlist updates, new features, and service announcements.</p>
+                <form id="footer-newsletter-form" class="footer-newsletter-form">
+                    <input type="email" id="footer-newsletter-email" placeholder="your@email.com" required>
+                    <button type="submit" id="footer-subscribe-btn">Subscribe</button>
+                </form>
+                <div id="footer-newsletter-status" class="footer-newsletter-status"></div>
+            </div>
+            
             <p>Have questions or suggestions? Contact me at <a href="mailto:lelemathrin69@gmail.com" class="email-link">lelemathrin69@gmail.com</a></p>
             <p class="footer-text">This addon is not affiliated with IMDb or Stremio. It's a community project.</p>
             <p><a href="/terms" class="terms-link">Terms and Privacy Policy</a> | <a href="/changelog" class="changelog-link">Changelog</a></p>

@@ -7,17 +7,14 @@ const constants = require('../constants');
  * @returns {Promise<Array>} - The raw watchlist data
  */
 async function getImdbWatchlist(userId) {
-    // Construct the GraphQL API URL with the user ID
     const apiUrl = `${constants.IMDB_API_URL}?operationName=WatchListPageRefiner&variables=%7B%22first%22%3A10000%2C%22jumpToPosition%22%3A1%2C%22locale%22%3A%22en-US%22%2C%22sort%22%3A%7B%22by%22%3A%22LIST_ORDER%22%2C%22order%22%3A%22ASC%22%7D%2C%22urConst%22%3A%22${userId}%22%7D&extensions=%7B%22persistedQuery%22%3A%7B%22sha256Hash%22%3A%2236d16110719e05e125798dec569721248a88835c64a7e853d3a80be8775eea92%22%2C%22version%22%3A1%7D%7D`;
     
-    // Headers for the API request
     const headers = {
         "Content-Type": "application/json",
         "User-Agent": constants.IMDB_USER_AGENT
     };
     
     try {
-        // Making the API request
         const response = await axios.get(apiUrl, { headers });
         
         if (response.status !== 200) {
@@ -25,7 +22,6 @@ async function getImdbWatchlist(userId) {
             return null;
         }
         
-        // Extract the watchlist items directly from the GraphQL response
         try {
             const jsonData = response.data;
             

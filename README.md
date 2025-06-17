@@ -207,6 +207,8 @@ This addon is not affiliated with IMDb or Stremio. It's a community project.
 | `REDIS_URL` | Redis connection URL | `redis://localhost:6379` |
 | `USE_MEMORY_FALLBACK` | Use in-memory storage when Redis is unavailable | `true` |
 | `VERBOSE_DB_LOGGING` | Enable verbose logging for database operations | `false` |
+| `RESEND_API_KEY` | API key for Resend newsletter service | - |
+| `RESEND_AUDIENCE_ID` | Audience ID for newsletter subscriptions in Resend | - |
 
 ## Database Configuration
 

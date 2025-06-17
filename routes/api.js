@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const constants = require('../constants');
+const { Resend } = require('resend');
+
+require('dotenv').config();
 
 module.exports = function(db, getWatchlist, respond, getProtocol, options = {}) {
     // Get sync interval ID from options
@@ -216,6 +219,88 @@ module.exports = function(db, getWatchlist, respond, getProtocol, options = {}) 
         } catch (err) {
             console.error(`Error getting Redis stats: ${err.message}`);
             respond(res, { error: err.message });
+        }
+    });
+
+    // Newsletter subscription endpoint
+    router.post('/api/newsletter/subscribe', express.json(), async (req, res) => {
+        const { email } = req.body;
+        
+        try {
+            // Validate email
+            if (!email || !email.includes('@')) {
+                return respond(res, { 
+                    success: false, 
+                    error: 'Please enter a valid email address' 
+                }, 400);
+            }
+
+            // Check if RESEND_API_KEY is available
+            if (!process.env.RESEND_API_KEY) {
+                console.error('RESEND_API_KEY environment variable is not set');
+                return respond(res, { 
+                    success: false, 
+                    error: 'Newsletter service is not configured. Please try again later.' 
+                }, 500);
+            }
+
+            // Initialize Resend
+            const resend = new Resend(process.env.RESEND_API_KEY);
+            
+            // List audiences to debug
+            const audiences = await resend.audiences.list();
+            
+            // Use the general audience ID
+            const audienceId = process.env.RESEND_AUDIENCE_ID;
+            
+            // Create contact in Resend
+            const contact = await resend.contacts.create({
+                email: email,
+                unsubscribed: false,
+                audienceId: audienceId,
+            });
+
+            respond(res, { 
+                success: true, 
+                message: 'Successfully subscribed! You\'ll be notified about new features and updates.',
+                contactId: contact.id
+            });
+        } catch (err) {
+            console.error(`Newsletter subscription error for ${email}:`);
+            console.error('Error details:', err);
+            console.error('Error message:', err.message);
+            console.error('Error status:', err.status);
+            console.error('Error response:', err.response?.data);
+            
+            // Handle duplicate email error gracefully
+            if (err.message && (err.message.includes('already exists') || err.message.includes('duplicate'))) {
+                console.log(`User ${email} already exists in audience, treating as success`);
+                return respond(res, { 
+                    success: true, 
+                    message: 'You\'re already subscribed! You\'ll be notified about new features and updates.' 
+                });
+            }
+            
+            // Handle specific Resend API errors
+            if (err.status === 422) {
+                return respond(res, { 
+                    success: false, 
+                    error: 'Invalid email address format.' 
+                }, 400);
+            }
+            
+            if (err.status === 401) {
+                console.error('Resend API authentication failed - check your API key');
+                return respond(res, { 
+                    success: false, 
+                    error: 'Newsletter service authentication failed. Please try again later.' 
+                }, 500);
+            }
+            
+            respond(res, { 
+                success: false, 
+                error: 'Failed to subscribe. Please try again later.' 
+            }, 500);
         }
     });
 

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Redis service
   redis:
@@ -15,6 +13,7 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
+      retries: 5
     networks:
       - stremlist-network-dev
 
@@ -35,6 +34,7 @@ services:
       - VERBOSE=true
       - SYNC_INTERVAL=30
       - CACHE_TTL=15
+      - WORKER_CONCURRENCY=2
       - WORKER_ENABLED=true
       - PORT=7001
     ports:
@@ -47,6 +47,7 @@ services:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:7001/health"]
       interval: 10s
       timeout: 10s
+      retries: 3
       start_period: 15s
     networks:
       - stremlist-network-dev
