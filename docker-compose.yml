@@ -30,7 +30,7 @@ services:
       dockerfile: Dockerfile
     container_name: stremlist-app
     env_file:
-      - docker.env
+      - .env
     ports:
       - "7001:7001"
     depends_on:

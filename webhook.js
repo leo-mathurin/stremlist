@@ -10,7 +10,7 @@ dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 // Get values from environment variables
 const SECRET = process.env.GITHUB_WEBHOOK_SECRET;
-const PROJECT_ROOT = process.env.PROJECT_ROOT || '/home/opc/imdb-watchlist-stremio';
+const PROJECT_ROOT = process.env.PROJECT_ROOT || '/home/opc/stremlist';
 const DEPLOY_SCRIPT = path.join(PROJECT_ROOT, 'deploy.sh');
 
 if (!SECRET) {
