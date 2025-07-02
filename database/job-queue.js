@@ -223,14 +223,31 @@ async function clearAllJobs() {
         const statsBefore = await getQueueStats();
         console.log('Queue stats before cleanup:', statsBefore.stats);
         
-        // Clear all job types
+        // Clear all job types using correct Bull API syntax
         await Promise.all([
-            syncQueue.clean(0, 'waiting'),     // Remove all waiting jobs
-            syncQueue.clean(0, 'active'),      // Remove all active jobs  
-            syncQueue.clean(0, 'delayed'),     // Remove all delayed jobs
-            syncQueue.clean(0, 'completed'),   // Remove all completed jobs
-            syncQueue.clean(0, 'failed')       // Remove all failed jobs
+            syncQueue.clean(0, 'completed'),   // Remove completed jobs older than 0ms
+            syncQueue.clean(0, 'failed'),      // Remove failed jobs older than 0ms
         ]);
+        
+        // Handle waiting and delayed jobs differently
+        const waitingJobs = await syncQueue.getWaiting();
+        const delayedJobs = await syncQueue.getDelayed();
+        const activeJobs = await syncQueue.getActive();
+        
+        // Remove waiting jobs
+        for (const job of waitingJobs) {
+            await job.remove();
+        }
+        
+        // Remove delayed jobs (these are the problematic staggered jobs)
+        for (const job of delayedJobs) {
+            await job.remove();
+        }
+        
+        // Remove active jobs
+        for (const job of activeJobs) {
+            await job.remove();
+        }
         
         // Get stats after cleanup
         const statsAfter = await getQueueStats();
