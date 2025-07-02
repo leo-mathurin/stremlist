@@ -48,16 +48,10 @@ echo "$(date): Received HTTP status $HTTP_STATUS" >> "$LOG_FILE"
 
 # Check if status code is 200 and response has expected structure
 if [ "$HTTP_STATUS" -eq 200 ]; then
-    # Check for private watchlist indicators
-    if echo "$RESPONSE_BODY" | grep -qi "private list"; then
-        ERROR_MESSAGE="Watchlist is private"
-        echo "$(date): IMDb watchlist check failed. $ERROR_MESSAGE" >> "$LOG_FILE"
-        curl -s -d "$ERROR_MESSAGE" "$HEARTBEAT_URL/fail" >> "$LOG_FILE" 2>&1
-        echo "$(date): Failure reported to Better Stack" >> "$LOG_FILE"
     # Check for __NEXT_DATA__ script tag (required for our scraping approach)
-    elif echo "$RESPONSE_BODY" | grep -q 'script.*id="__NEXT_DATA__"' && echo "$RESPONSE_BODY" | grep -q '"pageProps"'; then
-        # Additional check for watchlist data structure
-        if echo "$RESPONSE_BODY" | grep -q '"titleListItemSearch"' || echo "$RESPONSE_BODY" | grep -q '"predefinedList"'; then
+    if echo "$RESPONSE_BODY" | grep -q 'script.*id="__NEXT_DATA__"' && echo "$RESPONSE_BODY" | grep -q '"pageProps"'; then
+        # Check for watchlist data structure - this is the key indicator
+        if echo "$RESPONSE_BODY" | grep -q '"titleListItemSearch"' && echo "$RESPONSE_BODY" | grep -q '"predefinedList"'; then
             # Success - ping heartbeat URL
             echo "$(date): IMDb HTML scraping check successful, __NEXT_DATA__ found with watchlist data" >> "$LOG_FILE"
             curl -s "$HEARTBEAT_URL" >> "$LOG_FILE" 2>&1
@@ -68,7 +62,12 @@ if [ "$HTTP_STATUS" -eq 200 ]; then
                 echo "$(date): Failed to send heartbeat, exit code $EXIT_CODE" >> "$LOG_FILE"
             fi
         else
-            ERROR_MESSAGE="__NEXT_DATA__ found but missing expected watchlist structure"
+            # Missing titleListItemSearch usually indicates private watchlist (matching JS logic)
+            if echo "$RESPONSE_BODY" | grep -q '"predefinedList"' && ! echo "$RESPONSE_BODY" | grep -q '"titleListItemSearch"'; then
+                ERROR_MESSAGE="Watchlist appears to be private (missing titleListItemSearch)"
+            else
+                ERROR_MESSAGE="__NEXT_DATA__ found but missing expected watchlist structure"
+            fi
             echo "$(date): IMDb watchlist check failed. $ERROR_MESSAGE" >> "$LOG_FILE"
             curl -s -d "$ERROR_MESSAGE" "$HEARTBEAT_URL/fail" >> "$LOG_FILE" 2>&1
             echo "$(date): Failure reported to Better Stack" >> "$LOG_FILE"
