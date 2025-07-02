@@ -190,26 +190,26 @@ async function scheduleStaggeredSync(userIds, totalIntervalMs) {
         failed: 0
     };
     
-    // Schedule each user with progressive delay
-    userIds.forEach((userId, index) => {
+    // Schedule each user with Bull's delayed job feature (not setTimeout)
+    for (let index = 0; index < userIds.length; index++) {
+        const userId = userIds[index];
         const delay = index * delayBetweenUsers;
         
-        setTimeout(async () => {
-            try {
-                const job = await scheduleUserSync(userId, 'normal');
-                if (job) {
-                    results.scheduled++;
-                    console.log(`Scheduled user ${userId} (${index + 1}/${userIds.length})`);
-                } else {
-                    results.failed++;
-                    console.error(`Failed to schedule user ${userId}`);
-                }
-            } catch (error) {
+        try {
+            // Use Bull's delayed job scheduling instead of setTimeout
+            const job = await scheduleUserSync(userId, 'normal', { delay });
+            if (job) {
+                results.scheduled++;
+                console.log(`Scheduled user ${userId} (${index + 1}/${userIds.length}) with ${delay/1000}s delay`);
+            } else {
                 results.failed++;
-                console.error(`Failed to schedule user ${userId}:`, error);
+                console.error(`Failed to schedule user ${userId}`);
             }
-        }, delay);
-    });
+        } catch (error) {
+            results.failed++;
+            console.error(`Failed to schedule user ${userId}:`, error);
+        }
+    }
     
     results.message = `Scheduled ${results.scheduled} staggered sync jobs over ${totalIntervalMs/60000/60} hours`;
     return results;
