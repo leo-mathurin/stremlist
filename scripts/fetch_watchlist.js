@@ -1,68 +1,95 @@
 const axios = require('axios');
 const constants = require('../constants');
+const { JSDOM } = require('jsdom');
 
 /**
- * Fetches the IMDb watchlist for the given user ID
+ * Fetches the IMDb watchlist for the given user ID by extracting data from HTML
  * @param {string} userId - The IMDb user ID
- * @returns {Promise<Array>} - The raw watchlist data
+ * @returns {Promise<Array>} - The raw watchlist data in the same format as before
  */
 async function getImdbWatchlist(userId) {
-    const apiUrl = `${constants.IMDB_API_URL}?operationName=WatchListPageRefiner&variables=%7B%22first%22%3A10000%2C%22jumpToPosition%22%3A1%2C%22locale%22%3A%22en-US%22%2C%22sort%22%3A%7B%22by%22%3A%22LIST_ORDER%22%2C%22order%22%3A%22ASC%22%7D%2C%22urConst%22%3A%22${userId}%22%7D&extensions=%7B%22persistedQuery%22%3A%7B%22sha256Hash%22%3A%2236d16110719e05e125798dec569721248a88835c64a7e853d3a80be8775eea92%22%2C%22version%22%3A1%7D%7D`;
+    const url = `https://www.imdb.com/user/${userId}/watchlist/`;
     
     const headers = {
-        "Content-Type": "application/json",
-        "User-Agent": constants.IMDB_USER_AGENT
+        'User-Agent': constants.IMDB_USER_AGENT,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none'
     };
     
     try {
-        const response = await axios.get(apiUrl, { headers });
+        const response = await axios.get(url, { headers });
         
         if (response.status !== 200) {
-            console.error(`Failed to retrieve data: Status code ${response.status}`);
+            console.error(`Failed to retrieve HTML: Status code ${response.status}`);
+            throw new Error("Could not find an IMDb watchlist for this ID. Please check and try again.");
+        }
+        
+        // Parse HTML with JSDOM
+        const dom = new JSDOM(response.data);
+        const document = dom.window.document;
+        
+        // Check page title for private list indicator
+        const pageTitle = document.title;
+        if (pageTitle && pageTitle.toLowerCase().includes('private list')) {
+            throw new Error("This IMDb watchlist is private. Please make your watchlist public in your IMDb settings.");
+        }
+        
+        // Find the __NEXT_DATA__ script tag
+        const nextDataScript = document.querySelector('script[id="__NEXT_DATA__"]');
+        
+        if (!nextDataScript) {
+            console.error('__NEXT_DATA__ script tag not found in HTML');
+            throw new Error("Could not find an IMDb watchlist for this ID. Please check and try again.");
+        }
+        
+        // Parse the JSON data
+        const nextData = JSON.parse(nextDataScript.textContent);
+        
+        // Extract watchlist data
+        const pageProps = nextData.props?.pageProps;
+        if (!pageProps) {
+            throw new Error("Could not find an IMDb watchlist for this ID. Please check and try again.");
+        }
+        
+        const aboveTheFoldData = pageProps.aboveTheFoldData;
+        const mainColumnData = pageProps.mainColumnData;
+        
+        if (!mainColumnData?.predefinedList) {
+            throw new Error("Could not find an IMDb watchlist for this ID. Please check and try again.");
+        }
+        
+        const predefinedList = mainColumnData.predefinedList;
+        const titleListItemSearch = predefinedList.titleListItemSearch;
+        
+        // Check if titleListItemSearch is missing (another indicator of private lists)
+        if (!titleListItemSearch) {
+            throw new Error("This IMDb watchlist is private. Please make your watchlist public in your IMDb settings.");
+        }
+        
+        // Return the edges array in the same format as the GraphQL response
+        const edges = titleListItemSearch.edges || [];
+        
+        if (edges.length === 0) {
+            console.error("No items found in watchlist");
             return null;
         }
         
-        try {
-            const jsonData = response.data;
-            
-            // Check for FORBIDDEN error indicating a private list
-            if (jsonData.errors && jsonData.errors.length > 0) {
-                const forbiddenError = jsonData.errors.find(
-                    err => err.message && err.message.includes('FORBIDDEN') && 
-                           err.extensions && err.extensions.code === 'FORBIDDEN'
-                );
-                
-                if (forbiddenError) {
-                    console.error("Private watchlist detected. Access denied.");
-                    throw new Error("This IMDb watchlist is private. Please make your watchlist public in your IMDb settings.");
-                }
-            }
-            
-            // Navigate to the watchlist items
-            const watchlist = jsonData?.data?.predefinedList?.titleListItemSearch?.edges || [];
-            
-            if (!watchlist || watchlist.length === 0) {
-                console.error("No items found in watchlist or unexpected JSON structure");
-                console.error("This could be due to an empty watchlist or invalid user ID");
-                return null;
-            }
-            
-            return watchlist;
-        } catch (e) {
-            // Only propagate specific errors we've explicitly thrown (like the private list error)
-            // For other processing errors, return null to maintain the original flow
-            if (e.message && e.message.includes("private")) {
-                throw e;
-            }
-            console.error(`Error processing response data: ${e.message}`);
-            return null;
-        }
+        return edges;
+        
     } catch (error) {
         console.error(`Error fetching watchlist: ${error.message}`);
+        
         // If this is our specific private list error, propagate it
         if (error.message && error.message.includes("private")) {
             throw error;
         }
+        
         // For network errors or other issues, throw a more user-friendly message
         throw new Error("Could not find an IMDb watchlist for this ID. Please check and try again.");
     }
@@ -378,5 +405,6 @@ async function fetchWatchlist(imdbUserId, sortOptions = { by: 'added_at', order:
 
 module.exports = {
     fetchWatchlist,
-    sortMovies
+    sortMovies,
+    getImdbWatchlist
 }; 

@@ -58,6 +58,9 @@ const DISTRIBUTED_RATE_LIMITING = process.env.DISTRIBUTED_RATE_LIMITING === 'tru
 const IMDB_API_URL = 'https://api.graphql.imdb.com/';
 const IMDB_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 
+// Crawl4AI Docker server settings
+const CRAWL4AI_DOCKER_SERVER = 'http://129.151.250.86:11235';
+
 // Base manifest
 const BASE_MANIFEST = {
     id: APP_ID_PREFIX,
@@ -145,6 +148,9 @@ module.exports = {
     // IMDb API settings
     IMDB_API_URL,
     IMDB_USER_AGENT,
+    
+    // Crawl4AI Docker server settings
+    CRAWL4AI_DOCKER_SERVER,
     
     // Base manifest
     BASE_MANIFEST
