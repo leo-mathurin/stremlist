@@ -164,6 +164,58 @@ async function scheduleBulkSync(userIds, priorityCalculator = null) {
 }
 
 /**
+ * Schedule staggered sync jobs for all users across a time interval
+ * @param {Array<string>} userIds - List of user IDs to sync
+ * @param {number} totalIntervalMs - Total time interval to spread users across (in milliseconds)
+ * @returns {Promise<Object>} - Results of scheduling
+ */
+async function scheduleStaggeredSync(userIds, totalIntervalMs) {
+    if (!systemState.isInitialized || !systemState.queueInitialized) {
+        return { success: false, message: 'Background sync not initialized' };
+    }
+    
+    if (!userIds || !userIds.length) {
+        return { success: true, scheduled: 0, message: 'No users to sync' };
+    }
+    
+    // Calculate delay between users
+    const delayBetweenUsers = Math.floor(totalIntervalMs / userIds.length);
+    
+    console.log(`Scheduling ${userIds.length} users over ${totalIntervalMs/60000/60} hours`);
+    console.log(`Delay between users: ${delayBetweenUsers/1000} seconds`);
+    
+    const results = {
+        success: true,
+        scheduled: 0,
+        failed: 0
+    };
+    
+    // Schedule each user with progressive delay
+    userIds.forEach((userId, index) => {
+        const delay = index * delayBetweenUsers;
+        
+        setTimeout(async () => {
+            try {
+                const job = await scheduleUserSync(userId, 'normal');
+                if (job) {
+                    results.scheduled++;
+                    console.log(`Scheduled user ${userId} (${index + 1}/${userIds.length})`);
+                } else {
+                    results.failed++;
+                    console.error(`Failed to schedule user ${userId}`);
+                }
+            } catch (error) {
+                results.failed++;
+                console.error(`Failed to schedule user ${userId}:`, error);
+            }
+        }, delay);
+    });
+    
+    results.message = `Scheduled ${results.scheduled} staggered sync jobs over ${totalIntervalMs/60000/60} hours`;
+    return results;
+}
+
+/**
  * Check if a token is available for IMDb API request
  * @returns {Promise<boolean>} - Whether a token is available
  */
@@ -272,6 +324,7 @@ module.exports = {
     initialize,
     scheduleSyncForUser,
     scheduleBulkSync,
+    scheduleStaggeredSync,
     canMakeImdbRequest,
     makeRateLimitedRequest,
     getStatus,

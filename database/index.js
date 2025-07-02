@@ -242,6 +242,13 @@ module.exports = {
         return await backgroundSync.scheduleBulkSync(userIds, priorityCalculator);
     },
     
+    scheduleStaggeredSync: async (userIds, totalIntervalMs) => {
+        if (!isBackgroundSyncInitialized) {
+            return { success: false, message: 'Background sync not initialized' };
+        }
+        return await backgroundSync.scheduleStaggeredSync(userIds, totalIntervalMs);
+    },
+    
     makeRateLimitedRequest: async (requestFn) => {
         if (!isBackgroundSyncInitialized) return requestFn();
         return await backgroundSync.makeRateLimitedRequest(requestFn);

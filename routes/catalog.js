@@ -51,8 +51,13 @@ module.exports = function(manifest, db, getWatchlist, respond, activateUser = nu
                 console.verbose(`First catalog item example: ${JSON.stringify(metas[0], null, 2)}`);
             }
             
-            // Respond with the filtered data
-            respond(res, { metas });
+            // Respond with the filtered data and Stremio caching headers
+            respond(res, { 
+                metas,
+                cacheMaxAge: 6 * 60 * 60,        // 6 hours
+                staleRevalidate: 2 * 60 * 60,    // 2 hours  
+                staleError: 24 * 60 * 60         // 24 hours
+            });
         } catch (err) {
             fail(`Error serving catalog: ${err.message}`);
         }

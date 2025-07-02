@@ -110,52 +110,30 @@ app.options('*', cors());
 // Apply rate limiter to all requests
 app.use(createRateLimiter());
 
-// Background syncing function
+// Background syncing function with staggered scheduling
 async function syncAllWatchlists() {
     // Check health of database connection
     await db.checkHealth();
     
-    // Get all user IDs that have been accessing the addon from recent requests
-    const users = [...syncedUsers];
-    
-    if (users.length === 0) {
-        console.log('No known users to sync. Waiting for user connections...');
+    // Get all active users from database
+    const users = await db.getActiveUsers();
+    if (!users || users.length === 0) {
+        console.log('No active users to sync');
         return;
     }
 
-    console.log(`===== SYNC STARTED: ${new Date().toISOString()} =====`);
-    console.log(`Scheduling sync jobs for ${users.length} users`);
+    console.log(`===== STAGGERED SYNC STARTING: ${new Date().toISOString()} =====`);
+    console.log(`Found ${users.length} active users to schedule`);
     
-    // Persist active users to database
-    await db.storeActiveUsers(syncedUsers);
-    
-    // Calculate user priorities based on activity timestamps
-    const userActivityTimestamps = await db.getUserActivityTimestamps();
-    
-    // Calculate priority for each user based on activity recency
-    const priorityCalculator = (userId) => {
-        const lastActivity = userActivityTimestamps[userId] || 0;
-        const hoursSinceLastActivity = (Date.now() - lastActivity) / (1000 * 60 * 60);
-        
-        // High priority for recently active users (last 2 hours)
-        if (hoursSinceLastActivity <= 2) {
-            return 'high';
-        }
-        // Normal priority for users active in the last 24 hours
-        else if (hoursSinceLastActivity <= 24) {
-            return 'normal';
-        }
-        // Low priority for everyone else
-        else {
-            return 'low';
-        }
-    };
-    
-    // Schedule jobs for all users with appropriate priorities
-    const result = await db.scheduleBulkSync(users, priorityCalculator);
-    
-    console.log(`Job scheduling results: ${result.message}`);
-    console.log(`===== SYNC SCHEDULED: ${new Date().toISOString()} =====`);
+    try {
+        // Use the background sync module's staggered sync function
+        const result = await db.scheduleStaggeredSync(users, constants.SYNC_INTERVAL_MS);
+        console.log(`Staggered sync result: ${result.message}`);
+        console.log(`===== STAGGERED SYNC SCHEDULED: ${new Date().toISOString()} =====`);
+    } catch (error) {
+        console.error('Error scheduling staggered sync:', error);
+        console.log(`===== STAGGERED SYNC FAILED: ${new Date().toISOString()} =====`);
+    }
 }
 
 // Start the background sync process
@@ -239,9 +217,14 @@ async function getWatchlist(userId, forceRefresh = false, sortOption = null) {
         console.log(`Cache for ${userId} is ${cacheAge} minutes old (TTL: ${constants.CACHE_TTL_MS/60000} minutes)`);
     }
     
-    // Force refresh ignores cache, or check if cache doesn't exist or is older than TTL
-    if (forceRefresh || !cachedData || cachedData.timestamp < Date.now() - constants.CACHE_TTL_MS) {
-        console.log(`${forceRefresh ? 'Force refreshing' : 'Cache expired, refreshing'} watchlist for user ${userId}...`);
+    // Smart cache extension with tiered cache strategy
+    const cacheAge = cachedData ? Date.now() - cachedData.timestamp : Infinity;
+    const cacheExpired = cacheAge > constants.CACHE_TTL_MS;
+    const cacheVeryOld = cacheAge > (constants.CACHE_TTL_MS * 2); // 12 hours
+
+    if (forceRefresh || !cachedData || cacheVeryOld) {
+        // Only fetch if VERY old or forced
+        console.log(`${forceRefresh ? 'Force refreshing' : 'Cache very old, refreshing'} watchlist for user ${userId}...`);
         
         try {
             // Use the rate limiter to fetch the watchlist with sorting options
@@ -273,8 +256,15 @@ async function getWatchlist(userId, forceRefresh = false, sortOption = null) {
             // No cache, propagate the error
             throw error;
         }
+    } else if (cacheExpired) {
+        // Serve stale cache but trigger background refresh
+        console.log(`Serving stale cache for ${userId}, triggering background refresh`);
+        db.scheduleSyncForUser(userId, 'low').catch(error => {
+            console.error(`Failed to schedule background refresh for user ${userId}:`, error);
+        });
+        return cachedData.data;
     } else {
-        // Use cached data
+        // Fresh cache
         console.log(`Using cached watchlist for user ${userId}`);
         return cachedData.data;
     }

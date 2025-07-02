@@ -27,9 +27,9 @@ const SORT_OPTIONS = [
 ];
 
 // Cache and sync settings (convert seconds to milliseconds for runtime use)
-const CACHE_TTL = parseInt(process.env.CACHE_TTL || 15) * 60; // Default: 15 minutes in seconds
+const CACHE_TTL = parseInt(process.env.CACHE_TTL || 360) * 60; // Default: 15 minutes in seconds
 const CACHE_TTL_MS = CACHE_TTL * 1000;
-const SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL || 30) * 60; // Default: 30 minutes in seconds
+const SYNC_INTERVAL = parseInt(process.env.SYNC_INTERVAL || 720) * 60; // Default: 30 minutes in seconds
 const SYNC_INTERVAL_MS = SYNC_INTERVAL * 1000;
 
 // Logging
@@ -50,8 +50,8 @@ const WORKER_CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY || 3);
 const WORKER_ENABLED = process.env.WORKER_ENABLED !== 'false';
 
 // Rate limiting settings
-const RATE_LIMIT_REQUESTS = parseInt(process.env.RATE_LIMIT_REQUESTS || 30);
-const RATE_LIMIT_INTERVAL = parseInt(process.env.RATE_LIMIT_INTERVAL || 60) * 1000; // Convert to milliseconds
+const RATE_LIMIT_REQUESTS = parseInt(process.env.RATE_LIMIT_REQUESTS || 5);
+const RATE_LIMIT_INTERVAL = parseInt(process.env.RATE_LIMIT_INTERVAL || 120) * 1000; // Convert to milliseconds
 const DISTRIBUTED_RATE_LIMITING = process.env.DISTRIBUTED_RATE_LIMITING === 'true';
 
 // IMDb API settings
