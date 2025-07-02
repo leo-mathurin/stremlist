@@ -25,7 +25,7 @@ echo "🚀 Running queue cleanup..."
 echo ""
 
 # Run the cleanup script inside the Docker container
-docker exec stremlist-app node scripts/cleanup_queue.js --force
+docker exec stremlist-app node cleanup_queue.js --force
 
 echo ""
 echo "✅ Queue cleanup completed!"
