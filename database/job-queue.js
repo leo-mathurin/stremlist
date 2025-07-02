@@ -208,6 +208,52 @@ async function getQueueStats() {
 }
 
 /**
+ * Clear all jobs from the queue (emergency cleanup)
+ * @returns {Promise<Object>} - Cleanup results
+ */
+async function clearAllJobs() {
+    if (!syncQueue) {
+        return { success: false, message: 'Queue not initialized' };
+    }
+    
+    try {
+        console.log('Starting emergency queue cleanup...');
+        
+        // Get current stats before cleanup
+        const statsBefore = await getQueueStats();
+        console.log('Queue stats before cleanup:', statsBefore.stats);
+        
+        // Clear all job types
+        await Promise.all([
+            syncQueue.clean(0, 'waiting'),     // Remove all waiting jobs
+            syncQueue.clean(0, 'active'),      // Remove all active jobs  
+            syncQueue.clean(0, 'delayed'),     // Remove all delayed jobs
+            syncQueue.clean(0, 'completed'),   // Remove all completed jobs
+            syncQueue.clean(0, 'failed')       // Remove all failed jobs
+        ]);
+        
+        // Get stats after cleanup
+        const statsAfter = await getQueueStats();
+        console.log('Queue stats after cleanup:', statsAfter.stats);
+        
+        console.log('Emergency queue cleanup completed successfully');
+        return { 
+            success: true, 
+            message: 'Queue cleared successfully',
+            before: statsBefore.stats,
+            after: statsAfter.stats
+        };
+    } catch (error) {
+        console.error('Error during queue cleanup:', error);
+        return { 
+            success: false, 
+            message: `Queue cleanup failed: ${error.message}`,
+            error: error.message
+        };
+    }
+}
+
+/**
  * Close the queue connection
  * @returns {Promise<void>}
  */
@@ -229,6 +275,7 @@ module.exports = {
     getSyncQueue,
     hasActiveJob,
     getQueueStats,
+    clearAllJobs,
     closeQueue,
     PRIORITY
 }; 

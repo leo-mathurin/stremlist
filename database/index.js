@@ -266,6 +266,12 @@ module.exports = {
         return await backgroundSync.getStatus();
     },
     
+    // Queue management
+    clearAllJobs: async () => {
+        const { clearAllJobs } = require('./job-queue');
+        return await clearAllJobs();
+    },
+    
     // Expose background sync directly for advanced usage
     backgroundSync
 }; 
