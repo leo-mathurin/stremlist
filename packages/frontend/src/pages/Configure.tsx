@@ -126,7 +126,8 @@ export default function Configure() {
 
       setStatus({
         type: "success",
-        message: "Saved! Your watchlist will be refreshed with the new sort order.",
+        message:
+          "Saved! Your watchlist will be refreshed with the new sort order.",
       });
     } catch (err) {
       setStatus({
@@ -143,13 +144,15 @@ export default function Configure() {
       <Header />
 
       <main>
-        <Button variant="link" asChild className="h-auto p-0 text-stremlist text-sm">
+        <Button
+          variant="link"
+          asChild
+          className="h-auto p-0 text-stremlist text-sm"
+        >
           <Link to="/">&larr; Back to Home</Link>
         </Button>
 
-        <h2 className="text-xl font-bold text-gray-900 mt-4 mb-1">
-          Configure
-        </h2>
+        <h2 className="text-xl font-bold text-gray-900 mt-4 mb-1">Configure</h2>
 
         {!userId ? (
           <section className="bg-gray-50 rounded-lg p-6 border border-gray-200 mt-4">

@@ -153,9 +153,7 @@ export default function Changelog() {
           <Link to="/">&larr; Back to Home</Link>
         </Button>
 
-        <h2 className="text-xl font-bold text-gray-900 mt-4 mb-1">
-          Changelog
-        </h2>
+        <h2 className="text-xl font-bold text-gray-900 mt-4 mb-1">Changelog</h2>
         <p className="text-sm text-gray-500 mb-6">
           A history of updates and improvements to the Stremlist IMDb Watchlist
           addon.

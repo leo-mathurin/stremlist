@@ -49,17 +49,24 @@ export default function SetupForm() {
         .then((data) => {
           if (data.valid) {
             setValidId(initialUserId);
-            setStatus({ type: "success", message: "Choose how to install below:" });
+            setStatus({
+              type: "success",
+              message: "Choose how to install below:",
+            });
           } else {
             setStatus({
               type: "error",
-              message: "This IMDb ID does not exist. Please check and try again.",
+              message:
+                "This IMDb ID does not exist. Please check and try again.",
             });
           }
         })
         .catch(() => {
           setValidId(initialUserId);
-          setStatus({ type: "success", message: "Choose how to install below:" });
+          setStatus({
+            type: "success",
+            message: "Choose how to install below:",
+          });
         })
         .finally(() => setValidating(false));
     }
@@ -108,17 +115,24 @@ export default function SetupForm() {
         .then((data) => {
           if (data.valid) {
             setValidId(extracted);
-            setStatus({ type: "success", message: "Choose how to install below:" });
+            setStatus({
+              type: "success",
+              message: "Choose how to install below:",
+            });
           } else {
             setStatus({
               type: "error",
-              message: "This IMDb ID does not exist. Please check and try again.",
+              message:
+                "This IMDb ID does not exist. Please check and try again.",
             });
           }
         })
         .catch(() => {
           setValidId(extracted);
-          setStatus({ type: "success", message: "Choose how to install below:" });
+          setStatus({
+            type: "success",
+            message: "Choose how to install below:",
+          });
         })
         .finally(() => setValidating(false));
     }, 500);
@@ -138,7 +152,10 @@ export default function SetupForm() {
   return (
     <section className="bg-gray-50 rounded-lg p-6 shadow-sm border border-gray-200">
       <div className="mb-4">
-        <Label htmlFor="imdb-id" className="block text-sm font-semibold text-gray-700 mb-1">
+        <Label
+          htmlFor="imdb-id"
+          className="block text-sm font-semibold text-gray-700 mb-1"
+        >
           IMDb User ID:
         </Label>
         <Input
@@ -178,12 +195,18 @@ export default function SetupForm() {
       {validId && urls && (
         <div className="space-y-5">
           <div className="flex flex-col sm:flex-row gap-3">
-            <Button asChild className="flex-1 bg-blue-500 hover:bg-blue-600 h-11">
+            <Button
+              asChild
+              className="flex-1 bg-blue-500 hover:bg-blue-600 h-11"
+            >
               <a href={urls.webUrl} target="_blank" rel="noopener noreferrer">
                 Open in Stremio Web
               </a>
             </Button>
-            <Button asChild className="flex-1 bg-green-500 hover:bg-green-600 h-11">
+            <Button
+              asChild
+              className="flex-1 bg-green-500 hover:bg-green-600 h-11"
+            >
               <a href={urls.stremioUrl}>Open in Stremio Desktop</a>
             </Button>
           </div>
@@ -203,11 +226,7 @@ export default function SetupForm() {
                 onClick={handleCopy}
                 className="bg-imdb hover:bg-imdb-dark text-black font-semibold"
               >
-                {copied ? (
-                  <Check />
-                ) : (
-                  <Copy />
-                )}
+                {copied ? <Check /> : <Copy />}
               </Button>
             </div>
             <p className="mt-1.5 text-xs text-gray-400">

@@ -1,17 +1,19 @@
-import baseConfig from '@hono/eslint-config'
+import baseConfig from "@hono/eslint-config";
+import eslintConfigPrettier from "eslint-config-prettier/flat";
 
 export default [
-  { ignores: ['dist/**', 'eslint.config.mjs'] },
+  { ignores: ["dist/**", "eslint.config.mjs"] },
   ...baseConfig,
   {
     languageOptions: {
       parserOptions: {
-        project: './tsconfig.json',
+        project: "./tsconfig.json",
         tsconfigRootDir: import.meta.dirname,
       },
     },
     rules: {
-      curly: ['error', 'multi-line'],
+      curly: ["error", "multi-line"],
     },
   },
-]
+  eslintConfigPrettier,
+];

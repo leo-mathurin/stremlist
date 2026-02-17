@@ -65,7 +65,13 @@
   body {
     @apply text-foreground;
     margin: 0;
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+    font-family:
+      system-ui,
+      -apple-system,
+      "Segoe UI",
+      Roboto,
+      Helvetica,
+      Arial,
       sans-serif;
     background-color: #f0f0f0;
     color: #333;

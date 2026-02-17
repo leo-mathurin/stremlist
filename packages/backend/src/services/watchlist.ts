@@ -1,10 +1,5 @@
-import {
-  CACHE_TTL_MS,
-  parseSortOption
-  
-  
-} from "@stremlist/shared";
-import type {WatchlistData, SortOptions} from "@stremlist/shared";
+import { CACHE_TTL_MS, parseSortOption } from "@stremlist/shared";
+import type { WatchlistData, SortOptions } from "@stremlist/shared";
 import { supabase } from "../lib/supabase";
 import { fetchWatchlist } from "./imdb-scraper";
 import { ensureUser, getUserSortOption } from "./user";
@@ -67,8 +62,7 @@ export async function getWatchlist(
 ): Promise<WatchlistData> {
   await ensureUser(userId);
 
-  const sortOptionStr =
-    sortOptionOverride ?? (await getUserSortOption(userId));
+  const sortOptionStr = sortOptionOverride ?? (await getUserSortOption(userId));
   const sortOptions = parseSortOption(sortOptionStr);
 
   const cached = await getCachedWatchlist(userId);
@@ -77,9 +71,7 @@ export async function getWatchlist(
     const age = Date.now() - cached.cachedAt.getTime();
 
     if (age < CACHE_TTL_MS) {
-      console.log(
-        `Cache hit for ${userId} (age: ${Math.round(age / 60000)}m)`,
-      );
+      console.log(`Cache hit for ${userId} (age: ${Math.round(age / 60000)}m)`);
       return resortCachedData(cached.data, sortOptions);
     }
 
@@ -115,7 +107,9 @@ function resortCachedData(
   const multiplier = order === "desc" ? -1 : 1;
 
   if (by === "added_at") {
-    if (order === "desc") {metas.reverse();}
+    if (order === "desc") {
+      metas.reverse();
+    }
     return { metas };
   }
 

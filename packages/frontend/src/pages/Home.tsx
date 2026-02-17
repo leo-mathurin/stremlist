@@ -79,7 +79,9 @@ export default function Home() {
                     {item.step}
                   </Badge>
                   <div>
-                    <h3 className="font-semibold text-gray-800">{item.title}</h3>
+                    <h3 className="font-semibold text-gray-800">
+                      {item.title}
+                    </h3>
                     <p className="text-sm text-gray-600">{item.desc}</p>
                   </div>
                 </div>
@@ -153,10 +155,7 @@ export default function Home() {
           <ol className="list-decimal list-inside text-sm text-gray-600 space-y-1">
             <li>
               Visit the{" "}
-              <Link
-                to="/configure"
-                className="text-stremlist underline"
-              >
+              <Link to="/configure" className="text-stremlist underline">
                 configure page
               </Link>
             </li>

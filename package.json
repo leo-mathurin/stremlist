@@ -25,6 +25,8 @@
     "dev:frontend": "turbo run dev --filter=frontend",
     "build": "turbo run build",
     "lint": "turbo run lint",
+    "format": "turbo run format",
+    "format:check": "turbo run format:check",
     "typecheck": "turbo run typecheck",
     "generate:types": "pnpm supabase gen types typescript --project-id igbmxubzxjfdbgmawrtr --schema public > packages/shared/src/database.types.ts"
   },

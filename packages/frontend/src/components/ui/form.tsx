@@ -17,11 +17,7 @@ function Form<TFieldValues extends FieldValues>({
   children,
   ...props
 }: { children: React.ReactNode } & UseFormReturn<TFieldValues>) {
-  return (
-    <FormProvider {...props}>
-      {children}
-    </FormProvider>
-  );
+  return <FormProvider {...props}>{children}</FormProvider>;
 }
 
 type FormFieldContextValue<
@@ -126,10 +122,7 @@ function FormControl({ ...props }: React.ComponentProps<typeof Slot>) {
   );
 }
 
-function FormDescription({
-  className,
-  ...props
-}: React.ComponentProps<"p">) {
+function FormDescription({ className, ...props }: React.ComponentProps<"p">) {
   const { formDescriptionId } = useFormField();
 
   return (
@@ -142,10 +135,7 @@ function FormDescription({
   );
 }
 
-function FormMessage({
-  className,
-  ...props
-}: React.ComponentProps<"p">) {
+function FormMessage({ className, ...props }: React.ComponentProps<"p">) {
   const { error, formMessageId } = useFormField();
   const body = error ? String(error?.message ?? "") : props.children;
 

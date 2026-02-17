@@ -37,6 +37,17 @@ export default function Footer() {
           </a>
         </Button>
       </p>
+      <p>
+        <Button variant="link" asChild className="h-auto p-0 text-stremlist">
+          <a
+            href="https://github.com/leo-mathurin/stremlist"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            🔓 Proudly open source — come see how it&apos;s made
+          </a>
+        </Button>
+      </p>
       <iframe
         src="https://status.stremlist.com/badge?theme=light"
         title="Stremlist Status"
