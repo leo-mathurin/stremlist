@@ -32,6 +32,7 @@
   "devDependencies": {
     "@hono/eslint-config": "^2.0.6",
     "@types/node": "^20.11.17",
+    "dotenv": "^17.3.1",
     "eslint": "^9.39.2",
     "tsx": "^4.7.1",
     "typescript": "^5.8.3"

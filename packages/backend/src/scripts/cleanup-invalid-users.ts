@@ -1,6 +1,26 @@
 import { IMDB_USER_AGENT } from "@stremlist/shared";
-import { supabase } from "../lib/supabase";
+import type { Database } from "@stremlist/shared";
+import { createClient } from "@supabase/supabase-js";
+import { config } from "dotenv";
+import path from "path";
 
+console.log("Starting cleanup...");
+
+// eslint-disable-next-line @typescript-eslint/no-unsafe-call
+config({
+  path: path.join(import.meta.dirname, "..", "..", ".env"),
+});
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseServiceRoleKey) {
+  throw new Error(
+    "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables",
+  );
+}
+
+const supabase = createClient<Database>(supabaseUrl, supabaseServiceRoleKey);
 const IMDB_USER_ID_REGEX = /^ur\d{4,}$/;
 const DEFAULT_DELAY_MS = 1500;
 const DEFAULT_TIMEOUT_MS = 12000;
