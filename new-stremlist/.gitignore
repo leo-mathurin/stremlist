@@ -1,0 +1,18 @@
+# Turborepo
+.turbo/
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Misc
+.DS_Store
+*.log

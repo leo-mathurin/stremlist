@@ -1,0 +1,38 @@
+{
+  "name": "stremlist",
+  "version": "1.3.0",
+  "private": true,
+  "description": "Stremlist - Sync your IMDb watchlist with Stremio",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leo-mathurin/imdb-watchlist-stremio.git"
+  },
+  "keywords": [
+    "stremio",
+    "addon",
+    "imdb",
+    "watchlist",
+    "stremlist"
+  ],
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/leo-mathurin/imdb-watchlist-stremio/issues"
+  },
+  "homepage": "https://github.com/leo-mathurin/imdb-watchlist-stremio#readme",
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:backend": "turbo run dev --filter=@stremlist/backend",
+    "dev:frontend": "turbo run dev --filter=frontend",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "generate:types": "pnpm supabase gen types typescript --project-id igbmxubzxjfdbgmawrtr --schema public > packages/shared/src/database.types.ts"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "pnpm@10.13.1",
+  "devDependencies": {
+    "turbo": "^2.8.9"
+  }
+}
