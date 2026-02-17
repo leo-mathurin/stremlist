@@ -6,7 +6,6 @@ import path from "path";
 
 console.log("Starting cleanup...");
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-call
 config({
   path: path.join(import.meta.dirname, "..", "..", ".env"),
 });

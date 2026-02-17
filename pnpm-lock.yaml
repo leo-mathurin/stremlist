@@ -12,7 +12,7 @@ importers:
         specifier: ^2.8.9
         version: 2.8.9
 
-  packages/backend:
+  apps/backend:
     dependencies:
       '@hono/node-server':
         specifier: ^1.19.9
@@ -22,7 +22,7 @@ importers:
         version: 0.4.3(hono@4.11.9)(zod@3.25.76)
       '@stremlist/shared':
         specifier: workspace:*
-        version: link:../shared
+        version: link:../../packages/shared
       '@supabase/supabase-js':
         specifier: ^2.95.3
         version: 2.95.3
@@ -64,7 +64,7 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
-  packages/frontend:
+  apps/frontend:
     dependencies:
       '@hookform/resolvers':
         specifier: ^5.2.2
@@ -80,7 +80,7 @@ importers:
         version: 1.2.4(@types/react@19.2.14)(react@19.2.4)
       '@stremlist/shared':
         specifier: workspace:*
-        version: link:../shared
+        version: link:../../packages/shared
       '@supabase/supabase-js':
         specifier: ^2.95.3
         version: 2.95.3
@@ -175,6 +175,10 @@ importers:
       type-fest:
         specifier: ^4.41.0
         version: 4.41.0
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
 
 packages:
 

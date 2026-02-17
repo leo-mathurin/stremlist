@@ -22,7 +22,7 @@
   "scripts": {
     "dev": "turbo run dev",
     "dev:backend": "turbo run dev --filter=@stremlist/backend",
-    "dev:frontend": "turbo run dev --filter=frontend",
+    "dev:frontend": "turbo run dev --filter=@stremlist/frontend",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "format": "turbo run format",
