@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Link } from "react-router";
 import { Copy, Check } from "lucide-react";
-import { api, BACKEND_URL } from "../lib/api";
+import { api } from "../lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,7 +20,7 @@ function getInitialUserId(): string {
 }
 
 function buildUrls(imdbId: string) {
-  const addonUrl = `${BACKEND_URL}/${imdbId}/manifest.json`;
+  const addonUrl = `${import.meta.env.VITE_BACKEND_URL}/${imdbId}/manifest.json`;
   const webUrl = `https://web.stremio.com/#/addons?addon=${encodeURIComponent(addonUrl)}`;
   const stremioUrl = `stremio://${addonUrl.replace(/^https?:\/\//, "")}`;
   return { addonUrl, webUrl, stremioUrl };
