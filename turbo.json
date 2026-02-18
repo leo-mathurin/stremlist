@@ -9,7 +9,12 @@
       "cache": false,
       "persistent": true
     },
-    "lint": {},
+    "transit": {
+      "dependsOn": ["^transit"]
+    },
+    "lint": {
+      "dependsOn": ["transit"]
+    },
     "format": {},
     "format:check": {},
     "typecheck": {

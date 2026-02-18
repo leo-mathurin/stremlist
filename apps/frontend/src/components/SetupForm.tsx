@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Link } from "react-router";
 import { Copy, Check } from "lucide-react";
-import { api } from "../lib/api";
+import { api, BACKEND_URL } from "../lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,8 +12,6 @@ function extractImdbId(text: string): string {
   const match = text.match(/ur\d+/);
   return match ? match[0] : "";
 }
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? window.location.origin;
 
 function getInitialUserId(): string {
   const params = new URLSearchParams(window.location.search);
