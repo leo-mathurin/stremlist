@@ -2,60 +2,88 @@ import { Link } from "react-router";
 import NewsletterForm from "./NewsletterForm";
 import { Button } from "@/components/ui/button";
 
+const NAV_LINKS = [
+  { label: "Terms", to: "/terms", internal: true },
+  { label: "Changelog", to: "/changelog", internal: true },
+  {
+    label: "Source code",
+    to: "https://github.com/leo-mathurin/stremlist",
+    internal: false,
+  },
+  { label: "Contact", to: "mailto:lelemathrin69@gmail.com", internal: false },
+];
+
 export default function Footer() {
   return (
-    <footer className="mt-8 pt-6 border-t border-gray-200 text-center text-sm text-gray-500 space-y-3">
+    <footer className="mt-8 pt-6 border-t border-gray-200">
       <NewsletterForm />
-      <p>
-        Have questions or suggestions? Contact me at{" "}
-        <Button variant="link" asChild className="h-auto p-0 text-stremlist">
-          <a href="mailto:lelemathrin69@gmail.com">lelemathrin69@gmail.com</a>
-        </Button>
-      </p>
-      <p>
-        This addon is not affiliated with IMDb or Stremio. It&apos;s a community
-        project.
-      </p>
-      <p>
-        <Button variant="link" asChild className="h-auto p-0 text-stremlist">
-          <Link to="/terms">Terms and Privacy Policy</Link>
-        </Button>
-        {" | "}
-        <Button variant="link" asChild className="h-auto p-0 text-stremlist">
-          <Link to="/changelog">Changelog</Link>
-        </Button>
-      </p>
-      <p>&copy; 2025 - IMDb Watchlist for Stremio</p>
-      <p>
-        <Button variant="link" asChild className="h-auto p-0 text-stremlist">
-          <a
-            href="https://ko-fi.com/lelemathrin"
-            target="_blank"
-            rel="noopener noreferrer"
+
+      <div className="mt-6 space-y-3 text-center">
+        {/* Nav row */}
+        <nav className="flex flex-wrap items-center justify-center gap-x-1 gap-y-1">
+          {NAV_LINKS.map((link, i) => (
+            <span key={link.label} className="flex items-center">
+              {i !== 0 && (
+                <span className="text-gray-300 select-none mx-2">·</span>
+              )}
+              <Button
+                variant="link"
+                asChild
+                className="h-auto p-0 text-sm text-gray-500 hover:text-stremlist"
+              >
+                {link.internal ? (
+                  <Link to={link.to}>{link.label}</Link>
+                ) : (
+                  <a
+                    href={link.to}
+                    target={link.to.startsWith("mailto") ? undefined : "_blank"}
+                    rel={
+                      link.to.startsWith("mailto")
+                        ? undefined
+                        : "noopener noreferrer"
+                    }
+                  >
+                    {link.label}
+                  </a>
+                )}
+              </Button>
+            </span>
+          ))}
+        </nav>
+
+        {/* Support + status row */}
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Button
+            variant="link"
+            asChild
+            className="h-auto p-0 text-sm text-gray-400 hover:text-stremlist"
           >
-            ❤️ Like this project? Buy me a coffee
-          </a>
-        </Button>
-      </p>
-      <p>
-        <Button variant="link" asChild className="h-auto p-0 text-stremlist">
-          <a
-            href="https://github.com/leo-mathurin/stremlist"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            🔓 Proudly open source — come see how it&apos;s made
-          </a>
-        </Button>
-      </p>
-      <iframe
-        src="https://status.stremlist.com/badge?theme=light"
-        title="Stremlist Status"
-        width={250}
-        height={30}
-        className="mx-auto pl-7"
-        style={{ colorScheme: "normal" }}
-      />
+            <a
+              href="https://ko-fi.com/lelemathrin"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              ❤️ Buy me a coffee
+            </a>
+          </Button>
+          <span className="text-gray-300 select-none">·</span>
+          <div className="shrink-0 overflow-hidden" style={{ width: 200 }}>
+            <iframe
+              src="https://status.stremlist.com/badge?theme=light"
+              title="Stremlist Status"
+              width={250}
+              height={30}
+              style={{ colorScheme: "normal" }}
+            />
+          </div>
+        </div>
+
+        {/* Copyright */}
+        <p className="text-xs text-gray-400">
+          © 2025 IMDb Watchlist for Stremio &mdash; not affiliated with IMDb or
+          Stremio
+        </p>
+      </div>
     </footer>
   );
 }

@@ -7,7 +7,7 @@ export default function Terms() {
       <Header />
 
       <main className="space-y-8">
-        <Link to="/" className="text-accent hover:underline text-sm">
+        <Link to="/" className="text-stremlist hover:underline text-sm">
           &larr; Back to Home
         </Link>
 
@@ -101,7 +101,7 @@ export default function Terms() {
                 If you have any questions about these Terms, please contact{" "}
                 <a
                   href="mailto:lelemathrin69@gmail.com"
-                  className="text-accent hover:underline"
+                  className="text-stremlist hover:underline"
                 >
                   lelemathrin69@gmail.com
                 </a>
@@ -250,7 +250,7 @@ export default function Terms() {
                 contact us at{" "}
                 <a
                   href="mailto:lelemathrin69@gmail.com"
-                  className="text-accent hover:underline"
+                  className="text-stremlist hover:underline"
                 >
                   lelemathrin69@gmail.com
                 </a>
@@ -263,7 +263,7 @@ export default function Terms() {
 
       <footer className="mt-8 pt-6 border-t border-gray-200 text-center text-sm text-gray-500 space-y-2">
         <p>
-          <Link to="/" className="text-accent hover:underline">
+          <Link to="/" className="text-stremlist hover:underline">
             Return to Home
           </Link>
         </p>
