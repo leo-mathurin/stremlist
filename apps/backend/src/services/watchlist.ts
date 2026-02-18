@@ -1,8 +1,8 @@
 import { CACHE_TTL_MS, parseSortOption } from "@stremlist/shared";
 import type { WatchlistData, SortOptions } from "@stremlist/shared";
-import { supabase } from "../lib/supabase";
-import { fetchWatchlist } from "./imdb-scraper";
-import { ensureUser, getUserSortOption } from "./user";
+import { supabase } from "../lib/supabase.js";
+import { fetchWatchlist } from "./imdb-scraper.js";
+import { ensureUser, getUserSortOption } from "./user.js";
 
 async function getCachedWatchlist(
   userId: string,

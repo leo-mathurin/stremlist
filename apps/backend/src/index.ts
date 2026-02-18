@@ -1,11 +1,10 @@
-import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import api from "./routes/api";
-import catalog from "./routes/catalog";
-import manifest from "./routes/manifest";
-import meta from "./routes/meta";
+import api from "./routes/api.js";
+import catalog from "./routes/catalog.js";
+import manifest from "./routes/manifest.js";
+import meta from "./routes/meta.js";
 
 const app = new Hono();
 
@@ -26,10 +25,5 @@ app.get("/:userId/configure", (c) => {
 
 app.get("/health", (c) => c.json({ status: "ok" }));
 
-const port = parseInt(process.env.PORT ?? "7001", 10);
-
-serve({ fetch: app.fetch, port }, (info) => {
-  console.log(`Stremlist backend running on http://localhost:${info.port}`);
-});
-
-export type { ApiRoutes } from "./routes/api";
+export default app;
+export type { ApiRoutes } from "./routes/api.js";

@@ -4,15 +4,15 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./src/index.ts"
+      "default": "./dist/index.js"
     },
     "./client": {
       "types": "./dist/client.d.ts",
-      "default": "./src/client.ts"
+      "default": "./dist/client.js"
     }
   },
   "scripts": {
-    "dev": "tsx watch --env-file=.env src/index.ts",
+    "dev": "tsx watch --env-file=.env src/dev.ts",
     "build": "tsc",
     "lint": "eslint .",
     "format": "prettier . --write",
@@ -22,7 +22,6 @@
     "cleanup:invalid-users": "tsx src/scripts/cleanup-invalid-users.ts"
   },
   "dependencies": {
-    "@hono/node-server": "^1.19.9",
     "@hono/zod-validator": "^0.4.3",
     "@stremlist/shared": "workspace:*",
     "@supabase/supabase-js": "^2.95.3",
@@ -32,6 +31,7 @@
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@hono/node-server": "^1.19.9",
     "@hono/eslint-config": "^2.0.6",
     "@types/node": "^20.11.17",
     "dotenv": "^17.3.1",

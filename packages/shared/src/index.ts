@@ -4,7 +4,7 @@ export type {
   Tables,
   TablesInsert,
   TablesUpdate,
-} from "./database.types.extended"
+} from "./database.types.extended.js"
 
 export type {
   WatchlistData,
@@ -13,7 +13,7 @@ export type {
   StremioCatalog,
   StremioResource,
   StremioConfigOption,
-} from "./stremio.types"
+} from "./stremio.types.js"
 
 export {
   APP_NAME,
@@ -28,6 +28,6 @@ export {
   CACHE_TTL_MS,
   IMDB_USER_AGENT,
   BASE_MANIFEST,
-} from "./constants"
+} from "./constants.js"
 
-export type { SortField, SortOrder, SortOptions } from "./constants"
+export type { SortField, SortOrder, SortOptions } from "./constants.js"

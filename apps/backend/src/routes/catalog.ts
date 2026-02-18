@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getWatchlist } from "../services/watchlist";
+import { getWatchlist } from "../services/watchlist.js";
 
 const catalog = new Hono();
 
