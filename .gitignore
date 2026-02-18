@@ -1,19 +1,18 @@
-/node_modules
-/dist
-/build
-/coverage
-/logs
-/tmp
+# Turborepo
+.turbo/
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+
+# Env
 .env
-docker.env
-nginx/ssl/key.pem
-nginx/ssl/cert.pem
+.env.*
+!.env.example
 
-# Deployment logs
-deployment.log
-
-.venv
-__pycache__
-
-/postman
-/.postman
+# Misc
+.DS_Store
+*.log
