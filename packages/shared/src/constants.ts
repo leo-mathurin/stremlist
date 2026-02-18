@@ -1,4 +1,4 @@
-import type { StremioManifest } from "./stremio.types.js"
+import type { StremioManifest } from "./stremio.types"
 
 export const APP_NAME = "Stremlist"
 export const ADDON_VERSION = "1.3.0"

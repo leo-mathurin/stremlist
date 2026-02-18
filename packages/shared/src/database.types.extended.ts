@@ -1,8 +1,8 @@
 import type { MergeDeep } from "type-fest"
-import type { WatchlistData } from "./stremio.types.js"
-import type { Database as PostgresSchema } from "./database.types.js"
+import type { WatchlistData } from "./stremio.types"
+import type { Database as PostgresSchema } from "./database.types"
 
-export type { Json } from "./database.types.js"
+export type { Json } from "./database.types"
 
 export type Database = MergeDeep<
   PostgresSchema,

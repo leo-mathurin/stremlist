@@ -2,14 +2,14 @@ import { zValidator } from "@hono/zod-validator";
 import { SORT_OPTIONS, IMDB_USER_AGENT } from "@stremlist/shared";
 import { Hono } from "hono";
 import { z } from "zod";
-import { resend } from "../lib/resend.js";
-import { supabase } from "../lib/supabase.js";
+import { resend } from "../lib/resend";
+import { supabase } from "../lib/supabase";
 import {
   getUser,
   getUserSortOption,
   setUserSortOption,
-} from "../services/user.js";
-import { invalidateWatchlistCache } from "../services/watchlist.js";
+} from "../services/user";
+import { invalidateWatchlistCache } from "../services/watchlist";
 
 const userIdParam = z.object({ userId: z.string().regex(/^ur\d{4,}$/) });
 

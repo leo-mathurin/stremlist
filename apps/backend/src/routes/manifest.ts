@@ -6,7 +6,7 @@ import {
 } from "@stremlist/shared";
 import type { StremioManifest } from "@stremlist/shared";
 import { Hono } from "hono";
-import { ensureUser, getUserSortOption } from "../services/user.js";
+import { ensureUser, getUserSortOption } from "../services/user";
 
 const manifest = new Hono();
 

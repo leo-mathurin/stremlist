@@ -1,10 +1,10 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import api from "./routes/api.js";
-import catalog from "./routes/catalog.js";
-import manifest from "./routes/manifest.js";
-import meta from "./routes/meta.js";
+import api from "./routes/api";
+import catalog from "./routes/catalog";
+import manifest from "./routes/manifest";
+import meta from "./routes/meta";
 
 const app = new Hono();
 
@@ -26,4 +26,4 @@ app.get("/:userId/configure", (c) => {
 app.get("/health", (c) => c.json({ status: "ok" }));
 
 export default app;
-export type { ApiRoutes } from "./routes/api.js";
+export type { ApiRoutes } from "./routes/api";

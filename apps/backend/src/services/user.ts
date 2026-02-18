@@ -1,5 +1,5 @@
 import type { Tables } from "@stremlist/shared";
-import { supabase } from "../lib/supabase.js";
+import { supabase } from "../lib/supabase";
 
 type User = Tables<"users">;
 

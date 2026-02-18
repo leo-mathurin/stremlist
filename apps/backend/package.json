@@ -13,7 +13,7 @@
   },
   "scripts": {
     "dev": "tsx watch --env-file=.env src/dev.ts",
-    "build": "tsc",
+    "build": "tsx build.ts",
     "lint": "eslint .",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
@@ -33,6 +33,7 @@
   "devDependencies": {
     "@hono/node-server": "^1.19.9",
     "@hono/eslint-config": "^2.0.6",
+    "esbuild": "^0.25.0",
     "@types/node": "^20.11.17",
     "dotenv": "^17.3.1",
     "eslint": "^9.39.2",
