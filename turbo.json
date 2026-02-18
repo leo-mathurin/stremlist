@@ -4,6 +4,7 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**"],
+      "env": ["VITE_BACKEND_URL", "VERCEL_RELATED_PROJECTS"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"]
     },
     "dev": {

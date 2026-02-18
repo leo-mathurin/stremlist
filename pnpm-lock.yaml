@@ -145,6 +145,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.2.3
         version: 19.2.3(@types/react@19.2.14)
+      '@vercel/related-projects':
+        specifier: ^1.0.0
+        version: 1.0.0
       '@vitejs/plugin-react':
         specifier: ^5.1.1
         version: 5.1.4(vite@7.3.1(@types/node@24.10.13)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0))
@@ -1457,6 +1460,9 @@ packages:
     resolution: {integrity: sha512-lrW200hZdbfRtztbygyaq/6jP6AKE8qQN2KvPcJ+x7wiD038YtnYtZ82IMNJ69GJibV7bwL3y9FgK+5w/pYt6g==}
     cpu: [x64]
     os: [win32]
+
+  '@vercel/related-projects@1.0.0':
+    resolution: {integrity: sha512-wGk91hdzpQMMSTCE9q6q5caKWMse9OzH3IeeC83SBZ/ZprvjPSusgftYBrbkDehV0gytRd22MFzYFaSwbVYiDw==}
 
   '@vitejs/plugin-react@5.1.4':
     resolution: {integrity: sha512-VIcFLdRi/VYRU8OL/puL7QXMYafHmqOnwTZY50U1JPlCNj30PxCMx65c494b1K9be9hX83KVt0+gTEwTWLqToA==}
@@ -3488,6 +3494,10 @@ snapshots:
 
   '@unrs/resolver-binding-win32-x64-msvc@1.11.1':
     optional: true
+
+  '@vercel/related-projects@1.0.0':
+    optionalDependencies:
+      ajv: 6.12.6
 
   '@vitejs/plugin-react@5.1.4(vite@7.3.1(@types/node@24.10.13)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0))':
     dependencies:
