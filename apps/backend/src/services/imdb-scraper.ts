@@ -56,7 +56,7 @@ interface ProcessedItem {
   cast: string[];
 }
 
-async function getImdbWatchlist(userId: string): Promise<ImdbEdge[] | null> {
+export async function getImdbWatchlist(userId: string): Promise<ImdbEdge[] | null> {
   const url = `https://www.imdb.com/user/${userId}/watchlist/`;
 
   const response = await fetch(url, {
