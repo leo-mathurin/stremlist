@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router";
+import { motion } from "motion/react";
 import Header from "../components/Header";
 import SetupForm from "../components/SetupForm";
 import Footer from "../components/Footer";
@@ -28,18 +29,20 @@ export default function Home() {
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
             Connect IMDb to Stremio
           </h2>
-          <p className="text-lg text-gray-500">
-            {userCount !== null ? (
-              <>
-                <span className="text-blue-600">
-                  Powering {userCount.toLocaleString()}
-                </span>{" "}
-                watchlists so far...
-              </>
-            ) : (
-              "\u00A0"
-            )}
-          </p>
+          {userCount !== null ? (
+            <motion.p
+              className="text-lg text-gray-500"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            >
+              <span className="text-blue-600">
+                Powering {userCount.toLocaleString()} watchlists so far...
+              </span>
+            </motion.p>
+          ) : (
+            <div className="flex items-center justify-center gap-0.5 h-7"></div>
+          )}
           <p className="text-gray-600">
             Stremlist brings your IMDb watchlist directly into Stremio.
           </p>
