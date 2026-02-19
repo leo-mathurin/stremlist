@@ -1,10 +1,43 @@
-import { IMDB_USER_AGENT, DEFAULT_SORT_OPTIONS } from "@stremlist/shared";
+import { DEFAULT_SORT_OPTIONS } from "@stremlist/shared";
 import type {
   SortOptions,
   StremioMeta,
   WatchlistData,
 } from "@stremlist/shared";
-import { parseHTML } from "linkedom";
+
+const GRAPHQL_ENDPOINT = "https://api.graphql.imdb.com/";
+const GRAPHQL_CLIENT_NAME = "imdb-next-desktop";
+
+const WATCHLIST_QUERY = `
+  query WatchListPage($urConst: ID!, $first: Int!) {
+    predefinedList(classType: WATCH_LIST, userId: $urConst) {
+      id
+      visibility { id }
+      titleListItemSearch(first: $first) {
+        total
+        edges {
+          listItem: title {
+            id
+            titleText { text }
+            titleType { text }
+            releaseYear { year }
+            ratingsSummary { aggregateRating }
+            titleGenres { genres { genre { text } } }
+            plot { plotText { plainText } }
+            primaryImage { url }
+            runtime { seconds }
+            principalCredits {
+              category { id }
+              credits(limit: 5) {
+                name { nameText { text } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
 
 interface ImdbEdge {
   listItem: {
@@ -28,18 +61,18 @@ interface ImdbEdge {
   };
 }
 
-interface ImdbNextData {
-  props?: {
-    pageProps?: {
-      mainColumnData?: {
-        predefinedList?: {
-          titleListItemSearch?: {
-            edges?: ImdbEdge[];
-          };
-        };
+interface GraphQLResponse {
+  data?: {
+    predefinedList?: {
+      id: string;
+      visibility?: { id: string };
+      titleListItemSearch?: {
+        total: number;
+        edges?: ImdbEdge[];
       };
-    };
+    } | null;
   };
+  errors?: { message: string }[];
 }
 
 interface ProcessedItem {
@@ -56,21 +89,20 @@ interface ProcessedItem {
   cast: string[];
 }
 
-export async function getImdbWatchlist(userId: string): Promise<ImdbEdge[] | null> {
-  const url = `https://www.imdb.com/user/${userId}/watchlist/`;
-
-  const response = await fetch(url, {
+export async function getImdbWatchlist(
+  userId: string,
+): Promise<ImdbEdge[]> {
+  const response = await fetch(GRAPHQL_ENDPOINT, {
+    method: "POST",
     headers: {
-      "User-Agent": IMDB_USER_AGENT,
-      Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.9",
-      Connection: "keep-alive",
-      "Upgrade-Insecure-Requests": "1",
-      "Sec-Fetch-Dest": "document",
-      "Sec-Fetch-Mode": "navigate",
-      "Sec-Fetch-Site": "none",
+      "Content-Type": "application/json",
+      "x-imdb-client-name": GRAPHQL_CLIENT_NAME,
     },
+    body: JSON.stringify({
+      operationName: "WatchListPage",
+      query: WATCHLIST_QUERY,
+      variables: { urConst: userId, first: 5000 },
+    }),
   });
 
   if (!response.ok) {
@@ -79,52 +111,29 @@ export async function getImdbWatchlist(userId: string): Promise<ImdbEdge[] | nul
     );
   }
 
-  const html = await response.text();
-  const { document } = parseHTML(html);
+  const json = (await response.json()) as GraphQLResponse;
 
-  const pageTitle = document.title;
-  if (pageTitle.toLowerCase().includes("private list")) {
+  if (json.errors?.length) {
+    throw new Error(
+      "Could not find an IMDb watchlist for this ID. Please check and try again.",
+    );
+  }
+
+  const list = json.data?.predefinedList;
+
+  if (!list) {
+    throw new Error(
+      "Could not find an IMDb watchlist for this ID. Please check and try again.",
+    );
+  }
+
+  if (list.visibility?.id === "PRIVATE") {
     throw new Error(
       "This IMDb watchlist is private. Please make your watchlist public in your IMDb settings.",
     );
   }
 
-  const nextDataScript = document.querySelector('script[id="__NEXT_DATA__"]');
-  if (!nextDataScript) {
-    throw new Error(
-      "Could not find an IMDb watchlist for this ID. Please check and try again.",
-    );
-  }
-
-  const nextData = JSON.parse(nextDataScript.textContent) as ImdbNextData;
-
-  const pageProps = nextData.props?.pageProps;
-  if (!pageProps) {
-    throw new Error(
-      "Could not find an IMDb watchlist for this ID. Please check and try again.",
-    );
-  }
-
-  if (!pageProps.mainColumnData?.predefinedList) {
-    throw new Error(
-      "Could not find an IMDb watchlist for this ID. Please check and try again.",
-    );
-  }
-
-  const titleListItemSearch =
-    pageProps.mainColumnData.predefinedList.titleListItemSearch;
-  if (!titleListItemSearch) {
-    throw new Error(
-      "This IMDb watchlist is private. Please make your watchlist public in your IMDb settings.",
-    );
-  }
-
-  const edges = titleListItemSearch.edges ?? [];
-  if (edges.length === 0) {
-    return null;
-  }
-
-  return edges;
+  return list.titleListItemSearch?.edges ?? [];
 }
 
 function processWatchlist(edges: ImdbEdge[]): ProcessedItem[] {
@@ -281,12 +290,6 @@ export async function fetchWatchlist(
 
   const edges = await getImdbWatchlist(imdbUserId);
 
-  if (!edges) {
-    throw new Error(
-      "Could not find an IMDb watchlist for this ID. Please check and try again.",
-    );
-  }
-
   console.log(
     `Raw watchlist data received from IMDb for user ${imdbUserId} (${edges.length} items)`,
   );
@@ -302,6 +305,12 @@ export async function fetchWatchlist(
   console.log(
     `Converted ${metas.length} items to Stremio format (sorted by ${sortOptions.by}, ${sortOptions.order})`,
   );
+
+  if (metas.length === 0) {
+    throw new Error(
+      "This watchlist appears to be empty or may not contain any compatible movies or series.",
+    );
+  }
 
   return { metas };
 }
