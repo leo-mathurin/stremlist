@@ -1,8 +1,8 @@
-import { IMDB_USER_AGENT } from "@stremlist/shared";
 import type { Database } from "@stremlist/shared";
 import { createClient } from "@supabase/supabase-js";
 import { config } from "dotenv";
 import path from "path";
+import { getImdbWatchlist } from "../services/imdb-scraper";
 
 console.log("Starting cleanup...");
 
@@ -104,28 +104,20 @@ async function validateUserId(
     return { userId, valid: false, reason: "bad_format" };
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => {
-    controller.abort();
-  }, timeoutMs);
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => {
+      reject(new Error("timeout"));
+    }, timeoutMs),
+  );
 
   try {
-    const res = await fetch(`https://www.imdb.com/user/${userId}/watchlist/`, {
-      method: "HEAD",
-      headers: { "User-Agent": IMDB_USER_AGENT },
-      redirect: "follow",
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      return { userId, valid: false, reason: "imdb_not_found" };
-    }
-
+    await Promise.race([getImdbWatchlist(userId), timeoutPromise]);
     return { userId, valid: true };
-  } catch {
-    return { userId, valid: false, reason: "network_error" };
-  } finally {
-    clearTimeout(timeout);
+  } catch (error) {
+    if (error instanceof Error && error.message === "timeout") {
+      return { userId, valid: false, reason: "network_error" };
+    }
+    return { userId, valid: false, reason: "imdb_not_found" };
   }
 }
 

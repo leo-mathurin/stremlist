@@ -94,7 +94,7 @@ function printMetrics(label: string, results: RequestResult[]): void {
 
   console.log(`\n${"─".repeat(60)}`);
   console.log(`Phase: ${label}`);
-  console.log(`${"─".repeat(60)}`);
+  console.log("─".repeat(60));
   console.log(`Requests : ${results.length}`);
   console.log(
     `Success  : ${results.length - errors.length} / ${results.length} (${((1 - errorRate) * 100).toFixed(1)}%)`,
@@ -175,5 +175,4 @@ describe(
       expect(percentile(durations, 95)).toBeLessThan(MAX_P95_MS);
     });
   },
-  { timeout: 300_000 },
 );
