@@ -27,6 +27,7 @@
     "lint": "turbo run lint",
     "format": "turbo run format",
     "format:check": "turbo run format:check",
+    "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "generate:types": "pnpm supabase gen types typescript --project-id igbmxubzxjfdbgmawrtr --schema public > packages/shared/src/database.types.ts"
   },

@@ -180,7 +180,7 @@ const api = new Hono()
 
       await fetch(heartbeatUrl);
 
-      return c.json({ ok: true, items: edges?.length ?? 0 });
+      return c.json({ ok: true, items: edges.length });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
 

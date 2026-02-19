@@ -18,6 +18,8 @@
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "start": "node dist/index.js",
+    "test": "vitest run --exclude '**/*.stress.test.ts'",
+    "test:stress": "vitest run src/services/__tests__/imdb-scraper.stress.test.ts",
     "typecheck": "tsc --noEmit",
     "cleanup:invalid-users": "tsx src/scripts/cleanup-invalid-users.ts"
   },
@@ -42,6 +44,7 @@
     "eslint-config-turbo": "^2.8.10",
     "prettier": "^3.8.1",
     "tsx": "^4.7.1",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.18"
   }
 }
