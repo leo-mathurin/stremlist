@@ -1,7 +1,8 @@
 # Stremlist
 
-Stremlist is a Stremio addon that turns your IMDb watchlist into a Stremio catalog, so you can browse your saved movies and TV shows directly inside Stremio.
+![Stremlist OG Image](https://stremlist.com/og-image.png)
 
+Stremlist is a Stremio addon that turns your IMDb watchlist into a Stremio catalog, so you can browse your saved movies and TV shows directly inside Stremio.
 ## Features
 
 - Browse IMDb watchlist items in Stremio
