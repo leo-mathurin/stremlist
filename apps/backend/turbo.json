@@ -7,9 +7,12 @@
         "SUPABASE_URL",
         "SUPABASE_SERVICE_ROLE_KEY",
         "RESEND_API_KEY",
-        "RESEND_AUDIENCE_ID",
+        "RESEND_AUDIENCE_ID"
+      ],
+      "passThroughEnv": [
         "BETTERSTACK_HEARTBEAT_URL",
-        "MONITOR_IMDB_USER_ID"
+        "MONITOR_IMDB_USER_ID",
+        "CRON_SECRET"
       ]
     }
   }
