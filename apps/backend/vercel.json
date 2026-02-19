@@ -1,0 +1,5 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "outputDirectory": "dist",
+  "relatedProjects": ["prj_mfYFWq0aaOF7c8NLhM6AXZddFVz5"]
+}

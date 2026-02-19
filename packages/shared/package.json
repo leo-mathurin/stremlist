@@ -8,12 +8,15 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "type-fest": "^4.41.0"
   },
   "devDependencies": {
+    "@stremlist/eslint-config": "workspace:*",
+    "eslint": "^9.39.2",
     "typescript": "^5.8.3"
   }
 }

@@ -1,9 +1,9 @@
-import baseConfig from "@hono/eslint-config";
-import eslintConfigPrettier from "eslint-config-prettier/flat";
+import honoConfig from "@stremlist/eslint-config/hono";
+import prettier from "eslint-config-prettier/flat";
 
 export default [
-  { ignores: ["dist/**", "eslint.config.mjs"] },
-  ...baseConfig,
+  { ignores: ["dist/**", "eslint.config.mjs", "build.ts"] },
+  ...honoConfig,
   {
     languageOptions: {
       parserOptions: {
@@ -15,5 +15,5 @@ export default [
       curly: ["error", "multi-line"],
     },
   },
-  eslintConfigPrettier,
+  prettier,
 ];

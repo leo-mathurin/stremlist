@@ -1,0 +1,5 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "relatedProjects": ["prj_fVi6V61cW0jAnYhC7FJLOAH0Xzug"],
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}

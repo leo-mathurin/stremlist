@@ -4,16 +4,16 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "default": "./src/index.ts"
+      "default": "./dist/index.js"
     },
     "./client": {
       "types": "./dist/client.d.ts",
-      "default": "./src/client.ts"
+      "default": "./dist/client.js"
     }
   },
   "scripts": {
-    "dev": "tsx watch --env-file=.env src/index.ts",
-    "build": "tsc",
+    "dev": "tsx watch --env-file=.env src/dev.ts",
+    "build": "tsx build.ts",
     "lint": "eslint .",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
@@ -22,21 +22,24 @@
     "cleanup:invalid-users": "tsx src/scripts/cleanup-invalid-users.ts"
   },
   "dependencies": {
-    "@hono/node-server": "^1.19.9",
     "@hono/zod-validator": "^0.4.3",
     "@stremlist/shared": "workspace:*",
     "@supabase/supabase-js": "^2.95.3",
+    "@vercel/related-projects": "^1.0.0",
     "hono": "^4.11.9",
     "linkedom": "^0.18.9",
     "resend": "^6.9.2",
     "zod": "^3.25.0"
   },
   "devDependencies": {
-    "@hono/eslint-config": "^2.0.6",
+    "@hono/node-server": "^1.19.9",
+    "@stremlist/eslint-config": "workspace:*",
     "@types/node": "^20.11.17",
     "dotenv": "^17.3.1",
+    "esbuild": "^0.25.0",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-config-turbo": "^2.8.10",
     "prettier": "^3.8.1",
     "tsx": "^4.7.1",
     "typescript": "^5.8.3"

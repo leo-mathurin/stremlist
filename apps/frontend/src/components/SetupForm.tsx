@@ -13,8 +13,6 @@ function extractImdbId(text: string): string {
   return match ? match[0] : "";
 }
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? window.location.origin;
-
 function getInitialUserId(): string {
   const params = new URLSearchParams(window.location.search);
   const userId = params.get("userId");
@@ -22,7 +20,7 @@ function getInitialUserId(): string {
 }
 
 function buildUrls(imdbId: string) {
-  const addonUrl = `${BACKEND_URL}/${imdbId}/manifest.json`;
+  const addonUrl = `${import.meta.env.VITE_BACKEND_URL}/${imdbId}/manifest.json`;
   const webUrl = `https://web.stremio.com/#/addons?addon=${encodeURIComponent(addonUrl)}`;
   const stremioUrl = `stremio://${addonUrl.replace(/^https?:\/\//, "")}`;
   return { addonUrl, webUrl, stremioUrl };
