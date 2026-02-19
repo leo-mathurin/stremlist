@@ -7,6 +7,7 @@ Stremlist is a Stremio addon that turns your IMDb watchlist into a Stremio catal
 
 - Browse IMDb watchlist items in Stremio
 - Supports both movies and series
+- Supports sorting by title, year, rating, and runtime
 - Simple install flow through a hosted configuration UI
 - Lightweight backend with Supabase caching for watchlist responses
 - Monorepo architecture with Turborepo (`apps` + `packages`)
@@ -67,6 +68,7 @@ From repository root:
 pnpm build
 pnpm typecheck
 pnpm lint
+pnpm test
 pnpm format
 pnpm format:check
 ```

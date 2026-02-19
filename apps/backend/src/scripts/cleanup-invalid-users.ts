@@ -20,9 +20,9 @@ if (!supabaseUrl || !supabaseServiceRoleKey) {
 }
 
 const supabase = createClient<Database>(supabaseUrl, supabaseServiceRoleKey);
-const IMDB_USER_ID_REGEX = /^ur\d{4,}$/;
-const DEFAULT_DELAY_MS = 1500;
-const DEFAULT_TIMEOUT_MS = 12000;
+const IMDB_USER_ID_REGEX = /^ur\d{7,}$/;
+const DEFAULT_DELAY_MS = 300;
+const DEFAULT_TIMEOUT_MS = 8000;
 const BATCH_SIZE = 500;
 
 interface Args {
