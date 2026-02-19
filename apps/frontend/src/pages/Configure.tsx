@@ -149,7 +149,7 @@ export default function Configure() {
           asChild
           className="h-auto p-0 text-stremlist text-sm"
         >
-          <Link to={userId ? `/?userId=${userId}` : "/"}>&larr; Back to Home</Link>
+          <Link to="/">&larr; Back to Home</Link>
         </Button>
 
         <h2 className="text-xl font-bold text-gray-900 mt-4 mb-1">Configure</h2>
@@ -257,7 +257,7 @@ export default function Configure() {
       <footer className="mt-8 pt-6 border-t border-gray-200 text-center text-sm text-gray-500 space-y-2">
         <p>
           <Button variant="link" asChild className="h-auto p-0 text-stremlist">
-            <Link to={userId ? `/?userId=${userId}` : "/"}>Return to Home</Link>
+            <Link to="/">Return to Home</Link>
           </Button>
         </p>
         <p>&copy; 2025 - IMDb Watchlist for Stremio</p>
