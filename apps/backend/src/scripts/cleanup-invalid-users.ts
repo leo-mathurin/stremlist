@@ -1,6 +1,8 @@
+
 import type { Database } from "@stremlist/shared";
 import { createClient } from "@supabase/supabase-js";
 import { config } from "dotenv";
+import { readFileSync, writeFileSync } from "fs";
 import path from "path";
 import { getImdbWatchlist } from "../services/imdb-scraper";
 
@@ -30,6 +32,8 @@ interface Args {
   delayMs: number;
   timeoutMs: number;
   limit: number | null;
+  saveTo: string | null;
+  fromFile: string | null;
 }
 
 interface ValidationResult {
@@ -39,6 +43,11 @@ interface ValidationResult {
 }
 
 function parseArgs(argv: string[]): Args {
+  const getStringFlag = (name: string): string | null => {
+    const index = argv.indexOf(name);
+    return index === -1 ? null : (argv[index + 1] ?? null);
+  };
+
   const getNumberFlag = (name: string, fallback: number): number => {
     const index = argv.indexOf(name);
     if (index === -1) return fallback;
@@ -58,6 +67,8 @@ function parseArgs(argv: string[]): Args {
     delayMs: getNumberFlag("--delay-ms", DEFAULT_DELAY_MS),
     timeoutMs: getNumberFlag("--timeout-ms", DEFAULT_TIMEOUT_MS),
     limit,
+    saveTo: getStringFlag("--save-to"),
+    fromFile: getStringFlag("--from-file"),
   };
 }
 
@@ -149,6 +160,31 @@ async function deleteUsers(userIds: string[]): Promise<void> {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+
+  // --from-file: skip scanning, delete IDs from a saved file
+  if (args.fromFile) {
+    const ids = readFileSync(args.fromFile, "utf8")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+
+    console.log(`Loaded ${ids.length} invalid user IDs from ${args.fromFile}`);
+
+    if (ids.length === 0) {
+      console.log("Nothing to delete.");
+      return;
+    }
+
+    if (!args.apply) {
+      console.log("Dry run only. Pass --apply to delete.");
+      return;
+    }
+
+    await deleteUsers(ids);
+    console.log(`Deleted ${ids.length} users.`);
+    return;
+  }
+
   const ids = await fetchAllUserIds(args.limit);
 
   if (ids.length === 0) {
@@ -195,10 +231,21 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (args.saveTo) {
+    writeFileSync(args.saveTo, invalidToDelete.join("\n") + "\n", "utf8");
+    console.log(`Saved invalid user IDs to ${args.saveTo}`);
+  }
+
   if (!args.apply) {
     console.log("");
     console.log("Dry run only. No rows deleted.");
-    console.log("Run again with --apply to delete invalid users.");
+    if (args.saveTo) {
+      console.log(
+        `Run again with --from-file ${args.saveTo} --apply to delete.`,
+      );
+    } else {
+      console.log("Run again with --apply to delete invalid users.");
+    }
     return;
   }
 
