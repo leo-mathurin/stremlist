@@ -1,3 +1,4 @@
+import { withRelatedProject } from "@vercel/related-projects";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
@@ -19,7 +20,10 @@ app.route("", meta);
 // Stremio sends users here — redirect to frontend
 app.get("/:userId/configure", (c) => {
   const userId = c.req.param("userId");
-  const frontendUrl = process.env.FRONTEND_URL ?? "https://stremlist.com";
+  const frontendUrl = withRelatedProject({
+    projectName: "stremlist-frontend",
+    defaultHost: process.env.FRONTEND_URL ?? "http://localhost:5173",
+  });
   return c.redirect(`${frontendUrl}/configure?userId=${userId}`);
 });
 

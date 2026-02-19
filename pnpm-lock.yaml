@@ -23,6 +23,9 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.95.3
         version: 2.95.3
+      '@vercel/related-projects':
+        specifier: ^1.0.0
+        version: 1.0.0
       hono:
         specifier: ^4.11.9
         version: 4.11.9
