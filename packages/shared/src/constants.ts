@@ -45,9 +45,6 @@ export function parseSortOption(sortOption: string | null | undefined): SortOpti
   return { by: by as SortField, order: order as SortOrder }
 }
 
-/** Cache TTL: 6 hours in milliseconds */
-export const CACHE_TTL_MS = 6 * 60 * 60 * 1000
-
 export const IMDB_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
 

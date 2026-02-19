@@ -10,8 +10,6 @@ import {
   getUserSortOption,
   setUserSortOption,
 } from "../services/user";
-import { invalidateWatchlistCache } from "../services/watchlist";
-
 const userIdParam = z.object({ userId: z.string().regex(/^ur\d{4,}$/) });
 
 const sortOptionValues = SORT_OPTIONS.map((o) => o.value) as [
@@ -77,7 +75,6 @@ const api = new Hono()
       }
 
       await setUserSortOption(userId, sortOption);
-      await invalidateWatchlistCache(userId);
 
       return c.json({ ok: true });
     },

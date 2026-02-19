@@ -163,9 +163,8 @@ export default function Terms() {
                 <li>
                   <strong>Watchlist cache</strong> — A cached copy of your
                   public IMDb watchlist (titles, IDs, metadata) linked to your
-                  IMDb user ID. This cache is regularly updated by our sync
-                  system so your Stremio catalog stays current. Cached data is
-                  overwritten on each sync rather than retained indefinitely.
+                  IMDb user ID. This cache is only used if IMDb is down. Cached
+                  data is overwritten on each request rather than retained.
                 </li>
               </ul>
               <p className="mt-2">

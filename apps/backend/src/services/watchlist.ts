@@ -1,4 +1,4 @@
-import { CACHE_TTL_MS, parseSortOption } from "@stremlist/shared";
+import { parseSortOption } from "@stremlist/shared";
 import type { WatchlistData, SortOptions } from "@stremlist/shared";
 import { supabase } from "../lib/supabase";
 import { fetchWatchlist } from "./imdb-scraper";
@@ -25,17 +25,6 @@ async function getCachedWatchlist(
     data: data.cached_data,
     cachedAt: new Date(data.cached_at),
   };
-}
-
-export async function invalidateWatchlistCache(userId: string): Promise<void> {
-  const { error } = await supabase
-    .from("watchlist_cache")
-    .delete()
-    .eq("imdb_user_id", userId);
-
-  if (error) {
-    console.error(`Failed to invalidate cache for ${userId}:`, error.message);
-  }
 }
 
 async function upsertCache(
@@ -65,37 +54,33 @@ export async function getWatchlist(
   const sortOptionStr = sortOptionOverride ?? (await getUserSortOption(userId));
   const sortOptions = parseSortOption(sortOptionStr);
 
-  const cached = await getCachedWatchlist(userId);
+  try {
+    console.log(`Fetching watchlist from IMDb for ${userId}...`);
+    const fresh = await fetchWatchlist(userId, sortOptions);
+    await Promise.all([
+      upsertCache(userId, fresh),
+      supabase
+        .from("users")
+        .update({ last_fetched_at: new Date().toISOString() })
+        .eq("imdb_user_id", userId),
+    ]);
+    return fresh;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`IMDb fetch failed for ${userId}, trying cache:`, message);
 
-  if (cached) {
-    const age = Date.now() - cached.cachedAt.getTime();
-
-    if (age < CACHE_TTL_MS) {
-      console.log(`Cache hit for ${userId} (age: ${Math.round(age / 60000)}m)`);
+    const cached = await getCachedWatchlist(userId);
+    if (cached) {
+      console.log(`Serving cached watchlist for ${userId} as fallback`);
+      await supabase
+        .from("users")
+        .update({ last_cache_served_at: new Date().toISOString() })
+        .eq("imdb_user_id", userId);
       return resortCachedData(cached.data, sortOptions);
     }
 
-    console.log(
-      `Cache stale for ${userId} (age: ${Math.round(age / 60000)}m), refreshing...`,
-    );
-    try {
-      const fresh = await fetchWatchlist(userId, sortOptions);
-      await upsertCache(userId, fresh);
-      return fresh;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error(
-        `Refresh failed for ${userId}, serving stale cache:`,
-        message,
-      );
-      return resortCachedData(cached.data, sortOptions);
-    }
+    throw new Error(`Failed to fetch watchlist and no cache available: ${message}`);
   }
-
-  console.log(`No cache for ${userId}, fetching from IMDb...`);
-  const fresh = await fetchWatchlist(userId, sortOptions);
-  await upsertCache(userId, fresh);
-  return fresh;
 }
 
 function resortCachedData(

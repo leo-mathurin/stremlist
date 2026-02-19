@@ -19,24 +19,24 @@ export type Database = {
           created_at: string
           imdb_user_id: string
           is_active: boolean
-          last_activity_at: string
-          last_sync_at: string | null
+          last_cache_served_at: string | null
+          last_fetched_at: string
           sort_option: string
         }
         Insert: {
           created_at?: string
           imdb_user_id: string
           is_active?: boolean
-          last_activity_at?: string
-          last_sync_at?: string | null
+          last_cache_served_at?: string | null
+          last_fetched_at?: string
           sort_option?: string
         }
         Update: {
           created_at?: string
           imdb_user_id?: string
           is_active?: boolean
-          last_activity_at?: string
-          last_sync_at?: string | null
+          last_cache_served_at?: string | null
+          last_fetched_at?: string
           sort_option?: string
         }
         Relationships: []
