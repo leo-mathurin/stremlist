@@ -87,7 +87,7 @@ interface ProcessedItem {
   runtime_seconds: number | null;
   directors: string[];
   cast: string[];
-}otarzotrazjo
+}
 
 export async function getImdbWatchlist(
   userId: string,
