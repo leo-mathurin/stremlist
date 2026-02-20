@@ -21,6 +21,7 @@ export type Database = {
           is_active: boolean
           last_cache_served_at: string | null
           last_fetched_at: string
+          rpdb_api_key: string | null
           sort_option: string
         }
         Insert: {
@@ -29,6 +30,7 @@ export type Database = {
           is_active?: boolean
           last_cache_served_at?: string | null
           last_fetched_at?: string
+          rpdb_api_key?: string | null
           sort_option?: string
         }
         Update: {
@@ -37,6 +39,7 @@ export type Database = {
           is_active?: boolean
           last_cache_served_at?: string | null
           last_fetched_at?: string
+          rpdb_api_key?: string | null
           sort_option?: string
         }
         Relationships: []

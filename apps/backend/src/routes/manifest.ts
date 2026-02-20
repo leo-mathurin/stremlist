@@ -6,7 +6,11 @@ import {
 } from "@stremlist/shared";
 import type { StremioManifest } from "@stremlist/shared";
 import { Hono } from "hono";
-import { ensureUser, getUserSortOption } from "../services/user";
+import {
+  ensureUser,
+  getUserRpdbApiKey,
+  getUserSortOption,
+} from "../services/user";
 
 const manifest = new Hono();
 
@@ -33,6 +37,7 @@ manifest.get("/:userId/manifest.json", async (c) => {
   try {
     await ensureUser(userId);
     const savedSort = await getUserSortOption(userId);
+    const savedRpdbApiKey = await getUserRpdbApiKey(userId);
 
     const userManifest: StremioManifest = {
       ...structuredClone(BASE_MANIFEST),
@@ -55,6 +60,12 @@ manifest.get("/:userId/manifest.json", async (c) => {
           title: "Sort Watchlist By",
           options: SORT_OPTIONS.map((o) => o.value),
           default: savedSort ?? DEFAULT_SORT_OPTION,
+        },
+        {
+          key: "rpdbApiKey",
+          type: "password",
+          title: "RPDB API Key (Optional)",
+          default: savedRpdbApiKey ?? "",
         },
       ],
     };

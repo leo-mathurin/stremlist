@@ -31,6 +31,7 @@ export default function Configure() {
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const [sortOption, setSortOption] = useState(DEFAULT_SORT_OPTION);
+  const [rpdbApiKey, setRpdbApiKey] = useState("");
   const [loading, setLoading] = useState(!!userId);
   const [saving, setSaving] = useState(false);
   const [userNotFound, setUserNotFound] = useState(false);
@@ -45,6 +46,7 @@ export default function Configure() {
     setLoading(true);
     setUserNotFound(false);
     setSortOption(DEFAULT_SORT_OPTION);
+    setRpdbApiKey("");
     setStatus(null);
 
     api[":userId"].config
@@ -59,6 +61,8 @@ export default function Configure() {
       .then((data) => {
         if (data && "sortOption" in data && data.sortOption)
           setSortOption(data.sortOption);
+        if (data && "rpdbApiKey" in data && data.rpdbApiKey)
+          setRpdbApiKey(data.rpdbApiKey);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -116,7 +120,7 @@ export default function Configure() {
     try {
       const res = await api[":userId"].config.$post({
         param: { userId },
-        json: { sortOption },
+        json: { sortOption, rpdbApiKey },
       });
 
       if (!res.ok) {
@@ -127,7 +131,7 @@ export default function Configure() {
       setStatus({
         type: "success",
         message:
-          "Saved! Your watchlist will be refreshed with the new sort order.",
+          "Saved! Your watchlist will be refreshed with the new settings.",
       });
     } catch (err) {
       setStatus({
@@ -227,6 +231,25 @@ export default function Configure() {
                       ))}
                     </SelectContent>
                   </Select>
+
+                  <Label
+                    htmlFor="rpdb-api-key"
+                    className="block text-sm font-semibold text-gray-700 mt-4 mb-2"
+                  >
+                    RPDB API Key (Optional)
+                  </Label>
+                  <Input
+                    id="rpdb-api-key"
+                    type="password"
+                    value={rpdbApiKey}
+                    onChange={(e) => setRpdbApiKey(e.target.value)}
+                    placeholder="Paste your RPDB API key"
+                    className="focus-visible:ring-imdb focus-visible:border-imdb"
+                  />
+                  <p className="mt-2 text-xs text-gray-500">
+                    Enables Rating Poster Database posters for this addon
+                    installation.
+                  </p>
 
                   <Button
                     onClick={handleSave}
