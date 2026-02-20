@@ -14,6 +14,47 @@ export type Database = {
   }
   public: {
     Tables: {
+      user_watchlists: {
+        Row: {
+          catalog_title: string
+          created_at: string
+          id: string
+          imdb_user_id: string
+          owner_user_id: string
+          position: number
+          sort_option: string
+          updated_at: string
+        }
+        Insert: {
+          catalog_title: string
+          created_at?: string
+          id?: string
+          imdb_user_id: string
+          owner_user_id: string
+          position?: number
+          sort_option?: string
+          updated_at?: string
+        }
+        Update: {
+          catalog_title?: string
+          created_at?: string
+          id?: string
+          imdb_user_id?: string
+          owner_user_id?: string
+          position?: number
+          sort_option?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_watchlists_owner_user_id_fkey"
+            columns: ["owner_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["imdb_user_id"]
+          },
+        ]
+      }
       users: {
         Row: {
           created_at: string
@@ -22,7 +63,6 @@ export type Database = {
           last_cache_served_at: string | null
           last_fetched_at: string
           rpdb_api_key: string | null
-          sort_option: string
         }
         Insert: {
           created_at?: string
@@ -31,7 +71,6 @@ export type Database = {
           last_cache_served_at?: string | null
           last_fetched_at?: string
           rpdb_api_key?: string | null
-          sort_option?: string
         }
         Update: {
           created_at?: string
@@ -40,7 +79,6 @@ export type Database = {
           last_cache_served_at?: string | null
           last_fetched_at?: string
           rpdb_api_key?: string | null
-          sort_option?: string
         }
         Relationships: []
       }
@@ -48,25 +86,25 @@ export type Database = {
         Row: {
           cached_at: string
           cached_data: Json
-          imdb_user_id: string
+          watchlist_id: string
         }
         Insert: {
           cached_at?: string
           cached_data: Json
-          imdb_user_id: string
+          watchlist_id: string
         }
         Update: {
           cached_at?: string
           cached_data?: Json
-          imdb_user_id?: string
+          watchlist_id?: string
         }
         Relationships: [
           {
-            foreignKeyName: "watchlist_cache_imdb_user_id_fkey"
-            columns: ["imdb_user_id"]
+            foreignKeyName: "watchlist_cache_watchlist_id_fkey"
+            columns: ["watchlist_id"]
             isOneToOne: true
-            referencedRelation: "users"
-            referencedColumns: ["imdb_user_id"]
+            referencedRelation: "user_watchlists"
+            referencedColumns: ["id"]
           },
         ]
       }

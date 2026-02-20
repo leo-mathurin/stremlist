@@ -1,15 +1,11 @@
-import {
-  BASE_MANIFEST,
-  ADDON_VERSION,
-  SORT_OPTIONS,
-  DEFAULT_SORT_OPTION,
-} from "@stremlist/shared";
+import { BASE_MANIFEST, ADDON_VERSION } from "@stremlist/shared";
 import type { StremioManifest } from "@stremlist/shared";
 import { Hono } from "hono";
+import { buildManifestCatalogs } from "../services/stremio-catalogs";
 import {
   ensureUser,
+  getUserWatchlists,
   getUserRpdbApiKey,
-  getUserSortOption,
 } from "../services/user";
 
 const manifest = new Hono();
@@ -36,8 +32,8 @@ manifest.get("/:userId/manifest.json", async (c) => {
 
   try {
     await ensureUser(userId);
-    const savedSort = await getUserSortOption(userId);
     const savedRpdbApiKey = await getUserRpdbApiKey(userId);
+    const watchlists = await getUserWatchlists(userId);
 
     const userManifest: StremioManifest = {
       ...structuredClone(BASE_MANIFEST),
@@ -45,22 +41,12 @@ manifest.get("/:userId/manifest.json", async (c) => {
       version: ADDON_VERSION,
       name: "Stremlist",
       description: `Your IMDb Watchlist for user ${userId}. See changelog at https://stremlist.com/changelog`,
-      catalogs: BASE_MANIFEST.catalogs.map((catalog) => ({
-        ...catalog,
-        id: `${catalog.id}-${userId}`,
-      })),
+      catalogs: buildManifestCatalogs(watchlists),
       behaviorHints: {
         configurable: true,
         configurationRequired: false,
       },
       config: [
-        {
-          key: "sortOption",
-          type: "select",
-          title: "Sort Watchlist By",
-          options: SORT_OPTIONS.map((o) => o.value),
-          default: savedSort ?? DEFAULT_SORT_OPTION,
-        },
         {
           key: "rpdbApiKey",
           type: "password",
