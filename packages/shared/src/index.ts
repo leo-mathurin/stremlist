@@ -9,10 +9,14 @@ export type {
 export type {
   WatchlistData,
   StremioMeta,
+  ConfigWatchlist,
   StremioManifest,
   StremioCatalog,
   StremioResource,
   StremioConfigOption,
+  UserConfigResponse,
+  UserConfigUpdatePayload,
+  UserConfigUpdateWatchlist,
 } from "./stremio.types"
 
 export {

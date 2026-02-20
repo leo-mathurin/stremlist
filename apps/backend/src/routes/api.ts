@@ -6,11 +6,11 @@ import { resend } from "../lib/resend";
 import { supabase } from "../lib/supabase";
 import { getImdbWatchlist } from "../services/imdb-scraper";
 import {
+  getUserWatchlists,
   getUser,
   getUserRpdbApiKey,
-  getUserSortOption,
+  replaceUserWatchlists,
   setUserRpdbApiKey,
-  setUserSortOption,
 } from "../services/user";
 const userIdParam = z.object({ userId: z.string().regex(/^ur\d{4,}$/) });
 
@@ -18,9 +18,19 @@ const sortOptionValues = SORT_OPTIONS.map((o) => o.value) as [
   string,
   ...string[],
 ];
-const configBody = z.object({
+const configWatchlistBody = z.object({
+  id: z.string().uuid().optional(),
+  imdbUserId: z
+    .string()
+    .trim()
+    .regex(/^ur\d{4,}$/),
+  catalogTitle: z.string().trim().max(30).optional(),
   sortOption: z.enum(sortOptionValues),
+  position: z.number().int().min(0).optional(),
+});
+const configBody = z.object({
   rpdbApiKey: z.string().trim().optional(),
+  watchlists: z.array(configWatchlistBody).min(1),
 });
 
 const api = new Hono()
@@ -60,9 +70,9 @@ const api = new Hono()
     if (!user) {
       return c.json({ error: "User not found. Install the addon first." }, 404);
     }
-    const sortOption = await getUserSortOption(userId);
     const rpdbApiKey = await getUserRpdbApiKey(userId);
-    return c.json({ sortOption, rpdbApiKey });
+    const watchlists = await getUserWatchlists(userId);
+    return c.json({ rpdbApiKey, watchlists });
   })
   .post(
     "/:userId/config",
@@ -70,7 +80,7 @@ const api = new Hono()
     zValidator("json", configBody),
     async (c) => {
       const { userId } = c.req.valid("param");
-      const { sortOption, rpdbApiKey } = c.req.valid("json");
+      const { rpdbApiKey, watchlists } = c.req.valid("json");
 
       const user = await getUser(userId);
       if (!user) {
@@ -80,9 +90,42 @@ const api = new Hono()
         );
       }
 
-      const normalizedRpdbApiKey = rpdbApiKey ?? null;
+      const uniqueImdbIds = new Set<string>();
+      const getDefaultCatalogTitle = (index: number, total: number): string =>
+        total <= 1 ? "" : String(index + 1);
+
+      const normalizedWatchlists = watchlists.map((watchlist, index) => {
+        const normalizedId = watchlist.imdbUserId.trim();
+        const normalizedTitle = (watchlist.catalogTitle ?? "").trim();
+        const effectiveTitle =
+          normalizedTitle.length > 0
+            ? normalizedTitle
+            : getDefaultCatalogTitle(index, watchlists.length);
+        uniqueImdbIds.add(normalizedId);
+        return {
+          id: watchlist.id,
+          imdbUserId: normalizedId,
+          catalogTitle: effectiveTitle,
+          sortOption: watchlist.sortOption,
+          position: index,
+        };
+      });
+
+      if (uniqueImdbIds.size !== watchlists.length) {
+        return c.json(
+          {
+            error:
+              "Each watchlist must use a unique IMDb user ID for this installation.",
+          },
+          400,
+        );
+      }
+
+      const normalizedRpdbApiKey =
+        rpdbApiKey && rpdbApiKey.length > 0 ? rpdbApiKey : null;
+
       await Promise.all([
-        setUserSortOption(userId, sortOption),
+        replaceUserWatchlists(userId, normalizedWatchlists),
         setUserRpdbApiKey(userId, normalizedRpdbApiKey),
       ]);
 

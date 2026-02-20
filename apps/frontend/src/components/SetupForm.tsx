@@ -1,8 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Link } from "react-router";
-import { Copy, Check } from "lucide-react";
 import { api } from "../lib/api";
-import { Button } from "@/components/ui/button";
+import AddonInstallActions from "./AddonInstallActions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -19,13 +18,6 @@ function getInitialUserId(): string {
   return userId && userId.startsWith("ur") && userId.length > 3 ? userId : "";
 }
 
-function buildUrls(imdbId: string) {
-  const addonUrl = `${import.meta.env.VITE_BACKEND_URL}/${imdbId}/manifest.json`;
-  const webUrl = `https://web.stremio.com/#/addons?addon=${encodeURIComponent(addonUrl)}`;
-  const stremioUrl = `stremio://${addonUrl.replace(/^https?:\/\//, "")}`;
-  return { addonUrl, webUrl, stremioUrl };
-}
-
 type Status = { type: "error" | "success" | "info"; message: string } | null;
 
 export default function SetupForm() {
@@ -35,7 +27,6 @@ export default function SetupForm() {
   const [status, setStatus] = useState<Status>(
     initialUserId ? { type: "info", message: "Validating IMDb ID..." } : null,
   );
-  const [copied, setCopied] = useState(false);
   const [validating, setValidating] = useState(Boolean(initialUserId));
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -136,17 +127,6 @@ export default function SetupForm() {
     }, 500);
   }, []);
 
-  const handleCopy = () => {
-    if (!validId) return;
-    const { addonUrl } = buildUrls(validId);
-    navigator.clipboard.writeText(addonUrl).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-
-  const urls = validId ? buildUrls(validId) : null;
-
   return (
     <section className="bg-gray-50 rounded-lg p-6 shadow-sm border border-gray-200">
       <div className="mb-4">
@@ -190,48 +170,13 @@ export default function SetupForm() {
         </Alert>
       )}
 
-      {validId && urls && (
+      {validId && (
         <div className="space-y-5">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Button
-              asChild
-              className="flex-1 bg-blue-500 hover:bg-blue-600 h-11"
-            >
-              <a href={urls.webUrl} target="_blank" rel="noopener noreferrer">
-                Open in Stremio Web
-              </a>
-            </Button>
-            <Button
-              asChild
-              className="flex-1 bg-green-500 hover:bg-green-600 h-11"
-            >
-              <a href={urls.stremioUrl}>Open in Stremio Desktop</a>
-            </Button>
-          </div>
-
-          <div>
-            <p className="text-sm text-gray-600 mb-2">
-              Or copy this URL and add it manually in Stremio:
-            </p>
-            <div className="flex gap-2">
-              <Input
-                type="text"
-                readOnly
-                value={urls.addonUrl}
-                className="flex-1 font-mono text-sm bg-white"
-              />
-              <Button
-                onClick={handleCopy}
-                className="bg-imdb hover:bg-imdb-dark text-black font-semibold"
-              >
-                {copied ? <Check /> : <Copy />}
-              </Button>
-            </div>
-            <p className="mt-1.5 text-xs text-gray-400">
-              This URL already contains your IMDb ID and will install directly
-              without configuration.
-            </p>
-          </div>
+          <AddonInstallActions imdbUserId={validId} />
+          <p className="mt-1.5 text-xs text-gray-400">
+            This URL already contains your IMDb ID and will install directly
+            without configuration.
+          </p>
 
           <p className="text-sm text-gray-500">
             After installing, you can customize your sort order on the{" "}

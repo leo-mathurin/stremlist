@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import { getWatchlist } from "../services/watchlist";
+import { getUserRpdbApiKey, getUserWatchlists } from "../services/user";
+import { getWatchlistByConfig } from "../services/watchlist";
 
 const meta = new Hono();
 
@@ -9,10 +10,24 @@ meta.get("/:userId/meta/:type/:id.json", async (c) => {
   const id = c.req.param("id");
 
   try {
-    const watchlistData = await getWatchlist(userId);
-    const item = watchlistData.metas.find(
-      (m) => m.id === id && m.type === type,
-    );
+    const watchlists = await getUserWatchlists(userId);
+    const rpdbApiKey = await getUserRpdbApiKey(userId);
+
+    let item = null;
+    for (const watchlist of watchlists) {
+      const watchlistData = await getWatchlistByConfig({
+        ownerUserId: userId,
+        watchlistId: watchlist.id,
+        imdbUserId: watchlist.imdbUserId,
+        sortOption: watchlist.sortOption,
+        rpdbApiKey,
+      });
+      const found = watchlistData.metas.find((m) => m.id === id && m.type === type);
+      if (found) {
+        item = found;
+        break;
+      }
+    }
 
     if (!item) {
       console.log(
