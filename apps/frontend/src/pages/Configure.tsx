@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, Link } from "react-router";
 import { SORT_OPTIONS, DEFAULT_SORT_OPTION } from "@stremlist/shared";
+import { Eye, EyeOff } from "lucide-react";
 import Header from "../components/Header";
 import { api } from "../lib/api";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ export default function Configure() {
 
   const [sortOption, setSortOption] = useState(DEFAULT_SORT_OPTION);
   const [rpdbApiKey, setRpdbApiKey] = useState("");
+  const [showRpdbApiKey, setShowRpdbApiKey] = useState(false);
   const [loading, setLoading] = useState(!!userId);
   const [saving, setSaving] = useState(false);
   const [userNotFound, setUserNotFound] = useState(false);
@@ -47,6 +49,7 @@ export default function Configure() {
     setUserNotFound(false);
     setSortOption(DEFAULT_SORT_OPTION);
     setRpdbApiKey("");
+    setShowRpdbApiKey(false);
     setStatus(null);
 
     api[":userId"].config
@@ -238,14 +241,30 @@ export default function Configure() {
                   >
                     RPDB API Key (Optional)
                   </Label>
-                  <Input
-                    id="rpdb-api-key"
-                    type="password"
-                    value={rpdbApiKey}
-                    onChange={(e) => setRpdbApiKey(e.target.value)}
-                    placeholder="Paste your RPDB API key"
-                    className="focus-visible:ring-imdb focus-visible:border-imdb"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="rpdb-api-key"
+                      type={showRpdbApiKey ? "text" : "password"}
+                      value={rpdbApiKey}
+                      onChange={(e) => setRpdbApiKey(e.target.value)}
+                      placeholder="Paste your RPDB API key"
+                      className="pr-10 focus-visible:ring-imdb focus-visible:border-imdb"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setShowRpdbApiKey((current) => !current)}
+                      aria-label={
+                        showRpdbApiKey
+                          ? "Hide RPDB API key"
+                          : "Show RPDB API key"
+                      }
+                      className="absolute right-1 top-1/2 size-7 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    >
+                      {showRpdbApiKey ? <EyeOff /> : <Eye />}
+                    </Button>
+                  </div>
                   <p className="mt-2 text-xs text-gray-500">
                     Enables Rating Poster Database posters for this addon
                     installation.
