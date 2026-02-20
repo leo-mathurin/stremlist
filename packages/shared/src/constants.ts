@@ -9,6 +9,7 @@ export const APP_ID_PREFIX = "com.stremlist"
 export const SORT_OPTIONS = [
   { value: "added_at-asc", label: "Date Added (Oldest First) - (IMDb Order)" },
   { value: "added_at-desc", label: "Date Added (Newest First)" },
+  { value: "random", label: "Random" },
   { value: "title-asc", label: "Title (A-Z)" },
   { value: "title-desc", label: "Title (Z-A)" },
   { value: "year-desc", label: "Newest First" },
@@ -19,7 +20,7 @@ export const SORT_OPTIONS = [
 
 export const DEFAULT_SORT_OPTION = "added_at-asc"
 
-export type SortField = "added_at" | "title" | "year" | "rating"
+export type SortField = "added_at" | "random" | "title" | "year" | "rating"
 export type SortOrder = "asc" | "desc"
 export interface SortOptions {
   by: SortField
@@ -28,7 +29,13 @@ export interface SortOptions {
 
 export const DEFAULT_SORT_OPTIONS: SortOptions = { by: "added_at", order: "asc" }
 
-const VALID_SORT_FIELDS: SortField[] = ["title", "year", "rating", "added_at"]
+const VALID_SORT_FIELDS: SortField[] = [
+  "title",
+  "year",
+  "rating",
+  "added_at",
+  "random",
+]
 const VALID_SORT_ORDERS: SortOrder[] = ["asc", "desc"]
 
 export function parseSortOption(sortOption: string | null | undefined): SortOptions {

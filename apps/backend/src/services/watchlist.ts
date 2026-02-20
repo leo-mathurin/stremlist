@@ -1,6 +1,7 @@
 import { parseSortOption } from "@stremlist/shared";
 import type { WatchlistData, SortOptions } from "@stremlist/shared";
 import { supabase } from "../lib/supabase";
+import { shuffleArray } from "../utils";
 import { fetchWatchlist } from "./imdb-scraper";
 import { ensureUser, getUserSortOption } from "./user";
 
@@ -79,7 +80,9 @@ export async function getWatchlist(
       return resortCachedData(cached.data, sortOptions);
     }
 
-    throw new Error(`Failed to fetch watchlist and no cache available: ${message}`);
+    throw new Error(
+      `Failed to fetch watchlist and no cache available: ${message}`,
+    );
   }
 }
 
@@ -96,6 +99,10 @@ function resortCachedData(
       metas.reverse();
     }
     return { metas };
+  }
+
+  if (by === "random") {
+    return { metas: shuffleArray(metas) };
   }
 
   metas.sort((a, b) => {

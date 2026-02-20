@@ -4,6 +4,7 @@ import type {
   StremioMeta,
   WatchlistData,
 } from "@stremlist/shared";
+import { shuffleArray } from "../utils";
 
 const GRAPHQL_ENDPOINT = "https://api.graphql.imdb.com/";
 const GRAPHQL_CLIENT_NAME = "imdb-next-desktop";
@@ -89,9 +90,7 @@ interface ProcessedItem {
   cast: string[];
 }
 
-export async function getImdbWatchlist(
-  userId: string,
-): Promise<ImdbEdge[]> {
+export async function getImdbWatchlist(userId: string): Promise<ImdbEdge[]> {
   const response = await fetch(GRAPHQL_ENDPOINT, {
     method: "POST",
     headers: {
@@ -209,6 +208,10 @@ function sortMetas(metas: StremioMeta[], options: SortOptions): StremioMeta[] {
       sorted.reverse();
     }
     return sorted;
+  }
+
+  if (by === "random") {
+    return shuffleArray(sorted);
   }
 
   sorted.sort((a, b) => {
