@@ -71,3 +71,38 @@ export async function setUserSortOption(
     throw error;
   }
 }
+
+export async function getUserRpdbApiKey(
+  imdbUserId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("users")
+    .select("rpdb_api_key")
+    .eq("imdb_user_id", imdbUserId)
+    .single();
+
+  if (error) {
+    return null;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+  return data.rpdb_api_key;
+}
+
+export async function setUserRpdbApiKey(
+  imdbUserId: string,
+  rpdbApiKey: string | null,
+): Promise<void> {
+  const { error } = await supabase
+    .from("users")
+    .update({ rpdb_api_key: rpdbApiKey })
+    .eq("imdb_user_id", imdbUserId);
+
+  if (error) {
+    console.error(
+      `Failed to update RPDB API key for ${imdbUserId}:`,
+      error.message,
+    );
+    throw error;
+  }
+}

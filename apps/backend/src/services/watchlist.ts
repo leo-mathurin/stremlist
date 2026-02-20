@@ -2,8 +2,8 @@ import { parseSortOption } from "@stremlist/shared";
 import type { WatchlistData, SortOptions } from "@stremlist/shared";
 import { supabase } from "../lib/supabase";
 import { shuffleArray } from "../utils";
-import { fetchWatchlist } from "./imdb-scraper";
-import { ensureUser, getUserSortOption } from "./user";
+import { buildPosterUrl, fetchWatchlist } from "./imdb-scraper";
+import { ensureUser, getUserRpdbApiKey, getUserSortOption } from "./user";
 
 async function getCachedWatchlist(
   userId: string,
@@ -54,10 +54,11 @@ export async function getWatchlist(
 
   const sortOptionStr = sortOptionOverride ?? (await getUserSortOption(userId));
   const sortOptions = parseSortOption(sortOptionStr);
+  const rpdbApiKey = await getUserRpdbApiKey(userId);
 
   try {
     console.log(`Fetching watchlist from IMDb for ${userId}...`);
-    const fresh = await fetchWatchlist(userId, sortOptions);
+    const fresh = await fetchWatchlist(userId, sortOptions, rpdbApiKey);
     await Promise.all([
       upsertCache(userId, fresh),
       supabase
@@ -77,7 +78,7 @@ export async function getWatchlist(
         .from("users")
         .update({ last_cache_served_at: new Date().toISOString() })
         .eq("imdb_user_id", userId);
-      return resortCachedData(cached.data, sortOptions);
+      return resortCachedData(cached.data, sortOptions, rpdbApiKey);
     }
 
     throw new Error(
@@ -89,6 +90,7 @@ export async function getWatchlist(
 function resortCachedData(
   data: WatchlistData,
   sortOptions: SortOptions,
+  rpdbApiKey?: string | null,
 ): WatchlistData {
   const metas = [...data.metas];
   const { by, order } = sortOptions;
@@ -98,11 +100,11 @@ function resortCachedData(
     if (order === "desc") {
       metas.reverse();
     }
-    return { metas };
+    return { metas: applyRpdbPostersToMetas(metas, rpdbApiKey) };
   }
 
   if (by === "random") {
-    return { metas: shuffleArray(metas) };
+    return { metas: applyRpdbPostersToMetas(shuffleArray(metas), rpdbApiKey) };
   }
 
   metas.sort((a, b) => {
@@ -123,5 +125,15 @@ function resortCachedData(
     }
   });
 
-  return { metas };
+  return { metas: applyRpdbPostersToMetas(metas, rpdbApiKey) };
+}
+
+function applyRpdbPostersToMetas(
+  metas: WatchlistData["metas"],
+  rpdbApiKey?: string | null,
+): WatchlistData["metas"] {
+  return metas.map((meta) => ({
+    ...meta,
+    poster: buildPosterUrl(meta.id, meta.poster, rpdbApiKey),
+  }));
 }
