@@ -23,7 +23,7 @@ export async function ensureUser(imdbUserId: string): Promise<User> {
       {
         imdb_user_id: imdbUserId,
         is_active: true,
-        last_activity_at: new Date().toISOString(),
+        last_fetched_at: new Date().toISOString(),
       },
       { onConflict: "imdb_user_id" },
     )
