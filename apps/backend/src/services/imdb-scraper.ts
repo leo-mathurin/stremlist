@@ -90,6 +90,19 @@ interface ProcessedItem {
   cast: string[];
 }
 
+export function buildPosterUrl(
+  imdbId: string,
+  fallbackPosterUrl: string | null,
+  rpdbApiKey?: string | null,
+): string | null {
+  const normalizedKey = rpdbApiKey?.trim();
+  if (!normalizedKey) {
+    return fallbackPosterUrl;
+  }
+
+  return `https://api.ratingposterdb.com/${encodeURIComponent(normalizedKey)}/imdb/poster-default/${imdbId}.jpg?fallback=true`;
+}
+
 export async function getImdbWatchlist(userId: string): Promise<ImdbEdge[]> {
   const response = await fetch(GRAPHQL_ENDPOINT, {
     method: "POST",
@@ -238,6 +251,7 @@ function sortMetas(metas: StremioMeta[], options: SortOptions): StremioMeta[] {
 function convertToStremioFormat(
   items: ProcessedItem[],
   sortOptions: SortOptions,
+  rpdbApiKey?: string | null,
 ): StremioMeta[] {
   const metas: StremioMeta[] = [];
 
@@ -256,7 +270,7 @@ function convertToStremioFormat(
     const meta: StremioMeta = {
       id: item.id,
       name: item.title ?? "",
-      poster: item.image_url,
+      poster: buildPosterUrl(item.id, item.image_url, rpdbApiKey),
       posterShape: "poster",
       type: isMovie ? "movie" : "series",
       genres: item.genres,
@@ -288,6 +302,7 @@ function convertToStremioFormat(
 export async function fetchWatchlist(
   imdbUserId: string,
   sortOptions: SortOptions = DEFAULT_SORT_OPTIONS,
+  rpdbApiKey?: string | null,
 ): Promise<WatchlistData> {
   console.log(`Fetching IMDb watchlist for user ${imdbUserId}...`);
 
@@ -304,7 +319,7 @@ export async function fetchWatchlist(
     );
   }
 
-  const metas = convertToStremioFormat(processed, sortOptions);
+  const metas = convertToStremioFormat(processed, sortOptions, rpdbApiKey);
   console.log(
     `Converted ${metas.length} items to Stremio format (sorted by ${sortOptions.by}, ${sortOptions.order})`,
   );

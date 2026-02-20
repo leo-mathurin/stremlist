@@ -7,7 +7,9 @@ import { supabase } from "../lib/supabase";
 import { getImdbWatchlist } from "../services/imdb-scraper";
 import {
   getUser,
+  getUserRpdbApiKey,
   getUserSortOption,
+  setUserRpdbApiKey,
   setUserSortOption,
 } from "../services/user";
 const userIdParam = z.object({ userId: z.string().regex(/^ur\d{4,}$/) });
@@ -16,7 +18,10 @@ const sortOptionValues = SORT_OPTIONS.map((o) => o.value) as [
   string,
   ...string[],
 ];
-const configBody = z.object({ sortOption: z.enum(sortOptionValues) });
+const configBody = z.object({
+  sortOption: z.enum(sortOptionValues),
+  rpdbApiKey: z.string().trim().optional(),
+});
 
 const api = new Hono()
   .get("/validate/:userId", zValidator("param", userIdParam), async (c) => {
@@ -56,7 +61,8 @@ const api = new Hono()
       return c.json({ error: "User not found. Install the addon first." }, 404);
     }
     const sortOption = await getUserSortOption(userId);
-    return c.json({ sortOption });
+    const rpdbApiKey = await getUserRpdbApiKey(userId);
+    return c.json({ sortOption, rpdbApiKey });
   })
   .post(
     "/:userId/config",
@@ -64,7 +70,7 @@ const api = new Hono()
     zValidator("json", configBody),
     async (c) => {
       const { userId } = c.req.valid("param");
-      const { sortOption } = c.req.valid("json");
+      const { sortOption, rpdbApiKey } = c.req.valid("json");
 
       const user = await getUser(userId);
       if (!user) {
@@ -74,7 +80,11 @@ const api = new Hono()
         );
       }
 
-      await setUserSortOption(userId, sortOption);
+      const normalizedRpdbApiKey = rpdbApiKey ?? null;
+      await Promise.all([
+        setUserSortOption(userId, sortOption),
+        setUserRpdbApiKey(userId, normalizedRpdbApiKey),
+      ]);
 
       return c.json({ ok: true });
     },

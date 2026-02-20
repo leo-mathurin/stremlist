@@ -31,7 +31,7 @@ export interface StremioResource {
 
 export interface StremioConfigOption {
   key: string
-  type: "select" | "text" | "checkbox"
+  type: "select" | "text" | "password" | "checkbox"
   title: string
   options?: string[]
   default?: string

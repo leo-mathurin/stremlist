@@ -231,9 +231,32 @@ describe("fetchWatchlist (unit)", () => {
     expect(godfather?.imdbRating).toBe("9.2");
     expect(godfather?.releaseInfo).toBe("1972");
     expect(godfather?.runtime).toBe("1h 30m");
+    expect(godfather?.poster).toBe("https://example.com/poster.jpg");
 
     const aot = result.metas.find((m) => m.id === "tt2560140");
     expect(aot?.type).toBe("series");
+  });
+
+  it("uses RPDB poster URLs when an RPDB API key is provided", async () => {
+    const edges = [makeEdge({ id: "tt0068646", title: "The Godfather" })];
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockGraphQLResponse({
+        id: "ls123",
+        visibility: { id: "PUBLIC" },
+        titleListItemSearch: { total: 1, edges },
+      }),
+    );
+
+    const result = await fetchWatchlist(
+      "ur195879360",
+      { by: "added_at", order: "asc" },
+      "my-rpdb-key",
+    );
+
+    expect(result.metas).toHaveLength(1);
+    expect(result.metas[0].poster).toBe(
+      "https://api.ratingposterdb.com/my-rpdb-key/imdb/poster-default/tt0068646.jpg?fallback=true",
+    );
   });
 
   it("filters out non-movie/series types (e.g. TV Episode)", async () => {

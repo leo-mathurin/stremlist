@@ -94,5 +94,10 @@ export const BASE_MANIFEST: StremioManifest = {
       options: SORT_OPTIONS.map((o) => o.value),
       default: DEFAULT_SORT_OPTION,
     },
+    {
+      key: "rpdbApiKey",
+      type: "password",
+      title: "RPDB API Key (Optional)",
+    },
   ],
 }
