@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route } from "react-router";
+import { Analytics } from "@vercel/analytics/react";
 import Home from "./pages/Home";
 import Terms from "./pages/Terms";
 import Changelog from "./pages/Changelog";
@@ -13,6 +14,7 @@ export default function App() {
         <Route path="/changelog" element={<Changelog />} />
         <Route path="/configure" element={<Configure />} />
       </Routes>
+      <Analytics />
     </BrowserRouter>
   );
 }
