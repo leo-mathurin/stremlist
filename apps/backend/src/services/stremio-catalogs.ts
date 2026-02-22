@@ -1,13 +1,5 @@
-import type { StremioCatalog } from "@stremlist/shared";
+import type { ConfigWatchlist, StremioCatalog } from "@stremlist/shared";
 import { buildCatalogId } from "./catalog-id";
-
-interface ManifestWatchlist {
-  id: string;
-  catalogTitle: string;
-  imdbUserId?: string;
-  sortOption?: string;
-  position?: number;
-}
 
 function buildCatalogName(baseTitle: string, type: "movie" | "series"): string {
   const suffix = type === "movie" ? "Movies" : "Series";
@@ -34,7 +26,7 @@ function getEffectiveTitle(
 }
 
 export function buildManifestCatalogs(
-  watchlists: ManifestWatchlist[],
+  watchlists: ConfigWatchlist[],
 ): StremioCatalog[] {
   return watchlists.flatMap((watchlist, index) => {
     const effectiveTitle = getEffectiveTitle(

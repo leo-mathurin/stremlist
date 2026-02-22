@@ -88,13 +88,6 @@ export const BASE_MANIFEST: StremioManifest = {
   },
   config: [
     {
-      key: "sortOption",
-      type: "select",
-      title: "Sort Watchlist By",
-      options: SORT_OPTIONS.map((o) => o.value),
-      default: DEFAULT_SORT_OPTION,
-    },
-    {
       key: "rpdbApiKey",
       type: "password",
       title: "RPDB API Key (Optional)",
