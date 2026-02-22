@@ -12,7 +12,7 @@ const app = new Hono();
 app.use("*", cors({ origin: "*" }));
 app.use("*", logger());
 
-app.route("/api", api);
+app.route("", api);
 app.route("", manifest);
 app.route("", catalog);
 app.route("", meta);

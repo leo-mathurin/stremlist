@@ -56,7 +56,7 @@ function seedWatchlist(overrides: {
 }
 
 function getConfig(userId: string) {
-  return app.request(`/api/${userId}/config`);
+  return app.request(`/${userId}/config`);
 }
 
 function postConfig(
@@ -72,7 +72,7 @@ function postConfig(
     }[];
   },
 ) {
-  return app.request(`/api/${userId}/config`, {
+  return app.request(`/${userId}/config`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -89,9 +89,9 @@ describe("Watchlist CRUD via API", () => {
     seedUser(OWNER);
   });
 
-  // ---- GET /api/:userId/config ----
+  // ---- GET /:userId/config ----
 
-  describe("GET /api/:userId/config", () => {
+  describe("GET /:userId/config", () => {
     it("returns 404 for unknown user", async () => {
       const res = await getConfig("ur99999999");
       expect(res.status).toBe(404);
@@ -141,9 +141,9 @@ describe("Watchlist CRUD via API", () => {
     });
   });
 
-  // ---- POST /api/:userId/config ----
+  // ---- POST /:userId/config ----
 
-  describe("POST /api/:userId/config", () => {
+  describe("POST /:userId/config", () => {
     it("returns 404 for unknown user", async () => {
       const res = await postConfig("ur99999999", {
         watchlists: [{ imdbUserId: "ur99999999", sortOption: "added_at-asc" }],
