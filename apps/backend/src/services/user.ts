@@ -1,17 +1,9 @@
 import { DEFAULT_SORT_OPTION } from "@stremlist/shared";
-import type { Tables } from "@stremlist/shared";
+import type { ConfigWatchlist, Tables } from "@stremlist/shared";
 import { supabase } from "../lib/supabase";
 
 type User = Tables<"users">;
 type UserWatchlist = Tables<"user_watchlists">;
-
-interface ConfigWatchlistRow {
-  id: string;
-  imdbUserId: string;
-  catalogTitle: string;
-  sortOption: string;
-  position: number;
-}
 
 interface UserConfigUpdateWatchlistRow {
   id?: string;
@@ -23,7 +15,7 @@ interface UserConfigUpdateWatchlistRow {
 
 const DEFAULT_WATCHLIST_TITLE = "";
 
-function mapWatchlistRow(row: UserWatchlist): ConfigWatchlistRow {
+function mapWatchlistRow(row: UserWatchlist): ConfigWatchlist {
   return {
     id: row.id,
     imdbUserId: row.imdb_user_id,
@@ -64,6 +56,8 @@ export async function ensureUser(imdbUserId: string): Promise<User> {
     console.error(`Failed to upsert user ${imdbUserId}:`, error.message);
     throw error;
   }
+
+  await seedDefaultWatchlist(imdbUserId);
 
   return data;
 }
@@ -106,8 +100,7 @@ async function seedDefaultWatchlist(ownerUserId: string): Promise<void> {
 
 export async function getUserWatchlists(
   ownerUserId: string,
-): Promise<ConfigWatchlistRow[]> {
-  await seedDefaultWatchlist(ownerUserId);
+): Promise<ConfigWatchlist[]> {
   const { data, error } = await supabase
     .from("user_watchlists")
     .select("*")
@@ -129,8 +122,7 @@ export async function getUserWatchlists(
 export async function getUserWatchlistById(
   ownerUserId: string,
   watchlistId: string,
-): Promise<ConfigWatchlistRow | null> {
-  await seedDefaultWatchlist(ownerUserId);
+): Promise<ConfigWatchlist | null> {
   const { data, error } = await supabase
     .from("user_watchlists")
     .select("*")
@@ -148,7 +140,7 @@ export async function getUserWatchlistById(
 export async function replaceUserWatchlists(
   ownerUserId: string,
   watchlists: UserConfigUpdateWatchlistRow[],
-): Promise<ConfigWatchlistRow[]> {
+): Promise<ConfigWatchlist[]> {
   const { data: existingRows, error: existingError } = await supabase
     .from("user_watchlists")
     .select("id")
@@ -162,17 +154,14 @@ export async function replaceUserWatchlists(
     throw existingError;
   }
 
-  const normalized = watchlists.map((watchlist) => ({
-    id: watchlist.id ?? crypto.randomUUID(),
-    owner_user_id: ownerUserId,
-    imdb_user_id: watchlist.imdbUserId,
-    catalog_title: watchlist.catalogTitle ?? "",
-    sort_option: watchlist.sortOption,
-    position: watchlist.position,
-    updated_at: new Date().toISOString(),
-  }));
+  const hasId = (
+    w: UserConfigUpdateWatchlistRow,
+  ): w is UserConfigUpdateWatchlistRow & { id: string } => !!w.id;
 
-  const keepIds = new Set(normalized.map((item) => item.id));
+  const toUpdate = watchlists.filter(hasId);
+  const toInsert = watchlists.filter((w) => !w.id);
+
+  const keepIds = new Set(toUpdate.map((w) => w.id));
   const existingIds = existingRows.map((row) => row.id);
   const toDelete = existingIds.filter((id) => !keepIds.has(id));
 
@@ -192,17 +181,50 @@ export async function replaceUserWatchlists(
     }
   }
 
-  if (normalized.length > 0) {
+  if (toUpdate.length > 0) {
+    const rows = toUpdate.map((w) => ({
+      id: w.id,
+      owner_user_id: ownerUserId,
+      imdb_user_id: w.imdbUserId,
+      catalog_title: w.catalogTitle ?? "",
+      sort_option: w.sortOption,
+      position: w.position,
+      updated_at: new Date().toISOString(),
+    }));
+
     const { error: upsertError } = await supabase
       .from("user_watchlists")
-      .upsert(normalized, { onConflict: "id" });
+      .upsert(rows, { onConflict: "id" });
 
     if (upsertError) {
       console.error(
-        `Failed to upsert watchlists for ${ownerUserId}:`,
+        `Failed to update watchlists for ${ownerUserId}:`,
         upsertError.message,
       );
       throw upsertError;
+    }
+  }
+
+  if (toInsert.length > 0) {
+    const rows = toInsert.map((w) => ({
+      owner_user_id: ownerUserId,
+      imdb_user_id: w.imdbUserId,
+      catalog_title: w.catalogTitle ?? "",
+      sort_option: w.sortOption,
+      position: w.position,
+    }));
+
+    const { error: insertError } = await supabase
+      .from("user_watchlists")
+      .insert(rows)
+      .select();
+
+    if (insertError) {
+      console.error(
+        `Failed to insert watchlists for ${ownerUserId}:`,
+        insertError.message,
+      );
+      throw insertError;
     }
   }
 

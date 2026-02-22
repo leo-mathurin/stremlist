@@ -30,7 +30,7 @@ const configWatchlistBody = z.object({
 });
 const configBody = z.object({
   rpdbApiKey: z.string().trim().optional(),
-  watchlists: z.array(configWatchlistBody).min(1),
+  watchlists: z.array(configWatchlistBody).min(1).max(10),
 });
 
 const api = new Hono()
@@ -95,16 +95,15 @@ const api = new Hono()
         total <= 1 ? "" : String(index + 1);
 
       const normalizedWatchlists = watchlists.map((watchlist, index) => {
-        const normalizedId = watchlist.imdbUserId.trim();
-        const normalizedTitle = (watchlist.catalogTitle ?? "").trim();
+        const normalizedTitle = watchlist.catalogTitle ?? "";
         const effectiveTitle =
           normalizedTitle.length > 0
             ? normalizedTitle
             : getDefaultCatalogTitle(index, watchlists.length);
-        uniqueImdbIds.add(normalizedId);
+        uniqueImdbIds.add(watchlist.imdbUserId);
         return {
           id: watchlist.id,
-          imdbUserId: normalizedId,
+          imdbUserId: watchlist.imdbUserId,
           catalogTitle: effectiveTitle,
           sortOption: watchlist.sortOption,
           position: index,
@@ -124,12 +123,12 @@ const api = new Hono()
       const normalizedRpdbApiKey =
         rpdbApiKey && rpdbApiKey.length > 0 ? rpdbApiKey : null;
 
-      await Promise.all([
+      const [updatedWatchlists] = await Promise.all([
         replaceUserWatchlists(userId, normalizedWatchlists),
         setUserRpdbApiKey(userId, normalizedRpdbApiKey),
       ]);
 
-      return c.json({ ok: true });
+      return c.json({ ok: true, watchlists: updatedWatchlists });
     },
   )
 

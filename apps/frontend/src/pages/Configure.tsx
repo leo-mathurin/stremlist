@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, Link } from "react-router";
 import { SORT_OPTIONS, DEFAULT_SORT_OPTION } from "@stremlist/shared";
-import type { UserConfigResponse } from "@stremlist/shared";
+import type { UserConfigResponse, ConfigWatchlist } from "@stremlist/shared";
 import { Eye, EyeOff, Plus, Trash2 } from "lucide-react";
 import Header from "../components/Header";
 import AddonInstallActions from "../components/AddonInstallActions";
@@ -62,6 +62,7 @@ function createWatchlistRow(
 export default function Configure() {
   const [searchParams, setSearchParams] = useSearchParams();
   const userId = searchParams.get("userId");
+  const homePath = userId ? `/?userId=${encodeURIComponent(userId)}` : "/";
 
   const [idInput, setIdInput] = useState("");
   const [idError, setIdError] = useState<string | null>(null);
@@ -198,8 +199,14 @@ export default function Configure() {
     [],
   );
 
+  const MAX_WATCHLISTS = 10;
+
   const addWatchlist = useCallback(() => {
-    setWatchlists((current) => [...current, createWatchlistRow()]);
+    setWatchlists((current) =>
+      current.length >= MAX_WATCHLISTS
+        ? current
+        : [...current, createWatchlistRow()],
+    );
   }, []);
 
   const removeWatchlist = useCallback((localId: string) => {
@@ -214,6 +221,9 @@ export default function Configure() {
   const validationError = (() => {
     if (watchlists.length === 0) {
       return "Add at least one watchlist.";
+    }
+    if (watchlists.length > MAX_WATCHLISTS) {
+      return `You can have at most ${MAX_WATCHLISTS} watchlists.`;
     }
     const seenImdbIds = new Set<string>();
     for (const watchlist of watchlists) {
@@ -257,9 +267,23 @@ export default function Configure() {
         },
       });
 
+      const saved = (await res.json()) as {
+        ok: boolean;
+        error?: string;
+        watchlists?: ConfigWatchlist[];
+      };
+
       if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        throw new Error(data.error ?? "Failed to save");
+        throw new Error(saved.error ?? "Failed to save");
+      }
+
+      if (saved.watchlists) {
+        setWatchlists((current) =>
+          current.map((row, index) => {
+            const serverRow = saved.watchlists![index];
+            return serverRow ? { ...row, id: serverRow.id } : row;
+          }),
+        );
       }
 
       setShowReinstallHint(requiresReinstall);
@@ -290,7 +314,7 @@ export default function Configure() {
           asChild
           className="h-auto p-0 text-stremlist text-sm"
         >
-          <Link to="/">&larr; Back to Home</Link>
+          <Link to={homePath}>&larr; Back to Home</Link>
         </Button>
 
         <h2 className="text-xl font-bold text-gray-900 mt-4 mb-1">Configure</h2>
@@ -356,6 +380,7 @@ export default function Configure() {
                         type="button"
                         variant="outline"
                         onClick={addWatchlist}
+                        disabled={watchlists.length >= MAX_WATCHLISTS}
                         className="gap-2"
                       >
                         <Plus className="size-4" />
@@ -550,7 +575,7 @@ export default function Configure() {
       <footer className="mt-8 pt-6 border-t border-gray-200 text-center text-sm text-gray-500 space-y-2">
         <p>
           <Button variant="link" asChild className="h-auto p-0 text-stremlist">
-            <Link to="/">Return to Home</Link>
+            <Link to={homePath}>Return to Home</Link>
           </Button>
         </p>
         <p>&copy; 2025 - IMDb Watchlist for Stremio</p>
