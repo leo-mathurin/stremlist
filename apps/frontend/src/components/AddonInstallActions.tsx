@@ -53,10 +53,7 @@ export default function AddonInstallActions({
             value={urls.addonUrl}
             className="flex-1 font-mono text-sm bg-white"
           />
-          <Button
-            onClick={handleCopy}
-            className="bg-imdb hover:bg-imdb-dark text-black font-semibold"
-          >
+          <Button onClick={handleCopy} variant="ghost">
             {copied ? <Check /> : <Copy />}
           </Button>
         </div>

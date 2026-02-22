@@ -19,7 +19,6 @@ export default function Footer() {
       <NewsletterForm />
 
       <div className="mt-6 space-y-3 text-center">
-        {/* Nav row */}
         <nav className="flex flex-wrap items-center justify-center gap-x-1 gap-y-1">
           {NAV_LINKS.map((link, i) => (
             <span key={link.label} className="flex items-center">
@@ -51,12 +50,11 @@ export default function Footer() {
           ))}
         </nav>
 
-        {/* Support + status row */}
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Button
             variant="link"
             asChild
-            className="h-auto p-0 text-sm text-gray-400 hover:text-stremlist"
+            className="h-auto p-0 text-sm text-gray-500 hover:text-stremlist"
           >
             <a
               href="https://ko-fi.com/lelemathrin"
@@ -78,7 +76,6 @@ export default function Footer() {
           </div>
         </div>
 
-        {/* Copyright */}
         <p className="text-xs text-gray-400">
           © 2025 IMDb Watchlist for Stremio &mdash; not affiliated with IMDb or
           Stremio
