@@ -1,11 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Link } from "react-router";
-import { Copy, Check } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { api } from "../lib/api";
-import { Button } from "@/components/ui/button";
+import AddonInstallActions from "./AddonInstallActions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 function extractImdbId(text: string): string {
   if (!text) return "";
@@ -15,38 +16,70 @@ function extractImdbId(text: string): string {
 
 function getInitialUserId(): string {
   const params = new URLSearchParams(window.location.search);
-  const userId = params.get("userId");
-  return userId && userId.startsWith("ur") && userId.length > 3 ? userId : "";
+  const userId = params.get("userId") ?? "";
+  const extracted = extractImdbId(userId);
+  return extracted.length > 3 ? extracted : "";
 }
 
-function buildUrls(imdbId: string) {
-  const addonUrl = `${import.meta.env.VITE_BACKEND_URL}/${imdbId}/manifest.json`;
-  const webUrl = `https://web.stremio.com/#/addons?addon=${encodeURIComponent(addonUrl)}`;
-  const stremioUrl = `stremio://${addonUrl.replace(/^https?:\/\//, "")}`;
-  return { addonUrl, webUrl, stremioUrl };
+function setUserIdQueryParam(userId: string): void {
+  const url = new URL(window.location.href);
+  if (userId) {
+    url.searchParams.set("userId", userId);
+  } else {
+    url.searchParams.delete("userId");
+  }
+
+  window.history.replaceState(window.history.state, "", url.toString());
 }
 
 type Status = { type: "error" | "success" | "info"; message: string } | null;
+
+async function checkExistingUser(
+  userId: string,
+): Promise<boolean> {
+  try {
+    const res = await api[":userId"].config.$get({
+      param: { userId },
+    });
+    return res.status !== 404;
+  } catch {
+    return false;
+  }
+}
 
 export default function SetupForm() {
   const initialUserId = getInitialUserId();
   const [imdbId, setImdbId] = useState(initialUserId);
   const [validId, setValidId] = useState<string | null>(null);
+  const [isReturningUser, setIsReturningUser] = useState(false);
   const [status, setStatus] = useState<Status>(
     initialUserId ? { type: "info", message: "Validating IMDb ID..." } : null,
   );
-  const [copied, setCopied] = useState(false);
   const [validating, setValidating] = useState(Boolean(initialUserId));
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
-    if (initialUserId) {
-      api.validate[":userId"]
-        .$get({ param: { userId: initialUserId } })
-        .then((res) => res.json())
-        .then((data) => {
+    if (!initialUserId) return;
+
+    (async () => {
+      try {
+        const exists = await checkExistingUser(initialUserId);
+        if (exists) {
+          setValidId(initialUserId);
+          setIsReturningUser(true);
+          setUserIdQueryParam(initialUserId);
+          setStatus({
+            type: "success",
+            message: `Welcome back, ${initialUserId}!`,
+          });
+        } else {
+          const res = await api.validate[":userId"].$get({
+            param: { userId: initialUserId },
+          });
+          const data = await res.json();
           if (data.valid) {
             setValidId(initialUserId);
+            setUserIdQueryParam(initialUserId);
             setStatus({
               type: "success",
               message: "Choose how to install below:",
@@ -58,29 +91,35 @@ export default function SetupForm() {
                 "This IMDb ID does not exist. Please check and try again.",
             });
           }
-        })
-        .catch(() => {
-          setValidId(initialUserId);
-          setStatus({
-            type: "success",
-            message: "Choose how to install below:",
-          });
-        })
-        .finally(() => setValidating(false));
-    }
+        }
+      } catch {
+        setValidId(initialUserId);
+        setUserIdQueryParam(initialUserId);
+        setStatus({
+          type: "success",
+          message: "Choose how to install below:",
+        });
+      } finally {
+        setValidating(false);
+      }
+    })();
   }, [initialUserId]);
 
   const handleInput = useCallback((value: string) => {
     setImdbId(value);
     setValidId(null);
+    setIsReturningUser(false);
     setStatus(null);
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     const trimmed = value.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      setUserIdQueryParam("");
+      return;
+    }
 
-    debounceRef.current = setTimeout(() => {
+    debounceRef.current = setTimeout(async () => {
       const extracted = extractImdbId(trimmed);
 
       if (!extracted) {
@@ -107,45 +146,50 @@ export default function SetupForm() {
 
       setValidating(true);
       setStatus({ type: "info", message: "Validating IMDb ID..." });
-      api.validate[":userId"]
-        .$get({ param: { userId: extracted } })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.valid) {
-            setValidId(extracted);
-            setStatus({
-              type: "success",
-              message: "Choose how to install below:",
-            });
-          } else {
-            setStatus({
-              type: "error",
-              message:
-                "This IMDb ID does not exist. Please check and try again.",
-            });
-          }
-        })
-        .catch(() => {
+
+      try {
+        const exists = await checkExistingUser(extracted);
+        if (exists) {
           setValidId(extracted);
+          setIsReturningUser(true);
+          setUserIdQueryParam(extracted);
+          setStatus({
+            type: "success",
+            message: `Welcome back, ${extracted}!`,
+          });
+          return;
+        }
+
+        const res = await api.validate[":userId"].$get({
+          param: { userId: extracted },
+        });
+        const data = await res.json();
+        if (data.valid) {
+          setValidId(extracted);
+          setUserIdQueryParam(extracted);
           setStatus({
             type: "success",
             message: "Choose how to install below:",
           });
-        })
-        .finally(() => setValidating(false));
+        } else {
+          setStatus({
+            type: "error",
+            message:
+              "This IMDb ID does not exist. Please check and try again.",
+          });
+        }
+      } catch {
+        setValidId(extracted);
+        setUserIdQueryParam(extracted);
+        setStatus({
+          type: "success",
+          message: "Choose how to install below:",
+        });
+      } finally {
+        setValidating(false);
+      }
     }, 500);
   }, []);
-
-  const handleCopy = () => {
-    if (!validId) return;
-    const { addonUrl } = buildUrls(validId);
-    navigator.clipboard.writeText(addonUrl).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-
-  const urls = validId ? buildUrls(validId) : null;
 
   return (
     <section className="bg-gray-50 rounded-lg p-6 shadow-sm border border-gray-200">
@@ -190,51 +234,44 @@ export default function SetupForm() {
         </Alert>
       )}
 
-      {validId && urls && (
-        <div className="space-y-5">
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Button
-              asChild
-              className="flex-1 bg-blue-500 hover:bg-blue-600 h-11"
-            >
-              <a href={urls.webUrl} target="_blank" rel="noopener noreferrer">
-                Open in Stremio Web
-              </a>
-            </Button>
-            <Button
-              asChild
-              className="flex-1 bg-green-500 hover:bg-green-600 h-11"
-            >
-              <a href={urls.stremioUrl}>Open in Stremio Desktop</a>
-            </Button>
+      {validId && isReturningUser && (
+        <div className="space-y-4">
+          <Button
+            asChild
+            className="w-full h-12 bg-imdb hover:bg-imdb-dark text-black gap-2"
+          >
+            <Link to={`/configure?userId=${validId}`}>
+              Configure your Stremlist
+              <ArrowRight className="size-5" />
+            </Link>
+          </Button>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-gray-300" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-gray-50 px-2 text-gray-400">
+                or reinstall
+              </span>
+            </div>
           </div>
 
-          <div>
-            <p className="text-sm text-gray-600 mb-2">
-              Or copy this URL and add it manually in Stremio:
-            </p>
-            <div className="flex gap-2">
-              <Input
-                type="text"
-                readOnly
-                value={urls.addonUrl}
-                className="flex-1 font-mono text-sm bg-white"
-              />
-              <Button
-                onClick={handleCopy}
-                className="bg-imdb hover:bg-imdb-dark text-black font-semibold"
-              >
-                {copied ? <Check /> : <Copy />}
-              </Button>
-            </div>
-            <p className="mt-1.5 text-xs text-gray-400">
-              This URL already contains your IMDb ID and will install directly
-              without configuration.
-            </p>
-          </div>
+          <AddonInstallActions imdbUserId={validId} />
+        </div>
+      )}
+
+      {validId && !isReturningUser && (
+        <div className="space-y-5">
+          <AddonInstallActions imdbUserId={validId} />
+          <p className="mt-1.5 text-xs text-gray-400">
+            This URL already contains your IMDb ID and will install directly
+            without configuration.
+          </p>
 
           <p className="text-sm text-gray-500">
-            After installing, you can customize your sort order on the{" "}
+            After installing, you can add multiple watchlists, change sort
+            order, enable RPDB posters, and more on the{" "}
             <Link
               to={`/configure?userId=${validId}`}
               className="text-stremlist underline hover:text-blue-700"
