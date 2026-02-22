@@ -2,6 +2,32 @@ export interface WatchlistData {
   metas: StremioMeta[]
 }
 
+export interface ConfigWatchlist {
+  id: string
+  imdbUserId: string
+  catalogTitle: string
+  sortOption: string
+  position: number
+}
+
+export interface UserConfigResponse {
+  rpdbApiKey: string | null
+  watchlists: ConfigWatchlist[]
+}
+
+export interface UserConfigUpdateWatchlist {
+  id?: string
+  imdbUserId: string
+  catalogTitle?: string
+  sortOption: string
+  position: number
+}
+
+export interface UserConfigUpdatePayload {
+  rpdbApiKey?: string
+  watchlists: UserConfigUpdateWatchlist[]
+}
+
 export interface StremioMeta {
   id: string
   name: string

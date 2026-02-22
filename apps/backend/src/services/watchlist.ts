@@ -1,22 +1,22 @@
-import { parseSortOption } from "@stremlist/shared";
+import { DEFAULT_SORT_OPTION, parseSortOption } from "@stremlist/shared";
 import type { WatchlistData, SortOptions } from "@stremlist/shared";
 import { supabase } from "../lib/supabase";
 import { shuffleArray } from "../utils";
 import { buildPosterUrl, fetchWatchlist } from "./imdb-scraper";
-import { ensureUser, getUserRpdbApiKey, getUserSortOption } from "./user";
+import { ensureUser } from "./user";
 
 async function getCachedWatchlist(
-  userId: string,
+  watchlistId: string,
 ): Promise<{ data: WatchlistData; cachedAt: Date } | null> {
   const { data, error } = await supabase
     .from("watchlist_cache")
     .select("cached_data, cached_at")
-    .eq("imdb_user_id", userId)
+    .eq("watchlist_id", watchlistId)
     .single();
 
   if (error) {
     console.error(
-      `Failed to get cached watchlist for ${userId}:`,
+      `Failed to get cached watchlist for ${watchlistId}:`,
       error.message,
     );
     return null;
@@ -29,60 +29,78 @@ async function getCachedWatchlist(
 }
 
 async function upsertCache(
-  userId: string,
+  watchlistId: string,
   watchlistData: WatchlistData,
 ): Promise<void> {
   const { error } = await supabase.from("watchlist_cache").upsert(
     {
-      imdb_user_id: userId,
+      watchlist_id: watchlistId,
       cached_data: watchlistData,
       cached_at: new Date().toISOString(),
     },
-    { onConflict: "imdb_user_id" },
+    { onConflict: "watchlist_id" },
   );
 
   if (error) {
-    console.error(`Failed to cache watchlist for ${userId}:`, error.message);
+    console.error(
+      `Failed to cache watchlist for ${watchlistId}:`,
+      error.message,
+    );
   }
 }
 
-export async function getWatchlist(
-  userId: string,
-  sortOptionOverride?: string | null,
-): Promise<WatchlistData> {
-  await ensureUser(userId);
+export interface WatchlistFetchConfig {
+  ownerUserId: string;
+  watchlistId: string;
+  imdbUserId: string;
+  sortOption: string | null | undefined;
+  rpdbApiKey?: string | null;
+}
 
-  const sortOptionStr = sortOptionOverride ?? (await getUserSortOption(userId));
+export async function getWatchlistByConfig(
+  config: WatchlistFetchConfig,
+): Promise<WatchlistData> {
+  await ensureUser(config.ownerUserId);
+
+  const sortOptionStr = config.sortOption ?? DEFAULT_SORT_OPTION;
   const sortOptions = parseSortOption(sortOptionStr);
-  const rpdbApiKey = await getUserRpdbApiKey(userId);
 
   try {
-    console.log(`Fetching watchlist from IMDb for ${userId}...`);
-    const fresh = await fetchWatchlist(userId, sortOptions, rpdbApiKey);
+    const fresh = await fetchWatchlist(
+      config.imdbUserId,
+      sortOptions,
+      config.rpdbApiKey,
+    );
+
     await Promise.all([
-      upsertCache(userId, fresh),
+      upsertCache(config.watchlistId, fresh),
       supabase
         .from("users")
         .update({ last_fetched_at: new Date().toISOString() })
-        .eq("imdb_user_id", userId),
+        .eq("imdb_user_id", config.ownerUserId),
     ]);
     return fresh;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error(`IMDb fetch failed for ${userId}, trying cache:`, message);
+    console.error(
+      `IMDb fetch failed for watchlist ${config.watchlistId}, trying cache:`,
+      message,
+    );
 
-    const cached = await getCachedWatchlist(userId);
+    const cached = await getCachedWatchlist(config.watchlistId);
     if (cached) {
-      console.log(`Serving cached watchlist for ${userId} as fallback`);
+      console.log(
+        `Serving cached watchlist for ${config.watchlistId} as fallback`,
+      );
       await supabase
         .from("users")
         .update({ last_cache_served_at: new Date().toISOString() })
-        .eq("imdb_user_id", userId);
-      return resortCachedData(cached.data, sortOptions, rpdbApiKey);
+        .eq("imdb_user_id", config.ownerUserId);
+      return resortCachedData(cached.data, sortOptions, config.rpdbApiKey);
     }
 
     throw new Error(
-      `Failed to fetch watchlist and no cache available: ${message}`,
+      `Failed to fetch watchlist ${config.watchlistId} and no cache available: ${message}`,
     );
   }
 }
