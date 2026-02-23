@@ -1,16 +1,15 @@
 import type { ConfigWatchlist, StremioCatalog } from "@stremlist/shared";
 import { buildCatalogId } from "./catalog-id";
 
-function buildCatalogName(baseTitle: string, type: "movie" | "series"): string {
-  const suffix = type === "movie" ? "Movies" : "Series";
+function buildCatalogName(baseTitle: string): string {
   const normalizedTitle = baseTitle.trim();
   if (!normalizedTitle) {
-    return `Stremlist - ${suffix}`;
+    return "Stremlist";
   }
   if (/^\d+$/u.test(normalizedTitle)) {
-    return `Stremlist ${normalizedTitle} - ${suffix}`;
+    return `Stremlist ${normalizedTitle}`;
   }
-  return `Stremlist - ${normalizedTitle} ${suffix}`;
+  return `Stremlist ${normalizedTitle}`;
 }
 
 function getEffectiveTitle(
@@ -37,12 +36,12 @@ export function buildManifestCatalogs(
     return [
       {
         id: buildCatalogId(watchlist.id, "movie"),
-        name: buildCatalogName(effectiveTitle, "movie"),
+        name: buildCatalogName(effectiveTitle),
         type: "movie",
       },
       {
         id: buildCatalogId(watchlist.id, "series"),
-        name: buildCatalogName(effectiveTitle, "series"),
+        name: buildCatalogName(effectiveTitle),
         type: "series",
       },
     ];

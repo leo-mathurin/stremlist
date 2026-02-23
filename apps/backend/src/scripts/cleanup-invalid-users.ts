@@ -135,18 +135,7 @@ async function deleteUsers(userIds: string[]): Promise<void> {
   for (let i = 0; i < userIds.length; i += BATCH_SIZE) {
     const batch = userIds.slice(i, i + BATCH_SIZE);
 
-    // Delete dependent cache rows first to avoid FK issues when constraints
-    // are not configured with ON DELETE CASCADE.
-    const { error: cacheError } = await supabase
-      .from("watchlist_cache")
-      .delete()
-      .in("imdb_user_id", batch);
-    if (cacheError) {
-      throw new Error(
-        `Failed deleting watchlist_cache batch: ${cacheError.message}`,
-      );
-    }
-
+    // Dependent tables (user_watchlists, watchlist_cache) cascade on delete.
     const { error: userError } = await supabase
       .from("users")
       .delete()
