@@ -179,9 +179,7 @@ export default function Home() {
                 <li>Rating (highest or lowest first)</li>
               </ul>
             </li>
-            <li>
-              Each watchlist will instantly adjust to its preferred order
-            </li>
+            <li>Each watchlist will instantly adjust to its preferred order</li>
           </ol>
           <h3 className="font-semibold text-gray-800 mt-3 mb-1">
             RPDB Posters

@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { getImdbWatchlist, fetchWatchlist } from "../imdb-scraper.js";
+import {
+  getImdbWatchlist,
+  fetchWatchlist,
+  validateImdbWatchlist,
+} from "../imdb-scraper.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -122,9 +126,7 @@ describe("getImdbWatchlist (unit)", () => {
       }),
     );
 
-    await expect(getImdbWatchlist("ur198342247")).rejects.toThrow(
-      /private/i,
-    );
+    await expect(getImdbWatchlist("ur198342247")).rejects.toThrow(/private/i);
   });
 
   it("throws when GraphQL returns errors", async () => {
@@ -138,6 +140,25 @@ describe("getImdbWatchlist (unit)", () => {
     await expect(getImdbWatchlist("ur1198342247")).rejects.toThrow(
       /Could not find an IMDb watchlist/,
     );
+  });
+
+  it("throws private error when GraphQL returns FORBIDDEN", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: { predefinedList: null },
+          errors: [
+            {
+              message: "Forbidden",
+              extensions: { code: "FORBIDDEN" },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await expect(getImdbWatchlist("ur198342247")).rejects.toThrow(/private/i);
   });
 
   it("throws when HTTP response is not ok", async () => {
@@ -196,6 +217,82 @@ describe("getImdbWatchlist (unit)", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Unit tests — validateImdbWatchlist with mocked fetch
+// ---------------------------------------------------------------------------
+
+describe("validateImdbWatchlist (unit)", () => {
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns valid for a public watchlist", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockGraphQLResponse({
+        id: "ls123456",
+        visibility: { id: "PUBLIC" },
+      }),
+    );
+
+    const result = await validateImdbWatchlist("ur195879360");
+    expect(result).toEqual({ valid: true });
+  });
+
+  it("returns private for a FORBIDDEN error", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: { predefinedList: null },
+          errors: [
+            {
+              message: "Forbidden",
+              extensions: { code: "FORBIDDEN" },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const result = await validateImdbWatchlist("ur198342247");
+    expect(result).toEqual({ valid: false, reason: "private" });
+  });
+
+  it("returns not_found for a nonexistent user", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockGraphQLResponse(null),
+    );
+
+    const result = await validateImdbWatchlist("ur999999999");
+    expect(result).toEqual({ valid: false, reason: "not_found" });
+  });
+
+  it("returns not_found when fetch throws", async () => {
+    vi.mocked(globalThis.fetch).mockRejectedValueOnce(
+      new Error("Network error"),
+    );
+
+    const result = await validateImdbWatchlist("ur999999999");
+    expect(result).toEqual({ valid: false, reason: "not_found" });
+  });
+
+  it("returns private for a PRIVATE visibility", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockGraphQLResponse({
+        id: "ls999999",
+        visibility: { id: "PRIVATE" },
+      }),
+    );
+
+    const result = await validateImdbWatchlist("ur198342247");
+    expect(result).toEqual({ valid: false, reason: "private" });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Unit tests — fetchWatchlist with mocked fetch
 // ---------------------------------------------------------------------------
 
@@ -210,8 +307,20 @@ describe("fetchWatchlist (unit)", () => {
 
   it("returns metas for a public watchlist", async () => {
     const edges = [
-      makeEdge({ id: "tt0068646", title: "The Godfather", type: "Movie", year: 1972, rating: 9.2 }),
-      makeEdge({ id: "tt2560140", title: "Attack on Titan", type: "TV Series", year: 2013, rating: 9.1 }),
+      makeEdge({
+        id: "tt0068646",
+        title: "The Godfather",
+        type: "Movie",
+        year: 1972,
+        rating: 9.2,
+      }),
+      makeEdge({
+        id: "tt2560140",
+        title: "Attack on Titan",
+        type: "TV Series",
+        year: 2013,
+        rating: 9.1,
+      }),
     ];
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       mockGraphQLResponse({
@@ -293,7 +402,10 @@ describe("fetchWatchlist (unit)", () => {
       }),
     );
 
-    const result = await fetchWatchlist("ur195879360", { by: "title", order: "asc" });
+    const result = await fetchWatchlist("ur195879360", {
+      by: "title",
+      order: "asc",
+    });
 
     expect(result.metas.map((m) => m.name)).toEqual(["Alpha", "Mango", "Zulu"]);
   });
@@ -312,7 +424,10 @@ describe("fetchWatchlist (unit)", () => {
       }),
     );
 
-    const result = await fetchWatchlist("ur195879360", { by: "rating", order: "desc" });
+    const result = await fetchWatchlist("ur195879360", {
+      by: "rating",
+      order: "desc",
+    });
 
     expect(result.metas.map((m) => m.imdbRating)).toEqual(["9.5", "7", "5"]);
   });
@@ -331,15 +446,20 @@ describe("fetchWatchlist (unit)", () => {
       }),
     );
 
-    const result = await fetchWatchlist("ur195879360", { by: "year", order: "asc" });
+    const result = await fetchWatchlist("ur195879360", {
+      by: "year",
+      order: "asc",
+    });
 
-    expect(result.metas.map((m) => m.releaseInfo)).toEqual(["1990", "2005", "2020"]);
+    expect(result.metas.map((m) => m.releaseInfo)).toEqual([
+      "1990",
+      "2005",
+      "2020",
+    ]);
   });
 
   it("throws when all items are filtered out", async () => {
-    const edges = [
-      makeEdge({ id: "tt0000001", type: "TV Episode" }),
-    ];
+    const edges = [makeEdge({ id: "tt0000001", type: "TV Episode" })];
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       mockGraphQLResponse({
         id: "ls123",
@@ -379,13 +499,10 @@ describe("integration: real IMDb GraphQL API", () => {
     }
   });
 
-  // The unauthenticated GraphQL API returns predefinedList: null for private
-  // lists, identical to a nonexistent user. Private detection only works when
-  // the visibility field is explicitly returned (authenticated sessions).
+  // The unauthenticated GraphQL API returns a FORBIDDEN error for private
+  // lists, allowing us to distinguish them from nonexistent users.
   it("throws for a private watchlist (ur198342247)", async () => {
-    await expect(fetchWatchlist("ur198342247")).rejects.toThrow(
-      /Could not find an IMDb watchlist/,
-    );
+    await expect(fetchWatchlist("ur198342247")).rejects.toThrow(/private/i);
   });
 
   it("throws for an invalid IMDb user ID (ur1198342247)", async () => {
