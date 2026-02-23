@@ -3,11 +3,12 @@
 ![Stremlist OG Image](https://stremlist.com/og-image.png)
 
 Stremlist is a Stremio addon that turns your IMDb watchlist into a Stremio catalog, so you can browse your saved movies and TV shows directly inside Stremio.
+
 ## Features
 
 - Browse IMDb watchlist items in Stremio
-- Supports both movies and series
-- Supports sorting by title, year, rating, and runtime
+- Supports one or multiple IMDb watchlists
+- Supports sorting by title, year, rating, runtime, and random order
 - Optional Rating Poster Database (RPDB) poster support via API key
 - Simple install flow through a hosted configuration UI
 - Lightweight backend with Supabase for user management and watchlist caching
@@ -27,6 +28,12 @@ This repository follows the Turborepo recommended structure:
 ├── turbo.json
 └── pnpm-workspace.yaml
 ```
+
+## Deployment Architecture
+
+- Frontend and backend are deployed on [Vercel](https://vercel.com)
+- Backend serves Stremio addon endpoints and configuration flow
+- Supabase stores user configuration and cached watchlist data
 
 ## Getting Started
 
@@ -81,7 +88,7 @@ pnpm format:check
 1. Open Stremio -> Addons
 2. Click **Add Addon URL**
 3. Enter: `[YOUR_DEPLOYED_BACKEND_URL]/manifest.json`
-4. Configure with your IMDb user ID
+4. Configure with your IMDb watchlist details (single or multiple watchlists)
 5. (Optional) Add your RPDB API key on the configure page to use rating posters
 
 ### Local Instance
