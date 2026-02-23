@@ -179,9 +179,7 @@ describe("Watchlist CRUD via API", () => {
       seedWatchlist({ id: UUID_1, sortOption: "added_at-asc" });
 
       const res = await postConfig(OWNER, {
-        watchlists: [
-          { id: UUID_1, imdbUserId: OWNER, sortOption: "year-asc" },
-        ],
+        watchlists: [{ id: UUID_1, imdbUserId: OWNER, sortOption: "year-asc" }],
       });
 
       const data = await res.json();

@@ -30,11 +30,11 @@ const USER_IDS = [
 ];
 
 const PHASES = [
-  { label: "warm-up",       concurrency:  3, rounds:  1 },
-  { label: "sustained",     concurrency: 10, rounds: 10 },
-  { label: "high load",     concurrency: 15, rounds:  5 },
-  { label: "spike",         concurrency: 25, rounds:  3 },
-  { label: "cool-down",     concurrency:  5, rounds:  3 },
+  { label: "warm-up", concurrency: 3, rounds: 1 },
+  { label: "sustained", concurrency: 10, rounds: 10 },
+  { label: "high load", concurrency: 15, rounds: 5 },
+  { label: "spike", concurrency: 25, rounds: 3 },
+  { label: "cool-down", concurrency: 5, rounds: 3 },
 ];
 // Total requests: 3 + 100 + 75 + 75 + 15 = 268
 
@@ -152,8 +152,13 @@ describe(
           .sort((a, b) => a - b);
         const p95 = percentile(durations, 95);
 
-        expect(errorRate, `error rate exceeded ${MAX_ERROR_RATE * 100}%`).toBeLessThanOrEqual(MAX_ERROR_RATE);
-        expect(p95, `p95 latency exceeded ${MAX_P95_MS}ms`).toBeLessThan(MAX_P95_MS);
+        expect(
+          errorRate,
+          `error rate exceeded ${MAX_ERROR_RATE * 100}%`,
+        ).toBeLessThanOrEqual(MAX_ERROR_RATE);
+        expect(p95, `p95 latency exceeded ${MAX_P95_MS}ms`).toBeLessThan(
+          MAX_P95_MS,
+        );
       });
     }
 
@@ -169,7 +174,9 @@ describe(
         .map((r) => r.durationMs)
         .sort((a, b) => a - b);
 
-      console.log(`\nThresholds: error rate ≤ ${MAX_ERROR_RATE * 100}%, p95 < ${MAX_P95_MS}ms`);
+      console.log(
+        `\nThresholds: error rate ≤ ${MAX_ERROR_RATE * 100}%, p95 < ${MAX_P95_MS}ms`,
+      );
 
       expect(errorRate).toBeLessThanOrEqual(MAX_ERROR_RATE);
       expect(percentile(durations, 95)).toBeLessThan(MAX_P95_MS);

@@ -17,6 +17,7 @@
   "devDependencies": {
     "@stremlist/eslint-config": "workspace:*",
     "eslint": "^9.39.2",
+    "prettier": "^3.8.1",
     "typescript": "^5.8.3"
   }
 }

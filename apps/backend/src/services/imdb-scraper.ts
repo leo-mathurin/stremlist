@@ -183,7 +183,9 @@ export async function getImdbWatchlist(userId: string): Promise<ImdbEdge[]> {
   });
 
   if (json.errors?.length) {
-    throw new Error(hasForbiddenError(json.errors) ? ERROR_PRIVATE : ERROR_NOT_FOUND);
+    throw new Error(
+      hasForbiddenError(json.errors) ? ERROR_PRIVATE : ERROR_NOT_FOUND,
+    );
   }
 
   const list = json.data?.predefinedList;

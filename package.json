@@ -29,13 +29,16 @@
     "format:check": "turbo run format:check",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
-    "generate:types": "pnpm supabase gen types typescript --project-id igbmxubzxjfdbgmawrtr --schema public > packages/shared/src/database.types.ts"
+    "generate:types": "pnpm supabase gen types typescript --project-id igbmxubzxjfdbgmawrtr --schema public > packages/shared/src/database.types.ts",
+    "prepare": "husky"
   },
   "engines": {
     "node": ">=20.0.0"
   },
   "packageManager": "pnpm@10.30.1",
   "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
     "turbo": "^2.8.10"
   }
 }

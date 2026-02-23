@@ -126,9 +126,7 @@ describe("getImdbWatchlist (unit)", () => {
       }),
     );
 
-    await expect(getImdbWatchlist("ur198342247")).rejects.toThrow(
-      /private/i,
-    );
+    await expect(getImdbWatchlist("ur198342247")).rejects.toThrow(/private/i);
   });
 
   it("throws when GraphQL returns errors", async () => {
@@ -273,7 +271,9 @@ describe("validateImdbWatchlist (unit)", () => {
   });
 
   it("returns not_found when fetch throws", async () => {
-    vi.mocked(globalThis.fetch).mockRejectedValueOnce(new Error("Network error"));
+    vi.mocked(globalThis.fetch).mockRejectedValueOnce(
+      new Error("Network error"),
+    );
 
     const result = await validateImdbWatchlist("ur999999999");
     expect(result).toEqual({ valid: false, reason: "not_found" });
@@ -307,8 +307,20 @@ describe("fetchWatchlist (unit)", () => {
 
   it("returns metas for a public watchlist", async () => {
     const edges = [
-      makeEdge({ id: "tt0068646", title: "The Godfather", type: "Movie", year: 1972, rating: 9.2 }),
-      makeEdge({ id: "tt2560140", title: "Attack on Titan", type: "TV Series", year: 2013, rating: 9.1 }),
+      makeEdge({
+        id: "tt0068646",
+        title: "The Godfather",
+        type: "Movie",
+        year: 1972,
+        rating: 9.2,
+      }),
+      makeEdge({
+        id: "tt2560140",
+        title: "Attack on Titan",
+        type: "TV Series",
+        year: 2013,
+        rating: 9.1,
+      }),
     ];
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       mockGraphQLResponse({
@@ -390,7 +402,10 @@ describe("fetchWatchlist (unit)", () => {
       }),
     );
 
-    const result = await fetchWatchlist("ur195879360", { by: "title", order: "asc" });
+    const result = await fetchWatchlist("ur195879360", {
+      by: "title",
+      order: "asc",
+    });
 
     expect(result.metas.map((m) => m.name)).toEqual(["Alpha", "Mango", "Zulu"]);
   });
@@ -409,7 +424,10 @@ describe("fetchWatchlist (unit)", () => {
       }),
     );
 
-    const result = await fetchWatchlist("ur195879360", { by: "rating", order: "desc" });
+    const result = await fetchWatchlist("ur195879360", {
+      by: "rating",
+      order: "desc",
+    });
 
     expect(result.metas.map((m) => m.imdbRating)).toEqual(["9.5", "7", "5"]);
   });
@@ -428,15 +446,20 @@ describe("fetchWatchlist (unit)", () => {
       }),
     );
 
-    const result = await fetchWatchlist("ur195879360", { by: "year", order: "asc" });
+    const result = await fetchWatchlist("ur195879360", {
+      by: "year",
+      order: "asc",
+    });
 
-    expect(result.metas.map((m) => m.releaseInfo)).toEqual(["1990", "2005", "2020"]);
+    expect(result.metas.map((m) => m.releaseInfo)).toEqual([
+      "1990",
+      "2005",
+      "2020",
+    ]);
   });
 
   it("throws when all items are filtered out", async () => {
-    const edges = [
-      makeEdge({ id: "tt0000001", type: "TV Episode" }),
-    ];
+    const edges = [makeEdge({ id: "tt0000001", type: "TV Episode" })];
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       mockGraphQLResponse({
         id: "ls123",

@@ -14,7 +14,9 @@ describe("catalog id helpers", () => {
   it("rejects malformed ids", () => {
     expect(parseCatalogId("stremlist-movies")).toBeNull();
     expect(parseCatalogId("wl-not-a-uuid-series")).toBeNull();
-    expect(parseCatalogId("wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-anime")).toBeNull();
+    expect(
+      parseCatalogId("wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-anime"),
+    ).toBeNull();
   });
 });
 

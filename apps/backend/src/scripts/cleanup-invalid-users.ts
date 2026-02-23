@@ -1,4 +1,3 @@
-
 import type { Database } from "@stremlist/shared";
 import { createClient } from "@supabase/supabase-js";
 import { config } from "dotenv";
