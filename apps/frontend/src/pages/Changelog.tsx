@@ -28,7 +28,7 @@ const BADGE_CLASSES: Record<ChangeType, string> = {
 const VERSIONS: Version[] = [
   {
     version: "v1.3.0",
-    date: "February 2026",
+    date: "February 23, 2026",
     changes: [
       {
         type: "bugfix",
