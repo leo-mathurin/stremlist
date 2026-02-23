@@ -10,7 +10,7 @@ const NAV_LINKS = [
     to: "https://github.com/leo-mathurin/stremlist",
     internal: false,
   },
-  { label: "Contact", to: "mailto:lelemathrin69@gmail.com", internal: false },
+  { label: "Contact", to: "mailto:me@leomathurin.com", internal: false },
 ];
 
 export default function Footer() {
