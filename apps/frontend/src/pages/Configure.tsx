@@ -161,22 +161,30 @@ export default function Configure() {
 
         setValidating(true);
         setIdError(null);
-        api.validate[":userId"]
-          .$get({ param: { userId: extracted } })
-          .then((res) => res.json())
-          .then((data) => {
+        (async () => {
+          try {
+            const res = await api.validate[":userId"].$get({
+              param: { userId: extracted },
+            });
+            const data = await res.json();
             if (data.valid) {
               setSearchParams({ userId: extracted });
             } else {
+              const reason = "reason" in data ? data.reason : undefined;
               setIdError(
-                "This IMDb ID does not exist. Please check and try again.",
+                reason === "private"
+                  ? "This IMDb watchlist is private. Please make your watchlist public in your IMDb settings."
+                  : "This IMDb ID does not exist. Please check and try again.",
               );
             }
-          })
-          .catch(() => {
-            setSearchParams({ userId: extracted });
-          })
-          .finally(() => setValidating(false));
+          } catch {
+            setIdError(
+              "Could not validate this IMDb ID. Please try again later.",
+            );
+          } finally {
+            setValidating(false);
+          }
+        })();
       }, 500);
     },
     [setSearchParams],

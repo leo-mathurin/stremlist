@@ -1,10 +1,13 @@
 import { zValidator } from "@hono/zod-validator";
-import { SORT_OPTIONS, IMDB_USER_AGENT } from "@stremlist/shared";
+import { SORT_OPTIONS } from "@stremlist/shared";
 import { Hono } from "hono";
 import { z } from "zod";
 import { resend } from "../lib/resend";
 import { supabase } from "../lib/supabase";
-import { getImdbWatchlist } from "../services/imdb-scraper";
+import {
+  getImdbWatchlist,
+  validateImdbWatchlist,
+} from "../services/imdb-scraper";
 import {
   getUserWatchlists,
   getUser,
@@ -36,20 +39,11 @@ const configBody = z.object({
 const api = new Hono()
   .get("/validate/:userId", zValidator("param", userIdParam), async (c) => {
     const { userId } = c.req.valid("param");
-
-    try {
-      const res = await fetch(
-        `https://www.imdb.com/user/${userId}/watchlist/`,
-        {
-          method: "HEAD",
-          headers: { "User-Agent": IMDB_USER_AGENT },
-          redirect: "follow",
-        },
-      );
-      return c.json({ valid: res.ok });
-    } catch {
-      return c.json({ valid: false, error: "Could not reach IMDb" }, 502);
+    const result = await validateImdbWatchlist(userId);
+    if (result.valid) {
+      return c.json({ valid: true });
     }
+    return c.json({ valid: false, reason: result.reason });
   })
   .get("/stats", async (c) => {
     const { count, error } = await supabase

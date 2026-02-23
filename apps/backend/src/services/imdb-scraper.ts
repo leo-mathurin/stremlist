@@ -73,7 +73,7 @@ interface GraphQLResponse {
       };
     } | null;
   };
-  errors?: { message: string }[];
+  errors?: { message: string; extensions?: { code?: string } }[];
 }
 
 interface ProcessedItem {
@@ -90,6 +90,36 @@ interface ProcessedItem {
   cast: string[];
 }
 
+const ERROR_NOT_FOUND =
+  "Could not find an IMDb watchlist for this ID. Please check and try again.";
+const ERROR_PRIVATE =
+  "This IMDb watchlist is private. Please make your watchlist public in your IMDb settings.";
+
+function hasForbiddenError(errors: GraphQLResponse["errors"]): boolean {
+  return errors?.some((e) => e.extensions?.code === "FORBIDDEN") ?? false;
+}
+
+async function queryImdbGraphQL(
+  operationName: string,
+  query: string,
+  variables: Record<string, unknown>,
+): Promise<GraphQLResponse> {
+  const response = await fetch(GRAPHQL_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-imdb-client-name": GRAPHQL_CLIENT_NAME,
+    },
+    body: JSON.stringify({ operationName, query, variables }),
+  });
+
+  if (!response.ok) {
+    throw new Error(ERROR_NOT_FOUND);
+  }
+
+  return (await response.json()) as GraphQLResponse;
+}
+
 export function buildPosterUrl(
   imdbId: string,
   fallbackPosterUrl: string | null,
@@ -103,46 +133,67 @@ export function buildPosterUrl(
   return `https://api.ratingposterdb.com/${encodeURIComponent(normalizedKey)}/imdb/poster-default/${imdbId}.jpg?fallback=true`;
 }
 
+export type ValidationResult =
+  | { valid: true }
+  | { valid: false; reason: "not_found" | "private" };
+
+const VALIDATE_QUERY = `
+  query ValidateWatchlist($urConst: ID!) {
+    predefinedList(classType: WATCH_LIST, userId: $urConst) {
+      id
+      visibility { id }
+    }
+  }
+`;
+
+export async function validateImdbWatchlist(
+  userId: string,
+): Promise<ValidationResult> {
+  try {
+    const json = await queryImdbGraphQL("ValidateWatchlist", VALIDATE_QUERY, {
+      urConst: userId,
+    });
+
+    if (json.errors?.length) {
+      return {
+        valid: false,
+        reason: hasForbiddenError(json.errors) ? "private" : "not_found",
+      };
+    }
+
+    const list = json.data?.predefinedList;
+    if (!list) {
+      return { valid: false, reason: "not_found" };
+    }
+
+    if (list.visibility?.id === "PUBLIC") {
+      return { valid: true };
+    }
+
+    return { valid: false, reason: "private" };
+  } catch {
+    return { valid: false, reason: "not_found" };
+  }
+}
+
 export async function getImdbWatchlist(userId: string): Promise<ImdbEdge[]> {
-  const response = await fetch(GRAPHQL_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-imdb-client-name": GRAPHQL_CLIENT_NAME,
-    },
-    body: JSON.stringify({
-      operationName: "WatchListPage",
-      query: WATCHLIST_QUERY,
-      variables: { urConst: userId, first: 5000 },
-    }),
+  const json = await queryImdbGraphQL("WatchListPage", WATCHLIST_QUERY, {
+    urConst: userId,
+    first: 5000,
   });
 
-  if (!response.ok) {
-    throw new Error(
-      "Could not find an IMDb watchlist for this ID. Please check and try again.",
-    );
-  }
-
-  const json = (await response.json()) as GraphQLResponse;
-
   if (json.errors?.length) {
-    throw new Error(
-      "Could not find an IMDb watchlist for this ID. Please check and try again.",
-    );
+    throw new Error(hasForbiddenError(json.errors) ? ERROR_PRIVATE : ERROR_NOT_FOUND);
   }
 
   const list = json.data?.predefinedList;
 
   if (!list) {
-    throw new Error(
-      "Could not find an IMDb watchlist for this ID. Please check and try again.",
-    );
+    throw new Error(ERROR_NOT_FOUND);
   }
 
   if (list.visibility?.id === "PRIVATE") {
-    throw new Error(
-      "This IMDb watchlist is private. Please make your watchlist public in your IMDb settings.",
-    );
+    throw new Error(ERROR_PRIVATE);
   }
 
   return list.titleListItemSearch?.edges ?? [];

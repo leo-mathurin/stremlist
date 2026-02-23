@@ -34,6 +34,13 @@ function setUserIdQueryParam(userId: string): void {
 
 type Status = { type: "error" | "success" | "info"; message: string } | null;
 
+function getValidationErrorMessage(data: { valid: boolean; reason?: string }): string {
+  if ("reason" in data && data.reason === "private") {
+    return "This IMDb watchlist is private. Please make your watchlist public in your IMDb settings.";
+  }
+  return "This IMDb ID does not exist. Please check and try again.";
+}
+
 async function checkExistingUser(
   userId: string,
 ): Promise<boolean> {
@@ -85,19 +92,13 @@ export default function SetupForm() {
               message: "Choose how to install below:",
             });
           } else {
-            setStatus({
-              type: "error",
-              message:
-                "This IMDb ID does not exist. Please check and try again.",
-            });
+            setStatus({ type: "error", message: getValidationErrorMessage(data) });
           }
         }
       } catch {
-        setValidId(initialUserId);
-        setUserIdQueryParam(initialUserId);
         setStatus({
-          type: "success",
-          message: "Choose how to install below:",
+          type: "error",
+          message: "Could not validate this IMDb ID. Please try again later.",
         });
       } finally {
         setValidating(false);
@@ -172,18 +173,12 @@ export default function SetupForm() {
             message: "Choose how to install below:",
           });
         } else {
-          setStatus({
-            type: "error",
-            message:
-              "This IMDb ID does not exist. Please check and try again.",
-          });
+          setStatus({ type: "error", message: getValidationErrorMessage(data) });
         }
       } catch {
-        setValidId(extracted);
-        setUserIdQueryParam(extracted);
         setStatus({
-          type: "success",
-          message: "Choose how to install below:",
+          type: "error",
+          message: "Could not validate this IMDb ID. Please try again later.",
         });
       } finally {
         setValidating(false);
