@@ -57,8 +57,8 @@ const VERSIONS: Version[] = [
       },
       {
         type: "performance",
-        label: "Performance",
-        text: "Complete architecture rewrite with a much simpler codebase for easier maintenance and faster future updates.",
+        label: "Architecture",
+        text: "Rebuilt deployment around Vercel (frontend + API), replacing the old self-managed Linux VPS setup for simpler operations, easier rollouts, and better uptime.",
       },
     ],
   },
