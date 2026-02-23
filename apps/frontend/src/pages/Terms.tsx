@@ -100,10 +100,10 @@ export default function Terms() {
               <p>
                 If you have any questions about these Terms, please contact{" "}
                 <a
-                  href="mailto:lelemathrin69@gmail.com"
+                  href="mailto:me@leomathurin.com"
                   className="text-stremlist hover:underline"
                 >
-                  lelemathrin69@gmail.com
+                  me@leomathurin.com
                 </a>
                 .
               </p>
@@ -248,10 +248,10 @@ export default function Terms() {
                 If you have any questions about this Privacy Policy, please
                 contact us at{" "}
                 <a
-                  href="mailto:lelemathrin69@gmail.com"
+                  href="mailto:me@leomathurin.com"
                   className="text-stremlist hover:underline"
                 >
-                  lelemathrin69@gmail.com
+                  me@leomathurin.com
                 </a>
                 .
               </p>
