@@ -31,19 +31,34 @@ const VERSIONS: Version[] = [
     date: "February 2026",
     changes: [
       {
+        type: "bugfix",
+        label: "Reliability",
+        text: "Fixed recurring backend downtime caused by the previous scraping approach by rebuilding the IMDb scraping flow for better stability.",
+      },
+      {
         type: "enhancement",
         label: "Feature",
-        text: "Complete rewrite in TypeScript with Hono backend, React frontend, and Supabase replacing Redis.",
+        text: "Added RPDB poster support for improved artwork in catalogs.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Added support for multiple IMDb watchlists in a single setup.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: 'Added a new "Random" sort order.',
+      },
+      {
+        type: "enhancement",
+        label: "Open source",
+        text: "Open-sourced Stremlist to make community contributions and transparency easier.",
       },
       {
         type: "performance",
         label: "Performance",
-        text: "Replaced jsdom with linkedom for HTML parsing (~100KB vs ~20MB) and axios with native fetch.",
-      },
-      {
-        type: "enhancement",
-        label: "Enhancement",
-        text: "Shared type-safe package for database types, Stremio types, and constants across frontend and backend.",
+        text: "Complete architecture rewrite with a much simpler codebase for easier maintenance and faster future updates.",
       },
     ],
   },
