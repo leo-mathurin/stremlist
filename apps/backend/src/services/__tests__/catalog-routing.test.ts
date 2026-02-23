@@ -42,22 +42,22 @@ describe("manifest catalog generation", () => {
     expect(catalogs).toEqual([
       {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
-        name: "Stremlist - Leo Picks Movies",
+        name: "Stremlist Leo Picks",
         type: "movie",
       },
       {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-series",
-        name: "Stremlist - Leo Picks Series",
+        name: "Stremlist Leo Picks",
         type: "series",
       },
       {
         id: "wl-3be4e39f-3e27-42e7-a69f-c14f0709de52-movie",
-        name: "Stremlist - Family Queue Movies",
+        name: "Stremlist Family Queue",
         type: "movie",
       },
       {
         id: "wl-3be4e39f-3e27-42e7-a69f-c14f0709de52-series",
-        name: "Stremlist - Family Queue Series",
+        name: "Stremlist Family Queue",
         type: "series",
       },
     ]);
@@ -77,12 +77,12 @@ describe("manifest catalog generation", () => {
     expect(catalogs).toEqual([
       {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
-        name: "Stremlist - Movies",
+        name: "Stremlist",
         type: "movie",
       },
       {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-series",
-        name: "Stremlist - Series",
+        name: "Stremlist",
         type: "series",
       },
     ]);
@@ -109,22 +109,22 @@ describe("manifest catalog generation", () => {
     expect(catalogs).toEqual([
       {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
-        name: "Stremlist 1 - Movies",
+        name: "Stremlist 1",
         type: "movie",
       },
       {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-series",
-        name: "Stremlist 1 - Series",
+        name: "Stremlist 1",
         type: "series",
       },
       {
         id: "wl-3be4e39f-3e27-42e7-a69f-c14f0709de52-movie",
-        name: "Stremlist 2 - Movies",
+        name: "Stremlist 2",
         type: "movie",
       },
       {
         id: "wl-3be4e39f-3e27-42e7-a69f-c14f0709de52-series",
-        name: "Stremlist 2 - Series",
+        name: "Stremlist 2",
         type: "series",
       },
     ]);
