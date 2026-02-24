@@ -458,7 +458,7 @@ describe("fetchWatchlist (unit)", () => {
     ]);
   });
 
-  it("throws when all items are filtered out", async () => {
+  it("returns empty metas when all items are filtered out", async () => {
     const edges = [makeEdge({ id: "tt0000001", type: "TV Episode" })];
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       mockGraphQLResponse({
@@ -468,9 +468,8 @@ describe("fetchWatchlist (unit)", () => {
       }),
     );
 
-    await expect(fetchWatchlist("ur195879360")).rejects.toThrow(
-      /empty or may not contain/,
-    );
+    const result = await fetchWatchlist("ur195879360");
+    expect(result.metas).toEqual([]);
   });
 });
 
@@ -511,9 +510,8 @@ describe("integration: real IMDb GraphQL API", () => {
     );
   });
 
-  it("throws for an empty watchlist (ur198654279)", async () => {
-    await expect(fetchWatchlist("ur198654279")).rejects.toThrow(
-      /empty or may not contain/,
-    );
+  it("returns empty metas for an empty watchlist (ur198654279)", async () => {
+    const result = await fetchWatchlist("ur198654279");
+    expect(result.metas).toEqual([]);
   });
 });

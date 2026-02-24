@@ -366,22 +366,10 @@ export async function fetchWatchlist(
   );
 
   const processed = processWatchlist(edges);
-  if (processed.length === 0) {
-    throw new Error(
-      "This watchlist appears to be empty or may not contain any compatible movies or series.",
-    );
-  }
-
   const metas = convertToStremioFormat(processed, sortOptions, rpdbApiKey);
   console.log(
     `Converted ${metas.length} items to Stremio format (sorted by ${sortOptions.by}, ${sortOptions.order})`,
   );
-
-  if (metas.length === 0) {
-    throw new Error(
-      "This watchlist appears to be empty or may not contain any compatible movies or series.",
-    );
-  }
 
   return { metas };
 }
