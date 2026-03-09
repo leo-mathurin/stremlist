@@ -6,8 +6,15 @@ import SetupForm from "../components/SetupForm";
 import Footer from "../components/Footer";
 import { api } from "../lib/api";
 import { Badge } from "@/components/ui/badge";
+import { useSEO } from "../hooks/useSEO";
 
 export default function Home() {
+  useSEO({
+    title: "Stremlist - IMDb Watchlist for Stremio",
+    description:
+      "Connect your IMDb watchlist directly to Stremio. A free addon that syncs your IMDb watchlist with Stremio's streaming platform.",
+    canonical: "https://stremlist.com/",
+  });
   const [userCount, setUserCount] = useState<number | null>(null);
 
   useEffect(() => {

@@ -6,6 +6,7 @@ import { Eye, EyeOff, Plus, Trash2 } from "lucide-react";
 import Header from "../components/Header";
 import AddonInstallActions from "../components/AddonInstallActions";
 import { api } from "../lib/api";
+import { useSEO } from "../hooks/useSEO";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,6 +61,13 @@ function createWatchlistRow(
 }
 
 export default function Configure() {
+  useSEO({
+    title: "Configure - Stremlist",
+    description:
+      "Configure your Stremlist addon settings, watchlists, and sorting preferences.",
+    robots: "noindex, nofollow",
+  });
+
   const [searchParams, setSearchParams] = useSearchParams();
   const userId = searchParams.get("userId");
   const homePath = userId ? `/?userId=${encodeURIComponent(userId)}` : "/";
