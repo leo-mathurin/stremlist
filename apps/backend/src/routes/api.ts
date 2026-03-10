@@ -6,6 +6,7 @@ import { resend } from "../lib/resend";
 import { supabase } from "../lib/supabase";
 import {
   getImdbWatchlist,
+  validateImdbList,
   validateImdbWatchlist,
 } from "../services/imdb-scraper";
 import {
@@ -26,7 +27,7 @@ const configWatchlistBody = z.object({
   imdbUserId: z
     .string()
     .trim()
-    .regex(/^ur\d{4,}$/),
+    .regex(/^(ur\d{4,}|ls\d+)$/),
   catalogTitle: z.string().trim().max(30).optional(),
   sortOption: z.enum(sortOptionValues),
   position: z.number().int().min(0).optional(),
@@ -45,6 +46,18 @@ const api = new Hono()
     }
     return c.json({ valid: false, reason: result.reason });
   })
+  .get(
+    "/validate-list/:listId",
+    zValidator("param", z.object({ listId: z.string().regex(/^ls\d+$/) })),
+    async (c) => {
+      const { listId } = c.req.valid("param");
+      const result = await validateImdbList(listId);
+      if (result.valid) {
+        return c.json({ valid: true });
+      }
+      return c.json({ valid: false, reason: result.reason });
+    },
+  )
   .get("/stats", async (c) => {
     const { count, error } = await supabase
       .from("users")
@@ -108,7 +121,7 @@ const api = new Hono()
         return c.json(
           {
             error:
-              "Each watchlist must use a unique IMDb user ID for this installation.",
+              "Each watchlist must use a unique IMDb ID for this installation.",
           },
           400,
         );

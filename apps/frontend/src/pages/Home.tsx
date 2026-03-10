@@ -10,9 +10,9 @@ import { useSEO } from "../hooks/useSEO";
 
 export default function Home() {
   useSEO({
-    title: "Stremlist - IMDb Watchlist for Stremio",
+    title: "Stremlist - IMDb Watchlists & Lists for Stremio",
     description:
-      "Connect your IMDb watchlist directly to Stremio. A free addon that syncs your IMDb watchlist with Stremio's streaming platform.",
+      "Connect your IMDb watchlists and lists directly to Stremio. A free addon that syncs your IMDb watchlists and curated lists with Stremio's streaming platform.",
     canonical: "https://stremlist.com/",
   });
   const [userCount, setUserCount] = useState<number | null>(null);
@@ -51,7 +51,8 @@ export default function Home() {
             <div className="flex items-center justify-center gap-0.5 h-7"></div>
           )}
           <p className="text-gray-600">
-            Stremlist brings your IMDb watchlists directly into Stremio.
+            Stremlist brings your IMDb watchlists and lists directly into
+            Stremio.
           </p>
           <p className="text-gray-600">
             Enter your IMDb User ID below to get started.
@@ -67,7 +68,7 @@ export default function Home() {
               {
                 step: 1,
                 title: "Enter your IMDb ID",
-                desc: "Provide your IMDb User ID to connect your watchlists",
+                desc: "Provide your IMDb User ID to connect your watchlists and lists",
               },
               {
                 step: 2,
@@ -77,7 +78,7 @@ export default function Home() {
               {
                 step: 3,
                 title: "Enjoy your watchlists",
-                desc: "Access one or more IMDb watchlists directly in Stremio",
+                desc: "Access your IMDb watchlists and lists directly in Stremio",
               },
             ].map((item) => (
               <div
@@ -102,18 +103,19 @@ export default function Home() {
 
         <section className="border-l-4 border-imdb bg-gray-50 rounded-r-lg p-5">
           <h2 className="text-lg font-bold text-gray-900 mb-2">
-            Where to find your watchlists in Stremio
+            Where to find your catalogs in Stremio
           </h2>
           <p className="text-sm text-gray-600 mb-2">
-            After installation, you can access your IMDb watchlists in two ways:
+            After installation, you can access your IMDb watchlists and lists in
+            two ways:
           </p>
           <ul className="list-disc list-inside text-sm text-gray-600 space-y-1 mb-3">
             <li>
-              <strong>Home page:</strong> Each watchlist appears as its own
-              catalog on the Stremio home page
+              <strong>Home page:</strong> Each watchlist or list appears as its
+              own catalog on the Stremio home page
             </li>
             <li>
-              <strong>Discover section:</strong> Find your watchlists as filters
+              <strong>Discover section:</strong> Find your catalogs as filters
               under the "Popular" category
             </li>
           </ul>
@@ -139,9 +141,9 @@ export default function Home() {
           </h2>
           <div className="space-y-3">
             {[
-              "When you add this addon to Stremio, it securely retrieves your public IMDb watchlist data",
-              "Your watchlists are converted into a format that Stremio can understand and display",
-              "The addon automatically checks for updates to your watchlists every 6-12 hours",
+              "When you add this addon to Stremio, it securely retrieves your public IMDb watchlist and list data",
+              "Your catalogs are converted into a format that Stremio can understand and display",
+              "The addon automatically checks for updates to your catalogs every 6-12 hours",
               "Everything happens in real-time \u2013 no data is stored permanently, protecting your privacy",
             ].map((text, i) => (
               <div key={i} className="flex items-start gap-3">
@@ -157,18 +159,18 @@ export default function Home() {
         <section className="border-l-4 border-stremlist bg-gray-50 rounded-r-lg p-5">
           <h2 className="text-lg font-bold text-gray-900 mb-3">Features</h2>
           <h3 className="font-semibold text-gray-800 mb-1">
-            Multiple Watchlists
+            Multiple Watchlists & Lists
           </h3>
           <p className="text-sm text-gray-600 mb-3">
-            Follow watchlists from different IMDb users and display them all as
-            separate catalogs in Stremio. Great for combining your own watchlist
-            with a friend's or a curated list.
+            Add watchlists from different IMDb users and any public IMDb list,
+            then display them all as separate catalogs in Stremio. Great for
+            combining your own watchlist with a friend's or a curated list.
           </p>
           <h3 className="font-semibold text-gray-800 mb-1">
             Customizable Sorting
           </h3>
           <p className="text-sm text-gray-600 mb-2">
-            Sort each watchlist independently! After installing the addon:
+            Sort each catalog independently! After installing the addon:
           </p>
           <ol className="list-decimal list-inside text-sm text-gray-600 space-y-1">
             <li>
@@ -178,7 +180,7 @@ export default function Home() {
               </Link>
             </li>
             <li>
-              Choose a sorting method per watchlist:
+              Choose a sorting method per catalog:
               <ul className="list-disc list-inside ml-4 mt-1 space-y-0.5">
                 <li>Date Added (Oldest or Newest first) - (IMDb Order)</li>
                 <li>Title (A-Z or Z-A)</li>
@@ -186,7 +188,7 @@ export default function Home() {
                 <li>Rating (highest or lowest first)</li>
               </ul>
             </li>
-            <li>Each watchlist will instantly adjust to its preferred order</li>
+            <li>Each catalog will instantly adjust to its preferred order</li>
           </ol>
           <h3 className="font-semibold text-gray-800 mt-3 mb-1">
             RPDB Posters
@@ -214,14 +216,14 @@ export default function Home() {
             If you experience any issues:
           </p>
           <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
-            <li>Make sure your IMDb watchlists are set to public</li>
+            <li>Make sure your IMDb watchlists and lists are set to public</li>
             <li>Try using Stremio Web instead of Stremio Desktop</li>
             <li>
               If Stremio shows "Failed to fetch," try restarting Stremio after
               adding the addon
             </li>
             <li>
-              Ensure your IMDb ID starts with "ur" and is entered correctly
+              Ensure your IMDb User ID starts with "ur" and is entered correctly
             </li>
           </ul>
         </section>

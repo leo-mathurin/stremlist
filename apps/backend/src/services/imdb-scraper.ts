@@ -40,6 +40,47 @@ const WATCHLIST_QUERY = `
   }
 `;
 
+const LIST_QUERY = `
+  query ListPage($listId: ID!, $first: Int!) {
+    list(id: $listId) {
+      id
+      name { originalText }
+      visibility { id }
+      titleListItemSearch(first: $first) {
+        total
+        edges {
+          listItem: title {
+            id
+            titleText { text }
+            titleType { text }
+            releaseYear { year }
+            ratingsSummary { aggregateRating }
+            titleGenres { genres { genre { text } } }
+            plot { plotText { plainText } }
+            primaryImage { url }
+            runtime { seconds }
+            principalCredits {
+              category { id }
+              credits(limit: 5) {
+                name { nameText { text } }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+const VALIDATE_LIST_QUERY = `
+  query ValidateList($listId: ID!) {
+    list(id: $listId) {
+      id
+      visibility { id }
+    }
+  }
+`;
+
 interface ImdbEdge {
   listItem: {
     id: string;
@@ -72,6 +113,15 @@ interface GraphQLResponse {
         edges?: ImdbEdge[];
       };
     } | null;
+    list?: {
+      id: string;
+      name?: { originalText: string };
+      visibility?: { id: string };
+      titleListItemSearch?: {
+        total: number;
+        edges?: ImdbEdge[];
+      };
+    } | null;
   };
   errors?: { message: string; extensions?: { code?: string } }[];
 }
@@ -94,6 +144,11 @@ const ERROR_NOT_FOUND =
   "Could not find an IMDb watchlist for this ID. Please check and try again.";
 const ERROR_PRIVATE =
   "This IMDb watchlist is private. Please make your watchlist public in your IMDb settings.";
+
+const ERROR_LIST_NOT_FOUND =
+  "Could not find an IMDb list for this ID. Please check and try again.";
+const ERROR_LIST_PRIVATE =
+  "This IMDb list is private. Please ask the list owner to make it public.";
 
 function hasForbiddenError(errors: GraphQLResponse["errors"]): boolean {
   return errors?.some((e) => e.extensions?.code === "FORBIDDEN") ?? false;
@@ -352,6 +407,10 @@ function convertToStremioFormat(
   return sortMetas(metas, sortOptions);
 }
 
+export function isListId(id: string): boolean {
+  return id.startsWith("ls");
+}
+
 export async function fetchWatchlist(
   imdbUserId: string,
   sortOptions: SortOptions = DEFAULT_SORT_OPTIONS,
@@ -363,6 +422,85 @@ export async function fetchWatchlist(
 
   console.log(
     `Raw watchlist data received from IMDb for user ${imdbUserId} (${edges.length} items)`,
+  );
+
+  const processed = processWatchlist(edges);
+  const metas = convertToStremioFormat(processed, sortOptions, rpdbApiKey);
+  console.log(
+    `Converted ${metas.length} items to Stremio format (sorted by ${sortOptions.by}, ${sortOptions.order})`,
+  );
+
+  return { metas };
+}
+
+export async function validateImdbList(
+  listId: string,
+): Promise<ValidationResult> {
+  try {
+    const json = await queryImdbGraphQL("ValidateList", VALIDATE_LIST_QUERY, {
+      listId,
+    });
+
+    if (json.errors?.length) {
+      return {
+        valid: false,
+        reason: hasForbiddenError(json.errors) ? "private" : "not_found",
+      };
+    }
+
+    const list = json.data?.list;
+    if (!list) {
+      return { valid: false, reason: "not_found" };
+    }
+
+    if (list.visibility?.id === "PUBLIC") {
+      return { valid: true };
+    }
+
+    return { valid: false, reason: "private" };
+  } catch {
+    return { valid: false, reason: "not_found" };
+  }
+}
+
+export async function getImdbList(listId: string): Promise<ImdbEdge[]> {
+  const json = await queryImdbGraphQL("ListPage", LIST_QUERY, {
+    listId,
+    first: 5000,
+  });
+
+  if (json.errors?.length) {
+    throw new Error(
+      hasForbiddenError(json.errors)
+        ? ERROR_LIST_PRIVATE
+        : ERROR_LIST_NOT_FOUND,
+    );
+  }
+
+  const list = json.data?.list;
+
+  if (!list) {
+    throw new Error(ERROR_LIST_NOT_FOUND);
+  }
+
+  if (list.visibility?.id === "PRIVATE") {
+    throw new Error(ERROR_LIST_PRIVATE);
+  }
+
+  return list.titleListItemSearch?.edges ?? [];
+}
+
+export async function fetchList(
+  listId: string,
+  sortOptions: SortOptions = DEFAULT_SORT_OPTIONS,
+  rpdbApiKey?: string | null,
+): Promise<WatchlistData> {
+  console.log(`Fetching IMDb list ${listId}...`);
+
+  const edges = await getImdbList(listId);
+
+  console.log(
+    `Raw list data received from IMDb for ${listId} (${edges.length} items)`,
   );
 
   const processed = processWatchlist(edges);

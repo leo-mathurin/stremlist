@@ -25,6 +25,12 @@ function extractImdbId(text: string): string {
   return match ? match[0] : "";
 }
 
+function extractImdbSourceId(text: string): string {
+  if (!text) return "";
+  const match = text.match(/(ur\d+|ls\d+)/);
+  return match ? match[0] : "";
+}
+
 type WatchlistFormRow = {
   id?: string;
   localId: string;
@@ -64,7 +70,7 @@ export default function Configure() {
   useSEO({
     title: "Configure - Stremlist",
     description:
-      "Configure your Stremlist addon settings, watchlists, and sorting preferences.",
+      "Configure your Stremlist addon settings, watchlists, lists, and sorting preferences.",
     robots: "noindex, nofollow",
   });
 
@@ -236,19 +242,19 @@ export default function Configure() {
 
   const validationError = (() => {
     if (watchlists.length === 0) {
-      return "Add at least one watchlist.";
+      return "Add at least one catalog.";
     }
     if (watchlists.length > MAX_WATCHLISTS) {
-      return `You can have at most ${MAX_WATCHLISTS} watchlists.`;
+      return `You can have at most ${MAX_WATCHLISTS} catalogs.`;
     }
     const seenImdbIds = new Set<string>();
     for (const watchlist of watchlists) {
       const normalizedId = watchlist.imdbUserId.trim();
-      if (!/^ur\d{4,}$/.test(normalizedId)) {
-        return 'Each watchlist needs a valid IMDb User ID (e.g. "ur12345678").';
+      if (!/^(ur\d{4,}|ls\d+)$/.test(normalizedId)) {
+        return 'Each watchlist needs a valid IMDb User ID or List ID (e.g. "ur12345678" or "ls593621567").';
       }
       if (seenImdbIds.has(normalizedId)) {
-        return "IMDb User IDs must be unique across watchlists.";
+        return "IMDb IDs must be unique across catalogs.";
       }
       seenImdbIds.add(normalizedId);
     }
@@ -307,8 +313,8 @@ export default function Configure() {
       setStatus({
         type: "success",
         message: requiresReinstall
-          ? "Saved! Watchlist catalog structure changed. Reinstall the addon in Stremio to refresh catalogs."
-          : "Saved! Your watchlist will be refreshed with the new settings.",
+          ? "Saved! Catalog structure changed. Reinstall the addon in Stremio to refresh catalogs."
+          : "Saved! Your catalogs will be refreshed with the new settings.",
       });
     } catch (err) {
       setStatus({
@@ -390,7 +396,7 @@ export default function Configure() {
                   <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <h3 className="text-base font-semibold text-gray-900">
-                        Watchlist Catalogs
+                        Catalogs
                       </h3>
                       <Button
                         type="button"
@@ -400,7 +406,7 @@ export default function Configure() {
                         className="gap-2"
                       >
                         <Plus className="size-4" />
-                        Add Watchlist
+                        Add Catalog
                       </Button>
                     </div>
 
@@ -412,7 +418,7 @@ export default function Configure() {
                         >
                           <div className="flex items-center justify-between mb-3">
                             <p className="text-sm font-semibold text-gray-800">
-                              Watchlist {index + 1}
+                              Catalog {index + 1}
                             </p>
                             <Button
                               type="button"
@@ -421,25 +427,28 @@ export default function Configure() {
                               onClick={() => removeWatchlist(watchlist.localId)}
                               disabled={watchlists.length <= 1}
                               className="text-gray-500 hover:text-red-600"
-                              aria-label="Remove watchlist"
+                              aria-label="Remove catalog"
                             >
                               <Trash2 className="size-4" />
                             </Button>
                           </div>
 
                           <Label className="block text-xs font-semibold text-gray-600 mb-1">
-                            IMDb User ID
+                            IMDb Watchlist or List
                           </Label>
                           <Input
                             value={watchlist.imdbUserId}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              const extracted = extractImdbSourceId(
+                                e.target.value,
+                              );
                               setWatchlistField(
                                 watchlist.localId,
                                 "imdbUserId",
-                                e.target.value,
-                              )
-                            }
-                            placeholder="ur12345678"
+                                extracted || e.target.value,
+                              );
+                            }}
+                            placeholder="ur12345678 or ls593621567"
                             className="focus-visible:ring-imdb focus-visible:border-imdb"
                           />
 
@@ -572,7 +581,7 @@ export default function Configure() {
                         }`}
                       >
                         {showReinstallHint
-                          ? "Stremio only reads manifest catalogs at install time, so modifications to watchlists will appear after reinstalling this addon URL."
+                          ? "Stremio only reads manifest catalogs at install time, so modifications to catalogs will appear after reinstalling this addon URL."
                           : "Use these install links anytime to reopen or reinstall the addon URL in Stremio."}
                       </p>
                       <AddonInstallActions

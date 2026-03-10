@@ -2,7 +2,12 @@ import { DEFAULT_SORT_OPTION, parseSortOption } from "@stremlist/shared";
 import type { WatchlistData, SortOptions } from "@stremlist/shared";
 import { supabase } from "../lib/supabase";
 import { shuffleArray } from "../utils";
-import { buildPosterUrl, fetchWatchlist } from "./imdb-scraper";
+import {
+  buildPosterUrl,
+  fetchList,
+  fetchWatchlist,
+  isListId,
+} from "./imdb-scraper";
 import { ensureUser } from "./user";
 
 async function getCachedWatchlist(
@@ -66,7 +71,8 @@ export async function getWatchlistByConfig(
   const sortOptions = parseSortOption(sortOptionStr);
 
   try {
-    const fresh = await fetchWatchlist(
+    const fetcher = isListId(config.imdbUserId) ? fetchList : fetchWatchlist;
+    const fresh = await fetcher(
       config.imdbUserId,
       sortOptions,
       config.rpdbApiKey,
