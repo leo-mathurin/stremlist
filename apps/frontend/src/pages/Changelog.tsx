@@ -3,6 +3,7 @@ import Header from "../components/Header";
 import Footer from "../components/Footer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useSEO } from "../hooks/useSEO";
 
 type ChangeType = "enhancement" | "bugfix" | "performance" | "security";
 
@@ -155,6 +156,13 @@ const VERSIONS: Version[] = [
 ];
 
 export default function Changelog() {
+  useSEO({
+    title: "Changelog - Stremlist",
+    description:
+      "See what's new in Stremlist. A history of updates and improvements to the IMDb watchlist addon for Stremio.",
+    canonical: "https://stremlist.com/changelog",
+  });
+
   return (
     <div className="max-w-3xl mx-auto my-8 bg-white rounded-lg shadow-md p-8">
       <Header />

@@ -1,7 +1,14 @@
 import { Link } from "react-router";
 import Header from "../components/Header";
+import { useSEO } from "../hooks/useSEO";
 
 export default function Terms() {
+  useSEO({
+    title: "Terms & Privacy - Stremlist",
+    description:
+      "Terms of service and privacy policy for Stremlist, the free IMDb watchlist addon for Stremio.",
+    canonical: "https://stremlist.com/terms",
+  });
   return (
     <div className="max-w-3xl mx-auto my-8 bg-white rounded-lg shadow-md p-8">
       <Header />

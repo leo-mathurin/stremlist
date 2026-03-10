@@ -2,10 +2,14 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, Link } from "react-router";
 import { SORT_OPTIONS, DEFAULT_SORT_OPTION } from "@stremlist/shared";
 import type { UserConfigResponse, ConfigWatchlist } from "@stremlist/shared";
-import { Eye, EyeOff, Plus, Trash2 } from "lucide-react";
+import { Eye, EyeOff, Plus, Trash2, GripVertical } from "lucide-react";
+import { DragDropProvider } from "@dnd-kit/react";
+import { useSortable, isSortable } from "@dnd-kit/react/sortable";
 import Header from "../components/Header";
 import AddonInstallActions from "../components/AddonInstallActions";
 import { api } from "../lib/api";
+import { useSEO } from "../hooks/useSEO";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +25,12 @@ import {
 function extractImdbId(text: string): string {
   if (!text) return "";
   const match = text.match(/ur\d+/);
+  return match ? match[0] : "";
+}
+
+function extractImdbSourceId(text: string): string {
+  if (!text) return "";
+  const match = text.match(/(ur\d+|ls\d+)/);
   return match ? match[0] : "";
 }
 
@@ -59,7 +69,124 @@ function createWatchlistRow(
   };
 }
 
+function SortableWatchlistRow({
+  watchlist,
+  index,
+  onFieldChange,
+  onRemove,
+  canRemove,
+}: {
+  watchlist: WatchlistFormRow;
+  index: number;
+  onFieldChange: <K extends keyof WatchlistFormRow>(
+    localId: string,
+    key: K,
+    value: WatchlistFormRow[K],
+  ) => void;
+  onRemove: (localId: string) => void;
+  canRemove: boolean;
+}) {
+  const { ref, handleRef, isDragSource } = useSortable({
+    id: watchlist.localId,
+    index,
+  });
+
+  return (
+    <div
+      ref={ref}
+      className={cn(
+        "rounded-lg border border-gray-200 bg-gray-50 p-4",
+        isDragSource && "opacity-50 shadow-lg ring-2 ring-imdb/30",
+      )}
+    >
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <button
+            ref={handleRef}
+            type="button"
+            className="touch-none cursor-grab text-gray-400 hover:text-gray-600"
+            aria-label="Drag to reorder"
+          >
+            <GripVertical className="size-4" />
+          </button>
+          <p className="text-sm font-semibold text-gray-800">
+            Catalog {index + 1}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => onRemove(watchlist.localId)}
+          disabled={!canRemove}
+          className="text-gray-500 hover:text-red-600"
+          aria-label="Remove catalog"
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      </div>
+
+      <Label className="block text-xs font-semibold text-gray-600 mb-1">
+        IMDb Watchlist or List
+      </Label>
+      <Input
+        value={watchlist.imdbUserId}
+        onChange={(e) => {
+          const extracted = extractImdbSourceId(e.target.value);
+          onFieldChange(
+            watchlist.localId,
+            "imdbUserId",
+            extracted || e.target.value,
+          );
+        }}
+        placeholder="ur12345678 or ls593621567"
+        className="focus-visible:ring-imdb focus-visible:border-imdb"
+      />
+
+      <Label className="block text-xs font-semibold text-gray-600 mt-3 mb-1">
+        Catalog Title (Optional)
+      </Label>
+      <Input
+        value={watchlist.catalogTitle}
+        onChange={(e) =>
+          onFieldChange(watchlist.localId, "catalogTitle", e.target.value)
+        }
+        placeholder="Tom Hardy's Watchlist"
+        className="focus-visible:ring-imdb focus-visible:border-imdb"
+      />
+
+      <Label className="block text-xs font-semibold text-gray-600 mt-3 mb-1">
+        Sort Order
+      </Label>
+      <Select
+        value={watchlist.sortOption}
+        onValueChange={(value) =>
+          onFieldChange(watchlist.localId, "sortOption", value)
+        }
+      >
+        <SelectTrigger className="w-full bg-white focus:ring-imdb focus:border-imdb">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {SORT_OPTIONS.map((opt) => (
+            <SelectItem key={opt.value} value={opt.value}>
+              {opt.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
 export default function Configure() {
+  useSEO({
+    title: "Configure - Stremlist",
+    description:
+      "Configure your Stremlist addon settings, watchlists, lists, and sorting preferences.",
+    robots: "noindex, nofollow",
+  });
+
   const [searchParams, setSearchParams] = useSearchParams();
   const userId = searchParams.get("userId");
   const homePath = userId ? `/?userId=${encodeURIComponent(userId)}` : "/";
@@ -228,19 +355,19 @@ export default function Configure() {
 
   const validationError = (() => {
     if (watchlists.length === 0) {
-      return "Add at least one watchlist.";
+      return "Add at least one catalog.";
     }
     if (watchlists.length > MAX_WATCHLISTS) {
-      return `You can have at most ${MAX_WATCHLISTS} watchlists.`;
+      return `You can have at most ${MAX_WATCHLISTS} catalogs.`;
     }
     const seenImdbIds = new Set<string>();
     for (const watchlist of watchlists) {
       const normalizedId = watchlist.imdbUserId.trim();
-      if (!/^ur\d{4,}$/.test(normalizedId)) {
-        return 'Each watchlist needs a valid IMDb User ID (e.g. "ur12345678").';
+      if (!/^(ur\d{4,}|ls\d+)$/.test(normalizedId)) {
+        return 'Each watchlist needs a valid IMDb User ID or List ID (e.g. "ur12345678" or "ls593621567").';
       }
       if (seenImdbIds.has(normalizedId)) {
-        return "IMDb User IDs must be unique across watchlists.";
+        return "IMDb IDs must be unique across catalogs.";
       }
       seenImdbIds.add(normalizedId);
     }
@@ -299,8 +426,8 @@ export default function Configure() {
       setStatus({
         type: "success",
         message: requiresReinstall
-          ? "Saved! Watchlist catalog structure changed. Reinstall the addon in Stremio to refresh catalogs."
-          : "Saved! Your watchlist will be refreshed with the new settings.",
+          ? "Saved! Catalog structure changed. Reinstall the addon in Stremio to refresh catalogs."
+          : "Saved! Your catalogs will be refreshed with the new settings.",
       });
     } catch (err) {
       setStatus({
@@ -382,7 +509,7 @@ export default function Configure() {
                   <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <h3 className="text-base font-semibold text-gray-900">
-                        Watchlist Catalogs
+                        Catalogs
                       </h3>
                       <Button
                         type="button"
@@ -392,92 +519,53 @@ export default function Configure() {
                         className="gap-2"
                       >
                         <Plus className="size-4" />
-                        Add Watchlist
+                        Add Catalog
                       </Button>
                     </div>
 
-                    <div className="space-y-3">
-                      {watchlists.map((watchlist, index) => (
-                        <div
-                          key={watchlist.localId}
-                          className="rounded-lg border border-gray-200 bg-gray-50 p-4"
-                        >
-                          <div className="flex items-center justify-between mb-3">
-                            <p className="text-sm font-semibold text-gray-800">
-                              Watchlist {index + 1}
-                            </p>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => removeWatchlist(watchlist.localId)}
-                              disabled={watchlists.length <= 1}
-                              className="text-gray-500 hover:text-red-600"
-                              aria-label="Remove watchlist"
-                            >
-                              <Trash2 className="size-4" />
-                            </Button>
-                          </div>
-
-                          <Label className="block text-xs font-semibold text-gray-600 mb-1">
-                            IMDb User ID
-                          </Label>
-                          <Input
-                            value={watchlist.imdbUserId}
-                            onChange={(e) =>
-                              setWatchlistField(
-                                watchlist.localId,
-                                "imdbUserId",
-                                e.target.value,
-                              )
-                            }
-                            placeholder="ur12345678"
-                            className="focus-visible:ring-imdb focus-visible:border-imdb"
+                    <DragDropProvider
+                      onDragEnd={(event) => {
+                        if (event.canceled) return;
+                        const { source } = event.operation;
+                        if (isSortable(source)) {
+                          const { initialIndex, index } = source;
+                          if (initialIndex !== index) {
+                            setWatchlists((items) => {
+                              const allDefaultTitles = items.every((w, i) => {
+                                const t = w.catalogTitle.trim();
+                                return t === "" || t === String(i + 1);
+                              });
+                              const reordered = [...items];
+                              const [removed] = reordered.splice(
+                                initialIndex,
+                                1,
+                              );
+                              reordered.splice(index, 0, removed);
+                              if (allDefaultTitles) {
+                                return reordered.map((w) => ({
+                                  ...w,
+                                  catalogTitle: "",
+                                }));
+                              }
+                              return reordered;
+                            });
+                          }
+                        }
+                      }}
+                    >
+                      <div className="space-y-3">
+                        {watchlists.map((watchlist, index) => (
+                          <SortableWatchlistRow
+                            key={watchlist.localId}
+                            watchlist={watchlist}
+                            index={index}
+                            onFieldChange={setWatchlistField}
+                            onRemove={removeWatchlist}
+                            canRemove={watchlists.length > 1}
                           />
-
-                          <Label className="block text-xs font-semibold text-gray-600 mt-3 mb-1">
-                            Catalog Title (Optional)
-                          </Label>
-                          <Input
-                            value={watchlist.catalogTitle}
-                            onChange={(e) =>
-                              setWatchlistField(
-                                watchlist.localId,
-                                "catalogTitle",
-                                e.target.value,
-                              )
-                            }
-                            placeholder="Tom Hardy's Watchlist"
-                            className="focus-visible:ring-imdb focus-visible:border-imdb"
-                          />
-
-                          <Label className="block text-xs font-semibold text-gray-600 mt-3 mb-1">
-                            Sort Order
-                          </Label>
-                          <Select
-                            value={watchlist.sortOption}
-                            onValueChange={(value) =>
-                              setWatchlistField(
-                                watchlist.localId,
-                                "sortOption",
-                                value,
-                              )
-                            }
-                          >
-                            <SelectTrigger className="w-full bg-white focus:ring-imdb focus:border-imdb">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {SORT_OPTIONS.map((opt) => (
-                                <SelectItem key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    </DragDropProvider>
                   </div>
 
                   {validationError && (
@@ -564,7 +652,7 @@ export default function Configure() {
                         }`}
                       >
                         {showReinstallHint
-                          ? "Stremio only reads manifest catalogs at install time, so modifications to watchlists will appear after reinstalling this addon URL."
+                          ? "Stremio only reads manifest catalogs at install time, so modifications to catalogs will appear after reinstalling this addon URL."
                           : "Use these install links anytime to reopen or reinstall the addon URL in Stremio."}
                       </p>
                       <AddonInstallActions

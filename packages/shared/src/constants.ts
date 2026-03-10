@@ -1,10 +1,10 @@
-import type { StremioManifest } from "./stremio.types"
+import type { StremioManifest } from "./stremio.types";
 
-export const APP_NAME = "Stremlist"
-export const ADDON_VERSION = "1.3.0"
-export const APP_DESCRIPTION = "Your IMDb Watchlist in Stremio"
-export const APP_LOGO = "https://stremlist.com/icon.png"
-export const APP_ID_PREFIX = "com.stremlist"
+export const APP_NAME = "Stremlist";
+export const ADDON_VERSION = "1.3.0";
+export const APP_DESCRIPTION = "Your IMDb Watchlist in Stremio";
+export const APP_LOGO = "https://stremlist.com/icon.png";
+export const APP_ID_PREFIX = "com.stremlist";
 
 export const SORT_OPTIONS = [
   { value: "added_at-asc", label: "Date Added (Oldest First) - (IMDb Order)" },
@@ -16,18 +16,21 @@ export const SORT_OPTIONS = [
   { value: "year-asc", label: "Oldest First" },
   { value: "rating-desc", label: "Highest Rated" },
   { value: "rating-asc", label: "Lowest Rated" },
-] as const
+] as const;
 
-export const DEFAULT_SORT_OPTION = "added_at-asc"
+export const DEFAULT_SORT_OPTION = "added_at-asc";
 
-export type SortField = "added_at" | "random" | "title" | "year" | "rating"
-export type SortOrder = "asc" | "desc"
+export type SortField = "added_at" | "random" | "title" | "year" | "rating";
+export type SortOrder = "asc" | "desc";
 export interface SortOptions {
-  by: SortField
-  order: SortOrder
+  by: SortField;
+  order: SortOrder;
 }
 
-export const DEFAULT_SORT_OPTIONS: SortOptions = { by: "added_at", order: "asc" }
+export const DEFAULT_SORT_OPTIONS: SortOptions = {
+  by: "added_at",
+  order: "asc",
+};
 
 const VALID_SORT_FIELDS: SortField[] = [
   "title",
@@ -35,25 +38,30 @@ const VALID_SORT_FIELDS: SortField[] = [
   "rating",
   "added_at",
   "random",
-]
-const VALID_SORT_ORDERS: SortOrder[] = ["asc", "desc"]
+];
+const VALID_SORT_ORDERS: SortOrder[] = ["asc", "desc"];
 
-export function parseSortOption(sortOption: string | null | undefined): SortOptions {
-  if (!sortOption) return DEFAULT_SORT_OPTIONS
+export function parseSortOption(
+  sortOption: string | null | undefined,
+): SortOptions {
+  if (!sortOption) return DEFAULT_SORT_OPTIONS;
 
-  const [by, order] = sortOption.split("-") as [string, string]
+  const [by, order] = sortOption.split("-") as [string, string];
   if (!by || !VALID_SORT_FIELDS.includes(by as SortField)) {
-    return DEFAULT_SORT_OPTIONS
+    return DEFAULT_SORT_OPTIONS;
   }
   if (!order || !VALID_SORT_ORDERS.includes(order as SortOrder)) {
-    return { by: by as SortField, order: "asc" }
+    return { by: by as SortField, order: "asc" };
   }
 
-  return { by: by as SortField, order: order as SortOrder }
+  return { by: by as SortField, order: order as SortOrder };
 }
 
+export const IMDB_LIST_ID_PATTERN = /^ls\d+$/;
+export const IMDB_SOURCE_ID_PATTERN = /^(ur\d{4,}|ls\d+)$/;
+
 export const IMDB_USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
 
 export const BASE_MANIFEST: StremioManifest = {
   id: APP_ID_PREFIX,
@@ -93,4 +101,4 @@ export const BASE_MANIFEST: StremioManifest = {
       title: "RPDB API Key (Optional)",
     },
   ],
-}
+};

@@ -42,3 +42,4 @@ lerna-debug.log*
 *.sln
 *.sw?
 *.txt
+!robots.txt

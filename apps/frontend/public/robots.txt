@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /configure
+
+Sitemap: https://stremlist.com/sitemap.xml
