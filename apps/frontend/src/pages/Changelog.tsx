@@ -28,6 +28,22 @@ const BADGE_CLASSES: Record<ChangeType, string> = {
 
 const VERSIONS: Version[] = [
   {
+    version: "v1.4.0",
+    date: "March 12, 2026",
+    changes: [
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Added support for IMDb lists (ls-prefixed IDs) alongside watchlists, so you can now add any public IMDb list as a catalog.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Added drag-and-drop reordering for catalogs on the Configure page, making it easy to arrange your catalogs in your preferred order.",
+      },
+    ],
+  },
+  {
     version: "v1.3.0",
     date: "February 23, 2026",
     changes: [
