@@ -69,6 +69,7 @@ catalog.get("/:userId/catalog/:type/:id.json", async (c) => {
       `Serving catalog for user ${userId}, type: ${requestedType}, watchlist: ${watchlistConfig.id}, items: ${metas.length}`,
     );
 
+    c.header("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
     return c.json({ metas });
   } catch (err) {
     console.error(

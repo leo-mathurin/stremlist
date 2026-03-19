@@ -45,6 +45,7 @@ meta.get("/:userId/meta/:type/:id.json", async (c) => {
       return c.json({ meta: null });
     }
 
+    c.header("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
     return c.json({ meta: item });
   } catch (err) {
     console.error(`Error serving meta for ${userId}:`, (err as Error).message);
