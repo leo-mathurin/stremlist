@@ -1,11 +1,17 @@
 import { zValidator } from "@hono/zod-validator";
-import { SORT_OPTIONS } from "@stremlist/shared";
+import {
+  IMDB_LIST_ID_PATTERN,
+  IMDB_USER_ID_PATTERN,
+  IMDB_WATCHLIST_SOURCE_ID_PATTERN,
+  SORT_OPTIONS,
+} from "@stremlist/shared";
 import { Hono } from "hono";
 import { z } from "zod";
 import { resend } from "../lib/resend";
 import { supabase } from "../lib/supabase";
 import {
   getImdbWatchlist,
+  normalizeImdbUserId,
   validateImdbList,
   validateImdbWatchlist,
 } from "../services/imdb-scraper";
@@ -16,7 +22,10 @@ import {
   replaceUserWatchlists,
   setUserRpdbApiKey,
 } from "../services/user";
-const userIdParam = z.object({ userId: z.string().regex(/^ur\d{4,}$/) });
+
+const userIdParam = z.object({
+  userId: z.string().regex(IMDB_USER_ID_PATTERN),
+});
 
 const sortOptionValues = SORT_OPTIONS.map((o) => o.value) as [
   string,
@@ -24,10 +33,7 @@ const sortOptionValues = SORT_OPTIONS.map((o) => o.value) as [
 ];
 const configWatchlistBody = z.object({
   id: z.string().uuid().optional(),
-  imdbUserId: z
-    .string()
-    .trim()
-    .regex(/^(ur\d{4,}|ls\d+)$/),
+  imdbUserId: z.string().trim().regex(IMDB_WATCHLIST_SOURCE_ID_PATTERN),
   catalogTitle: z.string().trim().max(30).optional(),
   sortOption: z.enum(sortOptionValues),
   position: z.number().int().min(0).optional(),
@@ -42,13 +48,16 @@ const api = new Hono()
     const { userId } = c.req.valid("param");
     const result = await validateImdbWatchlist(userId);
     if (result.valid) {
-      return c.json({ valid: true });
+      return c.json({ valid: true, userId: result.userId });
     }
     return c.json({ valid: false, reason: result.reason });
   })
   .get(
     "/validate-list/:listId",
-    zValidator("param", z.object({ listId: z.string().regex(/^ls\d+$/) })),
+    zValidator(
+      "param",
+      z.object({ listId: z.string().regex(IMDB_LIST_ID_PATTERN) }),
+    ),
     async (c) => {
       const { listId } = c.req.valid("param");
       const result = await validateImdbList(listId);
@@ -101,16 +110,37 @@ const api = new Hono()
       const getDefaultCatalogTitle = (index: number, total: number): string =>
         total <= 1 ? "" : String(index + 1);
 
+      const resolveResults = await Promise.allSettled(
+        watchlists.map((watchlist) =>
+          normalizeImdbUserId(watchlist.imdbUserId),
+        ),
+      );
+      const failedIndex = resolveResults.findIndex(
+        (r) => r.status === "rejected",
+      );
+      if (failedIndex !== -1) {
+        return c.json(
+          {
+            error: `Could not resolve IMDb handle "${watchlists[failedIndex].imdbUserId}". Please check it and try again.`,
+          },
+          400,
+        );
+      }
+      const resolvedIds = resolveResults.map(
+        (r) => (r as PromiseFulfilledResult<string>).value,
+      );
+
       const normalizedWatchlists = watchlists.map((watchlist, index) => {
         const normalizedTitle = watchlist.catalogTitle ?? "";
         const effectiveTitle =
           normalizedTitle.length > 0
             ? normalizedTitle
             : getDefaultCatalogTitle(index, watchlists.length);
-        uniqueImdbIds.add(watchlist.imdbUserId);
+        const resolvedImdbUserId = resolvedIds[index];
+        uniqueImdbIds.add(resolvedImdbUserId);
         return {
           id: watchlist.id,
-          imdbUserId: watchlist.imdbUserId,
+          imdbUserId: resolvedImdbUserId,
           catalogTitle: effectiveTitle,
           sortOption: watchlist.sortOption,
           position: index,

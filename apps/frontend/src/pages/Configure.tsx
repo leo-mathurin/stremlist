@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, Link } from "react-router";
-import { SORT_OPTIONS, DEFAULT_SORT_OPTION } from "@stremlist/shared";
+import {
+  SORT_OPTIONS,
+  DEFAULT_SORT_OPTION,
+  IMDB_USER_ID_EXTRACT_PATTERN,
+  IMDB_WATCHLIST_SOURCE_ID_EXTRACT_PATTERN,
+  IMDB_WATCHLIST_SOURCE_ID_PATTERN,
+} from "@stremlist/shared";
 import type { UserConfigResponse, ConfigWatchlist } from "@stremlist/shared";
 import { Eye, EyeOff, Plus, Trash2, GripVertical } from "lucide-react";
 import { DragDropProvider } from "@dnd-kit/react";
@@ -24,13 +30,13 @@ import {
 
 function extractImdbId(text: string): string {
   if (!text) return "";
-  const match = text.match(/ur\d+/);
+  const match = text.match(IMDB_USER_ID_EXTRACT_PATTERN);
   return match ? match[0] : "";
 }
 
 function extractImdbSourceId(text: string): string {
   if (!text) return "";
-  const match = text.match(/(ur\d+|ls\d+)/);
+  const match = text.match(IMDB_WATCHLIST_SOURCE_ID_EXTRACT_PATTERN);
   return match ? match[0] : "";
 }
 
@@ -139,7 +145,7 @@ function SortableWatchlistRow({
             extracted || e.target.value,
           );
         }}
-        placeholder="ur12345678 or ls593621567"
+        placeholder="ur12345678, p.colneedham, or ls593621567"
         className="focus-visible:ring-imdb focus-visible:border-imdb"
       />
 
@@ -281,7 +287,7 @@ export default function Configure() {
 
         if (!extracted || extracted.length <= 3) {
           setIdError(
-            'Enter a valid IMDb ID starting with "ur" (e.g., ur12345678)',
+            'Enter a valid IMDb ID starting with "ur" (e.g., ur12345678) or "p." (e.g., p.colneedham)',
           );
           return;
         }
@@ -295,7 +301,8 @@ export default function Configure() {
             });
             const data = await res.json();
             if (data.valid) {
-              setSearchParams({ userId: extracted });
+              const canonicalId = "userId" in data ? data.userId : extracted;
+              setSearchParams({ userId: canonicalId });
             } else {
               const reason = "reason" in data ? data.reason : undefined;
               setIdError(
@@ -363,7 +370,7 @@ export default function Configure() {
     const seenImdbIds = new Set<string>();
     for (const watchlist of watchlists) {
       const normalizedId = watchlist.imdbUserId.trim();
-      if (!/^(ur\d{4,}|ls\d+)$/.test(normalizedId)) {
+      if (!IMDB_WATCHLIST_SOURCE_ID_PATTERN.test(normalizedId)) {
         return 'Each watchlist needs a valid IMDb User ID or List ID (e.g. "ur12345678" or "ls593621567").';
       }
       if (seenImdbIds.has(normalizedId)) {
@@ -416,7 +423,9 @@ export default function Configure() {
         setWatchlists((current) =>
           current.map((row, index) => {
             const serverRow = saved.watchlists![index];
-            return serverRow ? { ...row, id: serverRow.id } : row;
+            return serverRow
+              ? { ...row, id: serverRow.id, imdbUserId: serverRow.imdbUserId }
+              : row;
           }),
         );
       }

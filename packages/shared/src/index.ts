@@ -4,7 +4,7 @@ export type {
   Tables,
   TablesInsert,
   TablesUpdate,
-} from "./database.types.extended"
+} from "./database.types.extended";
 
 export type {
   WatchlistData,
@@ -17,7 +17,7 @@ export type {
   UserConfigResponse,
   UserConfigUpdatePayload,
   UserConfigUpdateWatchlist,
-} from "./stremio.types"
+} from "./stremio.types";
 
 export {
   APP_NAME,
@@ -30,7 +30,13 @@ export {
   DEFAULT_SORT_OPTIONS,
   parseSortOption,
   IMDB_USER_AGENT,
+  FACEBOOK_EXTERNAL_HIT_USER_AGENT,
   BASE_MANIFEST,
-} from "./constants"
+  IMDB_LIST_ID_PATTERN,
+  IMDB_USER_ID_PATTERN,
+  IMDB_WATCHLIST_SOURCE_ID_PATTERN,
+  IMDB_USER_ID_EXTRACT_PATTERN,
+  IMDB_WATCHLIST_SOURCE_ID_EXTRACT_PATTERN,
+} from "./constants";
 
-export type { SortField, SortOrder, SortOptions } from "./constants"
+export type { SortField, SortOrder, SortOptions } from "./constants";
