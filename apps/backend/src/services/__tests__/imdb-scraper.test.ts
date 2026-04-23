@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   getImdbWatchlist,
   fetchWatchlist,
+  normalizeImdbUserId,
   validateImdbWatchlist,
 } from "../imdb-scraper.js";
 
@@ -238,7 +239,7 @@ describe("validateImdbWatchlist (unit)", () => {
     );
 
     const result = await validateImdbWatchlist("ur195879360");
-    expect(result).toEqual({ valid: true });
+    expect(result).toEqual({ valid: true, userId: "ur195879360" });
   });
 
   it("returns private for a FORBIDDEN error", async () => {
@@ -470,6 +471,120 @@ describe("fetchWatchlist (unit)", () => {
 
     const result = await fetchWatchlist("ur195879360");
     expect(result.metas).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unit tests — normalizeImdbUserId / p.handle resolution
+// ---------------------------------------------------------------------------
+
+function mockProfileHtmlResponse(userId: string): Response {
+  const body = `<html><head><script>window.__NEXT_DATA__ = {"userId":"${userId}","profileId":"p.something"};</script></head></html>`;
+  return new Response(body, {
+    status: 200,
+    headers: { "Content-Type": "text/html" },
+  });
+}
+
+describe("normalizeImdbUserId (unit)", () => {
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("short-circuits canonical ur... IDs without any fetch", async () => {
+    const result = await normalizeImdbUserId("ur195879360");
+    expect(result).toBe("ur195879360");
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("resolves a p.handle to its canonical ur id using the FB UA", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockProfileHtmlResponse("ur1000000"),
+    );
+
+    const result = await normalizeImdbUserId("p.colneedham");
+    expect(result).toBe("ur1000000");
+
+    const [url, init] = vi.mocked(globalThis.fetch).mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe("https://www.imdb.com/user/p.colneedham/");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["User-Agent"]).toBe("facebookexternalhit/1.1");
+  });
+
+  it("caches resolved p.handle results (second call does not re-fetch)", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockProfileHtmlResponse("ur132907031"),
+    );
+
+    const first = await normalizeImdbUserId("p.dfxwro2juo3hexdmee2gezdxi4");
+    const second = await normalizeImdbUserId("p.dfxwro2juo3hexdmee2gezdxi4");
+
+    expect(first).toBe("ur132907031");
+    expect(second).toBe("ur132907031");
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws ERROR_NOT_FOUND when the profile page is non-200", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      new Response("Not Found", { status: 404 }),
+    );
+
+    await expect(normalizeImdbUserId("p.does-not-exist-xyz")).rejects.toThrow(
+      /Could not find an IMDb watchlist/,
+    );
+  });
+
+  it("throws ERROR_NOT_FOUND when the HTML has no userId match", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      new Response("<html><body>nothing here</body></html>", {
+        status: 200,
+        headers: { "Content-Type": "text/html" },
+      }),
+    );
+
+    await expect(normalizeImdbUserId("p.unparsable-handle")).rejects.toThrow(
+      /Could not find an IMDb watchlist/,
+    );
+  });
+});
+
+describe("validateImdbWatchlist with p.handle input (unit)", () => {
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("resolves p.handle and returns canonical userId on success", async () => {
+    vi.mocked(globalThis.fetch)
+      .mockResolvedValueOnce(mockProfileHtmlResponse("ur205394592"))
+      .mockResolvedValueOnce(
+        mockGraphQLResponse({
+          id: "ls123",
+          visibility: { id: "PUBLIC" },
+        }),
+      );
+
+    const result = await validateImdbWatchlist("p.3pi7ewljpbf27th5h7d3cz6rjm");
+    expect(result).toEqual({ valid: true, userId: "ur205394592" });
+  });
+
+  it("returns not_found when p.handle resolution fails", async () => {
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      new Response("Not Found", { status: 404 }),
+    );
+
+    const result = await validateImdbWatchlist("p.nonexistent-handle-xyz");
+    expect(result).toEqual({ valid: false, reason: "not_found" });
   });
 });
 

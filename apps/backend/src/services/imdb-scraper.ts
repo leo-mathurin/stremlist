@@ -1,4 +1,7 @@
-import { DEFAULT_SORT_OPTIONS } from "@stremlist/shared";
+import {
+  DEFAULT_SORT_OPTIONS,
+  FACEBOOK_EXTERNAL_HIT_USER_AGENT,
+} from "@stremlist/shared";
 import type {
   SortOptions,
   StremioMeta,
@@ -189,8 +192,46 @@ export function buildPosterUrl(
 }
 
 export type ValidationResult =
+  | { valid: true; userId: string }
+  | { valid: false; reason: "not_found" | "private" };
+
+export type ListValidationResult =
   | { valid: true }
   | { valid: false; reason: "not_found" | "private" };
+
+const pHandleCache = new Map<string, string>();
+
+async function resolvePHandle(handle: string): Promise<string> {
+  const cached = pHandleCache.get(handle);
+  if (cached) {
+    return cached;
+  }
+
+  const response = await fetch(`https://www.imdb.com/user/${handle}/`, {
+    headers: { "User-Agent": FACEBOOK_EXTERNAL_HIT_USER_AGENT as string },
+  });
+
+  if (!response.ok) {
+    throw new Error(ERROR_NOT_FOUND);
+  }
+
+  const body = await response.text();
+  const match = /"userId":"(ur\d+)"/.exec(body);
+  if (!match) {
+    throw new Error(ERROR_NOT_FOUND);
+  }
+
+  const canonical = match[1];
+  pHandleCache.set(handle, canonical);
+  return canonical;
+}
+
+export async function normalizeImdbUserId(input: string): Promise<string> {
+  if (!input.startsWith("p.")) {
+    return input;
+  }
+  return resolvePHandle(input);
+}
 
 const VALIDATE_QUERY = `
   query ValidateWatchlist($urConst: ID!) {
@@ -202,8 +243,15 @@ const VALIDATE_QUERY = `
 `;
 
 export async function validateImdbWatchlist(
-  userId: string,
+  input: string,
 ): Promise<ValidationResult> {
+  let userId: string;
+  try {
+    userId = await normalizeImdbUserId(input);
+  } catch {
+    return { valid: false, reason: "not_found" };
+  }
+
   try {
     const json = await queryImdbGraphQL("ValidateWatchlist", VALIDATE_QUERY, {
       urConst: userId,
@@ -222,7 +270,7 @@ export async function validateImdbWatchlist(
     }
 
     if (list.visibility?.id === "PUBLIC") {
-      return { valid: true };
+      return { valid: true, userId };
     }
 
     return { valid: false, reason: "private" };
@@ -231,7 +279,8 @@ export async function validateImdbWatchlist(
   }
 }
 
-export async function getImdbWatchlist(userId: string): Promise<ImdbEdge[]> {
+export async function getImdbWatchlist(input: string): Promise<ImdbEdge[]> {
+  const userId = await normalizeImdbUserId(input);
   const json = await queryImdbGraphQL("WatchListPage", WATCHLIST_QUERY, {
     urConst: userId,
     first: 5000,
@@ -435,7 +484,7 @@ export async function fetchWatchlist(
 
 export async function validateImdbList(
   listId: string,
-): Promise<ValidationResult> {
+): Promise<ListValidationResult> {
   try {
     const json = await queryImdbGraphQL("ValidateList", VALIDATE_LIST_QUERY, {
       listId,

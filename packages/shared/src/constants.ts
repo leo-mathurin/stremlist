@@ -57,11 +57,28 @@ export function parseSortOption(
   return { by: by as SortField, order: order as SortOrder };
 }
 
-export const IMDB_LIST_ID_PATTERN = /^ls\d+$/;
-export const IMDB_SOURCE_ID_PATTERN = /^(ur\d{4,}|ls\d+)$/;
+const IMDB_UR_ID_SOURCE = String.raw`ur\d{4,}`;
+const IMDB_LS_ID_SOURCE = String.raw`ls\d+`;
+const IMDB_P_HANDLE_SOURCE = String.raw`p\.[a-zA-Z0-9]+`;
+
+export const IMDB_LIST_ID_PATTERN = new RegExp(`^${IMDB_LS_ID_SOURCE}$`);
+export const IMDB_USER_ID_PATTERN = new RegExp(
+  `^(${IMDB_UR_ID_SOURCE}|${IMDB_P_HANDLE_SOURCE})$`,
+);
+export const IMDB_WATCHLIST_SOURCE_ID_PATTERN = new RegExp(
+  `^(${IMDB_UR_ID_SOURCE}|${IMDB_LS_ID_SOURCE}|${IMDB_P_HANDLE_SOURCE})$`,
+);
+export const IMDB_USER_ID_EXTRACT_PATTERN = new RegExp(
+  `(${IMDB_UR_ID_SOURCE}|${IMDB_P_HANDLE_SOURCE})`,
+);
+export const IMDB_WATCHLIST_SOURCE_ID_EXTRACT_PATTERN = new RegExp(
+  `(${IMDB_UR_ID_SOURCE}|${IMDB_LS_ID_SOURCE}|${IMDB_P_HANDLE_SOURCE})`,
+);
 
 export const IMDB_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
+
+export const FACEBOOK_EXTERNAL_HIT_USER_AGENT = "facebookexternalhit/1.1";
 
 export const BASE_MANIFEST: StremioManifest = {
   id: APP_ID_PREFIX,

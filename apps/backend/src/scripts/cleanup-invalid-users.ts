@@ -1,4 +1,5 @@
-import type { Database } from "@stremlist/shared";
+import { IMDB_USER_ID_PATTERN  } from "@stremlist/shared";
+import type {Database} from "@stremlist/shared";
 import { createClient } from "@supabase/supabase-js";
 import { config } from "dotenv";
 import { readFileSync, writeFileSync } from "fs";
@@ -21,7 +22,6 @@ if (!supabaseUrl || !supabaseServiceRoleKey) {
 }
 
 const supabase = createClient<Database>(supabaseUrl, supabaseServiceRoleKey);
-const IMDB_USER_ID_REGEX = /^ur\d{7,}$/;
 const DEFAULT_DELAY_MS = 300;
 const DEFAULT_TIMEOUT_MS = 8000;
 const BATCH_SIZE = 500;
@@ -110,7 +110,7 @@ async function validateUserId(
   userId: string,
   timeoutMs: number,
 ): Promise<ValidationResult> {
-  if (!IMDB_USER_ID_REGEX.test(userId)) {
+  if (!IMDB_USER_ID_PATTERN.test(userId)) {
     return { userId, valid: false, reason: "bad_format" };
   }
 
