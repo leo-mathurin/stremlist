@@ -1,5 +1,5 @@
-import { IMDB_USER_ID_PATTERN  } from "@stremlist/shared";
-import type {Database} from "@stremlist/shared";
+import { IMDB_USER_ID_PATTERN } from "@stremlist/shared";
+import type { Database } from "@stremlist/shared";
 import { createClient } from "@supabase/supabase-js";
 import { config } from "dotenv";
 import { readFileSync, writeFileSync } from "fs";

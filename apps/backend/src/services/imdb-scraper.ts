@@ -208,7 +208,7 @@ async function resolvePHandle(handle: string): Promise<string> {
   }
 
   const response = await fetch(`https://www.imdb.com/user/${handle}/`, {
-    headers: { "User-Agent": FACEBOOK_EXTERNAL_HIT_USER_AGENT as string },
+    headers: { "User-Agent": FACEBOOK_EXTERNAL_HIT_USER_AGENT },
   });
 
   if (!response.ok) {

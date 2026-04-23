@@ -110,19 +110,25 @@ const api = new Hono()
       const getDefaultCatalogTitle = (index: number, total: number): string =>
         total <= 1 ? "" : String(index + 1);
 
-      const resolvedIds: string[] = [];
-      for (const watchlist of watchlists) {
-        try {
-          resolvedIds.push(await normalizeImdbUserId(watchlist.imdbUserId));
-        } catch {
-          return c.json(
-            {
-              error: `Could not resolve IMDb handle "${watchlist.imdbUserId}". Please check it and try again.`,
-            },
-            400,
-          );
-        }
+      const resolveResults = await Promise.allSettled(
+        watchlists.map((watchlist) =>
+          normalizeImdbUserId(watchlist.imdbUserId),
+        ),
+      );
+      const failedIndex = resolveResults.findIndex(
+        (r) => r.status === "rejected",
+      );
+      if (failedIndex !== -1) {
+        return c.json(
+          {
+            error: `Could not resolve IMDb handle "${watchlists[failedIndex].imdbUserId}". Please check it and try again.`,
+          },
+          400,
+        );
       }
+      const resolvedIds = resolveResults.map(
+        (r) => (r as PromiseFulfilledResult<string>).value,
+      );
 
       const normalizedWatchlists = watchlists.map((watchlist, index) => {
         const normalizedTitle = watchlist.catalogTitle ?? "";
