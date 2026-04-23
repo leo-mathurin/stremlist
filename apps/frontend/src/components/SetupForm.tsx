@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Link } from "react-router";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Info } from "lucide-react";
+import { IMDB_USER_ID_EXTRACT_PATTERN } from "@stremlist/shared";
 import { api } from "../lib/api";
 import AddonInstallActions from "./AddonInstallActions";
 import { Input } from "@/components/ui/input";
@@ -10,7 +11,7 @@ import { Button } from "@/components/ui/button";
 
 function extractImdbId(text: string): string {
   if (!text) return "";
-  const match = text.match(/ur\d+/);
+  const match = text.match(IMDB_USER_ID_EXTRACT_PATTERN);
   return match ? match[0] : "";
 }
 
@@ -86,8 +87,9 @@ export default function SetupForm() {
           });
           const data = await res.json();
           if (data.valid) {
-            setValidId(initialUserId);
-            setUserIdQueryParam(initialUserId);
+            const canonicalId = "userId" in data ? data.userId : initialUserId;
+            setValidId(canonicalId);
+            setUserIdQueryParam(canonicalId);
             setStatus({
               type: "success",
               message: "Choose how to install below:",
@@ -131,7 +133,7 @@ export default function SetupForm() {
         setStatus({
           type: "error",
           message:
-            'Could not find a valid IMDb ID. ID should start with "ur" followed by numbers (e.g., ur12345678)',
+            'Could not find a valid IMDb ID. ID should start with "ur" followed by numbers (e.g., ur12345678) or "p." (e.g., p.colneedham)',
         });
         return;
       }
@@ -140,7 +142,7 @@ export default function SetupForm() {
         setStatus({
           type: "error",
           message:
-            'Invalid IMDb ID format. ID should have more characters after "ur" (e.g., ur12345678)',
+            'Invalid IMDb ID format. ID should have more characters after "ur" or "p." (e.g., ur12345678 or p.colneedham)',
         });
         return;
       }
@@ -170,8 +172,9 @@ export default function SetupForm() {
         });
         const data = await res.json();
         if (data.valid) {
-          setValidId(extracted);
-          setUserIdQueryParam(extracted);
+          const canonicalId = "userId" in data ? data.userId : extracted;
+          setValidId(canonicalId);
+          setUserIdQueryParam(canonicalId);
           setStatus({
             type: "success",
             message: "Choose how to install below:",
@@ -208,17 +211,12 @@ export default function SetupForm() {
           value={imdbId}
           onChange={(e) => handleInput(e.target.value)}
           disabled={validating}
-          placeholder="ur12345678"
+          placeholder="ur12345678 or p.colneedham"
           className="focus-visible:ring-imdb focus-visible:border-imdb"
         />
         <p className="mt-2 text-sm text-gray-500">
-          Your IMDb User ID starts with "ur" and can be found in your IMDb
-          profile URL.
-          <br />
-          You can either enter just the ID (ur12345678) or paste your entire
-          profile URL.
-          <br />
-          Example: https://www.imdb.com/user/ur12345678/watchlist
+          Paste your IMDb profile URL or just the ID (e.g., ur12345678 or
+          p.colneedham). You can find it in your IMDb profile URL.
         </p>
       </div>
 
@@ -233,6 +231,21 @@ export default function SetupForm() {
           }`}
         >
           <AlertDescription>{status.message}</AlertDescription>
+        </Alert>
+      )}
+
+      {validId && imdbId.trim().startsWith("p.") && (
+        <Alert className="mb-4 border-blue-200 bg-blue-50 text-blue-700">
+          <Info className="size-4" />
+          <AlertDescription>
+            <span>
+              Your IMDb handle{" "}
+              <strong className="whitespace-nowrap">{imdbId.trim()}</strong>{" "}
+              maps to the canonical ID{" "}
+              <strong className="whitespace-nowrap">{validId}</strong>, which is
+              what IMDb's API uses, so you'll see it in install URLs and links.
+            </span>
+          </AlertDescription>
         </Alert>
       )}
 

@@ -8,6 +8,24 @@ import { api } from "../lib/api";
 import { Badge } from "@/components/ui/badge";
 import { useSEO } from "../hooks/useSEO";
 
+const HOW_IT_WORKS_STEPS = [
+  {
+    step: 1,
+    title: "Enter your IMDb ID",
+    desc: "Paste your IMDb profile URL or ID",
+  },
+  {
+    step: 2,
+    title: "Install in Stremio",
+    desc: "Choose your preferred installation method",
+  },
+  {
+    step: 3,
+    title: "Enjoy your watchlists",
+    desc: "Access your IMDb watchlists and lists directly in Stremio",
+  },
+];
+
 export default function Home() {
   useSEO({
     title: "Stremlist - IMDb Watchlists & Lists for Stremio",
@@ -64,23 +82,7 @@ export default function Home() {
         <section>
           <h2 className="text-xl font-bold text-gray-900 mb-4">How it works</h2>
           <div className="grid gap-4 sm:grid-cols-3">
-            {[
-              {
-                step: 1,
-                title: "Enter your IMDb ID",
-                desc: "Provide your IMDb User ID to connect your watchlists and lists",
-              },
-              {
-                step: 2,
-                title: "Install in Stremio",
-                desc: "Choose your preferred installation method",
-              },
-              {
-                step: 3,
-                title: "Enjoy your watchlists",
-                desc: "Access your IMDb watchlists and lists directly in Stremio",
-              },
-            ].map((item) => (
+            {HOW_IT_WORKS_STEPS.map((item) => (
               <div
                 key={item.step}
                 className="border-l-4 border-imdb bg-gray-50 rounded-r-lg p-4"
@@ -223,7 +225,8 @@ export default function Home() {
               adding the addon
             </li>
             <li>
-              Ensure your IMDb User ID starts with "ur" and is entered correctly
+              Ensure your IMDb User ID starts with "ur" or "p." and is entered
+              correctly
             </li>
           </ul>
         </section>
