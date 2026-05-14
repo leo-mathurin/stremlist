@@ -389,6 +389,52 @@ describe("fetchWatchlist (unit)", () => {
     expect(result.metas[0].id).toBe("tt0000001");
   });
 
+  it("maps single-video IMDb subtypes (TV Movie, Short, Video, etc.) to type 'movie'", async () => {
+    const edges = [
+      makeEdge({ id: "tt1000001", type: "Movie" }),
+      makeEdge({ id: "tt1000002", type: "TV Movie" }),
+      makeEdge({ id: "tt1000003", type: "TV Special" }),
+      makeEdge({ id: "tt1000004", type: "Short" }),
+      makeEdge({ id: "tt1000005", type: "TV Short" }),
+      makeEdge({ id: "tt1000006", type: "Video" }),
+    ];
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockGraphQLResponse({
+        id: "ls123",
+        visibility: { id: "PUBLIC" },
+        titleListItemSearch: { total: edges.length, edges },
+      }),
+    );
+
+    const result = await fetchWatchlist("ur195879360");
+
+    expect(result.metas).toHaveLength(edges.length);
+    for (const meta of result.metas) {
+      expect(meta.type).toBe("movie");
+    }
+  });
+
+  it("maps TV Series and TV Mini Series to type 'series'", async () => {
+    const edges = [
+      makeEdge({ id: "tt2000001", type: "TV Series" }),
+      makeEdge({ id: "tt2000002", type: "TV Mini Series" }),
+    ];
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockGraphQLResponse({
+        id: "ls123",
+        visibility: { id: "PUBLIC" },
+        titleListItemSearch: { total: edges.length, edges },
+      }),
+    );
+
+    const result = await fetchWatchlist("ur195879360");
+
+    expect(result.metas).toHaveLength(edges.length);
+    for (const meta of result.metas) {
+      expect(meta.type).toBe("series");
+    }
+  });
+
   it("sorts by title ascending", async () => {
     const edges = [
       makeEdge({ id: "tt0000003", title: "Zulu" }),
