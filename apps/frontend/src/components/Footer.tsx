@@ -65,6 +65,20 @@ export default function Footer() {
             </a>
           </Button>
           <span className="text-gray-300 select-none">·</span>
+          <Button
+            variant="link"
+            asChild
+            className="h-auto p-0 text-sm text-gray-500 hover:text-stremlist"
+          >
+            <a
+              href="https://leomathurin.com"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Built by Léo Mathurin
+            </a>
+          </Button>
+          <span className="text-gray-300 select-none">·</span>
           <div className="shrink-0 overflow-hidden" style={{ width: 200 }}>
             <iframe
               src="https://status.stremlist.com/badge?theme=light"
