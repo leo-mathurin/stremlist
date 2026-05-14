@@ -1,7 +1,7 @@
 import { DEFAULT_SORT_OPTION, parseSortOption } from "@stremlist/shared";
 import type { WatchlistData, SortOptions } from "@stremlist/shared";
 import { supabase } from "../lib/supabase";
-import { shuffleArray } from "../utils";
+import { seededShuffle } from "../utils";
 import {
   buildPosterUrl,
   fetchList,
@@ -128,7 +128,7 @@ function resortCachedData(
   }
 
   if (by === "random") {
-    return { metas: applyRpdbPostersToMetas(shuffleArray(metas), rpdbApiKey) };
+    return { metas: applyRpdbPostersToMetas(seededShuffle(metas), rpdbApiKey) };
   }
 
   metas.sort((a, b) => {

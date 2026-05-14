@@ -24,6 +24,11 @@ function getEffectiveTitle(
   return total <= 1 ? "" : String(index + 1);
 }
 
+const CATALOG_EXTRA: StremioCatalog["extra"] = [
+  { name: "skip", isRequired: false },
+];
+const CATALOG_EXTRA_SUPPORTED: StremioCatalog["extraSupported"] = ["skip"];
+
 export function buildManifestCatalogs(
   watchlists: ConfigWatchlist[],
 ): StremioCatalog[] {
@@ -38,11 +43,15 @@ export function buildManifestCatalogs(
         id: buildCatalogId(watchlist.id, "movie"),
         name: buildCatalogName(effectiveTitle),
         type: "movie",
+        extra: CATALOG_EXTRA,
+        extraSupported: CATALOG_EXTRA_SUPPORTED,
       },
       {
         id: buildCatalogId(watchlist.id, "series"),
         name: buildCatalogName(effectiveTitle),
         type: "series",
+        extra: CATALOG_EXTRA,
+        extraSupported: CATALOG_EXTRA_SUPPORTED,
       },
     ];
   });

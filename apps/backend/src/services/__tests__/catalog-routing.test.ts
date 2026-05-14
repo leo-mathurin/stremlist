@@ -44,21 +44,29 @@ describe("manifest catalog generation", () => {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
         name: "Stremlist Leo Picks",
         type: "movie",
+        extra: [{ name: "skip", isRequired: false }],
+        extraSupported: ["skip"],
       },
       {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-series",
         name: "Stremlist Leo Picks",
         type: "series",
+        extra: [{ name: "skip", isRequired: false }],
+        extraSupported: ["skip"],
       },
       {
         id: "wl-3be4e39f-3e27-42e7-a69f-c14f0709de52-movie",
         name: "Stremlist Family Queue",
         type: "movie",
+        extra: [{ name: "skip", isRequired: false }],
+        extraSupported: ["skip"],
       },
       {
         id: "wl-3be4e39f-3e27-42e7-a69f-c14f0709de52-series",
         name: "Stremlist Family Queue",
         type: "series",
+        extra: [{ name: "skip", isRequired: false }],
+        extraSupported: ["skip"],
       },
     ]);
   });
@@ -79,11 +87,15 @@ describe("manifest catalog generation", () => {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
         name: "Stremlist",
         type: "movie",
+        extra: [{ name: "skip", isRequired: false }],
+        extraSupported: ["skip"],
       },
       {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-series",
         name: "Stremlist",
         type: "series",
+        extra: [{ name: "skip", isRequired: false }],
+        extraSupported: ["skip"],
       },
     ]);
   });
@@ -111,21 +123,29 @@ describe("manifest catalog generation", () => {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
         name: "Stremlist 1",
         type: "movie",
+        extra: [{ name: "skip", isRequired: false }],
+        extraSupported: ["skip"],
       },
       {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-series",
         name: "Stremlist 1",
         type: "series",
+        extra: [{ name: "skip", isRequired: false }],
+        extraSupported: ["skip"],
       },
       {
         id: "wl-3be4e39f-3e27-42e7-a69f-c14f0709de52-movie",
         name: "Stremlist 2",
         type: "movie",
+        extra: [{ name: "skip", isRequired: false }],
+        extraSupported: ["skip"],
       },
       {
         id: "wl-3be4e39f-3e27-42e7-a69f-c14f0709de52-series",
         name: "Stremlist 2",
         type: "series",
+        extra: [{ name: "skip", isRequired: false }],
+        extraSupported: ["skip"],
       },
     ]);
   });

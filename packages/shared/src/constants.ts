@@ -1,7 +1,9 @@
 import type { StremioManifest } from "./stremio.types";
 
 export const APP_NAME = "Stremlist";
-export const ADDON_VERSION = "1.3.0";
+export const ADDON_VERSION = "1.3.1";
+// Stremio clients request catalogs in 100-item pages via `skip`.
+export const STREMIO_PAGE_SIZE = 100;
 export const APP_DESCRIPTION = "Your IMDb Watchlist in Stremio";
 export const APP_LOGO = "https://stremlist.com/icon.png";
 export const APP_ID_PREFIX = "com.stremlist";
@@ -99,11 +101,15 @@ export const BASE_MANIFEST: StremioManifest = {
       id: "stremlist-movies",
       name: "Stremlist Movies",
       type: "movie",
+      extra: [{ name: "skip", isRequired: false }],
+      extraSupported: ["skip"],
     },
     {
       id: "stremlist-series",
       name: "Stremlist Series",
       type: "series",
+      extra: [{ name: "skip", isRequired: false }],
+      extraSupported: ["skip"],
     },
   ],
   logo: APP_LOGO,
