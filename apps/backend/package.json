@@ -8,7 +8,7 @@
     },
     "./client": {
       "types": "./dist/client.d.ts",
-      "default": "./dist/client.js"
+      "default": "./src/client.ts"
     }
   },
   "scripts": {
