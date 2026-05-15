@@ -12,13 +12,21 @@ import { shuffleArray } from "../utils";
 const GRAPHQL_ENDPOINT = "https://api.graphql.imdb.com/";
 const GRAPHQL_CLIENT_NAME = "imdb-next-desktop";
 
+// IMDb's GraphQL rejects the full-metadata query with "Too much data
+// requested" once `first` reaches ~1000. 250 stays comfortably under that and
+// matches the cursor index IMDb itself uses on imdb.com.
+const PAGE_SIZE = 250;
+// Safety stop for runaway pagination loops.
+const MAX_PAGES = 40;
+
 const WATCHLIST_QUERY = `
-  query WatchListPage($urConst: ID!, $first: Int!) {
+  query WatchListPage($urConst: ID!, $first: Int!, $after: String) {
     predefinedList(classType: WATCH_LIST, userId: $urConst) {
       id
       visibility { id }
-      titleListItemSearch(first: $first) {
+      titleListItemSearch(first: $first, after: $after) {
         total
+        pageInfo { hasNextPage endCursor }
         edges {
           listItem: title {
             id
@@ -44,13 +52,14 @@ const WATCHLIST_QUERY = `
 `;
 
 const LIST_QUERY = `
-  query ListPage($listId: ID!, $first: Int!) {
+  query ListPage($listId: ID!, $first: Int!, $after: String) {
     list(id: $listId) {
       id
       name { originalText }
       visibility { id }
-      titleListItemSearch(first: $first) {
+      titleListItemSearch(first: $first, after: $after) {
         total
+        pageInfo { hasNextPage endCursor }
         edges {
           listItem: title {
             id
@@ -106,24 +115,29 @@ interface ImdbEdge {
   };
 }
 
+interface PageInfo {
+  hasNextPage: boolean;
+  endCursor: string | null;
+}
+
+interface TitleListItemSearch {
+  total: number;
+  pageInfo?: PageInfo;
+  edges?: ImdbEdge[];
+}
+
 interface GraphQLResponse {
   data?: {
     predefinedList?: {
       id: string;
       visibility?: { id: string };
-      titleListItemSearch?: {
-        total: number;
-        edges?: ImdbEdge[];
-      };
+      titleListItemSearch?: TitleListItemSearch;
     } | null;
     list?: {
       id: string;
       name?: { originalText: string };
       visibility?: { id: string };
-      titleListItemSearch?: {
-        total: number;
-        edges?: ImdbEdge[];
-      };
+      titleListItemSearch?: TitleListItemSearch;
     } | null;
   };
   errors?: { message: string; extensions?: { code?: string } }[];
@@ -281,28 +295,49 @@ export async function validateImdbWatchlist(
 
 export async function getImdbWatchlist(input: string): Promise<ImdbEdge[]> {
   const userId = await normalizeImdbUserId(input);
-  const json = await queryImdbGraphQL("WatchListPage", WATCHLIST_QUERY, {
-    urConst: userId,
-    first: 5000,
-  });
+  const edges: ImdbEdge[] = [];
+  let after: string | null = null;
 
-  if (json.errors?.length) {
-    throw new Error(
-      hasForbiddenError(json.errors) ? ERROR_PRIVATE : ERROR_NOT_FOUND,
-    );
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const json = await queryImdbGraphQL("WatchListPage", WATCHLIST_QUERY, {
+      urConst: userId,
+      first: PAGE_SIZE,
+      after,
+    });
+
+    if (json.errors?.length) {
+      throw new Error(
+        hasForbiddenError(json.errors) ? ERROR_PRIVATE : ERROR_NOT_FOUND,
+      );
+    }
+
+    const list = json.data?.predefinedList;
+
+    if (!list) {
+      throw new Error(ERROR_NOT_FOUND);
+    }
+
+    if (list.visibility?.id === "PRIVATE") {
+      throw new Error(ERROR_PRIVATE);
+    }
+
+    const search = list.titleListItemSearch;
+    edges.push(...(search?.edges ?? []));
+
+    const pageInfo = search?.pageInfo;
+    if (!pageInfo?.hasNextPage || !pageInfo.endCursor) {
+      break;
+    }
+    after = pageInfo.endCursor;
+
+    if (page === MAX_PAGES - 1) {
+      console.warn(
+        `Watchlist for ${userId} hit MAX_PAGES (${MAX_PAGES} × ${PAGE_SIZE} = ${MAX_PAGES * PAGE_SIZE}); remaining items truncated.`,
+      );
+    }
   }
 
-  const list = json.data?.predefinedList;
-
-  if (!list) {
-    throw new Error(ERROR_NOT_FOUND);
-  }
-
-  if (list.visibility?.id === "PRIVATE") {
-    throw new Error(ERROR_PRIVATE);
-  }
-
-  return list.titleListItemSearch?.edges ?? [];
+  return edges;
 }
 
 function processWatchlist(edges: ImdbEdge[]): ProcessedItem[] {
@@ -405,6 +440,20 @@ function sortMetas(metas: StremioMeta[], options: SortOptions): StremioMeta[] {
   return sorted;
 }
 
+// Stremio only has `movie` and `series` catalog types, so every single-video
+// IMDb title (theatrical, made-for-TV, short, etc.) maps to `movie`. Episodic
+// content (`TV Episode`) and non-video titles (`Video Game`, `Music Video`,
+// `Podcast Series`, `Podcast Episode`) are dropped.
+const MOVIE_TYPES = new Set([
+  "Movie",
+  "TV Movie",
+  "TV Special",
+  "Short",
+  "TV Short",
+  "Video",
+]);
+const SERIES_TYPES = new Set(["TV Series", "TV Mini Series"]);
+
 function convertToStremioFormat(
   items: ProcessedItem[],
   sortOptions: SortOptions,
@@ -417,9 +466,8 @@ function convertToStremioFormat(
       continue;
     }
 
-    const isMovie = item.type === "Movie";
-    const isSeries =
-      item.type === "TV Series" || item.type === "TV Mini Series";
+    const isMovie = item.type != null && MOVIE_TYPES.has(item.type);
+    const isSeries = item.type != null && SERIES_TYPES.has(item.type);
     if (!isMovie && !isSeries) {
       continue;
     }
@@ -513,30 +561,51 @@ export async function validateImdbList(
 }
 
 export async function getImdbList(listId: string): Promise<ImdbEdge[]> {
-  const json = await queryImdbGraphQL("ListPage", LIST_QUERY, {
-    listId,
-    first: 5000,
-  });
+  const edges: ImdbEdge[] = [];
+  let after: string | null = null;
 
-  if (json.errors?.length) {
-    throw new Error(
-      hasForbiddenError(json.errors)
-        ? ERROR_LIST_PRIVATE
-        : ERROR_LIST_NOT_FOUND,
-    );
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const json = await queryImdbGraphQL("ListPage", LIST_QUERY, {
+      listId,
+      first: PAGE_SIZE,
+      after,
+    });
+
+    if (json.errors?.length) {
+      throw new Error(
+        hasForbiddenError(json.errors)
+          ? ERROR_LIST_PRIVATE
+          : ERROR_LIST_NOT_FOUND,
+      );
+    }
+
+    const list = json.data?.list;
+
+    if (!list) {
+      throw new Error(ERROR_LIST_NOT_FOUND);
+    }
+
+    if (list.visibility?.id === "PRIVATE") {
+      throw new Error(ERROR_LIST_PRIVATE);
+    }
+
+    const search = list.titleListItemSearch;
+    edges.push(...(search?.edges ?? []));
+
+    const pageInfo = search?.pageInfo;
+    if (!pageInfo?.hasNextPage || !pageInfo.endCursor) {
+      break;
+    }
+    after = pageInfo.endCursor;
+
+    if (page === MAX_PAGES - 1) {
+      console.warn(
+        `List ${listId} hit MAX_PAGES (${MAX_PAGES} × ${PAGE_SIZE} = ${MAX_PAGES * PAGE_SIZE}); remaining items truncated.`,
+      );
+    }
   }
 
-  const list = json.data?.list;
-
-  if (!list) {
-    throw new Error(ERROR_LIST_NOT_FOUND);
-  }
-
-  if (list.visibility?.id === "PRIVATE") {
-    throw new Error(ERROR_LIST_PRIVATE);
-  }
-
-  return list.titleListItemSearch?.edges ?? [];
+  return edges;
 }
 
 export async function fetchList(
