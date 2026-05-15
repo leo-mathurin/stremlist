@@ -329,6 +329,12 @@ export async function getImdbWatchlist(input: string): Promise<ImdbEdge[]> {
       break;
     }
     after = pageInfo.endCursor;
+
+    if (page === MAX_PAGES - 1) {
+      console.warn(
+        `Watchlist for ${userId} hit MAX_PAGES (${MAX_PAGES} × ${PAGE_SIZE} = ${MAX_PAGES * PAGE_SIZE}); remaining items truncated.`,
+      );
+    }
   }
 
   return edges;
@@ -591,6 +597,12 @@ export async function getImdbList(listId: string): Promise<ImdbEdge[]> {
       break;
     }
     after = pageInfo.endCursor;
+
+    if (page === MAX_PAGES - 1) {
+      console.warn(
+        `List ${listId} hit MAX_PAGES (${MAX_PAGES} × ${PAGE_SIZE} = ${MAX_PAGES * PAGE_SIZE}); remaining items truncated.`,
+      );
+    }
   }
 
   return edges;
