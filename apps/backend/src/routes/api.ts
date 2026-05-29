@@ -22,6 +22,12 @@ import {
   replaceUserWatchlists,
   setUserRpdbApiKey,
 } from "../services/user";
+import { getWatchlistByConfig } from "../services/watchlist";
+
+const REFRESH_COOLDOWN_MS =
+  (Number.isFinite(Number(process.env.REFRESH_COOLDOWN_SECONDS))
+    ? Number(process.env.REFRESH_COOLDOWN_SECONDS)
+    : 60) * 1000;
 
 const userIdParam = z.object({
   userId: z.string().regex(IMDB_USER_ID_PATTERN),
@@ -88,7 +94,12 @@ const api = new Hono()
     }
     const rpdbApiKey = await getUserRpdbApiKey(userId);
     const watchlists = await getUserWatchlists(userId);
-    return c.json({ rpdbApiKey, watchlists });
+    return c.json({
+      rpdbApiKey,
+      watchlists,
+      lastFetchedAt: user.last_fetched_at,
+      cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
+    });
   })
   .post(
     "/:userId/config",
@@ -168,6 +179,74 @@ const api = new Hono()
       return c.json({ ok: true, watchlists: updatedWatchlists });
     },
   )
+
+  .post("/:userId/refresh", zValidator("param", userIdParam), async (c) => {
+    const { userId } = c.req.valid("param");
+
+    const user = await getUser(userId);
+    if (!user) {
+      return c.json({ error: "User not found. Install the addon first." }, 404);
+    }
+
+    // Server-side cooldown protects IMDb/IO from rapid manual refreshes.
+    if (
+      Date.now() - new Date(user.last_fetched_at).getTime() <
+      REFRESH_COOLDOWN_MS
+    ) {
+      return c.json({
+        ok: true,
+        lastFetchedAt: user.last_fetched_at,
+        refreshed: 0,
+        failed: 0,
+        total: 0,
+        throttled: true,
+        cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
+      });
+    }
+
+    const [watchlists, rpdbApiKey] = await Promise.all([
+      getUserWatchlists(userId),
+      getUserRpdbApiKey(userId),
+    ]);
+
+    const refreshedAt = new Date().toISOString();
+
+    const results = await Promise.allSettled(
+      watchlists.map((w) =>
+        getWatchlistByConfig({
+          ownerUserId: userId,
+          watchlistId: w.id,
+          imdbUserId: w.imdbUserId,
+          sortOption: w.sortOption,
+          rpdbApiKey,
+          forceFresh: true,
+          skipUserTimestamp: true,
+          // A failed fetch must count as failed, not be masked by stale cache.
+          noCacheFallback: true,
+        }),
+      ),
+    );
+
+    const refreshed = results.filter((r) => r.status === "fulfilled").length;
+    const failed = results.length - refreshed;
+
+    // The batch owns the single users.last_fetched_at write.
+    if (refreshed > 0) {
+      await supabase
+        .from("users")
+        .update({ last_fetched_at: refreshedAt })
+        .eq("imdb_user_id", userId);
+    }
+
+    return c.json({
+      ok: true,
+      lastFetchedAt: refreshed > 0 ? refreshedAt : user.last_fetched_at,
+      refreshed,
+      failed,
+      total: watchlists.length,
+      cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
+    });
+  })
 
   .post(
     "/newsletter/subscribe",

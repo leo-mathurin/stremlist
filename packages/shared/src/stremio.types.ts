@@ -1,81 +1,83 @@
 export interface WatchlistData {
-  metas: StremioMeta[]
+  metas: StremioMeta[];
 }
 
 export interface ConfigWatchlist {
-  id: string
-  imdbUserId: string
-  catalogTitle: string
-  sortOption: string
-  position: number
+  id: string;
+  imdbUserId: string;
+  catalogTitle: string;
+  sortOption: string;
+  position: number;
 }
 
 export interface UserConfigResponse {
-  rpdbApiKey: string | null
-  watchlists: ConfigWatchlist[]
+  rpdbApiKey: string | null;
+  watchlists: ConfigWatchlist[];
+  lastFetchedAt: string;
+  cooldownSeconds: number;
 }
 
 export interface UserConfigUpdateWatchlist {
-  id?: string
-  imdbUserId: string
-  catalogTitle?: string
-  sortOption: string
-  position: number
+  id?: string;
+  imdbUserId: string;
+  catalogTitle?: string;
+  sortOption: string;
+  position: number;
 }
 
 export interface UserConfigUpdatePayload {
-  rpdbApiKey?: string
-  watchlists: UserConfigUpdateWatchlist[]
+  rpdbApiKey?: string;
+  watchlists: UserConfigUpdateWatchlist[];
 }
 
 export interface StremioMeta {
-  id: string
-  name: string
-  poster: string | null
-  posterShape: "poster" | "square" | "landscape"
-  type: "movie" | "series"
-  genres: string[]
-  description: string
-  imdbRating?: string
-  releaseInfo?: string
-  director?: string[]
-  cast?: string[]
-  runtime?: string
+  id: string;
+  name: string;
+  poster: string | null;
+  posterShape: "poster" | "square" | "landscape";
+  type: "movie" | "series";
+  genres: string[];
+  description: string;
+  imdbRating?: string;
+  releaseInfo?: string;
+  director?: string[];
+  cast?: string[];
+  runtime?: string;
 }
 
 export interface StremioCatalog {
-  id: string
-  name: string
-  type: "movie" | "series"
+  id: string;
+  name: string;
+  type: "movie" | "series";
 }
 
 export interface StremioResource {
-  name: string
-  types: string[]
-  idPrefixes?: string[]
+  name: string;
+  types: string[];
+  idPrefixes?: string[];
 }
 
 export interface StremioConfigOption {
-  key: string
-  type: "select" | "text" | "password" | "checkbox"
-  title: string
-  options?: string[]
-  default?: string
+  key: string;
+  type: "select" | "text" | "password" | "checkbox";
+  title: string;
+  options?: string[];
+  default?: string;
 }
 
 export interface StremioManifest {
-  id: string
-  version: string
-  name: string
-  description: string
-  resources: (string | StremioResource)[]
-  types: string[]
-  catalogs: StremioCatalog[]
-  logo: string
+  id: string;
+  version: string;
+  name: string;
+  description: string;
+  resources: (string | StremioResource)[];
+  types: string[];
+  catalogs: StremioCatalog[];
+  logo: string;
   behaviorHints: {
-    configurable: boolean
-    configurationRequired: boolean
-  }
-  config?: StremioConfigOption[]
-  selfUrl?: string
+    configurable: boolean;
+    configurationRequired: boolean;
+  };
+  config?: StremioConfigOption[];
+  selfUrl?: string;
 }

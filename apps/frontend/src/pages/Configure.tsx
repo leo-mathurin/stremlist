@@ -8,14 +8,21 @@ import {
   IMDB_WATCHLIST_SOURCE_ID_PATTERN,
 } from "@stremlist/shared";
 import type { UserConfigResponse, ConfigWatchlist } from "@stremlist/shared";
-import { Eye, EyeOff, Plus, Trash2, GripVertical } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  Plus,
+  Trash2,
+  GripVertical,
+  RefreshCw,
+} from "lucide-react";
 import { DragDropProvider } from "@dnd-kit/react";
 import { useSortable, isSortable } from "@dnd-kit/react/sortable";
 import Header from "../components/Header";
 import AddonInstallActions from "../components/AddonInstallActions";
 import { api } from "../lib/api";
 import { useSEO } from "../hooks/useSEO";
-import { cn } from "@/lib/utils";
+import { cn, formatRelativeTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -213,6 +220,10 @@ export default function Configure() {
   const [showRpdbApiKey, setShowRpdbApiKey] = useState(false);
   const [loading, setLoading] = useState(!!userId);
   const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastFetchedAt, setLastFetchedAt] = useState<string | null>(null);
+  const [cooldownSeconds, setCooldownSeconds] = useState(60);
+  const [now, setNow] = useState(() => Date.now());
   const [userNotFound, setUserNotFound] = useState(false);
   const [showReinstallHint, setShowReinstallHint] = useState(false);
   const [watchlistBaselineSignature, setWatchlistBaselineSignature] =
@@ -239,6 +250,7 @@ export default function Configure() {
     setStatus(null);
     setShowReinstallHint(false);
     setWatchlistBaselineSignature("");
+    setLastFetchedAt(null);
 
     api[":userId"].config
       .$get({ param: { userId } })
@@ -253,6 +265,10 @@ export default function Configure() {
         const data = raw as Partial<UserConfigResponse>;
         if (data && "rpdbApiKey" in data && data.rpdbApiKey)
           setRpdbApiKey(data.rpdbApiKey);
+        if (data && "lastFetchedAt" in data && data.lastFetchedAt)
+          setLastFetchedAt(data.lastFetchedAt);
+        if (data && typeof data.cooldownSeconds === "number")
+          setCooldownSeconds(data.cooldownSeconds);
         if (data && "watchlists" in data && Array.isArray(data.watchlists)) {
           const rows = data.watchlists.map((watchlist) =>
             createWatchlistRow({
@@ -271,6 +287,23 @@ export default function Configure() {
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [userId]);
+
+  // Tick once a second so the "last refreshed" label and the refresh cooldown
+  // countdown stay live without per-event timers.
+  useEffect(() => {
+    if (!userId) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [userId]);
+
+  const nextRefreshAt = lastFetchedAt
+    ? new Date(lastFetchedAt).getTime() + cooldownSeconds * 1000
+    : 0;
+  const cooldownRemaining = Math.max(
+    0,
+    Math.ceil((nextRefreshAt - now) / 1000),
+  );
+  const onCooldown = cooldownRemaining > 0;
 
   const handleIdInput = useCallback(
     (value: string) => {
@@ -448,6 +481,51 @@ export default function Configure() {
     }
   };
 
+  const handleRefresh = async () => {
+    if (!userId || refreshing || onCooldown) return;
+
+    setRefreshing(true);
+    setStatus(null);
+
+    try {
+      const res = await api[":userId"].refresh.$post({ param: { userId } });
+      const json = (await res.json()) as {
+        ok: boolean;
+        error?: string;
+        lastFetchedAt?: string;
+        refreshed?: number;
+        failed?: number;
+        total?: number;
+        throttled?: boolean;
+        cooldownSeconds?: number;
+      };
+
+      if (!res.ok) {
+        throw new Error(json.error ?? "Failed to refresh");
+      }
+
+      if (typeof json.cooldownSeconds === "number")
+        setCooldownSeconds(json.cooldownSeconds);
+      if (json.lastFetchedAt) setLastFetchedAt(json.lastFetchedAt);
+
+      // Success feedback is the live "Last refreshed" label + cooldown countdown,
+      // so only surface a message when some catalogs actually failed to refresh.
+      if (json.failed && json.failed > 0) {
+        setStatus({
+          type: "error",
+          message: `Refreshed ${json.refreshed ?? 0} of ${json.total ?? 0} catalogs — some failed to update.`,
+        });
+      }
+    } catch (err) {
+      setStatus({
+        type: "error",
+        message: err instanceof Error ? err.message : "Something went wrong",
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
     <div className="max-w-3xl mx-auto my-8 bg-white rounded-lg shadow-md p-8">
       <Header />
@@ -461,7 +539,59 @@ export default function Configure() {
           <Link to={homePath}>&larr; Back to Home</Link>
         </Button>
 
-        <h2 className="text-xl font-bold text-gray-900 mt-4 mb-1">Configure</h2>
+        <div className="mt-4 mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+          <div className="space-y-1">
+            <h2 className="text-xl font-bold text-gray-900">Configure</h2>
+            {userId && !userNotFound && (
+              <p className="text-sm text-gray-500">
+                Settings for{" "}
+                <strong className="font-semibold text-gray-700">
+                  {userId}
+                </strong>
+              </p>
+            )}
+          </div>
+          {userId && !loading && !userNotFound && (
+            <div className="flex items-center gap-3">
+              <p className="flex items-center gap-2 text-sm text-gray-500">
+                <span
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    refreshing
+                      ? "animate-pulse bg-amber-400"
+                      : lastFetchedAt
+                        ? "bg-emerald-500"
+                        : "bg-gray-300",
+                  )}
+                  aria-hidden="true"
+                />
+                <span>
+                  Last refreshed{" "}
+                  <span className="font-semibold text-gray-900">
+                    {formatRelativeTime(lastFetchedAt)}
+                  </span>
+                </span>
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={refreshing || onCooldown}
+                className="gap-2 tabular-nums"
+              >
+                <RefreshCw
+                  className={cn("size-4", refreshing && "animate-spin")}
+                />
+                {refreshing
+                  ? "Refreshing…"
+                  : onCooldown
+                    ? `Refresh in ${cooldownRemaining}s`
+                    : "Refresh now"}
+              </Button>
+            </div>
+          )}
+        </div>
 
         {!userId ? (
           <section className="bg-gray-50 rounded-lg p-6 border border-gray-200 mt-4">
@@ -496,11 +626,7 @@ export default function Configure() {
           </section>
         ) : (
           <>
-            <p className="text-sm text-gray-500 mb-6">
-              Settings for <strong>{userId}</strong>
-            </p>
-
-            <section className="bg-gray-50 rounded-lg p-6 border border-gray-200">
+            <section>
               {loading ? (
                 <p className="text-sm text-gray-400">Loading...</p>
               ) : userNotFound ? (
@@ -677,7 +803,7 @@ export default function Configure() {
         )}
       </main>
 
-      <footer className="mt-8 pt-6 border-t border-gray-200 text-center text-sm text-gray-500 space-y-2">
+      <footer className="pt-6 text-center text-sm text-gray-500 space-y-2">
         <p>
           <Button variant="link" asChild className="h-auto p-0 text-stremlist">
             <Link to={homePath}>Return to Home</Link>

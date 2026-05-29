@@ -170,8 +170,12 @@ export default function Terms() {
                 <li>
                   <strong>Watchlist cache</strong> — A cached copy of your
                   public IMDb watchlist (titles, IDs, metadata) linked to your
-                  IMDb user ID. This cache is only used if IMDb is down. Cached
-                  data is overwritten on each request rather than retained.
+                  IMDb user ID. This cache is used to serve your catalogs
+                  quickly and is refreshed periodically (roughly every 30
+                  minutes) and whenever you use “Refresh now”. It also keeps
+                  your catalogs available if IMDb is temporarily down. Each
+                  refresh overwrites the previous copy rather than keeping a
+                  history.
                 </li>
               </ul>
               <p className="mt-2">

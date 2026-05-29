@@ -103,6 +103,7 @@ describe("Watchlist CRUD via API", () => {
       const data = await res.json();
       expect(data.watchlists).toEqual([]);
       expect(data.rpdbApiKey).toBeNull();
+      expect(typeof data.lastFetchedAt).toBe("string");
     });
 
     it("returns existing watchlists with their IDs", async () => {

@@ -145,8 +145,8 @@ export default function Home() {
             {[
               "When you add this addon to Stremio, it securely retrieves your public IMDb watchlist and list data",
               "Your catalogs are converted into a format that Stremio can understand and display",
-              "The addon automatically checks for updates to your catalogs every 6-12 hours",
-              "Everything happens in real-time \u2013 no data is stored permanently, protecting your privacy",
+              "Your catalogs refresh automatically about every 30 minutes as you browse, and you can hit \u201cRefresh now\u201d on the configure page anytime to update them instantly",
+              "Only your public IMDb data is used \u2013 a lightweight cached copy keeps catalogs fast to load and available even if IMDb is briefly down",
             ].map((text, i) => (
               <div key={i} className="flex items-start gap-3">
                 <Badge className="shrink-0 w-7 h-7 rounded-full bg-stremlist text-white font-bold text-xs border-0 flex items-center justify-center">
