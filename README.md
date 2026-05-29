@@ -11,6 +11,7 @@ Stremlist is a Stremio addon that turns your IMDb watchlist into a Stremio catal
 - Supports sorting by title, year, rating, runtime, and random order
 - Optional Rating Poster Database (RPDB) poster support via API key
 - Simple install flow through a hosted configuration UI
+- Cache-first watchlist serving with periodic auto-refresh and a manual "Refresh now" control
 - Lightweight backend with Supabase for user management and watchlist caching
 - Monorepo architecture with Turborepo (`apps` + `packages`)
 
@@ -111,6 +112,8 @@ Set backend env vars in `apps/backend/.env`.
 | `FRONTEND_URL` | No | URL used for `/:userId/configure` redirect | `https://stremlist.com` |
 | `SUPABASE_URL` | Yes | Supabase project URL | - |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase service role key | - |
+| `CACHE_TTL_MINUTES` | No | How long a cached watchlist is served before it is refreshed on the next request | `30` |
+| `REFRESH_COOLDOWN_SECONDS` | No | Minimum time between manual "Refresh now" requests per user | `60` |
 | `RESEND_API_KEY` | No | Resend API key for newsletter subscription endpoint | - |
 | `RESEND_AUDIENCE_ID` | No | Resend audience ID for newsletter subscription endpoint | - |
 

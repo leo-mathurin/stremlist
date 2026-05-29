@@ -1,4 +1,8 @@
-import { DEFAULT_SORT_OPTION, parseSortOption } from "@stremlist/shared";
+import {
+  DEFAULT_SORT_OPTION,
+  DEFAULT_SORT_OPTIONS,
+  parseSortOption,
+} from "@stremlist/shared";
 import type { WatchlistData, SortOptions } from "@stremlist/shared";
 import { supabase } from "../lib/supabase";
 import { shuffleArray } from "../utils";
@@ -8,7 +12,11 @@ import {
   fetchWatchlist,
   isListId,
 } from "./imdb-scraper";
-import { ensureUser } from "./user";
+
+const CACHE_TTL_MS =
+  (Number.isFinite(Number(process.env.CACHE_TTL_MINUTES))
+    ? Number(process.env.CACHE_TTL_MINUTES)
+    : 30) * 60_000;
 
 async function getCachedWatchlist(
   watchlistId: string,
@@ -60,32 +68,44 @@ export interface WatchlistFetchConfig {
   imdbUserId: string;
   sortOption: string | null | undefined;
   rpdbApiKey?: string | null;
+  forceFresh?: boolean;
+  skipUserTimestamp?: boolean;
 }
 
 export async function getWatchlistByConfig(
   config: WatchlistFetchConfig,
 ): Promise<WatchlistData> {
-  await ensureUser(config.ownerUserId);
-
   const sortOptionStr = config.sortOption ?? DEFAULT_SORT_OPTION;
   const sortOptions = parseSortOption(sortOptionStr);
 
+  // Cache-first happy path: a fresh cache hit is a single indexed SELECT with
+  // zero writes and zero IMDb calls. The cached blob is stored canonically
+  // (added_at-asc, raw posters), so sort + RPDB are always applied at serve time.
+  if (!config.forceFresh) {
+    const cached = await getCachedWatchlist(config.watchlistId);
+    if (cached && Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
+      return resortCachedData(cached.data, sortOptions, config.rpdbApiKey);
+    }
+  }
+
   try {
     const fetcher = isListId(config.imdbUserId) ? fetchList : fetchWatchlist;
-    const fresh = await fetcher(
-      config.imdbUserId,
-      sortOptions,
-      config.rpdbApiKey,
-    );
+    // Fetch canonically so the cached blob is sort- and RPDB-key-agnostic.
+    const fresh = await fetcher(config.imdbUserId, DEFAULT_SORT_OPTIONS, null);
 
     await Promise.all([
       upsertCache(config.watchlistId, fresh),
-      supabase
-        .from("users")
-        .update({ last_fetched_at: new Date().toISOString() })
-        .eq("imdb_user_id", config.ownerUserId),
+      // Tier 2: only stamp the analytics timestamp on a real refresh.
+      ...(config.skipUserTimestamp
+        ? []
+        : [
+            supabase
+              .from("users")
+              .update({ last_fetched_at: new Date().toISOString() })
+              .eq("imdb_user_id", config.ownerUserId),
+          ]),
     ]);
-    return fresh;
+    return resortCachedData(fresh, sortOptions, config.rpdbApiKey);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(
