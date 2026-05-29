@@ -8,10 +8,31 @@ import { supabase } from "../lib/supabase";
 import { shuffleArray } from "../utils";
 import {
   buildPosterUrl,
+  classifyWatchlistError,
   fetchList,
   fetchWatchlist,
   isListId,
 } from "./imdb-scraper";
+import type { WatchlistErrorReason } from "./imdb-scraper";
+import { getUserRpdbApiKey, getUserWatchlists } from "./user";
+
+export type WatchlistUnavailableReason = WatchlistErrorReason | "unavailable";
+
+/**
+ * Thrown when a watchlist can't be served at all: the IMDb fetch failed and
+ * there is no cache to fall back on. `reason` lets callers distinguish an
+ * expected user-state ("private" / "not_found" → degrade gracefully) from an
+ * unknown/transient failure ("unavailable" → treat as a real server error).
+ */
+export class WatchlistUnavailableError extends Error {
+  readonly reason: WatchlistUnavailableReason;
+
+  constructor(reason: WatchlistUnavailableReason, message: string) {
+    super(message);
+    this.name = "WatchlistUnavailableError";
+    this.reason = reason;
+  }
+}
 
 const CACHE_TTL_MS =
   (Number.isFinite(Number(process.env.CACHE_TTL_MINUTES))
@@ -81,9 +102,19 @@ export async function getWatchlistByConfig(
   // Cache-first happy path: a fresh cache hit is a single indexed SELECT with
   // zero writes and zero IMDb calls. The cached blob is stored canonically
   // (added_at-asc, raw posters), so sort + RPDB are always applied at serve time.
+  //
+  // An *empty* cache (0 items) is treated as a non-hit so we always re-fetch:
+  // it's indistinguishable from "the list went private since we cached it", and
+  // a private list must surface its error (see catch below) rather than be
+  // served as a silently-empty catalog. Genuinely-empty public lists just
+  // re-fetch (cheap, and they're rare).
   if (!config.forceFresh) {
     const cached = await getCachedWatchlist(config.watchlistId);
-    if (cached && Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
+    if (
+      cached &&
+      cached.data.metas.length > 0 &&
+      Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS
+    ) {
       return resortCachedData(cached.data, sortOptions, config.rpdbApiKey);
     }
   }
@@ -113,8 +144,12 @@ export async function getWatchlistByConfig(
       message,
     );
 
+    // Serve a non-empty cache as a graceful fallback (keep showing the user's
+    // last-known items). An empty cache is NOT a useful fallback — fall through
+    // and surface the real reason (e.g. the private-list card) instead of a
+    // silently-empty catalog.
     const cached = await getCachedWatchlist(config.watchlistId);
-    if (cached) {
+    if (cached && cached.data.metas.length > 0) {
       console.log(
         `Serving cached watchlist for ${config.watchlistId} as fallback`,
       );
@@ -125,9 +160,66 @@ export async function getWatchlistByConfig(
       return resortCachedData(cached.data, sortOptions, config.rpdbApiKey);
     }
 
-    throw new Error(
+    throw new WatchlistUnavailableError(
+      classifyWatchlistError(err) ?? "unavailable",
       `Failed to fetch watchlist ${config.watchlistId} and no cache available: ${message}`,
     );
+  }
+}
+
+/**
+ * Resolve a single meta item for a Stremio detail page using ONLY the cache.
+ *
+ * Unlike getWatchlistByConfig this never scrapes IMDb, never writes, and never
+ * throws: on a cold cache, a miss, or any DB error it returns null so the meta
+ * route answers { meta: null } and Stremio falls back to Cinemeta. It also
+ * deliberately ignores the cache TTL — opening one already-cached title must
+ * not trigger a refresh. The old per-request fan-out (getWatchlistByConfig for
+ * every list, which synchronously re-scraped IMDb on stale caches) is what
+ * caused the prod 500/504 storm on /:userId/meta/...
+ */
+export async function findMetaInUserCache(
+  userId: string,
+  type: string,
+  id: string,
+): Promise<WatchlistData["metas"][number] | null> {
+  try {
+    const [watchlists, rpdbApiKey] = await Promise.all([
+      getUserWatchlists(userId),
+      getUserRpdbApiKey(userId),
+    ]);
+    if (watchlists.length === 0) return null;
+
+    const { data, error } = await supabase
+      .from("watchlist_cache")
+      .select("cached_data")
+      .in(
+        "watchlist_id",
+        watchlists.map((w) => w.id),
+      );
+
+    if (error) {
+      console.error(`Failed to read meta cache for ${userId}:`, error.message);
+      return null;
+    }
+
+    for (const row of data) {
+      const found = (row.cached_data as WatchlistData).metas.find(
+        (m) => m.id === id && m.type === type,
+      );
+      if (found) {
+        return {
+          ...found,
+          poster: buildPosterUrl(found.id, found.poster, rpdbApiKey),
+        };
+      }
+    }
+
+    return null;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`findMetaInUserCache failed for ${userId}:`, message);
+    return null;
   }
 }
 

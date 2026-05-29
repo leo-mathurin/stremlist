@@ -157,15 +157,35 @@ interface ProcessedItem {
   cast: string[];
 }
 
-const ERROR_NOT_FOUND =
+export const ERROR_NOT_FOUND =
   "Could not find an IMDb watchlist for this ID. Please check and try again.";
-const ERROR_PRIVATE =
+export const ERROR_PRIVATE =
   "This IMDb watchlist is private. Please make your watchlist public in your IMDb settings.";
 
-const ERROR_LIST_NOT_FOUND =
+export const ERROR_LIST_NOT_FOUND =
   "Could not find an IMDb list for this ID. Please check and try again.";
-const ERROR_LIST_PRIVATE =
+export const ERROR_LIST_PRIVATE =
   "This IMDb list is private. Please ask the list owner to make it public.";
+
+export type WatchlistErrorReason = "private" | "not_found";
+
+/**
+ * Classify a thrown fetch error as an expected user-state (private list /
+ * not-found) vs. something else (transient/unknown → null). Kept next to the
+ * message constants so the mapping has a single source of truth.
+ */
+export function classifyWatchlistError(
+  error: unknown,
+): WatchlistErrorReason | null {
+  const message = error instanceof Error ? error.message : "";
+  if (message === ERROR_PRIVATE || message === ERROR_LIST_PRIVATE) {
+    return "private";
+  }
+  if (message === ERROR_NOT_FOUND || message === ERROR_LIST_NOT_FOUND) {
+    return "not_found";
+  }
+  return null;
+}
 
 function hasForbiddenError(errors: GraphQLResponse["errors"]): boolean {
   return errors?.some((e) => e.extensions?.code === "FORBIDDEN") ?? false;
