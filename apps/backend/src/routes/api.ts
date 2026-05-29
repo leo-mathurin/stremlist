@@ -221,6 +221,8 @@ const api = new Hono()
           rpdbApiKey,
           forceFresh: true,
           skipUserTimestamp: true,
+          // A failed fetch must count as failed, not be masked by stale cache.
+          noCacheFallback: true,
         }),
       ),
     );

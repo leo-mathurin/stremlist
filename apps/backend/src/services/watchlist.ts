@@ -91,6 +91,14 @@ export interface WatchlistFetchConfig {
   rpdbApiKey?: string | null;
   forceFresh?: boolean;
   skipUserTimestamp?: boolean;
+  /**
+   * When true, a failed IMDb fetch is NOT masked by serving the existing cache:
+   * the error is rethrown so the caller can count it as a genuine failure. Used
+   * by the manual-refresh path, which forces a fresh fetch and must report
+   * honestly whether each list actually updated. The catalog path leaves this
+   * false so it keeps degrading gracefully to the last-known cached items.
+   */
+  noCacheFallback?: boolean;
 }
 
 export async function getWatchlistByConfig(
@@ -147,17 +155,21 @@ export async function getWatchlistByConfig(
     // Serve a non-empty cache as a graceful fallback (keep showing the user's
     // last-known items). An empty cache is NOT a useful fallback — fall through
     // and surface the real reason (e.g. the private-list card) instead of a
-    // silently-empty catalog.
-    const cached = await getCachedWatchlist(config.watchlistId);
-    if (cached && cached.data.metas.length > 0) {
-      console.log(
-        `Serving cached watchlist for ${config.watchlistId} as fallback`,
-      );
-      await supabase
-        .from("users")
-        .update({ last_cache_served_at: new Date().toISOString() })
-        .eq("imdb_user_id", config.ownerUserId);
-      return resortCachedData(cached.data, sortOptions, config.rpdbApiKey);
+    // silently-empty catalog. `noCacheFallback` callers (manual refresh) skip
+    // this entirely so a failed fetch is reported as a failure, not masked as a
+    // successful refresh of stale data.
+    if (!config.noCacheFallback) {
+      const cached = await getCachedWatchlist(config.watchlistId);
+      if (cached && cached.data.metas.length > 0) {
+        console.log(
+          `Serving cached watchlist for ${config.watchlistId} as fallback`,
+        );
+        await supabase
+          .from("users")
+          .update({ last_cache_served_at: new Date().toISOString() })
+          .eq("imdb_user_id", config.ownerUserId);
+        return resortCachedData(cached.data, sortOptions, config.rpdbApiKey);
+      }
     }
 
     throw new WatchlistUnavailableError(
