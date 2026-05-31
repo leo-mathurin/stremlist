@@ -28,6 +28,27 @@ const BADGE_CLASSES: Record<ChangeType, string> = {
 
 const VERSIONS: Version[] = [
   {
+    version: "v1.5.0",
+    date: "May 30, 2026",
+    changes: [
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: 'Added a "Refresh now" button on the Configure page to pull your latest IMDb watchlist on demand, with a "Last refreshed" label and a short cooldown between refreshes.',
+      },
+      {
+        type: "performance",
+        label: "Performance",
+        text: "Catalogs are now served cache-first, so a fresh watchlist loads from a single fast lookup with no live IMDb fetch — making catalogs noticeably quicker and more resilient.",
+      },
+      {
+        type: "bugfix",
+        label: "Reliability",
+        text: "Private or unavailable watchlists now show a clear informational card explaining why the catalog is empty instead of failing, and metadata is served from cache to stop Stremio from retry-storming during IMDb outages.",
+      },
+    ],
+  },
+  {
     version: "v1.4.0",
     date: "March 12, 2026",
     changes: [

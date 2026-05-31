@@ -1,9 +1,15 @@
 import { Hono } from "hono";
-import { getUserRpdbApiKey, getUserWatchlists } from "../services/user";
-import { getWatchlistByConfig } from "../services/watchlist";
+import { findMetaInUserCache } from "../services/watchlist";
 
 const meta = new Hono();
 
+// Stremlist serves meta ONLY from cache: it never scrapes IMDb, never throws,
+// and on any miss returns { meta: null } so Stremio falls back to Cinemeta. The
+// `meta` resource stays advertised in BASE_MANIFEST because some Stremlist-only
+// movies have no Cinemeta entry and would otherwise lose their detail/stream
+// page (dropping it is a regression). Removing the old per-request watchlist
+// fan-out — which re-scraped IMDb on stale caches and 500'd on failure — is what
+// fixes the prod 500/504 storm on /meta.
 meta.get("/:userId/meta/:type/:id.json", async (c) => {
   const userId = c.req.param("userId");
   const type = c.req.param("type");
@@ -12,44 +18,8 @@ meta.get("/:userId/meta/:type/:id.json", async (c) => {
     "",
   );
 
-  try {
-    const [watchlists, rpdbApiKey] = await Promise.all([
-      getUserWatchlists(userId),
-      getUserRpdbApiKey(userId),
-    ]);
-    const results = await Promise.all(
-      watchlists.map((watchlist) =>
-        getWatchlistByConfig({
-          ownerUserId: userId,
-          watchlistId: watchlist.id,
-          imdbUserId: watchlist.imdbUserId,
-          sortOption: watchlist.sortOption,
-          rpdbApiKey,
-        }),
-      ),
-    );
-
-    let item = null;
-    for (const data of results) {
-      const found = data.metas.find((m) => m.id === id && m.type === type);
-      if (found) {
-        item = found;
-        break;
-      }
-    }
-
-    if (!item) {
-      console.log(
-        `Meta not found for ${type}/${id} in user ${userId}'s watchlist`,
-      );
-      return c.json({ meta: null });
-    }
-
-    return c.json({ meta: item });
-  } catch (err) {
-    console.error(`Error serving meta for ${userId}:`, (err as Error).message);
-    return c.json({ meta: null }, 500);
-  }
+  const item = await findMetaInUserCache(userId, type, id);
+  return c.json({ meta: item });
 });
 
 export default meta;
