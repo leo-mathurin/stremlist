@@ -30,15 +30,13 @@ jobs:
       - name: Lint, build, and test
         run: pnpm turbo run lint build test
 
-  release:
+  version-bump:
     name: Auto version bump
     needs: ci
     # Only on a real push to main (i.e. after a PR merge), never on PRs.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    # Serialize releases so rapid merges don't race on pushing to main.
+    # Serialize so rapid merges don't race on pushing to main.
     concurrency:
       group: release-main
       cancel-in-progress: false
@@ -46,6 +44,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Repo-admin PAT: the default GITHUB_TOKEN can't be granted ruleset
+          # bypass on a personal repo, so we push the bump as an admin (who can).
+          token: ${{ secrets.RELEASE_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:
@@ -62,7 +63,7 @@ jobs:
         if: steps.bump.outputs.bump != 'none'
         run: node .github/scripts/set-version.mjs "${{ steps.bump.outputs.new_version }}"
 
-      - name: Commit, tag, and push
+      - name: Commit and push
         if: steps.bump.outputs.bump != 'none'
         env:
           NEW: ${{ steps.bump.outputs.new_version }}
@@ -71,13 +72,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add package.json packages/shared/src/constants.ts
           git commit -m "chore(release): v${NEW} [skip ci]"
-          git tag "v${NEW}"
           git push origin HEAD:main
-          git push origin "v${NEW}"
-
-      - name: Create GitHub Release
-        if: steps.bump.outputs.bump != 'none'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NEW: ${{ steps.bump.outputs.new_version }}
-        run: gh release create "v${NEW}" --title "v${NEW}" --generate-notes --target main
