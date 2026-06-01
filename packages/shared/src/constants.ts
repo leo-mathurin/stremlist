@@ -1,7 +1,7 @@
 import type { StremioManifest } from "./stremio.types";
 
 export const APP_NAME = "Stremlist";
-export const ADDON_VERSION = "1.4.0";
+export const ADDON_VERSION = "1.5.0";
 export const APP_DESCRIPTION = "Your IMDb Watchlist in Stremio";
 export const APP_LOGO = "https://stremlist.com/icon.png";
 export const APP_ID_PREFIX = "com.stremlist";
