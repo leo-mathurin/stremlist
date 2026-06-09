@@ -3,7 +3,11 @@ import {
   DEFAULT_SORT_OPTIONS,
   parseSortOption,
 } from "@stremlist/shared";
-import type { WatchlistData, SortOptions } from "@stremlist/shared";
+import type {
+  WatchlistData,
+  SortOptions,
+  TablesInsert,
+} from "@stremlist/shared";
 import { supabase } from "../lib/supabase";
 import { shuffleArray } from "../utils";
 import {
@@ -39,26 +43,53 @@ const CACHE_TTL_MS =
     ? Number(process.env.CACHE_TTL_MINUTES)
     : 30) * 60_000;
 
+// PostgREST caps a single SELECT at 1000 rows, so a watchlist with more items
+// (the prod max is ~9951) would be silently truncated. Page through in
+// 1000-row windows ordered by `position` and stitch the full list back together.
+const CACHE_PAGE_SIZE = 1000;
+
+// Upsert in smaller batches to keep each request body modest (a 9951-item list
+// is several MB) and to bound the size of each ON CONFLICT command.
+const CACHE_WRITE_CHUNK_SIZE = 500;
+
 async function getCachedWatchlist(
   watchlistId: string,
 ): Promise<{ data: WatchlistData; cachedAt: Date } | null> {
-  const { data, error } = await supabase
-    .from("watchlist_cache")
-    .select("cached_data, cached_at")
-    .eq("watchlist_id", watchlistId)
-    .single();
+  // Read the normalised per-item cache and reconstruct the WatchlistData blob.
+  // `position` preserves the canonical (added_at-asc) order the items were
+  // stored in, so resortCachedData applies sort + RPDB at serve time as before.
+  const metas: WatchlistData["metas"] = [];
+  let cachedAt: string | null = null;
 
-  if (error) {
-    console.error(
-      `Failed to get cached watchlist for ${watchlistId}:`,
-      error.message,
-    );
-    return null;
+  for (let from = 0; ; from += CACHE_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("watchlist_cache_items")
+      .select("data, cached_at")
+      .eq("watchlist_id", watchlistId)
+      .order("position", { ascending: true })
+      .range(from, from + CACHE_PAGE_SIZE - 1);
+
+    if (error) {
+      console.error(
+        `Failed to get cached watchlist for ${watchlistId}:`,
+        error.message,
+      );
+      return null;
+    }
+
+    if (cachedAt === null && data.length > 0) cachedAt = data[0].cached_at;
+    for (const row of data) metas.push(row.data);
+
+    if (data.length < CACHE_PAGE_SIZE) break;
   }
 
+  // Zero rows == miss, same contract as the old single-blob lookup. This keeps
+  // the "empty cache is a non-hit, always re-fetch" logic in the caller intact.
+  if (metas.length === 0 || cachedAt === null) return null;
+
   return {
-    data: data.cached_data,
-    cachedAt: new Date(data.cached_at),
+    data: { metas },
+    cachedAt: new Date(cachedAt),
   };
 }
 
@@ -66,19 +97,81 @@ async function upsertCache(
   watchlistId: string,
   watchlistData: WatchlistData,
 ): Promise<void> {
-  const { error } = await supabase.from("watchlist_cache").upsert(
-    {
-      watchlist_id: watchlistId,
-      cached_data: watchlistData,
-      cached_at: new Date().toISOString(),
-    },
-    { onConflict: "watchlist_id" },
-  );
+  // One shared timestamp for the whole generation. We upsert the new rows then
+  // prune anything older — never delete-then-insert, which would open a window
+  // where a concurrent catalog/refresh read sees zero rows (a false miss) and
+  // re-scrapes IMDb.
+  const cachedAt = new Date().toISOString();
 
-  if (error) {
+  // Empty list: clear the set so the next read is a miss (matches the old
+  // behaviour where an empty blob was treated as a non-hit). No upsert needed.
+  if (watchlistData.metas.length === 0) {
+    const { error } = await supabase
+      .from("watchlist_cache_items")
+      .delete()
+      .eq("watchlist_id", watchlistId);
+    if (error) {
+      console.error(
+        `Failed to clear watchlist cache for ${watchlistId}:`,
+        error.message,
+      );
+    }
+    return;
+  }
+
+  // De-duplicate by item_id, keeping the first occurrence. IMDb lists are NOT
+  // guaranteed to be sets — some carry the same `tt` id twice. Without this the
+  // upsert hits "ON CONFLICT DO UPDATE command cannot affect row a second time"
+  // (Postgres refuses to touch the same PK row twice in one command) and the
+  // whole cache write fails. Keeping the first occurrence mirrors the backfill's
+  // ON CONFLICT DO NOTHING. `position` stays the original index so order holds.
+  const seen = new Set<string>();
+  const rows: TablesInsert<"watchlist_cache_items">[] = [];
+  watchlistData.metas.forEach((meta, i) => {
+    if (seen.has(meta.id)) return;
+    seen.add(meta.id);
+    rows.push({
+      watchlist_id: watchlistId,
+      item_id: meta.id,
+      type: meta.type,
+      position: i,
+      data: meta,
+      cached_at: cachedAt,
+    });
+  });
+
+  // Chunk the write: a single upsert of a 9951-item list is a multi-MB request
+  // body. Bail before the prune if any chunk fails so we never wipe the
+  // previous generation on a partial write.
+  for (let i = 0; i < rows.length; i += CACHE_WRITE_CHUNK_SIZE) {
+    const { error: upsertError } = await supabase
+      .from("watchlist_cache_items")
+      .upsert(rows.slice(i, i + CACHE_WRITE_CHUNK_SIZE), {
+        onConflict: "watchlist_id,item_id",
+      });
+
+    if (upsertError) {
+      console.error(
+        `Failed to cache watchlist for ${watchlistId}:`,
+        upsertError.message,
+      );
+      return;
+    }
+  }
+
+  // Prune the previous generation: any row not touched by this upsert still
+  // carries an older cached_at. Items dropped from the list disappear; items
+  // that remain were just refreshed to `cachedAt` so they survive.
+  const { error: pruneError } = await supabase
+    .from("watchlist_cache_items")
+    .delete()
+    .eq("watchlist_id", watchlistId)
+    .lt("cached_at", cachedAt);
+
+  if (pruneError) {
     console.error(
-      `Failed to cache watchlist for ${watchlistId}:`,
-      error.message,
+      `Failed to prune stale cache for ${watchlistId}:`,
+      pruneError.message,
     );
   }
 }
@@ -202,32 +295,33 @@ export async function findMetaInUserCache(
     ]);
     if (watchlists.length === 0) return null;
 
+    // Single indexed row lookup instead of pulling every list's full blob.
+    // Still scoped to the user's own watchlists: Stremlist meta only overrides
+    // Cinemeta for titles that are actually in one of the user's lists.
     const { data, error } = await supabase
-      .from("watchlist_cache")
-      .select("cached_data")
+      .from("watchlist_cache_items")
+      .select("data")
+      .eq("item_id", id)
+      .eq("type", type)
       .in(
         "watchlist_id",
         watchlists.map((w) => w.id),
-      );
+      )
+      .limit(1)
+      .maybeSingle();
 
     if (error) {
       console.error(`Failed to read meta cache for ${userId}:`, error.message);
       return null;
     }
 
-    for (const row of data) {
-      const found = (row.cached_data as WatchlistData).metas.find(
-        (m) => m.id === id && m.type === type,
-      );
-      if (found) {
-        return {
-          ...found,
-          poster: buildPosterUrl(found.id, found.poster, rpdbApiKey),
-        };
-      }
-    }
+    if (!data) return null;
 
-    return null;
+    const found = data.data;
+    return {
+      ...found,
+      poster: buildPosterUrl(found.id, found.poster, rpdbApiKey),
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`findMetaInUserCache failed for ${userId}:`, message);

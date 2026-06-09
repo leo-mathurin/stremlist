@@ -44,11 +44,21 @@ function seedWatchlist(id: string, imdbUserId = OWNER) {
   });
 }
 
-function seedCache(watchlistId: string, metas: unknown[], cachedAt?: string) {
-  db.getTable("watchlist_cache").push({
-    watchlist_id: watchlistId,
-    cached_at: cachedAt ?? new Date().toISOString(),
-    cached_data: { metas },
+function seedCache(
+  watchlistId: string,
+  metas: { id: string; type: string }[],
+  cachedAt?: string,
+) {
+  const at = cachedAt ?? new Date().toISOString();
+  metas.forEach((meta, i) => {
+    db.getTable("watchlist_cache_items").push({
+      watchlist_id: watchlistId,
+      item_id: meta.id,
+      type: meta.type,
+      position: i,
+      data: meta,
+      cached_at: at,
+    });
   });
 }
 
