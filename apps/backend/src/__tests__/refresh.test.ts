@@ -43,11 +43,17 @@ function seedWatchlist(id: string) {
   });
 }
 
-function seedCache(watchlistId: string, metas: unknown[]) {
-  db.getTable("watchlist_cache").push({
-    watchlist_id: watchlistId,
-    cached_at: new Date().toISOString(),
-    cached_data: { metas },
+function seedCache(watchlistId: string, metas: { id: string; type: string }[]) {
+  const at = new Date().toISOString();
+  metas.forEach((meta, i) => {
+    db.getTable("watchlist_cache_items").push({
+      watchlist_id: watchlistId,
+      item_id: meta.id,
+      type: meta.type,
+      position: i,
+      data: meta,
+      cached_at: at,
+    });
   });
 }
 
@@ -117,6 +123,85 @@ describe("manual refresh reports honest success/failure counts", () => {
     expect(body.refreshed).toBe(1);
     expect(body.failed).toBe(0);
     expect(body.lastFetchedAt).not.toBe(TEN_MINUTES_AGO);
+  });
+
+  it("prunes the previous generation, leaving only fresh non-duplicated rows", async () => {
+    seedUser(TEN_MINUTES_AGO);
+    seedWatchlist(UUID_1);
+    // Previous generation: an item that gets dropped (OLD) and one that stays
+    // (SHARED). Seed them with an older timestamp so the prune sees them as stale.
+    const anHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    db.getTable("watchlist_cache_items").push(
+      {
+        watchlist_id: UUID_1,
+        item_id: "tt0000001",
+        type: "movie",
+        position: 0,
+        data: { id: "tt0000001", type: "movie" },
+        cached_at: anHourAgo,
+      },
+      {
+        watchlist_id: UUID_1,
+        item_id: "tt0111161",
+        type: "movie",
+        position: 1,
+        data: { id: "tt0111161", type: "movie" },
+        cached_at: anHourAgo,
+      },
+    );
+    // Fresh fetch keeps SHARED (tt0111161) and adds NEW (tt0000002); OLD is gone.
+    const NEW: StremioMeta = {
+      id: "tt0000002",
+      type: "movie",
+      name: "A New Film",
+      poster: null,
+      posterShape: "poster",
+      genres: [],
+      description: "",
+    };
+    vi.spyOn(scraper, "fetchWatchlist").mockResolvedValue({
+      metas: [CACHED_MOVIE, NEW],
+    });
+
+    const res = await requestRefresh();
+
+    expect(res.status).toBe(200);
+    const rows = db
+      .getTable("watchlist_cache_items")
+      .filter((r) => r.watchlist_id === UUID_1);
+    const ids = rows.map((r) => r.item_id).sort();
+    // OLD dropped, SHARED kept once (not duplicated), NEW added.
+    expect(ids).toEqual(["tt0000002", "tt0111161"]);
+  });
+
+  it("de-duplicates repeated ids before caching (no ON CONFLICT failure)", async () => {
+    seedUser(TEN_MINUTES_AGO);
+    seedWatchlist(UUID_1);
+    // IMDb lists aren't guaranteed sets: this one carries tt0111161 twice. The
+    // cache write must dedupe, otherwise the upsert fails with
+    // "ON CONFLICT DO UPDATE command cannot affect row a second time".
+    const GODFATHER: StremioMeta = {
+      ...CACHED_MOVIE,
+      id: "tt0068646",
+      name: "The Godfather",
+    };
+    vi.spyOn(scraper, "fetchWatchlist").mockResolvedValue({
+      metas: [CACHED_MOVIE, GODFATHER, { ...CACHED_MOVIE }],
+    });
+
+    const res = await requestRefresh();
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as RefreshResponse;
+    expect(body.refreshed).toBe(1);
+    expect(body.failed).toBe(0);
+    // tt0111161 stored exactly once (first occurrence kept), alongside the other.
+    const ids = db
+      .getTable("watchlist_cache_items")
+      .filter((r) => r.watchlist_id === UUID_1)
+      .map((r) => r.item_id)
+      .sort();
+    expect(ids).toEqual(["tt0068646", "tt0111161"]);
   });
 
   it("throttles a refresh that arrives within the cooldown window", async () => {

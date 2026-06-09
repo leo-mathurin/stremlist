@@ -43,3 +43,5 @@ lerna-debug.log*
 *.sw?
 *.txt
 !robots.txt
+# Supabase CLI local state
+supabase/.temp/
