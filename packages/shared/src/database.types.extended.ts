@@ -4,10 +4,6 @@ import type { Database as PostgresSchema } from "./database.types";
 
 export type { Json } from "./database.types";
 
-// The generated types now declare watchlist_cache_items, but its `data` column
-// comes through as the generic `Json`. Narrow it to StremioMeta so reads return
-// a typed meta and inserts/updates accept one without a cast. Everything else on
-// the table (and every other table) flows through from the generated schema.
 export type Database = MergeDeep<
   PostgresSchema,
   {
