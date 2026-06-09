@@ -45,6 +45,15 @@ ON CONFLICT (watchlist_id, item_id) DO NOTHING;
 CREATE INDEX IF NOT EXISTS idx_wci_item_lookup
   ON public.watchlist_cache_items (item_id, type);
 
+-- Catalog read path pages through a single list ordered by position:
+--   WHERE watchlist_id = $1 ORDER BY position LIMIT 1000 OFFSET n.
+-- The PK (watchlist_id, item_id) can locate a list's rows but not return them in
+-- `position` order, so without this every page sorts the whole list (large lists
+-- run ~9951 items across 10 pages). This composite makes pagination a clean
+-- index range scan with no per-page sort.
+CREATE INDEX IF NOT EXISTS idx_wci_watchlist_position
+  ON public.watchlist_cache_items (watchlist_id, position);
+
 -- Add the FK last (cascade on parent delete). DROP-then-ADD keeps it idempotent
 -- if a previous partial apply already created it.
 ALTER TABLE public.watchlist_cache_items
