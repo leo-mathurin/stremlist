@@ -7,6 +7,10 @@ import { withRelatedProject } from "@vercel/related-projects";
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  server: {
+    host: true,
+    allowedHosts: [".ts.net"],
+  },
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
   },
