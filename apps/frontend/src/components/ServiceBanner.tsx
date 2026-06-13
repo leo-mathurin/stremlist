@@ -7,8 +7,9 @@ export default function ServiceBanner() {
       <p className="max-w-3xl mx-auto">
         <strong>⚠️ Stremlist is temporarily down.</strong> We've hit our
         database usage limit, so the addon won't work until it resets on{" "}
-        <strong>June 16</strong>. Thanks for your patience. If you'd like to
-        help keep Stremlist running, you can{" "}
+        <strong>June 16</strong>. Stremlist already runs on a paid Vercel plan,
+        and adding a paid Supabase subscription on top is more than I can cover
+        alone. If you'd like to help keep Stremlist running, you can{" "}
         <a
           href="https://ko-fi.com/lelemathrin"
           target="_blank"
