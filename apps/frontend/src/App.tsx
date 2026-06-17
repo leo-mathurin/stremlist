@@ -4,12 +4,10 @@ import Home from "./pages/Home";
 import Terms from "./pages/Terms";
 import Changelog from "./pages/Changelog";
 import Configure from "./pages/Configure";
-import ServiceBanner from "./components/ServiceBanner";
 
 export default function App() {
   return (
     <BrowserRouter>
-      <ServiceBanner />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/terms" element={<Terms />} />
