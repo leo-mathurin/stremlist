@@ -34,7 +34,7 @@ app.get("/:userId/configure", (c) => {
 app.get("/health", async (c) => {
   const { error } = await supabase
     .from("users")
-    .select("id", { count: "exact", head: true })
+    .select("imdb_user_id", { count: "exact", head: true })
     .limit(1);
 
   if (error) {
