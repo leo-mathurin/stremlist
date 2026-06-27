@@ -1,5 +1,6 @@
 import { zValidator } from "@hono/zod-validator";
 import {
+  DISPLAY_MODE_OPTIONS,
   IMDB_LIST_ID_PATTERN,
   IMDB_USER_ID_PATTERN,
   IMDB_WATCHLIST_SOURCE_ID_PATTERN,
@@ -37,11 +38,16 @@ const sortOptionValues = SORT_OPTIONS.map((o) => o.value) as [
   string,
   ...string[],
 ];
+const displayModeValues = DISPLAY_MODE_OPTIONS.map((o) => o.value) as [
+  string,
+  ...string[],
+];
 const configWatchlistBody = z.object({
   id: z.string().uuid().optional(),
   imdbUserId: z.string().trim().regex(IMDB_WATCHLIST_SOURCE_ID_PATTERN),
   catalogTitle: z.string().trim().max(30).optional(),
   sortOption: z.enum(sortOptionValues),
+  displayMode: z.enum(displayModeValues).optional(),
   position: z.number().int().min(0).optional(),
 });
 const configBody = z.object({
@@ -154,6 +160,7 @@ const api = new Hono()
           imdbUserId: resolvedImdbUserId,
           catalogTitle: effectiveTitle,
           sortOption: watchlist.sortOption,
+          displayMode: watchlist.displayMode ?? "split",
           position: index,
         };
       });

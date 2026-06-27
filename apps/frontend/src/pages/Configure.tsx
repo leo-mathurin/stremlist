@@ -3,6 +3,8 @@ import { useSearchParams, Link } from "react-router";
 import {
   SORT_OPTIONS,
   DEFAULT_SORT_OPTION,
+  DISPLAY_MODE_OPTIONS,
+  DEFAULT_DISPLAY_MODE,
   IMDB_USER_ID_EXTRACT_PATTERN,
   IMDB_WATCHLIST_SOURCE_ID_EXTRACT_PATTERN,
   IMDB_WATCHLIST_SOURCE_ID_PATTERN,
@@ -53,6 +55,7 @@ type WatchlistFormRow = {
   imdbUserId: string;
   catalogTitle: string;
   sortOption: string;
+  displayMode: string;
 };
 
 function getWatchlistReinstallSignature(rows: WatchlistFormRow[]): string {
@@ -62,10 +65,11 @@ function getWatchlistReinstallSignature(rows: WatchlistFormRow[]): string {
       id: row.id ?? row.localId,
       imdbUserId: row.imdbUserId.trim(),
       catalogTitle: row.catalogTitle.trim(),
+      displayMode: row.displayMode,
     }))
     .map(
       (item) =>
-        `${item.index}|${item.id}|${item.imdbUserId}|${item.catalogTitle}`,
+        `${item.index}|${item.id}|${item.imdbUserId}|${item.catalogTitle}|${item.displayMode}`,
     )
     .join("::");
 }
@@ -79,6 +83,7 @@ function createWatchlistRow(
     imdbUserId: partial?.imdbUserId ?? "",
     catalogTitle: partial?.catalogTitle ?? "",
     sortOption: partial?.sortOption ?? DEFAULT_SORT_OPTION,
+    displayMode: partial?.displayMode ?? DEFAULT_DISPLAY_MODE,
   };
 }
 
@@ -188,6 +193,27 @@ function SortableWatchlistRow({
           ))}
         </SelectContent>
       </Select>
+
+      <Label className="block text-xs font-semibold text-gray-600 mt-3 mb-1">
+        Show
+      </Label>
+      <Select
+        value={watchlist.displayMode}
+        onValueChange={(value) =>
+          onFieldChange(watchlist.localId, "displayMode", value)
+        }
+      >
+        <SelectTrigger className="w-full bg-white focus:ring-imdb focus:border-imdb">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {DISPLAY_MODE_OPTIONS.map((opt) => (
+            <SelectItem key={opt.value} value={opt.value}>
+              {opt.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
@@ -276,6 +302,7 @@ export default function Configure() {
               imdbUserId: watchlist.imdbUserId,
               catalogTitle: watchlist.catalogTitle,
               sortOption: watchlist.sortOption,
+              displayMode: watchlist.displayMode,
             }),
           );
           if (rows.length > 0) {
@@ -437,6 +464,7 @@ export default function Configure() {
             imdbUserId: watchlist.imdbUserId.trim(),
             catalogTitle: watchlist.catalogTitle.trim(),
             sortOption: watchlist.sortOption,
+            displayMode: watchlist.displayMode,
             position: index,
           })),
         },

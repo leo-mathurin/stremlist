@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           catalog_title: string;
           created_at: string;
+          display_mode: string;
           id: string;
           imdb_user_id: string;
           owner_user_id: string;
@@ -28,6 +29,7 @@ export type Database = {
         Insert: {
           catalog_title: string;
           created_at?: string;
+          display_mode?: string;
           id?: string;
           imdb_user_id: string;
           owner_user_id: string;
@@ -38,6 +40,7 @@ export type Database = {
         Update: {
           catalog_title?: string;
           created_at?: string;
+          display_mode?: string;
           id?: string;
           imdb_user_id?: string;
           owner_user_id?: string;

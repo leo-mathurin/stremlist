@@ -20,6 +20,16 @@ export const SORT_OPTIONS = [
 
 export const DEFAULT_SORT_OPTION = "added_at-asc";
 
+export const DISPLAY_MODE_OPTIONS = [
+  { value: "split", label: "Movies & TV shows" },
+  { value: "movie", label: "Movies only" },
+  { value: "series", label: "TV shows only" },
+] as const;
+
+export const DEFAULT_DISPLAY_MODE = "split";
+
+export type DisplayMode = (typeof DISPLAY_MODE_OPTIONS)[number]["value"];
+
 export type SortField = "added_at" | "random" | "title" | "year" | "rating";
 export type SortOrder = "asc" | "desc";
 export interface SortOptions {
