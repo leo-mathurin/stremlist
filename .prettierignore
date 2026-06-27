@@ -2,3 +2,4 @@
 **/node_modules
 **/.turbo
 **/coverage
+packages/shared/src/database.types.ts
