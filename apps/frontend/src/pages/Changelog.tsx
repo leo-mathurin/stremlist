@@ -28,6 +28,22 @@ const BADGE_CLASSES: Record<ChangeType, string> = {
 
 const VERSIONS: Version[] = [
   {
+    version: "v1.7.0",
+    date: "June 27, 2026",
+    changes: [
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Added built-in IMDb chart catalogs — add Most Popular and Top 250 Movies & TV, the weekend Box Office, and Coming Soon releases as ready-made catalogs, no IMDb account required.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: 'Added a per-catalog "Show" option so each watchlist or list can display movies only, TV shows only, or both.',
+      },
+    ],
+  },
+  {
     version: "v1.5.0",
     date: "May 30, 2026",
     changes: [

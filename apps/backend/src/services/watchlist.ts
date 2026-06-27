@@ -1,6 +1,7 @@
 import {
   DEFAULT_SORT_OPTION,
   DEFAULT_SORT_OPTIONS,
+  isChartId,
   parseSortOption,
 } from "@stremlist/shared";
 import type {
@@ -13,6 +14,7 @@ import { shuffleArray } from "../utils";
 import {
   buildPosterUrl,
   classifyWatchlistError,
+  fetchChart,
   fetchList,
   fetchWatchlist,
   isListId,
@@ -221,7 +223,11 @@ export async function getWatchlistByConfig(
   }
 
   try {
-    const fetcher = isListId(config.imdbUserId) ? fetchList : fetchWatchlist;
+    const fetcher = isChartId(config.imdbUserId)
+      ? fetchChart
+      : isListId(config.imdbUserId)
+        ? fetchList
+        : fetchWatchlist;
     // Fetch canonically so the cached blob is sort- and RPDB-key-agnostic.
     const fresh = await fetcher(config.imdbUserId, DEFAULT_SORT_OPTIONS, null);
 

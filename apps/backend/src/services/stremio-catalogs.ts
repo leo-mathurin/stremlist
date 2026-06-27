@@ -33,17 +33,28 @@ export function buildManifestCatalogs(
       index,
       watchlists.length,
     );
-    return [
-      {
-        id: buildCatalogId(watchlist.id, "movie"),
-        name: buildCatalogName(effectiveTitle),
-        type: "movie",
-      },
-      {
-        id: buildCatalogId(watchlist.id, "series"),
-        name: buildCatalogName(effectiveTitle),
-        type: "series",
-      },
-    ];
+    const displayMode =
+      watchlist.displayMode === "movie" || watchlist.displayMode === "series"
+        ? watchlist.displayMode
+        : "split";
+
+    const movieCatalog: StremioCatalog = {
+      id: buildCatalogId(watchlist.id, "movie"),
+      name: buildCatalogName(effectiveTitle),
+      type: "movie",
+    };
+    const seriesCatalog: StremioCatalog = {
+      id: buildCatalogId(watchlist.id, "series"),
+      name: buildCatalogName(effectiveTitle),
+      type: "series",
+    };
+
+    if (displayMode === "movie") {
+      return [movieCatalog];
+    }
+    if (displayMode === "series") {
+      return [seriesCatalog];
+    }
+    return [movieCatalog, seriesCatalog];
   });
 }
