@@ -4,6 +4,7 @@ import {
   IMDB_LIST_ID_PATTERN,
   IMDB_USER_ID_PATTERN,
   IMDB_WATCHLIST_SOURCE_ID_PATTERN,
+  isChartId,
   SORT_OPTIONS,
 } from "@stremlist/shared";
 import { Hono } from "hono";
@@ -44,7 +45,13 @@ const displayModeValues = DISPLAY_MODE_OPTIONS.map((o) => o.value) as [
 ];
 const configWatchlistBody = z.object({
   id: z.string().uuid().optional(),
-  imdbUserId: z.string().trim().regex(IMDB_WATCHLIST_SOURCE_ID_PATTERN),
+  imdbUserId: z
+    .string()
+    .trim()
+    .refine(
+      (v) => IMDB_WATCHLIST_SOURCE_ID_PATTERN.test(v) || isChartId(v),
+      "Invalid IMDb source id",
+    ),
   catalogTitle: z.string().trim().max(30).optional(),
   sortOption: z.enum(sortOptionValues),
   displayMode: z.enum(displayModeValues).optional(),

@@ -47,3 +47,12 @@ export type {
   SortOptions,
   DisplayMode,
 } from "./constants";
+
+export {
+  CHART_REGISTRY,
+  CHART_BY_ID,
+  CHART_ID_SET,
+  isChartId,
+} from "./imdb-charts";
+
+export type { ChartKind, ChartEntry } from "./imdb-charts";

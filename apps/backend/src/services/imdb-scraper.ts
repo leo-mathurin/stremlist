@@ -1,8 +1,11 @@
 import {
+  CHART_BY_ID,
   DEFAULT_SORT_OPTIONS,
   FACEBOOK_EXTERNAL_HIT_USER_AGENT,
+  isChartId,
 } from "@stremlist/shared";
 import type {
+  ChartEntry,
   SortOptions,
   StremioMeta,
   WatchlistData,
@@ -19,6 +22,27 @@ const PAGE_SIZE = 250;
 // Safety stop for runaway pagination loops.
 const MAX_PAGES = 40;
 
+// Single source of truth for the `Title` node field selection. Both watchlist
+// queries and all three chart queries return this exact node shape, so they all
+// interpolate this fragment and reuse `processWatchlist`/`convertToStremioFormat`.
+const TITLE_FRAGMENT = `
+  id
+  titleText { text }
+  titleType { text }
+  releaseYear { year }
+  ratingsSummary { aggregateRating }
+  titleGenres { genres { genre { text } } }
+  plot { plotText { plainText } }
+  primaryImage { url }
+  runtime { seconds }
+  principalCredits {
+    category { id }
+    credits(limit: 5) {
+      name { nameText { text } }
+    }
+  }
+`;
+
 const WATCHLIST_QUERY = `
   query WatchListPage($urConst: ID!, $first: Int!, $after: String) {
     predefinedList(classType: WATCH_LIST, userId: $urConst) {
@@ -28,23 +52,7 @@ const WATCHLIST_QUERY = `
         total
         pageInfo { hasNextPage endCursor }
         edges {
-          listItem: title {
-            id
-            titleText { text }
-            titleType { text }
-            releaseYear { year }
-            ratingsSummary { aggregateRating }
-            titleGenres { genres { genre { text } } }
-            plot { plotText { plainText } }
-            primaryImage { url }
-            runtime { seconds }
-            principalCredits {
-              category { id }
-              credits(limit: 5) {
-                name { nameText { text } }
-              }
-            }
-          }
+          listItem: title { ${TITLE_FRAGMENT} }
         }
       }
     }
@@ -61,28 +69,66 @@ const LIST_QUERY = `
         total
         pageInfo { hasNextPage endCursor }
         edges {
-          listItem: title {
-            id
-            titleText { text }
-            titleType { text }
-            releaseYear { year }
-            ratingsSummary { aggregateRating }
-            titleGenres { genres { genre { text } } }
-            plot { plotText { plainText } }
-            primaryImage { url }
-            runtime { seconds }
-            principalCredits {
-              category { id }
-              credits(limit: 5) {
-                name { nameText { text } }
-              }
-            }
+          listItem: title { ${TITLE_FRAGMENT} }
+        }
+      }
+    }
+  }
+`;
+
+// Chart query builders. `chartType` / `comingSoonType` are GraphQL enums and the
+// release date is a scalar, so they're interpolated directly (values come from
+// the closed registry / our own clock — never user input — so no injection risk).
+// `first` stays a variable. boxOffice is fully fixed.
+function buildChartTitlesQuery(chartType: string): string {
+  return `
+    query ChartTitles($first: Int!, $after: String) {
+      chartTitles(chart: { chartType: ${chartType} }, first: $first, after: $after) {
+        total
+        pageInfo { hasNextPage endCursor }
+        edges {
+          node { ${TITLE_FRAGMENT} }
+        }
+      }
+    }
+  `;
+}
+
+const BOX_OFFICE_QUERY = `
+  query BoxOffice {
+    topGrossingReleases(
+      first: 10
+      filter: {
+        timeWindow: { timeWindowPeriod: LATEST_WEEKEND }
+        topGrossingReleasesArea: { boxOfficeArea: "XDOM" }
+      }
+    ) {
+      edges {
+        node {
+          release {
+            titles { ${TITLE_FRAGMENT} }
           }
         }
       }
     }
   }
 `;
+
+function buildComingSoonQuery(comingSoonType: string, date: string): string {
+  return `
+    query ComingSoon($first: Int!) {
+      comingSoon(
+        comingSoonType: ${comingSoonType}
+        releasingOnOrAfter: "${date}"
+        first: $first
+      ) {
+        edges {
+          node { ${TITLE_FRAGMENT} }
+        }
+      }
+    }
+  `;
+}
 
 const VALIDATE_LIST_QUERY = `
   query ValidateList($listId: ID!) {
@@ -126,6 +172,8 @@ interface TitleListItemSearch {
   edges?: ImdbEdge[];
 }
 
+type TitleNode = ImdbEdge["listItem"];
+
 interface GraphQLResponse {
   data?: {
     predefinedList?: {
@@ -138,6 +186,17 @@ interface GraphQLResponse {
       name?: { originalText: string };
       visibility?: { id: string };
       titleListItemSearch?: TitleListItemSearch;
+    } | null;
+    chartTitles?: {
+      total?: number;
+      pageInfo?: PageInfo;
+      edges?: { node: TitleNode }[];
+    } | null;
+    topGrossingReleases?: {
+      edges?: { node: { release?: { titles?: TitleNode[] } } }[];
+    } | null;
+    comingSoon?: {
+      edges?: { node: TitleNode }[];
     } | null;
   };
   errors?: { message: string; extensions?: { code?: string } }[];
@@ -261,6 +320,11 @@ async function resolvePHandle(handle: string): Promise<string> {
 }
 
 export async function normalizeImdbUserId(input: string): Promise<string> {
+  // Built-in chart ids are synthetic (no IMDb user behind them) — pass through
+  // with no network call before the p-handle resolution branch.
+  if (isChartId(input)) {
+    return input;
+  }
   if (!input.startsWith("p.")) {
     return input;
   }
@@ -539,6 +603,124 @@ export async function fetchWatchlist(
 
   console.log(
     `Raw watchlist data received from IMDb for user ${imdbUserId} (${edges.length} items)`,
+  );
+
+  const processed = processWatchlist(edges);
+  const metas = convertToStremioFormat(processed, sortOptions, rpdbApiKey);
+  console.log(
+    `Converted ${metas.length} items to Stremio format (sorted by ${sortOptions.by}, ${sortOptions.order})`,
+  );
+
+  return { metas };
+}
+
+/**
+ * Fetch a built-in IMDb chart and normalise its three possible edge shapes into
+ * the shared `ImdbEdge` (`{ listItem: <Title> }`) so the rest of the pipeline
+ * (processWatchlist + convertToStremioFormat) is reused verbatim.
+ */
+async function getChartEdges(entry: ChartEntry): Promise<ImdbEdge[]> {
+  switch (entry.query.kind) {
+    case "chartTitles": {
+      const query = buildChartTitlesQuery(entry.query.chartType);
+      const edges: ImdbEdge[] = [];
+      let after: string | null = null;
+
+      for (let page = 0; page < entry.maxPages; page++) {
+        const json: GraphQLResponse = await queryImdbGraphQL(
+          "ChartTitles",
+          query,
+          { first: entry.first, after },
+        );
+
+        if (json.errors?.length) {
+          throw new Error(ERROR_NOT_FOUND);
+        }
+
+        const chart = json.data?.chartTitles;
+        if (!chart) {
+          throw new Error(ERROR_NOT_FOUND);
+        }
+
+        for (const edge of chart.edges ?? []) {
+          edges.push({ listItem: edge.node });
+        }
+
+        const pageInfo = chart.pageInfo;
+        if (!pageInfo?.hasNextPage || !pageInfo.endCursor) {
+          break;
+        }
+        after = pageInfo.endCursor;
+      }
+
+      return edges;
+    }
+
+    case "boxOffice": {
+      const json = await queryImdbGraphQL("BoxOffice", BOX_OFFICE_QUERY, {});
+
+      if (json.errors?.length) {
+        throw new Error(ERROR_NOT_FOUND);
+      }
+
+      const releases = json.data?.topGrossingReleases;
+      if (!releases) {
+        throw new Error(ERROR_NOT_FOUND);
+      }
+
+      const edges: ImdbEdge[] = [];
+      for (const edge of releases.edges ?? []) {
+        // Some releases carry no resolved title yet — skip rather than emit a
+        // meta with an empty id (which convertToStremioFormat would drop anyway).
+        const title = edge.node.release?.titles?.[0];
+        if (!title) {
+          continue;
+        }
+        edges.push({ listItem: title });
+      }
+
+      return edges;
+    }
+
+    case "comingSoon": {
+      const date = new Date().toISOString().slice(0, 10);
+      const query = buildComingSoonQuery(entry.query.comingSoonType, date);
+      const json = await queryImdbGraphQL("ComingSoon", query, {
+        first: entry.first,
+      });
+
+      if (json.errors?.length) {
+        throw new Error(ERROR_NOT_FOUND);
+      }
+
+      const comingSoon = json.data?.comingSoon;
+      if (!comingSoon) {
+        throw new Error(ERROR_NOT_FOUND);
+      }
+
+      return (comingSoon.edges ?? []).map((edge) => ({ listItem: edge.node }));
+    }
+  }
+}
+
+export async function fetchChart(
+  sourceId: string,
+  sortOptions: SortOptions = DEFAULT_SORT_OPTIONS,
+  rpdbApiKey?: string | null,
+): Promise<WatchlistData> {
+  const entry = CHART_BY_ID.get(sourceId);
+  if (!entry) {
+    // Unknown chart id has no fetcher. Charts are public, so there's no
+    // private/not-found nuance — just signal "nothing to serve".
+    throw new Error(ERROR_NOT_FOUND);
+  }
+
+  console.log(`Fetching IMDb chart ${sourceId}...`);
+
+  const edges = await getChartEdges(entry);
+
+  console.log(
+    `Raw chart data received from IMDb for ${sourceId} (${edges.length} items)`,
   );
 
   const processed = processWatchlist(edges);
