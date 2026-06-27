@@ -3,9 +3,14 @@ import { useSearchParams, Link } from "react-router";
 import {
   SORT_OPTIONS,
   DEFAULT_SORT_OPTION,
+  DISPLAY_MODE_OPTIONS,
+  DEFAULT_DISPLAY_MODE,
   IMDB_USER_ID_EXTRACT_PATTERN,
   IMDB_WATCHLIST_SOURCE_ID_EXTRACT_PATTERN,
   IMDB_WATCHLIST_SOURCE_ID_PATTERN,
+  CHART_REGISTRY,
+  CHART_BY_ID,
+  isChartId,
 } from "@stremlist/shared";
 import type { UserConfigResponse, ConfigWatchlist } from "@stremlist/shared";
 import {
@@ -15,11 +20,14 @@ import {
   Trash2,
   GripVertical,
   RefreshCw,
+  ExternalLink,
+  Sparkles,
 } from "lucide-react";
 import { DragDropProvider } from "@dnd-kit/react";
 import { useSortable, isSortable } from "@dnd-kit/react/sortable";
 import Header from "../components/Header";
 import AddonInstallActions from "../components/AddonInstallActions";
+import BuiltInCatalogPicker from "../components/BuiltInCatalogPicker";
 import { api } from "../lib/api";
 import { useSEO } from "../hooks/useSEO";
 import { cn, formatRelativeTime } from "@/lib/utils";
@@ -53,6 +61,7 @@ type WatchlistFormRow = {
   imdbUserId: string;
   catalogTitle: string;
   sortOption: string;
+  displayMode: string;
 };
 
 function getWatchlistReinstallSignature(rows: WatchlistFormRow[]): string {
@@ -62,10 +71,11 @@ function getWatchlistReinstallSignature(rows: WatchlistFormRow[]): string {
       id: row.id ?? row.localId,
       imdbUserId: row.imdbUserId.trim(),
       catalogTitle: row.catalogTitle.trim(),
+      displayMode: row.displayMode,
     }))
     .map(
       (item) =>
-        `${item.index}|${item.id}|${item.imdbUserId}|${item.catalogTitle}`,
+        `${item.index}|${item.id}|${item.imdbUserId}|${item.catalogTitle}|${item.displayMode}`,
     )
     .join("::");
 }
@@ -79,6 +89,7 @@ function createWatchlistRow(
     imdbUserId: partial?.imdbUserId ?? "",
     catalogTitle: partial?.catalogTitle ?? "",
     sortOption: partial?.sortOption ?? DEFAULT_SORT_OPTION,
+    displayMode: partial?.displayMode ?? DEFAULT_DISPLAY_MODE,
   };
 }
 
@@ -104,6 +115,9 @@ function SortableWatchlistRow({
     index,
   });
 
+  const chartEntry = CHART_BY_ID.get(watchlist.imdbUserId);
+  const isChart = !!chartEntry;
+
   return (
     <div
       ref={ref}
@@ -125,6 +139,12 @@ function SortableWatchlistRow({
           <p className="text-sm font-semibold text-gray-800">
             Catalog {index + 1}
           </p>
+          {isChart && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-imdb/15 px-2 py-0.5 text-[11px] font-semibold text-imdb-dark">
+              <Sparkles className="size-3" />
+              Built-in
+            </span>
+          )}
         </div>
         <Button
           type="button"
@@ -140,21 +160,66 @@ function SortableWatchlistRow({
       </div>
 
       <Label className="block text-xs font-semibold text-gray-600 mb-1">
-        IMDb Watchlist or List
+        {isChart ? "Built-in Catalog" : "IMDb Watchlist or List"}
       </Label>
-      <Input
-        value={watchlist.imdbUserId}
-        onChange={(e) => {
-          const extracted = extractImdbSourceId(e.target.value);
-          onFieldChange(
-            watchlist.localId,
-            "imdbUserId",
-            extracted || e.target.value,
-          );
-        }}
-        placeholder="ur12345678, p.colneedham, or ls593621567"
-        className="focus-visible:ring-imdb focus-visible:border-imdb"
-      />
+      {isChart ? (
+        <>
+          <Select
+            value={watchlist.imdbUserId}
+            onValueChange={(value) => {
+              onFieldChange(watchlist.localId, "imdbUserId", value);
+              // The "Show" toggle is hidden for charts, so keep displayMode in
+              // lockstep with the chosen chart's (single) type — otherwise
+              // switching a movie chart to a TV one would leave an empty catalog.
+              const nextEntry = CHART_BY_ID.get(value);
+              if (nextEntry) {
+                onFieldChange(
+                  watchlist.localId,
+                  "displayMode",
+                  nextEntry.defaultDisplayMode,
+                );
+              }
+            }}
+          >
+            <SelectTrigger className="w-full bg-white focus:ring-imdb focus:border-imdb">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CHART_REGISTRY.map((entry) => (
+                <SelectItem key={entry.id} value={entry.id}>
+                  {entry.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="mt-2 flex items-start justify-between gap-3">
+            <p className="text-xs text-gray-500">{chartEntry.description}</p>
+            <a
+              href={chartEntry.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-stremlist hover:underline"
+            >
+              View on IMDb
+              <ExternalLink className="size-3" />
+            </a>
+          </div>
+        </>
+      ) : (
+        <Input
+          value={watchlist.imdbUserId}
+          onChange={(e) => {
+            const extracted = extractImdbSourceId(e.target.value);
+            onFieldChange(
+              watchlist.localId,
+              "imdbUserId",
+              extracted || e.target.value,
+            );
+          }}
+          placeholder="ur12345678, p.colneedham, or ls593621567"
+          className="focus-visible:ring-imdb focus-visible:border-imdb"
+        />
+      )}
 
       <Label className="block text-xs font-semibold text-gray-600 mt-3 mb-1">
         Catalog Title (Optional)
@@ -188,6 +253,35 @@ function SortableWatchlistRow({
           ))}
         </SelectContent>
       </Select>
+
+      {/* Built-in charts are single-type (their registry defaultDisplayMode is
+          locked to movie or series), so the movies/TV "Show" toggle is
+          meaningless here — exposing it only lets a user pick the empty type
+          (e.g. "TV shows only" on Top 250 Movies). Hide it for chart rows. */}
+      {!isChart && (
+        <>
+          <Label className="block text-xs font-semibold text-gray-600 mt-3 mb-1">
+            Show
+          </Label>
+          <Select
+            value={watchlist.displayMode}
+            onValueChange={(value) =>
+              onFieldChange(watchlist.localId, "displayMode", value)
+            }
+          >
+            <SelectTrigger className="w-full bg-white focus:ring-imdb focus:border-imdb">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DISPLAY_MODE_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </>
+      )}
     </div>
   );
 }
@@ -276,6 +370,7 @@ export default function Configure() {
               imdbUserId: watchlist.imdbUserId,
               catalogTitle: watchlist.catalogTitle,
               sortOption: watchlist.sortOption,
+              displayMode: watchlist.displayMode,
             }),
           );
           if (rows.length > 0) {
@@ -384,6 +479,25 @@ export default function Configure() {
     );
   }, []);
 
+  const addChartWatchlist = useCallback((chartId: string) => {
+    const entry = CHART_REGISTRY.find((c) => c.id === chartId);
+    if (!entry) return;
+    setWatchlists((current) => {
+      if (current.length >= MAX_WATCHLISTS) return current;
+      // A chart can only be added once — its id is the uniqueness key.
+      if (current.some((w) => w.imdbUserId === entry.id)) return current;
+      return [
+        ...current,
+        createWatchlistRow({
+          imdbUserId: entry.id,
+          catalogTitle: entry.label,
+          sortOption: DEFAULT_SORT_OPTION,
+          displayMode: entry.defaultDisplayMode,
+        }),
+      ];
+    });
+  }, []);
+
   const removeWatchlist = useCallback((localId: string) => {
     setWatchlists((current) => {
       if (current.length <= 1) {
@@ -403,7 +517,10 @@ export default function Configure() {
     const seenImdbIds = new Set<string>();
     for (const watchlist of watchlists) {
       const normalizedId = watchlist.imdbUserId.trim();
-      if (!IMDB_WATCHLIST_SOURCE_ID_PATTERN.test(normalizedId)) {
+      if (
+        !isChartId(normalizedId) &&
+        !IMDB_WATCHLIST_SOURCE_ID_PATTERN.test(normalizedId)
+      ) {
         return 'Each watchlist needs a valid IMDb User ID or List ID (e.g. "ur12345678" or "ls593621567").';
       }
       if (seenImdbIds.has(normalizedId)) {
@@ -437,6 +554,7 @@ export default function Configure() {
             imdbUserId: watchlist.imdbUserId.trim(),
             catalogTitle: watchlist.catalogTitle.trim(),
             sortOption: watchlist.sortOption,
+            displayMode: watchlist.displayMode,
             position: index,
           })),
         },
@@ -646,16 +764,23 @@ export default function Configure() {
                       <h3 className="text-base font-semibold text-gray-900">
                         Catalogs
                       </h3>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={addWatchlist}
-                        disabled={watchlists.length >= MAX_WATCHLISTS}
-                        className="gap-2"
-                      >
-                        <Plus className="size-4" />
-                        Add Catalog
-                      </Button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <BuiltInCatalogPicker
+                          usedIds={watchlists.map((w) => w.imdbUserId)}
+                          disabled={watchlists.length >= MAX_WATCHLISTS}
+                          onAdd={addChartWatchlist}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={addWatchlist}
+                          disabled={watchlists.length >= MAX_WATCHLISTS}
+                          className="gap-2"
+                        >
+                          <Plus className="size-4" />
+                          Add Catalog
+                        </Button>
+                      </div>
                     </div>
 
                     <DragDropProvider

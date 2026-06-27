@@ -10,6 +10,7 @@ interface UserConfigUpdateWatchlistRow {
   imdbUserId: string;
   catalogTitle?: string;
   sortOption: string;
+  displayMode?: string;
   position: number;
 }
 
@@ -21,6 +22,7 @@ function mapWatchlistRow(row: UserWatchlist): ConfigWatchlist {
     imdbUserId: row.imdb_user_id,
     catalogTitle: row.catalog_title,
     sortOption: row.sort_option,
+    displayMode: row.display_mode as ConfigWatchlist["displayMode"],
     position: row.position,
   };
 }
@@ -188,6 +190,7 @@ export async function replaceUserWatchlists(
       imdb_user_id: w.imdbUserId,
       catalog_title: w.catalogTitle ?? "",
       sort_option: w.sortOption,
+      display_mode: w.displayMode ?? "split",
       position: w.position,
       updated_at: new Date().toISOString(),
     }));
@@ -211,6 +214,7 @@ export async function replaceUserWatchlists(
       imdb_user_id: w.imdbUserId,
       catalog_title: w.catalogTitle ?? "",
       sort_option: w.sortOption,
+      display_mode: w.displayMode ?? "split",
       position: w.position,
     }));
 

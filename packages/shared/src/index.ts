@@ -28,6 +28,8 @@ export {
   SORT_OPTIONS,
   DEFAULT_SORT_OPTION,
   DEFAULT_SORT_OPTIONS,
+  DISPLAY_MODE_OPTIONS,
+  DEFAULT_DISPLAY_MODE,
   parseSortOption,
   IMDB_USER_AGENT,
   FACEBOOK_EXTERNAL_HIT_USER_AGENT,
@@ -39,4 +41,18 @@ export {
   IMDB_WATCHLIST_SOURCE_ID_EXTRACT_PATTERN,
 } from "./constants";
 
-export type { SortField, SortOrder, SortOptions } from "./constants";
+export type {
+  SortField,
+  SortOrder,
+  SortOptions,
+  DisplayMode,
+} from "./constants";
+
+export {
+  CHART_REGISTRY,
+  CHART_BY_ID,
+  CHART_ID_SET,
+  isChartId,
+} from "./imdb-charts";
+
+export type { ChartKind, ChartEntry } from "./imdb-charts";

@@ -1,3 +1,5 @@
+import type { DisplayMode } from "./constants";
+
 export interface WatchlistData {
   metas: StremioMeta[];
 }
@@ -7,6 +9,7 @@ export interface ConfigWatchlist {
   imdbUserId: string;
   catalogTitle: string;
   sortOption: string;
+  displayMode: DisplayMode;
   position: number;
 }
 
@@ -22,6 +25,7 @@ export interface UserConfigUpdateWatchlist {
   imdbUserId: string;
   catalogTitle?: string;
   sortOption: string;
+  displayMode?: DisplayMode;
   position: number;
 }
 
