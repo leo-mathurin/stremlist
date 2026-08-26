@@ -30,6 +30,14 @@ jobs:
       - name: Lint, build, and test
         run: pnpm turbo run lint build test
 
+      - name: Smoke-test backend bundle
+        env:
+          SUPABASE_URL: https://example.invalid
+          SUPABASE_SERVICE_ROLE_KEY: test
+          RESEND_API_KEY: re_test
+          RESEND_AUDIENCE_ID: test
+        run: node --input-type=module --eval 'await import("./apps/backend/dist/index.js")'
+
   e2e:
     name: E2E
     if: github.event_name == 'pull_request'
