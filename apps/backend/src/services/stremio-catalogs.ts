@@ -42,11 +42,13 @@ export function buildManifestCatalogs(
       id: buildCatalogId(watchlist.id, "movie"),
       name: buildCatalogName(effectiveTitle),
       type: "movie",
+      extra: [{ name: "skip", isRequired: false }],
     };
     const seriesCatalog: StremioCatalog = {
       id: buildCatalogId(watchlist.id, "series"),
       name: buildCatalogName(effectiveTitle),
       type: "series",
+      extra: [{ name: "skip", isRequired: false }],
     };
 
     if (displayMode === "movie") {

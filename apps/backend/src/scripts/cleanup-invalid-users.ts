@@ -5,6 +5,7 @@ import { config } from "dotenv";
 import { readFileSync, writeFileSync } from "fs";
 import path from "path";
 import { getImdbWatchlist } from "../services/imdb-scraper";
+import { deleteCachedWatchlist } from "../services/watchlist-cache";
 
 console.log("Starting cleanup...");
 
@@ -135,7 +136,29 @@ async function deleteUsers(userIds: string[]): Promise<void> {
   for (let i = 0; i < userIds.length; i += BATCH_SIZE) {
     const batch = userIds.slice(i, i + BATCH_SIZE);
 
-    // Dependent tables (user_watchlists, watchlist_cache) cascade on delete.
+    const { data: watchlists, error: watchlistsError } = await supabase
+      .from("user_watchlists")
+      .select("id")
+      .in("owner_user_id", batch);
+    if (watchlistsError) {
+      throw new Error(
+        `Failed fetching watchlists before user deletion: ${watchlistsError.message}`,
+      );
+    }
+
+    const cacheDeletes = await Promise.allSettled(
+      watchlists.map(({ id }) => deleteCachedWatchlist(id)),
+    );
+    const cacheDeleteFailure = cacheDeletes.find(
+      (result) => result.status === "rejected",
+    );
+    if (cacheDeleteFailure?.status === "rejected") {
+      throw new Error(
+        `Failed deleting R2 caches before user deletion: ${String(cacheDeleteFailure.reason)}`,
+      );
+    }
+
+    // user_watchlists cascades from users; its R2 objects were removed above.
     const { error: userError } = await supabase
       .from("users")
       .delete()

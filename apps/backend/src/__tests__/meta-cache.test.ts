@@ -1,3 +1,4 @@
+import type { StremioMeta } from "@stremlist/shared";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import app from "../index.js";
@@ -6,12 +7,17 @@ vi.mock("../lib/supabase", async () => {
   return await import("./helpers/mock-supabase.js");
 });
 
+vi.mock("../services/watchlist-cache", async () => {
+  return await import("./helpers/mock-watchlist-cache.js");
+});
+
 vi.mock("../lib/resend", () => ({
   resend: { contacts: { create: vi.fn() } },
 }));
 
 import * as watchlistSvc from "../services/watchlist";
 import { db } from "./helpers/mock-supabase.js";
+import { cache } from "./helpers/mock-watchlist-cache.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -46,23 +52,13 @@ function seedWatchlist(id: string, imdbUserId = OWNER) {
 
 function seedCache(
   watchlistId: string,
-  metas: { id: string; type: string }[],
+  metas: StremioMeta[],
   cachedAt?: string,
 ) {
-  const at = cachedAt ?? new Date().toISOString();
-  metas.forEach((meta, i) => {
-    db.getTable("watchlist_cache_items").push({
-      watchlist_id: watchlistId,
-      item_id: meta.id,
-      type: meta.type,
-      position: i,
-      data: meta,
-      cached_at: at,
-    });
-  });
+  cache.seed(watchlistId, metas, cachedAt ? new Date(cachedAt) : new Date());
 }
 
-const SHAWSHANK = {
+const SHAWSHANK: StremioMeta = {
   id: "tt0111161",
   type: "movie",
   name: "The Shawshank Redemption",
@@ -82,6 +78,7 @@ interface MetaResponse {
 
 beforeEach(() => {
   db.reset();
+  cache.reset();
   vi.restoreAllMocks();
 });
 

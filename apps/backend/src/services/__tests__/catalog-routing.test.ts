@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { buildCatalogId, parseCatalogId } from "../catalog-id";
 import { buildManifestCatalogs } from "../stremio-catalogs";
 
+function catalogsWithoutExtra(
+  catalogs: ReturnType<typeof buildManifestCatalogs>,
+) {
+  return catalogs.map(({ id, name, type }) => ({ id, name, type }));
+}
+
 describe("catalog id helpers", () => {
   it("builds and parses movie ids", () => {
     const watchlistId = "77e10eda-0e07-4c60-8ec7-23fb1b1d0573";
@@ -41,7 +47,10 @@ describe("manifest catalog generation", () => {
       },
     ]);
 
-    expect(catalogs).toEqual([
+    expect(
+      catalogs.every((catalog) => catalog.extra?.[0]?.name === "skip"),
+    ).toBe(true);
+    expect(catalogsWithoutExtra(catalogs)).toEqual([
       {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
         name: "Stremlist Leo Picks",
@@ -77,7 +86,7 @@ describe("manifest catalog generation", () => {
       },
     ]);
 
-    expect(catalogs).toEqual([
+    expect(catalogsWithoutExtra(catalogs)).toEqual([
       {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
         name: "Stremlist",
@@ -111,7 +120,7 @@ describe("manifest catalog generation", () => {
       },
     ]);
 
-    expect(catalogs).toEqual([
+    expect(catalogsWithoutExtra(catalogs)).toEqual([
       {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
         name: "Stremlist 1",
@@ -147,7 +156,7 @@ describe("manifest catalog generation", () => {
       },
     ]);
 
-    expect(catalogs).toEqual([
+    expect(catalogsWithoutExtra(catalogs)).toEqual([
       {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
         name: "Stremlist Leo Picks",
@@ -168,7 +177,7 @@ describe("manifest catalog generation", () => {
       },
     ]);
 
-    expect(catalogs).toEqual([
+    expect(catalogsWithoutExtra(catalogs)).toEqual([
       {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-series",
         name: "Stremlist Leo Picks",
@@ -189,7 +198,7 @@ describe("manifest catalog generation", () => {
       },
     ]);
 
-    expect(catalogs).toEqual([
+    expect(catalogsWithoutExtra(catalogs)).toEqual([
       {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
         name: "Stremlist Leo Picks",

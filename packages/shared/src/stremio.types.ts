@@ -26,7 +26,7 @@ export interface UserConfigUpdateWatchlist {
   catalogTitle?: string;
   sortOption: string;
   displayMode?: DisplayMode;
-  position: number;
+  position?: number;
 }
 
 export interface UserConfigUpdatePayload {
@@ -53,6 +53,10 @@ export interface StremioCatalog {
   id: string;
   name: string;
   type: "movie" | "series";
+  extra?: {
+    name: "skip";
+    isRequired?: boolean;
+  }[];
 }
 
 export interface StremioResource {

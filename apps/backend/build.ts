@@ -7,6 +7,7 @@ await esbuild.build({
   platform: "node",
   format: "esm",
   bundle: true,
+  external: ["@aws-sdk/client-s3"],
 });
 
 // Build the client entry (used by frontend for RPC types) without bundling

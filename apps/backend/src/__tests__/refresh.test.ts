@@ -5,6 +5,10 @@ vi.mock("../lib/supabase", async () => {
   return await import("./helpers/mock-supabase.js");
 });
 
+vi.mock("../services/watchlist-cache", async () => {
+  return await import("./helpers/mock-watchlist-cache.js");
+});
+
 vi.mock("../lib/resend", () => ({
   resend: { contacts: { create: vi.fn() } },
 }));
@@ -12,6 +16,7 @@ vi.mock("../lib/resend", () => ({
 import app from "../index.js";
 import * as scraper from "../services/imdb-scraper";
 import { db } from "./helpers/mock-supabase.js";
+import { cache } from "./helpers/mock-watchlist-cache.js";
 
 const OWNER = "ur216216210";
 const UUID_1 = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
@@ -44,17 +49,7 @@ function seedWatchlist(id: string) {
 }
 
 function seedCache(watchlistId: string, metas: { id: string; type: string }[]) {
-  const at = new Date().toISOString();
-  metas.forEach((meta, i) => {
-    db.getTable("watchlist_cache_items").push({
-      watchlist_id: watchlistId,
-      item_id: meta.id,
-      type: meta.type,
-      position: i,
-      data: meta,
-      cached_at: at,
-    });
-  });
+  cache.seed(watchlistId, metas as StremioMeta[]);
 }
 
 const CACHED_MOVIE: StremioMeta = {
@@ -83,6 +78,7 @@ function requestRefresh() {
 
 beforeEach(() => {
   db.reset();
+  cache.reset();
   vi.restoreAllMocks();
 });
 
@@ -125,29 +121,19 @@ describe("manual refresh reports honest success/failure counts", () => {
     expect(body.lastFetchedAt).not.toBe(TEN_MINUTES_AGO);
   });
 
-  it("prunes the previous generation, leaving only fresh non-duplicated rows", async () => {
+  it("replaces the previous cache with fresh non-duplicated items", async () => {
     seedUser(TEN_MINUTES_AGO);
     seedWatchlist(UUID_1);
-    // Previous generation: an item that gets dropped (OLD) and one that stays
-    // (SHARED). Seed them with an older timestamp so the prune sees them as stale.
+    // Previous cache: an item that gets dropped (OLD) and one that stays
+    // (SHARED). Seed them with an older timestamp so a refresh is required.
     const anHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-    db.getTable("watchlist_cache_items").push(
-      {
-        watchlist_id: UUID_1,
-        item_id: "tt0000001",
-        type: "movie",
-        position: 0,
-        data: { id: "tt0000001", type: "movie" },
-        cached_at: anHourAgo,
-      },
-      {
-        watchlist_id: UUID_1,
-        item_id: "tt0111161",
-        type: "movie",
-        position: 1,
-        data: { id: "tt0111161", type: "movie" },
-        cached_at: anHourAgo,
-      },
+    cache.seed(
+      UUID_1,
+      [
+        { ...CACHED_MOVIE, id: "tt0000001" },
+        { ...CACHED_MOVIE, id: "tt0111161" },
+      ],
+      new Date(anHourAgo),
     );
     // Fresh fetch keeps SHARED (tt0111161) and adds NEW (tt0000002); OLD is gone.
     const NEW: StremioMeta = {
@@ -166,20 +152,17 @@ describe("manual refresh reports honest success/failure counts", () => {
     const res = await requestRefresh();
 
     expect(res.status).toBe(200);
-    const rows = db
-      .getTable("watchlist_cache_items")
-      .filter((r) => r.watchlist_id === UUID_1);
-    const ids = rows.map((r) => r.item_id).sort();
+    const ids = (cache.get(UUID_1)?.data.metas ?? [])
+      .map((meta) => meta.id)
+      .sort();
     // OLD dropped, SHARED kept once (not duplicated), NEW added.
     expect(ids).toEqual(["tt0000002", "tt0111161"]);
   });
 
-  it("de-duplicates repeated ids before caching (no ON CONFLICT failure)", async () => {
+  it("de-duplicates repeated ids before caching", async () => {
     seedUser(TEN_MINUTES_AGO);
     seedWatchlist(UUID_1);
-    // IMDb lists aren't guaranteed sets: this one carries tt0111161 twice. The
-    // cache write must dedupe, otherwise the upsert fails with
-    // "ON CONFLICT DO UPDATE command cannot affect row a second time".
+    // IMDb lists aren't guaranteed sets: this one carries tt0111161 twice.
     const GODFATHER: StremioMeta = {
       ...CACHED_MOVIE,
       id: "tt0068646",
@@ -196,10 +179,8 @@ describe("manual refresh reports honest success/failure counts", () => {
     expect(body.refreshed).toBe(1);
     expect(body.failed).toBe(0);
     // tt0111161 stored exactly once (first occurrence kept), alongside the other.
-    const ids = db
-      .getTable("watchlist_cache_items")
-      .filter((r) => r.watchlist_id === UUID_1)
-      .map((r) => r.item_id)
+    const ids = (cache.get(UUID_1)?.data.metas ?? [])
+      .map((meta) => meta.id)
       .sort();
     expect(ids).toEqual(["tt0068646", "tt0111161"]);
   });
