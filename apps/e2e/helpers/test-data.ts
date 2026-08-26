@@ -9,6 +9,10 @@ export const PUBLIC_USER = process.env.E2E_IMDB_USER_ID ?? "ur102135398";
 // Second public watchlist for multi-catalog scenarios.
 export const PUBLIC_USER_2 = process.env.E2E_IMDB_USER_ID_2 ?? "ur102551738";
 
+// Cleanup must stay scoped to identities explicitly owned by this E2E run.
+// The local Supabase stack may share a persisted volume with development.
+export const E2E_USER_IDS = [PUBLIC_USER, PUBLIC_USER_2] as const;
+
 // Long-standing public IMDb list ("Top 100 Greatest Movies of All Time").
 export const PUBLIC_LIST = process.env.E2E_IMDB_LIST_ID ?? "ls055592025";
 
