@@ -230,16 +230,6 @@ export async function writeCachedWatchlist(
     return randomUUID();
   }
 
-  let previousManifest: CacheManifest | null = null;
-  try {
-    previousManifest = await readManifest(watchlistId);
-  } catch (error) {
-    console.error(
-      `Failed to read previous R2 manifest for ${watchlistId}:`,
-      error,
-    );
-  }
-
   const generation = randomUUID();
   const nextCatalogKey = catalogKey(watchlistId, generation);
   const catalog = catalogObjectSchema.parse({
@@ -277,23 +267,6 @@ export async function writeCachedWatchlist(
 
   setMemoryValue(catalogMemoryCache, nextCatalogKey, catalog);
   setMemoryValue(manifestMemoryCache, watchlistId, manifest);
-
-  if (previousManifest && previousManifest.catalogKey !== manifest.catalogKey) {
-    try {
-      await getR2Client().send(
-        new DeleteObjectCommand({
-          Bucket: getR2Bucket(),
-          Key: previousManifest.catalogKey,
-        }),
-      );
-      catalogMemoryCache.delete(previousManifest.catalogKey);
-    } catch (error) {
-      console.error(
-        `Failed to delete previous R2 generation for ${watchlistId}:`,
-        error,
-      );
-    }
-  }
 
   return generation;
 }

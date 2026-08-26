@@ -192,6 +192,22 @@ describe("R2 watchlist cache", () => {
     expect(r2.objects.size).toBe(3);
   });
 
+  it("keeps the previous generation readable after replacement", async () => {
+    const id = watchlistId();
+    await writeCachedWatchlist(id, { metas: [MOVIE] });
+    const previousCatalogKey = [...r2.objects.keys()].find((key) =>
+      key.includes("/generations/"),
+    );
+    if (!previousCatalogKey) throw new Error("Missing previous generation");
+
+    await writeCachedWatchlist(id, {
+      metas: [{ ...MOVIE, id: "tt0068646", name: "The Godfather" }],
+    });
+
+    expect(r2.objects.has(previousCatalogKey)).toBe(true);
+    expect(r2.objects.size).toBe(3);
+  });
+
   it("deletes the cache object", async () => {
     const id = watchlistId();
     await writeCachedWatchlist(id, { metas: [MOVIE] });
