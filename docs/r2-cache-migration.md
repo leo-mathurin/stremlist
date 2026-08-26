@@ -5,7 +5,9 @@ objects in a private Cloudflare R2 bucket. Each refresh writes an immutable,
 gzip-compressed catalog generation, then atomically switches a small manifest
 to that generation. Readers see either the old complete catalog or the new one.
 The manifest also holds a compact title index, so a metadata miss does not
-download every catalog.
+download every catalog. Cache deletion conditionally replaces the current
+manifest with a tombstone before removing its catalog, so it cannot delete a
+generation published concurrently by another backend instance.
 
 This layout costs two R2 writes per watchlist refresh. Do not split a catalog
 into per-item objects. Per-item writes would make Class A operations the first

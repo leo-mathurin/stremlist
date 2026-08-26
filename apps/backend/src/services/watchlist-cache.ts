@@ -41,12 +41,28 @@ const cacheManifestSchema = z.object({
   metaKeys: z.array(z.string()),
 });
 
+const deletedManifestSchema = z.object({
+  version: z.literal(CACHE_FORMAT_VERSION),
+  deleted: z.literal(true),
+  deletedAt: z.string().datetime(),
+});
+
+const storedManifestSchema = z.union([
+  cacheManifestSchema,
+  deletedManifestSchema,
+]);
+
 type CatalogObject = z.infer<typeof catalogObjectSchema>;
 type CacheManifest = z.infer<typeof cacheManifestSchema>;
 
 interface MemoryEntry<T> {
   value: T;
   expiresAt: number;
+}
+
+interface ManifestRead {
+  manifest: CacheManifest | null;
+  etag?: string;
 }
 
 export interface CachedWatchlist {
@@ -85,6 +101,18 @@ function isNotFound(error: unknown): boolean {
   );
 }
 
+function isPreconditionFailed(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as {
+    name?: string;
+    $metadata?: { httpStatusCode?: number };
+  };
+  return (
+    candidate.name === "PreconditionFailed" ||
+    candidate.$metadata?.httpStatusCode === 412
+  );
+}
+
 function getMemoryValue<T>(
   cache: Map<string, MemoryEntry<T>>,
   key: string,
@@ -118,12 +146,7 @@ function setMemoryValue<T>(
   }
 }
 
-async function readManifest(
-  watchlistId: string,
-): Promise<CacheManifest | null> {
-  const cached = getMemoryValue(manifestMemoryCache, watchlistId);
-  if (cached !== undefined) return cached;
-
+async function readManifestFromR2(watchlistId: string): Promise<ManifestRead> {
   try {
     const response = await getR2Client().send(
       new GetObjectCommand({
@@ -131,20 +154,34 @@ async function readManifest(
         Key: manifestKey(watchlistId),
       }),
     );
-    if (!response.Body) return null;
+    if (!response.Body) return { manifest: null, etag: response.ETag };
 
     const parsed: unknown = JSON.parse(await response.Body.transformToString());
-    const manifest = cacheManifestSchema.parse(parsed);
+    const storedManifest = storedManifestSchema.parse(parsed);
+    if ("deleted" in storedManifest) {
+      return { manifest: null, etag: response.ETag };
+    }
+
+    const manifest = storedManifest;
     if (manifest.catalogKey !== catalogKey(watchlistId, manifest.generation)) {
       throw new Error(`Invalid R2 catalog key for ${watchlistId}`);
     }
-    setMemoryValue(manifestMemoryCache, watchlistId, manifest);
-    return manifest;
+    return { manifest, etag: response.ETag };
   } catch (error) {
     if (!isNotFound(error)) throw error;
-    setMemoryValue(manifestMemoryCache, watchlistId, null);
-    return null;
+    return { manifest: null };
   }
+}
+
+async function readManifest(
+  watchlistId: string,
+): Promise<CacheManifest | null> {
+  const cached = getMemoryValue(manifestMemoryCache, watchlistId);
+  if (cached !== undefined) return cached;
+
+  const { manifest } = await readManifestFromR2(watchlistId);
+  setMemoryValue(manifestMemoryCache, watchlistId, manifest);
+  return manifest;
 }
 
 async function readCatalog(
@@ -313,31 +350,57 @@ export async function findCachedMeta(
 export async function deleteCachedWatchlist(
   watchlistId: string,
 ): Promise<void> {
-  let previousManifest: CacheManifest | null = null;
+  let current: ManifestRead;
   try {
-    previousManifest = await readManifest(watchlistId);
+    current = await readManifestFromR2(watchlistId);
   } catch (error) {
     console.error(
       `Failed to read R2 manifest before deleting ${watchlistId}:`,
       error,
     );
+    throw error;
   }
+
+  if (!current.manifest) {
+    setMemoryValue(manifestMemoryCache, watchlistId, null);
+    return;
+  }
+  if (!current.etag) {
+    throw new Error(`R2 manifest for ${watchlistId} is missing an ETag`);
+  }
+
+  try {
+    await getR2Client().send(
+      new PutObjectCommand({
+        Bucket: getR2Bucket(),
+        Key: manifestKey(watchlistId),
+        Body: Buffer.from(
+          JSON.stringify({
+            version: CACHE_FORMAT_VERSION,
+            deleted: true,
+            deletedAt: new Date().toISOString(),
+          }),
+        ),
+        ContentType: "application/json",
+        CacheControl: "private, max-age=0, must-revalidate",
+        IfMatch: current.etag,
+      }),
+    );
+  } catch (error) {
+    if (isPreconditionFailed(error)) {
+      manifestMemoryCache.delete(watchlistId);
+      return;
+    }
+    throw error;
+  }
+
+  setMemoryValue(manifestMemoryCache, watchlistId, null);
 
   await getR2Client().send(
     new DeleteObjectCommand({
       Bucket: getR2Bucket(),
-      Key: manifestKey(watchlistId),
+      Key: current.manifest.catalogKey,
     }),
   );
-  setMemoryValue(manifestMemoryCache, watchlistId, null);
-
-  if (previousManifest) {
-    await getR2Client().send(
-      new DeleteObjectCommand({
-        Bucket: getR2Bucket(),
-        Key: previousManifest.catalogKey,
-      }),
-    );
-    catalogMemoryCache.delete(previousManifest.catalogKey);
-  }
+  catalogMemoryCache.delete(current.manifest.catalogKey);
 }

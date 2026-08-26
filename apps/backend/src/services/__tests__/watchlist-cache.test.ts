@@ -15,8 +15,22 @@ const r2 = vi.hoisted(() => ({
   objects: new Map<string, Uint8Array>(),
   failGetContaining: null as string | null,
   failPutContaining: null as string | null,
+  beforeConditionalPut: null as (() => void) | null,
   send: vi.fn((command: unknown) => Promise.resolve(command)),
 }));
+
+function etagFor(body: Uint8Array): string {
+  return `"${Buffer.from(body).toString("base64")}"`;
+}
+
+function storedObject(
+  objects: Map<string, Uint8Array>,
+  key: string,
+): Uint8Array {
+  const body = objects.get(key);
+  if (!body) throw new Error(`Missing R2 test object: ${key}`);
+  return body;
+}
 
 function handleCommand(command: unknown): unknown {
   if (command instanceof PutObjectCommand) {
@@ -26,6 +40,18 @@ function handleCommand(command: unknown): unknown {
     }
     if (!(command.input.Body instanceof Uint8Array)) {
       throw new Error("R2 test expects a Uint8Array body");
+    }
+    if (command.input.IfMatch) {
+      const beforeConditionalPut = r2.beforeConditionalPut;
+      r2.beforeConditionalPut = null;
+      beforeConditionalPut?.();
+      const current = r2.objects.get(key);
+      if (!current || etagFor(current) !== command.input.IfMatch) {
+        throw Object.assign(new Error("precondition failed"), {
+          name: "PreconditionFailed",
+          $metadata: { httpStatusCode: 412 },
+        });
+      }
     }
     r2.objects.set(key, Uint8Array.from(command.input.Body));
     return {};
@@ -44,6 +70,7 @@ function handleCommand(command: unknown): unknown {
       });
     }
     return {
+      ETag: etagFor(body),
       Body: {
         transformToByteArray: () => Promise.resolve(body),
         transformToString: () =>
@@ -96,6 +123,7 @@ beforeEach(() => {
   r2.objects.clear();
   r2.failGetContaining = null;
   r2.failPutContaining = null;
+  r2.beforeConditionalPut = null;
   r2.send.mockClear();
 });
 
@@ -208,7 +236,48 @@ describe("R2 watchlist cache", () => {
     expect(r2.objects.size).toBe(3);
   });
 
-  it("deletes the cache object", async () => {
+  it("does not delete a concurrently replaced manifest", async () => {
+    const id = watchlistId();
+    await writeCachedWatchlist(id, { metas: [MOVIE] });
+    const previousObjects = new Map(r2.objects);
+
+    const replacement = {
+      ...MOVIE,
+      id: "tt0068646",
+      name: "The Godfather",
+    };
+    await writeCachedWatchlist(id, { metas: [replacement] });
+    const replacementObjects = new Map(r2.objects);
+    const currentManifestKey = [...replacementObjects.keys()].find((key) =>
+      key.endsWith("/manifest.json"),
+    );
+    const replacementCatalogKey = [...replacementObjects.keys()].find(
+      (key) => key.includes("/generations/") && !previousObjects.has(key),
+    );
+    if (!currentManifestKey || !replacementCatalogKey) {
+      throw new Error("Missing replacement R2 test objects");
+    }
+
+    r2.objects.clear();
+    previousObjects.forEach((body, key) => r2.objects.set(key, body));
+    r2.beforeConditionalPut = () => {
+      r2.objects.set(
+        currentManifestKey,
+        storedObject(replacementObjects, currentManifestKey),
+      );
+      r2.objects.set(
+        replacementCatalogKey,
+        storedObject(replacementObjects, replacementCatalogKey),
+      );
+    };
+
+    await deleteCachedWatchlist(id);
+
+    expect((await getCachedWatchlist(id))?.data.metas).toEqual([replacement]);
+    expect(r2.objects.has(replacementCatalogKey)).toBe(true);
+  });
+
+  it("invalidates the cache and deletes its current catalog", async () => {
     const id = watchlistId();
     await writeCachedWatchlist(id, { metas: [MOVIE] });
 
@@ -219,6 +288,6 @@ describe("R2 watchlist cache", () => {
       [...r2.objects.keys()].filter((key) =>
         key.startsWith(`watchlists/${id}/`),
       ),
-    ).toEqual([]);
+    ).toEqual([`watchlists/${id}/manifest.json`]);
   });
 });
