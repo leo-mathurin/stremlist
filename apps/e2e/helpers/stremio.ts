@@ -18,10 +18,6 @@ export function discoverUrl(
   return `${STREMIO_WEB_URL}/#/discover/${encodeURIComponent(manifestUrl)}/${type}/${encodeURIComponent(catalogId)}`;
 }
 
-export function detailUrl(type: "movie" | "series", metaId: string): string {
-  return `${STREMIO_WEB_URL}/#/detail/${type}/${metaId}/${metaId}`;
-}
-
 /**
  * Dismiss the "install the desktop app" prompt if it is showing. Its "Install"
  * link would otherwise collide with the addon modal's Install button.

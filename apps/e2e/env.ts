@@ -20,7 +20,7 @@ export const SUPABASE_SERVICE_ROLE_KEY =
 
 const REMOTE_DATABASE_CONFIRMATION = "I_UNDERSTAND_THIS_WIPES_DATA";
 
-export function assertSafeSupabaseTarget(): void {
+function assertSafeSupabaseTarget(): void {
   let hostname: string;
   try {
     hostname = new URL(SUPABASE_URL).hostname.toLowerCase();

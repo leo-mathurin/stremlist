@@ -6,10 +6,7 @@ import { E2E_USER_IDS } from "./test-data.js";
 // Service-role client: bypasses RLS, used only to reset and inspect state
 // between tests. All functional seeding goes through the backend's own HTTP
 // API so the tests exercise real code paths.
-export const db = createClient<Database>(
-  SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY,
-);
+const db = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 /** Delete only this run's test users. Foreign-key cascades reset their data. */
 export async function resetDb(): Promise<void> {

@@ -31,20 +31,9 @@ jobs:
         run: pnpm turbo run lint build test
 
   e2e:
-    name: E2E (${{ matrix.name }})
-    # Local coverage and the small live smoke suite run in separate jobs. Each
-    # gets its own disposable Supabase stack, and an external outage cannot hide
-    # failures in the deterministic suite.
+    name: E2E
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - suite: local
-            name: Local
-          - suite: live
-            name: Live smoke
     steps:
       - uses: actions/checkout@v4
 
@@ -77,13 +66,13 @@ jobs:
         run: pnpm --filter @stremlist/e2e exec playwright install --with-deps chromium
 
       - name: Run E2E tests
-        run: pnpm --filter @stremlist/e2e test:e2e:${{ matrix.suite }}
+        run: pnpm --filter @stremlist/e2e test:e2e
 
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-${{ matrix.suite }}
+          name: playwright-report
           path: apps/e2e/playwright-report
           retention-days: 7
 

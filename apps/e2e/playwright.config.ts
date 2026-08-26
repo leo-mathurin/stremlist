@@ -11,8 +11,7 @@ import {
 
 export default defineConfig({
   testDir: "./tests",
-  // Tests within a project share one backend and one database. CI runs local
-  // and live-smoke projects as separate jobs with isolated Supabase stacks.
+  // Every project shares one backend and database, so tests run serially.
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
@@ -69,7 +68,6 @@ export default defineConfig({
         SUPABASE_SERVICE_ROLE_KEY,
         FRONTEND_URL,
         REFRESH_COOLDOWN_SECONDS: String(REFRESH_COOLDOWN_SECONDS),
-        CACHE_TTL_MINUTES: "30",
         // The Resend SDK throws at import time without a key. Newsletter
         // delivery is deliberately out of E2E scope (it would email real
         // people), so a dummy key is enough to boot the app.

@@ -22,9 +22,8 @@ stack**. The configure/onboarding pages of the frontend are covered too.
 - IMDb is live. Assertions are structural (ordering invariants, id shapes,
   counts) or compare the Stremio UI against the addon's own catalog JSON from
   the same run, so they do not depend on what is in the watchlist today.
-- The default run contains deterministic local coverage plus four live smoke
-  tests. Broader live checks stay in the `live-regression` project and run only
-  when requested.
+- The default run and pull request CI execute all three projects: deterministic
+  local coverage, four live smoke tests, and the broader live regression suite.
 
 ## Running locally
 
@@ -32,16 +31,13 @@ stack**. The configure/onboarding pages of the frontend are covered too.
 # One-time / per boot: start the local Supabase stack (needs Docker running)
 supabase start -x gotrue,realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta
 
-# From the repo root: local coverage plus the small live smoke suite
+# From the repo root: run every E2E project
 pnpm test:e2e
 
-# Or from this package, with more options
-pnpm --filter @stremlist/e2e test:e2e:local       # deterministic local suite
-pnpm --filter @stremlist/e2e test:e2e:live        # four live smoke tests
-pnpm --filter @stremlist/e2e test:e2e:live:full   # all live external checks
-pnpm --filter @stremlist/e2e test:e2e:all         # every project
-pnpm --filter @stremlist/e2e test:e2e:headed      # smoke tests with a browser
-pnpm --filter @stremlist/e2e report               # open the last HTML report
+# Select one project while debugging
+pnpm --filter @stremlist/e2e test:e2e --project=local
+pnpm --filter @stremlist/e2e test:e2e --project=live-smoke
+pnpm --filter @stremlist/e2e test:e2e --project=live-regression
 ```
 
 The suite deletes test users between cases. Foreign-key cascades clear their
@@ -51,18 +47,18 @@ confirmation described below.
 
 ## Environment knobs
 
-| Variable                                                 | Purpose                                                                                                 |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `E2E_SUPABASE_URL` / `E2E_SUPABASE_SERVICE_ROLE_KEY`     | Non-default local Supabase stack                                                                        |
-| `E2E_ALLOW_REMOTE_DATABASE=I_UNDERSTAND_THIS_WIPES_DATA` | Permit an isolated remote test project. Cleanup deletes every user and all dependent data               |
-| `E2E_IMDB_USER_ID` / `E2E_IMDB_USER_ID_2`                | Override the public watchlists under test                                                               |
-| `E2E_IMDB_LIST_ID`                                       | Override the public `ls` list under test                                                                |
-| `E2E_PRIVATE_IMDB_USER_ID`                               | Override the private watchlist under test (default: a maintainer-owned account kept private on purpose) |
-| `E2E_PRIVATE_IMDB_LIST_ID`                               | Enable the private `ls` list test (skipped otherwise — no stable private list id is available)          |
+| Variable                                                 | Purpose                                                                                   |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `E2E_SUPABASE_URL` / `E2E_SUPABASE_SERVICE_ROLE_KEY`     | Non-default local Supabase stack                                                          |
+| `E2E_ALLOW_REMOTE_DATABASE=I_UNDERSTAND_THIS_WIPES_DATA` | Permit an isolated remote test project. Cleanup deletes every user and all dependent data |
+| `E2E_IMDB_USER_ID` / `E2E_IMDB_USER_ID_2`                | Override the public watchlists under test                                                 |
+| `E2E_IMDB_LIST_ID`                                       | Override the public `ls` list under test                                                  |
+| `E2E_PRIVATE_IMDB_USER_ID`                               | Override the private watchlist under test                                                 |
+| `E2E_PRIVATE_IMDB_LIST_ID`                               | Enable the private `ls` list test                                                         |
 
 ## Known limitations
 
 - Drag-and-drop catalog reordering (pointer-based dnd-kit) is not covered.
 - The newsletter endpoint is not covered (it would email real people).
-- The live smoke and full regression suites depend on web.stremio.com and IMDb.
-  CI runs only the four smoke checks and retries them twice on failure.
+- The live smoke and regression suites depend on web.stremio.com and IMDb. CI
+  retries failures twice.
