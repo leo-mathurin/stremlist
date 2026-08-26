@@ -29,6 +29,10 @@ R2_SECRET_ACCESS_KEY=
 R2_BUCKET=stremlist-cache
 ```
 
+`R2_ENDPOINT` is reserved for local S3-compatible test servers. Leave it unset
+in production so the backend derives the Cloudflare endpoint from
+`R2_ACCOUNT_ID`.
+
 Do not expose the R2 credentials to the frontend. The bucket does not need a
 public domain.
 

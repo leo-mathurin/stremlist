@@ -4,6 +4,10 @@ import {
   BACKEND_URL,
   FRONTEND_PORT,
   FRONTEND_URL,
+  R2_ACCESS_KEY_ID,
+  R2_BUCKET,
+  R2_ENDPOINT,
+  R2_SECRET_ACCESS_KEY,
   REFRESH_COOLDOWN_SECONDS,
   SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_URL,
@@ -68,6 +72,10 @@ export default defineConfig({
         SUPABASE_SERVICE_ROLE_KEY,
         FRONTEND_URL,
         REFRESH_COOLDOWN_SECONDS: String(REFRESH_COOLDOWN_SECONDS),
+        R2_ENDPOINT,
+        R2_ACCESS_KEY_ID,
+        R2_SECRET_ACCESS_KEY,
+        R2_BUCKET,
         // The Resend SDK throws at import time without a key. Newsletter
         // delivery is deliberately out of E2E scope (it would email real
         // people), so a dummy key is enough to boot the app.

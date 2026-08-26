@@ -13,11 +13,8 @@ import {
   validateUser,
   type CatalogMeta,
 } from "../helpers/api.js";
-import {
-  clearRefreshCooldown,
-  countCacheItems,
-  resetDb,
-} from "../helpers/db.js";
+import { clearRefreshCooldown, resetDb } from "../helpers/db.js";
+import { countCacheObjects } from "../helpers/r2.js";
 import {
   P_HANDLE,
   PRIVATE_LIST,
@@ -116,8 +113,8 @@ test.describe("catalogs", () => {
         expect(meta.id).toMatch(/^tt\d+$/);
         expect(meta.name.length).toBeGreaterThan(0);
       }
-      // The fetch must have populated the per-item cache.
-      expect(await countCacheItems(config.watchlists[0].id)).toBeGreaterThan(0);
+      // One manifest and one compressed catalog generation are persisted.
+      expect(await countCacheObjects(config.watchlists[0].id)).toBe(2);
     },
   );
 
@@ -213,13 +210,39 @@ test.describe("catalogs", () => {
       ]);
       const { body } = await getConfig(PUBLIC_USER);
       const chart = body.watchlists[0];
-      const { metas } = await getCatalog(
+      const firstPage = await getCatalog(
         PUBLIC_USER,
         "movie",
         `wl-${chart.id}-movie`,
       );
-      // IMDb Top 250 — allow slack for titles Stremio types can't represent.
+      const secondPage = await getCatalog(
+        PUBLIC_USER,
+        "movie",
+        `wl-${chart.id}-movie`,
+        100,
+      );
+      const thirdPage = await getCatalog(
+        PUBLIC_USER,
+        "movie",
+        `wl-${chart.id}-movie`,
+        200,
+      );
+      expect(firstPage.status).toBe(200);
+      expect(secondPage.status).toBe(200);
+      expect(thirdPage.status).toBe(200);
+      expect(firstPage.metas).toHaveLength(100);
+      expect(secondPage.metas).toHaveLength(100);
+      expect(thirdPage.metas.length).toBeGreaterThan(0);
+
+      const metas = [
+        ...firstPage.metas,
+        ...secondPage.metas,
+        ...thirdPage.metas,
+      ];
+      // IMDb Top 250. Allow slack for titles Stremio types cannot represent,
+      // but make sure pagination neither duplicates nor drops a whole page.
       expect(metas.length).toBeGreaterThan(200);
+      expect(new Set(metas.map((meta) => meta.id)).size).toBe(metas.length);
       for (const meta of metas.slice(0, 10)) {
         expect(meta.type).toBe("movie");
         expect(meta.id).toMatch(/^tt\d+$/);
@@ -308,6 +331,41 @@ test.describe("catalogs", () => {
       );
       expect(badType.status).toBe(200);
       expect(badType.metas).toEqual([]);
+    },
+  );
+
+  test(
+    "removing a watchlist deletes its R2 cache objects",
+    { tag: "@live-regression" },
+    async () => {
+      const config = await bootstrapUser(PUBLIC_USER);
+      const removed = config.watchlists[0];
+      const created = await postConfig(PUBLIC_USER, [
+        {
+          id: removed.id,
+          imdbUserId: removed.imdbUserId,
+          sortOption: removed.sortOption,
+        },
+        { imdbUserId: PUBLIC_LIST, sortOption: "added_at-asc" },
+      ]);
+      expect(created.status).toBe(200);
+
+      const current = (await getConfig(PUBLIC_USER)).body.watchlists;
+      const kept = current.find((watchlist) => watchlist.id !== removed.id);
+      expect(kept).toBeDefined();
+
+      await getCatalog(PUBLIC_USER, "movie", `wl-${removed.id}-movie`);
+      expect(await countCacheObjects(removed.id)).toBe(2);
+
+      const updated = await postConfig(PUBLIC_USER, [
+        {
+          id: kept!.id,
+          imdbUserId: kept!.imdbUserId,
+          sortOption: kept!.sortOption,
+        },
+      ]);
+      expect(updated.status).toBe(200);
+      expect(await countCacheObjects(removed.id)).toBe(0);
     },
   );
 });
@@ -438,7 +496,7 @@ test.describe("refresh", () => {
       expect(first.body.refreshed).toBe(1);
       expect(first.body.failed).toBe(0);
       expect(first.body.total).toBe(1);
-      expect(await countCacheItems(config.watchlists[0].id)).toBeGreaterThan(0);
+      expect(await countCacheObjects(config.watchlists[0].id)).toBe(2);
 
       const second = await refresh(PUBLIC_USER);
       expect(second.body.throttled).toBe(true);
