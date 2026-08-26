@@ -1,0 +1,26 @@
+{
+  "name": "@stremlist/e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e": "tsx preflight.ts && playwright test",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@stremlist/backend": "workspace:*",
+    "@stremlist/eslint-config": "workspace:*",
+    "@stremlist/frontend": "workspace:*",
+    "@stremlist/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.95.3",
+    "@types/node": "^20.11.17",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.1",
+    "tsx": "^4.7.1",
+    "typescript": "^5.8.3"
+  }
+}
