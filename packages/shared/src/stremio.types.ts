@@ -26,7 +26,7 @@ export interface UserConfigUpdateWatchlist {
   catalogTitle?: string;
   sortOption: string;
   displayMode?: DisplayMode;
-  position: number;
+  position?: number;
 }
 
 export interface UserConfigUpdatePayload {

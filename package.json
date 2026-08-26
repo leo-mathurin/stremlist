@@ -28,6 +28,7 @@
     "format": "turbo run format",
     "format:check": "turbo run format:check",
     "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
     "typecheck": "turbo run typecheck",
     "generate:types": "pnpm supabase gen types typescript --project-id igbmxubzxjfdbgmawrtr --schema public > packages/shared/src/database.types.ts",
     "prepare": "husky"
