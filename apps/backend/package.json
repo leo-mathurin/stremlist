@@ -24,6 +24,7 @@
     "cleanup:invalid-users": "tsx src/scripts/cleanup-invalid-users.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1118.0",
     "@hono/zod-validator": "^0.4.3",
     "@stremlist/shared": "workspace:*",
     "@supabase/supabase-js": "^2.95.3",

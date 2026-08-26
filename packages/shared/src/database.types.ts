@@ -85,41 +85,6 @@ export type Database = {
         };
         Relationships: [];
       };
-      watchlist_cache_items: {
-        Row: {
-          cached_at: string;
-          data: Json;
-          item_id: string;
-          position: number;
-          type: string;
-          watchlist_id: string;
-        };
-        Insert: {
-          cached_at?: string;
-          data: Json;
-          item_id: string;
-          position: number;
-          type: string;
-          watchlist_id: string;
-        };
-        Update: {
-          cached_at?: string;
-          data?: Json;
-          item_id?: string;
-          position?: number;
-          type?: string;
-          watchlist_id?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "watchlist_cache_items_watchlist_id_fkey";
-            columns: ["watchlist_id"];
-            isOneToOne: false;
-            referencedRelation: "user_watchlists";
-            referencedColumns: ["id"];
-          },
-        ];
-      };
     };
     Views: {
       [_ in never]: never;

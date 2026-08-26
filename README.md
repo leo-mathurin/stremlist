@@ -12,7 +12,7 @@ Stremlist is a Stremio addon that turns your IMDb watchlist into a Stremio catal
 - Optional Rating Poster Database (RPDB) poster support via API key
 - Simple install flow through a hosted configuration UI
 - Cache-first watchlist serving with periodic auto-refresh and a manual "Refresh now" control
-- Lightweight backend with Supabase for user management and watchlist caching
+- Lightweight backend with Supabase for user configuration and Cloudflare R2 for watchlist caching
 - Monorepo architecture with Turborepo (`apps` + `packages`)
 
 ## Monorepo Structure
@@ -34,7 +34,8 @@ This repository follows the Turborepo recommended structure:
 
 - Frontend and backend are deployed on [Vercel](https://vercel.com)
 - Backend serves Stremio addon endpoints and configuration flow
-- Supabase stores user configuration and cached watchlist data
+- Supabase stores user configuration
+- Cloudflare R2 stores gzip-compressed watchlist cache objects
 
 ## Getting Started
 
@@ -106,16 +107,20 @@ http://localhost:7001/manifest.json
 
 Set backend env vars in `apps/backend/.env`.
 
-| Variable | Required | Description | Default |
-| --- | --- | --- | --- |
-| `PORT` | No | Backend HTTP port | `7001` |
-| `FRONTEND_URL` | No | URL used for `/:userId/configure` redirect | `https://stremlist.com` |
-| `SUPABASE_URL` | Yes | Supabase project URL | - |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase service role key | - |
-| `CACHE_TTL_MINUTES` | No | How long a cached watchlist is served before it is refreshed on the next request | `30` |
-| `REFRESH_COOLDOWN_SECONDS` | No | Minimum time between manual "Refresh now" requests per user | `60` |
-| `RESEND_API_KEY` | No | Resend API key for newsletter subscription endpoint | - |
-| `RESEND_AUDIENCE_ID` | No | Resend audience ID for newsletter subscription endpoint | - |
+| Variable                    | Required | Description                                                                      | Default                 |
+| --------------------------- | -------- | -------------------------------------------------------------------------------- | ----------------------- |
+| `PORT`                      | No       | Backend HTTP port                                                                | `7001`                  |
+| `FRONTEND_URL`              | No       | URL used for `/:userId/configure` redirect                                       | `https://stremlist.com` |
+| `SUPABASE_URL`              | Yes      | Supabase project URL                                                             | -                       |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes      | Supabase service role key                                                        | -                       |
+| `R2_ACCOUNT_ID`             | Yes      | Cloudflare account ID used by the R2 S3 endpoint                                 | -                       |
+| `R2_ACCESS_KEY_ID`          | Yes      | Bucket-scoped R2 API token access key                                            | -                       |
+| `R2_SECRET_ACCESS_KEY`      | Yes      | Bucket-scoped R2 API token secret                                                | -                       |
+| `R2_BUCKET`                 | Yes      | Private R2 cache bucket name                                                     | -                       |
+| `CACHE_TTL_MINUTES`         | No       | How long a cached watchlist is served before it is refreshed on the next request | `30`                    |
+| `REFRESH_COOLDOWN_SECONDS`  | No       | Minimum time between manual "Refresh now" requests per user                      | `60`                    |
+| `RESEND_API_KEY`            | No       | Resend API key for newsletter subscription endpoint                              | -                       |
+| `RESEND_AUDIENCE_ID`        | No       | Resend audience ID for newsletter subscription endpoint                          | -                       |
 
 ## Type Generation
 
@@ -126,6 +131,9 @@ pnpm generate:types
 ```
 
 This updates `packages/shared/src/database.types.ts`.
+
+The production R2 rollout and cleanup procedure is documented in
+[`docs/r2-cache-migration.md`](docs/r2-cache-migration.md).
 
 ## License
 

@@ -1,5 +1,6 @@
 import type { ConfigWatchlist, StremioMeta } from "@stremlist/shared";
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { parseCatalogId } from "../services/catalog-id";
 import { getUserRpdbApiKey, getUserWatchlistById } from "../services/user";
 import {
@@ -8,6 +9,7 @@ import {
 } from "../services/watchlist";
 
 const catalog = new Hono();
+const CATALOG_PAGE_SIZE = 100;
 
 // A single informational card Stremio renders inside the catalog row, so the
 // user sees *why* it's empty (e.g. their IMDb list is private) instead of a
@@ -40,13 +42,27 @@ function buildUnavailableMeta(
   };
 }
 
-catalog.get("/:userId/catalog/:type/:id.json", async (c) => {
+function parseSkip(c: Context): number | null {
+  const extra = routeParam(c, "extra");
+  const value = extra
+    ? new URLSearchParams(extra.replace(/\.json$/u, "")).get("skip")
+    : c.req.query("skip");
+  if (value === undefined || value === null || value === "") return 0;
+
+  const skip = Number(value);
+  return Number.isSafeInteger(skip) && skip >= 0 ? skip : null;
+}
+
+function routeParam(c: Context, name: string): string | undefined {
+  const params = c.req.param() as Record<string, string | undefined>;
+  return params[name] ?? params[`${name}.json`];
+}
+
+async function serveCatalog(c: Context) {
+  c.header("Cache-Control", "no-store");
   const userId = c.req.param("userId");
   const requestedType = c.req.param("type");
-  const catalogId = (c.req.param("id") ?? c.req.param("id.json")).replace(
-    /\.json$/u,
-    "",
-  );
+  const catalogId = (routeParam(c, "id") ?? "").replace(/\.json$/u, "");
 
   try {
     if (!userId || !requestedType || !catalogId) {
@@ -63,6 +79,11 @@ catalog.get("/:userId/catalog/:type/:id.json", async (c) => {
 
     if (requestedType !== "movie" && requestedType !== "series") {
       return c.json({ metas: [] });
+    }
+
+    const skip = parseSkip(c);
+    if (skip === null) {
+      return c.json({ metas: [] }, 400);
     }
 
     const parsedCatalog = parseCatalogId(catalogId);
@@ -95,12 +116,13 @@ catalog.get("/:userId/catalog/:type/:id.json", async (c) => {
       rpdbApiKey,
     });
 
-    const metas = watchlistData.metas.filter(
+    const matchingMetas = watchlistData.metas.filter(
       (item) => item.type === requestedType,
     );
+    const metas = matchingMetas.slice(skip, skip + CATALOG_PAGE_SIZE);
 
     console.log(
-      `Serving catalog for user ${userId}, type: ${requestedType}, watchlist: ${watchlistConfig.id}, items: ${metas.length}`,
+      `Serving catalog for user ${userId}, type: ${requestedType}, watchlist: ${watchlistConfig.id}, skip: ${skip}, page items: ${metas.length}, total items: ${matchingMetas.length}`,
     );
 
     return c.json({ metas });
@@ -131,6 +153,9 @@ catalog.get("/:userId/catalog/:type/:id.json", async (c) => {
     );
     return c.json({ metas: [] }, 500);
   }
-});
+}
+
+catalog.get("/:userId/catalog/:type/:id/:extra.json", serveCatalog);
+catalog.get("/:userId/catalog/:type/:id.json", serveCatalog);
 
 export default catalog;

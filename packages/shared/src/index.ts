@@ -4,7 +4,7 @@ export type {
   Tables,
   TablesInsert,
   TablesUpdate,
-} from "./database.types.extended";
+} from "./database.types";
 
 export type {
   WatchlistData,

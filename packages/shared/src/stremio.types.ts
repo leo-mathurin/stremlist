@@ -53,6 +53,10 @@ export interface StremioCatalog {
   id: string;
   name: string;
   type: "movie" | "series";
+  extra?: {
+    name: "skip";
+    isRequired?: boolean;
+  }[];
 }
 
 export interface StremioResource {
