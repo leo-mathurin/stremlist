@@ -57,9 +57,11 @@ export async function getCatalog(
   userId: string,
   type: string,
   catalogId: string,
+  skip = 0,
 ): Promise<{ status: number; metas: CatalogMeta[] }> {
+  const extra = skip > 0 ? `/skip=${skip}` : "";
   const { status, body } = await getJson<{ metas: CatalogMeta[] }>(
-    `/${userId}/catalog/${type}/${catalogId}.json`,
+    `/${userId}/catalog/${type}/${catalogId}${extra}.json`,
   );
   return { status, metas: body.metas };
 }

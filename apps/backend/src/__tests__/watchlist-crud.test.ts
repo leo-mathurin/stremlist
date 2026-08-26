@@ -8,6 +8,10 @@ vi.mock("../lib/supabase", async () => {
   return await import("./helpers/mock-supabase.js");
 });
 
+vi.mock("../services/watchlist-cache", async () => {
+  return await import("./helpers/mock-watchlist-cache.js");
+});
+
 vi.mock("../lib/resend", () => ({
   resend: { contacts: { create: vi.fn() } },
 }));

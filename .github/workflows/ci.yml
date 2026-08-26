@@ -46,12 +46,20 @@ jobs:
           node-version: 20
           cache: pnpm
 
-      - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1
+      - uses: supabase/setup-cli@v1
         with:
           version: 2.98.2
 
       - name: Start local Supabase (db + REST only)
         run: supabase start -x gotrue,realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta
+
+      - name: Start local R2-compatible store
+        run: |
+          docker run --rm -d --name stremlist-e2e-r2 \
+            -p 127.0.0.1:7431:9000 \
+            -e MINIO_ROOT_USER=stremlist-e2e \
+            -e MINIO_ROOT_PASSWORD=stremlist-e2e-secret \
+            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

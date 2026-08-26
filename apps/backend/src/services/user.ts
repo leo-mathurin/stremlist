@@ -1,6 +1,7 @@
 import { DEFAULT_SORT_OPTION } from "@stremlist/shared";
 import type { ConfigWatchlist, Tables } from "@stremlist/shared";
 import { supabase } from "../lib/supabase";
+import { deleteCachedWatchlist } from "./watchlist-cache";
 
 type User = Tables<"users">;
 type UserWatchlist = Tables<"user_watchlists">;
@@ -181,6 +182,18 @@ export async function replaceUserWatchlists(
       );
       throw deleteError;
     }
+
+    const cleanupResults = await Promise.allSettled(
+      toDelete.map((watchlistId) => deleteCachedWatchlist(watchlistId)),
+    );
+    cleanupResults.forEach((result, index) => {
+      if (result.status === "rejected") {
+        console.error(
+          `Failed to delete R2 cache for removed watchlist ${toDelete[index]}:`,
+          result.reason,
+        );
+      }
+    });
   }
 
   if (toUpdate.length > 0) {

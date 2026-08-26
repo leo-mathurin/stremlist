@@ -18,6 +18,16 @@ export const SUPABASE_SERVICE_ROLE_KEY =
   process.env.E2E_SUPABASE_SERVICE_ROLE_KEY ??
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU";
 
+// MinIO is used as the local S3-compatible R2 test double. These credentials
+// belong only to the disposable E2E container and may be overridden in CI.
+export const R2_ENDPOINT =
+  process.env.E2E_R2_ENDPOINT ?? "http://127.0.0.1:7431";
+export const R2_ACCESS_KEY_ID =
+  process.env.E2E_R2_ACCESS_KEY_ID ?? "stremlist-e2e";
+export const R2_SECRET_ACCESS_KEY =
+  process.env.E2E_R2_SECRET_ACCESS_KEY ?? "stremlist-e2e-secret";
+export const R2_BUCKET = process.env.E2E_R2_BUCKET ?? "stremlist-e2e-cache";
+
 const REMOTE_DATABASE_CONFIRMATION = "I_UNDERSTAND_THIS_WIPES_DATA";
 
 function assertSafeSupabaseTarget(): void {

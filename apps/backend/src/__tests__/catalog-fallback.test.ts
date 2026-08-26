@@ -1,7 +1,12 @@
+import type { StremioMeta } from "@stremlist/shared";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 vi.mock("../lib/supabase", async () => {
   return await import("./helpers/mock-supabase.js");
+});
+
+vi.mock("../services/watchlist-cache", async () => {
+  return await import("./helpers/mock-watchlist-cache.js");
 });
 
 vi.mock("../lib/resend", () => ({
@@ -11,6 +16,7 @@ vi.mock("../lib/resend", () => ({
 import app from "../index.js";
 import * as scraper from "../services/imdb-scraper";
 import { db } from "./helpers/mock-supabase.js";
+import { cache } from "./helpers/mock-watchlist-cache.js";
 
 const OWNER = "ur216216210";
 const UUID_1 = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
@@ -26,13 +32,13 @@ function seedUser(imdbUserId: string) {
   });
 }
 
-function seedWatchlist(id: string) {
+function seedWatchlist(id: string, sortOption = "added_at-asc") {
   db.getTable("user_watchlists").push({
     id,
     owner_user_id: OWNER,
     imdb_user_id: OWNER,
     catalog_title: "",
-    sort_option: "added_at-asc",
+    sort_option: sortOption,
     position: 0,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -41,25 +47,14 @@ function seedWatchlist(id: string) {
 
 function seedCache(
   watchlistId: string,
-  metas: { id: string; type: string }[],
+  metas: StremioMeta[],
   cachedAt?: string,
 ) {
-  // An empty `metas` seeds zero rows — the normalised equivalent of an empty
-  // blob: the next read sees no rows and treats it as a cache miss.
-  const at = cachedAt ?? new Date().toISOString();
-  metas.forEach((meta, i) => {
-    db.getTable("watchlist_cache_items").push({
-      watchlist_id: watchlistId,
-      item_id: meta.id,
-      type: meta.type,
-      position: i,
-      data: meta,
-      cached_at: at,
-    });
-  });
+  if (metas.length === 0) return;
+  cache.seed(watchlistId, metas, cachedAt ? new Date(cachedAt) : new Date());
 }
 
-const CACHED_MOVIE = {
+const CACHED_MOVIE: StremioMeta = {
   id: "tt0111161",
   type: "movie",
   name: "The Shawshank Redemption",
@@ -86,6 +81,7 @@ function requestMovieCatalog() {
 
 beforeEach(() => {
   db.reset();
+  cache.reset();
   vi.restoreAllMocks();
 });
 
@@ -170,6 +166,92 @@ describe("catalog route degrades gracefully on fetch failure", () => {
     const res = await requestMovieCatalog();
 
     expect(res.status).toBe(500);
+    expect((await res.json()) as CatalogResponse).toEqual({ metas: [] });
+  });
+});
+
+describe("catalog pagination", () => {
+  it("serves Stremio pages of at most 100 items using the skip extra", async () => {
+    seedUser(OWNER);
+    seedWatchlist(UUID_1);
+    seedCache(
+      UUID_1,
+      Array.from(
+        { length: 205 },
+        (_, index): StremioMeta => ({
+          ...CACHED_MOVIE,
+          id: `tt${String(index).padStart(7, "0")}`,
+          name: `Movie ${index}`,
+        }),
+      ),
+    );
+
+    const first = await requestMovieCatalog();
+    const second = await app.request(
+      `/${OWNER}/catalog/movie/wl-${UUID_1}-movie/skip=100.json`,
+    );
+    const last = await app.request(
+      `/${OWNER}/catalog/movie/wl-${UUID_1}-movie/skip=200.json`,
+    );
+
+    const firstBody = (await first.json()) as CatalogResponse;
+    const secondBody = (await second.json()) as CatalogResponse;
+    const lastBody = (await last.json()) as CatalogResponse;
+    expect(firstBody.metas).toHaveLength(100);
+    expect(secondBody.metas).toHaveLength(100);
+    expect(lastBody.metas).toHaveLength(5);
+    expect(firstBody.metas[0].id).toBe("tt0000000");
+    expect(secondBody.metas[0].id).toBe("tt0000100");
+    expect(lastBody.metas[0].id).toBe("tt0000200");
+    expect(first.headers.get("Cache-Control")).toBe("no-store");
+    expect(first.headers.get("Vercel-CDN-Cache-Control")).toBeNull();
+  });
+
+  it("keeps random pages stable and non-overlapping within a cache generation", async () => {
+    seedUser(OWNER);
+    seedWatchlist(UUID_1, "random");
+    seedCache(
+      UUID_1,
+      Array.from(
+        { length: 205 },
+        (_, index): StremioMeta => ({
+          ...CACHED_MOVIE,
+          id: `tt${String(index).padStart(7, "0")}`,
+          name: `Movie ${index}`,
+        }),
+      ),
+    );
+
+    const first = await requestMovieCatalog();
+    const second = await app.request(
+      `/${OWNER}/catalog/movie/wl-${UUID_1}-movie/skip=100.json`,
+    );
+    const repeatedFirst = await requestMovieCatalog();
+
+    const firstIds = ((await first.json()) as CatalogResponse).metas.map(
+      (meta) => meta.id,
+    );
+    const secondIds = ((await second.json()) as CatalogResponse).metas.map(
+      (meta) => meta.id,
+    );
+    const repeatedFirstIds = (
+      (await repeatedFirst.json()) as CatalogResponse
+    ).metas.map((meta) => meta.id);
+
+    expect(repeatedFirstIds).toEqual(firstIds);
+    expect(new Set([...firstIds, ...secondIds]).size).toBe(200);
+  });
+
+  it("rejects an invalid skip value", async () => {
+    seedUser(OWNER);
+    seedWatchlist(UUID_1);
+    seedCache(UUID_1, [CACHED_MOVIE]);
+
+    const res = await app.request(
+      `/${OWNER}/catalog/movie/wl-${UUID_1}-movie/skip=wat.json`,
+    );
+
+    expect(res.status).toBe(400);
     expect((await res.json()) as CatalogResponse).toEqual({ metas: [] });
   });
 });
