@@ -45,3 +45,7 @@ lerna-debug.log*
 !robots.txt
 # Supabase CLI local state
 supabase/.temp/
+
+# Playwright
+test-results/
+playwright-report/
