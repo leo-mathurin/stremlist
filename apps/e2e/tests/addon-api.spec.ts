@@ -14,7 +14,11 @@ import {
   type CatalogMeta,
 } from "../helpers/api.js";
 import { clearRefreshCooldown, resetDb } from "../helpers/db.js";
-import { countCacheObjects } from "../helpers/r2.js";
+import {
+  countCacheObjects,
+  getCacheManifest,
+  getCacheObjectKeys,
+} from "../helpers/r2.js";
 import {
   P_HANDLE,
   PRIVATE_LIST,
@@ -335,7 +339,7 @@ test.describe("catalogs", () => {
   );
 
   test(
-    "removing a watchlist deletes its R2 cache objects",
+    "removing a watchlist deletes cached generations and leaves a tombstone",
     { tag: "@live-regression" },
     async () => {
       const config = await bootstrapUser(PUBLIC_USER);
@@ -365,7 +369,13 @@ test.describe("catalogs", () => {
         },
       ]);
       expect(updated.status).toBe(200);
-      expect(await countCacheObjects(removed.id)).toBe(0);
+      expect(await getCacheObjectKeys(removed.id)).toEqual([
+        `watchlists/${removed.id}/manifest.json`,
+      ]);
+      expect(await getCacheManifest(removed.id)).toMatchObject({
+        version: 1,
+        deleted: true,
+      });
     },
   );
 });

@@ -1,6 +1,7 @@
 import {
   CreateBucketCommand,
   DeleteObjectsCommand,
+  GetObjectCommand,
   HeadBucketCommand,
   ListObjectsV2Command,
   S3Client,
@@ -71,6 +72,25 @@ async function listKeys(prefix: string): Promise<string[]> {
 
 export async function countCacheObjects(watchlistId: string): Promise<number> {
   return (await listKeys(`watchlists/${watchlistId}/`)).length;
+}
+
+export async function getCacheObjectKeys(
+  watchlistId: string,
+): Promise<string[]> {
+  return listKeys(`watchlists/${watchlistId}/`);
+}
+
+export async function getCacheManifest(
+  watchlistId: string,
+): Promise<unknown> {
+  const response = await r2.send(
+    new GetObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: `watchlists/${watchlistId}/manifest.json`,
+    }),
+  );
+  if (!response.Body) throw new Error("R2 cache manifest has no body");
+  return JSON.parse(await response.Body.transformToString());
 }
 
 export async function deleteCacheObjects(
