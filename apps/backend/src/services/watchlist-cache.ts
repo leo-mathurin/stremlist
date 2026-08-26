@@ -65,6 +65,11 @@ interface ManifestRead {
   etag?: string;
 }
 
+interface CatalogRead {
+  manifest: CacheManifest;
+  catalog: CatalogObject;
+}
+
 export interface CachedWatchlist {
   data: WatchlistData;
   cachedAt: Date;
@@ -146,6 +151,24 @@ function setMemoryValue<T>(
   }
 }
 
+function cacheDeletedManifest(
+  watchlistId: string,
+  deletedGeneration: string,
+): void {
+  const entry = manifestMemoryCache.get(watchlistId);
+  if (entry?.value && entry.value.generation !== deletedGeneration) return;
+  setMemoryValue(manifestMemoryCache, watchlistId, null);
+}
+
+function evictManifestGeneration(
+  watchlistId: string,
+  staleGeneration: string,
+): void {
+  const entry = manifestMemoryCache.get(watchlistId);
+  if (entry?.value && entry.value.generation !== staleGeneration) return;
+  manifestMemoryCache.delete(watchlistId);
+}
+
 async function readManifestFromR2(watchlistId: string): Promise<ManifestRead> {
   try {
     const response = await getR2Client().send(
@@ -179,7 +202,13 @@ async function readManifest(
   const cached = getMemoryValue(manifestMemoryCache, watchlistId);
   if (cached !== undefined) return cached;
 
+  const entryBeforeRead = manifestMemoryCache.get(watchlistId);
   const { manifest } = await readManifestFromR2(watchlistId);
+  const concurrentEntry = manifestMemoryCache.get(watchlistId);
+  if (concurrentEntry !== entryBeforeRead) {
+    const concurrentValue = getMemoryValue(manifestMemoryCache, watchlistId);
+    if (concurrentValue !== undefined) return concurrentValue;
+  }
   setMemoryValue(manifestMemoryCache, watchlistId, manifest);
   return manifest;
 }
@@ -208,6 +237,27 @@ async function readCatalog(
     if (!isNotFound(error)) throw error;
     return null;
   }
+}
+
+async function readCatalogWithManifestRefresh(
+  watchlistId: string,
+  manifest: CacheManifest,
+): Promise<CatalogRead | null> {
+  const catalog = await readCatalog(manifest);
+  if (catalog) return { manifest, catalog };
+
+  evictManifestGeneration(watchlistId, manifest.generation);
+  const refreshedManifest = await readManifest(watchlistId);
+  if (
+    !refreshedManifest ||
+    refreshedManifest.generation === manifest.generation
+  ) {
+    return null;
+  }
+
+  const refreshedCatalog = await readCatalog(refreshedManifest);
+  if (!refreshedCatalog) return null;
+  return { manifest: refreshedManifest, catalog: refreshedCatalog };
 }
 
 function uniqueMetas(metas: StremioMeta[]): StremioMeta[] {
@@ -242,13 +292,13 @@ export async function getCachedWatchlist(
     const manifest = await readManifest(watchlistId);
     if (!manifest) return null;
 
-    const catalog = await readCatalog(manifest);
-    if (!catalog || catalog.metas.length === 0) return null;
+    const current = await readCatalogWithManifestRefresh(watchlistId, manifest);
+    if (!current || current.catalog.metas.length === 0) return null;
 
     return {
-      data: { metas: catalog.metas },
-      cachedAt: new Date(manifest.cachedAt),
-      generation: manifest.generation,
+      data: { metas: current.catalog.metas },
+      cachedAt: new Date(current.manifest.cachedAt),
+      generation: current.manifest.generation,
     };
   } catch (error) {
     console.error(`Failed to read R2 cache for ${watchlistId}:`, error);
@@ -317,7 +367,10 @@ export async function findCachedMeta(
   const manifestResults = await Promise.allSettled(
     watchlistIds.map((watchlistId) => readManifest(watchlistId)),
   );
-  const candidates: CacheManifest[] = [];
+  const candidates: {
+    watchlistId: string;
+    manifest: CacheManifest;
+  }[] = [];
 
   manifestResults.forEach((result, index) => {
     if (result.status === "rejected") {
@@ -328,14 +381,23 @@ export async function findCachedMeta(
       return;
     }
     if (result.value && hasSortedKey(result.value.metaKeys, target)) {
-      candidates.push(result.value);
+      candidates.push({
+        watchlistId: watchlistIds[index],
+        manifest: result.value,
+      });
     }
   });
 
-  for (const manifest of candidates) {
+  for (const candidate of candidates) {
     try {
-      const catalog = await readCatalog(manifest);
-      const found = catalog?.metas.find(
+      const current = await readCatalogWithManifestRefresh(
+        candidate.watchlistId,
+        candidate.manifest,
+      );
+      if (!current || !hasSortedKey(current.manifest.metaKeys, target)) {
+        continue;
+      }
+      const found = current.catalog.metas.find(
         (item) => item.type === type && item.id === id,
       );
       if (found) return found;
@@ -388,13 +450,12 @@ export async function deleteCachedWatchlist(
     );
   } catch (error) {
     if (isPreconditionFailed(error)) {
-      manifestMemoryCache.delete(watchlistId);
       return;
     }
     throw error;
   }
 
-  setMemoryValue(manifestMemoryCache, watchlistId, null);
+  cacheDeletedManifest(watchlistId, current.manifest.generation);
 
   await getR2Client().send(
     new DeleteObjectCommand({

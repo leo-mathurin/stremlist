@@ -16,6 +16,7 @@ const r2 = vi.hoisted(() => ({
   failGetContaining: null as string | null,
   failPutContaining: null as string | null,
   beforeConditionalPut: null as (() => void) | null,
+  afterConditionalPut: null as (() => Promise<void>) | null,
   send: vi.fn((command: unknown) => Promise.resolve(command)),
 }));
 
@@ -35,6 +36,7 @@ function storedObject(
 function handleCommand(command: unknown): unknown {
   if (command instanceof PutObjectCommand) {
     const key = requiredKey(command.input.Key);
+    let afterConditionalPut: (() => Promise<void>) | null = null;
     if (r2.failPutContaining && key.includes(r2.failPutContaining)) {
       throw new Error("simulated R2 write failure");
     }
@@ -44,6 +46,8 @@ function handleCommand(command: unknown): unknown {
     if (command.input.IfMatch) {
       const beforeConditionalPut = r2.beforeConditionalPut;
       r2.beforeConditionalPut = null;
+      afterConditionalPut = r2.afterConditionalPut;
+      r2.afterConditionalPut = null;
       beforeConditionalPut?.();
       const current = r2.objects.get(key);
       if (!current || etagFor(current) !== command.input.IfMatch) {
@@ -54,6 +58,9 @@ function handleCommand(command: unknown): unknown {
       }
     }
     r2.objects.set(key, Uint8Array.from(command.input.Body));
+    if (afterConditionalPut) {
+      return afterConditionalPut().then(() => ({}));
+    }
     return {};
   }
 
@@ -124,6 +131,7 @@ beforeEach(() => {
   r2.failGetContaining = null;
   r2.failPutContaining = null;
   r2.beforeConditionalPut = null;
+  r2.afterConditionalPut = null;
   r2.send.mockClear();
 });
 
@@ -275,6 +283,51 @@ describe("R2 watchlist cache", () => {
 
     expect((await getCachedWatchlist(id))?.data.metas).toEqual([replacement]);
     expect(r2.objects.has(replacementCatalogKey)).toBe(true);
+  });
+
+  it("keeps a local replacement cached when it follows the tombstone", async () => {
+    const id = watchlistId();
+    await writeCachedWatchlist(id, { metas: [MOVIE] });
+    const replacement = {
+      ...MOVIE,
+      id: "tt0068646",
+      name: "The Godfather",
+    };
+    r2.afterConditionalPut = () =>
+      writeCachedWatchlist(id, { metas: [replacement] }).then(() => undefined);
+
+    await deleteCachedWatchlist(id);
+    r2.failGetContaining = "manifest.json";
+
+    expect((await getCachedWatchlist(id))?.data.metas).toEqual([replacement]);
+  });
+
+  it("refreshes a stale manifest when its generation is missing", async () => {
+    const id = watchlistId();
+    await writeCachedWatchlist(id, { metas: [MOVIE] });
+    const staleObjects = new Map(r2.objects);
+
+    r2.objects.clear();
+    const replacement = {
+      ...MOVIE,
+      id: "tt0068646",
+      name: "The Godfather",
+    };
+    await writeCachedWatchlist(id, { metas: [replacement] });
+    const replacementObjects = new Map(r2.objects);
+
+    for (let index = 0; index <= 100; index += 1) {
+      await writeCachedWatchlist(watchlistId(), { metas: [MOVIE] });
+    }
+
+    r2.objects.clear();
+    staleObjects.forEach((body, key) => r2.objects.set(key, body));
+    expect(await findCachedMeta([id], "movie", "tt9999999")).toBeNull();
+
+    r2.objects.clear();
+    replacementObjects.forEach((body, key) => r2.objects.set(key, body));
+
+    expect((await getCachedWatchlist(id))?.data.metas).toEqual([replacement]);
   });
 
   it("invalidates the cache and deletes its current catalog", async () => {
