@@ -28,6 +28,7 @@
     "@hono/zod-validator": "^0.4.3",
     "@stremlist/shared": "workspace:*",
     "@supabase/supabase-js": "^2.95.3",
+    "@vercel/functions": "^3.9.5",
     "@vercel/related-projects": "^1.0.0",
     "hono": "^4.11.9",
     "linkedom": "^0.18.9",

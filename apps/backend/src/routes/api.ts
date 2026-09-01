@@ -9,6 +9,7 @@ import {
 } from "@stremlist/shared";
 import { Hono } from "hono";
 import { z } from "zod";
+import { scheduleBackgroundTask } from "../lib/background";
 import { resend } from "../lib/resend";
 import { supabase } from "../lib/supabase";
 import {
@@ -25,6 +26,7 @@ import {
   setUserRpdbApiKey,
 } from "../services/user";
 import { getWatchlistByConfig } from "../services/watchlist";
+import { prewarmWatchlists } from "../services/watchlist-prewarm";
 
 const REFRESH_COOLDOWN_MS =
   (Number.isFinite(Number(process.env.REFRESH_COOLDOWN_SECONDS))
@@ -189,6 +191,13 @@ const api = new Hono()
         replaceUserWatchlists(userId, normalizedWatchlists),
         setUserRpdbApiKey(userId, normalizedRpdbApiKey),
       ]);
+
+      // A fresh installation already has a seeded watchlist ID, so an
+      // "ID-less rows only" check would miss its first scrape. Queue every
+      // saved watchlist and let the normal cache-first path skip warm entries.
+      scheduleBackgroundTask(() =>
+        prewarmWatchlists(userId, updatedWatchlists),
+      );
 
       return c.json({ ok: true, watchlists: updatedWatchlists });
     },

@@ -185,6 +185,82 @@ describe("getImdbWatchlist (unit)", () => {
     expect(result).toEqual([]);
   });
 
+  it("supports 15,000 items while stopping runaway pagination", async () => {
+    const pageSize = 750;
+    const maxPages = 20;
+    const edges = Array.from({ length: pageSize }, (_, index) =>
+      makeEdge({ id: `tt${String(index).padStart(7, "0")}` }),
+    );
+    let page = 0;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    vi.mocked(globalThis.fetch).mockImplementation(() => {
+      page += 1;
+      return Promise.resolve(
+        mockGraphQLResponse({
+          id: "ls123",
+          visibility: { id: "PUBLIC" },
+          titleListItemSearch: {
+            total: 15_001,
+            edges,
+            pageInfo: {
+              hasNextPage: true,
+              endCursor: `page-${page}`,
+            },
+          },
+        }),
+      );
+    });
+
+    const result = await getImdbWatchlist("ur195879360");
+
+    expect(result).toHaveLength(15_000);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(maxPages);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("15,000-item limit"),
+    );
+  });
+
+  it("reduces the final page size to avoid crossing IMDb's cursor boundary", async () => {
+    const requestedPageSizes: number[] = [];
+    let itemOffset = 0;
+
+    vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
+      const body = JSON.parse(init?.body as string) as {
+        variables: { first: number };
+      };
+      const requested = body.variables.first;
+      requestedPageSizes.push(requested);
+
+      const edges = Array.from({ length: requested }, (_, index) =>
+        makeEdge({
+          id: `tt${String(itemOffset + index).padStart(7, "0")}`,
+        }),
+      );
+      itemOffset += requested;
+
+      return Promise.resolve(
+        mockGraphQLResponse({
+          id: "ls123",
+          visibility: { id: "PUBLIC" },
+          titleListItemSearch: {
+            total: 1_000,
+            edges,
+            pageInfo: {
+              hasNextPage: itemOffset < 1_000,
+              endCursor: `item-${itemOffset}`,
+            },
+          },
+        }),
+      );
+    });
+
+    const result = await getImdbWatchlist("ur195879360");
+
+    expect(result).toHaveLength(1_000);
+    expect(requestedPageSizes).toEqual([750, 250]);
+  });
+
   it("sends the correct request to the IMDb GraphQL endpoint", async () => {
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       mockGraphQLResponse({
