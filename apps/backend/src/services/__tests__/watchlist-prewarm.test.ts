@@ -3,8 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const watchlistMocks = vi.hoisted(() => ({
   getWatchlistByConfig: vi.fn(),
 }));
+const supabaseMocks = vi.hoisted(() => ({
+  rpc: vi.fn(),
+}));
 
 vi.mock("../watchlist", () => watchlistMocks);
+vi.mock("../../lib/supabase", () => ({
+  supabase: { rpc: supabaseMocks.rpc },
+}));
 
 import { prewarmWatchlists } from "../watchlist-prewarm";
 
@@ -12,6 +18,8 @@ describe("prewarmWatchlists", () => {
   beforeEach(() => {
     watchlistMocks.getWatchlistByConfig.mockReset();
     watchlistMocks.getWatchlistByConfig.mockResolvedValue({ metas: [] });
+    supabaseMocks.rpc.mockReset();
+    supabaseMocks.rpc.mockResolvedValue({ data: true, error: null });
     vi.spyOn(console, "log").mockImplementation(() => undefined);
   });
 
@@ -121,7 +129,9 @@ describe("prewarmWatchlists", () => {
     const second = prewarmWatchlists("ur12345678", watchlists);
 
     expect(second).toBe(first);
-    expect(watchlistMocks.getWatchlistByConfig).toHaveBeenCalledOnce();
+    await vi.waitFor(() => {
+      expect(watchlistMocks.getWatchlistByConfig).toHaveBeenCalledOnce();
+    });
     finishFetch?.();
     await Promise.all([first, second]);
   });
@@ -147,7 +157,9 @@ describe("prewarmWatchlists", () => {
 
     const batch = prewarmWatchlists("ur12345678", watchlists);
 
-    expect(watchlistMocks.getWatchlistByConfig).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => {
+      expect(watchlistMocks.getWatchlistByConfig).toHaveBeenCalledTimes(2);
+    });
     finishFetches[0]();
     await vi.waitFor(() => {
       expect(watchlistMocks.getWatchlistByConfig).toHaveBeenCalledTimes(3);
@@ -194,7 +206,9 @@ describe("prewarmWatchlists", () => {
     const second = prewarmWatchlists("ur12345678", changedWatchlists);
 
     expect(second).toBe(first);
-    expect(watchlistMocks.getWatchlistByConfig).toHaveBeenCalledOnce();
+    await vi.waitFor(() => {
+      expect(watchlistMocks.getWatchlistByConfig).toHaveBeenCalledOnce();
+    });
     finishFetches[0]();
     await vi.waitFor(() => {
       expect(watchlistMocks.getWatchlistByConfig).toHaveBeenCalledTimes(3);
@@ -203,5 +217,56 @@ describe("prewarmWatchlists", () => {
       finish();
     });
     await first;
+  });
+
+  it("skips the batch when another instance holds the database lease", async () => {
+    supabaseMocks.rpc.mockResolvedValue({ data: false, error: null });
+
+    await prewarmWatchlists("ur12345678", [
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        imdbUserId: "ur12345678",
+        catalogTitle: "Mine",
+        sortOption: "added_at-asc",
+        displayMode: "split",
+        position: 0,
+      },
+    ]);
+
+    expect(supabaseMocks.rpc).toHaveBeenCalledWith(
+      "try_acquire_watchlist_prewarm_lease",
+      {
+        p_owner_user_id: "ur12345678",
+        p_lease_seconds: 600,
+      },
+    );
+    expect(watchlistMocks.getWatchlistByConfig).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the database lease cannot be checked", async () => {
+    const error = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    supabaseMocks.rpc.mockResolvedValue({
+      data: null,
+      error: { message: "database unavailable" },
+    });
+
+    await prewarmWatchlists("ur12345678", [
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        imdbUserId: "ur12345678",
+        catalogTitle: "Mine",
+        sortOption: "added_at-asc",
+        displayMode: "split",
+        position: 0,
+      },
+    ]);
+
+    expect(watchlistMocks.getWatchlistByConfig).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(
+      "Failed to acquire prewarm lease for ur12345678:",
+      expect.objectContaining({ message: "database unavailable" }),
+    );
   });
 });

@@ -65,6 +65,7 @@ export type Database = {
           is_active: boolean;
           last_cache_served_at: string | null;
           last_fetched_at: string;
+          prewarm_locked_until: string;
           rpdb_api_key: string | null;
         };
         Insert: {
@@ -73,6 +74,7 @@ export type Database = {
           is_active?: boolean;
           last_cache_served_at?: string | null;
           last_fetched_at?: string;
+          prewarm_locked_until?: string;
           rpdb_api_key?: string | null;
         };
         Update: {
@@ -81,6 +83,7 @@ export type Database = {
           is_active?: boolean;
           last_cache_served_at?: string | null;
           last_fetched_at?: string;
+          prewarm_locked_until?: string;
           rpdb_api_key?: string | null;
         };
         Relationships: [];
@@ -90,7 +93,13 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      try_acquire_watchlist_prewarm_lease: {
+        Args: {
+          p_lease_seconds: number;
+          p_owner_user_id: string;
+        };
+        Returns: boolean;
+      };
     };
     Enums: {
       [_ in never]: never;
