@@ -1,3 +1,4 @@
+import type { ConfigWatchlist } from "@stremlist/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const watchlistMocks = vi.hoisted(() => ({
@@ -6,31 +7,74 @@ const watchlistMocks = vi.hoisted(() => ({
 const supabaseMocks = vi.hoisted(() => ({
   rpc: vi.fn(),
 }));
+const userMocks = vi.hoisted(() => ({
+  getUserWatchlists: vi.fn(),
+}));
 
 vi.mock("../watchlist", () => watchlistMocks);
+vi.mock("../user", () => userMocks);
 vi.mock("../../lib/supabase", () => ({
   supabase: { rpc: supabaseMocks.rpc },
 }));
 
 import { prewarmWatchlists } from "../watchlist-prewarm";
 
-interface PrewarmLeaseArgs {
+interface RequestPrewarmArgs {
   p_owner_user_id: string;
   p_lease_seconds: number;
   p_lease_token: string;
 }
 
-interface ReleaseLeaseArgs {
-  p_owner_user_id: string;
-  p_lease_token: string;
+interface FinishPrewarmArgs extends RequestPrewarmArgs {
+  p_completed_generation: number;
 }
+
+function mockPrewarmQueue(): void {
+  let generation = 0;
+  let activeLeaseToken: string | null = null;
+
+  supabaseMocks.rpc.mockImplementation((functionName, rawArgs) => {
+    if (functionName === "request_watchlist_prewarm") {
+      const args = rawArgs as RequestPrewarmArgs;
+      generation += 1;
+      activeLeaseToken ??= args.p_lease_token;
+      return Promise.resolve({
+        data: activeLeaseToken === args.p_lease_token ? generation : null,
+        error: null,
+      });
+    }
+
+    const args = rawArgs as FinishPrewarmArgs;
+    if (activeLeaseToken !== args.p_lease_token) {
+      return Promise.resolve({ data: null, error: null });
+    }
+    if (generation > args.p_completed_generation) {
+      return Promise.resolve({ data: generation, error: null });
+    }
+    activeLeaseToken = null;
+    return Promise.resolve({ data: null, error: null });
+  });
+}
+
+const SAVED_WATCHLISTS: ConfigWatchlist[] = [
+  {
+    id: "11111111-1111-4111-8111-111111111111",
+    imdbUserId: "ur12345678",
+    catalogTitle: "Mine",
+    sortOption: "added_at-asc",
+    displayMode: "split",
+    position: 0,
+  },
+];
 
 describe("prewarmWatchlists", () => {
   beforeEach(() => {
     watchlistMocks.getWatchlistByConfig.mockReset();
     watchlistMocks.getWatchlistByConfig.mockResolvedValue({ metas: [] });
+    userMocks.getUserWatchlists.mockReset();
+    userMocks.getUserWatchlists.mockResolvedValue(SAVED_WATCHLISTS);
     supabaseMocks.rpc.mockReset();
-    supabaseMocks.rpc.mockResolvedValue({ data: true, error: null });
+    mockPrewarmQueue();
     vi.spyOn(console, "log").mockImplementation(() => undefined);
   });
 
@@ -74,65 +118,38 @@ describe("prewarmWatchlists", () => {
     expect(console.log).toHaveBeenCalledWith(
       expect.stringMatching(/^Prewarmed 2\/2 watchlists in \d+ms$/),
     );
-    const [acquireFunction, acquireArgs] = supabaseMocks.rpc.mock.calls[0] as [
+    const [requestFunction, requestArgs] = supabaseMocks.rpc.mock.calls[0] as [
       string,
-      PrewarmLeaseArgs,
+      RequestPrewarmArgs,
     ];
-    const [releaseFunction, releaseArgs] = supabaseMocks.rpc.mock.calls[1] as [
+    const [finishFunction, finishArgs] = supabaseMocks.rpc.mock.calls[1] as [
       string,
-      ReleaseLeaseArgs,
+      FinishPrewarmArgs,
     ];
-    expect(acquireFunction).toBe("try_acquire_watchlist_prewarm_lease");
-    expect(acquireArgs).toEqual({
+    expect(requestFunction).toBe("request_watchlist_prewarm");
+    expect(requestArgs).toEqual({
       p_owner_user_id: "ur12345678",
       p_lease_seconds: 600,
-      p_lease_token: releaseArgs.p_lease_token,
+      p_lease_token: finishArgs.p_lease_token,
     });
-    expect(acquireArgs.p_lease_token).toMatch(
+    expect(requestArgs.p_lease_token).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
-    expect(releaseFunction).toBe("release_watchlist_prewarm_lease");
-    expect(releaseArgs).toEqual({
+    expect(finishFunction).toBe("finish_watchlist_prewarm");
+    expect(finishArgs).toEqual({
       p_owner_user_id: "ur12345678",
-      p_lease_token: acquireArgs.p_lease_token,
+      p_lease_seconds: 600,
+      p_lease_token: requestArgs.p_lease_token,
+      p_completed_generation: 1,
     });
   });
 
   it("releases a completed lease so a later save can prewarm", async () => {
-    let activeLeaseToken: string | null = null;
-    supabaseMocks.rpc.mockImplementation((functionName, args) => {
-      const leaseArgs = args as { p_lease_token: string };
-      if (functionName === "try_acquire_watchlist_prewarm_lease") {
-        if (activeLeaseToken) {
-          return Promise.resolve({ data: false, error: null });
-        }
-        activeLeaseToken = leaseArgs.p_lease_token;
-        return Promise.resolve({ data: true, error: null });
-      }
-
-      if (activeLeaseToken === leaseArgs.p_lease_token) {
-        activeLeaseToken = null;
-        return Promise.resolve({ data: true, error: null });
-      }
-      return Promise.resolve({ data: false, error: null });
-    });
-    const watchlists = [
-      {
-        id: "11111111-1111-4111-8111-111111111111",
-        imdbUserId: "ur12345678",
-        catalogTitle: "Mine",
-        sortOption: "added_at-asc",
-        displayMode: "split" as const,
-        position: 0,
-      },
-    ];
-
-    await prewarmWatchlists("ur12345678", watchlists);
-    await prewarmWatchlists("ur12345678", watchlists);
+    await prewarmWatchlists("ur12345678", SAVED_WATCHLISTS);
+    await prewarmWatchlists("ur12345678", SAVED_WATCHLISTS);
 
     expect(watchlistMocks.getWatchlistByConfig).toHaveBeenCalledTimes(2);
     expect(supabaseMocks.rpc).toHaveBeenCalledTimes(4);
-    expect(activeLeaseToken).toBeNull();
   });
 
   it("continues the batch when one prewarm fails", async () => {
@@ -174,38 +191,6 @@ describe("prewarmWatchlists", () => {
     );
   });
 
-  it("coalesces overlapping batches for the same owner", async () => {
-    let finishFetch: (() => void) | undefined;
-    watchlistMocks.getWatchlistByConfig.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finishFetch = () => {
-            resolve({ metas: [] });
-          };
-        }),
-    );
-    const watchlists = [
-      {
-        id: "11111111-1111-4111-8111-111111111111",
-        imdbUserId: "ur12345678",
-        catalogTitle: "Mine",
-        sortOption: "added_at-asc",
-        displayMode: "split" as const,
-        position: 0,
-      },
-    ];
-
-    const first = prewarmWatchlists("ur12345678", watchlists);
-    const second = prewarmWatchlists("ur12345678", watchlists);
-
-    expect(second).toBe(first);
-    await vi.waitFor(() => {
-      expect(watchlistMocks.getWatchlistByConfig).toHaveBeenCalledOnce();
-    });
-    finishFetch?.();
-    await Promise.all([first, second]);
-  });
-
   it("runs at most two prewarms concurrently", async () => {
     const finishFetches: (() => void)[] = [];
     watchlistMocks.getWatchlistByConfig.mockImplementation(
@@ -240,7 +225,7 @@ describe("prewarmWatchlists", () => {
     await batch;
   });
 
-  it("queues the latest changed watchlist set behind the active batch", async () => {
+  it("picks up a cross-instance request after the active batch", async () => {
     const finishFetches: (() => void)[] = [];
     watchlistMocks.getWatchlistByConfig.mockImplementation(
       () =>
@@ -271,14 +256,16 @@ describe("prewarmWatchlists", () => {
         position: 1,
       },
     ];
+    userMocks.getUserWatchlists.mockResolvedValue(changedWatchlists);
 
     const first = prewarmWatchlists("ur12345678", firstWatchlists);
-    const second = prewarmWatchlists("ur12345678", changedWatchlists);
-
-    expect(second).toBe(first);
     await vi.waitFor(() => {
       expect(watchlistMocks.getWatchlistByConfig).toHaveBeenCalledOnce();
     });
+    const second = prewarmWatchlists("ur12345678", changedWatchlists);
+
+    await second;
+    expect(watchlistMocks.getWatchlistByConfig).toHaveBeenCalledOnce();
     finishFetches[0]();
     await vi.waitFor(() => {
       expect(watchlistMocks.getWatchlistByConfig).toHaveBeenCalledTimes(3);
@@ -287,10 +274,11 @@ describe("prewarmWatchlists", () => {
       finish();
     });
     await first;
+    expect(userMocks.getUserWatchlists).toHaveBeenCalledWith("ur12345678");
   });
 
-  it("skips the batch when another instance holds the database lease", async () => {
-    supabaseMocks.rpc.mockResolvedValue({ data: false, error: null });
+  it("records the request without starting another worker when the lease is held", async () => {
+    supabaseMocks.rpc.mockResolvedValue({ data: null, error: null });
 
     await prewarmWatchlists("ur12345678", [
       {
@@ -305,9 +293,9 @@ describe("prewarmWatchlists", () => {
 
     const [functionName, args] = supabaseMocks.rpc.mock.calls[0] as [
       string,
-      PrewarmLeaseArgs,
+      RequestPrewarmArgs,
     ];
-    expect(functionName).toBe("try_acquire_watchlist_prewarm_lease");
+    expect(functionName).toBe("request_watchlist_prewarm");
     expect(args).toEqual({
       p_owner_user_id: "ur12345678",
       p_lease_seconds: 600,
@@ -319,7 +307,7 @@ describe("prewarmWatchlists", () => {
     expect(watchlistMocks.getWatchlistByConfig).not.toHaveBeenCalled();
   });
 
-  it("fails closed when the database lease cannot be checked", async () => {
+  it("fails closed when the database request cannot be recorded", async () => {
     const error = vi
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
@@ -341,7 +329,7 @@ describe("prewarmWatchlists", () => {
 
     expect(watchlistMocks.getWatchlistByConfig).not.toHaveBeenCalled();
     expect(error).toHaveBeenCalledWith(
-      "Failed to acquire prewarm lease for ur12345678:",
+      "Failed to request prewarm for ur12345678:",
       expect.objectContaining({ message: "database unavailable" }),
     );
   });

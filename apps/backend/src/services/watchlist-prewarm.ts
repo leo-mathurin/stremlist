@@ -1,6 +1,7 @@
 import type { ConfigWatchlist } from "@stremlist/shared";
 import { randomUUID } from "node:crypto";
 import { supabase } from "../lib/supabase";
+import { getUserWatchlists } from "./user";
 import { getWatchlistByConfig } from "./watchlist";
 
 const PREWARM_CONCURRENCY = 2;
@@ -10,36 +11,38 @@ const PREWARM_LEASE_SECONDS =
     ? Number(process.env.PREWARM_LEASE_SECONDS)
     : 600;
 
-async function acquirePrewarmLease(
+async function requestPrewarm(
   ownerUserId: string,
   leaseToken: string,
-): Promise<boolean> {
-  const { data, error } = await supabase.rpc(
-    "try_acquire_watchlist_prewarm_lease",
-    {
-      p_owner_user_id: ownerUserId,
-      p_lease_seconds: PREWARM_LEASE_SECONDS,
-      p_lease_token: leaseToken,
-    },
-  );
+): Promise<number | null> {
+  const { data, error } = await supabase.rpc("request_watchlist_prewarm", {
+    p_owner_user_id: ownerUserId,
+    p_lease_seconds: PREWARM_LEASE_SECONDS,
+    p_lease_token: leaseToken,
+  });
   if (error) {
-    console.error(`Failed to acquire prewarm lease for ${ownerUserId}:`, error);
-    return false;
+    console.error(`Failed to request prewarm for ${ownerUserId}:`, error);
+    return null;
   }
   return data;
 }
 
-async function releasePrewarmLease(
+async function finishPrewarm(
   ownerUserId: string,
   leaseToken: string,
-): Promise<void> {
-  const { error } = await supabase.rpc("release_watchlist_prewarm_lease", {
+  completedGeneration: number,
+): Promise<number | null> {
+  const { data, error } = await supabase.rpc("finish_watchlist_prewarm", {
     p_owner_user_id: ownerUserId,
+    p_lease_seconds: PREWARM_LEASE_SECONDS,
     p_lease_token: leaseToken,
+    p_completed_generation: completedGeneration,
   });
   if (error) {
-    console.error(`Failed to release prewarm lease for ${ownerUserId}:`, error);
+    console.error(`Failed to finish prewarm for ${ownerUserId}:`, error);
+    return null;
   }
+  return data;
 }
 
 async function runPrewarmBatch(
@@ -85,75 +88,24 @@ async function runPrewarmBatch(
   );
 }
 
-interface PrewarmState {
-  activeSignature: string;
-  pendingWatchlists: ConfigWatchlist[] | null;
-}
-
-interface InFlightPrewarm {
-  state: PrewarmState;
-  promise: Promise<void>;
-}
-
-const inFlightBatches = new Map<string, InFlightPrewarm>();
-
-function watchlistSignature(watchlists: ConfigWatchlist[]): string {
-  return watchlists
-    .map((watchlist) => `${watchlist.id}:${watchlist.imdbUserId}`)
-    .join("|");
-}
-
-async function runQueuedBatches(
-  ownerUserId: string,
-  firstWatchlists: ConfigWatchlist[],
-  state: PrewarmState,
-): Promise<void> {
-  const leaseToken = randomUUID();
-  if (!(await acquirePrewarmLease(ownerUserId, leaseToken))) return;
-
-  try {
-    let watchlists: ConfigWatchlist[] | null = firstWatchlists;
-    while (watchlists) {
-      state.activeSignature = watchlistSignature(watchlists);
-      await runPrewarmBatch(ownerUserId, watchlists);
-      watchlists = state.pendingWatchlists;
-      state.pendingWatchlists = null;
-    }
-  } finally {
-    await releasePrewarmLease(ownerUserId, leaseToken);
-  }
-}
-
-export function prewarmWatchlists(
+export async function prewarmWatchlists(
   ownerUserId: string,
   watchlists: ConfigWatchlist[],
 ): Promise<void> {
-  const signature = watchlistSignature(watchlists);
-  const existing = inFlightBatches.get(ownerUserId);
-  if (existing) {
-    existing.state.pendingWatchlists =
-      signature === existing.state.activeSignature ? null : watchlists;
-    return existing.promise;
-  }
+  const leaseToken = randomUUID();
+  let generation = await requestPrewarm(ownerUserId, leaseToken);
+  if (generation === null) return;
 
-  const state: PrewarmState = {
-    activeSignature: signature,
-    pendingWatchlists: null,
-  };
-  const batch = runQueuedBatches(ownerUserId, watchlists, state);
-  const inFlight = { state, promise: batch };
-  inFlightBatches.set(ownerUserId, inFlight);
-  void batch.then(
-    () => {
-      if (inFlightBatches.get(ownerUserId) === inFlight) {
-        inFlightBatches.delete(ownerUserId);
-      }
-    },
-    () => {
-      if (inFlightBatches.get(ownerUserId) === inFlight) {
-        inFlightBatches.delete(ownerUserId);
-      }
-    },
-  );
-  return batch;
+  for (;;) {
+    await runPrewarmBatch(ownerUserId, watchlists);
+    const nextGeneration = await finishPrewarm(
+      ownerUserId,
+      leaseToken,
+      generation,
+    );
+    if (nextGeneration === null) return;
+
+    generation = nextGeneration;
+    watchlists = await getUserWatchlists(ownerUserId);
+  }
 }
