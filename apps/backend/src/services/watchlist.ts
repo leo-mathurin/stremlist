@@ -77,6 +77,56 @@ export interface WatchlistFetchConfig {
   noCacheFallback?: boolean;
 }
 
+interface FreshWatchlist {
+  data: WatchlistData;
+  cachedAt: Date;
+  generation: string | null;
+}
+
+const inFlightRefreshes = new Map<string, Promise<FreshWatchlist>>();
+
+function refreshKey(config: WatchlistFetchConfig): string {
+  return `${config.watchlistId}:${config.imdbUserId}`;
+}
+
+async function fetchAndCacheWatchlist(
+  config: WatchlistFetchConfig,
+): Promise<FreshWatchlist> {
+  const fetcher = isChartId(config.imdbUserId)
+    ? fetchChart
+    : isListId(config.imdbUserId)
+      ? fetchList
+      : fetchWatchlist;
+  const data = await fetcher(config.imdbUserId, DEFAULT_SORT_OPTIONS, null);
+  const cachedAt = new Date();
+  const generation = await upsertCache(config.watchlistId, data, cachedAt);
+  return { data, cachedAt, generation };
+}
+
+function refreshWatchlist(
+  config: WatchlistFetchConfig,
+): Promise<FreshWatchlist> {
+  const key = refreshKey(config);
+  const existing = inFlightRefreshes.get(key);
+  if (existing) return existing;
+
+  const refresh = fetchAndCacheWatchlist(config);
+  inFlightRefreshes.set(key, refresh);
+  void refresh.then(
+    () => {
+      if (inFlightRefreshes.get(key) === refresh) {
+        inFlightRefreshes.delete(key);
+      }
+    },
+    () => {
+      if (inFlightRefreshes.get(key) === refresh) {
+        inFlightRefreshes.delete(key);
+      }
+    },
+  );
+  return refresh;
+}
+
 export async function getWatchlistByConfig(
   config: WatchlistFetchConfig,
 ): Promise<WatchlistData> {
@@ -109,27 +159,21 @@ export async function getWatchlistByConfig(
   }
 
   try {
-    const fetcher = isChartId(config.imdbUserId)
-      ? fetchChart
-      : isListId(config.imdbUserId)
-        ? fetchList
-        : fetchWatchlist;
-    // Fetch canonically so the cached blob is sort- and RPDB-key-agnostic.
-    const fresh = await fetcher(config.imdbUserId, DEFAULT_SORT_OPTIONS, null);
-    const cachedAt = new Date();
+    // A config save can prewarm at the same moment Stremio requests a catalog.
+    // Share the canonical scrape/cache write, then apply caller-specific
+    // sorting and poster customization below.
+    const {
+      data: fresh,
+      cachedAt,
+      generation,
+    } = await refreshWatchlist(config);
 
-    const [generation] = await Promise.all([
-      upsertCache(config.watchlistId, fresh, cachedAt),
-      // Tier 2: only stamp the analytics timestamp on a real refresh.
-      ...(config.skipUserTimestamp
-        ? []
-        : [
-            supabase
-              .from("users")
-              .update({ last_fetched_at: cachedAt.toISOString() })
-              .eq("imdb_user_id", config.ownerUserId),
-          ]),
-    ]);
+    if (!config.skipUserTimestamp) {
+      await supabase
+        .from("users")
+        .update({ last_fetched_at: cachedAt.toISOString() })
+        .eq("imdb_user_id", config.ownerUserId);
+    }
     return resortCachedData(
       fresh,
       sortOptions,

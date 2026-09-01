@@ -1,4 +1,8 @@
-import { BASE_MANIFEST, ADDON_VERSION } from "@stremlist/shared";
+import {
+  BASE_MANIFEST,
+  ADDON_VERSION,
+  IMDB_USER_ID_PATTERN,
+} from "@stremlist/shared";
 import type { StremioManifest } from "@stremlist/shared";
 import { Hono } from "hono";
 import { buildManifestCatalogs } from "../services/stremio-catalogs";
@@ -29,6 +33,19 @@ manifest.get("/manifest.json", (c) => {
 manifest.get("/:userId/manifest.json", async (c) => {
   const userId = c.req.param("userId");
   console.log(`Serving user-specific manifest for: ${userId}`);
+
+  if (!IMDB_USER_ID_PATTERN.test(userId)) {
+    return c.json(
+      {
+        ...structuredClone(BASE_MANIFEST),
+        behaviorHints: {
+          configurable: true,
+          configurationRequired: true,
+        },
+      },
+      400,
+    );
+  }
 
   try {
     await ensureUser(userId);

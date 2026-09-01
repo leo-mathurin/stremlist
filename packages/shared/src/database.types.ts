@@ -65,6 +65,9 @@ export type Database = {
           is_active: boolean;
           last_cache_served_at: string | null;
           last_fetched_at: string;
+          prewarm_lease_token: string | null;
+          prewarm_locked_until: string;
+          prewarm_request_generation: number;
           rpdb_api_key: string | null;
         };
         Insert: {
@@ -73,6 +76,9 @@ export type Database = {
           is_active?: boolean;
           last_cache_served_at?: string | null;
           last_fetched_at?: string;
+          prewarm_lease_token?: string | null;
+          prewarm_locked_until?: string;
+          prewarm_request_generation?: number;
           rpdb_api_key?: string | null;
         };
         Update: {
@@ -81,6 +87,9 @@ export type Database = {
           is_active?: boolean;
           last_cache_served_at?: string | null;
           last_fetched_at?: string;
+          prewarm_lease_token?: string | null;
+          prewarm_locked_until?: string;
+          prewarm_request_generation?: number;
           rpdb_api_key?: string | null;
         };
         Relationships: [];
@@ -90,7 +99,23 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      finish_watchlist_prewarm: {
+        Args: {
+          p_completed_generation: number;
+          p_lease_seconds: number;
+          p_lease_token: string;
+          p_owner_user_id: string;
+        };
+        Returns: number;
+      };
+      request_watchlist_prewarm: {
+        Args: {
+          p_lease_seconds: number;
+          p_lease_token: string;
+          p_owner_user_id: string;
+        };
+        Returns: number;
+      };
     };
     Enums: {
       [_ in never]: never;

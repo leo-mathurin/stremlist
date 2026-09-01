@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { FRONTEND_URL } from "../env.js";
+import { BACKEND_URL, FRONTEND_URL } from "../env.js";
 import { bootstrapUser, getConfig } from "../helpers/api.js";
 import { resetDb } from "../helpers/db.js";
 import {
@@ -30,6 +30,86 @@ test(
     ).toBeVisible();
     await expect(
       page.getByRole("link", { name: "Open in Stremio Web" }),
+    ).toBeVisible();
+  },
+);
+
+test(
+  "manifest copy works through an accessible control",
+  { tag: "@local" },
+  async ({ context, page }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"], {
+      origin: FRONTEND_URL,
+    });
+    await bootstrapUser(PUBLIC_USER);
+    await page.goto(configureUrl(PUBLIC_USER));
+    await expect(page.getByText("Catalog 1")).toBeVisible();
+    const copyButton = page.getByRole("button", { name: "Copy manifest URL" });
+    await expect(copyButton).toBeVisible();
+
+    await copyButton.click();
+    await expect(
+      page.getByRole("button", { name: "Manifest URL copied" }),
+    ).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toBe(`${BACKEND_URL}/${PUBLIC_USER}/manifest.json`);
+  },
+);
+
+test(
+  "clipboard denial explains how to copy the manifest URL manually",
+  { tag: "@local" },
+  async ({ page }) => {
+    await bootstrapUser(PUBLIC_USER);
+    await page.goto(configureUrl(PUBLIC_USER));
+    await expect(page.getByText("Catalog 1")).toBeVisible();
+    await page.evaluate(() => {
+      Object.defineProperty(navigator.clipboard, "writeText", {
+        configurable: true,
+        value: () =>
+          Promise.reject(new DOMException("Denied", "NotAllowedError")),
+      });
+    });
+
+    await page.getByRole("button", { name: "Copy manifest URL" }).click();
+    await expect(
+      page.getByText(
+        "Could not copy the manifest URL. Select it and copy it manually.",
+      ),
+    ).toBeVisible({ timeout: 2_000 });
+  },
+);
+
+test(
+  "failed configuration loads cannot overwrite saved settings and can retry",
+  { tag: "@local" },
+  async ({ page }) => {
+    await bootstrapUser(PUBLIC_USER);
+    let attempts = 0;
+    await page.route(`**/${PUBLIC_USER}/config`, async (route) => {
+      if (route.request().method() === "GET" && attempts++ === 0) {
+        await route.fulfill({
+          status: 503,
+          json: { error: "Configuration storage unavailable." },
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.goto(configureUrl(PUBLIC_USER));
+    await expect(
+      page.getByText("Could not load your configuration. Please try again."),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Save", exact: true }),
+    ).not.toBeVisible();
+
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect(page.getByText("Catalog 1")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Save", exact: true }),
     ).toBeVisible();
   },
 );

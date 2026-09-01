@@ -16,6 +16,7 @@ export const PUBLIC_LIST = process.env.E2E_IMDB_LIST_ID ?? "ls055592025";
 // a 13-digit id is far outside the allocated range.
 export const UNKNOWN_USER = "ur9999999999999";
 export const UNKNOWN_LIST = "ls9999999999999";
+export const MALFORMED_USER = "not-an-imdb-user";
 
 // Account whose watchlist is deliberately kept private for these tests
 // (maintainer-owned). The p-handle resolves to the same account, covering the
@@ -31,6 +32,7 @@ export const E2E_USER_IDS = [
   PUBLIC_USER_2,
   UNKNOWN_USER,
   PRIVATE_USER,
+  MALFORMED_USER,
 ] as const;
 
 // No stable private ls list is available; provide one via env to enable the
