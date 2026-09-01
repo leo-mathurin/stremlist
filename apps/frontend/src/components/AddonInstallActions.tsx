@@ -20,13 +20,19 @@ export default function AddonInstallActions({
   className,
 }: AddonInstallActionsProps) {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
   const urls = buildUrls(imdbUserId);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(urls.addonUrl).then(() => {
+  const handleCopy = async () => {
+    setCopyError(false);
+    try {
+      await navigator.clipboard.writeText(urls.addonUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
+    } catch {
+      setCopied(false);
+      setCopyError(true);
+    }
   };
 
   return (
@@ -53,10 +59,19 @@ export default function AddonInstallActions({
             value={urls.addonUrl}
             className="flex-1 font-mono text-sm bg-white"
           />
-          <Button onClick={handleCopy} variant="ghost">
+          <Button
+            onClick={handleCopy}
+            variant="ghost"
+            aria-label={copied ? "Manifest URL copied" : "Copy manifest URL"}
+          >
             {copied ? <Check /> : <Copy />}
           </Button>
         </div>
+        {copyError && (
+          <p role="alert" className="mt-2 text-sm text-red-600">
+            Could not copy the manifest URL. Select it and copy it manually.
+          </p>
+        )}
       </div>
     </div>
   );

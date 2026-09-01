@@ -69,3 +69,19 @@ test(
     ).toBeVisible();
   },
 );
+
+test(
+  "unknown routes offer a way back home",
+  { tag: "@local" },
+  async ({ page }) => {
+    await page.goto(`${FRONTEND_URL}/this-route-does-not-exist`);
+    await expect(
+      page.getByRole("heading", { name: "Page not found" }),
+    ).toBeVisible();
+    await page.getByRole("link", { name: "Return to home" }).click();
+    await expect(page).toHaveURL(`${FRONTEND_URL}/`);
+    await expect(
+      page.getByRole("heading", { name: "Connect IMDb to Stremio" }),
+    ).toBeVisible();
+  },
+);

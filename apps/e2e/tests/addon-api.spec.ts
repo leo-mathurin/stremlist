@@ -20,6 +20,7 @@ import {
   getCacheObjectKeys,
 } from "../helpers/r2.js";
 import {
+  MALFORMED_USER,
   P_HANDLE,
   PRIVATE_LIST,
   PRIVATE_P_HANDLE,
@@ -94,6 +95,27 @@ test.describe("manifest", () => {
       const manifest = await getUserManifest(PUBLIC_USER);
       expect(manifest.catalogs).toHaveLength(1);
       expect(manifest.catalogs[0].type).toBe("movie");
+    },
+  );
+
+  test(
+    "rejects malformed installation IDs",
+    { tag: "@local" },
+    async ({ request }) => {
+      try {
+        const response = await request.get(
+          `${BACKEND_URL}/${MALFORMED_USER}/manifest.json`,
+        );
+        expect(response.status()).toBe(400);
+        await expect(response.json()).resolves.toMatchObject({
+          behaviorHints: {
+            configurable: true,
+            configurationRequired: true,
+          },
+        });
+      } finally {
+        await resetDb();
+      }
     },
   );
 });

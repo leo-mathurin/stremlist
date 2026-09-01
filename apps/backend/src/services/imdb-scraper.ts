@@ -15,12 +15,26 @@ import { shuffleArray } from "../utils";
 const GRAPHQL_ENDPOINT = "https://api.graphql.imdb.com/";
 const GRAPHQL_CLIENT_NAME = "imdb-next-desktop";
 
-// IMDb's GraphQL rejects the full-metadata query with "Too much data
-// requested" once `first` reaches ~1000. 250 stays comfortably under that and
-// matches the cursor index IMDb itself uses on imdb.com.
-const PAGE_SIZE = 250;
-// Safety stop for runaway pagination loops.
-const MAX_PAGES = 40;
+// 750 cuts the number of sequential IMDb requests by two thirds while keeping
+// each full-metadata response below the size where latency rises sharply.
+const PAGE_SIZE = 750;
+const IMDB_CURSOR_WINDOW_SIZE = 10_000;
+// Keep the user-facing item ceiling explicit, then derive the pagination safety
+// stop from it so changing PAGE_SIZE cannot silently change the supported limit.
+// This is intentionally bounded: every additional page is a sequential IMDb
+// request, so raising it further would make cold loads in Stremio even slower.
+const MAX_ITEMS = 15_000;
+const MAX_PAGES =
+  Math.floor(MAX_ITEMS / IMDB_CURSOR_WINDOW_SIZE) *
+    Math.ceil(IMDB_CURSOR_WINDOW_SIZE / PAGE_SIZE) +
+  Math.ceil((MAX_ITEMS % IMDB_CURSOR_WINDOW_SIZE) / PAGE_SIZE);
+
+function getPageSize(itemsFetched: number, targetItems: number): number {
+  const remaining = targetItems - itemsFetched;
+  const cursorWindowRemaining =
+    IMDB_CURSOR_WINDOW_SIZE - (itemsFetched % IMDB_CURSOR_WINDOW_SIZE);
+  return Math.min(PAGE_SIZE, remaining, cursorWindowRemaining);
+}
 
 // Single source of truth for the `Title` node field selection. Both watchlist
 // queries and all three chart queries return this exact node shape, so they all
@@ -381,11 +395,15 @@ export async function getImdbWatchlist(input: string): Promise<ImdbEdge[]> {
   const userId = await normalizeImdbUserId(input);
   const edges: ImdbEdge[] = [];
   let after: string | null = null;
+  let targetItems = MAX_ITEMS;
 
   for (let page = 0; page < MAX_PAGES; page++) {
+    const first = getPageSize(edges.length, targetItems);
+    if (first <= 0) break;
+
     const json = await queryImdbGraphQL("WatchListPage", WATCHLIST_QUERY, {
       urConst: userId,
-      first: PAGE_SIZE,
+      first,
       after,
     });
 
@@ -406,9 +424,22 @@ export async function getImdbWatchlist(input: string): Promise<ImdbEdge[]> {
     }
 
     const search = list.titleListItemSearch;
-    edges.push(...(search?.edges ?? []));
-
+    targetItems = Math.min(search?.total ?? MAX_ITEMS, MAX_ITEMS);
     const pageInfo = search?.pageInfo;
+    const pageCapacity = Math.max(targetItems - edges.length, 0);
+    edges.push(...(search?.edges ?? []).slice(0, pageCapacity));
+
+    if (edges.length >= targetItems) {
+      if (
+        (search?.total ?? 0) > MAX_ITEMS ||
+        (targetItems === MAX_ITEMS && pageInfo?.hasNextPage)
+      ) {
+        console.warn(
+          `Watchlist for ${userId} exceeded the ${MAX_ITEMS.toLocaleString("en-US")}-item limit; remaining items truncated.`,
+        );
+      }
+      break;
+    }
     if (!pageInfo?.hasNextPage || !pageInfo.endCursor) {
       break;
     }
@@ -416,7 +447,7 @@ export async function getImdbWatchlist(input: string): Promise<ImdbEdge[]> {
 
     if (page === MAX_PAGES - 1) {
       console.warn(
-        `Watchlist for ${userId} hit MAX_PAGES (${MAX_PAGES} × ${PAGE_SIZE} = ${MAX_PAGES * PAGE_SIZE}); remaining items truncated.`,
+        `Watchlist for ${userId} exceeded the ${MAX_ITEMS.toLocaleString("en-US")}-item limit; remaining items truncated.`,
       );
     }
   }
@@ -765,11 +796,15 @@ export async function validateImdbList(
 export async function getImdbList(listId: string): Promise<ImdbEdge[]> {
   const edges: ImdbEdge[] = [];
   let after: string | null = null;
+  let targetItems = MAX_ITEMS;
 
   for (let page = 0; page < MAX_PAGES; page++) {
+    const first = getPageSize(edges.length, targetItems);
+    if (first <= 0) break;
+
     const json = await queryImdbGraphQL("ListPage", LIST_QUERY, {
       listId,
-      first: PAGE_SIZE,
+      first,
       after,
     });
 
@@ -792,9 +827,22 @@ export async function getImdbList(listId: string): Promise<ImdbEdge[]> {
     }
 
     const search = list.titleListItemSearch;
-    edges.push(...(search?.edges ?? []));
-
+    targetItems = Math.min(search?.total ?? MAX_ITEMS, MAX_ITEMS);
     const pageInfo = search?.pageInfo;
+    const pageCapacity = Math.max(targetItems - edges.length, 0);
+    edges.push(...(search?.edges ?? []).slice(0, pageCapacity));
+
+    if (edges.length >= targetItems) {
+      if (
+        (search?.total ?? 0) > MAX_ITEMS ||
+        (targetItems === MAX_ITEMS && pageInfo?.hasNextPage)
+      ) {
+        console.warn(
+          `List ${listId} exceeded the ${MAX_ITEMS.toLocaleString("en-US")}-item limit; remaining items truncated.`,
+        );
+      }
+      break;
+    }
     if (!pageInfo?.hasNextPage || !pageInfo.endCursor) {
       break;
     }
@@ -802,7 +850,7 @@ export async function getImdbList(listId: string): Promise<ImdbEdge[]> {
 
     if (page === MAX_PAGES - 1) {
       console.warn(
-        `List ${listId} hit MAX_PAGES (${MAX_PAGES} × ${PAGE_SIZE} = ${MAX_PAGES * PAGE_SIZE}); remaining items truncated.`,
+        `List ${listId} exceeded the ${MAX_ITEMS.toLocaleString("en-US")}-item limit; remaining items truncated.`,
       );
     }
   }

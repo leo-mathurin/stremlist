@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
+  getImdbList,
   getImdbWatchlist,
   fetchWatchlist,
   normalizeImdbUserId,
@@ -75,6 +76,13 @@ function mockGraphQLResponse(
     status,
     headers: { "Content-Type": "application/json" },
     ...(ok ? {} : { statusText: "Bad Request" }),
+  });
+}
+
+function mockListGraphQLResponse(list: object | null) {
+  return new Response(JSON.stringify({ data: { list }, extensions: {} }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
   });
 }
 
@@ -185,6 +193,94 @@ describe("getImdbWatchlist (unit)", () => {
     expect(result).toEqual([]);
   });
 
+  it("supports 15,000 items without crossing a cursor window", async () => {
+    const requestedPageSizes: number[] = [];
+    let itemOffset = 0;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
+      const body = JSON.parse(init?.body as string) as {
+        variables: { first: number };
+      };
+      const requested = body.variables.first;
+      requestedPageSizes.push(requested);
+      const edges = Array.from({ length: requested }, (_, index) =>
+        makeEdge({
+          id: `tt${String(itemOffset + index).padStart(7, "0")}`,
+        }),
+      );
+      itemOffset += requested;
+
+      return Promise.resolve(
+        mockGraphQLResponse({
+          id: "ls123",
+          visibility: { id: "PUBLIC" },
+          titleListItemSearch: {
+            total: 15_001,
+            edges,
+            pageInfo: {
+              hasNextPage: true,
+              endCursor: `item-${itemOffset}`,
+            },
+          },
+        }),
+      );
+    });
+
+    const result = await getImdbWatchlist("ur195879360");
+
+    expect(result).toHaveLength(15_000);
+    expect(requestedPageSizes).toEqual([
+      ...Array<number>(13).fill(750),
+      250,
+      ...Array<number>(6).fill(750),
+      500,
+    ]);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("15,000-item limit"),
+    );
+  });
+
+  it("reduces the final page size to avoid crossing IMDb's cursor boundary", async () => {
+    const requestedPageSizes: number[] = [];
+    let itemOffset = 0;
+
+    vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
+      const body = JSON.parse(init?.body as string) as {
+        variables: { first: number };
+      };
+      const requested = body.variables.first;
+      requestedPageSizes.push(requested);
+
+      const edges = Array.from({ length: requested }, (_, index) =>
+        makeEdge({
+          id: `tt${String(itemOffset + index).padStart(7, "0")}`,
+        }),
+      );
+      itemOffset += requested;
+
+      return Promise.resolve(
+        mockGraphQLResponse({
+          id: "ls123",
+          visibility: { id: "PUBLIC" },
+          titleListItemSearch: {
+            total: 1_000,
+            edges,
+            pageInfo: {
+              hasNextPage: itemOffset < 1_000,
+              endCursor: `item-${itemOffset}`,
+            },
+          },
+        }),
+      );
+    });
+
+    const result = await getImdbWatchlist("ur195879360");
+
+    expect(result).toHaveLength(1_000);
+    expect(requestedPageSizes).toEqual([750, 250]);
+  });
+
   it("sends the correct request to the IMDb GraphQL endpoint", async () => {
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       mockGraphQLResponse({
@@ -214,6 +310,59 @@ describe("getImdbWatchlist (unit)", () => {
     };
     expect(body.operationName).toBe("WatchListPage");
     expect(body.variables.urConst).toBe("ur195879360");
+  });
+});
+
+describe("getImdbList (unit)", () => {
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("starts a new page at the 10,000-item cursor boundary", async () => {
+    const requestedPageSizes: number[] = [];
+    let itemOffset = 0;
+
+    vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
+      const body = JSON.parse(init?.body as string) as {
+        variables: { first: number };
+      };
+      const requested = body.variables.first;
+      requestedPageSizes.push(requested);
+      const edges = Array.from({ length: requested }, (_, index) =>
+        makeEdge({
+          id: `tt${String(itemOffset + index).padStart(7, "0")}`,
+        }),
+      );
+      itemOffset += requested;
+
+      return Promise.resolve(
+        mockListGraphQLResponse({
+          id: "ls123456789",
+          visibility: { id: "PUBLIC" },
+          titleListItemSearch: {
+            total: 10_001,
+            edges,
+            pageInfo: {
+              hasNextPage: itemOffset < 10_001,
+              endCursor: `item-${itemOffset}`,
+            },
+          },
+        }),
+      );
+    });
+
+    const result = await getImdbList("ls123456789");
+
+    expect(result).toHaveLength(10_001);
+    expect(requestedPageSizes).toEqual([
+      ...Array<number>(13).fill(750),
+      250,
+      1,
+    ]);
   });
 });
 

@@ -319,6 +319,8 @@ export default function Configure() {
   const [cooldownSeconds, setCooldownSeconds] = useState(60);
   const [now, setNow] = useState(() => Date.now());
   const [userNotFound, setUserNotFound] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [showReinstallHint, setShowReinstallHint] = useState(false);
   const [watchlistBaselineSignature, setWatchlistBaselineSignature] =
     useState("");
@@ -332,6 +334,7 @@ export default function Configure() {
 
     setLoading(true);
     setUserNotFound(false);
+    setLoadError(false);
     setWatchlists([
       createWatchlistRow({
         imdbUserId: userId,
@@ -352,6 +355,9 @@ export default function Configure() {
         if (res.status === 404) {
           setUserNotFound(true);
           return null;
+        }
+        if (!res.ok) {
+          throw new Error("Failed to load configuration");
         }
         return res.json();
       })
@@ -379,9 +385,9 @@ export default function Configure() {
           }
         }
       })
-      .catch(() => {})
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
-  }, [userId]);
+  }, [userId, loadAttempt]);
 
   // Tick once a second so the "last refreshed" label and the refresh cooldown
   // countdown stay live without per-event timers.
@@ -669,7 +675,7 @@ export default function Configure() {
               </p>
             )}
           </div>
-          {userId && !loading && !userNotFound && (
+          {userId && !loading && !userNotFound && !loadError && (
             <div className="flex items-center gap-3">
               <p className="flex items-center gap-2 text-sm text-gray-500">
                 <span
@@ -755,6 +761,21 @@ export default function Configure() {
                       install the addon
                     </Link>{" "}
                     first before configuring.
+                  </AlertDescription>
+                </Alert>
+              ) : loadError ? (
+                <Alert className="border-red-200 bg-red-50 text-red-700">
+                  <AlertDescription className="gap-3">
+                    <p>Could not load your configuration. Please try again.</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setLoadAttempt((current) => current + 1)}
+                      className="border-red-300 bg-white text-red-700 hover:bg-red-100"
+                    >
+                      Try again
+                    </Button>
                   </AlertDescription>
                 </Alert>
               ) : (

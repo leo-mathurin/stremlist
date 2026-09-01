@@ -4,6 +4,16 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import app from "../index.js";
 
+const backgroundMocks = vi.hoisted(() => ({
+  scheduleBackgroundTask: vi.fn(),
+}));
+const prewarmMocks = vi.hoisted(() => ({
+  prewarmWatchlists: vi.fn(),
+}));
+
+vi.mock("../lib/background", () => backgroundMocks);
+vi.mock("../services/watchlist-prewarm", () => prewarmMocks);
+
 vi.mock("../lib/supabase", async () => {
   return await import("./helpers/mock-supabase.js");
 });
@@ -91,6 +101,9 @@ describe("Watchlist CRUD via API", () => {
   beforeEach(() => {
     db.reset();
     seedUser(OWNER);
+    backgroundMocks.scheduleBackgroundTask.mockReset();
+    prewarmMocks.prewarmWatchlists.mockReset();
+    prewarmMocks.prewarmWatchlists.mockResolvedValue(undefined);
   });
 
   // ---- GET /:userId/config ----
@@ -178,6 +191,17 @@ describe("Watchlist CRUD via API", () => {
 
       expect(data.watchlists[0].imdbUserId).toBe(OWNER);
       expect(data.watchlists[1].imdbUserId).toBe(OTHER_IMDB);
+
+      expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledOnce();
+      const task = backgroundMocks.scheduleBackgroundTask.mock.calls[0][0] as
+        | (() => Promise<void>)
+        | undefined;
+      expect(task).toBeTypeOf("function");
+      await task?.();
+      expect(prewarmMocks.prewarmWatchlists).toHaveBeenCalledWith(
+        OWNER,
+        data.watchlists,
+      );
     });
 
     it("preserves IDs when updating sort order", async () => {
@@ -269,6 +293,7 @@ describe("Watchlist CRUD via API", () => {
       expect(res.status).toBe(400);
       const data = await res.json();
       expect(data.error).toContain("unique");
+      expect(backgroundMocks.scheduleBackgroundTask).not.toHaveBeenCalled();
     });
 
     it("rejects empty watchlist array", async () => {
