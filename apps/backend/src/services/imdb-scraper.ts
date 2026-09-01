@@ -16,16 +16,25 @@ const GRAPHQL_ENDPOINT = "https://api.graphql.imdb.com/";
 const GRAPHQL_CLIENT_NAME = "imdb-next-desktop";
 
 // 750 cuts the number of sequential IMDb requests by two thirds while keeping
-// each full-metadata response below the size where latency rises sharply. The
-// final request is reduced to the exact number of remaining items because IMDb
-// rejects pagination that crosses its 10,000-item cursor boundary.
+// each full-metadata response below the size where latency rises sharply.
 const PAGE_SIZE = 750;
+const IMDB_CURSOR_WINDOW_SIZE = 10_000;
 // Keep the user-facing item ceiling explicit, then derive the pagination safety
 // stop from it so changing PAGE_SIZE cannot silently change the supported limit.
 // This is intentionally bounded: every additional page is a sequential IMDb
 // request, so raising it further would make cold loads in Stremio even slower.
 const MAX_ITEMS = 15_000;
-const MAX_PAGES = Math.ceil(MAX_ITEMS / PAGE_SIZE);
+const MAX_PAGES =
+  Math.floor(MAX_ITEMS / IMDB_CURSOR_WINDOW_SIZE) *
+    Math.ceil(IMDB_CURSOR_WINDOW_SIZE / PAGE_SIZE) +
+  Math.ceil((MAX_ITEMS % IMDB_CURSOR_WINDOW_SIZE) / PAGE_SIZE);
+
+function getPageSize(itemsFetched: number, targetItems: number): number {
+  const remaining = targetItems - itemsFetched;
+  const cursorWindowRemaining =
+    IMDB_CURSOR_WINDOW_SIZE - (itemsFetched % IMDB_CURSOR_WINDOW_SIZE);
+  return Math.min(PAGE_SIZE, remaining, cursorWindowRemaining);
+}
 
 // Single source of truth for the `Title` node field selection. Both watchlist
 // queries and all three chart queries return this exact node shape, so they all
@@ -389,12 +398,12 @@ export async function getImdbWatchlist(input: string): Promise<ImdbEdge[]> {
   let targetItems = MAX_ITEMS;
 
   for (let page = 0; page < MAX_PAGES; page++) {
-    const remaining = targetItems - edges.length;
-    if (remaining <= 0) break;
+    const first = getPageSize(edges.length, targetItems);
+    if (first <= 0) break;
 
     const json = await queryImdbGraphQL("WatchListPage", WATCHLIST_QUERY, {
       urConst: userId,
-      first: Math.min(PAGE_SIZE, remaining),
+      first,
       after,
     });
 
@@ -790,12 +799,12 @@ export async function getImdbList(listId: string): Promise<ImdbEdge[]> {
   let targetItems = MAX_ITEMS;
 
   for (let page = 0; page < MAX_PAGES; page++) {
-    const remaining = targetItems - edges.length;
-    if (remaining <= 0) break;
+    const first = getPageSize(edges.length, targetItems);
+    if (first <= 0) break;
 
     const json = await queryImdbGraphQL("ListPage", LIST_QUERY, {
       listId,
-      first: Math.min(PAGE_SIZE, remaining),
+      first,
       after,
     });
 

@@ -95,4 +95,113 @@ describe("prewarmWatchlists", () => {
       expect.stringMatching(/^Prewarmed 1\/2 watchlists in \d+ms$/),
     );
   });
+
+  it("coalesces overlapping batches for the same owner", async () => {
+    let finishFetch: (() => void) | undefined;
+    watchlistMocks.getWatchlistByConfig.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishFetch = () => {
+            resolve({ metas: [] });
+          };
+        }),
+    );
+    const watchlists = [
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        imdbUserId: "ur12345678",
+        catalogTitle: "Mine",
+        sortOption: "added_at-asc",
+        displayMode: "split" as const,
+        position: 0,
+      },
+    ];
+
+    const first = prewarmWatchlists("ur12345678", watchlists);
+    const second = prewarmWatchlists("ur12345678", watchlists);
+
+    expect(second).toBe(first);
+    expect(watchlistMocks.getWatchlistByConfig).toHaveBeenCalledOnce();
+    finishFetch?.();
+    await Promise.all([first, second]);
+  });
+
+  it("runs at most two prewarms concurrently", async () => {
+    const finishFetches: (() => void)[] = [];
+    watchlistMocks.getWatchlistByConfig.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishFetches.push(() => {
+            resolve({ metas: [] });
+          });
+        }),
+    );
+    const watchlists = Array.from({ length: 3 }, (_, index) => ({
+      id: `${index + 1}1111111-1111-4111-8111-111111111111`,
+      imdbUserId: `ur1234567${index}`,
+      catalogTitle: String(index),
+      sortOption: "added_at-asc",
+      displayMode: "split" as const,
+      position: index,
+    }));
+
+    const batch = prewarmWatchlists("ur12345678", watchlists);
+
+    expect(watchlistMocks.getWatchlistByConfig).toHaveBeenCalledTimes(2);
+    finishFetches[0]();
+    await vi.waitFor(() => {
+      expect(watchlistMocks.getWatchlistByConfig).toHaveBeenCalledTimes(3);
+    });
+    finishFetches.slice(1).forEach((finish) => {
+      finish();
+    });
+    await batch;
+  });
+
+  it("queues the latest changed watchlist set behind the active batch", async () => {
+    const finishFetches: (() => void)[] = [];
+    watchlistMocks.getWatchlistByConfig.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishFetches.push(() => {
+            resolve({ metas: [] });
+          });
+        }),
+    );
+    const firstWatchlists = [
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        imdbUserId: "ur12345678",
+        catalogTitle: "Mine",
+        sortOption: "added_at-asc",
+        displayMode: "split" as const,
+        position: 0,
+      },
+    ];
+    const changedWatchlists = [
+      ...firstWatchlists,
+      {
+        id: "22222222-2222-4222-8222-222222222222",
+        imdbUserId: "ur87654321",
+        catalogTitle: "Friend",
+        sortOption: "added_at-asc",
+        displayMode: "split" as const,
+        position: 1,
+      },
+    ];
+
+    const first = prewarmWatchlists("ur12345678", firstWatchlists);
+    const second = prewarmWatchlists("ur12345678", changedWatchlists);
+
+    expect(second).toBe(first);
+    expect(watchlistMocks.getWatchlistByConfig).toHaveBeenCalledOnce();
+    finishFetches[0]();
+    await vi.waitFor(() => {
+      expect(watchlistMocks.getWatchlistByConfig).toHaveBeenCalledTimes(3);
+    });
+    finishFetches.slice(1).forEach((finish) => {
+      finish();
+    });
+    await first;
+  });
 });
