@@ -65,6 +65,7 @@ export type Database = {
           is_active: boolean;
           last_cache_served_at: string | null;
           last_fetched_at: string;
+          prewarm_lease_token: string | null;
           prewarm_locked_until: string;
           rpdb_api_key: string | null;
         };
@@ -74,6 +75,7 @@ export type Database = {
           is_active?: boolean;
           last_cache_served_at?: string | null;
           last_fetched_at?: string;
+          prewarm_lease_token?: string | null;
           prewarm_locked_until?: string;
           rpdb_api_key?: string | null;
         };
@@ -83,6 +85,7 @@ export type Database = {
           is_active?: boolean;
           last_cache_served_at?: string | null;
           last_fetched_at?: string;
+          prewarm_lease_token?: string | null;
           prewarm_locked_until?: string;
           rpdb_api_key?: string | null;
         };
@@ -93,9 +96,17 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      release_watchlist_prewarm_lease: {
+        Args: {
+          p_lease_token: string;
+          p_owner_user_id: string;
+        };
+        Returns: boolean;
+      };
       try_acquire_watchlist_prewarm_lease: {
         Args: {
           p_lease_seconds: number;
+          p_lease_token: string;
           p_owner_user_id: string;
         };
         Returns: boolean;

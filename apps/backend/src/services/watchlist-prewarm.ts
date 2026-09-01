@@ -1,4 +1,5 @@
 import type { ConfigWatchlist } from "@stremlist/shared";
+import { randomUUID } from "node:crypto";
 import { supabase } from "../lib/supabase";
 import { getWatchlistByConfig } from "./watchlist";
 
@@ -9,12 +10,16 @@ const PREWARM_LEASE_SECONDS =
     ? Number(process.env.PREWARM_LEASE_SECONDS)
     : 600;
 
-async function acquirePrewarmLease(ownerUserId: string): Promise<boolean> {
+async function acquirePrewarmLease(
+  ownerUserId: string,
+  leaseToken: string,
+): Promise<boolean> {
   const { data, error } = await supabase.rpc(
     "try_acquire_watchlist_prewarm_lease",
     {
       p_owner_user_id: ownerUserId,
       p_lease_seconds: PREWARM_LEASE_SECONDS,
+      p_lease_token: leaseToken,
     },
   );
   if (error) {
@@ -22,6 +27,19 @@ async function acquirePrewarmLease(ownerUserId: string): Promise<boolean> {
     return false;
   }
   return data;
+}
+
+async function releasePrewarmLease(
+  ownerUserId: string,
+  leaseToken: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("release_watchlist_prewarm_lease", {
+    p_owner_user_id: ownerUserId,
+    p_lease_token: leaseToken,
+  });
+  if (error) {
+    console.error(`Failed to release prewarm lease for ${ownerUserId}:`, error);
+  }
 }
 
 async function runPrewarmBatch(
@@ -90,14 +108,19 @@ async function runQueuedBatches(
   firstWatchlists: ConfigWatchlist[],
   state: PrewarmState,
 ): Promise<void> {
-  if (!(await acquirePrewarmLease(ownerUserId))) return;
+  const leaseToken = randomUUID();
+  if (!(await acquirePrewarmLease(ownerUserId, leaseToken))) return;
 
-  let watchlists: ConfigWatchlist[] | null = firstWatchlists;
-  while (watchlists) {
-    state.activeSignature = watchlistSignature(watchlists);
-    await runPrewarmBatch(ownerUserId, watchlists);
-    watchlists = state.pendingWatchlists;
-    state.pendingWatchlists = null;
+  try {
+    let watchlists: ConfigWatchlist[] | null = firstWatchlists;
+    while (watchlists) {
+      state.activeSignature = watchlistSignature(watchlists);
+      await runPrewarmBatch(ownerUserId, watchlists);
+      watchlists = state.pendingWatchlists;
+      state.pendingWatchlists = null;
+    }
+  } finally {
+    await releasePrewarmLease(ownerUserId, leaseToken);
   }
 }
 
