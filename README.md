@@ -8,12 +8,35 @@ Stremlist is a Stremio addon that turns your IMDb watchlist into a Stremio catal
 
 - Browse IMDb watchlist items in Stremio
 - Supports one or multiple IMDb watchlists
-- Supports sorting by title, year, rating, runtime, and random order
+- Supports sorting by title, year, complete release date, rating, runtime, and random order
+- Filter by genre or decade, or choose a sort directly from Stremio's Discover genre dropdown (one option at a time)
+- Combine genre, decade, maximum runtime and minimum IMDb rating in each catalog configuration
+- Search your configured lists from Stremio search
+- Optional extra home catalogs: 90 min or less, Top rated, and Shuffle
 - Optional Rating Poster Database (RPDB) poster support via API key
 - Simple install flow through a hosted configuration UI
 - Cache-first watchlist serving with periodic auto-refresh and a manual "Refresh now" control
 - Lightweight backend with Supabase for user configuration and Cloudflare R2 for watchlist caching
 - Monorepo architecture with Turborepo (`apps` + `packages`)
+
+Reinstall an existing addon to load the new dropdown options. Selecting a genre
+or decade preserves the configured sort; selecting a sort temporarily overrides
+it. Saved filters always apply together, including to search and extra catalogs.
+The dropdown adds one further filter or overrides the sort; None clears only
+that temporary selection. Extra catalogs reuse the original list and cache.
+
+Release Year sorts by the IMDb year; Release Date sorts by the complete date
+returned by IMDb (which may differ from the original release year). Incomplete
+dates sort last, without inventing a day or month. Refresh an older cache to
+populate release dates. Date-added sorting uses IMDb list order. Shuffle stays
+stable within a cache generation so scrolling does not repeat items. Popularity
+is not offered: the tested IMDb meterRanking field reported an entitlement denial.
+
+Apply `supabase/migrations/20260914230000_catalog_settings.sql` before deploying
+this version. The new JSON column defaults to an empty configuration. Older
+clients that omit these settings preserve them; sending an empty object clears
+them. Reinstall after enabling/disabling extra catalogs or adding search support;
+changing only saved filters does not require reinstalling.
 
 ## Monorepo Structure
 

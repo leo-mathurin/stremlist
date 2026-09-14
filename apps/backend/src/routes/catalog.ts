@@ -1,6 +1,10 @@
 import type { ConfigWatchlist, StremioMeta } from "@stremlist/shared";
 import { Hono } from "hono";
 import type { Context } from "hono";
+import {
+  resolveCatalogSelection,
+  filterCatalog,
+} from "../services/catalog-filters";
 import { parseCatalogId } from "../services/catalog-id";
 import { getUserRpdbApiKey, getUserWatchlistById } from "../services/user";
 import {
@@ -42,12 +46,22 @@ function buildUnavailableMeta(
   };
 }
 
-function parseSkip(c: Context): number | null {
-  const extra = routeParam(c, "extra");
-  const value = extra
-    ? new URLSearchParams(extra.replace(/\.json$/u, "")).get("skip")
-    : c.req.query("skip");
-  if (value === undefined || value === null || value === "") return 0;
+function catalogExtra(c: Context): URLSearchParams {
+  const url = new URL(c.req.url);
+  // Hono decodes route params. Read the raw segment to keep encoded & and +
+  // inside search terms instead of treating them as parameter separators.
+  return routeParam(c, "extra")
+    ? new URLSearchParams(
+        url.pathname
+          .slice(url.pathname.lastIndexOf("/") + 1)
+          .replace(/\.json$/u, ""),
+      )
+    : new URLSearchParams(url.search);
+}
+
+function parseSkip(extra: URLSearchParams): number | null {
+  const value = extra.get("skip");
+  if (value === null || value === "") return 0;
 
   const skip = Number(value);
   return Number.isSafeInteger(skip) && skip >= 0 ? skip : null;
@@ -81,7 +95,9 @@ async function serveCatalog(c: Context) {
       return c.json({ metas: [] });
     }
 
-    const skip = parseSkip(c);
+    const extra = catalogExtra(c);
+    const filter = extra.get("genre");
+    const skip = parseSkip(extra);
     if (skip === null) {
       return c.json({ metas: [] }, 400);
     }
@@ -106,18 +122,30 @@ async function serveCatalog(c: Context) {
       return c.json({ metas: [] });
     }
 
+    const preset = parsedCatalog.preset;
+    if (preset && !watchlistConfig.catalogSettings?.presets?.includes(preset)) {
+      return c.json({ metas: [] });
+    }
+    const selection = resolveCatalogSelection(
+      watchlistConfig.sortOption,
+      watchlistConfig.catalogSettings,
+      filter,
+      preset,
+    );
     const rpdbApiKey = await getUserRpdbApiKey(userId);
 
     const watchlistData = await getWatchlistByConfig({
       ownerUserId: userId,
       watchlistId: watchlistConfig.id,
       imdbUserId: watchlistConfig.imdbUserId,
-      sortOption: watchlistConfig.sortOption,
+      sortOption: selection.sort,
       rpdbApiKey,
     });
 
-    const matchingMetas = watchlistData.metas.filter(
-      (item) => item.type === requestedType,
+    const matchingMetas = filterCatalog(
+      watchlistData.metas.filter((item) => item.type === requestedType),
+      selection.filters,
+      extra.get("search"),
     );
     const metas = matchingMetas.slice(skip, skip + CATALOG_PAGE_SIZE);
 
@@ -138,6 +166,10 @@ async function serveCatalog(c: Context) {
       console.warn(
         `Catalog unavailable for ${userId} (${err.reason}): ${requestedType}/${catalogId}`,
       );
+      // Informational cards explain empty catalogs, but aren't search matches.
+      if (catalogExtra(c).has("search")) {
+        return c.json({ metas: [] });
+      }
       return c.json({
         metas: [
           buildUnavailableMeta(err.reason, requestedType as "movie" | "series"),

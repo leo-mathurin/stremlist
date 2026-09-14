@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       user_watchlists: {
         Row: {
+          catalog_settings: Json;
           catalog_title: string;
           created_at: string;
           display_mode: string;
@@ -27,6 +28,7 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          catalog_settings?: Json;
           catalog_title: string;
           created_at?: string;
           display_mode?: string;
@@ -38,6 +40,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          catalog_settings?: Json;
           catalog_title?: string;
           created_at?: string;
           display_mode?: string;

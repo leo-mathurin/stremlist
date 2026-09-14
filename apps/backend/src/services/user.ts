@@ -1,6 +1,11 @@
 import { DEFAULT_SORT_OPTION } from "@stremlist/shared";
-import type { ConfigWatchlist, Tables } from "@stremlist/shared";
+import type {
+  CatalogSettings,
+  ConfigWatchlist,
+  Tables,
+} from "@stremlist/shared";
 import { supabase } from "../lib/supabase";
+import { catalogSettingsSchema } from "./catalog-settings";
 import { deleteCachedWatchlist } from "./watchlist-cache";
 
 type User = Tables<"users">;
@@ -13,11 +18,13 @@ interface UserConfigUpdateWatchlistRow {
   sortOption: string;
   displayMode?: string;
   position: number;
+  catalogSettings?: CatalogSettings;
 }
 
 const DEFAULT_WATCHLIST_TITLE = "";
 
 function mapWatchlistRow(row: UserWatchlist): ConfigWatchlist {
+  const settings = catalogSettingsSchema.safeParse(row.catalog_settings);
   return {
     id: row.id,
     imdbUserId: row.imdb_user_id,
@@ -25,6 +32,9 @@ function mapWatchlistRow(row: UserWatchlist): ConfigWatchlist {
     sortOption: row.sort_option,
     displayMode: row.display_mode as ConfigWatchlist["displayMode"],
     position: row.position,
+    ...(settings.success && Object.keys(settings.data).length > 0
+      ? { catalogSettings: settings.data }
+      : {}),
   };
 }
 
@@ -157,14 +167,7 @@ export async function replaceUserWatchlists(
     throw existingError;
   }
 
-  const hasId = (
-    w: UserConfigUpdateWatchlistRow,
-  ): w is UserConfigUpdateWatchlistRow & { id: string } => !!w.id;
-
-  const toUpdate = watchlists.filter(hasId);
-  const toInsert = watchlists.filter((w) => !w.id);
-
-  const keepIds = new Set(toUpdate.map((w) => w.id));
+  const keepIds = new Set(watchlists.map((w) => w.id));
   const existingIds = existingRows.map((row) => row.id);
   const toDelete = existingIds.filter((id) => !keepIds.has(id));
 
@@ -196,54 +199,33 @@ export async function replaceUserWatchlists(
     });
   }
 
-  if (toUpdate.length > 0) {
-    const rows = toUpdate.map((w) => ({
-      id: w.id,
-      owner_user_id: ownerUserId,
-      imdb_user_id: w.imdbUserId,
-      catalog_title: w.catalogTitle ?? "",
-      sort_option: w.sortOption,
-      display_mode: w.displayMode ?? "split",
-      position: w.position,
-      updated_at: new Date().toISOString(),
-    }));
-
-    const { error: upsertError } = await supabase
-      .from("user_watchlists")
-      .upsert(rows, { onConflict: "id" });
-
-    if (upsertError) {
-      console.error(
-        `Failed to update watchlists for ${ownerUserId}:`,
-        upsertError.message,
-      );
-      throw upsertError;
-    }
-  }
-
-  if (toInsert.length > 0) {
-    const rows = toInsert.map((w) => ({
-      owner_user_id: ownerUserId,
-      imdb_user_id: w.imdbUserId,
-      catalog_title: w.catalogTitle ?? "",
-      sort_option: w.sortOption,
-      display_mode: w.displayMode ?? "split",
-      position: w.position,
-    }));
-
-    const { error: insertError } = await supabase
-      .from("user_watchlists")
-      .insert(rows)
-      .select();
-
-    if (insertError) {
-      console.error(
-        `Failed to insert watchlists for ${ownerUserId}:`,
-        insertError.message,
-      );
-      throw insertError;
-    }
-  }
+  // PostgREST uses one column set per batch. Keep omitted settings out of that
+  // set entirely so a concurrent save cannot be overwritten by a stale snapshot.
+  await Promise.all(
+    [
+      watchlists.filter((w) => w.catalogSettings === undefined),
+      watchlists.filter((w) => w.catalogSettings !== undefined),
+    ].map(async (batch) => {
+      if (batch.length === 0) return;
+      const rows = batch.map((w) => ({
+        ...(w.id ? { id: w.id } : {}),
+        owner_user_id: ownerUserId,
+        imdb_user_id: w.imdbUserId,
+        catalog_title: w.catalogTitle ?? "",
+        sort_option: w.sortOption,
+        display_mode: w.displayMode ?? "split",
+        position: w.position,
+        ...(w.catalogSettings === undefined
+          ? {}
+          : { catalog_settings: { ...w.catalogSettings } }),
+        updated_at: new Date().toISOString(),
+      }));
+      const { error } = await supabase
+        .from("user_watchlists")
+        .upsert(rows, { onConflict: "id", defaultToNull: false });
+      if (error) throw error;
+    }),
+  );
 
   return getUserWatchlists(ownerUserId);
 }

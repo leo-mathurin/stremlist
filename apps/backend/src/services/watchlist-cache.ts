@@ -26,6 +26,7 @@ const stremioMetaSchema = z.object({
   director: z.array(z.string()).optional(),
   cast: z.array(z.string()).optional(),
   runtime: z.string().optional(),
+  released: z.string().datetime().optional(),
 });
 
 const catalogObjectSchema = z.object({

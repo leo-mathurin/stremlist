@@ -1,12 +1,10 @@
 import {
-  DEFAULT_SORT_OPTION,
   DEFAULT_SORT_OPTIONS,
   isChartId,
   parseSortOption,
 } from "@stremlist/shared";
-import type { WatchlistData, SortOptions } from "@stremlist/shared";
+import type { WatchlistData } from "@stremlist/shared";
 import { supabase } from "../lib/supabase";
-import { shuffleArray } from "../utils";
 import {
   buildPosterUrl,
   classifyWatchlistError,
@@ -22,6 +20,8 @@ import {
   getCachedWatchlist,
   writeCachedWatchlist,
 } from "./watchlist-cache";
+import type { WatchlistSort } from "./watchlist-sort";
+import { sortWatchlist } from "./watchlist-sort";
 
 export type WatchlistUnavailableReason = WatchlistErrorReason | "unavailable";
 
@@ -63,7 +63,7 @@ export interface WatchlistFetchConfig {
   ownerUserId: string;
   watchlistId: string;
   imdbUserId: string;
-  sortOption: string | null | undefined;
+  sortOption: string | WatchlistSort | null | undefined;
   rpdbApiKey?: string | null;
   forceFresh?: boolean;
   skipUserTimestamp?: boolean;
@@ -130,8 +130,10 @@ function refreshWatchlist(
 export async function getWatchlistByConfig(
   config: WatchlistFetchConfig,
 ): Promise<WatchlistData> {
-  const sortOptionStr = config.sortOption ?? DEFAULT_SORT_OPTION;
-  const sortOptions = parseSortOption(sortOptionStr);
+  const sortOptions =
+    typeof config.sortOption === "object" && config.sortOption
+      ? config.sortOption
+      : parseSortOption(config.sortOption);
 
   // Cache-first happy path: a fresh R2 hit avoids both Supabase writes and IMDb
   // calls. The catalog stays canonical (added_at-asc, raw posters), so sort +
@@ -263,63 +265,20 @@ export async function findMetaInUserCache(
 
 function resortCachedData(
   data: WatchlistData,
-  sortOptions: SortOptions,
+  sortOptions: WatchlistSort,
   generation: string,
   rpdbApiKey?: string | null,
 ): WatchlistData {
-  const metas = [...data.metas];
-  const { by, order } = sortOptions;
-  const multiplier = order === "desc" ? -1 : 1;
-
-  if (by === "added_at") {
-    if (order === "desc") {
-      metas.reverse();
-    }
-    return { metas: applyRpdbPostersToMetas(metas, rpdbApiKey) };
-  }
-
-  if (by === "random") {
-    return {
-      metas: applyRpdbPostersToMetas(
-        shuffleArray(metas, generation),
-        rpdbApiKey,
-      ),
-    };
-  }
-
-  metas.sort((a, b) => {
-    switch (by) {
-      case "year": {
-        const ya = a.releaseInfo ? parseInt(a.releaseInfo, 10) || 0 : 0;
-        const yb = b.releaseInfo ? parseInt(b.releaseInfo, 10) || 0 : 0;
-        return (ya - yb) * multiplier;
-      }
-      case "rating": {
-        const ra = a.imdbRating ? parseFloat(a.imdbRating) || 0 : 0;
-        const rb = b.imdbRating ? parseFloat(b.imdbRating) || 0 : 0;
-        return (ra - rb) * multiplier;
-      }
-      case "title":
-      default:
-        return a.name.localeCompare(b.name) * multiplier;
-    }
-  });
-
-  return { metas: applyRpdbPostersToMetas(metas, rpdbApiKey) };
+  return {
+    metas: sortWatchlist(data.metas, sortOptions, generation).map((meta) => ({
+      ...meta,
+      poster: buildPosterUrl(meta.id, meta.poster, rpdbApiKey),
+    })),
+  };
 }
 
 function contentGeneration(watchlistId: string, data: WatchlistData): string {
   return `${watchlistId}:${data.metas
     .map((meta) => `${meta.type}:${meta.id}`)
     .join(",")}`;
-}
-
-function applyRpdbPostersToMetas(
-  metas: WatchlistData["metas"],
-  rpdbApiKey?: string | null,
-): WatchlistData["metas"] {
-  return metas.map((meta) => ({
-    ...meta,
-    poster: buildPosterUrl(meta.id, meta.poster, rpdbApiKey),
-  }));
 }

@@ -12,7 +12,11 @@ import {
   CHART_BY_ID,
   isChartId,
 } from "@stremlist/shared";
-import type { UserConfigResponse, ConfigWatchlist } from "@stremlist/shared";
+import type {
+  CatalogSettings,
+  UserConfigResponse,
+  ConfigWatchlist,
+} from "@stremlist/shared";
 import {
   Eye,
   EyeOff,
@@ -25,6 +29,7 @@ import {
 } from "lucide-react";
 import { DragDropProvider } from "@dnd-kit/react";
 import { useSortable, isSortable } from "@dnd-kit/react/sortable";
+import CatalogFilterSettings from "../components/CatalogFilterSettings";
 import Header from "../components/Header";
 import AddonInstallActions from "../components/AddonInstallActions";
 import BuiltInCatalogPicker from "../components/BuiltInCatalogPicker";
@@ -62,6 +67,7 @@ type WatchlistFormRow = {
   catalogTitle: string;
   sortOption: string;
   displayMode: string;
+  catalogSettings: CatalogSettings;
 };
 
 function getWatchlistReinstallSignature(rows: WatchlistFormRow[]): string {
@@ -72,10 +78,11 @@ function getWatchlistReinstallSignature(rows: WatchlistFormRow[]): string {
       imdbUserId: row.imdbUserId.trim(),
       catalogTitle: row.catalogTitle.trim(),
       displayMode: row.displayMode,
+      presets: [...(row.catalogSettings.presets ?? [])].sort().join(","),
     }))
     .map(
       (item) =>
-        `${item.index}|${item.id}|${item.imdbUserId}|${item.catalogTitle}|${item.displayMode}`,
+        `${item.index}|${item.id}|${item.imdbUserId}|${item.catalogTitle}|${item.displayMode}|${item.presets}`,
     )
     .join("::");
 }
@@ -90,6 +97,7 @@ function createWatchlistRow(
     catalogTitle: partial?.catalogTitle ?? "",
     sortOption: partial?.sortOption ?? DEFAULT_SORT_OPTION,
     displayMode: partial?.displayMode ?? DEFAULT_DISPLAY_MODE,
+    catalogSettings: partial?.catalogSettings ?? {},
   };
 }
 
@@ -282,6 +290,12 @@ function SortableWatchlistRow({
           </Select>
         </>
       )}
+      <CatalogFilterSettings
+        value={watchlist.catalogSettings}
+        onChange={(settings) =>
+          onFieldChange(watchlist.localId, "catalogSettings", settings)
+        }
+      />
     </div>
   );
 }
@@ -377,6 +391,7 @@ export default function Configure() {
               catalogTitle: watchlist.catalogTitle,
               sortOption: watchlist.sortOption,
               displayMode: watchlist.displayMode,
+              catalogSettings: watchlist.catalogSettings,
             }),
           );
           if (rows.length > 0) {
@@ -562,6 +577,7 @@ export default function Configure() {
             sortOption: watchlist.sortOption,
             displayMode: watchlist.displayMode,
             position: index,
+            catalogSettings: watchlist.catalogSettings,
           })),
         },
       });

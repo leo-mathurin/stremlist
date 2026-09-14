@@ -44,6 +44,7 @@ const TITLE_FRAGMENT = `
   titleText { text }
   titleType { text }
   releaseYear { year }
+  releaseDate { year month day }
   ratingsSummary { aggregateRating }
   titleGenres { genres { genre { text } } }
   plot { plotText { plainText } }
@@ -159,6 +160,7 @@ interface ImdbEdge {
     titleText?: { text: string };
     titleType?: { text: string };
     releaseYear?: { year: number };
+    releaseDate?: { year?: number; month?: number; day?: number };
     ratingsSummary?: { aggregateRating: number };
     titleGenres?: {
       genres: { genre?: { text: string } }[];
@@ -221,6 +223,7 @@ interface ProcessedItem {
   title: string | null;
   type: string | null;
   year: number | null;
+  released?: string;
   rating: number | null;
   genres: string[];
   plot: string | null;
@@ -466,6 +469,7 @@ function processWatchlist(edges: ImdbEdge[]): ProcessedItem[] {
       title: movieData.titleText?.text ?? null,
       type: movieData.titleType?.text ?? null,
       year: movieData.releaseYear?.year ?? null,
+      released: releaseDate(movieData.releaseDate),
       rating: movieData.ratingsSummary?.aggregateRating ?? null,
       genres: [],
       plot: movieData.plot?.plotText?.plainText ?? null,
@@ -510,6 +514,18 @@ function processWatchlist(edges: ImdbEdge[]): ProcessedItem[] {
   }
 
   return items;
+}
+
+function releaseDate(date: TitleNode["releaseDate"]): string | undefined {
+  if (!date?.year || !date.month || !date.day) return undefined;
+  const value = new Date(Date.UTC(date.year, date.month - 1, date.day));
+  if (
+    value.getUTCFullYear() !== date.year ||
+    value.getUTCMonth() !== date.month - 1 ||
+    value.getUTCDate() !== date.day
+  )
+    return undefined;
+  return value.toISOString();
 }
 
 function formatRuntime(seconds: number): string {
@@ -594,6 +610,7 @@ function convertToStremioFormat(
       posterShape: "poster",
       type: isMovie ? "movie" : "series",
       genres: item.genres,
+      ...(item.released ? { released: item.released } : {}),
       description: item.plot ?? "",
     };
 

@@ -56,3 +56,10 @@ export {
 } from "./imdb-charts";
 
 export type { ChartKind, ChartEntry } from "./imdb-charts";
+
+export {
+  CATALOG_GENRES,
+  CATALOG_DECADES,
+  CATALOG_PRESETS,
+} from "./catalog-settings";
+export type { CatalogSettings, CatalogPreset } from "./catalog-settings";

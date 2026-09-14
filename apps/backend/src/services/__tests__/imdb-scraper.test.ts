@@ -455,6 +455,31 @@ describe("fetchWatchlist (unit)", () => {
     vi.restoreAllMocks();
   });
 
+  it("keeps complete release dates without inventing partial or invalid dates", async () => {
+    const dates = [
+      { year: 2000, month: 2, day: 29 },
+      { year: 2000 },
+      { year: 2001, month: 2, day: 29 },
+    ];
+    const edges = dates.map((releaseDate, index) => {
+      const edge = makeEdge({ id: `tt000000${index}` });
+      return { listItem: { ...edge.listItem, releaseDate } };
+    });
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+      mockGraphQLResponse({
+        id: "ls123",
+        visibility: { id: "PUBLIC" },
+        titleListItemSearch: { total: 3, edges },
+      }),
+    );
+    const { metas } = await fetchWatchlist("ur195879360");
+    expect(metas.map((meta) => meta.released)).toEqual([
+      "2000-02-29T00:00:00.000Z",
+      undefined,
+      undefined,
+    ]);
+  });
+
   it("returns metas for a public watchlist", async () => {
     const edges = [
       makeEdge({

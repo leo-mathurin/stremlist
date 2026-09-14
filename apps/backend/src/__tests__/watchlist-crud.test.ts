@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
+import type { CatalogSettings } from "@stremlist/shared";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import app from "../index.js";
@@ -26,7 +27,7 @@ vi.mock("../lib/resend", () => ({
   resend: { contacts: { create: vi.fn() } },
 }));
 
-import { db } from "./helpers/mock-supabase.js";
+import { db, supabase } from "./helpers/mock-supabase.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -83,6 +84,7 @@ function postConfig(
       catalogTitle?: string;
       sortOption: string;
       position?: number;
+      catalogSettings?: CatalogSettings;
     }[];
   },
 ) {
@@ -104,6 +106,121 @@ describe("Watchlist CRUD via API", () => {
     backgroundMocks.scheduleBackgroundTask.mockReset();
     prewarmMocks.prewarmWatchlists.mockReset();
     prewarmMocks.prewarmWatchlists.mockResolvedValue(undefined);
+  });
+
+  it("persists combined filters and presets, preserves them for older clients, and clears them explicitly", async () => {
+    seedWatchlist({ id: UUID_1 });
+    const settings: CatalogSettings = {
+      genre: "Comedy",
+      decade: 1990,
+      maxRuntime: 120,
+      minRating: 7.5,
+      presets: ["short", "rated", "shuffle"],
+    };
+    const row = { id: UUID_1, imdbUserId: OWNER, sortOption: "rating-desc" };
+    const saved = await postConfig(OWNER, {
+      watchlists: [{ ...row, catalogSettings: settings }],
+    });
+    expect(saved.status).toBe(200);
+    expect(
+      (await (await getConfig(OWNER)).json()).watchlists[0].catalogSettings,
+    ).toEqual(settings);
+    await postConfig(OWNER, { watchlists: [row] });
+    expect(
+      (await (await getConfig(OWNER)).json()).watchlists[0].catalogSettings,
+    ).toEqual(settings);
+    await postConfig(OWNER, { watchlists: [{ ...row, catalogSettings: {} }] });
+    expect(
+      (await (await getConfig(OWNER)).json()).watchlists[0].catalogSettings,
+    ).toBeUndefined();
+  });
+
+  it("preserves a concurrent settings save when omitted, even beside an explicit clear", async () => {
+    seedWatchlist({ id: UUID_1 });
+    seedWatchlist({ id: UUID_2, imdbUserId: OTHER_IMDB });
+    db.getTable("user_watchlists").forEach((row) => {
+      row.catalog_settings = { minRating: 5 };
+    });
+    let interleaved = false;
+    const from = supabase.from;
+    const spy = vi.spyOn(supabase, "from").mockImplementation((table) => {
+      const query = from(table);
+      if (table === "user_watchlists") {
+        const upsert = query.upsert.bind(query);
+        vi.spyOn(query, "upsert").mockImplementation((...args) => {
+          // Another writer commits after replaceUserWatchlists' initial SELECT.
+          if (!interleaved) {
+            interleaved = true;
+            const row = db.getTable(table).find((row) => row.id === UUID_1);
+            if (!row) throw new Error("Missing seeded watchlist");
+            row.catalog_settings = { minRating: 8 };
+          }
+          return upsert(...args);
+        });
+      }
+      return query;
+    });
+    try {
+      const response = await postConfig(OWNER, {
+        watchlists: [
+          { id: UUID_1, imdbUserId: OWNER, sortOption: "title-asc" },
+          {
+            id: UUID_2,
+            imdbUserId: OTHER_IMDB,
+            sortOption: "title-desc",
+            catalogSettings: {},
+          },
+        ],
+      });
+      expect(response.status).toBe(200);
+      expect(
+        db.getTable("user_watchlists").map((row) => row.catalog_settings),
+      ).toEqual([{ minRating: 8 }, {}]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("accepts custom numeric settings without changing their values", async () => {
+    seedWatchlist({ id: UUID_1 });
+    const catalogSettings = { maxRuntime: 95, minRating: 7.2, decade: 2090 };
+    expect(
+      (
+        await postConfig(OWNER, {
+          watchlists: [
+            {
+              id: UUID_1,
+              imdbUserId: OWNER,
+              sortOption: "title-asc",
+              catalogSettings,
+            },
+          ],
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (await (await getConfig(OWNER)).json()).watchlists[0].catalogSettings,
+    ).toEqual(catalogSettings);
+  });
+
+  it.each([
+    { minRating: 11 },
+    { maxRuntime: -1 },
+    { decade: 1995 },
+    { genre: "Unknown" },
+  ])("rejects invalid catalog settings %j", async (catalogSettings) => {
+    seedWatchlist({ id: UUID_1 });
+    const response = await postConfig(OWNER, {
+      watchlists: [
+        {
+          id: UUID_1,
+          imdbUserId: OWNER,
+          sortOption: "title-asc",
+          catalogSettings,
+        },
+      ],
+    });
+    expect(response.status).toBe(400);
   });
 
   // ---- GET /:userId/config ----

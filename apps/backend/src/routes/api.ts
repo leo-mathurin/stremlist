@@ -12,6 +12,7 @@ import { z } from "zod";
 import { scheduleBackgroundTask } from "../lib/background";
 import { resend } from "../lib/resend";
 import { supabase } from "../lib/supabase";
+import { catalogSettingsSchema } from "../services/catalog-settings";
 import {
   getImdbWatchlist,
   normalizeImdbUserId,
@@ -58,6 +59,7 @@ const configWatchlistBody = z.object({
   sortOption: z.enum(sortOptionValues),
   displayMode: z.enum(displayModeValues).optional(),
   position: z.number().int().min(0).optional(),
+  catalogSettings: catalogSettingsSchema.optional(),
 });
 const configBody = z.object({
   rpdbApiKey: z.string().trim().optional(),
@@ -171,6 +173,7 @@ const api = new Hono()
           sortOption: watchlist.sortOption,
           displayMode: watchlist.displayMode ?? "split",
           position: index,
+          catalogSettings: watchlist.catalogSettings,
         };
       });
 

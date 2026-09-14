@@ -50,6 +50,20 @@ describe("manifest catalog generation", () => {
     expect(
       catalogs.every((catalog) => catalog.extra?.[0]?.name === "skip"),
     ).toBe(true);
+    for (const catalog of catalogs) {
+      const genre = catalog.extra?.find((extra) => extra.name === "genre");
+      expect(genre?.isRequired).toBe(false);
+      expect(genre?.optionsLimit).toBe(1);
+      expect(genre?.options).toEqual(
+        expect.arrayContaining([
+          "Comedy",
+          "1990s",
+          "Shuffle",
+          "Shortest",
+          "IMDb Rating (Highest)",
+        ]),
+      );
+    }
     expect(catalogsWithoutExtra(catalogs)).toEqual([
       {
         id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
@@ -72,6 +86,42 @@ describe("manifest catalog generation", () => {
         type: "series",
       },
     ]);
+  });
+
+  it("exposes enabled presets on the home and keeps search on the base catalog", () => {
+    const catalogs = buildManifestCatalogs([
+      {
+        id: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
+        imdbUserId: "ur12345678",
+        catalogTitle: "Picks",
+        sortOption: "title-asc",
+        displayMode: "movie",
+        position: 0,
+        catalogSettings: { presets: ["short", "rated", "shuffle"] },
+      },
+    ]);
+    expect(catalogs.map((catalog) => catalog.id)).toEqual([
+      "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
+      "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie--short",
+      "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie--rated",
+      "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie--shuffle",
+    ]);
+    expect(catalogs[0].extra?.some((extra) => extra.name === "search")).toBe(
+      true,
+    );
+    expect(
+      catalogs
+        .slice(1)
+        .every(
+          (catalog) => !catalog.extra?.some((extra) => extra.name === "search"),
+        ),
+    ).toBe(true);
+    expect(parseCatalogId(catalogs[1].id)).toEqual({
+      watchlistId: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
+      type: "movie",
+      preset: "short",
+    });
+    expect(parseCatalogId(`${catalogs[0].id}--unknown`)).toBeNull();
   });
 
   it("uses base Stremlist title when catalog title is empty", () => {
