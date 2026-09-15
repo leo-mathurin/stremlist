@@ -102,6 +102,14 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      replace_user_config: {
+        Args: {
+          p_owner_user_id: string;
+          p_rpdb_api_key: string | null;
+          p_watchlists: Json;
+        };
+        Returns: { deleted_ids: string[]; watchlists: Json }[];
+      };
       finish_watchlist_prewarm: {
         Args: {
           p_completed_generation: number;

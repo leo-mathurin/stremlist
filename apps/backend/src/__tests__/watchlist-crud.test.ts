@@ -28,6 +28,7 @@ vi.mock("../lib/resend", () => ({
 }));
 
 import { db, supabase } from "./helpers/mock-supabase.js";
+import { cache } from "./helpers/mock-watchlist-cache.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -102,6 +103,7 @@ function postConfig(
 describe("Watchlist CRUD via API", () => {
   beforeEach(() => {
     db.reset();
+    cache.reset();
     seedUser(OWNER);
     backgroundMocks.scheduleBackgroundTask.mockReset();
     prewarmMocks.prewarmWatchlists.mockReset();
@@ -141,24 +143,15 @@ describe("Watchlist CRUD via API", () => {
     db.getTable("user_watchlists").forEach((row) => {
       row.catalog_settings = { minRating: 5 };
     });
-    let interleaved = false;
-    const from = supabase.from;
-    const spy = vi.spyOn(supabase, "from").mockImplementation((table) => {
-      const query = from(table);
-      if (table === "user_watchlists") {
-        const upsert = query.upsert.bind(query);
-        vi.spyOn(query, "upsert").mockImplementation((...args) => {
-          // Another writer commits after replaceUserWatchlists' initial SELECT.
-          if (!interleaved) {
-            interleaved = true;
-            const row = db.getTable(table).find((row) => row.id === UUID_1);
-            if (!row) throw new Error("Missing seeded watchlist");
-            row.catalog_settings = { minRating: 8 };
-          }
-          return upsert(...args);
-        });
-      }
-      return query;
+    const rpc = supabase.rpc;
+    const spy = vi.spyOn(supabase, "rpc").mockImplementation((...args) => {
+      // Another save commits before this transaction acquires its lock.
+      const row = db
+        .getTable("user_watchlists")
+        .find((row) => row.id === UUID_1);
+      if (!row) throw new Error("Missing seeded watchlist");
+      row.catalog_settings = { minRating: 8 };
+      return rpc(...args);
     });
     try {
       const response = await postConfig(OWNER, {
@@ -176,6 +169,36 @@ describe("Watchlist CRUD via API", () => {
       expect(
         db.getTable("user_watchlists").map((row) => row.catalog_settings),
       ).toEqual([{ minRating: 8 }, {}]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("keeps caches and skips prewarming when the configuration transaction fails", async () => {
+    seedWatchlist({ id: UUID_1 });
+    seedWatchlist({ id: UUID_2, imdbUserId: OTHER_IMDB });
+    cache.seed(UUID_2, []);
+    const before = structuredClone(db.tables);
+    const spy = vi.spyOn(supabase, "rpc").mockResolvedValueOnce({
+      data: null,
+      error: new Error("Transaction rolled back"),
+    });
+    try {
+      const response = await postConfig(OWNER, {
+        rpdbApiKey: "new-key",
+        watchlists: [
+          {
+            id: UUID_1,
+            imdbUserId: OWNER,
+            sortOption: "title-asc",
+            catalogSettings: { minRating: 8 },
+          },
+        ],
+      });
+      expect(response.status).toBe(500);
+      expect(db.tables).toEqual(before);
+      expect(cache.get(UUID_2)).not.toBeNull();
+      expect(backgroundMocks.scheduleBackgroundTask).not.toHaveBeenCalled();
     } finally {
       spy.mockRestore();
     }
@@ -361,6 +384,8 @@ describe("Watchlist CRUD via API", () => {
         position: 1,
       });
 
+      cache.seed(UUID_2, []);
+
       // Save with only the first watchlist → second should be deleted
       const res = await postConfig(OWNER, {
         watchlists: [
@@ -376,6 +401,7 @@ describe("Watchlist CRUD via API", () => {
       const rows = db.getTable("user_watchlists");
       expect(rows).toHaveLength(1);
       expect(rows[0].id).toBe(UUID_1);
+      expect(cache.get(UUID_2)).toBeNull();
     });
 
     it("can add a new watchlist alongside existing ones", async () => {

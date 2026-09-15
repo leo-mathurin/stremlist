@@ -24,7 +24,6 @@ import {
   getUser,
   getUserRpdbApiKey,
   replaceUserWatchlists,
-  setUserRpdbApiKey,
 } from "../services/user";
 import { getWatchlistByConfig } from "../services/watchlist";
 import { prewarmWatchlists } from "../services/watchlist-prewarm";
@@ -190,10 +189,11 @@ const api = new Hono()
       const normalizedRpdbApiKey =
         rpdbApiKey && rpdbApiKey.length > 0 ? rpdbApiKey : null;
 
-      const [updatedWatchlists] = await Promise.all([
-        replaceUserWatchlists(userId, normalizedWatchlists),
-        setUserRpdbApiKey(userId, normalizedRpdbApiKey),
-      ]);
+      const updatedWatchlists = await replaceUserWatchlists(
+        userId,
+        normalizedWatchlists,
+        normalizedRpdbApiKey,
+      );
 
       // A fresh installation already has a seeded watchlist ID, so an
       // "ID-less rows only" check would miss its first scrape. Queue every

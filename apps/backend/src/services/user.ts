@@ -153,81 +153,41 @@ export async function getUserWatchlistById(
 export async function replaceUserWatchlists(
   ownerUserId: string,
   watchlists: UserConfigUpdateWatchlistRow[],
+  rpdbApiKey: string | null,
 ): Promise<ConfigWatchlist[]> {
-  const { data: existingRows, error: existingError } = await supabase
-    .from("user_watchlists")
-    .select("id")
-    .eq("owner_user_id", ownerUserId);
+  const { data, error } = await supabase.rpc("replace_user_config", {
+    p_owner_user_id: ownerUserId,
+    p_rpdb_api_key: rpdbApiKey,
+    p_watchlists: watchlists.map((w) => ({
+      ...(w.id ? { id: w.id } : {}),
+      imdb_user_id: w.imdbUserId,
+      catalog_title: w.catalogTitle ?? "",
+      sort_option: w.sortOption,
+      display_mode: w.displayMode ?? "split",
+      position: w.position,
+      ...(w.catalogSettings === undefined
+        ? {}
+        : { catalog_settings: { ...w.catalogSettings } }),
+    })),
+  });
+  if (error) throw error;
 
-  if (existingError) {
-    console.error(
-      `Failed to fetch existing watchlists for ${ownerUserId}:`,
-      existingError.message,
-    );
-    throw existingError;
-  }
-
-  const keepIds = new Set(watchlists.map((w) => w.id));
-  const existingIds = existingRows.map((row) => row.id);
-  const toDelete = existingIds.filter((id) => !keepIds.has(id));
-
-  if (toDelete.length > 0) {
-    const { error: deleteError } = await supabase
-      .from("user_watchlists")
-      .delete()
-      .eq("owner_user_id", ownerUserId)
-      .in("id", toDelete);
-
-    if (deleteError) {
-      console.error(
-        `Failed to delete removed watchlists for ${ownerUserId}:`,
-        deleteError.message,
-      );
-      throw deleteError;
-    }
-
-    const cleanupResults = await Promise.allSettled(
-      toDelete.map((watchlistId) => deleteCachedWatchlist(watchlistId)),
-    );
-    cleanupResults.forEach((result, index) => {
-      if (result.status === "rejected") {
-        console.error(
-          `Failed to delete R2 cache for removed watchlist ${toDelete[index]}:`,
-          result.reason,
-        );
-      }
-    });
-  }
-
-  // PostgREST uses one column set per batch. Keep omitted settings out of that
-  // set entirely so a concurrent save cannot be overwritten by a stale snapshot.
-  await Promise.all(
-    [
-      watchlists.filter((w) => w.catalogSettings === undefined),
-      watchlists.filter((w) => w.catalogSettings !== undefined),
-    ].map(async (batch) => {
-      if (batch.length === 0) return;
-      const rows = batch.map((w) => ({
-        ...(w.id ? { id: w.id } : {}),
-        owner_user_id: ownerUserId,
-        imdb_user_id: w.imdbUserId,
-        catalog_title: w.catalogTitle ?? "",
-        sort_option: w.sortOption,
-        display_mode: w.displayMode ?? "split",
-        position: w.position,
-        ...(w.catalogSettings === undefined
-          ? {}
-          : { catalog_settings: { ...w.catalogSettings } }),
-        updated_at: new Date().toISOString(),
-      }));
-      const { error } = await supabase
-        .from("user_watchlists")
-        .upsert(rows, { onConflict: "id", defaultToNull: false });
-      if (error) throw error;
-    }),
+  const result = data[0];
+  // External cache deletion cannot participate in the database transaction.
+  const cleanupResults = await Promise.allSettled(
+    result.deleted_ids.map((id) => deleteCachedWatchlist(id)),
   );
+  cleanupResults.forEach((cleanup, index) => {
+    if (cleanup.status === "rejected") {
+      console.error(
+        `Failed to delete R2 cache for removed watchlist ${result.deleted_ids[index]}:`,
+        cleanup.reason,
+      );
+    }
+  });
 
-  return getUserWatchlists(ownerUserId);
+  // The RPC aggregates complete user_watchlists rows from the same transaction.
+  return (result.watchlists as UserWatchlist[]).map(mapWatchlistRow);
 }
 
 export async function getUserRpdbApiKey(
@@ -244,22 +204,4 @@ export async function getUserRpdbApiKey(
   }
 
   return data.rpdb_api_key;
-}
-
-export async function setUserRpdbApiKey(
-  imdbUserId: string,
-  rpdbApiKey: string | null,
-): Promise<void> {
-  const { error } = await supabase
-    .from("users")
-    .update({ rpdb_api_key: rpdbApiKey })
-    .eq("imdb_user_id", imdbUserId);
-
-  if (error) {
-    console.error(
-      `Failed to update RPDB API key for ${imdbUserId}:`,
-      error.message,
-    );
-    throw error;
-  }
 }
