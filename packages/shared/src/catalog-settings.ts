@@ -14,35 +14,6 @@ export interface CatalogSettings {
   presets?: CatalogPreset[];
 }
 
-export const CATALOG_GENRES = [
-  "Action",
-  "Adventure",
-  "Animation",
-  "Biography",
-  "Comedy",
-  "Crime",
-  "Documentary",
-  "Drama",
-  "Family",
-  "Fantasy",
-  "Film-Noir",
-  "Game-Show",
-  "History",
-  "Horror",
-  "Music",
-  "Musical",
-  "Mystery",
-  "News",
-  "Reality-TV",
-  "Romance",
-  "Sci-Fi",
-  "Short",
-  "Sport",
-  "Talk-Show",
-  "Thriller",
-  "War",
-  "Western",
-];
 const currentDecade = Math.floor(new Date().getFullYear() / 10) * 10;
 export const CATALOG_DECADES = Array.from(
   { length: (currentDecade - 1880) / 10 + 1 },

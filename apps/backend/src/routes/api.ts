@@ -4,14 +4,16 @@ import {
   IMDB_LIST_ID_PATTERN,
   IMDB_USER_ID_PATTERN,
   IMDB_WATCHLIST_SOURCE_ID_PATTERN,
-  isChartId,
   SORT_OPTIONS,
-} from "@stremlist/shared";
+  parseSortOption,
+} from "@stremlist/shared/constants";
+import { isChartId } from "@stremlist/shared/imdb-charts";
 import { Hono } from "hono";
 import { z } from "zod";
 import { scheduleBackgroundTask } from "../lib/background";
 import { resend } from "../lib/resend";
 import { supabase } from "../lib/supabase";
+import { withAvailableGenres } from "../services/catalog-genres";
 import { catalogSettingsSchema } from "../services/catalog-settings";
 import {
   getImdbWatchlist,
@@ -109,7 +111,9 @@ const api = new Hono()
       return c.json({ error: "User not found. Install the addon first." }, 404);
     }
     const rpdbApiKey = await getUserRpdbApiKey(userId);
-    const watchlists = await getUserWatchlists(userId);
+    const watchlists = await withAvailableGenres(
+      await getUserWatchlists(userId),
+    );
     return c.json({
       rpdbApiKey,
       watchlists,
@@ -202,7 +206,10 @@ const api = new Hono()
         prewarmWatchlists(userId, updatedWatchlists),
       );
 
-      return c.json({ ok: true, watchlists: updatedWatchlists });
+      return c.json({
+        ok: true,
+        watchlists: await withAvailableGenres(updatedWatchlists),
+      });
     },
   )
 
@@ -243,7 +250,7 @@ const api = new Hono()
           ownerUserId: userId,
           watchlistId: w.id,
           imdbUserId: w.imdbUserId,
-          sortOption: w.sortOption,
+          sort: parseSortOption(w.sortOption),
           rpdbApiKey,
           forceFresh: true,
           skipUserTimestamp: true,
@@ -270,6 +277,7 @@ const api = new Hono()
       refreshed,
       failed,
       total: watchlists.length,
+      watchlists: await withAvailableGenres(watchlists),
       cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
     });
   })

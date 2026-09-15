@@ -1,4 +1,5 @@
-import type { SortOptions, StremioMeta } from "@stremlist/shared";
+import type { SortOptions } from "@stremlist/shared/constants";
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { shuffleArray } from "../utils";
 
 export type WatchlistSort = Omit<SortOptions, "by"> & {

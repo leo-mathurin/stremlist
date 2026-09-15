@@ -1,13 +1,10 @@
 import type {
   CatalogPreset,
   CatalogSettings,
-  StremioMeta,
-} from "@stremlist/shared";
-import {
-  CATALOG_DECADES,
-  parseSortOption,
-  CATALOG_GENRES,
-} from "@stremlist/shared";
+} from "@stremlist/shared/catalog-settings";
+import { CATALOG_DECADES } from "@stremlist/shared/catalog-settings";
+import { parseSortOption } from "@stremlist/shared/constants";
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { runtimeMinutes } from "./watchlist-sort";
 import type { WatchlistSort } from "./watchlist-sort";
 
@@ -38,10 +35,6 @@ const OPTIONS = new Map<string, Selection>([
   ["IMDb Rating 8+", { filters: { minRating: 8 } }],
   ["Release Date (Newest)", { sort: { by: "released", order: "desc" } }],
   ["Release Date (Oldest)", { sort: { by: "released", order: "asc" } }],
-  ...CATALOG_GENRES.map((genre): [string, Selection] => [
-    genre,
-    { filters: { genre } },
-  ]),
   ...CATALOG_DECADES.map((decade): [string, Selection] => [
     decade,
     { filters: { decade: Number.parseInt(decade, 10) } },

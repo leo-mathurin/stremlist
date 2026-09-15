@@ -1,12 +1,10 @@
 import {
   CATALOG_DECADES,
-  CATALOG_GENRES,
   CATALOG_PRESETS,
-} from "@stremlist/shared";
-import type { CatalogSettings } from "@stremlist/shared";
+} from "@stremlist/shared/catalog-settings";
+import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 
 const FILTERS = [
-  ["genre", "Genre", "All genres", CATALOG_GENRES, ""],
   [
     "decade",
     "Decade",
@@ -32,11 +30,17 @@ const FILTERS = [
 
 export default function CatalogFilterSettings({
   value,
+  genres,
   onChange,
 }: {
   value: CatalogSettings;
+  genres: string[];
   onChange: (settings: CatalogSettings) => void;
 }) {
+  const filters = [
+    ["genre", "Genre", "All genres", genres, ""],
+    ...FILTERS,
+  ] as const;
   const selectClass =
     "mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-imdb";
   return (
@@ -48,8 +52,13 @@ export default function CatalogFilterSettings({
         All selected filters apply together, including in search. Use Sort Order
         above to order the results.
       </p>
+      {genres.length === 0 && (
+        <p className="mt-2 text-xs text-gray-500">
+          Genre choices appear after saving and refreshing this list.
+        </p>
+      )}
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        {FILTERS.map(([key, label, empty, choices, suffix]) => {
+        {filters.map(([key, label, empty, choices, suffix]) => {
           const current = value[key];
           const options = new Set<string | number>(choices);
           if (current !== undefined) options.add(current);

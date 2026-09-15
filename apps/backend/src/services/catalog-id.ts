@@ -1,5 +1,5 @@
-import { CATALOG_PRESETS } from "@stremlist/shared";
-import type { CatalogPreset } from "@stremlist/shared";
+import { CATALOG_PRESETS } from "@stremlist/shared/catalog-settings";
+import type { CatalogPreset } from "@stremlist/shared/catalog-settings";
 const CATALOG_ID_PREFIX = "wl";
 const CATALOG_ID_SEPARATOR = "-";
 const PREFIX_OFFSET = CATALOG_ID_PREFIX.length + CATALOG_ID_SEPARATOR.length;

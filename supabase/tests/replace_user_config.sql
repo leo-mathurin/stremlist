@@ -52,9 +52,22 @@ BEGIN
   END;
   ASSERT (SELECT jsonb_agg(to_jsonb(uw) ORDER BY id) FROM public.user_watchlists uw) = before_rows;
 
+  BEGIN
+    PERFORM public.replace_user_config('config-transaction-test', NULL,
+      jsonb_set(payload, '{1,id}', payload->0->'id'));
+    RAISE EXCEPTION 'Expected duplicate ID rejection';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'Duplicate watchlist ID' THEN RAISE; END IF;
+  END;
+  ASSERT (SELECT jsonb_agg(to_jsonb(uw) ORDER BY id) FROM public.user_watchlists uw) = before_rows;
+
   SELECT * INTO result FROM public.replace_user_config('config-transaction-test', 'new-key', payload);
   ASSERT result.deleted_ids = ARRAY['33333333-3333-4333-8333-333333333333'::uuid];
   ASSERT jsonb_array_length(result.watchlists) = 2;
+  ASSERT result.watchlists->0->>'id' = payload->0->>'id', 'Updates must preserve IDs';
+  ASSERT result.watchlists->1->>'id' = payload->1->>'id';
+  ASSERT result.watchlists->0->>'catalog_title' = 'Changed';
+  ASSERT result.watchlists->0->>'sort_option' = 'title-asc';
   ASSERT result.watchlists->0->'catalog_settings' = '{"minRating":8}'::jsonb, 'Omitted settings must survive';
   ASSERT result.watchlists->1->'catalog_settings' = '{}'::jsonb, 'Explicit empty settings must clear';
   ASSERT (SELECT rpdb_api_key FROM public.users WHERE imdb_user_id = 'config-transaction-test') = 'new-key';

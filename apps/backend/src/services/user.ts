@@ -1,9 +1,7 @@
-import { DEFAULT_SORT_OPTION } from "@stremlist/shared";
-import type {
-  CatalogSettings,
-  ConfigWatchlist,
-  Tables,
-} from "@stremlist/shared";
+import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
+import { DEFAULT_SORT_OPTION } from "@stremlist/shared/constants";
+import type { Tables } from "@stremlist/shared/database.types";
+import type { ConfigWatchlist } from "@stremlist/shared/stremio.types";
 import { supabase } from "../lib/supabase";
 import { catalogSettingsSchema } from "./catalog-settings";
 import { deleteCachedWatchlist } from "./watchlist-cache";

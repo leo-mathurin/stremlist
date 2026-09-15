@@ -1,4 +1,4 @@
-import type { StremioMeta } from "@stremlist/shared";
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { describe, expect, it } from "vitest";
 import { filterCatalog, resolveCatalogSelection } from "../catalog-filters";
 

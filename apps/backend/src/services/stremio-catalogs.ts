@@ -1,16 +1,22 @@
-import { CATALOG_PRESETS } from "@stremlist/shared";
-import type { ConfigWatchlist, StremioCatalog } from "@stremlist/shared";
+import { CATALOG_PRESETS } from "@stremlist/shared/catalog-settings";
+import type {
+  ConfigWatchlist,
+  StremioCatalog,
+} from "@stremlist/shared/stremio.types";
 import { CATALOG_FILTER_OPTIONS } from "./catalog-filters";
 import { buildCatalogId } from "./catalog-id";
 
-function catalogExtras(search = true): StremioCatalog["extra"] {
+function catalogExtras(
+  genres: string[],
+  search = true,
+): StremioCatalog["extra"] {
   return [
     { name: "skip", isRequired: false },
     ...(search ? [{ name: "search" as const, isRequired: false }] : []),
     {
       name: "genre",
       isRequired: false,
-      options: [...CATALOG_FILTER_OPTIONS],
+      options: [...new Set([...CATALOG_FILTER_OPTIONS, ...genres])],
       optionsLimit: 1,
     },
   ];
@@ -53,17 +59,25 @@ export function buildManifestCatalogs(
         ? watchlist.displayMode
         : "split";
 
+    const genres = [
+      ...new Set([
+        ...(watchlist.availableGenres ?? []),
+        ...(watchlist.catalogSettings?.genre
+          ? [watchlist.catalogSettings.genre]
+          : []),
+      ]),
+    ].sort();
     const movieCatalog: StremioCatalog = {
       id: buildCatalogId(watchlist.id, "movie"),
       name: buildCatalogName(effectiveTitle),
       type: "movie",
-      extra: catalogExtras(),
+      extra: catalogExtras(genres),
     };
     const seriesCatalog: StremioCatalog = {
       id: buildCatalogId(watchlist.id, "series"),
       name: buildCatalogName(effectiveTitle),
       type: "series",
-      extra: catalogExtras(),
+      extra: catalogExtras(genres),
     };
 
     const base =
@@ -80,7 +94,7 @@ export function buildManifestCatalogs(
         ...catalog,
         id: buildCatalogId(watchlist.id, catalog.type, preset.id),
         name: `${catalog.name} · ${preset.label}`,
-        extra: catalogExtras(false),
+        extra: catalogExtras(genres, false),
       })),
     ]);
   });

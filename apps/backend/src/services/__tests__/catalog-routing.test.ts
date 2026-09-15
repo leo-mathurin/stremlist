@@ -33,6 +33,7 @@ describe("manifest catalog generation", () => {
         id: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
         imdbUserId: "ur12345678",
         catalogTitle: "Leo Picks",
+        availableGenres: ["Comedy"],
         sortOption: "added_at-asc",
         displayMode: "split",
         position: 0,
@@ -41,6 +42,7 @@ describe("manifest catalog generation", () => {
         id: "3be4e39f-3e27-42e7-a69f-c14f0709de52",
         imdbUserId: "ur87654321",
         catalogTitle: "Family Queue",
+        availableGenres: ["Comedy"],
         sortOption: "title-asc",
         displayMode: "split",
         position: 1,
@@ -56,7 +58,6 @@ describe("manifest catalog generation", () => {
       expect(genre?.optionsLimit).toBe(1);
       expect(genre?.options).toEqual(
         expect.arrayContaining([
-          "Comedy",
           "1990s",
           "Shuffle",
           "Shortest",

@@ -1,9 +1,5 @@
-import {
-  DEFAULT_SORT_OPTIONS,
-  isChartId,
-  parseSortOption,
-} from "@stremlist/shared";
-import type { WatchlistData } from "@stremlist/shared";
+import { isChartId } from "@stremlist/shared/imdb-charts";
+import type { WatchlistData } from "@stremlist/shared/stremio.types";
 import { supabase } from "../lib/supabase";
 import {
   buildPosterUrl,
@@ -63,7 +59,7 @@ export interface WatchlistFetchConfig {
   ownerUserId: string;
   watchlistId: string;
   imdbUserId: string;
-  sortOption: string | WatchlistSort | null | undefined;
+  sort: WatchlistSort;
   rpdbApiKey?: string | null;
   forceFresh?: boolean;
   skipUserTimestamp?: boolean;
@@ -97,7 +93,7 @@ async function fetchAndCacheWatchlist(
     : isListId(config.imdbUserId)
       ? fetchList
       : fetchWatchlist;
-  const data = await fetcher(config.imdbUserId, DEFAULT_SORT_OPTIONS, null);
+  const data = await fetcher(config.imdbUserId);
   const cachedAt = new Date();
   const generation = await upsertCache(config.watchlistId, data, cachedAt);
   return { data, cachedAt, generation };
@@ -130,11 +126,6 @@ function refreshWatchlist(
 export async function getWatchlistByConfig(
   config: WatchlistFetchConfig,
 ): Promise<WatchlistData> {
-  const sortOptions =
-    typeof config.sortOption === "object" && config.sortOption
-      ? config.sortOption
-      : parseSortOption(config.sortOption);
-
   // Cache-first happy path: a fresh R2 hit avoids both Supabase writes and IMDb
   // calls. The catalog stays canonical (added_at-asc, raw posters), so sort +
   // RPDB are always applied at serve time.
@@ -153,7 +144,7 @@ export async function getWatchlistByConfig(
     ) {
       return resortCachedData(
         cached.data,
-        sortOptions,
+        config.sort,
         cached.generation,
         config.rpdbApiKey,
       );
@@ -178,7 +169,7 @@ export async function getWatchlistByConfig(
     }
     return resortCachedData(
       fresh,
-      sortOptions,
+      config.sort,
       generation ?? contentGeneration(config.watchlistId, fresh),
       config.rpdbApiKey,
     );
@@ -207,7 +198,7 @@ export async function getWatchlistByConfig(
           .eq("imdb_user_id", config.ownerUserId);
         return resortCachedData(
           cached.data,
-          sortOptions,
+          config.sort,
           cached.generation,
           config.rpdbApiKey,
         );

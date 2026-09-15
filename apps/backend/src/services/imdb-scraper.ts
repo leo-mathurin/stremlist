@@ -1,16 +1,10 @@
-import {
-  CHART_BY_ID,
-  DEFAULT_SORT_OPTIONS,
-  FACEBOOK_EXTERNAL_HIT_USER_AGENT,
-  isChartId,
-} from "@stremlist/shared";
+import { FACEBOOK_EXTERNAL_HIT_USER_AGENT } from "@stremlist/shared/constants";
+import { CHART_BY_ID, isChartId } from "@stremlist/shared/imdb-charts";
+import type { ChartEntry } from "@stremlist/shared/imdb-charts";
 import type {
-  ChartEntry,
-  SortOptions,
   StremioMeta,
   WatchlistData,
-} from "@stremlist/shared";
-import { shuffleArray } from "../utils";
+} from "@stremlist/shared/stremio.types";
 
 const GRAPHQL_ENDPOINT = "https://api.graphql.imdb.com/";
 const GRAPHQL_CLIENT_NAME = "imdb-next-desktop";
@@ -534,43 +528,6 @@ function formatRuntime(seconds: number): string {
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
-function sortMetas(metas: StremioMeta[], options: SortOptions): StremioMeta[] {
-  const sorted = [...metas];
-  const { by, order } = options;
-  const multiplier = order === "desc" ? -1 : 1;
-
-  if (by === "added_at") {
-    if (order === "desc") {
-      sorted.reverse();
-    }
-    return sorted;
-  }
-
-  if (by === "random") {
-    return shuffleArray(sorted);
-  }
-
-  sorted.sort((a, b) => {
-    switch (by) {
-      case "year": {
-        const ya = a.releaseInfo ? parseInt(a.releaseInfo, 10) || 0 : 0;
-        const yb = b.releaseInfo ? parseInt(b.releaseInfo, 10) || 0 : 0;
-        return (ya - yb) * multiplier;
-      }
-      case "rating": {
-        const ra = a.imdbRating ? parseFloat(a.imdbRating) || 0 : 0;
-        const rb = b.imdbRating ? parseFloat(b.imdbRating) || 0 : 0;
-        return (ra - rb) * multiplier;
-      }
-      case "title":
-      default:
-        return a.name.localeCompare(b.name) * multiplier;
-    }
-  });
-
-  return sorted;
-}
-
 // Stremio only has `movie` and `series` catalog types, so every single-video
 // IMDb title (theatrical, made-for-TV, short, etc.) maps to `movie`. Episodic
 // content (`TV Episode`) and non-video titles (`Video Game`, `Music Video`,
@@ -585,11 +542,7 @@ const MOVIE_TYPES = new Set([
 ]);
 const SERIES_TYPES = new Set(["TV Series", "TV Mini Series"]);
 
-function convertToStremioFormat(
-  items: ProcessedItem[],
-  sortOptions: SortOptions,
-  rpdbApiKey?: string | null,
-): StremioMeta[] {
+function convertToStremioFormat(items: ProcessedItem[]): StremioMeta[] {
   const metas: StremioMeta[] = [];
 
   for (const item of items) {
@@ -606,7 +559,7 @@ function convertToStremioFormat(
     const meta: StremioMeta = {
       id: item.id,
       name: item.title ?? "",
-      poster: buildPosterUrl(item.id, item.image_url, rpdbApiKey),
+      poster: item.image_url,
       posterShape: "poster",
       type: isMovie ? "movie" : "series",
       genres: item.genres,
@@ -633,7 +586,7 @@ function convertToStremioFormat(
     metas.push(meta);
   }
 
-  return sortMetas(metas, sortOptions);
+  return metas;
 }
 
 export function isListId(id: string): boolean {
@@ -642,8 +595,6 @@ export function isListId(id: string): boolean {
 
 export async function fetchWatchlist(
   imdbUserId: string,
-  sortOptions: SortOptions = DEFAULT_SORT_OPTIONS,
-  rpdbApiKey?: string | null,
 ): Promise<WatchlistData> {
   console.log(`Fetching IMDb watchlist for user ${imdbUserId}...`);
 
@@ -654,10 +605,8 @@ export async function fetchWatchlist(
   );
 
   const processed = processWatchlist(edges);
-  const metas = convertToStremioFormat(processed, sortOptions, rpdbApiKey);
-  console.log(
-    `Converted ${metas.length} items to Stremio format (sorted by ${sortOptions.by}, ${sortOptions.order})`,
-  );
+  const metas = convertToStremioFormat(processed);
+  console.log(`Converted ${metas.length} items to Stremio format`);
 
   return { metas };
 }
@@ -751,11 +700,7 @@ async function getChartEdges(entry: ChartEntry): Promise<ImdbEdge[]> {
   }
 }
 
-export async function fetchChart(
-  sourceId: string,
-  sortOptions: SortOptions = DEFAULT_SORT_OPTIONS,
-  rpdbApiKey?: string | null,
-): Promise<WatchlistData> {
+export async function fetchChart(sourceId: string): Promise<WatchlistData> {
   const entry = CHART_BY_ID.get(sourceId);
   if (!entry) {
     // Unknown chart id has no fetcher. Charts are public, so there's no
@@ -772,10 +717,8 @@ export async function fetchChart(
   );
 
   const processed = processWatchlist(edges);
-  const metas = convertToStremioFormat(processed, sortOptions, rpdbApiKey);
-  console.log(
-    `Converted ${metas.length} items to Stremio format (sorted by ${sortOptions.by}, ${sortOptions.order})`,
-  );
+  const metas = convertToStremioFormat(processed);
+  console.log(`Converted ${metas.length} items to Stremio format`);
 
   return { metas };
 }
@@ -875,11 +818,7 @@ export async function getImdbList(listId: string): Promise<ImdbEdge[]> {
   return edges;
 }
 
-export async function fetchList(
-  listId: string,
-  sortOptions: SortOptions = DEFAULT_SORT_OPTIONS,
-  rpdbApiKey?: string | null,
-): Promise<WatchlistData> {
+export async function fetchList(listId: string): Promise<WatchlistData> {
   console.log(`Fetching IMDb list ${listId}...`);
 
   const edges = await getImdbList(listId);
@@ -889,10 +828,8 @@ export async function fetchList(
   );
 
   const processed = processWatchlist(edges);
-  const metas = convertToStremioFormat(processed, sortOptions, rpdbApiKey);
-  console.log(
-    `Converted ${metas.length} items to Stremio format (sorted by ${sortOptions.by}, ${sortOptions.order})`,
-  );
+  const metas = convertToStremioFormat(processed);
+  console.log(`Converted ${metas.length} items to Stremio format`);
 
   return { metas };
 }

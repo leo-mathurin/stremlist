@@ -3,7 +3,7 @@ import {
   GetObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
-import type { StremioMeta } from "@stremlist/shared";
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 function requiredKey(key: string | undefined): string {

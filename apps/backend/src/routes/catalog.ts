@@ -1,4 +1,7 @@
-import type { ConfigWatchlist, StremioMeta } from "@stremlist/shared";
+import type {
+  ConfigWatchlist,
+  StremioMeta,
+} from "@stremlist/shared/stremio.types";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import {
@@ -138,7 +141,7 @@ async function serveCatalog(c: Context) {
       ownerUserId: userId,
       watchlistId: watchlistConfig.id,
       imdbUserId: watchlistConfig.imdbUserId,
-      sortOption: selection.sort,
+      sort: selection.sort,
       rpdbApiKey,
     });
 

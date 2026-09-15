@@ -521,28 +521,6 @@ describe("fetchWatchlist (unit)", () => {
     expect(aot?.type).toBe("series");
   });
 
-  it("uses RPDB poster URLs when an RPDB API key is provided", async () => {
-    const edges = [makeEdge({ id: "tt0068646", title: "The Godfather" })];
-    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
-      mockGraphQLResponse({
-        id: "ls123",
-        visibility: { id: "PUBLIC" },
-        titleListItemSearch: { total: 1, edges },
-      }),
-    );
-
-    const result = await fetchWatchlist(
-      "ur195879360",
-      { by: "added_at", order: "asc" },
-      "my-rpdb-key",
-    );
-
-    expect(result.metas).toHaveLength(1);
-    expect(result.metas[0].poster).toBe(
-      "https://api.ratingposterdb.com/my-rpdb-key/imdb/poster-default/tt0068646.jpg?fallback=true",
-    );
-  });
-
   it("filters out non-movie/series types (e.g. TV Episode)", async () => {
     const edges = [
       makeEdge({ id: "tt0000001", type: "Movie" }),
@@ -609,74 +587,21 @@ describe("fetchWatchlist (unit)", () => {
     }
   });
 
-  it("sorts by title ascending", async () => {
+  it("preserves IMDb list order and original posters", async () => {
     const edges = [
       makeEdge({ id: "tt0000003", title: "Zulu" }),
       makeEdge({ id: "tt0000001", title: "Alpha" }),
-      makeEdge({ id: "tt0000002", title: "Mango" }),
     ];
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       mockGraphQLResponse({
         id: "ls123",
         visibility: { id: "PUBLIC" },
-        titleListItemSearch: { total: 3, edges },
+        titleListItemSearch: { total: 2, edges },
       }),
     );
-
-    const result = await fetchWatchlist("ur195879360", {
-      by: "title",
-      order: "asc",
-    });
-
-    expect(result.metas.map((m) => m.name)).toEqual(["Alpha", "Mango", "Zulu"]);
-  });
-
-  it("sorts by rating descending", async () => {
-    const edges = [
-      makeEdge({ id: "tt0000001", title: "Low", rating: 5.0 }),
-      makeEdge({ id: "tt0000002", title: "High", rating: 9.5 }),
-      makeEdge({ id: "tt0000003", title: "Mid", rating: 7.0 }),
-    ];
-    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
-      mockGraphQLResponse({
-        id: "ls123",
-        visibility: { id: "PUBLIC" },
-        titleListItemSearch: { total: 3, edges },
-      }),
-    );
-
-    const result = await fetchWatchlist("ur195879360", {
-      by: "rating",
-      order: "desc",
-    });
-
-    expect(result.metas.map((m) => m.imdbRating)).toEqual(["9.5", "7", "5"]);
-  });
-
-  it("sorts by year ascending", async () => {
-    const edges = [
-      makeEdge({ id: "tt0000001", title: "New", year: 2020 }),
-      makeEdge({ id: "tt0000002", title: "Old", year: 1990 }),
-      makeEdge({ id: "tt0000003", title: "Mid", year: 2005 }),
-    ];
-    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
-      mockGraphQLResponse({
-        id: "ls123",
-        visibility: { id: "PUBLIC" },
-        titleListItemSearch: { total: 3, edges },
-      }),
-    );
-
-    const result = await fetchWatchlist("ur195879360", {
-      by: "year",
-      order: "asc",
-    });
-
-    expect(result.metas.map((m) => m.releaseInfo)).toEqual([
-      "1990",
-      "2005",
-      "2020",
-    ]);
+    const { metas } = await fetchWatchlist("ur195879360");
+    expect(metas.map((meta) => meta.name)).toEqual(["Zulu", "Alpha"]);
+    expect(metas[0].poster).toBe(edges[0].listItem.primaryImage.url);
   });
 
   it("returns empty metas when all items are filtered out", async () => {

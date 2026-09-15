@@ -8,15 +8,17 @@ import {
   IMDB_USER_ID_EXTRACT_PATTERN,
   IMDB_WATCHLIST_SOURCE_ID_EXTRACT_PATTERN,
   IMDB_WATCHLIST_SOURCE_ID_PATTERN,
+} from "@stremlist/shared/constants";
+import {
   CHART_REGISTRY,
   CHART_BY_ID,
   isChartId,
-} from "@stremlist/shared";
+} from "@stremlist/shared/imdb-charts";
+import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type {
-  CatalogSettings,
   UserConfigResponse,
   ConfigWatchlist,
-} from "@stremlist/shared";
+} from "@stremlist/shared/stremio.types";
 import {
   Eye,
   EyeOff,
@@ -68,6 +70,7 @@ type WatchlistFormRow = {
   sortOption: string;
   displayMode: string;
   catalogSettings: CatalogSettings;
+  availableGenres: string[];
 };
 
 function getWatchlistReinstallSignature(rows: WatchlistFormRow[]): string {
@@ -98,6 +101,7 @@ function createWatchlistRow(
     sortOption: partial?.sortOption ?? DEFAULT_SORT_OPTION,
     displayMode: partial?.displayMode ?? DEFAULT_DISPLAY_MODE,
     catalogSettings: partial?.catalogSettings ?? {},
+    availableGenres: partial?.availableGenres ?? [],
   };
 }
 
@@ -292,6 +296,7 @@ function SortableWatchlistRow({
       )}
       <CatalogFilterSettings
         value={watchlist.catalogSettings}
+        genres={watchlist.availableGenres}
         onChange={(settings) =>
           onFieldChange(watchlist.localId, "catalogSettings", settings)
         }
@@ -392,6 +397,7 @@ export default function Configure() {
               sortOption: watchlist.sortOption,
               displayMode: watchlist.displayMode,
               catalogSettings: watchlist.catalogSettings,
+              availableGenres: watchlist.availableGenres,
             }),
           );
           if (rows.length > 0) {
@@ -597,7 +603,12 @@ export default function Configure() {
           current.map((row, index) => {
             const serverRow = saved.watchlists![index];
             return serverRow
-              ? { ...row, id: serverRow.id, imdbUserId: serverRow.imdbUserId }
+              ? {
+                  ...row,
+                  id: serverRow.id,
+                  imdbUserId: serverRow.imdbUserId,
+                  availableGenres: serverRow.availableGenres ?? [],
+                }
               : row;
           }),
         );
@@ -633,6 +644,7 @@ export default function Configure() {
         ok: boolean;
         error?: string;
         lastFetchedAt?: string;
+        watchlists?: ConfigWatchlist[];
         refreshed?: number;
         failed?: number;
         total?: number;
@@ -647,6 +659,20 @@ export default function Configure() {
       if (typeof json.cooldownSeconds === "number")
         setCooldownSeconds(json.cooldownSeconds);
       if (json.lastFetchedAt) setLastFetchedAt(json.lastFetchedAt);
+      if (json.watchlists) {
+        const refreshedRows = json.watchlists;
+        setWatchlists((current) =>
+          current.map((row) => {
+            const refreshedRow = refreshedRows.find(
+              (saved) =>
+                saved.id === row.id && saved.imdbUserId === row.imdbUserId,
+            );
+            return refreshedRow
+              ? { ...row, availableGenres: refreshedRow.availableGenres ?? [] }
+              : row;
+          }),
+        );
+      }
 
       // Success feedback is the live "Last refreshed" label + cooldown countdown,
       // so only surface a message when some catalogs actually failed to refresh.

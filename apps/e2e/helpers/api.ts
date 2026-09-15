@@ -3,7 +3,7 @@ import type {
   StremioMeta,
   UserConfigResponse,
   UserConfigUpdateWatchlist,
-} from "@stremlist/shared";
+} from "@stremlist/shared/stremio.types";
 import { hcWithType } from "@stremlist/backend/client";
 import { BACKEND_URL } from "../env.js";
 

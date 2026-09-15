@@ -12,6 +12,7 @@ export interface ConfigWatchlist {
   sortOption: string;
   displayMode: DisplayMode;
   position: number;
+  availableGenres?: string[];
   catalogSettings?: CatalogSettings;
 }
 

@@ -1,4 +1,4 @@
-import type { StremioMeta } from "@stremlist/shared";
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import app from "../index.js";

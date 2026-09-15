@@ -1,8 +1,5 @@
-import {
-  CHART_REGISTRY,
-  isChartId,
-  IMDB_WATCHLIST_SOURCE_ID_PATTERN,
-} from "@stremlist/shared";
+import { IMDB_WATCHLIST_SOURCE_ID_PATTERN } from "@stremlist/shared/constants";
+import { CHART_REGISTRY, isChartId } from "@stremlist/shared/imdb-charts";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fetchChart, normalizeImdbUserId } from "../imdb-scraper.js";
 
