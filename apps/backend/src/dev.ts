@@ -3,6 +3,6 @@ import app from "./index.js";
 
 const port = parseInt(process.env.PORT ?? "7001", 10);
 
-serve({ fetch: app.fetch, port }, (info) => {
+serve({ fetch: app.fetch, port, hostname: process.env.HOST }, (info) => {
   console.log(`Stremlist backend running on http://localhost:${info.port}`);
 });

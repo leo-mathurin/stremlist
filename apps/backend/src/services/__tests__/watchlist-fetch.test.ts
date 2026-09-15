@@ -1,4 +1,7 @@
-import type { StremioMeta, WatchlistData } from "@stremlist/shared";
+import type {
+  StremioMeta,
+  WatchlistData,
+} from "@stremlist/shared/stremio.types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const scraperMocks = vi.hoisted(() => ({
@@ -26,6 +29,7 @@ vi.mock("../user", () => ({
 }));
 vi.mock("../watchlist-cache", () => cacheMocks);
 
+import type { WatchlistFetchConfig } from "../watchlist";
 import { getWatchlistByConfig } from "../watchlist";
 
 const MOVIE: StremioMeta = {
@@ -56,11 +60,11 @@ describe("getWatchlistByConfig", () => {
         }),
     );
 
-    const config = {
+    const config: WatchlistFetchConfig = {
       ownerUserId: "ur12345678",
       watchlistId: "22222222-2222-4222-8222-222222222222",
       imdbUserId: "ls123456789",
-      sortOption: "added_at-asc",
+      sort: { by: "added_at", order: "asc" },
       skipUserTimestamp: true,
     };
     const first = getWatchlistByConfig(config);

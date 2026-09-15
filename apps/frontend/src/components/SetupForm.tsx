@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Link } from "react-router";
 import { ArrowRight, Info } from "lucide-react";
-import { IMDB_USER_ID_EXTRACT_PATTERN } from "@stremlist/shared";
+import { IMDB_USER_ID_EXTRACT_PATTERN } from "@stremlist/shared/constants";
 import { api } from "../lib/api";
 import AddonInstallActions from "./AddonInstallActions";
 import { Input } from "@/components/ui/input";

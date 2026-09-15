@@ -46,4 +46,3 @@ app.get("/health", async (c) => {
 });
 
 export default app;
-export type { ApiRoutes } from "./routes/api";

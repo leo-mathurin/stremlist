@@ -1,4 +1,7 @@
-import type { StremioMeta, WatchlistData } from "@stremlist/shared";
+import type {
+  StremioMeta,
+  WatchlistData,
+} from "@stremlist/shared/stremio.types";
 
 interface Entry {
   data: WatchlistData;

@@ -2,9 +2,10 @@ import {
   BASE_MANIFEST,
   ADDON_VERSION,
   IMDB_USER_ID_PATTERN,
-} from "@stremlist/shared";
-import type { StremioManifest } from "@stremlist/shared";
+} from "@stremlist/shared/constants";
+import type { StremioManifest } from "@stremlist/shared/stremio.types";
 import { Hono } from "hono";
+import { withAvailableGenres } from "../services/catalog-genres";
 import { buildManifestCatalogs } from "../services/stremio-catalogs";
 import {
   ensureUser,
@@ -50,7 +51,9 @@ manifest.get("/:userId/manifest.json", async (c) => {
   try {
     await ensureUser(userId);
     const savedRpdbApiKey = await getUserRpdbApiKey(userId);
-    const watchlists = await getUserWatchlists(userId);
+    const watchlists = await withAvailableGenres(
+      await getUserWatchlists(userId),
+    );
 
     const userManifest: StremioManifest = {
       ...structuredClone(BASE_MANIFEST),

@@ -9,7 +9,15 @@
     },
     "dev": {
       "cache": false,
-      "persistent": true
+      "persistent": true,
+      "passThroughEnv": [
+        "PORTLESS",
+        "PORTLESS_*",
+        "NODE_EXTRA_CA_CERTS",
+        "VITE_BACKEND_URL",
+        "DEV_BACKEND_URL",
+        "VERCEL_RELATED_PROJECTS"
+      ]
     },
     "transit": {
       "dependsOn": ["^transit"]
@@ -27,6 +35,18 @@
     },
     "typecheck": {
       "dependsOn": ["^build"]
+    },
+    "dev:tailnet": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "PORTLESS",
+        "PORTLESS_*",
+        "NODE_EXTRA_CA_CERTS",
+        "VITE_BACKEND_URL",
+        "DEV_BACKEND_URL",
+        "VERCEL_RELATED_PROJECTS"
+      ]
     }
   }
 }

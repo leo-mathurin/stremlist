@@ -4,14 +4,17 @@ import {
   IMDB_LIST_ID_PATTERN,
   IMDB_USER_ID_PATTERN,
   IMDB_WATCHLIST_SOURCE_ID_PATTERN,
-  isChartId,
   SORT_OPTIONS,
-} from "@stremlist/shared";
+  parseSortOption,
+} from "@stremlist/shared/constants";
+import { isChartId } from "@stremlist/shared/imdb-charts";
 import { Hono } from "hono";
 import { z } from "zod";
 import { scheduleBackgroundTask } from "../lib/background";
 import { resend } from "../lib/resend";
 import { supabase } from "../lib/supabase";
+import { withAvailableGenres } from "../services/catalog-genres";
+import { catalogSettingsSchema } from "../services/catalog-settings";
 import {
   getImdbWatchlist,
   normalizeImdbUserId,
@@ -23,7 +26,6 @@ import {
   getUser,
   getUserRpdbApiKey,
   replaceUserWatchlists,
-  setUserRpdbApiKey,
 } from "../services/user";
 import { getWatchlistByConfig } from "../services/watchlist";
 import { prewarmWatchlists } from "../services/watchlist-prewarm";
@@ -58,6 +60,7 @@ const configWatchlistBody = z.object({
   sortOption: z.enum(sortOptionValues),
   displayMode: z.enum(displayModeValues).optional(),
   position: z.number().int().min(0).optional(),
+  catalogSettings: catalogSettingsSchema.optional(),
 });
 const configBody = z.object({
   rpdbApiKey: z.string().trim().optional(),
@@ -108,7 +111,9 @@ const api = new Hono()
       return c.json({ error: "User not found. Install the addon first." }, 404);
     }
     const rpdbApiKey = await getUserRpdbApiKey(userId);
-    const watchlists = await getUserWatchlists(userId);
+    const watchlists = await withAvailableGenres(
+      await getUserWatchlists(userId),
+    );
     return c.json({
       rpdbApiKey,
       watchlists,
@@ -171,6 +176,7 @@ const api = new Hono()
           sortOption: watchlist.sortOption,
           displayMode: watchlist.displayMode ?? "split",
           position: index,
+          catalogSettings: watchlist.catalogSettings,
         };
       });
 
@@ -187,10 +193,22 @@ const api = new Hono()
       const normalizedRpdbApiKey =
         rpdbApiKey && rpdbApiKey.length > 0 ? rpdbApiKey : null;
 
-      const [updatedWatchlists] = await Promise.all([
-        replaceUserWatchlists(userId, normalizedWatchlists),
-        setUserRpdbApiKey(userId, normalizedRpdbApiKey),
-      ]);
+      let updatedWatchlists;
+      try {
+        updatedWatchlists = await replaceUserWatchlists(
+          userId,
+          normalizedWatchlists,
+          normalizedRpdbApiKey,
+        );
+      } catch (error) {
+        console.error("Failed to save user configuration:", error);
+        return c.json(
+          {
+            error: "Failed to save your configuration. Please try again later.",
+          },
+          500,
+        );
+      }
 
       // A fresh installation already has a seeded watchlist ID, so an
       // "ID-less rows only" check would miss its first scrape. Queue every
@@ -199,7 +217,10 @@ const api = new Hono()
         prewarmWatchlists(userId, updatedWatchlists),
       );
 
-      return c.json({ ok: true, watchlists: updatedWatchlists });
+      return c.json({
+        ok: true,
+        watchlists: await withAvailableGenres(updatedWatchlists),
+      });
     },
   )
 
@@ -240,7 +261,7 @@ const api = new Hono()
           ownerUserId: userId,
           watchlistId: w.id,
           imdbUserId: w.imdbUserId,
-          sortOption: w.sortOption,
+          sort: parseSortOption(w.sortOption),
           rpdbApiKey,
           forceFresh: true,
           skipUserTimestamp: true,
@@ -267,6 +288,7 @@ const api = new Hono()
       refreshed,
       failed,
       total: watchlists.length,
+      watchlists: await withAvailableGenres(watchlists),
       cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
     });
   })

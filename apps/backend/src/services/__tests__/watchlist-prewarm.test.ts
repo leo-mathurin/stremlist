@@ -1,4 +1,4 @@
-import type { ConfigWatchlist } from "@stremlist/shared";
+import type { ConfigWatchlist } from "@stremlist/shared/stremio.types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const watchlistMocks = vi.hoisted(() => ({
@@ -103,7 +103,7 @@ describe("prewarmWatchlists", () => {
       ownerUserId: "ur12345678",
       watchlistId: "11111111-1111-4111-8111-111111111111",
       imdbUserId: "ur12345678",
-      sortOption: "added_at-asc",
+      sort: { by: "added_at", order: "asc" },
       rpdbApiKey: null,
       skipUserTimestamp: true,
     });
@@ -111,7 +111,7 @@ describe("prewarmWatchlists", () => {
       ownerUserId: "ur12345678",
       watchlistId: "22222222-2222-4222-8222-222222222222",
       imdbUserId: "ls123456789",
-      sortOption: "year-desc",
+      sort: { by: "year", order: "desc" },
       rpdbApiKey: null,
       skipUserTimestamp: true,
     });

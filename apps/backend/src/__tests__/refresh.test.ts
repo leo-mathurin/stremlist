@@ -1,4 +1,4 @@
-import type { StremioMeta } from "@stremlist/shared";
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 vi.mock("../lib/supabase", async () => {

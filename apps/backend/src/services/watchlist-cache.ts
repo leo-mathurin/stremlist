@@ -3,7 +3,10 @@ import {
   GetObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
-import type { StremioMeta, WatchlistData } from "@stremlist/shared";
+import type {
+  StremioMeta,
+  WatchlistData,
+} from "@stremlist/shared/stremio.types";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
@@ -26,6 +29,7 @@ const stremioMetaSchema = z.object({
   director: z.array(z.string()).optional(),
   cast: z.array(z.string()).optional(),
   runtime: z.string().optional(),
+  released: z.string().datetime().optional(),
 });
 
 const catalogObjectSchema = z.object({

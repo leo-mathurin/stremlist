@@ -1,5 +1,26 @@
-import type { ConfigWatchlist, StremioCatalog } from "@stremlist/shared";
+import { CATALOG_PRESETS } from "@stremlist/shared/catalog-settings";
+import type {
+  ConfigWatchlist,
+  StremioCatalog,
+} from "@stremlist/shared/stremio.types";
+import { CATALOG_FILTER_OPTIONS } from "./catalog-filters";
 import { buildCatalogId } from "./catalog-id";
+
+function catalogExtras(
+  genres: string[],
+  search = true,
+): StremioCatalog["extra"] {
+  return [
+    { name: "skip", isRequired: false },
+    ...(search ? [{ name: "search" as const, isRequired: false }] : []),
+    {
+      name: "genre",
+      isRequired: false,
+      options: [...new Set([...CATALOG_FILTER_OPTIONS, ...genres])],
+      optionsLimit: 1,
+    },
+  ];
+}
 
 function buildCatalogName(baseTitle: string): string {
   const normalizedTitle = baseTitle.trim();
@@ -38,25 +59,43 @@ export function buildManifestCatalogs(
         ? watchlist.displayMode
         : "split";
 
+    const genres = [
+      ...new Set([
+        ...(watchlist.availableGenres ?? []),
+        ...(watchlist.catalogSettings?.genre
+          ? [watchlist.catalogSettings.genre]
+          : []),
+      ]),
+    ].sort();
     const movieCatalog: StremioCatalog = {
       id: buildCatalogId(watchlist.id, "movie"),
       name: buildCatalogName(effectiveTitle),
       type: "movie",
-      extra: [{ name: "skip", isRequired: false }],
+      extra: catalogExtras(genres),
     };
     const seriesCatalog: StremioCatalog = {
       id: buildCatalogId(watchlist.id, "series"),
       name: buildCatalogName(effectiveTitle),
       type: "series",
-      extra: [{ name: "skip", isRequired: false }],
+      extra: catalogExtras(genres),
     };
 
-    if (displayMode === "movie") {
-      return [movieCatalog];
-    }
-    if (displayMode === "series") {
-      return [seriesCatalog];
-    }
-    return [movieCatalog, seriesCatalog];
+    const base =
+      displayMode === "movie"
+        ? [movieCatalog]
+        : displayMode === "series"
+          ? [seriesCatalog]
+          : [movieCatalog, seriesCatalog];
+    return base.flatMap((catalog) => [
+      catalog,
+      ...CATALOG_PRESETS.filter((preset) =>
+        watchlist.catalogSettings?.presets?.includes(preset.id),
+      ).map((preset) => ({
+        ...catalog,
+        id: buildCatalogId(watchlist.id, catalog.type, preset.id),
+        name: `${catalog.name} · ${preset.label}`,
+        extra: catalogExtras(genres, false),
+      })),
+    ]);
   });
 }

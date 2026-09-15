@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "@stremlist/shared";
+import type { Database } from "@stremlist/shared/database.types";
 import { SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL } from "../env.js";
 import { E2E_USER_IDS } from "./test-data.js";
 import { deleteCacheObjects } from "./r2.js";

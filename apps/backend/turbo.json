@@ -14,6 +14,22 @@
         "MONITOR_IMDB_USER_ID",
         "CRON_SECRET"
       ]
+    },
+    "dev": {
+      "passThroughEnv": [
+        "$TURBO_EXTENDS$",
+        "!PORTLESS_TAILSCALE",
+        "!PORTLESS_FUNNEL",
+        "!PORTLESS_NGROK"
+      ]
+    },
+    "dev:tailnet": {
+      "passThroughEnv": [
+        "$TURBO_EXTENDS$",
+        "!PORTLESS_TAILSCALE",
+        "!PORTLESS_FUNNEL",
+        "!PORTLESS_NGROK"
+      ]
     }
   }
 }

@@ -1,8 +1,23 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
+import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
+import type { Database, Tables } from "@stremlist/shared/database.types";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import app from "../index.js";
+
+type ReplaceConfig = Database["public"]["Functions"]["replace_user_config"];
+const rpcMocks = vi.hoisted(() => ({
+  rpc: vi.fn<
+    (
+      name: "replace_user_config",
+      args: ReplaceConfig["Args"],
+    ) => Promise<{
+      data: ReplaceConfig["Returns"] | null;
+      error: Error | null;
+    }>
+  >(),
+}));
 
 const backgroundMocks = vi.hoisted(() => ({
   scheduleBackgroundTask: vi.fn(),
@@ -15,7 +30,8 @@ vi.mock("../lib/background", () => backgroundMocks);
 vi.mock("../services/watchlist-prewarm", () => prewarmMocks);
 
 vi.mock("../lib/supabase", async () => {
-  return await import("./helpers/mock-supabase.js");
+  const { supabase } = await import("./helpers/mock-supabase.js");
+  return { supabase: { ...supabase, rpc: rpcMocks.rpc } };
 });
 
 vi.mock("../services/watchlist-cache", async () => {
@@ -27,6 +43,7 @@ vi.mock("../lib/resend", () => ({
 }));
 
 import { db } from "./helpers/mock-supabase.js";
+import { cache } from "./helpers/mock-watchlist-cache.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -83,6 +100,7 @@ function postConfig(
       catalogTitle?: string;
       sortOption: string;
       position?: number;
+      catalogSettings?: CatalogSettings;
     }[];
   },
 ) {
@@ -100,10 +118,32 @@ function postConfig(
 describe("Watchlist CRUD via API", () => {
   beforeEach(() => {
     db.reset();
+    rpcMocks.rpc.mockReset();
+    cache.reset();
     seedUser(OWNER);
     backgroundMocks.scheduleBackgroundTask.mockReset();
     prewarmMocks.prewarmWatchlists.mockReset();
     prewarmMocks.prewarmWatchlists.mockResolvedValue(undefined);
+  });
+
+  it.each([
+    { minRating: 11 },
+    { maxRuntime: -1 },
+    { decade: 1995 },
+    { genre: "" },
+  ])("rejects invalid catalog settings %j", async (catalogSettings) => {
+    seedWatchlist({ id: UUID_1 });
+    const response = await postConfig(OWNER, {
+      watchlists: [
+        {
+          id: UUID_1,
+          imdbUserId: OWNER,
+          sortOption: "title-asc",
+          catalogSettings,
+        },
+      ],
+    });
+    expect(response.status).toBe(400);
   });
 
   // ---- GET /:userId/config ----
@@ -169,119 +209,6 @@ describe("Watchlist CRUD via API", () => {
       expect(res.status).toBe(404);
     });
 
-    it("creates new watchlists with Supabase-generated UUIDs", async () => {
-      const res = await postConfig(OWNER, {
-        watchlists: [
-          { imdbUserId: OWNER, sortOption: "added_at-desc" },
-          { imdbUserId: OTHER_IMDB, sortOption: "year-asc" },
-        ],
-      });
-
-      expect(res.status).toBe(200);
-      const data = await res.json();
-      expect(data.ok).toBe(true);
-      expect(data.watchlists).toHaveLength(2);
-
-      // IDs should be generated UUIDs
-      for (const wl of data.watchlists) {
-        expect(wl.id).toMatch(
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-        );
-      }
-
-      expect(data.watchlists[0].imdbUserId).toBe(OWNER);
-      expect(data.watchlists[1].imdbUserId).toBe(OTHER_IMDB);
-
-      expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledOnce();
-      const task = backgroundMocks.scheduleBackgroundTask.mock.calls[0][0] as
-        | (() => Promise<void>)
-        | undefined;
-      expect(task).toBeTypeOf("function");
-      await task?.();
-      expect(prewarmMocks.prewarmWatchlists).toHaveBeenCalledWith(
-        OWNER,
-        data.watchlists,
-      );
-    });
-
-    it("preserves IDs when updating sort order", async () => {
-      seedWatchlist({ id: UUID_1, sortOption: "added_at-asc" });
-
-      const res = await postConfig(OWNER, {
-        watchlists: [{ id: UUID_1, imdbUserId: OWNER, sortOption: "year-asc" }],
-      });
-
-      const data = await res.json();
-      expect(data.watchlists).toHaveLength(1);
-      expect(data.watchlists[0].id).toBe(UUID_1);
-      expect(data.watchlists[0].sortOption).toBe("year-asc");
-    });
-
-    it("preserves IDs when updating catalog title", async () => {
-      seedWatchlist({ id: UUID_1, catalogTitle: "Old Title" });
-
-      const res = await postConfig(OWNER, {
-        watchlists: [
-          {
-            id: UUID_1,
-            imdbUserId: OWNER,
-            catalogTitle: "New Title",
-            sortOption: "added_at-asc",
-          },
-        ],
-      });
-
-      const data = await res.json();
-      expect(data.watchlists[0].id).toBe(UUID_1);
-      expect(data.watchlists[0].catalogTitle).toBe("New Title");
-    });
-
-    it("deletes removed watchlists", async () => {
-      seedWatchlist({ id: UUID_1, position: 0 });
-      seedWatchlist({
-        id: UUID_2,
-        imdbUserId: OTHER_IMDB,
-        position: 1,
-      });
-
-      // Save with only the first watchlist → second should be deleted
-      const res = await postConfig(OWNER, {
-        watchlists: [
-          { id: UUID_1, imdbUserId: OWNER, sortOption: "added_at-asc" },
-        ],
-      });
-
-      const data = await res.json();
-      expect(data.watchlists).toHaveLength(1);
-      expect(data.watchlists[0].id).toBe(UUID_1);
-
-      // Verify DB state
-      const rows = db.getTable("user_watchlists");
-      expect(rows).toHaveLength(1);
-      expect(rows[0].id).toBe(UUID_1);
-    });
-
-    it("can add a new watchlist alongside existing ones", async () => {
-      seedWatchlist({ id: UUID_1, position: 0 });
-
-      const res = await postConfig(OWNER, {
-        watchlists: [
-          { id: UUID_1, imdbUserId: OWNER, sortOption: "added_at-asc" },
-          { imdbUserId: OTHER_IMDB, sortOption: "year-desc" },
-        ],
-      });
-
-      const data = await res.json();
-      expect(data.watchlists).toHaveLength(2);
-      expect(data.watchlists[0].id).toBe(UUID_1);
-
-      // New watchlist gets a generated UUID
-      const newId = data.watchlists[1].id;
-      expect(newId).toBeDefined();
-      expect(newId).not.toBe(UUID_1);
-      expect(data.watchlists[1].imdbUserId).toBe(OTHER_IMDB);
-    });
-
     it("rejects duplicate IMDb user IDs", async () => {
       const res = await postConfig(OWNER, {
         watchlists: [
@@ -325,109 +252,193 @@ describe("Watchlist CRUD via API", () => {
     });
   });
 
-  // ---- The exact bug scenario ----
+  describe("configuration RPC boundary", () => {
+    const savedRow: Tables<"user_watchlists"> = {
+      id: UUID_1,
+      owner_user_id: OWNER,
+      imdb_user_id: OWNER,
+      catalog_title: "Saved title",
+      sort_option: "rating-desc",
+      display_mode: "split",
+      position: 0,
+      catalog_settings: { minRating: 8 },
+      created_at: "2026-09-15T00:00:00Z",
+      updated_at: "2026-09-15T00:00:00Z",
+    };
 
-  describe("ID stability across saves (regression)", () => {
-    it("IDs returned from first save are stable on subsequent saves", async () => {
-      // Step 1: create two new watchlists (no IDs)
-      const res1 = await postConfig(OWNER, {
-        watchlists: [
-          { imdbUserId: OWNER, sortOption: "added_at-asc" },
-          { imdbUserId: OTHER_IMDB, sortOption: "added_at-asc" },
-        ],
+    beforeEach(() => {
+      rpcMocks.rpc.mockResolvedValue({
+        data: [{ deleted_ids: [], watchlists: [savedRow] }],
+        error: null,
       });
-
-      const data1 = await res1.json();
-      expect(data1.watchlists).toHaveLength(2);
-      const id1 = data1.watchlists[0].id;
-      const id2 = data1.watchlists[1].id;
-
-      // Step 2: re-save with IDs from step 1, changing sort order
-      const res2 = await postConfig(OWNER, {
-        watchlists: [
-          { id: id1, imdbUserId: OWNER, sortOption: "year-asc" },
-          { id: id2, imdbUserId: OTHER_IMDB, sortOption: "year-asc" },
-        ],
-      });
-
-      const data2 = await res2.json();
-      expect(data2.watchlists[0].id).toBe(id1);
-      expect(data2.watchlists[1].id).toBe(id2);
-      expect(data2.watchlists[0].sortOption).toBe("year-asc");
-      expect(data2.watchlists[1].sortOption).toBe("year-asc");
-
-      // Step 3: save a third time — IDs should still be the same
-      const res3 = await postConfig(OWNER, {
-        watchlists: [
-          { id: id1, imdbUserId: OWNER, sortOption: "rating-desc" },
-          { id: id2, imdbUserId: OTHER_IMDB, sortOption: "rating-desc" },
-        ],
-      });
-
-      const data3 = await res3.json();
-      expect(data3.watchlists[0].id).toBe(id1);
-      expect(data3.watchlists[1].id).toBe(id2);
     });
 
-    it("saving without IDs replaces all watchlists with fresh ones", async () => {
-      // Create initial watchlists
-      const res1 = await postConfig(OWNER, {
+    it("sends normalized rows in one RPC and returns/prewarms the committed rows", async () => {
+      const response = await postConfig(OWNER, {
+        rpdbApiKey: "  secret-key  ",
         watchlists: [
-          { imdbUserId: OWNER, sortOption: "added_at-asc" },
-          { imdbUserId: OTHER_IMDB, sortOption: "added_at-asc" },
+          {
+            id: UUID_1,
+            imdbUserId: OWNER,
+            catalogTitle: "Updated",
+            sortOption: "title-asc",
+            position: 7,
+          },
+          { imdbUserId: OTHER_IMDB, sortOption: "year-desc" },
         ],
       });
-      const data1 = await res1.json();
-      const oldId1 = data1.watchlists[0].id;
-      const oldId2 = data1.watchlists[1].id;
-
-      // Re-save WITHOUT IDs → should create new rows, delete old ones
-      const res2 = await postConfig(OWNER, {
-        watchlists: [
-          { imdbUserId: OWNER, sortOption: "year-asc" },
-          { imdbUserId: OTHER_IMDB, sortOption: "year-asc" },
-        ],
+      expect(response.status).toBe(200);
+      expect(rpcMocks.rpc).toHaveBeenCalledExactlyOnceWith(
+        "replace_user_config",
+        {
+          p_owner_user_id: OWNER,
+          p_rpdb_api_key: "secret-key",
+          p_watchlists: [
+            {
+              id: UUID_1,
+              imdb_user_id: OWNER,
+              catalog_title: "Updated",
+              sort_option: "title-asc",
+              display_mode: "split",
+              position: 0,
+            },
+            {
+              imdb_user_id: OTHER_IMDB,
+              catalog_title: "2",
+              sort_option: "year-desc",
+              display_mode: "split",
+              position: 1,
+            },
+          ],
+        },
+      );
+      const expected = [
+        {
+          id: UUID_1,
+          imdbUserId: OWNER,
+          catalogTitle: "Saved title",
+          sortOption: "rating-desc",
+          displayMode: "split",
+          position: 0,
+          catalogSettings: { minRating: 8 },
+        },
+      ];
+      expect(await response.json()).toEqual({
+        ok: true,
+        watchlists: expected.map((row) => ({ ...row, availableGenres: [] })),
       });
-
-      const data2 = await res2.json();
-      expect(data2.watchlists).toHaveLength(2);
-      expect(data2.watchlists[0].id).not.toBe(oldId1);
-      expect(data2.watchlists[1].id).not.toBe(oldId2);
-
-      // DB should only have 2 rows (old ones deleted)
-      const rows = db.getTable("user_watchlists");
-      expect(rows).toHaveLength(2);
-    });
-  });
-
-  // ---- RPDB API key ----
-
-  describe("RPDB API key", () => {
-    it("saves and returns RPDB API key", async () => {
-      const res = await postConfig(OWNER, {
-        rpdbApiKey: "test-rpdb-key",
-        watchlists: [{ imdbUserId: OWNER, sortOption: "added_at-asc" }],
-      });
-      expect(res.status).toBe(200);
-
-      const config = await getConfig(OWNER);
-      const json = await config.json();
-      expect(json.rpdbApiKey).toBe("test-rpdb-key");
+      expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledOnce();
+      const task = backgroundMocks.scheduleBackgroundTask.mock
+        .calls[0][0] as () => Promise<void>;
+      await task();
+      expect(prewarmMocks.prewarmWatchlists).toHaveBeenCalledExactlyOnceWith(
+        OWNER,
+        expected,
+      );
     });
 
-    it("clears RPDB API key when empty string is sent", async () => {
-      // Set a key first
-      const users = db.getTable("users");
-      users[0].rpdb_api_key = "existing-key";
-
+    it("keeps omitted settings distinct from an explicit clear in the RPC payload", async () => {
       await postConfig(OWNER, {
-        rpdbApiKey: "",
-        watchlists: [{ imdbUserId: OWNER, sortOption: "added_at-asc" }],
+        watchlists: [
+          { id: UUID_1, imdbUserId: OWNER, sortOption: "title-asc" },
+          {
+            id: UUID_2,
+            imdbUserId: OTHER_IMDB,
+            sortOption: "title-desc",
+            catalogSettings: {},
+          },
+        ],
       });
+      expect(rpcMocks.rpc.mock.calls[0][1].p_watchlists).toEqual([
+        {
+          id: UUID_1,
+          imdb_user_id: OWNER,
+          catalog_title: "1",
+          sort_option: "title-asc",
+          display_mode: "split",
+          position: 0,
+        },
+        {
+          id: UUID_2,
+          imdb_user_id: OTHER_IMDB,
+          catalog_title: "2",
+          sort_option: "title-desc",
+          display_mode: "split",
+          position: 1,
+          catalog_settings: {},
+        },
+      ]);
+    });
 
-      const config = await getConfig(OWNER);
-      const json = await config.json();
-      expect(json.rpdbApiKey).toBeNull();
+    it("passes combined filters, custom values and presets through unchanged", async () => {
+      const catalogSettings: CatalogSettings = {
+        genre: "Comedy",
+        decade: 2090,
+        maxRuntime: 95,
+        minRating: 7.2,
+        presets: ["short", "rated", "shuffle"],
+      };
+      const response = await postConfig(OWNER, {
+        watchlists: [
+          { imdbUserId: OWNER, sortOption: "title-asc", catalogSettings },
+        ],
+      });
+      expect(response.status).toBe(200);
+      expect(rpcMocks.rpc.mock.calls[0][1].p_watchlists).toEqual([
+        {
+          imdb_user_id: OWNER,
+          catalog_title: "",
+          sort_option: "title-asc",
+          display_mode: "split",
+          position: 0,
+          catalog_settings: catalogSettings,
+        },
+      ]);
+    });
+
+    it.each([undefined, "", "   "])(
+      "normalizes an empty RPDB key (%j) to null",
+      async (rpdbApiKey) => {
+        await postConfig(OWNER, {
+          rpdbApiKey,
+          watchlists: [{ imdbUserId: OWNER, sortOption: "added_at-asc" }],
+        });
+        expect(rpcMocks.rpc.mock.calls[0][1].p_rpdb_api_key).toBeNull();
+      },
+    );
+
+    it("deletes only the cache IDs returned by the committed transaction", async () => {
+      cache.seed(UUID_1, []);
+      cache.seed(UUID_2, []);
+      rpcMocks.rpc.mockResolvedValueOnce({
+        data: [{ deleted_ids: [UUID_2], watchlists: [savedRow] }],
+        error: null,
+      });
+      const response = await postConfig(OWNER, {
+        watchlists: [
+          { id: UUID_1, imdbUserId: OWNER, sortOption: "title-asc" },
+        ],
+      });
+      expect(response.status).toBe(200);
+      expect(cache.get(UUID_1)).not.toBeNull();
+      expect(cache.get(UUID_2)).toBeNull();
+    });
+
+    it("keeps caches and skips prewarming when the RPC fails", async () => {
+      cache.seed(UUID_2, []);
+      rpcMocks.rpc.mockResolvedValueOnce({
+        data: null,
+        error: new Error("Transaction rolled back"),
+      });
+      const response = await postConfig(OWNER, {
+        rpdbApiKey: "new-key",
+        watchlists: [
+          { id: UUID_1, imdbUserId: OWNER, sortOption: "title-asc" },
+        ],
+      });
+      expect(response.status).toBe(500);
+      expect(cache.get(UUID_2)).not.toBeNull();
+      expect(backgroundMocks.scheduleBackgroundTask).not.toHaveBeenCalled();
     });
   });
 });
