@@ -28,6 +28,79 @@ const BADGE_CLASSES: Record<ChangeType, string> = {
 
 const VERSIONS: Version[] = [
   {
+    version: "v1.10.0",
+    date: "September 15, 2026",
+    changes: [
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Added per-catalog filters for genre, decade, maximum runtime, and minimum IMDb rating. Combine them to narrow down what you want to watch.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Added title search for your catalogs in Stremio, including accent-insensitive matching. Your saved filters also apply to search results.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: 'Added optional "90 min or less", "Top rated", and "Shuffle" catalogs for your Stremio home. Enable them under "Filters & extra catalogs", save, and reinstall the addon to show the new catalogs.',
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Added filters and sorting options in Stremio's catalog dropdown, including shortest or longest runtime and newest or oldest release date, without changing your saved settings.",
+      },
+      {
+        type: "bugfix",
+        label: "Bugfix",
+        text: "Fixed TV episode selection when Stremlist is listed before other metadata addons. Series details now come from another installed metadata provider, while your series catalogs stay available.",
+      },
+      {
+        type: "bugfix",
+        label: "Reliability",
+        text: "Watchlists and your RPDB key now save together, so a failed save cannot leave only part of your configuration updated. Save failures also show a clear error message.",
+      },
+    ],
+  },
+  {
+    version: "v1.9.0",
+    date: "September 1, 2026",
+    changes: [
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Increased support for IMDb watchlists and lists from 10,000 to 15,000 titles.",
+      },
+      {
+        type: "performance",
+        label: "Performance",
+        text: "Catalogs start preparing in the background after you save your configuration, reducing the wait when you next open them in Stremio.",
+      },
+      {
+        type: "bugfix",
+        label: "Reliability",
+        text: "Improved handling of simultaneous refresh requests and added clearer feedback when configuration loading or catalog refreshes fail.",
+      },
+    ],
+  },
+  {
+    version: "v1.8.0",
+    date: "August 26, 2026",
+    changes: [
+      {
+        type: "performance",
+        label: "Performance",
+        text: "Reworked catalog caching to store large watchlists more efficiently and reuse saved results without fetching IMDb again.",
+      },
+      {
+        type: "bugfix",
+        label: "Reliability",
+        text: "Improved recovery from stale cache entries and made cache replacement and deletion safer when requests overlap.",
+      },
+    ],
+  },
+  {
     version: "v1.7.0",
     date: "June 27, 2026",
     changes: [

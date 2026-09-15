@@ -42,6 +42,7 @@ function seedWatchlist(id: string) {
     imdb_user_id: OWNER,
     catalog_title: "",
     sort_option: "added_at-asc",
+    display_mode: "split",
     position: 0,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
