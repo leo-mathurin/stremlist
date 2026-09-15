@@ -56,6 +56,8 @@
   --color-imdb: #f5c518;
   --color-imdb-dark: #e0b015;
   --color-stremlist: #0d8aee;
+  /* Strong ease-out for UI enter/reveal motion: starts fast, settles gently. */
+  --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 @layer base {
