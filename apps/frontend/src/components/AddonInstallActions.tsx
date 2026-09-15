@@ -9,7 +9,10 @@ interface AddonInstallActionsProps {
 }
 
 function buildUrls(imdbUserId: string) {
-  const addonUrl = `${import.meta.env.VITE_BACKEND_URL}/${imdbUserId}/manifest.json`;
+  const addonUrl = new URL(
+    `${import.meta.env.VITE_BACKEND_URL}/${imdbUserId}/manifest.json`,
+    window.location.origin,
+  ).href;
   const webUrl = `https://web.stremio.com/#/addons?addon=${encodeURIComponent(addonUrl)}`;
   const stremioUrl = `stremio://${addonUrl.replace(/^https?:\/\//, "")}`;
   return { addonUrl, webUrl, stremioUrl };

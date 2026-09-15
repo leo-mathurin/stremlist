@@ -14,6 +14,9 @@ importers:
       lint-staged:
         specifier: ^16.2.7
         version: 16.2.7
+      portless:
+        specifier: 0.15.6
+        version: 0.15.6
       turbo:
         specifier: ^2.9.6
         version: 2.9.16
@@ -2647,6 +2650,12 @@ packages:
   playwright@1.62.1:
     resolution: {integrity: sha512-0M+L3LAD8/nm554LOla9Ayx0j0tmFZ0FBcoQ7F1VuVHpM/XpiC8RcDzBQB8W5+hA8L22THxELzeF+2WcUzvcLg==}
     engines: {node: '>=20'}
+    hasBin: true
+
+  portless@0.15.6:
+    resolution: {integrity: sha512-uOAwWLF32rmyEGFASzSO0VOaqb/AQxFCCzyZbPGd82UNNOfIEvc09zy92nroNibE5HNfzV4oVB0ObKbPXgkM9A==}
+    engines: {node: '>=24'}
+    os: [darwin, linux, win32]
     hasBin: true
 
   postal-mime@2.7.3:
@@ -5286,6 +5295,8 @@ snapshots:
       playwright-core: 1.62.1
     optionalDependencies:
       fsevents: 2.3.2
+
+  portless@0.15.6: {}
 
   postal-mime@2.7.3: {}
 

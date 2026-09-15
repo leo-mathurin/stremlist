@@ -64,7 +64,7 @@ This repository follows the Turborepo recommended structure:
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 24+ for development with Portless (`.node-version`)
 - pnpm 10+
 
 ### Install
@@ -75,23 +75,29 @@ pnpm install
 
 ### Run in Development
 
-Run both apps:
+Decrypt the backend environment first (see below), then run:
 
 ```bash
-pnpm dev
+pnpm dev             # both apps through Portless
+pnpm dev:tailnet     # both apps; share the frontend over Tailscale HTTPS
+pnpm dev:backend     # backend only
+pnpm dev:frontend    # frontend only (requires a running backend)
+pnpm exec portless list
 ```
 
-Run only one app:
+Portless 0.15.6 is pinned as a dev dependency. In the main checkout, the
+local names are `https://stremlist.localhost` and
+`https://api.stremlist.localhost`. Linked worktrees receive a branch prefix;
+use the printed URLs or `pnpm exec portless list` instead of hardcoding them.
+A previously configured proxy port (such as 1355) appears in these URLs too.
 
-```bash
-pnpm dev:backend
-pnpm dev:frontend
-```
+For access from another tailnet device, open the **Tailscale URL** printed for
+the frontend. The browser uses `/api` on that same origin, and Vite forwards
+requests to the matching worktree's backend. Stremio install links and configure
+redirects use that origin too. No machine-specific browser API URL is needed.
 
-Default local URLs:
-
-- Backend: `http://localhost:7001`
-- Frontend: Vite default (`http://localhost:5173` unless overridden)
+See [the Portless development guide](docs/portless-development.md) for first-run
+setup, HTTPS, environment overrides, plain-port fallback, and cleanup.
 
 ### Decrypt environment files
 
