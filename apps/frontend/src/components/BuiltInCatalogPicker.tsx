@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { CHART_REGISTRY } from "@stremlist/shared";
+import { CHART_REGISTRY } from "@stremlist/shared/imdb-charts";
 import { Check, ChevronDown, ExternalLink, Plus, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";

@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "dev": "tsx watch --env-file=.env src/dev.ts",
+    "dev": "portless",
     "build": "tsx build.ts",
     "lint": "eslint .",
     "format": "prettier . --write",
@@ -21,7 +21,9 @@
     "test": "vitest run --exclude '**/*.stress.test.ts'",
     "test:stress": "vitest run src/services/__tests__/imdb-scraper.stress.test.ts",
     "typecheck": "tsc --noEmit",
-    "cleanup:invalid-users": "tsx src/scripts/cleanup-invalid-users.ts"
+    "cleanup:invalid-users": "tsx src/scripts/cleanup-invalid-users.ts",
+    "dev:app": "tsx watch --env-file=.env src/dev.ts",
+    "dev:tailnet": "portless"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1118.0",
@@ -48,5 +50,10 @@
     "tsx": "^4.7.1",
     "typescript": "^5.8.3",
     "vitest": "^4.0.18"
+  },
+  "portless": {
+    "name": "api.stremlist",
+    "script": "dev:app",
+    "proxy": true
   }
 }

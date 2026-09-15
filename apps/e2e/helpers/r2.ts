@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { gzipSync } from "node:zlib";
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import {
   CreateBucketCommand,
   DeleteObjectsCommand,
@@ -5,6 +8,7 @@ import {
   HeadBucketCommand,
   ListObjectsV2Command,
   S3Client,
+  PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import {
   R2_ACCESS_KEY_ID,
@@ -80,9 +84,7 @@ export async function getCacheObjectKeys(
   return listKeys(`watchlists/${watchlistId}/`);
 }
 
-export async function getCacheManifest(
-  watchlistId: string,
-): Promise<unknown> {
+export async function getCacheManifest(watchlistId: string): Promise<unknown> {
   const response = await r2.send(
     new GetObjectCommand({
       Bucket: R2_BUCKET,
@@ -115,4 +117,45 @@ export async function deleteCacheObjects(
       }),
     );
   }
+}
+
+/** Write controlled input in the on-disk format consumed by the real backend. */
+export async function seedCachedCatalog(
+  id: string,
+  metas: StremioMeta[],
+): Promise<void> {
+  const generation = randomUUID();
+  const catalogKey = `watchlists/${id}/generations/${generation}.json.gz`;
+  const genres = (type: StremioMeta["type"]) =>
+    [
+      ...new Set(
+        metas
+          .filter((meta) => meta.type === type)
+          .flatMap((meta) => meta.genres),
+      ),
+    ].sort();
+  await r2.send(
+    new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: catalogKey,
+      Body: gzipSync(JSON.stringify({ version: 1, metas })),
+      ContentType: "application/json",
+      ContentEncoding: "gzip",
+    }),
+  );
+  await r2.send(
+    new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: `watchlists/${id}/manifest.json`,
+      Body: JSON.stringify({
+        version: 1,
+        generation,
+        cachedAt: new Date().toISOString(),
+        catalogKey,
+        metaKeys: metas.map((meta) => `${meta.type}:${meta.id}`).sort(),
+        genres: { movie: genres("movie"), series: genres("series") },
+      }),
+      ContentType: "application/json",
+    }),
+  );
 }

@@ -1,4 +1,5 @@
-import type { ConfigWatchlist } from "@stremlist/shared";
+import { parseSortOption } from "@stremlist/shared/constants";
+import type { ConfigWatchlist } from "@stremlist/shared/stremio.types";
 import { randomUUID } from "node:crypto";
 import { supabase } from "../lib/supabase";
 import { getUserWatchlists } from "./user";
@@ -64,7 +65,7 @@ async function runPrewarmBatch(
           ownerUserId,
           watchlistId: watchlist.id,
           imdbUserId: watchlist.imdbUserId,
-          sortOption: watchlist.sortOption,
+          sort: parseSortOption(watchlist.sortOption),
           // Prewarming only needs the canonical cache. Poster customization is
           // applied later when Stremio requests the catalog.
           rpdbApiKey: null,

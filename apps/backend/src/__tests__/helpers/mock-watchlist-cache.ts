@@ -1,4 +1,7 @@
-import type { StremioMeta, WatchlistData } from "@stremlist/shared";
+import type {
+  StremioMeta,
+  WatchlistData,
+} from "@stremlist/shared/stremio.types";
 
 interface Entry {
   data: WatchlistData;
@@ -70,4 +73,19 @@ export function findCachedMeta(
 export function deleteCachedWatchlist(watchlistId: string): Promise<void> {
   cache.delete(watchlistId);
   return Promise.resolve();
+}
+
+export function getCachedWatchlistSummary(watchlistId: string) {
+  const entry = cache.get(watchlistId);
+  if (!entry) return Promise.resolve(null);
+  const genres = (type: StremioMeta["type"]) =>
+    [
+      ...new Set(
+        entry.data.metas
+          .filter((meta) => meta.type === type)
+          .flatMap((meta) => meta.genres)
+          .filter((genre) => genre.trim().length > 0),
+      ),
+    ].sort();
+  return Promise.resolve({ movie: genres("movie"), series: genres("series") });
 }

@@ -2,4 +2,5 @@ creation_rules:
   - path_regex: '(^|/)\.env(\.[A-Za-z0-9_-]+)?\.enc$'
     age:
       - age1skqn0tvghvz8fvu6m5880w72z5p00822kcc3adlagl4fkyu2fu8sg3w83f # mac
-      - age1cau5u3xfc0eat67zm5eqnasmrndewy5gyxjy26xflnvmva2m7egsn3pucf # dev-tower
+      - age1cau5u3xfc0eat67zm5eqnasmrndewy5gyxjy26xflnvmva2m7egsn3pucf # dev-tower (legacy)
+      - age1d2j5fn0yteypuemtwz5yuf4ryprlg8m7rkgmfarkvg5t9lnwfg6slvt95c # dev-tower

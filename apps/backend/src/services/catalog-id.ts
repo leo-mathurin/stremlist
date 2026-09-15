@@ -1,3 +1,5 @@
+import { CATALOG_PRESETS } from "@stremlist/shared/catalog-settings";
+import type { CatalogPreset } from "@stremlist/shared/catalog-settings";
 const CATALOG_ID_PREFIX = "wl";
 const CATALOG_ID_SEPARATOR = "-";
 const PREFIX_OFFSET = CATALOG_ID_PREFIX.length + CATALOG_ID_SEPARATOR.length;
@@ -9,13 +11,24 @@ export type CatalogContentType = "movie" | "series";
 export function buildCatalogId(
   watchlistId: string,
   type: CatalogContentType,
+  preset?: CatalogPreset,
 ): string {
-  return `${CATALOG_ID_PREFIX}${CATALOG_ID_SEPARATOR}${watchlistId}${CATALOG_ID_SEPARATOR}${type}`;
+  return `${CATALOG_ID_PREFIX}${CATALOG_ID_SEPARATOR}${watchlistId}${CATALOG_ID_SEPARATOR}${type}${preset ? `--${preset}` : ""}`;
 }
 
-export function parseCatalogId(
-  catalogId: string,
-): { watchlistId: string; type: CatalogContentType } | null {
+export function parseCatalogId(catalogId: string): {
+  watchlistId: string;
+  type: CatalogContentType;
+  preset?: CatalogPreset;
+} | null {
+  const separator = catalogId.indexOf("--");
+  if (separator !== -1) {
+    const preset = CATALOG_PRESETS.find(
+      (option) => option.id === catalogId.slice(separator + 2),
+    );
+    const base = parseCatalogId(catalogId.slice(0, separator));
+    return preset && base ? { ...base, preset: preset.id } : null;
+  }
   if (!catalogId.startsWith(`${CATALOG_ID_PREFIX}${CATALOG_ID_SEPARATOR}`)) {
     return null;
   }

@@ -3,7 +3,10 @@ import {
   GetObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
-import type { StremioMeta, WatchlistData } from "@stremlist/shared";
+import type {
+  StremioMeta,
+  WatchlistData,
+} from "@stremlist/shared/stremio.types";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
@@ -26,6 +29,7 @@ const stremioMetaSchema = z.object({
   director: z.array(z.string()).optional(),
   cast: z.array(z.string()).optional(),
   runtime: z.string().optional(),
+  released: z.string().datetime().optional(),
 });
 
 const catalogObjectSchema = z.object({
@@ -39,6 +43,10 @@ const cacheManifestSchema = z.object({
   cachedAt: z.string().datetime(),
   catalogKey: z.string(),
   metaKeys: z.array(z.string()),
+  // Older cache generations acquire summaries on their next refresh.
+  genres: z
+    .object({ movie: z.array(z.string()), series: z.array(z.string()) })
+    .optional(),
 });
 
 const deletedManifestSchema = z.object({
@@ -260,6 +268,20 @@ async function readCatalogWithManifestRefresh(
   return { manifest: refreshedManifest, catalog: refreshedCatalog };
 }
 
+function collectGenres(
+  metas: StremioMeta[],
+  type: StremioMeta["type"],
+): string[] {
+  return [
+    ...new Set(
+      metas
+        .filter((meta) => meta.type === type)
+        .flatMap((meta) => meta.genres)
+        .filter((genre) => genre.trim().length > 0),
+    ),
+  ].sort();
+}
+
 function uniqueMetas(metas: StremioMeta[]): StremioMeta[] {
   const seen = new Set<string>();
   return metas.filter((meta) => {
@@ -283,6 +305,18 @@ function hasSortedKey(keys: string[], target: string): boolean {
   }
 
   return false;
+}
+
+export async function getCachedWatchlistSummary(
+  watchlistId: string,
+): Promise<{ movie: string[]; series: string[] } | null> {
+  try {
+    const manifest = await readManifest(watchlistId);
+    return manifest?.genres ?? null;
+  } catch (error) {
+    console.error(`Failed to read R2 cache summary for ${watchlistId}:`, error);
+    return null;
+  }
 }
 
 export async function getCachedWatchlist(
@@ -329,6 +363,10 @@ export async function writeCachedWatchlist(
     cachedAt: cachedAt.toISOString(),
     catalogKey: nextCatalogKey,
     metaKeys: catalog.metas.map(metaKey).sort(),
+    genres: {
+      movie: collectGenres(catalog.metas, "movie"),
+      series: collectGenres(catalog.metas, "series"),
+    },
   };
 
   await getR2Client().send(

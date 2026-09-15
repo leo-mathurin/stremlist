@@ -3,8 +3,9 @@ import {
   GetObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
-import type { StremioMeta } from "@stremlist/shared";
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 function requiredKey(key: string | undefined): string {
   if (!key) throw new Error("R2 test command is missing a key");
@@ -107,6 +108,7 @@ import {
   deleteCachedWatchlist,
   findCachedMeta,
   getCachedWatchlist,
+  getCachedWatchlistSummary,
   writeCachedWatchlist,
 } from "../watchlist-cache";
 
@@ -155,6 +157,67 @@ describe("R2 watchlist cache", () => {
         expect.stringMatching(/generations\/.+\.json\.gz$/u),
       ]),
     );
+  });
+
+  it("reads sorted per-type genres from a cold manifest without loading the catalog", async () => {
+    const id = watchlistId();
+    await writeCachedWatchlist(id, {
+      metas: [
+        { ...MOVIE, genres: ["Drama", "Action", "Drama", "", "  "] },
+        { ...MOVIE, type: "series", genres: ["Comedy", "Drama"] },
+      ],
+    });
+    for (let index = 0; index <= 100; index += 1) {
+      await writeCachedWatchlist(watchlistId(), { metas: [MOVIE] });
+    }
+    r2.send.mockClear();
+    r2.failGetContaining = "/generations/";
+
+    expect(await getCachedWatchlistSummary(id)).toEqual({
+      movie: ["Action", "Drama"],
+      series: ["Comedy", "Drama"],
+    });
+    expect(r2.send).toHaveBeenCalledTimes(1);
+    const command = r2.send.mock.calls[0][0];
+    expect(command).toBeInstanceOf(GetObjectCommand);
+    if (!(command instanceof GetObjectCommand))
+      throw new Error("Expected manifest read");
+    expect(command.input.Key).toBe(`watchlists/${id}/manifest.json`);
+  });
+
+  it("keeps legacy catalogs readable and adds their summary on refresh", async () => {
+    const id = watchlistId();
+    await writeCachedWatchlist(id, { metas: [MOVIE] });
+    const key = `watchlists/${id}/manifest.json`;
+    const manifest = z
+      .record(z.unknown())
+      .parse(JSON.parse(Buffer.from(storedObject(r2.objects, key)).toString()));
+    delete manifest.genres;
+    r2.objects.set(key, Buffer.from(JSON.stringify(manifest)));
+    for (let index = 0; index <= 100; index += 1) {
+      await writeCachedWatchlist(watchlistId(), { metas: [MOVIE] });
+    }
+    r2.send.mockClear();
+    expect(await getCachedWatchlistSummary(id)).toBeNull();
+    expect(r2.send).toHaveBeenCalledTimes(1);
+    expect((await getCachedWatchlist(id))?.data.metas).toEqual([MOVIE]);
+    await writeCachedWatchlist(id, { metas: [MOVIE] });
+    expect(await getCachedWatchlistSummary(id)).toEqual({
+      movie: ["Drama"],
+      series: [],
+    });
+  });
+
+  it("returns no summary for missing, deleted, or unreadable manifests", async () => {
+    expect(await getCachedWatchlistSummary(watchlistId())).toBeNull();
+    const id = watchlistId();
+    await writeCachedWatchlist(id, { metas: [MOVIE] });
+    await deleteCachedWatchlist(id);
+    expect(await getCachedWatchlistSummary(id)).toBeNull();
+    r2.failGetContaining = "manifest.json";
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await getCachedWatchlistSummary(watchlistId())).toBeNull();
+    errorSpy.mockRestore();
   });
 
   it("finds a meta in a cached watchlist and keeps types separate", async () => {
@@ -226,6 +289,10 @@ describe("R2 watchlist cache", () => {
     // after a network error would be unsafe because the manifest PUT may have
     // committed even when the client did not receive the response.
     expect(r2.objects.size).toBe(3);
+    expect(await getCachedWatchlistSummary(id)).toEqual({
+      movie: ["Drama"],
+      series: [],
+    });
   });
 
   it("keeps the previous generation readable after replacement", async () => {

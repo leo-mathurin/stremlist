@@ -8,12 +8,35 @@ Stremlist is a Stremio addon that turns your IMDb watchlist into a Stremio catal
 
 - Browse IMDb watchlist items in Stremio
 - Supports one or multiple IMDb watchlists
-- Supports sorting by title, year, rating, runtime, and random order
+- Supports sorting by title, year, complete release date, rating, runtime, and random order
+- Filter by genre or decade, or choose a sort directly from Stremio's Discover genre dropdown (one option at a time)
+- Combine genre, decade, maximum runtime and minimum IMDb rating in each catalog configuration
+- Search your configured lists from Stremio search
+- Optional extra home catalogs: 90 min or less, Top rated, and Shuffle
 - Optional Rating Poster Database (RPDB) poster support via API key
 - Simple install flow through a hosted configuration UI
 - Cache-first watchlist serving with periodic auto-refresh and a manual "Refresh now" control
 - Lightweight backend with Supabase for user configuration and Cloudflare R2 for watchlist caching
 - Monorepo architecture with Turborepo (`apps` + `packages`)
+
+Reinstall an existing addon to load the new dropdown options. Selecting a genre
+or decade preserves the configured sort; selecting a sort temporarily overrides
+it. Saved filters always apply together, including to search and extra catalogs.
+The dropdown adds one further filter or overrides the sort; None clears only
+that temporary selection. Extra catalogs reuse the original list and cache.
+
+Release Year sorts by the IMDb year; Release Date sorts by the complete date
+returned by IMDb (which may differ from the original release year). Incomplete
+dates sort last, without inventing a day or month. Refresh an older cache to
+populate release dates. Date-added sorting uses IMDb list order. Shuffle stays
+stable within a cache generation so scrolling does not repeat items. Popularity
+is not offered: the tested IMDb meterRanking field reported an entitlement denial.
+
+Apply `supabase/migrations/20260914230000_catalog_settings.sql` before deploying
+this version. The new JSON column defaults to an empty configuration. Older
+clients that omit these settings preserve them; sending an empty object clears
+them. Reinstall after enabling/disabling extra catalogs or adding search support;
+changing only saved filters does not require reinstalling.
 
 ## Monorepo Structure
 
@@ -41,7 +64,7 @@ This repository follows the Turborepo recommended structure:
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 24+ for development with Portless (`.node-version`)
 - pnpm 10+
 
 ### Install
@@ -52,23 +75,53 @@ pnpm install
 
 ### Run in Development
 
-Run both apps:
+Decrypt the backend environment first (see below), then run:
 
 ```bash
-pnpm dev
+pnpm dev             # both apps through Portless
+pnpm dev:tailnet     # both apps; share the frontend over Tailscale HTTPS
+pnpm dev:backend     # backend only
+pnpm dev:frontend    # frontend only (requires a running backend)
+pnpm exec portless list
 ```
 
-Run only one app:
+Portless 0.15.6 is pinned as a dev dependency. In the main checkout, the
+local names are `https://stremlist.localhost` and
+`https://api.stremlist.localhost`. Linked worktrees receive a branch prefix;
+use the printed URLs or `pnpm exec portless list` instead of hardcoding them.
+A previously configured proxy port (such as 1355) appears in these URLs too.
+
+For access from another tailnet device, open the **Tailscale URL** printed for
+the frontend. The browser uses `/api` on that same origin, and Vite forwards
+requests to the matching worktree's backend. Stremio install links and configure
+redirects use that origin too. No machine-specific browser API URL is needed.
+
+See [the Portless development guide](docs/portless-development.md) for first-run
+setup, HTTPS, environment overrides, plain-port fallback, and cleanup.
+
+### Decrypt environment files
+
+The repo stores encrypted env files as `apps/backend/.env.enc` and `apps/frontend/.env.enc`. Decrypt them with [SOPS](https://getsops.io) and an age private key that matches a recipient in `.sops.yaml`.
+
+1. Install `sops`.
+2. Give SOPS your age private key. Use one of these options:
 
 ```bash
-pnpm dev:backend
-pnpm dev:frontend
+export SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt"
+# or:
+export SOPS_AGE_KEY="AGE-SECRET-..."
 ```
 
-Default local URLs:
+On macOS, SOPS also reads `~/Library/Application Support/sops/age/keys.txt` if you do not set those variables.
 
-- Backend: `http://localhost:7001`
-- Frontend: Vite default (`http://localhost:5173` unless overridden)
+3. Decrypt into local `.env` files (gitignored):
+
+```bash
+sops decrypt apps/backend/.env.enc > apps/backend/.env
+sops decrypt apps/frontend/.env.enc > apps/frontend/.env
+```
+
+Do not commit the decrypted `.env` files.
 
 ## Build and Quality Commands
 

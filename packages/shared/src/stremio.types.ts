@@ -1,3 +1,4 @@
+import type { CatalogSettings } from "./catalog-settings";
 import type { DisplayMode } from "./constants";
 
 export interface WatchlistData {
@@ -11,6 +12,8 @@ export interface ConfigWatchlist {
   sortOption: string;
   displayMode: DisplayMode;
   position: number;
+  availableGenres?: string[];
+  catalogSettings?: CatalogSettings;
 }
 
 export interface UserConfigResponse {
@@ -27,6 +30,7 @@ export interface UserConfigUpdateWatchlist {
   sortOption: string;
   displayMode?: DisplayMode;
   position?: number;
+  catalogSettings?: CatalogSettings;
 }
 
 export interface UserConfigUpdatePayload {
@@ -47,6 +51,7 @@ export interface StremioMeta {
   director?: string[];
   cast?: string[];
   runtime?: string;
+  released?: string;
 }
 
 export interface StremioCatalog {
@@ -54,8 +59,10 @@ export interface StremioCatalog {
   name: string;
   type: "movie" | "series";
   extra?: {
-    name: "skip";
+    name: "skip" | "genre" | "search";
     isRequired?: boolean;
+    options?: string[];
+    optionsLimit?: number;
   }[];
 }
 
