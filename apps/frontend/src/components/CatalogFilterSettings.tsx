@@ -240,12 +240,15 @@ export default function CatalogFilterSettings({
                         onCheckedChange={(next) =>
                           onChange({
                             ...value,
-                            presets: next
-                              ? [...(value.presets ?? []), preset.id]
-                              : value.presets?.filter((id) => id !== preset.id),
+                            presets:
+                              next === true
+                                ? [...(value.presets ?? []), preset.id]
+                                : value.presets?.filter(
+                                    (id) => id !== preset.id,
+                                  ),
                           })
                         }
-                        className="focus-visible:border-imdb focus-visible:ring-imdb/40 data-checked:border-imdb data-checked:bg-imdb data-checked:text-black"
+                        className="focus-visible:border-imdb focus-visible:ring-imdb/40 data-[state=checked]:border-imdb data-[state=checked]:bg-imdb data-[state=checked]:text-black"
                       />
                       {preset.label}
                     </label>
