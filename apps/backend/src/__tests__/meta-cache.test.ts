@@ -1,4 +1,7 @@
-import type { StremioMeta } from "@stremlist/shared/stremio.types";
+import type {
+  StremioManifest,
+  StremioMeta,
+} from "@stremlist/shared/stremio.types";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import app from "../index.js";
@@ -68,6 +71,13 @@ const SHAWSHANK: StremioMeta = {
   description: "",
 };
 
+const BREAKING_BAD: StremioMeta = {
+  ...SHAWSHANK,
+  id: "tt0903747",
+  type: "series",
+  name: "Breaking Bad",
+};
+
 interface MetaResponse {
   meta: Record<string, unknown> | null;
 }
@@ -83,6 +93,57 @@ beforeEach(() => {
 });
 
 describe("meta route serves from cache only", () => {
+  it("declines cached series without accessing the cache so clients try an episode provider", async () => {
+    seedUser(OWNER);
+    seedWatchlist(UUID_1);
+    seedCache(UUID_1, [BREAKING_BAD]);
+    const lookup = vi.spyOn(watchlistSvc, "findMetaInUserCache");
+
+    const res = await app.request(
+      `/${OWNER}/meta/series/${BREAKING_BAD.id}.json`,
+    );
+
+    expect(res.status).toBe(200);
+    expect((await res.json()) as MetaResponse).toEqual({ meta: null });
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it.each(["/manifest.json", `/${OWNER}/manifest.json`])(
+    "%s advertises movie metadata and keeps both catalog types",
+    async (path) => {
+      seedUser(OWNER);
+      seedWatchlist(UUID_1);
+
+      const res = await app.request(path);
+      const manifest = (await res.json()) as StremioManifest;
+
+      expect(res.status).toBe(200);
+      expect(manifest.resources).toEqual([
+        "catalog",
+        { name: "meta", types: ["movie"], idPrefixes: ["tt"] },
+      ]);
+      expect(manifest.types).toEqual(["movie", "series"]);
+      expect(manifest.catalogs.map((catalog) => catalog.type)).toEqual([
+        "movie",
+        "series",
+      ]);
+    },
+  );
+
+  it("keeps cached series available in the series catalog", async () => {
+    seedUser(OWNER);
+    seedWatchlist(UUID_1);
+    seedCache(UUID_1, [SHAWSHANK, BREAKING_BAD]);
+
+    const res = await app.request(
+      `/${OWNER}/catalog/series/wl-${UUID_1}-series.json`,
+    );
+    const body = (await res.json()) as { metas: StremioMeta[] };
+
+    expect(res.status).toBe(200);
+    expect(body.metas).toEqual([BREAKING_BAD]);
+  });
+
   it("returns the cached meta for an item that is in the user's list", async () => {
     seedUser(OWNER);
     seedWatchlist(UUID_1);
@@ -114,7 +175,7 @@ describe("meta route serves from cache only", () => {
     seedWatchlist(UUID_1);
     seedCache(UUID_1, [SHAWSHANK]);
 
-    const res = await app.request(`/${OWNER}/meta/series/tt99999999.json`);
+    const res = await app.request(`/${OWNER}/meta/movie/tt99999999.json`);
 
     expect(res.status).toBe(200);
     expect((await res.json()) as MetaResponse).toEqual({ meta: null });

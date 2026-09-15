@@ -99,7 +99,7 @@ export const BASE_MANIFEST: StremioManifest = {
     "catalog",
     {
       name: "meta",
-      types: ["movie", "series"],
+      types: ["movie"],
       idPrefixes: ["tt"],
     },
   ],

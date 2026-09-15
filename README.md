@@ -93,6 +93,30 @@ Default local URLs:
 - Backend: `http://localhost:7001`
 - Frontend: Vite default (`http://localhost:5173` unless overridden)
 
+### Decrypt environment files
+
+The repo stores encrypted env files as `apps/backend/.env.enc` and `apps/frontend/.env.enc`. Decrypt them with [SOPS](https://getsops.io) and an age private key that matches a recipient in `.sops.yaml`.
+
+1. Install `sops`.
+2. Give SOPS your age private key. Use one of these options:
+
+```bash
+export SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt"
+# or:
+export SOPS_AGE_KEY="AGE-SECRET-..."
+```
+
+On macOS, SOPS also reads `~/Library/Application Support/sops/age/keys.txt` if you do not set those variables.
+
+3. Decrypt into local `.env` files (gitignored):
+
+```bash
+sops decrypt apps/backend/.env.enc > apps/backend/.env
+sops decrypt apps/frontend/.env.enc > apps/frontend/.env
+```
+
+Do not commit the decrypted `.env` files.
+
 ## Build and Quality Commands
 
 From repository root:
