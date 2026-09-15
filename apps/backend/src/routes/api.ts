@@ -193,11 +193,22 @@ const api = new Hono()
       const normalizedRpdbApiKey =
         rpdbApiKey && rpdbApiKey.length > 0 ? rpdbApiKey : null;
 
-      const updatedWatchlists = await replaceUserWatchlists(
-        userId,
-        normalizedWatchlists,
-        normalizedRpdbApiKey,
-      );
+      let updatedWatchlists;
+      try {
+        updatedWatchlists = await replaceUserWatchlists(
+          userId,
+          normalizedWatchlists,
+          normalizedRpdbApiKey,
+        );
+      } catch (error) {
+        console.error("Failed to save user configuration:", error);
+        return c.json(
+          {
+            error: "Failed to save your configuration. Please try again later.",
+          },
+          500,
+        );
+      }
 
       // A fresh installation already has a seeded watchlist ID, so an
       // "ID-less rows only" check would miss its first scrape. Queue every
