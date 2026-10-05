@@ -61,7 +61,9 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "bunx tsx src/dev.ts",
+      // --no-env-file keeps a local apps/backend/.env (real secrets) out of the
+      // test backend; every variable it needs is set explicitly below.
+      command: "bun --no-env-file src/dev.ts",
       cwd: "../backend",
       url: `${BACKEND_URL}/health`,
       reuseExistingServer: !process.env.CI,

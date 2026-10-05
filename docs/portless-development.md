@@ -1,7 +1,7 @@
 # Portless development
 
 This repo pins [Portless 0.15.6](https://github.com/vercel-labs/portless) and uses
-Node.js 24 for development and CI. Production builds still use the configured
+Bun with Node.js 24 for development and CI. Production builds still use the configured
 Vercel backend URL; the proxy described here is only for the dev server.
 
 ## Start and share

@@ -36,7 +36,8 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: test
           RESEND_API_KEY: re_test
           RESEND_AUDIENCE_ID: test
-        run: node --input-type=module --eval 'await import("./apps/backend/dist/index.js")'
+        # Production runs this bundle on Vercel's Bun runtime (apps/backend/vercel.json).
+        run: bun --eval 'await import("./apps/backend/dist/index.js")'
 
   e2e:
     name: E2E
