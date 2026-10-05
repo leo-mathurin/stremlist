@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
 import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
+import { randomUUID } from "node:crypto";
 import { decryptSecret, encryptSecret } from "../lib/crypto";
 import { supabase } from "../lib/supabase";
 import { getProvider } from "../providers/registry";
@@ -91,7 +91,12 @@ export async function listConnections(
     console.error(`Failed to list connections of ${accountId}:`, error.message);
     return [];
   }
-  return (data as Pick<ConnectionRow, "provider" | "provider_username" | "created_at">[])
+  return (
+    data as Pick<
+      ConnectionRow,
+      "provider" | "provider_username" | "created_at"
+    >[]
+  )
     .filter((row) => isProviderId(row.provider))
     .map((row) => ({
       provider: row.provider as ProviderId,
@@ -257,6 +262,7 @@ export async function getConnectionAccess(
   let current = await readConnection(accountId, provider);
   if (!current) return null;
   return {
+    accountId,
     provider,
     username: current.username,
     async getAccessToken() {
