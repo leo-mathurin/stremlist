@@ -61,3 +61,48 @@ export async function justwatchImdbIdByPath(
   const imdbId = json.data?.urlV2?.node?.content?.externalIds?.imdbId;
   return imdbId && /^tt\d+$/.test(imdbId) ? imdbId : null;
 }
+
+const IMDB_BY_NODE_IDS = `
+  query StremlistTitlesByNodeIds($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      id
+      ... on MovieOrShow {
+        content(country: US, language: "en") { externalIds { imdbId } }
+      }
+    }
+  }
+`;
+
+// One request per chunk keeps each call small; JustWatch has no batch limit
+// that we know of.
+const NODE_IDS_PER_REQUEST = 50;
+
+/**
+ * IMDb IDs of JustWatch title nodes ("tm…" for movies, "ts…" for shows), by
+ * node ID. Nodes that JustWatch does not know, or that have no IMDb ID yet,
+ * are left out. A node that cannot be read only nulls its own slot in the
+ * response, so one bad ID does not hide the others.
+ */
+export async function justwatchImdbIdsByNodeIds(
+  ids: readonly string[],
+): Promise<Map<string, string>> {
+  const found = new Map<string, string>();
+  const unique = [...new Set(ids)];
+  for (let start = 0; start < unique.length; start += NODE_IDS_PER_REQUEST) {
+    const json = await justwatchQuery<{
+      nodes?: ({
+        id?: string;
+        content?: { externalIds?: { imdbId?: string | null } | null } | null;
+      } | null)[];
+    }>(IMDB_BY_NODE_IDS, {
+      ids: unique.slice(start, start + NODE_IDS_PER_REQUEST),
+    });
+    for (const node of json.data?.nodes ?? []) {
+      const imdbId = node?.content?.externalIds?.imdbId;
+      if (node?.id && imdbId && /^tt\d+$/.test(imdbId)) {
+        found.set(node.id, imdbId);
+      }
+    }
+  }
+  return found;
+}
