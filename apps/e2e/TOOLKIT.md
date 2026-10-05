@@ -77,12 +77,11 @@ supabase start --workdir /tmp/stremlist-e2e-20261005 \
   -x gotrue,realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta
 # Remove only the stopped test container before recreating it.
 docker rm stremlist-agent-e2e-r2-20261005
-docker build -t stremlist-e2e-minio:release-2025-09-07 apps/e2e/minio
 docker run --rm -d --name stremlist-agent-e2e-r2-20261005 \
   -p 127.0.0.1:7531:9000 \
-  -e MINIO_ROOT_USER=stremlist-e2e \
-  -e MINIO_ROOT_PASSWORD=stremlist-e2e-secret \
-  stremlist-e2e-minio:release-2025-09-07 server /data
+  -e RUSTFS_ACCESS_KEY=stremlist-e2e \
+  -e RUSTFS_SECRET_KEY=stremlist-e2e-secret \
+  rustfs/rustfs:1.0.1 /data
 ```
 
 Then run the real integration suite:
@@ -152,13 +151,13 @@ need network access and can change when those services change.
 
 ## CI infrastructure repair
 
-CI now uses Bun 1.4.0 and `bun install --frozen-lockfile`, matching the committed
+CI now uses Bun 1.4.0 and `bun ci` (a frozen install), matching the committed
 workspace lockfile. Its regular lint/build/test and integration gates remain
 active, and the tester-army suite is also run in CI.
 
 Both official MinIO image registries now reject anonymous pulls for the existing
 release, including the immutable digest. The prior local tests used a cached
-image. CI and local instructions now build the exact official source release
+image. Before the later staging merge, CI and local instructions built the exact official source release
 `RELEASE.2025-09-07T16-13-09Z`, commit
 `07c3a429bfed433e49018cb0f78a52145d4bedeb`. The source archive checksum is checked
 in the Dockerfile; Go 1.24.6 builds the unchanged source. No third-party mirror
@@ -199,3 +198,16 @@ assertions; no fixed delay or retry was added.
 The committed-row reorder check passed in all 25 toolkit tests on both macOS
 and isolated Linux arm64 (Node 24, Bun 1.4.0, Chromium 153). The Linux run used
 a frozen Bun install and the same framework browser dependency installer as CI.
+
+## Merge of the Bun migration
+
+Staging `9650b9d` introduced Bun workspace metadata, backend Bun runtime and smoke
+gates, isolated backend environment loading, and RustFS 1.0.1 for S3 tests. These
+upstream changes are retained. The earlier MinIO source-build Dockerfile is
+removed because RustFS replaces that infrastructure. Toolkit CI execution and
+reports remain enabled. The restart commands above now use RustFS.
+
+After this merge, a fresh `bun ci` tree passed all 8 lint/build/test tasks and all
+25 toolkit tests. Frontend/E2E typechecks, the backend Bun bundle smoke, and the
+atomic configuration SQL check passed. All 53 real local/live integration tests
+passed with isolated Supabase and RustFS 1.0.1. Test services were then stopped.

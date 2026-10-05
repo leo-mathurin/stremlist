@@ -4,7 +4,7 @@
  * Simulates load patterns that arise when serving thousands of registered users
  * whose watchlists are fetched on-demand or refreshed in the background.
  *
- * Run manually with: pnpm --filter @stremlist/backend test:stress
+ * Run manually with: bun run --filter @stremlist/backend test:stress
  * Not included in the regular `test` task to keep CI fast.
  */
 

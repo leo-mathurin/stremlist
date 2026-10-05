@@ -7,7 +7,7 @@ and isolated integration verification.
 End-to-end tests that exercise Stremlist the way a real user does: the addon
 is installed into the **hosted Stremio Web app** (web.stremio.com) from a
 backend running locally, with **live IMDb data** or controlled catalog fixtures, a **local Supabase stack**,
-and a **local MinIO bucket** exercising the same S3 API used for Cloudflare
+and a **local RustFS bucket** exercising the same S3 API used for Cloudflare
 R2. The configure/onboarding pages of the frontend are covered too.
 
 ## How it works
@@ -19,7 +19,7 @@ R2. The configure/onboarding pages of the frontend are covered too.
   between tests. Live scenarios bootstrap through the backend HTTP API. The
   deterministic catalog scenarios seed input rows and cache objects directly,
   then exercise the real configuration API, database transaction and cache reader.
-- The backend points at MinIO (`:7431`) through its configurable S3 endpoint.
+- The backend points at RustFS (`:7431`) through its configurable S3 endpoint.
   Tests inspect the resulting manifest and compressed generation objects and
   remove objects owned by E2E users between cases.
 - Stremio Web runs in anonymous mode: each fresh browser context has its own
@@ -40,21 +40,19 @@ R2. The configure/onboarding pages of the frontend are covered too.
 # One-time / per boot: start the local Supabase stack (needs Docker running)
 supabase start -x gotrue,realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta
 
-docker build -t stremlist-e2e-minio:release-2025-09-07 apps/e2e/minio
-
 docker run --rm -d --name stremlist-e2e-r2 \
   -p 127.0.0.1:7431:9000 \
-  -e MINIO_ROOT_USER=stremlist-e2e \
-  -e MINIO_ROOT_PASSWORD=stremlist-e2e-secret \
-  stremlist-e2e-minio:release-2025-09-07 server /data
+  -e RUSTFS_ACCESS_KEY=stremlist-e2e \
+  -e RUSTFS_SECRET_KEY=stremlist-e2e-secret \
+  rustfs/rustfs:1.0.1 /data
 
 # From the repo root: run every E2E project
 bun run test:e2e
 
 # Select one project while debugging
-bun run --cwd apps/e2e test:e2e --project=local
-bun run --cwd apps/e2e test:e2e --project=live-smoke
-bun run --cwd apps/e2e test:e2e --project=live-regression
+bun run --filter @stremlist/e2e test:e2e --project=local
+bun run --filter @stremlist/e2e test:e2e --project=live-smoke
+bun run --filter @stremlist/e2e test:e2e --project=live-regression
 ```
 
 The suite deletes test users between cases. It removes their R2 objects first,
@@ -82,7 +80,7 @@ filter so a missing constraint fails the test.
 Run just these scenarios (the same file is included automatically in PR CI):
 
 ```sh
-bun run --cwd apps/e2e test:e2e tests/catalog-features.spec.ts
+bun run --filter @stremlist/e2e test:e2e tests/catalog-features.spec.ts
 ```
 
 These fixtures bypass IMDb scraping, not Stremlist behavior. Existing live tests
@@ -104,9 +102,7 @@ it does not claim to test playback or episode selection in a native client.
 
 ## Known limitations
 
-- Pointer-based dnd-kit reordering is covered by the tester-army toolkit
-  suite, including visible order and the saved API positions.
-- Newsletter UI states are covered with intercepted responses in the toolkit
-  suite. Real newsletter delivery is not covered (it would email people).
+- Pointer-based catalog reordering is covered by the toolkit, including saved positions.
+- Newsletter UI states use intercepted toolkit responses. Real delivery is not tested.
 - The live smoke and regression suites depend on web.stremio.com and IMDb. CI
   retries failures twice.
