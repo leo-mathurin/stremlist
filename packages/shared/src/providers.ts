@@ -235,13 +235,24 @@ function parseMdblistLink(input: string): ParsedSourceLink | null {
   const url = toUrl(input);
   if (!url || !hostIs(url, "mdblist.com")) return null;
   const parts = segments(url);
-  // mdblist.com/lists/{user}/{slug}
-  if (parts[0] === "lists" && parts[1] && parts[2]) {
+  // mdblist.com/lists/{user}/{slug}: the backend resolves it to `lists/{id}`.
+  if (parts[0] === "lists" && parts[1] && parts[2] && parts.length === 3) {
     return {
       provider: "mdblist",
-      ref: `lists/${parts[1].toLowerCase()}/${parts[2].toLowerCase()}`,
+      ref: `lists/${parts[1]}/${parts[2]}`,
       kind: "list",
       requiresConnection: true,
+    };
+  }
+  // mdblist.com/watchlist/{user}: MDBList only shares the connected user's
+  // own watchlist, so the backend turns it into `me/watchlist`.
+  if (parts[0] === "watchlist" && parts[1] && parts.length === 2) {
+    return {
+      provider: "mdblist",
+      ref: `watchlist/${parts[1]}`,
+      kind: "watchlist",
+      requiresConnection: true,
+      suggestedTitle: "MDBList watchlist",
     };
   }
   return null;
@@ -335,6 +346,8 @@ export const CONNECTION_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>>
     { ref: "me/hold", kind: "status", label: "On hold", defaultDisplayMode: "split" },
     { ref: "me/dropped", kind: "status", label: "Dropped", defaultDisplayMode: "split" },
   ],
+  // The user's own lists (`me/lists/{id}`) and external lists
+  // (`me/external/{id}`) depend on the account; the backend lists them.
   mdblist: [
     { ref: "me/watchlist", kind: "watchlist", label: "Watchlist", defaultDisplayMode: "split" },
   ],
