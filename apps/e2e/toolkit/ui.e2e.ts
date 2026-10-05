@@ -583,12 +583,14 @@ test("edits made while saving remain available for the next save", async ({
   browser,
 }) => {
   let releaseSave: (() => void) | undefined;
+  let lastSubmitted: Record<string, unknown> | undefined;
   const responseGate = new Promise<void>((resolve) => {
     releaseSave = resolve;
   });
   await browser.route("http://127.0.0.1:4314/**", async (route) => {
     if (route.request.method === "POST") {
       const submitted = JSON.parse(route.request.postData ?? "{}");
+      lastSubmitted = submitted;
       await responseGate;
       await route.fulfill({
         json: {
@@ -617,6 +619,7 @@ test("edits made while saving remain available for the next save", async ({
     .getByPlaceholder("ur12345678, p.colneedham, or ls593621567")
     .nth(1)
     .fill("ls99123456");
+  await screen.getByLabel("RPDB API Key (Optional)").fill("e2e-synthetic-rpdb");
   releaseSave!();
   await expect(
     screen.getByText(
@@ -630,6 +633,17 @@ test("edits made while saving remain available for the next save", async ({
   await expect(
     screen.getByPlaceholder("ur12345678, p.colneedham, or ls593621567").nth(1),
   ).toHaveValue("ls99123456");
+  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await expect(
+    screen.getByText(/Saved! Catalog structure changed/),
+  ).toBeVisible();
+  expect(lastSubmitted).toMatchObject({
+    rpdbApiKey: "e2e-synthetic-rpdb",
+    watchlists: [
+      { imdbUserId: userId, catalogTitle: "New unsaved title", position: 0 },
+      { imdbUserId: "ls99123456", position: 1 },
+    ],
+  });
 });
 
 for (const edit of ["remove", "reorder"] as const) {
@@ -718,3 +732,21 @@ for (const edit of ["remove", "reorder"] as const) {
     );
   });
 }
+
+test("selecting an IMDb ID on configuration starts a fresh account form", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  await fixture(browser, { existing: true });
+  await app.open("/configure");
+  await screen.getByLabel("IMDb User ID:").fill(userId);
+  await expect(browser).toHaveURL(`/configure?userId=${userId}`);
+  await expect(screen.getByText("Catalog 1")).toBeVisible();
+  await expect(screen.getByPlaceholder("Tom Hardy's Watchlist")).toHaveValue(
+    "Test catalog",
+  );
+  await expect(
+    screen.getByRole("button", "Save", { exact: true }),
+  ).toBeEnabled();
+});

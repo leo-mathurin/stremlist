@@ -173,8 +173,23 @@ Delayed-save tests cover edits/additions, removal, and reordering, including the
 payload sent by the next save.
 
 Final CI-repair validation: frozen Bun install passed; lint/build/test passed
-(189 backend and 3 frontend tests); all 24 toolkit tests passed; atomic SQL
+(189 backend and 3 frontend tests); all 25 toolkit tests passed; atomic SQL
 configuration replacement passed; all 53 current local/live integration tests
 passed with the pinned source-built MinIO container and isolated Supabase stack.
 The source build reports the expected release and commit. Test services were
 stopped after this validation.
+
+The newer React Hooks lint rule in a fresh Bun dependency tree rejected the
+inherited synchronous reset effect. Configuration content now remounts when its
+IMDb account changes; its state initializes for that account, and retries set
+loading state in the retry action. The fetch effect updates state only from the
+asynchronous response. Fresh frozen-dependency lint/build/test checks passed
+without suppressing the rule. The toolkit also covers selecting an account from
+the configuration entry form, and the delayed edit/addition test verifies the
+next save payload including a synthetic RPDB key changed during the request.
+
+Save feedback now reads the form snapshot synchronized in a layout effect. This
+closes the interval between a committed drag/edit and its passive effect, during
+which a fast save response could incorrectly report that every edit was saved.
+The delayed reorder test retains its pre-response DOM-order assertion and checks
+the next submitted positions.

@@ -1,4 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useLayoutEffect,
+} from "react";
 import {
   DEFAULT_SORT_OPTION,
   IMDB_WATCHLIST_SOURCE_ID_PATTERN,
@@ -27,7 +33,8 @@ export function useWatchlistConfiguration(userId: string | null) {
   ]);
   const [rpdbApiKey, setRpdbApiKey] = useState("");
   const currentForm = useRef({ watchlists, rpdbApiKey });
-  useEffect(() => {
+  // Save responses must see committed edits before passive effects run.
+  useLayoutEffect(() => {
     currentForm.current = { watchlists, rpdbApiKey };
   }, [watchlists, rpdbApiKey]);
   const [showRpdbApiKey, setShowRpdbApiKey] = useState(false);
@@ -50,23 +57,6 @@ export function useWatchlistConfiguration(userId: string | null) {
 
   useEffect(() => {
     if (!userId) return;
-
-    setLoading(true);
-    setUserNotFound(false);
-    setLoadError(false);
-    setWatchlists([
-      createWatchlistRow({
-        imdbUserId: userId,
-        catalogTitle: "",
-        sortOption: DEFAULT_SORT_OPTION,
-      }),
-    ]);
-    setRpdbApiKey("");
-    setShowRpdbApiKey(false);
-    setStatus(null);
-    setShowReinstallHint(false);
-    setWatchlistBaselineSignature("");
-    setLastFetchedAt(null);
 
     api[":userId"].config
       .$get({ param: { userId } })
@@ -351,7 +341,11 @@ export function useWatchlistConfiguration(userId: string | null) {
     }
   };
 
-  const retryLoad = () => setLoadAttempt((current) => current + 1);
+  const retryLoad = () => {
+    setLoading(true);
+    setLoadError(false);
+    setLoadAttempt((current) => current + 1);
+  };
   const reorderWatchlists = (initialIndex: number, index: number) => {
     setWatchlists((items) => {
       const allDefaultTitles = items.every((w, i) => {
