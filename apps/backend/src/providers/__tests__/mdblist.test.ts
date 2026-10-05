@@ -69,6 +69,7 @@ function json(
 
 function connection(username: string | null = "leo"): ConnectionAccess {
   return {
+    accountId: "sl_testaccount0000000000",
     provider: "mdblist",
     username,
     getAccessToken: () => Promise.resolve("user-token"),
@@ -336,6 +337,7 @@ describe("mdblistProvider.fetchSource", () => {
     const expired = new Error("expired");
     expired.name = "ConnectionExpiredError";
     const access: ConnectionAccess = {
+      accountId: "sl_testaccount0000000000",
       provider: "mdblist",
       username: "leo",
       getAccessToken: () => Promise.reject(expired),

@@ -764,6 +764,7 @@ export const mdblistProvider: ProviderAdapter = {
   freshnessMs: 60 * 60_000,
   validateSource,
   fetchSource,
+  listConnectionSources: listMdblistUserSources,
 
   resolutionKey(entry) {
     const tmdb = entry.externalIds?.tmdb;

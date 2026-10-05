@@ -4,6 +4,7 @@ import { traktActions } from "./trakt/actions";
 import {
   nonEmpty,
   TRAKT_API,
+  traktGetJson,
   TRAKT_AUTH,
   traktClientId,
   traktHeaders,
@@ -68,6 +69,27 @@ export const traktProvider: ProviderAdapter = {
   resolverStrategies: [tmdbExternalIdsStrategy],
 
   actions: traktActions,
+
+  // The user's own lists, so the configure page can offer them in one click.
+  async listConnectionSources(connection) {
+    const lists =
+      (await traktGetJson<
+        { name?: string; ids?: { slug?: string; trakt?: number } }[]
+      >("/users/me/lists", connection)) ?? [];
+    return lists.flatMap((list) => {
+      const id = list.ids?.slug ?? list.ids?.trakt;
+      return id === undefined
+        ? []
+        : [
+            {
+              ref: `me/lists/${String(id).toLowerCase()}`,
+              kind: "list" as const,
+              label: list.name?.trim() || String(id),
+              defaultDisplayMode: "split" as const,
+            },
+          ];
+    });
+  },
 
   oauth: {
     // Trakt wants every OAuth call on its auth host, not the API host.

@@ -122,6 +122,7 @@ function connection(tokens: string[] = ["token-1"]): ConnectionAccess & {
 } {
   let index = 0;
   return {
+    accountId: "sl_testaccount0000000000",
     provider: "trakt",
     username: "leo",
     getAccessToken: vi.fn(() =>

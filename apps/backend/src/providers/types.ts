@@ -1,4 +1,8 @@
-import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
+import type {
+  ActionKind,
+  ConnectionSource,
+  ProviderId,
+} from "@stremlist/shared/providers";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 
 /**
@@ -190,4 +194,11 @@ export interface ProviderAdapter {
   resolverStrategies?: ResolverStrategy[];
   actions?: ProviderActions;
   oauth?: OAuthConfig;
+  /**
+   * Source lists that this Account's Connection unlocks besides the static
+   * CONNECTION_SOURCES (the user's own lists, imported lists…).
+   */
+  listConnectionSources?(
+    connection: ConnectionAccess,
+  ): Promise<ConnectionSource[]>;
 }
