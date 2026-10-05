@@ -17,6 +17,7 @@ import type {
 import { api } from "../lib/api";
 import {
   createWatchlistRow,
+  getWatchlistConfigPayload,
   getWatchlistReinstallSignature,
 } from "../lib/watchlist-form";
 import type { WatchlistFormRow } from "../lib/watchlist-form";
@@ -198,20 +199,13 @@ export function useWatchlistConfiguration(userId: string | null) {
           ? false
           : currentWatchlistSignature !== watchlistBaselineSignature;
 
+      const submittedPayload = getWatchlistConfigPayload(
+        watchlists,
+        rpdbApiKey,
+      );
       const res = await api[":userId"].config.$post({
         param: { userId },
-        json: {
-          rpdbApiKey,
-          watchlists: watchlists.map((watchlist, index) => ({
-            id: watchlist.id,
-            imdbUserId: watchlist.imdbUserId.trim(),
-            catalogTitle: watchlist.catalogTitle.trim(),
-            sortOption: watchlist.sortOption,
-            displayMode: watchlist.displayMode,
-            position: index,
-            catalogSettings: watchlist.catalogSettings,
-          })),
-        },
+        json: submittedPayload,
       });
 
       const saved = (await res.json()) as {
@@ -236,9 +230,12 @@ export function useWatchlistConfiguration(userId: string | null) {
           : row;
       });
       const hasUnsavedChanges =
-        currentForm.current.rpdbApiKey !== rpdbApiKey ||
-        JSON.stringify(currentForm.current.watchlists) !==
-          JSON.stringify(watchlists);
+        JSON.stringify(
+          getWatchlistConfigPayload(
+            currentForm.current.watchlists,
+            currentForm.current.rpdbApiKey,
+          ),
+        ) !== JSON.stringify(submittedPayload);
       const savedByLocalId = new Map(
         savedRows.map((row) => [row.localId, row]),
       );

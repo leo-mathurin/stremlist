@@ -28,7 +28,7 @@ and screenshots are in `.e2e/artifacts`. These files are ignored by Git.
 | Filters and presets                                   | Save genre and preset settings; clearing filters preserves presets                          |
 | Pointer reorder                                       | Drag second catalog before first, visible title order, saved API positions                  |
 | Built-in charts                                       | Add chart, prevent duplicate chart, ten-catalog limit                                       |
-| Saving                                                | Error preserves changes, retry, reinstall notice, unchanged repeat save                     |
+| Saving                                                | Error preserves changes, retry, reinstall notice, unchanged repeat save, concurrent refresh and filter edits |
 | Refresh                                               | Partial failure, successful refresh, cooldown prevents repeat                               |
 | RPDB                                                  | Show/hide key                                                                               |
 | Clipboard                                             | Denial provides manual-copy fallback                                                        |
@@ -211,3 +211,16 @@ After this merge, a fresh `bun ci` tree passed all 8 lint/build/test tasks and a
 25 toolkit tests. Frontend/E2E typechecks, the backend Bun bundle smoke, and the
 atomic configuration SQL check passed. All 53 real local/live integration tests
 passed with isolated Supabase and RustFS 1.0.1. Test services were then stopped.
+
+## Save and refresh concurrency regression
+
+The toolkit now has 27 tests. Two new cases hold a save response while refresh
+updates the available genres. Refresh metadata alone must not produce an unsaved
+changes warning. A genre filter selected during the same request must still
+produce that warning and appear in the next save payload. Both cases wait for
+the refreshed genre control to become enabled before releasing the save response.
+
+The metadata-only case failed before the fix. Save requests and dirty checks now
+use the same editable configuration projection, excluding server metadata.
+All 27 toolkit tests passed after the fix. These are intercepted frontend checks;
+they do not extend real backend or external-service coverage.
