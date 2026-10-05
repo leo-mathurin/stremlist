@@ -111,7 +111,9 @@ async function buildCatalog(
   const snapshot = await adapter.fetchSource(config.sourceRef, ctx);
   if (snapshot.entries.every((entry) => entry.meta)) {
     return {
-      metas: snapshot.entries.flatMap((entry) => (entry.meta ? [entry.meta] : [])),
+      metas: snapshot.entries.flatMap((entry) =>
+        entry.meta ? [entry.meta] : [],
+      ),
     };
   }
 
@@ -122,10 +124,7 @@ async function buildCatalog(
 
   const previous = new Map<string, StremioMeta>();
   const cached = await getCachedList(config.listId);
-  if (
-    cached &&
-    Date.now() - cached.cachedAt.getTime() < METADATA_MAX_AGE_MS
-  ) {
+  if (cached && Date.now() - cached.cachedAt.getTime() < METADATA_MAX_AGE_MS) {
     for (const meta of cached.data.metas) previous.set(meta.id, meta);
   }
 
@@ -231,7 +230,9 @@ function toListError(
 export async function getListCatalog(
   config: ListFetchConfig,
 ): Promise<WatchlistData> {
-  const freshnessMs = getProvider(config.provider).freshnessMs;
+  const adapter = getProvider(config.provider);
+  const freshnessMs =
+    adapter.freshnessFor?.(config.sourceRef) ?? adapter.freshnessMs;
   if (!config.forceFresh) {
     const cached = await getCachedList(config.listId);
     // An empty cache is not a hit: it cannot be told apart from "the list
@@ -241,14 +242,23 @@ export async function getListCatalog(
       cached.data.metas.length > 0 &&
       Date.now() - cached.cachedAt.getTime() < freshnessMs
     ) {
-      return present(cached.data, config.sort, cached.generation, config.rpdbApiKey);
+      return present(
+        cached.data,
+        config.sort,
+        cached.generation,
+        config.rpdbApiKey,
+      );
     }
   }
 
   try {
     const fresh = await refreshList(config);
     if (!config.skipAccountTimestamp) {
-      await markAccountFetched(config.accountId, "last_fetched_at", fresh.cachedAt);
+      await markAccountFetched(
+        config.accountId,
+        "last_fetched_at",
+        fresh.cachedAt,
+      );
     }
     return present(
       fresh.data,
@@ -267,7 +277,12 @@ export async function getListCatalog(
       const cached = await getCachedList(config.listId);
       if (cached && cached.data.metas.length > 0) {
         await markAccountFetched(config.accountId, "last_cache_served_at");
-        return present(cached.data, config.sort, cached.generation, config.rpdbApiKey);
+        return present(
+          cached.data,
+          config.sort,
+          cached.generation,
+          config.rpdbApiKey,
+        );
       }
     }
 

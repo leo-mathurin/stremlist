@@ -151,7 +151,9 @@ function toUrl(input: string): URL | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
   try {
-    return new URL(/^[a-z]+:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+    return new URL(
+      /^[a-z]+:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`,
+    );
   } catch {
     return null;
   }
@@ -159,7 +161,9 @@ function toUrl(input: string): URL | null {
 
 function hostIs(url: URL, ...domains: string[]): boolean {
   const host = url.hostname.toLowerCase().replace(/^www\./, "");
-  return domains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+  return domains.some(
+    (domain) => host === domain || host.endsWith(`.${domain}`),
+  );
 }
 
 function segments(url: URL): string[] {
@@ -176,57 +180,116 @@ const IMDB_P_HANDLE = /(?:^|\/)(p\.[a-zA-Z0-9]+)(?:$|[/?#])/;
 function parseImdbLink(input: string): ParsedSourceLink | null {
   const trimmed = input.trim();
   if (isChartId(trimmed)) {
-    return { provider: "imdb", ref: trimmed, kind: "chart", requiresConnection: false };
+    return {
+      provider: "imdb",
+      ref: trimmed,
+      kind: "chart",
+      requiresConnection: false,
+    };
   }
   const url = toUrl(trimmed);
   const isImdbUrl = url !== null && hostIs(url, "imdb.com");
   // Bare IDs (ur…, ls…, p.handle) keep working, as they did before links.
-  const bare = !/[/.:]/.test(trimmed.replace(/^p\./, "")) || /^p\.[a-zA-Z0-9]+$/.test(trimmed);
+  const bare =
+    !/[/.:]/.test(trimmed.replace(/^p\./, "")) ||
+    /^p\.[a-zA-Z0-9]+$/.test(trimmed);
   if (!isImdbUrl && !bare) return null;
 
   const list = IMDB_LS.exec(trimmed);
   if (list) {
-    return { provider: "imdb", ref: list[1].toLowerCase(), kind: "list", requiresConnection: false };
+    return {
+      provider: "imdb",
+      ref: list[1].toLowerCase(),
+      kind: "list",
+      requiresConnection: false,
+    };
   }
   const user = IMDB_UR.exec(trimmed);
   if (user) {
-    return { provider: "imdb", ref: user[1].toLowerCase(), kind: "watchlist", requiresConnection: false };
+    return {
+      provider: "imdb",
+      ref: user[1].toLowerCase(),
+      kind: "watchlist",
+      requiresConnection: false,
+    };
   }
   const handle = IMDB_P_HANDLE.exec(trimmed);
   if (handle) {
-    return { provider: "imdb", ref: handle[1], kind: "watchlist", requiresConnection: false };
+    return {
+      provider: "imdb",
+      ref: handle[1],
+      kind: "watchlist",
+      requiresConnection: false,
+    };
   }
   return null;
 }
 
+const TRAKT_CHARTS = ["trending", "popular", "anticipated"] as const;
+// trakt.tv/lists/{these} are pages that browse lists, not lists.
+const TRAKT_LIST_PAGES = new Set([
+  "trending",
+  "popular",
+  "liked",
+  "official",
+  "personal",
+]);
+
 function parseTraktLink(input: string): ParsedSourceLink | null {
   const url = toUrl(input);
+  // trakt.tv and app.trakt.tv share the same paths.
   if (!url || !hostIs(url, "trakt.tv")) return null;
   const parts = segments(url);
-  // trakt.tv/users/{user}/watchlist and trakt.tv/users/{user}/lists/{list}
+  // trakt.tv/users/{user}/watchlist and trakt.tv/users/{user}/lists/{list}[/items]
   if (parts[0] === "users" && parts[1]) {
     const user = parts[1].toLowerCase();
+    // "me" is the signed-in user: only a Connection can read it.
+    const owner = user === "me" ? "me" : `users/${user}`;
+    const requiresConnection = user === "me";
     if (parts[2] === "watchlist") {
       return {
         provider: "trakt",
-        ref: `users/${user}/watchlist`,
+        ref: `${owner}/watchlist`,
         kind: "watchlist",
-        requiresConnection: false,
-        suggestedTitle: `${parts[1]}'s watchlist`,
+        requiresConnection,
+        suggestedTitle: requiresConnection
+          ? undefined
+          : `${parts[1]}'s watchlist`,
       };
     }
     if (parts[2] === "lists" && parts[3]) {
       return {
         provider: "trakt",
-        ref: `users/${user}/lists/${parts[3].toLowerCase()}`,
+        ref: `${owner}/lists/${parts[3].toLowerCase()}`,
         kind: "list",
-        requiresConnection: false,
+        requiresConnection,
       };
     }
   }
   // trakt.tv/lists/{id}: official and shared lists by numeric ID or slug.
-  if (parts[0] === "lists" && parts[1]) {
-    return { provider: "trakt", ref: `lists/${parts[1].toLowerCase()}`, kind: "list", requiresConnection: false };
+  if (
+    parts[0] === "lists" &&
+    parts[1] &&
+    !TRAKT_LIST_PAGES.has(parts[1].toLowerCase())
+  ) {
+    return {
+      provider: "trakt",
+      ref: `lists/${parts[1].toLowerCase()}`,
+      kind: "list",
+      requiresConnection: false,
+    };
+  }
+  // trakt.tv/movies/trending, trakt.tv/shows/popular…: the chart covers both kinds.
+  if ((parts[0] === "movies" || parts[0] === "shows") && parts.length === 2) {
+    const chart = TRAKT_CHARTS.find((name) => name === parts[1].toLowerCase());
+    if (chart) {
+      return {
+        provider: "trakt",
+        ref: chart,
+        kind: "chart",
+        requiresConnection: false,
+      };
+    }
   }
   return null;
 }
@@ -247,7 +310,8 @@ function parseMdblistLink(input: string): ParsedSourceLink | null {
   return null;
 }
 
-const JUSTWATCH_LIST_ID = /\b(tl-[a-z]{2}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
+const JUSTWATCH_LIST_ID =
+  /\b(tl-[a-z]{2}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
 
 function parseJustwatchLink(input: string): ParsedSourceLink | null {
   const trimmed = input.trim();
@@ -256,7 +320,12 @@ function parseJustwatchLink(input: string): ParsedSourceLink | null {
   if (!isJustwatch && !/^tl-/i.test(trimmed)) return null;
   const match = JUSTWATCH_LIST_ID.exec(trimmed);
   if (!match) return null;
-  return { provider: "justwatch", ref: match[1].toLowerCase(), kind: "list", requiresConnection: false };
+  return {
+    provider: "justwatch",
+    ref: match[1].toLowerCase(),
+    kind: "list",
+    requiresConnection: false,
+  };
 }
 
 function parseSensCritiqueLink(input: string): ParsedSourceLink | null {
@@ -265,10 +334,27 @@ function parseSensCritiqueLink(input: string): ParsedSourceLink | null {
   const parts = segments(url);
   // senscritique.com/liste/{slug}/{id}
   if (parts[0] === "liste" && parts[1] && /^\d+$/.test(parts[2] ?? "")) {
-    return { provider: "senscritique", ref: `lists/${parts[2]}`, kind: "list", requiresConnection: false };
+    return {
+      provider: "senscritique",
+      ref: `lists/${parts[2]}`,
+      kind: "list",
+      requiresConnection: false,
+    };
   }
   // senscritique.com/{username}/collection?action=WISH (wishes), or the profile itself.
-  const reserved = new Set(["film", "serie", "liste", "search", "recherche", "top", "jeuvideo", "livre", "bd", "album", "morceau"]);
+  const reserved = new Set([
+    "film",
+    "serie",
+    "liste",
+    "search",
+    "recherche",
+    "top",
+    "jeuvideo",
+    "livre",
+    "bd",
+    "album",
+    "morceau",
+  ]);
   if (parts[0] && !reserved.has(parts[0].toLowerCase())) {
     return {
       provider: "senscritique",
@@ -286,12 +372,27 @@ function parseLetterboxdLink(input: string): ParsedSourceLink | null {
   if (!url || !hostIs(url, "letterboxd.com", "boxd.it")) return null;
   const parts = segments(url);
   if (parts[0] && parts[1] === "watchlist") {
-    return { provider: "letterboxd", ref: `users/${parts[0].toLowerCase()}/watchlist`, kind: "watchlist", requiresConnection: false };
+    return {
+      provider: "letterboxd",
+      ref: `users/${parts[0].toLowerCase()}/watchlist`,
+      kind: "watchlist",
+      requiresConnection: false,
+    };
   }
   if (parts[0] && parts[1] === "list" && parts[2]) {
-    return { provider: "letterboxd", ref: `users/${parts[0].toLowerCase()}/lists/${parts[2].toLowerCase()}`, kind: "list", requiresConnection: false };
+    return {
+      provider: "letterboxd",
+      ref: `users/${parts[0].toLowerCase()}/lists/${parts[2].toLowerCase()}`,
+      kind: "list",
+      requiresConnection: false,
+    };
   }
-  return { provider: "letterboxd", ref: url.pathname, kind: "list", requiresConnection: false };
+  return {
+    provider: "letterboxd",
+    ref: url.pathname,
+    kind: "list",
+    requiresConnection: false,
+  };
 }
 
 const LINK_PARSERS: ((input: string) => ParsedSourceLink | null)[] = [
@@ -320,37 +421,112 @@ export function parseSourceLink(input: string): ParsedSourceLink | null {
  * Source lists that a Connection unlocks, per Provider. The configure page
  * offers them as one-click additions after the user connects.
  */
-export const CONNECTION_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>> = {
+export const CONNECTION_SOURCES: Partial<
+  Record<ProviderId, ConnectionSource[]>
+> = {
   trakt: [
-    { ref: "me/watchlist", kind: "watchlist", label: "Watchlist", defaultDisplayMode: "split" },
-    { ref: "me/recommendations", kind: "recommendations", label: "Recommendations", defaultDisplayMode: "split" },
-    { ref: "me/up-next", kind: "up_next", label: "Up Next", defaultDisplayMode: "series" },
-    { ref: "me/history", kind: "history", label: "History", defaultDisplayMode: "split" },
-    { ref: "me/collection", kind: "collection", label: "Collection", defaultDisplayMode: "split" },
+    {
+      ref: "me/watchlist",
+      kind: "watchlist",
+      label: "Watchlist",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "me/recommendations",
+      kind: "recommendations",
+      label: "Recommendations",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "me/up-next",
+      kind: "up_next",
+      label: "Up Next",
+      defaultDisplayMode: "series",
+    },
+    {
+      ref: "me/history",
+      kind: "history",
+      label: "History",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "me/collection",
+      kind: "collection",
+      label: "Collection",
+      defaultDisplayMode: "split",
+    },
   ],
   simkl: [
-    { ref: "me/plantowatch", kind: "watchlist", label: "Plan to watch", defaultDisplayMode: "split" },
-    { ref: "me/watching", kind: "status", label: "Watching", defaultDisplayMode: "series" },
-    { ref: "me/completed", kind: "status", label: "Completed", defaultDisplayMode: "split" },
-    { ref: "me/hold", kind: "status", label: "On hold", defaultDisplayMode: "split" },
-    { ref: "me/dropped", kind: "status", label: "Dropped", defaultDisplayMode: "split" },
+    {
+      ref: "me/plantowatch",
+      kind: "watchlist",
+      label: "Plan to watch",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "me/watching",
+      kind: "status",
+      label: "Watching",
+      defaultDisplayMode: "series",
+    },
+    {
+      ref: "me/completed",
+      kind: "status",
+      label: "Completed",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "me/hold",
+      kind: "status",
+      label: "On hold",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "me/dropped",
+      kind: "status",
+      label: "Dropped",
+      defaultDisplayMode: "split",
+    },
   ],
   mdblist: [
-    { ref: "me/watchlist", kind: "watchlist", label: "Watchlist", defaultDisplayMode: "split" },
+    {
+      ref: "me/watchlist",
+      kind: "watchlist",
+      label: "Watchlist",
+      defaultDisplayMode: "split",
+    },
   ],
 };
 
 /** Source lists that need no link and no Connection (charts, trending…). */
 export const PUBLIC_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>> = {
   trakt: [
-    { ref: "trending", kind: "chart", label: "Trending", defaultDisplayMode: "split" },
-    { ref: "popular", kind: "chart", label: "Popular", defaultDisplayMode: "split" },
-    { ref: "anticipated", kind: "chart", label: "Anticipated", defaultDisplayMode: "split" },
+    {
+      ref: "trending",
+      kind: "chart",
+      label: "Trending",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "popular",
+      kind: "chart",
+      label: "Popular",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "anticipated",
+      kind: "chart",
+      label: "Anticipated",
+      defaultDisplayMode: "split",
+    },
   ],
 };
 
 /** Whether a stored Source list of this Provider must read through a Connection. */
-export function sourceRequiresConnection(provider: ProviderId, ref: string): boolean {
+export function sourceRequiresConnection(
+  provider: ProviderId,
+  ref: string,
+): boolean {
   if (PROVIDERS[provider].connection === "required") return true;
   return ref.startsWith("me/");
 }
