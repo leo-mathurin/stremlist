@@ -40,19 +40,21 @@ R2. The configure/onboarding pages of the frontend are covered too.
 # One-time / per boot: start the local Supabase stack (needs Docker running)
 supabase start -x gotrue,realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta
 
+docker build -t stremlist-e2e-minio:release-2025-09-07 apps/e2e/minio
+
 docker run --rm -d --name stremlist-e2e-r2 \
   -p 127.0.0.1:7431:9000 \
   -e MINIO_ROOT_USER=stremlist-e2e \
   -e MINIO_ROOT_PASSWORD=stremlist-e2e-secret \
-  quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+  stremlist-e2e-minio:release-2025-09-07 server /data
 
 # From the repo root: run every E2E project
-pnpm test:e2e
+bun run test:e2e
 
 # Select one project while debugging
-pnpm --filter @stremlist/e2e test:e2e --project=local
-pnpm --filter @stremlist/e2e test:e2e --project=live-smoke
-pnpm --filter @stremlist/e2e test:e2e --project=live-regression
+bun run --cwd apps/e2e test:e2e --project=local
+bun run --cwd apps/e2e test:e2e --project=live-smoke
+bun run --cwd apps/e2e test:e2e --project=live-regression
 ```
 
 The suite deletes test users between cases. It removes their R2 objects first,
@@ -80,7 +82,7 @@ filter so a missing constraint fails the test.
 Run just these scenarios (the same file is included automatically in PR CI):
 
 ```sh
-pnpm --filter @stremlist/e2e test:e2e tests/catalog-features.spec.ts
+bun run --cwd apps/e2e test:e2e tests/catalog-features.spec.ts
 ```
 
 These fixtures bypass IMDb scraping, not Stremlist behavior. Existing live tests

@@ -16,20 +16,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          version: 10.30.1
+          bun-version: 1.4.0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Lint, build, and test
-        run: pnpm turbo run lint build test
+        run: bunx turbo run lint build test
 
       - name: Smoke-test backend bundle
         env:
@@ -46,14 +45,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          version: 10.30.1
+          bun-version: 1.4.0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
 
       - uses: supabase/setup-cli@v1
         with:
@@ -65,28 +63,46 @@ jobs:
       - name: Test atomic configuration replacement
         run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/replace_user_config.sql
 
+      - name: Build pinned MinIO release from official source
+        run: docker build -t stremlist-e2e-minio:release-2025-09-07 apps/e2e/minio
+
       - name: Start local R2-compatible store
         run: |
           docker run --rm -d --name stremlist-e2e-r2 \
             -p 127.0.0.1:7431:9000 \
             -e MINIO_ROOT_USER=stremlist-e2e \
             -e MINIO_ROOT_PASSWORD=stremlist-e2e-secret \
-            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+            stremlist-e2e-minio:release-2025-09-07 server /data
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
       - name: Install Playwright Chromium
-        run: pnpm --filter @stremlist/e2e exec playwright install --with-deps chromium
+        run: bun run --cwd apps/e2e playwright install --with-deps chromium
+
+      - name: Install toolkit Chromium
+        run: bun run --cwd apps/e2e e2e-web install chromium --with-deps
+
+      - name: Run tester-army toolkit
+        run: bun run test:toolkit
 
       - name: Run E2E tests
-        run: pnpm --filter @stremlist/e2e test:e2e
+        run: bun run --cwd apps/e2e test:e2e
+
+      - name: Upload toolkit report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolkit-report
+          include-hidden-files: true
+          path: apps/e2e/.e2e
+          retention-days: 7
 
       - name: Upload Playwright report
         if: failure()

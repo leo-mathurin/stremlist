@@ -1,2 +1,2 @@
-pnpm lint-staged
-pnpm turbo run build test
+bunx lint-staged
+bunx turbo run build test
