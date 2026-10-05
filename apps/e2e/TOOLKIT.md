@@ -1,38 +1,98 @@
 # tester-army/e2e coverage
 
-Run from the repository root with Bun:
+The toolkit combines real AI-driven browser journeys with exact assertions and
+deterministic regression checks. Run from the repository root with Bun:
 
 ```sh
 bun install --frozen-lockfile
+bun run --cwd apps/e2e e2e login openai --device
+bun run --cwd apps/e2e e2e models openai
+bun run test:toolkit:record
 bun run test:toolkit
 ```
 
-The suite uses `e2e@0.17.0` and `@e2e-dev/web@0.12.0`, with no AI model or
-subscription. The runner starts the frontend on `127.0.0.1:4311`. Tests fulfill
+The login command is a one-time local setup for the existing ChatGPT
+subscription. The configured `chatgpt(...)` model uses that login. No OpenAI API
+key or separately billed API account is required. Each `agent.act` has a model
+call limit and a subsequent locator assertion. The configured attempt deadline
+is 180 seconds; retries are disabled.
+
+The suite uses `e2e@0.17.0` and `@e2e-dev/web@0.12.0`. The runner starts the
+frontend on `127.0.0.1:4311`. Tests fulfill
 API requests to `127.0.0.1:4314`; no database, email service, or account is
 modified. No server needs to listen on 4314. The existing Playwright integration
 suite remains available through `test:e2e`.
 
 Reports: `apps/e2e/.e2e/report.json`, `summary.md`, `junit.xml`. Failure traces
-and screenshots are in `.e2e/artifacts`. These files are ignored by Git.
+and screenshots are in `.e2e/artifacts`. These files are ignored by Git. Verified
+action recordings in `apps/e2e/.e2e/cache/` are committed test fixtures. Do not
+edit those recordings by hand.
+
+## AI journeys and credential-free replay
+
+Nine bounded AI goals cover seven existing tests: canonical IMDb onboarding,
+returning-user navigation, a built-in catalog, newsletter subscription, RPDB
+visibility, clipboard feedback, and saving/clearing filters with a preset.
+Assertions still check exact links, page state, filter values, and submitted
+payloads. The AI chooses how to complete the goal; it does not decide whether
+the test passed. Delayed-save gates, pointer movement, error responses, and
+other precise regression mechanics remain deterministic.
+
+Local cache misses use the subscription and record only assertion-verified
+actions. To prove that the committed recordings replay without credentials:
+
+```sh
+bun run test:toolkit:replay
+```
+
+The replay script sets `CI=1` and `E2E_OAUTH_CREDENTIALS='{}'`, so its strict
+read-only behavior also applies outside a CI runner. CI runs that same script.
+It does not read the local OAuth file, call a model, update recordings, retry,
+or skip AI tests. Stale entries fail with `REPLAY_STALE`. A new/unrecorded goal
+cannot authenticate and fails instead of silently running live. No subscription
+token is exported to CI or stored in the repository.
+
+After changing an AI goal or its UI, run `bun run test:toolkit:record` locally
+without `CI` to record its verified actions, then repeat the replay command
+and commit the changed cache entries. Inspect entries before committing: they
+contain actions and synthetic values, not screenshots or conversations. A
+`--no-cache` run tests live AI behavior but does not write recordings.
+
+## AI/cache verification on 2026-10-05
+
+The cold run used the existing ChatGPT subscription with `gpt-6-luna`: all seven
+agent journeys passed, making 27 real model calls and recording nine verified
+action sequences. It used 137,028 tokens. The provider's prompt-cache discount
+is separate from action replay.
+
+The subsequent full replay passed all 27 tests with nine recorded steps replayed,
+zero model calls, zero model tokens, zero retries, and zero skipped tests.
+It used `test:toolkit:replay`, which explicitly supplies an empty credential map.
+A separate run before recording proved that a missing cache entry fails instead
+of skipping the AI journey or using a local login.
+
+Reports for these runs are local and ignored: `.e2e/cold/report.json` and
+`.e2e/replay/report.json` (each also has `summary.md`). The nine committed JSON
+recordings total about 18 KiB and contain only synthetic fixture data. Frozen
+Bun installation, E2E lint, and E2E typecheck passed.
 
 ## Covered flows
 
-| Flow                                                  | Validation                                                                                  |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Home, terms, changelog, unknown route and return home | Rendered headings and navigation                                                            |
-| Onboarding                                            | Input format, clearing, profile URL, canonical ID, install URLs, returning user             |
-| Validation errors                                     | Private watchlist, unknown ID, network failure, HTTP configuration failure                  |
-| Configuration loading                                 | Existing user, missing user, failed load, retry                                             |
-| Catalog management                                    | Add/remove, last-row protection, duplicate source rejection, titles, save payload positions |
-| Filters and presets                                   | Save genre and preset settings; clearing filters preserves presets                          |
-| Pointer reorder                                       | Drag second catalog before first, visible title order, saved API positions                  |
-| Built-in charts                                       | Add chart, prevent duplicate chart, ten-catalog limit                                       |
+| Flow                                                  | Validation                                                                                                   |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Home, terms, changelog, unknown route and return home | Rendered headings and navigation                                                                             |
+| Onboarding                                            | Input format, clearing, profile URL, canonical ID, install URLs, returning user                              |
+| Validation errors                                     | Private watchlist, unknown ID, network failure, HTTP configuration failure                                   |
+| Configuration loading                                 | Existing user, missing user, failed load, retry                                                              |
+| Catalog management                                    | Add/remove, last-row protection, duplicate source rejection, titles, save payload positions                  |
+| Filters and presets                                   | Save genre and preset settings; clearing filters preserves presets                                           |
+| Pointer reorder                                       | Drag second catalog before first, visible title order, saved API positions                                   |
+| Built-in charts                                       | Add chart, prevent duplicate chart, ten-catalog limit                                                        |
 | Saving                                                | Error preserves changes, retry, reinstall notice, unchanged repeat save, concurrent refresh and filter edits |
-| Refresh                                               | Partial failure, successful refresh, cooldown prevents repeat                               |
-| RPDB                                                  | Show/hide key                                                                               |
-| Clipboard                                             | Denial provides manual-copy fallback                                                        |
-| Newsletter                                            | Email validation, isolated success, server rejection, network failure; no emails sent       |
+| Refresh                                               | Partial failure, successful refresh, cooldown prevents repeat                                                |
+| RPDB                                                  | Show/hide key                                                                                                |
+| Clipboard                                             | Denial provides manual-copy fallback                                                                         |
+| Newsletter                                            | Email validation, isolated success, server rejection, network failure; no emails sent                        |
 
 The existing integration suite additionally verifies real config persistence,
 all sort options, content filters, RPDB key save/clear, manifests, catalogs,

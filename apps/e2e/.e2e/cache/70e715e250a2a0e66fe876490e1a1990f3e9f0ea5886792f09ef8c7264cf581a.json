@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-05T21:19:38.003Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Copy manifest URL\"",
+        "target": {
+          "role": "button",
+          "name": "Copy manifest URL"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/ui.e2e.ts::clipboard%20denial%20offers%20manual%20manifest%20copy",
+      "targetId": "chromium",
+      "instructionDigest": "34d041d7d01831122b7065cb76e78bc35c39d8e96c2c07bce3cbb4cdd2b324fb",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Clicked the manifest URL copy control. The app reported: “Could not copy the manifest URL. Select it and copy it manually.”",
+    "startPath": "/configure?userId=ur99123456",
+    "endPath": "/configure?userId=ur99123456",
+    "endAnchors": [
+      {
+        "role": "alert",
+        "name": "Could not copy the manifest URL. Select it and copy it manually."
+      }
+    ],
+    "endWaitMs": 12908
+  }
+}

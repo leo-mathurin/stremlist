@@ -93,26 +93,35 @@ test("format errors and clearing input remove install actions", async ({
   await expect(browser).toHaveURL("/");
 });
 
-test("profile URLs resolve to canonical install URLs", async ({
-  app,
-  screen,
-  browser,
-}) => {
-  await fixture(browser);
-  await app.open("/");
-  await screen
-    .getByLabel("IMDb User ID:")
-    .fill("https://www.imdb.com/user/p.example/");
-  await expect(
-    screen.getByRole("link", "Open in Stremio Desktop"),
-  ).toHaveAttribute("href", `stremio://127.0.0.1:4314/${userId}/manifest.json`);
-  await expect(screen.getByRole("link", "Open in Stremio Web")).toHaveAttribute(
-    "href",
-    `https://web.stremio.com/#/addons?addon=${encodeURIComponent(`http://127.0.0.1:4314/${userId}/manifest.json`)}`,
-  );
-  await expect(browser).toHaveURL(`/?userId=${userId}`);
-  await expect(screen.getByText(/maps to the canonical ID/)).toBeVisible();
-});
+test(
+  "profile URLs resolve to canonical install URLs",
+  { tags: ["agent"] },
+  async ({ app, agent, screen, browser }) => {
+    await fixture(browser);
+    await app.open("/");
+    await agent.act(
+      "Set up the addon using IMDb profile {profile}. Stop when installation choices appear; do not open Stremio.",
+      {
+        params: { profile: "https://www.imdb.com/user/p.example/" },
+        maxModelCalls: 5,
+      },
+    );
+    await expect(
+      screen.getByRole("link", "Open in Stremio Desktop"),
+    ).toHaveAttribute(
+      "href",
+      `stremio://127.0.0.1:4314/${userId}/manifest.json`,
+    );
+    await expect(
+      screen.getByRole("link", "Open in Stremio Web"),
+    ).toHaveAttribute(
+      "href",
+      `https://web.stremio.com/#/addons?addon=${encodeURIComponent(`http://127.0.0.1:4314/${userId}/manifest.json`)}`,
+    );
+    await expect(browser).toHaveURL(`/?userId=${userId}`);
+    await expect(screen.getByText(/maps to the canonical ID/)).toBeVisible();
+  },
+);
 
 for (const state of ["private", "unknown", "offline"] as const) {
   test(`validation reports ${state} watchlists`, async ({
@@ -142,18 +151,20 @@ for (const state of ["private", "unknown", "offline"] as const) {
   });
 }
 
-test("returning users can open configuration", async ({
-  app,
-  screen,
-  browser,
-}) => {
-  await fixture(browser, { existing: true });
-  await app.open(`/?userId=${userId}`);
-  await expect(screen.getByText(`Welcome back, ${userId}!`)).toBeVisible();
-  await screen.getByRole("link", "Configure your Stremlist").tap();
-  await expect(browser).toHaveURL(`/configure?userId=${userId}`);
-  await expect(screen.getByText("Catalog 1")).toBeVisible();
-});
+test(
+  "returning users can open configuration",
+  { tags: ["agent"] },
+  async ({ app, agent, screen, browser }) => {
+    await fixture(browser, { existing: true });
+    await app.open(`/?userId=${userId}`);
+    await expect(screen.getByText(`Welcome back, ${userId}!`)).toBeVisible();
+    await agent.act("Open the existing user's catalog configuration.", {
+      maxModelCalls: 4,
+    });
+    await expect(browser).toHaveURL(`/configure?userId=${userId}`);
+    await expect(screen.getByText("Catalog 1")).toBeVisible();
+  },
+);
 
 test("configuration handles missing users and load retry", async ({
   app,
@@ -247,48 +258,57 @@ test("catalog edits validate duplicates, save values and refresh failures", asyn
 });
 
 for (const result of ["success", "server-error", "offline"] as const) {
-  test(`newsletter validates email and handles ${result}`, async ({
-    app,
-    screen,
-    browser,
-  }) => {
-    let submissions = 0;
-    await browser.route(
-      "http://127.0.0.1:4314/newsletter/subscribe",
-      async (route) => {
-        submissions += 1;
-        expect(JSON.parse(route.request.postData ?? "{}")).toEqual({
-          email: "e2e@example.test",
-        });
-        if (result === "offline") await route.abort();
-        else
-          await route.fulfill({
-            json:
-              result === "success"
-                ? { success: true, message: "Test subscription confirmed" }
-                : { success: false, error: "Test service unavailable" },
+  test(
+    `newsletter validates email and handles ${result}`,
+    { tags: result === "success" ? ["agent"] : [] },
+    async ({ app, agent, screen, browser }) => {
+      let submissions = 0;
+      await browser.route(
+        "http://127.0.0.1:4314/newsletter/subscribe",
+        async (route) => {
+          submissions += 1;
+          expect(JSON.parse(route.request.postData ?? "{}")).toEqual({
+            email: "e2e@example.test",
           });
-      },
-    );
-    await app.open("/");
-    await screen.getByRole("button", "Subscribe", { exact: true }).tap();
-    await expect(
-      screen.getByText("Please enter a valid email address."),
-    ).toBeVisible();
-    expect(submissions).toBe(0);
-    await screen.getByPlaceholder("your@email.com").fill("e2e@example.test");
-    await screen.getByRole("button", "Subscribe", { exact: true }).tap();
-    await expect(
-      screen.getByText(
-        result === "success"
-          ? "Test subscription confirmed"
-          : result === "server-error"
-            ? "Test service unavailable"
-            : "Network error. Please try again.",
-      ),
-    ).toBeVisible();
-    expect(submissions).toBe(1);
-  });
+          if (result === "offline") await route.abort();
+          else
+            await route.fulfill({
+              json:
+                result === "success"
+                  ? { success: true, message: "Test subscription confirmed" }
+                  : { success: false, error: "Test service unavailable" },
+            });
+        },
+      );
+      await app.open("/");
+      await screen.getByRole("button", "Subscribe", { exact: true }).tap();
+      await expect(
+        screen.getByText("Please enter a valid email address."),
+      ).toBeVisible();
+      expect(submissions).toBe(0);
+      if (result === "success") {
+        await agent.act("Subscribe {email} to the newsletter.", {
+          params: { email: "e2e@example.test" },
+          maxModelCalls: 5,
+        });
+      } else {
+        await screen
+          .getByPlaceholder("your@email.com")
+          .fill("e2e@example.test");
+        await screen.getByRole("button", "Subscribe", { exact: true }).tap();
+      }
+      await expect(
+        screen.getByText(
+          result === "success"
+            ? "Test subscription confirmed"
+            : result === "server-error"
+              ? "Test service unavailable"
+              : "Network error. Please try again.",
+        ),
+      ).toBeVisible();
+      expect(submissions).toBe(1);
+    },
+  );
 }
 
 for (const entry of ["typed", "query"] as const) {
@@ -348,29 +368,30 @@ for (const entry of ["typed", "query"] as const) {
   });
 }
 
-test("built-in catalogs avoid duplicates and enforce the catalog limit", async ({
-  app,
-  screen,
-  browser,
-}) => {
-  await fixture(browser, { existing: true });
-  await app.open(`/configure?userId=${userId}`);
-  await screen.getByRole("button", "Add Built-in Catalog").tap();
-  await screen.getByRole("menuitem", /Top 250 Movies/).tap();
-  await expect(screen.getByText("Catalog 2")).toBeVisible();
-  await screen.getByRole("button", "Add Built-in Catalog").tap();
-  await expect(screen.getByRole("menuitem", /Top 250 Movies/)).toBeDisabled();
-  await browser.keyboard.press("Escape");
-  for (let i = 2; i < 10; i += 1)
-    await screen.getByRole("button", "Add Catalog", { exact: true }).tap();
-  await expect(
-    screen.getByRole("button", "Add Catalog", { exact: true }),
-  ).toBeDisabled();
-  await expect(
-    screen.getByRole("button", "Add Built-in Catalog"),
-  ).toBeDisabled();
-  await expect(screen.getByRole("button", "Remove catalog")).toHaveCount(10);
-});
+test(
+  "built-in catalogs avoid duplicates and enforce the catalog limit",
+  { tags: ["agent"] },
+  async ({ app, agent, screen, browser }) => {
+    await fixture(browser, { existing: true });
+    await app.open(`/configure?userId=${userId}`);
+    await agent.act("Add the built-in Top 250 Movies catalog.", {
+      maxModelCalls: 5,
+    });
+    await expect(screen.getByText("Catalog 2")).toBeVisible();
+    await screen.getByRole("button", "Add Built-in Catalog").tap();
+    await expect(screen.getByRole("menuitem", /Top 250 Movies/)).toBeDisabled();
+    await browser.keyboard.press("Escape");
+    for (let i = 2; i < 10; i += 1)
+      await screen.getByRole("button", "Add Catalog", { exact: true }).tap();
+    await expect(
+      screen.getByRole("button", "Add Catalog", { exact: true }),
+    ).toBeDisabled();
+    await expect(
+      screen.getByRole("button", "Add Built-in Catalog"),
+    ).toBeDisabled();
+    await expect(screen.getByRole("button", "Remove catalog")).toHaveCount(10);
+  },
+);
 
 test("save errors preserve changes and allow a successful retry", async ({
   app,
@@ -429,44 +450,49 @@ test("successful refresh applies cooldown and blocks another refresh", async ({
   expect(refreshes).toBe(1);
 });
 
-test("RPDB key visibility control hides the key again", async ({
-  app,
-  screen,
-  browser,
-}) => {
-  await fixture(browser, { existing: true });
-  await app.open(`/configure?userId=${userId}`);
-  await expect(screen.getByRole("button", "Show RPDB API key")).toBeVisible();
-  await screen.getByRole("button", "Show RPDB API key").tap();
-  await expect(screen.getByLabel("RPDB API Key (Optional)")).toHaveAttribute(
-    "type",
-    "text",
-  );
-  await screen.getByRole("button", "Hide RPDB API key").tap();
-  await expect(screen.getByRole("button", "Show RPDB API key")).toBeVisible();
-});
-
-test("clipboard denial offers manual manifest copy", async ({
-  app,
-  screen,
-  browser,
-}) => {
-  await fixture(browser, { existing: true });
-  await browser.addInitScript(() => {
-    Object.defineProperty(navigator.clipboard, "writeText", {
-      configurable: true,
-      value: () =>
-        Promise.reject(new DOMException("Denied", "NotAllowedError")),
+test(
+  "RPDB key visibility control hides the key again",
+  { tags: ["agent"] },
+  async ({ app, agent, screen, browser }) => {
+    await fixture(browser, { existing: true });
+    await app.open(`/configure?userId=${userId}`);
+    await expect(screen.getByRole("button", "Show RPDB API key")).toBeVisible();
+    await agent.act("Reveal the RPDB API key using its visibility control.", {
+      maxModelCalls: 4,
     });
-  });
-  await app.open(`/configure?userId=${userId}`);
-  await screen.getByRole("button", "Copy manifest URL").tap();
-  await expect(
-    screen.getByText(
-      "Could not copy the manifest URL. Select it and copy it manually.",
-    ),
-  ).toBeVisible();
-});
+    await expect(screen.getByLabel("RPDB API Key (Optional)")).toHaveAttribute(
+      "type",
+      "text",
+    );
+    await agent.act("Hide the RPDB API key again.", { maxModelCalls: 4 });
+    await expect(screen.getByRole("button", "Show RPDB API key")).toBeVisible();
+  },
+);
+
+test(
+  "clipboard denial offers manual manifest copy",
+  { tags: ["agent"] },
+  async ({ app, agent, screen, browser }) => {
+    await fixture(browser, { existing: true });
+    await browser.addInitScript(() => {
+      Object.defineProperty(navigator.clipboard, "writeText", {
+        configurable: true,
+        value: () =>
+          Promise.reject(new DOMException("Denied", "NotAllowedError")),
+      });
+    });
+    await app.open(`/configure?userId=${userId}`);
+    await agent.act(
+      "Try to copy this addon's manifest URL with its copy control. Stop after the attempt, even if the browser refuses clipboard access.",
+      { maxModelCalls: 4 },
+    );
+    await expect(
+      screen.getByText(
+        "Could not copy the manifest URL. Select it and copy it manually.",
+      ),
+    ).toBeVisible();
+  },
+);
 
 test("pointer reorder changes visible catalog order and saved positions", async ({
   app,
@@ -534,48 +560,53 @@ test("pointer reorder changes visible catalog order and saved positions", async 
   ]);
 });
 
-test("catalog filters and extra presets survive save and clear", async ({
-  app,
-  screen,
-  browser,
-}) => {
-  let saved:
-    | { watchlists: Array<{ catalogSettings: Record<string, unknown> }> }
-    | undefined;
-  await browser.route("http://127.0.0.1:4314/**", async (route) => {
-    if (route.request.method === "POST") {
-      saved = JSON.parse(route.request.postData ?? "{}");
-      await route.fulfill({ json: { ok: true } });
-    } else
-      await route.fulfill({
-        json: {
-          ...config,
-          watchlists: [{ ...watchlist, availableGenres: ["Drama", "Comedy"] }],
-        },
-      });
-  });
-  await app.open(`/configure?userId=${userId}`);
-  await screen.getByRole("button", /Filters & extra catalogs/).tap();
-  await screen.getByLabel("Genre", { exact: true }).tap();
-  await screen.getByRole("option", "Drama", { exact: true }).tap();
-  await screen.getByRole("checkbox", "Top rated", { exact: true }).tap();
-  await screen.getByRole("button", "Save", { exact: true }).tap();
-  await expect(
-    screen.getByText(/Saved! Catalog structure changed/),
-  ).toBeVisible();
-  expect(saved?.watchlists[0].catalogSettings).toEqual({
-    genre: "Drama",
-    presets: ["rated"],
-  });
-  await screen.getByRole("button", "Clear filters").tap();
-  await screen.getByRole("button", "Save", { exact: true }).tap();
-  await expect(
-    screen.getByText(
-      "Saved! Your catalogs will be refreshed with the new settings.",
-    ),
-  ).toBeVisible();
-  expect(saved?.watchlists[0].catalogSettings).toEqual({ presets: ["rated"] });
-});
+test(
+  "catalog filters and extra presets survive save and clear",
+  { tags: ["agent"] },
+  async ({ app, agent, screen, browser }) => {
+    let saved:
+      | { watchlists: Array<{ catalogSettings: Record<string, unknown> }> }
+      | undefined;
+    await browser.route("http://127.0.0.1:4314/**", async (route) => {
+      if (route.request.method === "POST") {
+        saved = JSON.parse(route.request.postData ?? "{}");
+        await route.fulfill({ json: { ok: true } });
+      } else
+        await route.fulfill({
+          json: {
+            ...config,
+            watchlists: [
+              { ...watchlist, availableGenres: ["Drama", "Comedy"] },
+            ],
+          },
+        });
+    });
+    await app.open(`/configure?userId=${userId}`);
+    await agent.act(
+      "For the Test catalog, select the Drama genre filter and enable the Top rated extra catalog, then save these settings.",
+      { maxModelCalls: 10 },
+    );
+    await expect(
+      screen.getByText(/Saved! Catalog structure changed/),
+    ).toBeVisible();
+    expect(saved?.watchlists[0].catalogSettings).toEqual({
+      genre: "Drama",
+      presets: ["rated"],
+    });
+    await agent.act(
+      "Clear this catalog's filters while keeping the Top rated extra catalog enabled, then save.",
+      { maxModelCalls: 6 },
+    );
+    await expect(
+      screen.getByText(
+        "Saved! Your catalogs will be refreshed with the new settings.",
+      ),
+    ).toBeVisible();
+    expect(saved?.watchlists[0].catalogSettings).toEqual({
+      presets: ["rated"],
+    });
+  },
+);
 
 test("edits made while saving remain available for the next save", async ({
   app,

@@ -98,7 +98,7 @@ jobs:
         run: bun run --cwd apps/e2e e2e-web install chromium --with-deps
 
       - name: Run tester-army toolkit
-        run: bun run test:toolkit
+        run: bun run test:toolkit:replay
 
       - name: Run E2E tests
         run: bun run --filter @stremlist/e2e test:e2e

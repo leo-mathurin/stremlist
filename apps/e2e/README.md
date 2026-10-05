@@ -1,7 +1,9 @@
 # @stremlist/e2e
 
-The tester-army toolkit suite runs without external services: `bun run test:toolkit`
-from the repository root. See [TOOLKIT.md](./TOOLKIT.md) for coverage, reports,
+The tester-army toolkit uses the existing ChatGPT subscription to record AI
+browser journeys, then replays committed actions without credentials in CI.
+Application API responses are intercepted. Run `bun run test:toolkit` from the
+repository root. See [TOOLKIT.md](./TOOLKIT.md) for setup, coverage, reports,
 and isolated integration verification.
 
 End-to-end tests that exercise Stremlist the way a real user does: the addon
