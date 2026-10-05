@@ -16,20 +16,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          version: 10.30.1
+          bun-version-file: package.json
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun ci
 
       - name: Lint, build, and test
-        run: pnpm turbo run lint build test
+        run: bunx turbo run lint build test
 
       - name: Smoke-test backend bundle
         env:
@@ -46,14 +45,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          version: 10.30.1
+          bun-version-file: package.json
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
 
       - uses: supabase/setup-cli@v1
         with:
@@ -74,19 +72,20 @@ jobs:
             quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun ci
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
       - name: Install Playwright Chromium
-        run: pnpm --filter @stremlist/e2e exec playwright install --with-deps chromium
+        working-directory: apps/e2e
+        run: bunx playwright install --with-deps chromium
 
       - name: Run E2E tests
-        run: pnpm --filter @stremlist/e2e test:e2e
+        run: bun run --filter @stremlist/e2e test:e2e
 
       - name: Upload Playwright report
         if: failure()

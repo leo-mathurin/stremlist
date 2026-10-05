@@ -50,7 +50,7 @@ This repository follows the Turborepo recommended structure:
 ├── packages
 │   └── shared       # Shared types/constants used by apps
 ├── turbo.json
-└── pnpm-workspace.yaml
+└── package.json     # Bun workspaces
 ```
 
 ## Deployment Architecture
@@ -65,12 +65,12 @@ This repository follows the Turborepo recommended structure:
 ### Prerequisites
 
 - Node.js 24+ for development with Portless (`.node-version`)
-- pnpm 10+
+- Bun 1.4+ (`packageManager` in `package.json`)
 
 ### Install
 
 ```bash
-pnpm install
+bun install
 ```
 
 ### Run in Development
@@ -78,17 +78,17 @@ pnpm install
 Decrypt the backend environment first (see below), then run:
 
 ```bash
-pnpm dev             # both apps through Portless
-pnpm dev:tailnet     # both apps; share the frontend over Tailscale HTTPS
-pnpm dev:backend     # backend only
-pnpm dev:frontend    # frontend only (requires a running backend)
-pnpm exec portless list
+bun run dev             # both apps through Portless
+bun run dev:tailnet     # both apps; share the frontend over Tailscale HTTPS
+bun run dev:backend     # backend only
+bun run dev:frontend    # frontend only (requires a running backend)
+bunx portless list
 ```
 
 Portless 0.15.6 is pinned as a dev dependency. In the main checkout, the
 local names are `https://stremlist.localhost` and
 `https://api.stremlist.localhost`. Linked worktrees receive a branch prefix;
-use the printed URLs or `pnpm exec portless list` instead of hardcoding them.
+use the printed URLs or `bunx portless list` instead of hardcoding them.
 A previously configured proxy port (such as 1355) appears in these URLs too.
 
 For access from another tailnet device, open the **Tailscale URL** printed for
@@ -128,12 +128,12 @@ Do not commit the decrypted `.env` files.
 From repository root:
 
 ```bash
-pnpm build
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm format
-pnpm format:check
+bun run build
+bun run typecheck
+bun run lint
+bun run test
+bun run format
+bun run format:check
 ```
 
 ## Using the Addon
@@ -180,7 +180,7 @@ Set backend env vars in `apps/backend/.env`.
 To regenerate shared Supabase types:
 
 ```bash
-pnpm generate:types
+bun run generate:types
 ```
 
 This updates `packages/shared/src/database.types.ts`.
