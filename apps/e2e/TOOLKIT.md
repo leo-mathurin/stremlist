@@ -188,8 +188,14 @@ without suppressing the rule. The toolkit also covers selecting an account from
 the configuration entry form, and the delayed edit/addition test verifies the
 next save payload including a synthetic RPDB key changed during the request.
 
-Save feedback now reads the form snapshot synchronized in a layout effect. This
-closes the interval between a committed drag/edit and its passive effect, during
-which a fast save response could incorrectly report that every edit was saved.
-The delayed reorder test retains its pre-response DOM-order assertion and checks
-the next submitted positions.
+Save feedback reads the committed form snapshot synchronized in a layout effect.
+CI traces showed a separate test timing error: dnd-kit optimistically reordered
+DOM nodes before React committed their new indices. The response was released
+26 ms after reading the moved title. The delayed reorder test now also waits for
+the moved rows to receive their React-rendered Catalog 1 / Catalog 2 labels before
+releasing the response. It retains the unsaved warning and next-save position
+assertions; no fixed delay or retry was added.
+
+The committed-row reorder check passed in all 25 toolkit tests on both macOS
+and isolated Linux arm64 (Node 24, Bun 1.4.0, Chromium 153). The Linux run used
+a frozen Bun install and the same framework browser dependency installer as CI.

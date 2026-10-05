@@ -705,6 +705,12 @@ for (const edit of ["remove", "reorder"] as const) {
       await expect(
         screen.getByPlaceholder("Tom Hardy's Watchlist").first(),
       ).toHaveValue("Second catalog");
+      // Dnd-kit moves DOM nodes optimistically before React commits row indices.
+      await expect(
+        browser.locator(
+          'div.rounded-lg:has(button[aria-label="Drag to reorder"]) > div:first-child > div:first-child > p',
+        ),
+      ).toHaveText(["Catalog 1", "Catalog 2"]);
     }
     releaseSave!();
     await expect(
