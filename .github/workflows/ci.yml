@@ -11,10 +11,21 @@ jobs:
   ci:
     name: Lint, Build & Test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Exchanged for a short-lived Vercel Remote Cache token (no stored secret).
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # Fork PRs get no OIDC token, so they fall back to a cold local cache.
+      - name: Set up Turborepo Remote Cache
+        if: vars.TURBO_TEAM != '' && github.event.pull_request.head.repo.fork != true
+        uses: vercel/setup-turborepo-remote-cache-action@v1.1.0
+        with:
+          team: ${{ vars.TURBO_TEAM }}
 
       - uses: oven-sh/setup-bun@v2
         with:
