@@ -1,97 +1,109 @@
+import { createHash } from "node:crypto";
 import {
-  BASE_MANIFEST,
+  ACCOUNT_KEY_PATTERN,
   ADDON_VERSION,
+  APP_DESCRIPTION,
+  BASE_MANIFEST,
   IMDB_USER_ID_PATTERN,
 } from "@stremlist/shared/constants";
-import type { StremioManifest } from "@stremlist/shared/stremio.types";
+import { sourceRequiresConnection } from "@stremlist/shared/providers";
+import type {
+  StremioManifest,
+  StremioResource,
+} from "@stremlist/shared/stremio.types";
 import { Hono } from "hono";
+import type { AccountAccess } from "../services/accounts";
+import {
+  ensureLegacyAccount,
+  getAccountLists,
+  resolveAccountKey,
+} from "../services/accounts";
+import { actionProviders } from "../services/actions";
 import { withAvailableGenres } from "../services/catalog-genres";
 import { buildManifestCatalogs } from "../services/stremio-catalogs";
-import {
-  ensureUser,
-  getUserWatchlists,
-  getUserRpdbApiKey,
-} from "../services/user";
 
 const manifest = new Hono();
 
-// Base manifest — requires configuration (no userId)
-manifest.get("/manifest.json", (c) => {
-  console.log("Serving base manifest (requires configuration)");
-
-  const baseManifest: StremioManifest = {
+function configurationRequired(): StremioManifest {
+  return {
     ...structuredClone(BASE_MANIFEST),
-    behaviorHints: {
-      configurable: true,
-      configurationRequired: true,
-    },
+    behaviorHints: { configurable: true, configurationRequired: true },
   };
+}
 
-  return c.json(baseManifest);
-});
+/**
+ * The manifest ID must stay stable per install, but it must not leak the
+ * Account ID (the secret). Legacy installs keep their historic ID.
+ */
+function manifestId(access: AccountAccess, key: string): string {
+  if (access.via === "legacy") return `com.stremlist.${key}`;
+  const digest = createHash("sha256").update(key).digest("hex").slice(0, 16);
+  return `com.stremlist.${digest}`;
+}
 
-// User-specific manifest
-manifest.get("/:userId/manifest.json", async (c) => {
-  const userId = c.req.param("userId");
-  console.log(`Serving user-specific manifest for: ${userId}`);
+// Base manifest: requires configuration.
+manifest.get("/manifest.json", (c) => c.json(configurationRequired()));
 
-  if (!IMDB_USER_ID_PATTERN.test(userId)) {
-    return c.json(
-      {
-        ...structuredClone(BASE_MANIFEST),
-        behaviorHints: {
-          configurable: true,
-          configurationRequired: true,
-        },
-      },
-      400,
-    );
+manifest.get("/:accountKey/manifest.json", async (c) => {
+  const key = c.req.param("accountKey");
+  if (!ACCOUNT_KEY_PATTERN.test(key)) {
+    return c.json(configurationRequired(), 400);
   }
 
   try {
-    await ensureUser(userId);
-    const savedRpdbApiKey = await getUserRpdbApiKey(userId);
-    const watchlists = await withAvailableGenres(
-      await getUserWatchlists(userId),
+    let access = await resolveAccountKey(key);
+    // Old installs pointed Stremio at /ur…/manifest.json without saving first.
+    if (!access && IMDB_USER_ID_PATTERN.test(key)) {
+      access = await ensureLegacyAccount(key);
+    }
+    if (!access) return c.json(configurationRequired());
+
+    const { account } = access;
+    const lists = (await getAccountLists(account.id)).filter(
+      (list) =>
+        access.via === "private" ||
+        !sourceRequiresConnection(list.provider, list.sourceRef),
     );
+    const resources: (string | StremioResource)[] = [
+      "catalog",
+      { name: "meta", types: ["movie"], idPrefixes: ["tt"] },
+    ];
+    if (
+      access.via === "private" &&
+      (await actionProviders(account)).length > 0
+    ) {
+      resources.push({
+        name: "stream",
+        types: ["movie", "series"],
+        idPrefixes: ["tt"],
+      });
+    }
 
     const userManifest: StremioManifest = {
       ...structuredClone(BASE_MANIFEST),
-      id: `com.stremlist.${userId}`,
+      id: manifestId(access, key),
       version: ADDON_VERSION,
       name: "Stremlist",
-      description: `Your IMDb Watchlist for user ${userId}. See changelog at https://stremlist.com/changelog`,
-      catalogs: buildManifestCatalogs(watchlists),
-      behaviorHints: {
-        configurable: true,
-        configurationRequired: false,
-      },
+      description: `${APP_DESCRIPTION}. Changelog: https://stremlist.com/changelog`,
+      resources,
+      catalogs: buildManifestCatalogs(await withAvailableGenres(lists)),
+      behaviorHints: { configurable: true, configurationRequired: false },
       config: [
         {
           key: "rpdbApiKey",
           type: "password",
           title: "RPDB API Key (Optional)",
-          default: savedRpdbApiKey ?? "",
+          default: account.rpdbApiKey ?? "",
         },
       ],
     };
-
     return c.json(userManifest);
-  } catch (err) {
+  } catch (error) {
     console.error(
-      `Error serving manifest for ${userId}:`,
-      (err as Error).message,
+      `Error serving manifest for ${key}:`,
+      error instanceof Error ? error.message : error,
     );
-
-    const fallback: StremioManifest = {
-      ...structuredClone(BASE_MANIFEST),
-      behaviorHints: {
-        configurable: true,
-        configurationRequired: true,
-      },
-    };
-
-    return c.json(fallback);
+    return c.json(configurationRequired());
   }
 });
 

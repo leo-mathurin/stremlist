@@ -34,8 +34,8 @@ vi.mock("../lib/supabase", async () => {
   return { supabase: { ...supabase, rpc: rpcMocks.rpc } };
 });
 
-vi.mock("../services/watchlist-cache", async () => {
-  return await import("./helpers/mock-watchlist-cache.js");
+vi.mock("../services/list-cache", async () => {
+  return await import("./helpers/mock-list-cache.js");
 });
 
 vi.mock("../lib/resend", () => ({
@@ -43,7 +43,7 @@ vi.mock("../lib/resend", () => ({
 }));
 
 import { db } from "./helpers/mock-supabase.js";
-import { cache } from "./helpers/mock-watchlist-cache.js";
+import { cache } from "./helpers/mock-list-cache.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

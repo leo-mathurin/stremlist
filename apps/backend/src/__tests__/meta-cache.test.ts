@@ -10,8 +10,8 @@ vi.mock("../lib/supabase", async () => {
   return await import("./helpers/mock-supabase.js");
 });
 
-vi.mock("../services/watchlist-cache", async () => {
-  return await import("./helpers/mock-watchlist-cache.js");
+vi.mock("../services/list-cache", async () => {
+  return await import("./helpers/mock-list-cache.js");
 });
 
 vi.mock("../lib/resend", () => ({
@@ -20,7 +20,7 @@ vi.mock("../lib/resend", () => ({
 
 import * as watchlistSvc from "../services/watchlist";
 import { db } from "./helpers/mock-supabase.js";
-import { cache } from "./helpers/mock-watchlist-cache.js";
+import { cache } from "./helpers/mock-list-cache.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

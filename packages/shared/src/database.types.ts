@@ -14,86 +14,213 @@ export type Database = {
   };
   public: {
     Tables: {
-      user_watchlists: {
+      accounts: {
         Row: {
-          catalog_settings: Json;
-          catalog_title: string;
+          action_providers: string[];
+          actions_enabled: boolean;
           created_at: string;
-          display_mode: string;
           id: string;
-          imdb_user_id: string;
-          owner_user_id: string;
-          position: number;
-          sort_option: string;
-          updated_at: string;
-        };
-        Insert: {
-          catalog_settings?: Json;
-          catalog_title: string;
-          created_at?: string;
-          display_mode?: string;
-          id?: string;
-          imdb_user_id: string;
-          owner_user_id: string;
-          position?: number;
-          sort_option?: string;
-          updated_at?: string;
-        };
-        Update: {
-          catalog_settings?: Json;
-          catalog_title?: string;
-          created_at?: string;
-          display_mode?: string;
-          id?: string;
-          imdb_user_id?: string;
-          owner_user_id?: string;
-          position?: number;
-          sort_option?: string;
-          updated_at?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "user_watchlists_owner_user_id_fkey";
-            columns: ["owner_user_id"];
-            isOneToOne: false;
-            referencedRelation: "users";
-            referencedColumns: ["imdb_user_id"];
-          },
-        ];
-      };
-      users: {
-        Row: {
-          created_at: string;
-          imdb_user_id: string;
           is_active: boolean;
           last_cache_served_at: string | null;
           last_fetched_at: string;
+          legacy_imdb_user_id: string | null;
+          moved_at: string | null;
           prewarm_lease_token: string | null;
           prewarm_locked_until: string;
           prewarm_request_generation: number;
           rpdb_api_key: string | null;
         };
         Insert: {
+          action_providers?: string[];
+          actions_enabled?: boolean;
           created_at?: string;
-          imdb_user_id: string;
+          id?: string;
           is_active?: boolean;
           last_cache_served_at?: string | null;
           last_fetched_at?: string;
+          legacy_imdb_user_id?: string | null;
+          moved_at?: string | null;
           prewarm_lease_token?: string | null;
           prewarm_locked_until?: string;
           prewarm_request_generation?: number;
           rpdb_api_key?: string | null;
         };
         Update: {
+          action_providers?: string[];
+          actions_enabled?: boolean;
           created_at?: string;
-          imdb_user_id?: string;
+          id?: string;
           is_active?: boolean;
           last_cache_served_at?: string | null;
           last_fetched_at?: string;
+          legacy_imdb_user_id?: string | null;
+          moved_at?: string | null;
           prewarm_lease_token?: string | null;
           prewarm_locked_until?: string;
           prewarm_request_generation?: number;
           rpdb_api_key?: string | null;
+        };
+        Relationships: [];
+      };
+      connections: {
+        Row: {
+          access_token: string;
+          account_id: string;
+          created_at: string;
+          expires_at: string | null;
+          provider: string;
+          provider_username: string | null;
+          refresh_lease_token: string | null;
+          refresh_locked_until: string;
+          refresh_token: string | null;
+          scope: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          access_token: string;
+          account_id: string;
+          created_at?: string;
+          expires_at?: string | null;
+          provider: string;
+          provider_username?: string | null;
+          refresh_lease_token?: string | null;
+          refresh_locked_until?: string;
+          refresh_token?: string | null;
+          scope?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          access_token?: string;
+          account_id?: string;
+          created_at?: string;
+          expires_at?: string | null;
+          provider?: string;
+          provider_username?: string | null;
+          refresh_lease_token?: string | null;
+          refresh_locked_until?: string;
+          refresh_token?: string | null;
+          scope?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "connections_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "accounts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      lists: {
+        Row: {
+          account_id: string;
+          catalog_settings: Json;
+          catalog_title: string;
+          created_at: string;
+          display_mode: string;
+          id: string;
+          position: number;
+          provider: string;
+          sort_option: string;
+          source_ref: string;
+          updated_at: string;
+        };
+        Insert: {
+          account_id: string;
+          catalog_settings?: Json;
+          catalog_title: string;
+          created_at?: string;
+          display_mode?: string;
+          id?: string;
+          position?: number;
+          provider: string;
+          sort_option?: string;
+          source_ref: string;
+          updated_at?: string;
+        };
+        Update: {
+          account_id?: string;
+          catalog_settings?: Json;
+          catalog_title?: string;
+          created_at?: string;
+          display_mode?: string;
+          id?: string;
+          position?: number;
+          provider?: string;
+          sort_option?: string;
+          source_ref?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "lists_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "accounts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      oauth_states: {
+        Row: {
+          account_id: string;
+          code_verifier: string;
+          created_at: string;
+          expires_at: string;
+          provider: string;
+          state: string;
+        };
+        Insert: {
+          account_id: string;
+          code_verifier: string;
+          created_at?: string;
+          expires_at: string;
+          provider: string;
+          state: string;
+        };
+        Update: {
+          account_id?: string;
+          code_verifier?: string;
+          created_at?: string;
+          expires_at?: string;
+          provider?: string;
+          state?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "oauth_states_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "accounts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      title_id_map: {
+        Row: {
+          external_id: string;
+          imdb_id: string | null;
+          namespace: string;
+          resolved_at: string;
+          retry_after: string | null;
+          strategy: string | null;
+        };
+        Insert: {
+          external_id: string;
+          imdb_id?: string | null;
+          namespace: string;
+          resolved_at?: string;
+          retry_after?: string | null;
+          strategy?: string | null;
+        };
+        Update: {
+          external_id?: string;
+          imdb_id?: string | null;
+          namespace?: string;
+          resolved_at?: string;
+          retry_after?: string | null;
+          strategy?: string | null;
         };
         Relationships: [];
       };
@@ -102,28 +229,48 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      replace_user_config: {
+      claim_connection_refresh: {
         Args: {
-          p_owner_user_id: string;
-          p_rpdb_api_key: string | null;
-          p_watchlists: Json;
+          p_account_id: string;
+          p_lease_seconds: number;
+          p_lease_token: string;
+          p_provider: string;
         };
-        Returns: { deleted_ids: string[]; watchlists: Json }[];
+        Returns: boolean;
       };
-      finish_watchlist_prewarm: {
+      finish_list_prewarm: {
         Args: {
+          p_account_id: string;
           p_completed_generation: number;
           p_lease_seconds: number;
           p_lease_token: string;
-          p_owner_user_id: string;
         };
         Returns: number;
       };
-      request_watchlist_prewarm: {
+      generate_account_id: { Args: never; Returns: string };
+      release_connection_refresh: {
         Args: {
+          p_account_id: string;
+          p_lease_token: string;
+          p_provider: string;
+        };
+        Returns: boolean;
+      };
+      replace_account_config: {
+        Args: {
+          p_account_id: string;
+          p_action_providers: string[] | null;
+          p_actions_enabled: boolean | null;
+          p_lists: Json;
+          p_rpdb_api_key: string | null;
+        };
+        Returns: { deleted_ids: string[]; lists: Json }[];
+      };
+      request_list_prewarm: {
+        Args: {
+          p_account_id: string;
           p_lease_seconds: number;
           p_lease_token: string;
-          p_owner_user_id: string;
         };
         Returns: number;
       };

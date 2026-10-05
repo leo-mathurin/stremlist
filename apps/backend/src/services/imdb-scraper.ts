@@ -833,3 +833,37 @@ export async function fetchList(listId: string): Promise<WatchlistData> {
 
   return { metas };
 }
+
+const TITLES_BY_ID_QUERY = `
+  query TitlesById($ids: [ID!]!) {
+    titles(ids: $ids) { ${TITLE_FRAGMENT} }
+  }
+`;
+
+// IMDb answers 250 titles in well under a second.
+const TITLES_BATCH_SIZE = 250;
+
+/**
+ * Full Stremio metadata for IMDb IDs, in batches. Used by the shared
+ * enrichment step for Providers that only give IMDb IDs. Unknown IDs and
+ * non-video titles (episodes, games…) are left out of the result.
+ */
+export async function fetchTitlesByIds(
+  imdbIds: string[],
+): Promise<Map<string, StremioMeta>> {
+  const result = new Map<string, StremioMeta>();
+  for (let start = 0; start < imdbIds.length; start += TITLES_BATCH_SIZE) {
+    const ids = imdbIds.slice(start, start + TITLES_BATCH_SIZE);
+    const json = (await queryImdbGraphQL("TitlesById", TITLES_BY_ID_QUERY, {
+      ids,
+    })) as { data?: { titles?: (TitleNode | null)[] | null } };
+    const nodes = (json.data?.titles ?? []).filter(
+      (node): node is TitleNode => !!node?.id && !!node.titleText,
+    );
+    const metas = convertToStremioFormat(
+      processWatchlist(nodes.map((listItem) => ({ listItem }))),
+    );
+    for (const meta of metas) result.set(meta.id, meta);
+  }
+  return result;
+}

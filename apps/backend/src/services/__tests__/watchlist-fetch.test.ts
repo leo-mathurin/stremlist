@@ -12,8 +12,8 @@ const scraperMocks = vi.hoisted(() => ({
 
 const cacheMocks = vi.hoisted(() => ({
   findCachedMeta: vi.fn(),
-  getCachedWatchlist: vi.fn(),
-  writeCachedWatchlist: vi.fn(),
+  getCachedList: vi.fn(),
+  writeCachedList: vi.fn(),
 }));
 
 vi.mock("../../lib/supabase", () => ({ supabase: {} }));
@@ -27,7 +27,7 @@ vi.mock("../user", () => ({
   getUserRpdbApiKey: vi.fn(),
   getUserWatchlists: vi.fn(),
 }));
-vi.mock("../watchlist-cache", () => cacheMocks);
+vi.mock("../list-cache", () => cacheMocks);
 
 import type { WatchlistFetchConfig } from "../watchlist";
 import { getWatchlistByConfig } from "../watchlist";
@@ -45,8 +45,8 @@ const MOVIE: StremioMeta = {
 describe("getWatchlistByConfig", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    cacheMocks.getCachedWatchlist.mockResolvedValue(null);
-    cacheMocks.writeCachedWatchlist.mockResolvedValue(
+    cacheMocks.getCachedList.mockResolvedValue(null);
+    cacheMocks.writeCachedList.mockResolvedValue(
       "11111111-1111-4111-8111-111111111111",
     );
   });
@@ -71,7 +71,7 @@ describe("getWatchlistByConfig", () => {
     const second = getWatchlistByConfig(config);
 
     await vi.waitFor(() => {
-      expect(cacheMocks.getCachedWatchlist).toHaveBeenCalledTimes(2);
+      expect(cacheMocks.getCachedList).toHaveBeenCalledTimes(2);
     });
     releaseFetches.forEach((release) => {
       release({ metas: [MOVIE] });
@@ -82,6 +82,6 @@ describe("getWatchlistByConfig", () => {
       { metas: [MOVIE] },
     ]);
     expect(scraperMocks.fetchList).toHaveBeenCalledOnce();
-    expect(cacheMocks.writeCachedWatchlist).toHaveBeenCalledOnce();
+    expect(cacheMocks.writeCachedList).toHaveBeenCalledOnce();
   });
 });

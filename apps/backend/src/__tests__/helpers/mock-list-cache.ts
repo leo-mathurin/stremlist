@@ -9,74 +9,74 @@ interface Entry {
   generation: string;
 }
 
-class InMemoryWatchlistCache {
+class InMemoryListCache {
   private entries = new Map<string, Entry>();
 
   reset(): void {
     this.entries.clear();
   }
 
-  seed(watchlistId: string, metas: StremioMeta[], cachedAt = new Date()): void {
-    this.entries.set(watchlistId, {
+  seed(listId: string, metas: StremioMeta[], cachedAt = new Date()): void {
+    this.entries.set(listId, {
       data: { metas: structuredClone(metas) },
       cachedAt,
-      generation: `${watchlistId}:${cachedAt.toISOString()}`,
+      generation: `${listId}:${cachedAt.toISOString()}`,
     });
   }
 
-  get(watchlistId: string): Entry | null {
-    return this.entries.get(watchlistId) ?? null;
+  get(listId: string): Entry | null {
+    return this.entries.get(listId) ?? null;
   }
 
-  delete(watchlistId: string): void {
-    this.entries.delete(watchlistId);
+  delete(listId: string): void {
+    this.entries.delete(listId);
   }
 }
 
-export const cache = new InMemoryWatchlistCache();
+export const cache = new InMemoryListCache();
 
-export function getCachedWatchlist(watchlistId: string): Promise<Entry | null> {
-  return Promise.resolve(cache.get(watchlistId));
+export function getCachedList(listId: string): Promise<Entry | null> {
+  return Promise.resolve(cache.get(listId));
 }
 
-export function writeCachedWatchlist(
-  watchlistId: string,
-  watchlistData: WatchlistData,
+export function writeCachedList(
+  listId: string,
+  listData: WatchlistData,
   cachedAt = new Date(),
 ): Promise<string> {
   const seen = new Set<string>();
-  const metas = watchlistData.metas.filter((meta) => {
+  const metas = listData.metas.filter((meta) => {
     const key = `${meta.type}:${meta.id}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
-  if (metas.length === 0) cache.delete(watchlistId);
-  else cache.seed(watchlistId, metas, cachedAt);
-  return Promise.resolve(`${watchlistId}:${cachedAt.toISOString()}`);
+  if (metas.length === 0) cache.delete(listId);
+  else cache.seed(listId, metas, cachedAt);
+  return Promise.resolve(`${listId}:${cachedAt.toISOString()}`);
 }
 
 export function findCachedMeta(
-  watchlistIds: string[],
+  listIds: string[],
   type: string,
   id: string,
 ): Promise<StremioMeta | null> {
-  for (const watchlistId of watchlistIds) {
+  for (const listId of listIds) {
     const found = cache
-      .get(watchlistId)
+      .get(listId)
       ?.data.metas.find((meta) => meta.type === type && meta.id === id);
     if (found) return Promise.resolve(found);
   }
   return Promise.resolve(null);
 }
 
-export function deleteCachedWatchlist(watchlistId: string): Promise<void> {
-  cache.delete(watchlistId);
+export function deleteCachedList(listId: string): Promise<void> {
+  cache.delete(listId);
   return Promise.resolve();
 }
 
-export function getCachedWatchlistSummary(watchlistId: string) {
-  const entry = cache.get(watchlistId);
+export function getCachedListSummary(listId: string) {
+  const entry = cache.get(listId);
   if (!entry) return Promise.resolve(null);
   const genres = (type: StremioMeta["type"]) =>
     [
@@ -88,4 +88,10 @@ export function getCachedWatchlistSummary(watchlistId: string) {
       ),
     ].sort();
   return Promise.resolve({ movie: genres("movie"), series: genres("series") });
+}
+
+export function markCachedListStale(listId: string): Promise<void> {
+  const entry = cache.get(listId);
+  if (entry) cache.seed(listId, entry.data.metas, new Date(0));
+  return Promise.resolve();
 }

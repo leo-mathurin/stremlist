@@ -105,12 +105,12 @@ vi.mock("../../lib/r2", () => ({
 }));
 
 import {
-  deleteCachedWatchlist,
+  deleteCachedList,
   findCachedMeta,
-  getCachedWatchlist,
-  getCachedWatchlistSummary,
-  writeCachedWatchlist,
-} from "../watchlist-cache";
+  getCachedList,
+  getCachedListSummary,
+  writeCachedList,
+} from "../list-cache";
 
 const MOVIE: StremioMeta = {
   id: "tt0111161",
@@ -142,9 +142,9 @@ describe("R2 watchlist cache", () => {
     const id = watchlistId();
     const cachedAt = new Date("2026-08-26T10:00:00.000Z");
 
-    await writeCachedWatchlist(id, { metas: [MOVIE, { ...MOVIE }] }, cachedAt);
+    await writeCachedList(id, { metas: [MOVIE, { ...MOVIE }] }, cachedAt);
 
-    const cached = await getCachedWatchlist(id);
+    const cached = await getCachedList(id);
     expect(cached?.data).toEqual({ metas: [MOVIE] });
     expect(cached?.cachedAt).toEqual(cachedAt);
     expect(cached?.generation).toMatch(
@@ -161,19 +161,19 @@ describe("R2 watchlist cache", () => {
 
   it("reads sorted per-type genres from a cold manifest without loading the catalog", async () => {
     const id = watchlistId();
-    await writeCachedWatchlist(id, {
+    await writeCachedList(id, {
       metas: [
         { ...MOVIE, genres: ["Drama", "Action", "Drama", "", "  "] },
         { ...MOVIE, type: "series", genres: ["Comedy", "Drama"] },
       ],
     });
     for (let index = 0; index <= 100; index += 1) {
-      await writeCachedWatchlist(watchlistId(), { metas: [MOVIE] });
+      await writeCachedList(watchlistId(), { metas: [MOVIE] });
     }
     r2.send.mockClear();
     r2.failGetContaining = "/generations/";
 
-    expect(await getCachedWatchlistSummary(id)).toEqual({
+    expect(await getCachedListSummary(id)).toEqual({
       movie: ["Action", "Drama"],
       series: ["Comedy", "Drama"],
     });
@@ -187,7 +187,7 @@ describe("R2 watchlist cache", () => {
 
   it("keeps legacy catalogs readable and adds their summary on refresh", async () => {
     const id = watchlistId();
-    await writeCachedWatchlist(id, { metas: [MOVIE] });
+    await writeCachedList(id, { metas: [MOVIE] });
     const key = `watchlists/${id}/manifest.json`;
     const manifest = z
       .record(z.unknown())
@@ -195,35 +195,35 @@ describe("R2 watchlist cache", () => {
     delete manifest.genres;
     r2.objects.set(key, Buffer.from(JSON.stringify(manifest)));
     for (let index = 0; index <= 100; index += 1) {
-      await writeCachedWatchlist(watchlistId(), { metas: [MOVIE] });
+      await writeCachedList(watchlistId(), { metas: [MOVIE] });
     }
     r2.send.mockClear();
-    expect(await getCachedWatchlistSummary(id)).toBeNull();
+    expect(await getCachedListSummary(id)).toBeNull();
     expect(r2.send).toHaveBeenCalledTimes(1);
-    expect((await getCachedWatchlist(id))?.data.metas).toEqual([MOVIE]);
-    await writeCachedWatchlist(id, { metas: [MOVIE] });
-    expect(await getCachedWatchlistSummary(id)).toEqual({
+    expect((await getCachedList(id))?.data.metas).toEqual([MOVIE]);
+    await writeCachedList(id, { metas: [MOVIE] });
+    expect(await getCachedListSummary(id)).toEqual({
       movie: ["Drama"],
       series: [],
     });
   });
 
   it("returns no summary for missing, deleted, or unreadable manifests", async () => {
-    expect(await getCachedWatchlistSummary(watchlistId())).toBeNull();
+    expect(await getCachedListSummary(watchlistId())).toBeNull();
     const id = watchlistId();
-    await writeCachedWatchlist(id, { metas: [MOVIE] });
-    await deleteCachedWatchlist(id);
-    expect(await getCachedWatchlistSummary(id)).toBeNull();
+    await writeCachedList(id, { metas: [MOVIE] });
+    await deleteCachedList(id);
+    expect(await getCachedListSummary(id)).toBeNull();
     r2.failGetContaining = "manifest.json";
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(await getCachedWatchlistSummary(watchlistId())).toBeNull();
+    expect(await getCachedListSummary(watchlistId())).toBeNull();
     errorSpy.mockRestore();
   });
 
   it("finds a meta in a cached watchlist and keeps types separate", async () => {
     const id = watchlistId();
     const series: StremioMeta = { ...MOVIE, type: "series", name: "Series" };
-    await writeCachedWatchlist(id, { metas: [MOVIE, series] });
+    await writeCachedList(id, { metas: [MOVIE, series] });
 
     expect(await findCachedMeta([id], "movie", MOVIE.id)).toEqual(MOVIE);
     expect(await findCachedMeta([id], "series", MOVIE.id)).toEqual(series);
@@ -232,9 +232,9 @@ describe("R2 watchlist cache", () => {
 
   it("uses the manifest index to avoid reading catalog blobs on a meta miss", async () => {
     const id = watchlistId();
-    await writeCachedWatchlist(id, { metas: [MOVIE] });
+    await writeCachedList(id, { metas: [MOVIE] });
     for (let index = 0; index <= 100; index += 1) {
-      await writeCachedWatchlist(watchlistId(), { metas: [MOVIE] });
+      await writeCachedList(watchlistId(), { metas: [MOVIE] });
     }
     r2.send.mockClear();
 
@@ -250,7 +250,7 @@ describe("R2 watchlist cache", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     r2.failGetContaining = "manifest.json";
 
-    expect(await getCachedWatchlist(id)).toBeNull();
+    expect(await getCachedList(id)).toBeNull();
     expect(errorSpy).toHaveBeenCalledWith(
       `Failed to read R2 cache for ${id}:`,
       expect.any(Error),
@@ -259,37 +259,37 @@ describe("R2 watchlist cache", () => {
 
   it("keeps the previous object when an overwrite fails", async () => {
     const id = watchlistId();
-    await writeCachedWatchlist(id, { metas: [MOVIE] });
+    await writeCachedList(id, { metas: [MOVIE] });
     r2.failPutContaining = "/generations/";
 
     await expect(
-      writeCachedWatchlist(id, {
+      writeCachedList(id, {
         metas: [{ ...MOVIE, id: "tt0068646", name: "The Godfather" }],
       }),
     ).rejects.toThrow("simulated R2 write failure");
 
     r2.failPutContaining = null;
-    expect((await getCachedWatchlist(id))?.data.metas).toEqual([MOVIE]);
+    expect((await getCachedList(id))?.data.metas).toEqual([MOVIE]);
   });
 
   it("keeps the previous manifest when the atomic switch fails", async () => {
     const id = watchlistId();
-    await writeCachedWatchlist(id, { metas: [MOVIE] });
+    await writeCachedList(id, { metas: [MOVIE] });
     r2.failPutContaining = "manifest.json";
 
     await expect(
-      writeCachedWatchlist(id, {
+      writeCachedList(id, {
         metas: [{ ...MOVIE, id: "tt0068646", name: "The Godfather" }],
       }),
     ).rejects.toThrow("simulated R2 write failure");
 
     r2.failPutContaining = null;
-    expect((await getCachedWatchlist(id))?.data.metas).toEqual([MOVIE]);
+    expect((await getCachedList(id))?.data.metas).toEqual([MOVIE]);
     // The unreferenced generation is left for the lifecycle rule. Deleting it
     // after a network error would be unsafe because the manifest PUT may have
     // committed even when the client did not receive the response.
     expect(r2.objects.size).toBe(3);
-    expect(await getCachedWatchlistSummary(id)).toEqual({
+    expect(await getCachedListSummary(id)).toEqual({
       movie: ["Drama"],
       series: [],
     });
@@ -297,13 +297,13 @@ describe("R2 watchlist cache", () => {
 
   it("keeps the previous generation readable after replacement", async () => {
     const id = watchlistId();
-    await writeCachedWatchlist(id, { metas: [MOVIE] });
+    await writeCachedList(id, { metas: [MOVIE] });
     const previousCatalogKey = [...r2.objects.keys()].find((key) =>
       key.includes("/generations/"),
     );
     if (!previousCatalogKey) throw new Error("Missing previous generation");
 
-    await writeCachedWatchlist(id, {
+    await writeCachedList(id, {
       metas: [{ ...MOVIE, id: "tt0068646", name: "The Godfather" }],
     });
 
@@ -313,7 +313,7 @@ describe("R2 watchlist cache", () => {
 
   it("does not delete a concurrently replaced manifest", async () => {
     const id = watchlistId();
-    await writeCachedWatchlist(id, { metas: [MOVIE] });
+    await writeCachedList(id, { metas: [MOVIE] });
     const previousObjects = new Map(r2.objects);
 
     const replacement = {
@@ -321,7 +321,7 @@ describe("R2 watchlist cache", () => {
       id: "tt0068646",
       name: "The Godfather",
     };
-    await writeCachedWatchlist(id, { metas: [replacement] });
+    await writeCachedList(id, { metas: [replacement] });
     const replacementObjects = new Map(r2.objects);
     const currentManifestKey = [...replacementObjects.keys()].find((key) =>
       key.endsWith("/manifest.json"),
@@ -346,32 +346,32 @@ describe("R2 watchlist cache", () => {
       );
     };
 
-    await deleteCachedWatchlist(id);
+    await deleteCachedList(id);
 
-    expect((await getCachedWatchlist(id))?.data.metas).toEqual([replacement]);
+    expect((await getCachedList(id))?.data.metas).toEqual([replacement]);
     expect(r2.objects.has(replacementCatalogKey)).toBe(true);
   });
 
   it("keeps a local replacement cached when it follows the tombstone", async () => {
     const id = watchlistId();
-    await writeCachedWatchlist(id, { metas: [MOVIE] });
+    await writeCachedList(id, { metas: [MOVIE] });
     const replacement = {
       ...MOVIE,
       id: "tt0068646",
       name: "The Godfather",
     };
     r2.afterConditionalPut = () =>
-      writeCachedWatchlist(id, { metas: [replacement] }).then(() => undefined);
+      writeCachedList(id, { metas: [replacement] }).then(() => undefined);
 
-    await deleteCachedWatchlist(id);
+    await deleteCachedList(id);
     r2.failGetContaining = "manifest.json";
 
-    expect((await getCachedWatchlist(id))?.data.metas).toEqual([replacement]);
+    expect((await getCachedList(id))?.data.metas).toEqual([replacement]);
   });
 
   it("refreshes a stale manifest when its generation is missing", async () => {
     const id = watchlistId();
-    await writeCachedWatchlist(id, { metas: [MOVIE] });
+    await writeCachedList(id, { metas: [MOVIE] });
     const staleObjects = new Map(r2.objects);
 
     r2.objects.clear();
@@ -380,11 +380,11 @@ describe("R2 watchlist cache", () => {
       id: "tt0068646",
       name: "The Godfather",
     };
-    await writeCachedWatchlist(id, { metas: [replacement] });
+    await writeCachedList(id, { metas: [replacement] });
     const replacementObjects = new Map(r2.objects);
 
     for (let index = 0; index <= 100; index += 1) {
-      await writeCachedWatchlist(watchlistId(), { metas: [MOVIE] });
+      await writeCachedList(watchlistId(), { metas: [MOVIE] });
     }
 
     r2.objects.clear();
@@ -394,16 +394,16 @@ describe("R2 watchlist cache", () => {
     r2.objects.clear();
     replacementObjects.forEach((body, key) => r2.objects.set(key, body));
 
-    expect((await getCachedWatchlist(id))?.data.metas).toEqual([replacement]);
+    expect((await getCachedList(id))?.data.metas).toEqual([replacement]);
   });
 
   it("invalidates the cache and deletes its current catalog", async () => {
     const id = watchlistId();
-    await writeCachedWatchlist(id, { metas: [MOVIE] });
+    await writeCachedList(id, { metas: [MOVIE] });
 
-    await deleteCachedWatchlist(id);
+    await deleteCachedList(id);
 
-    expect(await getCachedWatchlist(id)).toBeNull();
+    expect(await getCachedList(id)).toBeNull();
     expect(
       [...r2.objects.keys()].filter((key) =>
         key.startsWith(`watchlists/${id}/`),

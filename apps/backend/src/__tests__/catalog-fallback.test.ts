@@ -5,8 +5,8 @@ vi.mock("../lib/supabase", async () => {
   return await import("./helpers/mock-supabase.js");
 });
 
-vi.mock("../services/watchlist-cache", async () => {
-  return await import("./helpers/mock-watchlist-cache.js");
+vi.mock("../services/list-cache", async () => {
+  return await import("./helpers/mock-list-cache.js");
 });
 
 vi.mock("../lib/resend", () => ({
@@ -16,7 +16,7 @@ vi.mock("../lib/resend", () => ({
 import app from "../index.js";
 import * as scraper from "../services/imdb-scraper";
 import { db } from "./helpers/mock-supabase.js";
-import { cache } from "./helpers/mock-watchlist-cache.js";
+import { cache } from "./helpers/mock-list-cache.js";
 
 const OWNER = "ur216216210";
 const UUID_1 = "6bde5e3d-617f-4912-950a-2f9acf815b7e";

@@ -1,19 +1,19 @@
-import type { ConfigWatchlist } from "@stremlist/shared/stremio.types";
-import { getCachedWatchlistSummary } from "./watchlist-cache";
+import type { ConfigList } from "@stremlist/shared/stremio.types";
+import { getCachedListSummary } from "./list-cache";
 
 export async function withAvailableGenres(
-  watchlists: ConfigWatchlist[],
-): Promise<ConfigWatchlist[]> {
+  lists: ConfigList[],
+): Promise<ConfigList[]> {
   return Promise.all(
-    watchlists.map(async (watchlist) => {
-      const summary = await getCachedWatchlistSummary(watchlist.id);
+    lists.map(async (list) => {
+      const summary = await getCachedListSummary(list.id);
       const genres = !summary
         ? []
-        : watchlist.displayMode === "split"
+        : list.displayMode === "split"
           ? [...summary.movie, ...summary.series]
-          : summary[watchlist.displayMode];
+          : summary[list.displayMode];
       return {
-        ...watchlist,
+        ...list,
         availableGenres: [...new Set(genres)].sort(),
       };
     }),

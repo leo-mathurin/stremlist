@@ -7,6 +7,7 @@
     "./constants": "./src/constants.ts",
     "./database.types": "./src/database.types.ts",
     "./imdb-charts": "./src/imdb-charts.ts",
+    "./providers": "./src/providers.ts",
     "./stremio.types": "./src/stremio.types.ts"
   },
   "scripts": {

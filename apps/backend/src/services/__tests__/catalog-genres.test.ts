@@ -5,11 +5,11 @@ import type {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock(
-  "../watchlist-cache",
-  async () => import("../../__tests__/helpers/mock-watchlist-cache"),
+  "../list-cache",
+  async () => import("../../__tests__/helpers/mock-list-cache"),
 );
 
-import { cache } from "../../__tests__/helpers/mock-watchlist-cache";
+import { cache } from "../../__tests__/helpers/mock-list-cache";
 import { filterCatalog, resolveCatalogSelection } from "../catalog-filters";
 import { withAvailableGenres } from "../catalog-genres";
 import { catalogSettingsSchema } from "../catalog-settings";

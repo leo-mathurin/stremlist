@@ -1,13 +1,16 @@
 import type { CatalogSettings } from "./catalog-settings";
 import type { DisplayMode } from "./constants";
+import type { ProviderId } from "./providers";
 
 export interface WatchlistData {
   metas: StremioMeta[];
 }
 
-export interface ConfigWatchlist {
+/** One List of an Account, as the configure page and the API see it. */
+export interface ConfigList {
   id: string;
-  imdbUserId: string;
+  provider: ProviderId;
+  sourceRef: string;
   catalogTitle: string;
   sortOption: string;
   displayMode: DisplayMode;
@@ -16,16 +19,31 @@ export interface ConfigWatchlist {
   catalogSettings?: CatalogSettings;
 }
 
-export interface UserConfigResponse {
+export interface ConnectionSummary {
+  provider: ProviderId;
+  username: string | null;
+  connectedAt: string;
+}
+
+export interface AccountConfigResponse {
+  /** "legacy" when the request came through a Legacy alias (`ur…`). */
+  access: "private" | "legacy";
+  /** The Account ID; only returned for private access. */
+  accountId: string | null;
+  /** Legacy alias accounts: when a private copy was made from this install. */
+  movedAt: string | null;
   rpdbApiKey: string | null;
-  watchlists: ConfigWatchlist[];
+  lists: ConfigList[];
+  connections: ConnectionSummary[];
+  actions: { enabled: boolean; providers: ProviderId[] };
   lastFetchedAt: string;
   cooldownSeconds: number;
 }
 
-export interface UserConfigUpdateWatchlist {
+export interface ConfigListInput {
   id?: string;
-  imdbUserId: string;
+  provider: ProviderId;
+  sourceRef: string;
   catalogTitle?: string;
   sortOption: string;
   displayMode?: DisplayMode;
@@ -33,9 +51,10 @@ export interface UserConfigUpdateWatchlist {
   catalogSettings?: CatalogSettings;
 }
 
-export interface UserConfigUpdatePayload {
+export interface AccountConfigInput {
   rpdbApiKey?: string;
-  watchlists: UserConfigUpdateWatchlist[];
+  lists: ConfigListInput[];
+  actions?: { enabled: boolean; providers: ProviderId[] };
 }
 
 export interface StremioMeta {
@@ -78,6 +97,15 @@ export interface StremioConfigOption {
   title: string;
   options?: string[];
   default?: string;
+}
+
+export interface StremioStream {
+  name: string;
+  title?: string;
+  description?: string;
+  externalUrl?: string;
+  url?: string;
+  behaviorHints?: { notWebReady?: boolean; bingeGroup?: string };
 }
 
 export interface StremioManifest {

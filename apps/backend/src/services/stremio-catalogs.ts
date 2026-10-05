@@ -1,6 +1,6 @@
 import { CATALOG_PRESETS } from "@stremlist/shared/catalog-settings";
 import type {
-  ConfigWatchlist,
+  ConfigList,
   StremioCatalog,
 } from "@stremlist/shared/stremio.types";
 import { CATALOG_FILTER_OPTIONS } from "./catalog-filters";
@@ -34,11 +34,11 @@ function buildCatalogName(baseTitle: string): string {
 }
 
 function getEffectiveTitle(
-  watchlistTitle: string,
+  listTitle: string,
   index: number,
   total: number,
 ): string {
-  const normalizedTitle = watchlistTitle.trim();
+  const normalizedTitle = listTitle.trim();
   if (normalizedTitle.length > 0) {
     return normalizedTitle;
   }
@@ -46,35 +46,35 @@ function getEffectiveTitle(
 }
 
 export function buildManifestCatalogs(
-  watchlists: ConfigWatchlist[],
+  lists: ConfigList[],
 ): StremioCatalog[] {
-  return watchlists.flatMap((watchlist, index) => {
+  return lists.flatMap((list, index) => {
     const effectiveTitle = getEffectiveTitle(
-      watchlist.catalogTitle,
+      list.catalogTitle,
       index,
-      watchlists.length,
+      lists.length,
     );
     const displayMode =
-      watchlist.displayMode === "movie" || watchlist.displayMode === "series"
-        ? watchlist.displayMode
+      list.displayMode === "movie" || list.displayMode === "series"
+        ? list.displayMode
         : "split";
 
     const genres = [
       ...new Set([
-        ...(watchlist.availableGenres ?? []),
-        ...(watchlist.catalogSettings?.genre
-          ? [watchlist.catalogSettings.genre]
+        ...(list.availableGenres ?? []),
+        ...(list.catalogSettings?.genre
+          ? [list.catalogSettings.genre]
           : []),
       ]),
     ].sort();
     const movieCatalog: StremioCatalog = {
-      id: buildCatalogId(watchlist.id, "movie"),
+      id: buildCatalogId(list.id, "movie"),
       name: buildCatalogName(effectiveTitle),
       type: "movie",
       extra: catalogExtras(genres),
     };
     const seriesCatalog: StremioCatalog = {
-      id: buildCatalogId(watchlist.id, "series"),
+      id: buildCatalogId(list.id, "series"),
       name: buildCatalogName(effectiveTitle),
       type: "series",
       extra: catalogExtras(genres),
@@ -89,10 +89,10 @@ export function buildManifestCatalogs(
     return base.flatMap((catalog) => [
       catalog,
       ...CATALOG_PRESETS.filter((preset) =>
-        watchlist.catalogSettings?.presets?.includes(preset.id),
+        list.catalogSettings?.presets?.includes(preset.id),
       ).map((preset) => ({
         ...catalog,
-        id: buildCatalogId(watchlist.id, catalog.type, preset.id),
+        id: buildCatalogId(list.id, catalog.type, preset.id),
         name: `${catalog.name} · ${preset.label}`,
         extra: catalogExtras(genres, false),
       })),

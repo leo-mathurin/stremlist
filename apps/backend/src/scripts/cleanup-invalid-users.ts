@@ -5,7 +5,7 @@ import { config } from "dotenv";
 import { readFileSync, writeFileSync } from "fs";
 import path from "path";
 import { getImdbWatchlist } from "../services/imdb-scraper";
-import { deleteCachedWatchlist } from "../services/watchlist-cache";
+import { deleteCachedList } from "../services/list-cache";
 
 console.log("Starting cleanup...");
 
@@ -83,18 +83,24 @@ async function fetchAllUserIds(limit: number | null): Promise<string[]> {
 
   for (;;) {
     const to = from + step - 1;
+    // Only Legacy alias accounts have an IMDb user ID to check.
     const { data, error } = await supabase
-      .from("users")
-      .select("imdb_user_id")
-      .order("imdb_user_id", { ascending: true })
+      .from("accounts")
+      .select("legacy_imdb_user_id")
+      .not("legacy_imdb_user_id", "is", null)
+      .order("legacy_imdb_user_id", { ascending: true })
       .range(from, to);
 
     if (error) {
-      throw new Error(`Failed to fetch users: ${error.message}`);
+      throw new Error(`Failed to fetch accounts: ${error.message}`);
     }
     if (data.length === 0) break;
 
-    ids.push(...data.map((row) => row.imdb_user_id));
+    ids.push(
+      ...data.flatMap((row) =>
+        row.legacy_imdb_user_id ? [row.legacy_imdb_user_id] : [],
+      ),
+    );
 
     if (limit && ids.length >= limit) {
       return ids.slice(0, limit);
@@ -136,18 +142,30 @@ async function deleteUsers(userIds: string[]): Promise<void> {
   for (let i = 0; i < userIds.length; i += BATCH_SIZE) {
     const batch = userIds.slice(i, i + BATCH_SIZE);
 
-    const { data: watchlists, error: watchlistsError } = await supabase
-      .from("user_watchlists")
+    const { data: accounts, error: accountsError } = await supabase
+      .from("accounts")
       .select("id")
-      .in("owner_user_id", batch);
-    if (watchlistsError) {
+      .in("legacy_imdb_user_id", batch);
+    if (accountsError) {
       throw new Error(
-        `Failed fetching watchlists before user deletion: ${watchlistsError.message}`,
+        `Failed fetching accounts before deletion: ${accountsError.message}`,
+      );
+    }
+    const { data: lists, error: listsError } = await supabase
+      .from("lists")
+      .select("id")
+      .in(
+        "account_id",
+        accounts.map(({ id }) => id),
+      );
+    if (listsError) {
+      throw new Error(
+        `Failed fetching lists before account deletion: ${listsError.message}`,
       );
     }
 
     const cacheDeletes = await Promise.allSettled(
-      watchlists.map(({ id }) => deleteCachedWatchlist(id)),
+      lists.map(({ id }) => deleteCachedList(id)),
     );
     const cacheDeleteFailure = cacheDeletes.find(
       (result) => result.status === "rejected",
@@ -158,11 +176,11 @@ async function deleteUsers(userIds: string[]): Promise<void> {
       );
     }
 
-    // user_watchlists cascades from users; its R2 objects were removed above.
+    // lists cascade from accounts; their R2 objects were removed above.
     const { error: userError } = await supabase
-      .from("users")
+      .from("accounts")
       .delete()
-      .in("imdb_user_id", batch);
+      .in("legacy_imdb_user_id", batch);
     if (userError) {
       throw new Error(`Failed deleting users batch: ${userError.message}`);
     }
@@ -199,7 +217,7 @@ async function main(): Promise<void> {
   const ids = await fetchAllUserIds(args.limit);
 
   if (ids.length === 0) {
-    console.log("No users found in users table.");
+    console.log("No legacy accounts found.");
     return;
   }
 
