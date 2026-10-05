@@ -137,6 +137,26 @@ bun run format
 bun run format:check
 ```
 
+### Remote cache
+
+Turborepo shares task outputs through [Vercel Remote Cache](https://turborepo.dev/docs/core-concepts/remote-caching),
+so CI and local runs can reuse each other's builds and tests. To use it locally,
+log in and link the repo to the `lelemathrins-projects` Vercel team once:
+
+```bash
+bunx turbo login
+bunx turbo link
+```
+
+CI authenticates with OpenID Connect instead of a stored token. It needs:
+
+- A Turborepo CLI OIDC policy for this repository on the Vercel team
+  (**Settings → Build and Deployment → OIDC Policies for CLI Access**)
+- A `TURBO_TEAM` GitHub Actions repository variable set to the team slug
+
+Without the variable, on pull requests from forks, or if the token exchange
+fails, CI runs with only a local cache.
+
 ## Using the Addon
 
 ### Public/Hosted Instance
