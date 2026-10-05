@@ -1,0 +1,105 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-05T21:20:00.265Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Filters & extra catalogs\"",
+        "target": {
+          "role": "button",
+          "name": "Filters & extra catalogs"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap combobox \"Genre\"",
+        "target": {
+          "role": "combobox",
+          "name": "Genre"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap option \"Drama\"",
+        "target": {
+          "role": "option",
+          "name": "Drama"
+        }
+      },
+      {
+        "name": "check",
+        "summary": "check checkbox \"Top rated\"",
+        "target": {
+          "role": "checkbox",
+          "name": "Top rated"
+        },
+        "checked": true
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save\"",
+        "target": {
+          "role": "button",
+          "name": "Save"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/ui.e2e.ts::catalog%20filters%20and%20extra%20presets%20survive%20save%20and%20clear",
+      "targetId": "chromium",
+      "instructionDigest": "415aff2998bf596472d2ec58327d530c9afcb148bb7d6cfb953dd1d28023ccef",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Selected Drama for the Test catalog, enabled Top rated, and saved. The app confirmed “Saved!” and indicates reinstalling the addon in Stremio is required for the catalog structure change to appear.",
+    "startPath": "/configure?userId=ur99123456",
+    "endPath": "/configure?userId=ur99123456",
+    "endAnchors": [
+      {
+        "role": "alert",
+        "name": "Saved! Catalog structure changed. Reinstall the addon in Stremio to refresh catalogs."
+      },
+      {
+        "text": "2 active"
+      },
+      {
+        "text": "All selected filters apply together, including in search. Use Sort Order above to order the results."
+      },
+      {
+        "role": "button",
+        "name": "Clear filters"
+      },
+      {
+        "text": "Genre"
+      },
+      {
+        "text": "Drama"
+      },
+      {
+        "text": "Decade"
+      },
+      {
+        "text": "All decades"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "text": "Install / Reinstall Addon in Stremio"
+      },
+      {
+        "text": "Use these install links anytime to reopen or reinstall the addon URL in Stremio."
+      },
+      {
+        "role": "button",
+        "name": "Filters & extra catalogs"
+      }
+    ],
+    "endWaitMs": 13397
+  }
+}

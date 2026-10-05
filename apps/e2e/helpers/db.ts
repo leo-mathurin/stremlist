@@ -48,15 +48,25 @@ export async function seedWatchlist(
 ): Promise<string> {
   const user = await db.from("users").insert({ imdb_user_id: userId });
   if (user.error) throw user.error;
+  return addWatchlist(userId, catalogTitle, userId, 0);
+}
+
+/** Add another controlled row without a save-triggered external prewarm. */
+export async function addWatchlist(
+  userId: string,
+  catalogTitle: string,
+  sourceId: string,
+  position: number,
+): Promise<string> {
   const id = randomUUID();
   const watchlist = await db.from("user_watchlists").insert({
     id,
     owner_user_id: userId,
-    imdb_user_id: userId,
+    imdb_user_id: sourceId,
     catalog_title: catalogTitle,
     sort_option: "added_at-asc",
     display_mode: "movie",
-    position: 0,
+    position,
   });
   if (watchlist.error) throw watchlist.error;
   return id;

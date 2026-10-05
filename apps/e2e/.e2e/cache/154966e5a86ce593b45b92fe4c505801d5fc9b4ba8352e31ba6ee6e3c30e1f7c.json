@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-05T22:48:39.785Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Subscribe\"",
+        "target": {
+          "role": "button",
+          "name": "Subscribe"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/account-newsletter.e2e.ts::newsletter%20retry%20keeps%20the%20email%20and%20accepts%20already-subscribed%20confirmation",
+      "targetId": "chromium",
+      "instructionDigest": "a098215cc9044037a3aa7b12cbd9c8fcad6188fd0076564a715d8b5cb0884f0c",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Retried the newsletter subscription using the existing email retry@example.test. The app responded, “You're already subscribed! You'll be notified about new features and updates.”",
+    "startPath": "/",
+    "endPath": "/",
+    "endAnchors": [
+      {
+        "role": "alert",
+        "name": "You're already subscribed! You'll be notified about new features and updates."
+      },
+      {
+        "role": "textbox",
+        "name": "your@email.com",
+        "placeholder": "your@email.com"
+      },
+      {
+        "text": "You're already subscribed! You'll be notified about new features and updates."
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "alert",
+        "name": "Newsletter temporarily unavailable"
+      },
+      {
+        "role": "textbox",
+        "name": "your@email.com",
+        "placeholder": "your@email.com",
+        "value": "retry@example.test"
+      },
+      {
+        "text": "Newsletter temporarily unavailable"
+      }
+    ],
+    "endWaitMs": 12226
+  }
+}

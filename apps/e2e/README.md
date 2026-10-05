@@ -1,5 +1,11 @@
 # @stremlist/e2e
 
+The tester-army toolkit uses the existing ChatGPT subscription to record AI
+browser journeys, then replays committed actions without credentials in CI.
+Application API responses are intercepted. Run `bun run test:toolkit` from the
+repository root. See [TOOLKIT.md](./TOOLKIT.md) for setup, coverage, reports,
+and isolated integration verification.
+
 End-to-end tests that exercise Stremlist the way a real user does: the addon
 is installed into the **hosted Stremio Web app** (web.stremio.com) from a
 backend running locally, with **live IMDb data** or controlled catalog fixtures, a **local Supabase stack**,
@@ -98,7 +104,7 @@ it does not claim to test playback or episode selection in a native client.
 
 ## Known limitations
 
-- Drag-and-drop catalog reordering (pointer-based dnd-kit) is not covered.
-- The newsletter endpoint is not covered (it would email real people).
+- Pointer-based catalog reordering is covered by the toolkit, including saved positions.
+- Newsletter UI states use intercepted toolkit responses. Real delivery is not tested.
 - The live smoke and regression suites depend on web.stremio.com and IMDb. CI
   retries failures twice.

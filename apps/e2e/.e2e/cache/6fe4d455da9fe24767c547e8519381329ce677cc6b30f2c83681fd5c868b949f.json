@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-05T21:19:01.138Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"https://www.imdb.com/user/p.example/\" into textbox \"IMDb User ID:\"",
+        "target": {
+          "role": "textbox",
+          "name": "IMDb User ID:",
+          "placeholder": "ur12345678 or p.colneedham"
+        },
+        "value": "https://www.imdb.com/user/p.example/"
+      },
+      {
+        "name": "press",
+        "summary": "press \"Enter\" on textbox \"IMDb User ID:\"",
+        "target": {
+          "role": "textbox",
+          "name": "IMDb User ID:",
+          "placeholder": "ur12345678 or p.colneedham"
+        },
+        "key": "Enter"
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/ui.e2e.ts::profile%20URLs%20resolve%20to%20canonical%20install%20URLs",
+      "targetId": "chromium",
+      "instructionDigest": "c94b6f10d872653e00f6930263d3e5635adee0422d04cf8a96be25f64920e4ea",
+      "paramsDigest": "c96bf5650ec258cd0156896c66ed3d6d6e96574dec3647118f1e00aefad4763e",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Entered the IMDb profile URL. The app resolved it to p.example / canonical IMDb ID ur99123456 and displayed installation choices; stopped without opening Stremio.",
+    "startPath": "/",
+    "endPath": "/?userId=ur99123456",
+    "endAnchors": [
+      {
+        "role": "alert",
+        "name": "Choose how to install below:"
+      },
+      {
+        "role": "alert",
+        "name": "Your IMDb handle p.example maps to the canonical ID ur99123456, which is what IMDb's API uses, so you'll see it in install URLs and links."
+      },
+      {
+        "role": "textbox",
+        "name": "IMDb User ID:",
+        "placeholder": "ur12345678 or p.colneedham",
+        "value": "p.example"
+      },
+      {
+        "text": "Choose how to install below:"
+      },
+      {
+        "text": "p.example"
+      },
+      {
+        "text": "ur99123456"
+      },
+      {
+        "role": "link",
+        "name": "Open in Stremio Web"
+      },
+      {
+        "role": "link",
+        "name": "Open in Stremio Desktop"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "textbox",
+        "name": "IMDb User ID:",
+        "placeholder": "ur12345678 or p.colneedham"
+      }
+    ],
+    "endWaitMs": 12561
+  }
+}

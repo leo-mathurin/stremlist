@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-05T21:19:14.913Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"e2e@example.test\" into textbox \"your@email.com\"",
+        "target": {
+          "role": "textbox",
+          "name": "your@email.com",
+          "placeholder": "your@email.com"
+        },
+        "value": "e2e@example.test"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Subscribe\"",
+        "target": {
+          "role": "button",
+          "name": "Subscribe"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/ui.e2e.ts::newsletter%20validates%20email%20and%20handles%20success",
+      "targetId": "chromium",
+      "instructionDigest": "610e69293a3aaad02e8e4c01001569da1cb32919630575c1a15f3b69112dd0dc",
+      "paramsDigest": "2cbe7f4405169e303c7eeaa7ad39c521e6d06a0ae21167a111f7ba898dd6829a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Submitted e2e@example.test in the newsletter form. The application confirmed the subscription with “Test subscription confirmed.”",
+    "startPath": "/",
+    "endPath": "/",
+    "endAnchors": [
+      {
+        "role": "alert",
+        "name": "Test subscription confirmed"
+      },
+      {
+        "text": "Test subscription confirmed"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "text": "Please enter a valid email address."
+      }
+    ],
+    "endWaitMs": 12787
+  }
+}

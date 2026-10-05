@@ -48,3 +48,7 @@ supabase/.temp/
 # Playwright
 test-results/
 playwright-report/
+
+# tester-army/e2e reports are local; verified action recordings are shared.
+**/.e2e/*
+!**/.e2e/cache/

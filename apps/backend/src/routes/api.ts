@@ -56,7 +56,11 @@ const configWatchlistBody = z.object({
       (v) => IMDB_WATCHLIST_SOURCE_ID_PATTERN.test(v) || isChartId(v),
       "Invalid IMDb source id",
     ),
-  catalogTitle: z.string().trim().max(30).optional(),
+  catalogTitle: z
+    .string()
+    .trim()
+    .max(30, "Catalog titles must be 30 characters or fewer.")
+    .optional(),
   sortOption: z.enum(sortOptionValues),
   displayMode: z.enum(displayModeValues).optional(),
   position: z.number().int().min(0).optional(),
@@ -124,7 +128,11 @@ const api = new Hono()
   .post(
     "/:userId/config",
     zValidator("param", userIdParam),
-    zValidator("json", configBody),
+    zValidator("json", configBody, (result, c) => {
+      if (!result.success) {
+        return c.json({ error: result.error.issues[0].message }, 400);
+      }
+    }),
     async (c) => {
       const { userId } = c.req.valid("param");
       const { rpdbApiKey, watchlists } = c.req.valid("json");
@@ -312,12 +320,18 @@ const api = new Hono()
           unsubscribed: false,
           audienceId: process.env.RESEND_AUDIENCE_ID,
         });
+        // Resend returns provider failures as data rather than rejecting.
+        if (contact.error) {
+          throw Object.assign(new Error(contact.error.message), {
+            statusCode: contact.error.statusCode,
+          });
+        }
 
         return c.json({
           success: true,
           message:
             "Successfully subscribed! You'll be notified about new features and updates.",
-          contactId: contact.data?.id,
+          contactId: contact.data.id,
         });
       } catch (err: unknown) {
         console.error(`Newsletter subscription error for ${email}:`, err);

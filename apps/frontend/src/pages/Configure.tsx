@@ -26,7 +26,7 @@ function extractImdbId(text: string): string {
   return match ? match[0] : "";
 }
 
-export default function Configure() {
+function ConfigureContent() {
   useSEO({
     title: "Configure - Stremlist",
     description:
@@ -413,4 +413,9 @@ export default function Configure() {
       </footer>
     </div>
   );
+}
+
+export default function Configure() {
+  const [searchParams] = useSearchParams();
+  return <ConfigureContent key={searchParams.get("userId") ?? "setup"} />;
 }

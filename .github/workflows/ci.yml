@@ -108,8 +108,23 @@ jobs:
         working-directory: apps/e2e
         run: bunx playwright install --with-deps chromium
 
+      - name: Install toolkit Chromium
+        run: bun run --cwd apps/e2e e2e-web install chromium --with-deps
+
+      - name: Run tester-army toolkit
+        run: bun run test:toolkit:replay
+
       - name: Run E2E tests
         run: bun run --filter @stremlist/e2e test:e2e
+
+      - name: Upload toolkit report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolkit-report
+          include-hidden-files: true
+          path: apps/e2e/.e2e
+          retention-days: 7
 
       - name: Upload Playwright report
         if: failure()

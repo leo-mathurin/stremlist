@@ -32,7 +32,10 @@
     "typecheck": "turbo run typecheck",
     "generate:types": "bunx supabase gen types typescript --project-id igbmxubzxjfdbgmawrtr --schema public > packages/shared/src/database.types.ts",
     "prepare": "husky",
-    "dev:tailnet": "turbo run dev:tailnet"
+    "dev:tailnet": "turbo run dev:tailnet",
+    "test:toolkit": "bun run --cwd apps/e2e test:toolkit",
+    "test:toolkit:record": "bun run --cwd apps/e2e test:toolkit:record",
+    "test:toolkit:replay": "bun run --cwd apps/e2e test:toolkit:replay"
   },
   "engines": {
     "node": ">=20.0.0"

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-05T21:19:33.067Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Show RPDB API key\"",
+        "target": {
+          "role": "button",
+          "name": "Show RPDB API key"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/ui.e2e.ts::RPDB%20key%20visibility%20control%20hides%20the%20key%20again",
+      "targetId": "chromium",
+      "instructionDigest": "328a628eda419643b2d51a2c52e99ba6f1b7c45d6ae90e6410a7dc27999cfeb6",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Tapped the RPDB API key visibility control. The button now reads “Hide RPDB API key,” confirming the key is revealed.",
+    "startPath": "/configure?userId=ur99123456",
+    "endPath": "/configure?userId=ur99123456",
+    "endAnchors": [
+      {
+        "role": "textbox",
+        "name": "RPDB API Key (Optional)",
+        "placeholder": "Paste your RPDB API key"
+      },
+      {
+        "role": "button",
+        "name": "Hide RPDB API key"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "textbox",
+        "name": "RPDB API Key (Optional)",
+        "placeholder": "Paste your RPDB API key",
+        "inputPurpose": "password"
+      },
+      {
+        "role": "button",
+        "name": "Show RPDB API key"
+      }
+    ],
+    "endWaitMs": 12226
+  }
+}

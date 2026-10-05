@@ -15,6 +15,24 @@ export type WatchlistFormRow = {
   availableGenres: string[];
 };
 
+export function getWatchlistConfigPayload(
+  watchlists: WatchlistFormRow[],
+  rpdbApiKey: string,
+) {
+  return {
+    rpdbApiKey,
+    watchlists: watchlists.map((watchlist, index) => ({
+      id: watchlist.id,
+      imdbUserId: watchlist.imdbUserId.trim(),
+      catalogTitle: watchlist.catalogTitle.trim(),
+      sortOption: watchlist.sortOption,
+      displayMode: watchlist.displayMode,
+      position: index,
+      catalogSettings: watchlist.catalogSettings,
+    })),
+  };
+}
+
 export function getWatchlistReinstallSignature(
   rows: WatchlistFormRow[],
 ): string {

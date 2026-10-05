@@ -1,4 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useLayoutEffect,
+} from "react";
 import {
   DEFAULT_SORT_OPTION,
   IMDB_WATCHLIST_SOURCE_ID_PATTERN,
@@ -11,6 +17,7 @@ import type {
 import { api } from "../lib/api";
 import {
   createWatchlistRow,
+  getWatchlistConfigPayload,
   getWatchlistReinstallSignature,
 } from "../lib/watchlist-form";
 import type { WatchlistFormRow } from "../lib/watchlist-form";
@@ -26,6 +33,11 @@ export function useWatchlistConfiguration(userId: string | null) {
     }),
   ]);
   const [rpdbApiKey, setRpdbApiKey] = useState("");
+  const currentForm = useRef({ watchlists, rpdbApiKey });
+  // Save responses must see committed edits before passive effects run.
+  useLayoutEffect(() => {
+    currentForm.current = { watchlists, rpdbApiKey };
+  }, [watchlists, rpdbApiKey]);
   const [showRpdbApiKey, setShowRpdbApiKey] = useState(false);
   const [loading, setLoading] = useState(!!userId);
   const [saving, setSaving] = useState(false);
@@ -46,23 +58,6 @@ export function useWatchlistConfiguration(userId: string | null) {
 
   useEffect(() => {
     if (!userId) return;
-
-    setLoading(true);
-    setUserNotFound(false);
-    setLoadError(false);
-    setWatchlists([
-      createWatchlistRow({
-        imdbUserId: userId,
-        catalogTitle: "",
-        sortOption: DEFAULT_SORT_OPTION,
-      }),
-    ]);
-    setRpdbApiKey("");
-    setShowRpdbApiKey(false);
-    setStatus(null);
-    setShowReinstallHint(false);
-    setWatchlistBaselineSignature("");
-    setLastFetchedAt(null);
 
     api[":userId"].config
       .$get({ param: { userId } })
@@ -204,20 +199,13 @@ export function useWatchlistConfiguration(userId: string | null) {
           ? false
           : currentWatchlistSignature !== watchlistBaselineSignature;
 
+      const submittedPayload = getWatchlistConfigPayload(
+        watchlists,
+        rpdbApiKey,
+      );
       const res = await api[":userId"].config.$post({
         param: { userId },
-        json: {
-          rpdbApiKey,
-          watchlists: watchlists.map((watchlist, index) => ({
-            id: watchlist.id,
-            imdbUserId: watchlist.imdbUserId.trim(),
-            catalogTitle: watchlist.catalogTitle.trim(),
-            sortOption: watchlist.sortOption,
-            displayMode: watchlist.displayMode,
-            position: index,
-            catalogSettings: watchlist.catalogSettings,
-          })),
-        },
+        json: submittedPayload,
       });
 
       const saved = (await res.json()) as {
@@ -230,30 +218,55 @@ export function useWatchlistConfiguration(userId: string | null) {
         throw new Error(saved.error ?? "Failed to save");
       }
 
-      const savedRows = saved.watchlists;
-      if (savedRows) {
-        setWatchlists((current) =>
-          current.map((row, index) => {
-            const serverRow = savedRows[index];
-            return serverRow
-              ? {
-                  ...row,
-                  id: serverRow.id,
-                  imdbUserId: serverRow.imdbUserId,
-                  availableGenres: serverRow.availableGenres ?? [],
-                }
-              : row;
-          }),
-        );
-      }
-
+      const savedRows = watchlists.map((row, index) => {
+        const serverRow = saved.watchlists?.[index];
+        return serverRow
+          ? {
+              ...row,
+              id: serverRow.id,
+              imdbUserId: serverRow.imdbUserId,
+              availableGenres: serverRow.availableGenres ?? [],
+            }
+          : row;
+      });
+      const hasUnsavedChanges =
+        JSON.stringify(
+          getWatchlistConfigPayload(
+            currentForm.current.watchlists,
+            currentForm.current.rpdbApiKey,
+          ),
+        ) !== JSON.stringify(submittedPayload);
+      const savedByLocalId = new Map(
+        savedRows.map((row) => [row.localId, row]),
+      );
+      const submittedByLocalId = new Map(
+        watchlists.map((row) => [row.localId, row]),
+      );
+      setWatchlists((current) =>
+        current.map((row) => {
+          const serverRow = savedByLocalId.get(row.localId);
+          const submittedRow = submittedByLocalId.get(row.localId);
+          if (!serverRow || !submittedRow) return row;
+          const sourceUnchanged = row.imdbUserId === submittedRow.imdbUserId;
+          return {
+            ...row,
+            id: serverRow.id,
+            imdbUserId: sourceUnchanged ? serverRow.imdbUserId : row.imdbUserId,
+            availableGenres: sourceUnchanged
+              ? serverRow.availableGenres
+              : row.availableGenres,
+          };
+        }),
+      );
       setShowReinstallHint(requiresReinstall);
-      setWatchlistBaselineSignature(currentWatchlistSignature);
+      setWatchlistBaselineSignature(getWatchlistReinstallSignature(savedRows));
       setStatus({
         type: "success",
-        message: requiresReinstall
-          ? "Saved! Catalog structure changed. Reinstall the addon in Stremio to refresh catalogs."
-          : "Saved! Your catalogs will be refreshed with the new settings.",
+        message: hasUnsavedChanges
+          ? "Saved submitted settings. You have unsaved changes; save again to apply them."
+          : requiresReinstall
+            ? "Saved! Catalog structure changed. Reinstall the addon in Stremio to refresh catalogs."
+            : "Saved! Your catalogs will be refreshed with the new settings.",
       });
     } catch (err) {
       setStatus({
@@ -325,7 +338,11 @@ export function useWatchlistConfiguration(userId: string | null) {
     }
   };
 
-  const retryLoad = () => setLoadAttempt((current) => current + 1);
+  const retryLoad = () => {
+    setLoading(true);
+    setLoadError(false);
+    setLoadAttempt((current) => current + 1);
+  };
   const reorderWatchlists = (initialIndex: number, index: number) => {
     setWatchlists((items) => {
       const allDefaultTitles = items.every((w, i) => {
