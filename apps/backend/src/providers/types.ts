@@ -1,7 +1,4 @@
-import type {
-  ActionKind,
-  ProviderId,
-} from "@stremlist/shared/providers";
+import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 
 /**
@@ -173,6 +170,11 @@ export interface ProviderAdapter {
   id: ProviderId;
   /** How long a cached Catalog of this Provider stays fresh. */
   freshnessMs: number;
+  /**
+   * Freshness for one Source list, when it differs by list (for example a
+   * public chart read on a shared app quota). Defaults to `freshnessMs`.
+   */
+  freshnessFor?(ref: string): number;
   /** Check (and normalize) a Source list reference before it is saved. */
   validateSource(ref: string, ctx: ProviderContext): Promise<SourceValidation>;
   /** Read a Source list. Throws SourceUnavailableError for expected failures. */
