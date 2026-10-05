@@ -83,7 +83,7 @@ export default defineConfig({
       },
     },
     {
-      command: `bun run dev --port ${FRONTEND_PORT} --strictPort`,
+      command: `bun run dev:app --port ${FRONTEND_PORT} --strictPort`,
       cwd: "../frontend",
       url: FRONTEND_URL,
       reuseExistingServer: !process.env.CI,

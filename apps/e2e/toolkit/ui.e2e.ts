@@ -498,12 +498,26 @@ test("pointer reorder changes visible catalog order and saved positions", async 
         json: { ...config, watchlists: [watchlist, second] },
       });
   });
+  await browser.setViewport({ width: 1280, height: 1800 });
   await app.open(`/configure?userId=${userId}`);
   await expect(screen.getByRole("button", "Drag to reorder")).toHaveCount(2);
-  await screen
-    .getByRole("button", "Drag to reorder")
-    .nth(1)
-    .dragTo(screen.getByRole("button", "Drag to reorder").first());
+  const handles = await browser.evaluate(() =>
+    Array.from(document.querySelectorAll('[aria-label="Drag to reorder"]')).map(
+      (el) => {
+        const rect = el.getBoundingClientRect();
+        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+      },
+    ),
+  );
+  await browser.mouse.move(handles[1].x, handles[1].y);
+  await browser.mouse.down();
+  for (let step = 1; step <= 12; step += 1) {
+    await browser.mouse.move(
+      handles[1].x,
+      handles[1].y + ((handles[0].y - handles[1].y - 20) * step) / 12,
+    );
+  }
+  await browser.mouse.up();
   await expect(
     screen.getByPlaceholder("Tom Hardy's Watchlist").first(),
   ).toHaveValue("Second catalog");
@@ -518,4 +532,47 @@ test("pointer reorder changes visible catalog order and saved positions", async 
     { imdbUserId: "ls99123456", catalogTitle: "Second catalog", position: 0 },
     { imdbUserId: userId, catalogTitle: "Test catalog", position: 1 },
   ]);
+});
+
+test("catalog filters and extra presets survive save and clear", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  let saved:
+    | { watchlists: Array<{ catalogSettings: Record<string, unknown> }> }
+    | undefined;
+  await browser.route("http://127.0.0.1:4314/**", async (route) => {
+    if (route.request.method === "POST") {
+      saved = JSON.parse(route.request.postData ?? "{}");
+      await route.fulfill({ json: { ok: true } });
+    } else
+      await route.fulfill({
+        json: {
+          ...config,
+          watchlists: [{ ...watchlist, availableGenres: ["Drama", "Comedy"] }],
+        },
+      });
+  });
+  await app.open(`/configure?userId=${userId}`);
+  await screen.getByRole("button", /Filters & extra catalogs/).tap();
+  await screen.getByLabel("Genre", { exact: true }).tap();
+  await screen.getByRole("option", "Drama", { exact: true }).tap();
+  await screen.getByRole("checkbox", "Top rated", { exact: true }).tap();
+  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await expect(
+    screen.getByText(/Saved! Catalog structure changed/),
+  ).toBeVisible();
+  expect(saved?.watchlists[0].catalogSettings).toEqual({
+    genre: "Drama",
+    presets: ["rated"],
+  });
+  await screen.getByRole("button", "Clear filters").tap();
+  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await expect(
+    screen.getByText(
+      "Saved! Your catalogs will be refreshed with the new settings.",
+    ),
+  ).toBeVisible();
+  expect(saved?.watchlists[0].catalogSettings).toEqual({ presets: ["rated"] });
 });

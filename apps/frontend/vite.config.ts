@@ -50,6 +50,7 @@ export default defineConfig(({ mode, command }) => {
         : undefined,
     },
     resolve: {
+      dedupe: ["react", "react-dom"],
       alias: { "@": path.resolve(__dirname, "./src") },
     },
     define: {

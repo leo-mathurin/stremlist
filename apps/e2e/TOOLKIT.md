@@ -25,6 +25,7 @@ and screenshots are in `.e2e/artifacts`. These files are ignored by Git.
 | Validation errors                                     | Private watchlist, unknown ID, network failure, HTTP configuration failure                  |
 | Configuration loading                                 | Existing user, missing user, failed load, retry                                             |
 | Catalog management                                    | Add/remove, last-row protection, duplicate source rejection, titles, save payload positions |
+| Filters and presets                                   | Save genre and preset settings; clearing filters preserves presets                          |
 | Pointer reorder                                       | Drag second catalog before first, visible title order, saved API positions                  |
 | Built-in charts                                       | Add chart, prevent duplicate chart, ten-catalog limit                                       |
 | Saving                                                | Error preserves changes, retry, reinstall notice, unchanged repeat save                     |
@@ -40,7 +41,7 @@ installation/uninstallation, Discover, Board, and item details.
 
 ## Verification on 2026-10-05
 
-- Toolkit: 20 passed.
+- Toolkit before staging rebase: 20 passed.
 - Existing local integration: 21 passed.
 - Existing live smoke/regression: 25 passed, using live IMDb and hosted Stremio.
 - Workspace typecheck, lint, and frontend build passed.
@@ -97,6 +98,28 @@ Clean up only these test resources after verification:
 supabase stop --workdir /tmp/stremlist-e2e-20261005 --no-backup
 docker stop stremlist-agent-e2e-r2-20261005
 ```
+
+## Validation after updating from staging
+
+The task branch was rebased on staging commit `c36c1ad`. Staging moved catalog
+configuration into `useWatchlistConfiguration`; the save baseline fix now
+uses that hook and preserves catalog settings and available genres. The test
+servers use staging's `dev:app` Vite script instead of its Portless `dev` script.
+
+Toolkit: 21 passed after the rebase.
+
+Workspace typecheck, lint, build, and tests passed after the rebase (189 backend
+tests plus frontend development proxy tests). The toolkit now also checks genre
+filters, preset catalogs, clearing filters, and the larger editor's pointer
+reordering. The previous 46 real integration checks were run before this rebase;
+they have not been rerun on the new staging base.
+
+A fresh frozen Bun installation in a temporary directory successfully opened
+configuration without React deduplication. The existing checkout had frontend
+React from old pnpm symlinks and a different React for newly installed Radix
+checkboxes, causing an invalid-hook-call crash. Vite deduplicates React and React
+DOM to support these mixed-manager checkouts; it is a compatibility guard, not
+a requirement demonstrated by the clean Bun dependency tree.
 
 ## Defects fixed
 

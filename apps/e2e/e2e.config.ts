@@ -20,7 +20,7 @@ export default {
           executable: "bun",
           args: [
             "run",
-            "dev",
+            "dev:app",
             "--host",
             "127.0.0.1",
             "--port",
