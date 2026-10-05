@@ -1,150 +1,95 @@
-# tester-army/e2e coverage
+# User-journey coverage
 
-The toolkit combines real AI-driven browser journeys with exact assertions and
-deterministic regression checks. Run from the repository root with Bun:
+The current inventory contains 41 tester-army browser tests and 70 Playwright
+integration tests. This inventory maps supported routes and domain actions to
+tests. It is not a claim that every possible input or external-service condition
+is covered. CI remains strict, read-only and credential-free for AI replay.
+
+The toolkit uses `e2e@0.17.0`, `@e2e-dev/web@0.12.0`, and the ChatGPT subscription
+model `gpt-6-luna`. Eleven tests contain thirteen bounded AI goals. Exact locator
+and payload assertions decide whether each recording is accepted. The remaining
+thirty toolkit tests use deterministic actions for timing and error boundaries.
+
+## Coverage matrix
+
+Paths in the toolkit column are relative to `toolkit/`; integration paths are
+relative to `tests/`. Existing integration coverage is listed so that another
+mocked browser test is not mistaken for a missing feature.
+
+| Route or user action                             | Toolkit checks                                                                                                                                                                                               | Real handler/storage/client checks                                                                                                                                                                                                                   | Remaining external limit                                                                                         |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `/`, `/terms`, `/changelog`, unknown URL         | `ui.e2e.ts`: headings, return-home navigation                                                                                                                                                                | `home-onboarding.spec.ts`: unknown-route recovery                                                                                                                                                                                                    | External support/donation destinations are links, not payment tests                                              |
+| New installation from ID, profile URL or handle  | `ui.e2e.ts`: format/clear, canonical URL, installation links, private/unknown/offline, typed/query configuration failure                                                                                     | `home-onboarding.spec.ts`, `addon-api.spec.ts`: live validation, default manifest bootstrap                                                                                                                                                          | IMDb can change public fixtures                                                                                  |
+| Returning user and account change                | `account-newsletter.e2e.ts`: return home, select another account, discard old draft and load new filters                                                                                                     | `home-onboarding.spec.ts`: existing user; `configure-page.spec.ts`: configuration entry                                                                                                                                                              | No account login exists in this app                                                                              |
+| `/configure` entry and loading                   | `configuration-recovery.e2e.ts`: invalid/private/unknown/offline then canonical profile recovery; `ui.e2e.ts`: missing user/load retry                                                                       | `configure-page.spec.ts`: real load and failed-load retry                                                                                                                                                                                            | None for the local workflow                                                                                      |
+| Catalog add/edit/remove and source normalization | `ui.e2e.ts`: duplicate IDs, last-row protection, ten-row limit; `configuration-recovery.e2e.ts`: invalid source repair, pasted list URL, canonical handle response, canonical duplicate rejection and repair | `configure-page.spec.ts`: list/chart add/remove; `configuration-transitions.spec.ts`: saved removal/reload, retired URL empty, title 31 rejection and 30-character retry                                                                             | Handle normalization uses a fixture for canonical collision; ordinary handles also have live validation coverage |
+| Built-in charts and content type                 | `ui.e2e.ts`: add chart, duplicate menu item and limit                                                                                                                                                        | `configuration-transitions.spec.ts`: movie-to-TV source change keeps row ID, persists series mode, updates manifest and reloads; `addon-api.spec.ts`: content modes                                                                                  | Live chart contents are structural assertions, not fixed rankings                                                |
+| Catalog order and titles                         | `ui.e2e.ts`: pointer reorder, exact saved positions                                                                                                                                                          | `configuration-transitions.spec.ts`: default titles renumber after reorder, survive reload, manifest order matches                                                                                                                                   | None for local persistence                                                                                       |
+| Sort/filter/search                               | `ui.e2e.ts`: genre/preset save/clear; `configuration-recovery.e2e.ts`: saved genre absent from available choices can be cleared                                                                              | `catalog-features.spec.ts`: combined filters/reload/clear, accented and URL-sensitive search, stable shuffle pagination; `addon-api.spec.ts`: all sort options; `configuration-transitions.spec.ts`: empty results recover after removing one filter | Hosted Stremio UI can change                                                                                     |
+| Extra preset catalogs                            | `ui.e2e.ts`: enable and preserve preset when clearing filters                                                                                                                                                | `catalog-features.spec.ts`: all three presets in Stremio after reinstall; `configuration-transitions.spec.ts`: disable all, preserve genre, remove manifest entries and retire old preset URLs                                                       | None for local protocol behavior                                                                                 |
+| Save errors and concurrent edits                 | `ui.e2e.ts`, `save-refresh.e2e.ts`: HTTP retry, in-flight add/edit/remove/reorder, metadata-only refresh vs real edit; `configuration-recovery.e2e.ts`: network retry and canonical save baseline            | `configuration-transitions.spec.ts`: invalid title does not mutate storage; corrected title persists                                                                                                                                                 | Browser teardown before an acknowledged save is not a durability guarantee                                       |
+| Manual refresh                                   | `ui.e2e.ts`: partial failure/success; `refresh-recovery.e2e.ts`: HTTP/network recovery preserves draft, server throttle, cooldown expiry then next refresh                                                   | `configure-page.spec.ts`, `addon-api.spec.ts`: real refresh and server throttling                                                                                                                                                                    | IMDb outage classification remains limited, see below                                                            |
+| RPDB                                             | `ui.e2e.ts`: show/hide; concurrent save retains edited key                                                                                                                                                   | `configure-page.spec.ts`: save/clear; `addon-api.spec.ts`: rewritten poster URLs                                                                                                                                                                     | No valid sandbox key is available to prove authenticated poster delivery                                         |
+| Installation and clipboard                       | `ui.e2e.ts`: web/desktop URLs and copy denial                                                                                                                                                                | `configure-page.spec.ts`: real clipboard success and denial; `stremio-install.spec.ts`: install/uninstall hosted Stremio                                                                                                                             | OS handling of the `stremio://` protocol is not automated                                                        |
+| Stremio Discover, Board, details and metadata    | Frontend only supplies installation links                                                                                                                                                                    | `stremio-catalogs.spec.ts`, `stremio-meta.spec.ts`, `catalog-features.spec.ts`: navigation, filters, cards, movie metadata and series delegation                                                                                                     | Hosted client and live IMDb require network                                                                      |
+| Newsletter                                       | `ui.e2e.ts`: email validation, success, rejection/offline; `account-newsletter.e2e.ts`: pending submit lock, error retry, already-subscribed confirmation and input reset                                    | `provider-contract.spec.ts`: actual Resend SDK and HTTP handler, success/duplicate/422/401/503/network outcomes, browser error-to-success recovery                                                                                                   | Provider transport is isolated; no real contact is enrolled and no mail delivery is claimed                      |
+| IMDb private list                                | UI catalog source validation is format-based                                                                                                                                                                 | `provider-contract.spec.ts`: actual GraphQL request and list classifier for public/private/FORBIDDEN/missing lists; `addon-api.spec.ts`: live private watchlist and handle                                                                           | Live private `ls` fixture is absent; provide `E2E_PRIVATE_IMDB_LIST_ID` to include it                            |
+| Addon cache and unavailable content              | Not duplicated with browser API mocks                                                                                                                                                                        | `addon-api.spec.ts`: R2 generations/tombstone, unavailable cards, malformed catalogs; seeded transitions check removed URLs                                                                                                                          | Production CDN behavior is not simulated                                                                         |
+
+The operational `/monitor` endpoint and actual donation/payment flows are not
+user journeys implemented by this application. They are outside this matrix.
+
+## Run and record
+
+From the repository root:
 
 ```sh
 bun install --frozen-lockfile
 bun run --cwd apps/e2e e2e login openai --device
 bun run --cwd apps/e2e e2e models openai
 bun run test:toolkit:record
-bun run test:toolkit
-```
-
-The login command is a one-time local setup for the existing ChatGPT
-subscription. The configured `chatgpt(...)` model uses that login. No OpenAI API
-key or separately billed API account is required. Each `agent.act` has a model
-call limit and a subsequent locator assertion. The configured attempt deadline
-is 180 seconds; retries are disabled.
-
-The suite uses `e2e@0.17.0` and `@e2e-dev/web@0.12.0`. The runner starts the
-frontend on `127.0.0.1:4311`. Tests fulfill
-API requests to `127.0.0.1:4314`; no database, email service, or account is
-modified. No server needs to listen on 4314. The existing Playwright integration
-suite remains available through `test:e2e`.
-
-Reports: `apps/e2e/.e2e/report.json`, `summary.md`, `junit.xml`. Failure traces
-and screenshots are in `.e2e/artifacts`. These files are ignored by Git. Verified
-action recordings in `apps/e2e/.e2e/cache/` are committed test fixtures. Do not
-edit those recordings by hand.
-
-## AI journeys and credential-free replay
-
-Nine bounded AI goals cover seven existing tests: canonical IMDb onboarding,
-returning-user navigation, a built-in catalog, newsletter subscription, RPDB
-visibility, clipboard feedback, and saving/clearing filters with a preset.
-Assertions still check exact links, page state, filter values, and submitted
-payloads. The AI chooses how to complete the goal; it does not decide whether
-the test passed. Delayed-save gates, pointer movement, error responses, and
-other precise regression mechanics remain deterministic.
-
-Local cache misses use the subscription and record only assertion-verified
-actions. To prove that the committed recordings replay without credentials:
-
-```sh
 bun run test:toolkit:replay
 ```
 
-The replay script sets `CI=1` and `E2E_OAUTH_CREDENTIALS='{}'`, so its strict
-read-only behavior also applies outside a CI runner. CI runs that same script.
-It does not read the local OAuth file, call a model, update recordings, retry,
-or skip AI tests. Stale entries fail with `REPLAY_STALE`. A new/unrecorded goal
-cannot authenticate and fails instead of silently running live. No subscription
-token is exported to CI or stored in the repository.
+Login is a one-time local setup for the existing ChatGPT subscription. No OpenAI
+API key is needed. On this workstation, `e2e-chatgpt-session bun run
+test:toolkit:record` can use the existing subscription session without copying
+credentials into the repository. The model-call limit is twelve per step,
+maximum eighteen actions; test deadline is 180 seconds and retries are zero.
+Individual goals use smaller call limits.
 
-After changing an AI goal or its UI, run `bun run test:toolkit:record` locally
-without `CI` to record its verified actions, then repeat the replay command
-and commit the changed cache entries. Inspect entries before committing: they
-contain actions and synthetic values, not screenshots or conversations. A
-`--no-cache` run tests live AI behavior but does not write recordings.
+The toolkit starts Vite on `127.0.0.1:4311` and intercepts API requests to
+`127.0.0.1:4314`. It does not need a listener on 4314 or a database. Its intercepted
+responses prove UI state and requests, not backend durability.
 
-## AI/cache verification on 2026-10-05
+The replay script sets `CI=1 E2E_OAUTH_CREDENTIALS='{}'` and `--strict-cache`.
+CI calls that unchanged script. It cannot load local OAuth credentials, call a
+model, record a new entry, retry or skip an AI test. Missing/stale recordings fail.
+Commit only assertion-verified `.e2e/cache/*.json` files; do not edit them by hand.
+Reports, screenshots and traces remain ignored under `.e2e/`.
 
-The cold run used the existing ChatGPT subscription with `gpt-6-luna`: all seven
-agent journeys passed, making 27 real model calls and recording nine verified
-action sequences. It used 137,028 tokens. The provider's prompt-cache discount
-is separate from action replay.
+## Real backend and provider boundaries
 
-The subsequent full replay passed all 27 tests with nine recorded steps replayed,
-zero model calls, zero model tokens, zero retries, and zero skipped tests.
-It used `test:toolkit:replay`, which explicitly supplies an empty credential map.
-A separate run before recording proved that a missing cache entry fails instead
-of skipping the AI journey or using a local login.
+The Playwright harness starts the normal backend and frontend on 7301/7302. Local
+storage tests use a disposable Supabase database and RustFS 1.0.1 S3 store. Seeded
+IMDb metadata is input data; configuration, manifests, catalog filtering and
+storage updates execute the actual backend. Existing live projects also call
+IMDb and hosted Stremio.
 
-Reports for these runs are local and ignored: `.e2e/cold/report.json` and
-`.e2e/replay/report.json` (each also has `summary.md`). The nine committed JSON
-recordings total about 18 KiB and contain only synthetic fixture data. Frozen
-Bun installation, E2E lint, and E2E typecheck passed.
+`provider-contract.spec.ts` starts a separate backend on an OS-assigned loopback
+port with explicit dummy environment values and a test-only preload. It uses the
+actual Resend SDK, GraphQL serialization/parsing, validation and route handlers.
+Only the outbound provider transport is replaced. The fixture verifies request
+method, audience path, synthetic email domain and subscription state. It never
+falls back to native fetch. All unknown destinations are rejected, so it cannot
+create real contacts or send mail. The process is closed after tests, with a
+bounded SIGTERM/SIGKILL fallback. No production test hook or CI credentials were
+added.
 
-## Covered flows
-
-| Flow                                                  | Validation                                                                                                   |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Home, terms, changelog, unknown route and return home | Rendered headings and navigation                                                                             |
-| Onboarding                                            | Input format, clearing, profile URL, canonical ID, install URLs, returning user                              |
-| Validation errors                                     | Private watchlist, unknown ID, network failure, HTTP configuration failure                                   |
-| Configuration loading                                 | Existing user, missing user, failed load, retry                                                              |
-| Catalog management                                    | Add/remove, last-row protection, duplicate source rejection, titles, save payload positions                  |
-| Filters and presets                                   | Save genre and preset settings; clearing filters preserves presets                                           |
-| Pointer reorder                                       | Drag second catalog before first, visible title order, saved API positions                                   |
-| Built-in charts                                       | Add chart, prevent duplicate chart, ten-catalog limit                                                        |
-| Saving                                                | Error preserves changes, retry, reinstall notice, unchanged repeat save, concurrent refresh and filter edits |
-| Refresh                                               | Partial failure, successful refresh, cooldown prevents repeat                                                |
-| RPDB                                                  | Show/hide key                                                                                                |
-| Clipboard                                             | Denial provides manual-copy fallback                                                                         |
-| Newsletter                                            | Email validation, isolated success, server rejection, network failure; no emails sent                        |
-
-The existing integration suite additionally verifies real config persistence,
-all sort options, content filters, RPDB key save/clear, manifests, catalogs,
-metadata, R2 generations/tombstones, refresh throttling, and hosted Stremio
-installation/uninstallation, Discover, Board, and item details.
-
-## Verification on 2026-10-05
-
-- Toolkit before staging rebase: 20 passed.
-- Existing local integration: 21 passed.
-- Existing live smoke/regression: 25 passed, using live IMDb and hosted Stremio.
-- Workspace typecheck, lint, and frontend build passed.
-- Browser preview inspected with the required agent-browser CLI session.
-
-Integration tests used a separate Supabase project, copied to
-`/tmp/stremlist-e2e-20261005`, with `project_id = "stremlist-agent-e2e-20261005"`
-and all 543xx ports replaced by 553xx. Migrations were applied by `supabase start`.
-The existing Wondday stack on 54321 was not used. MinIO ran in the dedicated
-`stremlist-agent-e2e-r2-20261005` container on port 7531. Its disposable credentials
-are the existing public E2E defaults in `env.ts`. The documented Quay image
-returned HTTP 401; the Docker Hub `minio/minio:latest` image started successfully.
-
-The task services are now stopped. The temporary Supabase work directory was
-removed during cleanup. From the repository root, restart isolated services
-without touching the existing development stack:
-
-```sh
-python3 - <<'PY'
-from pathlib import Path
-import shutil
-root = Path("/tmp/stremlist-e2e-20261005")
-root.mkdir(exist_ok=True)
-shutil.copytree("supabase", root / "supabase", dirs_exist_ok=True)
-config = root / "supabase/config.toml"
-text = config.read_text().replace(
-    'project_id = "stremlist"',
-    'project_id = "stremlist-agent-e2e-20261005"',
-).replace("543", "553")
-config.write_text(text)
-PY
-supabase start --workdir /tmp/stremlist-e2e-20261005 \
-  -x gotrue,realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta
-# Remove only the stopped test container before recreating it.
-docker rm stremlist-agent-e2e-r2-20261005
-docker run --rm -d --name stremlist-agent-e2e-r2-20261005 \
-  -p 127.0.0.1:7531:9000 \
-  -e RUSTFS_ACCESS_KEY=stremlist-e2e \
-  -e RUSTFS_SECRET_KEY=stremlist-e2e-secret \
-  rustfs/rustfs:1.0.1 /data
-```
-
-Then run the real integration suite:
+A dedicated local stack avoids the existing development database. See
+[README.md](README.md) for the standard setup. The latest local verification used
+`/tmp/stremlist-e2e-20261006`, project ID `stremlist-agent-e2e-20261006`, Supabase
+553xx ports and container `stremlist-agent-e2e-r2-20261006` on port 7531:
 
 ```sh
 E2E_SUPABASE_URL=http://127.0.0.1:55321 \
@@ -152,135 +97,54 @@ E2E_R2_ENDPOINT=http://127.0.0.1:7531 \
 bun run --cwd apps/e2e test:e2e
 ```
 
-Clean up only these test resources after verification:
+Cleanup must target only that test stack:
 
 ```sh
-supabase stop --workdir /tmp/stremlist-e2e-20261005 --no-backup
-docker stop stremlist-agent-e2e-r2-20261005
+supabase stop --workdir /tmp/stremlist-e2e-20261006 --no-backup
+docker stop stremlist-agent-e2e-r2-20261006
 ```
 
-## Validation after updating from staging
+## Current verification and defects found
 
-The task branch was rebased on staging commit `c36c1ad`. Staging moved catalog
-configuration into `useWatchlistConfiguration`; the save baseline fix now
-uses that hook and preserves catalog settings and available genres. The test
-servers use staging's `dev:app` Vite script instead of its Portless `dev` script.
+On 2026-10-06, the four new AI goals used thirteen real model calls and 69,735
+model tokens. The existing nine goals replayed in that recording run. The full
+expanded strict run passed all 41 toolkit tests, replayed thirteen recordings,
+and used zero model calls/tokens, retries and skips. The run with no new cache
+entries first failed all four new goals without authenticating or skipping.
+Reports are local: `.e2e/expanded-cold/`, `.e2e/expanded-replay/`,
+`.e2e/missing-new/`.
 
-Toolkit: 21 passed after the rebase.
+The complete Playwright run passed all 70 tests (local, live smoke and live
+regression) with the isolated Supabase/RustFS stack. This includes all seventeen
+new storage and provider checks. No retry or skip was used. Backend tests passed
+189/189. Backend, frontend and E2E typechecks and relevant lint/format checks
+passed. The thirteen cache files parse as JSON and contain no credential patterns.
 
-Workspace typecheck, lint, build, and tests passed after the rebase (189 backend
-tests plus frontend development proxy tests). The toolkit now also checks genre
-filters, preset catalogs, clearing filters, and the larger editor's pointer
-reordering. The previous 46 real integration checks were run before this rebase;
-they were subsequently rerun against the source-built MinIO release during the
-CI repair (see below).
+The provider tests reproduced Resend's returned-error behavior: the old handler
+reported successful subscription for duplicate, invalid-email, unauthorized,
+unavailable and network outcomes. It now sends those returned errors through the
+existing error mapping. The browser regression verifies that a failed submission
+retains the email and that a later success resets it. The title-boundary test also
+found that schema errors rendered as `[object Object]`. Configuration validation
+now returns the same string error contract as other config failures.
 
-A fresh frozen Bun installation in a temporary directory successfully opened
-configuration without React deduplication. The existing checkout had frontend
-React from old pnpm symlinks and a different React for newly installed Radix
-checkboxes, causing an invalid-hook-call crash. Vite deduplicates React and React
-DOM to support these mixed-manager checkouts; it is a compatibility guard, not
-a requirement demonstrated by the clean Bun dependency tree.
+Earlier regressions on this PR fixed failed lookup being treated as an existing
+account, reinstall baselines after new row IDs, edits lost during saves, and
+refresh metadata causing false unsaved changes. Their tests remain in the current
+inventory. The branch includes staging's Bun migration and RustFS infrastructure;
+legacy MinIO instructions and intermediate test counts have been removed here.
 
-## Defects fixed
+## Known limits
 
-A failed configuration lookup previously counted as an existing user and
-showed install/configuration actions. Only a successful response now identifies
-a returning user; HTTP/network errors show validation failure.
-
-A newly saved catalog receives a server ID. The old save baseline retained
-its temporary ID, so the next unchanged save incorrectly requested a reinstall.
-The baseline now uses the saved rows. Both defects have regression tests that
-failed before the fixes and passed after them.
-
-The onboarding regression uses endpoint-specific responses: configuration GET
-returns 503 while validation is available with a valid response. Both typed-ID
-and initial-query entry are tested. The app checks configuration first, so the
-test asserts that configuration was requested and validation was not requested
-after the error. Neither installation actions nor a returning-user welcome may
-appear. Typed-ID failure must also leave the home URL without a userId parameter.
-
-## Limits
-
-The deterministic suite checks frontend behavior against API fixtures. It does
-not prove delivery of real newsletter email or external RPDB poster availability.
-A private IMDb `ls` list is not verified.
-The app has no account sign-in; IMDb ID resolution and anonymous Stremio
-installation are the relevant identity flows. Hosted Stremio and live IMDb tests
-need network access and can change when those services change.
-
-## CI infrastructure repair
-
-CI now uses Bun 1.4.0 and `bun ci` (a frozen install), matching the committed
-workspace lockfile. Its regular lint/build/test and integration gates remain
-active, and the tester-army suite is also run in CI.
-
-Both official MinIO image registries now reject anonymous pulls for the existing
-release, including the immutable digest. The prior local tests used a cached
-image. Before the later staging merge, CI and local instructions built the exact official source release
-`RELEASE.2025-09-07T16-13-09Z`, commit
-`07c3a429bfed433e49018cb0f78a52145d4bedeb`. The source archive checksum is checked
-in the Dockerfile; Go 1.24.6 builds the unchanged source. No third-party mirror
-or different MinIO release is used.
-
-A delayed-save regression reproduced the review finding that later edits were
-lost when a response arrived. Response handling now merges saved IDs by local
-row ID into the current rows and retains edits, new rows, removed rows, and
-reordered rows. Only the submitted snapshot becomes the saved baseline. If the
-form changed during the request, the UI explicitly reports unsaved changes.
-Delayed-save tests cover edits/additions, removal, and reordering, including the
-payload sent by the next save.
-
-Final CI-repair validation: frozen Bun install passed; lint/build/test passed
-(189 backend and 3 frontend tests); all 25 toolkit tests passed; atomic SQL
-configuration replacement passed; all 53 current local/live integration tests
-passed with the pinned source-built MinIO container and isolated Supabase stack.
-The source build reports the expected release and commit. Test services were
-stopped after this validation.
-
-The newer React Hooks lint rule in a fresh Bun dependency tree rejected the
-inherited synchronous reset effect. Configuration content now remounts when its
-IMDb account changes; its state initializes for that account, and retries set
-loading state in the retry action. The fetch effect updates state only from the
-asynchronous response. Fresh frozen-dependency lint/build/test checks passed
-without suppressing the rule. The toolkit also covers selecting an account from
-the configuration entry form, and the delayed edit/addition test verifies the
-next save payload including a synthetic RPDB key changed during the request.
-
-Save feedback reads the committed form snapshot synchronized in a layout effect.
-CI traces showed a separate test timing error: dnd-kit optimistically reordered
-DOM nodes before React committed their new indices. The response was released
-26 ms after reading the moved title. The delayed reorder test now also waits for
-the moved rows to receive their React-rendered Catalog 1 / Catalog 2 labels before
-releasing the response. It retains the unsaved warning and next-save position
-assertions; no fixed delay or retry was added.
-
-The committed-row reorder check passed in all 25 toolkit tests on both macOS
-and isolated Linux arm64 (Node 24, Bun 1.4.0, Chromium 153). The Linux run used
-a frozen Bun install and the same framework browser dependency installer as CI.
-
-## Merge of the Bun migration
-
-Staging `9650b9d` introduced Bun workspace metadata, backend Bun runtime and smoke
-gates, isolated backend environment loading, and RustFS 1.0.1 for S3 tests. These
-upstream changes are retained. The earlier MinIO source-build Dockerfile is
-removed because RustFS replaces that infrastructure. Toolkit CI execution and
-reports remain enabled. The restart commands above now use RustFS.
-
-After this merge, a fresh `bun ci` tree passed all 8 lint/build/test tasks and all
-25 toolkit tests. Frontend/E2E typechecks, the backend Bun bundle smoke, and the
-atomic configuration SQL check passed. All 53 real local/live integration tests
-passed with isolated Supabase and RustFS 1.0.1. Test services were then stopped.
-
-## Save and refresh concurrency regression
-
-The toolkit now has 27 tests. Two new cases hold a save response while refresh
-updates the available genres. Refresh metadata alone must not produce an unsaved
-changes warning. A genre filter selected during the same request must still
-produce that warning and appear in the next save payload. Both cases wait for
-the refreshed genre control to become enabled before releasing the save response.
-
-The metadata-only case failed before the fix. Save requests and dirty checks now
-use the same editable configuration projection, excluding server metadata.
-All 27 toolkit tests passed after the fix. These are intercepted frontend checks;
-they do not extend real backend or external-service coverage.
+- IMDb validation currently classifies some upstream HTTP/network failures as
+  `not_found`. This is inherited in the scraper and its unit contracts. The new
+  provider tests do not assert that this diagnostic is correct. Separating
+  transient service errors from missing IDs remains a known product gap.
+- The private-list provider fixture proves protocol classification, not live
+  access to a private IMDb list. A stable owner-controlled list is needed for
+  that live check.
+- RPDB URL rewriting is covered; authenticated poster delivery needs a valid
+  sandbox key. Newsletter integration is isolated at the provider transport;
+  real audience enrollment, broadcast and inbox delivery are not performed.
+- Desktop protocol handling and external support/payment destinations need
+  platform or provider-specific QA. No real purchase or subscription is made.
