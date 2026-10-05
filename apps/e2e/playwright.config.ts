@@ -61,7 +61,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "pnpm exec tsx src/dev.ts",
+      command: "bun run src/dev.ts",
       cwd: "../backend",
       url: `${BACKEND_URL}/health`,
       reuseExistingServer: !process.env.CI,
@@ -83,7 +83,7 @@ export default defineConfig({
       },
     },
     {
-      command: `pnpm exec vite --port ${FRONTEND_PORT} --strictPort`,
+      command: `bun run dev --port ${FRONTEND_PORT} --strictPort`,
       cwd: "../frontend",
       url: FRONTEND_URL,
       reuseExistingServer: !process.env.CI,

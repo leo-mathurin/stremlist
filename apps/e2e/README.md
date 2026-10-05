@@ -1,5 +1,9 @@
 # @stremlist/e2e
 
+The tester-army toolkit suite runs without external services: `bun run test:toolkit`
+from the repository root. See [TOOLKIT.md](./TOOLKIT.md) for coverage, reports,
+and isolated integration verification.
+
 End-to-end tests that exercise Stremlist the way a real user does: the addon
 is installed into the **hosted Stremio Web app** (web.stremio.com) from a
 backend running locally, with **live IMDb data** or controlled catalog fixtures, a **local Supabase stack**,
@@ -98,7 +102,9 @@ it does not claim to test playback or episode selection in a native client.
 
 ## Known limitations
 
-- Drag-and-drop catalog reordering (pointer-based dnd-kit) is not covered.
-- The newsletter endpoint is not covered (it would email real people).
+- Pointer-based dnd-kit reordering is covered by the tester-army toolkit
+  suite, including visible order and the saved API positions.
+- Newsletter UI states are covered with intercepted responses in the toolkit
+  suite. Real newsletter delivery is not covered (it would email people).
 - The live smoke and regression suites depend on web.stremio.com and IMDb. CI
   retries failures twice.

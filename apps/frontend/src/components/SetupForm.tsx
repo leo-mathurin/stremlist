@@ -46,14 +46,10 @@ function getValidationErrorMessage(data: {
 }
 
 async function checkExistingUser(userId: string): Promise<boolean> {
-  try {
-    const res = await api[":userId"].config.$get({
-      param: { userId },
-    });
-    return res.status !== 404;
-  } catch {
-    return false;
-  }
+  const res = await api[":userId"].config.$get({ param: { userId } });
+  if (res.status === 404) return false;
+  if (!res.ok) throw new Error("Could not load configuration");
+  return true;
 }
 
 export default function SetupForm() {

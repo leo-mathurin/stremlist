@@ -50,3 +50,6 @@ supabase/.temp/
 # Playwright
 test-results/
 playwright-report/
+
+# tester-army/e2e reports and replay cache
+.e2e/

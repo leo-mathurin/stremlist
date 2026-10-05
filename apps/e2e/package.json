@@ -7,10 +7,12 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "format": "prettier . --write",
-    "format:check": "prettier . --check"
+    "format:check": "prettier . --check",
+    "test:toolkit": "e2e run"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.1118.0",
+    "@e2e-dev/web": "^0.12.0",
     "@playwright/test": "^1.62.1",
     "@stremlist/backend": "workspace:*",
     "@stremlist/eslint-config": "workspace:*",
@@ -18,6 +20,7 @@
     "@stremlist/shared": "workspace:*",
     "@supabase/supabase-js": "^2.95.3",
     "@types/node": "^20.11.17",
+    "e2e": "^0.17.0",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.1",

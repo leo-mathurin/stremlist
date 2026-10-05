@@ -230,25 +230,20 @@ export function useWatchlistConfiguration(userId: string | null) {
         throw new Error(saved.error ?? "Failed to save");
       }
 
-      const savedRows = saved.watchlists;
-      if (savedRows) {
-        setWatchlists((current) =>
-          current.map((row, index) => {
-            const serverRow = savedRows[index];
-            return serverRow
-              ? {
-                  ...row,
-                  id: serverRow.id,
-                  imdbUserId: serverRow.imdbUserId,
-                  availableGenres: serverRow.availableGenres ?? [],
-                }
-              : row;
-          }),
-        );
-      }
-
+      const savedRows = watchlists.map((row, index) => {
+        const serverRow = saved.watchlists?.[index];
+        return serverRow
+          ? {
+              ...row,
+              id: serverRow.id,
+              imdbUserId: serverRow.imdbUserId,
+              availableGenres: serverRow.availableGenres ?? [],
+            }
+          : row;
+      });
+      setWatchlists(savedRows);
       setShowReinstallHint(requiresReinstall);
-      setWatchlistBaselineSignature(currentWatchlistSignature);
+      setWatchlistBaselineSignature(getWatchlistReinstallSignature(savedRows));
       setStatus({
         type: "success",
         message: requiresReinstall
