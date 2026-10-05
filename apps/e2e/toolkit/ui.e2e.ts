@@ -576,3 +576,145 @@ test("catalog filters and extra presets survive save and clear", async ({
   ).toBeVisible();
   expect(saved?.watchlists[0].catalogSettings).toEqual({ presets: ["rated"] });
 });
+
+test("edits made while saving remain available for the next save", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  let releaseSave: (() => void) | undefined;
+  const responseGate = new Promise<void>((resolve) => {
+    releaseSave = resolve;
+  });
+  await browser.route("http://127.0.0.1:4314/**", async (route) => {
+    if (route.request.method === "POST") {
+      const submitted = JSON.parse(route.request.postData ?? "{}");
+      await responseGate;
+      await route.fulfill({
+        json: {
+          ok: true,
+          watchlists: submitted.watchlists.map(
+            (row: Record<string, unknown>, index: number) => ({
+              ...row,
+              id: `saved-${index}`,
+            }),
+          ),
+        },
+      });
+    } else await route.fulfill({ json: config });
+  });
+  await app.open(`/configure?userId=${userId}`);
+  await screen
+    .getByPlaceholder("Tom Hardy's Watchlist")
+    .fill("Submitted title");
+  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await expect(screen.getByRole("button", "Saving...")).toBeVisible();
+  await screen
+    .getByPlaceholder("Tom Hardy's Watchlist")
+    .fill("New unsaved title");
+  await screen.getByRole("button", "Add Catalog", { exact: true }).tap();
+  await screen
+    .getByPlaceholder("ur12345678, p.colneedham, or ls593621567")
+    .nth(1)
+    .fill("ls99123456");
+  releaseSave!();
+  await expect(
+    screen.getByText(
+      "Saved submitted settings. You have unsaved changes; save again to apply them.",
+    ),
+  ).toBeVisible();
+  await expect(
+    screen.getByPlaceholder("Tom Hardy's Watchlist").first(),
+  ).toHaveValue("New unsaved title");
+  await expect(screen.getByRole("button", "Remove catalog")).toHaveCount(2);
+  await expect(
+    screen.getByPlaceholder("ur12345678, p.colneedham, or ls593621567").nth(1),
+  ).toHaveValue("ls99123456");
+});
+
+for (const edit of ["remove", "reorder"] as const) {
+  test(`${edit} during save preserves current catalog structure`, async ({
+    app,
+    screen,
+    browser,
+  }) => {
+    let releaseSave: (() => void) | undefined;
+    let lastSubmitted:
+      | { watchlists: Array<{ imdbUserId: string; position: number }> }
+      | undefined;
+    const responseGate = new Promise<void>((resolve) => {
+      releaseSave = resolve;
+    });
+    const second = {
+      ...watchlist,
+      id: "second-watchlist",
+      imdbUserId: "ls99123456",
+      catalogTitle: "Second catalog",
+      position: 1,
+    };
+    await browser.route("http://127.0.0.1:4314/**", async (route) => {
+      if (route.request.method === "POST") {
+        const submitted = JSON.parse(route.request.postData ?? "{}");
+        lastSubmitted = submitted;
+        await responseGate;
+        await route.fulfill({
+          json: { ok: true, watchlists: submitted.watchlists },
+        });
+      } else
+        await route.fulfill({
+          json: { ...config, watchlists: [watchlist, second] },
+        });
+    });
+    await browser.setViewport({ width: 1280, height: 1800 });
+    await app.open(`/configure?userId=${userId}`);
+    await screen.getByRole("button", "Save", { exact: true }).tap();
+    await expect(screen.getByRole("button", "Saving...")).toBeVisible();
+    if (edit === "remove") {
+      await screen.getByRole("button", "Remove catalog").first().tap();
+    } else {
+      const handles = await browser.evaluate(() =>
+        Array.from(
+          document.querySelectorAll('[aria-label="Drag to reorder"]'),
+        ).map((el) => {
+          const rect = el.getBoundingClientRect();
+          return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+        }),
+      );
+      await browser.mouse.move(handles[1].x, handles[1].y);
+      await browser.mouse.down();
+      for (let step = 1; step <= 12; step += 1)
+        await browser.mouse.move(
+          handles[1].x,
+          handles[1].y + ((handles[0].y - handles[1].y - 20) * step) / 12,
+        );
+      await browser.mouse.up();
+      await expect(
+        screen.getByPlaceholder("Tom Hardy's Watchlist").first(),
+      ).toHaveValue("Second catalog");
+    }
+    releaseSave!();
+    await expect(
+      screen.getByText(
+        "Saved submitted settings. You have unsaved changes; save again to apply them.",
+      ),
+    ).toBeVisible();
+    await expect(screen.getByRole("button", "Remove catalog")).toHaveCount(
+      edit === "remove" ? 1 : 2,
+    );
+    await expect(
+      screen.getByPlaceholder("Tom Hardy's Watchlist").first(),
+    ).toHaveValue("Second catalog");
+    await screen.getByRole("button", "Save", { exact: true }).tap();
+    await expect(
+      screen.getByText(/Saved! Catalog structure changed/),
+    ).toBeVisible();
+    expect(lastSubmitted?.watchlists).toMatchObject(
+      edit === "remove"
+        ? [{ imdbUserId: "ls99123456", position: 0 }]
+        : [
+            { imdbUserId: "ls99123456", position: 0 },
+            { imdbUserId: userId, position: 1 },
+          ],
+    );
+  });
+}

@@ -77,11 +77,12 @@ supabase start --workdir /tmp/stremlist-e2e-20261005 \
   -x gotrue,realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta
 # Remove only the stopped test container before recreating it.
 docker rm stremlist-agent-e2e-r2-20261005
+docker build -t stremlist-e2e-minio:release-2025-09-07 apps/e2e/minio
 docker run --rm -d --name stremlist-agent-e2e-r2-20261005 \
   -p 127.0.0.1:7531:9000 \
   -e MINIO_ROOT_USER=stremlist-e2e \
   -e MINIO_ROOT_PASSWORD=stremlist-e2e-secret \
-  minio/minio:latest server /data
+  stremlist-e2e-minio:release-2025-09-07 server /data
 ```
 
 Then run the real integration suite:
@@ -112,7 +113,8 @@ Workspace typecheck, lint, build, and tests passed after the rebase (189 backend
 tests plus frontend development proxy tests). The toolkit now also checks genre
 filters, preset catalogs, clearing filters, and the larger editor's pointer
 reordering. The previous 46 real integration checks were run before this rebase;
-they have not been rerun on the new staging base.
+they were subsequently rerun against the source-built MinIO release during the
+CI repair (see below).
 
 A fresh frozen Bun installation in a temporary directory successfully opened
 configuration without React deduplication. The existing checkout had frontend
@@ -147,3 +149,32 @@ A private IMDb `ls` list is not verified.
 The app has no account sign-in; IMDb ID resolution and anonymous Stremio
 installation are the relevant identity flows. Hosted Stremio and live IMDb tests
 need network access and can change when those services change.
+
+## CI infrastructure repair
+
+CI now uses Bun 1.4.0 and `bun install --frozen-lockfile`, matching the committed
+workspace lockfile. Its regular lint/build/test and integration gates remain
+active, and the tester-army suite is also run in CI.
+
+Both official MinIO image registries now reject anonymous pulls for the existing
+release, including the immutable digest. The prior local tests used a cached
+image. CI and local instructions now build the exact official source release
+`RELEASE.2025-09-07T16-13-09Z`, commit
+`07c3a429bfed433e49018cb0f78a52145d4bedeb`. The source archive checksum is checked
+in the Dockerfile; Go 1.24.6 builds the unchanged source. No third-party mirror
+or different MinIO release is used.
+
+A delayed-save regression reproduced the review finding that later edits were
+lost when a response arrived. Response handling now merges saved IDs by local
+row ID into the current rows and retains edits, new rows, removed rows, and
+reordered rows. Only the submitted snapshot becomes the saved baseline. If the
+form changed during the request, the UI explicitly reports unsaved changes.
+Delayed-save tests cover edits/additions, removal, and reordering, including the
+payload sent by the next save.
+
+Final CI-repair validation: frozen Bun install passed; lint/build/test passed
+(189 backend and 3 frontend tests); all 24 toolkit tests passed; atomic SQL
+configuration replacement passed; all 53 current local/live integration tests
+passed with the pinned source-built MinIO container and isolated Supabase stack.
+The source build reports the expected release and commit. Test services were
+stopped after this validation.

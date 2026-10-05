@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   DEFAULT_SORT_OPTION,
   IMDB_WATCHLIST_SOURCE_ID_PATTERN,
@@ -26,6 +26,10 @@ export function useWatchlistConfiguration(userId: string | null) {
     }),
   ]);
   const [rpdbApiKey, setRpdbApiKey] = useState("");
+  const currentForm = useRef({ watchlists, rpdbApiKey });
+  useEffect(() => {
+    currentForm.current = { watchlists, rpdbApiKey };
+  }, [watchlists, rpdbApiKey]);
   const [showRpdbApiKey, setShowRpdbApiKey] = useState(false);
   const [loading, setLoading] = useState(!!userId);
   const [saving, setSaving] = useState(false);
@@ -241,14 +245,41 @@ export function useWatchlistConfiguration(userId: string | null) {
             }
           : row;
       });
-      setWatchlists(savedRows);
+      const hasUnsavedChanges =
+        currentForm.current.rpdbApiKey !== rpdbApiKey ||
+        JSON.stringify(currentForm.current.watchlists) !==
+          JSON.stringify(watchlists);
+      const savedByLocalId = new Map(
+        savedRows.map((row) => [row.localId, row]),
+      );
+      const submittedByLocalId = new Map(
+        watchlists.map((row) => [row.localId, row]),
+      );
+      setWatchlists((current) =>
+        current.map((row) => {
+          const serverRow = savedByLocalId.get(row.localId);
+          const submittedRow = submittedByLocalId.get(row.localId);
+          if (!serverRow || !submittedRow) return row;
+          const sourceUnchanged = row.imdbUserId === submittedRow.imdbUserId;
+          return {
+            ...row,
+            id: serverRow.id,
+            imdbUserId: sourceUnchanged ? serverRow.imdbUserId : row.imdbUserId,
+            availableGenres: sourceUnchanged
+              ? serverRow.availableGenres
+              : row.availableGenres,
+          };
+        }),
+      );
       setShowReinstallHint(requiresReinstall);
       setWatchlistBaselineSignature(getWatchlistReinstallSignature(savedRows));
       setStatus({
         type: "success",
-        message: requiresReinstall
-          ? "Saved! Catalog structure changed. Reinstall the addon in Stremio to refresh catalogs."
-          : "Saved! Your catalogs will be refreshed with the new settings.",
+        message: hasUnsavedChanges
+          ? "Saved submitted settings. You have unsaved changes; save again to apply them."
+          : requiresReinstall
+            ? "Saved! Catalog structure changed. Reinstall the addon in Stremio to refresh catalogs."
+            : "Saved! Your catalogs will be refreshed with the new settings.",
       });
     } catch (err) {
       setStatus({
