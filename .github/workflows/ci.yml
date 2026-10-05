@@ -68,9 +68,9 @@ jobs:
         run: |
           docker run --rm -d --name stremlist-e2e-r2 \
             -p 127.0.0.1:7431:9000 \
-            -e MINIO_ROOT_USER=stremlist-e2e \
-            -e MINIO_ROOT_PASSWORD=stremlist-e2e-secret \
-            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+            -e RUSTFS_ACCESS_KEY=stremlist-e2e \
+            -e RUSTFS_SECRET_KEY=stremlist-e2e-secret \
+            rustfs/rustfs:1.0.1 /data
 
       - name: Install dependencies
         run: bun ci
