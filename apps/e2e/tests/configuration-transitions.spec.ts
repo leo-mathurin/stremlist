@@ -134,8 +134,12 @@ test(
     await page
       .getByRole("button", { name: /Filters & extra catalogs/ })
       .click();
-    for (const name of ["Top rated", "90 min or less", "Shuffle"])
-      await page.getByRole("checkbox", { name, exact: true }).uncheck();
+    for (const name of ["Top rated", "90 min or less", "Shuffle"]) {
+      const checkbox = page.getByRole("checkbox", { name, exact: true });
+      await expect(checkbox).toBeChecked();
+      await checkbox.press("Space");
+      await expect(checkbox).not.toBeChecked();
+    }
     await save(page);
     expect(
       (await getConfig(userId)).body.watchlists[0].catalogSettings,

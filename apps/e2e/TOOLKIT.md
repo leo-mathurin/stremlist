@@ -120,6 +120,11 @@ new storage and provider checks. No retry or skip was used. Backend tests passed
 189/189. Backend, frontend and E2E typechecks and relevant lint/format checks
 passed. The thirteen cache files parse as JSON and contain no credential patterns.
 
+The preset-removal test uses keyboard activation and awaits each checked-state
+change. This avoids Playwright's immediate post-click `uncheck()` check on the
+animated Radix control, which flaked once in the first Linux run. The revised
+test passed five consecutive local runs with retries disabled.
+
 The provider tests reproduced Resend's returned-error behavior: the old handler
 reported successful subscription for duplicate, invalid-email, unauthorized,
 unavailable and network outcomes. It now sends those returned errors through the
