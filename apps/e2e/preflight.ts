@@ -42,7 +42,7 @@ for (let attempt = 0; attempt < 20; attempt += 1) {
 if (r2Error) {
   throw new Error(
     `The E2E R2-compatible store is not reachable.\n` +
-      `Start MinIO from the repository root with the command documented in apps/e2e/README.md.\n` +
+      `Start RustFS from the repository root with the command documented in apps/e2e/README.md.\n` +
       `Underlying error: ${r2Error instanceof Error ? r2Error.message : String(r2Error)}`,
   );
 }

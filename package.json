@@ -1,6 +1,6 @@
 {
   "name": "stremlist",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "private": true,
   "description": "Stremlist - Sync your IMDb watchlist with Stremio",
   "repository": {
@@ -30,18 +30,26 @@
     "test": "turbo run test",
     "test:e2e": "turbo run test:e2e",
     "typecheck": "turbo run typecheck",
-    "generate:types": "pnpm supabase gen types typescript --project-id igbmxubzxjfdbgmawrtr --schema public > packages/shared/src/database.types.ts",
+    "generate:types": "bunx supabase gen types typescript --project-id igbmxubzxjfdbgmawrtr --schema public > packages/shared/src/database.types.ts",
     "prepare": "husky",
     "dev:tailnet": "turbo run dev:tailnet"
   },
   "engines": {
     "node": ">=20.0.0"
   },
-  "packageManager": "pnpm@10.30.1",
+  "packageManager": "bun@1.4.0",
   "devDependencies": {
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
     "portless": "0.15.6",
-    "turbo": "^2.9.6"
-  }
+    "turbo": "^2.11.7"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "trustedDependencies": [
+    "esbuild",
+    "unrs-resolver"
+  ]
 }

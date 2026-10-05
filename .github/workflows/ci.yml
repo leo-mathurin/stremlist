@@ -16,20 +16,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          version: 10.30.1
+          bun-version-file: package.json
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun ci
 
       - name: Lint, build, and test
-        run: pnpm turbo run lint build test
+        run: bunx turbo run lint build test
 
       - name: Smoke-test backend bundle
         env:
@@ -37,7 +36,17 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: test
           RESEND_API_KEY: re_test
           RESEND_AUDIENCE_ID: test
-        run: node --input-type=module --eval 'await import("./apps/backend/dist/index.js")'
+        # Production runs this bundle on Vercel's Bun runtime (apps/backend/vercel.json),
+        # so load it with Bun and serve one request that needs no external service.
+        run: |
+          bun --eval '
+            const { default: app } = await import("./apps/backend/dist/index.js");
+            const res = await app.fetch(new Request("http://localhost/manifest.json"));
+            const body = await res.json();
+            if (res.status !== 200 || body.id !== "com.stremlist") {
+              throw new Error(`Unexpected manifest response: ${res.status} ${JSON.stringify(body)}`);
+            }
+          '
 
   e2e:
     name: E2E
@@ -46,14 +55,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          version: 10.30.1
+          bun-version-file: package.json
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
 
       - uses: supabase/setup-cli@v1
         with:
@@ -69,24 +77,25 @@ jobs:
         run: |
           docker run --rm -d --name stremlist-e2e-r2 \
             -p 127.0.0.1:7431:9000 \
-            -e MINIO_ROOT_USER=stremlist-e2e \
-            -e MINIO_ROOT_PASSWORD=stremlist-e2e-secret \
-            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+            -e RUSTFS_ACCESS_KEY=stremlist-e2e \
+            -e RUSTFS_SECRET_KEY=stremlist-e2e-secret \
+            rustfs/rustfs:1.0.1 /data
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun ci
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
 
       - name: Install Playwright Chromium
-        run: pnpm --filter @stremlist/e2e exec playwright install --with-deps chromium
+        working-directory: apps/e2e
+        run: bunx playwright install --with-deps chromium
 
       - name: Run E2E tests
-        run: pnpm --filter @stremlist/e2e test:e2e
+        run: bun run --filter @stremlist/e2e test:e2e
 
       - name: Upload Playwright report
         if: failure()

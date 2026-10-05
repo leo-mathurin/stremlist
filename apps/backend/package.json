@@ -13,16 +13,16 @@
   },
   "scripts": {
     "dev": "portless",
-    "build": "tsx build.ts",
+    "build": "bun build.ts",
     "lint": "eslint .",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
-    "start": "node dist/index.js",
+    "start": "bun dist/index.js",
     "test": "vitest run --exclude '**/*.stress.test.ts'",
     "test:stress": "vitest run src/services/__tests__/imdb-scraper.stress.test.ts",
     "typecheck": "tsc --noEmit",
-    "cleanup:invalid-users": "tsx src/scripts/cleanup-invalid-users.ts",
-    "dev:app": "tsx watch --env-file=.env src/dev.ts",
+    "cleanup:invalid-users": "bun src/scripts/cleanup-invalid-users.ts",
+    "dev:app": "bun --watch --env-file=.env src/dev.ts",
     "dev:tailnet": "portless"
   },
   "dependencies": {
@@ -47,7 +47,6 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-config-turbo": "^2.8.10",
     "prettier": "^3.8.1",
-    "tsx": "^4.7.1",
     "typescript": "^5.8.3",
     "vitest": "^4.0.18"
   },
