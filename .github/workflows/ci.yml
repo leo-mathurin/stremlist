@@ -36,8 +36,17 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: test
           RESEND_API_KEY: re_test
           RESEND_AUDIENCE_ID: test
-        # Production runs this bundle on Vercel's Bun runtime (apps/backend/vercel.json).
-        run: bun --eval 'await import("./apps/backend/dist/index.js")'
+        # Production runs this bundle on Vercel's Bun runtime (apps/backend/vercel.json),
+        # so load it with Bun and serve one request that needs no external service.
+        run: |
+          bun --eval '
+            const { default: app } = await import("./apps/backend/dist/index.js");
+            const res = await app.fetch(new Request("http://localhost/manifest.json"));
+            const body = await res.json();
+            if (res.status !== 200 || body.id !== "com.stremlist") {
+              throw new Error(`Unexpected manifest response: ${res.status} ${JSON.stringify(body)}`);
+            }
+          '
 
   e2e:
     name: E2E
