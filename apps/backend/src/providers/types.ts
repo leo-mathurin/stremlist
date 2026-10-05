@@ -1,7 +1,4 @@
-import type {
-  ActionKind,
-  ProviderId,
-} from "@stremlist/shared/providers";
+import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 
 /**
@@ -89,6 +86,11 @@ export class SourceUnavailableError extends Error {
 
 /** Valid OAuth tokens for one Connection, refreshed when needed. */
 export interface ConnectionAccess {
+  /**
+   * The Account that owns the Connection. Adapters that keep per-Connection
+   * state between reads (Simkl's sync snapshot) store it under this ID.
+   */
+  accountId: string;
   provider: ProviderId;
   username: string | null;
   getAccessToken(): Promise<string>;
