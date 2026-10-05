@@ -21,9 +21,12 @@ jobs:
           fetch-depth: 0
 
       # Fork PRs get no OIDC token, so they fall back to a cold local cache.
+      # Best-effort: a failed token exchange must not block CI or the release.
       - name: Set up Turborepo Remote Cache
         if: vars.TURBO_TEAM != '' && github.event.pull_request.head.repo.fork != true
-        uses: vercel/setup-turborepo-remote-cache-action@v1.1.0
+        continue-on-error: true
+        # Pinned to a commit: this step runs with id-token: write.
+        uses: vercel/setup-turborepo-remote-cache-action@49d7b1b46ba4c9251e1977986bfe18336feabc8f # v1.1.0
         with:
           team: ${{ vars.TURBO_TEAM }}
 

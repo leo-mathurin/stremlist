@@ -154,7 +154,8 @@ CI authenticates with OpenID Connect instead of a stored token. It needs:
   (**Settings → Build and Deployment → OIDC Policies for CLI Access**)
 - A `TURBO_TEAM` GitHub Actions repository variable set to the team slug
 
-Without the variable, or on pull requests from forks, CI runs with only a local cache.
+Without the variable, on pull requests from forks, or if the token exchange
+fails, CI runs with only a local cache.
 
 ## Using the Addon
 
