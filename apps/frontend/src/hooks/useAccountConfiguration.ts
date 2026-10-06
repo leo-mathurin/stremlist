@@ -225,7 +225,8 @@ export function useAccountConfiguration(
         setMovedAt(data.movedAt);
         setRpdbApiKey(data.rpdbApiKey ?? "");
         setConnections(data.connections);
-        setSyncStatus(data.syncStatus);
+        // An older backend answers without statuses.
+        setSyncStatus((data.syncStatus as ListSyncStatuses | undefined) ?? {});
         setLastFetchedAt(data.lastFetchedAt);
         setCooldownSeconds(data.cooldownSeconds);
         setActionsEnabled(data.actions.enabled);
@@ -749,7 +750,8 @@ export function useAccountConfiguration(
       if (!res.ok) return;
       const data = (await res.json()) as AccountConfigResponse;
       setConnections(data.connections);
-      setSyncStatus(data.syncStatus);
+      // An older backend answers without statuses.
+      setSyncStatus((data.syncStatus as ListSyncStatuses | undefined) ?? {});
       setLastFetchedAt(data.lastFetchedAt);
       const capable = actionCapableProviders(data.connections);
       setActionOrder((current) => [
