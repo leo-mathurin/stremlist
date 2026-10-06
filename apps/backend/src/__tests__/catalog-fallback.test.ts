@@ -659,3 +659,37 @@ describe("information cards for Lists that cannot be read", () => {
     expect(body.metas[0].name).toBe("⚠️ This Trakt list is private");
   });
 });
+
+describe("expired Connections", () => {
+  it("asks to connect again instead of failing with a 500", async () => {
+    useFakeProvider(
+      fakeAdapter("trakt", {
+        fetchSource: async (_ref, ctx) => {
+          await ctx.connection?.getAccessToken();
+          return { entries: [] };
+        },
+      }),
+    );
+    const account = seedAccount();
+    // Expired, and no refresh token to get a new one.
+    seedConnection(account.id, "trakt", {
+      refreshToken: null,
+      expiresAt: new Date(Date.now() - 60_000),
+    });
+    seedList(account.id, {
+      id: UUID_1,
+      provider: "trakt",
+      source_ref: "me/watchlist",
+    });
+
+    const res = await app.request(
+      `/${account.id}/catalog/movie/wl-${UUID_1}-movie.json`,
+    );
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as CatalogResponse;
+    expect(body.metas.map((meta) => meta.id)).toEqual([
+      "stremlist:unavailable:needs_connection",
+    ]);
+  });
+});

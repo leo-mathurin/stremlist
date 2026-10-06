@@ -240,3 +240,33 @@ describe("meta route through each kind of Addon URL", () => {
     expect((await res.json()) as MetaResponse).toEqual({ meta: null });
   });
 });
+
+describe("meta route privacy", () => {
+  it("does not reveal Connection lists through a Legacy alias", async () => {
+    seedUser(OWNER);
+    seedList(accountId, {
+      id: UUID_1,
+      provider: "trakt",
+      source_ref: "me/history",
+    });
+    seedCache(UUID_1, [SHAWSHANK]);
+
+    const res = await app.request(`/${OWNER}/meta/movie/tt0111161.json`);
+
+    expect((await res.json()) as MetaResponse).toEqual({ meta: null });
+  });
+
+  it("serves Connection lists to the private Addon URL", async () => {
+    const account = seedAccount();
+    seedList(account.id, {
+      id: UUID_1,
+      provider: "trakt",
+      source_ref: "me/history",
+    });
+    seedCache(UUID_1, [SHAWSHANK]);
+
+    const res = await app.request(`/${account.id}/meta/movie/tt0111161.json`);
+
+    expect((await res.json()) as MetaResponse).toEqual({ meta: SHAWSHANK });
+  });
+});
