@@ -27,6 +27,8 @@ const stremioMetaSchema = z.object({
   cast: z.array(z.string()).optional(),
   runtime: z.string().optional(),
   released: z.string().datetime().optional(),
+  // When the Title joined the Source list; never served to Stremio.
+  addedAt: z.string().datetime().optional(),
 });
 
 const catalogObjectSchema = z.object({

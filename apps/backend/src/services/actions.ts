@@ -19,6 +19,7 @@ import type { Account } from "./accounts";
 import { getAccountLists } from "./accounts";
 import { getConnectionAccess, listConnections } from "./connections";
 import { markCachedListStale } from "./list-cache";
+import { sourceCaches } from "./merged-lists";
 
 /** Membership older than this is refreshed in the background. */
 const MEMBERSHIP_FRESH_MS = 15 * 60_000;
@@ -454,11 +455,12 @@ export async function performAction(
         const affected = new Set(actions.affectedSources(intent));
         await Promise.all(
           lists
+            .flatMap(sourceCaches)
             .filter(
-              (list) =>
-                list.provider === provider && affected.has(list.sourceRef),
+              ({ source }) =>
+                source.provider === provider && affected.has(source.sourceRef),
             )
-            .map((list) => markCachedListStale(list.id)),
+            .map(({ cacheKey }) => markCachedListStale(cacheKey)),
         );
       } catch (error) {
         console.error(

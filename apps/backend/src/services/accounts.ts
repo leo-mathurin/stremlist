@@ -5,12 +5,15 @@ import {
   IMDB_USER_ID_PATTERN,
 } from "@stremlist/shared/constants";
 import type { Tables } from "@stremlist/shared/database.types";
+import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
 import type { AddonAccess, ConfigList } from "@stremlist/shared/stremio.types";
+import { z } from "zod";
 import { supabase } from "../lib/supabase";
 import { catalogSettingsSchema } from "./catalog-settings";
 import { deleteCachedList } from "./list-cache";
+import { unusedSourceCaches } from "./merged-lists";
 
 type AccountRow = Tables<"accounts">;
 type ListRow = Tables<"lists">;
@@ -44,6 +47,20 @@ export interface ListInput {
   displayMode?: string;
   position: number;
   catalogSettings?: CatalogSettings;
+  mergedSources?: ListSource[];
+}
+
+const storedSourcesSchema = z.array(
+  z.object({ provider: z.string(), source_ref: z.string() }),
+);
+
+/** The merged Source lists of a row; unknown Providers are left out. */
+function mapMergedSources(value: unknown): ListSource[] {
+  const parsed = storedSourcesSchema.safeParse(value);
+  if (!parsed.success) return [];
+  return parsed.data.flatMap(({ provider, source_ref }) =>
+    isProviderId(provider) ? [{ provider, sourceRef: source_ref }] : [],
+  );
 }
 
 function mapAccount(row: AccountRow): Account {
@@ -61,6 +78,7 @@ function mapAccount(row: AccountRow): Account {
 function mapList(row: ListRow): ConfigList | null {
   if (!isProviderId(row.provider)) return null;
   const settings = catalogSettingsSchema.safeParse(row.catalog_settings);
+  const mergedSources = mapMergedSources(row.merged_sources);
   return {
     id: row.id,
     provider: row.provider,
@@ -72,6 +90,7 @@ function mapList(row: ListRow): ConfigList | null {
     ...(settings.success && Object.keys(settings.data).length > 0
       ? { catalogSettings: settings.data }
       : {}),
+    ...(mergedSources.length > 0 ? { mergedSources } : {}),
   };
 }
 
@@ -202,7 +221,8 @@ export async function getAccountListById(
 
 /**
  * Replace an Account's Lists and settings in one transaction. Removed Lists
- * lose their cached Catalogs afterwards (R2 cannot join the transaction).
+ * and Source lists lose their cached Catalogs afterwards (R2 cannot join the
+ * transaction).
  */
 export async function replaceAccountConfig(
   accountId: string,
@@ -210,6 +230,7 @@ export async function replaceAccountConfig(
   rpdbApiKey: string | null,
   actions?: { enabled: boolean; providers: ProviderId[] },
 ): Promise<ConfigList[]> {
+  const before = await getAccountLists(accountId);
   const { data, error } = await supabase.rpc("replace_account_config", {
     p_account_id: accountId,
     p_rpdb_api_key: rpdbApiKey,
@@ -224,6 +245,10 @@ export async function replaceAccountConfig(
       ...(list.catalogSettings === undefined
         ? {}
         : { catalog_settings: { ...list.catalogSettings } }),
+      merged_sources: (list.mergedSources ?? []).map((source) => ({
+        provider: source.provider,
+        source_ref: source.sourceRef,
+      })),
     })),
     p_actions_enabled: actions?.enabled ?? null,
     p_action_providers: actions?.providers ?? null,
@@ -231,21 +256,25 @@ export async function replaceAccountConfig(
   if (error) throw error;
 
   const result = data[0];
+  const saved = (result.lists as ListRow[])
+    .map(mapList)
+    .filter((list): list is ConfigList => !!list);
+  const unused = [
+    ...new Set([...result.deleted_ids, ...unusedSourceCaches(before, saved)]),
+  ];
   const cleanup = await Promise.allSettled(
-    result.deleted_ids.map((id) => deleteCachedList(id)),
+    unused.map((key) => deleteCachedList(key)),
   );
   cleanup.forEach((outcome, index) => {
     if (outcome.status === "rejected") {
       console.error(
-        `Failed to delete the R2 cache of removed list ${result.deleted_ids[index]}:`,
+        `Failed to delete the unused R2 cache ${unused[index]}:`,
         outcome.reason,
       );
     }
   });
 
-  return (result.lists as ListRow[])
-    .map(mapList)
-    .filter((list): list is ConfigList => !!list);
+  return saved;
 }
 
 /**
@@ -267,6 +296,7 @@ export async function createPrivateCopy(legacy: Account): Promise<Account> {
       displayMode: list.displayMode,
       position: index,
       catalogSettings: list.catalogSettings,
+      mergedSources: list.mergedSources,
     })),
     legacy.rpdbApiKey,
   );

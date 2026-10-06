@@ -1,4 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
+import type { DisplayMode } from "@stremlist/shared/constants";
 import {
   ACCOUNT_ID_PATTERN,
   ACCOUNT_KEY_PATTERN,
@@ -8,6 +9,14 @@ import {
   parseSortOption,
 } from "@stremlist/shared/constants";
 import { isChartId } from "@stremlist/shared/imdb-charts";
+import type { ListSource } from "@stremlist/shared/list-merge";
+import {
+  MAX_SOURCES_PER_ACCOUNT,
+  MAX_SOURCES_PER_LIST,
+  listMergeProblem,
+  listRequiresConnection,
+  sourceKey,
+} from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import {
   CONNECTION_SOURCES,
@@ -94,6 +103,20 @@ const listBody = z.object({
   displayMode: z.enum(displayModeValues).optional(),
   position: z.number().int().min(0).optional(),
   catalogSettings: catalogSettingsSchema.optional(),
+  // The Source lists merged after the first one (ADR 0006). Omitted keeps
+  // the saved ones, so older clients do not split merged Lists.
+  mergedSources: z
+    .array(
+      z.object({
+        provider: providerParam,
+        sourceRef: z.string().trim().min(1).max(300),
+      }),
+    )
+    .max(
+      MAX_SOURCES_PER_LIST - 1,
+      `A List can merge at most ${MAX_SOURCES_PER_LIST} Source lists.`,
+    )
+    .optional(),
 });
 const actionsBody = z.object({
   enabled: z.boolean(),
@@ -138,58 +161,91 @@ function defaultTitle(index: number, total: number): string {
 }
 
 /**
+ * Check and normalize one Source list of a submitted List. IMDb `p.`
+ * handles are turned into `ur…` IDs.
+ */
+async function normalizeSource(
+  source: ListSource,
+  access: { via: AddonAccess; connected: Set<ProviderId> },
+): Promise<ListSource> {
+  const info = PROVIDERS[source.provider];
+  if (info.availability !== "available") {
+    throw new ConfigError(`${info.label} is not available yet.`);
+  }
+  let sourceRef = source.sourceRef;
+  if (source.provider === "imdb") {
+    try {
+      sourceRef = await normalizeImdbUserId(sourceRef);
+    } catch {
+      throw new ConfigError(
+        `Could not resolve the IMDb handle "${source.sourceRef}". Please check it and try again.`,
+      );
+    }
+    // The IMDb adapter treats any other ref as a watchlist user ID, so a
+    // malformed one would be saved and fail on every catalog request.
+    if (
+      !IMDB_WATCHLIST_SOURCE_ID_PATTERN.test(sourceRef) &&
+      !isChartId(sourceRef)
+    ) {
+      throw new ConfigError(`"${source.sourceRef}" is not a valid IMDb list.`);
+    }
+  }
+  if (sourceRequiresConnection(source.provider, sourceRef)) {
+    if (access.via === "legacy") {
+      throw new ConfigError(
+        `${info.label} lists need your private Addon URL. Upgrade this install first.`,
+      );
+    }
+    if (!access.connected.has(source.provider)) {
+      throw new ConfigError(`Connect your ${info.label} account first.`);
+    }
+  }
+  return { provider: source.provider, sourceRef };
+}
+
+/**
  * Check and normalize submitted Lists. Light on purpose: links were already
  * resolved when the user added them, so saving does not read every Source
- * list again. IMDb `p.` handles are still turned into `ur…` IDs.
+ * list again. Each Source list may be in only one List of the Account, and
+ * merged Lists follow the rules of `listMergeProblem`.
  */
 async function normalizeLists(
   lists: ListBody[],
-  access: { via: AddonAccess; connected: Set<ProviderId> },
+  access: {
+    via: AddonAccess;
+    connected: Set<ProviderId>;
+    /** Saved Lists, for the merged Source lists that a client omits. */
+    saved?: ConfigList[];
+  },
 ): Promise<ListInput[]> {
   const normalized: ListInput[] = [];
   const seen = new Set<string>();
+  const saved = new Map((access.saved ?? []).map((list) => [list.id, list]));
   for (const [index, list] of lists.entries()) {
-    const info = PROVIDERS[list.provider];
-    if (info.availability !== "available") {
-      throw new ConfigError(`${info.label} is not available yet.`);
-    }
-    let sourceRef = list.sourceRef;
-    if (list.provider === "imdb") {
-      try {
-        sourceRef = await normalizeImdbUserId(sourceRef);
-      } catch {
-        throw new ConfigError(
-          `Could not resolve the IMDb handle "${list.sourceRef}". Please check it and try again.`,
-        );
+    const sources: ListSource[] = [];
+    for (const source of [
+      { provider: list.provider, sourceRef: list.sourceRef },
+      ...(list.mergedSources ??
+        (list.id ? saved.get(list.id)?.mergedSources : undefined) ??
+        []),
+    ]) {
+      const checked = await normalizeSource(source, access);
+      if (seen.has(sourceKey(checked))) {
+        throw new ConfigError("Each list can only be added once.");
       }
-      // The IMDb adapter treats any other ref as a watchlist user ID, so a
-      // malformed one would be saved and fail on every catalog request.
-      if (
-        !IMDB_WATCHLIST_SOURCE_ID_PATTERN.test(sourceRef) &&
-        !isChartId(sourceRef)
-      ) {
-        throw new ConfigError(`"${list.sourceRef}" is not a valid IMDb list.`);
-      }
+      seen.add(sourceKey(checked));
+      sources.push(checked);
     }
-    if (sourceRequiresConnection(list.provider, sourceRef)) {
-      if (access.via === "legacy") {
-        throw new ConfigError(
-          `${info.label} lists need your private Addon URL. Upgrade this install first.`,
-        );
-      }
-      if (!access.connected.has(list.provider)) {
-        throw new ConfigError(`Connect your ${info.label} account first.`);
-      }
+    if (seen.size > MAX_SOURCES_PER_ACCOUNT) {
+      throw new ConfigError(
+        `You can have at most ${MAX_SOURCES_PER_ACCOUNT} Source lists in all your Lists.`,
+      );
     }
-    const key = `${list.provider}:${sourceRef}`;
-    if (seen.has(key)) {
-      throw new ConfigError("Each list can only be added once.");
-    }
-    seen.add(key);
-    normalized.push({
+    const [first, ...mergedSources] = sources;
+    const input: ListInput = {
       id: list.id,
-      provider: list.provider,
-      sourceRef,
+      provider: first.provider,
+      sourceRef: first.sourceRef,
       catalogTitle:
         list.catalogTitle && list.catalogTitle.length > 0
           ? list.catalogTitle
@@ -198,7 +254,14 @@ async function normalizeLists(
       displayMode: list.displayMode ?? "split",
       position: index,
       catalogSettings: list.catalogSettings,
+      mergedSources,
+    };
+    const problem = listMergeProblem({
+      ...input,
+      displayMode: input.displayMode as DisplayMode,
     });
+    if (problem) throw new ConfigError(problem);
+    normalized.push(input);
   }
   return normalized;
 }
@@ -219,9 +282,7 @@ function visibleLists(
 ): ConfigList[] {
   return access.via === "private"
     ? lists
-    : lists.filter(
-        (list) => !sourceRequiresConnection(list.provider, list.sourceRef),
-      );
+    : lists.filter((list) => !listRequiresConnection(list));
 }
 
 function requestOrigin(c: Context): string {
@@ -456,6 +517,7 @@ const api = new Hono()
         normalized = await normalizeLists(lists, {
           via: access.via,
           connected,
+          saved: await getAccountLists(access.account.id),
         });
       } catch (error) {
         if (error instanceof ConfigError) {
@@ -538,6 +600,7 @@ const api = new Hono()
             listId: list.id,
             provider: list.provider,
             sourceRef: list.sourceRef,
+            mergedSources: list.mergedSources,
             sort: parseSortOption(list.sortOption),
             rpdbApiKey: account.rpdbApiKey,
             allowConnection: access.via === "private",

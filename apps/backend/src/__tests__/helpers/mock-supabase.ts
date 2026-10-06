@@ -48,6 +48,7 @@ const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
     id: crypto.randomUUID(),
     catalog_title: "",
     catalog_settings: {},
+    merged_sources: [],
     display_mode: "split",
     position: 0,
     sort_option: "added_at-asc",
@@ -562,6 +563,9 @@ function replaceAccountConfig(args: RpcArgs): Result {
         ...("catalog_settings" in item
           ? { catalog_settings: item.catalog_settings }
           : {}),
+        ...("merged_sources" in item
+          ? { merged_sources: item.merged_sources }
+          : {}),
         updated_at: now(),
       };
       const conflict = db.uniqueViolation("lists", next, existing);
@@ -574,6 +578,7 @@ function replaceAccountConfig(args: RpcArgs): Result {
           id: item.id,
           account_id: accountId,
           catalog_settings: item.catalog_settings ?? {},
+          merged_sources: item.merged_sources ?? [],
         });
       } catch (error) {
         return { data: null, error: uniqueError(String(error)) };
