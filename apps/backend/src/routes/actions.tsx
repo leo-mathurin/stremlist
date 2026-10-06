@@ -144,7 +144,9 @@ actions.get("/:accountId/actions/:kind/:op/:type/:id", async (c) => {
   const add = op === "add";
   // Watchlist Actions apply to the whole series, not to one episode.
   const effective =
-    kind === "watchlist" ? { imdbId: target.imdbId, type: target.type } : target;
+    kind === "watchlist"
+      ? { imdbId: target.imdbId, type: target.type }
+      : target;
   const outcomes = await performAction(
     account,
     providers,
@@ -200,10 +202,17 @@ async function renderRating(c: Context) {
           {ratings.map(({ provider, rating }) => (
             <label class="provider">
               <span>
-                <input type="checkbox" name="providers" value={provider} checked />{" "}
+                <input
+                  type="checkbox"
+                  name="providers"
+                  value={provider}
+                  checked
+                />{" "}
                 {PROVIDERS[provider].label}
               </span>
-              <small>{rating === null ? "Not rated" : `Now ${rating}/10`}</small>
+              <small>
+                {rating === null ? "Not rated" : `Now ${rating}/10`}
+              </small>
             </label>
           ))}
         </fieldset>
@@ -212,7 +221,13 @@ async function renderRating(c: Context) {
             Save rating
           </button>
           {current !== null && (
-            <button class="secondary" type="submit" name="remove" value="1" formnovalidate>
+            <button
+              class="secondary"
+              type="submit"
+              name="remove"
+              value="1"
+              formnovalidate
+            >
               Remove rating
             </button>
           )}
@@ -236,8 +251,10 @@ actions.post("/:accountId/actions/rating/rate/:type/:id", async (c) => {
     return renderRating(c);
   }
   const submitted: unknown = form.providers;
-  const chosen = (Array.isArray(submitted) ? submitted : [submitted])
-    .filter((value): value is ProviderId => typeof value === "string" && isProviderId(value));
+  const chosen = (Array.isArray(submitted) ? submitted : [submitted]).filter(
+    (value): value is ProviderId =>
+      typeof value === "string" && isProviderId(value),
+  );
   const providers = supporting(await actionProviders(account), "rating").filter(
     (provider) => chosen.includes(provider),
   );

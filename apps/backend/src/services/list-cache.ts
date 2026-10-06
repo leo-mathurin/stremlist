@@ -161,10 +161,7 @@ function setMemoryValue<T>(
   }
 }
 
-function cacheDeletedManifest(
-  listId: string,
-  deletedGeneration: string,
-): void {
+function cacheDeletedManifest(listId: string, deletedGeneration: string): void {
   const entry = manifestMemoryCache.get(listId);
   if (entry?.value && entry.value.generation !== deletedGeneration) return;
   setMemoryValue(manifestMemoryCache, listId, null);
@@ -206,9 +203,7 @@ async function readManifestFromR2(listId: string): Promise<ManifestRead> {
   }
 }
 
-async function readManifest(
-  listId: string,
-): Promise<CacheManifest | null> {
+async function readManifest(listId: string): Promise<CacheManifest | null> {
   const cached = getMemoryValue(manifestMemoryCache, listId);
   if (cached !== undefined) return cached;
 
@@ -449,9 +444,7 @@ export async function findCachedMeta(
   return null;
 }
 
-export async function deleteCachedList(
-  listId: string,
-): Promise<void> {
+export async function deleteCachedList(listId: string): Promise<void> {
   let current: ManifestRead;
   try {
     current = await readManifestFromR2(listId);

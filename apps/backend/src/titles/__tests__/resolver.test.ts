@@ -75,6 +75,7 @@ describe("resolveEntries", () => {
         { imdbId: "tt0068646", entry: entries[1] },
       ],
       unresolved: 0,
+      deferred: 0,
     });
     expect(first.resolve).not.toHaveBeenCalled();
     expect(db.getTable("title_id_map")).toEqual([]);
@@ -86,7 +87,7 @@ describe("resolveEntries", () => {
       { imdbId: "tt12abc" },
     ]);
 
-    expect(result).toEqual({ resolved: [], unresolved: 2 });
+    expect(result).toEqual({ resolved: [], unresolved: 2, deferred: 0 });
   });
 
   it("counts entries without a resolution key as unresolved", async () => {
@@ -170,7 +171,7 @@ describe("resolveEntries", () => {
 
     const result = await resolveEntries(adapter([first]), [tmdb(7)]);
 
-    expect(result).toEqual({ resolved: [], unresolved: 1 });
+    expect(result).toEqual({ resolved: [], unresolved: 1, deferred: 0 });
     const row = cacheRow("7");
     expect(row).toMatchObject({ imdb_id: null, strategy: null });
     const wait = Date.parse(row?.retry_after as string) - Date.now();
@@ -224,18 +225,57 @@ describe("resolveEntries", () => {
 
     const firstRun = await resolveEntries(adapter([first]), entries);
 
-    expect(first.resolve).toHaveBeenCalledOnce();
-    expect(first.resolve.mock.calls[0][0]).toHaveLength(300);
+    // Chunks of 50, so a slow strategy can stop at the time budget.
+    const sent = first.resolve.mock.calls.map(
+      (call) => (call[0] as SourceEntry[]).length,
+    );
+    expect(sent).toEqual([50, 50, 50, 50, 50, 50]);
     expect(firstRun.resolved).toHaveLength(300);
     expect(firstRun.unresolved).toBe(50);
+    expect(firstRun.deferred).toBe(50);
     // Entries over the cap are not marked as failures: the next refresh
     // resolves them right away.
     expect(cacheRow("301")).toBeUndefined();
 
+    first.resolve.mockClear();
     const secondRun = await resolveEntries(adapter([first]), entries);
 
-    expect(first.resolve.mock.calls[1][0]).toHaveLength(50);
+    expect(
+      first.resolve.mock.calls.map((call) => (call[0] as SourceEntry[]).length),
+    ).toEqual([50]);
     expect(secondRun.unresolved).toBe(0);
+    expect(secondRun.deferred).toBe(0);
+  });
+
+  it("stops starting chunks once the time budget is spent", async () => {
+    const entries = Array.from({ length: 120 }, (_, index) => tmdb(index + 1));
+    const known = strategy(
+      "slow",
+      Object.fromEntries(
+        entries.map((_, index) => [
+          index + 1,
+          `tt${String(index + 1).padStart(7, "0")}`,
+        ]),
+      ),
+    );
+    const slow = {
+      name: "slow",
+      resolve: vi.fn(async (batch: SourceEntry[]) => {
+        await new Promise((done) => setTimeout(done, 15));
+        return known.resolve(batch);
+      }),
+    };
+
+    const result = await resolveEntries(adapter([slow]), entries, {
+      budgetMs: 10,
+    });
+
+    // The first chunk always runs; the budget stops the next ones.
+    expect(slow.resolve).toHaveBeenCalledOnce();
+    expect(result.resolved).toHaveLength(50);
+    expect(result.deferred).toBe(70);
+    // Untried entries leave no cache row, so they are not delayed a day.
+    expect(cacheRow("51")).toBeUndefined();
   });
 
   it("caches a Title that appears twice in the same Source list", async () => {

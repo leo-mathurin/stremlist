@@ -159,7 +159,8 @@ function slotEntries(
 ): StremioStream[] {
   const withIt = members.filter((m) => m.has).map((m) => m.provider);
   const without = members.filter((m) => !m.has).map((m) => m.provider);
-  const single = members.length === 1 ? PROVIDERS[members[0].provider].label : null;
+  const single =
+    members.length === 1 ? PROVIDERS[members[0].provider].label : null;
 
   if (without.length === 0) {
     return [
@@ -174,7 +175,9 @@ function slotEntries(
     return [
       {
         name: STREAM_NAME,
-        title: single ? labels.add(single) : `${labels.add(null)}\n${joinNames(without)}`,
+        title: single
+          ? labels.add(single)
+          : `${labels.add(null)}\n${joinNames(without)}`,
         externalUrl: link("add"),
       },
     ];
@@ -215,7 +218,8 @@ export async function buildActionStreams(
       ) {
         scheduleBackgroundTask(async () => {
           const connection = await getConnectionAccess(account.id, provider);
-          if (connection) await refreshMembership(account.id, provider, connection);
+          if (connection)
+            await refreshMembership(account.id, provider, connection);
         });
       }
       return { provider, membership: stored?.membership ?? EMPTY_MEMBERSHIP };
@@ -230,19 +234,24 @@ export async function buildActionStreams(
   const streams: StremioStream[] = [];
   const { imdbId, episode } = target;
 
-  const watchlistMembers = supporting("watchlist").map(({ provider, membership }) => ({
-    provider,
-    has: membership.watchlist.includes(imdbId),
-  }));
+  const watchlistMembers = supporting("watchlist").map(
+    ({ provider, membership }) => ({
+      provider,
+      has: membership.watchlist.includes(imdbId),
+    }),
+  );
   if (watchlistMembers.length > 0) {
     const single = watchlistMembers.length === 1;
     streams.push(
       ...slotEntries(
         watchlistMembers,
         {
-          add: (name) => (name ? `🔖 Add to ${name} watchlist` : "🔖 Add to watchlist"),
+          add: (name) =>
+            name ? `🔖 Add to ${name} watchlist` : "🔖 Add to watchlist",
           has: (names) =>
-            single ? `🔖 In your ${names} watchlist` : `🔖 In watchlist on ${names}`,
+            single
+              ? `🔖 In your ${names} watchlist`
+              : `🔖 In watchlist on ${names}`,
           remove: "🔖 Remove from watchlist",
           alreadyNote: "already on",
           undo: single ? "Select to remove" : "Select to remove from all",
@@ -252,27 +261,39 @@ export async function buildActionStreams(
     );
   }
 
-  const episodeKey = episode ? `${imdbId}:${episode.season}:${episode.episode}` : null;
-  const episodeLabel = episode ? `S${pad(episode.season)}E${pad(episode.episode)}` : null;
-  const watchedMembers = supporting("watched").map(({ provider, membership }) => ({
-    provider,
-    has: episodeKey
-      ? membership.watchedEpisodes.includes(episodeKey)
-      : membership.watched.includes(imdbId),
-  }));
+  const episodeKey = episode
+    ? `${imdbId}:${episode.season}:${episode.episode}`
+    : null;
+  const episodeLabel = episode
+    ? `S${pad(episode.season)}E${pad(episode.episode)}`
+    : null;
+  const watchedMembers = supporting("watched").map(
+    ({ provider, membership }) => ({
+      provider,
+      has: episodeKey
+        ? membership.watchedEpisodes.includes(episodeKey)
+        : membership.watched.includes(imdbId),
+    }),
+  );
   if (watchedMembers.length > 0) {
     const single = watchedMembers.length === 1;
-    const what = episodeLabel ? `Mark ${episodeLabel} as watched` : "Mark as watched";
+    const what = episodeLabel
+      ? `Mark ${episodeLabel} as watched`
+      : "Mark as watched";
     streams.push(
       ...slotEntries(
         watchedMembers,
         {
           add: (name) => (name ? `✅ ${what} on ${name}` : `✅ ${what}`),
           has: (names) =>
-            episodeLabel ? `✅ ${episodeLabel} watched on ${names}` : `✅ Watched on ${names}`,
+            episodeLabel
+              ? `✅ ${episodeLabel} watched on ${names}`
+              : `✅ Watched on ${names}`,
           remove: "✅ Mark as unwatched",
           alreadyNote: "already watched on",
-          undo: single ? "Select to mark as unwatched" : "Select to mark as unwatched everywhere",
+          undo: single
+            ? "Select to mark as unwatched"
+            : "Select to mark as unwatched everywhere",
         },
         (op) => link("watched", op),
       ),
@@ -282,19 +303,32 @@ export async function buildActionStreams(
   const raters = supporting("rating");
   if (raters.length > 0) {
     const ratings = raters
-      .map(({ provider, membership }) => ({ provider, rating: membership.ratings[imdbId] }))
-      .filter((r): r is { provider: ProviderId; rating: number } => typeof r.rating === "number");
+      .map(({ provider, membership }) => ({
+        provider,
+        rating: membership.ratings[imdbId],
+      }))
+      .filter(
+        (r): r is { provider: ProviderId; rating: number } =>
+          typeof r.rating === "number",
+      );
     const names = joinNames(raters.map((r) => r.provider));
     const series = target.type === "series" ? " series" : "";
     let title: string;
     if (ratings.length === 0) {
-      title = raters.length === 1 ? `⭐ Rate${series} on ${names}` : `⭐ Rate${series}\n1 to 10, on ${names}`;
+      title =
+        raters.length === 1
+          ? `⭐ Rate${series} on ${names}`
+          : `⭐ Rate${series}\n1 to 10, on ${names}`;
     } else if (new Set(ratings.map((r) => r.rating)).size === 1) {
       title = `⭐ Rated ${ratings[0].rating}/10, change\n${names}`;
     } else {
       title = `⭐ ${ratings.map((r) => `${r.rating}/10 on ${PROVIDERS[r.provider].label}`).join(", ")}, change`;
     }
-    streams.push({ name: STREAM_NAME, title, externalUrl: link("rating", "rate") });
+    streams.push({
+      name: STREAM_NAME,
+      title,
+      externalUrl: link("rating", "rate"),
+    });
   }
 
   return streams;
@@ -331,7 +365,9 @@ function applyToMembership(
     }
   } else if (intent.rating === null) {
     next.ratings = Object.fromEntries(
-      Object.entries(next.ratings).filter(([imdbId]) => imdbId !== target.imdbId),
+      Object.entries(next.ratings).filter(
+        ([imdbId]) => imdbId !== target.imdbId,
+      ),
     );
   } else {
     next.ratings[target.imdbId] = intent.rating;
@@ -375,12 +411,19 @@ export async function performAction(
         await writeMembership(
           account.id,
           provider,
-          applyToMembership(stored?.membership ?? EMPTY_MEMBERSHIP, intent, target),
+          applyToMembership(
+            stored?.membership ?? EMPTY_MEMBERSHIP,
+            intent,
+            target,
+          ),
         );
         const affected = new Set(actions.affectedSources(intent));
         await Promise.all(
           lists
-            .filter((list) => list.provider === provider && affected.has(list.sourceRef))
+            .filter(
+              (list) =>
+                list.provider === provider && affected.has(list.sourceRef),
+            )
             .map((list) => markCachedListStale(list.id)),
         );
       } catch (error) {

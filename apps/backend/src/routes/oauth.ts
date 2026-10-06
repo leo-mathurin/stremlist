@@ -40,12 +40,18 @@ oauth.get("/oauth/:provider/callback", async (c) => {
 
   try {
     const origin = new URL(c.req.url).origin;
-    const tokens = await exchangeCode(provider, code, pending.codeVerifier, origin);
+    const tokens = await exchangeCode(
+      provider,
+      code,
+      pending.codeVerifier,
+      origin,
+    );
     let username: string | null = null;
     try {
       username =
-        (await getProvider(provider).oauth?.fetchUsername?.(tokens.accessToken)) ??
-        null;
+        (await getProvider(provider).oauth?.fetchUsername?.(
+          tokens.accessToken,
+        )) ?? null;
     } catch (usernameError) {
       console.error(
         `Fetching the ${provider} username failed:`,

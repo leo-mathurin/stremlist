@@ -33,8 +33,14 @@ export function isOAuthConfigured(provider: ProviderId): boolean {
 }
 
 /** The callback URL registered with every Provider app. */
-export function redirectUri(provider: ProviderId, requestOrigin: string): string {
-  const base = (process.env.BACKEND_PUBLIC_URL ?? requestOrigin).replace(/\/+$/, "");
+export function redirectUri(
+  provider: ProviderId,
+  requestOrigin: string,
+): string {
+  const base = (process.env.BACKEND_PUBLIC_URL ?? requestOrigin).replace(
+    /\/+$/,
+    "",
+  );
   return `${base}/oauth/${provider}/callback`;
 }
 
@@ -71,7 +77,8 @@ export async function startAuthorization(
   url.searchParams.set("state", state);
   url.searchParams.set("code_challenge", pkceChallenge(verifier));
   url.searchParams.set("code_challenge_method", "S256");
-  if (config.scopes?.length) url.searchParams.set("scope", config.scopes.join(" "));
+  if (config.scopes?.length)
+    url.searchParams.set("scope", config.scopes.join(" "));
   for (const [key, value] of Object.entries(config.authorizeParams ?? {})) {
     url.searchParams.set(key, value);
   }

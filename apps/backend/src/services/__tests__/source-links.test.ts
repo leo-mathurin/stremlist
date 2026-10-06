@@ -102,10 +102,11 @@ describe("parseSourceLink: Trakt", () => {
 
 describe("parseSourceLink: MDBList", () => {
   it("reads a list, which always needs a Connection", () => {
+    // The backend resolves user and slug to a list ID, so case is kept.
     expect(
       parseSourceLink("https://mdblist.com/lists/LeoM/Top-Movies-2026"),
     ).toEqual(
-      parsed("mdblist", "lists/leom/top-movies-2026", "list", {
+      parsed("mdblist", "lists/LeoM/Top-Movies-2026", "list", {
         requiresConnection: true,
       }),
     );

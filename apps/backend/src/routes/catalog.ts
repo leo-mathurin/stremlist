@@ -161,9 +161,7 @@ async function serveCatalog(c: Context) {
     );
 
     if (!list) {
-      console.warn(
-        `List not found for ${accountKey}: ${parsedCatalog.listId}`,
-      );
+      console.warn(`List not found for ${accountKey}: ${parsedCatalog.listId}`);
       return c.json({ metas: [] });
     }
     // Lists read through a Connection never answer through a Legacy alias.
@@ -212,10 +210,7 @@ async function serveCatalog(c: Context) {
     // return 200 with an informational card so Stremio shows the user *why* the
     // catalog is empty instead of a 500 it would retry-storm — that retry storm
     // on private watchlists was the dominant prod error flood.
-    if (
-      err instanceof ListUnavailableError &&
-      err.reason !== "unavailable"
-    ) {
+    if (err instanceof ListUnavailableError && err.reason !== "unavailable") {
       console.warn(
         `Catalog unavailable for ${accountKey} (${err.reason}): ${requestedType}/${catalogId}`,
       );

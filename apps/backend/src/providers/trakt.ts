@@ -84,7 +84,8 @@ export const traktProvider: ProviderAdapter = {
             {
               ref: `me/lists/${String(id).toLowerCase()}`,
               kind: "list" as const,
-              label: list.name?.trim() || String(id),
+              // An empty name falls back to the slug.
+              label: list.name?.trim() ? list.name.trim() : String(id),
               defaultDisplayMode: "split" as const,
             },
           ];

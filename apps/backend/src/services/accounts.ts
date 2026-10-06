@@ -130,7 +130,10 @@ export async function ensureLegacyAccount(
     .select("*")
     .single();
   if (error) {
-    console.error(`Failed to create legacy account ${imdbUserId}:`, error.message);
+    console.error(
+      `Failed to create legacy account ${imdbUserId}:`,
+      error.message,
+    );
     throw error;
   }
 
@@ -167,7 +170,9 @@ export async function createAccount(): Promise<Account> {
   return mapAccount(data);
 }
 
-export async function getAccountLists(accountId: string): Promise<ConfigList[]> {
+export async function getAccountLists(
+  accountId: string,
+): Promise<ConfigList[]> {
   const { data, error } = await supabase
     .from("lists")
     .select("*")

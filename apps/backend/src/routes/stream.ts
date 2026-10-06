@@ -15,7 +15,10 @@ stream.get("/:accountKey/stream/:type/:id.json", async (c) => {
   c.header("Cache-Control", "no-store");
   const empty = { streams: [], cacheMaxAge: 0 };
   const type = c.req.param("type");
-  const id = (c.req.param("id") ?? c.req.param("id.json")).replace(/\.json$/u, "");
+  const id = (c.req.param("id") ?? c.req.param("id.json")).replace(
+    /\.json$/u,
+    "",
+  );
   if (type !== "movie" && type !== "series") return c.json(empty);
 
   const target = parseStreamId(type, decodeURIComponent(id));
@@ -26,8 +29,11 @@ stream.get("/:accountKey/stream/:type/:id.json", async (c) => {
     if (access?.via !== "private") return c.json(empty);
     const origin = backendOrigin(c);
     const accountId = access.account.id;
-    const streams = await buildActionStreams(access.account, target, (kind, op) =>
-      `${origin}/${accountId}/actions/${kind}/${op}/${type}/${encodeURIComponent(id)}`,
+    const streams = await buildActionStreams(
+      access.account,
+      target,
+      (kind, op) =>
+        `${origin}/${accountId}/actions/${kind}/${op}/${type}/${encodeURIComponent(id)}`,
     );
     return c.json({ streams, cacheMaxAge: 0 });
   } catch (error) {

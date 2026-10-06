@@ -13,7 +13,10 @@ export const letterboxdProvider: ProviderAdapter = {
   },
   fetchSource() {
     return Promise.reject(
-      new SourceUnavailableError("coming_soon", "Letterboxd is not available yet"),
+      new SourceUnavailableError(
+        "coming_soon",
+        "Letterboxd is not available yet",
+      ),
     );
   },
 };

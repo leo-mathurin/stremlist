@@ -117,6 +117,7 @@ describe("prewarmLists", () => {
       rpdbApiKey: null,
       allowConnection: true,
       skipAccountTimestamp: true,
+      resolveBudgetMs: 25_000,
     });
     expect(listMocks.getListCatalog).toHaveBeenNthCalledWith(2, {
       accountId: ACCOUNT_ID,
@@ -127,6 +128,7 @@ describe("prewarmLists", () => {
       rpdbApiKey: null,
       allowConnection: true,
       skipAccountTimestamp: true,
+      resolveBudgetMs: 25_000,
     });
     expect(console.log).toHaveBeenCalledWith(
       expect.stringMatching(/^Prewarmed 2\/2 lists in \d+ms$/),

@@ -45,9 +45,7 @@ function getEffectiveTitle(
   return total <= 1 ? "" : String(index + 1);
 }
 
-export function buildManifestCatalogs(
-  lists: ConfigList[],
-): StremioCatalog[] {
+export function buildManifestCatalogs(lists: ConfigList[]): StremioCatalog[] {
   return lists.flatMap((list, index) => {
     const effectiveTitle = getEffectiveTitle(
       list.catalogTitle,
@@ -62,9 +60,7 @@ export function buildManifestCatalogs(
     const genres = [
       ...new Set([
         ...(list.availableGenres ?? []),
-        ...(list.catalogSettings?.genre
-          ? [list.catalogSettings.genre]
-          : []),
+        ...(list.catalogSettings?.genre ? [list.catalogSettings.genre] : []),
       ]),
     ].sort();
     const movieCatalog: StremioCatalog = {

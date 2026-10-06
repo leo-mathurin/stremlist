@@ -609,7 +609,7 @@ const api = new Hono()
     async (c) => {
       const { accountId, provider } = c.req.valid("param");
       const access = await resolveAccountKey(accountId);
-      if (!access || access.via !== "private") {
+      if (access?.via !== "private") {
         return c.json({ error: "Addon not found." }, 404);
       }
       const staticSources = CONNECTION_SOURCES[provider] ?? [];

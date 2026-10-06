@@ -246,6 +246,53 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
     expect(cache.get(LIST_ID)?.data.metas).toHaveLength(2);
   });
 
+  it("asks for a new read soon when the resolver left entries untried", async () => {
+    // 350 entries without an IMDb ID: the resolver tries 300 per read.
+    // IDs from 5000 up: enrichment keeps an in-memory cache between tests.
+    const entries: SourceEntry[] = Array.from({ length: 350 }, (_, index) => ({
+      externalIds: { tmdb: { id: 5000 + index, type: "movie" } },
+      type: "movie",
+    }));
+    useFakeProvider(
+      fakeAdapter("senscritique", {
+        entries,
+        freshnessMs: 6 * 60 * 60_000,
+        resolutionKey: (entry) => ({
+          namespace: "test",
+          externalId: String(entry.externalIds?.tmdb?.id),
+        }),
+        resolverStrategies: [
+          {
+            name: "all",
+            resolve: (pending) =>
+              Promise.resolve(
+                new Map(
+                  pending.map((entry, index): [number, string] => [
+                    index,
+                    `tt${String(entry.externalIds?.tmdb?.id).padStart(7, "0")}`,
+                  ]),
+                ),
+              ),
+          },
+        ],
+      }),
+    );
+    scraperMocks.fetchTitlesByIds.mockImplementation((ids: string[]) =>
+      Promise.resolve(new Map(ids.map((id) => [id, meta(id)]))),
+    );
+
+    await getListCatalog(
+      config({ provider: "senscritique", sourceRef: "users/leo/wishes" }),
+    );
+
+    // Stored as if it went stale two minutes from now, not in six hours.
+    const storedAt = cache.get(LIST_ID)?.cachedAt.getTime() ?? 0;
+    const staleIn = storedAt + 6 * 60 * 60_000 - Date.now();
+    expect(staleIn).toBeGreaterThan(60_000);
+    expect(staleIn).toBeLessThanOrEqual(2 * 60_000);
+    expect(cache.get(LIST_ID)?.data.metas).toHaveLength(300);
+  });
+
   it("reuses metadata from the previous cache generation", async () => {
     const cachedAt = new Date(Date.now() - 2 * 60 * 60_000);
     cache.seed(LIST_ID, [meta("tt0000001", { name: "Cached" })], cachedAt);
