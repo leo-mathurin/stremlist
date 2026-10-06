@@ -3,9 +3,11 @@ import {
   ACCOUNT_ID_PATTERN,
   ACCOUNT_KEY_PATTERN,
   DISPLAY_MODE_OPTIONS,
+  IMDB_WATCHLIST_SOURCE_ID_PATTERN,
   SORT_OPTIONS,
   parseSortOption,
 } from "@stremlist/shared/constants";
+import { isChartId } from "@stremlist/shared/imdb-charts";
 import type { ProviderId } from "@stremlist/shared/providers";
 import {
   PROVIDER_IDS,
@@ -39,7 +41,10 @@ import {
   getConnectionAccess,
   listConnections,
 } from "../services/connections";
-import { getImdbWatchlist, normalizeImdbUserId } from "../services/imdb-scraper";
+import {
+  getImdbWatchlist,
+  normalizeImdbUserId,
+} from "../services/imdb-scraper";
 import { prewarmLists } from "../services/list-prewarm";
 import { getListCatalog } from "../services/lists";
 import {
@@ -132,6 +137,14 @@ async function normalizeLists(
           `Could not resolve the IMDb handle "${list.sourceRef}". Please check it and try again.`,
         );
       }
+      // The IMDb adapter treats any other ref as a watchlist user ID, so a
+      // malformed one would be saved and fail on every catalog request.
+      if (
+        !IMDB_WATCHLIST_SOURCE_ID_PATTERN.test(sourceRef) &&
+        !isChartId(sourceRef)
+      ) {
+        throw new ConfigError(`"${list.sourceRef}" is not a valid IMDb list.`);
+      }
     }
     if (sourceRequiresConnection(list.provider, sourceRef)) {
       if (access.via === "legacy") {
@@ -175,10 +188,15 @@ async function connectedProviders(
 }
 
 /** Lists that a request may see: Legacy alias requests only see public ones. */
-function visibleLists(access: AccountAccess, lists: ConfigList[]): ConfigList[] {
+function visibleLists(
+  access: AccountAccess,
+  lists: ConfigList[],
+): ConfigList[] {
   return access.via === "private"
     ? lists
-    : lists.filter((list) => !sourceRequiresConnection(list.provider, list.sourceRef));
+    : lists.filter(
+        (list) => !sourceRequiresConnection(list.provider, list.sourceRef),
+      );
 }
 
 function requestOrigin(c: Context): string {
@@ -274,7 +292,8 @@ const api = new Hono()
           sourceRef: result.ref,
           kind: parsed.kind,
           requiresConnection: parsed.requiresConnection,
-          suggestedTitle: result.suggestedTitle ?? parsed.suggestedTitle ?? null,
+          suggestedTitle:
+            result.suggestedTitle ?? parsed.suggestedTitle ?? null,
           defaultDisplayMode: result.defaultDisplayMode ?? null,
         });
       } catch (error) {
@@ -385,7 +404,10 @@ const api = new Hono()
       }
       if (access.via === "legacy" && actions?.enabled) {
         return c.json(
-          { error: "Actions need your private Addon URL. Upgrade this install first." },
+          {
+            error:
+              "Actions need your private Addon URL. Upgrade this install first.",
+          },
           400,
         );
       }
@@ -423,7 +445,9 @@ const api = new Hono()
       } catch (error) {
         console.error("Failed to save the configuration:", error);
         return c.json(
-          { error: "Failed to save your configuration. Please try again later." },
+          {
+            error: "Failed to save your configuration. Please try again later.",
+          },
           500,
         );
       }
@@ -520,7 +544,10 @@ const api = new Hono()
         return c.json({ error: "Addon not found. Install it first." }, 404);
       }
       if (access.via !== "legacy") {
-        return c.json({ error: "This install already has a private URL." }, 400);
+        return c.json(
+          { error: "This install already has a private URL." },
+          400,
+        );
       }
       try {
         const account = await createPrivateCopy(access.account);
@@ -530,7 +557,9 @@ const api = new Hono()
       } catch (error) {
         console.error(`Failed to upgrade ${accountKey}:`, error);
         return c.json(
-          { error: "Failed to create your private URL. Please try again later." },
+          {
+            error: "Failed to create your private URL. Please try again later.",
+          },
           500,
         );
       }
@@ -539,14 +568,11 @@ const api = new Hono()
 
   .post(
     "/:accountId/connections/:provider/start",
-    zValidator(
-      "param",
-      accountIdParam.extend({ provider: providerParam }),
-    ),
+    zValidator("param", accountIdParam.extend({ provider: providerParam })),
     async (c) => {
       const { accountId, provider } = c.req.valid("param");
       const access = await resolveAccountKey(accountId);
-      if (!access || access.via !== "private") {
+      if (access?.via !== "private") {
         return c.json({ error: "Addon not found." }, 404);
       }
       if (!isProviderEnabled(provider)) {
@@ -577,14 +603,11 @@ const api = new Hono()
 
   .delete(
     "/:accountId/connections/:provider",
-    zValidator(
-      "param",
-      accountIdParam.extend({ provider: providerParam }),
-    ),
+    zValidator("param", accountIdParam.extend({ provider: providerParam })),
     async (c) => {
       const { accountId, provider } = c.req.valid("param");
       const access = await resolveAccountKey(accountId);
-      if (!access || access.via !== "private") {
+      if (access?.via !== "private") {
         return c.json({ error: "Addon not found." }, 404);
       }
       await deleteConnection(accountId, provider);
