@@ -1,5 +1,11 @@
 import { useId, useState } from "react";
-import { CircleCheck, ExternalLink, Loader2, RotateCw } from "lucide-react";
+import {
+  CircleCheck,
+  Clapperboard,
+  ExternalLink,
+  Loader2,
+  RotateCw,
+} from "lucide-react";
 import type {
   CatalogPreview as CatalogPreviewData,
   CatalogPreviewRow,
@@ -346,8 +352,8 @@ function PosterTile({ title }: { title: PreviewTitle }) {
             )}
           />
         ) : (
-          <span className="flex size-full items-center p-2 text-center text-[11px] leading-tight font-semibold text-pretty text-black/50">
-            {title.name}
+          <span className="flex size-full items-center justify-center text-black/25">
+            <Clapperboard className="size-5" aria-hidden="true" />
           </span>
         )}
         <span
