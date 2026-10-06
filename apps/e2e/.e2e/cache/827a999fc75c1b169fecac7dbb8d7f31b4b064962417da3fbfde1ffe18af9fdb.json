@@ -1,0 +1,100 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-05T21:20:00.266Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Clear filters\"",
+        "target": {
+          "role": "button",
+          "name": "Clear filters"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save\"",
+        "target": {
+          "role": "button",
+          "name": "Save"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/ui.e2e.ts::catalog%20filters%20and%20extra%20presets%20survive%20save%20and%20clear",
+      "targetId": "chromium",
+      "instructionDigest": "b95e750f42d4ecd11672a627cf016c852b932296dc6293e3ede9d998aaeb81ab",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Cleared the Drama genre filter; the panel showed 1 active option remaining and Top rated remained checked. Saved, and the app confirmed: “Saved! Your catalogs will be refreshed with the new settings.”",
+    "startPath": "/configure?userId=ur99123456",
+    "endPath": "/configure?userId=ur99123456",
+    "endAnchors": [
+      {
+        "role": "alert",
+        "name": "Saved! Your catalogs will be refreshed with the new settings."
+      },
+      {
+        "text": "1 active"
+      },
+      {
+        "text": "All genres"
+      },
+      {
+        "text": "Saved! Your catalogs will be refreshed with the new settings."
+      },
+      {
+        "text": "Install / Reinstall Addon in Stremio"
+      },
+      {
+        "text": "Use these install links anytime to reopen or reinstall the addon URL in Stremio."
+      },
+      {
+        "role": "button",
+        "name": "Filters & extra catalogs 1 active",
+        "states": [
+          "expanded"
+        ]
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "alert",
+        "name": "Saved! Catalog structure changed. Reinstall the addon in Stremio to refresh catalogs."
+      },
+      {
+        "text": "2 active"
+      },
+      {
+        "role": "button",
+        "name": "Clear filters"
+      },
+      {
+        "text": "Drama"
+      },
+      {
+        "text": "Saved! Catalog structure changed. Reinstall the addon in Stremio to refresh catalogs."
+      },
+      {
+        "text": "Catalog structure changed: reinstall required in Stremio"
+      },
+      {
+        "text": "Stremio only reads manifest catalogs at install time, so modifications to catalogs will appear after reinstalling this addon URL."
+      },
+      {
+        "role": "button",
+        "name": "Filters & extra catalogs 2 active",
+        "states": [
+          "expanded"
+        ]
+      }
+    ],
+    "endWaitMs": 13207
+  }
+}

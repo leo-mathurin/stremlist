@@ -1,0 +1,89 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-05T22:48:56.493Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap combobox \"Genre\"",
+        "target": {
+          "role": "combobox",
+          "name": "Genre"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap option \"All genres\"",
+        "target": {
+          "role": "option",
+          "name": "All genres"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save\"",
+        "target": {
+          "role": "button",
+          "name": "Save"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/configuration-recovery.e2e.ts::a%20saved%20genre%20missing%20from%20refreshed%20choices%20can%20still%20be%20cleared",
+      "targetId": "chromium",
+      "instructionDigest": "dd03d2b4f8a90e632364927ac3f1353f0c670ce57930ee2cc1288b02b417d4bd",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Selected All genres, left Top rated checked, and saved. The application displayed “Saved! Your catalogs will be refreshed with the new settings.”",
+    "startPath": "/configure?userId=ur99123456",
+    "endPath": "/configure?userId=ur99123456",
+    "endAnchors": [
+      {
+        "role": "alert",
+        "name": "Saved! Your catalogs will be refreshed with the new settings."
+      },
+      {
+        "text": "1 active"
+      },
+      {
+        "text": "All genres"
+      },
+      {
+        "text": "Saved! Your catalogs will be refreshed with the new settings."
+      },
+      {
+        "role": "button",
+        "name": "Filters & extra catalogs 1 active",
+        "states": [
+          "expanded"
+        ]
+      }
+    ],
+    "goneAnchors": [
+      {
+        "text": "2 active"
+      },
+      {
+        "role": "button",
+        "name": "Clear filters"
+      },
+      {
+        "text": "Western"
+      },
+      {
+        "role": "button",
+        "name": "Filters & extra catalogs 2 active",
+        "states": [
+          "expanded"
+        ]
+      }
+    ],
+    "endWaitMs": 12176
+  }
+}

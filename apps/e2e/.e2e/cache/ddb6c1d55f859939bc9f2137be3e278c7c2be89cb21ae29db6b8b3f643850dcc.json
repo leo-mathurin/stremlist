@@ -1,0 +1,106 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-05T22:48:47.125Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"https://www.imdb.com/list/ls99123456/\" into textbox \"ur12345678, p.colneedham, or ls593621567\"",
+        "target": {
+          "role": "textbox",
+          "name": "ur12345678, p.colneedham, or ls593621567",
+          "placeholder": "ur12345678, p.colneedham, or ls593621567"
+        },
+        "value": "https://www.imdb.com/list/ls99123456/"
+      },
+      {
+        "name": "type",
+        "summary": "type \"Weekend films\" into textbox \"Tom Hardy's Watchlist\"",
+        "target": {
+          "role": "textbox",
+          "name": "Tom Hardy's Watchlist",
+          "placeholder": "Tom Hardy's Watchlist"
+        },
+        "value": "Weekend films"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save\"",
+        "target": {
+          "role": "button",
+          "name": "Save"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/configuration-recovery.e2e.ts::invalid%20catalog%20source%20blocks%20save%2C%20then%20a%20pasted%20list%20URL%20repairs%20it",
+      "targetId": "chromium",
+      "instructionDigest": "511a0db963aaf3a046c0df84c73eadf17c1b4e0cff2a60863ca8d11c2347594f",
+      "paramsDigest": "9cea336b9cfdfb09af0af98b8446816dade021b671703b45e1178724bdae9120",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Repaired the catalog source with https://www.imdb.com/list/ls99123456/ (normalized to ls99123456), named it “Weekend films,” and saved. The page confirms: “Saved! Catalog structure changed. Reinstall the addon in Stremio to refresh catalogs.”",
+    "startPath": "/configure?userId=ur99123456",
+    "endPath": "/configure?userId=ur99123456",
+    "endAnchors": [
+      {
+        "role": "alert",
+        "name": "Saved! Catalog structure changed. Reinstall the addon in Stremio to refresh catalogs."
+      },
+      {
+        "role": "textbox",
+        "name": "ur12345678, p.colneedham, or ls593621567",
+        "placeholder": "ur12345678, p.colneedham, or ls593621567",
+        "value": "ls99123456"
+      },
+      {
+        "role": "textbox",
+        "name": "Tom Hardy's Watchlist",
+        "placeholder": "Tom Hardy's Watchlist",
+        "value": "Weekend films"
+      },
+      {
+        "text": "Saved! Catalog structure changed. Reinstall the addon in Stremio to refresh catalogs."
+      },
+      {
+        "text": "Catalog structure changed: reinstall required in Stremio"
+      },
+      {
+        "text": "Stremio only reads manifest catalogs at install time, so modifications to catalogs will appear after reinstalling this addon URL."
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "alert",
+        "name": "Each watchlist needs a valid IMDb User ID or List ID (e.g. \"ur12345678\" or \"ls593621567\")."
+      },
+      {
+        "role": "textbox",
+        "name": "ur12345678, p.colneedham, or ls593621567",
+        "placeholder": "ur12345678, p.colneedham, or ls593621567",
+        "value": "not-an-imdb-source"
+      },
+      {
+        "role": "textbox",
+        "name": "Tom Hardy's Watchlist",
+        "placeholder": "Tom Hardy's Watchlist",
+        "value": "Test catalog"
+      },
+      {
+        "text": "Each watchlist needs a valid IMDb User ID or List ID (e.g. \"ur12345678\" or \"ls593621567\")."
+      },
+      {
+        "text": "Install / Reinstall Addon in Stremio"
+      },
+      {
+        "text": "Use these install links anytime to reopen or reinstall the addon URL in Stremio."
+      }
+    ],
+    "endWaitMs": 12724
+  }
+}

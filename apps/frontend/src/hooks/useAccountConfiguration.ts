@@ -1,4 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
 import {
   CONNECTION_SOURCES,
@@ -136,6 +142,11 @@ export function useAccountConfiguration(
   const [baselineSignature, setBaselineSignature] = useState("");
   const [status, setStatus] = useState<ConfigStatus>(null);
   const previousKey = useRef(accountKey);
+  const currentForm = useRef({ lists, rpdbApiKey });
+  // Save responses must see edits committed while the request was in flight.
+  useLayoutEffect(() => {
+    currentForm.current = { lists, rpdbApiKey };
+  }, [lists, rpdbApiKey]);
 
   useEffect(() => {
     api.providers
@@ -376,8 +387,8 @@ export function useAccountConfiguration(
     return null;
   })();
 
-  const listPayload = () =>
-    lists.map((list, index) => ({
+  const listPayload = (rows: ListFormRow[] = lists) =>
+    rows.map((list, index) => ({
       id: list.id,
       provider: list.provider,
       sourceRef: list.sourceRef.trim(),
@@ -433,11 +444,16 @@ export function useAccountConfiguration(
       const requiresReinstall =
         baselineSignature.length > 0 && currentSignature !== baselineSignature;
 
+      const submittedLists = lists;
+      const submittedPayload = JSON.stringify({
+        rpdbApiKey,
+        lists: listPayload(submittedLists),
+      });
       const res = await api[":accountKey"].config.$post({
         param: { accountKey },
         json: {
           rpdbApiKey,
-          lists: listPayload(),
+          lists: listPayload(submittedLists),
           actions:
             access === "private"
               ? {
@@ -454,27 +470,56 @@ export function useAccountConfiguration(
         throw new Error(errorMessage(body, "Failed to save."));
       }
 
-      const savedLists = body.lists;
+      const savedRows = submittedLists.map((row, index) => {
+        const saved = body.lists[index];
+        return saved
+          ? {
+              ...row,
+              id: saved.id,
+              sourceRef: saved.sourceRef,
+              availableGenres: saved.availableGenres ?? [],
+            }
+          : row;
+      });
+      const latest = currentForm.current;
+      const hasUnsavedChanges =
+        JSON.stringify({
+          rpdbApiKey: latest.rpdbApiKey,
+          lists: listPayload(latest.lists),
+        }) !== submittedPayload;
+      // Match rows by their local ID: the user may have added, removed or
+      // reordered Lists while the save was in flight.
+      const savedByLocalId = new Map(
+        savedRows.map((row) => [row.localId, row]),
+      );
+      const submittedByLocalId = new Map(
+        submittedLists.map((row) => [row.localId, row]),
+      );
       setLists((current) =>
-        current.map((row, index) => {
-          const saved = savedLists[index];
-          return saved
-            ? {
-                ...row,
-                id: saved.id,
-                sourceRef: saved.sourceRef,
-                availableGenres: saved.availableGenres ?? [],
-              }
-            : row;
+        current.map((row) => {
+          const saved = savedByLocalId.get(row.localId);
+          const submitted = submittedByLocalId.get(row.localId);
+          if (!saved || !submitted) return row;
+          const sourceUnchanged = row.sourceRef === submitted.sourceRef;
+          return {
+            ...row,
+            id: saved.id,
+            sourceRef: sourceUnchanged ? saved.sourceRef : row.sourceRef,
+            availableGenres: sourceUnchanged
+              ? saved.availableGenres
+              : row.availableGenres,
+          };
         }),
       );
       setShowReinstallHint(requiresReinstall);
-      setBaselineSignature(currentSignature);
+      setBaselineSignature(getListReinstallSignature(savedRows));
       setStatus({
         type: "success",
-        message: requiresReinstall
-          ? "Saved! The catalog structure changed. Reinstall Stremlist in Stremio to see the new catalogs."
-          : "Saved! Your catalogs will refresh with the new settings.",
+        message: hasUnsavedChanges
+          ? "Saved the submitted settings. You have unsaved changes: save again to apply them."
+          : requiresReinstall
+            ? "Saved! The catalog structure changed. Reinstall Stremlist in Stremio to see the new catalogs."
+            : "Saved! Your catalogs will refresh with the new settings.",
       });
     } catch (err) {
       setStatus({

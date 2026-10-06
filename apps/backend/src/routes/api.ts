@@ -84,7 +84,11 @@ const listBody = z.object({
   id: z.string().uuid().optional(),
   provider: providerParam,
   sourceRef: z.string().trim().min(1).max(300),
-  catalogTitle: z.string().trim().max(60).optional(),
+  catalogTitle: z
+    .string()
+    .trim()
+    .max(60, "Catalog titles must be 60 characters or fewer.")
+    .optional(),
   sortOption: z.enum(sortOptionValues),
   displayMode: z.enum(displayModeValues).optional(),
   position: z.number().int().min(0).optional(),
@@ -99,6 +103,17 @@ const configBody = z.object({
   lists: z.array(listBody).min(1).max(MAX_LISTS),
   actions: actionsBody.optional(),
 });
+
+// Report the first schema problem with the same `{ error }` string as other
+// configuration failures, not as a raw Zod issue object.
+function firstIssueAsError(
+  result: { success: true } | { success: false; error: z.ZodError },
+  c: Context,
+) {
+  if (!result.success) {
+    return c.json({ error: result.error.issues[0].message }, 400);
+  }
+}
 
 type ListBody = z.infer<typeof listBody>;
 
@@ -321,42 +336,48 @@ const api = new Hono()
   )
 
   // Create an Account with its first Lists. Returns the private Account ID.
-  .post("/accounts", zValidator("json", configBody), async (c) => {
-    const { rpdbApiKey, lists } = c.req.valid("json");
-    let normalized: ListInput[];
-    try {
-      normalized = await normalizeLists(lists, {
-        via: "private",
-        connected: new Set(),
-      });
-    } catch (error) {
-      if (error instanceof ConfigError) {
-        return c.json({ error: error.message }, error.status);
+  .post(
+    "/accounts",
+    zValidator("json", configBody, firstIssueAsError),
+    async (c) => {
+      const { rpdbApiKey, lists } = c.req.valid("json");
+      let normalized: ListInput[];
+      try {
+        normalized = await normalizeLists(lists, {
+          via: "private",
+          connected: new Set(),
+        });
+      } catch (error) {
+        if (error instanceof ConfigError) {
+          return c.json({ error: error.message }, error.status);
+        }
+        throw error;
       }
-      throw error;
-    }
 
-    try {
-      const account = await createAccount();
-      const saved = await replaceAccountConfig(
-        account.id,
-        normalized,
-        rpdbApiKey && rpdbApiKey.length > 0 ? rpdbApiKey : null,
-      );
-      scheduleBackgroundTask(() => prewarmLists(account.id, saved, true));
-      return c.json({
-        ok: true as const,
-        accountId: account.id,
-        lists: await withAvailableGenres(saved),
-      });
-    } catch (error) {
-      console.error("Failed to create an account:", error);
-      return c.json(
-        { error: "Failed to save your configuration. Please try again later." },
-        500,
-      );
-    }
-  })
+      try {
+        const account = await createAccount();
+        const saved = await replaceAccountConfig(
+          account.id,
+          normalized,
+          rpdbApiKey && rpdbApiKey.length > 0 ? rpdbApiKey : null,
+        );
+        scheduleBackgroundTask(() => prewarmLists(account.id, saved, true));
+        return c.json({
+          ok: true as const,
+          accountId: account.id,
+          lists: await withAvailableGenres(saved),
+        });
+      } catch (error) {
+        console.error("Failed to create an account:", error);
+        return c.json(
+          {
+            error: "Failed to save your configuration. Please try again later.",
+          },
+          500,
+        );
+      }
+    },
+  )
 
   .get(
     "/:accountKey/config",
@@ -393,7 +414,7 @@ const api = new Hono()
   .post(
     "/:accountKey/config",
     zValidator("param", accountKeyParam),
-    zValidator("json", configBody),
+    zValidator("json", configBody, firstIssueAsError),
     async (c) => {
       const { accountKey } = c.req.valid("param");
       const { rpdbApiKey, lists, actions } = c.req.valid("json");
@@ -691,12 +712,18 @@ const api = new Hono()
           unsubscribed: false,
           audienceId: process.env.RESEND_AUDIENCE_ID,
         });
+        // Resend returns provider failures as data rather than rejecting.
+        if (contact.error) {
+          throw Object.assign(new Error(contact.error.message), {
+            statusCode: contact.error.statusCode,
+          });
+        }
 
         return c.json({
           success: true,
           message:
             "Successfully subscribed! You'll be notified about new features and updates.",
-          contactId: contact.data?.id,
+          contactId: contact.data.id,
         });
       } catch (err: unknown) {
         console.error(`Newsletter subscription error for ${email}:`, err);

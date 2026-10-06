@@ -1,0 +1,116 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-05T22:48:34.385Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"ur99887766\" into textbox \"IMDb User ID:\"",
+        "target": {
+          "role": "textbox",
+          "name": "IMDb User ID:",
+          "placeholder": "ur12345678 or p.colneedham"
+        },
+        "value": "ur99887766"
+      },
+      {
+        "name": "press",
+        "summary": "press \"Enter\" on textbox \"IMDb User ID:\"",
+        "target": {
+          "role": "textbox",
+          "name": "IMDb User ID:",
+          "placeholder": "ur12345678 or p.colneedham"
+        },
+        "key": "Enter"
+      },
+      {
+        "name": "tap",
+        "summary": "tap link \"Configure your Stremlist\"",
+        "target": {
+          "role": "link",
+          "name": "Configure your Stremlist"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/account-newsletter.e2e.ts::returning%20home%20and%20selecting%20another%20account%20replaces%20the%20previous%20form",
+      "targetId": "chromium",
+      "instructionDigest": "9eb8da42120e7984b965b2273125808069cd23079835528e68cbd10191a8ed7b",
+      "paramsDigest": "39f1d93064c5a72bc35b017e28ed90fd45df0eddbcc52ba0087cccfb381e1b35",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Changed the IMDb account to ur99887766 and opened its configuration. The configuration page confirms “Settings for ur99887766” and shows the corresponding manifest URL.",
+    "startPath": "/?userId=ur99123456",
+    "endPath": "/configure?userId=ur99887766",
+    "endAnchors": [
+      {
+        "role": "link",
+        "name": "← Back to Home"
+      },
+      {
+        "role": "heading",
+        "name": "Configure"
+      },
+      {
+        "text": "ur99887766"
+      },
+      {
+        "role": "button",
+        "name": "Refresh now"
+      },
+      {
+        "role": "heading",
+        "name": "Catalogs"
+      },
+      {
+        "role": "button",
+        "name": "Add Built-in Catalog"
+      },
+      {
+        "role": "button",
+        "name": "Add Catalog"
+      },
+      {
+        "role": "button",
+        "name": "Drag to reorder"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "alert",
+        "name": "Welcome back, ur99123456!"
+      },
+      {
+        "role": "heading",
+        "name": "Connect IMDb to Stremio"
+      },
+      {
+        "text": "Powering 2 watchlists so far..."
+      },
+      {
+        "text": "Stremlist brings your IMDb watchlists and lists directly into Stremio."
+      },
+      {
+        "text": "Enter your IMDb User ID below to get started."
+      },
+      {
+        "text": "IMDb User ID:"
+      },
+      {
+        "role": "textbox",
+        "name": "IMDb User ID:",
+        "placeholder": "ur12345678 or p.colneedham",
+        "value": "ur99123456"
+      },
+      {
+        "text": "Paste your IMDb profile URL or just the ID (e.g., ur12345678 or p.colneedham). You can find it in your IMDb profile URL."
+      }
+    ],
+    "endWaitMs": 13345
+  }
+}

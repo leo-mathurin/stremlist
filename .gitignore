@@ -3,7 +3,6 @@
 
 # Dependencies
 node_modules/
-.pnpm-store/
 .yarn/
 !.yarn/releases
 
@@ -23,7 +22,6 @@ logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
 lerna-debug.log*
 
 # Editor / IDE
@@ -50,3 +48,7 @@ supabase/.temp/
 # Playwright
 test-results/
 playwright-report/
+
+# tester-army/e2e reports are local; verified action recordings are shared.
+**/.e2e/*
+!**/.e2e/cache/
