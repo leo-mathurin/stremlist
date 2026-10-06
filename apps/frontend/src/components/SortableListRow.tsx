@@ -33,14 +33,6 @@ import {
 const FIELD_FOCUS = "focus-visible:ring-brand/50 focus-visible:border-brand";
 const SELECT_FOCUS = "focus:ring-brand/50 focus:border-brand";
 
-/**
- * "(IMDb Order)" dates from IMDb-only Lists; every Provider now keeps its own
- * order, which "Date Added (Oldest First)" already describes.
- */
-function sortLabel(label: string): string {
-  return label.replace(/\s*-\s*\(IMDb Order\)$/, "");
-}
-
 /** One List of the configure page: summary row, then its settings. */
 export default function SortableListRow({
   list,
@@ -137,7 +129,7 @@ export default function SortableListRow({
             <SelectContent>
               {SORT_OPTIONS.map((opt) => (
                 <SelectItem key={opt.value} value={opt.value}>
-                  {sortLabel(opt.label)}
+                  {opt.label}
                 </SelectItem>
               ))}
             </SelectContent>

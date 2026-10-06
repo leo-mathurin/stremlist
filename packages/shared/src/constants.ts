@@ -7,7 +7,7 @@ export const APP_LOGO = "https://stremlist.com/icon.png";
 export const APP_ID_PREFIX = "com.stremlist";
 
 export const SORT_OPTIONS = [
-  { value: "added_at-asc", label: "Date Added (Oldest First) - (IMDb Order)" },
+  { value: "added_at-asc", label: "Date Added (Oldest First)" },
   { value: "added_at-desc", label: "Date Added (Newest First)" },
   { value: "random", label: "Random" },
   { value: "title-asc", label: "Title (A-Z)" },
