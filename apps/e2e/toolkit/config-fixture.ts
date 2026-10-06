@@ -6,6 +6,7 @@ import type {
   AccountConfigResponse,
   ConfigList,
 } from "@stremlist/shared/stremio.types";
+import type { ListSyncStatus } from "@stremlist/shared/sync-status";
 
 // Intercepted API of the configure page. These fixtures record requests and
 // prove UI state; real storage and manifest behavior is covered by the
@@ -36,12 +37,29 @@ export const row = {
   availableGenres: ["Drama", "Comedy"],
 } satisfies ConfigList;
 
+/** A successful refresh of `sourceRef` at `at` that gave `titleCount` Titles. */
+export function syncedStatus(
+  sourceRef: string,
+  titleCount = 12,
+  at = "2020-01-01T00:00:00.000Z",
+) {
+  return {
+    sourceRef,
+    lastAttemptAt: at,
+    lastSuccessAt: at,
+    titleCount,
+    problem: null,
+    failingSince: null,
+  } satisfies ListSyncStatus;
+}
+
 export const configuration = {
   access: "private",
   accountId,
   movedAt: null,
   rpdbApiKey: null,
   lists: [row],
+  syncStatus: { [row.id]: syncedStatus(row.sourceRef) },
   connections: [],
   actions: { enabled: false, providers: [] },
   lastFetchedAt: "2020-01-01T00:00:00.000Z",
@@ -74,7 +92,7 @@ export function providerStatus(
 
 /**
  * Register first: answers the requests every page makes (`/providers`,
- * `/stats`) and fails the test on any other request that a later, more
+ * `/stats`, the `/sync-status` poll) and fails the test on any other request that a later, more
  * specific route did not take.
  */
 export async function baseRoutes(
@@ -86,6 +104,15 @@ export async function baseRoutes(
     if (pathname === "/providers") await route.fulfill({ json: providers });
     else if (pathname === "/stats")
       await route.fulfill({ json: { activeUsers: 2 } });
+    // The configure page polls this while a saved List waits for its first
+    // refresh. Tests that check sync states route it themselves.
+    else if (pathname.endsWith("/sync-status"))
+      await route.fulfill({
+        json: toJson({
+          syncStatus: configuration.syncStatus,
+          connections: [],
+        }),
+      });
     else
       throw new Error(
         `Unexpected test API request: ${route.request.method} ${pathname}`,

@@ -228,3 +228,56 @@ export async function getListRows(accountId: string) {
   if (error) throw error;
   return data;
 }
+
+/**
+ * Store a sync status row as the backend records it after a refresh (STR-58),
+ * for Lists whose earlier refreshes the test does not run itself.
+ */
+export async function seedSyncStatus(
+  listId: string,
+  status: {
+    provider?: ProviderId;
+    sourceRef: string;
+    lastAttemptAt: Date;
+    lastSuccessAt?: Date | null;
+    titleCount?: number | null;
+    failureReason?: string | null;
+    failingSince?: Date | null;
+  },
+): Promise<void> {
+  const { error } = await db.from("list_sync_status").insert({
+    list_id: listId,
+    provider: status.provider ?? "imdb",
+    source_ref: status.sourceRef,
+    last_attempt_at: status.lastAttemptAt.toISOString(),
+    last_success_at: status.lastSuccessAt?.toISOString() ?? null,
+    title_count: status.titleCount ?? null,
+    failure_reason: status.failureReason ?? null,
+    failing_since: status.failingSince?.toISOString() ?? null,
+  });
+  if (error) throw error;
+}
+
+export async function getSyncStatusRows(listId: string) {
+  const { data, error } = await db
+    .from("list_sync_status")
+    .select("*")
+    .eq("list_id", listId);
+  if (error) throw error;
+  return data;
+}
+
+/** When the Provider started to refuse the Connection, or null. */
+export async function getConnectionRenewal(
+  accountId: string,
+  provider: ProviderId,
+): Promise<string | null> {
+  const { data, error } = await db
+    .from("connections")
+    .select("needs_renewal_since")
+    .eq("account_id", accountId)
+    .eq("provider", provider)
+    .single();
+  if (error) throw error;
+  return data.needs_renewal_since;
+}

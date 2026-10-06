@@ -38,8 +38,8 @@ R2. The configure/onboarding pages of the frontend are covered too.
   counts) or compare the Stremio UI against the addon's own catalog JSON from
   the same run, so they do not depend on what is in the watchlist today.
 - The default run and pull request CI execute all three projects: deterministic
-  local coverage (45 tests), four live smoke tests, and the broader live
-  regression suite (25 tests).
+  local coverage (49 tests), four live smoke tests, and the broader live
+  regression suite (26 tests).
 - The backend gets a fixed, public `CONNECTION_ENCRYPTION_KEY` from `env.ts`,
   so seeded Connections (`helpers/db.ts` `seedConnection`) decrypt like real
   ones. It is not a production key.
@@ -100,6 +100,16 @@ bun run --filter @stremlist/e2e test:e2e tests/catalog-features.spec.ts
 These fixtures bypass IMDb scraping, not Stremlist behavior. Existing live tests
 still cover real IMDb fetching. The series scenario checks the addon protocol;
 it does not claim to test playback or episode selection in a native client.
+
+## List sync status scenarios
+
+`tests/sync-status.spec.ts` checks what each refresh records (STR-58). The test
+backend has no Trakt client ID, so Trakt reads fail as "temporarily
+unavailable" and a Trakt token cannot be refreshed. These are deterministic,
+offline failures: a seeded expired Connection becomes a refused Connection
+(`needs_renewal_since`), and public Trakt Lists must not fail with it. The
+`live-regression` case adds a live IMDb chart on the configure page and waits
+for its first refresh through the page's polling.
 
 ## Environment knobs
 

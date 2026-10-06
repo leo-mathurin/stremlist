@@ -310,7 +310,9 @@ test("List edits reject duplicates, save values and report refresh failures", as
   ).toBeDisabled();
   await screen.getByRole("button", "Refresh now").tap();
   await expect(
-    screen.getByText("Refreshed 0 of 1 lists. Some lists failed to update."),
+    screen.getByText(
+      "Refreshed 0 of 1 lists. The others failed to update: each List shows why.",
+    ),
   ).toBeVisible();
   expect(submissions).toHaveLength(2);
 });
