@@ -282,6 +282,24 @@ describe("buildActionStreams", () => {
     ]);
   });
 
+  it("says where a Title is not rated yet when only some Providers rated it", async () => {
+    const account = await setup({
+      trakt: membership({ ratings: { [MOVIE]: 6 } }),
+      simkl: membership({}),
+    });
+
+    const streams = await buildActionStreams(
+      account,
+      { imdbId: MOVIE, type: "movie" },
+      link,
+    );
+
+    expect(titles(streams).at(-1)).toEqual([
+      "⭐ 6/10 on Trakt, change\nNot rated on Simkl",
+      "rating/rate",
+    ]);
+  });
+
   it("splits a slot in two when the Providers differ", async () => {
     const account = await setup({
       trakt: membership({ watchlist: [MOVIE], ratings: { [MOVIE]: 7 } }),

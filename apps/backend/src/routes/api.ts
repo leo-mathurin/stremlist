@@ -38,6 +38,7 @@ import {
 import { withAvailableGenres } from "../services/catalog-genres";
 import { catalogSettingsSchema } from "../services/catalog-settings";
 import {
+  ConnectionExpiredError,
   deleteConnection,
   getConnectionAccess,
   listConnections,
@@ -298,6 +299,13 @@ const api = new Hono()
           defaultDisplayMode: result.defaultDisplayMode ?? null,
         });
       } catch (error) {
+        if (error instanceof ConnectionExpiredError) {
+          return c.json({
+            ok: false as const,
+            reason: "needs_connection" as const,
+            provider: parsed.provider,
+          });
+        }
         console.error(
           `Validating ${parsed.provider} ${parsed.ref} failed:`,
           error instanceof Error ? error.message : error,

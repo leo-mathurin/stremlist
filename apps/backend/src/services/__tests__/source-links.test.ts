@@ -75,6 +75,14 @@ describe("parseSourceLink: Trakt", () => {
     );
   });
 
+  it("reads an official list by its slug", () => {
+    expect(
+      parseSourceLink(
+        "https://trakt.tv/lists/official/the-dark-knight-collection",
+      ),
+    ).toEqual(parsed("trakt", "lists/the-dark-knight-collection", "list"));
+  });
+
   it.each([
     "https://trakt.tv/users/leo/lists/sci-fi-picks",
     "trakt.tv/users/leo/lists/sci-fi-picks?sort=rank,asc",

@@ -266,6 +266,20 @@ function parseTraktLink(input: string): ParsedSourceLink | null {
       };
     }
   }
+  // trakt.tv/lists/official/{slug}: an official list (collections). The
+  // API reads it by slug, like any shared list.
+  if (
+    parts[0] === "lists" &&
+    parts[1]?.toLowerCase() === "official" &&
+    parts[2]
+  ) {
+    return {
+      provider: "trakt",
+      ref: `lists/${parts[2].toLowerCase()}`,
+      kind: "list",
+      requiresConnection: false,
+    };
+  }
   // trakt.tv/lists/{id}: official and shared lists by numeric ID or slug.
   if (
     parts[0] === "lists" &&

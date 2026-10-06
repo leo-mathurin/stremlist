@@ -319,8 +319,18 @@ export async function buildActionStreams(
         raters.length === 1
           ? `⭐ Rate${series} on ${names}`
           : `⭐ Rate${series}\n1 to 10, on ${names}`;
-    } else if (new Set(ratings.map((r) => r.rating)).size === 1) {
+    } else if (
+      ratings.length === raters.length &&
+      new Set(ratings.map((r) => r.rating)).size === 1
+    ) {
       title = `⭐ Rated ${ratings[0].rating}/10, change\n${names}`;
+    } else if (ratings.length < raters.length) {
+      // Say where the rating is, and where it is still missing.
+      const rated = new Set(ratings.map((r) => r.provider));
+      const missing = joinNames(
+        raters.map((r) => r.provider).filter((p) => !rated.has(p)),
+      );
+      title = `⭐ ${ratings.map((r) => `${r.rating}/10 on ${PROVIDERS[r.provider].label}`).join(", ")}, change\nNot rated on ${missing}`;
     } else {
       title = `⭐ ${ratings.map((r) => `${r.rating}/10 on ${PROVIDERS[r.provider].label}`).join(", ")}, change`;
     }

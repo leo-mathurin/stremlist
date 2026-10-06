@@ -977,6 +977,36 @@ describe("POST /links/resolve", () => {
     expect((await res.json()).reason).toBe("needs_connection");
   });
 
+  it("asks for a Connection again when the Connection expired", async () => {
+    const validateSource = vi.fn(
+      async (
+        _ref: string,
+        ctx: { connection: { getAccessToken(): Promise<string> } | null },
+      ) => {
+        await ctx.connection?.getAccessToken();
+        return { ok: true as const, ref: "lists/leo/top-movies" };
+      },
+    );
+    useFakeProvider(fakeAdapter("mdblist", { validateSource }));
+    const account = seedAccount();
+    // Expired, and no refresh token to renew it.
+    seedConnection(account.id, "mdblist", {
+      expiresAt: new Date(Date.now() - 60_000),
+      refreshToken: null,
+    });
+
+    const res = await resolve(
+      "https://mdblist.com/lists/leo/top-movies",
+      account.id,
+    );
+
+    expect(await res.json()).toEqual({
+      ok: false,
+      reason: "needs_connection",
+      provider: "mdblist",
+    });
+  });
+
   it("validates through the Connection of a private Account", async () => {
     const validateSource = vi.fn(() =>
       Promise.resolve({
