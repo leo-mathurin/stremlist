@@ -8,6 +8,8 @@ import { simklProvider } from "./simkl";
 import { traktProvider } from "./trakt";
 import type { ProviderAdapter } from "./types";
 
+export { isProviderEnabled } from "./kill-switch";
+
 const ADAPTERS: Record<ProviderId, ProviderAdapter> = {
   imdb: imdbProvider,
   trakt: traktProvider,
@@ -20,16 +22,4 @@ const ADAPTERS: Record<ProviderId, ProviderAdapter> = {
 
 export function getProvider(id: ProviderId): ProviderAdapter {
   return ADAPTERS[id];
-}
-
-/**
- * Kill switch: `DISABLED_PROVIDERS=trakt,justwatch` turns Providers off
- * without a deploy. Their Lists keep serving the last cached Catalog.
- */
-export function isProviderEnabled(id: ProviderId): boolean {
-  const disabled = (process.env.DISABLED_PROVIDERS ?? "")
-    .split(",")
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean);
-  return !disabled.includes(id);
 }

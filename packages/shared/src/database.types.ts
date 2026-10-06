@@ -70,6 +70,7 @@ export type Database = {
           expires_at: string | null;
           provider: string;
           provider_username: string | null;
+          redirect_uri: string;
           refresh_lease_token: string | null;
           refresh_locked_until: string;
           refresh_token: string | null;
@@ -83,6 +84,7 @@ export type Database = {
           expires_at?: string | null;
           provider: string;
           provider_username?: string | null;
+          redirect_uri: string;
           refresh_lease_token?: string | null;
           refresh_locked_until?: string;
           refresh_token?: string | null;
@@ -96,6 +98,7 @@ export type Database = {
           expires_at?: string | null;
           provider?: string;
           provider_username?: string | null;
+          redirect_uri?: string;
           refresh_lease_token?: string | null;
           refresh_locked_until?: string;
           refresh_token?: string | null;

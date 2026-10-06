@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase";
+import { isProviderEnabled } from "../providers/kill-switch";
 import type {
   ProviderAdapter,
   ResolutionKey,
@@ -170,6 +171,9 @@ export async function resolveEntries(
       let remaining = batch;
       for (const strategy of adapter.resolverStrategies ?? []) {
         if (remaining.length === 0) break;
+        if (strategy.provider && !isProviderEnabled(strategy.provider)) {
+          continue;
+        }
         try {
           const found = await strategy.resolve(
             remaining.map(({ index }) => entries[index]),

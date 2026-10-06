@@ -2,7 +2,7 @@ import { parseSourceLink } from "@stremlist/shared/providers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listMdblistUserSources, mdblistProvider } from "../mdblist";
 import type { ConnectionAccess } from "../types";
-import { SourceUnavailableError } from "../types";
+import { ConnectionExpiredError, SourceUnavailableError } from "../types";
 
 // Shapes recorded from api.mdblist.com on 2026-10-06 (trimmed).
 const SUPER_MARIO = {
@@ -334,8 +334,7 @@ describe("mdblistProvider.fetchSource", () => {
   });
 
   it("maps an expired Connection to needs_connection", async () => {
-    const expired = new Error("expired");
-    expired.name = "ConnectionExpiredError";
+    const expired = new ConnectionExpiredError("mdblist");
     const access: ConnectionAccess = {
       accountId: "sl_testaccount0000000000",
       provider: "mdblist",

@@ -643,7 +643,10 @@ const api = new Hono()
         return c.json({ error: "Addon not found." }, 404);
       }
       const staticSources = CONNECTION_SOURCES[provider] ?? [];
-      const connection = await getConnectionAccess(accountId, provider);
+      // The kill switch also stops the call that lists the user's own lists.
+      const connection = isProviderEnabled(provider)
+        ? await getConnectionAccess(accountId, provider)
+        : null;
       if (!connection) return c.json({ sources: staticSources });
       let own: typeof staticSources = [];
       try {

@@ -60,6 +60,31 @@ beforeEach(() => {
 });
 
 describe("resolveEntries", () => {
+  it("skips a strategy whose Provider kill switch is on", async () => {
+    process.env.DISABLED_PROVIDERS = "justwatch";
+    try {
+      const justwatch = {
+        ...strategy("justwatch", { 1: "tt0111161" }),
+        provider: "justwatch" as const,
+      };
+      const tmdbOnly = strategy("tmdb", { 2: "tt0068646" });
+
+      const result = await resolveEntries(adapter([justwatch, tmdbOnly]), [
+        tmdb(1),
+        tmdb(2),
+      ]);
+
+      expect(justwatch.resolve).not.toHaveBeenCalled();
+      expect(result.resolved.map(({ imdbId }) => imdbId)).toEqual([
+        "tt0068646",
+      ]);
+      // The skipped entry is retried later, like any Unresolved entry.
+      expect(result.unresolved).toBe(1);
+    } finally {
+      delete process.env.DISABLED_PROVIDERS;
+    }
+  });
+
   it("passes entries with an IMDb ID through without the cache or strategies", async () => {
     const first = strategy("first", {});
     const entries: SourceEntry[] = [

@@ -150,28 +150,33 @@ async function requestTokens(
   };
 }
 
+/** Exchange the code with the redirect URI that started the authorization. */
 export function exchangeCode(
   provider: ProviderId,
   code: string,
   codeVerifier: string,
-  requestOrigin: string,
+  redirect: string,
 ): Promise<OAuthTokens> {
   return requestTokens(provider, {
     grant_type: "authorization_code",
     code,
     code_verifier: codeVerifier,
-    redirect_uri: redirectUri(provider, requestOrigin),
+    redirect_uri: redirect,
   });
 }
 
+/**
+ * Refresh with the redirect URI stored with the Connection: Trakt checks it
+ * on refresh too, and a preview or local backend has another origin.
+ */
 export function refreshTokens(
   provider: ProviderId,
   refreshToken: string,
+  redirect: string,
 ): Promise<OAuthTokens> {
   return requestTokens(provider, {
     grant_type: "refresh_token",
     refresh_token: refreshToken,
-    // Trakt checks the redirect URI on refresh too.
-    redirect_uri: redirectUri(provider, "https://api.stremlist.com"),
+    redirect_uri: redirect,
   });
 }

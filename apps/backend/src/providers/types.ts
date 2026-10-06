@@ -1,3 +1,4 @@
+import type { DisplayMode } from "@stremlist/shared/constants";
 import type {
   ActionKind,
   ConnectionSource,
@@ -65,7 +66,7 @@ export type SourceValidation =
       /** Normalized reference to store (for example a resolved user ID). */
       ref: string;
       suggestedTitle?: string;
-      defaultDisplayMode?: "split" | "movie" | "series";
+      defaultDisplayMode?: DisplayMode;
     }
   | { ok: false; reason: SourceUnavailableReason; message?: string };
 
@@ -93,6 +94,20 @@ export class SourceUnavailableError extends Error {
   }
 }
 
+/**
+ * The Connection cannot give a token any more (refresh refused or revoked):
+ * the user must connect the Provider again.
+ */
+export class ConnectionExpiredError extends Error {
+  readonly provider: ProviderId;
+
+  constructor(provider: ProviderId) {
+    super(`The ${provider} connection expired; the user must connect again`);
+    this.name = "ConnectionExpiredError";
+    this.provider = provider;
+  }
+}
+
 /** Valid OAuth tokens for one Connection, refreshed when needed. */
 export interface ConnectionAccess {
   /**
@@ -103,6 +118,23 @@ export interface ConnectionAccess {
   provider: ProviderId;
   username: string | null;
   getAccessToken(): Promise<string>;
+}
+
+/**
+ * The Connection's access token. An expired Connection becomes a
+ * "needs_connection" Source list, so the catalog asks the user to connect again.
+ */
+export async function connectionToken(
+  connection: ConnectionAccess,
+): Promise<string> {
+  try {
+    return await connection.getAccessToken();
+  } catch (error) {
+    if (error instanceof ConnectionExpiredError) {
+      throw new SourceUnavailableError("needs_connection", error.message);
+    }
+    throw error;
+  }
 }
 
 export interface ProviderContext {
@@ -155,6 +187,11 @@ export interface ProviderActions {
 /** Turns entries without an IMDb ID into IMDb IDs. See titles/resolver.ts. */
 export interface ResolverStrategy {
   name: string;
+  /**
+   * The Provider whose API this strategy calls, if any. The resolver skips
+   * the strategy while that Provider's kill switch is on.
+   */
+  provider?: ProviderId;
   /**
    * Resolve the given entries. Returns a map from the entry's index in the
    * input array to its IMDb ID; entries left out stay unresolved.

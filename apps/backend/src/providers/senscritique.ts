@@ -2,7 +2,7 @@ import { justwatchImdbIdByPath } from "../titles/justwatch-lookup";
 import { mapWithConcurrency } from "../titles/tmdb";
 import { tmdbSearchMatchStrategy } from "../titles/tmdb-match";
 import { wikidataStrategy } from "../titles/wikidata";
-import { HttpError, providerFetch, RateLimiter } from "./http";
+import { graphqlRequest, RateLimiter } from "./http";
 import type {
   ProviderAdapter,
   ResolverStrategy,
@@ -56,11 +56,6 @@ export interface SensCritiqueProduct {
   providers?: { justwatchUrl?: string | null }[] | null;
   /** The user's row for this product; its ID grows with each new action. */
   otherUserInfos?: { id?: number | null } | null;
-}
-
-interface GraphQLResponse<T> {
-  data?: T | null;
-  errors?: { message: string }[];
 }
 
 const PRODUCT_FIELDS = `
@@ -165,23 +160,9 @@ async function senscritiqueQuery<T>(
   query: string,
   variables: Record<string, unknown>,
 ): Promise<T> {
-  const response = await providerFetch(SENSCRITIQUE_GRAPHQL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({ query, variables }),
+  const json = await graphqlRequest<T>(SENSCRITIQUE_GRAPHQL, query, variables, {
     limiter: senscritiqueLimiter,
   });
-  if (!response.ok) {
-    throw new HttpError(
-      response.status,
-      await response.text(),
-      SENSCRITIQUE_GRAPHQL,
-    );
-  }
-  const json = (await response.json()) as GraphQLResponse<T>;
   if (!json.data) {
     throw new Error(
       `SensCritique GraphQL error: ${json.errors?.[0]?.message ?? "no data"}`,
@@ -362,6 +343,7 @@ async function fetchListProducts(id: number): Promise<SensCritiqueProduct[]> {
  */
 export const justwatchPathStrategy: ResolverStrategy = {
   name: "justwatch-path",
+  provider: "justwatch",
   async resolve(entries) {
     const found = new Map<number, string>();
     await mapWithConcurrency(

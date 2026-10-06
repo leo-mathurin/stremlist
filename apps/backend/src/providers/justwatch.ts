@@ -172,6 +172,7 @@ function normalizeRef(ref: string): string {
  */
 export const justwatchRecheckStrategy: ResolverStrategy = {
   name: "justwatch-recheck",
+  provider: "justwatch",
   async resolve(entries) {
     const found = new Map<number, string>();
     const nodeIds = entries.flatMap((entry) =>

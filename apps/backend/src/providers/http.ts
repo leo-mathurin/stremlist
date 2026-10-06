@@ -104,6 +104,21 @@ export async function providerFetch(
   }
 }
 
+/** The response when it is 2xx; otherwise an HttpError with its body. */
+export async function ensureOk(
+  response: Response,
+  url: string,
+): Promise<Response> {
+  if (!response.ok) {
+    throw new HttpError(
+      response.status,
+      await response.text().catch(() => ""),
+      url,
+    );
+  }
+  return response;
+}
+
 /** providerFetch() that parses JSON and throws HttpError on non-2xx. */
 // The caller names the response shape; the body is not validated.
 // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
@@ -111,9 +126,34 @@ export async function providerFetchJson<T>(
   url: string,
   options: ProviderFetchOptions = {},
 ): Promise<{ data: T; response: Response }> {
-  const response = await providerFetch(url, options);
-  if (!response.ok) {
-    throw new HttpError(response.status, await response.text(), url);
-  }
+  const response = await ensureOk(await providerFetch(url, options), url);
   return { data: (await response.json()) as T, response };
+}
+
+export interface GraphQLResponse<T> {
+  data?: T | null;
+  errors?: { message: string; extensions?: { code?: string } }[];
+}
+
+/**
+ * POST a GraphQL query. Throws HttpError on non-2xx. GraphQL errors stay in
+ * the result, because some APIs use them for expected states (a private or
+ * deleted list) that the caller maps to a reason.
+ */
+export async function graphqlRequest<T>(
+  url: string,
+  query: string,
+  variables: Record<string, unknown>,
+  options: ProviderFetchOptions = {},
+): Promise<GraphQLResponse<T>> {
+  const headers = new Headers(options.headers);
+  headers.set("Content-Type", "application/json");
+  headers.set("Accept", "application/json");
+  const { data } = await providerFetchJson<GraphQLResponse<T>>(url, {
+    ...options,
+    method: "POST",
+    headers,
+    body: JSON.stringify({ query, variables }),
+  });
+  return data;
 }

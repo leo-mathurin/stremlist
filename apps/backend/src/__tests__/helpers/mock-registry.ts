@@ -43,13 +43,7 @@ export function getProvider(id: ProviderId): ProviderAdapter {
   return providerOverrides.get(id) ?? REAL[id];
 }
 
-export function isProviderEnabled(id: ProviderId): boolean {
-  const disabled = (process.env.DISABLED_PROVIDERS ?? "")
-    .split(",")
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean);
-  return !disabled.includes(id);
-}
+export { isProviderEnabled } from "../../providers/kill-switch";
 
 /** A Provider adapter that serves fixed entries and accepts every ref. */
 export function fakeAdapter(

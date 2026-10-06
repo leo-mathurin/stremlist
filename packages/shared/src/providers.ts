@@ -1,3 +1,4 @@
+import type { DisplayMode } from "./constants";
 import { isChartId } from "./imdb-charts";
 
 /**
@@ -140,7 +141,7 @@ export interface ConnectionSource {
   ref: string;
   kind: SourceKind;
   label: string;
-  defaultDisplayMode: "split" | "movie" | "series";
+  defaultDisplayMode: DisplayMode;
 }
 
 // ---------------------------------------------------------------------------

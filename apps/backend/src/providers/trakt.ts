@@ -1,5 +1,6 @@
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
 import { providerFetch, providerFetchJson } from "./http";
+import { oauthClient } from "./oauth-app";
 import { traktActions } from "./trakt/actions";
 import {
   nonEmpty,
@@ -22,9 +23,7 @@ import { SourceUnavailableError } from "./types";
 const PUBLIC_FRESHNESS_MS = 6 * 60 * 60_000;
 const PERSONAL_FRESHNESS_MS = 30 * 60_000;
 
-function clientSecret(): string | undefined {
-  return nonEmpty(process.env.TRAKT_CLIENT_SECRET) ?? undefined;
-}
+const { clientSecret } = oauthClient("TRAKT");
 
 /**
  * Trakt: public watchlists and lists, official lists and charts with the

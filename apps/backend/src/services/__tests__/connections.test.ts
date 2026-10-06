@@ -75,6 +75,7 @@ describe("saveConnection", () => {
         scope: "public",
       },
       "leo",
+      "https://api.stremlist.test/oauth/trakt/callback",
     );
 
     const row = connectionRow();
@@ -86,6 +87,7 @@ describe("saveConnection", () => {
       provider_username: "leo",
       expires_at: expiresAt.toISOString(),
       scope: "public",
+      redirect_uri: "https://api.stremlist.test/oauth/trakt/callback",
     });
     expect(decryptSecret(row.access_token as string)).toBe("plain-access");
     expect(decryptSecret(row.refresh_token as string)).toBe("plain-refresh");
@@ -99,9 +101,27 @@ describe("saveConnection", () => {
       scope: null,
     });
 
-    await saveConnection(accountId, "trakt", tokens("first"), "leo");
-    await saveConnection(accountId, "trakt", tokens("second"), "leo2");
-    await saveConnection(accountId, "simkl", tokens("other"), null);
+    await saveConnection(
+      accountId,
+      "trakt",
+      tokens("first"),
+      "leo",
+      "https://api.stremlist.test/oauth/trakt/callback",
+    );
+    await saveConnection(
+      accountId,
+      "trakt",
+      tokens("second"),
+      "leo2",
+      "https://api.stremlist.test/oauth/trakt/callback",
+    );
+    await saveConnection(
+      accountId,
+      "simkl",
+      tokens("other"),
+      null,
+      "https://api.stremlist.test/oauth/simkl/callback",
+    );
 
     expect(db.getTable("connections")).toHaveLength(2);
     const access = await getConnectionAccess(accountId, "trakt");
@@ -201,9 +221,11 @@ describe("getConnectionAccess", () => {
     const token = await access?.getAccessToken();
 
     expect(token).toBe("new");
+    // The same redirect URI as the authorization, whatever the origin now.
     expect(oauthMocks.refreshTokens).toHaveBeenCalledExactlyOnceWith(
       "trakt",
       "old-refresh",
+      "https://api.stremlist.test/oauth/trakt/callback",
     );
     const row = connectionRow();
     expect(decryptSecret(row.access_token as string)).toBe("new");

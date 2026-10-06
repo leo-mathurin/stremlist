@@ -64,6 +64,7 @@ export function seedConnection(
     provider_username: seed.username === undefined ? "leo" : seed.username,
     access_token: encryptSecret(seed.accessToken ?? "access-token"),
     refresh_token: refreshToken ? encryptSecret(refreshToken) : null,
+    redirect_uri: "https://api.stremlist.test/oauth/" + provider + "/callback",
     expires_at:
       seed.expiresAt === undefined
         ? new Date(Date.now() + 24 * 60 * 60_000).toISOString()

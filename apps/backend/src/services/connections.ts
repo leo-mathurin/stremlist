@@ -6,6 +6,7 @@ import { decryptSecret, encryptSecret } from "../lib/crypto";
 import { supabase } from "../lib/supabase";
 import { getProvider } from "../providers/registry";
 import type { ConnectionAccess } from "../providers/types";
+import { ConnectionExpiredError } from "../providers/types";
 import type { OAuthTokens } from "./oauth";
 import { refreshTokens } from "./oauth";
 
@@ -15,15 +16,7 @@ const REFRESH_LEASE_SECONDS = 30;
 const LEASE_WAIT_ATTEMPTS = 6;
 const LEASE_WAIT_MS = 500;
 
-export class ConnectionExpiredError extends Error {
-  readonly provider: ProviderId;
-
-  constructor(provider: ProviderId) {
-    super(`The ${provider} connection expired; the user must connect again`);
-    this.name = "ConnectionExpiredError";
-    this.provider = provider;
-  }
-}
+export { ConnectionExpiredError };
 
 interface StoredConnection {
   accountId: string;
@@ -32,6 +25,7 @@ interface StoredConnection {
   accessToken: string;
   refreshToken: string | null;
   expiresAt: Date | null;
+  redirectUri: string;
   createdAt: string;
 }
 
@@ -42,6 +36,7 @@ interface ConnectionRow {
   access_token: string;
   refresh_token: string | null;
   expires_at: string | null;
+  redirect_uri: string;
   created_at: string;
 }
 
@@ -55,6 +50,7 @@ function decode(row: ConnectionRow): StoredConnection | null {
       accessToken: decryptSecret(row.access_token),
       refreshToken: row.refresh_token ? decryptSecret(row.refresh_token) : null,
       expiresAt: row.expires_at ? new Date(row.expires_at) : null,
+      redirectUri: row.redirect_uri,
       createdAt: row.created_at,
     };
   } catch (error) {
@@ -110,12 +106,14 @@ export async function saveConnection(
   provider: ProviderId,
   tokens: OAuthTokens,
   username: string | null,
+  redirectUri: string,
 ): Promise<void> {
   const { error } = await supabase.from("connections").upsert(
     {
       account_id: accountId,
       provider,
       provider_username: username,
+      redirect_uri: redirectUri,
       access_token: encryptSecret(tokens.accessToken),
       refresh_token: tokens.refreshToken
         ? encryptSecret(tokens.refreshToken)
@@ -218,7 +216,11 @@ async function refreshUnderLease(
       if (!latest.refreshToken) throw new ConnectionExpiredError(provider);
       let tokens: OAuthTokens;
       try {
-        tokens = await refreshTokens(provider, latest.refreshToken);
+        tokens = await refreshTokens(
+          provider,
+          latest.refreshToken,
+          latest.redirectUri,
+        );
       } catch (refreshError) {
         console.error(
           `Refreshing the ${provider} connection of ${accountId} failed:`,

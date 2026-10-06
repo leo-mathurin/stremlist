@@ -1,6 +1,7 @@
-import { HttpError, providerFetch, RateLimiter } from "../http";
+import { ensureOk, HttpError, providerFetch, RateLimiter } from "../http";
+import { oauthClient } from "../oauth-app";
 import type { ConnectionAccess } from "../types";
-import { SourceUnavailableError } from "../types";
+import { connectionToken, SourceUnavailableError } from "../types";
 
 export const TRAKT_API = "https://api.trakt.tv";
 export const TRAKT_AUTH = "https://auth.trakt.tv";
@@ -17,9 +18,7 @@ const connectedReadLimiter = new RateLimiter(40, 10_000);
 // Trakt allows 1 write per second per user.
 const writeLimiter = new RateLimiter(1, 1000);
 
-export function traktClientId(): string | undefined {
-  return nonEmpty(process.env.TRAKT_CLIENT_ID) ?? undefined;
-}
+export const { clientId: traktClientId } = oauthClient("TRAKT");
 
 /** The string, or null when it is missing or empty. */
 export function nonEmpty(value: string | null | undefined): string | null {
@@ -51,24 +50,6 @@ export interface TraktReadOptions {
   publicFallback?: boolean;
 }
 
-function isConnectionExpired(error: unknown): boolean {
-  return error instanceof Error && error.name === "ConnectionExpiredError";
-}
-
-async function accessToken(connection: ConnectionAccess): Promise<string> {
-  try {
-    return await connection.getAccessToken();
-  } catch (error) {
-    if (isConnectionExpired(error)) {
-      throw new SourceUnavailableError(
-        "needs_connection",
-        "The Trakt Connection expired",
-      );
-    }
-    throw error;
-  }
-}
-
 async function send(path: string, token?: string): Promise<Response> {
   return providerFetch(`${TRAKT_API}${path}`, {
     headers: traktHeaders(token),
@@ -95,12 +76,12 @@ export async function traktGet(
     return checked(response, path);
   }
 
-  const token = await accessToken(connection);
+  const token = await connectionToken(connection);
   let response = await send(path, token);
   if (response.status === 401) {
     // ConnectionAccess refreshes a token that is about to expire; a second
     // read only helps when that gave us a new one.
-    const renewed = await accessToken(connection);
+    const renewed = await connectionToken(connection);
     if (renewed !== token) response = await send(path, renewed);
   }
   if (response.status === 401 && options.publicFallback) {
@@ -118,15 +99,8 @@ export async function traktGet(
   return checked(response, path);
 }
 
-async function checked(response: Response, path: string): Promise<Response> {
-  if (!response.ok) {
-    throw new HttpError(
-      response.status,
-      await response.text().catch(() => ""),
-      `${TRAKT_API}${path}`,
-    );
-  }
-  return response;
+function checked(response: Response, path: string): Promise<Response> {
+  return ensureOk(response, `${TRAKT_API}${path}`);
 }
 
 /** GET and parse JSON. A 204 (Trakt's answer for some missing records) is null. */

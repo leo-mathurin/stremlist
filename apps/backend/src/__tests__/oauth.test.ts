@@ -16,7 +16,7 @@ vi.mock("../lib/resend", () => ({
 
 import app from "../index.js";
 import { decryptSecret } from "../lib/crypto";
-import type { OAuthConfig } from "../providers/types";
+import type { OAuthConfig, ProviderAdapter } from "../providers/types";
 import {
   OAuthNotConfiguredError,
   redirectUri,
@@ -24,6 +24,7 @@ import {
 } from "../services/oauth";
 import {
   seedAccount,
+  seedConnection,
   seedLegacyAccount,
   useTestEncryptionKey,
 } from "./helpers/fixtures.js";
@@ -36,6 +37,10 @@ import { db, resetRpc } from "./helpers/mock-supabase.js";
 
 const AUTHORIZE_URL = "https://trakt.example/oauth/authorize";
 const TOKEN_URL = "https://api.trakt.example/oauth/token";
+
+type ListConnectionSources = NonNullable<
+  ProviderAdapter["listConnectionSources"]
+>;
 
 const fetchUsername = vi.fn<(accessToken: string) => Promise<string | null>>();
 
@@ -226,6 +231,43 @@ describe("POST /:accountId/connections/:provider/start", () => {
   });
 });
 
+describe("GET /:accountId/connections/:provider/sources", () => {
+  it("lists the user's own lists through the Connection", async () => {
+    const listConnectionSources = vi.fn<ListConnectionSources>(() =>
+      Promise.resolve([
+        {
+          ref: "me/lists/42",
+          kind: "list",
+          label: "Horror",
+          defaultDisplayMode: "split",
+        },
+      ]),
+    );
+    useFakeProvider(fakeAdapter("trakt", { listConnectionSources }));
+    seedConnection(accountId, "trakt");
+
+    const res = await app.request(`/${accountId}/connections/trakt/sources`);
+    const body = (await res.json()) as { sources: { ref: string }[] };
+
+    expect(body.sources.map((source) => source.ref)).toContain("me/lists/42");
+    expect(listConnectionSources).toHaveBeenCalledOnce();
+  });
+
+  it("does not call a turned-off Provider", async () => {
+    const listConnectionSources = vi.fn<ListConnectionSources>(() =>
+      Promise.resolve([]),
+    );
+    useFakeProvider(fakeAdapter("trakt", { listConnectionSources }));
+    seedConnection(accountId, "trakt");
+    process.env.DISABLED_PROVIDERS = "trakt";
+
+    const res = await app.request(`/${accountId}/connections/trakt/sources`);
+
+    expect(res.status).toBe(200);
+    expect(listConnectionSources).not.toHaveBeenCalled();
+  });
+});
+
 describe("GET /oauth/:provider/callback", () => {
   it("exchanges the code, stores the encrypted Connection and returns to the configure page", async () => {
     useOAuthProvider();
@@ -273,6 +315,8 @@ describe("GET /oauth/:provider/callback", () => {
       provider: "trakt",
       provider_username: "leo",
       scope: "public",
+      // Kept for refreshes, which must send the same redirect URI.
+      redirect_uri: "http://localhost/oauth/trakt/callback",
     });
     expect(decryptSecret(row.access_token as string)).toBe("access-1");
     expect(decryptSecret(row.refresh_token as string)).toBe("refresh-1");

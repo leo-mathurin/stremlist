@@ -1,6 +1,8 @@
+import type { DisplayMode } from "@stremlist/shared/constants";
 import type { ConnectionSource } from "@stremlist/shared/providers";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
 import { HttpError, providerFetch, RateLimiter } from "./http";
+import { oauthClient, revokeToken } from "./oauth-app";
 import type {
   ActionIntent,
   ActionTarget,
@@ -12,7 +14,7 @@ import type {
   SourceSnapshot,
   SourceValidation,
 } from "./types";
-import { SourceUnavailableError } from "./types";
+import { connectionToken, SourceUnavailableError } from "./types";
 
 const API = "https://api.mdblist.com";
 const PAGE_SIZE = 1000;
@@ -117,25 +119,6 @@ interface SyncPage {
 // HTTP
 // ---------------------------------------------------------------------------
 
-function isConnectionExpired(error: unknown): boolean {
-  // Checked by name: importing services/connections here would be circular.
-  return error instanceof Error && error.name === "ConnectionExpiredError";
-}
-
-async function accessToken(connection: ConnectionAccess): Promise<string> {
-  try {
-    return await connection.getAccessToken();
-  } catch (error) {
-    if (isConnectionExpired(error)) {
-      throw new SourceUnavailableError(
-        "needs_connection",
-        "The MDBList Connection expired",
-      );
-    }
-    throw error;
-  }
-}
-
 /**
  * Turn an MDBList error response into the reason a Source list cannot be
  * read. MDBList answers 403 both for a revoked token ("Invalid OAuth token")
@@ -186,7 +169,7 @@ async function mdblistRequest(
   for (const [key, value] of Object.entries(options.params ?? {})) {
     url.searchParams.set(key, value);
   }
-  const token = await accessToken(connection);
+  const token = await connectionToken(connection);
   const limiters = limitersFor(connection);
   const response = await providerFetch(url.toString(), {
     method,
@@ -319,9 +302,7 @@ function itemsPath(parsed: ParsedRef): string | null {
   }
 }
 
-function displayModeFor(
-  mediatype: string | null | undefined,
-): "split" | "movie" | "series" {
+function displayModeFor(mediatype: string | null | undefined): DisplayMode {
   if (mediatype === "movie") return "movie";
   if (mediatype === "show") return "series";
   return "split";
@@ -557,33 +538,7 @@ async function getMembership(
 // OAuth
 // ---------------------------------------------------------------------------
 
-function clientId(): string | undefined {
-  const value = process.env.MDBLIST_CLIENT_ID;
-  // An empty value means "not configured".
-  if (!value) return undefined;
-  return value;
-}
-
-function clientSecret(): string | undefined {
-  const value = process.env.MDBLIST_CLIENT_SECRET;
-  // An empty value means "not configured".
-  if (!value) return undefined;
-  return value;
-}
-
-async function revoke(token: string): Promise<void> {
-  const body = new URLSearchParams({ token, client_id: clientId() ?? "" });
-  const secret = clientSecret();
-  if (secret) body.set("client_secret", secret);
-  const response = await providerFetch(`${API}/oauth/revoke_token/`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-  });
-  if (!response.ok) {
-    throw new Error(`MDBList token revocation returned ${response.status}`);
-  }
-}
+const client = oauthClient("MDBLIST");
 
 async function fetchUsername(token: string): Promise<string | null> {
   const response = await providerFetch(`${API}/user`, {
@@ -788,10 +743,9 @@ export const mdblistProvider: ProviderAdapter = {
   oauth: {
     authorizeUrl: "https://mdblist.com/oauth/authorize/",
     tokenUrl: `${API}/oauth/token/`,
-    clientId,
-    clientSecret,
+    ...client,
     scopes: ["write"],
-    revoke,
+    revoke: (token) => revokeToken(`${API}/oauth/revoke_token/`, token, client),
     fetchUsername,
   },
 };

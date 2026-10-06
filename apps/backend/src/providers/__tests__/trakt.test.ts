@@ -7,7 +7,7 @@ import type {
   ProviderActions,
   SourceEntry,
 } from "../types";
-import { SourceUnavailableError } from "../types";
+import { ConnectionExpiredError, SourceUnavailableError } from "../types";
 
 // The real limiters would make this file wait (1 write per second, a burst
 // cap on public reads); their behavior is not under test here.
@@ -581,9 +581,7 @@ describe("Trakt read errors", () => {
 
   it("an expired Connection means needs_connection", async () => {
     const conn = connection();
-    conn.getAccessToken.mockRejectedValue(
-      Object.assign(new Error("expired"), { name: "ConnectionExpiredError" }),
-    );
+    conn.getAccessToken.mockRejectedValue(new ConnectionExpiredError("trakt"));
     await expectReason(fetchEntries("me/history", conn), "needs_connection");
   });
 

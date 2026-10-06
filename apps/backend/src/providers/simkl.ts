@@ -3,7 +3,8 @@ import { ADDON_VERSION } from "@stremlist/shared/constants";
 import { CONNECTION_SOURCES } from "@stremlist/shared/providers";
 import { getR2Bucket, getR2Client } from "../lib/r2";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
-import { HttpError, providerFetch, RateLimiter } from "./http";
+import { ensureOk, HttpError, providerFetch, RateLimiter } from "./http";
+import { oauthClient, revokeToken } from "./oauth-app";
 import type {
   ActionIntent,
   ActionTarget,
@@ -14,7 +15,7 @@ import type {
   SourceEntry,
   SourceValidation,
 } from "./types";
-import { SourceUnavailableError } from "./types";
+import { connectionToken, SourceUnavailableError } from "./types";
 
 const API = "https://api.simkl.com";
 const APP_NAME = "stremlist";
@@ -58,20 +59,8 @@ const STATUS_REFS = new Map<string, SimklStatus>(
 );
 const LIST_REF = /^me\/lists\/(\d+)$/;
 
-/** An environment value, with blank treated as unset. */
-function env(name: string): string | undefined {
-  const value = process.env[name]?.trim();
-  if (!value) return undefined;
-  return value;
-}
-
-function clientId(): string | undefined {
-  return env("SIMKL_CLIENT_ID");
-}
-
-function clientSecret(): string | undefined {
-  return env("SIMKL_CLIENT_SECRET");
-}
+const client = oauthClient("SIMKL");
+const { clientId } = client;
 
 // ---------------------------------------------------------------------------
 // HTTP
@@ -126,23 +115,8 @@ async function simklRequest<T>(
       "Simkl rejected the access token",
     );
   }
-  if (!response.ok) {
-    throw new HttpError(response.status, await response.text(), url);
-  }
+  await ensureOk(response, url);
   return (await response.json()) as T;
-}
-
-async function accessToken(connection: ConnectionAccess): Promise<string> {
-  try {
-    return await connection.getAccessToken();
-  } catch (error) {
-    // services/connections imports the registry, so match by name to avoid a
-    // circular import.
-    if (error instanceof Error && error.name === "ConnectionExpiredError") {
-      throw new SourceUnavailableError("needs_connection", error.message);
-    }
-    throw error;
-  }
 }
 
 function isMaxItemsError(error: unknown): boolean {
@@ -546,7 +520,7 @@ async function runSync(connection: ConnectionAccess): Promise<LibrarySnapshot> {
   if (previous && Date.now() - previous.checkedAt < SYNC_GATE_MS)
     return previous;
 
-  const token = await accessToken(connection);
+  const token = await connectionToken(connection);
   // Read before the data it anchors, so a change made during the read is
   // newer than the saved timestamp and comes back in the next delta.
   const activities = await simklRequest<SimklActivities>("/sync/activities", {
@@ -761,7 +735,7 @@ async function fetchCustomList(
     return previous.entries;
   }
 
-  const token = await accessToken(connection);
+  const token = await connectionToken(connection);
   const save = (
     snapshot: Omit<ListSnapshot, "version" | "username" | "gate" | "fetchedAt">,
   ) =>
@@ -978,7 +952,7 @@ export const simklProvider: ProviderAdapter = {
       };
     }
     try {
-      const token = await accessToken(ctx.connection);
+      const token = await connectionToken(ctx.connection);
       const page = await readListPage(token, listId ?? "", 1, 1);
       return {
         ok: true,
@@ -1027,7 +1001,7 @@ export const simklProvider: ProviderAdapter = {
     async perform(connection, intent, target) {
       const write = await buildWrite(connection, intent, target);
       if (!write) return;
-      const token = await accessToken(connection);
+      const token = await connectionToken(connection);
       // Anime go under "shows" on every Simkl write endpoint.
       const bucket = target.type === "movie" ? "movies" : "shows";
       const result = await simklRequest<WriteResult>(write.path, {
@@ -1052,30 +1026,12 @@ export const simklProvider: ProviderAdapter = {
   oauth: {
     authorizeUrl: "https://simkl.com/oauth2/authorize",
     tokenUrl: `${API}/oauth2/token`,
-    clientId,
-    clientSecret,
+    ...client,
     // Without media:write (exact spelling), Simkl silently grants read-only.
     scopes: ["media:read", "media:write"],
 
-    async revoke(token) {
-      const body = new URLSearchParams({ client_id: clientId() ?? "", token });
-      const secret = clientSecret();
-      if (secret) body.set("client_secret", secret);
-      const url = `${API}/oauth2/revoke`;
-      const response = await providerFetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
-        },
-        body: body.toString(),
-        limiter: postLimiter,
-        retryOn429: false,
-      });
-      if (!response.ok) {
-        throw new HttpError(response.status, await response.text(), url);
-      }
-    },
+    revoke: (token) =>
+      revokeToken(`${API}/oauth2/revoke`, token, client, postLimiter),
 
     async fetchUsername(token) {
       const data = await simklRequest<{ user?: { name?: string } }>(

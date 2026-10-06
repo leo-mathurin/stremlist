@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
+import type { DisplayMode } from "@stremlist/shared/constants";
 import type { Database, Tables } from "@stremlist/shared/database.types";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDER_IDS } from "@stremlist/shared/providers";
@@ -105,7 +106,7 @@ interface ListBody {
   sourceRef: string;
   catalogTitle?: string;
   sortOption: string;
-  displayMode?: "split" | "movie" | "series";
+  displayMode?: DisplayMode;
   position?: number;
   catalogSettings?: CatalogSettings;
 }

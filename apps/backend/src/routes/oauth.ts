@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { frontendUrl } from "../lib/urls";
 import { getProvider } from "../providers/registry";
 import { saveConnection } from "../services/connections";
-import { consumeState, exchangeCode } from "../services/oauth";
+import { consumeState, exchangeCode, redirectUri } from "../services/oauth";
 
 const oauth = new Hono();
 
@@ -39,12 +39,12 @@ oauth.get("/oauth/:provider/callback", async (c) => {
   }
 
   try {
-    const origin = new URL(c.req.url).origin;
+    const redirect = redirectUri(provider, new URL(c.req.url).origin);
     const tokens = await exchangeCode(
       provider,
       code,
       pending.codeVerifier,
-      origin,
+      redirect,
     );
     let username: string | null = null;
     try {
@@ -58,7 +58,13 @@ oauth.get("/oauth/:provider/callback", async (c) => {
         usernameError instanceof Error ? usernameError.message : usernameError,
       );
     }
-    await saveConnection(pending.accountId, provider, tokens, username);
+    await saveConnection(
+      pending.accountId,
+      provider,
+      tokens,
+      username,
+      redirect,
+    );
     return back(pending.accountId, { connected: provider });
   } catch (exchangeError) {
     console.error(

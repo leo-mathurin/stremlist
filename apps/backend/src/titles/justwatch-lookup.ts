@@ -1,4 +1,5 @@
-import { providerFetch, RateLimiter } from "../providers/http";
+import type { GraphQLResponse } from "../providers/http";
+import { graphqlRequest, RateLimiter } from "../providers/http";
 
 /**
  * JustWatch's unofficial GraphQL API (no documentation, introspection off).
@@ -10,28 +11,13 @@ export const JUSTWATCH_GRAPHQL = "https://apis.justwatch.com/graphql";
 // No published limits: stay gentle (ToS forbid scraping; see STR-18).
 export const justwatchLimiter = new RateLimiter(5, 1000);
 
-export interface JustwatchGraphQLResponse<T> {
-  data?: T;
-  errors?: { message: string; extensions?: { code?: string } }[];
-}
-
-export async function justwatchQuery<T>(
+export function justwatchQuery<T>(
   query: string,
   variables: Record<string, unknown>,
-): Promise<JustwatchGraphQLResponse<T>> {
-  const response = await providerFetch(JUSTWATCH_GRAPHQL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({ query, variables }),
+): Promise<GraphQLResponse<T>> {
+  return graphqlRequest<T>(JUSTWATCH_GRAPHQL, query, variables, {
     limiter: justwatchLimiter,
   });
-  if (!response.ok) {
-    throw new Error(`JustWatch GraphQL returned ${response.status}`);
-  }
-  return (await response.json()) as JustwatchGraphQLResponse<T>;
 }
 
 const IMDB_BY_PATH = `

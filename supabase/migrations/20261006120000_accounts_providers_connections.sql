@@ -106,6 +106,9 @@ CREATE TABLE public.connections (
   refresh_token text,
   expires_at timestamptz,
   scope text,
+  -- The redirect URI of the authorization. Token refreshes send the same one,
+  -- because Trakt checks it there too.
+  redirect_uri text NOT NULL,
   refresh_locked_until timestamptz NOT NULL
     DEFAULT '1970-01-01 00:00:00+00'::timestamptz,
   refresh_lease_token uuid,
