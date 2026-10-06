@@ -96,8 +96,11 @@ END;
 $$;
 
 -- Connection refresh lease: only one holder at a time.
-INSERT INTO public.connections (account_id, provider, access_token)
-VALUES ('sl_configtransactiontest00', 'trakt', 'enc');
+INSERT INTO public.connections (account_id, provider, access_token, redirect_uri)
+VALUES (
+  'sl_configtransactiontest00', 'trakt', 'enc',
+  'http://127.0.0.1:7001/oauth/trakt/callback'
+);
 DO $$
 BEGIN
   ASSERT public.claim_connection_refresh('sl_configtransactiontest00', 'trakt', 30, '55555555-5555-4555-8555-555555555555');

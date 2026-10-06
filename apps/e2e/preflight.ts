@@ -5,7 +5,7 @@ import { ensureR2Bucket } from "./helpers/r2.js";
 // failures surface immediately instead of becoming a backend startup timeout.
 try {
   const response = await fetch(
-    `${SUPABASE_URL}/rest/v1/users?select=imdb_user_id&limit=1`,
+    `${SUPABASE_URL}/rest/v1/accounts?select=id&limit=1`,
     {
       headers: {
         apikey: SUPABASE_SERVICE_ROLE_KEY,

@@ -1,32 +1,32 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-06T19:47:05.915Z",
+  "createdAt": "2026-10-06T19:47:15.716Z",
   "payload": {
     "actions": [
       {
-        "name": "type",
-        "summary": "type \"https://www.imdb.com/user/p.example/\" into textbox \"Paste a link to a watchlist or list\"",
-        "target": {
-          "role": "textbox",
-          "name": "Paste a link to a watchlist or list",
-          "placeholder": "Paste a link to a watchlist or list"
-        },
-        "value": "https://www.imdb.com/user/p.example/"
-      },
-      {
         "name": "tap",
-        "summary": "tap button \"Add this list\"",
+        "summary": "tap button \"I already have one\"",
         "target": {
           "role": "button",
-          "name": "Add this list"
+          "name": "I already have one"
         }
       },
       {
+        "name": "type",
+        "summary": "type \"http://127.0.0.1:4314/sl_E2eFixtureAcco…\" into textbox \"Your Addon URL\"",
+        "target": {
+          "role": "textbox",
+          "name": "Your Addon URL",
+          "placeholder": "https://…/manifest.json"
+        },
+        "value": "http://127.0.0.1:4314/sl_E2eFixtureAccount00001/manifest.json"
+      },
+      {
         "name": "tap",
-        "summary": "tap button \"Save and get my Addon URL\"",
+        "summary": "tap button \"Open\"",
         "target": {
           "role": "button",
-          "name": "Save and get my Addon URL"
+          "name": "Open"
         }
       }
     ],
@@ -35,21 +35,17 @@
       "version": "2"
     },
     "recordedFor": {
-      "testId": "toolkit/ui.e2e.ts::profile%20URLs%20resolve%20to%20canonical%20install%20URLs",
+      "testId": "toolkit/ui.e2e.ts::returning%20users%20can%20open%20configuration",
       "targetId": "chromium",
-      "instructionDigest": "c94b6f10d872653e00f6930263d3e5635adee0422d04cf8a96be25f64920e4ea",
-      "paramsDigest": "c96bf5650ec258cd0156896c66ed3d6d6e96574dec3647118f1e00aefad4763e",
+      "instructionDigest": "e6bc862190814f4f55611af30743d31e51ae06f7daa222d5a88f74916c7454e3",
+      "paramsDigest": "e0aaea096f3359b741d95e882dc48efb4b8a06fd361554c6af328ba1317d695a",
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Added the provided IMDb profile and saved the setup. Installation choices are now visible (Install in Stremio / Open Stremio Web, plus the Addon URL); I stopped without opening Stremio.",
+    "summary": "Opened the existing Stremlist using the supplied manifest URL. The configure page loaded for account sl_E2eFixtureAccount00001 and shows its existing “Test catalog” list.",
     "startPath": "/",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
-      {
-        "role": "status",
-        "name": "Saved! Install Stremlist in Stremio with your Addon URL."
-      },
       {
         "role": "heading",
         "name": "Providers"
@@ -74,6 +70,10 @@
       },
       {
         "text": "Paste a link, or connect"
+      },
+      {
+        "role": "button",
+        "name": "Connect"
       }
     ],
     "goneAnchors": [
@@ -106,6 +106,6 @@
         "text": "Many sites, one addon"
       }
     ],
-    "endWaitMs": 12142
+    "endWaitMs": 11971
   }
 }
