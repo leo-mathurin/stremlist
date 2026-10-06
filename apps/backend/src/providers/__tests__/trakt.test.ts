@@ -322,6 +322,12 @@ describe("Trakt reads", () => {
       "tt11128440",
       "tt10665342",
     ]);
+    // Merged Lists sort Source lists together by these dates.
+    expect(entries.map((e) => e.addedAt)).toEqual([
+      "2021-01-01T00:00:00.000Z",
+      "2022-10-14T03:19:22.000Z",
+      "2024-05-01T00:00:00.000Z",
+    ]);
     const query = callsTo("/users/sean/lists/mandoverse/items")[0].url
       .searchParams;
     expect(query.get("sort_by")).toBe("added");
@@ -350,6 +356,7 @@ describe("Trakt reads", () => {
         title: "Clerks III",
         year: 2022,
         externalIds: { tmdb: { id: 635891, type: "movie" }, trakt: 475091 },
+        addedAt: "2022-01-01T00:00:00.000Z",
       },
       {
         imdbId: "tt8111088",
@@ -361,12 +368,14 @@ describe("Trakt reads", () => {
           trakt: 137178,
           tvdb: 361753,
         },
+        addedAt: "2022-01-02T00:00:00.000Z",
       },
       {
         type: "series",
         title: "New Anime",
         year: 2026,
         externalIds: { tmdb: { id: 777001, type: "series" }, trakt: 999001 },
+        addedAt: "2022-01-04T00:00:00.000Z",
       },
     ]);
   });
