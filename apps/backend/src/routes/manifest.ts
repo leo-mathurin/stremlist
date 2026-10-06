@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import {
   ACCOUNT_KEY_PATTERN,
   ADDON_VERSION,
@@ -12,6 +11,7 @@ import type {
   StremioResource,
 } from "@stremlist/shared/stremio.types";
 import { Hono } from "hono";
+import { createHash } from "node:crypto";
 import type { AccountAccess } from "../services/accounts";
 import {
   ensureLegacyAccount,

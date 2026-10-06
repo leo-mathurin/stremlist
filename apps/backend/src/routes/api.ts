@@ -3,9 +3,11 @@ import {
   ACCOUNT_ID_PATTERN,
   ACCOUNT_KEY_PATTERN,
   DISPLAY_MODE_OPTIONS,
+  IMDB_WATCHLIST_SOURCE_ID_PATTERN,
   SORT_OPTIONS,
   parseSortOption,
 } from "@stremlist/shared/constants";
+import { isChartId } from "@stremlist/shared/imdb-charts";
 import type { ProviderId } from "@stremlist/shared/providers";
 import {
   CONNECTION_SOURCES,
@@ -135,6 +137,14 @@ async function normalizeLists(
         throw new ConfigError(
           `Could not resolve the IMDb handle "${list.sourceRef}". Please check it and try again.`,
         );
+      }
+      // The IMDb adapter treats any other ref as a watchlist user ID, so a
+      // malformed one would be saved and fail on every catalog request.
+      if (
+        !IMDB_WATCHLIST_SOURCE_ID_PATTERN.test(sourceRef) &&
+        !isChartId(sourceRef)
+      ) {
+        throw new ConfigError(`"${list.sourceRef}" is not a valid IMDb list.`);
       }
     }
     if (sourceRequiresConnection(list.provider, sourceRef)) {
@@ -563,7 +573,7 @@ const api = new Hono()
     async (c) => {
       const { accountId, provider } = c.req.valid("param");
       const access = await resolveAccountKey(accountId);
-      if (!access || access.via !== "private") {
+      if (access?.via !== "private") {
         return c.json({ error: "Addon not found." }, 404);
       }
       if (!isProviderEnabled(provider)) {
@@ -632,7 +642,7 @@ const api = new Hono()
     async (c) => {
       const { accountId, provider } = c.req.valid("param");
       const access = await resolveAccountKey(accountId);
-      if (!access || access.via !== "private") {
+      if (access?.via !== "private") {
         return c.json({ error: "Addon not found." }, 404);
       }
       await deleteConnection(accountId, provider);

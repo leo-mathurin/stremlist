@@ -92,9 +92,16 @@ async function writeCache(
   }[],
 ): Promise<void> {
   if (rows.length === 0) return;
+  // A Source list can hold the same entry twice, and Postgres rejects an
+  // upsert that touches one row twice: the whole batch would be lost.
+  const unique = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) {
+    const key = cacheKey(row.key);
+    if (!unique.get(key)?.imdbId) unique.set(key, row);
+  }
   const now = Date.now();
   const { error } = await supabase.from("title_id_map").upsert(
-    rows.map(({ key, imdbId, strategy }) => ({
+    [...unique.values()].map(({ key, imdbId, strategy }) => ({
       namespace: key.namespace,
       external_id: key.externalId,
       imdb_id: imdbId,
@@ -168,7 +175,8 @@ export async function resolveEntries(
             remaining.map(({ index }) => entries[index]),
           );
           for (const [position, imdbId] of found) {
-            const item = remaining[position];
+            // A strategy may answer a position that is not in the batch.
+            const item = position >= 0 ? remaining.at(position) : undefined;
             if (item && IMDB_ID.test(imdbId)) {
               results.set(item.index, { imdbId, strategy: strategy.name });
             }

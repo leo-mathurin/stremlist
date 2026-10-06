@@ -7,7 +7,10 @@ const tmdbLimiter = new RateLimiter(30, 1000);
 const CONCURRENCY = 6;
 
 export function isTmdbConfigured(): boolean {
-  return !!(process.env.TMDB_READ_ACCESS_TOKEN || process.env.TMDB_API_KEY);
+  return (
+    Boolean(process.env.TMDB_READ_ACCESS_TOKEN) ||
+    Boolean(process.env.TMDB_API_KEY)
+  );
 }
 
 /** GET a TMDB v3 endpoint. Returns null on 404. */

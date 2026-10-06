@@ -105,6 +105,8 @@ export async function providerFetch(
 }
 
 /** providerFetch() that parses JSON and throws HttpError on non-2xx. */
+// The caller names the response shape; the body is not validated.
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
 export async function providerFetchJson<T>(
   url: string,
   options: ProviderFetchOptions = {},

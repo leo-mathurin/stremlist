@@ -53,7 +53,7 @@ function mapAccount(row: AccountRow): Account {
     movedAt: row.moved_at,
     rpdbApiKey: row.rpdb_api_key,
     actionsEnabled: row.actions_enabled,
-    actionProviders: (row.action_providers ?? []).filter(isProviderId),
+    actionProviders: row.action_providers.filter(isProviderId),
     lastFetchedAt: row.last_fetched_at,
   };
 }

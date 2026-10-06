@@ -21,7 +21,7 @@ meta.get("/:accountKey/meta/:type/:id.json", async (c) => {
     () => null,
   );
   if (!access) return c.json({ meta: null });
-  const item = await findMetaInAccountCache(access.account, type, id);
+  const item = await findMetaInAccountCache(access, type, id);
   return c.json({ meta: item });
 });
 

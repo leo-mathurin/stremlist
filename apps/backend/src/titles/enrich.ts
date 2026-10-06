@@ -102,26 +102,27 @@ export interface TitleToEnrich {
  */
 export async function enrichTitles(
   titles: TitleToEnrich[],
-  previous: Map<string, StremioMeta> = new Map(),
+  previous = new Map<string, StremioMeta>(),
 ): Promise<Map<string, StremioMeta>> {
   const result = new Map<string, StremioMeta>();
-  const missing: TitleToEnrich[] = [];
+  const missing = new Map<string, TitleToEnrich>();
+  // A Source list can hold a Title twice (history, two seasons): look it up once.
   for (const title of titles) {
-    if (result.has(title.imdbId)) continue;
+    if (result.has(title.imdbId) || missing.has(title.imdbId)) continue;
     const known = previous.get(title.imdbId) ?? recall(title.imdbId);
     if (known) result.set(title.imdbId, known);
-    else missing.push(title);
+    else missing.set(title.imdbId, title);
   }
-  if (missing.length === 0) return result;
+  if (missing.size === 0) return result;
 
-  let notFromImdb = missing;
+  let notFromImdb = [...missing.values()];
   try {
-    const fromImdb = await fetchTitlesByIds(missing.map((t) => t.imdbId));
+    const fromImdb = await fetchTitlesByIds([...missing.keys()]);
     for (const meta of fromImdb.values()) {
       result.set(meta.id, meta);
       remember(meta);
     }
-    notFromImdb = missing.filter((title) => !fromImdb.has(title.imdbId));
+    notFromImdb = notFromImdb.filter((title) => !fromImdb.has(title.imdbId));
   } catch (error) {
     console.error(
       "IMDb title lookup failed, falling back to Cinemeta:",

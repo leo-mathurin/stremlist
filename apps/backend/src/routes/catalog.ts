@@ -151,7 +151,7 @@ async function serveCatalog(c: Context) {
       return c.json({ metas: [] });
     }
 
-    const access = await resolveAccountKey(accountKey ?? "");
+    const access = await resolveAccountKey(accountKey);
     if (!access) {
       return c.json({ metas: [] });
     }

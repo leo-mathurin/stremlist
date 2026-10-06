@@ -1,7 +1,7 @@
 import { Hono } from "hono";
+import { backendOrigin } from "../lib/urls";
 import { resolveAccountKey } from "../services/accounts";
 import { buildActionStreams, parseStreamId } from "../services/actions";
-import { backendOrigin } from "../lib/urls";
 
 const stream = new Hono();
 
@@ -23,7 +23,7 @@ stream.get("/:accountKey/stream/:type/:id.json", async (c) => {
 
   try {
     const access = await resolveAccountKey(c.req.param("accountKey"));
-    if (!access || access.via !== "private") return c.json(empty);
+    if (access?.via !== "private") return c.json(empty);
     const origin = backendOrigin(c);
     const accountId = access.account.id;
     const streams = await buildActionStreams(access.account, target, (kind, op) =>

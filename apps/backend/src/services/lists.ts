@@ -13,9 +13,9 @@ import type {
 import { SourceUnavailableError } from "../providers/types";
 import { enrichTitles } from "../titles/enrich";
 import { DEFAULT_RESOLVE_BUDGET_MS, resolveEntries } from "../titles/resolver";
-import type { Account } from "./accounts";
+import type { AccountAccess } from "./accounts";
 import { getAccountLists, markAccountFetched } from "./accounts";
-import { getConnectionAccess } from "./connections";
+import { ConnectionExpiredError, getConnectionAccess } from "./connections";
 import { buildPosterUrl } from "./imdb-scraper";
 import { findCachedMeta, getCachedList, writeCachedList } from "./list-cache";
 import type { WatchlistSort } from "./watchlist-sort";
@@ -247,8 +247,14 @@ function toListError(
   error: unknown,
   message: string,
 ): ListUnavailableError {
+  // An expired Connection is an expected state (the user revoked access):
+  // the catalog asks to connect again instead of a 500 that Stremio retries.
   const reason =
-    error instanceof SourceUnavailableError ? error.reason : "unavailable";
+    error instanceof SourceUnavailableError
+      ? error.reason
+      : error instanceof ConnectionExpiredError
+        ? "needs_connection"
+        : "unavailable";
   return new ListUnavailableError(provider, reason, message);
 }
 
@@ -330,12 +336,18 @@ export async function getListCatalog(
  * stale lists caused the production 500/504 storm on /meta.)
  */
 export async function findMetaInAccountCache(
-  account: Account,
+  { account, via }: AccountAccess,
   type: string,
   id: string,
 ): Promise<StremioMeta | null> {
   try {
-    const lists = await getAccountLists(account.id);
+    // A Legacy alias can be guessed: it must not reveal what Connection
+    // lists (history, collection…) contain.
+    const lists = (await getAccountLists(account.id)).filter(
+      (list) =>
+        via === "private" ||
+        !sourceRequiresConnection(list.provider, list.sourceRef),
+    );
     if (lists.length === 0) return null;
     const found = await findCachedMeta(
       lists.map((list) => list.id),
