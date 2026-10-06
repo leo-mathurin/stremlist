@@ -38,7 +38,7 @@ R2. The configure/onboarding pages of the frontend are covered too.
   counts) or compare the Stremio UI against the addon's own catalog JSON from
   the same run, so they do not depend on what is in the watchlist today.
 - The default run and pull request CI execute all three projects: deterministic
-  local coverage (52 tests), four live smoke tests, and the broader live
+  local coverage (53 tests), four live smoke tests, and the broader live
   regression suite (26 tests).
 - `tests/catalog-preview.spec.ts` starts a second backend with a Provider
   transport fixture (`helpers/preview-transport.ts`): a synthetic SensCritique

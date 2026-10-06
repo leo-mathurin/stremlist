@@ -156,9 +156,9 @@ test(
         maxModelCalls: 9,
       },
     );
-    // The page does not ask for a reinstall when the saved Account had no
-    // List before (see TOOLKIT.md, known limits).
-    await expect(screen.getByText(/^Saved! /)).toBeVisible();
+    // The first List of an Account saved without Lists adds Catalogs, so
+    // Stremio needs a reinstall.
+    await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(screen.getByText("IMDb · List · ls99123456")).toBeVisible();
     expect(submissions).toHaveLength(1);
     expect(submissions[0].lists).toMatchObject([
