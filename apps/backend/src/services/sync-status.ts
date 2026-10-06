@@ -1,4 +1,5 @@
 import type { ProviderId } from "@stremlist/shared/providers";
+import { sourceRequiresConnection } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { SOURCE_PROBLEM_REASONS } from "@stremlist/shared/source-problems";
 import type { ConfigList } from "@stremlist/shared/stremio.types";
@@ -49,7 +50,13 @@ export async function recordRefreshOutcome(
       if (error) throw new Error(error.message);
     })(),
   ];
-  if (readThroughConnection && problem === null) {
+  // Only a private Source list proves that the Connection works: a public
+  // one may have been read without it.
+  if (
+    readThroughConnection &&
+    problem === null &&
+    sourceRequiresConnection(source.provider, source.sourceRef)
+  ) {
     writes.push(clearConnectionRenewal(source.accountId, source.provider));
   }
   if (readThroughConnection && problem === "needs_connection") {

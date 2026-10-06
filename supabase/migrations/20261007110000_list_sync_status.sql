@@ -7,7 +7,7 @@
 --   list (another IMDb chart) does not show the status of the old one.
 -- * `connections.needs_renewal_since` is set when a Provider refuses a
 --   Connection (revoked grant, refresh refused). The configure page asks the
---   user to connect again. A new authorization or a working read clears it.
+--   user to connect again. A new authorization or a working private read clears it.
 
 CREATE TABLE public.list_sync_status (
   list_id uuid NOT NULL REFERENCES public.lists(id) ON DELETE CASCADE,

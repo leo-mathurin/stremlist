@@ -346,7 +346,26 @@ describe("Connections that need to be renewed", () => {
     expect((await connectionOf())?.needsRenewalSince).toBeNull();
   });
 
-  it("clears the mark when a read through the Connection works again", async () => {
+  it("clears the mark when a private Source list reads through the Connection again", async () => {
+    const fetchSource = vi
+      .fn()
+      .mockRejectedValueOnce(new ConnectionExpiredError("trakt"))
+      .mockResolvedValue(entries("tt0000001"));
+    useTrakt(fetchSource);
+    const watchlist = seedList(accountId, {
+      provider: "trakt",
+      source_ref: "me/watchlist",
+      position: 1,
+    });
+    const read = config({ listId: watchlist.id, sourceRef: "me/watchlist" });
+
+    await getListCatalog(read).catch(() => undefined);
+    await getListCatalog(read);
+
+    expect((await connectionOf())?.needsRenewalSince).toBeNull();
+  });
+
+  it("keeps the mark when only a public Source list reads fine", async () => {
     const fetchSource = vi
       .fn()
       .mockRejectedValueOnce(new ConnectionExpiredError("trakt"))
@@ -354,9 +373,11 @@ describe("Connections that need to be renewed", () => {
     useTrakt(fetchSource);
 
     await getListCatalog(config()).catch(() => undefined);
+    // Trakt reads a public list without the refused Connection.
     await getListCatalog(config());
 
-    expect((await connectionOf())?.needsRenewalSince).toBeNull();
+    expect((await connectionOf())?.needsRenewalSince).not.toBeNull();
+    expect(await statusOf()).toMatchObject({ problem: null, titleCount: 1 });
   });
 
   it("clears the mark when the user connects again", async () => {
