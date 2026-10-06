@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-06T19:48:57.798Z",
+  "createdAt": "2026-10-06T23:01:11.990Z",
   "payload": {
     "actions": [
       {
@@ -60,13 +60,13 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Replaced the unrecognized link with the IMDb list URL, added it, renamed its catalog to “Weekend films,” and saved. The screen confirms: “Saved! Your catalogs will refresh with the new settings.”",
+    "summary": "The IMDb list is present as a catalog named “Weekend films” for ls99123456, and the screen shows the saved confirmation.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Saved! Your catalogs will refresh with the new settings."
+        "name": "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions."
       },
       {
         "role": "textbox",
@@ -119,8 +119,12 @@
       },
       {
         "text": "0 of 10 lists"
+      },
+      {
+        "role": "heading",
+        "name": "Install or reinstall in Stremio"
       }
     ],
-    "endWaitMs": 12803
+    "endWaitMs": 27218
   }
 }

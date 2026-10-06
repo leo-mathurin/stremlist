@@ -25,6 +25,7 @@ import {
   listKey,
 } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
+import { requiresReinstall } from "../lib/reinstall";
 
 /** Same limit as the backend (`MAX_LISTS`). */
 export const MAX_LISTS = 10;
@@ -141,7 +142,10 @@ export function useAccountConfiguration(
   const [loadError, setLoadError] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [showReinstallHint, setShowReinstallHint] = useState(false);
-  const [baselineSignature, setBaselineSignature] = useState("");
+  // Null until the configuration loads; "" for an Account without Lists.
+  const [baselineSignature, setBaselineSignature] = useState<string | null>(
+    null,
+  );
   // Whether the installed manifest offers Actions (its `stream` resource).
   const [baselineActionsLive, setBaselineActionsLive] = useState<
     boolean | null
@@ -182,7 +186,7 @@ export function useAccountConfiguration(
     previousKey.current = accountKey;
 
     setShowReinstallHint(false);
-    setBaselineSignature("");
+    setBaselineSignature(null);
     setBaselineActionsLive(null);
     setNotFound(false);
     setLoadError(false);
@@ -449,10 +453,10 @@ export function useAccountConfiguration(
       // reads only at install time.
       const actionsLive =
         access === "private" && actionsEnabled && actionSelected.length > 0;
-      const requiresReinstall =
-        (baselineSignature.length > 0 &&
-          currentSignature !== baselineSignature) ||
-        (baselineActionsLive !== null && actionsLive !== baselineActionsLive);
+      const needsReinstall = requiresReinstall(
+        { signature: baselineSignature, actionsLive: baselineActionsLive },
+        { signature: currentSignature, actionsLive },
+      );
 
       const submittedLists = lists;
       const submittedPayload = JSON.stringify({
@@ -521,14 +525,14 @@ export function useAccountConfiguration(
           };
         }),
       );
-      setShowReinstallHint(requiresReinstall);
+      setShowReinstallHint(needsReinstall);
       setBaselineSignature(getListReinstallSignature(savedRows));
       setBaselineActionsLive(actionsLive);
       setStatus({
         type: "success",
         message: hasUnsavedChanges
           ? "Saved the submitted settings. You have unsaved changes: save again to apply them."
-          : requiresReinstall
+          : needsReinstall
             ? "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions."
             : "Saved! Your catalogs will refresh with the new settings.",
       });
