@@ -18,6 +18,7 @@ import {
 } from "@stremlist/shared/providers";
 import type {
   AccountConfigResponse,
+  AddonAccess,
   ConfigList,
 } from "@stremlist/shared/stremio.types";
 import { Hono } from "hono";
@@ -137,7 +138,7 @@ function defaultTitle(index: number, total: number): string {
  */
 async function normalizeLists(
   lists: ListBody[],
-  access: { via: "private" | "legacy"; connected: Set<ProviderId> },
+  access: { via: AddonAccess; connected: Set<ProviderId> },
 ): Promise<ListInput[]> {
   const normalized: ListInput[] = [];
   const seen = new Set<string>();

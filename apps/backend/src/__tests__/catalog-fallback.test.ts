@@ -37,6 +37,7 @@ import { db, resetRpc } from "./helpers/mock-supabase.js";
 // Old installs reach their Account through the Legacy alias (`ur…`).
 const OWNER = "ur216216210";
 const UUID_1 = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
+const UUID_2 = "0f4ef1b5-0a8c-4a4e-9f1e-3b2c1d0e9a87";
 
 let accountId = "";
 
@@ -147,6 +148,28 @@ describe("catalog route degrades gracefully on fetch failure", () => {
     expect(body.metas[0].id).toBe("stremlist:unavailable:private");
     expect(body.metas[0].type).toBe("movie");
     expect(body.metas[0].name.toLowerCase()).toContain("private");
+  });
+
+  it("names the IMDb watchlist a watchlist, and an IMDb list a list", async () => {
+    seedUser(OWNER);
+    seedWatchlist(UUID_1);
+    seedList(accountId, { id: UUID_2, source_ref: "ls012345678", position: 1 });
+    vi.spyOn(scraper, "fetchWatchlist").mockRejectedValue(
+      new Error(scraper.ERROR_PRIVATE),
+    );
+    vi.spyOn(scraper, "fetchList").mockRejectedValue(
+      new Error(scraper.ERROR_PRIVATE),
+    );
+
+    const watchlist = (await (
+      await requestMovieCatalog()
+    ).json()) as CatalogResponse;
+    const list = (await (
+      await app.request(`/${OWNER}/catalog/movie/wl-${UUID_2}-movie.json`)
+    ).json()) as CatalogResponse;
+
+    expect(watchlist.metas[0].name).toBe("⚠️ This IMDb watchlist is private");
+    expect(list.metas[0].name).toBe("⚠️ This IMDb list is private");
   });
 
   it("returns a 200 'not found' card when the IMDb list does not exist", async () => {
@@ -553,7 +576,9 @@ describe("information cards for Lists that cannot be read", () => {
 
     expect(body.metas).toHaveLength(1);
     expect(body.metas[0].id).toBe("stremlist:unavailable:needs_connection");
-    expect(body.metas[0].name).toBe("⚠️ Connect your Trakt account");
+    expect(body.metas[0].name).toBe(
+      "⚠️ This watchlist needs your Trakt account",
+    );
     expect(fetchSource).not.toHaveBeenCalled();
   });
 
@@ -637,9 +662,7 @@ describe("information cards for Lists that cannot be read", () => {
 
     expect(body.metas).toHaveLength(1);
     expect(body.metas[0].id).toBe("stremlist:unavailable:premium_only");
-    expect(body.metas[0].name).toBe(
-      "⚠️ This Trakt list needs a paid Trakt plan",
-    );
+    expect(body.metas[0].name).toBe("⚠️ This list needs a paid Trakt plan");
   });
 
   it("uses Provider-neutral copy for private lists of other Providers", async () => {

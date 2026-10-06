@@ -1,7 +1,4 @@
-import type {
-  StremioMeta,
-  WatchlistData,
-} from "@stremlist/shared/stremio.types";
+import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const scraperMocks = vi.hoisted(() => ({
@@ -17,7 +14,7 @@ vi.mock("../../lib/supabase", async () => {
 vi.mock("../imdb-scraper", () => ({
   ...scraperMocks,
   buildPosterUrl: vi.fn((_id: string, poster: string | null) => poster),
-  classifyWatchlistError: vi.fn(() => null),
+  classifyImdbError: vi.fn(() => null),
   isListId: vi.fn((id: string) => id.startsWith("ls")),
 }));
 vi.mock("../list-cache", async () => {
@@ -91,10 +88,10 @@ afterEach(() => {
 
 describe("getListCatalog", () => {
   it("coalesces concurrent cache misses for the same Source list", async () => {
-    const releaseFetches: ((data: WatchlistData) => void)[] = [];
+    const releaseFetches: ((data: CatalogData) => void)[] = [];
     scraperMocks.fetchList.mockImplementation(
       () =>
-        new Promise<WatchlistData>((resolve) => {
+        new Promise<CatalogData>((resolve) => {
           releaseFetches.push(resolve);
         }),
     );

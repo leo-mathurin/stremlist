@@ -1,10 +1,7 @@
 import { FACEBOOK_EXTERNAL_HIT_USER_AGENT } from "@stremlist/shared/constants";
 import { CHART_BY_ID, isChartId } from "@stremlist/shared/imdb-charts";
 import type { ChartEntry } from "@stremlist/shared/imdb-charts";
-import type {
-  StremioMeta,
-  WatchlistData,
-} from "@stremlist/shared/stremio.types";
+import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
 
 const GRAPHQL_ENDPOINT = "https://api.graphql.imdb.com/";
 const GRAPHQL_CLIENT_NAME = "imdb-next-desktop";
@@ -244,9 +241,7 @@ export type WatchlistErrorReason = "private" | "not_found";
  * not-found) vs. something else (transient/unknown → null). Kept next to the
  * message constants so the mapping has a single source of truth.
  */
-export function classifyWatchlistError(
-  error: unknown,
-): WatchlistErrorReason | null {
+export function classifyImdbError(error: unknown): WatchlistErrorReason | null {
   const message = error instanceof Error ? error.message : "";
   if (message === ERROR_PRIVATE || message === ERROR_LIST_PRIVATE) {
     return "private";
@@ -593,9 +588,7 @@ export function isListId(id: string): boolean {
   return id.startsWith("ls");
 }
 
-export async function fetchWatchlist(
-  imdbUserId: string,
-): Promise<WatchlistData> {
+export async function fetchWatchlist(imdbUserId: string): Promise<CatalogData> {
   console.log(`Fetching IMDb watchlist for user ${imdbUserId}...`);
 
   const edges = await getImdbWatchlist(imdbUserId);
@@ -700,7 +693,7 @@ async function getChartEdges(entry: ChartEntry): Promise<ImdbEdge[]> {
   }
 }
 
-export async function fetchChart(sourceId: string): Promise<WatchlistData> {
+export async function fetchChart(sourceId: string): Promise<CatalogData> {
   const entry = CHART_BY_ID.get(sourceId);
   if (!entry) {
     // Unknown chart id has no fetcher. Charts are public, so there's no
@@ -818,7 +811,7 @@ export async function getImdbList(listId: string): Promise<ImdbEdge[]> {
   return edges;
 }
 
-export async function fetchList(listId: string): Promise<WatchlistData> {
+export async function fetchList(listId: string): Promise<CatalogData> {
   console.log(`Fetching IMDb list ${listId}...`);
 
   const edges = await getImdbList(listId);

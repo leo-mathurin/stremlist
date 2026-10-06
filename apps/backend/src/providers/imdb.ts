@@ -4,7 +4,7 @@ import {
 } from "@stremlist/shared/constants";
 import { CHART_BY_ID, isChartId } from "@stremlist/shared/imdb-charts";
 import {
-  classifyWatchlistError,
+  classifyImdbError,
   fetchChart,
   fetchList,
   fetchWatchlist,
@@ -66,7 +66,7 @@ export const imdbProvider: ProviderAdapter = {
       const data = await fetcher(ref);
       return { entries: data.metas.map((meta) => ({ imdbId: meta.id, meta })) };
     } catch (error) {
-      const reason = classifyWatchlistError(error);
+      const reason = classifyImdbError(error);
       if (reason) {
         throw new SourceUnavailableError(
           reason,

@@ -24,6 +24,23 @@ export const PROVIDER_MONOGRAMS: Record<ProviderId, string> = {
   letterboxd: "LB",
 };
 
+/** The prompt of every link field. */
+export const PASTE_LINK_PROMPT = "Paste a link to a watchlist or list";
+
+/** "A, B and C" (or "A, B or C"). */
+export function joinLabels(
+  labels: readonly string[],
+  word: "and" | "or",
+): string {
+  if (labels.length <= 1) return labels.join("");
+  return `${labels.slice(0, -1).join(", ")} ${word} ${labels.at(-1)}`;
+}
+
+/** Providers whose links the user can paste today. */
+export const LINK_PROVIDER_LABELS = Object.values(PROVIDERS)
+  .filter((info) => info.availability === "available" && info.linkExample)
+  .map((info) => info.label);
+
 /** Display order on Home and Configure: the most used Providers first. */
 export const PROVIDER_ORDER: readonly ProviderId[] = [
   "imdb",

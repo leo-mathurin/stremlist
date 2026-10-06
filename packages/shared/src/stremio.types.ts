@@ -2,7 +2,7 @@ import type { CatalogSettings } from "./catalog-settings";
 import type { DisplayMode } from "./constants";
 import type { ProviderId } from "./providers";
 
-export interface WatchlistData {
+export interface CatalogData {
   metas: StremioMeta[];
 }
 
@@ -25,9 +25,14 @@ export interface ConnectionSummary {
   connectedAt: string;
 }
 
+/**
+ * How an Addon URL reaches its Account: "private" through the Account ID,
+ * "legacy" through a Legacy alias (`ur…`), which anyone can guess (ADR 0001).
+ */
+export type AddonAccess = "private" | "legacy";
+
 export interface AccountConfigResponse {
-  /** "legacy" when the request came through a Legacy alias (`ur…`). */
-  access: "private" | "legacy";
+  access: AddonAccess;
   /** The Account ID; only returned for private access. */
   accountId: string | null;
   /** Legacy alias accounts: when a private copy was made from this install. */

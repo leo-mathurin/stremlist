@@ -7,7 +7,7 @@ import {
 import type { Tables } from "@stremlist/shared/database.types";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
-import type { ConfigList } from "@stremlist/shared/stremio.types";
+import type { AddonAccess, ConfigList } from "@stremlist/shared/stremio.types";
 import { supabase } from "../lib/supabase";
 import { catalogSettingsSchema } from "./catalog-settings";
 import { deleteCachedList } from "./list-cache";
@@ -32,7 +32,7 @@ export interface Account {
  */
 export interface AccountAccess {
   account: Account;
-  via: "private" | "legacy";
+  via: AddonAccess;
 }
 
 export interface ListInput {

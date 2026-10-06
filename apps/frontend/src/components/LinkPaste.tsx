@@ -3,8 +3,22 @@ import { ExternalLink, Loader2, Plug } from "lucide-react";
 import { PROVIDERS, parseSourceLink } from "@stremlist/shared/providers";
 import type { ProviderId, SourceKind } from "@stremlist/shared/providers";
 import type { DisplayMode } from "@stremlist/shared/constants";
+import {
+  sourceNoun,
+  sourceProblemCopy,
+} from "@stremlist/shared/source-problems";
+import type {
+  SourceNoun,
+  SourceProblemReason,
+} from "@stremlist/shared/source-problems";
+import type { AccountAccess } from "@/hooks/useAccountConfiguration";
 import { api } from "@/lib/api";
-import { detectedLinkHint } from "@/lib/list-sources";
+import {
+  detectedLinkHint,
+  joinLabels,
+  LINK_PROVIDER_LABELS,
+  PASTE_LINK_PROMPT,
+} from "@/lib/list-sources";
 import { cn } from "@/lib/utils";
 
 export interface ResolvedLink {
@@ -25,96 +39,60 @@ type LinkProblem = {
   action?: "connect" | "upgrade";
 };
 
-const SUPPORTED_LABELS = "IMDb, Trakt, MDBList, JustWatch or SensCritique";
+type LinkProblemReason = SourceProblemReason | "unrecognized";
 
-function privateMessage(provider: ProviderId): string {
-  switch (provider) {
-    case "imdb":
-      return "This IMDb list is private. Make it public in your IMDb account settings, then try again.";
-    case "trakt":
-      return "This Trakt list is private. Set its privacy to Public on Trakt, or connect Trakt to add your own private lists.";
-    case "justwatch":
-      return "This JustWatch list is not shared. In JustWatch, open the list, choose Share to get its link, then paste that link here.";
-    case "senscritique":
-      return "This SensCritique list is private. Make it public on SensCritique, then try again.";
-    default:
-      return `This ${PROVIDERS[provider].label} list is private. Make it public, then try again.`;
-  }
-}
+const LETTERBOXD_STEPS = [
+  "Sign in to MDBList and open My Lists, External tab.",
+  'Paste the Letterboxd list or watchlist link in "List URL", then click Parse.',
+  "Connect MDBList here and add that external list. Free MDBList accounts get 1 external list.",
+];
 
 /** Turn a `/links/resolve` refusal into a message and a next step. */
 function describeLinkProblem(
-  reason: string,
+  reason: LinkProblemReason,
   provider: ProviderId | undefined,
-  access: "new" | "private" | "legacy",
+  access: AccountAccess,
+  noun: SourceNoun,
 ): LinkProblem {
-  const label = provider ? PROVIDERS[provider].label : "This site";
+  if (reason === "unrecognized" || !provider) {
+    return {
+      message: `We do not recognize this link. ${PASTE_LINK_PROMPT} on ${joinLabels(LINK_PROVIDER_LABELS, "or")}.`,
+    };
+  }
+  const label = PROVIDERS[provider].label;
+  const { title, fix } = sourceProblemCopy(provider, reason, noun);
   switch (reason) {
-    case "unrecognized":
-      return {
-        message: `We do not recognize this link. Paste a link to a watchlist or list on ${SUPPORTED_LABELS}.`,
-      };
     case "coming_soon":
-      return {
-        provider,
-        tone: "info",
-        message:
-          provider === "letterboxd"
-            ? "Letterboxd is coming soon. Tip: import it into MDBList, then add the MDBList list."
-            : `${label} is coming soon.`,
-        steps:
-          provider === "letterboxd"
-            ? [
-                "Sign in to MDBList and open My Lists, External tab.",
-                'Paste the Letterboxd list or watchlist link in "List URL", then click Parse.',
-                "Connect MDBList here and add that external list. Free MDBList accounts get 1 external list.",
-              ]
-            : undefined,
-        link:
-          provider === "letterboxd"
-            ? {
-                href: "https://mdblist.com/mylists/#external_lists",
-                label: "Open MDBList external lists",
-              }
-            : undefined,
-      };
-    case "disabled":
-      return {
-        provider,
-        message: `${label} is temporarily unavailable. Please try again later.`,
-      };
+      return provider === "letterboxd"
+        ? {
+            provider,
+            tone: "info",
+            message: `${title}. ${fix}`,
+            steps: LETTERBOXD_STEPS,
+            link: {
+              href: "https://mdblist.com/mylists/#external_lists",
+              label: "Open MDBList external lists",
+            },
+          }
+        : { provider, tone: "info", message: `${title}. ${fix}` };
     case "needs_connection":
+      // On this page the fix is a button, not a sentence.
       return access === "legacy"
         ? {
             provider,
             action: "upgrade",
-            message: `This list needs your ${label} account. Connections need a private Addon URL, so upgrade this install first.`,
+            message: `${title}. Connections need a private Addon URL, so upgrade this install first.`,
           }
         : {
             provider,
             action: "connect",
             message:
               access === "new"
-                ? `This list needs your ${label} account. Connect ${label} to add it. Stremlist saves your setup first to create your private Addon URL.`
-                : `This list needs your ${label} account. Connect ${label} to add it.`,
+                ? `${title}. Connect ${label} to add it. Stremlist saves your setup first to create your private Addon URL.`
+                : `${title}. Connect ${label} to add it.`,
           };
-    case "private":
-      return { provider, message: provider ? privateMessage(provider) : "" };
-    case "not_found":
-      return {
-        provider,
-        message: `${label} could not find this list. Check the link and try again.`,
-      };
-    case "premium_only":
-      return {
-        provider,
-        message: `This list needs a paid ${label} plan to be read.`,
-      };
     default:
-      return {
-        provider,
-        message: `${label} did not answer. Please try again in a moment.`,
-      };
+      return { provider, message: `${title}. ${fix}` };
   }
 }
 
@@ -135,7 +113,7 @@ export default function LinkPaste({
   onUpgrade,
 }: {
   accountKey: string | null;
-  access: "new" | "private" | "legacy";
+  access: AccountAccess;
   disabled?: boolean;
   disabledReason?: string;
   /** Pre-filled link (from Home, or kept across an OAuth round trip). */
@@ -169,11 +147,20 @@ export default function LinkPaste({
     // Answer the obvious cases without a round trip.
     const parsed = parseSourceLink(trimmed);
     if (!parsed) {
-      setProblem(describeLinkProblem("unrecognized", undefined, access));
+      setProblem(
+        describeLinkProblem("unrecognized", undefined, access, "list"),
+      );
       return;
     }
     if (PROVIDERS[parsed.provider].availability !== "available") {
-      setProblem(describeLinkProblem("coming_soon", parsed.provider, access));
+      setProblem(
+        describeLinkProblem(
+          "coming_soon",
+          parsed.provider,
+          access,
+          sourceNoun(parsed.kind),
+        ),
+      );
       return;
     }
 
@@ -190,6 +177,7 @@ export default function LinkPaste({
             body.reason,
             "provider" in body ? body.provider : undefined,
             access,
+            sourceNoun(parsed.kind),
           ),
         );
         return;
@@ -234,7 +222,7 @@ export default function LinkPaste({
   return (
     <div>
       <label htmlFor={inputId} className="sr-only">
-        Paste a link to a watchlist or list
+        {PASTE_LINK_PROMPT}
       </label>
       <form
         onSubmit={(event) => {
@@ -277,8 +265,7 @@ export default function LinkPaste({
       >
         {disabled && disabledReason
           ? disabledReason
-          : (hint ??
-            "IMDb, Trakt, MDBList, JustWatch and SensCritique links work.")}
+          : (hint ?? `${joinLabels(LINK_PROVIDER_LABELS, "and")} links work.`)}
       </p>
       {problem && problem.message && (
         <div

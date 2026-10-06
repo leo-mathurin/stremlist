@@ -14,6 +14,7 @@ import {
 import type { ConnectionSource, ProviderId } from "@stremlist/shared/providers";
 import type {
   AccountConfigResponse,
+  AddonAccess,
   ConfigList,
   ConnectionSummary,
 } from "@stremlist/shared/stremio.types";
@@ -28,7 +29,8 @@ import type { ListFormRow } from "../lib/list-form";
 /** Same limit as the backend (`MAX_LISTS`). */
 export const MAX_LISTS = 10;
 
-export type AccountAccess = "new" | "private" | "legacy";
+/** "new" until the first save creates the Account. */
+export type AccountAccess = "new" | AddonAccess;
 
 export type ConfigStatus = {
   type: "success" | "error" | "info";

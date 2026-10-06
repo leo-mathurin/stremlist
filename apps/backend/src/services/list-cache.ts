@@ -3,10 +3,7 @@ import {
   GetObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
-import type {
-  StremioMeta,
-  WatchlistData,
-} from "@stremlist/shared/stremio.types";
+import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
@@ -79,7 +76,7 @@ interface CatalogRead {
 }
 
 export interface CachedList {
-  data: WatchlistData;
+  data: CatalogData;
   cachedAt: Date;
   generation: string;
 }
@@ -339,7 +336,7 @@ export async function getCachedList(
 
 export async function writeCachedList(
   listId: string,
-  listData: WatchlistData,
+  listData: CatalogData,
   cachedAt = new Date(),
 ): Promise<string> {
   const metas = uniqueMetas(listData.metas);

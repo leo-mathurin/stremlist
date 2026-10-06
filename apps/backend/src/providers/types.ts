@@ -4,6 +4,7 @@ import type {
   ConnectionSource,
   ProviderId,
 } from "@stremlist/shared/providers";
+import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 
 /**
@@ -68,16 +69,7 @@ export type SourceValidation =
       suggestedTitle?: string;
       defaultDisplayMode?: DisplayMode;
     }
-  | { ok: false; reason: SourceUnavailableReason; message?: string };
-
-export type SourceUnavailableReason =
-  | "private"
-  | "not_found"
-  | "needs_connection"
-  | "disabled"
-  | "coming_soon"
-  | "premium_only"
-  | "unavailable";
+  | { ok: false; reason: SourceProblemReason; message?: string };
 
 /**
  * Thrown when a Source list cannot be read. Every reason except "unavailable"
@@ -85,9 +77,9 @@ export type SourceUnavailableReason =
  * of a server error.
  */
 export class SourceUnavailableError extends Error {
-  readonly reason: SourceUnavailableReason;
+  readonly reason: SourceProblemReason;
 
-  constructor(reason: SourceUnavailableReason, message: string) {
+  constructor(reason: SourceProblemReason, message: string) {
     super(message);
     this.name = "SourceUnavailableError";
     this.reason = reason;

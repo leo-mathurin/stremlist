@@ -2,7 +2,11 @@ import { useId, useState } from "react";
 import { useNavigate } from "react-router";
 import { ArrowRight } from "lucide-react";
 import { parseSourceLink } from "@stremlist/shared/providers";
-import { detectedLinkHint, extractAccountKey } from "@/lib/list-sources";
+import {
+  detectedLinkHint,
+  extractAccountKey,
+  PASTE_LINK_PROMPT,
+} from "@/lib/list-sources";
 import { cn } from "@/lib/utils";
 
 /**
@@ -56,14 +60,14 @@ export default function HomeEntry() {
         }}
       >
         <label htmlFor={linkId} className="sr-only">
-          Paste a link to a watchlist or list
+          {PASTE_LINK_PROMPT}
         </label>
         <div className="flex flex-col gap-2 rounded-3xl bg-white/10 p-1.5 ring-1 ring-transparent transition-shadow focus-within:ring-brand/60 sm:flex-row sm:items-center sm:rounded-full">
           <input
             id={linkId}
             value={link}
             onChange={(event) => setLink(event.target.value)}
-            placeholder="Paste a link to a watchlist or list"
+            placeholder={PASTE_LINK_PROMPT}
             autoComplete="off"
             spellCheck={false}
             className="min-w-0 flex-1 bg-transparent px-4 py-3 text-cloud outline-none placeholder:text-white/40"

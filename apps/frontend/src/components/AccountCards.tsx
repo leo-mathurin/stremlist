@@ -8,10 +8,10 @@ function KeepUrlWarning() {
     <div className="flex gap-3 rounded-2xl bg-brand/20 px-4 py-3 text-sm text-black/80 ring-1 ring-brand/50">
       <KeyRound className="mt-0.5 size-4 shrink-0" />
       <p>
-        <strong>Keep this URL. It is your login.</strong> Anyone who has it can
-        see and change your Stremlist, so do not share it. To come back here
-        later, open Stremlist's settings in Stremio or paste this URL on the
-        Stremlist home page.
+        <strong>Keep this Addon URL secret.</strong> It is the only key to your
+        Stremlist: anyone who has it can see and change it, so do not share it.
+        To come back here later, open Stremlist's settings in Stremio or paste
+        this URL on the Stremlist home page.
       </p>
     </div>
   );

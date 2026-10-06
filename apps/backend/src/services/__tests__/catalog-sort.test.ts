@@ -1,7 +1,7 @@
 import { parseSortOption } from "@stremlist/shared/constants";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { describe, expect, it } from "vitest";
-import { sortWatchlist } from "../watchlist-sort";
+import { sortCatalog } from "../catalog-sort";
 
 const metas: StremioMeta[] = [
   { id: "tt1", name: "Zulu", releaseInfo: "2020", imdbRating: "5" },
@@ -28,7 +28,7 @@ describe("watchlist sorting", () => {
     ["rating-desc", ["tt2", "tt3", "tt1"]],
   ])("applies %s without mutating canonical order", (option, ids) => {
     expect(
-      sortWatchlist(metas, parseSortOption(option), "generation").map(
+      sortCatalog(metas, parseSortOption(option), "generation").map(
         (meta) => meta.id,
       ),
     ).toEqual(ids);

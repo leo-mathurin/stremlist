@@ -24,7 +24,11 @@ import {
   useAccountConfiguration,
 } from "../hooks/useAccountConfiguration";
 import { listKey } from "../lib/list-form";
-import { describeSource, isStaticSource } from "../lib/list-sources";
+import {
+  describeSource,
+  isStaticSource,
+  PASTE_LINK_PROMPT,
+} from "../lib/list-sources";
 import { cn, formatRelativeTime } from "@/lib/utils";
 
 /** The Account created in this tab, so its Addon URL warning stays visible. */
@@ -388,8 +392,8 @@ export default function Configure() {
                 <div className="rounded-3xl border-2 border-dashed border-black/10 p-6 text-center">
                   <p className="font-bold">No Lists yet</p>
                   <p className="mx-auto mt-1 max-w-sm text-sm text-pretty text-black/55">
-                    Paste a link to a watchlist or list in the Providers panel,
-                    or pick one below.
+                    {PASTE_LINK_PROMPT} in the Providers panel, or pick one
+                    below.
                   </p>
                 </div>
               ) : (

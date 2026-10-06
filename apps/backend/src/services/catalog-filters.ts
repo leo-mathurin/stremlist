@@ -5,11 +5,11 @@ import type {
 import { CATALOG_DECADES } from "@stremlist/shared/catalog-settings";
 import { parseSortOption } from "@stremlist/shared/constants";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
-import { runtimeMinutes } from "./watchlist-sort";
-import type { WatchlistSort } from "./watchlist-sort";
+import { runtimeMinutes } from "./catalog-sort";
+import type { CatalogSort } from "./catalog-sort";
 
 interface Selection {
-  sort?: WatchlistSort;
+  sort?: CatalogSort;
   filters?: CatalogSettings;
 }
 const OPTIONS = new Map<string, Selection>([

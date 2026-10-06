@@ -1,20 +1,16 @@
 import type { ProviderId } from "@stremlist/shared/providers";
 import { sourceRequiresConnection } from "@stremlist/shared/providers";
-import type {
-  StremioMeta,
-  WatchlistData,
-} from "@stremlist/shared/stremio.types";
+import type { SourceProblemReason } from "@stremlist/shared/source-problems";
+import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
 import { getProvider, isProviderEnabled } from "../providers/registry";
-import type {
-  ProviderAdapter,
-  ProviderContext,
-  SourceUnavailableReason,
-} from "../providers/types";
+import type { ProviderAdapter, ProviderContext } from "../providers/types";
 import { SourceUnavailableError } from "../providers/types";
 import { enrichTitles } from "../titles/enrich";
 import { DEFAULT_RESOLVE_BUDGET_MS, resolveEntries } from "../titles/resolver";
 import type { AccountAccess } from "./accounts";
 import { getAccountLists, markAccountFetched } from "./accounts";
+import type { CatalogSort } from "./catalog-sort";
+import { sortCatalog } from "./catalog-sort";
 import { ConnectionExpiredError, getConnectionAccess } from "./connections";
 import { buildPosterUrl } from "./imdb-scraper";
 import {
@@ -23,8 +19,6 @@ import {
   getCachedList,
   writeCachedList,
 } from "./list-cache";
-import type { WatchlistSort } from "./watchlist-sort";
-import { sortWatchlist } from "./watchlist-sort";
 
 /**
  * When the ID resolver left entries untried, the next read comes this soon
@@ -41,18 +35,20 @@ const METADATA_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
  * expected state shown as an information card.
  */
 export class ListUnavailableError extends Error {
-  readonly reason: SourceUnavailableReason;
+  readonly reason: SourceProblemReason;
   readonly provider: ProviderId;
+  readonly sourceRef: string;
 
   constructor(
-    provider: ProviderId,
-    reason: SourceUnavailableReason,
+    source: { provider: ProviderId; sourceRef: string },
+    reason: SourceProblemReason,
     message: string,
   ) {
     super(message);
     this.name = "ListUnavailableError";
     this.reason = reason;
-    this.provider = provider;
+    this.provider = source.provider;
+    this.sourceRef = source.sourceRef;
   }
 }
 
@@ -61,7 +57,7 @@ export interface ListFetchConfig {
   listId: string;
   provider: ProviderId;
   sourceRef: string;
-  sort: WatchlistSort;
+  sort: CatalogSort;
   rpdbApiKey?: string | null;
   /**
    * Whether this request may read through the Account's Connection. False for
@@ -83,7 +79,7 @@ export interface ListFetchConfig {
 }
 
 interface FreshList {
-  data: WatchlistData;
+  data: CatalogData;
   cachedAt: Date;
   generation: string | null;
 }
@@ -123,7 +119,7 @@ async function buildCatalog(
   adapter: ProviderAdapter,
   config: ListFetchConfig,
   ctx: ProviderContext,
-): Promise<{ data: WatchlistData; deferred: number }> {
+): Promise<{ data: CatalogData; deferred: number }> {
   const snapshot = await adapter.fetchSource(config.sourceRef, ctx);
   if (snapshot.entries.every((entry) => entry.meta)) {
     return {
@@ -229,18 +225,18 @@ function refreshList(config: ListFetchConfig): Promise<FreshList> {
   return refresh;
 }
 
-function contentGeneration(listId: string, data: WatchlistData): string {
+function contentGeneration(listId: string, data: CatalogData): string {
   return `${listId}:${data.metas.map((meta) => `${meta.type}:${meta.id}`).join(",")}`;
 }
 
 function present(
-  data: WatchlistData,
-  sort: WatchlistSort,
+  data: CatalogData,
+  sort: CatalogSort,
   generation: string,
   rpdbApiKey?: string | null,
-): WatchlistData {
+): CatalogData {
   return {
-    metas: sortWatchlist(data.metas, sort, generation).map((meta) => ({
+    metas: sortCatalog(data.metas, sort, generation).map((meta) => ({
       ...meta,
       poster: buildPosterUrl(meta.id, meta.poster, rpdbApiKey),
     })),
@@ -248,7 +244,7 @@ function present(
 }
 
 function toListError(
-  provider: ProviderId,
+  source: { provider: ProviderId; sourceRef: string },
   error: unknown,
   message: string,
 ): ListUnavailableError {
@@ -260,7 +256,7 @@ function toListError(
       : error instanceof ConnectionExpiredError
         ? "needs_connection"
         : "unavailable";
-  return new ListUnavailableError(provider, reason, message);
+  return new ListUnavailableError(source, reason, message);
 }
 
 /**
@@ -270,7 +266,7 @@ function toListError(
  */
 export async function getListCatalog(
   config: ListFetchConfig,
-): Promise<WatchlistData> {
+): Promise<CatalogData> {
   const adapter = getProvider(config.provider);
   const freshnessMs = freshnessOf(adapter, config.sourceRef);
   if (!config.forceFresh) {
@@ -333,7 +329,7 @@ export async function getListCatalog(
     }
 
     throw toListError(
-      config.provider,
+      config,
       error,
       `Failed to read list ${config.listId} and no cache available: ${message}`,
     );

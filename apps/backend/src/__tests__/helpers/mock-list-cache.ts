@@ -1,10 +1,7 @@
-import type {
-  StremioMeta,
-  WatchlistData,
-} from "@stremlist/shared/stremio.types";
+import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
 
 interface Entry {
-  data: WatchlistData;
+  data: CatalogData;
   cachedAt: Date;
   generation: string;
 }
@@ -41,7 +38,7 @@ export function getCachedList(listId: string): Promise<Entry | null> {
 
 export function writeCachedList(
   listId: string,
-  listData: WatchlistData,
+  listData: CatalogData,
   cachedAt = new Date(),
 ): Promise<string> {
   const seen = new Set<string>();

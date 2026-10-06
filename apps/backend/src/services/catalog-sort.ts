@@ -2,7 +2,7 @@ import type { SortOptions } from "@stremlist/shared/constants";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { shuffleArray } from "../utils";
 
-export type WatchlistSort = Omit<SortOptions, "by"> & {
+export type CatalogSort = Omit<SortOptions, "by"> & {
   by: SortOptions["by"] | "runtime" | "released";
   then?: SortOptions;
 };
@@ -14,9 +14,9 @@ export function runtimeMinutes(runtime?: string): number | null {
   return minutes > 0 ? minutes : null;
 }
 
-export function sortWatchlist(
+export function sortCatalog(
   metas: StremioMeta[],
-  sort: WatchlistSort,
+  sort: CatalogSort,
   generation: string,
 ): StremioMeta[] {
   const indices = metas.map((_, index) => index);
@@ -26,7 +26,7 @@ export function sortWatchlist(
       ranks[index] = rank;
     });
   }
-  function compare(a: number, b: number, { by, order }: WatchlistSort): number {
+  function compare(a: number, b: number, { by, order }: CatalogSort): number {
     const direction = order === "desc" ? -1 : 1;
     if (by === "random") return ranks[a] - ranks[b];
     if (by === "added_at") return (a - b) * direction;
