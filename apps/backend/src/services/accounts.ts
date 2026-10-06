@@ -51,15 +51,21 @@ export interface ListInput {
 }
 
 const storedSourcesSchema = z.array(
-  z.object({ provider: z.string(), source_ref: z.string() }),
+  z.object({
+    provider: z.string(),
+    source_ref: z.string(),
+    label: z.string().optional(),
+  }),
 );
 
 /** The merged Source lists of a row; unknown Providers are left out. */
 function mapMergedSources(value: unknown): ListSource[] {
   const parsed = storedSourcesSchema.safeParse(value);
   if (!parsed.success) return [];
-  return parsed.data.flatMap(({ provider, source_ref }) =>
-    isProviderId(provider) ? [{ provider, sourceRef: source_ref }] : [],
+  return parsed.data.flatMap(({ provider, source_ref, label }) =>
+    isProviderId(provider)
+      ? [{ provider, sourceRef: source_ref, ...(label ? { label } : {}) }]
+      : [],
   );
 }
 
@@ -248,6 +254,7 @@ export async function replaceAccountConfig(
       merged_sources: (list.mergedSources ?? []).map((source) => ({
         provider: source.provider,
         source_ref: source.sourceRef,
+        ...(source.label ? { label: source.label } : {}),
       })),
     })),
     p_actions_enabled: actions?.enabled ?? null,

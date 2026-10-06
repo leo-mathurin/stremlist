@@ -321,7 +321,10 @@ describe("merged Catalog", () => {
 describe("saving merged Lists", () => {
   it("saves the merged Source lists and returns them", async () => {
     const res = await postConfig([
-      listBody(TRAKT_WATCHLIST, [TRAKT_LIST, JUSTWATCH_LIST]),
+      listBody(TRAKT_WATCHLIST, [
+        TRAKT_LIST,
+        { ...JUSTWATCH_LIST, label: "Family picks" },
+      ]),
     ]);
     expect(res.status).toBe(200);
 
@@ -329,10 +332,18 @@ describe("saving merged Lists", () => {
     const json = (await config.json()) as {
       lists: { mergedSources?: ListSource[] }[];
     };
-    expect(json.lists[0].mergedSources).toEqual([TRAKT_LIST, JUSTWATCH_LIST]);
+    // The label names a Source list on the configure page only.
+    expect(json.lists[0].mergedSources).toEqual([
+      TRAKT_LIST,
+      { ...JUSTWATCH_LIST, label: "Family picks" },
+    ]);
     expect(db.getTable("lists")[0].merged_sources).toEqual([
       { provider: "trakt", source_ref: TRAKT_LIST.sourceRef },
-      { provider: "justwatch", source_ref: JUSTWATCH_LIST.sourceRef },
+      {
+        provider: "justwatch",
+        source_ref: JUSTWATCH_LIST.sourceRef,
+        label: "Family picks",
+      },
     ]);
   });
 

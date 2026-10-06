@@ -110,6 +110,7 @@ const listBody = z.object({
       z.object({
         provider: providerParam,
         sourceRef: z.string().trim().min(1).max(300),
+        label: z.string().trim().max(60).optional(),
       }),
     )
     .max(
@@ -229,7 +230,10 @@ async function normalizeLists(
         (list.id ? saved.get(list.id)?.mergedSources : undefined) ??
         []),
     ]) {
-      const checked = await normalizeSource(source, access);
+      const checked: ListSource = {
+        ...(await normalizeSource(source, access)),
+        ...(source.label ? { label: source.label } : {}),
+      };
       if (seen.has(sourceKey(checked))) {
         throw new ConfigError("Each list can only be added once.");
       }

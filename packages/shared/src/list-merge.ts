@@ -14,6 +14,11 @@ import { storedSourceNoun } from "./source-problems";
 export interface ListSource {
   provider: ProviderId;
   sourceRef: string;
+  /**
+   * For a merged Source list: the title of the List it came from, shown on
+   * the configure page. Never part of its identity.
+   */
+  label?: string;
 }
 
 /** A List as far as merging cares: its first Source list, then the others. */
@@ -31,9 +36,10 @@ export const MAX_SOURCES_PER_ACCOUNT = 20;
 export function listSources(list: MergeableList): ListSource[] {
   return [
     { provider: list.provider, sourceRef: list.sourceRef },
-    ...(list.mergedSources ?? []).map(({ provider, sourceRef }) => ({
+    ...(list.mergedSources ?? []).map(({ provider, sourceRef, label }) => ({
       provider,
       sourceRef,
+      ...(label ? { label } : {}),
     })),
   ];
 }

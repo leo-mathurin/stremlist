@@ -110,7 +110,7 @@ export default function MergedSources({
               source.sourceRef,
             );
             const label = PROVIDERS[source.provider].label;
-            const name = description.suggestedTitle;
+            const name = source.label ?? description.suggestedTitle;
             const missing = controls.missingProviders.includes(source.provider);
             return (
               <li

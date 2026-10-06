@@ -405,7 +405,13 @@ export function useAccountConfiguration(
           return [
             withAllowedSettings({
               ...row,
-              mergedSources: [...row.mergedSources, ...listSources(other)],
+              // The other List's title names its first Source list here.
+              mergedSources: [
+                ...row.mergedSources,
+                ...listSources(other).map((source, index) =>
+                  index === 0 ? { ...source, label: rowTitle(other) } : source,
+                ),
+              ],
             }),
           ];
         }),
@@ -452,8 +458,9 @@ export function useAccountConfiguration(
           : undefined;
       const split = createListRow({
         ...source,
-        catalogTitle: describeSource(source.provider, source.sourceRef)
-          .suggestedTitle,
+        catalogTitle:
+          source.label ??
+          describeSource(source.provider, source.sourceRef).suggestedTitle,
         displayMode: chart?.defaultDisplayMode,
       });
       setLists((rows) => {
