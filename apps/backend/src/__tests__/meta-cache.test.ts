@@ -18,9 +18,14 @@ vi.mock("../lib/resend", () => ({
   resend: { contacts: { create: vi.fn() } },
 }));
 
-import * as watchlistSvc from "../services/watchlist";
-import { db } from "./helpers/mock-supabase.js";
+import * as listsSvc from "../services/lists";
+import {
+  seedAccount,
+  seedLegacyAccount,
+  seedList,
+} from "./helpers/fixtures.js";
 import { cache } from "./helpers/mock-list-cache.js";
+import { db, resetRpc } from "./helpers/mock-supabase.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -29,36 +34,22 @@ import { cache } from "./helpers/mock-list-cache.js";
 const OWNER = "ur88409068";
 const UUID_1 = "11111111-1111-4111-8111-111111111111";
 
+let accountId = "";
+
 function seedUser(imdbUserId: string, rpdbApiKey: string | null = null) {
-  db.getTable("users").push({
-    imdb_user_id: imdbUserId,
-    is_active: true,
-    created_at: new Date().toISOString(),
-    last_fetched_at: new Date().toISOString(),
-    rpdb_api_key: rpdbApiKey,
-    last_cache_served_at: null,
-  });
+  accountId = seedLegacyAccount(imdbUserId, { rpdb_api_key: rpdbApiKey }).id;
 }
 
 function seedWatchlist(id: string, imdbUserId = OWNER) {
-  db.getTable("user_watchlists").push({
+  seedList(accountId, {
     id,
-    owner_user_id: OWNER,
-    imdb_user_id: imdbUserId,
-    catalog_title: "",
+    source_ref: imdbUserId,
     sort_option: "added_at-desc",
-    position: 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
   });
 }
 
-function seedCache(
-  watchlistId: string,
-  metas: StremioMeta[],
-  cachedAt?: string,
-) {
-  cache.seed(watchlistId, metas, cachedAt ? new Date(cachedAt) : new Date());
+function seedCache(listId: string, metas: StremioMeta[], cachedAt?: string) {
+  cache.seed(listId, metas, cachedAt ? new Date(cachedAt) : new Date());
 }
 
 const SHAWSHANK: StremioMeta = {
@@ -88,6 +79,7 @@ interface MetaResponse {
 
 beforeEach(() => {
   db.reset();
+  resetRpc();
   cache.reset();
   vi.restoreAllMocks();
 });
@@ -97,7 +89,7 @@ describe("meta route serves from cache only", () => {
     seedUser(OWNER);
     seedWatchlist(UUID_1);
     seedCache(UUID_1, [BREAKING_BAD]);
-    const lookup = vi.spyOn(watchlistSvc, "findMetaInUserCache");
+    const lookup = vi.spyOn(listsSvc, "findMetaInAccountCache");
 
     const res = await app.request(
       `/${OWNER}/meta/series/${BREAKING_BAD.id}.json`,
@@ -194,8 +186,8 @@ describe("meta route serves from cache only", () => {
     );
   });
 
-  it("does no per-request watchlist fan-out and never 500s", async () => {
-    const spy = vi.spyOn(watchlistSvc, "getWatchlistByConfig");
+  it("does no per-request List fan-out and never 500s", async () => {
+    const spy = vi.spyOn(listsSvc, "getListCatalog");
     seedUser(OWNER);
     seedWatchlist(UUID_1);
     seedCache(UUID_1, [SHAWSHANK]);
@@ -206,8 +198,41 @@ describe("meta route serves from cache only", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it("returns {meta:null} (not 500) for a user with no watchlists", async () => {
+  it("returns {meta:null} (not 500) for an Account with no Lists", async () => {
     seedUser(OWNER);
+
+    const res = await app.request(`/${OWNER}/meta/movie/tt0111161.json`);
+
+    expect(res.status).toBe(200);
+    expect((await res.json()) as MetaResponse).toEqual({ meta: null });
+  });
+});
+
+describe("meta route through each kind of Addon URL", () => {
+  it("serves cached metadata through a private Account ID", async () => {
+    const account = seedAccount();
+    seedList(account.id, { id: UUID_1, source_ref: OWNER });
+    seedCache(UUID_1, [SHAWSHANK]);
+
+    const res = await app.request(`/${account.id}/meta/movie/tt0111161.json`);
+
+    expect((await res.json()) as MetaResponse).toEqual({ meta: SHAWSHANK });
+  });
+
+  it("returns {meta:null} for an unknown Addon URL", async () => {
+    const res = await app.request(`/ur10000001/meta/movie/tt0111161.json`);
+
+    expect(res.status).toBe(200);
+    expect((await res.json()) as MetaResponse).toEqual({ meta: null });
+  });
+
+  it("returns {meta:null} instead of a 500 when the database fails", async () => {
+    seedUser(OWNER);
+    seedWatchlist(UUID_1);
+    seedCache(UUID_1, [SHAWSHANK]);
+    vi.spyOn(db, "getTable").mockImplementation(() => {
+      throw new Error("database down");
+    });
 
     const res = await app.request(`/${OWNER}/meta/movie/tt0111161.json`);
 

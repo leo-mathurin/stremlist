@@ -13,45 +13,44 @@ vi.mock("../lib/resend", () => ({
   resend: { contacts: { create: vi.fn() } },
 }));
 
-import app from "../index.js";
-import * as scraper from "../services/imdb-scraper";
-import { db } from "./helpers/mock-supabase.js";
-import { cache } from "./helpers/mock-list-cache.js";
+vi.mock("../providers/registry", async () => {
+  return await import("./helpers/mock-registry.js");
+});
 
+import app from "../index.js";
+import { SourceUnavailableError } from "../providers/types";
+import * as scraper from "../services/imdb-scraper";
+import {
+  seedAccount,
+  seedConnection,
+  seedLegacyAccount,
+  seedList,
+} from "./helpers/fixtures.js";
+import { cache } from "./helpers/mock-list-cache.js";
+import {
+  fakeAdapter,
+  resetProviders,
+  useFakeProvider,
+} from "./helpers/mock-registry.js";
+import { db, resetRpc } from "./helpers/mock-supabase.js";
+
+// Old installs reach their Account through the Legacy alias (`ur…`).
 const OWNER = "ur216216210";
 const UUID_1 = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
 
+let accountId = "";
+
 function seedUser(imdbUserId: string) {
-  db.getTable("users").push({
-    imdb_user_id: imdbUserId,
-    is_active: true,
-    created_at: new Date().toISOString(),
-    last_fetched_at: new Date().toISOString(),
-    rpdb_api_key: null,
-    last_cache_served_at: null,
-  });
+  accountId = seedLegacyAccount(imdbUserId).id;
 }
 
 function seedWatchlist(id: string, sortOption = "added_at-asc") {
-  db.getTable("user_watchlists").push({
-    id,
-    owner_user_id: OWNER,
-    imdb_user_id: OWNER,
-    catalog_title: "",
-    sort_option: sortOption,
-    position: 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  });
+  seedList(accountId, { id, source_ref: OWNER, sort_option: sortOption });
 }
 
-function seedCache(
-  watchlistId: string,
-  metas: StremioMeta[],
-  cachedAt?: string,
-) {
+function seedCache(listId: string, metas: StremioMeta[], cachedAt?: string) {
   if (metas.length === 0) return;
-  cache.seed(watchlistId, metas, cachedAt ? new Date(cachedAt) : new Date());
+  cache.seed(listId, metas, cachedAt ? new Date(cachedAt) : new Date());
 }
 
 const CACHED_MOVIE: StremioMeta = {
@@ -74,14 +73,16 @@ interface CatalogResponse {
 }
 
 // Movie catalog for a list with no cache row → the fetch failure has nothing to
-// fall back on, so getWatchlistByConfig throws and the route's catch runs.
+// fall back on, so getListCatalog throws and the route's catch runs.
 function requestMovieCatalog() {
   return app.request(`/${OWNER}/catalog/movie/wl-${UUID_1}-movie.json`);
 }
 
 beforeEach(() => {
   db.reset();
+  resetRpc();
   cache.reset();
+  resetProviders();
   vi.restoreAllMocks();
 });
 
@@ -377,7 +378,7 @@ describe("catalog dropdown filters", () => {
     expect(await names(`genre=${encodeURIComponent(filter)}`)).toEqual(
       expected,
     );
-    expect(db.getTable("user_watchlists")[0].sort_option).toBe("title-desc");
+    expect(db.getTable("lists")[0].sort_option).toBe("title-desc");
   });
 
   it("handles both path parameter orders and query parameters", async () => {
@@ -418,7 +419,7 @@ describe("catalog dropdown filters", () => {
     expect(first).toHaveLength(4);
   });
   it("combines saved filters with the dropdown and search", async () => {
-    db.getTable("user_watchlists")[0].catalog_settings = {
+    db.getTable("lists")[0].catalog_settings = {
       genre: "Comedy",
       decade: 1990,
       maxRuntime: 90,
@@ -444,7 +445,7 @@ describe("catalog dropdown filters", () => {
     expect(
       ((await (await app.request(presetUrl)).json()) as CatalogResponse).metas,
     ).toEqual([]);
-    db.getTable("user_watchlists")[0].catalog_settings = {
+    db.getTable("lists")[0].catalog_settings = {
       presets: ["short", "rated", "shuffle"],
       minRating: 8,
     };
@@ -460,5 +461,201 @@ describe("catalog dropdown filters", () => {
     expect(
       ((await rated.json()) as CatalogResponse).metas.map((meta) => meta.name),
     ).toEqual(["Alpha", "Beta"]);
+  });
+});
+
+describe("catalog access through Account IDs and Legacy aliases", () => {
+  it("serves the same cached catalog through a private Account ID", async () => {
+    const account = seedAccount();
+    seedList(account.id, { id: UUID_1, source_ref: OWNER });
+    seedCache(UUID_1, [CACHED_MOVIE]);
+
+    const res = await app.request(
+      `/${account.id}/catalog/movie/wl-${UUID_1}-movie.json`,
+    );
+
+    expect(res.status).toBe(200);
+    expect(
+      ((await res.json()) as CatalogResponse).metas.map((meta) => meta.id),
+    ).toEqual([CACHED_MOVIE.id]);
+  });
+
+  it("keeps old `ur…` catalog URLs working through the Legacy alias", async () => {
+    seedUser(OWNER);
+    seedWatchlist(UUID_1);
+    seedCache(UUID_1, [CACHED_MOVIE]);
+
+    const res = await requestMovieCatalog();
+
+    expect(
+      ((await res.json()) as CatalogResponse).metas.map((meta) => meta.id),
+    ).toEqual([CACHED_MOVIE.id]);
+  });
+
+  it("does not answer through the internal ID of an Account that has a Legacy alias", async () => {
+    seedUser(OWNER);
+    seedWatchlist(UUID_1);
+    seedCache(UUID_1, [CACHED_MOVIE]);
+
+    const res = await app.request(
+      `/${accountId}/catalog/movie/wl-${UUID_1}-movie.json`,
+    );
+
+    expect((await res.json()) as CatalogResponse).toEqual({ metas: [] });
+  });
+
+  it("does not serve a List of another Account", async () => {
+    seedUser(OWNER);
+    const other = seedAccount();
+    seedList(other.id, { id: UUID_1, source_ref: "ur12345678" });
+    seedCache(UUID_1, [CACHED_MOVIE]);
+
+    const res = await requestMovieCatalog();
+
+    expect((await res.json()) as CatalogResponse).toEqual({ metas: [] });
+  });
+
+  it("never serves a Connection list through a Legacy alias, even from cache", async () => {
+    seedUser(OWNER);
+    seedList(accountId, {
+      id: UUID_1,
+      provider: "trakt",
+      source_ref: "me/watchlist",
+    });
+    seedCache(UUID_1, [CACHED_MOVIE]);
+
+    const res = await requestMovieCatalog();
+
+    expect(res.status).toBe(200);
+    expect((await res.json()) as CatalogResponse).toEqual({ metas: [] });
+  });
+});
+
+describe("information cards for Lists that cannot be read", () => {
+  async function requestPrivateCatalog(
+    provider: "trakt" | "simkl",
+    sourceRef: string,
+  ) {
+    const account = seedAccount();
+    seedList(account.id, { id: UUID_1, provider, source_ref: sourceRef });
+    const res = await app.request(
+      `/${account.id}/catalog/movie/wl-${UUID_1}-movie.json`,
+    );
+    expect(res.status).toBe(200);
+    return { account, body: (await res.json()) as CatalogResponse };
+  }
+
+  it("asks to connect the Provider when a Connection list has no Connection", async () => {
+    const fetchSource = vi.fn();
+    useFakeProvider(fakeAdapter("trakt", { fetchSource }));
+
+    const { body } = await requestPrivateCatalog("trakt", "me/watchlist");
+
+    expect(body.metas).toHaveLength(1);
+    expect(body.metas[0].id).toBe("stremlist:unavailable:needs_connection");
+    expect(body.metas[0].name).toBe("⚠️ Connect your Trakt account");
+    expect(fetchSource).not.toHaveBeenCalled();
+  });
+
+  it("reads a Connection list once the Account has a Connection", async () => {
+    const fetchSource = vi.fn(() =>
+      Promise.resolve({
+        entries: [{ imdbId: CACHED_MOVIE.id, meta: CACHED_MOVIE }],
+      }),
+    );
+    useFakeProvider(fakeAdapter("trakt", { fetchSource }));
+    const account = seedAccount();
+    seedConnection(account.id, "trakt");
+    seedList(account.id, {
+      id: UUID_1,
+      provider: "trakt",
+      source_ref: "me/watchlist",
+    });
+
+    const res = await app.request(
+      `/${account.id}/catalog/movie/wl-${UUID_1}-movie.json`,
+    );
+
+    expect(
+      ((await res.json()) as CatalogResponse).metas.map((meta) => meta.id),
+    ).toEqual([CACHED_MOVIE.id]);
+    expect(fetchSource).toHaveBeenCalledWith(
+      "me/watchlist",
+      expect.objectContaining({
+        connection: expect.objectContaining({ provider: "trakt" }) as unknown,
+      }),
+    );
+  });
+
+  it("says the Provider is temporarily unavailable when it is turned off", async () => {
+    const fetchSource = vi.fn();
+    useFakeProvider(fakeAdapter("trakt", { fetchSource }));
+    process.env.DISABLED_PROVIDERS = "trakt";
+
+    const { body } = await requestPrivateCatalog(
+      "trakt",
+      "users/leo/watchlist",
+    );
+
+    expect(body.metas).toHaveLength(1);
+    expect(body.metas[0].id).toBe("stremlist:unavailable:disabled");
+    expect(body.metas[0].name).toBe("⚠️ Trakt is temporarily unavailable");
+    expect(fetchSource).not.toHaveBeenCalled();
+  });
+
+  it("keeps serving the last cached Catalog of a turned-off Provider", async () => {
+    useFakeProvider(fakeAdapter("trakt"));
+    process.env.DISABLED_PROVIDERS = "trakt";
+    const account = seedAccount();
+    seedList(account.id, {
+      id: UUID_1,
+      provider: "trakt",
+      source_ref: "users/leo/watchlist",
+    });
+    seedCache(UUID_1, [CACHED_MOVIE], new Date(0).toISOString());
+
+    const res = await app.request(
+      `/${account.id}/catalog/movie/wl-${UUID_1}-movie.json`,
+    );
+
+    expect(
+      ((await res.json()) as CatalogResponse).metas.map((meta) => meta.id),
+    ).toEqual([CACHED_MOVIE.id]);
+  });
+
+  it("explains that a list needs a paid plan", async () => {
+    useFakeProvider(
+      fakeAdapter("trakt", {
+        fetchSource: () =>
+          Promise.reject(
+            new SourceUnavailableError("premium_only", "VIP only"),
+          ),
+      }),
+    );
+
+    const { body } = await requestPrivateCatalog("trakt", "lists/123");
+
+    expect(body.metas).toHaveLength(1);
+    expect(body.metas[0].id).toBe("stremlist:unavailable:premium_only");
+    expect(body.metas[0].name).toBe(
+      "⚠️ This Trakt list needs a paid Trakt plan",
+    );
+  });
+
+  it("uses Provider-neutral copy for private lists of other Providers", async () => {
+    useFakeProvider(
+      fakeAdapter("trakt", {
+        fetchSource: () =>
+          Promise.reject(new SourceUnavailableError("private", "private")),
+      }),
+    );
+
+    const { body } = await requestPrivateCatalog(
+      "trakt",
+      "users/leo/lists/secret",
+    );
+
+    expect(body.metas[0].id).toBe("stremlist:unavailable:private");
+    expect(body.metas[0].name).toBe("⚠️ This Trakt list is private");
   });
 });
