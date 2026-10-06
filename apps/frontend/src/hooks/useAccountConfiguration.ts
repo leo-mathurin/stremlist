@@ -17,6 +17,7 @@ import type {
   AddonAccess,
   ConfigList,
   ConnectionSummary,
+  NewTitlesSummary,
 } from "@stremlist/shared/stremio.types";
 import { api } from "../lib/api";
 import {
@@ -129,6 +130,13 @@ export function useAccountConfiguration(
   const [actionsEnabled, setActionsEnabled] = useState(false);
   const [actionOrder, setActionOrder] = useState<ProviderId[]>([]);
   const [actionSelected, setActionSelected] = useState<ProviderId[]>([]);
+  const [newTitlesEnabled, setNewTitlesEnabled] = useState(false);
+  const [newTitlesSummary, setNewTitlesSummary] =
+    useState<NewTitlesSummary | null>(null);
+  // Whether the installed manifest offers the "New titles" catalogs.
+  const [baselineNewTitles, setBaselineNewTitles] = useState<boolean | null>(
+    null,
+  );
   const [providerStatus, setProviderStatus] = useState(defaultProviderStatus);
   const [loading, setLoading] = useState(!!accountKey);
   const [saving, setSaving] = useState(false);
@@ -184,6 +192,7 @@ export function useAccountConfiguration(
     setShowReinstallHint(false);
     setBaselineSignature("");
     setBaselineActionsLive(null);
+    setBaselineNewTitles(null);
     setNotFound(false);
     setLoadError(false);
     if (!accountKey) {
@@ -225,6 +234,9 @@ export function useAccountConfiguration(
         ]);
         setActionSelected(saved);
         setBaselineActionsLive(data.actions.enabled && saved.length > 0);
+        setNewTitlesEnabled(data.newTitles.enabled);
+        setNewTitlesSummary(data.newTitles.summary);
+        setBaselineNewTitles(data.newTitles.enabled);
       })
       .catch(() => {
         if (!cancelled) setLoadError(true);
@@ -413,7 +425,11 @@ export function useAccountConfiguration(
    */
   const createAccount = async (): Promise<string | null> => {
     const res = await api.accounts.$post({
-      json: { rpdbApiKey, lists: listPayload() },
+      json: {
+        rpdbApiKey,
+        lists: listPayload(),
+        newTitles: { enabled: newTitlesEnabled },
+      },
     });
     const body = await res.json();
     if (!res.ok || !("accountId" in body)) {
@@ -449,10 +465,12 @@ export function useAccountConfiguration(
       // reads only at install time.
       const actionsLive =
         access === "private" && actionsEnabled && actionSelected.length > 0;
+      // The "New titles" catalogs are manifest catalogs too.
       const requiresReinstall =
         (baselineSignature.length > 0 &&
           currentSignature !== baselineSignature) ||
-        (baselineActionsLive !== null && actionsLive !== baselineActionsLive);
+        (baselineActionsLive !== null && actionsLive !== baselineActionsLive) ||
+        (baselineNewTitles !== null && newTitlesEnabled !== baselineNewTitles);
 
       const submittedLists = lists;
       const submittedPayload = JSON.stringify({
@@ -473,6 +491,7 @@ export function useAccountConfiguration(
                   ),
                 }
               : undefined,
+          newTitles: { enabled: newTitlesEnabled },
         },
       });
       const body = await res.json();
@@ -524,6 +543,7 @@ export function useAccountConfiguration(
       setShowReinstallHint(requiresReinstall);
       setBaselineSignature(getListReinstallSignature(savedRows));
       setBaselineActionsLive(actionsLive);
+      setBaselineNewTitles(newTitlesEnabled);
       setStatus({
         type: "success",
         message: hasUnsavedChanges
@@ -557,6 +577,9 @@ export function useAccountConfiguration(
       }
       setCooldownSeconds(body.cooldownSeconds);
       setLastFetchedAt(body.lastFetchedAt);
+      if ("newTitles" in body && body.newTitles) {
+        setNewTitlesSummary(body.newTitles);
+      }
       if ("lists" in body && body.lists) {
         const refreshed = body.lists;
         setLists((current) =>
@@ -737,6 +760,9 @@ export function useAccountConfiguration(
     actionOrder,
     actionSelected,
     toggleActionProvider,
+    newTitlesEnabled,
+    setNewTitlesEnabled,
+    newTitlesSummary,
     moveActionProvider,
     loading,
     saving,

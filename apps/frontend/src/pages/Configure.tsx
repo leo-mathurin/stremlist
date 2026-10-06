@@ -13,6 +13,7 @@ import { isSortable } from "@dnd-kit/react/sortable";
 import ActionsSettings from "../components/ActionsSettings";
 import { AddonUrlCard, LegacyUpgradeCard } from "../components/AccountCards";
 import LinkPaste from "../components/LinkPaste";
+import NewTitlesSettings from "../components/NewTitlesSettings";
 import type { ResolvedLink } from "../components/LinkPaste";
 import ProviderList from "../components/ProviderList";
 import QuickAdd from "../components/QuickAdd";
@@ -529,6 +530,13 @@ export default function Configure() {
                         ? "Save your setup and connect Trakt, Simkl or MDBList to use Actions."
                         : undefined
                 }
+              />
+
+              <NewTitlesSettings
+                enabled={config.newTitlesEnabled}
+                onEnabledChange={config.setNewTitlesEnabled}
+                summary={config.newTitlesSummary}
+                locked={moved ? MOVED_HINT : undefined}
               />
             </section>
 
