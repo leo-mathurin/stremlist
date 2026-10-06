@@ -102,7 +102,7 @@ export interface TitleToEnrich {
  */
 export async function enrichTitles(
   titles: TitleToEnrich[],
-  previous: Map<string, StremioMeta> = new Map(),
+  previous = new Map<string, StremioMeta>(),
 ): Promise<Map<string, StremioMeta>> {
   const result = new Map<string, StremioMeta>();
   const missing = new Map<string, TitleToEnrich>();

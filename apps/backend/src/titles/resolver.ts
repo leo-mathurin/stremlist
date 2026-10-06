@@ -150,7 +150,8 @@ export async function resolveEntries(
           remaining.map(({ index }) => entries[index]),
         );
         for (const [position, imdbId] of found) {
-          const item = remaining[position];
+          // A strategy may answer a position that is not in the batch.
+          const item = position >= 0 ? remaining.at(position) : undefined;
           if (item && IMDB_ID.test(imdbId)) {
             results.set(item.index, { imdbId, strategy: strategy.name });
           }

@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
 import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
+import { randomUUID } from "node:crypto";
 import { decryptSecret, encryptSecret } from "../lib/crypto";
 import { supabase } from "../lib/supabase";
 import { getProvider } from "../providers/registry";

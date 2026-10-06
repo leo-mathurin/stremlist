@@ -118,7 +118,7 @@ export function parseStreamId(
 ): ActionTarget | null {
   const [imdbId, season, episode] = id.split(":");
   if (!/^tt\d+$/.test(imdbId)) return null;
-  if (type === "series" && season !== undefined && episode !== undefined) {
+  if (type === "series" && season && episode) {
     const s = Number(season);
     const e = Number(episode);
     if (Number.isInteger(s) && Number.isInteger(e)) {
@@ -132,9 +132,10 @@ function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
 
-export interface ActionLinkBuilder {
-  (kind: ActionKind, op: "add" | "remove" | "rate"): string;
-}
+export type ActionLinkBuilder = (
+  kind: ActionKind,
+  op: "add" | "remove" | "rate",
+) => string;
 
 interface SlotMember {
   provider: ProviderId;
@@ -329,7 +330,9 @@ function applyToMembership(
       next.watched = toggle(next.watched, target.imdbId, intent.add);
     }
   } else if (intent.rating === null) {
-    delete next.ratings[target.imdbId];
+    next.ratings = Object.fromEntries(
+      Object.entries(next.ratings).filter(([imdbId]) => imdbId !== target.imdbId),
+    );
   } else {
     next.ratings[target.imdbId] = intent.rating;
   }

@@ -3,6 +3,7 @@ import { PROVIDERS, isProviderId } from "@stremlist/shared/providers";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Child } from "hono/jsx";
+import { getProvider } from "../providers/registry";
 import type { ActionIntent } from "../providers/types";
 import type { Account } from "../services/accounts";
 import { resolveAccountKey } from "../services/accounts";
@@ -13,7 +14,6 @@ import {
   parseStreamId,
   performAction,
 } from "../services/actions";
-import { getProvider } from "../providers/registry";
 
 const actions = new Hono();
 
@@ -104,7 +104,7 @@ function OutcomePage({
 }
 
 async function privateAccount(c: Context): Promise<Account | null> {
-  const access = await resolveAccountKey(c.req.param("accountId") ?? "");
+  const access = await resolveAccountKey(c.req.param("accountId"));
   return access?.via === "private" ? access.account : null;
 }
 
@@ -169,7 +169,7 @@ actions.get("/:accountId/actions/:kind/:op/:type/:id", async (c) => {
 async function renderRating(c: Context) {
   const type = c.req.param("type");
   if (type !== "movie" && type !== "series") return notFound(c);
-  const target = parseStreamId(type, decodeURIComponent(c.req.param("id") ?? ""));
+  const target = parseStreamId(type, decodeURIComponent(c.req.param("id")));
   const account = await privateAccount(c);
   if (!target || !account) return notFound(c);
 
@@ -235,8 +235,8 @@ actions.post("/:accountId/actions/rating/rate/:type/:id", async (c) => {
   if (!remove && !(Number.isInteger(rating) && rating >= 1 && rating <= 10)) {
     return renderRating(c);
   }
-  const chosen = ([] as unknown[])
-    .concat(form.providers ?? [])
+  const submitted: unknown = form.providers;
+  const chosen = (Array.isArray(submitted) ? submitted : [submitted])
     .filter((value): value is ProviderId => typeof value === "string" && isProviderId(value));
   const providers = supporting(await actionProviders(account), "rating").filter(
     (provider) => chosen.includes(provider),
