@@ -1,0 +1,680 @@
+import { useState, useEffect, useCallback, useRef } from "react";
+import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
+import {
+  CONNECTION_SOURCES,
+  PROVIDER_IDS,
+  PROVIDERS,
+} from "@stremlist/shared/providers";
+import type { ConnectionSource, ProviderId } from "@stremlist/shared/providers";
+import type {
+  AccountConfigResponse,
+  ConfigList,
+  ConnectionSummary,
+} from "@stremlist/shared/stremio.types";
+import { api } from "../lib/api";
+import {
+  createListRow,
+  getListReinstallSignature,
+  listKey,
+} from "../lib/list-form";
+import type { ListFormRow } from "../lib/list-form";
+
+/** Same limit as the backend (`MAX_LISTS`). */
+export const MAX_LISTS = 10;
+
+export type AccountAccess = "new" | "private" | "legacy";
+
+export type ConfigStatus = {
+  type: "success" | "error" | "info";
+  message: string;
+} | null;
+
+export type ProviderStatus = { enabled: boolean; connectable: boolean };
+
+/** Providers whose Actions an Account can turn on: connected, with Actions. */
+export function actionCapableProviders(
+  connections: ConnectionSummary[],
+): ProviderId[] {
+  return PROVIDER_IDS.filter(
+    (id) =>
+      PROVIDERS[id].actions.length > 0 &&
+      connections.some((connection) => connection.provider === id),
+  );
+}
+
+function defaultProviderStatus(): Record<ProviderId, ProviderStatus> {
+  return Object.fromEntries(
+    PROVIDER_IDS.map((id) => [
+      id,
+      { enabled: true, connectable: PROVIDERS[id].connection !== "none" },
+    ]),
+  ) as Record<ProviderId, ProviderStatus>;
+}
+
+/**
+ * Source lists that a Connection unlocks, including the account's own lists.
+ * Falls back to the static `CONNECTION_SOURCES` when the backend does not
+ * answer (or does not have the endpoint yet).
+ */
+async function fetchConnectionSources(
+  accountId: string,
+  provider: ProviderId,
+): Promise<ConnectionSource[]> {
+  const fallback = CONNECTION_SOURCES[provider] ?? [];
+  try {
+    const res = await fetch(
+      `${import.meta.env.VITE_BACKEND_URL}/${encodeURIComponent(accountId)}/connections/${provider}/sources`,
+    );
+    if (!res.ok) return fallback;
+    const body = (await res.json()) as { sources?: unknown };
+    if (!Array.isArray(body.sources)) return fallback;
+    const sources = body.sources.filter(
+      (source): source is ConnectionSource =>
+        !!source &&
+        typeof source === "object" &&
+        typeof (source as ConnectionSource).ref === "string" &&
+        typeof (source as ConnectionSource).label === "string",
+    );
+    return sources.length > 0 ? sources : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function errorMessage(body: unknown, fallback: string): string {
+  if (body && typeof body === "object" && "error" in body) {
+    const error = (body as { error: unknown }).error;
+    if (typeof error === "string" && error.length > 0) return error;
+  }
+  return fallback;
+}
+
+function rowsFromLists(lists: ConfigList[]): ListFormRow[] {
+  return lists.map((list) =>
+    createListRow({
+      id: list.id,
+      provider: list.provider,
+      sourceRef: list.sourceRef,
+      catalogTitle: list.catalogTitle,
+      sortOption: list.sortOption,
+      displayMode: list.displayMode,
+      catalogSettings: list.catalogSettings,
+      availableGenres: list.availableGenres,
+    }),
+  );
+}
+
+/**
+ * State and server calls of the configure page. `accountKey` is a private
+ * Account ID, a Legacy alias, or null for a new setup that is not saved yet.
+ */
+export function useAccountConfiguration(
+  accountKey: string | null,
+  options: { onAccountCreated: (accountId: string) => void },
+) {
+  const { onAccountCreated } = options;
+  const [lists, setLists] = useState<ListFormRow[]>([]);
+  const [rpdbApiKey, setRpdbApiKey] = useState("");
+  const [showRpdbApiKey, setShowRpdbApiKey] = useState(false);
+  const [access, setAccess] = useState<AccountAccess>(
+    accountKey ? "private" : "new",
+  );
+  const [accountId, setAccountId] = useState<string | null>(null);
+  const [movedAt, setMovedAt] = useState<string | null>(null);
+  const [connections, setConnections] = useState<ConnectionSummary[]>([]);
+  const [connectionSources, setConnectionSources] = useState<
+    Partial<Record<ProviderId, ConnectionSource[]>>
+  >({});
+  const [actionsEnabled, setActionsEnabled] = useState(false);
+  const [actionOrder, setActionOrder] = useState<ProviderId[]>([]);
+  const [actionSelected, setActionSelected] = useState<ProviderId[]>([]);
+  const [providerStatus, setProviderStatus] = useState(defaultProviderStatus);
+  const [loading, setLoading] = useState(!!accountKey);
+  const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [connecting, setConnecting] = useState<ProviderId | null>(null);
+  const [lastFetchedAt, setLastFetchedAt] = useState<string | null>(null);
+  const [cooldownSeconds, setCooldownSeconds] = useState(60);
+  const [now, setNow] = useState(() => Date.now());
+  const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [showReinstallHint, setShowReinstallHint] = useState(false);
+  const [baselineSignature, setBaselineSignature] = useState("");
+  const [status, setStatus] = useState<ConfigStatus>(null);
+  const previousKey = useRef(accountKey);
+
+  useEffect(() => {
+    api.providers
+      .$get()
+      .then((res) => res.json())
+      .then((data) => {
+        setProviderStatus((current) => {
+          const next = { ...current };
+          for (const provider of data.providers) {
+            next[provider.id] = {
+              enabled: provider.enabled,
+              connectable: provider.connectable,
+            };
+          }
+          return next;
+        });
+      })
+      .catch(() => {
+        // Keep the defaults: the backend still refuses what it cannot do.
+      });
+  }, []);
+
+  useEffect(() => {
+    // A status set while creating the Account (before the key existed) must
+    // survive the reload that follows; a switch between Accounts clears it.
+    if (previousKey.current !== null) setStatus(null);
+    previousKey.current = accountKey;
+
+    setShowReinstallHint(false);
+    setBaselineSignature("");
+    setNotFound(false);
+    setLoadError(false);
+    if (!accountKey) {
+      setAccess("new");
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    api[":accountKey"].config
+      .$get({ param: { accountKey } })
+      .then(async (res) => {
+        if (res.status === 404) {
+          if (!cancelled) setNotFound(true);
+          return;
+        }
+        if (!res.ok) throw new Error("Failed to load configuration");
+        const data = (await res.json()) as AccountConfigResponse;
+        if (cancelled) return;
+        const rows = rowsFromLists(data.lists);
+        setLists(rows);
+        setBaselineSignature(getListReinstallSignature(rows));
+        setAccess(data.access);
+        setAccountId(data.accountId);
+        setMovedAt(data.movedAt);
+        setRpdbApiKey(data.rpdbApiKey ?? "");
+        setConnections(data.connections);
+        setLastFetchedAt(data.lastFetchedAt);
+        setCooldownSeconds(data.cooldownSeconds);
+        setActionsEnabled(data.actions.enabled);
+        const capable = actionCapableProviders(data.connections);
+        const saved = data.actions.providers.filter((id) =>
+          capable.includes(id),
+        );
+        setActionOrder([
+          ...saved,
+          ...capable.filter((id) => !saved.includes(id)),
+        ]);
+        setActionSelected(saved);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountKey, loadAttempt]);
+
+  // What each Connection unlocks depends on the account (its own lists), so
+  // ask the backend once the Connections are known.
+  const connectedKey = connections.map((c) => c.provider).join(",");
+  useEffect(() => {
+    if (!accountId || !connectedKey) {
+      setConnectionSources({});
+      return;
+    }
+    let cancelled = false;
+    const providers = connectedKey.split(",") as ProviderId[];
+    void Promise.all(
+      providers.map(
+        async (provider) =>
+          [
+            provider,
+            await fetchConnectionSources(accountId, provider),
+          ] as const,
+      ),
+    ).then((entries) => {
+      if (!cancelled) setConnectionSources(Object.fromEntries(entries));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, connectedKey]);
+
+  // Tick once a second so the "last refreshed" label and the refresh cooldown
+  // countdown stay live without per-event timers.
+  useEffect(() => {
+    if (!accountKey) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [accountKey]);
+
+  const nextRefreshAt = lastFetchedAt
+    ? new Date(lastFetchedAt).getTime() + cooldownSeconds * 1000
+    : 0;
+  const cooldownRemaining = Math.max(
+    0,
+    Math.ceil((nextRefreshAt - now) / 1000),
+  );
+  const onCooldown = cooldownRemaining > 0;
+
+  const setListField = useCallback(
+    <K extends keyof ListFormRow>(
+      localId: string,
+      key: K,
+      value: ListFormRow[K],
+    ) => {
+      setLists((current) =>
+        current.map((list) =>
+          list.localId === localId ? { ...list, [key]: value } : list,
+        ),
+      );
+    },
+    [],
+  );
+
+  /**
+   * Add a List. Returns an error message when it cannot be added, so the
+   * caller can show it next to the control that asked.
+   */
+  const addList = useCallback(
+    (
+      partial: Parameters<typeof createListRow>[0],
+      current: ListFormRow[],
+    ): string | null => {
+      if (current.length >= MAX_LISTS) {
+        return `You can have at most ${MAX_LISTS} lists.`;
+      }
+      if (current.some((row) => listKey(row) === listKey(partial))) {
+        return "This list is already in your Stremlist.";
+      }
+      setLists((rows) => [...rows, createListRow(partial)]);
+      return null;
+    },
+    [],
+  );
+
+  const addChartList = useCallback(
+    (chartId: string) => {
+      const entry = CHART_BY_ID.get(chartId);
+      if (!entry) return;
+      addList(
+        {
+          provider: "imdb",
+          sourceRef: entry.id,
+          catalogTitle: entry.label,
+          displayMode: entry.defaultDisplayMode,
+        },
+        lists,
+      );
+    },
+    [addList, lists],
+  );
+
+  const removeList = useCallback((localId: string) => {
+    setLists((current) => current.filter((list) => list.localId !== localId));
+  }, []);
+
+  const reorderLists = useCallback((initialIndex: number, index: number) => {
+    setLists((items) => {
+      const allDefaultTitles = items.every((list, i) => {
+        const title = list.catalogTitle.trim();
+        return title === "" || title === String(i + 1);
+      });
+      const reordered = [...items];
+      const [removed] = reordered.splice(initialIndex, 1);
+      reordered.splice(index, 0, removed);
+      // Numbered default titles follow the position, so drop them and let
+      // the backend number the Lists again.
+      return allDefaultTitles
+        ? reordered.map((list) => ({ ...list, catalogTitle: "" }))
+        : reordered;
+    });
+  }, []);
+
+  const toggleActionProvider = useCallback(
+    (provider: ProviderId, selected: boolean) => {
+      setActionSelected((current) =>
+        selected
+          ? [...current.filter((id) => id !== provider), provider]
+          : current.filter((id) => id !== provider),
+      );
+    },
+    [],
+  );
+
+  const moveActionProvider = useCallback(
+    (provider: ProviderId, delta: -1 | 1) => {
+      setActionOrder((current) => {
+        const index = current.indexOf(provider);
+        const target = index + delta;
+        if (index < 0 || target < 0 || target >= current.length) {
+          return current;
+        }
+        const next = [...current];
+        [next[index], next[target]] = [next[target], next[index]];
+        return next;
+      });
+    },
+    [],
+  );
+
+  const validationError = (() => {
+    if (lists.length > MAX_LISTS) {
+      return `You can have at most ${MAX_LISTS} lists.`;
+    }
+    const seen = new Set<string>();
+    for (const list of lists) {
+      if (seen.has(listKey(list))) {
+        return "Each list can only be added once.";
+      }
+      seen.add(listKey(list));
+    }
+    return null;
+  })();
+
+  const listPayload = () =>
+    lists.map((list, index) => ({
+      id: list.id,
+      provider: list.provider,
+      sourceRef: list.sourceRef.trim(),
+      catalogTitle: list.catalogTitle.trim(),
+      sortOption: list.sortOption,
+      displayMode: list.displayMode,
+      position: index,
+      catalogSettings: list.catalogSettings,
+    }));
+
+  /** Create the Account from the current setup. Returns its ID. */
+  const createAccount = async (): Promise<string | null> => {
+    if (lists.length === 0) {
+      setStatus({
+        type: "error",
+        message: "Add at least one list first.",
+      });
+      return null;
+    }
+    const res = await api.accounts.$post({
+      json: { rpdbApiKey, lists: listPayload() },
+    });
+    const body = await res.json();
+    if (!res.ok || !("accountId" in body)) {
+      throw new Error(errorMessage(body, "Failed to save your configuration."));
+    }
+    return body.accountId;
+  };
+
+  const handleSave = async () => {
+    if (validationError || saving) return;
+    if (lists.length === 0) {
+      setStatus({ type: "error", message: "Add at least one list first." });
+      return;
+    }
+
+    setSaving(true);
+    setStatus(null);
+    try {
+      if (!accountKey) {
+        const created = await createAccount();
+        if (created) {
+          setStatus({
+            type: "success",
+            message: "Saved! Install Stremlist in Stremio with your Addon URL.",
+          });
+          onAccountCreated(created);
+        }
+        return;
+      }
+
+      const currentSignature = getListReinstallSignature(lists);
+      const requiresReinstall =
+        baselineSignature.length > 0 && currentSignature !== baselineSignature;
+
+      const res = await api[":accountKey"].config.$post({
+        param: { accountKey },
+        json: {
+          rpdbApiKey,
+          lists: listPayload(),
+          actions:
+            access === "private"
+              ? {
+                  enabled: actionsEnabled,
+                  providers: actionOrder.filter((id) =>
+                    actionSelected.includes(id),
+                  ),
+                }
+              : undefined,
+        },
+      });
+      const body = await res.json();
+      if (!res.ok || !("lists" in body)) {
+        throw new Error(errorMessage(body, "Failed to save."));
+      }
+
+      const savedLists = body.lists;
+      setLists((current) =>
+        current.map((row, index) => {
+          const saved = savedLists[index];
+          return saved
+            ? {
+                ...row,
+                id: saved.id,
+                sourceRef: saved.sourceRef,
+                availableGenres: saved.availableGenres ?? [],
+              }
+            : row;
+        }),
+      );
+      setShowReinstallHint(requiresReinstall);
+      setBaselineSignature(currentSignature);
+      setStatus({
+        type: "success",
+        message: requiresReinstall
+          ? "Saved! The catalog structure changed. Reinstall Stremlist in Stremio to see the new catalogs."
+          : "Saved! Your catalogs will refresh with the new settings.",
+      });
+    } catch (err) {
+      setStatus({
+        type: "error",
+        message: err instanceof Error ? err.message : "Something went wrong",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    if (!accountKey || refreshing || onCooldown) return;
+
+    setRefreshing(true);
+    setStatus(null);
+    try {
+      const res = await api[":accountKey"].refresh.$post({
+        param: { accountKey },
+      });
+      const body = await res.json();
+      if (!res.ok || !("ok" in body)) {
+        throw new Error(errorMessage(body, "Failed to refresh"));
+      }
+      setCooldownSeconds(body.cooldownSeconds);
+      setLastFetchedAt(body.lastFetchedAt);
+      if ("lists" in body && body.lists) {
+        const refreshed = body.lists;
+        setLists((current) =>
+          current.map((row) => {
+            const match = refreshed.find(
+              (list) => list.id === row.id && list.sourceRef === row.sourceRef,
+            );
+            return match
+              ? { ...row, availableGenres: match.availableGenres ?? [] }
+              : row;
+          }),
+        );
+      }
+      // Success feedback is the live "Last refreshed" label and the cooldown,
+      // so only report when some Lists failed.
+      if (body.failed > 0) {
+        setStatus({
+          type: "error",
+          message: `Refreshed ${body.refreshed} of ${body.total} lists. Some lists failed to update.`,
+        });
+      }
+    } catch (err) {
+      setStatus({
+        type: "error",
+        message: err instanceof Error ? err.message : "Something went wrong",
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  /** Give a Legacy alias install a private Addon URL. Returns the new ID. */
+  const upgrade = async (): Promise<string | null> => {
+    if (!accountKey || access !== "legacy") return null;
+    setStatus(null);
+    try {
+      const res = await api[":accountKey"].upgrade.$post({
+        param: { accountKey },
+      });
+      const body = await res.json();
+      if (!res.ok || !("accountId" in body)) {
+        throw new Error(
+          errorMessage(body, "Failed to create your private URL."),
+        );
+      }
+      return body.accountId;
+    } catch (err) {
+      setStatus({
+        type: "error",
+        message: err instanceof Error ? err.message : "Something went wrong",
+      });
+      return null;
+    }
+  };
+
+  /**
+   * Start the OAuth flow of a Provider. A new setup is saved first, because a
+   * Connection belongs to an Account.
+   */
+  const connect = async (provider: ProviderId) => {
+    const label = PROVIDERS[provider].label;
+    if (access === "legacy") {
+      setStatus({
+        type: "info",
+        message: `To connect ${label}, upgrade this install to a private URL first.`,
+      });
+      return;
+    }
+    setConnecting(provider);
+    setStatus(null);
+    let id = accountId;
+    try {
+      if (!id) {
+        id = await createAccount();
+        if (!id) return;
+        onAccountCreated(id);
+      }
+      const res = await api[":accountId"].connections[":provider"].start.$post({
+        param: { accountId: id, provider },
+      });
+      const body = await res.json();
+      if (!res.ok || !("authorizeUrl" in body)) {
+        throw new Error(
+          errorMessage(body, `Could not connect ${label}. Please try again.`),
+        );
+      }
+      window.location.assign(body.authorizeUrl);
+    } catch (err) {
+      setConnecting(null);
+      setStatus({
+        type: "error",
+        message: err instanceof Error ? err.message : "Something went wrong",
+      });
+    }
+  };
+
+  const disconnect = async (provider: ProviderId) => {
+    if (!accountId) return;
+    const label = PROVIDERS[provider].label;
+    setConnecting(provider);
+    setStatus(null);
+    try {
+      const res = await api[":accountId"].connections[":provider"].$delete({
+        param: { accountId, provider },
+      });
+      if (!res.ok) throw new Error(`Could not disconnect ${label}.`);
+      setConnections((current) =>
+        current.filter((connection) => connection.provider !== provider),
+      );
+      setActionOrder((current) => current.filter((id) => id !== provider));
+      setActionSelected((current) => current.filter((id) => id !== provider));
+      setStatus({
+        type: "info",
+        message: `${label} is disconnected. Lists that need ${label} stop updating until you connect it again.`,
+      });
+    } catch (err) {
+      setStatus({
+        type: "error",
+        message: err instanceof Error ? err.message : "Something went wrong",
+      });
+    } finally {
+      setConnecting(null);
+    }
+  };
+
+  return {
+    lists,
+    setListField,
+    addList: (partial: Parameters<typeof createListRow>[0]) =>
+      addList(partial, lists),
+    addChartList,
+    removeList,
+    reorderLists,
+    rpdbApiKey,
+    setRpdbApiKey,
+    showRpdbApiKey,
+    setShowRpdbApiKey,
+    access,
+    accountId,
+    movedAt,
+    connections,
+    connectionSources,
+    providerStatus,
+    actionsEnabled,
+    setActionsEnabled,
+    actionOrder,
+    actionSelected,
+    toggleActionProvider,
+    moveActionProvider,
+    loading,
+    saving,
+    refreshing,
+    connecting,
+    lastFetchedAt,
+    cooldownRemaining,
+    onCooldown,
+    notFound,
+    loadError,
+    showReinstallHint,
+    status,
+    setStatus,
+    validationError,
+    handleSave,
+    handleRefresh,
+    upgrade,
+    connect,
+    disconnect,
+    retryLoad: () => setLoadAttempt((current) => current + 1),
+  };
+}

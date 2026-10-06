@@ -50,12 +50,22 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* Brand color tokens — defined in @theme (not inline) so Tailwind generates
-   bg-imdb, text-imdb, border-imdb, etc. utility classes */
+/* Brand tokens, defined in @theme (not inline) so Tailwind generates
+   bg-brand, text-ink, bg-paper, etc. utility classes. The yellow started as
+   IMDb's and is now Stremlist's accent; `imdb` stays as an alias for the
+   components that still use it. */
 @theme {
-  --color-imdb: #f5c518;
-  --color-imdb-dark: #e0b015;
+  --color-brand: #f5c518;
+  --color-brand-dark: #e0b015;
+  --color-imdb: var(--color-brand);
+  --color-imdb-dark: var(--color-brand-dark);
   --color-stremlist: #0d8aee;
+  --color-ink: #141414;
+  --color-paper: #f0f0f0;
+  --color-cloud: #f5f5f5;
+  --font-rounded:
+    ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", system-ui,
+    -apple-system, "Segoe UI", Roboto, sans-serif;
   /* Strong ease-out for UI enter/reveal motion: starts fast, settles gently. */
   --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
 }
@@ -67,16 +77,10 @@
   body {
     @apply text-foreground;
     margin: 0;
-    font-family:
-      system-ui,
-      -apple-system,
-      "Segoe UI",
-      Roboto,
-      Helvetica,
-      Arial,
-      sans-serif;
-    background-color: #f0f0f0;
-    color: #333;
+    font-family: var(--font-rounded);
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
     line-height: 1.6;
   }
 }

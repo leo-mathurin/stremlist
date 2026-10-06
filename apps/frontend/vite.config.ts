@@ -37,7 +37,9 @@ export default defineConfig(({ mode, command }) => {
                   // Stremio follows the addon URL to configure; keep that
                   // redirect on the browser's local or tailnet frontend origin.
                   if (
-                    /^\/ur\d+\/configure(?:\?|$)/.test(request.url ?? "") &&
+                    /^\/(?:ur\d+|sl_[0-9A-Za-z]{22})\/configure(?:\?|$)/.test(
+                      request.url ?? "",
+                    ) &&
                     response.headers.location
                   ) {
                     const redirect = new URL(response.headers.location);

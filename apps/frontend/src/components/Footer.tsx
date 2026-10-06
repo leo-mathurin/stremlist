@@ -15,7 +15,7 @@ const NAV_LINKS = [
 
 export default function Footer() {
   return (
-    <footer className="mt-8 pt-6 border-t border-gray-200">
+    <footer className="mt-8 border-t border-black/10 pt-6">
       <NewsletterForm />
 
       <div className="mt-6 space-y-3 text-center">
@@ -91,8 +91,8 @@ export default function Footer() {
         </div>
 
         <p className="text-xs text-gray-400">
-          © 2025 IMDb Watchlist for Stremio &mdash; not affiliated with IMDb or
-          Stremio
+          © 2025 Stremlist. Not affiliated with Stremio, IMDb or any other list
+          service.
         </p>
       </div>
     </footer>
