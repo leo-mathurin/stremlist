@@ -87,6 +87,9 @@ jobs:
       - name: Test atomic configuration replacement
         run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/replace_account_config.sql
 
+      - name: Test detection history
+        run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/record_source_list_sync.sql
+
       - name: Start local R2-compatible store
         run: |
           docker run --rm -d --name stremlist-e2e-r2 \

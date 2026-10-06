@@ -46,6 +46,11 @@ import {
   listConnections,
 } from "../services/connections";
 import {
+  forgetConnectionDetections,
+  getNewTitlesSummary,
+  setNewTitlesCatalog,
+} from "../services/detections";
+import {
   getImdbWatchlist,
   normalizeImdbUserId,
 } from "../services/imdb-scraper";
@@ -103,6 +108,7 @@ const configBody = z.object({
   rpdbApiKey: z.string().trim().optional(),
   lists: z.array(listBody).min(1).max(MAX_LISTS),
   actions: actionsBody.optional(),
+  newTitles: z.object({ enabled: z.boolean() }).optional(),
 });
 
 // A new Account may start without Lists: Simkl and MDBList users connect
@@ -347,7 +353,7 @@ const api = new Hono()
     "/accounts",
     zValidator("json", createBody, firstIssueAsError),
     async (c) => {
-      const { rpdbApiKey, lists } = c.req.valid("json");
+      const { rpdbApiKey, lists, newTitles } = c.req.valid("json");
       let normalized: ListInput[];
       try {
         normalized = await normalizeLists(lists, {
@@ -368,6 +374,7 @@ const api = new Hono()
           normalized,
           rpdbApiKey && rpdbApiKey.length > 0 ? rpdbApiKey : null,
         );
+        if (newTitles?.enabled) await setNewTitlesCatalog(account.id, true);
         scheduleBackgroundTask(() => prewarmLists(account.id, saved, true));
         return c.json({
           ok: true as const,
@@ -411,6 +418,10 @@ const api = new Hono()
           enabled: account.actionsEnabled,
           providers: account.actionProviders,
         },
+        newTitles: {
+          enabled: account.newTitlesCatalog,
+          summary: await getNewTitlesSummary(access, lists),
+        },
         lastFetchedAt: account.lastFetchedAt,
         cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
       };
@@ -424,7 +435,7 @@ const api = new Hono()
     zValidator("json", configBody, firstIssueAsError),
     async (c) => {
       const { accountKey } = c.req.valid("param");
-      const { rpdbApiKey, lists, actions } = c.req.valid("json");
+      const { rpdbApiKey, lists, actions, newTitles } = c.req.valid("json");
 
       const access = await resolveAccountKey(accountKey);
       if (!access) {
@@ -480,6 +491,9 @@ const api = new Hono()
               }
             : undefined,
         );
+        if (newTitles) {
+          await setNewTitlesCatalog(access.account.id, newTitles.enabled);
+        }
       } catch (error) {
         console.error("Failed to save the configuration:", error);
         return c.json(
@@ -566,6 +580,7 @@ const api = new Hono()
         failed,
         total: lists.length,
         lists: await withAvailableGenres(lists),
+        newTitles: await getNewTitlesSummary(access, lists),
         cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
       });
     },
@@ -690,6 +705,7 @@ const api = new Hono()
       const cleanup = await Promise.allSettled([
         forgetConnectionLists(accountId, provider),
         forgetConnectionObjects(accountId, provider),
+        forgetConnectionDetections(accountId, provider),
       ]);
       for (const outcome of cleanup) {
         if (outcome.status === "rejected") {

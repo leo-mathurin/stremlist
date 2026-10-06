@@ -4,7 +4,7 @@ import type {
   StremioCatalog,
 } from "@stremlist/shared/stremio.types";
 import { CATALOG_FILTER_OPTIONS } from "./catalog-filters";
-import { buildCatalogId } from "./catalog-id";
+import { buildCatalogId, buildNewTitlesCatalogId } from "./catalog-id";
 
 function catalogExtras(
   genres: string[],
@@ -94,4 +94,26 @@ export function buildManifestCatalogs(lists: ConfigList[]): StremioCatalog[] {
       })),
     ]);
   });
+}
+
+/**
+ * The "New titles" catalogs (ADR 0004): one per type that the Lists show.
+ * They come first, because they sum up what changed in every List below.
+ */
+export function buildNewTitlesCatalogs(lists: ConfigList[]): StremioCatalog[] {
+  const types = new Set(
+    lists.flatMap((list) =>
+      list.displayMode === "movie" || list.displayMode === "series"
+        ? [list.displayMode]
+        : (["movie", "series"] as const),
+    ),
+  );
+  return (["movie", "series"] as const)
+    .filter((type) => types.has(type))
+    .map((type) => ({
+      id: buildNewTitlesCatalogId(type),
+      name: "Stremlist New titles",
+      type,
+      extra: [{ name: "skip", isRequired: false }],
+    }));
 }

@@ -31,6 +31,25 @@ export interface ConnectionSummary {
  */
 export type AddonAccess = "private" | "legacy";
 
+/** The state of the "New titles" catalog of an Account (ADR 0004). */
+export interface NewTitlesSummary {
+  /** Detected Titles that the Lists still contain, one per Title. */
+  detected: number;
+  /** The most recent detection, or null before the first one. */
+  latestDetectedAt: string | null;
+  /**
+   * Lists without a complete, successful refresh yet. They have no Baseline,
+   * so nothing can be detected in them until they get one.
+   */
+  waitingLists: number;
+}
+
+export interface NewTitlesSettings {
+  enabled: boolean;
+  /** Null when the detection history cannot be read right now. */
+  summary: NewTitlesSummary | null;
+}
+
 export interface AccountConfigResponse {
   access: AddonAccess;
   /** The Account ID; only returned for private access. */
@@ -41,6 +60,7 @@ export interface AccountConfigResponse {
   lists: ConfigList[];
   connections: ConnectionSummary[];
   actions: { enabled: boolean; providers: ProviderId[] };
+  newTitles: NewTitlesSettings;
   lastFetchedAt: string;
   cooldownSeconds: number;
 }
@@ -60,6 +80,7 @@ export interface AccountConfigInput {
   rpdbApiKey?: string;
   lists: ConfigListInput[];
   actions?: { enabled: boolean; providers: ProviderId[] };
+  newTitles?: { enabled: boolean };
 }
 
 export interface StremioMeta {

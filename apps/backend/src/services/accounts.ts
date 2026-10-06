@@ -22,6 +22,8 @@ export interface Account {
   rpdbApiKey: string | null;
   actionsEnabled: boolean;
   actionProviders: ProviderId[];
+  /** Whether the manifest offers the "New titles" catalog (ADR 0004). */
+  newTitlesCatalog: boolean;
   lastFetchedAt: string;
 }
 
@@ -54,6 +56,7 @@ function mapAccount(row: AccountRow): Account {
     rpdbApiKey: row.rpdb_api_key,
     actionsEnabled: row.actions_enabled,
     actionProviders: row.action_providers.filter(isProviderId),
+    newTitlesCatalog: row.new_titles_catalog,
     lastFetchedAt: row.last_fetched_at,
   };
 }
@@ -270,11 +273,23 @@ export async function createPrivateCopy(legacy: Account): Promise<Account> {
     })),
     legacy.rpdbApiKey,
   );
+  // The detection history stays with the legacy Account: the copy starts
+  // with its own Baseline.
+  if (legacy.newTitlesCatalog) {
+    await supabase
+      .from("accounts")
+      .update({ new_titles_catalog: true })
+      .eq("id", account.id);
+  }
   await supabase
     .from("accounts")
     .update({ moved_at: new Date().toISOString() })
     .eq("id", legacy.id);
-  return { ...account, rpdbApiKey: legacy.rpdbApiKey };
+  return {
+    ...account,
+    rpdbApiKey: legacy.rpdbApiKey,
+    newTitlesCatalog: legacy.newTitlesCatalog,
+  };
 }
 
 export async function markAccountFetched(

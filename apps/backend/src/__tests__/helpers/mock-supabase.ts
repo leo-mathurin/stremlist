@@ -40,6 +40,7 @@ const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
     rpdb_api_key: null,
     actions_enabled: false,
     action_providers: [],
+    new_titles_catalog: false,
     prewarm_lease_token: null,
     prewarm_locked_until: EPOCH,
     prewarm_request_generation: 0,
@@ -71,6 +72,8 @@ const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
     resolved_at: now(),
     retry_after: null,
   }),
+  source_list_syncs: () => ({}),
+  title_detections: () => ({ detected_at: null, removed_at: null }),
 };
 
 /** Unique constraints from the migrations, per table. */
@@ -80,7 +83,18 @@ const UNIQUE_KEYS: Partial<Record<string, string[][]>> = {
   connections: [["account_id", "provider"]],
   oauth_states: [["state"]],
   title_id_map: [["namespace", "external_id"]],
+  source_list_syncs: [["account_id", "provider", "source_ref"]],
+  title_detections: [["account_id", "provider", "source_ref", "imdb_id"]],
 };
+
+/** Foreign keys with ON DELETE CASCADE, as child table and shared columns. */
+const CASCADES: Partial<Record<string, { table: string; columns: string[] }>> =
+  {
+    source_list_syncs: {
+      table: "title_detections",
+      columns: ["account_id", "provider", "source_ref"],
+    },
+  };
 
 function withoutUndefined(row: Row): Row {
   return Object.fromEntries(
@@ -479,6 +493,19 @@ class MockQueryBuilder {
         this.db.tables[this.tableName] = table.filter(
           (r) => !this.matchesFilters(r),
         );
+        const cascade = CASCADES[this.tableName];
+        if (cascade) {
+          this.db.tables[cascade.table] = this.db
+            .getTable(cascade.table)
+            .filter(
+              (child) =>
+                !removed.some((parent) =>
+                  cascade.columns.every(
+                    (column) => parent[column] === child[column],
+                  ),
+                ),
+            );
+        }
         return this.written(removed);
       }
     }
@@ -615,8 +642,61 @@ function findAccount(args: RpcArgs): Row | undefined {
   return db.getTable("accounts").find((row) => row.id === args.p_account_id);
 }
 
+/** Same rules as public.record_source_list_sync. */
+function recordSourceListSync(args: RpcArgs): Result {
+  const key = {
+    account_id: args.p_account_id,
+    provider: args.p_provider,
+    source_ref: args.p_source_ref,
+  };
+  const matches = (row: Row) =>
+    row.account_id === key.account_id &&
+    row.provider === key.provider &&
+    row.source_ref === key.source_ref;
+  const ids = [...new Set((args.p_imdb_ids as string[] | null) ?? [])];
+  const syncedAt = new Date(args.p_synced_at as string).toISOString();
+  const state = db.getTable("source_list_syncs").find(matches);
+
+  if (!state) {
+    if (!db.getTable("accounts").some((row) => row.id === key.account_id)) {
+      return rpcError("violates foreign key constraint");
+    }
+    db.insert("source_list_syncs", {
+      ...key,
+      baseline_at: syncedAt,
+      last_complete_sync_at: syncedAt,
+    });
+    for (const imdbId of ids) {
+      db.insert("title_detections", { ...key, imdb_id: imdbId });
+    }
+    return { data: 0, error: null };
+  }
+  if (syncedAt <= String(state.last_complete_sync_at)) {
+    return { data: null, error: null };
+  }
+
+  const rows = db.getTable("title_detections").filter(matches);
+  for (const row of rows) {
+    const present = ids.includes(row.imdb_id as string);
+    if (present && row.removed_at) row.removed_at = null;
+    if (!present && !row.removed_at) row.removed_at = syncedAt;
+  }
+  const known = new Set(rows.map((row) => row.imdb_id));
+  const added = ids.filter((imdbId) => !known.has(imdbId));
+  for (const imdbId of added) {
+    db.insert("title_detections", {
+      ...key,
+      imdb_id: imdbId,
+      detected_at: syncedAt,
+    });
+  }
+  state.last_complete_sync_at = syncedAt;
+  return { data: added.length, error: null };
+}
+
 export const defaultRpcHandlers: Partial<Record<string, RpcHandler>> = {
   replace_account_config: replaceAccountConfig,
+  record_source_list_sync: recordSourceListSync,
 
   claim_connection_refresh(args) {
     const row = findConnection(args);

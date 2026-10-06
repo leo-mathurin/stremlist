@@ -20,7 +20,10 @@ import {
 } from "../services/accounts";
 import { actionProviders } from "../services/actions";
 import { withAvailableGenres } from "../services/catalog-genres";
-import { buildManifestCatalogs } from "../services/stremio-catalogs";
+import {
+  buildManifestCatalogs,
+  buildNewTitlesCatalogs,
+} from "../services/stremio-catalogs";
 
 const manifest = new Hono();
 
@@ -86,7 +89,10 @@ manifest.get("/:accountKey/manifest.json", async (c) => {
       name: "Stremlist",
       description: `${APP_DESCRIPTION}. Changelog: https://stremlist.com/changelog`,
       resources,
-      catalogs: buildManifestCatalogs(await withAvailableGenres(lists)),
+      catalogs: [
+        ...(account.newTitlesCatalog ? buildNewTitlesCatalogs(lists) : []),
+        ...buildManifestCatalogs(await withAvailableGenres(lists)),
+      ],
       behaviorHints: { configurable: true, configurationRequired: false },
       config: [
         {

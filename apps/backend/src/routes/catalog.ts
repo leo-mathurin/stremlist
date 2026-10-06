@@ -11,7 +11,11 @@ import {
   resolveCatalogSelection,
   filterCatalog,
 } from "../services/catalog-filters";
-import { parseCatalogId } from "../services/catalog-id";
+import {
+  parseCatalogId,
+  parseNewTitlesCatalogId,
+} from "../services/catalog-id";
+import { getNewTitlesCatalog } from "../services/detections";
 import { getListCatalog, ListUnavailableError } from "../services/lists";
 
 const catalog = new Hono();
@@ -94,6 +98,17 @@ async function serveCatalog(c: Context) {
     const skip = parseSkip(extra);
     if (skip === null) {
       return c.json({ metas: [] }, 400);
+    }
+
+    const newTitlesType = parseNewTitlesCatalogId(catalogId);
+    if (newTitlesType) {
+      if (newTitlesType !== requestedType || extra.has("search")) {
+        return c.json({ metas: [] });
+      }
+      const access = await resolveAccountKey(accountKey);
+      if (!access?.account.newTitlesCatalog) return c.json({ metas: [] });
+      const metas = await getNewTitlesCatalog(access, newTitlesType);
+      return c.json({ metas: metas.slice(skip, skip + CATALOG_PAGE_SIZE) });
     }
 
     const parsedCatalog = parseCatalogId(catalogId);

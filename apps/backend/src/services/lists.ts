@@ -19,6 +19,7 @@ import { getAccountLists, markAccountFetched } from "./accounts";
 import type { CatalogSort } from "./catalog-sort";
 import { sortCatalog } from "./catalog-sort";
 import { ConnectionExpiredError, getConnectionAccess } from "./connections";
+import { recordSynchronization } from "./detections";
 import { buildPosterUrl } from "./imdb-scraper";
 import {
   deleteCachedList,
@@ -139,21 +140,33 @@ function withLinkBack(
   return { ...meta, description: base ? `${base}\n\n${line}` : line };
 }
 
+interface BuiltCatalog {
+  data: CatalogData;
+  deferred: number;
+  /**
+   * The IMDb IDs of the Source list when this read is a complete, successful
+   * synchronization: every page read and every entry resolved. Null
+   * otherwise, so the read never counts for detection (ADR 0004).
+   */
+  completeIds: string[] | null;
+}
+
 /** Turn a Provider snapshot into a canonical Catalog (provider order). */
 async function buildCatalog(
   adapter: ProviderAdapter,
   config: ListFetchConfig,
   ctx: ProviderContext,
-): Promise<{ data: CatalogData; deferred: number }> {
+): Promise<BuiltCatalog> {
   const snapshot = await adapter.fetchSource(config.sourceRef, ctx);
+  const allPages = snapshot.complete !== false;
   if (snapshot.entries.every((entry) => entry.meta)) {
+    const metas = snapshot.entries.flatMap((entry) =>
+      entry.meta ? [withLinkBack(entry.meta, entry, config.provider)] : [],
+    );
     return {
-      data: {
-        metas: snapshot.entries.flatMap((entry) =>
-          entry.meta ? [withLinkBack(entry.meta, entry, config.provider)] : [],
-        ),
-      },
+      data: { metas },
       deferred: 0,
+      completeIds: allPages ? metas.map((meta) => meta.id) : null,
     };
   }
 
@@ -196,7 +209,15 @@ async function buildCatalog(
       `List ${config.listId} (${config.provider}): ${metas.length} titles, ${unresolved} unresolved entries (${deferred} not tried yet), ${unknown} without metadata`,
     );
   }
-  return { data: { metas }, deferred };
+  return {
+    data: { metas },
+    deferred,
+    // Titles without metadata are still in the Source list: they count.
+    completeIds:
+      allPages && unresolved === 0
+        ? resolved.map(({ imdbId }) => imdbId)
+        : null,
+  };
 }
 
 function freshnessOf(adapter: ProviderAdapter, sourceRef: string): number {
@@ -212,7 +233,11 @@ async function fetchAndCacheList(config: ListFetchConfig): Promise<FreshList> {
   }
   const adapter = getProvider(config.provider);
   const ctx = await providerContext(config);
-  const { data, deferred } = await buildCatalog(adapter, config, ctx);
+  const { data, deferred, completeIds } = await buildCatalog(
+    adapter,
+    config,
+    ctx,
+  );
   const cachedAt = new Date();
   // Back-date the cache so the next request resumes resolution soon.
   const storedAt =
@@ -230,6 +255,14 @@ async function fetchAndCacheList(config: ListFetchConfig): Promise<FreshList> {
     generation = await writeCachedList(config.listId, data, storedAt);
   } catch (error) {
     console.error(`Failed to cache list ${config.listId} in R2:`, error);
+  }
+  if (completeIds) {
+    await recordSynchronization(
+      config.accountId,
+      config,
+      completeIds,
+      cachedAt,
+    );
   }
   return { data, cachedAt, generation };
 }

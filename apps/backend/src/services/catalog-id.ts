@@ -57,3 +57,18 @@ export function parseCatalogId(catalogId: string): {
 
   return null;
 }
+
+/** The "New titles" catalogs, one per type (ADR 0004). */
+const NEW_TITLES_PREFIX = "new-titles-";
+
+export function buildNewTitlesCatalogId(type: CatalogContentType): string {
+  return `${NEW_TITLES_PREFIX}${type}`;
+}
+
+export function parseNewTitlesCatalogId(
+  catalogId: string,
+): CatalogContentType | null {
+  if (!catalogId.startsWith(NEW_TITLES_PREFIX)) return null;
+  const type = catalogId.slice(NEW_TITLES_PREFIX.length);
+  return type === "movie" || type === "series" ? type : null;
+}
