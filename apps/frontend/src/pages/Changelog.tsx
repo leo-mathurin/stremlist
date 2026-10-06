@@ -285,7 +285,7 @@ export default function Changelog() {
   useSEO({
     title: "Changelog - Stremlist",
     description:
-      "See what's new in Stremlist. A history of updates and improvements to the IMDb watchlist addon for Stremio.",
+      "See what's new in Stremlist. A history of updates and improvements to the Stremio addon for your watchlists and lists.",
     canonical: "https://stremlist.com/changelog",
   });
 
@@ -304,8 +304,7 @@ export default function Changelog() {
 
         <h2 className="text-xl font-bold text-gray-900 mt-4 mb-1">Changelog</h2>
         <p className="text-sm text-gray-500 mb-6">
-          A history of updates and improvements to the Stremlist IMDb Watchlist
-          addon.
+          A history of updates and improvements to Stremlist.
         </p>
 
         <div className="space-y-6">

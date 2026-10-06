@@ -53,9 +53,9 @@ export default function NewsletterForm() {
   }
 
   return (
-    <div className="bg-gray-100 rounded-lg p-5 text-center max-w-md mx-auto">
+    <div className="mx-auto max-w-md rounded-3xl bg-white p-5 text-center ring-1 ring-black/5">
       <h3 className="text-base font-semibold text-gray-800 mb-1">
-        Stay Updated
+        Stay updated
       </h3>
       <p className="text-sm text-gray-500 mb-4">
         Get notified about new features and service announcements.
@@ -82,7 +82,7 @@ export default function NewsletterForm() {
             <Button
               type="submit"
               disabled={form.formState.isSubmitting}
-              className="bg-imdb text-black hover:bg-imdb-dark whitespace-nowrap"
+              className="rounded-full bg-brand font-bold whitespace-nowrap text-black hover:bg-brand-dark"
             >
               {form.formState.isSubmitting ? "Subscribing..." : "Subscribe"}
             </Button>
