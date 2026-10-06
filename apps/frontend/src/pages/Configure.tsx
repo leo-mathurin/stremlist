@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { ACCOUNT_KEY_PATTERN } from "@stremlist/shared/constants";
+import { listSources } from "@stremlist/shared/list-merge";
 import {
   isProviderId,
   PROVIDERS,
@@ -21,9 +22,11 @@ import { Eyebrow, SplitLayout, Wordmark } from "../components/brand";
 import { useSEO } from "../hooks/useSEO";
 import {
   MAX_LISTS,
+  rowTitle,
   useAccountConfiguration,
 } from "../hooks/useAccountConfiguration";
-import { listKey } from "../lib/list-form";
+import { sourceKeys } from "../lib/list-form";
+import type { ListFormRow } from "../lib/list-form";
 import {
   describeSource,
   isStaticSource,
@@ -173,16 +176,39 @@ export default function Configure() {
   const connectedProviders = new Set(
     config.connections.map((connection) => connection.provider),
   );
-  const needsMissingConnection = (provider: ProviderId, sourceRef: string) =>
-    access === "private" &&
-    sourceRequiresConnection(provider, sourceRef) &&
-    !connectedProviders.has(provider);
+  /** Providers of a List whose Connection the Account does not have. */
+  const missingConnections = (list: ListFormRow): ProviderId[] =>
+    access === "private"
+      ? [
+          ...new Set(
+            listSources(list)
+              .filter(
+                (source) =>
+                  sourceRequiresConnection(source.provider, source.sourceRef) &&
+                  !connectedProviders.has(source.provider),
+              )
+              .map((source) => source.provider),
+          ),
+        ]
+      : [];
   const affectedLists: Partial<Record<ProviderId, number>> = {};
   for (const list of lists) {
-    if (sourceRequiresConnection(list.provider, list.sourceRef)) {
-      affectedLists[list.provider] = (affectedLists[list.provider] ?? 0) + 1;
+    const providers = new Set(
+      listSources(list)
+        .filter((source) =>
+          sourceRequiresConnection(source.provider, source.sourceRef),
+        )
+        .map((source) => source.provider),
+    );
+    for (const provider of providers) {
+      affectedLists[provider] = (affectedLists[provider] ?? 0) + 1;
     }
   }
+  // The last merge or split problem, next to the List it is about.
+  const [mergeError, setMergeError] = useState<{
+    localId: string;
+    message: string;
+  } | null>(null);
 
   const addResolved = (link: ResolvedLink): string | null => {
     const description = describeSource(link.provider, link.sourceRef);
@@ -410,24 +436,83 @@ export default function Configure() {
                   }}
                 >
                   <div className="space-y-3">
-                    {lists.map((list, index) => (
-                      <SortableListRow
-                        key={list.localId}
-                        list={list}
-                        index={index}
-                        onFieldChange={config.setListField}
-                        onRemove={config.removeList}
-                        connectionMissing={needsMissingConnection(
-                          list.provider,
-                          list.sourceRef,
-                        )}
-                        onConnect={
-                          config.providerStatus[list.provider].connectable
-                            ? () => connectFor(list.provider)
-                            : undefined
-                        }
-                      />
-                    ))}
+                    {lists.map((list, index) => {
+                      const missing = missingConnections(list);
+                      const connectProvider = missing.at(0) ?? list.provider;
+                      return (
+                        <SortableListRow
+                          key={list.localId}
+                          list={list}
+                          index={index}
+                          onFieldChange={config.setListField}
+                          onRemove={config.removeList}
+                          connectionMissing={missing.length > 0}
+                          missingProvider={missing.at(0)}
+                          onConnect={
+                            config.providerStatus[connectProvider].connectable
+                              ? () => connectFor(connectProvider)
+                              : undefined
+                          }
+                          merge={
+                            moved
+                              ? undefined
+                              : {
+                                  candidates: lists
+                                    .filter(
+                                      (other) => other.localId !== list.localId,
+                                    )
+                                    .map((other) => ({
+                                      localId: other.localId,
+                                      title: rowTitle(other),
+                                      provider: other.provider,
+                                      sourceCount: listSources(other).length,
+                                    })),
+                                  missingProviders: missing,
+                                  canSplit: !full,
+                                  error:
+                                    mergeError?.localId === list.localId
+                                      ? mergeError.message
+                                      : null,
+                                  onMerge: (otherLocalId) => {
+                                    const error = config.mergeLists(
+                                      list.localId,
+                                      otherLocalId,
+                                    );
+                                    setMergeError(
+                                      error
+                                        ? {
+                                            localId: list.localId,
+                                            message: error,
+                                          }
+                                        : null,
+                                    );
+                                  },
+                                  onRemoveSource: (sourceIndex) => {
+                                    setMergeError(null);
+                                    config.removeSource(
+                                      list.localId,
+                                      sourceIndex,
+                                    );
+                                  },
+                                  onSplitSource: (sourceIndex) => {
+                                    const error = config.splitSource(
+                                      list.localId,
+                                      sourceIndex,
+                                    );
+                                    setMergeError(
+                                      error
+                                        ? {
+                                            localId: list.localId,
+                                            message: error,
+                                          }
+                                        : null,
+                                    );
+                                  },
+                                }
+                          }
+                        />
+                      );
+                    })}
                   </div>
                 </DragDropProvider>
               )}
@@ -443,7 +528,7 @@ export default function Configure() {
                 connections={config.connections}
                 connectionSources={config.connectionSources}
                 providerStatus={config.providerStatus}
-                usedKeys={lists.map(listKey)}
+                usedKeys={sourceKeys(lists)}
                 full={full || moved}
                 onAdd={(provider, source) => {
                   const error = config.addList({

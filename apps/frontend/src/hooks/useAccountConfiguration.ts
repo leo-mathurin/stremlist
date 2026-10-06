@@ -7,6 +7,16 @@ import {
 } from "react";
 import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
 import {
+  MAX_SOURCES_PER_ACCOUNT,
+  MAX_SOURCES_PER_LIST,
+  allowedDisplayModes,
+  isAddedDateSort,
+  listMergeProblem,
+  listSources,
+  sourceKey,
+  sourcesWithoutDates,
+} from "@stremlist/shared/list-merge";
+import {
   CONNECTION_SOURCES,
   PROVIDER_IDS,
   PROVIDERS,
@@ -22,12 +32,41 @@ import { api } from "../lib/api";
 import {
   createListRow,
   getListReinstallSignature,
-  listKey,
+  sourceKeys,
 } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
+import { describeSource } from "../lib/list-sources";
 
 /** Same limit as the backend (`MAX_LISTS`). */
 export const MAX_LISTS = 10;
+
+/** The sort a merged List gets when its Source lists have no dates. */
+const UNDATED_MERGE_SORT = "title-asc";
+
+/**
+ * The row after its Source lists changed: a display mode or a date sort
+ * that the merge rules no longer allow falls back to one they allow, and
+ * the row explains why next to the control.
+ */
+function withAllowedSettings(row: ListFormRow): ListFormRow {
+  const modes = allowedDisplayModes(row);
+  return {
+    ...row,
+    displayMode: modes.includes(row.displayMode) ? row.displayMode : "split",
+    sortOption:
+      isAddedDateSort(row.sortOption) && sourcesWithoutDates(row).length > 0
+        ? UNDATED_MERGE_SORT
+        : row.sortOption,
+  };
+}
+
+/** The title that a row shows: its own, or the one its Source list suggests. */
+export function rowTitle(row: ListFormRow): string {
+  return (
+    row.catalogTitle.trim() ||
+    describeSource(row.provider, row.sourceRef).suggestedTitle
+  );
+}
 
 /** "new" until the first save creates the Account. */
 export type AccountAccess = "new" | AddonAccess;
@@ -101,6 +140,7 @@ function rowsFromLists(lists: ConfigList[]): ListFormRow[] {
       displayMode: list.displayMode,
       catalogSettings: list.catalogSettings,
       availableGenres: list.availableGenres,
+      mergedSources: list.mergedSources,
     }),
   );
 }
@@ -307,8 +347,12 @@ export function useAccountConfiguration(
       if (current.length >= MAX_LISTS) {
         return `You can have at most ${MAX_LISTS} lists.`;
       }
-      if (current.some((row) => listKey(row) === listKey(partial))) {
+      const used = sourceKeys(current);
+      if (used.includes(sourceKey(partial))) {
         return "This list is already in your Stremlist.";
+      }
+      if (used.length >= MAX_SOURCES_PER_ACCOUNT) {
+        return `You can have at most ${MAX_SOURCES_PER_ACCOUNT} Source lists in all your Lists.`;
       }
       setLists((rows) => [...rows, createListRow(partial)]);
       return null;
@@ -336,6 +380,86 @@ export function useAccountConfiguration(
   const removeList = useCallback((localId: string) => {
     setLists((current) => current.filter((list) => list.localId !== localId));
   }, []);
+
+  /**
+   * Merge the Source lists of another List into a List, after its own. The
+   * other List goes away; the target keeps its title and settings.
+   */
+  const mergeLists = useCallback(
+    (targetLocalId: string, otherLocalId: string, current: ListFormRow[]) => {
+      const target = current.find((row) => row.localId === targetLocalId);
+      const other = current.find((row) => row.localId === otherLocalId);
+      if (!target || !other || target === other) return null;
+      const merged = [...listSources(target), ...listSources(other)];
+      if (merged.length > MAX_SOURCES_PER_LIST) {
+        return `A List can merge at most ${MAX_SOURCES_PER_LIST} Source lists.`;
+      }
+      setLists((rows) =>
+        rows.flatMap((row) => {
+          if (row.localId === otherLocalId) return [];
+          if (row.localId !== targetLocalId) return [row];
+          return [
+            withAllowedSettings({
+              ...row,
+              mergedSources: [...row.mergedSources, ...listSources(other)],
+            }),
+          ];
+        }),
+      );
+      return null;
+    },
+    [],
+  );
+
+  /** Remove one Source list of a merged List; the next one moves up. */
+  const removeSource = useCallback((localId: string, index: number) => {
+    setLists((rows) =>
+      rows.map((row) => {
+        const sources = listSources(row);
+        if (row.localId !== localId || sources.length < 2) return row;
+        const [first, ...rest] = sources.filter((_, i) => i !== index);
+        return withAllowedSettings({
+          ...row,
+          provider: first.provider,
+          sourceRef: first.sourceRef,
+          mergedSources: rest,
+        });
+      }),
+    );
+  }, []);
+
+  /**
+   * Take one Source list out of a merged List and give it its own List,
+   * just below. Returns an error when the Account has no room for a List.
+   */
+  const splitSource = useCallback(
+    (localId: string, index: number, current: ListFormRow[]) => {
+      const row = current.find((item) => item.localId === localId);
+      const sources = row ? listSources(row) : [];
+      const source = sources.at(index);
+      if (!source || sources.length < 2) return null;
+      if (current.length >= MAX_LISTS) {
+        return `You can have at most ${MAX_LISTS} lists. Remove one to split this List.`;
+      }
+      removeSource(localId, index);
+      const chart =
+        source.provider === "imdb"
+          ? CHART_BY_ID.get(source.sourceRef)
+          : undefined;
+      const split = createListRow({
+        ...source,
+        catalogTitle: describeSource(source.provider, source.sourceRef)
+          .suggestedTitle,
+        displayMode: chart?.defaultDisplayMode,
+      });
+      setLists((rows) => {
+        const at = rows.findIndex((item) => item.localId === localId);
+        return [...rows.slice(0, at + 1), split, ...rows.slice(at + 1)];
+      });
+      return null;
+    },
+    [removeSource],
+  );
 
   const reorderLists = useCallback((initialIndex: number, index: number) => {
     setLists((items) => {
@@ -385,12 +509,16 @@ export function useAccountConfiguration(
     if (lists.length > MAX_LISTS) {
       return `You can have at most ${MAX_LISTS} lists.`;
     }
-    const seen = new Set<string>();
+    const keys = sourceKeys(lists);
+    if (new Set(keys).size !== keys.length) {
+      return "Each list can only be added once.";
+    }
+    if (keys.length > MAX_SOURCES_PER_ACCOUNT) {
+      return `You can have at most ${MAX_SOURCES_PER_ACCOUNT} Source lists in all your Lists.`;
+    }
     for (const list of lists) {
-      if (seen.has(listKey(list))) {
-        return "Each list can only be added once.";
-      }
-      seen.add(listKey(list));
+      const problem = listMergeProblem(list);
+      if (problem) return `${rowTitle(list)}: ${problem}`;
     }
     return null;
   })();
@@ -405,6 +533,7 @@ export function useAccountConfiguration(
       displayMode: list.displayMode,
       position: index,
       catalogSettings: list.catalogSettings,
+      mergedSources: list.mergedSources,
     }));
 
   /**
@@ -487,6 +616,7 @@ export function useAccountConfiguration(
               ...row,
               id: saved.id,
               sourceRef: saved.sourceRef,
+              mergedSources: saved.mergedSources ?? [],
               availableGenres: saved.availableGenres ?? [],
             }
           : row;
@@ -510,11 +640,17 @@ export function useAccountConfiguration(
           const saved = savedByLocalId.get(row.localId);
           const submitted = submittedByLocalId.get(row.localId);
           if (!saved || !submitted) return row;
-          const sourceUnchanged = row.sourceRef === submitted.sourceRef;
+          const sourceUnchanged =
+            row.sourceRef === submitted.sourceRef &&
+            JSON.stringify(row.mergedSources) ===
+              JSON.stringify(submitted.mergedSources);
           return {
             ...row,
             id: saved.id,
             sourceRef: sourceUnchanged ? saved.sourceRef : row.sourceRef,
+            mergedSources: sourceUnchanged
+              ? saved.mergedSources
+              : row.mergedSources,
             availableGenres: sourceUnchanged
               ? saved.availableGenres
               : row.availableGenres,
@@ -716,6 +852,11 @@ export function useAccountConfiguration(
       addList(partial, lists),
     addChartList,
     removeList,
+    mergeLists: (targetLocalId: string, otherLocalId: string) =>
+      mergeLists(targetLocalId, otherLocalId, lists),
+    removeSource,
+    splitSource: (localId: string, index: number) =>
+      splitSource(localId, index, lists),
     reorderLists,
     rpdbApiKey,
     setRpdbApiKey,

@@ -5,7 +5,15 @@ import {
 } from "@stremlist/shared/constants";
 import type { DisplayMode } from "@stremlist/shared/constants";
 import { CHART_REGISTRY, CHART_BY_ID } from "@stremlist/shared/imdb-charts";
+import {
+  allowedDisplayModes,
+  isAddedDateSort,
+  isMergedList,
+  listSources,
+  sourcesWithoutDates,
+} from "@stremlist/shared/list-merge";
 import { PROVIDERS } from "@stremlist/shared/providers";
+import type { ProviderId } from "@stremlist/shared/providers";
 import {
   ChevronDown,
   ExternalLink,
@@ -18,6 +26,8 @@ import { MAX_CATALOG_TITLE_LENGTH } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { describeSource } from "../lib/list-sources";
 import CatalogFilterSettings from "./CatalogFilterSettings";
+import MergedSources from "./MergedSources";
+import type { MergeControls } from "./MergedSources";
 import { ProviderMark } from "./brand";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -40,12 +50,18 @@ export default function SortableListRow({
   onFieldChange,
   onRemove,
   connectionMissing,
+  missingProvider,
   onConnect,
+  merge,
 }: {
   list: ListFormRow;
   index: number;
   /** The List reads through a Connection that the Account no longer has. */
   connectionMissing?: boolean;
+  /** The Provider of that Connection, when it is not the first Source list's. */
+  missingProvider?: ProviderId;
+  /** Merging other Lists into this one; absent where Lists cannot change. */
+  merge?: MergeControls;
   /** Start the Connection again; absent when it cannot be started here. */
   onConnect?: () => void;
   onFieldChange: <K extends keyof ListFormRow>(
@@ -67,10 +83,23 @@ export default function SortableListRow({
   const chartId = useId();
 
   const source = describeSource(list.provider, list.sourceRef);
+  const merged = isMergedList(list);
+  const sources = listSources(list);
+  // A merged List shows its own settings, not the chart picker of its first
+  // Source list.
   const chartEntry =
-    list.provider === "imdb" ? CHART_BY_ID.get(list.sourceRef) : undefined;
+    list.provider === "imdb" && !merged
+      ? CHART_BY_ID.get(list.sourceRef)
+      : undefined;
   const isChart = !!chartEntry;
   const title = list.catalogTitle.trim() || source.suggestedTitle;
+  const undated = sourcesWithoutDates(list).length > 0;
+  const displayModes = allowedDisplayModes(list);
+  const providers = [...new Set(sources.map((item) => item.provider))];
+  const providerLabels = providers
+    .map((provider) => PROVIDERS[provider].label)
+    .join(", ");
+  const missingLabel = PROVIDERS[missingProvider ?? list.provider].label;
 
   return (
     <div
@@ -91,15 +120,39 @@ export default function SortableListRow({
           >
             <GripVertical className="size-4" />
           </button>
-          <ProviderMark provider={list.provider} />
+          {merged ? (
+            <span
+              className="relative flex shrink-0 items-center"
+              title={`${sources.length} Source lists`}
+            >
+              {providers.slice(0, 3).map((provider, position) => (
+                <ProviderMark
+                  key={provider}
+                  provider={provider}
+                  className={cn("ring-2 ring-white", position > 0 && "-ml-3")}
+                />
+              ))}
+              <span className="absolute -right-1.5 -bottom-1 min-w-4.5 rounded-full bg-ink px-1 text-center text-[10px] leading-4.5 font-bold text-cloud tabular-nums ring-2 ring-white">
+                {sources.length}
+              </span>
+            </span>
+          ) : (
+            <ProviderMark provider={list.provider} />
+          )}
           <div className="min-w-0 flex-1">
             <p className="truncate font-bold leading-tight">{title}</p>
             <p className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-black/50">
-              <span className="truncate">
-                {PROVIDERS[list.provider].label} · {source.kindLabel}
-                {source.detail ? ` · ${source.detail}` : ""}
+              <span className="truncate tabular-nums">
+                {merged ? (
+                  `${sources.length} Source lists · ${providerLabels}`
+                ) : (
+                  <>
+                    {PROVIDERS[list.provider].label} · {source.kindLabel}
+                    {source.detail ? ` · ${source.detail}` : ""}
+                  </>
+                )}
               </span>
-              {source.url && (
+              {!merged && source.url && (
                 <a
                   href={source.url}
                   target="_blank"
@@ -137,7 +190,12 @@ export default function SortableListRow({
             </SelectTrigger>
             <SelectContent>
               {SORT_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
+                <SelectItem
+                  key={opt.value}
+                  value={opt.value}
+                  // Explained under Source lists, in the settings.
+                  disabled={undated && isAddedDateSort(opt.value)}
+                >
                   {opt.label}
                 </SelectItem>
               ))}
@@ -177,8 +235,9 @@ export default function SortableListRow({
       {connectionMissing && (
         <div className="mx-3 mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-amber-50 px-4 py-2.5 text-sm text-amber-900 ring-1 ring-amber-200 sm:mx-4 sm:mb-4">
           <p className="min-w-0 flex-1 text-pretty">
-            {PROVIDERS[list.provider].label} is not connected, so this List does
-            not show in Stremio.
+            {merged
+              ? `${missingLabel} is not connected, so its Source list does not show in this catalog.`
+              : `${missingLabel} is not connected, so this List does not show in Stremio.`}
           </p>
           {onConnect && (
             <button
@@ -297,7 +356,11 @@ export default function SortableListRow({
                     </SelectTrigger>
                     <SelectContent>
                       {DISPLAY_MODE_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
+                        <SelectItem
+                          key={opt.value}
+                          value={opt.value}
+                          disabled={!displayModes.includes(opt.value)}
+                        >
                           {opt.label}
                         </SelectItem>
                       ))}
@@ -306,6 +369,8 @@ export default function SortableListRow({
                 </div>
               )}
             </div>
+
+            {merge && <MergedSources list={list} controls={merge} />}
 
             <CatalogFilterSettings
               value={list.catalogSettings}

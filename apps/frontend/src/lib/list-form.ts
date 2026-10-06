@@ -4,6 +4,8 @@ import {
 } from "@stremlist/shared/constants";
 import type { DisplayMode } from "@stremlist/shared/constants";
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
+import type { ListSource } from "@stremlist/shared/list-merge";
+import { listSources, sourceKey } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 
 /** The backend accepts catalog titles up to this length. */
@@ -20,6 +22,8 @@ export type ListFormRow = {
   displayMode: DisplayMode;
   catalogSettings: CatalogSettings;
   availableGenres: string[];
+  /** Source lists merged after the first one; empty for most Lists. */
+  mergedSources: ListSource[];
 };
 
 /**
@@ -60,10 +64,19 @@ export function createListRow(
     displayMode: partial.displayMode ?? DEFAULT_DISPLAY_MODE,
     catalogSettings: partial.catalogSettings ?? {},
     availableGenres: partial.availableGenres ?? [],
+    mergedSources: partial.mergedSources ?? [],
   };
 }
 
 /** Lists are unique by Provider and Source list reference. */
 export function listKey(row: Pick<ListFormRow, "provider" | "sourceRef">) {
   return `${row.provider}:${row.sourceRef}`;
+}
+
+/**
+ * The keys of every Source list in the rows, merged ones included: a Source
+ * list may be in only one List.
+ */
+export function sourceKeys(rows: ListFormRow[]): string[] {
+  return rows.flatMap((row) => listSources(row).map(sourceKey));
 }
