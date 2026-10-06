@@ -11,9 +11,14 @@ import type { ActionOutcome } from "../services/actions";
 import {
   actionProviders,
   currentRatings,
+  joinNames,
   parseStreamId,
   performAction,
 } from "../services/actions";
+import { enrichTitles } from "../titles/enrich";
+
+/** Give up on the Title's name quickly: the page works without it. */
+const NAME_TIMEOUT_MS = 2500;
 
 const actions = new Hono();
 
@@ -75,8 +80,24 @@ function Page({ title, children }: { title: string; children: Child }) {
   );
 }
 
-function names(providers: ProviderId[]): string {
-  return providers.map((p) => PROVIDERS[p].label).join(", ");
+/** The Title's name, or null when it cannot be found quickly. */
+async function titleName(
+  imdbId: string,
+  type: "movie" | "series",
+): Promise<string | null> {
+  try {
+    const metas = await Promise.race([
+      enrichTitles([{ imdbId, type }]),
+      new Promise<null>((resolve) =>
+        setTimeout(() => {
+          resolve(null);
+        }, NAME_TIMEOUT_MS),
+      ),
+    ]);
+    return metas?.get(imdbId)?.name ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function OutcomePage({
@@ -91,11 +112,11 @@ function OutcomePage({
   const title = ok.length > 0 ? "Done" : "Something went wrong";
   return (
     <Page title={title}>
-      {ok.length > 0 && <h1 class="ok">✓ {done(names(ok))}</h1>}
+      {ok.length > 0 && <h1 class="ok">✓ {done(joinNames(ok))}</h1>}
       {failed.length > 0 && (
         <p class="err">
-          It did not work on {names(failed)}. Try again later, or connect the
-          account again on the Stremlist configure page.
+          It did not work on {joinNames(failed)}. Try again later, or connect
+          the account again on the Stremlist configure page.
         </p>
       )}
       <p class="hint">You can close this tab and go back to Stremio.</p>
@@ -154,17 +175,18 @@ actions.get("/:accountId/actions/:kind/:op/:type/:id", async (c) => {
     effective,
   );
 
-  const episode = target.episode
-    ? `S${String(target.episode.season).padStart(2, "0")}E${String(target.episode.episode).padStart(2, "0")} `
-    : "";
+  const name = (await titleName(target.imdbId, target.type)) ?? "This title";
+  const what = target.episode
+    ? `${name} S${String(target.episode.season).padStart(2, "0")}E${String(target.episode.episode).padStart(2, "0")}`
+    : name;
   const done = (list: string) =>
     kind === "watchlist"
       ? add
-        ? `Added to your watchlist on ${list}`
-        : `Removed from your watchlist on ${list}`
+        ? `${name} is in your watchlist on ${list}`
+        : `${name} is out of your watchlist on ${list}`
       : add
-        ? `${episode}marked as watched on ${list}`
-        : `${episode}marked as unwatched on ${list}`;
+        ? `${what} is marked as watched on ${list}`
+        : `${what} is marked as unwatched on ${list}`;
   return c.html(<OutcomePage done={done} outcomes={outcomes} />);
 });
 
@@ -178,10 +200,15 @@ async function renderRating(c: Context) {
   const ratings = await currentRatings(account, target.imdbId);
   if (ratings.length === 0) return notFound(c);
   const current = ratings.find((r) => r.rating !== null)?.rating ?? null;
+  const name = await titleName(target.imdbId, target.type);
 
   return c.html(
     <Page title="Rate">
-      <h1>Rate this {type === "series" ? "series" : "movie"}</h1>
+      <h1>
+        {name
+          ? `Rate ${name}`
+          : `Rate this ${type === "series" ? "series" : "movie"}`}
+      </h1>
       <form method="post">
         <div class="stars" role="radiogroup" aria-label="Rating from 1 to 10">
           {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
@@ -265,8 +292,11 @@ actions.post("/:accountId/actions/rating/rate/:type/:id", async (c) => {
     { kind: "rating", rating: remove ? null : rating },
     { imdbId: target.imdbId, type: target.type },
   );
+  const name = (await titleName(target.imdbId, target.type)) ?? "This title";
   const done = (list: string) =>
-    remove ? `Rating removed on ${list}` : `Rated ${rating}/10 on ${list}`;
+    remove
+      ? `${name} has no rating on ${list} now`
+      : `${name} is rated ${rating}/10 on ${list}`;
   return c.html(<OutcomePage done={done} outcomes={outcomes} />);
 });
 

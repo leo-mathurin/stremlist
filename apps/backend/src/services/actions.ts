@@ -1,4 +1,8 @@
-import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+} from "@aws-sdk/client-s3";
 import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
 import { PROVIDERS } from "@stremlist/shared/providers";
 import type { StremioStream } from "@stremlist/shared/stremio.types";
@@ -93,6 +97,30 @@ async function refreshMembership(
   await writeMembership(accountId, provider, membership);
 }
 
+/**
+ * Snapshots that a Connection keeps in R2: Action membership, and the Simkl
+ * library snapshot used to skip unchanged reads.
+ */
+const CONNECTION_OBJECTS = ["membership.json", "library.json"];
+
+/** After a disconnect: delete what Stremlist stored for that Connection. */
+export async function forgetConnectionObjects(
+  accountId: string,
+  provider: ProviderId,
+): Promise<void> {
+  memoryMembership.delete(membershipKey(accountId, provider));
+  await Promise.all(
+    CONNECTION_OBJECTS.map((name) =>
+      getR2Client().send(
+        new DeleteObjectCommand({
+          Bucket: getR2Bucket(),
+          Key: `connections/${accountId}/${provider}/${name}`,
+        }),
+      ),
+    ),
+  );
+}
+
 /** The Providers that receive Actions for this Account, in the user's order. */
 export async function actionProviders(account: Account): Promise<ProviderId[]> {
   if (!account.actionsEnabled) return [];
@@ -107,8 +135,12 @@ export async function actionProviders(account: Account): Promise<ProviderId[]> {
   );
 }
 
-function joinNames(providers: ProviderId[]): string {
-  return providers.map((provider) => PROVIDERS[provider].label).join(", ");
+/** "Trakt", "Trakt and Simkl", "Trakt, Simkl and MDBList". */
+export function joinNames(providers: ProviderId[]): string {
+  const labels = providers.map((provider) => PROVIDERS[provider].label);
+  return labels.length <= 1
+    ? labels.join("")
+    : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1) ?? ""}`;
 }
 
 /** "tt123:2:5" → the series ID and the episode. */
@@ -318,7 +350,7 @@ export async function buildActionStreams(
       title =
         raters.length === 1
           ? `⭐ Rate${series} on ${names}`
-          : `⭐ Rate${series}\n1 to 10, on ${names}`;
+          : `⭐ Rate${series}\nFrom 1 to 10 on ${names}`;
     } else if (
       ratings.length === raters.length &&
       new Set(ratings.map((r) => r.rating)).size === 1

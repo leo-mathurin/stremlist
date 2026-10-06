@@ -44,6 +44,9 @@ vi.mock("../providers/registry", async () => {
   return await import("./helpers/mock-registry.js");
 });
 
+vi.mock("../lib/r2", async () => {
+  return await import("./helpers/mock-r2.js");
+});
 vi.mock("../lib/resend", () => ({
   resend: { contacts: { create: vi.fn() } },
 }));
@@ -1204,5 +1207,52 @@ describe("GET /providers", () => {
     expect(byId.get("simkl")?.connectable).toBe(false);
     expect(byId.get("imdb")?.connectable).toBe(false);
     expect(byId.get("justwatch")?.enabled).toBe(false);
+  });
+});
+
+describe("DELETE /:accountId/connections/:provider", () => {
+  it("stops serving and storing what was read through the Connection", async () => {
+    const { r2Objects } = await import("./helpers/mock-r2.js");
+    const account = seedAccount();
+    seedConnection(account.id, "trakt");
+    const privateList = db.insert("lists", {
+      account_id: account.id,
+      provider: "trakt",
+      source_ref: "me/watchlist",
+      catalog_title: "",
+      position: 0,
+    }) as Tables<"lists">;
+    const publicList = db.insert("lists", {
+      account_id: account.id,
+      provider: "trakt",
+      source_ref: "users/leo/watchlist",
+      catalog_title: "",
+      position: 1,
+    }) as Tables<"lists">;
+    const item = {
+      id: "tt0111161",
+      type: "movie" as const,
+      name: "The Shawshank Redemption",
+      poster: null,
+      posterShape: "poster" as const,
+      genres: [],
+      description: "",
+    };
+    cache.seed(privateList.id, [item]);
+    cache.seed(publicList.id, [item]);
+    r2Objects.set(`connections/${account.id}/trakt/membership.json`, "{}");
+
+    const res = await app.request(`/${account.id}/connections/trakt`, {
+      method: "DELETE",
+    });
+
+    expect(res.status).toBe(200);
+    expect(db.getTable("connections")).toEqual([]);
+    // The private List's cache is gone; the public one stays.
+    expect(cache.get(privateList.id)).toBeNull();
+    expect(cache.get(publicList.id)).not.toBeNull();
+    expect(
+      r2Objects.has(`connections/${account.id}/trakt/membership.json`),
+    ).toBe(false);
   });
 });

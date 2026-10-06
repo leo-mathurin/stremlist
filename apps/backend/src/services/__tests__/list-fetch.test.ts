@@ -365,6 +365,24 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
     expect(error).toMatchObject({ reason: "needs_connection" });
   });
 
+  it("does not serve the cache of a List whose Connection is gone", async () => {
+    useFakeProvider(fakeAdapter("simkl"));
+    const account = seedAccount();
+    // Cached while connected, and stale now.
+    cache.seed(LIST_ID, [MOVIE], new Date(Date.now() - 2 * 60 * 60_000));
+
+    const error = await getListCatalog(
+      config({
+        accountId: account.id,
+        provider: "simkl",
+        sourceRef: "me/plantowatch",
+        allowConnection: true,
+      }),
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ reason: "needs_connection" });
+  });
+
   it("reports an honest failure when asked not to fall back on the cache", async () => {
     cache.seed(LIST_ID, [MOVIE], new Date(0));
     scraperMocks.fetchList.mockRejectedValue(new Error("boom"));

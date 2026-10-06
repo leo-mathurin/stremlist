@@ -35,6 +35,7 @@ import {
   replaceAccountConfig,
   resolveAccountKey,
 } from "../services/accounts";
+import { forgetConnectionObjects } from "../services/actions";
 import { withAvailableGenres } from "../services/catalog-genres";
 import { catalogSettingsSchema } from "../services/catalog-settings";
 import {
@@ -48,7 +49,7 @@ import {
   normalizeImdbUserId,
 } from "../services/imdb-scraper";
 import { prewarmLists } from "../services/list-prewarm";
-import { getListCatalog } from "../services/lists";
+import { forgetConnectionLists, getListCatalog } from "../services/lists";
 import {
   OAuthNotConfiguredError,
   isOAuthConfigured,
@@ -83,7 +84,7 @@ const listBody = z.object({
   id: z.string().uuid().optional(),
   provider: providerParam,
   sourceRef: z.string().trim().min(1).max(300),
-  catalogTitle: z.string().trim().max(30).optional(),
+  catalogTitle: z.string().trim().max(60).optional(),
   sortOption: z.enum(sortOptionValues),
   displayMode: z.enum(displayModeValues).optional(),
   position: z.number().int().min(0).optional(),
@@ -654,6 +655,19 @@ const api = new Hono()
         return c.json({ error: "Addon not found." }, 404);
       }
       await deleteConnection(accountId, provider);
+      // Nothing read through the Connection stays served or stored.
+      const cleanup = await Promise.allSettled([
+        forgetConnectionLists(accountId, provider),
+        forgetConnectionObjects(accountId, provider),
+      ]);
+      for (const outcome of cleanup) {
+        if (outcome.status === "rejected") {
+          console.error(
+            `Cleaning up after the ${provider} disconnect of ${accountId} failed:`,
+            outcome.reason,
+          );
+        }
+      }
       return c.json({ ok: true as const });
     },
   )

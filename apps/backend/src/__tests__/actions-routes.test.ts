@@ -18,6 +18,19 @@ vi.mock("../providers/registry", async () => {
 vi.mock("../lib/resend", () => ({
   resend: { contacts: { create: vi.fn() } },
 }));
+// Pages name the Title; tests use a fixed name instead of IMDb.
+vi.mock("../titles/enrich", () => ({
+  enrichTitles: vi.fn((titles: { imdbId: string; type?: string }[]) =>
+    Promise.resolve(
+      new Map(
+        titles.map(({ imdbId, type }) => [
+          imdbId,
+          { id: imdbId, type: type ?? "movie", name: "The Title" },
+        ]),
+      ),
+    ),
+  ),
+}));
 
 import app from "../index.js";
 import type { Membership, ProviderActions } from "../providers/types";
@@ -194,7 +207,7 @@ describe("Action pages", () => {
 
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("Added to your watchlist on Trakt");
+    expect(html).toContain("The Title is in your watchlist on Trakt");
     expect(html).toContain('name="robots" content="noindex, nofollow"');
     expect(perform).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ provider: "trakt" }),
@@ -210,7 +223,9 @@ describe("Action pages", () => {
       `/${account.id}/actions/watchlist/remove/movie/${MOVIE}`,
     );
 
-    expect(await res.text()).toContain("Removed from your watchlist on Trakt");
+    expect(await res.text()).toContain(
+      "The Title is out of your watchlist on Trakt",
+    );
     expect(perform.mock.calls[0][1]).toEqual({ kind: "watchlist", add: false });
   });
 
@@ -234,7 +249,9 @@ describe("Action pages", () => {
       `/${account.id}/actions/watched/add/series/${SERIES}%3A2%3A5`,
     );
 
-    expect(await res.text()).toContain("S02E05 marked as watched on Trakt");
+    expect(await res.text()).toContain(
+      "The Title S02E05 is marked as watched on Trakt",
+    );
     expect(perform.mock.calls[0].slice(1)).toEqual([
       { kind: "watched", add: true },
       { imdbId: SERIES, type: "series", episode: { season: 2, episode: 5 } },
@@ -296,7 +313,7 @@ describe("Action pages", () => {
 
       expect(res.status).toBe(200);
       const html = await res.text();
-      expect(html).toContain("Rate this movie");
+      expect(html).toContain("Rate The Title");
       expect(html.match(/type="radio"/g)).toHaveLength(10);
       expect(html).toMatch(/value="7"[^>]*checked/);
       expect(html).toContain('value="trakt"');
@@ -314,7 +331,7 @@ describe("Action pages", () => {
         await app.request(`/${account.id}/actions/rating/rate/series/${SERIES}`)
       ).text();
 
-      expect(html).toContain("Rate this series");
+      expect(html).toContain("Rate The Title");
       expect(html).not.toContain("Remove rating");
     });
 
@@ -342,7 +359,7 @@ describe("Action pages", () => {
         ],
       );
 
-      expect(await res.text()).toContain("Rated 8/10 on Trakt");
+      expect(await res.text()).toContain("The Title is rated 8/10 on Trakt");
       expect(perform).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({ provider: "trakt" }),
         { kind: "rating", rating: 8 },
@@ -361,7 +378,9 @@ describe("Action pages", () => {
         ],
       );
 
-      expect(await res.text()).toContain("Rating removed on Trakt");
+      expect(await res.text()).toContain(
+        "The Title has no rating on Trakt now",
+      );
       expect(perform.mock.calls[0][1]).toEqual({
         kind: "rating",
         rating: null,
@@ -381,7 +400,7 @@ describe("Action pages", () => {
           ],
         );
 
-        expect(await res.text()).toContain("Rate this movie");
+        expect(await res.text()).toContain("Rate The Title");
         expect(perform).not.toHaveBeenCalled();
       },
     );

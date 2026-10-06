@@ -3,7 +3,11 @@
  * membership). Use it with
  * `vi.mock("…/lib/r2", () => import("…/helpers/mock-r2"))`.
  */
-import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+} from "@aws-sdk/client-s3";
 
 export const r2Objects = new Map<string, string>();
 
@@ -27,6 +31,10 @@ function send(command: unknown): Promise<unknown> {
     return Promise.resolve({
       Body: { transformToString: () => Promise.resolve(body) },
     });
+  }
+  if (command instanceof DeleteObjectCommand) {
+    if (command.input.Key) r2Objects.delete(command.input.Key);
+    return Promise.resolve({});
   }
   return Promise.reject(new Error("mock-r2: unsupported command"));
 }

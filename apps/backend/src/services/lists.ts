@@ -17,7 +17,12 @@ import type { AccountAccess } from "./accounts";
 import { getAccountLists, markAccountFetched } from "./accounts";
 import { ConnectionExpiredError, getConnectionAccess } from "./connections";
 import { buildPosterUrl } from "./imdb-scraper";
-import { findCachedMeta, getCachedList, writeCachedList } from "./list-cache";
+import {
+  deleteCachedList,
+  findCachedMeta,
+  getCachedList,
+  writeCachedList,
+} from "./list-cache";
 import type { WatchlistSort } from "./watchlist-sort";
 import { sortWatchlist } from "./watchlist-sort";
 
@@ -308,7 +313,13 @@ export async function getListCatalog(
       message,
     );
 
-    if (!config.noCacheFallback) {
+    // A List that lost its Connection must not keep serving the private
+    // items it cached while connected.
+    const lostConnection =
+      error instanceof ConnectionExpiredError ||
+      (error instanceof SourceUnavailableError &&
+        error.reason === "needs_connection");
+    if (!config.noCacheFallback && !lostConnection) {
       const cached = await getCachedList(config.listId);
       if (cached && cached.data.metas.length > 0) {
         await markAccountFetched(config.accountId, "last_cache_served_at");
@@ -366,4 +377,24 @@ export async function findMetaInAccountCache(
     );
     return null;
   }
+}
+
+/**
+ * After a disconnect: drop the cached Catalogs of the Account's Lists that
+ * were read through that Connection, so nothing private stays served.
+ */
+export async function forgetConnectionLists(
+  accountId: string,
+  provider: ProviderId,
+): Promise<void> {
+  const lists = await getAccountLists(accountId);
+  await Promise.all(
+    lists
+      .filter(
+        (list) =>
+          list.provider === provider &&
+          sourceRequiresConnection(list.provider, list.sourceRef),
+      )
+      .map((list) => deleteCachedList(list.id)),
+  );
 }

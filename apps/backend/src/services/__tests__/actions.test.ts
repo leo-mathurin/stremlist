@@ -249,9 +249,9 @@ describe("buildActionStreams", () => {
     );
 
     expect(titles(streams)).toEqual([
-      ["🔖 Add to watchlist\nTrakt, Simkl", "watchlist/add"],
-      ["✅ Mark as watched\nTrakt, Simkl", "watched/add"],
-      ["⭐ Rate\n1 to 10, on Trakt, Simkl", "rating/rate"],
+      ["🔖 Add to watchlist\nTrakt and Simkl", "watchlist/add"],
+      ["✅ Mark as watched\nTrakt and Simkl", "watched/add"],
+      ["⭐ Rate\nFrom 1 to 10 on Trakt and Simkl", "rating/rate"],
     ]);
   });
 
@@ -271,14 +271,14 @@ describe("buildActionStreams", () => {
 
     expect(titles(streams)).toEqual([
       [
-        "🔖 In watchlist on Trakt, Simkl\nSelect to remove from all",
+        "🔖 In watchlist on Trakt and Simkl\nSelect to remove from all",
         "watchlist/remove",
       ],
       [
-        "✅ Watched on Trakt, Simkl\nSelect to mark as unwatched everywhere",
+        "✅ Watched on Trakt and Simkl\nSelect to mark as unwatched everywhere",
         "watched/remove",
       ],
-      ["⭐ Rated 7/10, change\nTrakt, Simkl", "rating/rate"],
+      ["⭐ Rated 7/10, change\nTrakt and Simkl", "rating/rate"],
     ]);
   });
 
@@ -333,7 +333,7 @@ describe("buildActionStreams", () => {
       link,
     );
 
-    expect(streams[0].title).toBe("🔖 Add to watchlist\nSimkl, Trakt");
+    expect(streams[0].title).toBe("🔖 Add to watchlist\nSimkl and Trakt");
   });
 
   it("names the episode for a series episode", async () => {

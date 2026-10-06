@@ -12,10 +12,10 @@ export const SORT_OPTIONS = [
   { value: "random", label: "Random" },
   { value: "title-asc", label: "Title (A-Z)" },
   { value: "title-desc", label: "Title (Z-A)" },
-  { value: "year-desc", label: "Newest First" },
-  { value: "year-asc", label: "Oldest First" },
-  { value: "rating-desc", label: "Highest Rated" },
-  { value: "rating-asc", label: "Lowest Rated" },
+  { value: "year-desc", label: "Release Year (Newest First)" },
+  { value: "year-asc", label: "Release Year (Oldest First)" },
+  { value: "rating-desc", label: "IMDb Rating (Highest First)" },
+  { value: "rating-asc", label: "IMDb Rating (Lowest First)" },
 ] as const;
 
 export const DEFAULT_SORT_OPTION = "added_at-asc";

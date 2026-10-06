@@ -14,7 +14,16 @@ import stream from "./routes/stream";
 const app = new Hono();
 
 app.use("*", cors({ origin: "*" }));
-app.use("*", logger());
+// OAuth callbacks carry one-time codes in the query string: keep them out of logs.
+app.use(
+  "*",
+  logger((message, ...rest) => {
+    console.log(
+      message.replace(/(\/oauth\/[^\s?]+)\?\S*/g, "$1?[redacted]"),
+      ...rest,
+    );
+  }),
+);
 
 app.route("", api);
 app.route("", manifest);
