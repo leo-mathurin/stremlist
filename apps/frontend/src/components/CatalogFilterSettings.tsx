@@ -143,7 +143,7 @@ export default function CatalogFilterSettings({
             <div className="flex items-start justify-between gap-3">
               <p className="text-xs leading-relaxed text-pretty text-gray-500">
                 All selected filters apply together, including in search. Use
-                Sort Order above to order the results.
+                the sort menu of this List to order the results.
               </p>
               {activeFilters > 0 && (
                 <Button

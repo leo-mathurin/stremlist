@@ -39,9 +39,15 @@ export default function SortableListRow({
   index,
   onFieldChange,
   onRemove,
+  connectionMissing,
+  onConnect,
 }: {
   list: ListFormRow;
   index: number;
+  /** The List reads through a Connection that the Account no longer has. */
+  connectionMissing?: boolean;
+  /** Start the Connection again; absent when it cannot be started here. */
+  onConnect?: () => void;
   onFieldChange: <K extends keyof ListFormRow>(
     localId: string,
     key: K,
@@ -57,6 +63,8 @@ export default function SortableListRow({
   const panelId = useId();
   const titleId = useId();
   const sortId = useId();
+  const showId = useId();
+  const chartId = useId();
 
   const source = describeSource(list.provider, list.sourceRef);
   const chartEntry =
@@ -69,6 +77,7 @@ export default function SortableListRow({
       ref={ref}
       className={cn(
         "rounded-3xl bg-white ring-1 ring-black/5 transition-shadow",
+        connectionMissing && "ring-amber-300",
         isDragSource && "opacity-60 shadow-lg ring-2 ring-brand/50",
       )}
     >
@@ -165,6 +174,24 @@ export default function SortableListRow({
         </div>
       </div>
 
+      {connectionMissing && (
+        <div className="mx-3 mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-amber-50 px-4 py-2.5 text-sm text-amber-900 ring-1 ring-amber-200 sm:mx-4 sm:mb-4">
+          <p className="min-w-0 flex-1 text-pretty">
+            {PROVIDERS[list.provider].label} is not connected, so this List does
+            not show in Stremio.
+          </p>
+          {onConnect && (
+            <button
+              type="button"
+              onClick={onConnect}
+              className="inline-flex h-8 shrink-0 items-center rounded-full bg-brand px-3 text-xs font-bold text-black transition-colors hover:bg-brand-dark"
+            >
+              Connect again
+            </button>
+          )}
+        </div>
+      )}
+
       <div
         id={panelId}
         inert={!open}
@@ -180,7 +207,10 @@ export default function SortableListRow({
             <div className="grid gap-3 sm:grid-cols-2">
               {isChart && (
                 <div className="sm:col-span-2">
-                  <Label className="mb-1 block text-xs font-semibold text-black/60">
+                  <Label
+                    htmlFor={chartId}
+                    className="mb-1 block text-xs font-semibold text-black/60"
+                  >
                     Built-in chart
                   </Label>
                   <Select
@@ -201,6 +231,7 @@ export default function SortableListRow({
                     }}
                   >
                     <SelectTrigger
+                      id={chartId}
                       className={cn("w-full bg-white", SELECT_FOCUS)}
                     >
                       <SelectValue />
@@ -242,7 +273,10 @@ export default function SortableListRow({
                   an empty choice there. */}
               {!isChart && (
                 <div>
-                  <Label className="mb-1 block text-xs font-semibold text-black/60">
+                  <Label
+                    htmlFor={showId}
+                    className="mb-1 block text-xs font-semibold text-black/60"
+                  >
                     Show
                   </Label>
                   <Select
@@ -256,6 +290,7 @@ export default function SortableListRow({
                     }
                   >
                     <SelectTrigger
+                      id={showId}
                       className={cn("w-full bg-white", SELECT_FOCUS)}
                     >
                       <SelectValue />

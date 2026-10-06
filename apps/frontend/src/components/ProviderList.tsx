@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ReactNode } from "react";
 import { Check, Loader2 } from "lucide-react";
 import { PROVIDERS } from "@stremlist/shared/providers";
@@ -38,6 +39,8 @@ export default function ProviderList({
   connections,
   providerStatus,
   connecting,
+  connectLocked,
+  affectedLists,
   onConnect,
   onDisconnect,
 }: {
@@ -46,9 +49,15 @@ export default function ProviderList({
   connections: ConnectionSummary[];
   providerStatus: Record<ProviderId, ProviderStatus>;
   connecting: ProviderId | null;
+  /** Why Connect is off here (an install that moved to a private URL). */
+  connectLocked?: string;
+  /** How many Lists each Provider's Connection reads. */
+  affectedLists: Partial<Record<ProviderId, number>>;
   onConnect: (provider: ProviderId) => void;
   onDisconnect: (provider: ProviderId) => void;
 }) {
+  const [confirming, setConfirming] = useState<ProviderId | null>(null);
+
   return (
     <ul className="space-y-1">
       {PROVIDER_ORDER.map((id) => {
@@ -92,8 +101,9 @@ export default function ProviderList({
               </span>
               <button
                 type="button"
-                onClick={() => onDisconnect(id)}
-                disabled={busy}
+                onClick={() => setConfirming(id)}
+                disabled={busy || confirming === id}
+                aria-expanded={confirming === id}
                 className="rounded-full px-2.5 py-1 text-xs font-semibold text-white/55 transition-colors hover:bg-white/10 hover:text-cloud disabled:opacity-40"
               >
                 {busy ? "Disconnecting" : "Disconnect"}
@@ -105,13 +115,15 @@ export default function ProviderList({
             <button
               type="button"
               onClick={() => onConnect(id)}
-              disabled={connecting !== null}
+              disabled={connecting !== null || !!connectLocked}
               title={
-                access === "legacy"
-                  ? "Needs a private Addon URL"
-                  : access === "new"
-                    ? "Saves your setup first"
-                    : undefined
+                connectLocked
+                  ? connectLocked
+                  : access === "legacy"
+                    ? "Needs a private Addon URL"
+                    : access === "new"
+                      ? "Saves your setup first"
+                      : undefined
               }
               className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.12] px-3 py-1 text-xs font-bold text-cloud transition-colors hover:bg-white/20 disabled:opacity-40"
             >
@@ -129,28 +141,69 @@ export default function ProviderList({
           trailing = <span className="text-xs text-white/40">Link</span>;
         }
 
+        const affected = affectedLists[id] ?? 0;
         return (
           <li
             key={id}
             className={cn(
-              "flex min-h-12 items-center gap-3 rounded-2xl px-3 py-2 transition-colors duration-200",
+              "rounded-2xl px-3 py-2 transition-colors duration-200",
               isDetected && "bg-brand/[0.16]",
+              confirming === id && "bg-white/[0.06]",
             )}
           >
-            <ProviderMark
-              provider={id}
-              tone="dark"
-              active={!!connection || isDetected}
-            />
-            <span className="flex min-w-0 flex-1 flex-col leading-tight">
-              <span className={cn("font-semibold", soon && "text-white/45")}>
-                {info.label}
+            <div className="flex min-h-8 items-center gap-3">
+              <ProviderMark
+                provider={id}
+                tone="dark"
+                active={!!connection || isDetected}
+              />
+              <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                <span className={cn("font-semibold", soon && "text-white/45")}>
+                  {info.label}
+                </span>
+                <span className="truncate text-xs text-white/45">
+                  {soon ? "Not supported yet" : subtitle(id, connection)}
+                </span>
               </span>
-              <span className="truncate text-xs text-white/45">
-                {soon ? "Not supported yet" : subtitle(id, connection)}
-              </span>
-            </span>
-            <span className="shrink-0">{trailing}</span>
+              <span className="shrink-0">{trailing}</span>
+            </div>
+            {confirming === id && connection && (
+              <div
+                role="group"
+                aria-label={`Disconnect ${info.label}?`}
+                className="mt-2 ml-11 space-y-2 text-xs text-white/70"
+              >
+                <p className="text-pretty">
+                  <strong className="text-cloud">
+                    Disconnect {info.label}?
+                  </strong>{" "}
+                  {affected > 0
+                    ? `${affected === 1 ? "1 List is" : `${affected} Lists are`} read through this account. ${affected === 1 ? "It stops" : "They stop"} showing in Stremio until you connect ${info.label} again.`
+                    : `Lists read through this account stop showing in Stremio until you connect ${info.label} again.`}{" "}
+                  {info.actions.length > 0 &&
+                    `Actions on ${info.label} stop too.`}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfirming(null);
+                      onDisconnect(id);
+                    }}
+                    className="rounded-full bg-red-500/90 px-3 py-1 font-bold text-white transition-colors hover:bg-red-500"
+                  >
+                    Disconnect
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirming(null)}
+                    className="rounded-full bg-white/[0.12] px-3 py-1 font-bold text-cloud transition-colors hover:bg-white/20"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </li>
         );
       })}

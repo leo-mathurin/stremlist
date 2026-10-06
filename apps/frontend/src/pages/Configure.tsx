@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { ACCOUNT_KEY_PATTERN } from "@stremlist/shared/constants";
-import { isProviderId, PROVIDERS } from "@stremlist/shared/providers";
+import {
+  isProviderId,
+  PROVIDERS,
+  sourceRequiresConnection,
+} from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { Eye, EyeOff, Loader2, RefreshCw, X } from "lucide-react";
 import { DragDropProvider } from "@dnd-kit/react";
@@ -157,6 +161,24 @@ export default function Configure() {
   const full = lists.length >= MAX_LISTS;
   const ready = !loading && !notFound && !loadError && (!rawKey || keyIsValid);
   const justCreated = !!accountId && createdId === accountId;
+  // A Legacy alias install that already got a private copy: its changes are
+  // refused (409), so the page only offers to make a new private URL.
+  const moved = access === "legacy" && !!config.movedAt;
+  const MOVED_HINT =
+    "This install has a private URL now. Make changes from the configure page of your new install.";
+  const connectedProviders = new Set(
+    config.connections.map((connection) => connection.provider),
+  );
+  const needsMissingConnection = (provider: ProviderId, sourceRef: string) =>
+    access === "private" &&
+    sourceRequiresConnection(provider, sourceRef) &&
+    !connectedProviders.has(provider);
+  const affectedLists: Partial<Record<ProviderId, number>> = {};
+  for (const list of lists) {
+    if (sourceRequiresConnection(list.provider, list.sourceRef)) {
+      affectedLists[list.provider] = (affectedLists[list.provider] ?? 0) + 1;
+    }
+  }
 
   const addResolved = (link: ResolvedLink): string | null => {
     const description = describeSource(link.provider, link.sourceRef);
@@ -199,8 +221,12 @@ export default function Configure() {
           <LinkPaste
             accountKey={accountKey}
             access={access}
-            disabled={full}
-            disabledReason={`You have ${MAX_LISTS} lists, the maximum. Remove one to add another.`}
+            disabled={full || moved}
+            disabledReason={
+              moved
+                ? MOVED_HINT
+                : `You have ${MAX_LISTS} lists, the maximum. Remove one to add another.`
+            }
             initialValue={pendingLink ?? undefined}
             onInitialValueUsed={() => setPendingLink(null)}
             onDetect={setDetected}
@@ -214,6 +240,8 @@ export default function Configure() {
             connections={config.connections}
             providerStatus={config.providerStatus}
             connecting={config.connecting}
+            connectLocked={moved ? MOVED_HINT : undefined}
+            affectedLists={affectedLists}
             onConnect={(provider) =>
               access === "legacy" ? scrollToUpgrade() : connectFor(provider)
             }
@@ -225,7 +253,7 @@ export default function Configure() {
               belongs to your private Addon URL.
             </p>
           )}
-          {access === "legacy" && (
+          {access === "legacy" && !moved && (
             <p className="text-xs text-pretty text-white/45">
               Connections need a private Addon URL.{" "}
               <button
@@ -385,6 +413,15 @@ export default function Configure() {
                         index={index}
                         onFieldChange={config.setListField}
                         onRemove={config.removeList}
+                        connectionMissing={needsMissingConnection(
+                          list.provider,
+                          list.sourceRef,
+                        )}
+                        onConnect={
+                          config.providerStatus[list.provider].connectable
+                            ? () => connectFor(list.provider)
+                            : undefined
+                        }
                       />
                     ))}
                   </div>
@@ -403,7 +440,7 @@ export default function Configure() {
                 connectionSources={config.connectionSources}
                 providerStatus={config.providerStatus}
                 usedKeys={lists.map(listKey)}
-                full={full}
+                full={full || moved}
                 onAdd={(provider, source) => {
                   const error = config.addList({
                     provider,
@@ -480,11 +517,13 @@ export default function Configure() {
                 onToggle={config.toggleActionProvider}
                 onMove={config.moveActionProvider}
                 locked={
-                  access === "legacy"
-                    ? "Actions need a private Addon URL. Upgrade this install first."
-                    : access === "new"
-                      ? "Save your setup and connect Trakt, Simkl or MDBList to use Actions."
-                      : undefined
+                  moved
+                    ? MOVED_HINT
+                    : access === "legacy"
+                      ? "Actions need a private Addon URL. Upgrade this install first."
+                      : access === "new"
+                        ? "Save your setup and connect Trakt, Simkl or MDBList to use Actions."
+                        : undefined
                 }
               />
             </section>
@@ -501,18 +540,25 @@ export default function Configure() {
             <div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl bg-ink p-5 text-cloud">
               <div className="min-w-0">
                 <p className="font-bold">
-                  {access === "new" ? "Ready to go live?" : "Save your changes"}
+                  {access === "new"
+                    ? "Ready to go live?"
+                    : moved
+                      ? "Saving is off for this install"
+                      : "Save your changes"}
                 </p>
                 <p className="text-sm text-white/60">
                   {access === "new"
                     ? "Save to get your Addon URL, then install it once in Stremio."
-                    : "Your catalogs update in Stremio after saving."}
+                    : moved
+                      ? MOVED_HINT
+                      : "Your catalogs update in Stremio after saving."}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={config.handleSave}
                 disabled={
+                  moved ||
                   config.saving ||
                   !!config.validationError ||
                   lists.length === 0
@@ -544,7 +590,7 @@ export default function Configure() {
               </p>
             )}
 
-            {accountKey && !justCreated && (
+            {accountKey && !justCreated && !moved && (
               <AddonUrlCard
                 accountKey={accountKey}
                 variant="install"
