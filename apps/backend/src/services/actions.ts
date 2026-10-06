@@ -4,7 +4,7 @@ import {
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
-import { PROVIDERS } from "@stremlist/shared/providers";
+import { joinProviderLabels, PROVIDERS } from "@stremlist/shared/providers";
 import type { StremioStream } from "@stremlist/shared/stremio.types";
 import { scheduleBackgroundTask } from "../lib/background";
 import { getR2Bucket, getR2Client } from "../lib/r2";
@@ -135,14 +135,6 @@ export async function actionProviders(account: Account): Promise<ProviderId[]> {
   );
 }
 
-/** "Trakt", "Trakt and Simkl", "Trakt, Simkl and MDBList". */
-export function joinNames(providers: ProviderId[]): string {
-  const labels = providers.map((provider) => PROVIDERS[provider].label);
-  return labels.length <= 1
-    ? labels.join("")
-    : `${labels.slice(0, -1).join(", ")} and ${labels.at(-1) ?? ""}`;
-}
-
 /** "tt123:2:5" → the series ID and the episode. */
 export function parseStreamId(
   type: "movie" | "series",
@@ -198,7 +190,7 @@ function slotEntries(
     return [
       {
         name: STREAM_NAME,
-        title: `${labels.has(joinNames(withIt))}\n${labels.undo}`,
+        title: `${labels.has(joinProviderLabels(withIt))}\n${labels.undo}`,
         externalUrl: link("remove"),
       },
     ];
@@ -209,7 +201,7 @@ function slotEntries(
         name: STREAM_NAME,
         title: single
           ? labels.add(single)
-          : `${labels.add(null)}\n${joinNames(without)}`,
+          : `${labels.add(null)}\n${joinProviderLabels(without)}`,
         externalUrl: link("add"),
       },
     ];
@@ -217,12 +209,12 @@ function slotEntries(
   return [
     {
       name: STREAM_NAME,
-      title: `${labels.add(null)}\n${joinNames(without)} (${labels.alreadyNote} ${joinNames(withIt)})`,
+      title: `${labels.add(null)}\n${joinProviderLabels(without)} (${labels.alreadyNote} ${joinProviderLabels(withIt)})`,
       externalUrl: link("add"),
     },
     {
       name: STREAM_NAME,
-      title: `${labels.remove}\n${joinNames(withIt)}`,
+      title: `${labels.remove}\n${joinProviderLabels(withIt)}`,
       externalUrl: link("remove"),
     },
   ];
@@ -343,7 +335,7 @@ export async function buildActionStreams(
         (r): r is { provider: ProviderId; rating: number } =>
           typeof r.rating === "number",
       );
-    const names = joinNames(raters.map((r) => r.provider));
+    const names = joinProviderLabels(raters.map((r) => r.provider));
     const series = target.type === "series" ? " series" : "";
     let title: string;
     if (ratings.length === 0) {
@@ -359,7 +351,7 @@ export async function buildActionStreams(
     } else if (ratings.length < raters.length) {
       // Say where the rating is, and where it is still missing.
       const rated = new Set(ratings.map((r) => r.provider));
-      const missing = joinNames(
+      const missing = joinProviderLabels(
         raters.map((r) => r.provider).filter((p) => !rated.has(p)),
       );
       title = `⭐ ${ratings.map((r) => `${r.rating}/10 on ${PROVIDERS[r.provider].label}`).join(", ")}, change\nNot rated on ${missing}`;

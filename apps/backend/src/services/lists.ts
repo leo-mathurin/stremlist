@@ -1,9 +1,16 @@
 import type { ProviderId } from "@stremlist/shared/providers";
-import { sourceRequiresConnection } from "@stremlist/shared/providers";
+import {
+  PROVIDERS,
+  sourceRequiresConnection,
+} from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
 import { getProvider, isProviderEnabled } from "../providers/registry";
-import type { ProviderAdapter, ProviderContext } from "../providers/types";
+import type {
+  ProviderAdapter,
+  ProviderContext,
+  SourceEntry,
+} from "../providers/types";
 import { SourceUnavailableError } from "../providers/types";
 import { enrichTitles } from "../titles/enrich";
 import { DEFAULT_RESOLVE_BUDGET_MS, resolveEntries } from "../titles/resolver";
@@ -114,6 +121,24 @@ async function providerContext(
   return { connection };
 }
 
+const LINK_BACK = /(?:^|\n\n)More on [^\n:]+: \S+$/u;
+
+/**
+ * Add "More on {Provider}: {url}" at the end of the description when the
+ * entry has a page on its Provider. Idempotent: metadata reused from the
+ * previous cache already carries it.
+ */
+function withLinkBack(
+  meta: StremioMeta,
+  entry: SourceEntry,
+  provider: ProviderId,
+): StremioMeta {
+  if (!entry.sourceUrl) return meta;
+  const base = meta.description.replace(LINK_BACK, "");
+  const line = `More on ${PROVIDERS[provider].label}: ${entry.sourceUrl}`;
+  return { ...meta, description: base ? `${base}\n\n${line}` : line };
+}
+
 /** Turn a Provider snapshot into a canonical Catalog (provider order). */
 async function buildCatalog(
   adapter: ProviderAdapter,
@@ -125,7 +150,7 @@ async function buildCatalog(
     return {
       data: {
         metas: snapshot.entries.flatMap((entry) =>
-          entry.meta ? [entry.meta] : [],
+          entry.meta ? [withLinkBack(entry.meta, entry, config.provider)] : [],
         ),
       },
       deferred: 0,
@@ -163,7 +188,7 @@ async function buildCatalog(
     const key = `${meta.type}:${meta.id}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    metas.push(meta);
+    metas.push(withLinkBack(meta, entry, config.provider));
   }
 
   if (unresolved > 0 || unknown > 0) {

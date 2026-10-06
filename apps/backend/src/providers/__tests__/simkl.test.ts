@@ -576,6 +576,7 @@ describe("simkl entries", () => {
         type: "movie",
         title: "Old Movie",
         year: 1950,
+        sourceUrl: "https://simkl.com/movies/999/old-movie",
       },
       {
         imdbId: "tt0158552",
@@ -587,6 +588,7 @@ describe("simkl entries", () => {
         type: "series",
         title: "Charmed",
         year: 1998,
+        sourceUrl: "https://simkl.com/tv/297/charmed",
       },
       {
         imdbId: undefined,
@@ -594,6 +596,7 @@ describe("simkl entries", () => {
         type: "movie",
         title: "Attack on Titan: The Last Attack",
         year: 2024,
+        sourceUrl: "https://simkl.com/anime/2544548/",
       },
       {
         imdbId: "tt0110912",
@@ -601,6 +604,7 @@ describe("simkl entries", () => {
         type: "movie",
         title: "Pulp Fiction",
         year: 1994,
+        sourceUrl: "https://simkl.com/movies/54130/pulp-fiction",
       },
     ]);
   });
@@ -635,6 +639,28 @@ describe("simkl entries", () => {
       simklProvider.validateSource("me/hold", ctx()),
     ).resolves.toMatchObject({ ok: true, ref: "me/hold" });
     expect(calls).toEqual([]);
+  });
+
+  it("lists everything watched as history, oldest watch first", async () => {
+    const { entries } = await simklProvider.fetchSource("me/history", ctx());
+    expect(entries.map((entry) => entry.title)).toEqual([
+      "The Godfather",
+      "Shingeki no Kyojin Season 2",
+      "Cowboy Bebop",
+      "Game of Thrones",
+      "The Walking Dead",
+    ]);
+    await expect(
+      simklProvider.validateSource("me/history", ctx()),
+    ).resolves.toMatchObject({ ok: true, suggestedTitle: "History" });
+  });
+
+  it("links every entry back to its Simkl page", async () => {
+    const { entries } = await simklProvider.fetchSource("me/completed", ctx());
+    expect(entries.map((entry) => entry.sourceUrl)).toContain(
+      "https://simkl.com/tv/17465/game-of-thrones",
+    );
+    expect(entries.every((entry) => entry.sourceUrl)).toBe(true);
   });
 
   it("builds the link back to a Simkl title page", () => {
@@ -710,6 +736,7 @@ describe("simkl custom lists", () => {
         type: "movie",
         title: "Ghost in the Shell",
         year: 1995,
+        sourceUrl: "https://simkl.com/anime/53536/",
       },
       {
         imdbId: undefined,
@@ -717,6 +744,7 @@ describe("simkl custom lists", () => {
         type: "movie",
         title: "The Matrix",
         year: 1999,
+        sourceUrl: "https://simkl.com/movies/53992/",
       },
     ]);
 
@@ -973,13 +1001,14 @@ describe("simkl actions", () => {
     expect(apiCalls()).toEqual(["GET /sync/activities"]);
   });
 
-  it("marks every status list stale, since a title has one status", () => {
+  it("marks every library list stale, since a title has one status", () => {
     const all = [
       "me/watching",
       "me/plantowatch",
       "me/hold",
       "me/completed",
       "me/dropped",
+      "me/history",
     ];
     expect(actions.kinds).toEqual(["watchlist", "watched", "rating"]);
     expect(actions.affectedSources({ kind: "watchlist", add: true })).toEqual(

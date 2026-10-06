@@ -142,6 +142,10 @@ export function useAccountConfiguration(
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [showReinstallHint, setShowReinstallHint] = useState(false);
   const [baselineSignature, setBaselineSignature] = useState("");
+  // Whether the installed manifest offers Actions (its `stream` resource).
+  const [baselineActionsLive, setBaselineActionsLive] = useState<
+    boolean | null
+  >(null);
   const [status, setStatus] = useState<ConfigStatus>(null);
   const previousKey = useRef(accountKey);
   const currentForm = useRef({ lists, rpdbApiKey });
@@ -179,6 +183,7 @@ export function useAccountConfiguration(
 
     setShowReinstallHint(false);
     setBaselineSignature("");
+    setBaselineActionsLive(null);
     setNotFound(false);
     setLoadError(false);
     if (!accountKey) {
@@ -219,6 +224,7 @@ export function useAccountConfiguration(
           ...capable.filter((id) => !saved.includes(id)),
         ]);
         setActionSelected(saved);
+        setBaselineActionsLive(data.actions.enabled && saved.length > 0);
       })
       .catch(() => {
         if (!cancelled) setLoadError(true);
@@ -401,15 +407,11 @@ export function useAccountConfiguration(
       catalogSettings: list.catalogSettings,
     }));
 
-  /** Create the Account from the current setup. Returns its ID. */
+  /**
+   * Create the Account from the current setup. Returns its ID. It may have no
+   * Lists yet when it is created to connect a Provider.
+   */
   const createAccount = async (): Promise<string | null> => {
-    if (lists.length === 0) {
-      setStatus({
-        type: "error",
-        message: "Add at least one list first.",
-      });
-      return null;
-    }
     const res = await api.accounts.$post({
       json: { rpdbApiKey, lists: listPayload() },
     });
@@ -443,8 +445,14 @@ export function useAccountConfiguration(
       }
 
       const currentSignature = getListReinstallSignature(lists);
+      // Actions add a `stream` resource to the manifest, which Stremio also
+      // reads only at install time.
+      const actionsLive =
+        access === "private" && actionsEnabled && actionSelected.length > 0;
       const requiresReinstall =
-        baselineSignature.length > 0 && currentSignature !== baselineSignature;
+        (baselineSignature.length > 0 &&
+          currentSignature !== baselineSignature) ||
+        (baselineActionsLive !== null && actionsLive !== baselineActionsLive);
 
       const submittedLists = lists;
       const submittedPayload = JSON.stringify({
@@ -515,12 +523,13 @@ export function useAccountConfiguration(
       );
       setShowReinstallHint(requiresReinstall);
       setBaselineSignature(getListReinstallSignature(savedRows));
+      setBaselineActionsLive(actionsLive);
       setStatus({
         type: "success",
         message: hasUnsavedChanges
           ? "Saved the submitted settings. You have unsaved changes: save again to apply them."
           : requiresReinstall
-            ? "Saved! The catalog structure changed. Reinstall Stremlist in Stremio to see the new catalogs."
+            ? "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions."
             : "Saved! Your catalogs will refresh with the new settings.",
       });
     } catch (err) {

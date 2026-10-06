@@ -36,6 +36,8 @@ export interface ProviderInfo {
   actions: readonly ActionKind[];
   /** Example of a link the user can paste, shown as a hint. */
   linkExample: string | null;
+  /** A limit to know before connecting, shown next to Connect. */
+  connectNote?: string;
 }
 
 export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
@@ -56,6 +58,9 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     connection: "optional",
     actions: ["watchlist", "watched", "rating"],
     linkExample: "https://trakt.tv/users/username/watchlist",
+    // Since 2026-07-22 (docs/providers.md).
+    connectNote:
+      "A free Trakt account can connect only one app. If Stremio's own Trakt sync uses it, paste public Trakt links instead.",
   },
   simkl: {
     id: "simkl",
@@ -103,6 +108,22 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     linkExample: "https://letterboxd.com/username/watchlist/",
   },
 };
+
+/** "Trakt", "Trakt and Simkl", "Trakt, Simkl and MDBList" (or "or"). */
+export function joinProviderLabels(
+  providers: readonly ProviderId[],
+  word: "and" | "or" = "and",
+): string {
+  const labels = providers.map((provider) => PROVIDERS[provider].label);
+  if (labels.length <= 1) return labels.join("");
+  return `${labels.slice(0, -1).join(", ")} ${word} ${labels.at(-1) ?? ""}`;
+}
+
+/** Providers whose links the user can paste today. */
+export const LINK_PROVIDERS: readonly ProviderId[] = PROVIDER_IDS.filter(
+  (id) =>
+    PROVIDERS[id].availability === "available" && !!PROVIDERS[id].linkExample,
+);
 
 export function isProviderId(value: string): value is ProviderId {
   return (PROVIDER_IDS as readonly string[]).includes(value);
@@ -550,6 +571,12 @@ export const CONNECTION_SOURCES: Partial<
       ref: "me/dropped",
       kind: "status",
       label: "Dropped",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "me/history",
+      kind: "history",
+      label: "History",
       defaultDisplayMode: "split",
     },
   ],

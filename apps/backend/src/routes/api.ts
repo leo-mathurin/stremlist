@@ -105,6 +105,12 @@ const configBody = z.object({
   actions: actionsBody.optional(),
 });
 
+// A new Account may start without Lists: Simkl and MDBList users connect
+// first (a Connection belongs to an Account), then pick their Source lists.
+const createBody = configBody.extend({
+  lists: z.array(listBody).max(MAX_LISTS),
+});
+
 // Report the first schema problem with the same `{ error }` string as other
 // configuration failures, not as a raw Zod issue object.
 function firstIssueAsError(
@@ -339,7 +345,7 @@ const api = new Hono()
   // Create an Account with its first Lists. Returns the private Account ID.
   .post(
     "/accounts",
-    zValidator("json", configBody, firstIssueAsError),
+    zValidator("json", createBody, firstIssueAsError),
     async (c) => {
       const { rpdbApiKey, lists } = c.req.valid("json");
       let normalized: ListInput[];

@@ -104,7 +104,7 @@ export default function ActionsSettings({
                       <ProviderMark
                         provider={provider}
                         active={checked && enabled}
-                        className="size-7 text-[10px]"
+                        className="size-7"
                       />
                       <label
                         htmlFor={checkboxId}

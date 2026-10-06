@@ -1,5 +1,9 @@
 import type { ProviderId } from "@stremlist/shared/providers";
-import { PROVIDERS, isProviderId } from "@stremlist/shared/providers";
+import {
+  PROVIDERS,
+  isProviderId,
+  joinProviderLabels,
+} from "@stremlist/shared/providers";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Child } from "hono/jsx";
@@ -11,7 +15,6 @@ import type { ActionOutcome } from "../services/actions";
 import {
   actionProviders,
   currentRatings,
-  joinNames,
   parseStreamId,
   performAction,
 } from "../services/actions";
@@ -112,11 +115,11 @@ function OutcomePage({
   const title = ok.length > 0 ? "Done" : "Something went wrong";
   return (
     <Page title={title}>
-      {ok.length > 0 && <h1 class="ok">✓ {done(joinNames(ok))}</h1>}
+      {ok.length > 0 && <h1 class="ok">✓ {done(joinProviderLabels(ok))}</h1>}
       {failed.length > 0 && (
         <p class="err">
-          It did not work on {joinNames(failed)}. Try again later, or connect
-          the account again on the Stremlist configure page.
+          It did not work on {joinProviderLabels(failed)}. Try again later, or
+          connect the account again on the Stremlist configure page.
         </p>
       )}
       <p class="hint">You can close this tab and go back to Stremio.</p>

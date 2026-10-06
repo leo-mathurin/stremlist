@@ -91,7 +91,7 @@ export default function SortableListRow({
           >
             <GripVertical className="size-4" />
           </button>
-          <ProviderMark provider={list.provider} active />
+          <ProviderMark provider={list.provider} />
           <div className="min-w-0 flex-1">
             <p className="truncate font-bold leading-tight">{title}</p>
             <p className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-black/50">

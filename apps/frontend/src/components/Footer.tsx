@@ -92,7 +92,9 @@ export default function Footer() {
 
         <p className="text-xs text-gray-400">
           © {new Date().getFullYear()} Stremlist. Not affiliated with Stremio,
-          IMDb or any other list service.
+          IMDb or any other list service. Logos are trademarks of their owners.
+          IMDb and all related logos are trademarks of IMDb.com, Inc. or its
+          affiliates.
         </p>
       </div>
     </footer>

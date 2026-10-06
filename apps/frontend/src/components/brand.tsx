@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import type { ProviderId } from "@stremlist/shared/providers";
-import { PROVIDER_MONOGRAMS } from "@/lib/list-sources";
+import { PROVIDER_LOGOS } from "@/lib/list-sources";
 import { cn } from "@/lib/utils";
 
 export function Logo({ size = 34 }: { size?: number }) {
@@ -29,7 +29,11 @@ export function Wordmark({ className }: { className?: string }) {
   );
 }
 
-/** A Provider's two-letter mark. `tone` follows the surface it sits on. */
+/**
+ * A Provider's official mark in a circle. `active` adds a brand ring (a
+ * Connection, a detected link, a checked Provider); `tone` is the surface it
+ * sits on, for the ring gap.
+ */
 export function ProviderMark({
   provider,
   tone = "light",
@@ -41,20 +45,29 @@ export function ProviderMark({
   active?: boolean;
   className?: string;
 }) {
+  const logo = PROVIDER_LOGOS[provider];
   return (
     <span
       aria-hidden="true"
+      style={{ backgroundColor: logo.background }}
       className={cn(
-        "inline-flex size-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold tracking-wide transition-colors",
-        active
-          ? "bg-brand text-black"
-          : tone === "dark"
-            ? "bg-white/10 text-cloud"
-            : "bg-black/[0.06] text-ink",
+        "inline-flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full ring-offset-2 transition-shadow",
+        active ? "ring-2 ring-brand" : "ring-0",
+        tone === "dark" ? "ring-offset-ink" : "ring-offset-white",
         className,
       )}
     >
-      {PROVIDER_MONOGRAMS[provider]}
+      <img
+        src={logo.src}
+        alt=""
+        width={64}
+        height={64}
+        loading="lazy"
+        className={cn(
+          "size-full",
+          logo.background ? "object-contain p-[18%]" : "object-cover",
+        )}
+      />
     </span>
   );
 }
@@ -96,7 +109,11 @@ function SiteLinks({ className }: { className?: string }) {
       >
         Contact
       </a>
-      <span>Not affiliated with Stremio or any list service.</span>
+      <span>
+        Not affiliated with Stremio or any list service. Logos are trademarks of
+        their owners. IMDb and all related logos are trademarks of IMDb.com,
+        Inc. or its affiliates.
+      </span>
     </nav>
   );
 }

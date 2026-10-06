@@ -70,10 +70,7 @@ export default function QuickAdd({
       {groups.map((group) => (
         <div key={group.title}>
           <p className="mb-2 flex items-center gap-2 text-sm font-semibold">
-            <ProviderMark
-              provider={group.provider}
-              className="size-6 text-[9px]"
-            />
+            <ProviderMark provider={group.provider} className="size-6" />
             {group.title}
           </p>
           <div className="flex flex-wrap gap-2">
@@ -108,7 +105,7 @@ export default function QuickAdd({
       ))}
       <div>
         <p className="mb-2 flex items-center gap-2 text-sm font-semibold">
-          <ProviderMark provider="imdb" className="size-6 text-[9px]" />
+          <ProviderMark provider="imdb" className="size-6" />
           IMDb charts
         </p>
         <BuiltInCatalogPicker

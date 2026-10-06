@@ -58,6 +58,8 @@ const STATUS_REFS = new Map<string, SimklStatus>(
   STATUSES.map((status) => [`me/${status}`, status]),
 );
 const LIST_REF = /^me\/lists\/(\d+)$/;
+/** Everything the user watched something of, from the library snapshot. */
+const HISTORY_REF = "me/history";
 
 const client = oauthClient("SIMKL");
 const { clientId } = client;
@@ -578,6 +580,7 @@ function toEntry(item: LibraryItem): SourceEntry {
     type,
     title: item.title,
     year: item.year,
+    sourceUrl: simklItemUrl(item),
   };
 }
 
@@ -587,6 +590,20 @@ function compareAdded(a: LibraryItem, b: LibraryItem): number {
   const right = b.addedAt ?? b.lastWatchedAt ?? "";
   if (left !== right) return left < right ? -1 : 1;
   return a.simkl - b.simkl;
+}
+
+/** Watched items, in the order they were last watched (oldest first). */
+function historyEntries(items: LibraryItem[]): SourceEntry[] {
+  return items
+    .filter((item) => item.lastWatchedAt)
+    .sort((a, b) =>
+      (a.lastWatchedAt ?? "") === (b.lastWatchedAt ?? "")
+        ? a.simkl - b.simkl
+        : (a.lastWatchedAt ?? "") < (b.lastWatchedAt ?? "")
+          ? -1
+          : 1,
+    )
+    .map(toEntry);
 }
 
 function statusEntries(
@@ -705,12 +722,19 @@ function listItemEntry(item: RawListItem): SourceEntry | null {
   if (tvdb) externalIds.tvdb = tvdb;
   const mal = toInt(ids.mal);
   if (mal) externalIds.mal = mal;
+  const kind: SimklKind =
+    item.type === "anime" ? "anime" : type === "movie" ? "movies" : "shows";
   return {
     imdbId: toImdbId(ids.imdb),
     externalIds,
     type,
     title: item.title,
     year: toInt(item.year),
+    sourceUrl: simklItemUrl({
+      simkl,
+      kind,
+      slug: typeof ids.slug === "string" ? ids.slug : undefined,
+    }),
   };
 }
 
@@ -905,7 +929,8 @@ async function buildWrite(
   return { path: "/sync/ratings", item: { ...item, rating: intent.rating } };
 }
 
-const ALL_STATUS_REFS = [...STATUS_REFS.keys()];
+/** Source lists read from the library snapshot. */
+const LIBRARY_REFS = [...STATUS_REFS.keys(), HISTORY_REF];
 
 // ---------------------------------------------------------------------------
 // Adapter
@@ -935,12 +960,12 @@ export const simklProvider: ProviderAdapter = {
   freshnessMs: 60 * 60_000,
 
   async validateSource(ref, ctx): Promise<SourceValidation> {
-    const status = STATUS_REFS.get(ref);
+    const fromLibrary = LIBRARY_REFS.includes(ref);
     const listId = LIST_REF.exec(ref)?.[1];
-    if (!status && !listId) return { ok: false, reason: "not_found" };
+    if (!fromLibrary && !listId) return { ok: false, reason: "not_found" };
     if (!ctx.connection) return { ok: false, reason: "needs_connection" };
 
-    if (status) {
+    if (fromLibrary) {
       const source = CONNECTION_SOURCES.simkl?.find(
         (entry) => entry.ref === ref,
       );
@@ -971,7 +996,7 @@ export const simklProvider: ProviderAdapter = {
   async fetchSource(ref, ctx) {
     const status = STATUS_REFS.get(ref);
     const listId = LIST_REF.exec(ref)?.[1];
-    if (!status && !listId) {
+    if (!status && !listId && ref !== HISTORY_REF) {
       throw new SourceUnavailableError(
         "not_found",
         `Unknown Simkl source ${ref}`,
@@ -980,7 +1005,11 @@ export const simklProvider: ProviderAdapter = {
     const connection = requireConnection(ctx);
     if (listId) return { entries: await fetchCustomList(connection, listId) };
     const library = await syncLibrary(connection);
-    return { entries: statusEntries(library.items, status ?? "plantowatch") };
+    return {
+      entries: status
+        ? statusEntries(library.items, status)
+        : historyEntries(library.items),
+    };
   },
 
   resolutionKey(entry) {
@@ -1019,7 +1048,7 @@ export const simklProvider: ProviderAdapter = {
     // A Simkl title sits in exactly one status, so adding, watching or rating
     // it (rating files an unlisted title) can move it between all of them.
     affectedSources() {
-      return ALL_STATUS_REFS;
+      return LIBRARY_REFS;
     },
   },
 

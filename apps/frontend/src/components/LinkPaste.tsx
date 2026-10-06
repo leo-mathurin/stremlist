@@ -1,6 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ExternalLink, Loader2, Plug } from "lucide-react";
-import { PROVIDERS, parseSourceLink } from "@stremlist/shared/providers";
+import {
+  joinProviderLabels,
+  LINK_PROVIDERS,
+  PROVIDERS,
+  parseSourceLink,
+} from "@stremlist/shared/providers";
 import type { ProviderId, SourceKind } from "@stremlist/shared/providers";
 import type { DisplayMode } from "@stremlist/shared/constants";
 import {
@@ -13,12 +18,7 @@ import type {
 } from "@stremlist/shared/source-problems";
 import type { AccountAccess } from "@/hooks/useAccountConfiguration";
 import { api } from "@/lib/api";
-import {
-  detectedLinkHint,
-  joinLabels,
-  LINK_PROVIDER_LABELS,
-  PASTE_LINK_PROMPT,
-} from "@/lib/list-sources";
+import { detectedLinkHint, PASTE_LINK_PROMPT } from "@/lib/list-sources";
 import { cn } from "@/lib/utils";
 
 export interface ResolvedLink {
@@ -56,7 +56,7 @@ function describeLinkProblem(
 ): LinkProblem {
   if (reason === "unrecognized" || !provider) {
     return {
-      message: `We do not recognize this link. ${PASTE_LINK_PROMPT} on ${joinLabels(LINK_PROVIDER_LABELS, "or")}.`,
+      message: `We do not recognize this link. ${PASTE_LINK_PROMPT} on ${joinProviderLabels(LINK_PROVIDERS, "or")}.`,
     };
   }
   const label = PROVIDERS[provider].label;
@@ -265,7 +265,7 @@ export default function LinkPaste({
       >
         {disabled && disabledReason
           ? disabledReason
-          : (hint ?? `${joinLabels(LINK_PROVIDER_LABELS, "and")} links work.`)}
+          : (hint ?? `${joinProviderLabels(LINK_PROVIDERS)} links work.`)}
       </p>
       {problem && problem.message && (
         <div

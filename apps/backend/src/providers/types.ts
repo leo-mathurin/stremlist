@@ -41,6 +41,11 @@ export interface SourceEntry {
   directors?: string[];
   runtimeMinutes?: number;
   /**
+   * The Title's page on the Provider. When set, the catalog description
+   * links back to it (Simkl's terms ask for a link on every item).
+   */
+  sourceUrl?: string;
+  /**
    * Full Stremio metadata, when the Provider already gives everything (IMDb).
    * Entries with `meta` skip the shared enrichment step.
    */

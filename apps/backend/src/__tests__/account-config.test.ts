@@ -650,6 +650,21 @@ describe("List CRUD via the config API", () => {
       expect(config.access).toBe("private");
     });
 
+    it("creates an Account without Lists, so Simkl users can connect first", async () => {
+      const res = await postJson("/accounts", { lists: [] });
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.accountId).toMatch(/^sl_[0-9A-Za-z]{22}$/);
+      expect(data.lists).toEqual([]);
+
+      // Its Addon URL already works: a manifest without catalogs.
+      const manifest = await (
+        await app.request(`/${data.accountId}/manifest.json`)
+      ).json();
+      expect(manifest.catalogs).toEqual([]);
+    });
+
     it("rejects Connection lists: a new Account has no Connection yet", async () => {
       const res = await postJson(
         "/accounts",

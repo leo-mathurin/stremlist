@@ -313,6 +313,44 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
     expect(scraperMocks.fetchTitlesByIds).toHaveBeenCalledWith(["tt0000002"]);
   });
 
+  it("links each item back to its page on the Provider, once", async () => {
+    // Generic: any adapter may set sourceUrl (Simkl does, as its terms ask).
+    const url = "https://trakt.tv/movies/the-shawshank-redemption-1994";
+    const cachedAt = new Date(Date.now() - 2 * 60 * 60_000);
+    // The previous cache generation already has the line.
+    cache.seed(
+      LIST_ID,
+      [
+        meta("tt0000001", {
+          description: `A banker.\n\nMore on Trakt: ${url}`,
+        }),
+      ],
+      cachedAt,
+    );
+    useFakeProvider(
+      fakeAdapter("trakt", {
+        entries: [
+          { imdbId: "tt0000001", sourceUrl: url },
+          { imdbId: "tt0000002", sourceUrl: `${url}-2` },
+          { imdbId: "tt0000003" },
+        ],
+      }),
+    );
+    scraperMocks.fetchTitlesByIds.mockImplementation((ids: string[]) =>
+      Promise.resolve(new Map(ids.map((id) => [id, meta(id)]))),
+    );
+
+    const result = await getListCatalog(
+      config({ provider: "trakt", sourceRef: "users/leo/watchlist" }),
+    );
+
+    expect(result.metas.map((item) => item.description)).toEqual([
+      `A banker.\n\nMore on Trakt: ${url}`,
+      `More on Trakt: ${url}-2`,
+      "",
+    ]);
+  });
+
   it("answers `disabled` when the Provider is turned off and nothing is cached", async () => {
     const fetchSource = vi.fn();
     useFakeProvider(fakeAdapter("trakt", { fetchSource }));

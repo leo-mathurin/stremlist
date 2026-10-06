@@ -13,33 +13,27 @@ import type {
 /** Reorders Stremio addons, so Stremlist can sit just after Cinemeta. */
 export const ADDON_MANAGER_URL = "https://stremio-addon-manager.vercel.app/";
 
-/** Two-letter marks, so the UI shows no third-party logos. */
-export const PROVIDER_MONOGRAMS: Record<ProviderId, string> = {
-  imdb: "IM",
-  trakt: "TR",
-  simkl: "SI",
-  mdblist: "MD",
-  justwatch: "JW",
-  senscritique: "SC",
-  letterboxd: "LB",
+/**
+ * Official Provider marks (files in public/providers). Brand rules: show
+ * them unaltered (no recolor, no opacity), only to say Stremlist works with
+ * the Provider. `background` fills transparent marks.
+ */
+export const PROVIDER_LOGOS: Record<
+  ProviderId,
+  { src: string; background?: string }
+> = {
+  imdb: { src: "/providers/imdb.svg" },
+  trakt: { src: "/providers/trakt.svg" },
+  simkl: { src: "/providers/simkl.png" },
+  mdblist: { src: "/providers/mdblist.png" },
+  // The mark without the wordmark is a transparent 64 px icon.
+  justwatch: { src: "/providers/justwatch.png", background: "#0a151f" },
+  senscritique: { src: "/providers/senscritique.png" },
+  letterboxd: { src: "/providers/letterboxd.svg" },
 };
 
 /** The prompt of every link field. */
 export const PASTE_LINK_PROMPT = "Paste a link to a watchlist or list";
-
-/** "A, B and C" (or "A, B or C"). */
-export function joinLabels(
-  labels: readonly string[],
-  word: "and" | "or",
-): string {
-  if (labels.length <= 1) return labels.join("");
-  return `${labels.slice(0, -1).join(", ")} ${word} ${labels.at(-1)}`;
-}
-
-/** Providers whose links the user can paste today. */
-export const LINK_PROVIDER_LABELS = Object.values(PROVIDERS)
-  .filter((info) => info.availability === "available" && info.linkExample)
-  .map((info) => info.label);
 
 /** Display order on Home and Configure: the most used Providers first. */
 export const PROVIDER_ORDER: readonly ProviderId[] = [

@@ -34,13 +34,13 @@ export function AddonUrlCard({
     variant === "created"
       ? "Your Stremlist is ready"
       : reinstallHint
-        ? "Catalog structure changed: reinstall in Stremio"
+        ? "Reinstall in Stremio to see your changes"
         : "Install or reinstall in Stremio";
   const body =
     variant === "created"
       ? "Install it in Stremio once. Your Lists then stay up to date on their own."
       : reinstallHint
-        ? "Stremio reads the catalogs only when you install an addon, so your changes appear after you reinstall this Addon URL."
+        ? "Stremio reads the catalogs and Actions only when you install an addon, so your changes appear after you reinstall this Addon URL."
         : "Use these links anytime to open or reinstall your Addon URL in Stremio.";
 
   return (

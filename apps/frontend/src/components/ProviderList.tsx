@@ -167,6 +167,11 @@ export default function ProviderList({
               </span>
               <span className="shrink-0">{trailing}</span>
             </div>
+            {!connection && canConnect && info.connectNote && (
+              <p className="mt-1 ml-11 text-xs text-pretty text-white/45">
+                {info.connectNote}
+              </p>
+            )}
             {confirming === id && connection && (
               <div
                 role="group"
