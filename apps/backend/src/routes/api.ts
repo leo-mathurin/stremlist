@@ -56,6 +56,7 @@ import {
   isOAuthConfigured,
   startAuthorization,
 } from "../services/oauth";
+import preview from "./preview";
 
 const REFRESH_COOLDOWN_MS =
   (Number.isFinite(Number(process.env.REFRESH_COOLDOWN_SECONDS))
@@ -341,6 +342,8 @@ const api = new Hono()
       }
     },
   )
+
+  .route("/lists/preview", preview)
 
   // Create an Account with its first Lists. Returns the private Account ID.
   .post(

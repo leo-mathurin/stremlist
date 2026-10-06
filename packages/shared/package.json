@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "type": "module",
   "exports": {
+    "./catalog-preview": "./src/catalog-preview.ts",
     "./catalog-settings": "./src/catalog-settings.ts",
     "./constants": "./src/constants.ts",
     "./database.types": "./src/database.types.ts",

@@ -93,8 +93,14 @@ interface FreshList {
 
 const inFlightRefreshes = new Map<string, Promise<FreshList>>();
 
-async function providerContext(
-  config: ListFetchConfig,
+/** The Source list of a List, and the access its read may use. */
+export type SourceAccess = Pick<
+  ListFetchConfig,
+  "accountId" | "provider" | "sourceRef" | "allowConnection"
+>;
+
+export async function providerContext(
+  config: SourceAccess,
 ): Promise<ProviderContext> {
   if (!config.allowConnection) {
     if (sourceRequiresConnection(config.provider, config.sourceRef)) {
@@ -139,12 +145,30 @@ function withLinkBack(
   return { ...meta, description: base ? `${base}\n\n${line}` : line };
 }
 
-/** Turn a Provider snapshot into a canonical Catalog (provider order). */
-async function buildCatalog(
+export interface BuiltCatalog {
+  data: CatalogData;
+  /** Unresolved entries that no strategy tried yet. */
+  deferred: number;
+  /** Entries without an IMDb ID yet, in Source list order. */
+  unresolvedEntries: SourceEntry[];
+  /** Titles with an IMDb ID but no metadata, so they are not shown. */
+  withoutMetadata: number;
+}
+
+/**
+ * Turn a Provider snapshot into a canonical Catalog (provider order). Without
+ * a `listId` (a preview of a List not saved yet), no cached metadata is reused.
+ */
+export async function buildCatalog(
   adapter: ProviderAdapter,
-  config: ListFetchConfig,
+  config: Pick<
+    ListFetchConfig,
+    "provider" | "sourceRef" | "resolveBudgetMs"
+  > & {
+    listId?: string;
+  },
   ctx: ProviderContext,
-): Promise<{ data: CatalogData; deferred: number }> {
+): Promise<BuiltCatalog> {
   const snapshot = await adapter.fetchSource(config.sourceRef, ctx);
   if (snapshot.entries.every((entry) => entry.meta)) {
     return {
@@ -154,17 +178,18 @@ async function buildCatalog(
         ),
       },
       deferred: 0,
+      unresolvedEntries: [],
+      withoutMetadata: 0,
     };
   }
 
-  const { resolved, unresolved, deferred } = await resolveEntries(
-    adapter,
-    snapshot.entries,
-    { budgetMs: config.resolveBudgetMs ?? DEFAULT_RESOLVE_BUDGET_MS },
-  );
+  const { resolved, unresolved, unresolvedEntries, deferred } =
+    await resolveEntries(adapter, snapshot.entries, {
+      budgetMs: config.resolveBudgetMs ?? DEFAULT_RESOLVE_BUDGET_MS,
+    });
 
   const previous = new Map<string, StremioMeta>();
-  const cached = await getCachedList(config.listId);
+  const cached = config.listId ? await getCachedList(config.listId) : null;
   if (cached && Date.now() - cached.cachedAt.getTime() < METADATA_MAX_AGE_MS) {
     for (const meta of cached.data.metas) previous.set(meta.id, meta);
   }
@@ -193,10 +218,15 @@ async function buildCatalog(
 
   if (unresolved > 0 || unknown > 0) {
     console.log(
-      `List ${config.listId} (${config.provider}): ${metas.length} titles, ${unresolved} unresolved entries (${deferred} not tried yet), ${unknown} without metadata`,
+      `List ${config.listId ?? "preview"} (${config.provider}): ${metas.length} titles, ${unresolved} unresolved entries (${deferred} not tried yet), ${unknown} without metadata`,
     );
   }
-  return { data: { metas }, deferred };
+  return {
+    data: { metas },
+    deferred,
+    unresolvedEntries,
+    withoutMetadata: unknown,
+  };
 }
 
 function freshnessOf(adapter: ProviderAdapter, sourceRef: string): number {
