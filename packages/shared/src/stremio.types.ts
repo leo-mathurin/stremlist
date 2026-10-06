@@ -1,5 +1,6 @@
 import type { CatalogSettings } from "./catalog-settings";
 import type { DisplayMode } from "./constants";
+import type { ListSource } from "./list-merge";
 import type { ProviderId } from "./providers";
 
 export interface CatalogData {
@@ -17,6 +18,11 @@ export interface ConfigList {
   position: number;
   availableGenres?: string[];
   catalogSettings?: CatalogSettings;
+  /**
+   * More Source lists merged into this List after `provider`/`sourceRef`.
+   * Absent for a List with one Source list.
+   */
+  mergedSources?: ListSource[];
 }
 
 export interface ConnectionSummary {
@@ -54,6 +60,7 @@ export interface ConfigListInput {
   displayMode?: DisplayMode;
   position?: number;
   catalogSettings?: CatalogSettings;
+  mergedSources?: ListSource[];
 }
 
 export interface AccountConfigInput {

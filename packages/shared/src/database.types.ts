@@ -123,6 +123,7 @@ export type Database = {
           created_at: string;
           display_mode: string;
           id: string;
+          merged_sources: Json;
           position: number;
           provider: string;
           sort_option: string;
@@ -136,6 +137,7 @@ export type Database = {
           created_at?: string;
           display_mode?: string;
           id?: string;
+          merged_sources?: Json;
           position?: number;
           provider: string;
           sort_option?: string;
@@ -149,6 +151,7 @@ export type Database = {
           created_at?: string;
           display_mode?: string;
           id?: string;
+          merged_sources?: Json;
           position?: number;
           provider?: string;
           sort_option?: string;

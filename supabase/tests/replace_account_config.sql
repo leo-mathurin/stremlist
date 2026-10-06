@@ -95,6 +95,43 @@ BEGIN
 END;
 $$;
 
+-- Merged Lists keep their other Source lists (STR-59).
+DO $$
+DECLARE
+  merged jsonb := '[{"provider":"trakt","source_ref":"users/leo/watchlist"}]';
+  result record;
+  list_id text;
+BEGIN
+  SELECT * INTO result FROM public.replace_account_config('sl_configtransactiontest00', NULL,
+    jsonb_build_array(jsonb_build_object('provider', 'imdb', 'source_ref', 'ur7',
+      'catalog_title', 'Merged', 'sort_option', 'title-asc', 'display_mode', 'split',
+      'position', 0, 'merged_sources', merged)), NULL, NULL);
+  ASSERT result.lists->0->'merged_sources' = merged, 'Inserts must store merged Source lists';
+  list_id := result.lists->0->>'id';
+
+  SELECT * INTO result FROM public.replace_account_config('sl_configtransactiontest00', NULL,
+    jsonb_build_array(jsonb_build_object('id', list_id, 'provider', 'imdb', 'source_ref', 'ur7',
+      'catalog_title', 'Renamed', 'sort_option', 'title-asc', 'display_mode', 'split',
+      'position', 0)), NULL, NULL);
+  ASSERT result.lists->0->'merged_sources' = merged, 'Omitted merged Source lists must survive';
+
+  SELECT * INTO result FROM public.replace_account_config('sl_configtransactiontest00', NULL,
+    jsonb_build_array(jsonb_build_object('id', list_id, 'provider', 'imdb', 'source_ref', 'ur7',
+      'catalog_title', 'Split', 'sort_option', 'title-asc', 'display_mode', 'split',
+      'position', 0, 'merged_sources', '[]'::jsonb)), NULL, NULL);
+  ASSERT result.lists->0->'merged_sources' = '[]'::jsonb, 'An explicit empty array must split the List';
+
+  BEGIN
+    PERFORM public.replace_account_config('sl_configtransactiontest00', NULL,
+      jsonb_build_array(jsonb_build_object('id', list_id, 'provider', 'imdb', 'source_ref', 'ur7',
+        'catalog_title', 'Bad', 'sort_option', 'title-asc', 'display_mode', 'split',
+        'position', 0, 'merged_sources', '{}'::jsonb)), NULL, NULL);
+    RAISE EXCEPTION 'Expected check violation';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+END;
+$$;
+
 -- Connection refresh lease: only one holder at a time.
 INSERT INTO public.connections (account_id, provider, access_token, redirect_uri)
 VALUES ('sl_configtransactiontest00', 'trakt', 'enc', 'https://api.stremlist.test/oauth/trakt/callback');

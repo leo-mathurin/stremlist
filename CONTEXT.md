@@ -33,8 +33,12 @@ The kind of Source list that a Provider keeps as a user's default "to watch" lis
 _Avoid_: Using "watchlist" for any configured List
 
 **List**:
-One entry that an Account configures. It points to exactly one Source list and holds how to show it (title, sort, display mode, filters).
+One entry that an Account configures. It points to one or more Source lists and holds how to show them (title, sort, display mode, filters). A Source list is in at most one List of an Account.
 _Avoid_: Watchlist, feed, collection
+
+**Merged List**:
+A List that points to more than one Source list. Its Catalogs show each Title once, even when several of its Source lists contain it, and they sort by date added only when every Source list gives the date when each Title was added.
+_Avoid_: Combined list, aggregate, group
 
 **Catalog**:
 One Stremio catalog that a List produces. A List can produce several Catalogs (movies, series, presets).
