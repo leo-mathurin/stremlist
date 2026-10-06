@@ -74,36 +74,35 @@ async function listKeys(prefix: string): Promise<string[]> {
   return keys;
 }
 
-export async function countCacheObjects(watchlistId: string): Promise<number> {
-  return (await listKeys(`watchlists/${watchlistId}/`)).length;
+export async function countCacheObjects(listId: string): Promise<number> {
+  return (await listKeys(`watchlists/${listId}/`)).length;
 }
 
-export async function getCacheObjectKeys(
-  watchlistId: string,
+// R2 keys keep the historical "watchlists/" prefix for List caches.
+export async function getCacheObjectKeys(listId: string): Promise<string[]> {
+  return listKeys(`watchlists/${listId}/`);
+}
+
+export async function getConnectionObjectKeys(
+  accountId: string,
 ): Promise<string[]> {
-  return listKeys(`watchlists/${watchlistId}/`);
+  return listKeys(`connections/${accountId}/`);
 }
 
-export async function getCacheManifest(watchlistId: string): Promise<unknown> {
+export async function getCacheManifest(listId: string): Promise<unknown> {
   const response = await r2.send(
     new GetObjectCommand({
       Bucket: R2_BUCKET,
-      Key: `watchlists/${watchlistId}/manifest.json`,
+      Key: `watchlists/${listId}/manifest.json`,
     }),
   );
   if (!response.Body) throw new Error("R2 cache manifest has no body");
   return JSON.parse(await response.Body.transformToString());
 }
 
-export async function deleteCacheObjects(
-  watchlistIds: string[],
-): Promise<void> {
+async function deletePrefixes(prefixes: string[]): Promise<void> {
   const keys = (
-    await Promise.all(
-      [...new Set(watchlistIds)].map((watchlistId) =>
-        listKeys(`watchlists/${watchlistId}/`),
-      ),
-    )
+    await Promise.all([...new Set(prefixes)].map((prefix) => listKeys(prefix)))
   ).flat();
 
   for (let index = 0; index < keys.length; index += 1_000) {
@@ -117,6 +116,20 @@ export async function deleteCacheObjects(
       }),
     );
   }
+}
+
+/** Remove every cached Catalog generation of these Lists. */
+export async function deleteCacheObjects(listIds: string[]): Promise<void> {
+  await deletePrefixes(listIds.map((listId) => `watchlists/${listId}/`));
+}
+
+/** Remove what Actions stored for these Accounts' Connections. */
+export async function deleteConnectionObjects(
+  accountIds: string[],
+): Promise<void> {
+  await deletePrefixes(
+    accountIds.map((accountId) => `connections/${accountId}/`),
+  );
 }
 
 /** Write controlled input in the on-disk format consumed by the real backend. */

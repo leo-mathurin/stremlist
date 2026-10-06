@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { addonManifestUrl } from "../env.js";
-import { bootstrapUser, getCatalog } from "../helpers/api.js";
-import { resetDb } from "../helpers/db.js";
+import { getCatalog } from "../helpers/api.js";
+import { resetDb, seedAccountWithLists } from "../helpers/db.js";
 import { discoverUrl, installAddon } from "../helpers/stremio.js";
 import { PUBLIC_USER } from "../helpers/test-data.js";
 
@@ -15,11 +15,15 @@ test(
   "catalog items open their detail page",
   { tag: "@live-regression" },
   async ({ page }) => {
-    const config = await bootstrapUser(PUBLIC_USER);
-    const watchlist = config.watchlists[0];
-    const catalogId = `wl-${watchlist.id}-movie`;
-    const manifestUrl = addonManifestUrl(PUBLIC_USER);
-    const { metas } = await getCatalog(PUBLIC_USER, "movie", catalogId);
+    const {
+      accountId,
+      listIds: [listId],
+    } = await seedAccountWithLists([
+      { sourceRef: PUBLIC_USER, catalogTitle: "", displayMode: "split" },
+    ]);
+    const catalogId = `wl-${listId}-movie`;
+    const manifestUrl = addonManifestUrl(accountId);
+    const { metas } = await getCatalog(accountId, "movie", catalogId);
     const first = metas[0];
 
     await installAddon(page, manifestUrl);
