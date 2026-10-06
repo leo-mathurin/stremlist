@@ -415,6 +415,7 @@ export default function Configure() {
                         key={list.localId}
                         list={list}
                         index={index}
+                        accountKey={accountId ?? accountKey}
                         onFieldChange={config.setListField}
                         onRemove={config.removeList}
                         connectionMissing={needsMissingConnection(
