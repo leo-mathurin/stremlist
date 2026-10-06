@@ -1,0 +1,19 @@
+# The sync status of each List is recorded at every refresh
+
+With several Providers (STR-16), one Account mixes Source lists that fail for different reasons: a private IMDb watchlist, a deleted Trakt list, a Provider that does not answer, a Connection that the Provider no longer accepts. The configure page only showed one account-wide "Refreshed" time, and a List that served old cached Titles looked healthy. A refused Connection still showed as "Connected".
+
+Each refresh of a List now records its outcome in Postgres (`list_sync_status`, one row per List and Source list), through one RPC that keeps the start of a failure run. The read path does the write after the Provider read, inside the read that concurrent requests share, so a busy Catalog writes once per refresh, not once per request. A failed write is logged and never fails the Catalog. When the Provider refuses a read made through a Connection, the Connection gets `needs_renewal_since`; a new authorization, a token refresh that works, or a later read that works clears it. After a new authorization, that Provider's Lists are read again at once, so their status follows the new Connection.
+
+The configure page gets the statuses with the config, after "Refresh now", and from `GET /:accountKey/sync-status`, which it polls only while a saved List waits for its first refresh. One shared rule (`listSyncState`) turns a status and the Connection into what the row shows: synced, waiting, failing with older Titles still in Stremio, failing with nothing in Stremio, or a Connection to connect or renew. The problem copy is the same as the catalog card in Stremio (`sourceProblemCopy`).
+
+## Considered Options
+
+- Store the status in the R2 cache manifest: no database write, but a failed read must not touch the cache generation, and the configure page would read one R2 object per List.
+- Derive "needs renewal" from the List statuses only: no new column, but a Connection used only for Actions, or a public List read through it, would never show it.
+- Log failures only: the logs already have them, but the user cannot see them.
+
+## Consequences
+
+- Lists cached before this change have no row. Their status comes from the cache manifest (time and Title count) until their next refresh. A List that changed its Source list shows "Not refreshed yet" until it is read again.
+- A List with several Source lists (STR-59) gets one row per Source list; the configure page then has to combine them.
+- A token refresh that fails for a network reason also marks the Connection. The next read that works clears the mark.
