@@ -313,6 +313,27 @@ export async function getCachedListSummary(
   }
 }
 
+/**
+ * When the cached Catalog of a List was written and how many Titles it has,
+ * from the manifest only. Null when nothing is cached or the cache was marked
+ * stale.
+ */
+export async function getCachedListInfo(
+  listId: string,
+): Promise<{ cachedAt: string; titleCount: number } | null> {
+  try {
+    const manifest = await readManifest(listId);
+    if (!manifest || new Date(manifest.cachedAt).getTime() <= 0) return null;
+    return {
+      cachedAt: manifest.cachedAt,
+      titleCount: manifest.metaKeys.length,
+    };
+  } catch (error) {
+    console.error(`Failed to read R2 cache info for ${listId}:`, error);
+    return null;
+  }
+}
+
 export async function getCachedList(
   listId: string,
 ): Promise<CachedList | null> {

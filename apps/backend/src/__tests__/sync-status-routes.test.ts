@@ -91,6 +91,7 @@ describe("sync status on the configure page", () => {
 
     expect(body.syncStatus).toEqual({
       [imdb.id]: {
+        sourceRef: "imdb:top-rated-movies",
         lastAttemptAt: "2026-10-06T12:00:00.000Z",
         lastSuccessAt: "2026-10-06T12:00:00.000Z",
         titleCount: 3,

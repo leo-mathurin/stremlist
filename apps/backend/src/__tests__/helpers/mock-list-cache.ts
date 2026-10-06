@@ -92,3 +92,12 @@ export function markCachedListStale(listId: string): Promise<void> {
   if (entry) cache.seed(listId, entry.data.metas, new Date(0));
   return Promise.resolve();
 }
+
+export function getCachedListInfo(listId: string) {
+  const entry = cache.get(listId);
+  if (!entry || entry.cachedAt.getTime() <= 0) return Promise.resolve(null);
+  return Promise.resolve({
+    cachedAt: entry.cachedAt.toISOString(),
+    titleCount: entry.data.metas.length,
+  });
+}

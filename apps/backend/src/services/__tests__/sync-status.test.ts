@@ -106,6 +106,7 @@ describe("recording refreshes", () => {
     await getListCatalog(config());
 
     expect(await statusOf()).toEqual({
+      sourceRef: "users/leo/lists/horror",
       lastAttemptAt: expect.any(String) as string,
       lastSuccessAt: expect.any(String) as string,
       titleCount: 2,
@@ -236,6 +237,62 @@ describe("recording refreshes", () => {
   });
 });
 
+describe("Lists without a recorded status", () => {
+  it("take the last refresh from their cached Catalog", async () => {
+    cache.seed(
+      listId,
+      [movie("tt0000001"), movie("tt0000002")],
+      new Date("2026-10-06T09:00:00.000Z"),
+    );
+
+    expect(await statusOf()).toEqual({
+      sourceRef: "users/leo/lists/horror",
+      lastAttemptAt: "2026-10-06T09:00:00.000Z",
+      lastSuccessAt: "2026-10-06T09:00:00.000Z",
+      titleCount: 2,
+      problem: null,
+      failingSince: null,
+    });
+  });
+
+  it("wait for a read when the cache was marked stale or is missing", async () => {
+    cache.seed(listId, [movie("tt0000001")], new Date(0));
+
+    expect(await statusOf()).toBeUndefined();
+  });
+
+  it("still use the cache when the recorded statuses cannot be read", async () => {
+    cache.seed(listId, [movie("tt0000001")]);
+    const lists = await getAccountLists(accountId);
+    const from = vi.spyOn(
+      (await import("../../__tests__/helpers/mock-supabase")).supabase,
+      "from",
+    );
+    from.mockReturnValueOnce({
+      select: () => ({
+        in: () => Promise.resolve({ data: null, error: { message: "down" } }),
+      }),
+    } as never);
+
+    expect((await getListSyncStatuses(lists))[listId]).toMatchObject({
+      problem: null,
+      titleCount: 1,
+    });
+  });
+
+  it("prefer the recorded status over the cache", async () => {
+    cache.seed(listId, [movie("tt0000001")]);
+    useTrakt(
+      vi.fn(() => Promise.reject(new SourceUnavailableError("private", "no"))),
+    );
+    await getListCatalog(config({ noCacheFallback: true })).catch(
+      () => undefined,
+    );
+
+    expect(await statusOf()).toMatchObject({ problem: "private" });
+  });
+});
+
 describe("Connections that need to be renewed", () => {
   beforeEach(() => {
     seedConnection(accountId, "trakt");
@@ -334,6 +391,7 @@ describe("Connections that need to be renewed", () => {
 
 describe("listSyncState", () => {
   const ok: ListSyncStatus = {
+    sourceRef: "me/watchlist",
     lastAttemptAt: "2026-10-06T12:00:00.000Z",
     lastSuccessAt: "2026-10-06T12:00:00.000Z",
     titleCount: 42,
@@ -354,6 +412,7 @@ describe("listSyncState", () => {
   it("waits for the first refresh of a new List", () => {
     expect(listSyncState(undefined, "none", false)).toEqual({
       kind: "waiting",
+      reconnected: false,
     });
   });
 
@@ -418,6 +477,7 @@ describe("listSyncState", () => {
   it("waits for the read after a new Connection", () => {
     expect(listSyncState(failing("needs_connection"), "ok", true)).toEqual({
       kind: "waiting",
+      reconnected: true,
     });
   });
 

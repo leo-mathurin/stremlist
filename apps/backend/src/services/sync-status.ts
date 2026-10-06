@@ -8,6 +8,7 @@ import {
   clearConnectionRenewal,
   markConnectionNeedsRenewal,
 } from "./connections";
+import { getCachedListInfo } from "./list-cache";
 
 export interface RefreshedSource {
   accountId: string;
@@ -78,8 +79,8 @@ interface StatusRow {
 
 /**
  * The sync status of each List, for the Source list it reads now. Lists that
- * were never read are left out. A failed lookup answers no statuses: the
- * configure page then shows the Lists as waiting, not as broken.
+ * were never read are left out. When the recorded statuses cannot be read,
+ * only the cache answers: the page shows Lists as waiting, not as broken.
  */
 export async function getListSyncStatuses(
   lists: ConfigList[],
@@ -94,16 +95,18 @@ export async function getListSyncStatuses(
     );
   if (error) {
     console.error("Failed to read list sync statuses:", error.message);
-    return {};
   }
 
   const statuses: ListSyncStatuses = {};
-  for (const row of data as StatusRow[]) {
+  const rows = error ? [] : (data as StatusRow[]);
+  const recorded = new Set(rows.map((row) => row.list_id));
+  for (const row of rows) {
     const list = lists.find((candidate) => candidate.id === row.list_id);
     if (list?.provider !== row.provider || list.sourceRef !== row.source_ref) {
       continue;
     }
     statuses[list.id] = {
+      sourceRef: row.source_ref,
       lastAttemptAt: row.last_attempt_at,
       lastSuccessAt: row.last_success_at,
       titleCount: row.title_count,
@@ -116,5 +119,24 @@ export async function getListSyncStatuses(
       failingSince: row.failing_since,
     };
   }
+  // Lists cached before sync statuses existed: their cache tells when they
+  // last refreshed. Not for a List that changed its Source list, whose cache
+  // may still hold the old one.
+  await Promise.all(
+    lists
+      .filter((list) => !recorded.has(list.id))
+      .map(async (list) => {
+        const info = await getCachedListInfo(list.id);
+        if (!info) return;
+        statuses[list.id] = {
+          sourceRef: list.sourceRef,
+          lastAttemptAt: info.cachedAt,
+          lastSuccessAt: info.cachedAt,
+          titleCount: info.titleCount,
+          problem: null,
+          failingSince: null,
+        };
+      }),
+  );
   return statuses;
 }

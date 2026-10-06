@@ -5,6 +5,8 @@ import type { SourceProblemReason } from "./source-problems";
  * on the Provider, by a Stremio request, a save or a manual refresh.
  */
 export interface ListSyncStatus {
+  /** The Source list that was read (a List can change its Source list). */
+  sourceRef: string;
   /** When Stremlist last tried to read the Source list. */
   lastAttemptAt: string;
   /** When a read last succeeded, or null if none did. */
@@ -31,8 +33,11 @@ export type ListConnectionState =
 
 /** What the configure page shows for one saved List. */
 export type ListSyncState =
-  /** Not read yet, or read again after a new Connection. */
-  | { kind: "waiting" }
+  /**
+   * Not read yet, or (`reconnected`) failed for want of a Connection that the
+   * Account has again: the next read decides.
+   */
+  | { kind: "waiting"; reconnected: boolean }
   | { kind: "synced"; at: string; titleCount: number | null }
   /** The List reads through a Connection that is missing or refused. */
   | { kind: "connection"; renew: boolean }
@@ -64,7 +69,7 @@ export function listSyncState(
   if (connection === "none" && requiresConnection) {
     return { kind: "connection", renew: false };
   }
-  if (!status) return { kind: "waiting" };
+  if (!status) return { kind: "waiting", reconnected: false };
   if (status.problem === null) {
     return {
       kind: "synced",
@@ -74,7 +79,9 @@ export function listSyncState(
   }
   // The Provider asked for a Connection that the Account has (again) and
   // that is not refused: the read after the new authorization decides.
-  if (refused && connection === "ok") return { kind: "waiting" };
+  if (refused && connection === "ok") {
+    return { kind: "waiting", reconnected: true };
+  }
   return {
     kind: "failing",
     problem: status.problem,
