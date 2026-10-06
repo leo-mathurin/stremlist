@@ -728,7 +728,11 @@ describe("simkl custom lists", () => {
       };
     };
 
-    const { entries } = await simklProvider.fetchSource("me/lists/456", ctx());
+    const { entries, complete } = await simklProvider.fetchSource(
+      "me/lists/456",
+      ctx(),
+    );
+    expect(complete).toBe(true);
     expect(entries).toEqual([
       {
         imdbId: "tt0113568",
@@ -762,6 +766,37 @@ describe("simkl custom lists", () => {
       });
     await simklProvider.fetchSource("me/lists/456", ctx());
     expect(apiCalls()).toEqual(["GET /sync/activities", "GET /lists/456"]);
+  });
+
+  it("marks a list cut by the page cap as incomplete, also from its snapshot", async () => {
+    routes["GET /lists/321"] = (call) => ({
+      id: 321,
+      name: "Everything",
+      type: "regular",
+      media_type: "movies",
+      pagination: { page: 1, limit: 500, total_items: 20_000, total_pages: 40 },
+      items: [
+        {
+          title: `Movie ${call.url.searchParams.get("page")}`,
+          type: "movie",
+          ids: {
+            simkl_id: Number(call.url.searchParams.get("page")),
+            imdb: `tt${String(call.url.searchParams.get("page")).padStart(7, "0")}`,
+          },
+        },
+      ],
+    });
+
+    const first = await simklProvider.fetchSource("me/lists/321", ctx());
+    expect(first.entries).toHaveLength(20);
+    expect(first.complete).toBe(false);
+
+    // The next read comes from the stored snapshot and keeps the flag.
+    ageLibrary();
+    calls = [];
+    const second = await simklProvider.fetchSource("me/lists/321", ctx());
+    expect(apiCalls()).toEqual(["GET /sync/activities"]);
+    expect(second.complete).toBe(false);
   });
 
   it("validates a list with its name and media type", async () => {

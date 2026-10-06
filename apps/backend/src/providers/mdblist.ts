@@ -8,6 +8,7 @@ import type {
   ActionTarget,
   ConnectionAccess,
   Membership,
+  PagedRead,
   ProviderAdapter,
   ProviderContext,
   SourceEntry,
@@ -194,7 +195,7 @@ async function mdblistRequest(
 async function readAllItems(
   connection: ConnectionAccess,
   path: string,
-): Promise<MdblistItem[]> {
+): Promise<PagedRead<MdblistItem>> {
   const items: MdblistItem[] = [];
   const seen = new Set<string>();
   let cursor: string | null = null;
@@ -210,10 +211,12 @@ async function readAllItems(
     if (Array.isArray(data)) items.push(...(data as MdblistItem[]));
     cursor = response.headers.get("X-Next-Cursor");
     const hasMore = response.headers.get("X-Has-More") === "true";
-    if (!hasMore || !cursor || seen.has(cursor)) break;
+    if (!hasMore || !cursor) return { items, complete: true };
+    // A cursor seen before would loop: stop, but the read is not complete.
+    if (seen.has(cursor)) break;
     seen.add(cursor);
   }
-  return items;
+  return { items, complete: false };
 }
 
 /** Read every page of a /sync/… snapshot (cursor in `pagination`). */
@@ -480,7 +483,7 @@ async function getMembership(
   connection: ConnectionAccess,
 ): Promise<Membership> {
   const [watchlistItems, watched, rated] = await Promise.all([
-    readAllItems(connection, "/watchlist/items"),
+    readAllItems(connection, "/watchlist/items").then((read) => read.items),
     readAllSync(connection, "/sync/watched"),
     readAllSync(connection, "/sync/ratings"),
   ]);
@@ -662,13 +665,14 @@ async function fetchSource(
     throw new SourceUnavailableError("not_found", `Unknown MDBList ref ${ref}`);
   }
 
-  const items = await readAllItems(connection, path);
+  const { items, complete } = await readAllItems(connection, path);
   const ordered = path === "/watchlist/items" ? watchlistOrder(items) : items;
   return {
     entries: ordered.flatMap((item) => {
       const entry = toEntry(item);
       return entry ? [entry] : [];
     }),
+    complete,
   };
 }
 

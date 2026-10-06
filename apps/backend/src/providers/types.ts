@@ -64,6 +64,19 @@ export interface ResolutionKey {
 /** Entries of a Source list, in canonical order: oldest added first. */
 export interface SourceSnapshot {
   entries: SourceEntry[];
+  /**
+   * False when the read stopped before the end of the Source list (a page or
+   * item cap). The entries are still served, but the read is not a complete
+   * synchronization, so it never counts for detection (ADR 0004). Omitted
+   * means complete.
+   */
+  complete?: boolean;
+}
+
+/** The items of a paginated read, and whether it reached the last page. */
+export interface PagedRead<T> {
+  items: T[];
+  complete: boolean;
 }
 
 export type SourceValidation =

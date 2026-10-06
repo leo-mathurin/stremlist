@@ -455,6 +455,37 @@ describe("fetchWatchlist (unit)", () => {
     vi.restoreAllMocks();
   });
 
+  it("marks a watchlist cut by the item cap as incomplete", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    let served = 0;
+    vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
+      const body = JSON.parse(init?.body as string) as {
+        variables: { first: number };
+      };
+      const edges = Array.from({ length: body.variables.first }, (_, index) =>
+        makeEdge({ id: `tt${String(served + index).padStart(7, "0")}` }),
+      );
+      served += edges.length;
+      return Promise.resolve(
+        mockGraphQLResponse({
+          id: "ls123",
+          visibility: { id: "PUBLIC" },
+          titleListItemSearch: {
+            total: 15_001,
+            edges,
+            pageInfo: { hasNextPage: true, endCursor: `item-${served}` },
+          },
+        }),
+      );
+    });
+
+    const { metas, complete } = await fetchWatchlist("ur195879360");
+
+    expect(metas).toHaveLength(15_000);
+    // Served, but not a complete synchronization (ADR 0004).
+    expect(complete).toBe(false);
+  });
+
   it("keeps complete release dates without inventing partial or invalid dates", async () => {
     const dates = [
       { year: 2000, month: 2, day: 29 },
@@ -472,7 +503,8 @@ describe("fetchWatchlist (unit)", () => {
         titleListItemSearch: { total: 3, edges },
       }),
     );
-    const { metas } = await fetchWatchlist("ur195879360");
+    const { metas, complete } = await fetchWatchlist("ur195879360");
+    expect(complete).toBe(true);
     expect(metas.map((meta) => meta.released)).toEqual([
       "2000-02-29T00:00:00.000Z",
       undefined,

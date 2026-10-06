@@ -232,6 +232,8 @@ export const justwatchProvider: ProviderAdapter = {
     }
     const nodes: JustwatchTitleNode[] = [];
     let after: string | null = null;
+    // Stays false when MAX_ENTRIES stops the read before the last page.
+    let complete = false;
     while (nodes.length < MAX_ENTRIES) {
       const page = await fetchListPage(
         ref,
@@ -242,13 +244,16 @@ export const justwatchProvider: ProviderAdapter = {
         if (edge?.node?.id) nodes.push(edge.node);
       }
       const pageInfo = page.titles?.pageInfo;
-      if (!pageInfo?.hasNextPage || !pageInfo.endCursor) break;
+      if (!pageInfo?.hasNextPage || !pageInfo.endCursor) {
+        complete = true;
+        break;
+      }
       after = pageInfo.endCursor;
     }
 
     // Custom lists come oldest added first, the canonical order (checked on a
     // real list on 2026-10-06); JustWatch's own lists keep their curated order.
-    return { entries: nodes.map(toEntry) };
+    return { entries: nodes.map(toEntry), complete };
   },
 
   resolutionKey(entry) {

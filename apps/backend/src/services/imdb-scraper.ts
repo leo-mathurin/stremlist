@@ -2,6 +2,7 @@ import { FACEBOOK_EXTERNAL_HIT_USER_AGENT } from "@stremlist/shared/constants";
 import { CHART_BY_ID, isChartId } from "@stremlist/shared/imdb-charts";
 import type { ChartEntry } from "@stremlist/shared/imdb-charts";
 import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
+import type { PagedRead } from "../providers/types";
 
 const GRAPHQL_ENDPOINT = "https://api.graphql.imdb.com/";
 const GRAPHQL_CLIENT_NAME = "imdb-next-desktop";
@@ -383,11 +384,16 @@ export async function validateImdbWatchlist(
   }
 }
 
-export async function getImdbWatchlist(input: string): Promise<ImdbEdge[]> {
+/**
+ * Every item of a watchlist, up to MAX_ITEMS. `complete` is false when the
+ * cap cut the watchlist short.
+ */
+async function readImdbWatchlist(input: string): Promise<PagedRead<ImdbEdge>> {
   const userId = await normalizeImdbUserId(input);
   const edges: ImdbEdge[] = [];
   let after: string | null = null;
   let targetItems = MAX_ITEMS;
+  let complete = true;
 
   for (let page = 0; page < MAX_PAGES; page++) {
     const first = getPageSize(edges.length, targetItems);
@@ -426,6 +432,7 @@ export async function getImdbWatchlist(input: string): Promise<ImdbEdge[]> {
         (search?.total ?? 0) > MAX_ITEMS ||
         (targetItems === MAX_ITEMS && pageInfo?.hasNextPage)
       ) {
+        complete = false;
         console.warn(
           `Watchlist for ${userId} exceeded the ${MAX_ITEMS.toLocaleString("en-US")}-item limit; remaining items truncated.`,
         );
@@ -438,13 +445,18 @@ export async function getImdbWatchlist(input: string): Promise<ImdbEdge[]> {
     after = pageInfo.endCursor;
 
     if (page === MAX_PAGES - 1) {
+      complete = false;
       console.warn(
         `Watchlist for ${userId} exceeded the ${MAX_ITEMS.toLocaleString("en-US")}-item limit; remaining items truncated.`,
       );
     }
   }
 
-  return edges;
+  return { items: edges, complete };
+}
+
+export async function getImdbWatchlist(input: string): Promise<ImdbEdge[]> {
+  return (await readImdbWatchlist(input)).items;
 }
 
 function processWatchlist(edges: ImdbEdge[]): ProcessedItem[] {
@@ -588,10 +600,16 @@ export function isListId(id: string): boolean {
   return id.startsWith("ls");
 }
 
-export async function fetchWatchlist(imdbUserId: string): Promise<CatalogData> {
+/**
+ * A Source list read from IMDb. `complete` is false when MAX_ITEMS cut it
+ * short (see SourceSnapshot).
+ */
+export type ImdbCatalog = CatalogData & { complete?: boolean };
+
+export async function fetchWatchlist(imdbUserId: string): Promise<ImdbCatalog> {
   console.log(`Fetching IMDb watchlist for user ${imdbUserId}...`);
 
-  const edges = await getImdbWatchlist(imdbUserId);
+  const { items: edges, complete } = await readImdbWatchlist(imdbUserId);
 
   console.log(
     `Raw watchlist data received from IMDb for user ${imdbUserId} (${edges.length} items)`,
@@ -601,7 +619,7 @@ export async function fetchWatchlist(imdbUserId: string): Promise<CatalogData> {
   const metas = convertToStremioFormat(processed);
   console.log(`Converted ${metas.length} items to Stremio format`);
 
-  return { metas };
+  return { metas, complete };
 }
 
 /**
@@ -693,7 +711,7 @@ async function getChartEdges(entry: ChartEntry): Promise<ImdbEdge[]> {
   }
 }
 
-export async function fetchChart(sourceId: string): Promise<CatalogData> {
+export async function fetchChart(sourceId: string): Promise<ImdbCatalog> {
   const entry = CHART_BY_ID.get(sourceId);
   if (!entry) {
     // Unknown chart id has no fetcher. Charts are public, so there's no
@@ -713,7 +731,8 @@ export async function fetchChart(sourceId: string): Promise<CatalogData> {
   const metas = convertToStremioFormat(processed);
   console.log(`Converted ${metas.length} items to Stremio format`);
 
-  return { metas };
+  // A chart is its first N titles by definition, so the read is complete.
+  return { metas, complete: true };
 }
 
 export async function validateImdbList(
@@ -746,10 +765,12 @@ export async function validateImdbList(
   }
 }
 
-export async function getImdbList(listId: string): Promise<ImdbEdge[]> {
+/** Every item of a list, up to MAX_ITEMS (see readImdbWatchlist). */
+async function readImdbList(listId: string): Promise<PagedRead<ImdbEdge>> {
   const edges: ImdbEdge[] = [];
   let after: string | null = null;
   let targetItems = MAX_ITEMS;
+  let complete = true;
 
   for (let page = 0; page < MAX_PAGES; page++) {
     const first = getPageSize(edges.length, targetItems);
@@ -790,6 +811,7 @@ export async function getImdbList(listId: string): Promise<ImdbEdge[]> {
         (search?.total ?? 0) > MAX_ITEMS ||
         (targetItems === MAX_ITEMS && pageInfo?.hasNextPage)
       ) {
+        complete = false;
         console.warn(
           `List ${listId} exceeded the ${MAX_ITEMS.toLocaleString("en-US")}-item limit; remaining items truncated.`,
         );
@@ -802,19 +824,24 @@ export async function getImdbList(listId: string): Promise<ImdbEdge[]> {
     after = pageInfo.endCursor;
 
     if (page === MAX_PAGES - 1) {
+      complete = false;
       console.warn(
         `List ${listId} exceeded the ${MAX_ITEMS.toLocaleString("en-US")}-item limit; remaining items truncated.`,
       );
     }
   }
 
-  return edges;
+  return { items: edges, complete };
 }
 
-export async function fetchList(listId: string): Promise<CatalogData> {
+export async function getImdbList(listId: string): Promise<ImdbEdge[]> {
+  return (await readImdbList(listId)).items;
+}
+
+export async function fetchList(listId: string): Promise<ImdbCatalog> {
   console.log(`Fetching IMDb list ${listId}...`);
 
-  const edges = await getImdbList(listId);
+  const { items: edges, complete } = await readImdbList(listId);
 
   console.log(
     `Raw list data received from IMDb for ${listId} (${edges.length} items)`,
@@ -824,7 +851,7 @@ export async function fetchList(listId: string): Promise<CatalogData> {
   const metas = convertToStremioFormat(processed);
   console.log(`Converted ${metas.length} items to Stremio format`);
 
-  return { metas };
+  return { metas, complete };
 }
 
 const TITLES_BY_ID_QUERY = `

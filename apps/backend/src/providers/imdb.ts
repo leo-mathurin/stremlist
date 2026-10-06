@@ -64,7 +64,10 @@ export const imdbProvider: ProviderAdapter = {
         : fetchWatchlist;
     try {
       const data = await fetcher(ref);
-      return { entries: data.metas.map((meta) => ({ imdbId: meta.id, meta })) };
+      return {
+        entries: data.metas.map((meta) => ({ imdbId: meta.id, meta })),
+        complete: data.complete,
+      };
     } catch (error) {
       const reason = classifyImdbError(error);
       if (reason) {

@@ -257,6 +257,7 @@ describe("mdblistProvider.fetchSource", () => {
     expect(calls[0].url.searchParams.get("unified")).toBe("true");
     expect(calls[0].url.searchParams.get("limit")).toBe("1000");
     expect(calls[1].url.searchParams.get("cursor")).toBe("page-2");
+    expect(snapshot.complete).toBe(true);
     expect(snapshot.entries).toEqual([
       {
         type: "movie",
@@ -288,8 +289,26 @@ describe("mdblistProvider.fetchSource", () => {
         "X-Has-More": "true",
         "X-Next-Cursor": "same",
       });
-    await mdblistProvider.fetchSource("lists/14", { connection: connection() });
+    const snapshot = await mdblistProvider.fetchSource("lists/14", {
+      connection: connection(),
+    });
     expect(calls).toHaveLength(2);
+    // Items may be missing after a loop: not a complete synchronization.
+    expect(snapshot.complete).toBe(false);
+  });
+
+  it("marks a list cut by the page cap as incomplete", async () => {
+    let page = 0;
+    handler = () =>
+      json([SUPER_MARIO], 200, {
+        "X-Has-More": "true",
+        "X-Next-Cursor": `page-${++page}`,
+      });
+    const snapshot = await mdblistProvider.fetchSource("lists/14", {
+      connection: connection(),
+    });
+    expect(calls).toHaveLength(50);
+    expect(snapshot.complete).toBe(false);
   });
 
   it("reads the watchlist oldest added first", async () => {

@@ -243,8 +243,12 @@ describe("Trakt reads", () => {
       ]),
     );
 
-    const entries = await fetchEntries("users/sean/watchlist");
+    const { entries, complete } = await traktProvider.fetchSource(
+      "users/sean/watchlist",
+      { connection: null },
+    );
 
+    expect(complete).toBe(true);
     const requests = callsTo("/users/sean/watchlist");
     expect(requests).toHaveLength(2);
     expect(requests.map((c) => c.url.searchParams.get("page"))).toEqual([
@@ -290,8 +294,11 @@ describe("Trakt reads", () => {
         { headers: { "X-Pagination-Page-Count": "100" } },
       ),
     );
-    const entries = await fetchEntries("users/big/watchlist");
-    expect(entries).toHaveLength(5000);
+    const snapshot = await traktProvider.fetchSource("users/big/watchlist", {
+      connection: null,
+    });
+    expect(snapshot.entries).toHaveLength(5000);
+    expect(snapshot.complete).toBe(false);
     expect(callsTo("/users/big/watchlist")).toHaveLength(20);
   });
 

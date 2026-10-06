@@ -1,6 +1,6 @@
 import { ensureOk, HttpError, providerFetch, RateLimiter } from "../http";
 import { oauthClient } from "../oauth-app";
-import type { ConnectionAccess } from "../types";
+import type { ConnectionAccess, PagedRead } from "../types";
 import { connectionToken, SourceUnavailableError } from "../types";
 
 export const TRAKT_API = "https://api.trakt.tv";
@@ -138,6 +138,15 @@ export async function traktGetAll<T>(
   connection: ConnectionAccess | null,
   options: PaginateOptions,
 ): Promise<T[]> {
+  return (await traktReadAll<T>(path, connection, options)).items;
+}
+
+/** traktGetAll, and whether `maxItems` left items out. */
+export async function traktReadAll<T>(
+  path: string,
+  connection: ConnectionAccess | null,
+  options: PaginateOptions,
+): Promise<PagedRead<T>> {
   const pageSize = options.pageSize ?? TRAKT_PAGE_SIZE;
   const items: T[] = [];
   for (let page = 1; ; page++) {
@@ -150,12 +159,17 @@ export async function traktGetAll<T>(
     const data = (await response.json()) as T[];
     if (!Array.isArray(data) || data.length === 0) break;
     items.push(...data);
-    if (items.length >= options.maxItems)
-      return items.slice(0, options.maxItems);
     const pageCount = Number(response.headers.get("X-Pagination-Page-Count"));
-    if (!Number.isFinite(pageCount) || page >= pageCount) break;
+    const lastPage = !Number.isFinite(pageCount) || page >= pageCount;
+    if (items.length >= options.maxItems) {
+      return {
+        items: items.slice(0, options.maxItems),
+        complete: lastPage && items.length === options.maxItems,
+      };
+    }
+    if (lastPage) break;
   }
-  return items;
+  return { items, complete: true };
 }
 
 /** Map an HttpError from Trakt to the Source list state it means. */

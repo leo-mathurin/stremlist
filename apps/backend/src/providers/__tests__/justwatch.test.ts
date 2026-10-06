@@ -157,9 +157,13 @@ describe("justwatchProvider.fetchSource", () => {
         ),
       );
 
-    const { entries } = await justwatchProvider.fetchSource(PUBLIC_LIST_ID, {
-      connection: null,
-    });
+    const { entries, complete } = await justwatchProvider.fetchSource(
+      PUBLIC_LIST_ID,
+      {
+        connection: null,
+      },
+    );
+    expect(complete).toBe(true);
 
     expect(entries).toEqual([
       {
@@ -268,12 +272,15 @@ describe("justwatchProvider.fetchSource", () => {
       );
     });
 
-    const { entries } = await justwatchProvider.fetchSource(PUBLIC_LIST_ID, {
-      connection: null,
-    });
+    const { entries, complete } = await justwatchProvider.fetchSource(
+      PUBLIC_LIST_ID,
+      { connection: null },
+    );
 
     expect(entries).toHaveLength(2_000);
     expect(fetchMock).toHaveBeenCalledTimes(10);
+    // The cap left titles out: not a complete synchronization (ADR 0004).
+    expect(complete).toBe(false);
   });
 
   it("keeps entries without content or a known type", async () => {
