@@ -264,21 +264,75 @@ function parseSensCritiqueLink(input: string): ParsedSourceLink | null {
   if (!url || !hostIs(url, "senscritique.com")) return null;
   const parts = segments(url);
   // senscritique.com/liste/{slug}/{id}
-  if (parts[0] === "liste" && parts[1] && /^\d+$/.test(parts[2] ?? "")) {
-    return { provider: "senscritique", ref: `lists/${parts[2]}`, kind: "list", requiresConnection: false };
+  if (parts[0]?.toLowerCase() === "liste") {
+    const id = parts.slice(1).find((part) => /^\d+$/.test(part));
+    return id
+      ? {
+          provider: "senscritique",
+          ref: `lists/${id}`,
+          kind: "list",
+          requiresConnection: false,
+        }
+      : null;
   }
-  // senscritique.com/{username}/collection?action=WISH (wishes), or the profile itself.
-  const reserved = new Set(["film", "serie", "liste", "search", "recherche", "top", "jeuvideo", "livre", "bd", "album", "morceau"]);
-  if (parts[0] && !reserved.has(parts[0].toLowerCase())) {
-    return {
-      provider: "senscritique",
-      ref: `users/${parts[0]}/wishes`,
-      kind: "watchlist",
-      requiresConnection: false,
-      suggestedTitle: `${parts[0]}'s wishlist`,
-    };
+  // Top-level paths of senscritique.com that are not user profiles.
+  const reserved = new Set([
+    "_next",
+    "about",
+    "activity",
+    "agenda",
+    "album",
+    "app",
+    "app-icons",
+    "application",
+    "apropos",
+    "bd",
+    "communaute",
+    "contact",
+    "critique",
+    "decouvrir",
+    "explore",
+    "extension",
+    "film",
+    "films",
+    "jeuvideo",
+    "jeuxvideo",
+    "l-edito",
+    "liste",
+    "listes",
+    "livre",
+    "livres",
+    "login",
+    "morceau",
+    "musique",
+    "news",
+    "recherche",
+    "register",
+    "search",
+    "searchlist",
+    "serie",
+    "series",
+    "settings",
+    "sondages",
+    "top",
+  ]);
+  // senscritique.com/{username}, or its wishes:
+  // /{username}/collection?action=WISH&universe=1. Only wishes are supported,
+  // so a collection link with another action ("done", ratings) is rejected.
+  const username = parts[0];
+  if (!username || reserved.has(username.toLowerCase())) return null;
+  if (!/^[\w.-]+$/.test(username)) return null;
+  const action = url.searchParams.get("action");
+  if (parts[1] === "collection" && action && action.toUpperCase() !== "WISH") {
+    return null;
   }
-  return null;
+  return {
+    provider: "senscritique",
+    ref: `users/${username}/wishes`,
+    kind: "watchlist",
+    requiresConnection: false,
+    suggestedTitle: `${username}'s wishlist`,
+  };
 }
 
 function parseLetterboxdLink(input: string): ParsedSourceLink | null {

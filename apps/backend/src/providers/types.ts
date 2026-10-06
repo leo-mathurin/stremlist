@@ -16,6 +16,11 @@ export interface ExternalIds {
   mal?: number;
   /** JustWatch title node ID, e.g. "tm92641". */
   justwatch?: string;
+  /**
+   * JustWatch site path such as "/fr/film/inception", when the Provider links
+   * to JustWatch without a node ID (SensCritique).
+   */
+  justwatchPath?: string;
   /** SensCritique product ID. */
   senscritique?: number;
   letterboxd?: string;
