@@ -18,9 +18,13 @@ R2. The configure/onboarding pages of the frontend are covered too.
   servers with ports distinct from the dev ones, so tests can run next to a
   normal dev session.
 - The backend points at a local Supabase stack (`supabase start`), reset
-  between tests. Live scenarios bootstrap through the backend HTTP API. The
-  deterministic catalog scenarios seed input rows and cache objects directly,
-  then exercise the real configuration API, database transaction and cache reader.
+  between tests. Tests use the vocabulary of [CONTEXT.md](../../CONTEXT.md):
+  most scenarios seed a private **Account** (generated `sl_…` ID) with its
+  **Lists** directly, so no save-triggered prewarm reads a Provider, then
+  exercise the real configuration API, database transaction and cache reader.
+  The onboarding scenarios create the Account through the configure page
+  (`POST /accounts`), and the Legacy alias scenarios bootstrap an `ur…`
+  install through its first manifest fetch.
 - The backend points at RustFS (`:7431`) through its configurable S3 endpoint.
   Tests inspect the resulting manifest and compressed generation objects and
   remove objects owned by E2E users between cases.
@@ -34,7 +38,11 @@ R2. The configure/onboarding pages of the frontend are covered too.
   counts) or compare the Stremio UI against the addon's own catalog JSON from
   the same run, so they do not depend on what is in the watchlist today.
 - The default run and pull request CI execute all three projects: deterministic
-  local coverage, four live smoke tests, and the broader live regression suite.
+  local coverage (45 tests), four live smoke tests, and the broader live
+  regression suite (25 tests).
+- The backend gets a fixed, public `CONNECTION_ENCRYPTION_KEY` from `env.ts`,
+  so seeded Connections (`helpers/db.ts` `seedConnection`) decrypt like real
+  ones. It is not a production key.
 
 ## Running locally
 
@@ -57,15 +65,19 @@ bun run --filter @stremlist/e2e test:e2e --project=live-smoke
 bun run --filter @stremlist/e2e test:e2e --project=live-regression
 ```
 
-The suite deletes test users between cases. It removes their R2 objects first,
-then relies on foreign-key cascades for their Supabase watchlists. The harness
+The suite deletes test Accounts between cases: the Legacy alias Accounts of the
+fixtures and every Account created since the run started. It removes their R2
+List caches and Connection objects first, then relies on foreign-key cascades
+for their Lists, Connections and pending authorizations. Because Account IDs
+are generated, cleanup is scoped by time, so use a disposable stack, not a
+development database that other people write to at the same time. The harness
 rejects any non-loopback Supabase URL unless the caller provides the explicit
 destructive confirmation described below.
 
 ## Catalog feature regression scenarios
 
 `tests/catalog-features.spec.ts` covers the v1.10.0 additions with controlled
-movie/series metadata in local storage. No configuration or catalog HTTP response
+movie/series metadata in local storage, read through a seeded private Account. No configuration or catalog HTTP response
 is mocked. The small fixture deliberately includes titles just outside each
 filter so a missing constraint fails the test.
 
@@ -91,16 +103,16 @@ it does not claim to test playback or episode selection in a native client.
 
 ## Environment knobs
 
-| Variable                                                 | Purpose                                                                                   |
-| -------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `E2E_SUPABASE_URL` / `E2E_SUPABASE_SERVICE_ROLE_KEY`     | Non-default local Supabase stack                                                          |
-| `E2E_R2_ENDPOINT` / `E2E_R2_BUCKET`                      | Non-default S3-compatible endpoint and disposable bucket                                  |
-| `E2E_R2_ACCESS_KEY_ID` / `E2E_R2_SECRET_ACCESS_KEY`      | Credentials for the disposable S3-compatible store                                        |
-| `E2E_ALLOW_REMOTE_DATABASE=I_UNDERSTAND_THIS_WIPES_DATA` | Permit an isolated remote test project. Cleanup deletes every user and all dependent data |
-| `E2E_IMDB_USER_ID` / `E2E_IMDB_USER_ID_2`                | Override the public watchlists under test                                                 |
-| `E2E_IMDB_LIST_ID`                                       | Override the public `ls` list under test                                                  |
-| `E2E_PRIVATE_IMDB_USER_ID`                               | Override the private watchlist under test                                                 |
-| `E2E_PRIVATE_IMDB_LIST_ID`                               | Enable the private `ls` list test                                                         |
+| Variable                                                 | Purpose                                                                                 |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `E2E_SUPABASE_URL` / `E2E_SUPABASE_SERVICE_ROLE_KEY`     | Non-default local Supabase stack                                                        |
+| `E2E_R2_ENDPOINT` / `E2E_R2_BUCKET`                      | Non-default S3-compatible endpoint and disposable bucket                                |
+| `E2E_R2_ACCESS_KEY_ID` / `E2E_R2_SECRET_ACCESS_KEY`      | Credentials for the disposable S3-compatible store                                      |
+| `E2E_ALLOW_REMOTE_DATABASE=I_UNDERSTAND_THIS_WIPES_DATA` | Permit an isolated remote test project. Cleanup deletes Accounts and all dependent data |
+| `E2E_IMDB_USER_ID` / `E2E_IMDB_USER_ID_2`                | Override the public IMDb watchlists under test (also the Legacy aliases)                |
+| `E2E_IMDB_LIST_ID`                                       | Override the public `ls` list under test                                                |
+| `E2E_PRIVATE_IMDB_USER_ID`                               | Override the private watchlist under test                                               |
+| `E2E_PRIVATE_IMDB_LIST_ID`                               | Enable the private `ls` list test                                                       |
 
 ## Known limitations
 

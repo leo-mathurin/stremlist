@@ -1,147 +1,168 @@
 import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
+import type { AccountConfigInput } from "@stremlist/shared/stremio.types";
 import {
-  account,
+  SAVED,
+  SAVED_REINSTALL,
+  accountId,
   backend,
+  baseRoutes,
   configuration,
   captureConfig,
+  imdbUser,
+  parseBody,
+  resolved,
+  routeResolve,
   row,
-  sourcePlaceholder,
-  titlePlaceholder,
+  savedLists,
+  toJson,
 } from "./config-fixture";
 
-test("canonical duplicate rejection keeps both rows editable for source repair", async ({
+const PASTE = "Paste a link to a watchlist or list";
+
+test("a canonical duplicate is refused and the link stays for repair", async ({
   app,
   browser,
   screen,
 }) => {
-  let attempts = 0;
-  await browser.route(`${backend}/${account}/config`, async (route) => {
-    if (route.request.method === "GET")
-      await route.fulfill({ json: configuration });
-    else {
-      attempts++;
-      const payload = JSON.parse(route.request.postData ?? "{}");
-      expect(
-        payload.watchlists.map(
-          (item: { imdbUserId: string }) => item.imdbUserId,
-        ),
-      ).toEqual([account, attempts === 1 ? "p.sameaccount" : "ls99887766"]);
-      await route.fulfill({
-        status: attempts === 1 ? 400 : 200,
-        json:
-          attempts === 1
-            ? {
-                error:
-                  "Each watchlist must use a unique IMDb ID for this installation.",
-              }
-            : { ok: true },
-      });
-    }
-  });
-  await app.open(`/configure?userId=${account}`);
-  await screen.getByRole("button", "Add Catalog", { exact: true }).tap();
-  await screen.getByPlaceholder(sourcePlaceholder).nth(1).fill("p.sameaccount");
-  await screen
-    .getByPlaceholder(titlePlaceholder)
-    .nth(1)
-    .fill("Keep this title");
-  await screen.getByRole("button", "Save", { exact: true }).tap();
-  await expect(
-    screen.getByText(
-      "Each watchlist must use a unique IMDb ID for this installation.",
-    ),
-  ).toBeVisible();
-  await expect(screen.getByPlaceholder(sourcePlaceholder)).toHaveCount(2);
-  await expect(screen.getByPlaceholder(titlePlaceholder).nth(1)).toHaveValue(
-    "Keep this title",
+  const submissions = await captureConfig(browser);
+  // The backend turns the p. handle into the ur… ID of the existing List.
+  const inputs = await routeResolve(browser, (input) =>
+    input === "https://www.imdb.com/user/p.sameaccount/"
+      ? resolved("imdb", imdbUser, "watchlist")
+      : resolved("imdb", "ls99887766", "list"),
   );
-  await screen.getByPlaceholder(sourcePlaceholder).nth(1).fill("ls99887766");
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await app.open(`/configure?account=${accountId}`);
+  const field = screen.getByLabel(PASTE);
+  await field.fill("https://www.imdb.com/user/p.sameaccount/");
+  await screen.getByRole("button", "Add", { exact: true }).tap();
   await expect(
-    screen.getByText(/Saved! Catalog structure changed/),
+    screen.getByText("This list is already in your Stremlist."),
   ).toBeVisible();
-  expect(attempts).toBe(2);
+  await expect(field).toHaveValue("https://www.imdb.com/user/p.sameaccount/");
+  await expect(screen.getByText("1 of 10 lists")).toBeVisible();
+  await field.fill("https://www.imdb.com/list/ls99887766/");
+  await screen.getByRole("button", "Add", { exact: true }).tap();
+  await expect(screen.getByText("IMDb · List · ls99887766")).toBeVisible();
+  await expect(field).toHaveValue("");
+  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  expect(inputs.map((entry) => entry.accountKey)).toEqual([
+    accountId,
+    accountId,
+  ]);
+  expect(submissions[0].lists.map((list) => list.sourceRef)).toEqual([
+    imdbUser,
+    "ls99887766",
+  ]);
 });
 
 for (const failure of ["private", "unknown", "offline"] as const) {
-  test(`configuration entry recovers from ${failure} with a canonical profile`, async ({
+  test(`a new setup recovers from ${failure} with a canonical profile`, async ({
     app,
     browser,
     screen,
   }) => {
+    await baseRoutes(browser);
     let recover = false;
-    await browser.route(`${backend}/validate/**`, async (route) => {
-      if (recover)
-        await route.fulfill({ json: { valid: true, userId: account } });
-      else if (failure === "offline") await route.abort();
-      else
-        await route.fulfill({
-          json: {
-            valid: false,
-            reason: failure === "private" ? "private" : "not_found",
-          },
-        });
+    const inputs = await routeResolve(browser, () =>
+      recover
+        ? resolved("imdb", imdbUser, "watchlist")
+        : failure === "offline"
+          ? null
+          : {
+              ok: false,
+              reason: failure === "private" ? "private" : "not_found",
+              provider: "imdb",
+            },
+    );
+    const created: AccountConfigInput[] = [];
+    await browser.route(`${backend}/accounts`, async (route) => {
+      const body = parseBody<AccountConfigInput>(route);
+      created.push(body);
+      await route.fulfill({
+        json: toJson({ ok: true, accountId, lists: savedLists(body) }),
+      });
     });
-    await captureConfig(browser);
+    await browser.route(`${backend}/${accountId}/config`, async (route) => {
+      await route.fulfill({ json: configuration });
+    });
     await app.open("/configure");
-    const input = screen.getByLabel("IMDb User ID:");
-    await input.fill("invalid");
+    const field = screen.getByLabel(PASTE);
+    await field.fill("invalid");
+    await screen.getByRole("button", "Add", { exact: true }).tap();
     await expect(
-      screen.getByText(/Enter a valid IMDb ID starting/),
+      screen.getByText(/^We do not recognize this link\./),
     ).toBeVisible();
-    await input.fill("ur9999999999999");
+    expect(inputs).toHaveLength(0);
+    await field.fill("ur9999999999999");
+    await screen.getByRole("button", "Add", { exact: true }).tap();
     await expect(
       screen.getByText(
         failure === "private"
-          ? /This IMDb watchlist is private/
+          ? /^This IMDb watchlist is private/
           : failure === "unknown"
-            ? /This IMDb ID does not exist/
-            : /Could not validate this IMDb ID/,
+            ? /^IMDb could not find this watchlist/
+            : "Could not check this link. Please try again in a moment.",
       ),
     ).toBeVisible();
     await expect(
-      screen.getByRole("button", "Save", { exact: true }),
-    ).not.toBeVisible();
+      screen.getByRole("button", "Save and get my Addon URL"),
+    ).toBeDisabled();
     recover = true;
-    await input.fill("https://www.imdb.com/user/p.fixture/");
-    await expect(browser).toHaveURL(`/configure?userId=${account}`);
-    await expect(screen.getByPlaceholder(titlePlaceholder)).toHaveValue(
-      "Test catalog",
-    );
+    await field.fill("https://www.imdb.com/user/p.fixture/");
+    await screen.getByRole("button", "Add", { exact: true }).tap();
+    await expect(
+      screen.getByText(`IMDb · Watchlist · ${imdbUser}`),
+    ).toBeVisible();
+    await screen.getByRole("button", "Save and get my Addon URL").tap();
+    await expect(browser).toHaveURL(`/configure?account=${accountId}`);
+    await expect(screen.getByText("Test catalog")).toBeVisible();
+    expect(created).toHaveLength(1);
+    expect(created[0].lists).toMatchObject([
+      { provider: "imdb", sourceRef: imdbUser },
+    ]);
   });
 }
 
 test(
-  "invalid catalog source blocks save, then a pasted list URL repairs it",
+  "an unrecognized link adds nothing, then a pasted list URL is added and saved",
   { tags: ["agent", "new-journeys"] },
   async ({ app, agent, browser, screen }) => {
-    const submissions = await captureConfig(browser);
-    await app.open(`/configure?userId=${account}`);
-    await screen.getByPlaceholder(sourcePlaceholder).fill("not-an-imdb-source");
+    const submissions = await captureConfig(browser, {
+      ...configuration,
+      lists: [],
+    });
+    const inputs = await routeResolve(browser, (input) =>
+      input === "https://www.imdb.com/list/ls99123456/"
+        ? resolved("imdb", "ls99123456", "list")
+        : null,
+    );
+    await app.open(`/configure?account=${accountId}`);
+    await screen.getByLabel(PASTE).fill("not-an-imdb-source");
+    await screen.getByRole("button", "Add", { exact: true }).tap();
     await expect(
-      screen.getByText(/Each watchlist needs a valid IMDb User ID or List ID/),
+      screen.getByText(/^We do not recognize this link\./),
     ).toBeVisible();
+    await expect(screen.getByText("No Lists yet")).toBeVisible();
     await expect(
       screen.getByRole("button", "Save", { exact: true }),
     ).toBeDisabled();
-    expect(submissions).toHaveLength(0);
+    expect(inputs).toHaveLength(0);
     await agent.act(
-      "Repair the invalid catalog source with {url}, name the catalog Weekend films, and save.",
+      "Replace the unrecognized link with {url} and add it, name its catalog Weekend films, and save.",
       {
         params: { url: "https://www.imdb.com/list/ls99123456/" },
-        maxModelCalls: 7,
+        maxModelCalls: 9,
       },
     );
-    await expect(
-      screen.getByText(/Saved! Catalog structure changed/),
-    ).toBeVisible();
-    await expect(screen.getByPlaceholder(sourcePlaceholder)).toHaveValue(
-      "ls99123456",
-    );
+    // The page does not ask for a reinstall when the saved Account had no
+    // List before (see TOOLKIT.md, known limits).
+    await expect(screen.getByText(/^Saved! /)).toBeVisible();
+    await expect(screen.getByText("IMDb · List · ls99123456")).toBeVisible();
     expect(submissions).toHaveLength(1);
-    expect(submissions[0].watchlists).toMatchObject([
-      { imdbUserId: "ls99123456", catalogTitle: "Weekend films" },
+    expect(submissions[0].lists).toMatchObject([
+      { sourceRef: "ls99123456", catalogTitle: "Weekend films" },
     ]);
   },
 );
@@ -151,36 +172,39 @@ test("a normalized handle becomes the saved source and the next save stays clean
   browser,
   screen,
 }) => {
+  await baseRoutes(browser);
   let requests = 0;
-  await browser.route(`${backend}/${account}/config`, async (route) => {
+  await browser.route(`${backend}/${accountId}/config`, async (route) => {
     if (route.request.method === "GET")
-      await route.fulfill({ json: configuration });
+      await route.fulfill({
+        json: { ...configuration, lists: [{ ...row, sourceRef: "p.fixture" }] },
+      });
     else {
       requests++;
-      const payload = JSON.parse(route.request.postData ?? "{}");
-      expect(payload.watchlists[0].imdbUserId).toBe(
+      const payload = parseBody<AccountConfigInput>(route);
+      expect(payload.lists[0].sourceRef).toBe(
         requests === 1 ? "p.fixture" : "ur99887766",
       );
       await route.fulfill({
-        json: { ok: true, watchlists: [{ ...row, imdbUserId: "ur99887766" }] },
+        json: toJson({
+          ok: true,
+          lists: savedLists(payload).map((list) => ({
+            ...list,
+            sourceRef: "ur99887766",
+          })),
+        }),
       });
     }
   });
-  await app.open(`/configure?userId=${account}`);
-  await screen.getByPlaceholder(sourcePlaceholder).fill("p.fixture");
+  await app.open(`/configure?account=${accountId}`);
+  await expect(screen.getByText("IMDb · Watchlist · p.fixture")).toBeVisible();
+  await screen.getByRole("button", "Settings for Test catalog").tap();
+  await screen.getByLabel("Catalog title").fill("Handle catalog");
   await screen.getByRole("button", "Save", { exact: true }).tap();
-  await expect(screen.getByPlaceholder(sourcePlaceholder)).toHaveValue(
-    "ur99887766",
-  );
-  await expect(
-    screen.getByText(/Saved! Catalog structure changed/),
-  ).toBeVisible();
+  await expect(screen.getByText("IMDb · Watchlist · ur99887766")).toBeVisible();
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   await screen.getByRole("button", "Save", { exact: true }).tap();
-  await expect(
-    screen.getByText(
-      "Saved! Your catalogs will be refreshed with the new settings.",
-    ),
-  ).toBeVisible();
+  await expect(screen.getByText(SAVED)).toBeVisible();
   expect(requests).toBe(2);
 });
 
@@ -189,26 +213,32 @@ test("network save failure preserves values for a retry", async ({
   browser,
   screen,
 }) => {
+  await baseRoutes(browser);
   let attempts = 0;
-  await browser.route(`${backend}/${account}/config`, async (route) => {
+  await browser.route(`${backend}/${accountId}/config`, async (route) => {
     if (route.request.method === "GET")
       await route.fulfill({ json: configuration });
     else if (++attempts === 1) await route.abort();
-    else await route.fulfill({ json: { ok: true } });
+    else
+      await route.fulfill({
+        json: toJson({
+          ok: true,
+          lists: savedLists(parseBody<AccountConfigInput>(route)),
+        }),
+      });
   });
-  await app.open(`/configure?userId=${account}`);
-  await screen.getByPlaceholder(titlePlaceholder).fill("Keep my changes");
+  await app.open(`/configure?account=${accountId}`);
+  await screen.getByRole("button", "Settings for Test catalog").tap();
+  await screen.getByLabel("Catalog title").fill("Keep my changes");
   await screen.getByRole("button", "Save", { exact: true }).tap();
   await expect(
     screen.getByText("Failed to fetch", { exact: true }),
   ).toBeVisible();
-  await expect(screen.getByPlaceholder(titlePlaceholder)).toHaveValue(
+  await expect(screen.getByLabel("Catalog title")).toHaveValue(
     "Keep my changes",
   );
   await screen.getByRole("button", "Save", { exact: true }).tap();
-  await expect(
-    screen.getByText(/Saved! Catalog structure changed/),
-  ).toBeVisible();
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(attempts).toBe(2);
 });
 
@@ -218,7 +248,7 @@ test(
   async ({ app, agent, browser, screen }) => {
     const submissions = await captureConfig(browser, {
       ...configuration,
-      watchlists: [
+      lists: [
         {
           ...row,
           availableGenres: [],
@@ -226,7 +256,8 @@ test(
         },
       ],
     });
-    await app.open(`/configure?userId=${account}`);
+    await app.open(`/configure?account=${accountId}`);
+    await screen.getByRole("button", "Settings for Test catalog").tap();
     await screen.getByRole("button", /Filters & extra catalogs/).tap();
     await expect(
       screen.getByRole("combobox", "Genre", { exact: true }),
@@ -244,12 +275,8 @@ test(
     await expect(
       screen.getByRole("checkbox", "Top rated", { exact: true }),
     ).toBeChecked();
-    await expect(
-      screen.getByText(
-        "Saved! Your catalogs will be refreshed with the new settings.",
-      ),
-    ).toBeVisible();
-    expect(submissions[0].watchlists[0].catalogSettings).toEqual({
+    await expect(screen.getByText(SAVED)).toBeVisible();
+    expect(submissions[0].lists[0].catalogSettings).toEqual({
       presets: ["rated"],
     });
   },

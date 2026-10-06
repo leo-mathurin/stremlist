@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-05T22:48:56.493Z",
+  "createdAt": "2026-10-06T19:46:52.323Z",
   "payload": {
     "actions": [
       {
@@ -40,22 +40,19 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Selected All genres, left Top rated checked, and saved. The application displayed “Saved! Your catalogs will be refreshed with the new settings.”",
-    "startPath": "/configure?userId=ur99123456",
-    "endPath": "/configure?userId=ur99123456",
+    "summary": "Selected All genres, left Top rated checked, and saved. The app confirmed: “Saved! Your catalogs will refresh with the new settings.”",
+    "startPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
-        "role": "alert",
-        "name": "Saved! Your catalogs will be refreshed with the new settings."
+        "role": "status",
+        "name": "Saved! Your catalogs will refresh with the new settings."
       },
       {
         "text": "1 active"
       },
       {
         "text": "All genres"
-      },
-      {
-        "text": "Saved! Your catalogs will be refreshed with the new settings."
       },
       {
         "role": "button",
@@ -77,6 +74,9 @@
         "text": "Western"
       },
       {
+        "text": "Genre choices appear after saving and refreshing this list."
+      },
+      {
         "role": "button",
         "name": "Filters & extra catalogs 2 active",
         "states": [
@@ -84,6 +84,6 @@
         ]
       }
     ],
-    "endWaitMs": 12176
+    "endWaitMs": 12655
   }
 }

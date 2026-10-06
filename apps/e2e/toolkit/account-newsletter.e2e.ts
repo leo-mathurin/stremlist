@@ -1,59 +1,64 @@
 import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
 import {
-  account,
+  accountId,
   backend,
+  baseRoutes,
   configuration,
   row,
-  titlePlaceholder,
+  secondAccountId,
 } from "./config-fixture";
 
 test(
-  "returning home and selecting another account replaces the previous form",
+  "returning home and opening another Addon URL replaces the previous form",
   { tags: ["agent", "new-journeys"] },
   async ({ app, agent, browser, screen }) => {
-    const second = "ur99887766";
-    await browser.route(`${backend}/**`, async (route) => {
-      const path = new URL(route.request.url).pathname;
-      if (path === `/${account}/config`)
-        await route.fulfill({ json: configuration });
-      else if (path === `/${second}/config`)
+    await baseRoutes(browser);
+    await browser.route(`${backend}/${accountId}/config`, async (route) => {
+      await route.fulfill({ json: configuration });
+    });
+    await browser.route(
+      `${backend}/${secondAccountId}/config`,
+      async (route) => {
         await route.fulfill({
           json: {
             ...configuration,
-            watchlists: [
+            accountId: secondAccountId,
+            lists: [
               {
                 ...row,
-                imdbUserId: second,
+                sourceRef: "ur99887766",
                 catalogTitle: "Second account",
                 catalogSettings: { genre: "Comedy" },
               },
             ],
           },
         });
-      else if (path === "/stats")
-        await route.fulfill({ json: { activeUsers: 2 } });
-      else throw new Error(`Unexpected account request: ${path}`);
-    });
-    await app.open(`/configure?userId=${account}`);
-    await screen.getByPlaceholder(titlePlaceholder).fill("Discarded draft");
-    await screen.getByRole("link", /Back to Home/).tap();
-    await expect(screen.getByText(`Welcome back, ${account}!`)).toBeVisible();
-    await agent.act(
-      "Change the IMDb account to {account}, then open its configuration.",
-      { params: { account: second }, maxModelCalls: 7 },
+      },
     );
-    await expect(browser).toHaveURL(`/configure?userId=${second}`);
-    await expect(screen.getByPlaceholder(titlePlaceholder)).toHaveValue(
+    await app.open(`/configure?account=${accountId}`);
+    await screen.getByRole("button", "Settings for Test catalog").tap();
+    await screen.getByLabel("Catalog title").fill("Discarded draft");
+    await screen.getByRole("link", "Stremlist home").tap();
+    await expect(browser).toHaveURL("/");
+    await agent.act(
+      "On this home page, open my existing Stremlist by entering its Addon URL {url} in the form. Do not visit that URL directly.",
+      {
+        params: { url: `${backend}/${secondAccountId}/manifest.json` },
+        maxModelCalls: 5,
+      },
+    );
+    await expect(browser).toHaveURL(`/configure?account=${secondAccountId}`);
+    await expect(screen.getByText("Second account")).toBeVisible();
+    await screen.getByRole("button", "Settings for Second account").tap();
+    await expect(screen.getByLabel("Catalog title")).toHaveValue(
       "Second account",
     );
     await screen.getByRole("button", /Filters & extra catalogs/).tap();
     await expect(
       screen.getByRole("combobox", "Genre", { exact: true }),
     ).toHaveText("Comedy");
-    await expect(screen.getByPlaceholder(titlePlaceholder)).not.toHaveValue(
-      "Discarded draft",
-    );
+    await expect(screen.getByText("Discarded draft")).not.toBeVisible();
   },
 );
 

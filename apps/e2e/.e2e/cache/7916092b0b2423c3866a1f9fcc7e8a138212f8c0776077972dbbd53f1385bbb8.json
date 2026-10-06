@@ -1,8 +1,16 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-05T21:20:00.265Z",
+  "createdAt": "2026-10-06T19:48:01.080Z",
   "payload": {
     "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Settings for Test catalog\"",
+        "target": {
+          "role": "button",
+          "name": "Settings for Test catalog"
+        }
+      },
       {
         "name": "tap",
         "summary": "tap button \"Filters & extra catalogs\"",
@@ -10,6 +18,15 @@
           "role": "button",
           "name": "Filters & extra catalogs"
         }
+      },
+      {
+        "name": "check",
+        "summary": "check checkbox \"Top rated\"",
+        "target": {
+          "role": "checkbox",
+          "name": "Top rated"
+        },
+        "checked": true
       },
       {
         "name": "tap",
@@ -26,15 +43,6 @@
           "role": "option",
           "name": "Drama"
         }
-      },
-      {
-        "name": "check",
-        "summary": "check checkbox \"Top rated\"",
-        "target": {
-          "role": "checkbox",
-          "name": "Top rated"
-        },
-        "checked": true
       },
       {
         "name": "tap",
@@ -57,49 +65,52 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Selected Drama for the Test catalog, enabled Top rated, and saved. The app confirmed “Saved!” and indicates reinstalling the addon in Stremio is required for the catalog structure change to appear.",
-    "startPath": "/configure?userId=ur99123456",
-    "endPath": "/configure?userId=ur99123456",
+    "summary": "Selected Drama for Test catalog, enabled Top rated, and saved. The page confirms “Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions.”",
+    "startPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
-        "role": "alert",
-        "name": "Saved! Catalog structure changed. Reinstall the addon in Stremio to refresh catalogs."
+        "role": "status",
+        "name": "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions."
+      },
+      {
+        "text": "Catalog title"
+      },
+      {
+        "role": "textbox",
+        "name": "Catalog title",
+        "placeholder": "IMDb Watchlist",
+        "value": "Test catalog"
+      },
+      {
+        "text": "Show"
+      },
+      {
+        "text": "Movies & TV shows"
+      },
+      {
+        "text": "Filters & extra catalogs"
       },
       {
         "text": "2 active"
       },
       {
-        "text": "All selected filters apply together, including in search. Use Sort Order above to order the results."
-      },
-      {
-        "role": "button",
-        "name": "Clear filters"
-      },
-      {
-        "text": "Genre"
-      },
-      {
-        "text": "Drama"
-      },
-      {
-        "text": "Decade"
-      },
-      {
-        "text": "All decades"
+        "text": "All selected filters apply together, including in search. Use the sort menu of this List to order the results."
       }
     ],
     "goneAnchors": [
       {
-        "text": "Install / Reinstall Addon in Stremio"
+        "role": "heading",
+        "name": "Install or reinstall in Stremio"
       },
       {
-        "text": "Use these install links anytime to reopen or reinstall the addon URL in Stremio."
+        "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
       },
       {
         "role": "button",
-        "name": "Filters & extra catalogs"
+        "name": "Settings for Test catalog"
       }
     ],
-    "endWaitMs": 13397
+    "endWaitMs": 12085
   }
 }
