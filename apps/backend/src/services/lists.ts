@@ -12,7 +12,10 @@ import type {
 } from "../providers/types";
 import { SourceUnavailableError } from "../providers/types";
 import { enrichTitles } from "../titles/enrich";
-import { resolveEntries } from "../titles/resolver";
+import {
+  DEFAULT_RESOLVE_BUDGET_MS,
+  resolveEntries,
+} from "../titles/resolver";
 import type { Account } from "./accounts";
 import { getAccountLists, markAccountFetched } from "./accounts";
 import { getConnectionAccess } from "./connections";
@@ -59,6 +62,11 @@ export interface ListFetchConfig {
   allowConnection: boolean;
   forceFresh?: boolean;
   skipAccountTimestamp?: boolean;
+  /**
+   * Time the ID resolver may spend on entries without an IMDb ID. Catalog
+   * requests keep the default; background prewarms can afford more.
+   */
+  resolveBudgetMs?: number;
   /**
    * When true, a failed read is not masked by the existing cache: the error is
    * rethrown so the manual refresh can report it honestly.
@@ -120,6 +128,7 @@ async function buildCatalog(
   const { resolved, unresolved } = await resolveEntries(
     adapter,
     snapshot.entries,
+    { budgetMs: config.resolveBudgetMs ?? DEFAULT_RESOLVE_BUDGET_MS },
   );
 
   const previous = new Map<string, StremioMeta>();
