@@ -50,6 +50,24 @@ _Avoid_: Item, media, product, film (for both kinds)
 An entry of a Source list for which no IMDb ID is known yet. It is not shown, and Stremlist tries again to resolve it on later refreshes.
 _Avoid_: Missing item, dropped item
 
+### Detection
+
+**Synchronization**:
+One read of a Source list by Stremlist. It is complete and successful only when the Provider read did not fail, every page was read, and no entry stayed an Unresolved entry. Only those are compared.
+_Avoid_: Sync (in prose), fetch
+
+**Baseline**:
+The Titles of the first complete, successful Synchronization of a Source list for an Account. They are known, but never new.
+_Avoid_: Initial import (in code), snapshot
+
+**Detection**:
+The moment a complete, successful Synchronization first has a Title that the previous one did not have. Its date is when Stremlist saw the Title, not when the user added it on the Provider. A Title that leaves and comes back keeps its first Detection.
+_Avoid_: Addition, added date
+
+**New titles**:
+The Catalog of an Account that shows its detected Titles across all its Lists, each Title once with its earliest Detection, newest first.
+_Avoid_: Recently added, feed
+
 ### Provider access
 
 **Connection**:
