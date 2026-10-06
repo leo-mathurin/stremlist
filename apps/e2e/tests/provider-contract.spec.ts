@@ -155,18 +155,29 @@ test(
 );
 
 for (const [id, expected] of [
-  ["ls99000001", { valid: true }],
-  ["ls99000002", { valid: false, reason: "private" }],
-  ["ls99000003", { valid: false, reason: "private" }],
-  ["ls99000004", { valid: false, reason: "not_found" }],
+  [
+    "ls99000001",
+    {
+      ok: true,
+      provider: "imdb",
+      sourceRef: "ls99000001",
+      kind: "list",
+      requiresConnection: false,
+      suggestedTitle: null,
+      defaultDisplayMode: null,
+    },
+  ],
+  ["ls99000002", { ok: false, reason: "private", provider: "imdb" }],
+  ["ls99000003", { ok: false, reason: "private", provider: "imdb" }],
+  ["ls99000004", { ok: false, reason: "not_found", provider: "imdb" }],
 ] as const) {
   test(
     `IMDb list ${id} is classified through the real GraphQL transport`,
     { tag: "@local" },
     async ({ request }) => {
-      const response = await request.get(
-        `${providerBackend}/validate-list/${id}`,
-      );
+      const response = await request.post(`${providerBackend}/links/resolve`, {
+        data: { input: `https://www.imdb.com/list/${id}/` },
+      });
       expect(response.status()).toBe(200);
       expect(await response.json()).toEqual(expected);
     },

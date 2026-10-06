@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 import {
   BACKEND_PORT,
   BACKEND_URL,
+  CONNECTION_ENCRYPTION_KEY,
   FRONTEND_PORT,
   FRONTEND_URL,
   R2_ACCESS_KEY_ID,
@@ -78,6 +79,7 @@ export default defineConfig({
         R2_ACCESS_KEY_ID,
         R2_SECRET_ACCESS_KEY,
         R2_BUCKET,
+        CONNECTION_ENCRYPTION_KEY,
         // The Resend SDK throws at import time without a key. Newsletter
         // delivery is deliberately out of E2E scope (it would email real
         // people), so a dummy key is enough to boot the app.

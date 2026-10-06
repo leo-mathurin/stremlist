@@ -1,11 +1,11 @@
 import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
 import {
-  account,
+  SAVED_REINSTALL,
+  accountId,
   backend,
   configuration,
   captureConfig,
-  titlePlaceholder,
 } from "./config-fixture";
 
 for (const failure of ["http", "network"] as const) {
@@ -16,7 +16,7 @@ for (const failure of ["http", "network"] as const) {
   }) => {
     const submissions = await captureConfig(browser);
     let attempts = 0;
-    await browser.route(`${backend}/${account}/refresh`, async (route) => {
+    await browser.route(`${backend}/${accountId}/refresh`, async (route) => {
       if (++attempts === 1) {
         if (failure === "network") await route.abort();
         else
@@ -31,42 +31,31 @@ for (const failure of ["http", "network"] as const) {
             refreshed: 1,
             failed: 0,
             total: 1,
-            watchlists: configuration.watchlists,
+            lists: configuration.lists,
             lastFetchedAt: new Date().toISOString(),
             cooldownSeconds: 60,
           },
         });
     });
-    await app.open(`/configure?userId=${account}`);
-    await screen.getByPlaceholder(titlePlaceholder).fill("Still editing");
+    await app.open(`/configure?account=${accountId}`);
+    await screen.getByRole("button", "Settings for Test catalog").tap();
+    await screen.getByLabel("Catalog title").fill("Still editing");
     await screen.getByRole("button", "Refresh now").tap();
-    await expect(
-      screen.getByText(
-        failure === "network"
-          ? "Failed to fetch"
-          : "Refresh service unavailable",
-        { exact: true },
-      ),
-    ).toBeVisible();
+    const error = screen.getByText(
+      failure === "network" ? "Failed to fetch" : "Refresh service unavailable",
+      { exact: true },
+    );
+    await expect(error).toBeVisible();
     await expect(screen.getByRole("button", "Refresh now")).toBeEnabled();
     await screen.getByRole("button", "Refresh now").tap();
     await expect(screen.getByRole("button", /Refresh in \d+s/)).toBeDisabled();
-    await expect(
-      screen.getByText(
-        failure === "network"
-          ? "Failed to fetch"
-          : "Refresh service unavailable",
-        { exact: true },
-      ),
-    ).not.toBeVisible();
-    await expect(screen.getByPlaceholder(titlePlaceholder)).toHaveValue(
+    await expect(error).not.toBeVisible();
+    await expect(screen.getByLabel("Catalog title")).toHaveValue(
       "Still editing",
     );
     await screen.getByRole("button", "Save", { exact: true }).tap();
-    await expect(
-      screen.getByText(/Saved! Catalog structure changed/),
-    ).toBeVisible();
-    expect(submissions[0].watchlists[0].catalogTitle).toBe("Still editing");
+    await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+    expect(submissions[0].lists[0].catalogTitle).toBe("Still editing");
     expect(attempts).toBe(2);
   });
 }
@@ -78,7 +67,7 @@ test("server throttle starts a cooldown and expiry enables a later refresh", asy
 }) => {
   await captureConfig(browser);
   let attempts = 0;
-  await browser.route(`${backend}/${account}/refresh`, async (route) => {
+  await browser.route(`${backend}/${accountId}/refresh`, async (route) => {
     attempts++;
     await route.fulfill({
       json: {
@@ -92,7 +81,7 @@ test("server throttle starts a cooldown and expiry enables a later refresh", asy
       },
     });
   });
-  await app.open(`/configure?userId=${account}`);
+  await app.open(`/configure?account=${accountId}`);
   await screen.getByRole("button", "Refresh now").tap();
   await expect(screen.getByRole("button", /Refresh in \d+s/)).toBeDisabled();
   expect(attempts).toBe(1);
