@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-06T23:26:28.652Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "check",
+        "summary": "check checkbox \"Show newly detected titles\"",
+        "target": {
+          "role": "checkbox",
+          "name": "Show newly detected titles"
+        },
+        "checked": true
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save\"",
+        "target": {
+          "role": "button",
+          "name": "Save"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/new-titles.e2e.ts::turning%20on%20the%20New%20titles%20catalog%20saves%20it%20and%20asks%20for%20a%20reinstall",
+      "targetId": "chromium",
+      "instructionDigest": "07788afe636e1105eb3e21d2e6d41fe51c8e33da8c171bfb2729f0245aef021a",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Turned on “Show newly detected titles” and saved. The app confirmed “Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions.”",
+    "startPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endAnchors": [
+      {
+        "role": "status",
+        "name": "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions."
+      },
+      {
+        "role": "checkbox",
+        "name": "Show newly detected titles",
+        "states": [
+          "checked"
+        ]
+      },
+      {
+        "role": "heading",
+        "name": "Reinstall in Stremio to see your changes"
+      },
+      {
+        "text": "Stremio reads the catalogs and Actions only when you install an addon, so your changes appear after you reinstall this Addon URL."
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "checkbox",
+        "name": "Show newly detected titles"
+      },
+      {
+        "role": "heading",
+        "name": "Install or reinstall in Stremio"
+      },
+      {
+        "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
+      }
+    ],
+    "endWaitMs": 12445
+  }
+}

@@ -77,13 +77,14 @@ export async function clearRefreshCooldown(accountId: string): Promise<void> {
  * a Provider. With `legacyImdbUserId` it is a Legacy alias install.
  */
 export async function seedAccount(
-  options: { legacyImdbUserId?: string } = {},
+  options: { legacyImdbUserId?: string; newTitlesCatalog?: boolean } = {},
 ): Promise<string> {
   const { data, error } = await db
     .from("accounts")
     .insert({
       legacy_imdb_user_id: options.legacyImdbUserId ?? null,
       is_active: true,
+      new_titles_catalog: options.newTitlesCatalog ?? false,
     })
     .select("id")
     .single();
