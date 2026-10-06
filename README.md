@@ -215,7 +215,7 @@ Set backend env vars in `apps/backend/.env`.
 | `MDBLIST_CLIENT_ID`         | Yes\*    | MDBList OAuth app client ID                                                                                                       | -                       |
 | `MDBLIST_CLIENT_SECRET`     | Yes\*    | MDBList OAuth app client secret                                                                                                   | -                       |
 | `TMDB_READ_ACCESS_TOKEN`    | Yes\*    | TMDB v4 read access token (Title ID resolution). `TMDB_API_KEY` (v3) also works                                                   | -                       |
-| `DISABLED_PROVIDERS`        | No       | Kill switch: comma-separated Provider IDs to turn off (e.g. `trakt,justwatch`). Their Lists keep serving the last cached Catalog  | -                       |
+| `DISABLED_PROVIDERS`        | No       | Kill switch: comma-separated Provider IDs to turn off (e.g. `trakt,justwatch`). No request goes to them; their Lists keep serving the last cached Catalog  | -                       |
 | `CACHE_TTL_MINUTES`         | No       | How long a cached IMDb List is served before it is refreshed on the next request                                                  | `30`                    |
 | `REFRESH_COOLDOWN_SECONDS`  | No       | Minimum time between manual "Refresh now" requests per Account                                                                    | `60`                    |
 | `RESEND_API_KEY`            | No       | Resend API key for newsletter subscription endpoint                                                                               | -                       |
@@ -246,4 +246,4 @@ ISC
 
 ## Disclaimer
 
-This project is not affiliated with Stremio or with any of the services it reads lists from (IMDb, Trakt, Simkl, MDBList, JustWatch, SensCritique, Letterboxd).
+This project is not affiliated with Stremio or with any of the services it reads lists from (IMDb, Trakt, Simkl, MDBList, JustWatch, SensCritique, Letterboxd). Their names and logos are trademarks of their owners and are used only to say that Stremlist works with them. IMDb and all related logos are trademarks of IMDb.com, Inc. or its affiliates.

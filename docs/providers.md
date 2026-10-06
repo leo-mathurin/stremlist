@@ -4,8 +4,9 @@ How Stremlist reads each Provider, and why that method. Vocabulary: [`CONTEXT.md
 
 - Every Provider goes through the same pipeline (`apps/backend/src/services/lists.ts`): the adapter reads the Source list, the shared ID resolver turns entries into IMDb IDs ([ADR 0002](adr/0002-titles-are-imdb-ids-only.md)), the shared enrichment step fills the metadata (IMDb in batches, Cinemeta as fallback), and the Catalog is cached in R2.
 - Public first: a Source list that can be read without login never asks for one. OAuth (authorization code with PKCE, on the configure page) only where a Provider has no public access or for Actions. Passwords and pasted session tokens are never stored.
-- Tokens of a Connection are encrypted (AES-256-GCM) and refreshed by one process at a time (lease), because Trakt refresh tokens are single-use and Simkl cancels the previous access token on refresh.
-- Each Provider has a kill switch (`DISABLED_PROVIDERS`). When off, its Lists serve the last cached Catalog.
+- Tokens of a Connection are encrypted (AES-256-GCM) and refreshed by one process at a time (lease), because Trakt refresh tokens are single-use and Simkl cancels the previous access token on refresh. Each Connection keeps the redirect URI of its authorization, and refreshes send that same URI (Trakt checks it).
+- Kill switch: `DISABLED_PROVIDERS=trakt,justwatch` (one variable for all Providers, no deploy needed). A turned-off Provider gets no request at all: no Source list read, no ID resolution strategy that calls it (for example the JustWatch lookups of SensCritique), no Connection, no listing of a Connection's lists, no Action. Its Lists serve the last cached Catalog.
+- The configure page shows each Provider's official mark, unaltered, only to say that Stremlist works with it. The footer names the logos as trademarks of their owners, with the attribution that IMDb's brand rules ask for.
 - Actions open a Stremlist page, never a video clip ([ADR 0003](adr/0003-actions-open-a-page-not-a-clip.md)).
 
 Every access method below was compared with all the others we found (official API, OAuth, client ID only, unofficial GraphQL, HTML scraping, RSS, exports, MDBList and StremThru as aggregators, browser relay, user cookies or tokens). Research and tests date from 2026-10-05 and 2026-10-06.
@@ -19,9 +20,10 @@ Every access method below was compared with all the others we found (official AP
 
 ## Trakt (STR-17)
 
-- **Method:** official API `api.trakt.tv`. With a Connection (OAuth with PKCE; new apps have no client secret), every read uses the user's token and quota. Without one, public watchlists and lists are read with the client ID only.
+- **Method:** official API `api.trakt.tv`. With a Connection (OAuth with PKCE; new apps have no client secret), every read uses the user's token and quota. Without one, public watchlists and lists are read with the client ID only. Every OAuth call (authorize, token, revoke) goes to `auth.trakt.tv`, the host that Trakt's current OAuth documentation gives, not the API host.
 - **Why both:** since 2026-07-22 a free Trakt account can authorize only one community app, and Stremio's own Trakt sync probably uses it. Public reads keep Trakt working for those users and for lists curated by others. Scraping, MDBList and StremThru as proxies, and reusing Stremio's token are forbidden or dead.
-- **Source lists:** watchlist and lists of any user, official lists, trending, popular, anticipated; with a Connection also recommendations, Up Next, history and collection.
+- **Source lists:** watchlist and lists of any user, official lists, trending, popular, anticipated; with a Connection also recommendations, Up Next, history and collection. Up Next lists the series, not the next episode: a Stremio catalog shows series, and Stremio opens the right episode from Continue Watching.
+- **One app on free accounts:** the configure page says so next to Connect, and suggests public links for users whose only app slot is Stremio's own Trakt sync.
 - **Actions:** watchlist, watched (movies and episodes), rating.
 - **Limits:** 500 GET every 5 minutes for the whole app without a token, per user with a token; writes 1 per second; pagination is mandatory (250 per page). Free accounts: 250 watchlist items, 5 lists.
 - **Policy:** the API Use Policy (2026-09-22) allows managing a user's watchlist from a third-party app and forbids relaying data to other services and apps that promote piracy. Trakt support was told about the integration on 2026-10-06.
@@ -30,7 +32,8 @@ Every access method below was compared with all the others we found (official AP
 
 - **Method:** OAuth V2 "server app" (authorization code with PKCE and client secret), scopes `media:read media:write`. No user data is public, so there is no other method.
 - **Sync rule:** each refresh first checks `/sync/activities` and reads items only when something changed. Simkl suspends client IDs that poll without this check.
-- **Source lists:** plan to watch, watching, completed, on hold, dropped; custom lists for PRO and VIP accounts only.
+- **Source lists:** plan to watch, watching, completed, on hold, dropped, and history (everything watched, from the same library read); custom lists for PRO and VIP accounts only.
+- **Link back:** each catalog item ends its description with "More on Simkl" and the item's Simkl page. Stremio shows meta links only for the addon that gives the metadata (Cinemeta), so the description is the visible place.
 - **Actions:** watchlist (plan to watch), watched, rating.
 - **Policy:** free under $150 of revenue a month; items must link back to Simkl.
 
@@ -43,7 +46,8 @@ Every access method below was compared with all the others we found (official AP
 
 ## JustWatch (STR-18)
 
-- **Method:** JustWatch's unofficial GraphQL API, anonymous, for custom lists shared by link (`justwatch.com/shared?id=tl-us-…`).
+- **Method:** JustWatch's unofficial GraphQL API, anonymous, for custom lists shared by link (`justwatch.com/shared?id=tl-us-…`) and JustWatch's own editorial lists.
+- **ID resolution:** most titles carry an IMDb ID. The others go through TMDB, then a new JustWatch lookup on later refreshes, because JustWatch adds missing IMDb IDs within days. A title and year search is not used: about 6% of titles lack an ID at first, and a fuzzy match could add the wrong Title.
 - **Verified 2026-10-06:** every custom list is UNLISTED (the server rejects PRIVATE and PUBLIC) and reads without auth, with IMDb IDs on each title. List IDs are random UUIDs.
 - **Not supported:** the main JustWatch Watchlist and Actions. Both need the user's Firebase token copied from the browser, which expires and breaks the terms.
 - **Risk:** the terms forbid scraping and the schema has no documentation. Traffic stays low (long cache, rate limiter) and queries are pinned in tests.
@@ -51,7 +55,7 @@ Every access method below was compared with all the others we found (official AP
 ## SensCritique (STR-55)
 
 - **Method:** SensCritique's unofficial GraphQL API (`apollo.senscritique.com`), anonymous: a user's wishlist ("envies") and lists, films and series only.
-- **ID resolution:** products have no IMDb or TMDB ID. In order: the product's JustWatch link (exact), Wikidata property P10100 (exact), then a TMDB title and year search that is accepted only when the director or the runtime also agrees. Anything else stays an Unresolved entry and is retried later.
+- **ID resolution:** products have no IMDb or TMDB ID. In order: Wikidata property P10100 (exact, one batch query), the product's JustWatch link (exact, one request per product, skipped while JustWatch is turned off), then a TMDB title and year search that is accepted only when the director or the runtime also agrees. Anything else stays an Unresolved entry and is retried later.
 - **Actions:** none.
 
 ## Letterboxd (STR-20): on hold
