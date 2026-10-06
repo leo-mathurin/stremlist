@@ -32,6 +32,11 @@ export interface ResolutionResult {
   resolved: ResolvedEntry[];
   /** Entries without an IMDb ID yet (Unresolved entries, see CONTEXT.md). */
   unresolved: number;
+  /**
+   * Unresolved entries that no strategy tried yet (cap or time budget). The
+   * caller should refresh soon instead of waiting for the usual freshness.
+   */
+  deferred: number;
 }
 
 interface CacheRow {
@@ -47,7 +52,9 @@ function cacheKey(key: ResolutionKey): string {
   return `${key.namespace}\u0000${key.externalId}`;
 }
 
-async function readCache(keys: ResolutionKey[]): Promise<Map<string, CacheRow>> {
+async function readCache(
+  keys: ResolutionKey[],
+): Promise<Map<string, CacheRow>> {
   const rows = new Map<string, CacheRow>();
   const byNamespace = new Map<string, string[]>();
   for (const key of keys) {
@@ -126,6 +133,7 @@ export async function resolveEntries(
     if (key) pending.push({ index, key });
   });
 
+  let deferred = 0;
   if (pending.length > 0) {
     const cached = await readCache(pending.map(({ key }) => key));
     const now = Date.now();
@@ -146,8 +154,10 @@ export async function resolveEntries(
     const capped = toResolve.slice(0, MAX_STRATEGY_ENTRIES_PER_REFRESH);
     // Chunks let a slow strategy (one search per entry) stop at the time
     // budget; entries not reached keep no cache row and are tried next time.
+    let attempted = 0;
     for (let start = 0; start < capped.length; start += STRATEGY_CHUNK) {
       if (start > 0 && Date.now() - startedAt > options.budgetMs) break;
+      attempted = Math.min(start + STRATEGY_CHUNK, capped.length);
       const batch = capped.slice(start, start + STRATEGY_CHUNK);
       const results = new Map<number, { imdbId: string; strategy: string }>();
       let remaining = batch;
@@ -181,6 +191,7 @@ export async function resolveEntries(
         })),
       );
     }
+    deferred = toResolve.length - attempted;
   }
 
   const resolved: ResolvedEntry[] = [];
@@ -188,5 +199,9 @@ export async function resolveEntries(
     const imdbId = imdbIds[index];
     if (imdbId) resolved.push({ imdbId, entry });
   });
-  return { resolved, unresolved: entries.length - resolved.length };
+  return {
+    resolved,
+    unresolved: entries.length - resolved.length,
+    deferred,
+  };
 }

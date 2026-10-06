@@ -12,10 +12,7 @@ import type {
 } from "../providers/types";
 import { SourceUnavailableError } from "../providers/types";
 import { enrichTitles } from "../titles/enrich";
-import {
-  DEFAULT_RESOLVE_BUDGET_MS,
-  resolveEntries,
-} from "../titles/resolver";
+import { DEFAULT_RESOLVE_BUDGET_MS, resolveEntries } from "../titles/resolver";
 import type { Account } from "./accounts";
 import { getAccountLists, markAccountFetched } from "./accounts";
 import { getConnectionAccess } from "./connections";
@@ -23,6 +20,12 @@ import { buildPosterUrl } from "./imdb-scraper";
 import { findCachedMeta, getCachedList, writeCachedList } from "./list-cache";
 import type { WatchlistSort } from "./watchlist-sort";
 import { sortWatchlist } from "./watchlist-sort";
+
+/**
+ * When the ID resolver left entries untried, the next read comes this soon
+ * instead of after the Provider's usual freshness.
+ */
+const RESUME_RESOLUTION_MS = 2 * 60_000;
 
 /** Re-enrich every Title at least this often, so ratings stay current. */
 const METADATA_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
@@ -115,17 +118,20 @@ async function buildCatalog(
   adapter: ProviderAdapter,
   config: ListFetchConfig,
   ctx: ProviderContext,
-): Promise<WatchlistData> {
+): Promise<{ data: WatchlistData; deferred: number }> {
   const snapshot = await adapter.fetchSource(config.sourceRef, ctx);
   if (snapshot.entries.every((entry) => entry.meta)) {
     return {
-      metas: snapshot.entries.flatMap((entry) =>
-        entry.meta ? [entry.meta] : [],
-      ),
+      data: {
+        metas: snapshot.entries.flatMap((entry) =>
+          entry.meta ? [entry.meta] : [],
+        ),
+      },
+      deferred: 0,
     };
   }
 
-  const { resolved, unresolved } = await resolveEntries(
+  const { resolved, unresolved, deferred } = await resolveEntries(
     adapter,
     snapshot.entries,
     { budgetMs: config.resolveBudgetMs ?? DEFAULT_RESOLVE_BUDGET_MS },
@@ -161,10 +167,14 @@ async function buildCatalog(
 
   if (unresolved > 0 || unknown > 0) {
     console.log(
-      `List ${config.listId} (${config.provider}): ${metas.length} titles, ${unresolved} unresolved entries, ${unknown} without metadata`,
+      `List ${config.listId} (${config.provider}): ${metas.length} titles, ${unresolved} unresolved entries (${deferred} not tried yet), ${unknown} without metadata`,
     );
   }
-  return { metas };
+  return { data: { metas }, deferred };
+}
+
+function freshnessOf(adapter: ProviderAdapter, sourceRef: string): number {
+  return adapter.freshnessFor?.(sourceRef) ?? adapter.freshnessMs;
 }
 
 async function fetchAndCacheList(config: ListFetchConfig): Promise<FreshList> {
@@ -176,11 +186,22 @@ async function fetchAndCacheList(config: ListFetchConfig): Promise<FreshList> {
   }
   const adapter = getProvider(config.provider);
   const ctx = await providerContext(config);
-  const data = await buildCatalog(adapter, config, ctx);
+  const { data, deferred } = await buildCatalog(adapter, config, ctx);
   const cachedAt = new Date();
+  // Back-date the cache so the next request resumes resolution soon.
+  const storedAt =
+    deferred > 0
+      ? new Date(
+          cachedAt.getTime() -
+            Math.max(
+              freshnessOf(adapter, config.sourceRef) - RESUME_RESOLUTION_MS,
+              0,
+            ),
+        )
+      : cachedAt;
   let generation: string | null = null;
   try {
-    generation = await writeCachedList(config.listId, data, cachedAt);
+    generation = await writeCachedList(config.listId, data, storedAt);
   } catch (error) {
     console.error(`Failed to cache list ${config.listId} in R2:`, error);
   }
@@ -240,8 +261,7 @@ export async function getListCatalog(
   config: ListFetchConfig,
 ): Promise<WatchlistData> {
   const adapter = getProvider(config.provider);
-  const freshnessMs =
-    adapter.freshnessFor?.(config.sourceRef) ?? adapter.freshnessMs;
+  const freshnessMs = freshnessOf(adapter, config.sourceRef);
   if (!config.forceFresh) {
     const cached = await getCachedList(config.listId);
     // An empty cache is not a hit: it cannot be told apart from "the list

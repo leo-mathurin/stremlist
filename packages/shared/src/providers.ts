@@ -321,8 +321,10 @@ function parseMdblistLink(input: string): ParsedSourceLink | null {
   return null;
 }
 
+// User lists use a UUID ("tl-us-<uuid>"); JustWatch's own editorial lists
+// can use a number ("tl-tu-12653").
 const JUSTWATCH_LIST_ID =
-  /\b(tl-[a-z]{2}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i;
+  /\b(tl-[a-z]{2}-(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d+))\b/i;
 
 function parseJustwatchLink(input: string): ParsedSourceLink | null {
   const trimmed = input.trim();
