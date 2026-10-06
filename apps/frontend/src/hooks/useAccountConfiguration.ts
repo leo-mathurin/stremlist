@@ -10,6 +10,7 @@ import {
   CONNECTION_SOURCES,
   PROVIDER_IDS,
   PROVIDERS,
+  sourceRequiresConnection,
 } from "@stremlist/shared/providers";
 import type { ConnectionSource, ProviderId } from "@stremlist/shared/providers";
 import type {
@@ -18,6 +19,12 @@ import type {
   ConfigList,
   ConnectionSummary,
 } from "@stremlist/shared/stremio.types";
+import { listSyncState } from "@stremlist/shared/sync-status";
+import type {
+  ListConnectionState,
+  ListSyncState,
+  ListSyncStatuses,
+} from "@stremlist/shared/sync-status";
 import { api } from "../lib/api";
 import {
   createListRow,
@@ -28,6 +35,11 @@ import type { ListFormRow } from "../lib/list-form";
 
 /** Same limit as the backend (`MAX_LISTS`). */
 export const MAX_LISTS = 10;
+
+/** How often the page asks for the sync status while a refresh runs. */
+const SYNC_POLL_MS = 4000;
+/** Stop asking after this many polls (two minutes). */
+const SYNC_POLL_LIMIT = 30;
 
 /** "new" until the first save creates the Account. */
 export type AccountAccess = "new" | AddonAccess;
@@ -123,6 +135,7 @@ export function useAccountConfiguration(
   const [accountId, setAccountId] = useState<string | null>(null);
   const [movedAt, setMovedAt] = useState<string | null>(null);
   const [connections, setConnections] = useState<ConnectionSummary[]>([]);
+  const [syncStatus, setSyncStatus] = useState<ListSyncStatuses>({});
   const [connectionSources, setConnectionSources] = useState<
     Partial<Record<ProviderId, ConnectionSource[]>>
   >({});
@@ -212,6 +225,7 @@ export function useAccountConfiguration(
         setMovedAt(data.movedAt);
         setRpdbApiKey(data.rpdbApiKey ?? "");
         setConnections(data.connections);
+        setSyncStatus(data.syncStatus);
         setLastFetchedAt(data.lastFetchedAt);
         setCooldownSeconds(data.cooldownSeconds);
         setActionsEnabled(data.actions.enabled);
@@ -279,6 +293,70 @@ export function useAccountConfiguration(
     Math.ceil((nextRefreshAt - now) / 1000),
   );
   const onCooldown = cooldownRemaining > 0;
+
+  /**
+   * What a List row shows about its refreshes. Null on a new setup, which
+   * has nothing saved yet. A row whose Source list changed since the save
+   * has no status yet.
+   */
+  const syncStateOf = useCallback(
+    (row: ListFormRow): ListSyncState | null => {
+      if (access === "new") return null;
+      const connection = connections.find((c) => c.provider === row.provider);
+      const connectionState: ListConnectionState = !connection
+        ? "none"
+        : connection.needsRenewalSince
+          ? "renew"
+          : "ok";
+      const status = row.id ? syncStatus[row.id] : undefined;
+      return listSyncState(
+        status?.sourceRef === row.sourceRef ? status : undefined,
+        connectionState,
+        sourceRequiresConnection(row.provider, row.sourceRef),
+      );
+    },
+    [access, connections, syncStatus],
+  );
+
+  // Saved Lists that wait for their first refresh (after a save or a new
+  // Connection): ask for their status until it arrives.
+  const waitingKey = lists
+    .filter((row) => row.id && syncStateOf(row)?.kind === "waiting")
+    .map((row) => row.id)
+    .join(",");
+  useEffect(() => {
+    if (!accountKey || !waitingKey) return;
+    let cancelled = false;
+    let polls = 0;
+    const id = setInterval(() => {
+      polls += 1;
+      if (polls > SYNC_POLL_LIMIT) {
+        clearInterval(id);
+        return;
+      }
+      if (document.hidden) return;
+      api[":accountKey"]["sync-status"]
+        .$get({ param: { accountKey } })
+        .then(async (res) => {
+          if (!res.ok || cancelled) return;
+          const body = await res.json();
+          if (cancelled || !("syncStatus" in body)) return;
+          setSyncStatus(body.syncStatus);
+          setConnections((current) =>
+            JSON.stringify(current) === JSON.stringify(body.connections)
+              ? current
+              : body.connections,
+          );
+        })
+        .catch(() => {
+          // Try again at the next tick.
+        });
+    }, SYNC_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [accountKey, waitingKey]);
 
   const setListField = useCallback(
     <K extends keyof ListFormRow>(
@@ -557,6 +635,12 @@ export function useAccountConfiguration(
       }
       setCooldownSeconds(body.cooldownSeconds);
       setLastFetchedAt(body.lastFetchedAt);
+      if ("syncStatus" in body && body.syncStatus) {
+        setSyncStatus(body.syncStatus);
+      }
+      if ("connections" in body && body.connections) {
+        setConnections(body.connections);
+      }
       if ("lists" in body && body.lists) {
         const refreshed = body.lists;
         setLists((current) =>
@@ -571,11 +655,11 @@ export function useAccountConfiguration(
         );
       }
       // Success feedback is the live "Last refreshed" label and the cooldown,
-      // so only report when some Lists failed.
+      // so only report when some Lists failed. Each failed List says why.
       if (body.failed > 0) {
         setStatus({
           type: "error",
-          message: `Refreshed ${body.refreshed} of ${body.total} lists. Some lists failed to update.`,
+          message: `Refreshed ${body.refreshed} of ${body.total} lists. The others failed to update: each List shows why.`,
         });
       }
     } catch (err) {
@@ -665,6 +749,7 @@ export function useAccountConfiguration(
       if (!res.ok) return;
       const data = (await res.json()) as AccountConfigResponse;
       setConnections(data.connections);
+      setSyncStatus(data.syncStatus);
       setLastFetchedAt(data.lastFetchedAt);
       const capable = actionCapableProviders(data.connections);
       setActionOrder((current) => [
@@ -727,6 +812,7 @@ export function useAccountConfiguration(
     connections,
     connectionSources,
     providerStatus,
+    syncStateOf,
     actionsEnabled,
     // Turning Actions on selects every capable Provider, so saving right
     // away gives working Actions.

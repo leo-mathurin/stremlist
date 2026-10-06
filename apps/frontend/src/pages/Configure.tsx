@@ -24,6 +24,7 @@ import {
   useAccountConfiguration,
 } from "../hooks/useAccountConfiguration";
 import { listKey } from "../lib/list-form";
+import { attentionTone } from "../lib/list-sync";
 import {
   describeSource,
   isStaticSource,
@@ -170,13 +171,8 @@ export default function Configure() {
   const moved = access === "legacy" && !!config.movedAt;
   const MOVED_HINT =
     "This install has a private URL now. Make changes from the configure page of your new install.";
-  const connectedProviders = new Set(
-    config.connections.map((connection) => connection.provider),
-  );
-  const needsMissingConnection = (provider: ProviderId, sourceRef: string) =>
-    access === "private" &&
-    sourceRequiresConnection(provider, sourceRef) &&
-    !connectedProviders.has(provider);
+  const syncStates = lists.map((list) => config.syncStateOf(list));
+  const attention = syncStates.filter((sync) => attentionTone(sync)).length;
   const affectedLists: Partial<Record<ProviderId, number>> = {};
   for (const list of lists) {
     if (sourceRequiresConnection(list.provider, list.sourceRef)) {
@@ -291,18 +287,30 @@ export default function Configure() {
                   className={cn(
                     "size-2 shrink-0 rounded-full",
                     config.refreshing
-                      ? "animate-pulse bg-amber-400"
-                      : config.lastFetchedAt
-                        ? "bg-emerald-500"
-                        : "bg-black/20",
+                      ? "motion-safe:animate-pulse bg-amber-400"
+                      : attention > 0
+                        ? "bg-amber-500"
+                        : config.lastFetchedAt
+                          ? "bg-emerald-500"
+                          : "bg-black/20",
                   )}
                   aria-hidden="true"
                 />
-                <span>
+                <span className="tabular-nums">
                   Refreshed{" "}
                   <span className="font-semibold text-ink">
                     {formatRelativeTime(config.lastFetchedAt)}
                   </span>
+                  {attention > 0 && (
+                    <>
+                      {" · "}
+                      <span className="font-semibold text-amber-700">
+                        {attention === 1
+                          ? "1 List needs attention"
+                          : `${attention} Lists need attention`}
+                      </span>
+                    </>
+                  )}
                 </span>
               </p>
               <button
@@ -417,10 +425,7 @@ export default function Configure() {
                         index={index}
                         onFieldChange={config.setListField}
                         onRemove={config.removeList}
-                        connectionMissing={needsMissingConnection(
-                          list.provider,
-                          list.sourceRef,
-                        )}
+                        sync={syncStates[index]}
                         onConnect={
                           config.providerStatus[list.provider].connectable
                             ? () => connectFor(list.provider)
