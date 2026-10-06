@@ -15,7 +15,7 @@ import { enrichTitles } from "../titles/enrich";
 import { resolveEntries } from "../titles/resolver";
 import type { Account } from "./accounts";
 import { getAccountLists, markAccountFetched } from "./accounts";
-import { getConnectionAccess } from "./connections";
+import { ConnectionExpiredError, getConnectionAccess } from "./connections";
 import { buildPosterUrl } from "./imdb-scraper";
 import { findCachedMeta, getCachedList, writeCachedList } from "./list-cache";
 import type { WatchlistSort } from "./watchlist-sort";
@@ -218,8 +218,14 @@ function toListError(
   error: unknown,
   message: string,
 ): ListUnavailableError {
+  // An expired Connection is an expected state (the user revoked access):
+  // the catalog asks to connect again instead of a 500 that Stremio retries.
   const reason =
-    error instanceof SourceUnavailableError ? error.reason : "unavailable";
+    error instanceof SourceUnavailableError
+      ? error.reason
+      : error instanceof ConnectionExpiredError
+        ? "needs_connection"
+        : "unavailable";
   return new ListUnavailableError(provider, reason, message);
 }
 
