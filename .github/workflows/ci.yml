@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [main, staging]
+  # Every base branch, so stacked feature PRs get the same checks.
   pull_request:
-    branches: [main, staging]
 
 jobs:
   ci:
