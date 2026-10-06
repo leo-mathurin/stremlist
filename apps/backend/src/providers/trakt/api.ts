@@ -58,6 +58,29 @@ async function send(path: string, token?: string): Promise<Response> {
 }
 
 /**
+ * The Connection's token, or null when a public read may go on without it: a
+ * Connection that cannot give a token any more (refused refresh) must not
+ * make Source lists that anyone may read fail.
+ */
+async function connectionTokenFor(
+  connection: ConnectionAccess,
+  options: TraktReadOptions,
+): Promise<string | null> {
+  try {
+    return await connectionToken(connection);
+  } catch (error) {
+    if (
+      options.publicFallback &&
+      error instanceof SourceUnavailableError &&
+      error.reason === "needs_connection"
+    ) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
  * One GET. Reads through the Connection when there is one (per-user quota),
  * otherwise with the client ID only. A 401 becomes a SourceUnavailableError:
  * "private" for public reads, "needs_connection" when the Connection's token
@@ -68,7 +91,10 @@ export async function traktGet(
   connection: ConnectionAccess | null,
   options: TraktReadOptions = {},
 ): Promise<Response> {
-  if (!connection) {
+  const token = connection
+    ? await connectionTokenFor(connection, options)
+    : null;
+  if (!connection || token === null) {
     const response = await send(path);
     if (response.status === 401) {
       throw new SourceUnavailableError("private", `Trakt ${path} is private`);
@@ -76,7 +102,6 @@ export async function traktGet(
     return checked(response, path);
   }
 
-  const token = await connectionToken(connection);
   let response = await send(path, token);
   if (response.status === 401) {
     // ConnectionAccess refreshes a token that is about to expire; a second

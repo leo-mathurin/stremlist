@@ -595,6 +595,52 @@ describe("Trakt read errors", () => {
     expect(entries.map((e) => e.imdbId)).toEqual(["tt11128440"]);
   });
 
+  it("a public Source list reads without a Connection that lost its token", async () => {
+    route("GET /users/sean/watchlist", (call) =>
+      call.headers.has("Authorization")
+        ? status(500)
+        : json([listed("movie", clerks, "2022-10-14T03:19:22.000Z", 1)]),
+    );
+    const conn = connection();
+    conn.getAccessToken.mockRejectedValue(new ConnectionExpiredError("trakt"));
+
+    const entries = await fetchEntries("users/sean/watchlist", conn);
+
+    expect(entries.map((e) => e.imdbId)).toEqual(["tt11128440"]);
+    expect(calls.every((call) => !call.headers.has("Authorization"))).toBe(
+      true,
+    );
+  });
+
+  it("a public chart reads without a Connection that lost its token", async () => {
+    route("GET /movies/trending", (call) =>
+      call.headers.has("Authorization") ? status(500) : json([]),
+    );
+    route("GET /shows/trending", (call) =>
+      call.headers.has("Authorization") ? status(500) : json([]),
+    );
+    const conn = connection();
+    conn.getAccessToken.mockRejectedValue(new ConnectionExpiredError("trakt"));
+
+    await expect(fetchEntries("trending", conn)).resolves.toEqual([]);
+  });
+
+  it("a private Source list with a Connection that lost its token still needs renewal", async () => {
+    const conn = connection();
+    conn.getAccessToken.mockRejectedValue(new ConnectionExpiredError("trakt"));
+
+    await expectReason(fetchEntries("me/watchlist", conn), "needs_connection");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("a private user stays private with a Connection that lost its token", async () => {
+    route("GET /users/hidden/watchlist", status(401));
+    const conn = connection();
+    conn.getAccessToken.mockRejectedValue(new ConnectionExpiredError("trakt"));
+
+    await expectReason(fetchEntries("users/hidden/watchlist", conn), "private");
+  });
+
   it("a private user stays private with a Connection", async () => {
     route("GET /users/hidden/watchlist", status(401));
     await expectReason(
