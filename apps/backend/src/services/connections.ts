@@ -38,6 +38,7 @@ interface ConnectionRow {
   expires_at: string | null;
   redirect_uri: string;
   created_at: string;
+  needs_renewal_since: string | null;
 }
 
 function decode(row: ConnectionRow): StoredConnection | null {
@@ -81,7 +82,7 @@ export async function listConnections(
 ): Promise<ConnectionSummary[]> {
   const { data, error } = await supabase
     .from("connections")
-    .select("provider, provider_username, created_at")
+    .select("provider, provider_username, created_at, needs_renewal_since")
     .eq("account_id", accountId);
   if (error) {
     console.error(`Failed to list connections of ${accountId}:`, error.message);
@@ -90,7 +91,7 @@ export async function listConnections(
   return (
     data as Pick<
       ConnectionRow,
-      "provider" | "provider_username" | "created_at"
+      "provider" | "provider_username" | "created_at" | "needs_renewal_since"
     >[]
   )
     .filter((row) => isProviderId(row.provider))
@@ -98,6 +99,7 @@ export async function listConnections(
       provider: row.provider as ProviderId,
       username: row.provider_username,
       connectedAt: row.created_at,
+      needsRenewalSince: row.needs_renewal_since,
     }));
 }
 
@@ -120,6 +122,8 @@ export async function saveConnection(
         : null,
       expires_at: tokens.expiresAt?.toISOString() ?? null,
       scope: tokens.scope,
+      // A new authorization replaces a refused one.
+      needs_renewal_since: null,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "account_id,provider" },
@@ -141,10 +145,44 @@ async function updateTokens(
         ? { refresh_token: encryptSecret(tokens.refreshToken) }
         : {}),
       expires_at: tokens.expiresAt?.toISOString() ?? null,
+      // The Provider accepted the refresh token, so the grant still works.
+      needs_renewal_since: null,
       updated_at: new Date().toISOString(),
     })
     .eq("account_id", accountId)
     .eq("provider", provider);
+  if (error) throw error;
+}
+
+/**
+ * Remember that the Provider refused this Connection (revoked grant, refused
+ * refresh), so the configure page asks the user to connect again. Keeps the
+ * first time it happened.
+ */
+export async function markConnectionNeedsRenewal(
+  accountId: string,
+  provider: ProviderId,
+): Promise<void> {
+  const { error } = await supabase
+    .from("connections")
+    .update({ needs_renewal_since: new Date().toISOString() })
+    .eq("account_id", accountId)
+    .eq("provider", provider)
+    .is("needs_renewal_since", null);
+  if (error) throw error;
+}
+
+/** A read through the Connection worked again: it needs no renewal. */
+export async function clearConnectionRenewal(
+  accountId: string,
+  provider: ProviderId,
+): Promise<void> {
+  const { error } = await supabase
+    .from("connections")
+    .update({ needs_renewal_since: null })
+    .eq("account_id", accountId)
+    .eq("provider", provider)
+    .not("needs_renewal_since", "is", null);
   if (error) throw error;
 }
 

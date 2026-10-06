@@ -61,8 +61,15 @@ const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
     scope: null,
     refresh_locked_until: EPOCH,
     refresh_lease_token: null,
+    needs_renewal_since: null,
     created_at: now(),
     updated_at: now(),
+  }),
+  list_sync_status: () => ({
+    last_success_at: null,
+    title_count: null,
+    failure_reason: null,
+    failing_since: null,
   }),
   oauth_states: () => ({ created_at: now() }),
   title_id_map: () => ({
@@ -78,6 +85,7 @@ const UNIQUE_KEYS: Partial<Record<string, string[][]>> = {
   accounts: [["id"], ["legacy_imdb_user_id"]],
   lists: [["id"], ["account_id", "provider", "source_ref"]],
   connections: [["account_id", "provider"]],
+  list_sync_status: [["list_id", "provider", "source_ref"]],
   oauth_states: [["state"]],
   title_id_map: [["namespace", "external_id"]],
 };
@@ -615,8 +623,40 @@ function findAccount(args: RpcArgs): Row | undefined {
   return db.getTable("accounts").find((row) => row.id === args.p_account_id);
 }
 
+function recordListRefresh(args: RpcArgs): Result {
+  if (!db.getTable("lists").some((row) => row.id === args.p_list_id)) {
+    return { data: false, error: null };
+  }
+  const at = now();
+  const failed = args.p_failure_reason != null;
+  const existing = db
+    .getTable("list_sync_status")
+    .find(
+      (row) =>
+        row.list_id === args.p_list_id &&
+        row.provider === args.p_provider &&
+        row.source_ref === args.p_source_ref,
+    );
+  const next: Row = {
+    list_id: args.p_list_id,
+    provider: args.p_provider,
+    source_ref: args.p_source_ref,
+    last_attempt_at: at,
+    last_success_at: failed ? (existing?.last_success_at ?? null) : at,
+    title_count: failed
+      ? (existing?.title_count ?? null)
+      : (args.p_title_count ?? null),
+    failure_reason: args.p_failure_reason ?? null,
+    failing_since: failed ? (existing?.failing_since ?? at) : null,
+  };
+  if (existing) Object.assign(existing, next);
+  else db.insert("list_sync_status", next);
+  return { data: true, error: null };
+}
+
 export const defaultRpcHandlers: Partial<Record<string, RpcHandler>> = {
   replace_account_config: replaceAccountConfig,
+  record_list_refresh: recordListRefresh,
 
   claim_connection_refresh(args) {
     const row = findConnection(args);

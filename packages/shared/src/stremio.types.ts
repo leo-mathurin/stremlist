@@ -1,6 +1,7 @@
 import type { CatalogSettings } from "./catalog-settings";
 import type { DisplayMode } from "./constants";
 import type { ProviderId } from "./providers";
+import type { ListSyncStatuses } from "./sync-status";
 
 export interface CatalogData {
   metas: StremioMeta[];
@@ -23,6 +24,8 @@ export interface ConnectionSummary {
   provider: ProviderId;
   username: string | null;
   connectedAt: string;
+  /** Since when the Provider refuses this Connection, or null. */
+  needsRenewalSince: string | null;
 }
 
 /**
@@ -39,6 +42,8 @@ export interface AccountConfigResponse {
   movedAt: string | null;
   rpdbApiKey: string | null;
   lists: ConfigList[];
+  /** Sync status of the Lists above, by List ID. */
+  syncStatus: ListSyncStatuses;
   connections: ConnectionSummary[];
   actions: { enabled: boolean; providers: ProviderId[] };
   lastFetchedAt: string;

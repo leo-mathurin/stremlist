@@ -56,6 +56,7 @@ import {
   isOAuthConfigured,
   startAuthorization,
 } from "../services/oauth";
+import { getListSyncStatuses } from "../services/sync-status";
 
 const REFRESH_COOLDOWN_MS =
   (Number.isFinite(Number(process.env.REFRESH_COOLDOWN_SECONDS))
@@ -397,7 +398,7 @@ const api = new Hono()
       }
       const { account } = access;
       const [lists, connections] = await Promise.all([
-        getAccountLists(account.id),
+        getAccountLists(account.id).then((all) => visibleLists(access, all)),
         access.via === "private" ? listConnections(account.id) : [],
       ]);
       const body: AccountConfigResponse = {
@@ -405,7 +406,8 @@ const api = new Hono()
         accountId: access.via === "private" ? account.id : null,
         movedAt: account.movedAt,
         rpdbApiKey: account.rpdbApiKey,
-        lists: await withAvailableGenres(visibleLists(access, lists)),
+        lists: await withAvailableGenres(lists),
+        syncStatus: await getListSyncStatuses(lists),
         connections,
         actions: {
           enabled: account.actionsEnabled,
@@ -415,6 +417,28 @@ const api = new Hono()
         cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
       };
       return c.json(body);
+    },
+  )
+
+  // The sync status of every List and Connection, polled by the configure
+  // page while a refresh it started is still running.
+  .get(
+    "/:accountKey/sync-status",
+    zValidator("param", accountKeyParam),
+    async (c) => {
+      const { accountKey } = c.req.valid("param");
+      const access = await resolveAccountKey(accountKey);
+      if (!access) {
+        return c.json({ error: "Addon not found. Install it first." }, 404);
+      }
+      const [lists, connections] = await Promise.all([
+        getAccountLists(access.account.id),
+        access.via === "private" ? listConnections(access.account.id) : [],
+      ]);
+      return c.json({
+        syncStatus: await getListSyncStatuses(visibleLists(access, lists)),
+        connections,
+      });
     },
   )
 
@@ -566,6 +590,9 @@ const api = new Hono()
         failed,
         total: lists.length,
         lists: await withAvailableGenres(lists),
+        syncStatus: await getListSyncStatuses(lists),
+        connections:
+          access.via === "private" ? await listConnections(account.id) : [],
         cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
       });
     },

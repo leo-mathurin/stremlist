@@ -141,6 +141,7 @@ describe("listConnections and deleteConnection", () => {
         provider: "trakt",
         username: "leo",
         connectedAt: expect.any(String) as string,
+        needsRenewalSince: null,
       },
     ]);
   });

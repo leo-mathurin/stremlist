@@ -26,6 +26,7 @@ import {
   getCachedList,
   writeCachedList,
 } from "./list-cache";
+import { recordRefreshOutcome } from "./sync-status";
 
 /**
  * When the ID resolver left entries untried, the next read comes this soon
@@ -203,16 +204,44 @@ function freshnessOf(adapter: ProviderAdapter, sourceRef: string): number {
   return adapter.freshnessFor?.(sourceRef) ?? adapter.freshnessMs;
 }
 
+/** Why a read failed, in the words of the catalog card and the configure page. */
+function problemReason(error: unknown): SourceProblemReason {
+  // An expired Connection is an expected state (the user revoked access):
+  // the catalog asks to connect again instead of a 500 that Stremio retries.
+  return error instanceof SourceUnavailableError
+    ? error.reason
+    : error instanceof ConnectionExpiredError
+      ? "needs_connection"
+      : "unavailable";
+}
+
 async function fetchAndCacheList(config: ListFetchConfig): Promise<FreshList> {
-  if (!isProviderEnabled(config.provider)) {
-    throw new SourceUnavailableError(
-      "disabled",
-      `${config.provider} is turned off`,
-    );
-  }
   const adapter = getProvider(config.provider);
-  const ctx = await providerContext(config);
-  const { data, deferred } = await buildCatalog(adapter, config, ctx);
+  let ctx: ProviderContext | null = null;
+  let built: { data: CatalogData; deferred: number };
+  try {
+    if (!isProviderEnabled(config.provider)) {
+      throw new SourceUnavailableError(
+        "disabled",
+        `${config.provider} is turned off`,
+      );
+    }
+    ctx = await providerContext(config);
+    built = await buildCatalog(adapter, config, ctx);
+  } catch (error) {
+    await recordRefreshOutcome(
+      config,
+      { problem: problemReason(error) },
+      !!ctx?.connection,
+    );
+    throw error;
+  }
+  const { data, deferred } = built;
+  await recordRefreshOutcome(
+    config,
+    { titleCount: data.metas.length },
+    !!ctx.connection,
+  );
   const cachedAt = new Date();
   // Back-date the cache so the next request resumes resolution soon.
   const storedAt =
@@ -273,15 +302,7 @@ function toListError(
   error: unknown,
   message: string,
 ): ListUnavailableError {
-  // An expired Connection is an expected state (the user revoked access):
-  // the catalog asks to connect again instead of a 500 that Stremio retries.
-  const reason =
-    error instanceof SourceUnavailableError
-      ? error.reason
-      : error instanceof ConnectionExpiredError
-        ? "needs_connection"
-        : "unavailable";
-  return new ListUnavailableError(source, reason, message);
+  return new ListUnavailableError(source, problemReason(error), message);
 }
 
 /**
