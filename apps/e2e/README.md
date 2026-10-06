@@ -38,8 +38,13 @@ R2. The configure/onboarding pages of the frontend are covered too.
   counts) or compare the Stremio UI against the addon's own catalog JSON from
   the same run, so they do not depend on what is in the watchlist today.
 - The default run and pull request CI execute all three projects: deterministic
-  local coverage (45 tests), four live smoke tests, and the broader live
-  regression suite (25 tests).
+  local coverage (52 tests), four live smoke tests, and the broader live
+  regression suite (26 tests).
+- `tests/catalog-preview.spec.ts` starts a second backend with a Provider
+  transport fixture (`helpers/preview-transport.ts`): a synthetic SensCritique
+  list goes through the real adapter, Wikidata resolver, resolver cache and
+  IMDb enrichment, so the Catalog preview and its Unresolved entries are
+  deterministic. Only the local Supabase origin reaches the network.
 - The backend gets a fixed, public `CONNECTION_ENCRYPTION_KEY` from `env.ts`,
   so seeded Connections (`helpers/db.ts` `seedConnection`) decrypt like real
   ones. It is not a production key.
