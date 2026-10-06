@@ -287,7 +287,7 @@ export default function Terms() {
             Return to Home
           </Link>
         </p>
-        <p>&copy; 2025 Stremlist</p>
+        <p>&copy; {new Date().getFullYear()} Stremlist</p>
       </footer>
     </div>
   );

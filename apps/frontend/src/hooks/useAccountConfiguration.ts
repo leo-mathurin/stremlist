@@ -62,20 +62,13 @@ async function fetchConnectionSources(
 ): Promise<ConnectionSource[]> {
   const fallback = CONNECTION_SOURCES[provider] ?? [];
   try {
-    const res = await fetch(
-      `${import.meta.env.VITE_BACKEND_URL}/${encodeURIComponent(accountId)}/connections/${provider}/sources`,
-    );
+    const res = await api[":accountId"].connections[":provider"].sources.$get({
+      param: { accountId, provider },
+    });
     if (!res.ok) return fallback;
-    const body = (await res.json()) as { sources?: unknown };
-    if (!Array.isArray(body.sources)) return fallback;
-    const sources = body.sources.filter(
-      (source): source is ConnectionSource =>
-        !!source &&
-        typeof source === "object" &&
-        typeof (source as ConnectionSource).ref === "string" &&
-        typeof (source as ConnectionSource).label === "string",
-    );
-    return sources.length > 0 ? sources : fallback;
+    const body = await res.json();
+    if (!("sources" in body) || body.sources.length === 0) return fallback;
+    return body.sources;
   } catch {
     return fallback;
   }
@@ -604,6 +597,32 @@ export function useAccountConfiguration(
     }
   };
 
+  /**
+   * Read the Connections and Actions again from the server without touching
+   * the Lists being edited, so rows show what the backend now serves.
+   */
+  const refreshAccountState = async (key: string) => {
+    try {
+      const res = await api[":accountKey"].config.$get({
+        param: { accountKey: key },
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as AccountConfigResponse;
+      setConnections(data.connections);
+      setLastFetchedAt(data.lastFetchedAt);
+      const capable = actionCapableProviders(data.connections);
+      setActionOrder((current) => [
+        ...current.filter((id) => capable.includes(id)),
+        ...capable.filter((id) => !current.includes(id)),
+      ]);
+      setActionSelected((current) =>
+        current.filter((id) => capable.includes(id)),
+      );
+    } catch {
+      // The local state already reflects the disconnect.
+    }
+  };
+
   const disconnect = async (provider: ProviderId) => {
     if (!accountId) return;
     const label = PROVIDERS[provider].label;
@@ -621,8 +640,9 @@ export function useAccountConfiguration(
       setActionSelected((current) => current.filter((id) => id !== provider));
       setStatus({
         type: "info",
-        message: `${label} is disconnected. Lists that need ${label} stop updating until you connect it again.`,
+        message: `${label} is disconnected. Lists read through ${label} stop showing in Stremio until you connect it again.`,
       });
+      await refreshAccountState(accountId);
     } catch (err) {
       setStatus({
         type: "error",
@@ -652,7 +672,12 @@ export function useAccountConfiguration(
     connectionSources,
     providerStatus,
     actionsEnabled,
-    setActionsEnabled,
+    // Turning Actions on selects every capable Provider, so saving right
+    // away gives working Actions.
+    setActionsEnabled: (enabled: boolean) => {
+      setActionsEnabled(enabled);
+      if (enabled) setActionSelected(actionOrder);
+    },
     actionOrder,
     actionSelected,
     toggleActionProvider,

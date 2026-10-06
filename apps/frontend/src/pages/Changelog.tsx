@@ -107,7 +107,7 @@ const VERSIONS: Version[] = [
       {
         type: "enhancement",
         label: "Feature",
-        text: "Added built-in IMDb chart catalogs — add Most Popular and Top 250 Movies & TV, the weekend Box Office, and Coming Soon releases as ready-made catalogs, no IMDb account required.",
+        text: "Added built-in IMDb chart catalogs: add Most Popular and Top 250 Movies & TV, the weekend Box Office, and Coming Soon releases as ready-made catalogs, no IMDb account required.",
       },
       {
         type: "enhancement",
@@ -128,7 +128,7 @@ const VERSIONS: Version[] = [
       {
         type: "performance",
         label: "Performance",
-        text: "Catalogs are now served cache-first, so a fresh watchlist loads from a single fast lookup with no live IMDb fetch — making catalogs noticeably quicker and more resilient.",
+        text: "Catalogs are now served cache-first, so a fresh watchlist loads from a single fast lookup with no live IMDb fetch. This makes catalogs noticeably quicker and more resilient.",
       },
       {
         type: "bugfix",

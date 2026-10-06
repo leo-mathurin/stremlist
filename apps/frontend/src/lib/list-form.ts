@@ -7,7 +7,7 @@ import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { ProviderId } from "@stremlist/shared/providers";
 
 /** The backend accepts catalog titles up to this length. */
-export const MAX_CATALOG_TITLE_LENGTH = 30;
+export const MAX_CATALOG_TITLE_LENGTH = 60;
 
 /** One List as the configure page edits it. */
 export type ListFormRow = {

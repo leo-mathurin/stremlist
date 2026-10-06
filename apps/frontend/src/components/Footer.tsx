@@ -91,8 +91,8 @@ export default function Footer() {
         </div>
 
         <p className="text-xs text-gray-400">
-          © 2025 Stremlist. Not affiliated with Stremio, IMDb or any other list
-          service.
+          © {new Date().getFullYear()} Stremlist. Not affiliated with Stremio,
+          IMDb or any other list service.
         </p>
       </div>
     </footer>
