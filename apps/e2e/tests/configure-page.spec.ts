@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { BACKEND_URL, FRONTEND_URL } from "../env.js";
-import { bootstrapLegacy, getConfig } from "../helpers/api.js";
+import { bootstrapLegacy, createAccount, getConfig } from "../helpers/api.js";
 import { resetDb, seedAccountWithLists } from "../helpers/db.js";
 import {
   PUBLIC_LIST,
@@ -177,6 +177,36 @@ test(
     expect(body.lists.map((list) => list.sourceRef)).toEqual([
       PUBLIC_USER,
       PUBLIC_LIST,
+    ]);
+  },
+);
+
+test(
+  "the first List of an Account saved without Lists asks for a reinstall",
+  { tag: "@local" },
+  async ({ page }) => {
+    // Simkl and MDBList users create the Account first, to connect.
+    const { body } = await createAccount([]);
+    const accountId = body.accountId!;
+    await page.goto(configureUrl(accountId));
+    await expect(page.getByText("No Lists yet")).toBeVisible();
+    await page.getByRole("button", { name: "Add an IMDb chart" }).click();
+    await page
+      .getByRole("menuitem", { name: /^Box Office \(Weekend\)/ })
+      .click();
+    await save(page);
+    await expect(
+      page.getByText(
+        "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions.",
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: "Reinstall in Stremio to see your changes",
+      }),
+    ).toBeVisible();
+    expect((await getConfig(accountId)).body.lists).toMatchObject([
+      { provider: "imdb", sourceRef: "imdb:box-office" },
     ]);
   },
 );

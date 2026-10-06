@@ -1,7 +1,7 @@
 # User-journey coverage
 
-The current inventory contains 47 tester-army browser tests and 79 Playwright
-integration tests (49 `local`, 4 `live-smoke`, 26 `live-regression`). This
+The current inventory contains 47 tester-army browser tests and 80 Playwright
+integration tests (50 `local`, 4 `live-smoke`, 26 `live-regression`). This
 inventory maps supported routes and domain actions to tests. It is not a claim
 that every possible input or external-service condition is covered. CI remains
 strict, read-only and credential-free for AI replay.
@@ -28,7 +28,7 @@ mocked browser test is not mistaken for a missing feature.
 | New setup from a pasted link (Home or Configure) | `ui.e2e.ts`: Provider detection hints, Addon URL detection, reset; profile URL to canonical `ur…` and first save to Account ID install links; private/unknown/offline link refusals                                                                                                                                                                       | `home-onboarding.spec.ts`: live link, first save creates the Account, install links; unknown and unrecognized links; `addon-api.spec.ts`: `/links/resolve` for public, private, unknown, `p.` handle, chart, unrecognized and MDBList needs-Connection; new Account creation                                                                                                                                                         | IMDb can change public fixtures                                                             |
 | Returning install and switching Account          | `ui.e2e.ts`: open by Addon URL, old `?userId=` link to the Legacy alias view; `account-newsletter.e2e.ts`: go home, open another Addon URL, discard the old draft and load the new filters                                                                                                                                                                | `configure-page.spec.ts`: Addon URL (`stremio://`) for an Account and a Legacy alias; `home-onboarding.spec.ts`: `?userId=` redirect                                                                                                                                                                                                                                                                                                 | No account login exists in this app; the Addon URL is the credential (ADR 0001)             |
 | `/configure` entry and loading                   | `configuration-recovery.e2e.ts`: invalid/private/unknown/offline link, then canonical profile and first save; `ui.e2e.ts`: missing Account, load retry, failed lookup never becomes a new setup                                                                                                                                                           | `configure-page.spec.ts`: real load, failed-load retry, unknown Account ID and Legacy alias                                                                                                                                                                                                                                                                                                                                          | None for the local workflow                                                                 |
-| List add/edit/remove and link normalization      | `ui.e2e.ts`: duplicate link refused, title edit, removing every List disables Save, ten-List limit; `configuration-recovery.e2e.ts`: unrecognized link, pasted list URL, canonical duplicate refusal and repair                                                                                                                                           | `configure-page.spec.ts`: live list link and chart add/remove; `configuration-transitions.spec.ts`: saved removal/reload, retired URL empty, 61-character title refused by the API and capped by the field                                                                                                                                                                                                                           | Handle normalization uses a fixture for the canonical collision                             |
+| List add/edit/remove and link normalization      | `ui.e2e.ts`: duplicate link refused, title edit, removing every List disables Save, ten-List limit; `configuration-recovery.e2e.ts`: unrecognized link, pasted list URL, canonical duplicate refusal and repair                                                                                                                                           | `configure-page.spec.ts`: live list link and chart add/remove, first List of an Account saved without Lists asks for a reinstall; `configuration-transitions.spec.ts`: saved removal/reload, retired URL empty, 61-character title refused by the API and capped by the field                                                                                                                                                        | Handle normalization uses a fixture for the canonical collision                             |
 | Built-in charts and content type                 | `ui.e2e.ts`: add chart, disabled duplicate menu item, IMDb and Trakt charts up to the limit                                                                                                                                                                                                                                                               | `configuration-transitions.spec.ts`: movie-to-TV chart change keeps List ID, persists series mode, updates manifest and reloads; `addon-api.spec.ts`: content modes                                                                                                                                                                                                                                                                  | Live chart contents are structural assertions, not fixed rankings                           |
 | List order and titles                            | `ui.e2e.ts`: pointer reorder, exact saved positions                                                                                                                                                                                                                                                                                                       | `configuration-transitions.spec.ts`: default titles renumber after reorder, survive reload, manifest order matches                                                                                                                                                                                                                                                                                                                   | None for local persistence                                                                  |
 | Sort/filter/search                               | `ui.e2e.ts`: genre/preset save/clear; `configuration-recovery.e2e.ts`: saved genre absent from available choices can be cleared                                                                                                                                                                                                                           | `catalog-features.spec.ts`: combined filters/reload/clear, accented and URL-sensitive search, stable shuffle pagination; `addon-api.spec.ts`: all sort options; `configuration-transitions.spec.ts`: empty results recover after removing one filter                                                                                                                                                                                 | Hosted Stremio UI can change                                                                |
@@ -179,12 +179,12 @@ build format:check` passed.
 On 2026-10-07 the List sync status journeys (STR-58) were added: six toolkit
 tests in `sync-status.e2e.ts`, one with a new AI goal (2 model calls to record),
 and five Playwright tests in `sync-status.spec.ts` (four `local`, one
-`live-regression`). Two complete runs passed: the strict replay passed all 47
-toolkit tests and replayed fourteen recordings with zero model calls, and
-Playwright passed all 79 tests with no retry or skip. The new cache file
-contains no credential patterns. The page now polls `/:accountKey/sync-status`
-while a saved List waits for its first refresh, so `baseRoutes()` answers that
-poll with the fixture statuses.
+`live-regression`). The strict replay passed all 47 toolkit tests and replayed
+fourteen recordings with zero model calls, and Playwright passed every test
+with no retry or skip, in two complete runs. The new cache file contains no
+credential patterns. The page now polls `/:accountKey/sync-status` while a
+saved List waits for its first refresh, so `baseRoutes()` answers that poll
+with the fixture statuses.
 
 The port found these points:
 
@@ -195,6 +195,12 @@ The port found these points:
   instead of failing only the first request.
 - Chromium counts a selected value against `maxlength` when Playwright fills a
   field, so the title-limit test clears the field first.
+- An Account saved without Lists (created to connect a Provider first) did
+  not get the reinstall message when its first List was saved, although the
+  manifest gained Catalogs. The reinstall decision now treats an empty List
+  set as a known baseline (`apps/frontend/src/lib/reinstall.ts`, unit test in
+  `apps/frontend/scripts/reinstall.test.ts`). `configure-page.spec.ts` and
+  `configuration-recovery.e2e.ts` check the message.
 
 Earlier regressions on this PR fixed failed lookup being treated as an existing
 account, reinstall baselines after new row IDs, edits lost during saves,
@@ -204,10 +210,6 @@ the current inventory, ported to the new screens.
 
 ## Known limits
 
-- When an Account that was saved without Lists (created to connect a Provider
-  first) gets its first List, the save message does not ask for a reinstall,
-  although the manifest gains Catalogs. The reinstall baseline is empty in
-  that case. The toolkit asserts only that the save succeeds.
 - IMDb validation currently classifies some upstream HTTP/network failures as
   `not_found`. This is inherited in the scraper and its unit contracts. The
   provider tests do not assert that this diagnostic is correct. Separating
