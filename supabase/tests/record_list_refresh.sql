@@ -14,7 +14,7 @@ BEGIN
   -- A first success stores the time and the Title count.
   ASSERT public.record_list_refresh(target, 'imdb', 'ur5', NULL, 12);
   SELECT * INTO status FROM public.list_sync_status WHERE list_id = target;
-  ASSERT status.last_success_at IS NOT NULL AND status.title_count = 12;
+  ASSERT status.last_success_at = status.last_attempt_at AND status.title_count = 12;
   ASSERT status.failure_reason IS NULL AND status.failing_since IS NULL;
 
   -- Failures keep the last success and its count; the run starts once.
@@ -22,6 +22,8 @@ BEGIN
   SELECT * INTO status FROM public.list_sync_status WHERE list_id = target;
   ASSERT status.failure_reason = 'private' AND status.title_count = 12;
   ASSERT status.last_success_at IS NOT NULL AND status.failing_since IS NOT NULL;
+  ASSERT status.failing_since = status.last_attempt_at,
+    'A failure run starts at its first failed attempt';
   first_failure := status.failing_since;
 
   ASSERT public.record_list_refresh(target, 'imdb', 'ur5', 'unavailable', NULL);

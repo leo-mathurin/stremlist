@@ -41,17 +41,22 @@ LANGUAGE sql
 SECURITY INVOKER
 SET search_path = ''
 AS $$
-  WITH recorded AS (
+  -- One time for the whole outcome, so the attempt, the success and the
+  -- start of a failure run are equal when they are the same event.
+  WITH outcome AS (
+    SELECT clock_timestamp() AS at
+  ),
+  recorded AS (
     INSERT INTO public.list_sync_status AS s (
       list_id, provider, source_ref, last_attempt_at, last_success_at,
       title_count, failure_reason, failing_since
     )
-    SELECT p_list_id, p_provider, p_source_ref, clock_timestamp(),
-      CASE WHEN p_failure_reason IS NULL THEN clock_timestamp() END,
+    SELECT p_list_id, p_provider, p_source_ref, outcome.at,
+      CASE WHEN p_failure_reason IS NULL THEN outcome.at END,
       CASE WHEN p_failure_reason IS NULL THEN p_title_count END,
       p_failure_reason,
-      CASE WHEN p_failure_reason IS NULL THEN NULL ELSE clock_timestamp() END
-    FROM public.lists l
+      CASE WHEN p_failure_reason IS NULL THEN NULL ELSE outcome.at END
+    FROM public.lists l, outcome
     WHERE l.id = p_list_id
     ON CONFLICT (list_id, provider, source_ref) DO UPDATE SET
       last_attempt_at = EXCLUDED.last_attempt_at,
