@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-05T21:20:00.266Z",
+  "createdAt": "2026-10-06T19:48:01.081Z",
   "payload": {
     "actions": [
       {
@@ -32,13 +32,13 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Cleared the Drama genre filter; the panel showed 1 active option remaining and Top rated remained checked. Saved, and the app confirmed: “Saved! Your catalogs will be refreshed with the new settings.”",
-    "startPath": "/configure?userId=ur99123456",
-    "endPath": "/configure?userId=ur99123456",
+    "summary": "Cleared the Test catalog filters (Genre now shows All genres) without changing the checked Top rated extra catalog, then saved. The page confirms: “Saved! Your catalogs will refresh with the new settings.”",
+    "startPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
-        "role": "alert",
-        "name": "Saved! Your catalogs will be refreshed with the new settings."
+        "role": "status",
+        "name": "Saved! Your catalogs will refresh with the new settings."
       },
       {
         "text": "1 active"
@@ -47,13 +47,11 @@
         "text": "All genres"
       },
       {
-        "text": "Saved! Your catalogs will be refreshed with the new settings."
+        "role": "heading",
+        "name": "Install or reinstall in Stremio"
       },
       {
-        "text": "Install / Reinstall Addon in Stremio"
-      },
-      {
-        "text": "Use these install links anytime to reopen or reinstall the addon URL in Stremio."
+        "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
       },
       {
         "role": "button",
@@ -65,8 +63,8 @@
     ],
     "goneAnchors": [
       {
-        "role": "alert",
-        "name": "Saved! Catalog structure changed. Reinstall the addon in Stremio to refresh catalogs."
+        "role": "status",
+        "name": "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions."
       },
       {
         "text": "2 active"
@@ -79,13 +77,11 @@
         "text": "Drama"
       },
       {
-        "text": "Saved! Catalog structure changed. Reinstall the addon in Stremio to refresh catalogs."
+        "role": "heading",
+        "name": "Reinstall in Stremio to see your changes"
       },
       {
-        "text": "Catalog structure changed: reinstall required in Stremio"
-      },
-      {
-        "text": "Stremio only reads manifest catalogs at install time, so modifications to catalogs will appear after reinstalling this addon URL."
+        "text": "Stremio reads the catalogs and Actions only when you install an addon, so your changes appear after you reinstall this Addon URL."
       },
       {
         "role": "button",
@@ -95,6 +91,6 @@
         ]
       }
     ],
-    "endWaitMs": 13207
+    "endWaitMs": 12479
   }
 }
