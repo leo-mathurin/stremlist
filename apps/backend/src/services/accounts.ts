@@ -22,7 +22,7 @@ export interface Account {
   rpdbApiKey: string | null;
   actionsEnabled: boolean;
   actionProviders: ProviderId[];
-  /** Whether the manifest offers the "New titles" catalog (ADR 0004). */
+  /** Whether the manifest offers the "New titles" catalog (ADR 0007). */
   newTitlesCatalog: boolean;
   lastFetchedAt: string;
 }

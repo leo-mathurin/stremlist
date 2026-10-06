@@ -19,7 +19,8 @@ import { getAccountLists, markAccountFetched } from "./accounts";
 import type { CatalogSort } from "./catalog-sort";
 import { sortCatalog } from "./catalog-sort";
 import { ConnectionExpiredError, getConnectionAccess } from "./connections";
-import { recordSynchronization } from "./detections";
+import type { SynchronizedEntry } from "./detections";
+import { recordSynchronization, synchronizedEntries } from "./detections";
 import { buildPosterUrl } from "./imdb-scraper";
 import {
   deleteCachedList,
@@ -144,11 +145,11 @@ interface BuiltCatalog {
   data: CatalogData;
   deferred: number;
   /**
-   * The IMDb IDs of the Source list when this read is a complete, successful
-   * synchronization: every page read and every entry resolved. Null
-   * otherwise, so the read never counts for detection (ADR 0004).
+   * Every entry of the Source list, resolved or not, when this read is a
+   * complete, successful synchronization (every page read). Null otherwise,
+   * so the read never counts for detection (ADR 0007).
    */
-  completeIds: string[] | null;
+  synchronized: SynchronizedEntry[] | null;
 }
 
 /** Turn a Provider snapshot into a canonical Catalog (provider order). */
@@ -166,7 +167,11 @@ async function buildCatalog(
     return {
       data: { metas },
       deferred: 0,
-      completeIds: allPages ? metas.map((meta) => meta.id) : null,
+      synchronized: allPages
+        ? synchronizedEntries(adapter, snapshot.entries, (entry) =>
+            entry.meta ? entry.meta.id : null,
+          )
+        : null,
     };
   }
 
@@ -204,6 +209,9 @@ async function buildCatalog(
     metas.push(withLinkBack(meta, entry, config.provider));
   }
 
+  const imdbIdByEntry = new Map(
+    resolved.map(({ entry, imdbId }) => [entry, imdbId]),
+  );
   if (unresolved > 0 || unknown > 0) {
     console.log(
       `List ${config.listId} (${config.provider}): ${metas.length} titles, ${unresolved} unresolved entries (${deferred} not tried yet), ${unknown} without metadata`,
@@ -212,11 +220,15 @@ async function buildCatalog(
   return {
     data: { metas },
     deferred,
-    // Titles without metadata are still in the Source list: they count.
-    completeIds:
-      allPages && unresolved === 0
-        ? resolved.map(({ imdbId }) => imdbId)
-        : null,
+    // Unresolved entries and Titles without metadata are still in the
+    // Source list: they count, by their entry key.
+    synchronized: allPages
+      ? synchronizedEntries(
+          adapter,
+          snapshot.entries,
+          (entry) => imdbIdByEntry.get(entry) ?? null,
+        )
+      : null,
   };
 }
 
@@ -233,7 +245,7 @@ async function fetchAndCacheList(config: ListFetchConfig): Promise<FreshList> {
   }
   const adapter = getProvider(config.provider);
   const ctx = await providerContext(config);
-  const { data, deferred, completeIds } = await buildCatalog(
+  const { data, deferred, synchronized } = await buildCatalog(
     adapter,
     config,
     ctx,
@@ -256,11 +268,11 @@ async function fetchAndCacheList(config: ListFetchConfig): Promise<FreshList> {
   } catch (error) {
     console.error(`Failed to cache list ${config.listId} in R2:`, error);
   }
-  if (completeIds) {
+  if (synchronized) {
     await recordSynchronization(
       config.accountId,
       config,
-      completeIds,
+      synchronized,
       cachedAt,
     );
   }

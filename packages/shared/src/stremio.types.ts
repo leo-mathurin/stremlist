@@ -31,15 +31,16 @@ export interface ConnectionSummary {
  */
 export type AddonAccess = "private" | "legacy";
 
-/** The state of the "New titles" catalog of an Account (ADR 0004). */
+/** The state of the "New titles" catalog of an Account (ADR 0007). */
 export interface NewTitlesSummary {
   /** Detected Titles that the Lists still contain, one per Title. */
   detected: number;
   /** The most recent detection, or null before the first one. */
   latestDetectedAt: string | null;
   /**
-   * Lists without a complete, successful refresh yet. They have no Baseline,
-   * so nothing can be detected in them until they get one.
+   * Lists without a complete, successful refresh yet (every read failed or
+   * was cut short by a page cap). They have no Baseline, so nothing can be
+   * detected in them until they get one. Unresolved entries do not count.
    */
   waitingLists: number;
 }

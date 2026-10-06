@@ -482,7 +482,7 @@ describe("fetchWatchlist (unit)", () => {
     const { metas, complete } = await fetchWatchlist("ur195879360");
 
     expect(metas).toHaveLength(15_000);
-    // Served, but not a complete synchronization (ADR 0004).
+    // Served, but not a complete synchronization (ADR 0007).
     expect(complete).toBe(false);
   });
 

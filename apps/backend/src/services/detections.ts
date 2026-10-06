@@ -10,20 +10,29 @@ import type {
   StremioMeta,
 } from "@stremlist/shared/stremio.types";
 import { supabase } from "../lib/supabase";
+import type { ProviderAdapter, SourceEntry } from "../providers/types";
 import type { AccountAccess } from "./accounts";
 import { getAccountLists } from "./accounts";
 import { buildPosterUrl } from "./imdb-scraper";
 import { getCachedList } from "./list-cache";
 
 /**
- * Detections (ADR 0004): Stremlist compares each complete, successful
- * synchronization of a Source list with the one before, and records when a
- * Title first appears. The first complete synchronization is the Baseline.
+ * Detections (ADR 0007): Stremlist compares each complete, successful
+ * synchronization of a Source list with the one before, entry by entry, and
+ * records when an entry first appears. The first complete synchronization is
+ * the Baseline.
  */
 
 interface SourceKey {
   provider: ProviderId;
   sourceRef: string;
+}
+
+/** One entry of a complete synchronization, by its stable key. */
+export interface SynchronizedEntry {
+  key: string;
+  /** Null for an Unresolved entry. */
+  imdbId: string | null;
 }
 
 /** One Title of the "New titles" catalog, with its first detection. */
@@ -35,8 +44,8 @@ interface Detection {
 }
 
 /**
- * Most detection rows read for one catalog request, newest first. Older
- * detections drop out of the catalog, which only shows what is new.
+ * Most Titles read for one catalog request, newest first. Older detections
+ * drop out of the catalog, which only shows what is new.
  */
 const MAX_DETECTIONS = 1000;
 
@@ -63,23 +72,63 @@ function visibleLists(
       );
 }
 
+function normalizeTitle(title: string): string {
+  return title
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
 /**
- * Record one complete, successful synchronization of a Source list. Callers
- * must not call this for a failed or incomplete read (a Provider error, a
- * page cap, an Unresolved entry): a missing Title would look like a removal.
- * Never throws, because a catalog must not fail on its history.
+ * The stable identity of an entry in its Source list, resolved or not: the
+ * Provider's own ID (the resolver key), else the IMDb ID, else a normalized
+ * title and year for Providers that give no ID for the entry. Null when the
+ * entry has none of these: it cannot be followed between synchronizations.
+ */
+export function entryKey(
+  adapter: ProviderAdapter,
+  entry: SourceEntry,
+): string | null {
+  const key = adapter.resolutionKey?.(entry);
+  if (key) return `${key.namespace}:${key.externalId}`;
+  if (entry.imdbId) return `imdb:${entry.imdbId}`;
+  const title = entry.title ? normalizeTitle(entry.title) : "";
+  return title ? `title:${title}:${entry.year ?? ""}` : null;
+}
+
+/** The entries of a complete synchronization, with their Titles if known. */
+export function synchronizedEntries(
+  adapter: ProviderAdapter,
+  entries: SourceEntry[],
+  imdbIdOf: (entry: SourceEntry) => string | null,
+): SynchronizedEntry[] {
+  return entries.flatMap((entry) => {
+    const key = entryKey(adapter, entry);
+    return key ? [{ key, imdbId: imdbIdOf(entry) }] : [];
+  });
+}
+
+/**
+ * Record one complete, successful synchronization of a Source list: no
+ * Provider error and every page read. Unresolved entries are fine. Callers
+ * must not call this for a failed or cut-short read: a missing entry would
+ * look like a removal. Never throws, because a catalog must not fail on its
+ * history.
  */
 export async function recordSynchronization(
   accountId: string,
   source: SourceKey & { listId: string },
-  imdbIds: string[],
+  entries: SynchronizedEntry[],
   syncedAt: Date,
 ): Promise<void> {
   const { data, error } = await supabase.rpc("record_source_list_sync", {
     p_account_id: accountId,
     p_provider: source.provider,
     p_source_ref: source.sourceRef,
-    p_imdb_ids: imdbIds,
+    p_entry_keys: entries.map((entry) => entry.key),
+    p_imdb_ids: entries.map((entry) => entry.imdbId),
     p_synced_at: syncedAt.toISOString(),
   });
   if (error) {
@@ -90,51 +139,40 @@ export async function recordSynchronization(
     return;
   }
   if (data) {
-    console.log(`List ${source.listId}: ${data} newly detected titles`);
+    console.log(`List ${source.listId}: ${data} new entries`);
   }
 }
 
 /**
  * Detected Titles that the Lists still contain, newest first, one per Title:
- * a Title that several Lists have keeps its earliest detection.
+ * a Title that several Lists have keeps its earliest detection. The rules
+ * live in public.list_new_titles.
  */
 async function loadDetections(
   accountId: string,
   lists: ConfigList[],
 ): Promise<Detection[]> {
   if (lists.length === 0) return [];
-  const { data, error } = await supabase
-    .from("title_detections")
-    .select("provider, source_ref, imdb_id, detected_at")
-    .eq("account_id", accountId)
-    .in("source_ref", [...new Set(lists.map((list) => list.sourceRef))])
-    .not("detected_at", "is", null)
-    .is("removed_at", null)
-    .order("detected_at", { ascending: false })
-    .limit(MAX_DETECTIONS);
+  const { data, error } = await supabase.rpc("list_new_titles", {
+    p_account_id: accountId,
+    p_providers: lists.map((list) => list.provider),
+    p_source_refs: lists.map((list) => list.sourceRef),
+    p_limit: MAX_DETECTIONS,
+  });
   if (error) throw error;
 
   const listsBySource = new Map(lists.map((list) => [sourceKey(list), list]));
-  const earliest = new Map<string, Detection>();
-  for (const row of data) {
+  return data.flatMap((row) => {
     const list = listsBySource.get(
       sourceKey({
         provider: row.provider as ProviderId,
         sourceRef: row.source_ref,
       }),
     );
-    if (!list || !row.detected_at) continue;
-    const detectedAt = new Date(row.detected_at);
-    const current = earliest.get(row.imdb_id);
-    if (!current || detectedAt < current.detectedAt) {
-      earliest.set(row.imdb_id, { imdbId: row.imdb_id, detectedAt, list });
-    }
-  }
-  return [...earliest.values()].sort(
-    (a, b) =>
-      b.detectedAt.getTime() - a.detectedAt.getTime() ||
-      a.imdbId.localeCompare(b.imdbId),
-  );
+    return list
+      ? [{ imdbId: row.imdb_id, detectedAt: new Date(row.detected_at), list }]
+      : [];
+  });
 }
 
 /** The List's name as the user sees it, for the detection line. */

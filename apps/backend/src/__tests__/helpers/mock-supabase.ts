@@ -73,7 +73,11 @@ const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
     retry_after: null,
   }),
   source_list_syncs: () => ({}),
-  title_detections: () => ({ detected_at: null, removed_at: null }),
+  source_list_entries: () => ({
+    imdb_id: null,
+    detected_at: null,
+    removed_at: null,
+  }),
 };
 
 /** Unique constraints from the migrations, per table. */
@@ -84,14 +88,14 @@ const UNIQUE_KEYS: Partial<Record<string, string[][]>> = {
   oauth_states: [["state"]],
   title_id_map: [["namespace", "external_id"]],
   source_list_syncs: [["account_id", "provider", "source_ref"]],
-  title_detections: [["account_id", "provider", "source_ref", "imdb_id"]],
+  source_list_entries: [["account_id", "provider", "source_ref", "entry_key"]],
 };
 
 /** Foreign keys with ON DELETE CASCADE, as child table and shared columns. */
 const CASCADES: Partial<Record<string, { table: string; columns: string[] }>> =
   {
     source_list_syncs: {
-      table: "title_detections",
+      table: "source_list_entries",
       columns: ["account_id", "provider", "source_ref"],
     },
   };
@@ -653,7 +657,16 @@ function recordSourceListSync(args: RpcArgs): Result {
     row.account_id === key.account_id &&
     row.provider === key.provider &&
     row.source_ref === key.source_ref;
-  const ids = [...new Set((args.p_imdb_ids as string[] | null) ?? [])];
+  const keys = (args.p_entry_keys as string[] | null) ?? [];
+  const imdbIds = (args.p_imdb_ids as (string | null)[] | null) ?? [];
+  if (keys.length !== imdbIds.length) {
+    return rpcError("Entry keys and IMDb IDs must have the same length");
+  }
+  // One pair per entry key; a resolved duplicate wins over an unresolved one.
+  const entries = new Map<string, string | null>();
+  keys.forEach((entryKey, index) => {
+    entries.set(entryKey, entries.get(entryKey) ?? imdbIds[index]);
+  });
   const syncedAt = new Date(args.p_synced_at as string).toISOString();
   const state = db.getTable("source_list_syncs").find(matches);
 
@@ -666,8 +679,12 @@ function recordSourceListSync(args: RpcArgs): Result {
       baseline_at: syncedAt,
       last_complete_sync_at: syncedAt,
     });
-    for (const imdbId of ids) {
-      db.insert("title_detections", { ...key, imdb_id: imdbId });
+    for (const [entryKey, imdbId] of entries) {
+      db.insert("source_list_entries", {
+        ...key,
+        entry_key: entryKey,
+        imdb_id: imdbId,
+      });
     }
     return { data: 0, error: null };
   }
@@ -675,28 +692,102 @@ function recordSourceListSync(args: RpcArgs): Result {
     return { data: null, error: null };
   }
 
-  const rows = db.getTable("title_detections").filter(matches);
+  const rows = db.getTable("source_list_entries").filter(matches);
   for (const row of rows) {
-    const present = ids.includes(row.imdb_id as string);
-    if (present && row.removed_at) row.removed_at = null;
-    if (!present && !row.removed_at) row.removed_at = syncedAt;
+    const entryKey = row.entry_key as string;
+    if (!entries.has(entryKey)) {
+      row.removed_at ??= syncedAt;
+      continue;
+    }
+    row.removed_at = null;
+    row.imdb_id = entries.get(entryKey) ?? row.imdb_id;
   }
-  const known = new Set(rows.map((row) => row.imdb_id));
-  const added = ids.filter((imdbId) => !known.has(imdbId));
-  for (const imdbId of added) {
-    db.insert("title_detections", {
+  const known = new Set(rows.map((row) => row.entry_key));
+  let added = 0;
+  for (const [entryKey, imdbId] of entries) {
+    if (known.has(entryKey)) continue;
+    db.insert("source_list_entries", {
       ...key,
+      entry_key: entryKey,
       imdb_id: imdbId,
       detected_at: syncedAt,
     });
+    added += 1;
   }
   state.last_complete_sync_at = syncedAt;
-  return { data: added.length, error: null };
+  return { data: added, error: null };
+}
+
+/** Same rules as public.list_new_titles. */
+function listNewTitles(args: RpcArgs): Result {
+  const providers = args.p_providers as string[];
+  const refs = args.p_source_refs as string[];
+  const sources = new Set(
+    providers.map((provider, index) => `${provider}\u0000${refs[index]}`),
+  );
+  const perSource = new Map<
+    string,
+    {
+      imdb_id: string;
+      provider: string;
+      source_ref: string;
+      detected_at: string | null;
+      inBaseline: boolean;
+      present: boolean;
+    }
+  >();
+  for (const row of db.getTable("source_list_entries")) {
+    const source = `${String(row.provider)}\u0000${String(row.source_ref)}`;
+    if (
+      row.account_id !== args.p_account_id ||
+      !row.imdb_id ||
+      !sources.has(source)
+    ) {
+      continue;
+    }
+    const imdbId = row.imdb_id as string;
+    const groupKey = `${source}\u0000${imdbId}`;
+    const group = perSource.get(groupKey) ?? {
+      imdb_id: imdbId,
+      provider: row.provider as string,
+      source_ref: row.source_ref as string,
+      detected_at: null,
+      inBaseline: false,
+      present: false,
+    };
+    const detectedAt = row.detected_at as string | null;
+    if (!detectedAt) group.inBaseline = true;
+    else if (!group.detected_at || detectedAt < group.detected_at) {
+      group.detected_at = detectedAt;
+    }
+    if (!row.removed_at) group.present = true;
+    perSource.set(groupKey, group);
+  }
+  const earliest = new Map<string, Row>();
+  for (const group of perSource.values()) {
+    if (!group.present || group.inBaseline || !group.detected_at) continue;
+    const current = earliest.get(group.imdb_id);
+    if (!current || group.detected_at < String(current.detected_at)) {
+      earliest.set(group.imdb_id, {
+        imdb_id: group.imdb_id,
+        provider: group.provider,
+        source_ref: group.source_ref,
+        detected_at: group.detected_at,
+      });
+    }
+  }
+  const rows = [...earliest.values()].sort(
+    (a, b) =>
+      String(b.detected_at).localeCompare(String(a.detected_at)) ||
+      String(a.imdb_id).localeCompare(String(b.imdb_id)),
+  );
+  return { data: rows.slice(0, args.p_limit as number), error: null };
 }
 
 export const defaultRpcHandlers: Partial<Record<string, RpcHandler>> = {
   replace_account_config: replaceAccountConfig,
   record_source_list_sync: recordSourceListSync,
+  list_new_titles: listNewTitles,
 
   claim_connection_refresh(args) {
     const row = findConnection(args);

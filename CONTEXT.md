@@ -53,27 +53,21 @@ _Avoid_: Missing item, dropped item
 ### Detection
 
 **Synchronization**:
-One read of a Source list by Stremlist. It is complete and successful only when the Provider read did not fail, every page was read, and no entry stayed an Unresolved entry. Only those are compared.
+One read of a Source list by Stremlist. It is complete and successful only when the Provider read did not fail and every page was read. Unresolved entries do not make it incomplete. Only complete, successful ones are compared.
 _Avoid_: Sync (in prose), fetch
 
+**Entry key**:
+The stable identity of an entry in its Source list, resolved or not: the Provider's own ID for the entry, else its IMDb ID, else its normalized title and year. Synchronizations are compared by entry key.
+_Avoid_: Item ID
+
 **Baseline**:
-The Titles of the first complete, successful Synchronization of a Source list for an Account. They are known, but never new.
+The entries of the first complete, successful Synchronization of a Source list for an Account. They are known, but never new, also when they resolve later.
 _Avoid_: Initial import (in code), snapshot
 
 **Detection**:
-The moment a complete, successful Synchronization first has a Title that the previous one did not have. Its date is when Stremlist saw the Title, not when the user added it on the Provider. A Title that leaves and comes back keeps its first Detection.
+The moment a complete, successful Synchronization first has an entry that the previous one did not have. Its date is when Stremlist saw the entry, not when the user added it on the Provider, and it stays the same when the entry resolves later. An entry that leaves and comes back keeps its first Detection.
 _Avoid_: Addition, added date
 
 **New titles**:
-The Catalog of an Account that shows its detected Titles across all its Lists, each Title once with its earliest Detection, newest first.
+The Catalog of an Account that shows the Titles of its detected entries across all its Lists, each Title once with its earliest Detection, newest first.
 _Avoid_: Recently added, feed
-
-### Provider access
-
-**Connection**:
-The authorization that links one Account to its user on one Provider, so Stremlist can read private Source lists and perform Actions. An Account has at most one Connection per Provider.
-_Avoid_: Integration, link, login
-
-**Action**:
-A change that a user asks Stremlist to make on a Provider from inside Stremio, such as add to watchlist, remove from watchlist, mark as watched, or rate. Only a Provider with a Connection supports Actions.
-_Avoid_: Write, sync-back

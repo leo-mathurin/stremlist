@@ -21,7 +21,7 @@ vi.mock("../lib/resend", () => ({
 import app from "../index.js";
 import type { SourceEntry, SourceSnapshot } from "../providers/types";
 import { SourceUnavailableError } from "../providers/types";
-import { forgetConnectionDetections } from "../services/detections";
+import { entryKey, forgetConnectionDetections } from "../services/detections";
 import {
   LIST_IDS,
   movie,
@@ -103,7 +103,7 @@ function ids(metas: StremioMeta[]): string[] {
 }
 
 function detectionRows() {
-  return db.getTable("title_detections");
+  return db.getTable("source_list_entries");
 }
 
 async function summary() {
@@ -193,6 +193,13 @@ describe("detection", () => {
 
     expect(ids(await newTitles())).toEqual(["tt0000002"]);
     expect(detectionRows().every((row) => row.removed_at === null)).toBe(true);
+
+    // The next complete one is compared with the last complete one.
+    source.read = null;
+    await sync(LIST_IDS[0]);
+    expect(ids(await newTitles())).toEqual(["tt0000002"]);
+    expect(detectionRows()).toHaveLength(2);
+    expect(detectionRows().every((row) => row.removed_at === null)).toBe(true);
   });
 
   it("does not compare a read cut by a page cap", async () => {
@@ -218,45 +225,6 @@ describe("detection", () => {
     await sync(LIST_IDS[0]);
     const row = detectionRows().find((r) => r.imdb_id === "tt0000003");
     expect(row?.detected_at).toBe(new Date().toISOString());
-  });
-
-  it("does not compare a read with an Unresolved entry", async () => {
-    seedNewTitlesAccount();
-    seedList(accountId, { id: LIST_IDS[0], source_ref: "ur1" });
-    const unresolved: SourceEntry = { title: "Not on IMDb yet", type: "movie" };
-    const source = sourceList("imdb", []);
-    source.read = () => ({
-      entries: [entry(movie("tt0000001")), unresolved],
-    });
-
-    // No Baseline while an entry is unresolved.
-    await sync(LIST_IDS[0]);
-    expect(db.getTable("source_list_syncs")).toEqual([]);
-    expect((await summary()).summary?.waitingLists).toBe(1);
-
-    // The entry resolves: the Baseline has it, so it is not "new".
-    source.read = null;
-    source.metas = [movie("tt0000001"), movie("tt0000009")];
-    await sync(LIST_IDS[0]);
-    expect(await newTitles()).toEqual([]);
-
-    // A new Title next to an Unresolved entry waits for a complete read.
-    source.read = () => ({
-      entries: [
-        entry(movie("tt0000001")),
-        entry(movie("tt0000009")),
-        entry(movie("tt0000010")),
-        unresolved,
-      ],
-    });
-    await sync(LIST_IDS[0]);
-    expect(await newTitles()).toEqual([]);
-    expect(detectionRows().every((row) => row.removed_at === null)).toBe(true);
-
-    source.read = null;
-    source.metas = [movie("tt0000001"), movie("tt0000009"), movie("tt0000010")];
-    await sync(LIST_IDS[0]);
-    expect(ids(await newTitles())).toEqual(["tt0000010"]);
   });
 
   it("keeps the first detection of a Title that is removed and added again", async () => {
@@ -295,6 +263,149 @@ describe("detection", () => {
 
     // Compared with the earlier Baseline, not taken as a new one.
     expect(ids(await newTitles())).toEqual(["tt0000002"]);
+  });
+});
+
+/**
+ * A Source list whose entries carry a Provider ID (the entry key) and
+ * resolve through a strategy that knows only the IDs in `known`.
+ */
+function resolvingSourceList() {
+  const state = {
+    entries: [] as SourceEntry[],
+    known: new Map<number, string>(),
+  };
+  useFakeProvider(
+    fakeAdapter("trakt", {
+      fetchSource: () =>
+        Promise.resolve({ entries: structuredClone(state.entries) }),
+      resolutionKey: (item) =>
+        item.externalIds?.trakt === undefined
+          ? null
+          : { namespace: "fake", externalId: String(item.externalIds.trakt) },
+      resolverStrategies: [
+        {
+          name: "fake",
+          resolve: (items) =>
+            Promise.resolve(
+              new Map(
+                items.flatMap((item, index) => {
+                  const imdbId = state.known.get(item.externalIds?.trakt ?? -1);
+                  return imdbId ? [[index, imdbId] as const] : [];
+                }),
+              ),
+            ),
+        },
+      ],
+    }),
+  );
+  return state;
+}
+
+/** An entry without an IMDb ID that the strategy resolves to `imdbId`. */
+function providerEntry(trakt: number, imdbId: string): SourceEntry {
+  return {
+    externalIds: { trakt },
+    type: "movie",
+    title: `Entry ${trakt}`,
+    meta: movie(imdbId),
+  };
+}
+
+/** An entry that no strategy ever resolves (no IMDb entry at all). */
+const NEVER_RESOLVED: SourceEntry = {
+  externalIds: { trakt: 999 },
+  type: "movie",
+  title: "Never on IMDb",
+};
+
+describe("Unresolved entries", () => {
+  // The resolver retries an Unresolved entry after 24 hours.
+  const AFTER_RETRY_MS = 25 * 60 * 60_000;
+
+  function seedTraktList() {
+    seedNewTitlesAccount();
+    seedList(accountId, {
+      id: LIST_IDS[0],
+      provider: "trakt",
+      source_ref: "users/leo/watchlist",
+      catalog_title: "Trakt watchlist",
+    });
+  }
+
+  it("do not block the Baseline or the detection of other entries", async () => {
+    seedTraktList();
+    const source = resolvingSourceList();
+    source.known.set(1, "tt0000001").set(2, "tt0000002");
+    source.entries = [providerEntry(1, "tt0000001"), NEVER_RESOLVED];
+    await sync(LIST_IDS[0]);
+
+    expect(db.getTable("source_list_syncs")).toHaveLength(1);
+    expect((await summary()).summary?.waitingLists).toBe(0);
+
+    source.entries = [...source.entries, providerEntry(2, "tt0000002")];
+    await sync(LIST_IDS[0]);
+
+    expect(ids(await newTitles())).toEqual(["tt0000002"]);
+    const never = detectionRows().find((row) => row.entry_key === "fake:999");
+    expect(never).toMatchObject({ imdb_id: null, removed_at: null });
+  });
+
+  it("are not new when they resolve later: they were already there", async () => {
+    seedTraktList();
+    const source = resolvingSourceList();
+    source.known.set(1, "tt0000001");
+    source.entries = [
+      providerEntry(1, "tt0000001"),
+      providerEntry(3, "tt0000003"),
+      NEVER_RESOLVED,
+    ];
+    await sync(LIST_IDS[0]);
+
+    source.known.set(3, "tt0000003");
+    vi.setSystemTime(Date.now() + AFTER_RETRY_MS);
+    await sync(LIST_IDS[0]);
+
+    expect(await newTitles()).toEqual([]);
+    const row = detectionRows().find((r) => r.entry_key === "fake:3");
+    expect(row).toMatchObject({ imdb_id: "tt0000003", detected_at: null });
+  });
+
+  it("keep the date of their first appearance when a new one resolves later", async () => {
+    seedTraktList();
+    const source = resolvingSourceList();
+    source.known.set(1, "tt0000001");
+    source.entries = [providerEntry(1, "tt0000001"), NEVER_RESOLVED];
+    await sync(LIST_IDS[0]);
+
+    source.entries = [...source.entries, providerEntry(4, "tt0000004")];
+    await sync(LIST_IDS[0]);
+    const firstSeen = new Date().toISOString();
+    // Not shown while it has no Title yet.
+    expect(await newTitles()).toEqual([]);
+
+    source.known.set(4, "tt0000004");
+    vi.setSystemTime(Date.now() + AFTER_RETRY_MS);
+    await sync(LIST_IDS[0]);
+
+    const metas = await newTitles();
+    expect(ids(metas)).toEqual(["tt0000004"]);
+    expect(metas[0].description).toBe(
+      "Detected by Stremlist on 1 Oct 2026 in Trakt watchlist.",
+    );
+    const row = detectionRows().find((r) => r.entry_key === "fake:4");
+    expect(row).toMatchObject({ imdb_id: "tt0000004", detected_at: firstSeen });
+  });
+
+  it("are followed by title and year when the Provider gives no ID", () => {
+    const adapter = fakeAdapter("imdb");
+    expect(entryKey(adapter, { title: "Amélie!", year: 2001 })).toBe(
+      "title:amelie:2001",
+    );
+    expect(entryKey(adapter, { imdbId: "tt0211915", title: "Amélie" })).toBe(
+      "imdb:tt0211915",
+    );
+    expect(entryKey(adapter, { type: "movie" })).toBeNull();
   });
 });
 
@@ -392,10 +503,11 @@ describe("New titles catalog", () => {
         baseline_at: at,
         last_complete_sync_at: at,
       });
-      db.insert("title_detections", {
+      db.insert("source_list_entries", {
         account_id: accountId,
         provider,
         source_ref: sourceRef,
+        entry_key: `imdb:${imdbId}`,
         imdb_id: imdbId,
         detected_at: at,
       });
@@ -506,10 +618,11 @@ describe("disconnect", () => {
         baseline_at: at,
         last_complete_sync_at: at,
       });
-      db.insert("title_detections", {
+      db.insert("source_list_entries", {
         account_id: accountId,
         provider: "trakt",
         source_ref: sourceRef,
+        entry_key: "trakt-movie:1",
         imdb_id: "tt0000001",
         detected_at: at,
       });

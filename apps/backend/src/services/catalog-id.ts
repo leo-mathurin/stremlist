@@ -58,7 +58,7 @@ export function parseCatalogId(catalogId: string): {
   return null;
 }
 
-/** The "New titles" catalogs, one per type (ADR 0004). */
+/** The "New titles" catalogs, one per type (ADR 0007). */
 const NEW_TITLES_PREFIX = "new-titles-";
 
 export function buildNewTitlesCatalogId(type: CatalogContentType): string {

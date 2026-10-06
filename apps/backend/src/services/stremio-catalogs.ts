@@ -97,7 +97,7 @@ export function buildManifestCatalogs(lists: ConfigList[]): StremioCatalog[] {
 }
 
 /**
- * The "New titles" catalogs (ADR 0004): one per type that the Lists show.
+ * The "New titles" catalogs (ADR 0007): one per type that the Lists show.
  * They come first, because they sum up what changed in every List below.
  */
 export function buildNewTitlesCatalogs(lists: ConfigList[]): StremioCatalog[] {

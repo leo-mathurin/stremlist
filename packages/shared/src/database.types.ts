@@ -203,6 +203,44 @@ export type Database = {
           },
         ];
       };
+      source_list_entries: {
+        Row: {
+          account_id: string;
+          detected_at: string | null;
+          entry_key: string;
+          imdb_id: string | null;
+          provider: string;
+          removed_at: string | null;
+          source_ref: string;
+        };
+        Insert: {
+          account_id: string;
+          detected_at?: string | null;
+          entry_key: string;
+          imdb_id?: string | null;
+          provider: string;
+          removed_at?: string | null;
+          source_ref: string;
+        };
+        Update: {
+          account_id?: string;
+          detected_at?: string | null;
+          entry_key?: string;
+          imdb_id?: string | null;
+          provider?: string;
+          removed_at?: string | null;
+          source_ref?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "source_list_entries_account_id_provider_source_ref_fkey";
+            columns: ["account_id", "provider", "source_ref"];
+            isOneToOne: false;
+            referencedRelation: "source_list_syncs";
+            referencedColumns: ["account_id", "provider", "source_ref"];
+          },
+        ];
+      };
       source_list_syncs: {
         Row: {
           account_id: string;
@@ -232,41 +270,6 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "accounts";
             referencedColumns: ["id"];
-          },
-        ];
-      };
-      title_detections: {
-        Row: {
-          account_id: string;
-          detected_at: string | null;
-          imdb_id: string;
-          provider: string;
-          removed_at: string | null;
-          source_ref: string;
-        };
-        Insert: {
-          account_id: string;
-          detected_at?: string | null;
-          imdb_id: string;
-          provider: string;
-          removed_at?: string | null;
-          source_ref: string;
-        };
-        Update: {
-          account_id?: string;
-          detected_at?: string | null;
-          imdb_id?: string;
-          provider?: string;
-          removed_at?: string | null;
-          source_ref?: string;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "title_detections_account_id_provider_source_ref_fkey";
-            columns: ["account_id", "provider", "source_ref"];
-            isOneToOne: false;
-            referencedRelation: "source_list_syncs";
-            referencedColumns: ["account_id", "provider", "source_ref"];
           },
         ];
       };
@@ -321,15 +324,31 @@ export type Database = {
         Returns: number;
       };
       generate_account_id: { Args: never; Returns: string };
+      list_new_titles: {
+        Args: {
+          p_account_id: string;
+          p_limit: number;
+          p_providers: string[];
+          p_source_refs: string[];
+        };
+        Returns: {
+          detected_at: string;
+          imdb_id: string;
+          provider: string;
+          source_ref: string;
+        }[];
+      };
       record_source_list_sync: {
         Args: {
           p_account_id: string;
-          p_imdb_ids: string[];
+          p_entry_keys: string[];
+          /** Parallel to p_entry_keys; null for an Unresolved entry. */
+          p_imdb_ids: (string | null)[];
           p_provider: string;
           p_source_ref: string;
           p_synced_at: string;
         };
-        /** Titles newly detected; null when a newer sync was already recorded. */
+        /** New entries; null when a newer sync was already recorded. */
         Returns: number | null;
       };
       release_connection_refresh: {

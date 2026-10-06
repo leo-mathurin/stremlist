@@ -279,7 +279,7 @@ describe("justwatchProvider.fetchSource", () => {
 
     expect(entries).toHaveLength(2_000);
     expect(fetchMock).toHaveBeenCalledTimes(10);
-    // The cap left titles out: not a complete synchronization (ADR 0004).
+    // The cap left titles out: not a complete synchronization (ADR 0007).
     expect(complete).toBe(false);
   });
 

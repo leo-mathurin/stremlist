@@ -15,7 +15,7 @@ function plural(count: number, one: string, other: string): string {
 function summaryText(summary: NewTitlesSummary): string {
   const waiting =
     summary.waitingLists > 0
-      ? ` ${plural(summary.waitingLists, "List waits", "Lists wait")} for a complete refresh before Stremlist can compare it.`
+      ? ` Stremlist could not read ${plural(summary.waitingLists, "List", "Lists")} in full yet, so it cannot compare ${summary.waitingLists === 1 ? "it" : "them"}.`
       : "";
   if (summary.detected === 0) {
     return `No new titles detected yet.${waiting}`;
@@ -24,7 +24,7 @@ function summaryText(summary: NewTitlesSummary): string {
 }
 
 /**
- * The "New titles" catalog setting (ADR 0004): one extra catalog with the
+ * The "New titles" catalog setting (ADR 0007): one extra catalog with the
  * Titles that Stremlist detects in the Lists, newest first.
  */
 export default function NewTitlesSettings({
