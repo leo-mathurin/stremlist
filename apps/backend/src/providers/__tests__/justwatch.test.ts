@@ -221,7 +221,7 @@ describe("justwatchProvider.fetchSource", () => {
     );
   });
 
-  it("puts a custom list in oldest added first order", async () => {
+  it("keeps a custom list in the API order, which is oldest added first", async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(
         listPage({
@@ -242,9 +242,9 @@ describe("justwatchProvider.fetchSource", () => {
     });
 
     expect(entries.map((entry) => entry.externalIds?.justwatch)).toEqual([
-      "tm18591",
-      "tm37681",
-      "ts44021",
+      HALO_4.node.id,
+      TERMINATION_POINT.node.id,
+      ROBOCOP.node.id,
     ]);
   });
 

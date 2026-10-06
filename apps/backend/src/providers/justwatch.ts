@@ -229,7 +229,6 @@ export const justwatchProvider: ProviderAdapter = {
         "This is not a JustWatch list ID",
       );
     }
-    let list: JustwatchList | null = null;
     const nodes: JustwatchTitleNode[] = [];
     let after: string | null = null;
     while (nodes.length < MAX_ENTRIES) {
@@ -238,7 +237,6 @@ export const justwatchProvider: ProviderAdapter = {
         Math.min(PAGE_SIZE, MAX_ENTRIES - nodes.length),
         after,
       );
-      list ??= page;
       for (const edge of page.titles?.edges ?? []) {
         if (edge?.node?.id) nodes.push(edge.node);
       }
@@ -247,12 +245,9 @@ export const justwatchProvider: ProviderAdapter = {
       after = pageInfo.endCursor;
     }
 
-    const entries = nodes.map(toEntry);
-    // A custom list's natural order is "last added" first (the site's "Last
-    // added" sort sends NATURAL for custom lists); canonical order is oldest
-    // added first. JustWatch's own lists are curated, so their order stays.
-    if (list?.type === "USER_LIST") entries.reverse();
-    return { entries };
+    // Custom lists come oldest added first, the canonical order (checked on a
+    // real list on 2026-10-06); JustWatch's own lists keep their curated order.
+    return { entries: nodes.map(toEntry) };
   },
 
   resolutionKey(entry) {
