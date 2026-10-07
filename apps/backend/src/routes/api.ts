@@ -224,6 +224,15 @@ async function normalizeLists(
   const normalized: ListInput[] = [];
   const seen = new Set<string>();
   const saved = new Map((access.saved ?? []).map((list) => [list.id, list]));
+  // An omitted `sourceLabel` keeps the saved one while the first Source
+  // list is the same, so older clients do not erase it.
+  const keptLabel = (list: ListBody) => {
+    const previous = list.id ? saved.get(list.id) : undefined;
+    return previous?.provider === list.provider &&
+      previous.sourceRef === list.sourceRef
+      ? previous.sourceLabel
+      : undefined;
+  };
   for (const [index, list] of lists.entries()) {
     const sources: ListSource[] = [];
     // An omitted `mergedSources` keeps the saved ones; the transaction checks
@@ -237,7 +246,7 @@ async function normalizeLists(
       {
         provider: list.provider,
         sourceRef: list.sourceRef,
-        label: list.sourceLabel,
+        label: list.sourceLabel ?? keptLabel(list),
       },
       ...(list.mergedSources ?? kept ?? []),
     ]) {

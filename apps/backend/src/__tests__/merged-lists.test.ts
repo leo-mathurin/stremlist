@@ -428,6 +428,20 @@ describe("saving merged Lists", () => {
       lists: { sourceLabel?: string }[];
     };
     expect(json.lists[0].sourceLabel).toBe("Family picks");
+
+    // A client that omits the label keeps it while the first Source list
+    // stays the same.
+    const listId = db.getTable("lists")[0].id as string;
+    const kept = await postConfig([
+      { ...listBody(JUSTWATCH_LIST, [TRAKT_LIST]), id: listId },
+    ]);
+    expect(kept.status).toBe(200);
+    expect(db.getTable("lists")[0].source_label).toBe("Family picks");
+    const changed = await postConfig([
+      { ...listBody(TRAKT_LIST, [JUSTWATCH_LIST]), id: listId },
+    ]);
+    expect(changed.status).toBe(200);
+    expect(db.getTable("lists")[0].source_label).toBeNull();
   });
 
   it("deletes the caches that splitting a merged List leaves unused", async () => {
