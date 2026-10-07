@@ -38,7 +38,7 @@ R2. The configure/onboarding pages of the frontend are covered too.
   counts) or compare the Stremio UI against the addon's own catalog JSON from
   the same run, so they do not depend on what is in the watchlist today.
 - The default run and pull request CI execute all three projects: deterministic
-  local coverage (51 tests), four live smoke tests, and the broader live
+  local coverage (58 tests), four live smoke tests, and the broader live
   regression suite (25 tests).
 - `tests/new-titles.spec.ts` starts a second backend with
   `helpers/source-transport.ts` preloaded. It reads Source lists from a JSON
@@ -106,6 +106,18 @@ bun run --filter @stremlist/e2e test:e2e tests/catalog-features.spec.ts
 These fixtures bypass IMDb scraping, not Stremlist behavior. Existing live tests
 still cover real IMDb fetching. The series scenario checks the addon protocol;
 it does not claim to test playback or episode selection in a native client.
+
+## Provider journeys
+
+`tests/provider-journeys.spec.ts` (`local`) starts a second backend with
+`helpers/provider-fixtures.ts` as a preload. That backend uses the same local
+Supabase and RustFS stack, dummy OAuth client IDs and no real credential. The
+real adapters, OAuth flow, ID resolver and Action pages run; only the Provider
+responses are fixtures, and any request to an unknown host fails. It covers
+public links (Trakt, JustWatch, SensCritique), Source lists read through a
+Connection (MDBList, Simkl, Trakt), Trakt OAuth start and callback, disconnect,
+expired Connections, Legacy alias limits and Actions. Letterboxd is out of
+scope. The UI side of the same journeys is in `toolkit/providers.e2e.ts`.
 
 ## Environment knobs
 
