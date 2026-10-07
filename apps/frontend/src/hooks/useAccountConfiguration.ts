@@ -137,6 +137,9 @@ export function useAccountConfiguration(
   const [movedAt, setMovedAt] = useState<string | null>(null);
   const [connections, setConnections] = useState<ConnectionSummary[]>([]);
   const [syncStatus, setSyncStatus] = useState<ListSyncStatuses>({});
+  // Bumped by every non-poll update of the sync status and Connections, so
+  // a poll that started before it cannot bring older values back.
+  const syncEpoch = useRef(0);
   const [connectionSources, setConnectionSources] = useState<
     Partial<Record<ProviderId, ConnectionSource[]>>
   >({});
@@ -228,6 +231,7 @@ export function useAccountConfiguration(
         setAccountId(data.accountId);
         setMovedAt(data.movedAt);
         setRpdbApiKey(data.rpdbApiKey ?? "");
+        syncEpoch.current += 1;
         setConnections(data.connections);
         // An older backend answers without statuses.
         setSyncStatus((data.syncStatus as ListSyncStatuses | undefined) ?? {});
@@ -333,19 +337,19 @@ export function useAccountConfiguration(
     if (!accountKey || !waitingKey) return;
     let cancelled = false;
     let polls = 0;
-    const id = setInterval(() => {
+    const poll = () => {
+      // A hidden tab does not ask (and does not use up the polls); it asks
+      // again as soon as it is visible.
+      if (document.hidden || polls >= SYNC_POLL_LIMIT) return;
       polls += 1;
-      if (polls > SYNC_POLL_LIMIT) {
-        clearInterval(id);
-        return;
-      }
-      if (document.hidden) return;
+      const epoch = syncEpoch.current;
       api[":accountKey"]["sync-status"]
         .$get({ param: { accountKey } })
         .then(async (res) => {
           if (!res.ok || cancelled) return;
           const body = await res.json();
-          if (cancelled || !("syncStatus" in body)) return;
+          if (cancelled || epoch !== syncEpoch.current) return;
+          if (!("syncStatus" in body)) return;
           setSyncStatus(body.syncStatus);
           setConnections((current) =>
             JSON.stringify(current) === JSON.stringify(body.connections)
@@ -356,10 +360,13 @@ export function useAccountConfiguration(
         .catch(() => {
           // Try again at the next tick.
         });
-    }, SYNC_POLL_MS);
+    };
+    const id = setInterval(poll, SYNC_POLL_MS);
+    document.addEventListener("visibilitychange", poll);
     return () => {
       cancelled = true;
       clearInterval(id);
+      document.removeEventListener("visibilitychange", poll);
     };
   }, [accountKey, waitingKey]);
 
@@ -640,6 +647,7 @@ export function useAccountConfiguration(
       }
       setCooldownSeconds(body.cooldownSeconds);
       setLastFetchedAt(body.lastFetchedAt);
+      syncEpoch.current += 1;
       if ("syncStatus" in body && body.syncStatus) {
         setSyncStatus(body.syncStatus);
       }
@@ -753,6 +761,7 @@ export function useAccountConfiguration(
       });
       if (!res.ok) return;
       const data = (await res.json()) as AccountConfigResponse;
+      syncEpoch.current += 1;
       setConnections(data.connections);
       // An older backend answers without statuses.
       setSyncStatus((data.syncStatus as ListSyncStatuses | undefined) ?? {});
@@ -780,6 +789,7 @@ export function useAccountConfiguration(
         param: { accountId, provider },
       });
       if (!res.ok) throw new Error(`Could not disconnect ${label}.`);
+      syncEpoch.current += 1;
       setConnections((current) =>
         current.filter((connection) => connection.provider !== provider),
       );

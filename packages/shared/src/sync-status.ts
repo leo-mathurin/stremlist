@@ -39,8 +39,12 @@ export type ListSyncState =
    */
   | { kind: "waiting"; reconnected: boolean }
   | { kind: "synced"; at: string; titleCount: number | null }
-  /** The List reads through a Connection that is missing or refused. */
-  | { kind: "connection"; renew: boolean }
+  /**
+   * The List reads through a Connection that is missing or refused.
+   * `stillShown`: Stremio still serves the cached Titles until the next
+   * refresh (a refused Connection noticed elsewhere, such as by an Action).
+   */
+  | { kind: "connection"; renew: boolean; stillShown: boolean }
   | {
       kind: "failing";
       problem: SourceProblemReason;
@@ -64,10 +68,19 @@ export function listSyncState(
 ): ListSyncState {
   const refused = status?.problem === "needs_connection";
   if (connection === "renew" && (requiresConnection || refused)) {
-    return { kind: "connection", renew: true };
+    return {
+      kind: "connection",
+      renew: true,
+      stillShown:
+        !!status &&
+        !refused &&
+        status.lastSuccessAt !== null &&
+        (status.titleCount ?? 0) > 0,
+    };
   }
+  // A disconnect drops the cached Catalogs of these Lists.
   if (connection === "none" && requiresConnection) {
-    return { kind: "connection", renew: false };
+    return { kind: "connection", renew: false, stillShown: false };
   }
   if (!status) return { kind: "waiting", reconnected: false };
   if (status.problem === null) {

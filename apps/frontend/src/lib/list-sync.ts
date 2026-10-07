@@ -8,7 +8,9 @@ import type { ListSyncState } from "@stremlist/shared/sync-status";
 export function attentionTone(
   sync: ListSyncState | null,
 ): "warn" | "bad" | null {
-  if (sync?.kind === "connection") return sync.renew ? "bad" : "warn";
+  if (sync?.kind === "connection") {
+    return sync.renew && !sync.stillShown ? "bad" : "warn";
+  }
   if (sync?.kind === "failing") return sync.showsOlderTitles ? "warn" : "bad";
   return null;
 }

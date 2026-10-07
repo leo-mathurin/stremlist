@@ -103,10 +103,14 @@ export async function getListSyncStatuses(
 
   const statuses: ListSyncStatuses = {};
   const rows = error ? [] : (data as StatusRow[]);
-  const recorded = new Set(rows.map((row) => row.list_id));
+  // Lists with a row for another Source list changed their Source list: their
+  // cache may still hold the old one.
+  const changedSource = new Set<string>();
   for (const row of rows) {
     const list = lists.find((candidate) => candidate.id === row.list_id);
-    if (list?.provider !== row.provider || list.sourceRef !== row.source_ref) {
+    if (!list) continue;
+    if (list.provider !== row.provider || list.sourceRef !== row.source_ref) {
+      changedSource.add(list.id);
       continue;
     }
     statuses[list.id] = {
@@ -125,14 +129,11 @@ export async function getListSyncStatuses(
   }
   // Lists cached before sync statuses existed: their cache tells when they
   // last refreshed, also after their first recorded refresh failed (Stremio
-  // still gets those cached Titles). Not for a List that changed its Source
-  // list, whose cache may still hold the old one.
+  // still gets those cached Titles).
   await Promise.all(
     lists.map(async (list) => {
       const status = list.id in statuses ? statuses[list.id] : null;
-      if (status ? status.lastSuccessAt !== null : recorded.has(list.id)) {
-        return;
-      }
+      if (changedSource.has(list.id) || status?.lastSuccessAt) return;
       const info = await getCachedListInfo(list.id);
       if (!info) return;
       statuses[list.id] = status

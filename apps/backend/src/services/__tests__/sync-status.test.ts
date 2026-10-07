@@ -6,7 +6,8 @@ vi.mock("../../lib/supabase", async () => {
   return await import("../../__tests__/helpers/mock-supabase");
 });
 vi.mock("../list-cache", async () => {
-  return await import("../../__tests__/helpers/mock-list-cache");
+  const cache = await import("../../__tests__/helpers/mock-list-cache");
+  return { ...cache, writeCachedList: vi.fn(cache.writeCachedList) };
 });
 vi.mock("../../providers/registry", async () => {
   return await import("../../__tests__/helpers/mock-registry");
@@ -35,6 +36,7 @@ import {
 } from "../../providers/types";
 import { getAccountLists } from "../accounts";
 import { listConnections, saveConnection } from "../connections";
+import * as listCache from "../list-cache";
 import { refreshProviderLists } from "../list-prewarm";
 import type { ListFetchConfig } from "../lists";
 import { getListCatalog } from "../lists";
@@ -216,6 +218,20 @@ describe("recording refreshes", () => {
     });
   });
 
+  it("does not report an update whose Catalog could not be saved", async () => {
+    vi.mocked(listCache.writeCachedList).mockRejectedValueOnce(
+      new Error("R2 is down"),
+    );
+    useTrakt(vi.fn(() => Promise.resolve(entries("tt0000001"))));
+
+    // This request still gets the Titles it read.
+    await expect(getListCatalog(config())).resolves.toMatchObject({
+      metas: [{ id: "tt0000001" }],
+    });
+
+    expect(db.getTable("list_sync_status")).toEqual([]);
+  });
+
   it("records nothing for a List removed while it was read", async () => {
     useTrakt(vi.fn(() => Promise.resolve(entries("tt0000001"))));
     db.tables.lists = [];
@@ -303,6 +319,32 @@ describe("Lists without a recorded status", () => {
     });
   });
 
+  it("do not take a cache that may hold the List's previous Source list", async () => {
+    db.insert("list_sync_status", {
+      list_id: listId,
+      provider: "trakt",
+      source_ref: "users/leo/lists/comedy",
+      last_attempt_at: new Date(Date.now() - HOUR).toISOString(),
+      last_success_at: new Date(Date.now() - HOUR).toISOString(),
+      title_count: 9,
+    });
+    cache.seed(listId, [movie("tt0000001")], new Date(Date.now() - HOUR));
+    useTrakt(
+      vi.fn(() => Promise.reject(new SourceUnavailableError("private", "no"))),
+    );
+
+    await getListCatalog(config({ noCacheFallback: true })).catch(
+      () => undefined,
+    );
+
+    expect(await statusOf()).toMatchObject({
+      sourceRef: "users/leo/lists/horror",
+      problem: "private",
+      lastSuccessAt: null,
+      titleCount: null,
+    });
+  });
+
   it("prefer the recorded status over the cache", async () => {
     cache.seed(listId, [movie("tt0000001")]);
     useTrakt(
@@ -347,8 +389,39 @@ describe("the read after a new authorization", () => {
       problem: null,
       titleCount: 1,
     });
+    // The older read ends last and must not undo the new one.
     release(entries());
     await older;
+    expect(await statusOf(watchlist.id)).toMatchObject({
+      problem: null,
+      titleCount: 1,
+    });
+    expect(cache.get(watchlist.id)?.data.metas).toHaveLength(1);
+  });
+
+  it("does not record a late failure of the older read", async () => {
+    seedConnection(accountId, "trakt");
+    let fail: (error: unknown) => void = () => undefined;
+    const fetchSource = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            fail = reject;
+          }),
+      )
+      .mockResolvedValue(entries("tt0000001"));
+    useTrakt(fetchSource);
+    const older = getListCatalog(config()).catch(() => undefined);
+    await vi.waitFor(() => {
+      expect(fetchSource).toHaveBeenCalledOnce();
+    });
+
+    await refreshProviderLists(accountId, "trakt");
+    fail(new SourceUnavailableError("needs_connection", "old token"));
+    await older;
+
+    expect(await statusOf()).toMatchObject({ problem: null, titleCount: 1 });
   });
 });
 
@@ -528,23 +601,33 @@ describe("listSyncState", () => {
     expect(listSyncState(undefined, "none", true)).toEqual({
       kind: "connection",
       renew: false,
+      stillShown: false,
     });
     expect(listSyncState(ok, "none", true)).toEqual({
       kind: "connection",
       renew: false,
+      stillShown: false,
     });
   });
 
   it("asks to renew a refused Connection", () => {
-    // Even before the List's own next read fails.
+    // Even before the List's own next read fails: Stremio still serves its
+    // cached Titles until then.
     expect(listSyncState(ok, "renew", true)).toEqual({
       kind: "connection",
       renew: true,
+      stillShown: true,
     });
-    // A public Source list read through the refused Connection.
+    // A Source list whose read the Provider refused shows nothing.
     expect(listSyncState(failing("needs_connection"), "renew", false)).toEqual({
       kind: "connection",
       renew: true,
+      stillShown: false,
+    });
+    expect(listSyncState(undefined, "renew", true)).toEqual({
+      kind: "connection",
+      renew: true,
+      stillShown: false,
     });
   });
 

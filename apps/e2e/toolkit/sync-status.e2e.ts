@@ -406,3 +406,35 @@ test("a Connection that works again clears the renewal state after a poll", asyn
   ).toBeVisible({ timeout: 15_000 });
   await expect(screen.getByText(/Lists? needs? attention/)).toBeHidden();
 });
+
+test("a refused Connection noticed elsewhere does not claim its cached List is gone", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await captureConfig(browser, {
+    ...configuration,
+    lists: [row, traktWatchlist],
+    syncStatus: {
+      ...configuration.syncStatus,
+      // The last read of the List worked; an Action then found the token refused.
+      [ids.trakt]: syncedStatus("me/watchlist", 30, ago(10 * MINUTE)),
+    },
+    connections: [{ ...traktConnection, needsRenewalSince: ago(MINUTE) }],
+  });
+  await routeTraktSources(browser);
+  await app.open(`/configure?account=${accountId}`);
+
+  await expect(
+    screen.getByText(
+      "Trakt refused the Stremlist Connection. Stremio still shows this List from its last refresh, but not after the next one. Connect Trakt again to renew it.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    screen.getByText("Connection needs to be renewed", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    screen.getByText("1 List needs attention", { exact: true }),
+  ).toBeVisible();
+});

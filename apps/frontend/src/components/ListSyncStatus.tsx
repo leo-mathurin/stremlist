@@ -117,7 +117,17 @@ export function ListSyncNotice({
 
   if (sync.kind === "connection") {
     action = true;
-    body = sync.renew ? (
+    body = !sync.renew ? (
+      <>{label} is not connected, so this List does not show in Stremio.</>
+    ) : sync.stillShown ? (
+      <>
+        <strong className="font-semibold">
+          {label} refused the Stremlist Connection
+        </strong>
+        . Stremio still shows this List from its last refresh, but not after the
+        next one. Connect {label} again to renew it.
+      </>
+    ) : (
       <>
         <strong className="font-semibold">
           {label} refused the Stremlist Connection
@@ -125,8 +135,6 @@ export function ListSyncNotice({
         , so this List does not show in Stremio. Connect {label} again to renew
         it.
       </>
-    ) : (
-      <>{label} is not connected, so this List does not show in Stremio.</>
     );
   } else if (sync.kind === "failing") {
     const copy = sourceProblemCopy(

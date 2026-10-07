@@ -97,7 +97,13 @@ interface FreshList {
   generation: string | null;
 }
 
-const inFlightRefreshes = new Map<string, Promise<FreshList>>();
+interface InFlightRefresh {
+  promise: Promise<FreshList>;
+  /** A newer read replaced this one (`freshRead`); it must not write. */
+  state: { superseded: boolean };
+}
+
+const inFlightRefreshes = new Map<string, InFlightRefresh>();
 
 async function providerContext(
   config: ListFetchConfig,
@@ -220,7 +226,10 @@ function problemReason(error: unknown): SourceProblemReason {
       : "unavailable";
 }
 
-async function fetchAndCacheList(config: ListFetchConfig): Promise<FreshList> {
+async function fetchAndCacheList(
+  config: ListFetchConfig,
+  superseded: () => boolean,
+): Promise<FreshList> {
   const adapter = getProvider(config.provider);
   let ctx: ProviderContext | null = null;
   let built: { data: CatalogData; deferred: number };
@@ -234,19 +243,16 @@ async function fetchAndCacheList(config: ListFetchConfig): Promise<FreshList> {
     ctx = await providerContext(config);
     built = await buildCatalog(adapter, config, ctx);
   } catch (error) {
-    await recordRefreshOutcome(
-      config,
-      { problem: problemReason(error) },
-      ctx?.connection ?? null,
-    );
+    if (!superseded()) {
+      await recordRefreshOutcome(
+        config,
+        { problem: problemReason(error) },
+        ctx?.connection ?? null,
+      );
+    }
     throw error;
   }
   const { data, deferred } = built;
-  await recordRefreshOutcome(
-    config,
-    { titleCount: data.metas.length },
-    ctx.connection,
-  );
   const cachedAt = new Date();
   // Back-date the cache so the next request resumes resolution soon.
   const storedAt =
@@ -259,11 +265,21 @@ async function fetchAndCacheList(config: ListFetchConfig): Promise<FreshList> {
             ),
         )
       : cachedAt;
+  if (superseded()) return { data, cachedAt, generation: null };
   let generation: string | null = null;
   try {
     generation = await writeCachedList(config.listId, data, storedAt);
   } catch (error) {
+    // Later requests still get the old Catalog, so this is no "Updated".
     console.error(`Failed to cache list ${config.listId} in R2:`, error);
+    return { data, cachedAt, generation };
+  }
+  if (!superseded()) {
+    await recordRefreshOutcome(
+      config,
+      { titleCount: data.metas.length },
+      ctx.connection,
+    );
   }
   return { data, cachedAt, generation };
 }
@@ -273,15 +289,22 @@ function refreshList(config: ListFetchConfig): Promise<FreshList> {
   // the same moment Stremio requests the Catalog.
   const key = `${config.listId}:${config.allowConnection ? "c" : "p"}`;
   const existing = inFlightRefreshes.get(key);
-  if (existing && !config.freshRead) return existing;
+  if (existing && !config.freshRead) return existing.promise;
+  // The older read may use an older Connection: its late result must not
+  // replace the Catalog or the status of this one.
+  if (existing) existing.state.superseded = true;
 
-  const refresh = fetchAndCacheList(config);
+  const state = { superseded: false };
+  const refresh: InFlightRefresh = {
+    promise: fetchAndCacheList(config, () => state.superseded),
+    state,
+  };
   inFlightRefreshes.set(key, refresh);
   const clear = () => {
     if (inFlightRefreshes.get(key) === refresh) inFlightRefreshes.delete(key);
   };
-  void refresh.then(clear, clear);
-  return refresh;
+  void refresh.promise.then(clear, clear);
+  return refresh.promise;
 }
 
 function contentGeneration(listId: string, data: CatalogData): string {
