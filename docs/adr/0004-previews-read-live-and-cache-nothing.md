@@ -4,7 +4,7 @@ The configure page shows a Catalog preview for each List: the first Titles of ea
 
 So `POST /lists/preview` reads the Source list through the same pipeline as a catalog request (`buildCatalog` in `services/lists.ts`: adapter, ID resolver, enrichment), then applies the same sort, display mode, filters and presets as the catalog route. It writes no Catalog cache: saving the List stays the only step that changes what Stremio shows. The ID resolver still stores what it finds in `title_id_map`, so the first catalog read after the save is faster.
 
-Changing the sort or the filters asks for a new preview each time, so each backend instance keeps a read for 5 minutes (30 seconds when some entries were not checked yet). A read through a Connection can hold private Titles: it is kept per Account and never serves another Account or a request without the Connection. A Legacy alias never reads through a Connection (ADR 0001).
+Changing the sort or the filters asks for a new preview each time, so each backend instance keeps a read for 5 minutes (30 seconds when some entries were not checked yet). A read through a Connection can hold private Titles: it is kept per Account and per authorization of the Connection (a fingerprint of its access token). It never serves another Account, a request without the Connection, or a new Connection of the same Account. The configure page also asks again when a Connection of the List's Provider changes. A Legacy alias never reads through a Connection (ADR 0001).
 
 ## Consequences
 

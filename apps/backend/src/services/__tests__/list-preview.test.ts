@@ -459,6 +459,32 @@ describe("previewList: reads", () => {
     });
   });
 
+  it("reads again after the Account connects the Provider again", async () => {
+    const fetchSource = vi.fn(() =>
+      Promise.resolve({ entries: entries(MOVIES) }),
+    );
+    useFakeProvider(fakeAdapter("trakt", { fetchSource }));
+    const account = seedAccount();
+    seedConnection(account.id, "trakt", { accessToken: "first-user" });
+    const history = request({
+      sourceRef: "me/history",
+      accountId: account.id,
+      allowConnection: true,
+    });
+
+    await previewList(history);
+    await previewList(history);
+    expect(fetchSource).toHaveBeenCalledOnce();
+
+    // A new authorization, for example as another Trakt user.
+    const connections = db.getTable("connections");
+    connections.splice(0, connections.length);
+    seedConnection(account.id, "trakt", { accessToken: "second-user" });
+    await previewList(history);
+
+    expect(fetchSource).toHaveBeenCalledTimes(2);
+  });
+
   it("reads the Source list again after five minutes", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     try {

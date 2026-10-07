@@ -12,8 +12,9 @@ import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import { CATALOG_PRESETS } from "@stremlist/shared/catalog-settings";
 import type { DisplayMode } from "@stremlist/shared/constants";
 import { PROVIDERS } from "@stremlist/shared/providers";
+import { createHash } from "node:crypto";
 import { getProvider, isProviderEnabled } from "../providers/registry";
-import type { SourceEntry } from "../providers/types";
+import type { ConnectionAccess, SourceEntry } from "../providers/types";
 import { SourceUnavailableError } from "../providers/types";
 import { filterCatalog, resolveCatalogSelection } from "./catalog-filters";
 import { sortCatalog } from "./catalog-sort";
@@ -50,13 +51,29 @@ export function resetPreviewReadings(): void {
 }
 
 /**
+ * Identifies one authorization of a Connection: connecting again (maybe as
+ * another Provider user) or a token refresh gives a new one.
+ */
+async function connectionScope(connection: ConnectionAccess): Promise<string> {
+  const token = await connection.getAccessToken();
+  const fingerprint = createHash("sha256")
+    .update(token)
+    .digest("base64url")
+    .slice(0, 16);
+  return `account:${connection.accountId}:${fingerprint}`;
+}
+
+/**
  * Read the Source list of a List, or reuse a recent read. A read through a
- * Connection can hold private Titles, so it is keyed by Account and never
- * serves another Account or a request without the Connection.
+ * Connection can hold private Titles, so it is keyed by Account and by the
+ * Connection's current authorization: it never serves another Account, a
+ * request without the Connection, or a later Connection of the same Account.
  */
 async function readSource(request: PreviewRequest): Promise<BuiltCatalog> {
   const ctx = await providerContext(request);
-  const scope = ctx.connection ? `account:${request.accountId}` : "public";
+  const scope = ctx.connection
+    ? await connectionScope(ctx.connection)
+    : "public";
   const key = `${scope}:${request.provider}:${request.sourceRef}`;
 
   const cached = readings.get(key);

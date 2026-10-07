@@ -61,10 +61,13 @@ function catalogLabel(row: CatalogPreviewRow): string {
 export default function CatalogPreview({
   list,
   accountKey,
+  connectionKey,
   open,
 }: {
   list: ListFormRow;
   accountKey: string | null;
+  /** Identifies the Account's Connection to the List's Provider, or "". */
+  connectionKey: string;
   /** The panel is visible: only then the preview is read. */
   open: boolean;
 }) {
@@ -76,6 +79,7 @@ export default function CatalogPreview({
       sortOption: list.sortOption,
       displayMode: list.displayMode,
       catalogSettings: list.catalogSettings,
+      connectionKey,
     },
     open,
   );

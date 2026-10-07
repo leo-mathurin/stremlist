@@ -9,6 +9,7 @@ import {
   backend,
   baseRoutes,
   captureConfig,
+  configuration,
   imdbUser,
   parseBody,
   previewOf,
@@ -250,4 +251,78 @@ test("a new setup previews its first List without an Account key", async ({
   expect(requests).toHaveLength(1);
   expect(requests[0]).not.toHaveProperty("accountKey");
   expect(created).toHaveLength(0);
+});
+
+test("disconnecting the Provider reads the open preview again", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const history = {
+    ...configuration.lists[0],
+    id: "00000000-0000-4000-8000-000000000002",
+    provider: "trakt" as const,
+    sourceRef: "me/history",
+    catalogTitle: "Trakt history",
+  };
+  const connected = {
+    ...configuration,
+    lists: [history],
+    connections: [
+      {
+        provider: "trakt" as const,
+        username: "fixture-user",
+        connectedAt: "2026-10-01T00:00:00.000Z",
+      },
+    ],
+  };
+  await captureConfig(browser, connected);
+  let disconnected = false;
+  // After the disconnect, the page reads the configuration again.
+  await browser.route(`${backend}/${accountId}/config`, async (route) => {
+    await route.fulfill({
+      json: toJson(
+        disconnected ? { ...connected, connections: [] } : connected,
+      ),
+    });
+  });
+  await browser.route(
+    `${backend}/${accountId}/connections/trakt`,
+    async (route) => {
+      disconnected = true;
+      await route.fulfill({ json: { ok: true } });
+    },
+  );
+  await browser.route(
+    `${backend}/${accountId}/connections/trakt/sources`,
+    async (route) => {
+      await route.fulfill({ json: { sources: [] } });
+    },
+  );
+  const requests = await routePreview(browser, (request, index) =>
+    index === 0
+      ? previewOf(request)
+      : { ok: false, reason: "needs_connection" },
+  );
+  await app.open(`/configure?account=${accountId}`);
+  await screen.getByRole("button", "Preview Trakt history").tap();
+  await expect(screen.getByText("The Godfather")).toBeVisible();
+
+  await screen.getByRole("button", "Disconnect", { exact: true }).tap();
+  await screen
+    .getByRole("group", "Disconnect Trakt?")
+    .getByRole("button", "Disconnect", { exact: true })
+    .tap();
+  await expect(
+    screen.getByText(
+      "This list needs your Trakt account. Connect Trakt on the Stremlist configure page.",
+    ),
+  ).toBeVisible();
+  await expect(screen.getByText("The Godfather")).not.toBeVisible();
+  expect(requests).toHaveLength(2);
+  expect(requests[1]).toMatchObject({
+    accountKey: accountId,
+    provider: "trakt",
+    sourceRef: "me/history",
+  });
 });

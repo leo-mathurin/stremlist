@@ -13,6 +13,11 @@ export interface CatalogPreviewInput {
   sortOption: string;
   displayMode: DisplayMode;
   catalogSettings: CatalogSettings;
+  /**
+   * Changes when the Account's Connection to the Provider changes (connected,
+   * disconnected, connected again), so the preview is read again. Not sent.
+   */
+  connectionKey: string;
 }
 
 export type CatalogPreviewState =
@@ -86,7 +91,7 @@ export function useCatalogPreview(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [enabled, request, source, attempt]);
+  }, [enabled, request, source, input.connectionKey, attempt]);
 
   const retry = useCallback(() => {
     shownSource.current = null;
