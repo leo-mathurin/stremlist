@@ -641,6 +641,27 @@ describe("Trakt read errors", () => {
     await expectReason(fetchEntries("users/hidden/watchlist", conn), "private");
   });
 
+  it("reports a refused token when a public read works without it", async () => {
+    route("GET /users/sean/watchlist", (call) =>
+      call.headers.has("Authorization") ? status(401) : json([]),
+    );
+    const reportRefused = vi.fn(() => Promise.resolve());
+    const conn = Object.assign(connection(), { reportRefused });
+
+    await fetchEntries("users/sean/watchlist", conn);
+
+    expect(reportRefused).toHaveBeenCalled();
+  });
+
+  it("does not report the token for a private user's list", async () => {
+    route("GET /users/hidden/watchlist", status(401));
+    const reportRefused = vi.fn(() => Promise.resolve());
+    const conn = Object.assign(connection(), { reportRefused });
+
+    await expectReason(fetchEntries("users/hidden/watchlist", conn), "private");
+    expect(reportRefused).not.toHaveBeenCalled();
+  });
+
   it("a private user stays private with a Connection", async () => {
     route("GET /users/hidden/watchlist", status(401));
     await expectReason(

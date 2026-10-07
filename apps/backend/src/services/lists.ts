@@ -84,6 +84,11 @@ export interface ListFetchConfig {
    * rethrown so the manual refresh can report it honestly.
    */
   noCacheFallback?: boolean;
+  /**
+   * Start a new read even when one is in flight, because that one may use
+   * an older Connection (the read right after a new authorization).
+   */
+  freshRead?: boolean;
 }
 
 interface FreshList {
@@ -232,7 +237,7 @@ async function fetchAndCacheList(config: ListFetchConfig): Promise<FreshList> {
     await recordRefreshOutcome(
       config,
       { problem: problemReason(error) },
-      !!ctx?.connection,
+      ctx?.connection ?? null,
     );
     throw error;
   }
@@ -240,7 +245,7 @@ async function fetchAndCacheList(config: ListFetchConfig): Promise<FreshList> {
   await recordRefreshOutcome(
     config,
     { titleCount: data.metas.length },
-    !!ctx.connection,
+    ctx.connection,
   );
   const cachedAt = new Date();
   // Back-date the cache so the next request resumes resolution soon.
@@ -268,7 +273,7 @@ function refreshList(config: ListFetchConfig): Promise<FreshList> {
   // the same moment Stremio requests the Catalog.
   const key = `${config.listId}:${config.allowConnection ? "c" : "p"}`;
   const existing = inFlightRefreshes.get(key);
-  if (existing) return existing;
+  if (existing && !config.freshRead) return existing;
 
   const refresh = fetchAndCacheList(config);
   inFlightRefreshes.set(key, refresh);

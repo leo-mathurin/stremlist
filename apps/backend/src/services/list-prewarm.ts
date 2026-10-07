@@ -149,6 +149,7 @@ export async function refreshProviderLists(
         forceFresh: true,
         skipAccountTimestamp: true,
         noCacheFallback: true,
+        freshRead: true,
         resolveBudgetMs: 25_000,
       });
     } catch (error) {

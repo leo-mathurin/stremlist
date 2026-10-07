@@ -5,10 +5,7 @@ import { SOURCE_PROBLEM_REASONS } from "@stremlist/shared/source-problems";
 import type { ConfigList } from "@stremlist/shared/stremio.types";
 import type { ListSyncStatuses } from "@stremlist/shared/sync-status";
 import { supabase } from "../lib/supabase";
-import {
-  clearConnectionRenewal,
-  markConnectionNeedsRenewal,
-} from "./connections";
+import type { ConnectionAccess } from "../providers/types";
 import { getCachedListInfo } from "./list-cache";
 
 export interface RefreshedSource {
@@ -29,13 +26,13 @@ function isProblemReason(value: string): value is SourceProblemReason {
 /**
  * Remember how a read of a List's Source list ended, for the configure page.
  * When the read went through a Connection, its outcome also tells whether the
- * Provider still accepts that Connection. Never throws: a status that could
+ * Provider still accepts the tokens it used. Never throws: a status that could
  * not be written must not fail the Catalog.
  */
 export async function recordRefreshOutcome(
   source: RefreshedSource,
   outcome: RefreshOutcome,
-  readThroughConnection: boolean,
+  connection: ConnectionAccess | null,
 ): Promise<void> {
   const problem = "problem" in outcome ? outcome.problem : null;
   const writes: Promise<void>[] = [
@@ -53,14 +50,14 @@ export async function recordRefreshOutcome(
   // Only a private Source list proves that the Connection works: a public
   // one may have been read without it.
   if (
-    readThroughConnection &&
+    connection?.reportWorking &&
     problem === null &&
     sourceRequiresConnection(source.provider, source.sourceRef)
   ) {
-    writes.push(clearConnectionRenewal(source.accountId, source.provider));
+    writes.push(connection.reportWorking());
   }
-  if (readThroughConnection && problem === "needs_connection") {
-    writes.push(markConnectionNeedsRenewal(source.accountId, source.provider));
+  if (connection?.reportRefused && problem === "needs_connection") {
+    writes.push(connection.reportRefused());
   }
 
   for (const result of await Promise.allSettled(writes)) {
@@ -127,23 +124,32 @@ export async function getListSyncStatuses(
     };
   }
   // Lists cached before sync statuses existed: their cache tells when they
-  // last refreshed. Not for a List that changed its Source list, whose cache
-  // may still hold the old one.
+  // last refreshed, also after their first recorded refresh failed (Stremio
+  // still gets those cached Titles). Not for a List that changed its Source
+  // list, whose cache may still hold the old one.
   await Promise.all(
-    lists
-      .filter((list) => !recorded.has(list.id))
-      .map(async (list) => {
-        const info = await getCachedListInfo(list.id);
-        if (!info) return;
-        statuses[list.id] = {
-          sourceRef: list.sourceRef,
-          lastAttemptAt: info.cachedAt,
-          lastSuccessAt: info.cachedAt,
-          titleCount: info.titleCount,
-          problem: null,
-          failingSince: null,
-        };
-      }),
+    lists.map(async (list) => {
+      const status = list.id in statuses ? statuses[list.id] : null;
+      if (status ? status.lastSuccessAt !== null : recorded.has(list.id)) {
+        return;
+      }
+      const info = await getCachedListInfo(list.id);
+      if (!info) return;
+      statuses[list.id] = status
+        ? {
+            ...status,
+            lastSuccessAt: info.cachedAt,
+            titleCount: info.titleCount,
+          }
+        : {
+            sourceRef: list.sourceRef,
+            lastAttemptAt: info.cachedAt,
+            lastSuccessAt: info.cachedAt,
+            titleCount: info.titleCount,
+            problem: null,
+            failingSince: null,
+          };
+    }),
   );
   return statuses;
 }

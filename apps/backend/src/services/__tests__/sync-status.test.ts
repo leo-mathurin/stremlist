@@ -35,6 +35,7 @@ import {
 } from "../../providers/types";
 import { getAccountLists } from "../accounts";
 import { listConnections, saveConnection } from "../connections";
+import { refreshProviderLists } from "../list-prewarm";
 import type { ListFetchConfig } from "../lists";
 import { getListCatalog } from "../lists";
 import { getListSyncStatuses } from "../sync-status";
@@ -280,6 +281,28 @@ describe("Lists without a recorded status", () => {
     });
   });
 
+  it("keep their cached last refresh when their first recorded refresh fails", async () => {
+    const cachedAt = new Date(Date.now() - 2 * HOUR);
+    cache.seed(listId, [movie("tt0000001"), movie("tt0000002")], cachedAt);
+    useTrakt(vi.fn(() => Promise.reject(new Error("socket hang up"))));
+
+    // Stremio still gets the cached Titles.
+    await expect(getListCatalog(config())).resolves.toMatchObject({
+      metas: [{ id: "tt0000001" }, { id: "tt0000002" }],
+    });
+
+    const status = await statusOf();
+    expect(status).toMatchObject({
+      problem: "unavailable",
+      titleCount: 2,
+      lastSuccessAt: cachedAt.toISOString(),
+    });
+    expect(listSyncState(status, "none", false)).toMatchObject({
+      kind: "failing",
+      showsOlderTitles: true,
+    });
+  });
+
   it("prefer the recorded status over the cache", async () => {
     cache.seed(listId, [movie("tt0000001")]);
     useTrakt(
@@ -290,6 +313,42 @@ describe("Lists without a recorded status", () => {
     );
 
     expect(await statusOf()).toMatchObject({ problem: "private" });
+  });
+});
+
+describe("the read after a new authorization", () => {
+  it("does not join a read that started with the older Connection", async () => {
+    seedConnection(accountId, "trakt");
+    const watchlist = seedList(accountId, {
+      provider: "trakt",
+      source_ref: "me/watchlist",
+      position: 1,
+    });
+    let release: (value: unknown) => void = () => undefined;
+    const fetchSource = vi
+      .fn()
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (release = resolve)),
+      )
+      .mockResolvedValue(entries("tt0000001"));
+    useTrakt(fetchSource);
+    const older = getListCatalog(
+      config({ listId: watchlist.id, sourceRef: "me/watchlist" }),
+    );
+    await vi.waitFor(() => {
+      expect(fetchSource).toHaveBeenCalledOnce();
+    });
+
+    await refreshProviderLists(accountId, "trakt");
+
+    // Both Trakt Lists were read again; the older read did not count.
+    expect(fetchSource).toHaveBeenCalledTimes(3);
+    expect(await statusOf(watchlist.id)).toMatchObject({
+      problem: null,
+      titleCount: 1,
+    });
+    release(entries());
+    await older;
   });
 });
 
