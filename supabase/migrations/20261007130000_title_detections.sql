@@ -370,3 +370,47 @@ REVOKE ALL ON FUNCTION public.list_new_titles(text, text[], text[], integer)
 FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.list_new_titles(text, text[], text[], integer)
 TO service_role;
+
+-- Forget the history of Source lists that only a Connection can read. After
+-- a disconnect (p_keep_current_user false) every given Source list goes.
+-- After a new Connection (true) only the history of other Provider users
+-- goes: the user is read from the Connection when the row is deleted, so a
+-- concurrent refresh's new Baseline, or a newer Connection, is never lost.
+CREATE FUNCTION public.forget_connection_history(
+  p_account_id text,
+  p_provider text,
+  p_source_refs text[],
+  p_keep_current_user boolean
+)
+RETURNS integer
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  WITH current_connection AS (
+    SELECT c.provider_username
+    FROM public.connections c
+    WHERE c.account_id = p_account_id AND c.provider = p_provider
+  ),
+  forgotten AS (
+    DELETE FROM public.source_list_syncs s
+    WHERE s.account_id = p_account_id
+      AND s.provider = p_provider
+      AND s.source_ref = ANY (p_source_refs)
+      AND (
+        NOT p_keep_current_user
+        OR (
+          EXISTS (SELECT 1 FROM current_connection)
+          AND s.connection_user IS DISTINCT FROM
+            (SELECT provider_username FROM current_connection)
+        )
+      )
+    RETURNING 1
+  )
+  SELECT count(*)::integer FROM forgotten;
+$$;
+
+REVOKE ALL ON FUNCTION public.forget_connection_history(text, text, text[], boolean)
+FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.forget_connection_history(text, text, text[], boolean)
+TO service_role;

@@ -300,35 +300,36 @@ export async function getNewTitlesSummary(
  * After a disconnect, or a new Connection as another Provider user: forget
  * the history of the Source lists that only that Connection could read, so
  * nothing private stays stored and the new user starts with a new Baseline.
- * With `keepUser`, the history of that Provider user stays. The history of
- * public Source lists always stays.
+ * With `keepCurrentUser`, the history of the Provider user of the current
+ * Connection stays; the database reads that user when it deletes the rows,
+ * so a concurrent refresh or a newer Connection never loses its history.
+ * The history of public Source lists always stays.
  */
 export async function forgetConnectionDetections(
   accountId: string,
   provider: ProviderId,
-  options: { keepUser?: string | null } = {},
+  options: { keepCurrentUser?: boolean } = {},
 ): Promise<void> {
   const { data, error } = await supabase
     .from("source_list_syncs")
-    .select("source_ref, connection_user")
+    .select("source_ref")
     .eq("account_id", accountId)
     .eq("provider", provider);
   if (error) throw error;
   const refs = data
-    .filter(
-      (row) =>
-        sourceRequiresConnection(provider, row.source_ref) &&
-        !("keepUser" in options && row.connection_user === options.keepUser),
-    )
-    .map((row) => row.source_ref);
+    .map((row) => row.source_ref)
+    .filter((ref) => sourceRequiresConnection(provider, ref));
   if (refs.length === 0) return;
-  // One delete: the entries go with their row (ON DELETE CASCADE), so a
-  // history is never left without its Baseline.
-  const { error: deleteError } = await supabase
-    .from("source_list_syncs")
-    .delete()
-    .eq("account_id", accountId)
-    .eq("provider", provider)
-    .in("source_ref", refs);
-  if (deleteError) throw deleteError;
+  // The entries go with their row (ON DELETE CASCADE), so a history is never
+  // left without its Baseline.
+  const { error: forgetError } = await supabase.rpc(
+    "forget_connection_history",
+    {
+      p_account_id: accountId,
+      p_provider: provider,
+      p_source_refs: refs,
+      p_keep_current_user: options.keepCurrentUser ?? false,
+    },
+  );
+  if (forgetError) throw forgetError;
 }

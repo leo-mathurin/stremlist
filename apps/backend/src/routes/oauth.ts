@@ -70,7 +70,7 @@ oauth.get("/oauth/:provider/callback", async (c) => {
     // Connection-only Source lists of the previous user must not stay.
     try {
       await forgetConnectionDetections(pending.accountId, provider, {
-        keepUser: username,
+        keepCurrentUser: true,
       });
     } catch (forgetError) {
       console.error(

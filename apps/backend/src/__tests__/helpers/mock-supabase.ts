@@ -822,7 +822,46 @@ function listNewTitles(args: RpcArgs): Result {
   return { data: rows.slice(0, args.p_limit as number), error: null };
 }
 
+/** Same rules as public.forget_connection_history. */
+function forgetConnectionHistory(args: RpcArgs): Result {
+  const refs = args.p_source_refs as string[];
+  const connection = db
+    .getTable("connections")
+    .find(
+      (row) =>
+        row.account_id === args.p_account_id &&
+        row.provider === args.p_provider,
+    );
+  const forgotten = db
+    .getTable("source_list_syncs")
+    .filter(
+      (row) =>
+        row.account_id === args.p_account_id &&
+        row.provider === args.p_provider &&
+        refs.includes(row.source_ref as string) &&
+        (!args.p_keep_current_user ||
+          (!!connection &&
+            (row.connection_user ?? null) !==
+              (connection.provider_username ?? null))),
+    );
+  const gone = (row: Row) =>
+    forgotten.some(
+      (sync) =>
+        sync.account_id === row.account_id &&
+        sync.provider === row.provider &&
+        sync.source_ref === row.source_ref,
+    );
+  db.tables.source_list_entries = db
+    .getTable("source_list_entries")
+    .filter((row) => !gone(row));
+  db.tables.source_list_syncs = db
+    .getTable("source_list_syncs")
+    .filter((row) => !forgotten.includes(row));
+  return { data: forgotten.length, error: null };
+}
+
 export const defaultRpcHandlers: Partial<Record<string, RpcHandler>> = {
+  forget_connection_history: forgetConnectionHistory,
   replace_account_config: replaceAccountConfig,
   record_source_list_sync: recordSourceListSync,
   list_new_titles: listNewTitles,

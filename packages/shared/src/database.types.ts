@@ -326,6 +326,16 @@ export type Database = {
         };
         Returns: number;
       };
+      forget_connection_history: {
+        Args: {
+          p_account_id: string;
+          p_keep_current_user: boolean;
+          p_provider: string;
+          p_source_refs: string[];
+        };
+        /** Source lists whose history was deleted. */
+        Returns: number;
+      };
       generate_account_id: { Args: never; Returns: string };
       list_new_titles: {
         Args: {

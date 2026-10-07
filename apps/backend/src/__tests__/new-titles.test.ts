@@ -486,6 +486,8 @@ describe("overlapping reads and Connections", () => {
 
   it("forgets only the other user's history after a new Connection", async () => {
     seedNewTitlesAccount();
+    // The new Connection is sam's; a refresh already wrote sam's Baseline.
+    seedConnection(accountId, "trakt", { username: "sam" });
     const at = new Date().toISOString();
     for (const [sourceRef, user] of [
       ["me/history", "leo"],
@@ -501,7 +503,9 @@ describe("overlapping reads and Connections", () => {
       });
     }
 
-    await forgetConnectionDetections(accountId, "trakt", { keepUser: "sam" });
+    await forgetConnectionDetections(accountId, "trakt", {
+      keepCurrentUser: true,
+    });
 
     expect(
       db.getTable("source_list_syncs").map((row) => row.source_ref),
