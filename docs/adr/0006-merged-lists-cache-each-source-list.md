@@ -18,3 +18,4 @@ Each Source list of a merged List keeps its own cached Catalog, under a key made
 - The merge rules live in `@stremlist/shared/list-merge` and run on the configure page and in the API: at most 5 Source lists per List and 20 per Account, each Source list once per Account, a display mode that keeps each single-type Source list (IMDb charts, Trakt Up Next), and "Date added" only with dates.
 - `sourceHasAddedDates` must match what the adapters set; a new Provider or Source list kind updates both.
 - A save deletes the caches that it leaves unused (removed Source lists, a List that became merged or changed its Source list).
+- A client that omits a List's merged Source lists keeps the saved ones. The API checks the rules against them, and the transaction refuses the save (409) when another save changed them in between, so a stale client cannot undo a merge.

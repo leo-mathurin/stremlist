@@ -115,6 +115,26 @@ BEGIN
       'position', 0)), NULL, NULL);
   ASSERT result.lists->0->'merged_sources' = merged, 'Omitted merged Source lists must survive';
 
+  -- A save that kept merged Source lists the API read earlier is refused
+  -- when another save changed them since.
+  BEGIN
+    PERFORM public.replace_account_config('sl_configtransactiontest00', NULL,
+      jsonb_build_array(jsonb_build_object('id', list_id, 'provider', 'imdb', 'source_ref', 'ur7',
+        'catalog_title', 'Stale', 'sort_option', 'title-asc', 'display_mode', 'split',
+        'position', 0, 'expected_merged_sources', '[]'::jsonb)), NULL, NULL);
+    RAISE EXCEPTION 'Expected stale merged Source lists rejection';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'Merged Source lists changed' THEN RAISE; END IF;
+  END;
+  ASSERT (SELECT catalog_title FROM public.lists WHERE id = list_id::uuid) = 'Renamed';
+
+  SELECT * INTO result FROM public.replace_account_config('sl_configtransactiontest00', NULL,
+    jsonb_build_array(jsonb_build_object('id', list_id, 'provider', 'imdb', 'source_ref', 'ur7',
+      'catalog_title', 'Kept', 'sort_option', 'title-asc', 'display_mode', 'split',
+      'position', 0, 'expected_merged_sources', merged, 'source_label', 'Family picks')), NULL, NULL);
+  ASSERT result.lists->0->'merged_sources' = merged, 'A matching expectation keeps the Source lists';
+  ASSERT result.lists->0->>'source_label' = 'Family picks';
+
   SELECT * INTO result FROM public.replace_account_config('sl_configtransactiontest00', NULL,
     jsonb_build_array(jsonb_build_object('id', list_id, 'provider', 'imdb', 'source_ref', 'ur7',
       'catalog_title', 'Split', 'sort_option', 'title-asc', 'display_mode', 'split',

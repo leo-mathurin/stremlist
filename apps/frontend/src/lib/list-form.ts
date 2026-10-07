@@ -24,6 +24,8 @@ export type ListFormRow = {
   availableGenres: string[];
   /** Source lists merged after the first one; empty for most Lists. */
   mergedSources: ListSource[];
+  /** The label of the first Source list, when it was merged in earlier. */
+  sourceLabel?: string;
 };
 
 /**
@@ -65,6 +67,7 @@ export function createListRow(
     catalogSettings: partial.catalogSettings ?? {},
     availableGenres: partial.availableGenres ?? [],
     mergedSources: partial.mergedSources ?? [],
+    ...(partial.sourceLabel ? { sourceLabel: partial.sourceLabel } : {}),
   };
 }
 

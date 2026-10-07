@@ -39,7 +39,7 @@ import {
   resetProviders,
   useFakeProvider,
 } from "./helpers/mock-registry.js";
-import { db, resetRpc } from "./helpers/mock-supabase.js";
+import { callRpc, db, resetRpc, supabase } from "./helpers/mock-supabase.js";
 
 const [LIST_1, LIST_2] = LIST_IDS;
 const TRAKT_WATCHLIST: ListSource = {
@@ -284,6 +284,31 @@ describe("merged Catalog", () => {
     expect(json.meta && "addedAt" in json.meta).toBe(false);
   });
 
+  it("keeps the Simkl link back of every cached copy on the detail page", async () => {
+    const row = seedMergedList({
+      merged: [{ provider: "simkl", sourceRef: "me/plantowatch" }],
+    });
+    seedConnection(accountId, "simkl");
+    const [first, simkl] = sourceCaches({
+      id: row.id,
+      ...TRAKT_WATCHLIST,
+      mergedSources: [{ provider: "simkl", sourceRef: "me/plantowatch" }],
+    });
+    cache.seed(first.cacheKey, [movie("tt9", { description: "A plot." })]);
+    cache.seed(simkl.cacheKey, [
+      movie("tt9", {
+        description: "A plot.\n\nMore on Simkl: https://simkl.com/movies/9/x",
+      }),
+    ]);
+
+    const res = await app.request(`/${accountId}/meta/movie/tt9.json`);
+    const json = (await res.json()) as { meta: StremioMeta | null };
+
+    expect(json.meta?.description).toBe(
+      "A plot.\n\nMore on Simkl: https://simkl.com/movies/9/x",
+    );
+  });
+
   it("counts a merged List as failed on refresh when one Source list fails", async () => {
     db.getTable("accounts")[0].last_fetched_at = new Date(0).toISOString();
     fakeSources("trakt", {
@@ -360,6 +385,49 @@ describe("saving merged Lists", () => {
     expect(row.merged_sources).toEqual([
       { provider: "trakt", source_ref: TRAKT_LIST.sourceRef },
     ]);
+  });
+
+  it("refuses a save that keeps merged Source lists another save changed", async () => {
+    seedMergedList();
+    const concurrent = [
+      { provider: "trakt", source_ref: TRAKT_LIST.sourceRef },
+      { provider: "justwatch", source_ref: JUSTWATCH_LIST.sourceRef },
+    ];
+    // Another save merges a Source list after this save read the Lists and
+    // before its transaction runs.
+    const rpc = vi.spyOn(supabase, "rpc");
+    rpc.mockImplementationOnce((name, args) => {
+      db.getTable("lists")[0].merged_sources = concurrent;
+      return callRpc(name, args);
+    });
+
+    const res = await postConfig([
+      { ...listBody(TRAKT_WATCHLIST), id: LIST_1, sortOption: "year-desc" },
+    ]);
+
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "Your Lists changed in another window. Reload the page and try again.",
+    );
+    const [row] = db.getTable("lists");
+    expect(row.merged_sources).toEqual(concurrent);
+    expect(row.sort_option).toBe("added_at-asc");
+  });
+
+  it("keeps the label of a merged Source list that moved to the first place", async () => {
+    const res = await postConfig([
+      listBody({ ...JUSTWATCH_LIST, label: "Family picks" }, [TRAKT_LIST], {
+        sourceLabel: "Family picks",
+      }),
+    ]);
+    expect(res.status).toBe(200);
+    expect(db.getTable("lists")[0].source_label).toBe("Family picks");
+
+    const config = await app.request(`/${accountId}/config`);
+    const json = (await config.json()) as {
+      lists: { sourceLabel?: string }[];
+    };
+    expect(json.lists[0].sourceLabel).toBe("Family picks");
   });
 
   it("deletes the caches that splitting a merged List leaves unused", async () => {

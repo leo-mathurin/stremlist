@@ -48,6 +48,20 @@ export interface ListInput {
   position: number;
   catalogSettings?: CatalogSettings;
   mergedSources?: ListSource[];
+  sourceLabel?: string;
+  /**
+   * The client omitted the merged Source lists, so `mergedSources` are the
+   * saved ones: keep them, and refuse the save if another save changed them.
+   */
+  keptMergedSources?: boolean;
+}
+
+/** A concurrent save changed merged Source lists that this save kept. */
+export class MergedSourcesChangedError extends Error {
+  constructor() {
+    super("Merged Source lists changed");
+    this.name = "MergedSourcesChangedError";
+  }
 }
 
 const storedSourcesSchema = z.array(
@@ -97,6 +111,7 @@ function mapList(row: ListRow): ConfigList | null {
       ? { catalogSettings: settings.data }
       : {}),
     ...(mergedSources.length > 0 ? { mergedSources } : {}),
+    ...(row.source_label ? { sourceLabel: row.source_label } : {}),
   };
 }
 
@@ -251,16 +266,24 @@ export async function replaceAccountConfig(
       ...(list.catalogSettings === undefined
         ? {}
         : { catalog_settings: { ...list.catalogSettings } }),
-      merged_sources: (list.mergedSources ?? []).map((source) => ({
+      [list.keptMergedSources ? "expected_merged_sources" : "merged_sources"]: (
+        list.mergedSources ?? []
+      ).map((source) => ({
         provider: source.provider,
         source_ref: source.sourceRef,
         ...(source.label ? { label: source.label } : {}),
       })),
+      source_label: list.sourceLabel ?? null,
     })),
     p_actions_enabled: actions?.enabled ?? null,
     p_action_providers: actions?.providers ?? null,
   });
-  if (error) throw error;
+  if (error) {
+    if (error.message === "Merged Source lists changed") {
+      throw new MergedSourcesChangedError();
+    }
+    throw error;
+  }
 
   const result = data[0];
   const saved = (result.lists as ListRow[])
@@ -304,6 +327,7 @@ export async function createPrivateCopy(legacy: Account): Promise<Account> {
       position: index,
       catalogSettings: list.catalogSettings,
       mergedSources: list.mergedSources,
+      sourceLabel: list.sourceLabel,
     })),
     legacy.rpdbApiKey,
   );

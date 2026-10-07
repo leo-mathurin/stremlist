@@ -488,11 +488,17 @@ export async function findMetaInAccountCache(
       (list) => via === "private" || !listRequiresConnection(list),
     );
     if (lists.length === 0) return null;
-    const found = await findCachedMeta(
-      lists.flatMap(sourceCaches).map(({ cacheKey }) => cacheKey),
-      type,
-      id,
+    // Every cached copy, so the detail page keeps the link back of each
+    // Source list that has the Title, as its catalog card does.
+    const copies = await Promise.all(
+      lists
+        .flatMap(sourceCaches)
+        .map(({ cacheKey }) => findCachedMeta([cacheKey], type, id)),
     );
+    const found = mergeSourceCatalogs(
+      copies.flatMap((copy) => (copy ? [[copy]] : [])),
+      false,
+    ).at(0);
     if (!found) return null;
     return {
       ...toStremioMeta(found),

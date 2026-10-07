@@ -711,6 +711,7 @@ describe("List CRUD via the config API", () => {
       position: 0,
       catalog_settings: { minRating: 8 },
       merged_sources: [],
+      source_label: null,
       created_at: "2026-09-15T00:00:00Z",
       updated_at: "2026-09-15T00:00:00Z",
     };
@@ -756,7 +757,8 @@ describe("List CRUD via the config API", () => {
               sort_option: "title-asc",
               display_mode: "split",
               position: 0,
-              merged_sources: [],
+              expected_merged_sources: [],
+              source_label: null,
             },
             {
               provider: "imdb",
@@ -766,6 +768,7 @@ describe("List CRUD via the config API", () => {
               display_mode: "split",
               position: 1,
               merged_sources: [],
+              source_label: null,
             },
           ],
           p_actions_enabled: null,
@@ -819,7 +822,8 @@ describe("List CRUD via the config API", () => {
           sort_option: "title-asc",
           display_mode: "split",
           position: 0,
-          merged_sources: [],
+          expected_merged_sources: [],
+          source_label: null,
         },
         {
           id: UUID_2,
@@ -830,7 +834,8 @@ describe("List CRUD via the config API", () => {
           display_mode: "split",
           position: 1,
           catalog_settings: {},
-          merged_sources: [],
+          expected_merged_sources: [],
+          source_label: null,
         },
       ]);
     });
@@ -857,6 +862,7 @@ describe("List CRUD via the config API", () => {
           position: 0,
           catalog_settings: catalogSettings,
           merged_sources: [],
+          source_label: null,
         },
       ]);
     });

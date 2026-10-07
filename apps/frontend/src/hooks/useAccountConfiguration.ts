@@ -142,6 +142,7 @@ function rowsFromLists(lists: ConfigList[]): ListFormRow[] {
       catalogSettings: list.catalogSettings,
       availableGenres: list.availableGenres,
       mergedSources: list.mergedSources,
+      sourceLabel: list.sourceLabel,
     }),
   );
 }
@@ -433,6 +434,8 @@ export function useAccountConfiguration(
           provider: first.provider,
           sourceRef: first.sourceRef,
           mergedSources: rest,
+          // The promoted Source list keeps its name.
+          sourceLabel: first.label,
         });
       }),
     );
@@ -545,6 +548,7 @@ export function useAccountConfiguration(
       position: index,
       catalogSettings: list.catalogSettings,
       mergedSources: list.mergedSources,
+      sourceLabel: list.sourceLabel,
     }));
 
   /**

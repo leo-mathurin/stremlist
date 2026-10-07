@@ -23,6 +23,8 @@ export interface ConfigList {
    * Absent for a List with one Source list.
    */
   mergedSources?: ListSource[];
+  /** The label of the first Source list (see `ListSource.label`). */
+  sourceLabel?: string;
 }
 
 export interface ConnectionSummary {
@@ -61,6 +63,7 @@ export interface ConfigListInput {
   position?: number;
   catalogSettings?: CatalogSettings;
   mergedSources?: ListSource[];
+  sourceLabel?: string;
 }
 
 export interface AccountConfigInput {

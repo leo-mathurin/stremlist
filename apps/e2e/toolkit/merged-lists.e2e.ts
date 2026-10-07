@@ -349,3 +349,71 @@ test("a Source list that is in a merged List cannot be added again", async ({
   await expect(screen.getByText(/^1 of 10 lists/)).toBeVisible();
   expect(inputs).toHaveLength(1);
 });
+
+test("a merged Source list keeps its name when it moves to the first place", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  const merged = {
+    ...watchlist,
+    mergedSources: [
+      {
+        provider: "imdb",
+        sourceRef: "ls99123456",
+        label: "Family picks",
+      },
+      {
+        provider: "trakt",
+        sourceRef: "users/sean/watchlist",
+        label: "Sean picks",
+      },
+    ],
+  } satisfies ConfigList;
+  const submissions = await captureConfig(browser, withLists([merged]));
+  await app.open(`/configure?account=${accountId}`);
+  await openSettings(screen, "IMDb Watchlist");
+  await screen
+    .getByRole("button", "Remove IMDb Watchlist from this List")
+    .tap();
+  await expect(
+    screen.getByRole("button", "Move Family picks to its own List"),
+  ).toBeVisible();
+  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  expect(submissions[0].lists).toMatchObject([
+    {
+      provider: "imdb",
+      sourceRef: "ls99123456",
+      sourceLabel: "Family picks",
+      mergedSources: [
+        {
+          provider: "trakt",
+          sourceRef: "users/sean/watchlist",
+          label: "Sean picks",
+        },
+      ],
+    },
+  ]);
+
+  // The first Source list moves to its own List with its own name.
+  await screen.getByRole("button", "Move Family picks to its own List").tap();
+  await expect(
+    screen.getByRole("button", "Settings for Family picks"),
+  ).toBeVisible();
+});
+
+test("merging the last other List moves focus to the Source lists", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  await captureConfig(browser, withLists([watchlist, favourites]));
+  await app.open(`/configure?account=${accountId}`);
+  await openSettings(screen, "IMDb Watchlist");
+  await screen.getByRole("button", MERGE).first().press("Enter");
+  await expect(screen.getByRole("menuitem", "Favourite films")).toBeVisible();
+  await browser.keyboard.press("Enter");
+  await expect(screen.getByText("2 Source lists · IMDb")).toBeVisible();
+  await expect(screen.getByText("Source lists", { exact: true })).toBeFocused();
+});

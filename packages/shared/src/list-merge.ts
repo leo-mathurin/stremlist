@@ -23,6 +23,8 @@ export interface ListSource {
 
 /** A List as far as merging cares: its first Source list, then the others. */
 export interface MergeableList extends ListSource {
+  /** The label of the first Source list, when it was merged in earlier. */
+  sourceLabel?: string;
   mergedSources?: readonly ListSource[];
 }
 
@@ -35,7 +37,11 @@ export const MAX_SOURCES_PER_ACCOUNT = 20;
 /** Every Source list of a List, its first one first. */
 export function listSources(list: MergeableList): ListSource[] {
   return [
-    { provider: list.provider, sourceRef: list.sourceRef },
+    {
+      provider: list.provider,
+      sourceRef: list.sourceRef,
+      ...(list.sourceLabel ? { label: list.sourceLabel } : {}),
+    },
     ...(list.mergedSources ?? []).map(({ provider, sourceRef, label }) => ({
       provider,
       sourceRef,

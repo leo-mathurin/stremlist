@@ -6,7 +6,8 @@
 -- `merged_sources` holds the others, in order, as
 -- `[{"provider": "trakt", "source_ref": "users/x/watchlist"}, …]`, with an
 -- optional "label" (the title of the List it came from, for the configure
--- page only).
+-- page only). `source_label` is that label for the first Source list, when
+-- an edit moved a merged Source list to the first place.
 -- The backend checks the merge rules (at most 5 Source lists per List, each
 -- Source list once per Account, display mode, date sort).
 
@@ -15,8 +16,11 @@ ALTER TABLE public.lists
 ALTER TABLE public.lists
   ADD CONSTRAINT lists_merged_sources_is_array
   CHECK (jsonb_typeof(merged_sources) = 'array');
+ALTER TABLE public.lists ADD COLUMN source_label text;
 
--- Same signature: only the INSERT and the UPDATE learn the new column.
+-- Same signature: the INSERT and the UPDATE learn the new columns, and a
+-- List whose saved merged Source lists changed since the API checked them
+-- is refused (`expected_merged_sources`).
 CREATE OR REPLACE FUNCTION public.replace_account_config(
   p_account_id text,
   p_rpdb_api_key text,
@@ -59,6 +63,18 @@ BEGIN
     RAISE EXCEPTION 'Duplicate list ID';
   END IF;
 
+  -- The API checked the merge rules against these saved Source lists when the
+  -- client omitted them. A save in between (accounts row lock above) may
+  -- have changed them: refuse instead of writing a stale or unchecked set.
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements(p_lists) AS entries(value)
+    JOIN public.lists l ON l.id = (value->>'id')::uuid
+    WHERE value ? 'expected_merged_sources'
+      AND l.merged_sources IS DISTINCT FROM value->'expected_merged_sources'
+  ) THEN
+    RAISE EXCEPTION 'Merged Source lists changed';
+  END IF;
+
   WITH removed AS (
     DELETE FROM public.lists l
     WHERE l.account_id = p_account_id
@@ -74,13 +90,13 @@ BEGIN
   LOOP
     INSERT INTO public.lists AS l (
       id, account_id, provider, source_ref, catalog_title, sort_option,
-      display_mode, position, catalog_settings, merged_sources
+      display_mode, position, catalog_settings, merged_sources, source_label
     ) VALUES (
       coalesce((item->>'id')::uuid, gen_random_uuid()),
       p_account_id, item->>'provider', item->>'source_ref',
       item->>'catalog_title', item->>'sort_option', item->>'display_mode',
       (item->>'position')::integer, coalesce(item->'catalog_settings', '{}'::jsonb),
-      coalesce(item->'merged_sources', '[]'::jsonb)
+      coalesce(item->'merged_sources', '[]'::jsonb), item->>'source_label'
     )
     ON CONFLICT (id) DO UPDATE SET
       provider = EXCLUDED.provider,
@@ -96,6 +112,8 @@ BEGIN
       -- them must not split a merged List.
       merged_sources = CASE WHEN item ? 'merged_sources'
         THEN EXCLUDED.merged_sources ELSE l.merged_sources END,
+      source_label = CASE WHEN item ? 'source_label'
+        THEN EXCLUDED.source_label ELSE l.source_label END,
       updated_at = now()
     WHERE l.account_id = p_account_id;
   END LOOP;

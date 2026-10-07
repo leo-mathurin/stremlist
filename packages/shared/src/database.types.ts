@@ -127,6 +127,7 @@ export type Database = {
           position: number;
           provider: string;
           sort_option: string;
+          source_label: string | null;
           source_ref: string;
           updated_at: string;
         };
@@ -141,6 +142,7 @@ export type Database = {
           position?: number;
           provider: string;
           sort_option?: string;
+          source_label?: string | null;
           source_ref: string;
           updated_at?: string;
         };
@@ -155,6 +157,7 @@ export type Database = {
           position?: number;
           provider?: string;
           sort_option?: string;
+          source_label?: string | null;
           source_ref?: string;
           updated_at?: string;
         };

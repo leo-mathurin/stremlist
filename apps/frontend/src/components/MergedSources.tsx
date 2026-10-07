@@ -67,7 +67,9 @@ export default function MergedSources({
     if (!keepFocus.current) return;
     keepFocus.current = false;
     // Without other Lists there is no menu: focus the section instead.
-    (picker.current ?? heading.current)?.focus();
+    // A full List disables the menu, which then cannot take focus either.
+    const menu = picker.current;
+    (menu && !menu.disabled ? menu : heading.current)?.focus();
   }, [sources.length]);
   const changeSources = (change: () => void) => {
     keepFocus.current = true;
@@ -222,7 +224,9 @@ export default function MergedSources({
                 <DropdownMenuItem
                   key={candidate.localId}
                   disabled={candidate.sourceCount > room}
-                  onSelect={() => controls.onMerge(candidate.localId)}
+                  onSelect={() =>
+                    changeSources(() => controls.onMerge(candidate.localId))
+                  }
                 >
                   <ProviderMark
                     provider={candidate.provider}

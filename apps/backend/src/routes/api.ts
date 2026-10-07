@@ -39,6 +39,7 @@ import { supabase } from "../lib/supabase";
 import { getProvider, isProviderEnabled } from "../providers/registry";
 import type { AccountAccess, ListInput } from "../services/accounts";
 import {
+  MergedSourcesChangedError,
   createAccount,
   createPrivateCopy,
   getAccountLists,
@@ -103,6 +104,7 @@ const listBody = z.object({
   displayMode: z.enum(displayModeValues).optional(),
   position: z.number().int().min(0).optional(),
   catalogSettings: catalogSettingsSchema.optional(),
+  sourceLabel: z.string().trim().max(60).optional(),
   // The Source lists merged after the first one (ADR 0006). Omitted keeps
   // the saved ones, so older clients do not split merged Lists.
   mergedSources: z
@@ -224,11 +226,20 @@ async function normalizeLists(
   const saved = new Map((access.saved ?? []).map((list) => [list.id, list]));
   for (const [index, list] of lists.entries()) {
     const sources: ListSource[] = [];
+    // An omitted `mergedSources` keeps the saved ones; the transaction checks
+    // that they did not change since this read.
+    const kept = list.mergedSources
+      ? undefined
+      : list.id
+        ? (saved.get(list.id)?.mergedSources ?? [])
+        : undefined;
     for (const source of [
-      { provider: list.provider, sourceRef: list.sourceRef },
-      ...(list.mergedSources ??
-        (list.id ? saved.get(list.id)?.mergedSources : undefined) ??
-        []),
+      {
+        provider: list.provider,
+        sourceRef: list.sourceRef,
+        label: list.sourceLabel,
+      },
+      ...(list.mergedSources ?? kept ?? []),
     ]) {
       const checked: ListSource = {
         ...(await normalizeSource(source, access)),
@@ -259,6 +270,8 @@ async function normalizeLists(
       position: index,
       catalogSettings: list.catalogSettings,
       mergedSources,
+      ...(first.label ? { sourceLabel: first.label } : {}),
+      ...(kept ? { keptMergedSources: true } : {}),
     };
     const problem = listMergeProblem({
       ...input,
@@ -547,6 +560,15 @@ const api = new Hono()
             : undefined,
         );
       } catch (error) {
+        if (error instanceof MergedSourcesChangedError) {
+          return c.json(
+            {
+              error:
+                "Your Lists changed in another window. Reload the page and try again.",
+            },
+            409,
+          );
+        }
         console.error("Failed to save the configuration:", error);
         return c.json(
           {
