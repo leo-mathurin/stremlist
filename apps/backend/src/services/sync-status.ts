@@ -47,15 +47,8 @@ export async function recordRefreshOutcome(
       if (error) throw new Error(error.message);
     })(),
   ];
-  // Only a private Source list proves that the Connection works: a public
-  // one may have been read without it.
-  if (
-    connection?.reportWorking &&
-    problem === null &&
-    sourceRequiresConnection(source.provider, source.sourceRef)
-  ) {
-    writes.push(connection.reportWorking());
-  }
+  if (problem === null)
+    writes.push(reportConnectionWorking(source, connection));
   if (connection?.reportRefused && problem === "needs_connection") {
     writes.push(connection.reportRefused());
   }
@@ -67,6 +60,24 @@ export async function recordRefreshOutcome(
         result.reason instanceof Error ? result.reason.message : result.reason,
       );
     }
+  }
+}
+
+/**
+ * A read of the Source list worked through this Connection. Only a private
+ * Source list proves that the Connection works: a public one may have been
+ * read without it. Independent of the List status, which also needs the
+ * Catalog to be saved.
+ */
+export async function reportConnectionWorking(
+  source: Pick<RefreshedSource, "provider" | "sourceRef">,
+  connection: ConnectionAccess | null,
+): Promise<void> {
+  if (
+    connection?.reportWorking &&
+    sourceRequiresConnection(source.provider, source.sourceRef)
+  ) {
+    await connection.reportWorking();
   }
 }
 

@@ -26,7 +26,7 @@ import {
   getCachedList,
   writeCachedList,
 } from "./list-cache";
-import { recordRefreshOutcome } from "./sync-status";
+import { recordRefreshOutcome, reportConnectionWorking } from "./sync-status";
 
 /**
  * When the ID resolver left entries untried, the next read comes this soon
@@ -270,8 +270,10 @@ async function fetchAndCacheList(
   try {
     generation = await writeCachedList(config.listId, data, storedAt);
   } catch (error) {
-    // Later requests still get the old Catalog, so this is no "Updated".
+    // Later requests still get the old Catalog, so this is no "Updated";
+    // the Provider did accept the Connection, though.
     console.error(`Failed to cache list ${config.listId} in R2:`, error);
+    await reportConnectionWorking(config, ctx.connection);
     return { data, cachedAt, generation };
   }
   if (!superseded()) {

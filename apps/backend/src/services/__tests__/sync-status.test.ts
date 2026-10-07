@@ -497,6 +497,28 @@ describe("Connections that need to be renewed", () => {
     expect((await connectionOf())?.needsRenewalSince).toBeNull();
   });
 
+  it("clears the mark after a private read whose Catalog could not be saved", async () => {
+    vi.mocked(listCache.writeCachedList).mockRejectedValueOnce(
+      new Error("R2 is down"),
+    );
+    useTrakt(vi.fn(() => Promise.resolve(entries("tt0000001"))));
+    const watchlist = seedList(accountId, {
+      provider: "trakt",
+      source_ref: "me/watchlist",
+      position: 1,
+    });
+    db.getTable("connections")[0].needs_renewal_since =
+      new Date().toISOString();
+
+    await getListCatalog(
+      config({ listId: watchlist.id, sourceRef: "me/watchlist" }),
+    );
+
+    expect((await connectionOf())?.needsRenewalSince).toBeNull();
+    // The List status waits for a saved Catalog.
+    expect(await statusOf(watchlist.id)).toBeUndefined();
+  });
+
   it("keeps the mark when only a public Source list reads fine", async () => {
     const fetchSource = vi
       .fn()
