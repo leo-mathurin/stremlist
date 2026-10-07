@@ -161,6 +161,11 @@ export function describeSource(
       return describe("list", ref, null);
     }
     case "mdblist": {
+      // Validation stores pasted links as `lists/{id}`, which has no public
+      // page; only `lists/{user}/{slug}` maps back to one.
+      if (parts[0] === "lists" && parts.length === 2) {
+        return describe("list", `List ${parts[1]}`, null);
+      }
       if (parts[0] === "lists") {
         return describe(
           "list",
