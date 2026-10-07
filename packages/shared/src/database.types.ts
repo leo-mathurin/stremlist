@@ -329,7 +329,6 @@ export type Database = {
       forget_connection_history: {
         Args: {
           p_account_id: string;
-          p_keep_current_user: boolean;
           p_provider: string;
           p_source_refs: string[];
         };

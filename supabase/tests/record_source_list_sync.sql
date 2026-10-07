@@ -120,21 +120,24 @@ BEGIN
   ASSERT (SELECT array_agg(entry_key) FROM public.source_list_entries
     WHERE account_id = acc AND source_ref = 'me/history') = ARRAY['trakt-movie:7'];
 
-  -- A new Connection keeps only the history of its own Provider user, read
-  -- when the rows are deleted.
+  -- Cleanup keeps only the history of the current Connection's Provider
+  -- user, read when the rows are deleted.
   INSERT INTO public.source_list_syncs (account_id, provider, source_ref, baseline_at, last_complete_sync_at, connection_user)
   VALUES (acc, 'trakt', 'me/collection', now(), now(), 'leo');
   ASSERT public.forget_connection_history(acc, 'trakt',
-    ARRAY['me/history', 'me/collection'], true) = 1;
+    ARRAY['me/history', 'me/collection']) = 1;
   ASSERT (SELECT array_agg(source_ref) FROM public.source_list_syncs
     WHERE account_id = acc AND provider = 'trakt' AND source_ref LIKE 'me/%') = ARRAY['me/history'],
     'The current user (someone-else) keeps me/history';
-  -- After a disconnect, everything goes.
+  -- A disconnect followed by a reconnect as the same user before the
+  -- cleanup runs keeps that user's history.
   DELETE FROM public.connections WHERE account_id = acc AND provider = 'trakt';
-  ASSERT public.forget_connection_history(acc, 'trakt',
-    ARRAY['me/history'], true) = 0, 'Without a Connection, keeping deletes nothing';
-  ASSERT public.forget_connection_history(acc, 'trakt',
-    ARRAY['me/history'], false) = 1;
+  INSERT INTO public.connections (account_id, provider, provider_username, access_token, redirect_uri)
+  VALUES (acc, 'trakt', 'someone-else', 'enc', 'https://example.test/callback');
+  ASSERT public.forget_connection_history(acc, 'trakt', ARRAY['me/history']) = 0;
+  -- Without a Connection, everything goes.
+  DELETE FROM public.connections WHERE account_id = acc AND provider = 'trakt';
+  ASSERT public.forget_connection_history(acc, 'trakt', ARRAY['me/history']) = 1;
 
   -- Mismatched arrays are refused.
   BEGIN

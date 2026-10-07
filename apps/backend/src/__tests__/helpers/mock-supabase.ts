@@ -839,10 +839,9 @@ function forgetConnectionHistory(args: RpcArgs): Result {
         row.account_id === args.p_account_id &&
         row.provider === args.p_provider &&
         refs.includes(row.source_ref as string) &&
-        (!args.p_keep_current_user ||
-          (!!connection &&
-            (row.connection_user ?? null) !==
-              (connection.provider_username ?? null))),
+        (!connection ||
+          (row.connection_user ?? null) !==
+            (connection.provider_username ?? null)),
     );
   const gone = (row: Row) =>
     forgotten.some(

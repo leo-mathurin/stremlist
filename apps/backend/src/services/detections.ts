@@ -299,16 +299,15 @@ export async function getNewTitlesSummary(
 /**
  * After a disconnect, or a new Connection as another Provider user: forget
  * the history of the Source lists that only that Connection could read, so
- * nothing private stays stored and the new user starts with a new Baseline.
- * With `keepCurrentUser`, the history of the Provider user of the current
- * Connection stays; the database reads that user when it deletes the rows,
- * so a concurrent refresh or a newer Connection never loses its history.
- * The history of public Source lists always stays.
+ * nothing private stays stored and a new user starts with a new Baseline.
+ * Only the history of the current Connection's Provider user stays (none
+ * after a disconnect). The database reads that user when it deletes the
+ * rows, so a refresh or a newer Connection that comes in between keeps its
+ * history. The history of public Source lists always stays.
  */
 export async function forgetConnectionDetections(
   accountId: string,
   provider: ProviderId,
-  options: { keepCurrentUser?: boolean } = {},
 ): Promise<void> {
   const { data, error } = await supabase
     .from("source_list_syncs")
@@ -324,12 +323,7 @@ export async function forgetConnectionDetections(
   // left without its Baseline.
   const { error: forgetError } = await supabase.rpc(
     "forget_connection_history",
-    {
-      p_account_id: accountId,
-      p_provider: provider,
-      p_source_refs: refs,
-      p_keep_current_user: options.keepCurrentUser ?? false,
-    },
+    { p_account_id: accountId, p_provider: provider, p_source_refs: refs },
   );
   if (forgetError) throw forgetError;
 }

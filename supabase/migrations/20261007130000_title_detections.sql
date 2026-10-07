@@ -371,16 +371,15 @@ FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.list_new_titles(text, text[], text[], integer)
 TO service_role;
 
--- Forget the history of Source lists that only a Connection can read. After
--- a disconnect (p_keep_current_user false) every given Source list goes.
--- After a new Connection (true) only the history of other Provider users
--- goes: the user is read from the Connection when the row is deleted, so a
--- concurrent refresh's new Baseline, or a newer Connection, is never lost.
+-- Forget the history of Source lists that only a Connection can read, after
+-- a disconnect or a new Connection. Only the history of the Provider user of
+-- the current Connection stays (none after a disconnect). That user is read
+-- when the rows are deleted, so a refresh or a newer Connection that comes
+-- in between (even a reconnect right after a disconnect) keeps its history.
 CREATE FUNCTION public.forget_connection_history(
   p_account_id text,
   p_provider text,
-  p_source_refs text[],
-  p_keep_current_user boolean
+  p_source_refs text[]
 )
 RETURNS integer
 LANGUAGE sql
@@ -398,19 +397,16 @@ AS $$
       AND s.provider = p_provider
       AND s.source_ref = ANY (p_source_refs)
       AND (
-        NOT p_keep_current_user
-        OR (
-          EXISTS (SELECT 1 FROM current_connection)
-          AND s.connection_user IS DISTINCT FROM
-            (SELECT provider_username FROM current_connection)
-        )
+        NOT EXISTS (SELECT 1 FROM current_connection)
+        OR s.connection_user IS DISTINCT FROM
+          (SELECT provider_username FROM current_connection)
       )
     RETURNING 1
   )
   SELECT count(*)::integer FROM forgotten;
 $$;
 
-REVOKE ALL ON FUNCTION public.forget_connection_history(text, text, text[], boolean)
+REVOKE ALL ON FUNCTION public.forget_connection_history(text, text, text[])
 FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.forget_connection_history(text, text, text[], boolean)
+GRANT EXECUTE ON FUNCTION public.forget_connection_history(text, text, text[])
 TO service_role;

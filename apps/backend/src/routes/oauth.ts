@@ -69,9 +69,7 @@ oauth.get("/oauth/:provider/callback", async (c) => {
     // A new Connection can be another Provider user: the history of
     // Connection-only Source lists of the previous user must not stay.
     try {
-      await forgetConnectionDetections(pending.accountId, provider, {
-        keepCurrentUser: true,
-      });
+      await forgetConnectionDetections(pending.accountId, provider);
     } catch (forgetError) {
       console.error(
         `Forgetting the previous ${provider} history failed:`,

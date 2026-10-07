@@ -484,6 +484,28 @@ describe("overlapping reads and Connections", () => {
     expect(detectionRows().every((row) => row.detected_at === null)).toBe(true);
   });
 
+  it("keeps a new Baseline when the user reconnects before the cleanup runs", async () => {
+    seedNewTitlesAccount();
+    seedConnection(accountId, "trakt", { username: "sam" });
+    const at = new Date().toISOString();
+    db.insert("source_list_syncs", {
+      account_id: accountId,
+      provider: "trakt",
+      source_ref: "me/history",
+      baseline_at: at,
+      last_complete_sync_at: at,
+      connection_user: "sam",
+    });
+
+    // A disconnect's cleanup that runs after sam connected again.
+    await forgetConnectionDetections(accountId, "trakt");
+    expect(db.getTable("source_list_syncs")).toHaveLength(1);
+
+    db.tables.connections = [];
+    await forgetConnectionDetections(accountId, "trakt");
+    expect(db.getTable("source_list_syncs")).toEqual([]);
+  });
+
   it("forgets only the other user's history after a new Connection", async () => {
     seedNewTitlesAccount();
     // The new Connection is sam's; a refresh already wrote sam's Baseline.
@@ -503,9 +525,7 @@ describe("overlapping reads and Connections", () => {
       });
     }
 
-    await forgetConnectionDetections(accountId, "trakt", {
-      keepCurrentUser: true,
-    });
+    await forgetConnectionDetections(accountId, "trakt");
 
     expect(
       db.getTable("source_list_syncs").map((row) => row.source_ref),
