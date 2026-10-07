@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import {
@@ -72,6 +72,22 @@ async function listKeys(prefix: string): Promise<string[]> {
   } while (continuationToken);
 
   return keys;
+}
+
+/**
+ * The cache key of one Source list of a merged List, as the backend derives
+ * it (apps/backend/src/services/merged-lists.ts). A List with one Source list
+ * uses its List ID instead.
+ */
+export function sourceCacheKey(
+  listId: string,
+  source: { provider: string; sourceRef: string },
+): string {
+  const digest = createHash("sha256")
+    .update(`${source.provider}:${source.sourceRef}`)
+    .digest("hex")
+    .slice(0, 16);
+  return `${listId}/sources/${digest}`;
 }
 
 export async function countCacheObjects(listId: string): Promise<number> {

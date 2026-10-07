@@ -170,5 +170,6 @@ export function asInput(lists: ConfigList[]): ConfigListInput[] {
     sortOption: list.sortOption,
     displayMode: list.displayMode,
     catalogSettings: list.catalogSettings,
+    mergedSources: list.mergedSources,
   }));
 }

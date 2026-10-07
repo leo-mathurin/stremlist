@@ -4,7 +4,9 @@
 -- the same Catalogs (ADR 0006). `provider` + `source_ref` stay the List's
 -- first Source list, so every List keeps working unchanged;
 -- `merged_sources` holds the others, in order, as
--- `[{"provider": "trakt", "source_ref": "users/x/watchlist"}, …]`.
+-- `[{"provider": "trakt", "source_ref": "users/x/watchlist"}, …]`, with an
+-- optional "label" (the title of the List it came from, for the configure
+-- page only).
 -- The backend checks the merge rules (at most 5 Source lists per List, each
 -- Source list once per Account, display mode, date sort).
 

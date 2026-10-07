@@ -2,6 +2,7 @@ import { createCipheriv, randomBytes, randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { Database } from "@stremlist/shared/database.types";
+import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import {
   BACKEND_URL,
@@ -111,6 +112,8 @@ export interface SeedListInput {
   sortOption?: string;
   displayMode?: "split" | "movie" | "series";
   catalogSettings?: CatalogSettings;
+  /** More Source lists of a merged List, after the first one. */
+  mergedSources?: ListSource[];
 }
 
 /** Add a controlled List row without a save-triggered external prewarm. */
@@ -129,6 +132,11 @@ export async function seedList(
     display_mode: list.displayMode ?? "movie",
     position: list.position,
     catalog_settings: { ...(list.catalogSettings ?? {}) },
+    merged_sources: (list.mergedSources ?? []).map((source) => ({
+      provider: source.provider,
+      source_ref: source.sourceRef,
+      ...(source.label ? { label: source.label } : {}),
+    })),
   });
   if (error) throw error;
   return id;
