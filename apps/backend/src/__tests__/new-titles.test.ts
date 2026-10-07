@@ -26,6 +26,7 @@ import {
   LIST_IDS,
   movie,
   seedAccount,
+  seedConnection,
   seedLegacyAccount,
   seedList,
 } from "./helpers/fixtures.js";
@@ -35,7 +36,7 @@ import {
   resetProviders,
   useFakeProvider,
 } from "./helpers/mock-registry.js";
-import { db, resetRpc } from "./helpers/mock-supabase.js";
+import { db, resetRpc, rpcHandlers } from "./helpers/mock-supabase.js";
 
 const START = new Date("2026-10-01T12:00:00.000Z");
 /** More than the fake adapters' 30-minute freshness. */
@@ -409,6 +410,105 @@ describe("Unresolved entries", () => {
   });
 });
 
+describe("overlapping reads and Connections", () => {
+  it("dates a synchronization by the start of its read", async () => {
+    seedNewTitlesAccount();
+    seedList(accountId, { id: LIST_IDS[0], source_ref: "ur1" });
+    useFakeProvider(
+      fakeAdapter("imdb", {
+        fetchSource: () => {
+          // A slow read: a newer one may start and finish meanwhile.
+          vi.setSystemTime(Date.now() + 10 * 60_000);
+          return Promise.resolve({ entries: [entry(movie("tt0000001"))] });
+        },
+      }),
+    );
+    vi.setSystemTime(Date.now() + NEXT_SYNC_MS);
+    const startedAt = new Date().toISOString();
+    await app.request(
+      `/${accountId}/catalog/movie/wl-${LIST_IDS[0]}-movie.json`,
+    );
+
+    expect(db.getTable("source_list_syncs")[0]).toMatchObject({
+      last_complete_sync_at: startedAt,
+    });
+  });
+
+  it("records nothing when the Connection is gone before the read ends", async () => {
+    seedNewTitlesAccount();
+    seedConnection(accountId, "trakt", { username: "leo" });
+    seedList(accountId, {
+      id: LIST_IDS[0],
+      provider: "trakt",
+      source_ref: "me/history",
+    });
+    useFakeProvider(
+      fakeAdapter("trakt", {
+        fetchSource: () => {
+          // The user disconnects while the read runs.
+          db.tables.connections = [];
+          return Promise.resolve({ entries: [entry(movie("tt0000001"))] });
+        },
+      }),
+    );
+
+    await sync(LIST_IDS[0]);
+
+    expect(db.getTable("source_list_syncs")).toEqual([]);
+    expect(detectionRows()).toEqual([]);
+  });
+
+  it("starts a new Baseline when the Connection is another Provider user", async () => {
+    seedNewTitlesAccount();
+    seedConnection(accountId, "trakt", { username: "leo" });
+    seedList(accountId, {
+      id: LIST_IDS[0],
+      provider: "trakt",
+      source_ref: "me/history",
+      catalog_title: "History",
+    });
+    const source = sourceList("trakt", [movie("tt0000001")]);
+    await sync(LIST_IDS[0]);
+    source.metas = [movie("tt0000001"), movie("tt0000002")];
+    await sync(LIST_IDS[0]);
+    expect(ids(await newTitles())).toEqual(["tt0000002"]);
+
+    db.getTable("connections")[0].provider_username = "sam";
+    source.metas = [movie("tt0000001"), movie("tt0000002"), movie("tt0000003")];
+    await sync(LIST_IDS[0]);
+
+    expect(await newTitles()).toEqual([]);
+    expect(db.getTable("source_list_syncs")).toMatchObject([
+      { source_ref: "me/history", connection_user: "sam" },
+    ]);
+    expect(detectionRows().every((row) => row.detected_at === null)).toBe(true);
+  });
+
+  it("forgets only the other user's history after a new Connection", async () => {
+    seedNewTitlesAccount();
+    const at = new Date().toISOString();
+    for (const [sourceRef, user] of [
+      ["me/history", "leo"],
+      ["me/collection", "sam"],
+    ]) {
+      db.insert("source_list_syncs", {
+        account_id: accountId,
+        provider: "trakt",
+        source_ref: sourceRef,
+        baseline_at: at,
+        last_complete_sync_at: at,
+        connection_user: user,
+      });
+    }
+
+    await forgetConnectionDetections(accountId, "trakt", { keepUser: "sam" });
+
+    expect(
+      db.getTable("source_list_syncs").map((row) => row.source_ref),
+    ).toEqual(["me/collection"]);
+  });
+});
+
 describe("New titles catalog", () => {
   it("shows each Title once, with its earliest detection, newest first", async () => {
     seedNewTitlesAccount();
@@ -445,6 +545,44 @@ describe("New titles catalog", () => {
       "Detected by Stremlist on 2 Oct 2026 in IMDb picks.",
     );
     expect((await summary()).summary?.detected).toBe(2);
+  });
+
+  it("keeps the earliest date when the List that detected it first drops it", async () => {
+    seedNewTitlesAccount();
+    seedList(accountId, {
+      id: LIST_IDS[0],
+      source_ref: "ur1",
+      catalog_title: "IMDb picks",
+    });
+    seedList(accountId, {
+      id: LIST_IDS[1],
+      provider: "trakt",
+      source_ref: "users/leo/watchlist",
+      catalog_title: "Trakt picks",
+    });
+    const imdb = sourceList("imdb", [movie("tt0000001")]);
+    const trakt = sourceList("trakt", [movie("tt0000001")]);
+    await sync(LIST_IDS[0]);
+    await sync(LIST_IDS[1]);
+
+    vi.setSystemTime(Date.now() + DAY_MS);
+    imdb.metas = [movie("tt0000001"), movie("tt0000002")];
+    await sync(LIST_IDS[0]);
+    vi.setSystemTime(Date.now() + 2 * DAY_MS);
+    trakt.metas = [movie("tt0000001"), movie("tt0000002")];
+    await sync(LIST_IDS[1]);
+    imdb.metas = [movie("tt0000001")];
+    await sync(LIST_IDS[0]);
+
+    const metas = await newTitles();
+    expect(ids(metas)).toEqual(["tt0000002"]);
+    expect(metas[0].description).toBe(
+      "Detected by Stremlist on 2 Oct 2026 in IMDb picks.",
+    );
+
+    trakt.metas = [movie("tt0000001")];
+    await sync(LIST_IDS[1]);
+    expect(await newTitles()).toEqual([]);
   });
 
   it("serves each type in its own catalog and pages with skip", async () => {
@@ -591,6 +729,36 @@ describe("settings", () => {
       body: JSON.stringify({ lists: [LIST] }),
     });
 
+    expect((await summary()).enabled).toBe(true);
+  });
+
+  it("a failed save changes neither the Lists nor the setting", async () => {
+    seedNewTitlesAccount(false);
+    rpcHandlers.set("replace_account_config", () => ({
+      data: null,
+      error: { message: "Transaction rolled back" },
+    }));
+
+    const res = await app.request(`/${accountId}/config`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lists: [LIST], newTitles: { enabled: true } }),
+    });
+
+    expect(res.status).toBe(500);
+    rpcHandlers.clear();
+    expect((await summary()).enabled).toBe(false);
+    expect(db.getTable("lists")).toEqual([]);
+  });
+
+  it("keeps the setting when a Legacy alias install gets its private copy", async () => {
+    const legacy = seedLegacyAccount("ur7654321", { new_titles_catalog: true });
+    seedList(legacy.id, { id: LIST_IDS[0], source_ref: "ur7654321" });
+
+    const res = await app.request("/ur7654321/upgrade", { method: "POST" });
+    accountId = ((await res.json()) as { accountId: string }).accountId;
+
+    expect(res.status).toBe(200);
     expect((await summary()).enabled).toBe(true);
   });
 

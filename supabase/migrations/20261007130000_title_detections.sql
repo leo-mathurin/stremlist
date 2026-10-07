@@ -17,6 +17,109 @@
 ALTER TABLE public.accounts
   ADD COLUMN new_titles_catalog boolean NOT NULL DEFAULT false;
 
+-- The "New titles" setting is saved in the same transaction as the Lists, so a
+-- save never leaves one request's Lists with another request's setting.
+DROP FUNCTION public.replace_account_config(text, text, jsonb, boolean, text[]);
+
+CREATE FUNCTION public.replace_account_config(
+  p_account_id text,
+  p_rpdb_api_key text,
+  p_lists jsonb,
+  p_actions_enabled boolean,
+  p_action_providers text[],
+  -- NULL keeps the current value, like the Actions settings.
+  p_new_titles_catalog boolean DEFAULT NULL
+)
+RETURNS TABLE (deleted_ids uuid[], lists jsonb)
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  item jsonb;
+BEGIN
+  -- Serialize replacements, including requests that only create new rows.
+  PERFORM 1 FROM public.accounts WHERE id = p_account_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Account not found';
+  END IF;
+
+  IF jsonb_typeof(p_lists) IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'Lists must be an array';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements(p_lists) AS entries(value)
+    WHERE value ? 'id' AND NOT EXISTS (
+      SELECT 1 FROM public.lists l
+      WHERE l.id = (value->>'id')::uuid AND l.account_id = p_account_id
+    )
+  ) THEN
+    RAISE EXCEPTION 'List does not belong to this account';
+  END IF;
+
+  IF EXISTS (
+    SELECT value->>'id' FROM jsonb_array_elements(p_lists) AS entries(value)
+    WHERE value ? 'id' GROUP BY value->>'id' HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'Duplicate list ID';
+  END IF;
+
+  WITH removed AS (
+    DELETE FROM public.lists l
+    WHERE l.account_id = p_account_id
+      AND NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements(p_lists) AS entries(value)
+        WHERE (value->>'id')::uuid = l.id
+      )
+    RETURNING l.id
+  )
+  SELECT coalesce(array_agg(id), '{}'::uuid[]) INTO deleted_ids FROM removed;
+
+  FOR item IN SELECT value FROM jsonb_array_elements(p_lists)
+  LOOP
+    INSERT INTO public.lists AS l (
+      id, account_id, provider, source_ref, catalog_title, sort_option,
+      display_mode, position, catalog_settings
+    ) VALUES (
+      coalesce((item->>'id')::uuid, gen_random_uuid()),
+      p_account_id, item->>'provider', item->>'source_ref',
+      item->>'catalog_title', item->>'sort_option', item->>'display_mode',
+      (item->>'position')::integer, coalesce(item->'catalog_settings', '{}'::jsonb)
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      provider = EXCLUDED.provider,
+      source_ref = EXCLUDED.source_ref,
+      catalog_title = EXCLUDED.catalog_title,
+      sort_option = EXCLUDED.sort_option,
+      display_mode = EXCLUDED.display_mode,
+      position = EXCLUDED.position,
+      -- Omitted settings preserve the locked row, not a client-side snapshot.
+      catalog_settings = CASE WHEN item ? 'catalog_settings'
+        THEN EXCLUDED.catalog_settings ELSE l.catalog_settings END,
+      updated_at = now()
+    WHERE l.account_id = p_account_id;
+  END LOOP;
+
+  UPDATE public.accounts
+  SET rpdb_api_key = p_rpdb_api_key,
+    actions_enabled = coalesce(p_actions_enabled, actions_enabled),
+    action_providers = coalesce(p_action_providers, action_providers),
+    new_titles_catalog = coalesce(p_new_titles_catalog, new_titles_catalog)
+  WHERE id = p_account_id;
+
+  SELECT coalesce(jsonb_agg(to_jsonb(l) ORDER BY l.position, l.created_at), '[]'::jsonb)
+  INTO lists FROM public.lists l
+  WHERE l.account_id = p_account_id;
+  RETURN NEXT;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.replace_account_config(text, text, jsonb, boolean, text[], boolean)
+FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.replace_account_config(text, text, jsonb, boolean, text[], boolean)
+TO service_role;
+
 CREATE TABLE public.source_list_syncs (
   account_id text NOT NULL REFERENCES public.accounts(id) ON DELETE CASCADE,
   provider text NOT NULL,
@@ -27,6 +130,9 @@ CREATE TABLE public.source_list_syncs (
   -- The latest complete, successful synchronization, which the next one is
   -- compared with.
   last_complete_sync_at timestamptz NOT NULL,
+  -- For Source lists that only a Connection can read (`me/history`…): the
+  -- Provider user of that Connection. Another user means another history.
+  connection_user text,
   PRIMARY KEY (account_id, provider, source_ref)
 );
 ALTER TABLE public.source_list_syncs ENABLE ROW LEVEL SECURITY;
@@ -74,7 +180,11 @@ CREATE FUNCTION public.record_source_list_sync(
   p_source_ref text,
   p_entry_keys text[],
   p_imdb_ids text[],
-  p_synced_at timestamptz
+  p_synced_at timestamptz,
+  -- Set for Source lists that only a Connection can read, with the Provider
+  -- user that the read went through.
+  p_requires_connection boolean DEFAULT false,
+  p_connection_user text DEFAULT NULL
 )
 RETURNS integer
 LANGUAGE plpgsql
@@ -102,9 +212,33 @@ BEGIN
     ORDER BY k, i NULLS LAST
   ) AS unique_entries;
 
+  IF p_requires_connection THEN
+    -- The Connection must still be the one that the read went through. The
+    -- row lock makes a concurrent disconnect wait until this transaction
+    -- ends, so its history cleanup always runs after this write.
+    PERFORM 1 FROM public.connections c
+    WHERE c.account_id = p_account_id
+      AND c.provider = p_provider
+      AND c.provider_username IS NOT DISTINCT FROM p_connection_user
+    FOR SHARE;
+    IF NOT FOUND THEN
+      RETURN NULL;
+    END IF;
+    -- Another Provider user: the old history is not theirs.
+    DELETE FROM public.source_list_syncs s
+    WHERE s.account_id = p_account_id
+      AND s.provider = p_provider
+      AND s.source_ref = p_source_ref
+      AND s.connection_user IS DISTINCT FROM p_connection_user;
+  END IF;
+
   INSERT INTO public.source_list_syncs (
-    account_id, provider, source_ref, baseline_at, last_complete_sync_at
-  ) VALUES (p_account_id, p_provider, p_source_ref, p_synced_at, p_synced_at)
+    account_id, provider, source_ref, baseline_at, last_complete_sync_at,
+    connection_user
+  ) VALUES (
+    p_account_id, p_provider, p_source_ref, p_synced_at, p_synced_at,
+    CASE WHEN p_requires_connection THEN p_connection_user END
+  )
   ON CONFLICT DO NOTHING;
 
   IF FOUND THEN
@@ -170,17 +304,17 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.record_source_list_sync(text, text, text, text[], text[], timestamptz)
+REVOKE ALL ON FUNCTION public.record_source_list_sync(text, text, text, text[], text[], timestamptz, boolean, text)
 FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.record_source_list_sync(text, text, text, text[], text[], timestamptz)
+GRANT EXECUTE ON FUNCTION public.record_source_list_sync(text, text, text, text[], text[], timestamptz, boolean, text)
 TO service_role;
 
 -- The "New titles" of an Account in the given Source lists, one row per
 -- Title with its earliest detection, newest first. Within one Source list a
 -- Title is new only when none of its entries is in the Baseline (an entry
--- whose key changed is still the same Title), and shown only while one of
--- its entries is present. Its date is the first appearance of its first
--- detected entry, whatever happened after.
+-- whose key changed is still the same Title). It is shown while one of the
+-- Source lists where it is new still has it. Its date is the first
+-- appearance of its first detected entry, whatever happened after.
 CREATE FUNCTION public.list_new_titles(
   p_account_id text,
   p_providers text[],
@@ -211,15 +345,23 @@ AS $$
     WHERE d.account_id = p_account_id AND d.imdb_id IS NOT NULL
     GROUP BY d.imdb_id, d.provider, d.source_ref
   ),
+  -- The earliest Detection among the Source lists where the Title is new,
+  -- also when it has left that one since: removing it from one List must
+  -- not give it a later date while another List still has it.
   earliest AS (
     SELECT DISTINCT ON (ps.imdb_id) ps.imdb_id, ps.provider, ps.source_ref,
       ps.detected_at
     FROM per_source ps
-    WHERE ps.present AND NOT ps.in_baseline
+    WHERE NOT ps.in_baseline
     ORDER BY ps.imdb_id, ps.detected_at, ps.provider, ps.source_ref
   )
   SELECT e.imdb_id, e.provider, e.source_ref, e.detected_at
   FROM earliest e
+  -- Shown while one of those Source lists still has it.
+  WHERE EXISTS (
+    SELECT 1 FROM per_source ps
+    WHERE ps.imdb_id = e.imdb_id AND ps.present AND NOT ps.in_baseline
+  )
   ORDER BY e.detected_at DESC, e.imdb_id
   LIMIT greatest(coalesce(p_limit, 1000), 0);
 $$;

@@ -245,6 +245,9 @@ async function fetchAndCacheList(config: ListFetchConfig): Promise<FreshList> {
   }
   const adapter = getProvider(config.provider);
   const ctx = await providerContext(config);
+  // Taken before the read: when two reads overlap, the history keeps the
+  // one that started last.
+  const startedAt = new Date();
   const { data, deferred, synchronized } = await buildCatalog(
     adapter,
     config,
@@ -269,12 +272,10 @@ async function fetchAndCacheList(config: ListFetchConfig): Promise<FreshList> {
     console.error(`Failed to cache list ${config.listId} in R2:`, error);
   }
   if (synchronized) {
-    await recordSynchronization(
-      config.accountId,
-      config,
-      synchronized,
-      cachedAt,
-    );
+    await recordSynchronization(config.accountId, config, synchronized, {
+      startedAt,
+      connectionUser: ctx.connection?.username ?? null,
+    });
   }
   return { data, cachedAt, generation };
 }

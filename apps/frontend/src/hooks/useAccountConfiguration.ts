@@ -160,11 +160,11 @@ export function useAccountConfiguration(
   >(null);
   const [status, setStatus] = useState<ConfigStatus>(null);
   const previousKey = useRef(accountKey);
-  const currentForm = useRef({ lists, rpdbApiKey });
+  const currentForm = useRef({ lists, rpdbApiKey, newTitlesEnabled });
   // Save responses must see edits committed while the request was in flight.
   useLayoutEffect(() => {
-    currentForm.current = { lists, rpdbApiKey };
-  }, [lists, rpdbApiKey]);
+    currentForm.current = { lists, rpdbApiKey, newTitlesEnabled };
+  }, [lists, rpdbApiKey, newTitlesEnabled]);
 
   useEffect(() => {
     api.providers
@@ -483,9 +483,11 @@ export function useAccountConfiguration(
       );
 
       const submittedLists = lists;
+      const submittedNewTitles = newTitlesEnabled;
       const submittedPayload = JSON.stringify({
         rpdbApiKey,
         lists: listPayload(submittedLists),
+        newTitles: submittedNewTitles,
       });
       const res = await api[":accountKey"].config.$post({
         param: { accountKey },
@@ -501,7 +503,7 @@ export function useAccountConfiguration(
                   ),
                 }
               : undefined,
-          newTitles: { enabled: newTitlesEnabled },
+          newTitles: { enabled: submittedNewTitles },
         },
       });
       const body = await res.json();
@@ -525,6 +527,7 @@ export function useAccountConfiguration(
         JSON.stringify({
           rpdbApiKey: latest.rpdbApiKey,
           lists: listPayload(latest.lists),
+          newTitles: latest.newTitlesEnabled,
         }) !== submittedPayload;
       // Match rows by their local ID: the user may have added, removed or
       // reordered Lists while the save was in flight.
@@ -553,7 +556,9 @@ export function useAccountConfiguration(
       setShowReinstallHint(needsReinstall);
       setBaselineSignature(getListReinstallSignature(savedRows));
       setBaselineActionsLive(actionsLive);
-      setBaselineNewTitles(newTitlesEnabled);
+      setBaselineNewTitles(submittedNewTitles);
+      // The saved Lists change what the summary counts.
+      if ("newTitles" in body) setNewTitlesSummary(body.newTitles);
       setStatus({
         type: "success",
         message: hasUnsavedChanges
@@ -699,6 +704,8 @@ export function useAccountConfiguration(
       const data = (await res.json()) as AccountConfigResponse;
       setConnections(data.connections);
       setLastFetchedAt(data.lastFetchedAt);
+      // A disconnect forgets the history of Connection-only Lists.
+      setNewTitlesSummary(data.newTitles.summary);
       const capable = actionCapableProviders(data.connections);
       setActionOrder((current) => [
         ...current.filter((id) => capable.includes(id)),

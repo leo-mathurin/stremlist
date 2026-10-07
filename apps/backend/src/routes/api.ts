@@ -48,7 +48,6 @@ import {
 import {
   forgetConnectionDetections,
   getNewTitlesSummary,
-  setNewTitlesCatalog,
 } from "../services/detections";
 import {
   getImdbWatchlist,
@@ -373,8 +372,9 @@ const api = new Hono()
           account.id,
           normalized,
           rpdbApiKey && rpdbApiKey.length > 0 ? rpdbApiKey : null,
+          undefined,
+          newTitles?.enabled,
         );
-        if (newTitles?.enabled) await setNewTitlesCatalog(account.id, true);
         scheduleBackgroundTask(() => prewarmLists(account.id, saved, true));
         return c.json({
           ok: true as const,
@@ -490,10 +490,8 @@ const api = new Hono()
                 ),
               }
             : undefined,
+          newTitles?.enabled,
         );
-        if (newTitles) {
-          await setNewTitlesCatalog(access.account.id, newTitles.enabled);
-        }
       } catch (error) {
         console.error("Failed to save the configuration:", error);
         return c.json(
@@ -512,6 +510,8 @@ const api = new Hono()
       return c.json({
         ok: true as const,
         lists: await withAvailableGenres(saved),
+        // The saved Lists change what the summary counts.
+        newTitles: await getNewTitlesSummary(access, saved),
       });
     },
   )

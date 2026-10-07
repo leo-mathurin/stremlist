@@ -12,7 +12,10 @@ The entry key is the Provider's own ID for the entry (the ID resolver key, such 
 
 - History is keyed by Account and Source list, not by List: removing a List and adding it again keeps the Baseline, and changing a List to another Source list never mixes two histories. A private copy of a Legacy alias install starts with its own Baseline.
 - History is durable. A removal only marks the entry; an entry that comes back keeps its first Detection and does not count as new again. A Title is never new in a Source list where one of its entries is in the Baseline, so an entry whose key changes (a Provider adds an ID, a title is corrected) does not make its Title new. A title and year key can change when the Provider edits the title; the entry then shows as removed and added, which only matters when it was not resolved before.
-- Only a disconnect deletes the history of Source lists that need that Connection, and deleting the Account deletes all of it.
+- The history of a Source list that only a Connection can read (`me/history`…) belongs to that Connection's Provider user. A synchronization is recorded only while the Connection that read it still exists for the same user, so a read that ends after a disconnect cannot bring the history back. A new Connection as another user starts a new Baseline. A disconnect deletes the history of these Source lists, and deleting the Account deletes all of it.
+- When two reads of the same Source list overlap, the one that started last wins: a synchronization is dated by the start of its read.
+- A Title keeps its earliest Detection among the Lists where it is new, also after the first of them drops it, as long as one of them still has it.
+- The catalog setting is saved in the same transaction as the Lists (`replace_account_config`).
 - A Source list gets no Baseline while every read fails or is cut short. The configure page shows how many Lists wait for that.
 - Detections are recorded for every Account, also when the catalog is off, so turning it on shows the history at once. The catalog reads metadata from the cached Catalogs only and never calls a Provider.
 

@@ -212,6 +212,8 @@ export async function replaceAccountConfig(
   lists: ListInput[],
   rpdbApiKey: string | null,
   actions?: { enabled: boolean; providers: ProviderId[] },
+  /** The "New titles" catalog setting; undefined keeps the stored value. */
+  newTitlesCatalog?: boolean,
 ): Promise<ConfigList[]> {
   const { data, error } = await supabase.rpc("replace_account_config", {
     p_account_id: accountId,
@@ -230,6 +232,7 @@ export async function replaceAccountConfig(
     })),
     p_actions_enabled: actions?.enabled ?? null,
     p_action_providers: actions?.providers ?? null,
+    p_new_titles_catalog: newTitlesCatalog ?? null,
   });
   if (error) throw error;
 
@@ -272,15 +275,11 @@ export async function createPrivateCopy(legacy: Account): Promise<Account> {
       catalogSettings: list.catalogSettings,
     })),
     legacy.rpdbApiKey,
+    undefined,
+    // The detection history stays with the legacy Account: the copy starts
+    // with its own Baseline.
+    legacy.newTitlesCatalog,
   );
-  // The detection history stays with the legacy Account: the copy starts
-  // with its own Baseline.
-  if (legacy.newTitlesCatalog) {
-    await supabase
-      .from("accounts")
-      .update({ new_titles_catalog: true })
-      .eq("id", account.id);
-  }
   await supabase
     .from("accounts")
     .update({ moved_at: new Date().toISOString() })

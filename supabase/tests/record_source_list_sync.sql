@@ -87,6 +87,39 @@ BEGIN
   ASSERT shown = '["tt8@ur1", "tt3@users/leo/watchlist"]'::jsonb,
     format('Newest first, each Title once, got %s', shown);
 
+  -- Removing a Title from the List that detected it first keeps that date
+  -- while another List where it is new still has it.
+  PERFORM public.record_source_list_sync(acc, 'trakt', 'users/leo/watchlist',
+    ARRAY['trakt-movie:1', 'title:the movie:2020', 'trakt-movie:9'],
+    ARRAY['tt1', 'tt2', 'tt9'], '2026-10-08T00:00:00Z');
+  SELECT jsonb_agg(t.imdb_id || '@' || t.source_ref || '@' || t.detected_at::date) INTO shown
+  FROM public.list_new_titles(acc, ARRAY['trakt', 'imdb'],
+    ARRAY['users/leo/watchlist', 'ur1'], 100) AS t;
+  ASSERT shown = '["tt8@ur1@2026-10-07", "tt3@users/leo/watchlist@2026-10-02"]'::jsonb,
+    format('The first date stays, got %s', shown);
+
+  -- A Source list that needs a Connection is written only through the
+  -- Connection that read it, and another Provider user starts over.
+  ASSERT public.record_source_list_sync(acc, 'trakt', 'me/history',
+    ARRAY['trakt-movie:5'], ARRAY['tt5'], '2026-10-08T00:00:00Z', true, 'leo') IS NULL,
+    'No Connection, no history';
+  INSERT INTO public.connections (account_id, provider, provider_username, access_token, redirect_uri)
+  VALUES (acc, 'trakt', 'leo', 'enc', 'https://example.test/callback');
+  ASSERT public.record_source_list_sync(acc, 'trakt', 'me/history',
+    ARRAY['trakt-movie:5'], ARRAY['tt5'], '2026-10-08T00:00:00Z', true, 'leo') = 0;
+  PERFORM public.record_source_list_sync(acc, 'trakt', 'me/history',
+    ARRAY['trakt-movie:5', 'trakt-movie:6'], ARRAY['tt5', 'tt6'], '2026-10-09T00:00:00Z', true, 'leo');
+  ASSERT public.record_source_list_sync(acc, 'trakt', 'me/history',
+    ARRAY['trakt-movie:7'], ARRAY['tt7'], '2026-10-10T00:00:00Z', true, 'someone-else') IS NULL,
+    'A read through a replaced Connection is not recorded';
+  UPDATE public.connections SET provider_username = 'someone-else'
+  WHERE account_id = acc AND provider = 'trakt';
+  ASSERT public.record_source_list_sync(acc, 'trakt', 'me/history',
+    ARRAY['trakt-movie:7'], ARRAY['tt7'], '2026-10-10T00:00:00Z', true, 'someone-else') = 0,
+    'Another Provider user gets a new Baseline';
+  ASSERT (SELECT array_agg(entry_key) FROM public.source_list_entries
+    WHERE account_id = acc AND source_ref = 'me/history') = ARRAY['trakt-movie:7'];
+
   -- Mismatched arrays are refused.
   BEGIN
     PERFORM public.record_source_list_sync(acc, 'imdb', 'ur1',

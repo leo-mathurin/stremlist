@@ -7,6 +7,7 @@ import type {
 import {
   SAVED,
   SAVED_REINSTALL,
+  SAVED_WITH_CHANGES,
   accountId,
   backend,
   baseRoutes,
@@ -171,4 +172,44 @@ test("a Legacy alias install that moved cannot change the setting", async ({
   await app.open(`/configure?account=${imdbUser}`);
   await expect(screen.getByRole("checkbox", TOGGLE)).toBeDisabled();
   await expect(screen.getByText(MOVED_HINT).first()).toBeVisible();
+});
+
+test("changing the setting while a save runs keeps it as an unsaved change", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  await baseRoutes(browser);
+  let releaseSave = () => {};
+  const responseGate = new Promise<void>((resolve) => {
+    releaseSave = resolve;
+  });
+  const submissions: AccountConfigInput[] = [];
+  await browser.route(`${backend}/${accountId}/config`, async (route) => {
+    if (route.request.method === "GET") {
+      await route.fulfill({ json: toJson(configuration) });
+      return;
+    }
+    const submitted = parseBody<AccountConfigInput>(route);
+    submissions.push(submitted);
+    await responseGate;
+    await route.fulfill({
+      json: toJson({ ok: true, lists: savedLists(submitted) }),
+    });
+  });
+
+  await app.open(`/configure?account=${accountId}`);
+  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await expect(screen.getByRole("button", "Saving")).toBeVisible();
+  await screen.getByRole("checkbox", TOGGLE).tap();
+  await expect(screen.getByRole("checkbox", TOGGLE)).toBeChecked();
+  releaseSave();
+
+  await expect(screen.getByText(SAVED_WITH_CHANGES)).toBeVisible();
+  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  expect(submissions.map((submitted) => submitted.newTitles)).toEqual([
+    { enabled: false },
+    { enabled: true },
+  ]);
 });

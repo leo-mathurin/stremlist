@@ -72,7 +72,7 @@ const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
     resolved_at: now(),
     retry_after: null,
   }),
-  source_list_syncs: () => ({}),
+  source_list_syncs: () => ({ connection_user: null }),
   source_list_entries: () => ({
     imdb_id: null,
     detected_at: null,
@@ -616,6 +616,8 @@ function replaceAccountConfig(args: RpcArgs): Result {
   account.actions_enabled = args.p_actions_enabled ?? account.actions_enabled;
   account.action_providers =
     args.p_action_providers ?? account.action_providers;
+  account.new_titles_catalog =
+    args.p_new_titles_catalog ?? account.new_titles_catalog;
 
   const saved = db
     .getTable("lists")
@@ -668,6 +670,32 @@ function recordSourceListSync(args: RpcArgs): Result {
     entries.set(entryKey, entries.get(entryKey) ?? imdbIds[index]);
   });
   const syncedAt = new Date(args.p_synced_at as string).toISOString();
+  const connectionUser = args.p_requires_connection
+    ? ((args.p_connection_user as string | null | undefined) ?? null)
+    : null;
+  if (args.p_requires_connection) {
+    const connected = db
+      .getTable("connections")
+      .some(
+        (row) =>
+          row.account_id === key.account_id &&
+          row.provider === key.provider &&
+          (row.provider_username ?? null) === connectionUser,
+      );
+    if (!connected) return { data: null, error: null };
+    // Another Provider user: the old history is not theirs.
+    const other = db
+      .getTable("source_list_syncs")
+      .find((row) => matches(row) && row.connection_user !== connectionUser);
+    if (other) {
+      db.tables.source_list_syncs = db
+        .getTable("source_list_syncs")
+        .filter((row) => row !== other);
+      db.tables.source_list_entries = db
+        .getTable("source_list_entries")
+        .filter((row) => !matches(row));
+    }
+  }
   const state = db.getTable("source_list_syncs").find(matches);
 
   if (!state) {
@@ -678,6 +706,7 @@ function recordSourceListSync(args: RpcArgs): Result {
       ...key,
       baseline_at: syncedAt,
       last_complete_sync_at: syncedAt,
+      connection_user: connectionUser,
     });
     for (const [entryKey, imdbId] of entries) {
       db.insert("source_list_entries", {
@@ -763,9 +792,18 @@ function listNewTitles(args: RpcArgs): Result {
     if (!row.removed_at) group.present = true;
     perSource.set(groupKey, group);
   }
+  // Earliest Detection among the Source lists where the Title is new, also
+  // removed ones; shown while one of them still has it.
+  const shown = new Set(
+    [...perSource.values()]
+      .filter((group) => group.present && !group.inBaseline)
+      .map((group) => group.imdb_id),
+  );
   const earliest = new Map<string, Row>();
   for (const group of perSource.values()) {
-    if (!group.present || group.inBaseline || !group.detected_at) continue;
+    if (!shown.has(group.imdb_id) || group.inBaseline || !group.detected_at) {
+      continue;
+    }
     const current = earliest.get(group.imdb_id);
     if (!current || group.detected_at < String(current.detected_at)) {
       earliest.set(group.imdb_id, {

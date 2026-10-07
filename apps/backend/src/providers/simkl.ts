@@ -657,7 +657,7 @@ interface ListSnapshot {
   premiumOnly?: boolean;
   fetchedAt: number;
   entries: SourceEntry[];
-  /** False when LIST_MAX_PAGES cut the list short. Older snapshots: true. */
+  /** False when LIST_MAX_PAGES cut the list short. Missing: read again. */
   complete?: boolean;
 }
 
@@ -755,11 +755,14 @@ async function fetchCustomList(
     previous?.version === STATE_VERSION &&
     previous.username === connection.username &&
     previous.gate === gate &&
+    // Snapshots from before `complete` existed may have been cut short by
+    // LIST_MAX_PAGES: read them again instead of guessing.
+    (previous.premiumOnly || previous.complete !== undefined) &&
     ((previous.listType !== "auto" && !previous.premiumOnly) ||
       Date.now() - previous.fetchedAt < AUTO_LIST_MAX_AGE_MS)
   ) {
     if (previous.premiumOnly) throw premiumOnlyError();
-    return { items: previous.entries, complete: previous.complete ?? true };
+    return { items: previous.entries, complete: previous.complete ?? false };
   }
 
   const token = await connectionToken(connection);

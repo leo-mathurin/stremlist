@@ -121,15 +121,29 @@ export async function recordSynchronization(
   accountId: string,
   source: SourceKey & { listId: string },
   entries: SynchronizedEntry[],
-  syncedAt: Date,
+  read: {
+    /** When the read started: a slower, older read never wins. */
+    startedAt: Date;
+    /** The Connection user the read went through, if any. */
+    connectionUser: string | null;
+  },
 ): Promise<void> {
+  // History of a Source list that only a Connection can read belongs to
+  // that Connection's Provider user. The database refuses the write when
+  // that Connection is gone or replaced (a disconnect during the read).
+  const requiresConnection = sourceRequiresConnection(
+    source.provider,
+    source.sourceRef,
+  );
   const { data, error } = await supabase.rpc("record_source_list_sync", {
     p_account_id: accountId,
     p_provider: source.provider,
     p_source_ref: source.sourceRef,
     p_entry_keys: entries.map((entry) => entry.key),
     p_imdb_ids: entries.map((entry) => entry.imdbId),
-    p_synced_at: syncedAt.toISOString(),
+    p_synced_at: read.startedAt.toISOString(),
+    p_requires_connection: requiresConnection,
+    p_connection_user: requiresConnection ? read.connectionUser : null,
   });
   if (error) {
     console.error(
@@ -282,37 +296,33 @@ export async function getNewTitlesSummary(
   }
 }
 
-export async function setNewTitlesCatalog(
-  accountId: string,
-  enabled: boolean,
-): Promise<void> {
-  const { error } = await supabase
-    .from("accounts")
-    .update({ new_titles_catalog: enabled })
-    .eq("id", accountId);
-  if (error) throw error;
-}
-
 /**
- * After a disconnect: forget the history of the Source lists that only that
- * Connection could read, so nothing private stays stored. The history of
- * public Source lists stays.
+ * After a disconnect, or a new Connection as another Provider user: forget
+ * the history of the Source lists that only that Connection could read, so
+ * nothing private stays stored and the new user starts with a new Baseline.
+ * With `keepUser`, the history of that Provider user stays. The history of
+ * public Source lists always stays.
  */
 export async function forgetConnectionDetections(
   accountId: string,
   provider: ProviderId,
+  options: { keepUser?: string | null } = {},
 ): Promise<void> {
   const { data, error } = await supabase
     .from("source_list_syncs")
-    .select("source_ref")
+    .select("source_ref, connection_user")
     .eq("account_id", accountId)
     .eq("provider", provider);
   if (error) throw error;
   const refs = data
-    .map((row) => row.source_ref)
-    .filter((ref) => sourceRequiresConnection(provider, ref));
+    .filter(
+      (row) =>
+        sourceRequiresConnection(provider, row.source_ref) &&
+        !("keepUser" in options && row.connection_user === options.keepUser),
+    )
+    .map((row) => row.source_ref);
   if (refs.length === 0) return;
-  // One delete: the detections go with their row (ON DELETE CASCADE), so a
+  // One delete: the entries go with their row (ON DELETE CASCADE), so a
   // history is never left without its Baseline.
   const { error: deleteError } = await supabase
     .from("source_list_syncs")

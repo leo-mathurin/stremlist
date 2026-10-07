@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { frontendUrl } from "../lib/urls";
 import { getProvider } from "../providers/registry";
 import { saveConnection } from "../services/connections";
+import { forgetConnectionDetections } from "../services/detections";
 import { consumeState, exchangeCode, redirectUri } from "../services/oauth";
 
 const oauth = new Hono();
@@ -65,6 +66,18 @@ oauth.get("/oauth/:provider/callback", async (c) => {
       username,
       redirect,
     );
+    // A new Connection can be another Provider user: the history of
+    // Connection-only Source lists of the previous user must not stay.
+    try {
+      await forgetConnectionDetections(pending.accountId, provider, {
+        keepUser: username,
+      });
+    } catch (forgetError) {
+      console.error(
+        `Forgetting the previous ${provider} history failed:`,
+        forgetError instanceof Error ? forgetError.message : forgetError,
+      );
+    }
     return back(pending.accountId, { connected: provider });
   } catch (exchangeError) {
     console.error(

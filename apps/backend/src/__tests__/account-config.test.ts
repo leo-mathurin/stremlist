@@ -741,34 +741,38 @@ describe("List CRUD via the config API", () => {
         ],
       });
       expect(response.status).toBe(200);
-      expect(rpcMocks.rpc).toHaveBeenCalledExactlyOnceWith(
-        "replace_account_config",
-        {
-          p_account_id: legacyAccountId,
-          p_rpdb_api_key: "secret-key",
-          p_lists: [
-            {
-              id: UUID_1,
-              provider: "imdb",
-              source_ref: OWNER,
-              catalog_title: "Updated",
-              sort_option: "title-asc",
-              display_mode: "split",
-              position: 0,
-            },
-            {
-              provider: "imdb",
-              source_ref: OTHER_IMDB,
-              catalog_title: "2",
-              sort_option: "year-desc",
-              display_mode: "split",
-              position: 1,
-            },
-          ],
-          p_actions_enabled: null,
-          p_action_providers: null,
-        },
-      );
+      // The other RPC reads the New titles summary of the saved Lists.
+      expect(
+        rpcMocks.rpc.mock.calls.filter(
+          ([name]) => name === "replace_account_config",
+        ),
+      ).toHaveLength(1);
+      expect(rpcMocks.rpc).toHaveBeenCalledWith("replace_account_config", {
+        p_account_id: legacyAccountId,
+        p_rpdb_api_key: "secret-key",
+        p_lists: [
+          {
+            id: UUID_1,
+            provider: "imdb",
+            source_ref: OWNER,
+            catalog_title: "Updated",
+            sort_option: "title-asc",
+            display_mode: "split",
+            position: 0,
+          },
+          {
+            provider: "imdb",
+            source_ref: OTHER_IMDB,
+            catalog_title: "2",
+            sort_option: "year-desc",
+            display_mode: "split",
+            position: 1,
+          },
+        ],
+        p_actions_enabled: null,
+        p_action_providers: null,
+        p_new_titles_catalog: null,
+      });
       const expected = [
         {
           id: UUID_1,
@@ -784,6 +788,7 @@ describe("List CRUD via the config API", () => {
       expect(await response.json()).toEqual({
         ok: true,
         lists: expected.map((row) => ({ ...row, availableGenres: [] })),
+        newTitles: expect.objectContaining({ detected: 0 }),
       });
       expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledOnce();
       await runScheduledTasks();
