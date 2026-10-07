@@ -61,11 +61,13 @@ export default function MergedSources({
   // The buttons and the picker that the user pressed go away when the
   // Source lists change, so keyboard focus moves to the new picker.
   const picker = useRef<HTMLButtonElement>(null);
+  const heading = useRef<HTMLParagraphElement>(null);
   const keepFocus = useRef(false);
   useEffect(() => {
     if (!keepFocus.current) return;
     keepFocus.current = false;
-    picker.current?.focus();
+    // Without other Lists there is no menu: focus the section instead.
+    (picker.current ?? heading.current)?.focus();
   }, [sources.length]);
   const changeSources = (change: () => void) => {
     keepFocus.current = true;
@@ -96,7 +98,13 @@ export default function MergedSources({
   return (
     <div className="mt-4 border-t border-black/5 pt-4">
       <div className="flex items-baseline justify-between gap-3">
-        <p className="text-xs font-semibold text-black/60">Source lists</p>
+        <p
+          ref={heading}
+          tabIndex={-1}
+          className="text-xs font-semibold text-black/60 outline-none"
+        >
+          Source lists
+        </p>
         <p className="text-xs text-black/45 tabular-nums">
           {sources.length} of {MAX_SOURCES_PER_LIST}
         </p>

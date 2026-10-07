@@ -17,6 +17,7 @@ import {
   seedList,
 } from "../helpers/db.js";
 import {
+  getCacheManifest,
   getCacheObjectKeys,
   seedCachedCatalog,
   sourceCacheKey,
@@ -316,7 +317,11 @@ test(
       },
     ]);
     expect(removed.status).toBe(200);
-    expect(await keysOf(third)).toEqual([]);
+    // A deleted cache keeps only a tombstone manifest (no generation).
+    expect(await keysOf(third)).toEqual([`${prefix(third)}manifest.json`]);
+    expect(await getCacheManifest(sourceCacheKey(listId, third))).toMatchObject(
+      { deleted: true },
+    );
     expect(await keysOf(FIRST)).toHaveLength(2);
     expect(await keysOf(SECOND)).toHaveLength(2);
 
@@ -334,10 +339,15 @@ test(
     ]);
     expect(split.status).toBe(200);
     expect(
-      (await getCacheObjectKeys(listId)).filter((key) =>
-        key.includes("/sources/"),
+      (await getCacheObjectKeys(listId)).filter(
+        (key) => key.includes("/sources/") && key.includes("/generations/"),
       ),
     ).toEqual([]);
+    for (const source of [FIRST, SECOND]) {
+      expect(
+        await getCacheManifest(sourceCacheKey(listId, source)),
+      ).toMatchObject({ deleted: true });
+    }
     expect(
       (await getListRows(accountId)).map((row) => [
         row.source_ref,

@@ -92,7 +92,7 @@ test(
     await app.open(`/configure?account=${accountId}`);
     await expect(screen.getByText("Favourite films")).toBeVisible();
     await agent.act(
-      "Show the List Favourite films in the same Stremio catalog as the List IMDb Watchlist, then save.",
+      "In the settings of the List IMDb Watchlist, merge the List Favourite films into it, so both show in one catalog. Then save.",
       { maxModelCalls: 8 },
     );
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
@@ -146,9 +146,10 @@ test("merging a chart turns off Date added and TV shows only, with the reasons",
   screen,
   browser,
 }) => {
+  // Trakt Trending stays, so the merge menu is still there after the merge.
   const submissions = await captureConfig(
     browser,
-    withLists([watchlist, top250]),
+    withLists([watchlist, top250, { ...trending, position: 2 }]),
   );
   await app.open(`/configure?account=${accountId}`);
   await openSettings(screen, "IMDb Watchlist");
@@ -176,7 +177,7 @@ test("merging a chart turns off Date added and TV shows only, with the reasons",
     screen.getByRole("option", "Date Added (Oldest First)"),
   ).toHaveAttribute("aria-disabled", "true");
   await browser.keyboard.press("Escape");
-  await screen.getByLabel("Show", { exact: true }).tap();
+  await screen.getByLabel("Show", { exact: true }).first().tap();
   await expect(screen.getByRole("option", "TV shows only")).toHaveAttribute(
     "aria-disabled",
     "true",
@@ -205,6 +206,16 @@ test("merging a chart turns off Date added and TV shows only, with the reasons",
           label: "Top 250 Movies",
         },
       ],
+    },
+    {
+      id: trending.id,
+      provider: "trakt",
+      sourceRef: "trending",
+      catalogTitle: "Trakt Trending",
+      sortOption: "added_at-asc",
+      displayMode: "split",
+      position: 1,
+      mergedSources: [],
     },
   ]);
 });
@@ -243,7 +254,7 @@ test("a Source list moves to its own List or leaves the merged List", async ({
   ).toBeVisible();
   await expect(screen.getByRole("button", MERGE).first()).toBeFocused();
   await screen.getByRole("button", "Remove Sean picks from this List").tap();
-  await expect(screen.getByText("1 of 5")).toBeVisible();
+  await expect(screen.getByText("1 of 5").first()).toBeVisible();
   await expect(screen.getByText(/^IMDb · Watchlist/).first()).toBeVisible();
 
   await screen.getByRole("button", "Save", { exact: true }).tap();
