@@ -31,6 +31,10 @@ export const CATALOG_FIXTURE_USER = "ur9999999999998";
 // A second synthetic watchlist, for merged Lists.
 export const CATALOG_FIXTURE_USER_2 = "ur9999999999997";
 
+// Synthetic Legacy aliases of the Provider journeys (no IMDb request).
+export const LEGACY_CONNECTION_USER = "ur9999999999997";
+export const LEGACY_ACTIONS_USER = "ur9999999999996";
+
 // Cleanup must stay scoped to identities explicitly owned by this E2E run.
 // The local Supabase stack may share a persisted volume with development.
 // These are the Legacy aliases that tests may create; Accounts with generated
@@ -38,6 +42,8 @@ export const CATALOG_FIXTURE_USER_2 = "ur9999999999997";
 export const E2E_USER_IDS = [
   CATALOG_FIXTURE_USER,
   CATALOG_FIXTURE_USER_2,
+  LEGACY_CONNECTION_USER,
+  LEGACY_ACTIONS_USER,
   PUBLIC_USER,
   PUBLIC_USER_2,
   UNKNOWN_USER,

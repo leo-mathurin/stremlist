@@ -1,0 +1,101 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-06T23:06:24.376Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Create my private URL\"",
+        "target": {
+          "role": "button",
+          "name": "Create my private URL"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Go to the new configure page\"",
+        "target": {
+          "role": "button",
+          "name": "Go to the new configure page"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/providers.e2e.ts::a%20Legacy%20alias%20install%20upgrades%20to%20a%20private%20Addon%20URL",
+      "targetId": "chromium",
+      "instructionDigest": "7ed9936641a3be4df5562ff7dedf1db2d0c7b4e9d228c599a54a69a5e0f603bf",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Created a private Addon URL for the install and opened its new configure page at /configure?account=sl_E2eFixtureAccount00003. The page shows the new private install and the existing Test catalog.",
+    "startPath": "/configure?account=ur99123456",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00003",
+    "endAnchors": [
+      {
+        "role": "heading",
+        "name": "Your Stremlist is ready"
+      },
+      {
+        "text": "Install it in Stremio once. Your Lists then stay up to date on their own."
+      },
+      {
+        "text": "Keep this Addon URL secret."
+      },
+      {
+        "text": "Connect Trakt, Simkl or MDBList to use Actions."
+      },
+      {
+        "role": "link",
+        "name": "Stremio Addon Manager"
+      },
+      {
+        "role": "listitem",
+        "name": "Actions are not available on LG and Samsung TVs, because Stremio cannot open web pages there."
+      },
+      {
+        "text": "It is the only key to your Stremlist: anyone who has it can see and change it, so do not share it. To come back here later, open Stremlist's settings in Stremio or paste this URL on the Stremlist home page."
+      },
+      {
+        "role": "listitem",
+        "name": "Stremio lists an addon's entries in your addon order, and new addons go last. To see Actions at the top, move Stremlist just after Cinemeta with Stremio Addon Manager .",
+        "text": "Stremio lists an addon's entries in your addon order, and new addons go last. To see Actions at the top, move Stremlist just after Cinemeta with ."
+      }
+    ],
+    "goneAnchors": [
+      {
+        "text": "ur99123456"
+      },
+      {
+        "role": "button",
+        "name": "Upgrade this install"
+      },
+      {
+        "role": "heading",
+        "name": "Upgrade to a private URL"
+      },
+      {
+        "text": "This install uses your IMDb user ID, which anyone can guess. A private Addon URL is a secret that only you have, so Stremlist can connect Trakt, Simkl and MDBList and show Actions in Stremio. Your Lists come with it. You reinstall once."
+      },
+      {
+        "role": "button",
+        "name": "Create my private URL"
+      },
+      {
+        "text": "Actions need a private Addon URL. Upgrade this install first."
+      },
+      {
+        "role": "heading",
+        "name": "Install or reinstall in Stremio"
+      },
+      {
+        "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
+      }
+    ],
+    "endWaitMs": 12153
+  }
+}
