@@ -50,6 +50,16 @@ _Avoid_: Item, media, product, film (for both kinds)
 An entry of a Source list for which no IMDb ID is known yet. It is not shown, and Stremlist tries again to resolve it on later refreshes.
 _Avoid_: Missing item, dropped item
 
+### Provider access
+
+**Connection**:
+The authorization that links one Account to its user on one Provider, so Stremlist can read private Source lists and perform Actions. An Account has at most one Connection per Provider.
+_Avoid_: Integration, link, login
+
+**Action**:
+A change that a user asks Stremlist to make on a Provider from inside Stremio, such as add to watchlist, remove from watchlist, mark as watched, or rate. Only a Provider with a Connection supports Actions.
+_Avoid_: Write, sync-back
+
 ### Detection
 
 **Synchronization**:
