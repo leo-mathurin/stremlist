@@ -6,6 +6,8 @@ import {
   baseRoutes,
   captureConfig,
   imdbUser,
+  saveButton,
+  SAVE_NEW,
 } from "./config-fixture";
 
 // The redesigned Home, Terms and Changelog pages: deterministic checks of
@@ -239,9 +241,7 @@ test("the Home field starts an empty setup or opens a pasted Addon URL", async (
   await screen.getByRole("button", "Build my Stremlist").tap();
   await expect(browser).toHaveURL("/configure");
   await expect(screen.getByText("No Lists yet")).toBeVisible();
-  await expect(
-    screen.getByRole("button", "Save and get my Addon URL"),
-  ).toBeDisabled();
+  await expect(saveButton(screen, SAVE_NEW)).toBeDisabled();
 
   await app.open("/");
   await screen

@@ -8,6 +8,7 @@ import {
   PUBLIC_USER,
   UNKNOWN_USER,
 } from "../helpers/test-data.js";
+import { saveButton, SAVED_REINSTALL } from "../helpers/configure.js";
 
 // The /configure page against the real backend: List management, options,
 // refresh, install links.
@@ -39,7 +40,7 @@ async function save(page: Page) {
   const response = page.waitForResponse(
     (res) => res.url().endsWith("/config") && res.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await saveButton(page).click();
   expect((await response).status()).toBe(200);
   await expect(page.getByText("Saved!", { exact: false })).toBeVisible();
 }
@@ -136,16 +137,12 @@ test(
     await expect(
       page.getByText("Could not load your configuration. Please try again."),
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Save", exact: true }),
-    ).not.toBeVisible();
+    await expect(saveButton(page)).not.toBeVisible();
 
     failing = false;
     await page.getByRole("button", { name: "Try again" }).click();
     await expect(page.getByText("My watchlist", { exact: true })).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Save", exact: true }),
-    ).toBeVisible();
+    await expect(saveButton(page)).toBeVisible();
   },
 );
 
@@ -195,11 +192,7 @@ test(
       .getByRole("menuitem", { name: /^Box Office \(Weekend\)/ })
       .click();
     await save(page);
-    await expect(
-      page.getByText(
-        "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions.",
-      ),
-    ).toBeVisible();
+    await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(
       page.getByRole("heading", {
         name: "Reinstall in Stremio to see your changes",

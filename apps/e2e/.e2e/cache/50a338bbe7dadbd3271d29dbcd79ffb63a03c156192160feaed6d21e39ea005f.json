@@ -1,14 +1,14 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-06T23:06:15.029Z",
+  "createdAt": "2026-10-08T18:41:50.090Z",
   "payload": {
     "actions": [
       {
         "name": "tap",
-        "summary": "tap button \"Disconnect\" in \"Trakt\"",
+        "summary": "tap button \"Connected to Trakt. Disconnect\" in \"Trakt\"",
         "target": {
           "role": "button",
-          "name": "Disconnect",
+          "name": "Connected to Trakt. Disconnect",
           "within": "Trakt"
         }
       },
@@ -34,14 +34,10 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Opened the Trakt disconnect confirmation and confirmed it. The account now shows as not connected, and the screen confirms: “Trakt is disconnected. Lists read through Trakt stop showing in Stremio until you connect it again.”",
+    "summary": "Opened the Trakt disconnect confirmation and confirmed Disconnect. The account is now disconnected; the screen shows “Trakt is disconnected” and offers Connect again.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
-      {
-        "role": "status",
-        "name": "Trakt is disconnected. Lists read through Trakt stop showing in Stremio until you connect it again."
-      },
       {
         "text": "Paste a link, or connect"
       },
@@ -51,6 +47,9 @@
       },
       {
         "text": "A free Trakt account can connect only one app. If Stremio's own Trakt sync uses it, paste public Trakt links instead."
+      },
+      {
+        "text": "These changes need a reinstall."
       },
       {
         "text": "Trakt is not connected, so this List does not show in Stremio."
@@ -63,8 +62,8 @@
         "text": "Connect Trakt, Simkl or MDBList to use Actions."
       },
       {
-        "role": "listitem",
-        "name": "Trakt Paste a link, or connect Connect A free Trakt account can connect only one app. If Stremio's own Trakt sync uses it, paste public Trakt links instead."
+        "role": "button",
+        "name": "Close toast"
       }
     ],
     "goneAnchors": [
@@ -73,10 +72,6 @@
       },
       {
         "text": "Connected"
-      },
-      {
-        "role": "button",
-        "name": "Disconnect"
       },
       {
         "text": "Your Trakt (@someone)"
@@ -96,8 +91,12 @@
       {
         "role": "button",
         "name": "History"
+      },
+      {
+        "role": "button",
+        "name": "Collection"
       }
     ],
-    "endWaitMs": 12855
+    "endWaitMs": 12332
   }
 }

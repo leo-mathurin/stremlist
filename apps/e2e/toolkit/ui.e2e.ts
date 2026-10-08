@@ -6,7 +6,6 @@ import type {
   AccountConfigResponse,
 } from "@stremlist/shared/stremio.types";
 import {
-  SAVED,
   SAVED_REINSTALL,
   SAVED_WITH_CHANGES,
   accountId,
@@ -23,6 +22,9 @@ import {
   row,
   savedLists,
   toJson,
+  saveButton,
+  SAVE_NEW,
+  holdToasts,
 } from "./config-fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
@@ -155,12 +157,9 @@ test(
     await expect(
       screen.getByRole("heading", "Your Stremlist is ready"),
     ).toBeVisible();
-    await expect(
-      screen.getByRole("link", "Install in Stremio"),
-    ).toHaveAttribute(
-      "href",
-      `stremio://127.0.0.1:4314/${accountId}/manifest.json`,
-    );
+    // Stremio opens `stremio://` links over HTTPS without a port, so the
+    // local http://127.0.0.1:4314 Addon URL has no app install link.
+    await expect(screen.getByRole("link", "Install in Stremio")).toHaveCount(0);
     await expect(screen.getByRole("link", "Open Stremio Web")).toHaveAttribute(
       "href",
       `https://web.stremio.com/#/addons?addon=${encodeURIComponent(addonUrl(accountId))}`,
@@ -203,11 +202,9 @@ for (const state of ["private", "unknown", "offline"] as const) {
       ),
     ).toBeVisible();
     await expect(screen.getByText("No Lists yet")).toBeVisible();
+    await expect(saveButton(screen, SAVE_NEW)).toBeDisabled();
     await expect(
-      screen.getByRole("button", "Save and get my Addon URL"),
-    ).toBeDisabled();
-    await expect(
-      screen.getByRole("link", "Install in Stremio"),
+      screen.getByRole("link", "Open Stremio Web"),
     ).not.toBeVisible();
   });
 }
@@ -289,7 +286,7 @@ test("List edits reject duplicates, save values and report refresh failures", as
   await expect(screen.getByText("IMDb · List · ls99123456")).toBeVisible();
   await screen.getByRole("button", "Settings for IMDb List").tap();
   await screen.getByLabel("Catalog title").nth(1).fill("My movies");
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(submissions[0].lists).toMatchObject([
     { provider: "imdb", sourceRef: imdbUser, position: 0 },
@@ -300,16 +297,16 @@ test("List edits reject duplicates, save values and report refresh failures", as
       position: 1,
     },
   ]);
-  await screen.getByRole("button", "Save", { exact: true }).tap();
-  await expect(screen.getByText(SAVED)).toBeVisible();
+  // The second save changes nothing. Stremio still needs the reinstall.
+  await saveButton(screen).tap();
+  await expect.poll(() => submissions.length).toBe(2);
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   await screen.getByRole("button", "Remove My movies").tap();
   await expect(screen.getByText("1 of 10 lists")).toBeVisible();
   // An Account keeps at least one List: without one, Save is off.
   await screen.getByRole("button", "Remove Test catalog").tap();
   await expect(screen.getByText("No Lists yet")).toBeVisible();
-  await expect(
-    screen.getByRole("button", "Save", { exact: true }),
-  ).toBeDisabled();
+  await expect(saveButton(screen)).toBeDisabled();
   await screen.getByRole("button", "Refresh now").tap();
   await expect(
     screen.getByText("Refreshed 0 of 1 lists. Some lists failed to update."),
@@ -322,6 +319,7 @@ for (const result of ["success", "server-error", "offline"] as const) {
     `newsletter validates email and handles ${result}`,
     { tags: result === "success" ? ["agent"] : [] },
     async ({ app, agent, screen, browser }) => {
+      await holdToasts(browser);
       let submissions = 0;
       await browser.route(
         "http://127.0.0.1:4314/newsletter/subscribe",
@@ -403,12 +401,7 @@ for (const entry of ["typed", "query"] as const) {
     ).toBeVisible();
     expect(configRequests).toBeGreaterThan(0);
     // A failed lookup must not turn an existing install into a new setup.
-    await expect(
-      screen.getByRole("button", "Save and get my Addon URL"),
-    ).not.toBeVisible();
-    await expect(
-      screen.getByRole("link", "Install in Stremio"),
-    ).not.toBeVisible();
+    await expect(saveButton(screen, SAVE_NEW)).not.toBeVisible();
     await expect(
       screen.getByRole("link", "Open Stremio Web"),
     ).not.toBeVisible();
@@ -485,13 +478,13 @@ test("save errors preserve changes and allow a successful retry", async ({
   await app.open(`/configure?account=${accountId}`);
   await screen.getByRole("button", "Settings for Test catalog").tap();
   await screen.getByLabel("Catalog title").fill("Updated catalog");
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText("Test save rejected")).toBeVisible();
   await expect(screen.getByLabel("Catalog title")).toHaveValue(
     "Updated catalog",
   );
   rejected = false;
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
 });
 
@@ -579,7 +572,7 @@ test("pointer reorder changes visible List order and saved positions", async ({
     "Second catalog",
     "Test catalog",
   ]);
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(submissions[0].lists).toMatchObject([
     { sourceRef: "ls99123456", catalogTitle: "Second catalog", position: 0 },
@@ -591,7 +584,12 @@ test(
   "catalog filters and extra presets survive save and clear",
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
+    await holdToasts(browser);
     const submissions = await captureConfig(browser);
+    // The open filters fit in this viewport, so the Save button at the top
+    // stays in view and the floating Save button, which has the same name,
+    // stays hidden: "Save" names one button.
+    await browser.setViewport({ width: 1280, height: 1800 });
     await app.open(`/configure?account=${accountId}`);
     await agent.act(
       "For the Test catalog, select the Drama genre filter and enable the Top rated extra catalog, then save these settings.",
@@ -606,7 +604,10 @@ test(
       "Clear this catalog's filters while keeping the Top rated extra catalog enabled, then save.",
       { maxModelCalls: 6 },
     );
-    await expect(screen.getByText(SAVED)).toBeVisible();
+    // The first save added the Top rated catalog, and Stremio still needs
+    // the reinstall, so the second save keeps the reinstall message.
+    await expect.poll(() => submissions.length).toBe(2);
+    await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     expect(submissions.at(-1)?.lists[0].catalogSettings).toEqual({
       presets: ["rated"],
     });
@@ -623,8 +624,8 @@ test("edits made while saving remain available for the next save", async ({
   await app.open(`/configure?account=${accountId}`);
   await screen.getByRole("button", "Settings for Test catalog").tap();
   await screen.getByLabel("Catalog title").fill("Submitted title");
-  await screen.getByRole("button", "Save", { exact: true }).tap();
-  await expect(screen.getByRole("button", "Saving")).toBeVisible();
+  await saveButton(screen).tap();
+  await expect(saveButton(screen, "Saving")).toBeVisible();
   await screen.getByLabel("Catalog title").fill("New unsaved title");
   await screen.getByLabel(PASTE).fill(listLink);
   await screen.getByRole("button", "Add", { exact: true }).tap();
@@ -636,7 +637,7 @@ test("edits made while saving remain available for the next save", async ({
     "New unsaved title",
   );
   await expect(screen.getByRole("button", /^Remove /)).toHaveCount(2);
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(submissions[0]).toMatchObject({
     lists: [{ catalogTitle: "Submitted title" }],
@@ -659,8 +660,8 @@ for (const edit of ["remove", "reorder"] as const) {
     const { submissions, release } = await gatedSaves(browser, twoLists);
     await browser.setViewport({ width: 1280, height: 1800 });
     await app.open(`/configure?account=${accountId}`);
-    await screen.getByRole("button", "Save", { exact: true }).tap();
-    await expect(screen.getByRole("button", "Saving")).toBeVisible();
+    await saveButton(screen).tap();
+    await expect(saveButton(screen, "Saving")).toBeVisible();
     if (edit === "remove") {
       await screen.getByRole("button", "Remove Test catalog").tap();
     } else {
@@ -679,7 +680,7 @@ for (const edit of ["remove", "reorder"] as const) {
     await expect(
       screen.getByText(/^(Test|Second) catalog$/).first(),
     ).toHaveText("Second catalog");
-    await screen.getByRole("button", "Save", { exact: true }).tap();
+    await saveButton(screen).tap();
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     expect(submissions.at(-1)?.lists).toMatchObject(
       edit === "remove"
@@ -710,7 +711,5 @@ test("an old ?userId link opens the Legacy alias install with a fresh form", asy
       "Actions need a private Addon URL. Upgrade this install first.",
     ),
   ).toBeVisible();
-  await expect(
-    screen.getByRole("button", "Save", { exact: true }),
-  ).toBeEnabled();
+  await expect(saveButton(screen)).toBeEnabled();
 });
