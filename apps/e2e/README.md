@@ -116,12 +116,10 @@ scope. The UI side of the same journeys is in `toolkit/providers.e2e.ts`.
 ## List sync status scenarios
 
 `tests/sync-status.spec.ts` checks what each refresh records (STR-58). The test
-backend has no Trakt client ID, so Trakt reads fail as "temporarily
-unavailable" and a Trakt token cannot be refreshed. These are deterministic,
-offline failures: a seeded expired Connection becomes a refused Connection
-(`needs_renewal_since`), and public Trakt Lists must not fail with it. The
-`live-regression` case adds a live IMDb chart on the configure page and waits
-for its first refresh through the page's polling.
+backend has no Trakt client ID, so Trakt reads fail and a seeded expired Trakt
+Connection becomes a refused one (`needs_renewal_since`), offline and
+deterministic. The `live-regression` case waits for the first refresh of a live
+IMDb chart through the page's polling.
 
 ## Environment knobs
 
