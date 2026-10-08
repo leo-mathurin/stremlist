@@ -45,7 +45,7 @@ export default function SortableListRow({
   list,
   index,
   accountKey,
-  connectionKey = "",
+  connectionKey,
   onFieldChange,
   onRemove,
   connectionMissing,
@@ -56,7 +56,7 @@ export default function SortableListRow({
   /** Lets the preview read through the Account's Connections. */
   accountKey: string | null;
   /** Identifies the Account's Connection to the List's Provider, or "". */
-  connectionKey?: string;
+  connectionKey: string;
   /** The List reads through a Connection that the Account no longer has. */
   connectionMissing?: boolean;
   /** Start the Connection again; absent when it cannot be started here. */

@@ -1,24 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { InferRequestType } from "hono/client";
 import type { CatalogPreview } from "@stremlist/shared/catalog-preview";
-import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
-import type { DisplayMode } from "@stremlist/shared/constants";
-import type { ProviderId } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { api } from "@/lib/api";
+import { listKey } from "@/lib/list-form";
+import type { ListFormRow } from "@/lib/list-form";
 
-export interface CatalogPreviewInput {
-  accountKey: string | null;
-  provider: ProviderId;
-  sourceRef: string;
-  sortOption: string;
-  displayMode: DisplayMode;
-  catalogSettings: CatalogSettings;
-  /**
-   * Changes when the Account's Connection to the Provider changes (connected,
-   * disconnected, connected again), so the preview is read again. Not sent.
-   */
-  connectionKey: string;
-}
+type PreviewBody = InferRequestType<typeof api.lists.preview.$post>["json"];
 
 export type CatalogPreviewState =
   | { status: "loading" }
@@ -33,25 +21,39 @@ const SETTINGS_DEBOUNCE_MS = 300;
  * The preview of a List while `enabled`. A change of sort or filters keeps
  * the current preview on screen (marked `updating`) until the new one comes;
  * a change of Source list starts again from the loading state.
+ * `connectionKey` changes when the Account's Connection to the Provider
+ * changes (connected, disconnected, connected again), so the preview is read
+ * again. It is not sent.
  */
-export function useCatalogPreview(
-  input: CatalogPreviewInput,
-  enabled: boolean,
-) {
+export function useCatalogPreview({
+  list,
+  accountKey,
+  connectionKey,
+  enabled,
+}: {
+  list: Pick<
+    ListFormRow,
+    "provider" | "sourceRef" | "sortOption" | "displayMode" | "catalogSettings"
+  >;
+  accountKey: string | null;
+  connectionKey: string;
+  enabled: boolean;
+}) {
   const [state, setState] = useState<CatalogPreviewState>({
     status: "loading",
   });
   const [attempt, setAttempt] = useState(0);
-  const source = `${input.provider}:${input.sourceRef}`;
+  const source = listKey(list);
   const shownSource = useRef<string | null>(null);
-  const request = JSON.stringify({
-    accountKey: input.accountKey ?? undefined,
-    provider: input.provider,
-    sourceRef: input.sourceRef,
-    sortOption: input.sortOption,
-    displayMode: input.displayMode,
-    catalogSettings: input.catalogSettings,
-  });
+  // A string, so that a new object with the same values asks nothing again.
+  const body = JSON.stringify({
+    accountKey: accountKey ?? undefined,
+    provider: list.provider,
+    sourceRef: list.sourceRef,
+    sortOption: list.sortOption,
+    displayMode: list.displayMode,
+    catalogSettings: list.catalogSettings,
+  } satisfies PreviewBody);
 
   useEffect(() => {
     if (!enabled) return;
@@ -65,20 +67,16 @@ export function useCatalogPreview(
     const timer = setTimeout(
       () => {
         api.lists.preview
-          .$post({
-            json: JSON.parse(request) as Parameters<
-              typeof api.lists.preview.$post
-            >[0]["json"],
-          })
+          .$post({ json: JSON.parse(body) as PreviewBody })
           .then(async (res) => {
             if (!res.ok) throw new Error("preview failed");
-            const body = await res.json();
+            const preview = await res.json();
             if (cancelled) return;
             shownSource.current = source;
             setState(
-              body.ok
-                ? { status: "ready", preview: body, updating: false }
-                : { status: "problem", reason: body.reason },
+              preview.ok
+                ? { status: "ready", preview, updating: false }
+                : { status: "problem", reason: preview.reason },
             );
           })
           .catch(() => {
@@ -91,7 +89,7 @@ export function useCatalogPreview(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [enabled, request, source, input.connectionKey, attempt]);
+  }, [enabled, body, source, connectionKey, attempt]);
 
   const retry = useCallback(() => {
     shownSource.current = null;

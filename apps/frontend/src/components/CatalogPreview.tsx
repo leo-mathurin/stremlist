@@ -12,14 +12,19 @@ import type {
   PreviewTitle,
   PreviewUnresolvedEntry,
 } from "@stremlist/shared/catalog-preview";
-import { CATALOG_PRESETS } from "@stremlist/shared/catalog-settings";
+import {
+  CATALOG_PRESETS,
+  countCatalogFilters,
+} from "@stremlist/shared/catalog-settings";
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
+import { DISPLAY_MODE_OPTIONS } from "@stremlist/shared/constants";
 import type { DisplayMode } from "@stremlist/shared/constants";
 import { PROVIDERS } from "@stremlist/shared/providers";
 import {
   sourceProblemCopy,
   storedSourceNoun,
 } from "@stremlist/shared/source-problems";
+import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { useCatalogPreview } from "@/hooks/useCatalogPreview";
 import type { ListFormRow } from "@/lib/list-form";
 import { cn } from "@/lib/utils";
@@ -28,23 +33,22 @@ import { Skeleton } from "@/components/ui/skeleton";
 /** Unresolved entries shown before "Show all". */
 const UNRESOLVED_COLLAPSED = 5;
 
+type TitleType = CatalogPreviewRow["type"];
+
 const TYPE_LABELS = { movie: "Movies", series: "TV shows" } as const;
 const TYPE_NOUNS = {
   movie: { one: "movie", other: "movies" },
   series: { one: "TV show", other: "TV shows" },
 } as const;
+const OTHER_TYPE = { movie: "series", series: "movie" } as const;
 
 function count(value: number, one: string, other: string): string {
   return `${value.toLocaleString("en")} ${value === 1 ? one : other}`;
 }
 
-function hasFilters(settings: CatalogSettings): boolean {
-  return (
-    settings.genre !== undefined ||
-    settings.decade !== undefined ||
-    settings.maxRuntime !== undefined ||
-    settings.minRating !== undefined
-  );
+/** The label of the Show option that keeps only `type`. */
+function showOnlyLabel(type: TitleType): string {
+  return DISPLAY_MODE_OPTIONS.find((option) => option.value === type)!.label;
 }
 
 function catalogLabel(row: CatalogPreviewRow): string {
@@ -71,19 +75,12 @@ export default function CatalogPreview({
   /** The panel is visible: only then the preview is read. */
   open: boolean;
 }) {
-  const { state, retry } = useCatalogPreview(
-    {
-      accountKey,
-      provider: list.provider,
-      sourceRef: list.sourceRef,
-      sortOption: list.sortOption,
-      displayMode: list.displayMode,
-      catalogSettings: list.catalogSettings,
-      connectionKey,
-    },
-    open,
-  );
-  const label = PROVIDERS[list.provider].label;
+  const { state, retry } = useCatalogPreview({
+    list,
+    accountKey,
+    connectionKey,
+    enabled: open,
+  });
 
   return (
     <div className="space-y-4 border-t border-black/5 px-4 pt-4 pb-4 sm:px-5">
@@ -107,20 +104,13 @@ export default function CatalogPreview({
       </div>
 
       {state.status === "loading" ? (
-        <PreviewLoading label={label} />
+        <PreviewLoading label={PROVIDERS[list.provider].label} />
       ) : state.status === "problem" ? (
         <PreviewMessage
           tone={state.reason === "unavailable" ? "error" : "info"}
           onRetry={state.reason === "unavailable" ? retry : undefined}
         >
-          {(() => {
-            const { title, fix } = sourceProblemCopy(
-              list.provider,
-              state.reason,
-              storedSourceNoun(list.provider, list.sourceRef),
-            );
-            return `${title}. ${fix}`;
-          })()}
+          {problemMessage(list, state.reason)}
         </PreviewMessage>
       ) : state.status === "error" ? (
         <PreviewMessage tone="error" onRetry={retry}>
@@ -142,6 +132,18 @@ export default function CatalogPreview({
       )}
     </div>
   );
+}
+
+function problemMessage(
+  list: Pick<ListFormRow, "provider" | "sourceRef">,
+  reason: SourceProblemReason,
+): string {
+  const { title, fix } = sourceProblemCopy(
+    list.provider,
+    reason,
+    storedSourceNoun(list.provider, list.sourceRef),
+  );
+  return `${title}. ${fix}`;
 }
 
 function PreviewLoading({ label }: { label: string }) {
@@ -206,17 +208,10 @@ function PreviewBody({
   displayMode: DisplayMode;
   settings: CatalogSettings;
 }) {
-  const hiddenType =
-    displayMode === "movie"
-      ? "series"
-      : displayMode === "series"
-        ? "movie"
-        : null;
+  const shownType = displayMode === "split" ? null : displayMode;
+  const hiddenType = shownType && OTHER_TYPE[shownType];
   const hiddenCount = hiddenType ? preview.typeCounts[hiddenType] : 0;
-  // An empty single-type Catalog already says which Show option to pick.
-  const shownTypeEmpty =
-    hiddenType !== null &&
-    preview.typeCounts[hiddenType === "movie" ? "series" : "movie"] === 0;
+  const filtered = countCatalogFilters(settings) > 0;
 
   return (
     <>
@@ -225,25 +220,26 @@ function PreviewBody({
           key={`${row.type}:${row.preset ?? "main"}`}
           row={row}
           typeCount={preview.typeCounts[row.type]}
-          otherTypeCount={
-            preview.typeCounts[row.type === "movie" ? "series" : "movie"]
-          }
-          filtered={hasFilters(settings)}
+          otherTypeCount={preview.typeCounts[OTHER_TYPE[row.type]]}
+          filtered={filtered}
         />
       ))}
 
-      {hiddenType && hiddenCount > 0 && !shownTypeEmpty && (
-        <p className="text-xs text-pretty text-black/55">
-          {count(
-            hiddenCount,
-            TYPE_NOUNS[hiddenType].one,
-            TYPE_NOUNS[hiddenType].other,
-          )}{" "}
-          of this list {hiddenCount === 1 ? "does" : "do"} not show, because
-          Show is set to{" "}
-          {displayMode === "movie" ? "Movies only" : "TV shows only"}.
-        </p>
-      )}
+      {/* An empty single-type Catalog already says which Show option to pick. */}
+      {shownType &&
+        hiddenType &&
+        hiddenCount > 0 &&
+        preview.typeCounts[shownType] > 0 && (
+          <p className="text-xs text-pretty text-black/55">
+            {count(
+              hiddenCount,
+              TYPE_NOUNS[hiddenType].one,
+              TYPE_NOUNS[hiddenType].other,
+            )}{" "}
+            of this list {hiddenCount === 1 ? "does" : "do"} not show, because
+            Show is set to {showOnlyLabel(shownType)}.
+          </p>
+        )}
 
       <UnresolvedEntries unresolved={preview.unresolved} />
 
@@ -290,7 +286,7 @@ function CatalogRow({
           {typeCount === 0
             ? `This list has no ${nouns.other}, so this catalog stays empty in Stremio.${
                 otherTypeCount > 0
-                  ? ` Set Show to ${row.type === "movie" ? "TV shows only" : "Movies only"} in Settings to remove it.`
+                  ? ` Set Show to ${showOnlyLabel(OTHER_TYPE[row.type])} in Settings to remove it.`
                   : ""
               }`
             : filtered
