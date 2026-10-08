@@ -93,6 +93,19 @@ interface StatusRow {
 }
 
 /**
+ * Forget the statuses of Lists whose cached Catalogs were deleted (after a
+ * disconnect): an old success must not say their Titles are still in Stremio.
+ */
+export async function forgetSyncStatuses(listIds: string[]): Promise<void> {
+  if (listIds.length === 0) return;
+  const { error } = await supabase
+    .from("list_sync_status")
+    .delete()
+    .in("list_id", listIds);
+  if (error) throw error;
+}
+
+/**
  * The sync status of each List, for the Source list it reads now. Lists that
  * were never read are left out. When the recorded statuses cannot be read,
  * only the cache answers: the page shows Lists as waiting, not as broken.

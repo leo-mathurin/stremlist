@@ -26,7 +26,11 @@ import {
   getCachedList,
   writeCachedList,
 } from "./list-cache";
-import { recordRefreshOutcome, reportConnectionWorking } from "./sync-status";
+import {
+  forgetSyncStatuses,
+  recordRefreshOutcome,
+  reportConnectionWorking,
+} from "./sync-status";
 
 /**
  * When the ID resolver left entries untried, the next read comes this soon
@@ -455,20 +459,18 @@ export async function findMetaInAccountCache(
 
 /**
  * After a disconnect: drop the cached Catalogs of the Account's Lists that
- * were read through that Connection, so nothing private stays served.
+ * were read through that Connection, so nothing private stays served, and
+ * their sync statuses, which described those Catalogs.
  */
 export async function forgetConnectionLists(
   accountId: string,
   provider: ProviderId,
 ): Promise<void> {
-  const lists = await getAccountLists(accountId);
-  await Promise.all(
-    lists
-      .filter(
-        (list) =>
-          list.provider === provider &&
-          sourceRequiresConnection(list.provider, list.sourceRef),
-      )
-      .map((list) => deleteCachedList(list.id)),
+  const lists = (await getAccountLists(accountId)).filter(
+    (list) =>
+      list.provider === provider &&
+      sourceRequiresConnection(list.provider, list.sourceRef),
   );
+  await Promise.all(lists.map((list) => deleteCachedList(list.id)));
+  await forgetSyncStatuses(lists.map((list) => list.id));
 }

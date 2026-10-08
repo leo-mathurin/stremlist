@@ -1283,6 +1283,16 @@ describe("DELETE /:accountId/connections/:provider", () => {
     };
     cache.seed(privateList.id, [item]);
     cache.seed(publicList.id, [item]);
+    for (const list of [privateList, publicList]) {
+      db.insert("list_sync_status", {
+        list_id: list.id,
+        provider: "trakt",
+        source_ref: list.source_ref,
+        last_attempt_at: new Date().toISOString(),
+        last_success_at: new Date().toISOString(),
+        title_count: 1,
+      });
+    }
     r2Objects.set(`connections/${account.id}/trakt/membership.json`, "{}");
 
     const res = await app.request(`/${account.id}/connections/trakt`, {
@@ -1294,6 +1304,10 @@ describe("DELETE /:accountId/connections/:provider", () => {
     // The private List's cache is gone; the public one stays.
     expect(cache.get(privateList.id)).toBeNull();
     expect(cache.get(publicList.id)).not.toBeNull();
+    // Its old success no longer claims Titles that Stremio cannot show.
+    expect(db.getTable("list_sync_status").map((row) => row.list_id)).toEqual([
+      publicList.id,
+    ]);
     expect(
       r2Objects.has(`connections/${account.id}/trakt/membership.json`),
     ).toBe(false);
