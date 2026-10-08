@@ -28,7 +28,6 @@ import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { useCatalogPreview } from "@/hooks/useCatalogPreview";
 import type { ListFormRow } from "@/lib/list-form";
 import { cn } from "@/lib/utils";
-import { Skeleton } from "@/components/ui/skeleton";
 
 /** Unresolved entries shown before "Show all". */
 const UNRESOLVED_COLLAPSED = 5;
@@ -156,8 +155,8 @@ function PreviewLoading({ label }: { label: string }) {
       <div className="flex gap-3 overflow-hidden" aria-hidden="true">
         {Array.from({ length: 8 }, (_, index) => (
           <div key={index} className="w-[4.5rem] shrink-0 sm:w-20">
-            <Skeleton className="aspect-[2/3] rounded-xl bg-black/5 motion-reduce:animate-none" />
-            <Skeleton className="mt-1.5 h-2.5 w-4/5 rounded bg-black/5 motion-reduce:animate-none" />
+            <div className="aspect-[2/3] animate-pulse rounded-xl bg-black/5 motion-reduce:animate-none" />
+            <div className="mt-1.5 h-2.5 w-4/5 animate-pulse rounded bg-black/5 motion-reduce:animate-none" />
           </div>
         ))}
       </div>
@@ -219,8 +218,7 @@ function PreviewBody({
         <CatalogRow
           key={`${row.type}:${row.preset ?? "main"}`}
           row={row}
-          typeCount={preview.typeCounts[row.type]}
-          otherTypeCount={preview.typeCounts[OTHER_TYPE[row.type]]}
+          typeCounts={preview.typeCounts}
           filtered={filtered}
         />
       ))}
@@ -257,13 +255,11 @@ function PreviewBody({
 
 function CatalogRow({
   row,
-  typeCount,
-  otherTypeCount,
+  typeCounts,
   filtered,
 }: {
   row: CatalogPreviewRow;
-  typeCount: number;
-  otherTypeCount: number;
+  typeCounts: CatalogPreviewData["typeCounts"];
   filtered: boolean;
 }) {
   const headingId = useId();
@@ -283,9 +279,9 @@ function CatalogRow({
       </h4>
       {row.titles.length === 0 ? (
         <p className="rounded-2xl border-2 border-dashed border-black/10 px-4 py-3 text-sm text-pretty text-black/55">
-          {typeCount === 0
+          {typeCounts[row.type] === 0
             ? `This list has no ${nouns.other}, so this catalog stays empty in Stremio.${
-                otherTypeCount > 0
+                typeCounts[OTHER_TYPE[row.type]] > 0
                   ? ` Set Show to ${showOnlyLabel(OTHER_TYPE[row.type])} in Settings to remove it.`
                   : ""
               }`
@@ -421,21 +417,20 @@ function UnresolvedEntries({
           <UnresolvedRow key={index} entry={entry} />
         ))}
       </ul>
-      {(unresolved.entries.length > UNRESOLVED_COLLAPSED || notListed > 0) && (
+      {/* Entries go unlisted only past the limit, so "Show all" is there. */}
+      {unresolved.entries.length > UNRESOLVED_COLLAPSED && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-          {unresolved.entries.length > UNRESOLVED_COLLAPSED && (
-            <button
-              type="button"
-              aria-expanded={expanded}
-              aria-controls={listId}
-              onClick={() => setExpanded((current) => !current)}
-              className="-mx-1 rounded px-1 font-semibold text-amber-950 underline-offset-2 hover:underline"
-            >
-              {expanded
-                ? "Show fewer"
-                : `Show all ${unresolved.entries.length.toLocaleString("en")}`}
-            </button>
-          )}
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-controls={listId}
+            onClick={() => setExpanded((current) => !current)}
+            className="-mx-1 rounded px-1 font-semibold text-amber-950 underline-offset-2 hover:underline"
+          >
+            {expanded
+              ? "Show fewer"
+              : `Show all ${unresolved.entries.length.toLocaleString("en")}`}
+          </button>
           {expanded && notListed > 0 && (
             <span className="text-amber-900/70 tabular-nums">
               and {notListed.toLocaleString("en")} more

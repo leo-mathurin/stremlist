@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { InferRequestType } from "hono/client";
 import type { CatalogPreview } from "@stremlist/shared/catalog-preview";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
@@ -8,7 +8,7 @@ import type { ListFormRow } from "@/lib/list-form";
 
 type PreviewBody = InferRequestType<typeof api.lists.preview.$post>["json"];
 
-export type CatalogPreviewState =
+type CatalogPreviewState =
   | { status: "loading" }
   | { status: "ready"; preview: CatalogPreview; updating: boolean }
   | { status: "problem"; reason: SourceProblemReason }
@@ -31,10 +31,7 @@ export function useCatalogPreview({
   connectionKey,
   enabled,
 }: {
-  list: Pick<
-    ListFormRow,
-    "provider" | "sourceRef" | "sortOption" | "displayMode" | "catalogSettings"
-  >;
+  list: ListFormRow;
   accountKey: string | null;
   connectionKey: string;
   enabled: boolean;
@@ -91,10 +88,10 @@ export function useCatalogPreview({
     };
   }, [enabled, body, source, connectionKey, attempt]);
 
-  const retry = useCallback(() => {
+  const retry = () => {
     shownSource.current = null;
     setAttempt((current) => current + 1);
-  }, []);
+  };
 
   return { state, retry };
 }
