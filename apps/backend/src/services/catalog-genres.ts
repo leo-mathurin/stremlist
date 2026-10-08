@@ -9,8 +9,8 @@ export async function withAvailableGenres(
     lists.map(async (list) => {
       // A merged List offers the genres of all its Source lists.
       const summaries = await Promise.all(
-        sourceCaches(list).map(({ cacheKey }) =>
-          getCachedListSummary(cacheKey),
+        sourceCaches(list).map(({ source, cacheKey }) =>
+          getCachedListSummary(cacheKey, source),
         ),
       );
       const genres = summaries.flatMap((summary) =>
