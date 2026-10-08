@@ -70,6 +70,43 @@
   --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
+/* Registered so the edge fade of a scrollable field can transition its
+   width when the text reaches or leaves an edge. */
+@property --edge-fade-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --edge-fade-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@layer components {
+  /* Fades the text of a horizontally scrollable field at each edge that has
+     hidden content. Set data-overflow-start / data-overflow-end to show it. */
+  .edge-fade {
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 var(--edge-fade-start),
+      #000 calc(100% - var(--edge-fade-end)),
+      transparent
+    );
+    transition:
+      --edge-fade-start 200ms var(--ease-out-quint),
+      --edge-fade-end 200ms var(--ease-out-quint);
+  }
+  .edge-fade[data-overflow-start] {
+    --edge-fade-start: 2.5rem;
+  }
+  .edge-fade[data-overflow-end] {
+    --edge-fade-end: 2.5rem;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
