@@ -397,6 +397,31 @@ describe("R2 watchlist cache", () => {
     expect((await getCachedList(id))?.data.metas).toEqual([replacement]);
   });
 
+  it("misses for a List that now reads another Source list", async () => {
+    const id = watchlistId();
+    const top = { provider: "imdb", sourceRef: "imdb:top-rated-movies" };
+    const popular = { provider: "imdb", sourceRef: "imdb:most-popular-movies" };
+    await writeCachedList(id, { metas: [MOVIE] }, new Date(), top);
+
+    expect((await getCachedList(id, top))?.data.metas).toEqual([MOVIE]);
+    expect(await getCachedList(id, popular)).toBeNull();
+    expect(await getCachedListSummary(id, popular)).toBeNull();
+    expect(await getCachedListSummary(id, top)).toEqual({
+      movie: ["Drama"],
+      series: [],
+    });
+  });
+
+  it("serves a cache written without a source to any Source list", async () => {
+    const id = watchlistId();
+    await writeCachedList(id, { metas: [MOVIE] });
+
+    expect(
+      (await getCachedList(id, { provider: "imdb", sourceRef: "ls1" }))?.data
+        .metas,
+    ).toEqual([MOVIE]);
+  });
+
   it("invalidates the cache and deletes its current catalog", async () => {
     const id = watchlistId();
     await writeCachedList(id, { metas: [MOVIE] });
