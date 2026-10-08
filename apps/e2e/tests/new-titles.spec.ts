@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import type {
@@ -5,7 +8,17 @@ import type {
   StremioManifest,
   StremioMeta,
 } from "@stremlist/shared/stremio.types";
-import { FRONTEND_URL } from "../env.js";
+import {
+  CONNECTION_ENCRYPTION_KEY,
+  FRONTEND_URL,
+  R2_ACCESS_KEY_ID,
+  R2_BUCKET,
+  R2_ENDPOINT,
+  R2_SECRET_ACCESS_KEY,
+  REFRESH_COOLDOWN_SECONDS,
+  SUPABASE_SERVICE_ROLE_KEY,
+  SUPABASE_URL,
+} from "../env.js";
 import { getCatalog, getManifest } from "../helpers/api.js";
 import { CATALOG_TITLES, seedCatalog } from "../helpers/catalog-fixture.js";
 import {
@@ -17,12 +30,10 @@ import {
   seedDetectionHistory,
   seedList,
 } from "../helpers/db.js";
+import type { ProviderBackend } from "../helpers/provider-backend.js";
+import { startProviderBackend } from "../helpers/provider-backend.js";
 import { seedCachedCatalog } from "../helpers/r2.js";
-import type {
-  SourceFixture,
-  SourceFixtureBackend,
-} from "../helpers/source-fixture.js";
-import { startSourceFixtureBackend } from "../helpers/source-fixture.js";
+import type { SourceFixture } from "../helpers/source-transport.js";
 import { CATALOG_FIXTURE_USER } from "../helpers/test-data.js";
 
 // New titles (ADR 0007): consecutive refreshes of Source lists that the test
@@ -67,13 +78,38 @@ function traktItem(trakt: number, imdb: string) {
   return { trakt, imdb, name: TITLES[imdb].name, year: TITLES[imdb].year };
 }
 
-let backend: SourceFixtureBackend;
+let backend: ProviderBackend;
+let fixtureDir: string;
+let fixtureFile: string;
+
+/** Rewrite the Source lists that the isolated backend reads next. */
+function writeSources(state: SourceFixture) {
+  writeFileSync(fixtureFile, JSON.stringify(state));
+}
 
 test.beforeAll(async () => {
-  backend = await startSourceFixtureBackend(sources([]));
+  fixtureDir = mkdtempSync(join(tmpdir(), "stremlist-sources-"));
+  fixtureFile = join(fixtureDir, "sources.json");
+  writeSources(sources([]));
+  backend = await startProviderBackend("./source-transport.ts", {
+    E2E_SOURCE_FIXTURE_FILE: fixtureFile,
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY,
+    FRONTEND_URL,
+    REFRESH_COOLDOWN_SECONDS: String(REFRESH_COOLDOWN_SECONDS),
+    R2_ENDPOINT,
+    R2_ACCESS_KEY_ID,
+    R2_SECRET_ACCESS_KEY,
+    R2_BUCKET,
+    CONNECTION_ENCRYPTION_KEY,
+    // Public Trakt reads need a client ID header; the fixture ignores it.
+    TRAKT_CLIENT_ID: "fixture-only",
+    RESEND_API_KEY: "re_e2e_dummy_key",
+  });
 });
 test.afterAll(async () => {
   await backend?.stop();
+  rmSync(fixtureDir, { recursive: true, force: true });
 });
 test.beforeEach(async () => {
   await resetDb();
@@ -96,7 +132,7 @@ function seedDetectionAccount(
 
 /** One synchronization of every List, as the Refresh button asks. */
 async function refreshAll(accountId: string, state: SourceFixture) {
-  backend.write(state);
+  writeSources(state);
   await clearRefreshCooldown(accountId);
   const response = await fetch(`${backend.url}/${accountId}/refresh`, {
     method: "POST",
@@ -260,19 +296,14 @@ test(
     });
     const at = new Date().toISOString();
     const lists = [
-      { provider: "imdb" as const, sourceRef: alias, title: "Public", id: A },
-      {
-        provider: "trakt" as const,
-        sourceRef: "me/history",
-        title: "History",
-        id: B,
-      },
+      { provider: "imdb" as const, sourceRef: alias, id: A },
+      { provider: "trakt" as const, sourceRef: "me/history", id: B },
     ];
     for (const [position, list] of lists.entries()) {
       const listId = await seedList(accountId, {
         provider: list.provider,
         sourceRef: list.sourceRef,
-        catalogTitle: list.title,
+        catalogTitle: list.provider,
         displayMode: "movie",
         position,
       });

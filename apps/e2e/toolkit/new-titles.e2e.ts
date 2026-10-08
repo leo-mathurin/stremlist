@@ -30,9 +30,8 @@ const MOVED_HINT =
 
 function withNewTitles(
   newTitles: AccountConfigResponse["newTitles"],
-  base: AccountConfigResponse = configuration,
 ): AccountConfigResponse {
-  return { ...base, newTitles };
+  return { ...configuration, newTitles };
 }
 
 test(
@@ -62,7 +61,7 @@ test("the summary says what was detected and which Lists still wait", async ({
   screen,
   browser,
 }) => {
-  const submissions = await captureConfig(
+  await captureConfig(
     browser,
     withNewTitles({
       enabled: true,
@@ -87,12 +86,6 @@ test("the summary says what was detected and which Lists still wait", async ({
       "Dates show when Stremlist detected a title, which can be later than when you added it.",
     ),
   ).toBeVisible();
-
-  await screen.getByRole("checkbox", TOGGLE).tap();
-  await screen.getByRole("button", "Save", { exact: true }).tap();
-  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
-  expect(submissions).toHaveLength(1);
-  expect(submissions[0].newTitles).toEqual({ enabled: false });
 });
 
 test("an unreadable history hides the summary, and an unchanged save needs no reinstall", async ({

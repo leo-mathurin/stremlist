@@ -4,7 +4,25 @@
 // through a JSON file. Loopback requests (Supabase) use the real fetch. Every
 // other destination is refused, so no real Provider is ever called.
 import { readFileSync } from "node:fs";
-import type { SourceFixture } from "./source-fixture.js";
+
+/** The Source lists that the test writes to E2E_SOURCE_FIXTURE_FILE. */
+export interface SourceFixture {
+  /** IMDb watchlists by `ur…` ID: the IMDb IDs, oldest added first. */
+  imdb: Record<string, { ids: string[]; fail?: boolean }>;
+  /** Public Trakt watchlists by user. An item without `imdb` stays unresolved. */
+  trakt: Record<
+    string,
+    {
+      items: { trakt: number; imdb?: string; name: string; year: number }[];
+      fail?: boolean;
+    }
+  >;
+  /** IMDb metadata of every Title the fixture uses. */
+  titles: Record<
+    string,
+    { name: string; year: number; type: "movie" | "series" }
+  >;
+}
 
 const realFetch = globalThis.fetch;
 const fixtureFile = process.env.E2E_SOURCE_FIXTURE_FILE;

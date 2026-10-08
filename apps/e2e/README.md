@@ -42,10 +42,9 @@ R2. The configure/onboarding pages of the frontend are covered too.
   regression suite (25 tests).
 - `tests/new-titles.spec.ts` starts a second backend with
   `helpers/source-transport.ts` preloaded. It reads Source lists from a JSON
-  file that the test rewrites between refreshes (`helpers/source-fixture.ts`),
-  so consecutive synchronizations, a failed read and an Unresolved entry are
-  deterministic. Database and R2 traffic is real; any other outbound request
-  is refused.
+  file that the test rewrites between refreshes, so consecutive
+  synchronizations are deterministic. Database and R2 traffic is real; any
+  other outbound request is refused.
 - The backend gets a fixed, public `CONNECTION_ENCRYPTION_KEY` from `env.ts`,
   so seeded Connections (`helpers/db.ts` `seedConnection`) decrypt like real
   ones. It is not a production key.
