@@ -1,0 +1,115 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-08T16:31:38.858Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Preview Test catalog\"",
+        "target": {
+          "role": "button",
+          "name": "Preview Test catalog"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Settings for Test catalog\"",
+        "target": {
+          "role": "button",
+          "name": "Settings for Test catalog"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap combobox \"Show\"",
+        "target": {
+          "role": "combobox",
+          "name": "Show"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap option \"Movies only\"",
+        "target": {
+          "role": "option",
+          "name": "Movies only"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save\"",
+        "target": {
+          "role": "button",
+          "name": "Save"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/catalog-preview.e2e.ts::the%20empty%20Catalog%20hint%20leads%20the%20user%20to%20the%20Show%20setting",
+      "targetId": "chromium",
+      "instructionDigest": "b3672fd00910f4f2d2380bf3fff8eeb219efafad6f10e793a1be02e9c2d22b6d",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Opened Test catalog preview, saw the TV-shows-empty instruction, changed Show to Movies only in Settings, and saved. The app confirmed “Saved!” and the empty TV shows catalog was removed from the preview.",
+    "startPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endAnchors": [
+      {
+        "role": "status",
+        "name": "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions."
+      },
+      {
+        "role": "button",
+        "name": "Preview Test catalog",
+        "states": [
+          "expanded"
+        ]
+      },
+      {
+        "text": "Catalog title"
+      },
+      {
+        "role": "textbox",
+        "name": "Catalog title",
+        "placeholder": "IMDb Watchlist",
+        "value": "Test catalog"
+      },
+      {
+        "text": "Show"
+      },
+      {
+        "text": "Movies only"
+      },
+      {
+        "text": "Filters & extra catalogs"
+      },
+      {
+        "text": "Preview"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "button",
+        "name": "Preview Test catalog"
+      },
+      {
+        "role": "heading",
+        "name": "Install or reinstall in Stremio"
+      },
+      {
+        "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
+      },
+      {
+        "role": "button",
+        "name": "Settings for Test catalog"
+      }
+    ],
+    "endWaitMs": 12418
+  }
+}

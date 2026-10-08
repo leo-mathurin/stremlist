@@ -1,7 +1,11 @@
 import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
 import type { Browser } from "@e2e-dev/web";
-import type { CatalogPreviewResponse } from "@stremlist/shared/catalog-preview";
+import type {
+  CatalogPreviewResponse,
+  CatalogPreviewRow,
+  PreviewTitle,
+} from "@stremlist/shared/catalog-preview";
 import type { PreviewRequest } from "./config-fixture";
 import {
   accountId,
@@ -10,6 +14,7 @@ import {
   captureConfig,
   configuration,
   imdbUser,
+  legacyConfiguration,
   parseBody,
   previewOf,
   resolved,
@@ -316,3 +321,221 @@ test("disconnecting the Provider reads the open preview again", async ({
     sourceRef: "me/history",
   });
 });
+
+const LOADING = "Reading the list on IMDb. A big list can take a few seconds.";
+const MOVIES = previewOf({ displayMode: "movie" }).catalogs[0].titles;
+
+/**
+ * One Catalog row per type of `request` and per preset, like the manifest.
+ * `rows` gives the Titles and the total of each `type:preset` row; rows that
+ * it does not name are empty.
+ */
+function catalogsOf(
+  request: PreviewRequest,
+  rows: Record<string, { total: number; titles: PreviewTitle[] }>,
+): CatalogPreviewRow[] {
+  const types: CatalogPreviewRow["type"][] =
+    request.displayMode === "split"
+      ? ["movie", "series"]
+      : [request.displayMode];
+  const presets = [null, ...(request.catalogSettings?.presets ?? [])];
+  return types.flatMap((type) =>
+    presets.map((preset) => ({
+      type,
+      preset,
+      ...(rows[`${type}:${preset ?? "main"}`] ?? { total: 0, titles: [] }),
+    })),
+  );
+}
+
+test("the preview shows a loading state, then every Catalog with its empty hints", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const submissions = await captureConfig(browser);
+  let release = () => {};
+  const firstAnswer = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const requests: PreviewRequest[] = [];
+  await browser.route(`${backend}/lists/preview`, async (route) => {
+    const request = parseBody<PreviewRequest>(route);
+    requests.push(request);
+    if (requests.length === 1) await firstAnswer;
+    // The decade filter leaves no movie; the Top rated Catalog has none.
+    const filtered = request.catalogSettings?.decade !== undefined;
+    await route.fulfill({
+      json: toJson(
+        previewOf(request, {
+          titleCount: 30,
+          typeCounts: { movie: 30, series: 0 },
+          catalogs: catalogsOf(request, {
+            "movie:main": filtered
+              ? { total: 0, titles: [] }
+              : { total: 30, titles: MOVIES },
+          }),
+        }),
+      ),
+    });
+  });
+  await app.open(`/configure?account=${accountId}`);
+  await screen.getByRole("button", "Preview Test catalog").tap();
+  await expect(screen.getByText(LOADING)).toBeVisible();
+  // Nothing shows as ready while the read runs.
+  await expect(screen.getByText("The Godfather")).not.toBeVisible();
+  release();
+
+  await expect(
+    screen.getByRole("heading", /^Movies\s*30 titles$/),
+  ).toBeVisible();
+  // Twelve Titles at most come back; the rest is a count.
+  await expect(screen.getByText("+28")).toBeVisible();
+  await expect(
+    screen.getByText(
+      "This list has no TV shows, so this catalog stays empty in Stremio. Set Show to Movies only in Settings to remove it.",
+    ),
+  ).toBeVisible();
+  await expect(screen.getByText(LOADING)).not.toBeVisible();
+
+  await screen.getByRole("button", "Settings for Test catalog").tap();
+  await screen.getByRole("button", /^Filters & extra catalogs/).tap();
+  await screen.getByRole("checkbox", "Top rated", { exact: true }).tap();
+  await expect
+    .poll(() => requests.at(-1)?.catalogSettings)
+    .toEqual({ presets: ["rated"] });
+  await expect(
+    screen.getByRole("heading", /^Movies · Top rated\s*0 titles$/),
+  ).toBeVisible();
+  await expect(
+    screen.getByText("This catalog stays empty in Stremio.", { exact: true }),
+  ).toBeVisible();
+
+  await screen.getByRole("combobox", "Decade", { exact: true }).tap();
+  await screen.getByRole("option", "1990s", { exact: true }).tap();
+  await expect
+    .poll(() => requests.at(-1)?.catalogSettings)
+    .toEqual({ presets: ["rated"], decade: 1990 });
+  // The filters apply to the main Catalog and to the Top rated one.
+  await expect(
+    screen.getByText(
+      "No movie of this list matches its filters, so this catalog stays empty in Stremio.",
+    ),
+  ).toHaveCount(2);
+  await expect(screen.getByText("The Godfather")).not.toBeVisible();
+  // A settings change keeps the preview on screen: it does not load again.
+  await expect(screen.getByText(LOADING)).not.toBeVisible();
+  expect(submissions).toHaveLength(0);
+});
+
+test("one Unresolved entry and Titles without details are explained", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await captureConfig(browser);
+  await routePreview(browser, (request) =>
+    previewOf(request, {
+      unresolved: {
+        count: 1,
+        notCheckedYet: 0,
+        entries: [{ title: null, year: null, type: "series", url: null }],
+      },
+      withoutDetails: 1,
+    }),
+  );
+  await app.open(`/configure?account=${accountId}`);
+  await screen.getByRole("button", "Preview Test catalog").tap();
+  await expect(
+    screen.getByRole("heading", /^Unresolved entries\s*1$/),
+  ).toBeVisible();
+  await expect(
+    screen.getByText(
+      "Stremlist did not find an IMDb ID for this entry yet, so Stremio does not show it. Stremlist tries again on later refreshes.",
+    ),
+  ).toBeVisible();
+  await expect(screen.getByText("Entry without a title")).toBeVisible();
+  await expect(screen.getByText("TV show", { exact: true })).toBeVisible();
+  await expect(
+    screen.getByRole("link", "Open Entry without a title"),
+  ).not.toBeVisible();
+  await expect(screen.getByRole("button", /^Show all/)).not.toBeVisible();
+  await expect(
+    screen.getByText(
+      "1 title has no details yet, so Stremio does not show it. Stremlist tries again on the next refresh.",
+    ),
+  ).toBeVisible();
+  await expect(
+    screen.getByText(
+      "Every entry of this list has an IMDb ID, so Stremio can show them all.",
+    ),
+  ).not.toBeVisible();
+});
+
+test("a Source list that did not answer offers Try again", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await captureConfig(browser);
+  const requests = await routePreview(browser, (request, index) =>
+    index === 0 ? { ok: false, reason: "unavailable" } : previewOf(request),
+  );
+  await app.open(`/configure?account=${accountId}`);
+  await screen.getByRole("button", "Preview Test catalog").tap();
+  await expect(
+    screen.getByText("IMDb did not answer. Please try again in a moment."),
+  ).toBeVisible();
+  await screen.getByRole("button", "Try again").tap();
+  await expect(screen.getByText("The Shawshank Redemption")).toBeVisible();
+  await expect(
+    screen.getByText("IMDb did not answer.", { exact: false }),
+  ).not.toBeVisible();
+  expect(requests).toHaveLength(2);
+});
+
+test("the Legacy alias view previews with the alias as its key", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await captureConfig(browser, legacyConfiguration, imdbUser);
+  const requests = await routePreview(browser, (request) => previewOf(request));
+  await app.open(`/configure?account=${imdbUser}`);
+  await screen.getByRole("button", "Preview Test catalog").tap();
+  await expect(screen.getByText("The Godfather")).toBeVisible();
+  expect(requests).toEqual([
+    {
+      accountKey: imdbUser,
+      provider: "imdb",
+      sourceRef: imdbUser,
+      sortOption: "added_at-asc",
+      displayMode: "split",
+      catalogSettings: {},
+    },
+  ]);
+});
+
+test(
+  "the empty Catalog hint leads the user to the Show setting",
+  { tags: ["agent"] },
+  async ({ app, agent, browser, screen }) => {
+    const submissions = await captureConfig(browser);
+    const requests = await routePreview(browser, (request) =>
+      previewOf(request),
+    );
+    await app.open(`/configure?account=${accountId}`);
+    await agent.act(
+      "Open the preview of Test catalog. Its TV shows catalog stays empty: do what the preview says to remove that catalog, then save.",
+      { maxModelCalls: 9 },
+    );
+    await expect(screen.getByText(/^Saved!/)).toBeVisible();
+    expect(submissions.at(-1)?.lists[0]).toMatchObject({
+      sourceRef: imdbUser,
+      displayMode: "movie",
+    });
+    // The preview asks again 300 ms after the last settings change.
+    await expect.poll(() => requests.at(-1)?.displayMode).toBe("movie");
+    await expect(screen.getByRole("heading", /^TV shows/)).not.toBeVisible();
+  },
+);

@@ -282,6 +282,19 @@ test(
   },
 );
 
+test(
+  "a Provider that is coming soon is refused without a read",
+  { tag: "@local" },
+  async ({ request }) => {
+    expect(
+      await preview(request, BACKEND_URL, {
+        provider: "letterboxd",
+        sourceRef: "someone/list/favorites",
+      }),
+    ).toEqual({ ok: false, reason: "coming_soon" });
+  },
+);
+
 /** Send the page's previews to the fixture backend. */
 async function routePreviews(page: Page) {
   await page.route(`${BACKEND_URL}/lists/preview`, async (route) => {
