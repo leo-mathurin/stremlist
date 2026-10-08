@@ -441,54 +441,27 @@ export async function writeCachedList(
 }
 
 export async function findCachedMeta(
-  listIds: string[],
+  listId: string,
   type: string,
   id: string,
 ): Promise<SourceMeta | null> {
   const target = `${type}:${id}`;
-  const manifestResults = await Promise.allSettled(
-    listIds.map((listId) => readManifest(listId)),
-  );
-  const candidates: {
-    listId: string;
-    manifest: CacheManifest;
-  }[] = [];
-
-  manifestResults.forEach((result, index) => {
-    if (result.status === "rejected") {
-      console.error(
-        `Failed to read R2 cache manifest for ${listIds[index]}:`,
-        result.reason,
-      );
-      return;
+  try {
+    const manifest = await readManifest(listId);
+    if (!manifest || !hasSortedKey(manifest.metaKeys, target)) return null;
+    const current = await readCatalogWithManifestRefresh(listId, manifest);
+    if (!current || !hasSortedKey(current.manifest.metaKeys, target)) {
+      return null;
     }
-    if (result.value && hasSortedKey(result.value.metaKeys, target)) {
-      candidates.push({
-        listId: listIds[index],
-        manifest: result.value,
-      });
-    }
-  });
-
-  for (const candidate of candidates) {
-    try {
-      const current = await readCatalogWithManifestRefresh(
-        candidate.listId,
-        candidate.manifest,
-      );
-      if (!current || !hasSortedKey(current.manifest.metaKeys, target)) {
-        continue;
-      }
-      const found = current.catalog.metas.find(
+    return (
+      current.catalog.metas.find(
         (item) => item.type === type && item.id === id,
-      );
-      if (found) return found;
-    } catch (error) {
-      console.error("Failed to read an indexed R2 catalog:", error);
-    }
+      ) ?? null
+    );
+  } catch (error) {
+    console.error(`Failed to read the R2 cache of ${listId}:`, error);
+    return null;
   }
-
-  return null;
 }
 
 export async function deleteCachedList(listId: string): Promise<void> {

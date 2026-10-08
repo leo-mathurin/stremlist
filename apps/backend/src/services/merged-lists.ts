@@ -4,12 +4,6 @@ import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { createHash } from "node:crypto";
 import type { SourceMeta } from "./list-cache";
 
-/** One Source list of a List and the key of its cached Catalog. */
-export interface SourceCache {
-  source: ListSource;
-  cacheKey: string;
-}
-
 /**
  * Where each Source list of a List keeps its cached Catalog (ADR 0006). A
  * List with one Source list keeps the List ID, as before merged Lists, so
@@ -19,7 +13,7 @@ export interface SourceCache {
  */
 export function sourceCaches(
   list: MergeableList & { id: string },
-): SourceCache[] {
+): { source: ListSource; cacheKey: string }[] {
   const sources = listSources(list);
   if (sources.length === 1) {
     return [{ source: sources[0], cacheKey: list.id }];

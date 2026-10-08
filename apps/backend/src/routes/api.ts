@@ -104,8 +104,6 @@ const listBody = z.object({
   position: z.number().int().min(0).optional(),
   catalogSettings: catalogSettingsSchema.optional(),
   sourceLabel: z.string().trim().max(60).optional(),
-  // The Source lists merged after the first one (ADR 0006). Omitted keeps
-  // the saved ones, so older clients do not split merged Lists.
   mergedSources: z
     .array(
       z.object({
@@ -202,11 +200,7 @@ async function normalizeSource(
       throw new ConfigError(`Connect your ${info.label} account first.`);
     }
   }
-  return {
-    provider: source.provider,
-    sourceRef,
-    ...(source.label ? { label: source.label } : {}),
-  };
+  return { ...source, sourceRef };
 }
 
 /**

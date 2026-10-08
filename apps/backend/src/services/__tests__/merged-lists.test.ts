@@ -5,7 +5,6 @@ import {
   isSortAllowed,
   listMergeProblem,
   listRequiresConnection,
-  mergesByAddedDate,
   singleTypeReason,
   sourceHasAddedDates,
   sourceTitleType,
@@ -59,6 +58,7 @@ describe("merge rules", () => {
         sortOption: "added_at-desc",
       }),
     ).toBeNull();
+    expect(isSortAllowed(TOP_MOVIES, "added_at-asc")).toBe(true);
   });
 
   it(`merges at most ${MAX_SOURCES_PER_LIST} Source lists`, () => {
@@ -170,28 +170,19 @@ describe("merge rules", () => {
   });
 
   it("explains single-type Source lists only for merged Lists", () => {
-    expect(singleTypeReason(TOP_MOVIES)).toBeNull();
-    expect(singleTypeReason(merged(WATCHLIST, [TRAKT]))).toBeNull();
+    const outcome = { both: "both", movie: "movie", series: "series" };
+    expect(singleTypeReason(TOP_MOVIES, outcome)).toBeNull();
+    expect(singleTypeReason(merged(WATCHLIST, [TRAKT]), outcome)).toBeNull();
     expect(
       singleTypeReason(
         merged(TOP_MOVIES, [
           { provider: "imdb", sourceRef: "imdb:most-popular-movies" },
           TOP_TV,
         ]),
+        outcome,
       ),
-    ).toMatch(/ have only movies and Top 250 TV Shows has only TV shows$/);
-  });
-
-  it("merges by date added only a merged List whose Source lists all give dates", () => {
-    expect(mergesByAddedDate(WATCHLIST)).toBe(false);
-    expect(mergesByAddedDate(merged(WATCHLIST, [TRAKT]))).toBe(true);
-    expect(mergesByAddedDate(merged(WATCHLIST, [TOP_MOVIES]))).toBe(false);
-    expect(isSortAllowed(TOP_MOVIES, "added_at-asc")).toBe(true);
-    expect(isSortAllowed(merged(WATCHLIST, [TOP_MOVIES]), "added_at-asc")).toBe(
-      false,
-    );
-    expect(isSortAllowed(merged(WATCHLIST, [TOP_MOVIES]), "title-asc")).toBe(
-      true,
+    ).toMatch(
+      / have only movies and Top 250 TV Shows has only TV shows, so both\.$/,
     );
   });
 });

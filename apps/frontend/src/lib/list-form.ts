@@ -9,9 +9,6 @@ import { listSources, sourceKey } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { describeSource } from "./list-sources";
 
-/** Same limit as the backend (`MAX_LISTS`). */
-export const MAX_LISTS = 10;
-
 /** The backend accepts catalog titles up to this length. */
 export const MAX_CATALOG_TITLE_LENGTH = 60;
 
@@ -89,14 +86,4 @@ export function rowTitle(row: ListFormRow): string {
  */
 export function sourceKeys(rows: ListFormRow[]): string[] {
   return rows.flatMap((row) => listSources(row).map(sourceKey));
-}
-
-/** Whether two rows read the same Source lists, in the same order. */
-export function sameSources(a: ListFormRow, b: ListFormRow): boolean {
-  const before = sourceKeys([a]);
-  const after = sourceKeys([b]);
-  return (
-    before.length === after.length &&
-    before.every((key, index) => key === after[index])
-  );
 }

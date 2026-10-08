@@ -57,16 +57,8 @@ export interface ListInput {
   keptMergedSources?: boolean;
 }
 
-/** What `replace_account_config` raises when kept Source lists changed. */
-const MERGED_SOURCES_CHANGED = "Merged Source lists changed";
-
 /** A concurrent save changed merged Source lists that this save kept. */
-export class MergedSourcesChangedError extends Error {
-  constructor() {
-    super(MERGED_SOURCES_CHANGED);
-    this.name = "MergedSourcesChangedError";
-  }
-}
+export class MergedSourcesChangedError extends Error {}
 
 const storedSourcesSchema = z.array(
   z.object({
@@ -288,7 +280,8 @@ export async function replaceAccountConfig(
     p_action_providers: actions?.providers ?? null,
   });
   if (error) {
-    if (error.message === MERGED_SOURCES_CHANGED) {
+    // Raised by `replace_account_config` when kept Source lists changed.
+    if (error.message === "Merged Source lists changed") {
       throw new MergedSourcesChangedError();
     }
     throw error;

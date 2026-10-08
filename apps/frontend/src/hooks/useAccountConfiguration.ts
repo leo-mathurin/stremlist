@@ -25,16 +25,17 @@ import type {
 } from "@stremlist/shared/stremio.types";
 import { api } from "../lib/api";
 import {
-  MAX_LISTS,
   createListRow,
   getListReinstallSignature,
   rowTitle,
-  sameSources,
   sourceKeys,
 } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { mergeRows, removeRowSource, splitRowSource } from "../lib/merged-rows";
 import { requiresReinstall } from "../lib/reinstall";
+
+/** Same limit as the backend (`MAX_LISTS`). */
+export const MAX_LISTS = 10;
 
 /** "new" until the first save creates the Account. */
 export type AccountAccess = "new" | AddonAccess;
@@ -353,18 +354,16 @@ export function useAccountConfiguration(
     setLists((current) => current.filter((list) => list.localId !== localId));
   }, []);
 
-  /**
-   * Apply a change of the Source lists of the rows. Returns the message of a
-   * change that is not possible, so the caller can show it next to the List.
-   */
-  const changeRows = (next: ListFormRow[] | string): string | null => {
-    if (typeof next === "string") return next;
-    setLists(next);
-    return null;
-  };
+  const mergeLists = useCallback((targetLocalId: string, otherId: string) => {
+    setLists((rows) => mergeRows(rows, targetLocalId, otherId));
+  }, []);
 
   const removeSource = useCallback((localId: string, index: number) => {
     setLists((rows) => removeRowSource(rows, localId, index));
+  }, []);
+
+  const splitSource = useCallback((localId: string, index: number) => {
+    setLists((rows) => splitRowSource(rows, localId, index));
   }, []);
 
   const reorderLists = useCallback((initialIndex: number, index: number) => {
@@ -547,7 +546,9 @@ export function useAccountConfiguration(
           const saved = savedByLocalId.get(row.localId);
           const submitted = submittedByLocalId.get(row.localId);
           if (!saved || !submitted) return row;
-          const sourceUnchanged = sameSources(row, submitted);
+          const sourceUnchanged =
+            JSON.stringify(sourceKeys([row])) ===
+            JSON.stringify(sourceKeys([submitted]));
           return {
             ...row,
             id: saved.id,
@@ -756,11 +757,9 @@ export function useAccountConfiguration(
       addList(partial, lists),
     addChartList,
     removeList,
-    mergeLists: (targetLocalId: string, otherLocalId: string) =>
-      changeRows(mergeRows(lists, targetLocalId, otherLocalId)),
+    mergeLists,
     removeSource,
-    splitSource: (localId: string, index: number) =>
-      changeRows(splitRowSource(lists, localId, index)),
+    splitSource,
     reorderLists,
     rpdbApiKey,
     setRpdbApiKey,

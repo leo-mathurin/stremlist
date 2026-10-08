@@ -86,23 +86,26 @@ function fakeSources(
   );
 }
 
+/** Seed a merged List and answer the cache key of each Source list. */
 function seedMergedList(
-  overrides: Partial<Tables<"lists">> & {
-    first?: ListSource;
-    merged?: ListSource[];
-  } = {},
-) {
-  const { first = TRAKT_WATCHLIST, merged = [TRAKT_LIST], ...rest } = overrides;
-  return seedList(accountId, {
+  overrides: Partial<Tables<"lists">> & { merged?: ListSource[] } = {},
+): string[] {
+  const { merged = [TRAKT_LIST], ...rest } = overrides;
+  seedList(accountId, {
     id: LIST_1,
-    provider: first.provider,
-    source_ref: first.sourceRef,
+    provider: TRAKT_WATCHLIST.provider,
+    source_ref: TRAKT_WATCHLIST.sourceRef,
     merged_sources: merged.map((source) => ({
       provider: source.provider,
       source_ref: source.sourceRef,
     })),
     ...rest,
   });
+  return sourceCaches({
+    id: LIST_1,
+    ...TRAKT_WATCHLIST,
+    mergedSources: merged,
+  }).map(({ cacheKey }) => cacheKey);
 }
 
 async function catalog(
@@ -176,22 +179,13 @@ describe("merged Catalog", () => {
       [TRAKT_WATCHLIST.sourceRef]: [entry("tt1")],
       [TRAKT_LIST.sourceRef]: [entry("tt2")],
     });
-    const row = seedMergedList();
+    const keys = seedMergedList();
 
     await catalog();
 
-    const keys = sourceCaches({
-      id: row.id,
-      ...TRAKT_WATCHLIST,
-      mergedSources: [TRAKT_LIST],
-    });
-    expect(cache.get(keys[0].cacheKey)?.data.metas.map((m) => m.id)).toEqual([
-      "tt1",
-    ]);
-    expect(cache.get(keys[1].cacheKey)?.data.metas.map((m) => m.id)).toEqual([
-      "tt2",
-    ]);
-    expect(cache.get(row.id)).toBeNull();
+    expect(cache.get(keys[0])?.data.metas.map((m) => m.id)).toEqual(["tt1"]);
+    expect(cache.get(keys[1])?.data.metas.map((m) => m.id)).toEqual(["tt2"]);
+    expect(cache.get(LIST_1)).toBeNull();
   });
 
   it("follows the List's order when a Source list has no dates", async () => {
@@ -267,13 +261,8 @@ describe("merged Catalog", () => {
   });
 
   it("finds a Title of a merged List for the meta route, from the cache only", async () => {
-    const row = seedMergedList();
-    const [, second] = sourceCaches({
-      id: row.id,
-      ...TRAKT_WATCHLIST,
-      mergedSources: [TRAKT_LIST],
-    });
-    cache.seed(second.cacheKey, [
+    const [, second] = seedMergedList();
+    cache.seed(second, [
       { ...movie("tt9"), addedAt: "2020-01-01T00:00:00.000Z" } as StremioMeta,
     ]);
 
@@ -285,17 +274,12 @@ describe("merged Catalog", () => {
   });
 
   it("keeps the Simkl link back of every cached copy on the detail page", async () => {
-    const row = seedMergedList({
+    const [first, simkl] = seedMergedList({
       merged: [{ provider: "simkl", sourceRef: "me/plantowatch" }],
     });
     seedConnection(accountId, "simkl");
-    const [first, simkl] = sourceCaches({
-      id: row.id,
-      ...TRAKT_WATCHLIST,
-      mergedSources: [{ provider: "simkl", sourceRef: "me/plantowatch" }],
-    });
-    cache.seed(first.cacheKey, [movie("tt9", { description: "A plot." })]);
-    cache.seed(simkl.cacheKey, [
+    cache.seed(first, [movie("tt9", { description: "A plot." })]);
+    cache.seed(simkl, [
       movie("tt9", {
         description: "A plot.\n\nMore on Simkl: https://simkl.com/movies/9/x",
       }),
@@ -325,21 +309,16 @@ describe("merged Catalog", () => {
 
   it("drops the cache of a Connection Source list on disconnect", async () => {
     seedConnection(accountId, "trakt");
-    const row = seedMergedList({
+    const [publicKey, privateKey] = seedMergedList({
       merged: [{ provider: "trakt", sourceRef: "me/history" }],
     });
-    const [publicKey, privateKey] = sourceCaches({
-      id: row.id,
-      ...TRAKT_WATCHLIST,
-      mergedSources: [{ provider: "trakt", sourceRef: "me/history" }],
-    });
-    cache.seed(publicKey.cacheKey, [movie("tt1")]);
-    cache.seed(privateKey.cacheKey, [movie("tt2")]);
+    cache.seed(publicKey, [movie("tt1")]);
+    cache.seed(privateKey, [movie("tt2")]);
 
     await app.request(`/${accountId}/connections/trakt`, { method: "DELETE" });
 
-    expect(cache.get(publicKey.cacheKey)).not.toBeNull();
-    expect(cache.get(privateKey.cacheKey)).toBeNull();
+    expect(cache.get(publicKey)).not.toBeNull();
+    expect(cache.get(privateKey)).toBeNull();
   });
 });
 
@@ -445,13 +424,8 @@ describe("saving merged Lists", () => {
   });
 
   it("deletes the caches that splitting a merged List leaves unused", async () => {
-    const row = seedMergedList();
-    const keys = sourceCaches({
-      id: row.id,
-      ...TRAKT_WATCHLIST,
-      mergedSources: [TRAKT_LIST],
-    });
-    for (const { cacheKey } of keys) cache.seed(cacheKey, [movie("tt1")]);
+    const keys = seedMergedList();
+    for (const key of keys) cache.seed(key, [movie("tt1")]);
 
     const res = await postConfig([
       { ...listBody(TRAKT_WATCHLIST, []), id: LIST_1 },
@@ -459,10 +433,7 @@ describe("saving merged Lists", () => {
     ]);
 
     expect(res.status).toBe(200);
-    expect(keys.map(({ cacheKey }) => cache.get(cacheKey))).toEqual([
-      null,
-      null,
-    ]);
+    expect(keys.map((key) => cache.get(key))).toEqual([null, null]);
   });
 
   it.each([

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { ACCOUNT_KEY_PATTERN } from "@stremlist/shared/constants";
-import { connectionProviders, listSources } from "@stremlist/shared/list-merge";
+import { connectionProviders } from "@stremlist/shared/list-merge";
 import { isProviderId, PROVIDERS } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { Eye, EyeOff, Loader2, RefreshCw, X } from "lucide-react";
@@ -13,12 +13,14 @@ import LinkPaste from "../components/LinkPaste";
 import type { ResolvedLink } from "../components/LinkPaste";
 import ProviderList from "../components/ProviderList";
 import QuickAdd from "../components/QuickAdd";
-import type { MergeControls } from "../components/MergedSources";
 import SortableListRow from "../components/SortableListRow";
 import { Eyebrow, SplitLayout, Wordmark } from "../components/brand";
 import { useSEO } from "../hooks/useSEO";
-import { useAccountConfiguration } from "../hooks/useAccountConfiguration";
-import { MAX_LISTS, rowTitle, sourceKeys } from "../lib/list-form";
+import {
+  MAX_LISTS,
+  useAccountConfiguration,
+} from "../hooks/useAccountConfiguration";
+import { sourceKeys } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import {
   describeSource,
@@ -182,38 +184,6 @@ export default function Configure() {
       affectedLists[provider] = (affectedLists[provider] ?? 0) + 1;
     }
   }
-  // The last merge or split problem, next to the List it is about.
-  const [mergeError, setMergeError] = useState<{
-    localId: string;
-    message: string;
-  } | null>(null);
-  const mergeControls = (list: ListFormRow): MergeControls => {
-    const report = (message: string | null) => {
-      setMergeError(message ? { localId: list.localId, message } : null);
-    };
-    return {
-      candidates: lists
-        .filter((other) => other.localId !== list.localId)
-        .map((other) => ({
-          localId: other.localId,
-          title: rowTitle(other),
-          provider: other.provider,
-          sourceCount: listSources(other).length,
-        })),
-      canSplit: !full,
-      error: mergeError?.localId === list.localId ? mergeError.message : null,
-      onMerge: (otherLocalId) => {
-        report(config.mergeLists(list.localId, otherLocalId));
-      },
-      onRemoveSource: (index) => {
-        report(null);
-        config.removeSource(list.localId, index);
-      },
-      onSplitSource: (index) => {
-        report(config.splitSource(list.localId, index));
-      },
-    };
-  };
 
   const addResolved = (link: ResolvedLink): string | null => {
     const description = describeSource(link.provider, link.sourceRef);
@@ -457,7 +427,19 @@ export default function Configure() {
                               ? () => connectFor(connectProvider)
                               : undefined
                           }
-                          merge={moved ? undefined : mergeControls(list)}
+                          merge={
+                            moved
+                              ? undefined
+                              : {
+                                  others: lists.filter(
+                                    (other) => other !== list,
+                                  ),
+                                  canSplit: !full,
+                                  onMerge: config.mergeLists,
+                                  onRemoveSource: config.removeSource,
+                                  onSplitSource: config.splitSource,
+                                }
+                          }
                         />
                       );
                     })}

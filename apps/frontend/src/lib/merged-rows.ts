@@ -1,22 +1,17 @@
 import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
 import {
-  MAX_SOURCES_PER_LIST,
   allowedDisplayModes,
   isSortAllowed,
   listSources,
 } from "@stremlist/shared/list-merge";
-import { MAX_LISTS, createListRow, rowTitle } from "./list-form";
+import { createListRow, rowTitle } from "./list-form";
 import type { ListFormRow } from "./list-form";
 import { describeSource } from "./list-sources";
 
 /**
  * How the configure page merges Lists and takes Source lists out of them
- * (ADR 0006). Each change returns the new rows, or a message for the user
- * when the change is not possible.
+ * (ADR 0006). The page offers only the changes that the limits allow.
  */
-
-/** The sort a merged List gets when its Source lists have no dates. */
-const UNDATED_MERGE_SORT = "title-asc";
 
 /**
  * The row after its Source lists changed: a display mode or a date sort
@@ -31,7 +26,7 @@ function withAllowedSettings(row: ListFormRow): ListFormRow {
       : "split",
     sortOption: isSortAllowed(row, row.sortOption)
       ? row.sortOption
-      : UNDATED_MERGE_SORT,
+      : "title-asc",
   };
 }
 
@@ -56,30 +51,24 @@ export function mergeRows(
   rows: ListFormRow[],
   targetLocalId: string,
   otherLocalId: string,
-): ListFormRow[] | string {
-  const target = rows.find((row) => row.localId === targetLocalId);
+): ListFormRow[] {
   const other = rows.find((row) => row.localId === otherLocalId);
-  if (!target || !other || target === other) return rows;
-  const added = listSources(other);
-  if (listSources(target).length + added.length > MAX_SOURCES_PER_LIST) {
-    return `A List can merge at most ${MAX_SOURCES_PER_LIST} Source lists.`;
-  }
-  return rows.flatMap((row) => {
-    if (row === other) return [];
-    if (row !== target) return [row];
-    return [
-      withAllowedSettings({
-        ...row,
-        // The other List's title names its first Source list here.
-        mergedSources: [
-          ...row.mergedSources,
-          ...added.map((source, index) =>
-            index === 0 ? { ...source, label: rowTitle(other) } : source,
-          ),
-        ],
-      }),
-    ];
-  });
+  if (!other) return rows;
+  // The other List's title names its first Source list here.
+  const [first, ...rest] = listSources(other);
+  const added = [{ ...first, label: rowTitle(other) }, ...rest];
+  return rows.flatMap((row) =>
+    row === other
+      ? []
+      : row.localId === targetLocalId
+        ? [
+            withAllowedSettings({
+              ...row,
+              mergedSources: [...row.mergedSources, ...added],
+            }),
+          ]
+        : [row],
+  );
 }
 
 /** Remove one Source list of a merged List; the next one moves up. */
@@ -89,41 +78,32 @@ export function removeRowSource(
   index: number,
 ): ListFormRow[] {
   return rows.map((row) =>
-    row.localId === localId && listSources(row).length > 1
-      ? withoutSource(row, index)
-      : row,
+    row.localId === localId ? withoutSource(row, index) : row,
   );
 }
 
-/**
- * Take one Source list out of a merged List and give it its own List, just
- * below. Refused when the Account has no room for one more List.
- */
+/** Take one Source list out of a merged List and give it its own List, just below. */
 export function splitRowSource(
   rows: ListFormRow[],
   localId: string,
   index: number,
-): ListFormRow[] | string {
-  const at = rows.findIndex((row) => row.localId === localId);
-  const sources = at >= 0 ? listSources(rows[at]) : [];
-  const source = sources.at(index);
-  if (!source || sources.length < 2) return rows;
-  if (rows.length >= MAX_LISTS) {
-    return `You can have at most ${MAX_LISTS} lists. Remove one to split this List.`;
-  }
-  const chart =
-    source.provider === "imdb" ? CHART_BY_ID.get(source.sourceRef) : undefined;
-  const split = createListRow({
-    ...source,
-    catalogTitle:
-      source.label ??
-      describeSource(source.provider, source.sourceRef).suggestedTitle,
-    displayMode: chart?.defaultDisplayMode,
+): ListFormRow[] {
+  return rows.flatMap((row) => {
+    if (row.localId !== localId) return [row];
+    const source = listSources(row)[index];
+    const chart =
+      source.provider === "imdb"
+        ? CHART_BY_ID.get(source.sourceRef)
+        : undefined;
+    return [
+      withoutSource(row, index),
+      createListRow({
+        ...source,
+        catalogTitle:
+          source.label ??
+          describeSource(source.provider, source.sourceRef).suggestedTitle,
+        displayMode: chart?.defaultDisplayMode,
+      }),
+    ];
   });
-  return [
-    ...rows.slice(0, at),
-    withoutSource(rows[at], index),
-    split,
-    ...rows.slice(at + 1),
-  ];
 }

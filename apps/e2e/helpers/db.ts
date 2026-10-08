@@ -135,7 +135,6 @@ export async function seedList(
     merged_sources: (list.mergedSources ?? []).map((source) => ({
       provider: source.provider,
       source_ref: source.sourceRef,
-      ...(source.label ? { label: source.label } : {}),
     })),
   });
   if (error) throw error;

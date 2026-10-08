@@ -1,15 +1,9 @@
--- Merged Lists (STR-59).
---
--- A List can read several Source lists and show their Titles once each in
--- the same Catalogs (ADR 0006). `provider` + `source_ref` stay the List's
--- first Source list, so every List keeps working unchanged;
--- `merged_sources` holds the others, in order, as
+-- Merged Lists (STR-59, ADR 0006). `provider` + `source_ref` stay the
+-- List's first Source list; `merged_sources` holds the others, in order, as
 -- `[{"provider": "trakt", "source_ref": "users/x/watchlist"}, …]`, with an
 -- optional "label" (the title of the List it came from, for the configure
--- page only). `source_label` is that label for the first Source list, when
--- an edit moved a merged Source list to the first place.
--- The backend checks the merge rules (at most 5 Source lists per List, each
--- Source list once per Account, display mode, date sort).
+-- page only). `source_label` is that label for the first Source list.
+-- The backend checks the merge rules.
 
 ALTER TABLE public.lists
   ADD COLUMN merged_sources jsonb NOT NULL DEFAULT '[]'::jsonb;

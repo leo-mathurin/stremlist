@@ -4,7 +4,6 @@ import {
   isMergedList,
   listSources,
   singleTypeReason,
-  singleTypeSources,
   sourceKey,
   sourcesWithVerb,
   sourcesWithoutDates,
@@ -12,6 +11,7 @@ import {
 import { PROVIDERS } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { ChevronDown, ExternalLink, Merge, Split, X } from "lucide-react";
+import { rowTitle } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { describeSource } from "../lib/list-sources";
 import { ProviderMark } from "./brand";
@@ -24,23 +24,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-/** Another List of the Account that can be merged into this one. */
-export interface MergeCandidate {
-  localId: string;
-  title: string;
-  provider: ProviderId;
-  sourceCount: number;
-}
-
 export interface MergeControls {
-  candidates: MergeCandidate[];
+  /** The other Lists of the Account, which can be merged into this one. */
+  others: ListFormRow[];
   /** False when the Account has no room for one more List. */
   canSplit: boolean;
-  /** The last merge or split problem of this List, shown under its controls. */
-  error: string | null;
-  onMerge: (otherLocalId: string) => void;
-  onRemoveSource: (index: number) => void;
-  onSplitSource: (index: number) => void;
+  onMerge: (localId: string, otherLocalId: string) => void;
+  onRemoveSource: (localId: string, index: number) => void;
+  onSplitSource: (localId: string, index: number) => void;
 }
 
 const ICON_BUTTON =
@@ -81,17 +72,11 @@ export default function MergedSources({
   const merged = isMergedList(list);
   const room = MAX_SOURCES_PER_LIST - sources.length;
   const undated = sourcesWithoutDates(list);
-  const singleTypes = singleTypeSources(list);
-  const typeReason = singleTypeReason(list);
-  const showHint =
-    typeReason &&
-    `${typeReason}, so ${
-      singleTypes.movie.length > 0 && singleTypes.series.length > 0
-        ? "this List shows both"
-        : singleTypes.movie.length > 0
-          ? '"TV shows only" is off'
-          : '"Movies only" is off'
-    }.`;
+  const showHint = singleTypeReason(list, {
+    both: "this List shows both",
+    movie: '"TV shows only" is off',
+    series: '"Movies only" is off',
+  });
 
   return (
     <div className="mt-4 border-t border-black/5 pt-4">
@@ -158,7 +143,9 @@ export default function MergedSources({
                 <button
                   type="button"
                   onClick={() =>
-                    changeSources(() => controls.onSplitSource(index))
+                    changeSources(() =>
+                      controls.onSplitSource(list.localId, index),
+                    )
                   }
                   disabled={!controls.canSplit}
                   aria-label={`Move ${name} to its own List`}
@@ -174,7 +161,9 @@ export default function MergedSources({
                 <button
                   type="button"
                   onClick={() =>
-                    changeSources(() => controls.onRemoveSource(index))
+                    changeSources(() =>
+                      controls.onRemoveSource(list.localId, index),
+                    )
                   }
                   aria-label={`Remove ${name} from this List`}
                   title="Remove from this List"
@@ -192,12 +181,7 @@ export default function MergedSources({
       )}
 
       <div className="mt-2">
-        {controls.candidates.length === 0 ? (
-          <p className="text-xs text-pretty text-black/50">
-            Add another List, then merge it here to show both in one catalog.
-            Titles that are in more than one Source list show once.
-          </p>
-        ) : (
+        {controls.others.length > 0 && (
           <DropdownMenu>
             <DropdownMenuTrigger
               ref={picker}
@@ -216,43 +200,48 @@ export default function MergedSources({
               align="start"
               className="w-(--radix-dropdown-menu-trigger-width) min-w-64"
             >
-              {controls.candidates.map((candidate) => (
-                <DropdownMenuItem
-                  key={candidate.localId}
-                  disabled={candidate.sourceCount > room}
-                  onSelect={() =>
-                    changeSources(() => controls.onMerge(candidate.localId))
-                  }
-                >
-                  <ProviderMark
-                    provider={candidate.provider}
-                    className="size-5"
-                  />
-                  <span className="truncate">{candidate.title}</span>
-                  {candidate.sourceCount > 1 && (
-                    <span className="ml-auto text-xs text-black/45 tabular-nums">
-                      {candidate.sourceCount} Source lists
-                    </span>
-                  )}
-                </DropdownMenuItem>
-              ))}
+              {controls.others.map((other) => {
+                const count = listSources(other).length;
+                return (
+                  <DropdownMenuItem
+                    key={other.localId}
+                    disabled={count > room}
+                    onSelect={() =>
+                      changeSources(() =>
+                        controls.onMerge(list.localId, other.localId),
+                      )
+                    }
+                  >
+                    <ProviderMark
+                      provider={other.provider}
+                      className="size-5"
+                    />
+                    <span className="truncate">{rowTitle(other)}</span>
+                    {count > 1 && (
+                      <span className="ml-auto text-xs text-black/45 tabular-nums">
+                        {count} Source lists
+                      </span>
+                    )}
+                  </DropdownMenuItem>
+                );
+              })}
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        {controls.candidates.length > 0 && (
-          <p className="mt-1 text-xs text-pretty text-black/50">
-            Titles that are in more than one Source list show once.
-          </p>
-        )}
+        <p
+          className={cn(
+            "text-xs text-pretty text-black/50",
+            controls.others.length > 0 && "mt-1",
+          )}
+        >
+          {controls.others.length === 0 &&
+            "Add another List, then merge it here to show both in one catalog. "}
+          Titles that are in more than one Source list show once.
+        </p>
       </div>
 
-      {(controls.error || undated.length > 0 || showHint) && (
+      {(undated.length > 0 || showHint) && (
         <ul className="mt-2 space-y-1 text-xs text-pretty text-black/60">
-          {controls.error && (
-            <li role="alert" className="text-red-700">
-              {controls.error}
-            </li>
-          )}
           {undated.length > 0 && (
             <li>
               Date added sorting is off:{" "}

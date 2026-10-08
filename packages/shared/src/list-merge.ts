@@ -40,13 +40,9 @@ export function listSources(list: MergeableList): ListSource[] {
     {
       provider: list.provider,
       sourceRef: list.sourceRef,
-      ...(list.sourceLabel ? { label: list.sourceLabel } : {}),
+      label: list.sourceLabel,
     },
-    ...(list.mergedSources ?? []).map(({ provider, sourceRef, label }) => ({
-      provider,
-      sourceRef,
-      ...(label ? { label } : {}),
-    })),
+    ...(list.mergedSources ?? []),
   ];
 }
 
@@ -134,7 +130,7 @@ const TRAKT_NAMES: Record<string, string> = {
  * A short name for a Source list inside a sentence, such as "Top 250 Movies"
  * or "the SensCritique list".
  */
-export function sourceName(source: ListSource): string {
+function sourceName(source: ListSource): string {
   const chart =
     source.provider === "imdb" ? CHART_BY_ID.get(source.sourceRef) : undefined;
   if (chart) return chart.label;
@@ -144,20 +140,17 @@ export function sourceName(source: ListSource): string {
   return `the ${PROVIDERS[source.provider].label} ${storedSourceNoun(source.provider, source.sourceRef)}`;
 }
 
-/** "Top 250 Movies, Trakt Popular and the JustWatch list". */
-export function joinSourceNames(sources: ListSource[]): string {
-  const names = sources.map(sourceName);
-  if (names.length <= 1) return names.join("");
-  return `${names.slice(0, -1).join(", ")} and ${names.at(-1) ?? ""}`;
-}
-
-/** "the JustWatch list does", "A and B do": the names and the verb that agrees. */
+/** "the JustWatch list does", "A, B and C do": the names and the verb that agrees. */
 export function sourcesWithVerb(
   sources: ListSource[],
   singular: string,
   plural: string,
 ): string {
-  return `${joinSourceNames(sources)} ${sources.length > 1 ? plural : singular}`;
+  const names = sources.map(sourceName);
+  const last = names.pop();
+  return names.length > 0
+    ? `${names.join(", ")} and ${last} ${plural}`
+    : `${last} ${singular}`;
 }
 
 function capitalize(text: string): string {
@@ -168,7 +161,7 @@ function capitalize(text: string): string {
  * The Source lists of a merged List that contain only movies or only
  * series. Empty for a List with one Source list: it shows what it has.
  */
-export function singleTypeSources(
+function singleTypeSources(
   list: MergeableList,
 ): Record<"movie" | "series", ListSource[]> {
   const sources = isMergedList(list) ? listSources(list) : [];
@@ -180,10 +173,13 @@ export function singleTypeSources(
 }
 
 /**
- * Why a merged List limits its display modes, such as "Top 250 Movies has
- * only movies", or null when it does not.
+ * Why a merged List limits its display modes and what follows, such as "Top
+ * 250 Movies has only movies, so {outcome.movie}.", or null when it does not.
  */
-export function singleTypeReason(list: MergeableList): string | null {
+export function singleTypeReason(
+  list: MergeableList,
+  outcome: Record<"both" | "movie" | "series", string>,
+): string | null {
   const { movie, series } = singleTypeSources(list);
   const parts = (
     [
@@ -195,7 +191,10 @@ export function singleTypeReason(list: MergeableList): string | null {
       ? [`${capitalize(sourcesWithVerb(sources, "has", "have"))} only ${kind}`]
       : [],
   );
-  return parts.length > 0 ? parts.join(" and ") : null;
+  if (parts.length === 0) return null;
+  const kind =
+    movie.length === 0 ? "series" : series.length === 0 ? "movie" : "both";
+  return `${parts.join(" and ")}, so ${outcome[kind]}.`;
 }
 
 /**
@@ -233,15 +232,6 @@ export function isSortAllowed(
 }
 
 /**
- * Whether the Catalogs of the List's Source lists merge by date added: a
- * merged List whose Source lists all give dates. Other Lists keep the
- * Source lists' own order.
- */
-export function mergesByAddedDate(list: MergeableList): boolean {
-  return isMergedList(list) && sourcesWithoutDates(list).length === 0;
-}
-
-/**
  * The first rule that a List breaks, as a message for the user, or null.
  * Rules: at most MAX_SOURCES_PER_LIST Source lists, each one once, a
  * display mode that keeps every single-type Source list, and "Date added"
@@ -260,14 +250,11 @@ export function listMergeProblem(
   if (sources.length === 1) return null;
 
   if (!allowedDisplayModes(list).includes(list.displayMode)) {
-    const { movie, series } = singleTypeSources(list);
-    const outcome =
-      movie.length > 0 && series.length > 0
-        ? "this List must show movies and TV shows"
-        : movie.length > 0
-          ? "this List cannot show only TV shows"
-          : "this List cannot show only movies";
-    return `${singleTypeReason(list)}, so ${outcome}.`;
+    return singleTypeReason(list, {
+      both: "this List must show movies and TV shows",
+      movie: "this List cannot show only TV shows",
+      series: "this List cannot show only movies",
+    });
   }
 
   if (!isSortAllowed(list, list.sortOption)) {

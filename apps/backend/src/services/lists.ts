@@ -2,7 +2,7 @@ import type { ListSource } from "@stremlist/shared/list-merge";
 import {
   isMergedList,
   listRequiresConnection,
-  mergesByAddedDate,
+  sourcesWithoutDates,
 } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import {
@@ -444,7 +444,7 @@ export async function getListCatalog(
   const metas = isMergedList(list)
     ? mergeSourceCatalogs(
         read.map((catalog) => catalog.data.metas),
-        mergesByAddedDate(list),
+        sourcesWithoutDates(list).length === 0,
       )
     : read[0].data.metas;
   return present(
@@ -472,16 +472,15 @@ export async function findMetaInAccountCache(
     const lists = (await getAccountLists(account.id)).filter(
       (list) => via === "private" || !listRequiresConnection(list),
     );
-    if (lists.length === 0) return null;
     // Every cached copy, so the detail page keeps the link back of each
     // Source list that has the Title, as its catalog card does.
     const copies = await Promise.all(
       lists
         .flatMap(sourceCaches)
-        .map(({ cacheKey }) => findCachedMeta([cacheKey], type, id)),
+        .map(({ cacheKey }) => findCachedMeta(cacheKey, type, id)),
     );
     const found = mergeSourceCatalogs(
-      copies.map((copy) => (copy ? [copy] : [])),
+      [copies.filter((copy) => copy !== null)],
       false,
     ).at(0);
     if (!found) return null;
