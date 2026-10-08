@@ -7,6 +7,10 @@ import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import { listSources, sourceKey } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
+import { describeSource } from "./list-sources";
+
+/** Same limit as the backend (`MAX_LISTS`). */
+export const MAX_LISTS = 10;
 
 /** The backend accepts catalog titles up to this length. */
 export const MAX_CATALOG_TITLE_LENGTH = 60;
@@ -71,9 +75,12 @@ export function createListRow(
   };
 }
 
-/** Lists are unique by Provider and Source list reference. */
-export function listKey(row: Pick<ListFormRow, "provider" | "sourceRef">) {
-  return `${row.provider}:${row.sourceRef}`;
+/** The title that a row shows: its own, or the one its Source list suggests. */
+export function rowTitle(row: ListFormRow): string {
+  return (
+    row.catalogTitle.trim() ||
+    describeSource(row.provider, row.sourceRef).suggestedTitle
+  );
 }
 
 /**
@@ -82,4 +89,14 @@ export function listKey(row: Pick<ListFormRow, "provider" | "sourceRef">) {
  */
 export function sourceKeys(rows: ListFormRow[]): string[] {
   return rows.flatMap((row) => listSources(row).map(sourceKey));
+}
+
+/** Whether two rows read the same Source lists, in the same order. */
+export function sameSources(a: ListFormRow, b: ListFormRow): boolean {
+  const before = sourceKeys([a]);
+  const after = sourceKeys([b]);
+  return (
+    before.length === after.length &&
+    before.every((key, index) => key === after[index])
+  );
 }

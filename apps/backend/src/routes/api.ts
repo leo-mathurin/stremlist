@@ -1,5 +1,4 @@
 import { zValidator } from "@hono/zod-validator";
-import type { DisplayMode } from "@stremlist/shared/constants";
 import {
   ACCOUNT_ID_PATTERN,
   ACCOUNT_KEY_PATTERN,
@@ -203,7 +202,36 @@ async function normalizeSource(
       throw new ConfigError(`Connect your ${info.label} account first.`);
     }
   }
-  return { provider: source.provider, sourceRef };
+  return {
+    provider: source.provider,
+    sourceRef,
+    ...(source.label ? { label: source.label } : {}),
+  };
+}
+
+/**
+ * The Source lists of a submitted List, its first one first. An omitted
+ * `mergedSources` or `sourceLabel` keeps the saved one, so older clients do
+ * not split a merged List or erase its label; the transaction then checks
+ * that the kept Source lists did not change since this read (`kept`).
+ */
+function submittedSources(
+  list: ListBody,
+  saved: ConfigList | undefined,
+): { sources: ListSource[]; kept: boolean } {
+  const sameFirst =
+    saved?.provider === list.provider && saved.sourceRef === list.sourceRef;
+  return {
+    sources: [
+      {
+        provider: list.provider,
+        sourceRef: list.sourceRef,
+        label: list.sourceLabel ?? (sameFirst ? saved.sourceLabel : undefined),
+      },
+      ...(list.mergedSources ?? saved?.mergedSources ?? []),
+    ],
+    kept: !list.mergedSources && !!list.id,
+  };
 }
 
 /**
@@ -218,42 +246,20 @@ async function normalizeLists(
     via: AddonAccess;
     connected: Set<ProviderId>;
     /** Saved Lists, for the merged Source lists that a client omits. */
-    saved?: ConfigList[];
+    saved: ConfigList[];
   },
 ): Promise<ListInput[]> {
   const normalized: ListInput[] = [];
   const seen = new Set<string>();
-  const saved = new Map((access.saved ?? []).map((list) => [list.id, list]));
-  // An omitted `sourceLabel` keeps the saved one while the first Source
-  // list is the same, so older clients do not erase it.
-  const keptLabel = (list: ListBody) => {
-    const previous = list.id ? saved.get(list.id) : undefined;
-    return previous?.provider === list.provider &&
-      previous.sourceRef === list.sourceRef
-      ? previous.sourceLabel
-      : undefined;
-  };
+  const saved = new Map(access.saved.map((list) => [list.id, list]));
   for (const [index, list] of lists.entries()) {
+    const submitted = submittedSources(
+      list,
+      list.id ? saved.get(list.id) : undefined,
+    );
     const sources: ListSource[] = [];
-    // An omitted `mergedSources` keeps the saved ones; the transaction checks
-    // that they did not change since this read.
-    const kept = list.mergedSources
-      ? undefined
-      : list.id
-        ? (saved.get(list.id)?.mergedSources ?? [])
-        : undefined;
-    for (const source of [
-      {
-        provider: list.provider,
-        sourceRef: list.sourceRef,
-        label: list.sourceLabel ?? keptLabel(list),
-      },
-      ...(list.mergedSources ?? kept ?? []),
-    ]) {
-      const checked: ListSource = {
-        ...(await normalizeSource(source, access)),
-        ...(source.label ? { label: source.label } : {}),
-      };
+    for (const source of submitted.sources) {
+      const checked = await normalizeSource(source, access);
       if (seen.has(sourceKey(checked))) {
         throw new ConfigError("Each list can only be added once.");
       }
@@ -280,12 +286,9 @@ async function normalizeLists(
       catalogSettings: list.catalogSettings,
       mergedSources,
       ...(first.label ? { sourceLabel: first.label } : {}),
-      ...(kept ? { keptMergedSources: true } : {}),
+      ...(submitted.kept ? { keptMergedSources: true } : {}),
     };
-    const problem = listMergeProblem({
-      ...input,
-      displayMode: input.displayMode as DisplayMode,
-    });
+    const problem = listMergeProblem(input);
     if (problem) throw new ConfigError(problem);
     normalized.push(input);
   }
@@ -440,6 +443,7 @@ const api = new Hono()
         normalized = await normalizeLists(lists, {
           via: "private",
           connected: new Set(),
+          saved: [],
         });
       } catch (error) {
         if (error instanceof ConfigError) {
@@ -537,13 +541,16 @@ const api = new Hono()
         );
       }
 
-      const connected = await connectedProviders(access);
+      const [connected, savedLists] = await Promise.all([
+        connectedProviders(access),
+        getAccountLists(access.account.id),
+      ]);
       let normalized: ListInput[];
       try {
         normalized = await normalizeLists(lists, {
           via: access.via,
           connected,
-          saved: await getAccountLists(access.account.id),
+          saved: savedLists,
         });
       } catch (error) {
         if (error instanceof ConfigError) {

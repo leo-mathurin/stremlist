@@ -2,9 +2,7 @@ import type { ListSource, MergeableList } from "@stremlist/shared/list-merge";
 import { listSources, sourceKey } from "@stremlist/shared/list-merge";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { createHash } from "node:crypto";
-
-/** A cached Catalog entry: the meta, and when the Title joined its Source list. */
-export type SourceMeta = StremioMeta & { addedAt?: string };
+import type { SourceMeta } from "./list-cache";
 
 /** One Source list of a List and the key of its cached Catalog. */
 export interface SourceCache {

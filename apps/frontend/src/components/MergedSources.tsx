@@ -2,9 +2,11 @@ import { useEffect, useRef } from "react";
 import {
   MAX_SOURCES_PER_LIST,
   isMergedList,
-  joinSourceNames,
   listSources,
-  sourceTitleType,
+  singleTypeReason,
+  singleTypeSources,
+  sourceKey,
+  sourcesWithVerb,
   sourcesWithoutDates,
 } from "@stremlist/shared/list-merge";
 import { PROVIDERS } from "@stremlist/shared/providers";
@@ -32,8 +34,6 @@ export interface MergeCandidate {
 
 export interface MergeControls {
   candidates: MergeCandidate[];
-  /** Providers of this List whose Connection is missing. */
-  missingProviders: ProviderId[];
   /** False when the Account has no room for one more List. */
   canSplit: boolean;
   /** The last merge or split problem of this List, shown under its controls. */
@@ -52,9 +52,12 @@ const ICON_BUTTON =
  */
 export default function MergedSources({
   list,
+  missingProviders,
   controls,
 }: {
   list: ListFormRow;
+  /** Providers of this List whose Connection is missing. */
+  missingProviders: ProviderId[];
   controls: MergeControls;
 }) {
   const sources = listSources(list);
@@ -78,24 +81,17 @@ export default function MergedSources({
   const merged = isMergedList(list);
   const room = MAX_SOURCES_PER_LIST - sources.length;
   const undated = sourcesWithoutDates(list);
-  const ofType = (type: "movie" | "series") =>
-    merged
-      ? sources.filter(
-          (source) =>
-            sourceTitleType(source.provider, source.sourceRef) === type,
-        )
-      : [];
-  const movieOnly = ofType("movie");
-  const seriesOnly = ofType("series");
-  const verb = (items: unknown[]) => (items.length > 1 ? "have" : "has");
+  const singleTypes = singleTypeSources(list);
+  const typeReason = singleTypeReason(list);
   const showHint =
-    movieOnly.length > 0 && seriesOnly.length > 0
-      ? `${joinSourceNames(movieOnly)} ${verb(movieOnly)} only movies and ${joinSourceNames(seriesOnly)} ${verb(seriesOnly)} only TV shows, so this List shows both.`
-      : movieOnly.length > 0
-        ? `${joinSourceNames(movieOnly)} ${verb(movieOnly)} only movies, so "TV shows only" is off.`
-        : seriesOnly.length > 0
-          ? `${joinSourceNames(seriesOnly)} ${verb(seriesOnly)} only TV shows, so "Movies only" is off.`
-          : null;
+    typeReason &&
+    `${typeReason}, so ${
+      singleTypes.movie.length > 0 && singleTypes.series.length > 0
+        ? "this List shows both"
+        : singleTypes.movie.length > 0
+          ? '"TV shows only" is off'
+          : '"Movies only" is off'
+    }.`;
 
   return (
     <div className="mt-4 border-t border-black/5 pt-4">
@@ -121,10 +117,10 @@ export default function MergedSources({
             );
             const label = PROVIDERS[source.provider].label;
             const name = source.label ?? description.suggestedTitle;
-            const missing = controls.missingProviders.includes(source.provider);
+            const missing = missingProviders.includes(source.provider);
             return (
               <li
-                key={`${source.provider}:${source.sourceRef}`}
+                key={sourceKey(source)}
                 className="flex items-center gap-3 px-3 py-2 transition-[opacity,translate] duration-200 ease-out-quint starting:translate-y-1 starting:opacity-0 motion-reduce:translate-y-0 motion-reduce:transition-opacity"
               >
                 <ProviderMark provider={source.provider} className="size-7" />
@@ -259,9 +255,9 @@ export default function MergedSources({
           )}
           {undated.length > 0 && (
             <li>
-              Date added sorting is off: {joinSourceNames(undated)}{" "}
-              {undated.length > 1 ? "do" : "does"} not give the date when each
-              Title was added.
+              Date added sorting is off:{" "}
+              {sourcesWithVerb(undated, "does", "do")} not give the date when
+              each Title was added.
             </li>
           )}
           {showHint && <li>{showHint}</li>}

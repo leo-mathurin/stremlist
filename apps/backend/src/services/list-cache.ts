@@ -3,7 +3,7 @@ import {
   GetObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
-import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
@@ -30,6 +30,17 @@ const stremioMetaSchema = z.object({
   // When the Title joined the Source list; never served to Stremio.
   addedAt: z.string().datetime().optional(),
 });
+
+/**
+ * A Title as the cache keeps it: its meta, and when it joined its Source
+ * list (ADR 0006). The date is never served to Stremio.
+ */
+export type SourceMeta = StremioMeta & { addedAt?: string };
+
+/** The canonical Catalog of one Source list, as the cache keeps it. */
+export interface SourceCatalogData {
+  metas: SourceMeta[];
+}
 
 const catalogObjectSchema = z.object({
   version: z.literal(CACHE_FORMAT_VERSION),
@@ -100,7 +111,7 @@ function servesSource(manifest: CacheManifest, source?: CacheSource): boolean {
 }
 
 export interface CachedList {
-  data: CatalogData;
+  data: SourceCatalogData;
   cachedAt: Date;
   generation: string;
 }
@@ -300,7 +311,7 @@ function collectGenres(
   ].sort();
 }
 
-function uniqueMetas(metas: StremioMeta[]): StremioMeta[] {
+function uniqueMetas(metas: SourceMeta[]): SourceMeta[] {
   const seen = new Set<string>();
   return metas.filter((meta) => {
     const key = metaKey(meta);
@@ -373,7 +384,7 @@ export async function getCachedList(
 
 export async function writeCachedList(
   listId: string,
-  listData: CatalogData,
+  listData: SourceCatalogData,
   cachedAt = new Date(),
   source?: CacheSource,
 ): Promise<string> {
@@ -433,7 +444,7 @@ export async function findCachedMeta(
   listIds: string[],
   type: string,
   id: string,
-): Promise<StremioMeta | null> {
+): Promise<SourceMeta | null> {
   const target = `${type}:${id}`;
   const manifestResults = await Promise.allSettled(
     listIds.map((listId) => readManifest(listId)),

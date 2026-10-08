@@ -1,12 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { ACCOUNT_KEY_PATTERN } from "@stremlist/shared/constants";
-import { listSources } from "@stremlist/shared/list-merge";
-import {
-  isProviderId,
-  PROVIDERS,
-  sourceRequiresConnection,
-} from "@stremlist/shared/providers";
+import { connectionProviders, listSources } from "@stremlist/shared/list-merge";
+import { isProviderId, PROVIDERS } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { Eye, EyeOff, Loader2, RefreshCw, X } from "lucide-react";
 import { DragDropProvider } from "@dnd-kit/react";
@@ -17,15 +13,12 @@ import LinkPaste from "../components/LinkPaste";
 import type { ResolvedLink } from "../components/LinkPaste";
 import ProviderList from "../components/ProviderList";
 import QuickAdd from "../components/QuickAdd";
+import type { MergeControls } from "../components/MergedSources";
 import SortableListRow from "../components/SortableListRow";
 import { Eyebrow, SplitLayout, Wordmark } from "../components/brand";
 import { useSEO } from "../hooks/useSEO";
-import {
-  MAX_LISTS,
-  rowTitle,
-  useAccountConfiguration,
-} from "../hooks/useAccountConfiguration";
-import { sourceKeys } from "../lib/list-form";
+import { useAccountConfiguration } from "../hooks/useAccountConfiguration";
+import { MAX_LISTS, rowTitle, sourceKeys } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import {
   describeSource,
@@ -179,28 +172,13 @@ export default function Configure() {
   /** Providers of a List whose Connection the Account does not have. */
   const missingConnections = (list: ListFormRow): ProviderId[] =>
     access === "private"
-      ? [
-          ...new Set(
-            listSources(list)
-              .filter(
-                (source) =>
-                  sourceRequiresConnection(source.provider, source.sourceRef) &&
-                  !connectedProviders.has(source.provider),
-              )
-              .map((source) => source.provider),
-          ),
-        ]
+      ? connectionProviders(list).filter(
+          (provider) => !connectedProviders.has(provider),
+        )
       : [];
   const affectedLists: Partial<Record<ProviderId, number>> = {};
   for (const list of lists) {
-    const providers = new Set(
-      listSources(list)
-        .filter((source) =>
-          sourceRequiresConnection(source.provider, source.sourceRef),
-        )
-        .map((source) => source.provider),
-    );
-    for (const provider of providers) {
+    for (const provider of connectionProviders(list)) {
       affectedLists[provider] = (affectedLists[provider] ?? 0) + 1;
     }
   }
@@ -209,6 +187,33 @@ export default function Configure() {
     localId: string;
     message: string;
   } | null>(null);
+  const mergeControls = (list: ListFormRow): MergeControls => {
+    const report = (message: string | null) => {
+      setMergeError(message ? { localId: list.localId, message } : null);
+    };
+    return {
+      candidates: lists
+        .filter((other) => other.localId !== list.localId)
+        .map((other) => ({
+          localId: other.localId,
+          title: rowTitle(other),
+          provider: other.provider,
+          sourceCount: listSources(other).length,
+        })),
+      canSplit: !full,
+      error: mergeError?.localId === list.localId ? mergeError.message : null,
+      onMerge: (otherLocalId) => {
+        report(config.mergeLists(list.localId, otherLocalId));
+      },
+      onRemoveSource: (index) => {
+        report(null);
+        config.removeSource(list.localId, index);
+      },
+      onSplitSource: (index) => {
+        report(config.splitSource(list.localId, index));
+      },
+    };
+  };
 
   const addResolved = (link: ResolvedLink): string | null => {
     const description = describeSource(link.provider, link.sourceRef);
@@ -446,70 +451,13 @@ export default function Configure() {
                           index={index}
                           onFieldChange={config.setListField}
                           onRemove={config.removeList}
-                          connectionMissing={missing.length > 0}
-                          missingProvider={missing.at(0)}
+                          missingProviders={missing}
                           onConnect={
                             config.providerStatus[connectProvider].connectable
                               ? () => connectFor(connectProvider)
                               : undefined
                           }
-                          merge={
-                            moved
-                              ? undefined
-                              : {
-                                  candidates: lists
-                                    .filter(
-                                      (other) => other.localId !== list.localId,
-                                    )
-                                    .map((other) => ({
-                                      localId: other.localId,
-                                      title: rowTitle(other),
-                                      provider: other.provider,
-                                      sourceCount: listSources(other).length,
-                                    })),
-                                  missingProviders: missing,
-                                  canSplit: !full,
-                                  error:
-                                    mergeError?.localId === list.localId
-                                      ? mergeError.message
-                                      : null,
-                                  onMerge: (otherLocalId) => {
-                                    const error = config.mergeLists(
-                                      list.localId,
-                                      otherLocalId,
-                                    );
-                                    setMergeError(
-                                      error
-                                        ? {
-                                            localId: list.localId,
-                                            message: error,
-                                          }
-                                        : null,
-                                    );
-                                  },
-                                  onRemoveSource: (sourceIndex) => {
-                                    setMergeError(null);
-                                    config.removeSource(
-                                      list.localId,
-                                      sourceIndex,
-                                    );
-                                  },
-                                  onSplitSource: (sourceIndex) => {
-                                    const error = config.splitSource(
-                                      list.localId,
-                                      sourceIndex,
-                                    );
-                                    setMergeError(
-                                      error
-                                        ? {
-                                            localId: list.localId,
-                                            message: error,
-                                          }
-                                        : null,
-                                    );
-                                  },
-                                }
-                          }
+                          merge={moved ? undefined : mergeControls(list)}
                         />
                       );
                     })}

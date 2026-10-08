@@ -8,13 +8,8 @@ import {
 import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
 import {
   MAX_SOURCES_PER_ACCOUNT,
-  MAX_SOURCES_PER_LIST,
-  allowedDisplayModes,
-  isAddedDateSort,
   listMergeProblem,
-  listSources,
   sourceKey,
-  sourcesWithoutDates,
 } from "@stremlist/shared/list-merge";
 import {
   CONNECTION_SOURCES,
@@ -30,44 +25,16 @@ import type {
 } from "@stremlist/shared/stremio.types";
 import { api } from "../lib/api";
 import {
+  MAX_LISTS,
   createListRow,
   getListReinstallSignature,
+  rowTitle,
+  sameSources,
   sourceKeys,
 } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
-import { describeSource } from "../lib/list-sources";
+import { mergeRows, removeRowSource, splitRowSource } from "../lib/merged-rows";
 import { requiresReinstall } from "../lib/reinstall";
-
-/** Same limit as the backend (`MAX_LISTS`). */
-export const MAX_LISTS = 10;
-
-/** The sort a merged List gets when its Source lists have no dates. */
-const UNDATED_MERGE_SORT = "title-asc";
-
-/**
- * The row after its Source lists changed: a display mode or a date sort
- * that the merge rules no longer allow falls back to one they allow, and
- * the row explains why next to the control.
- */
-function withAllowedSettings(row: ListFormRow): ListFormRow {
-  const modes = allowedDisplayModes(row);
-  return {
-    ...row,
-    displayMode: modes.includes(row.displayMode) ? row.displayMode : "split",
-    sortOption:
-      isAddedDateSort(row.sortOption) && sourcesWithoutDates(row).length > 0
-        ? UNDATED_MERGE_SORT
-        : row.sortOption,
-  };
-}
-
-/** The title that a row shows: its own, or the one its Source list suggests. */
-export function rowTitle(row: ListFormRow): string {
-  return (
-    row.catalogTitle.trim() ||
-    describeSource(row.provider, row.sourceRef).suggestedTitle
-  );
-}
 
 /** "new" until the first save creates the Account. */
 export type AccountAccess = "new" | AddonAccess;
@@ -387,93 +354,18 @@ export function useAccountConfiguration(
   }, []);
 
   /**
-   * Merge the Source lists of another List into a List, after its own. The
-   * other List goes away; the target keeps its title and settings.
+   * Apply a change of the Source lists of the rows. Returns the message of a
+   * change that is not possible, so the caller can show it next to the List.
    */
-  const mergeLists = useCallback(
-    (targetLocalId: string, otherLocalId: string, current: ListFormRow[]) => {
-      const target = current.find((row) => row.localId === targetLocalId);
-      const other = current.find((row) => row.localId === otherLocalId);
-      if (!target || !other || target === other) return null;
-      const merged = [...listSources(target), ...listSources(other)];
-      if (merged.length > MAX_SOURCES_PER_LIST) {
-        return `A List can merge at most ${MAX_SOURCES_PER_LIST} Source lists.`;
-      }
-      setLists((rows) =>
-        rows.flatMap((row) => {
-          if (row.localId === otherLocalId) return [];
-          if (row.localId !== targetLocalId) return [row];
-          return [
-            withAllowedSettings({
-              ...row,
-              // The other List's title names its first Source list here.
-              mergedSources: [
-                ...row.mergedSources,
-                ...listSources(other).map((source, index) =>
-                  index === 0 ? { ...source, label: rowTitle(other) } : source,
-                ),
-              ],
-            }),
-          ];
-        }),
-      );
-      return null;
-    },
-    [],
-  );
+  const changeRows = (next: ListFormRow[] | string): string | null => {
+    if (typeof next === "string") return next;
+    setLists(next);
+    return null;
+  };
 
-  /** Remove one Source list of a merged List; the next one moves up. */
   const removeSource = useCallback((localId: string, index: number) => {
-    setLists((rows) =>
-      rows.map((row) => {
-        const sources = listSources(row);
-        if (row.localId !== localId || sources.length < 2) return row;
-        const [first, ...rest] = sources.filter((_, i) => i !== index);
-        return withAllowedSettings({
-          ...row,
-          provider: first.provider,
-          sourceRef: first.sourceRef,
-          mergedSources: rest,
-          // The promoted Source list keeps its name.
-          sourceLabel: first.label,
-        });
-      }),
-    );
+    setLists((rows) => removeRowSource(rows, localId, index));
   }, []);
-
-  /**
-   * Take one Source list out of a merged List and give it its own List,
-   * just below. Returns an error when the Account has no room for a List.
-   */
-  const splitSource = useCallback(
-    (localId: string, index: number, current: ListFormRow[]) => {
-      const row = current.find((item) => item.localId === localId);
-      const sources = row ? listSources(row) : [];
-      const source = sources.at(index);
-      if (!source || sources.length < 2) return null;
-      if (current.length >= MAX_LISTS) {
-        return `You can have at most ${MAX_LISTS} lists. Remove one to split this List.`;
-      }
-      removeSource(localId, index);
-      const chart =
-        source.provider === "imdb"
-          ? CHART_BY_ID.get(source.sourceRef)
-          : undefined;
-      const split = createListRow({
-        ...source,
-        catalogTitle:
-          source.label ??
-          describeSource(source.provider, source.sourceRef).suggestedTitle,
-        displayMode: chart?.defaultDisplayMode,
-      });
-      setLists((rows) => {
-        const at = rows.findIndex((item) => item.localId === localId);
-        return [...rows.slice(0, at + 1), split, ...rows.slice(at + 1)];
-      });
-      return null;
-    },
-    [removeSource],
-  );
 
   const reorderLists = useCallback((initialIndex: number, index: number) => {
     setLists((items) => {
@@ -655,10 +547,7 @@ export function useAccountConfiguration(
           const saved = savedByLocalId.get(row.localId);
           const submitted = submittedByLocalId.get(row.localId);
           if (!saved || !submitted) return row;
-          const sourceUnchanged =
-            row.sourceRef === submitted.sourceRef &&
-            JSON.stringify(row.mergedSources) ===
-              JSON.stringify(submitted.mergedSources);
+          const sourceUnchanged = sameSources(row, submitted);
           return {
             ...row,
             id: saved.id,
@@ -868,10 +757,10 @@ export function useAccountConfiguration(
     addChartList,
     removeList,
     mergeLists: (targetLocalId: string, otherLocalId: string) =>
-      mergeLists(targetLocalId, otherLocalId, lists),
+      changeRows(mergeRows(lists, targetLocalId, otherLocalId)),
     removeSource,
     splitSource: (localId: string, index: number) =>
-      splitSource(localId, index, lists),
+      changeRows(splitRowSource(lists, localId, index)),
     reorderLists,
     rpdbApiKey,
     setRpdbApiKey,

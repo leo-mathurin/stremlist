@@ -4,6 +4,7 @@ import {
   DEFAULT_SORT_OPTION,
   IMDB_USER_ID_PATTERN,
 } from "@stremlist/shared/constants";
+import type { DisplayMode } from "@stremlist/shared/constants";
 import type { Tables } from "@stremlist/shared/database.types";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
@@ -44,7 +45,7 @@ export interface ListInput {
   sourceRef: string;
   catalogTitle?: string;
   sortOption: string;
-  displayMode?: string;
+  displayMode: DisplayMode;
   position: number;
   catalogSettings?: CatalogSettings;
   mergedSources?: ListSource[];
@@ -56,10 +57,13 @@ export interface ListInput {
   keptMergedSources?: boolean;
 }
 
+/** What `replace_account_config` raises when kept Source lists changed. */
+const MERGED_SOURCES_CHANGED = "Merged Source lists changed";
+
 /** A concurrent save changed merged Source lists that this save kept. */
 export class MergedSourcesChangedError extends Error {
   constructor() {
-    super("Merged Source lists changed");
+    super(MERGED_SOURCES_CHANGED);
     this.name = "MergedSourcesChangedError";
   }
 }
@@ -71,6 +75,15 @@ const storedSourcesSchema = z.array(
     label: z.string().optional(),
   }),
 );
+
+/** The stored form of merged Source lists (`lists.merged_sources`). */
+function toStoredSources(sources: readonly ListSource[]) {
+  return sources.map((source) => ({
+    provider: source.provider,
+    source_ref: source.sourceRef,
+    ...(source.label ? { label: source.label } : {}),
+  }));
+}
 
 /** The merged Source lists of a row; unknown Providers are left out. */
 function mapMergedSources(value: unknown): ListSource[] {
@@ -261,25 +274,21 @@ export async function replaceAccountConfig(
       source_ref: list.sourceRef,
       catalog_title: list.catalogTitle ?? "",
       sort_option: list.sortOption,
-      display_mode: list.displayMode ?? "split",
+      display_mode: list.displayMode,
       position: list.position,
       ...(list.catalogSettings === undefined
         ? {}
         : { catalog_settings: { ...list.catalogSettings } }),
-      [list.keptMergedSources ? "expected_merged_sources" : "merged_sources"]: (
-        list.mergedSources ?? []
-      ).map((source) => ({
-        provider: source.provider,
-        source_ref: source.sourceRef,
-        ...(source.label ? { label: source.label } : {}),
-      })),
+      ...(list.keptMergedSources
+        ? { expected_merged_sources: toStoredSources(list.mergedSources ?? []) }
+        : { merged_sources: toStoredSources(list.mergedSources ?? []) }),
       source_label: list.sourceLabel ?? null,
     })),
     p_actions_enabled: actions?.enabled ?? null,
     p_action_providers: actions?.providers ?? null,
   });
   if (error) {
-    if (error.message === "Merged Source lists changed") {
+    if (error.message === MERGED_SOURCES_CHANGED) {
       throw new MergedSourcesChangedError();
     }
     throw error;

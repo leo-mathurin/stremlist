@@ -59,11 +59,22 @@ export function isMergedList(list: MergeableList): boolean {
   return (list.mergedSources?.length ?? 0) > 0;
 }
 
+/** The Providers whose Connection one of the List's Source lists needs. */
+export function connectionProviders(list: MergeableList): ProviderId[] {
+  return [
+    ...new Set(
+      listSources(list)
+        .filter((source) =>
+          sourceRequiresConnection(source.provider, source.sourceRef),
+        )
+        .map((source) => source.provider),
+    ),
+  ];
+}
+
 /** A List needs a Connection when one of its Source lists does. */
 export function listRequiresConnection(list: MergeableList): boolean {
-  return listSources(list).some((source) =>
-    sourceRequiresConnection(source.provider, source.sourceRef),
-  );
+  return connectionProviders(list).length > 0;
 }
 
 /**
@@ -133,13 +144,6 @@ export function sourceName(source: ListSource): string {
   return `the ${PROVIDERS[source.provider].label} ${storedSourceNoun(source.provider, source.sourceRef)}`;
 }
 
-/** "A has", "A and B have": the names and the verb that agrees with them. */
-function subject(sources: ListSource[], singular: string, plural: string) {
-  const names = joinSourceNames(sources);
-  const verb = sources.length > 1 ? plural : singular;
-  return `${names.charAt(0).toUpperCase()}${names.slice(1)} ${verb}`;
-}
-
 /** "Top 250 Movies, Trakt Popular and the JustWatch list". */
 export function joinSourceNames(sources: ListSource[]): string {
   const names = sources.map(sourceName);
@@ -147,26 +151,64 @@ export function joinSourceNames(sources: ListSource[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names.at(-1) ?? ""}`;
 }
 
+/** "the JustWatch list does", "A and B do": the names and the verb that agrees. */
+export function sourcesWithVerb(
+  sources: ListSource[],
+  singular: string,
+  plural: string,
+): string {
+  return `${joinSourceNames(sources)} ${sources.length > 1 ? plural : singular}`;
+}
+
+function capitalize(text: string): string {
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+}
+
+/**
+ * The Source lists of a merged List that contain only movies or only
+ * series. Empty for a List with one Source list: it shows what it has.
+ */
+export function singleTypeSources(
+  list: MergeableList,
+): Record<"movie" | "series", ListSource[]> {
+  const sources = isMergedList(list) ? listSources(list) : [];
+  const ofType = (type: "movie" | "series") =>
+    sources.filter(
+      (source) => sourceTitleType(source.provider, source.sourceRef) === type,
+    );
+  return { movie: ofType("movie"), series: ofType("series") };
+}
+
+/**
+ * Why a merged List limits its display modes, such as "Top 250 Movies has
+ * only movies", or null when it does not.
+ */
+export function singleTypeReason(list: MergeableList): string | null {
+  const { movie, series } = singleTypeSources(list);
+  const parts = (
+    [
+      [movie, "movies"],
+      [series, "TV shows"],
+    ] as const
+  ).flatMap(([sources, kind]) =>
+    sources.length > 0
+      ? [`${capitalize(sourcesWithVerb(sources, "has", "have"))} only ${kind}`]
+      : [],
+  );
+  return parts.length > 0 ? parts.join(" and ") : null;
+}
+
 /**
  * The display modes that keep every Title type of a merged List: a Source
  * list with only movies rules out "TV shows only", and the reverse.
  */
 export function allowedDisplayModes(list: MergeableList): DisplayMode[] {
-  if (!isMergedList(list)) return ["split", "movie", "series"];
-  const types = new Set(
-    listSources(list).flatMap((source) => {
-      const type = sourceTitleType(source.provider, source.sourceRef);
-      return type ? [type] : [];
-    }),
-  );
+  const { movie, series } = singleTypeSources(list);
   return (["split", "movie", "series"] as const).filter(
     (mode) =>
-      mode === "split" || !types.has(mode === "movie" ? "series" : "movie"),
+      mode === "split" ||
+      (mode === "movie" ? series.length === 0 : movie.length === 0),
   );
-}
-
-export function isAddedDateSort(sortOption: string): boolean {
-  return sortOption.startsWith("added_at");
 }
 
 /**
@@ -178,6 +220,25 @@ export function sourcesWithoutDates(list: MergeableList): ListSource[] {
   return listSources(list).filter(
     (source) => !sourceHasAddedDates(source.provider, source.sourceRef),
   );
+}
+
+/** Whether a List can sort by this option: "Date added" needs dates. */
+export function isSortAllowed(
+  list: MergeableList,
+  sortOption: string,
+): boolean {
+  return (
+    !sortOption.startsWith("added_at") || sourcesWithoutDates(list).length === 0
+  );
+}
+
+/**
+ * Whether the Catalogs of the List's Source lists merge by date added: a
+ * merged List whose Source lists all give dates. Other Lists keep the
+ * Source lists' own order.
+ */
+export function mergesByAddedDate(list: MergeableList): boolean {
+  return isMergedList(list) && sourcesWithoutDates(list).length === 0;
 }
 
 /**
@@ -199,25 +260,19 @@ export function listMergeProblem(
   if (sources.length === 1) return null;
 
   if (!allowedDisplayModes(list).includes(list.displayMode)) {
-    const movies = sources.filter(
-      (source) =>
-        sourceTitleType(source.provider, source.sourceRef) === "movie",
-    );
-    const series = sources.filter(
-      (source) =>
-        sourceTitleType(source.provider, source.sourceRef) === "series",
-    );
-    if (movies.length > 0 && series.length > 0) {
-      return `${subject(movies, "has", "have")} only movies and ${subject(series, "has", "have")} only TV shows, so this List must show movies and TV shows.`;
-    }
-    return movies.length > 0
-      ? `${subject(movies, "has", "have")} only movies, so this List cannot show only TV shows.`
-      : `${subject(series, "has", "have")} only TV shows, so this List cannot show only movies.`;
+    const { movie, series } = singleTypeSources(list);
+    const outcome =
+      movie.length > 0 && series.length > 0
+        ? "this List must show movies and TV shows"
+        : movie.length > 0
+          ? "this List cannot show only TV shows"
+          : "this List cannot show only movies";
+    return `${singleTypeReason(list)}, so ${outcome}.`;
   }
 
-  const undated = sourcesWithoutDates(list);
-  if (isAddedDateSort(list.sortOption) && undated.length > 0) {
-    return `${subject(undated, "does", "do")} not give the date when each Title was added, so this List cannot sort by date added.`;
+  if (!isSortAllowed(list, list.sortOption)) {
+    const undated = sourcesWithoutDates(list);
+    return `${capitalize(sourcesWithVerb(undated, "does", "do"))} not give the date when each Title was added, so this List cannot sort by date added.`;
   }
   return null;
 }

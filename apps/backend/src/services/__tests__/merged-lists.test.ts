@@ -1,15 +1,19 @@
 import {
   MAX_SOURCES_PER_LIST,
   allowedDisplayModes,
+  connectionProviders,
+  isSortAllowed,
   listMergeProblem,
   listRequiresConnection,
+  mergesByAddedDate,
+  singleTypeReason,
   sourceHasAddedDates,
   sourceTitleType,
 } from "@stremlist/shared/list-merge";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import { describe, expect, it } from "vitest";
 import { movie } from "../../__tests__/helpers/fixtures";
-import type { SourceMeta } from "../merged-lists";
+import type { SourceMeta } from "../list-cache";
 import {
   mergeSourceCatalogs,
   sourceCaches,
@@ -154,6 +158,41 @@ describe("merge rules", () => {
         merged(WATCHLIST, [{ provider: "trakt", sourceRef: "me/watchlist" }]),
       ),
     ).toBe(true);
+    expect(
+      connectionProviders(
+        merged({ provider: "trakt", sourceRef: "me/watchlist" }, [
+          WATCHLIST,
+          { provider: "trakt", sourceRef: "me/history" },
+          { provider: "simkl", sourceRef: "me/plantowatch" },
+        ]),
+      ),
+    ).toEqual(["trakt", "simkl"]);
+  });
+
+  it("explains single-type Source lists only for merged Lists", () => {
+    expect(singleTypeReason(TOP_MOVIES)).toBeNull();
+    expect(singleTypeReason(merged(WATCHLIST, [TRAKT]))).toBeNull();
+    expect(
+      singleTypeReason(
+        merged(TOP_MOVIES, [
+          { provider: "imdb", sourceRef: "imdb:most-popular-movies" },
+          TOP_TV,
+        ]),
+      ),
+    ).toMatch(/ have only movies and Top 250 TV Shows has only TV shows$/);
+  });
+
+  it("merges by date added only a merged List whose Source lists all give dates", () => {
+    expect(mergesByAddedDate(WATCHLIST)).toBe(false);
+    expect(mergesByAddedDate(merged(WATCHLIST, [TRAKT]))).toBe(true);
+    expect(mergesByAddedDate(merged(WATCHLIST, [TOP_MOVIES]))).toBe(false);
+    expect(isSortAllowed(TOP_MOVIES, "added_at-asc")).toBe(true);
+    expect(isSortAllowed(merged(WATCHLIST, [TOP_MOVIES]), "added_at-asc")).toBe(
+      false,
+    );
+    expect(isSortAllowed(merged(WATCHLIST, [TOP_MOVIES]), "title-asc")).toBe(
+      true,
+    );
   });
 });
 

@@ -7,10 +7,9 @@ import type { DisplayMode } from "@stremlist/shared/constants";
 import { CHART_REGISTRY, CHART_BY_ID } from "@stremlist/shared/imdb-charts";
 import {
   allowedDisplayModes,
-  isAddedDateSort,
   isMergedList,
+  isSortAllowed,
   listSources,
-  sourcesWithoutDates,
 } from "@stremlist/shared/list-merge";
 import { PROVIDERS } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
@@ -22,7 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { useSortable } from "@dnd-kit/react/sortable";
-import { MAX_CATALOG_TITLE_LENGTH } from "../lib/list-form";
+import { MAX_CATALOG_TITLE_LENGTH, rowTitle } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { describeSource } from "../lib/list-sources";
 import CatalogFilterSettings from "./CatalogFilterSettings";
@@ -49,17 +48,14 @@ export default function SortableListRow({
   index,
   onFieldChange,
   onRemove,
-  connectionMissing,
-  missingProvider,
+  missingProviders,
   onConnect,
   merge,
 }: {
   list: ListFormRow;
   index: number;
-  /** The List reads through a Connection that the Account no longer has. */
-  connectionMissing?: boolean;
-  /** The Provider of that Connection, when it is not the first Source list's. */
-  missingProvider?: ProviderId;
+  /** Providers whose Connection the List reads through and the Account lacks. */
+  missingProviders: ProviderId[];
   /** Merging other Lists into this one; absent where Lists cannot change. */
   merge?: MergeControls;
   /** Start the Connection again; absent when it cannot be started here. */
@@ -92,14 +88,14 @@ export default function SortableListRow({
       ? CHART_BY_ID.get(list.sourceRef)
       : undefined;
   const isChart = !!chartEntry;
-  const title = list.catalogTitle.trim() || source.suggestedTitle;
-  const undated = sourcesWithoutDates(list).length > 0;
+  const title = rowTitle(list);
   const displayModes = allowedDisplayModes(list);
   const providers = [...new Set(sources.map((item) => item.provider))];
   const providerLabels = providers
     .map((provider) => PROVIDERS[provider].label)
     .join(", ");
-  const missingLabel = PROVIDERS[missingProvider ?? list.provider].label;
+  const connectionMissing = missingProviders.length > 0;
+  const missingLabel = PROVIDERS[missingProviders.at(0) ?? list.provider].label;
 
   return (
     <div
@@ -194,7 +190,7 @@ export default function SortableListRow({
                   key={opt.value}
                   value={opt.value}
                   // Explained under Source lists, in the settings.
-                  disabled={undated && isAddedDateSort(opt.value)}
+                  disabled={!isSortAllowed(list, opt.value)}
                 >
                   {opt.label}
                 </SelectItem>
@@ -370,7 +366,13 @@ export default function SortableListRow({
               )}
             </div>
 
-            {merge && <MergedSources list={list} controls={merge} />}
+            {merge && (
+              <MergedSources
+                list={list}
+                missingProviders={missingProviders}
+                controls={merge}
+              />
+            )}
 
             <CatalogFilterSettings
               value={list.catalogSettings}

@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
+import type { ListSource } from "@stremlist/shared/list-merge";
+import { sourceKey } from "@stremlist/shared/list-merge";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import {
   CreateBucketCommand,
@@ -79,12 +81,9 @@ async function listKeys(prefix: string): Promise<string[]> {
  * it (apps/backend/src/services/merged-lists.ts). A List with one Source list
  * uses its List ID instead.
  */
-export function sourceCacheKey(
-  listId: string,
-  source: { provider: string; sourceRef: string },
-): string {
+export function sourceCacheKey(listId: string, source: ListSource): string {
   const digest = createHash("sha256")
-    .update(`${source.provider}:${source.sourceRef}`)
+    .update(sourceKey(source))
     .digest("hex")
     .slice(0, 16);
   return `${listId}/sources/${digest}`;
