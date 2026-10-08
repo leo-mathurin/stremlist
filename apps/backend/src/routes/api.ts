@@ -33,6 +33,7 @@ import {
   createAccount,
   createPrivateCopy,
   getAccountLists,
+  getVisibleLists,
   replaceAccountConfig,
   resolveAccountKey,
 } from "../services/accounts";
@@ -217,18 +218,6 @@ async function connectedProviders(
   );
 }
 
-/** Lists that a request may see: Legacy alias requests only see public ones. */
-function visibleLists(
-  access: AccountAccess,
-  lists: ConfigList[],
-): ConfigList[] {
-  return access.via === "private"
-    ? lists
-    : lists.filter(
-        (list) => !sourceRequiresConnection(list.provider, list.sourceRef),
-      );
-}
-
 function requestOrigin(c: Context): string {
   return new URL(c.req.url).origin;
 }
@@ -372,8 +361,7 @@ const api = new Hono()
           account.id,
           normalized,
           rpdbApiKey && rpdbApiKey.length > 0 ? rpdbApiKey : null,
-          undefined,
-          newTitles?.enabled,
+          { newTitlesCatalog: newTitles?.enabled },
         );
         scheduleBackgroundTask(() => prewarmLists(account.id, saved, true));
         return c.json({
@@ -404,24 +392,25 @@ const api = new Hono()
       }
       const { account } = access;
       const [lists, connections] = await Promise.all([
-        getAccountLists(account.id),
+        getVisibleLists(access),
         access.via === "private" ? listConnections(account.id) : [],
+      ]);
+      const [listsWithGenres, summary] = await Promise.all([
+        withAvailableGenres(lists),
+        getNewTitlesSummary(access, lists),
       ]);
       const body: AccountConfigResponse = {
         access: access.via,
         accountId: access.via === "private" ? account.id : null,
         movedAt: account.movedAt,
         rpdbApiKey: account.rpdbApiKey,
-        lists: await withAvailableGenres(visibleLists(access, lists)),
+        lists: listsWithGenres,
         connections,
         actions: {
           enabled: account.actionsEnabled,
           providers: account.actionProviders,
         },
-        newTitles: {
-          enabled: account.newTitlesCatalog,
-          summary: await getNewTitlesSummary(access, lists),
-        },
+        newTitles: { enabled: account.newTitlesCatalog, summary },
         lastFetchedAt: account.lastFetchedAt,
         cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
       };
@@ -481,16 +470,20 @@ const api = new Hono()
           access.account.id,
           normalized,
           rpdbApiKey && rpdbApiKey.length > 0 ? rpdbApiKey : null,
-          actions && access.via === "private"
-            ? {
-                enabled: actions.enabled,
-                providers: [...new Set(actions.providers)].filter(
-                  (provider) =>
-                    connected.has(provider) && !!getProvider(provider).actions,
-                ),
-              }
-            : undefined,
-          newTitles?.enabled,
+          {
+            actions:
+              actions && access.via === "private"
+                ? {
+                    enabled: actions.enabled,
+                    providers: [...new Set(actions.providers)].filter(
+                      (provider) =>
+                        connected.has(provider) &&
+                        !!getProvider(provider).actions,
+                    ),
+                  }
+                : undefined,
+            newTitlesCatalog: newTitles?.enabled,
+          },
         );
       } catch (error) {
         console.error("Failed to save the configuration:", error);
@@ -507,11 +500,15 @@ const api = new Hono()
         prewarmLists(access.account.id, saved, access.via === "private"),
       );
 
+      // The saved Lists change what the summary counts.
+      const [savedWithGenres, summary] = await Promise.all([
+        withAvailableGenres(saved),
+        getNewTitlesSummary(access, saved),
+      ]);
       return c.json({
         ok: true as const,
-        lists: await withAvailableGenres(saved),
-        // The saved Lists change what the summary counts.
-        newTitles: await getNewTitlesSummary(access, saved),
+        lists: savedWithGenres,
+        newTitles: summary,
       });
     },
   )
@@ -543,7 +540,7 @@ const api = new Hono()
         });
       }
 
-      const lists = visibleLists(access, await getAccountLists(account.id));
+      const lists = await getVisibleLists(access);
       const refreshedAt = new Date().toISOString();
       const results = await Promise.allSettled(
         lists.map((list) =>
@@ -573,14 +570,18 @@ const api = new Hono()
           .eq("id", account.id);
       }
 
+      const [listsWithGenres, summary] = await Promise.all([
+        withAvailableGenres(lists),
+        getNewTitlesSummary(access, lists),
+      ]);
       return c.json({
         ok: true,
         lastFetchedAt: refreshed > 0 ? refreshedAt : account.lastFetchedAt,
         refreshed,
         failed,
         total: lists.length,
-        lists: await withAvailableGenres(lists),
-        newTitles: await getNewTitlesSummary(access, lists),
+        lists: listsWithGenres,
+        newTitles: summary,
         cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
       });
     },
@@ -818,11 +819,11 @@ const api = new Hono()
     }
 
     try {
-      const edges = await getImdbWatchlist(testUserId);
+      const { items } = await getImdbWatchlist(testUserId);
 
       await fetch(heartbeatUrl);
 
-      return c.json({ ok: true, items: edges.length });
+      return c.json({ ok: true, items: items.length });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
 

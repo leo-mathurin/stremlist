@@ -45,12 +45,6 @@ export interface NewTitlesSummary {
   waitingLists: number;
 }
 
-export interface NewTitlesSettings {
-  enabled: boolean;
-  /** Null when the detection history cannot be read right now. */
-  summary: NewTitlesSummary | null;
-}
-
 export interface AccountConfigResponse {
   access: AddonAccess;
   /** The Account ID; only returned for private access. */
@@ -61,7 +55,11 @@ export interface AccountConfigResponse {
   lists: ConfigList[];
   connections: ConnectionSummary[];
   actions: { enabled: boolean; providers: ProviderId[] };
-  newTitles: NewTitlesSettings;
+  newTitles: {
+    enabled: boolean;
+    /** Null when the detection history cannot be read right now. */
+    summary: NewTitlesSummary | null;
+  };
   lastFetchedAt: string;
   cooldownSeconds: number;
 }

@@ -28,7 +28,6 @@ const JUSTWATCH_CONCURRENCY = 3;
 /** SensCritique universes: products of other universes (books, games…) are skipped. */
 const UNIVERSE_MOVIE = 1;
 const UNIVERSE_SERIES = 4;
-const COLLECTION_UNIVERSES = ["movie", "tvShow"] as const;
 
 /** Wikidata property "SensCritique work ID". */
 const WIKIDATA_SENSCRITIQUE_WORK = "P10100";
@@ -266,48 +265,53 @@ function isPrivateProfile(user: UserData["user"]): boolean {
   return user?.settings?.privacyProfile === true;
 }
 
+/** The wishes of one universe, newest first, as the API returns them. */
+async function fetchUniverseWishes(
+  username: string,
+  universe: "movie" | "tvShow",
+): Promise<PagedRead<SensCritiqueProduct>> {
+  const products: SensCritiqueProduct[] = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { user } = await senscritiqueQuery<WishesData>(WISHES_QUERY, {
+      username,
+      universe,
+      limit: PAGE_SIZE,
+      offset: page * PAGE_SIZE,
+    });
+    if (!user) {
+      throw new SourceUnavailableError(
+        "not_found",
+        `SensCritique user ${username} not found`,
+      );
+    }
+    if (isPrivateProfile(user) || !user.collection) {
+      throw new SourceUnavailableError(
+        "private",
+        `SensCritique profile ${username} is private`,
+      );
+    }
+    const batch = user.collection.products ?? [];
+    products.push(...batch);
+    if (
+      batch.length < PAGE_SIZE ||
+      products.length >= (user.collection.total ?? 0)
+    ) {
+      return { items: products, complete: true };
+    }
+  }
+  return { items: products, complete: false };
+}
+
 async function fetchWishes(
   username: string,
 ): Promise<PagedRead<SensCritiqueProduct>> {
-  const byUniverse: SensCritiqueProduct[][] = [];
-  let complete = true;
-  for (const universe of COLLECTION_UNIVERSES) {
-    const products: SensCritiqueProduct[] = [];
-    let lastPage = false;
-    for (let page = 0; page < MAX_PAGES; page++) {
-      const { user } = await senscritiqueQuery<WishesData>(WISHES_QUERY, {
-        username,
-        universe,
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
-      });
-      if (!user) {
-        throw new SourceUnavailableError(
-          "not_found",
-          `SensCritique user ${username} not found`,
-        );
-      }
-      if (isPrivateProfile(user) || !user.collection) {
-        throw new SourceUnavailableError(
-          "private",
-          `SensCritique profile ${username} is private`,
-        );
-      }
-      const batch = user.collection.products ?? [];
-      products.push(...batch);
-      if (
-        batch.length < PAGE_SIZE ||
-        products.length >= (user.collection.total ?? 0)
-      ) {
-        lastPage = true;
-        break;
-      }
-    }
-    if (!lastPage) complete = false;
-    // The API returns the newest wish first; the canonical order is oldest first.
-    byUniverse.push(products.reverse());
-  }
-  return { items: mergeByActionId(byUniverse[0], byUniverse[1]), complete };
+  const movies = await fetchUniverseWishes(username, "movie");
+  const shows = await fetchUniverseWishes(username, "tvShow");
+  // The API returns the newest wish first; the canonical order is oldest first.
+  return {
+    items: mergeByActionId(movies.items.reverse(), shows.items.reverse()),
+    complete: movies.complete && shows.complete,
+  };
 }
 
 async function fetchListProducts(

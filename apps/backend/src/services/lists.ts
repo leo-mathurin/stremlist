@@ -10,17 +10,21 @@ import type {
   ProviderAdapter,
   ProviderContext,
   SourceEntry,
+  SourceSnapshot,
 } from "../providers/types";
 import { SourceUnavailableError } from "../providers/types";
 import { enrichTitles } from "../titles/enrich";
 import { DEFAULT_RESOLVE_BUDGET_MS, resolveEntries } from "../titles/resolver";
 import type { AccountAccess } from "./accounts";
-import { getAccountLists, markAccountFetched } from "./accounts";
+import {
+  getAccountLists,
+  getVisibleLists,
+  markAccountFetched,
+} from "./accounts";
 import type { CatalogSort } from "./catalog-sort";
 import { sortCatalog } from "./catalog-sort";
 import { ConnectionExpiredError, getConnectionAccess } from "./connections";
-import type { SynchronizedEntry } from "./detections";
-import { recordSynchronization, synchronizedEntries } from "./detections";
+import { recordSynchronization } from "./detections";
 import { buildPosterUrl } from "./imdb-scraper";
 import {
   deleteCachedList,
@@ -144,34 +148,29 @@ function withLinkBack(
 interface BuiltCatalog {
   data: CatalogData;
   deferred: number;
-  /**
-   * Every entry of the Source list, resolved or not, when this read is a
-   * complete, successful synchronization (every page read). Null otherwise,
-   * so the read never counts for detection (ADR 0007).
-   */
-  synchronized: SynchronizedEntry[] | null;
+  /** The IMDb ID of each resolved entry. */
+  imdbIds: ReadonlyMap<SourceEntry, string>;
 }
 
 /** Turn a Provider snapshot into a canonical Catalog (provider order). */
 async function buildCatalog(
   adapter: ProviderAdapter,
   config: ListFetchConfig,
-  ctx: ProviderContext,
+  snapshot: SourceSnapshot,
 ): Promise<BuiltCatalog> {
-  const snapshot = await adapter.fetchSource(config.sourceRef, ctx);
-  const allPages = snapshot.complete !== false;
   if (snapshot.entries.every((entry) => entry.meta)) {
-    const metas = snapshot.entries.flatMap((entry) =>
-      entry.meta ? [withLinkBack(entry.meta, entry, config.provider)] : [],
-    );
     return {
-      data: { metas },
+      data: {
+        metas: snapshot.entries.flatMap((entry) =>
+          entry.meta ? [withLinkBack(entry.meta, entry, config.provider)] : [],
+        ),
+      },
       deferred: 0,
-      synchronized: allPages
-        ? synchronizedEntries(adapter, snapshot.entries, (entry) =>
-            entry.meta ? entry.meta.id : null,
-          )
-        : null,
+      imdbIds: new Map(
+        snapshot.entries.flatMap((entry) =>
+          entry.meta ? [[entry, entry.meta.id] as const] : [],
+        ),
+      ),
     };
   }
 
@@ -209,9 +208,6 @@ async function buildCatalog(
     metas.push(withLinkBack(meta, entry, config.provider));
   }
 
-  const imdbIdByEntry = new Map(
-    resolved.map(({ entry, imdbId }) => [entry, imdbId]),
-  );
   if (unresolved > 0 || unknown > 0) {
     console.log(
       `List ${config.listId} (${config.provider}): ${metas.length} titles, ${unresolved} unresolved entries (${deferred} not tried yet), ${unknown} without metadata`,
@@ -220,15 +216,7 @@ async function buildCatalog(
   return {
     data: { metas },
     deferred,
-    // Unresolved entries and Titles without metadata are still in the
-    // Source list: they count, by their entry key.
-    synchronized: allPages
-      ? synchronizedEntries(
-          adapter,
-          snapshot.entries,
-          (entry) => imdbIdByEntry.get(entry) ?? null,
-        )
-      : null,
+    imdbIds: new Map(resolved.map(({ entry, imdbId }) => [entry, imdbId])),
   };
 }
 
@@ -248,10 +236,11 @@ async function fetchAndCacheList(config: ListFetchConfig): Promise<FreshList> {
   // Taken before the read: when two reads overlap, the history keeps the
   // one that started last.
   const startedAt = new Date();
-  const { data, deferred, synchronized } = await buildCatalog(
+  const snapshot = await adapter.fetchSource(config.sourceRef, ctx);
+  const { data, deferred, imdbIds } = await buildCatalog(
     adapter,
     config,
-    ctx,
+    snapshot,
   );
   const cachedAt = new Date();
   // Back-date the cache so the next request resumes resolution soon.
@@ -271,8 +260,9 @@ async function fetchAndCacheList(config: ListFetchConfig): Promise<FreshList> {
   } catch (error) {
     console.error(`Failed to cache list ${config.listId} in R2:`, error);
   }
-  if (synchronized) {
-    await recordSynchronization(config.accountId, config, synchronized, {
+  // A read cut short is served, but never compared (ADR 0007).
+  if (snapshot.complete) {
+    await recordSynchronization(config, adapter, snapshot.entries, imdbIds, {
       startedAt,
       connectionUser: ctx.connection?.username ?? null,
     });
@@ -416,18 +406,15 @@ export async function getListCatalog(
  * stale lists caused the production 500/504 storm on /meta.)
  */
 export async function findMetaInAccountCache(
-  { account, via }: AccountAccess,
+  access: AccountAccess,
   type: string,
   id: string,
 ): Promise<StremioMeta | null> {
+  const { account } = access;
   try {
     // A Legacy alias can be guessed: it must not reveal what Connection
     // lists (history, collection…) contain.
-    const lists = (await getAccountLists(account.id)).filter(
-      (list) =>
-        via === "private" ||
-        !sourceRequiresConnection(list.provider, list.sourceRef),
-    );
+    const lists = await getVisibleLists(access);
     if (lists.length === 0) return null;
     const found = await findCachedMeta(
       lists.map((list) => list.id),

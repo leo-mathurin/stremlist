@@ -26,7 +26,8 @@ import {
   listKey,
 } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
-import { requiresReinstall } from "../lib/reinstall";
+import type { InstallBaseline } from "../lib/reinstall";
+import { requiresReinstall, UNKNOWN_INSTALL } from "../lib/reinstall";
 
 /** Same limit as the backend (`MAX_LISTS`). */
 export const MAX_LISTS = 10;
@@ -134,10 +135,6 @@ export function useAccountConfiguration(
   const [newTitlesEnabled, setNewTitlesEnabled] = useState(false);
   const [newTitlesSummary, setNewTitlesSummary] =
     useState<NewTitlesSummary | null>(null);
-  // Whether the installed manifest offers the "New titles" catalogs.
-  const [baselineNewTitles, setBaselineNewTitles] = useState<boolean | null>(
-    null,
-  );
   const [providerStatus, setProviderStatus] = useState(defaultProviderStatus);
   const [loading, setLoading] = useState(!!accountKey);
   const [saving, setSaving] = useState(false);
@@ -150,14 +147,9 @@ export function useAccountConfiguration(
   const [loadError, setLoadError] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [showReinstallHint, setShowReinstallHint] = useState(false);
-  // Null until the configuration loads; "" for an Account without Lists.
-  const [baselineSignature, setBaselineSignature] = useState<string | null>(
-    null,
-  );
-  // Whether the installed manifest offers Actions (its `stream` resource).
-  const [baselineActionsLive, setBaselineActionsLive] = useState<
-    boolean | null
-  >(null);
+  // What the installed manifest offers, as of the last load or save. The
+  // signature is "" for an Account without Lists.
+  const [installed, setInstalled] = useState<InstallBaseline>(UNKNOWN_INSTALL);
   const [status, setStatus] = useState<ConfigStatus>(null);
   const previousKey = useRef(accountKey);
   const currentForm = useRef({ lists, rpdbApiKey, newTitlesEnabled });
@@ -194,9 +186,7 @@ export function useAccountConfiguration(
     previousKey.current = accountKey;
 
     setShowReinstallHint(false);
-    setBaselineSignature(null);
-    setBaselineActionsLive(null);
-    setBaselineNewTitles(null);
+    setInstalled(UNKNOWN_INSTALL);
     setNotFound(false);
     setLoadError(false);
     if (!accountKey) {
@@ -219,7 +209,6 @@ export function useAccountConfiguration(
         if (cancelled) return;
         const rows = rowsFromLists(data.lists);
         setLists(rows);
-        setBaselineSignature(getListReinstallSignature(rows));
         setAccess(data.access);
         setAccountId(data.accountId);
         setMovedAt(data.movedAt);
@@ -237,10 +226,13 @@ export function useAccountConfiguration(
           ...capable.filter((id) => !saved.includes(id)),
         ]);
         setActionSelected(saved);
-        setBaselineActionsLive(data.actions.enabled && saved.length > 0);
         setNewTitlesEnabled(data.newTitles.enabled);
         setNewTitlesSummary(data.newTitles.summary);
-        setBaselineNewTitles(data.newTitles.enabled);
+        setInstalled({
+          signature: getListReinstallSignature(rows),
+          actionsLive: data.actions.enabled && saved.length > 0,
+          newTitles: data.newTitles.enabled,
+        });
       })
       .catch(() => {
         if (!cancelled) setLoadError(true);
@@ -464,23 +456,15 @@ export function useAccountConfiguration(
         return;
       }
 
-      const currentSignature = getListReinstallSignature(lists);
       // Actions add a `stream` resource to the manifest, which Stremio also
       // reads only at install time.
       const actionsLive =
         access === "private" && actionsEnabled && actionSelected.length > 0;
-      const needsReinstall = requiresReinstall(
-        {
-          signature: baselineSignature,
-          actionsLive: baselineActionsLive,
-          newTitles: baselineNewTitles,
-        },
-        {
-          signature: currentSignature,
-          actionsLive,
-          newTitles: newTitlesEnabled,
-        },
-      );
+      const needsReinstall = requiresReinstall(installed, {
+        signature: getListReinstallSignature(lists),
+        actionsLive,
+        newTitles: newTitlesEnabled,
+      });
 
       const submittedLists = lists;
       const submittedNewTitles = newTitlesEnabled;
@@ -554,11 +538,13 @@ export function useAccountConfiguration(
         }),
       );
       setShowReinstallHint(needsReinstall);
-      setBaselineSignature(getListReinstallSignature(savedRows));
-      setBaselineActionsLive(actionsLive);
-      setBaselineNewTitles(submittedNewTitles);
+      setInstalled({
+        signature: getListReinstallSignature(savedRows),
+        actionsLive,
+        newTitles: submittedNewTitles,
+      });
       // The saved Lists change what the summary counts.
-      if ("newTitles" in body) setNewTitlesSummary(body.newTitles);
+      setNewTitlesSummary(body.newTitles);
       setStatus({
         type: "success",
         message: hasUnsavedChanges
@@ -592,9 +578,8 @@ export function useAccountConfiguration(
       }
       setCooldownSeconds(body.cooldownSeconds);
       setLastFetchedAt(body.lastFetchedAt);
-      if ("newTitles" in body && body.newTitles) {
-        setNewTitlesSummary(body.newTitles);
-      }
+      // A throttled refresh read nothing new.
+      if ("newTitles" in body) setNewTitlesSummary(body.newTitles);
       if ("lists" in body && body.lists) {
         const refreshed = body.lists;
         setLists((current) =>

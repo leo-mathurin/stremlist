@@ -14,7 +14,11 @@ describe("catalog id helpers", () => {
     const catalogId = buildCatalogId(listId, "movie");
 
     expect(catalogId).toBe("wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie");
-    expect(parseCatalogId(catalogId)).toEqual({ listId, type: "movie" });
+    expect(parseCatalogId(catalogId)).toEqual({
+      kind: "list",
+      listId,
+      type: "movie",
+    });
   });
 
   it("rejects malformed ids", () => {
@@ -121,6 +125,7 @@ describe("manifest catalog generation", () => {
         ),
     ).toBe(true);
     expect(parseCatalogId(catalogs[1].id)).toEqual({
+      kind: "list",
       listId: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
       type: "movie",
       preset: "short",

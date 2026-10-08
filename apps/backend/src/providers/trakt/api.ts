@@ -128,21 +128,13 @@ export interface PaginateOptions extends TraktReadOptions {
 }
 
 /**
- * Every page of a paginated endpoint, up to `maxItems`. Pagination must be
- * explicit: without `limit` many endpoints return only their first 10 items.
- * Endpoints where pagination is optional answer without the page headers;
- * their single response is then the whole set.
+ * Every page of a paginated endpoint, up to `maxItems`, and whether
+ * `maxItems` left items out. Pagination must be explicit: without `limit`
+ * many endpoints return only their first 10 items. Endpoints where
+ * pagination is optional answer without the page headers; their single
+ * response is then the whole set.
  */
 export async function traktGetAll<T>(
-  path: string,
-  connection: ConnectionAccess | null,
-  options: PaginateOptions,
-): Promise<T[]> {
-  return (await traktReadAll<T>(path, connection, options)).items;
-}
-
-/** traktGetAll, and whether `maxItems` left items out. */
-export async function traktReadAll<T>(
   path: string,
   connection: ConnectionAccess | null,
   options: PaginateOptions,

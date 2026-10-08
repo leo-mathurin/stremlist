@@ -55,7 +55,8 @@ export function fakeAdapter(
     id,
     freshnessMs: 30 * 60_000,
     validateSource: (ref) => Promise.resolve({ ok: true, ref }),
-    fetchSource: () => Promise.resolve({ entries: structuredClone(entries) }),
+    fetchSource: () =>
+      Promise.resolve({ entries: structuredClone(entries), complete: true }),
     ...rest,
   };
 }

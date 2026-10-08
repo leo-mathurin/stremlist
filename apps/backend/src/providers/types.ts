@@ -67,10 +67,9 @@ export interface SourceSnapshot {
   /**
    * False when the read stopped before the end of the Source list (a page or
    * item cap). The entries are still served, but the read is not a complete
-   * synchronization, so it never counts for detection (ADR 0007). Omitted
-   * means complete.
+   * synchronization, so it never counts for detection (ADR 0007).
    */
-  complete?: boolean;
+  complete: boolean;
 }
 
 /** The items of a paginated read, and whether it reached the last page. */

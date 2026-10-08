@@ -66,6 +66,7 @@ function sourceList(provider: "imdb" | "trakt", initial: StremioMeta[]) {
         Promise.resolve(
           state.read?.() ?? {
             entries: structuredClone(state.metas).map(entry),
+            complete: true,
           },
         ),
     }),
@@ -279,7 +280,10 @@ function resolvingSourceList() {
   useFakeProvider(
     fakeAdapter("trakt", {
       fetchSource: () =>
-        Promise.resolve({ entries: structuredClone(state.entries) }),
+        Promise.resolve({
+          entries: structuredClone(state.entries),
+          complete: true,
+        }),
       resolutionKey: (item) =>
         item.externalIds?.trakt === undefined
           ? null
@@ -419,7 +423,10 @@ describe("overlapping reads and Connections", () => {
         fetchSource: () => {
           // A slow read: a newer one may start and finish meanwhile.
           vi.setSystemTime(Date.now() + 10 * 60_000);
-          return Promise.resolve({ entries: [entry(movie("tt0000001"))] });
+          return Promise.resolve({
+            entries: [entry(movie("tt0000001"))],
+            complete: true,
+          });
         },
       }),
     );
@@ -447,7 +454,10 @@ describe("overlapping reads and Connections", () => {
         fetchSource: () => {
           // The user disconnects while the read runs.
           db.tables.connections = [];
-          return Promise.resolve({ entries: [entry(movie("tt0000001"))] });
+          return Promise.resolve({
+            entries: [entry(movie("tt0000001"))],
+            complete: true,
+          });
         },
       }),
     );
@@ -494,6 +504,7 @@ describe("overlapping reads and Connections", () => {
       source_ref: "me/history",
       baseline_at: at,
       last_complete_sync_at: at,
+      requires_connection: true,
       connection_user: "sam",
     });
 
@@ -521,6 +532,7 @@ describe("overlapping reads and Connections", () => {
         source_ref: sourceRef,
         baseline_at: at,
         last_complete_sync_at: at,
+        requires_connection: true,
         connection_user: user,
       });
     }
@@ -802,13 +814,17 @@ describe("disconnect", () => {
   it("forgets the history of Source lists that only the Connection reads", async () => {
     seedNewTitlesAccount();
     const at = new Date().toISOString();
-    for (const sourceRef of ["me/history", "users/leo/watchlist"]) {
+    for (const [sourceRef, requiresConnection] of [
+      ["me/history", true],
+      ["users/leo/watchlist", false],
+    ] as const) {
       db.insert("source_list_syncs", {
         account_id: accountId,
         provider: "trakt",
         source_ref: sourceRef,
         baseline_at: at,
         last_complete_sync_at: at,
+        requires_connection: requiresConnection,
       });
       db.insert("source_list_entries", {
         account_id: accountId,

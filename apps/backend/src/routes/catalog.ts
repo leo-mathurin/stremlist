@@ -11,10 +11,7 @@ import {
   resolveCatalogSelection,
   filterCatalog,
 } from "../services/catalog-filters";
-import {
-  parseCatalogId,
-  parseNewTitlesCatalogId,
-} from "../services/catalog-id";
+import { parseCatalogId } from "../services/catalog-id";
 import { getNewTitlesCatalog } from "../services/detections";
 import { getListCatalog, ListUnavailableError } from "../services/lists";
 
@@ -100,19 +97,8 @@ async function serveCatalog(c: Context) {
       return c.json({ metas: [] }, 400);
     }
 
-    const newTitlesType = parseNewTitlesCatalogId(catalogId);
-    if (newTitlesType) {
-      if (newTitlesType !== requestedType || extra.has("search")) {
-        return c.json({ metas: [] });
-      }
-      const access = await resolveAccountKey(accountKey);
-      if (!access?.account.newTitlesCatalog) return c.json({ metas: [] });
-      const metas = await getNewTitlesCatalog(access, newTitlesType);
-      return c.json({ metas: metas.slice(skip, skip + CATALOG_PAGE_SIZE) });
-    }
-
     const parsedCatalog = parseCatalogId(catalogId);
-    if (!parsedCatalog?.type || parsedCatalog.type !== requestedType) {
+    if (parsedCatalog?.type !== requestedType) {
       console.warn(
         `Unknown catalog id for user ${accountKey}: ${requestedType}/${catalogId}`,
       );
@@ -123,6 +109,16 @@ async function serveCatalog(c: Context) {
     if (!access) {
       return c.json({ metas: [] });
     }
+
+    if (parsedCatalog.kind === "new-titles") {
+      // The "New titles" catalogs have no search (ADR 0007).
+      if (!access.account.newTitlesCatalog || extra.has("search")) {
+        return c.json({ metas: [] });
+      }
+      const metas = await getNewTitlesCatalog(access, parsedCatalog.type);
+      return c.json({ metas: metas.slice(skip, skip + CATALOG_PAGE_SIZE) });
+    }
+
     const list = await getAccountListById(
       access.account.id,
       parsedCatalog.listId,

@@ -248,6 +248,7 @@ export type Database = {
           connection_user: string | null;
           last_complete_sync_at: string;
           provider: string;
+          requires_connection: boolean;
           source_ref: string;
         };
         Insert: {
@@ -256,6 +257,7 @@ export type Database = {
           connection_user?: string | null;
           last_complete_sync_at: string;
           provider: string;
+          requires_connection?: boolean;
           source_ref: string;
         };
         Update: {
@@ -264,6 +266,7 @@ export type Database = {
           connection_user?: string | null;
           last_complete_sync_at?: string;
           provider?: string;
+          requires_connection?: boolean;
           source_ref?: string;
         };
         Relationships: [
@@ -330,7 +333,6 @@ export type Database = {
         Args: {
           p_account_id: string;
           p_provider: string;
-          p_source_refs: string[];
         };
         /** Source lists whose history was deleted. */
         Returns: number;

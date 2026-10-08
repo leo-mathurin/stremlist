@@ -119,13 +119,16 @@ BEGIN
     'Another Provider user gets a new Baseline';
   ASSERT (SELECT array_agg(entry_key) FROM public.source_list_entries
     WHERE account_id = acc AND source_ref = 'me/history') = ARRAY['trakt-movie:7'];
+  ASSERT (SELECT requires_connection AND connection_user = 'someone-else'
+    FROM public.source_list_syncs
+    WHERE account_id = acc AND source_ref = 'me/history'),
+    'The history knows that it belongs to a Connection user';
 
   -- Cleanup keeps only the history of the current Connection's Provider
   -- user, read when the rows are deleted.
-  INSERT INTO public.source_list_syncs (account_id, provider, source_ref, baseline_at, last_complete_sync_at, connection_user)
-  VALUES (acc, 'trakt', 'me/collection', now(), now(), 'leo');
-  ASSERT public.forget_connection_history(acc, 'trakt',
-    ARRAY['me/history', 'me/collection']) = 1;
+  INSERT INTO public.source_list_syncs (account_id, provider, source_ref, baseline_at, last_complete_sync_at, requires_connection, connection_user)
+  VALUES (acc, 'trakt', 'me/collection', now(), now(), true, 'leo');
+  ASSERT public.forget_connection_history(acc, 'trakt') = 1;
   ASSERT (SELECT array_agg(source_ref) FROM public.source_list_syncs
     WHERE account_id = acc AND provider = 'trakt' AND source_ref LIKE 'me/%') = ARRAY['me/history'],
     'The current user (someone-else) keeps me/history';
@@ -134,10 +137,24 @@ BEGIN
   DELETE FROM public.connections WHERE account_id = acc AND provider = 'trakt';
   INSERT INTO public.connections (account_id, provider, provider_username, access_token, redirect_uri)
   VALUES (acc, 'trakt', 'someone-else', 'enc', 'https://example.test/callback');
-  ASSERT public.forget_connection_history(acc, 'trakt', ARRAY['me/history']) = 0;
-  -- Without a Connection, everything goes.
+  ASSERT public.forget_connection_history(acc, 'trakt') = 0;
+  -- Without a Connection, all of it goes; public Source lists keep theirs.
   DELETE FROM public.connections WHERE account_id = acc AND provider = 'trakt';
-  ASSERT public.forget_connection_history(acc, 'trakt', ARRAY['me/history']) = 1;
+  ASSERT public.forget_connection_history(acc, 'trakt') = 1;
+  ASSERT EXISTS (SELECT 1 FROM public.source_list_syncs
+    WHERE account_id = acc AND source_ref = 'users/leo/watchlist'),
+    'A public Source list keeps its history';
+  ASSERT NOT EXISTS (SELECT 1 FROM public.source_list_entries
+    WHERE account_id = acc AND source_ref = 'me/history'),
+    'The entries go with their history';
+
+  -- Only a Source list that needs a Connection has a Connection user.
+  BEGIN
+    INSERT INTO public.source_list_syncs (account_id, provider, source_ref, baseline_at, last_complete_sync_at, connection_user)
+    VALUES (acc, 'trakt', 'users/sam/watchlist', now(), now(), 'sam');
+    RAISE EXCEPTION 'Expected the check';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
 
   -- Mismatched arrays are refused.
   BEGIN

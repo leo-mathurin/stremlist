@@ -72,7 +72,10 @@ const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
     resolved_at: now(),
     retry_after: null,
   }),
-  source_list_syncs: () => ({ connection_user: null }),
+  source_list_syncs: () => ({
+    requires_connection: false,
+    connection_user: null,
+  }),
   source_list_entries: () => ({
     imdb_id: null,
     detected_at: null,
@@ -138,6 +141,21 @@ export class InMemoryDB {
     if (conflict) throw new Error(conflict);
     this.getTable(table).push(stored);
     return stored;
+  }
+
+  /** Delete the matching rows, and their children (ON DELETE CASCADE). */
+  delete(table: string, matches: (row: Row) => boolean): Row[] {
+    const removed = this.getTable(table).filter(matches);
+    this.tables[table] = this.getTable(table).filter((row) => !matches(row));
+    const cascade = CASCADES[table];
+    if (cascade && removed.length > 0) {
+      this.delete(cascade.table, (child) =>
+        removed.some((parent) =>
+          cascade.columns.every((column) => parent[column] === child[column]),
+        ),
+      );
+    }
+    return removed;
   }
 
   /** The violated constraint, or null. `ignore` is the row being updated. */
@@ -492,26 +510,10 @@ class MockQueryBuilder {
         return this.written(updated);
       }
 
-      case "delete": {
-        const removed = table.filter((r) => this.matchesFilters(r));
-        this.db.tables[this.tableName] = table.filter(
-          (r) => !this.matchesFilters(r),
+      case "delete":
+        return this.written(
+          this.db.delete(this.tableName, (r) => this.matchesFilters(r)),
         );
-        const cascade = CASCADES[this.tableName];
-        if (cascade) {
-          this.db.tables[cascade.table] = this.db
-            .getTable(cascade.table)
-            .filter(
-              (child) =>
-                !removed.some((parent) =>
-                  cascade.columns.every(
-                    (column) => parent[column] === child[column],
-                  ),
-                ),
-            );
-        }
-        return this.written(removed);
-      }
     }
   }
 
@@ -684,17 +686,10 @@ function recordSourceListSync(args: RpcArgs): Result {
       );
     if (!connected) return { data: null, error: null };
     // Another Provider user: the old history is not theirs.
-    const other = db
-      .getTable("source_list_syncs")
-      .find((row) => matches(row) && row.connection_user !== connectionUser);
-    if (other) {
-      db.tables.source_list_syncs = db
-        .getTable("source_list_syncs")
-        .filter((row) => row !== other);
-      db.tables.source_list_entries = db
-        .getTable("source_list_entries")
-        .filter((row) => !matches(row));
-    }
+    db.delete(
+      "source_list_syncs",
+      (row) => matches(row) && row.connection_user !== connectionUser,
+    );
   }
   const state = db.getTable("source_list_syncs").find(matches);
 
@@ -706,6 +701,7 @@ function recordSourceListSync(args: RpcArgs): Result {
       ...key,
       baseline_at: syncedAt,
       last_complete_sync_at: syncedAt,
+      requires_connection: !!args.p_requires_connection,
       connection_user: connectionUser,
     });
     for (const [entryKey, imdbId] of entries) {
@@ -824,7 +820,6 @@ function listNewTitles(args: RpcArgs): Result {
 
 /** Same rules as public.forget_connection_history. */
 function forgetConnectionHistory(args: RpcArgs): Result {
-  const refs = args.p_source_refs as string[];
   const connection = db
     .getTable("connections")
     .find(
@@ -832,30 +827,16 @@ function forgetConnectionHistory(args: RpcArgs): Result {
         row.account_id === args.p_account_id &&
         row.provider === args.p_provider,
     );
-  const forgotten = db
-    .getTable("source_list_syncs")
-    .filter(
-      (row) =>
-        row.account_id === args.p_account_id &&
-        row.provider === args.p_provider &&
-        refs.includes(row.source_ref as string) &&
-        (!connection ||
-          (row.connection_user ?? null) !==
-            (connection.provider_username ?? null)),
-    );
-  const gone = (row: Row) =>
-    forgotten.some(
-      (sync) =>
-        sync.account_id === row.account_id &&
-        sync.provider === row.provider &&
-        sync.source_ref === row.source_ref,
-    );
-  db.tables.source_list_entries = db
-    .getTable("source_list_entries")
-    .filter((row) => !gone(row));
-  db.tables.source_list_syncs = db
-    .getTable("source_list_syncs")
-    .filter((row) => !forgotten.includes(row));
+  const forgotten = db.delete(
+    "source_list_syncs",
+    (row) =>
+      row.account_id === args.p_account_id &&
+      row.provider === args.p_provider &&
+      row.requires_connection === true &&
+      (!connection ||
+        (row.connection_user ?? null) !==
+          (connection.provider_username ?? null)),
+  );
   return { data: forgotten.length, error: null };
 }
 

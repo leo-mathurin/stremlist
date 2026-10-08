@@ -102,6 +102,7 @@ describe("manual refresh reports honest success/failure counts", () => {
     seedWatchlist(UUID_1);
     vi.spyOn(scraper, "fetchWatchlist").mockResolvedValue({
       metas: [CACHED_MOVIE],
+      complete: true,
     });
 
     const res = await requestRefresh();
@@ -139,6 +140,7 @@ describe("manual refresh reports honest success/failure counts", () => {
     };
     vi.spyOn(scraper, "fetchWatchlist").mockResolvedValue({
       metas: [CACHED_MOVIE, NEW],
+      complete: true,
     });
 
     const res = await requestRefresh();
@@ -162,6 +164,7 @@ describe("manual refresh reports honest success/failure counts", () => {
     };
     vi.spyOn(scraper, "fetchWatchlist").mockResolvedValue({
       metas: [CACHED_MOVIE, GODFATHER, { ...CACHED_MOVIE }],
+      complete: true,
     });
 
     const res = await requestRefresh();
@@ -198,6 +201,7 @@ describe("manual refresh through each kind of Addon URL", () => {
     seedList(account.id, { id: UUID_1, source_ref: OWNER });
     vi.spyOn(scraper, "fetchWatchlist").mockResolvedValue({
       metas: [CACHED_MOVIE],
+      complete: true,
     });
 
     const res = await app.request(`/${account.id}/refresh`, {
@@ -220,6 +224,7 @@ describe("manual refresh through each kind of Addon URL", () => {
     });
     vi.spyOn(scraper, "fetchWatchlist").mockResolvedValue({
       metas: [CACHED_MOVIE],
+      complete: true,
     });
 
     const body = (await (await requestRefresh()).json()) as RefreshResponse;

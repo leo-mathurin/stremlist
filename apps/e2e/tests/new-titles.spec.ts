@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import type {
-  AccountConfigResponse,
+  NewTitlesSummary,
   StremioManifest,
   StremioMeta,
 } from "@stremlist/shared/stremio.types";
-import { BACKEND_URL, FRONTEND_URL } from "../env.js";
+import { FRONTEND_URL } from "../env.js";
 import { getCatalog, getManifest } from "../helpers/api.js";
 import { CATALOG_TITLES, seedCatalog } from "../helpers/catalog-fixture.js";
 import {
@@ -13,6 +13,8 @@ import {
   db,
   resetDb,
   seedAccount,
+  seedAccountWithLists,
+  seedDetectionHistory,
   seedList,
 } from "../helpers/db.js";
 import { seedCachedCatalog } from "../helpers/r2.js";
@@ -78,23 +80,18 @@ test.beforeEach(async () => {
 });
 
 /** An Account with the New titles catalog on and these Lists. */
-async function seedDetectionAccount(
+function seedDetectionAccount(
   lists: { provider: "imdb" | "trakt"; sourceRef: string; title: string }[],
 ) {
-  const accountId = await seedAccount({ newTitlesCatalog: true });
-  const listIds: string[] = [];
-  for (const [position, list] of lists.entries()) {
-    listIds.push(
-      await seedList(accountId, {
-        provider: list.provider,
-        sourceRef: list.sourceRef,
-        catalogTitle: list.title,
-        displayMode: "movie",
-        position,
-      }),
-    );
-  }
-  return { accountId, listIds };
+  return seedAccountWithLists(
+    lists.map((list) => ({
+      provider: list.provider,
+      sourceRef: list.sourceRef,
+      catalogTitle: list.title,
+      displayMode: "movie" as const,
+    })),
+    { newTitlesCatalog: true },
+  );
 }
 
 /** One synchronization of every List, as the Refresh button asks. */
@@ -108,7 +105,7 @@ async function refreshAll(accountId: string, state: SourceFixture) {
   return (await response.json()) as {
     refreshed: number;
     failed: number;
-    newTitles: AccountConfigResponse["newTitles"]["summary"];
+    newTitles: NewTitlesSummary | null;
   };
 }
 
@@ -282,22 +279,12 @@ test(
       await seedCachedCatalog(listId, [
         { ...CATALOG_TITLES[0], id: list.id, name: TITLES[list.id].name },
       ]);
-      const key = {
-        account_id: accountId,
-        provider: list.provider,
-        source_ref: list.sourceRef,
-      };
-      const sync = await db
-        .from("source_list_syncs")
-        .insert({ ...key, baseline_at: at, last_complete_sync_at: at });
-      if (sync.error) throw sync.error;
-      const entry = await db.from("source_list_entries").insert({
-        ...key,
-        entry_key: `imdb:${list.id}`,
-        imdb_id: list.id,
-        detected_at: at,
-      });
-      if (entry.error) throw entry.error;
+      await seedDetectionHistory(
+        accountId,
+        list,
+        { baselineAt: at, lastSyncAt: at },
+        [{ imdbId: list.id, detectedAt: at }],
+      );
     }
 
     const { status, metas } = await getCatalog(
@@ -329,35 +316,18 @@ test(
   async ({ page }) => {
     const { accountId } = await seedCatalog();
     const [first, second, third] = CATALOG_TITLES;
-    const key = {
-      account_id: accountId,
-      provider: "imdb",
-      source_ref: CATALOG_FIXTURE_USER,
-    };
     const daysAgo = (days: number) =>
       new Date(Date.now() - days * 24 * 60 * 60_000).toISOString();
-    const sync = await db.from("source_list_syncs").insert({
-      ...key,
-      baseline_at: daysAgo(5),
-      last_complete_sync_at: daysAgo(2),
-    });
-    if (sync.error) throw sync.error;
-    const entries = await db.from("source_list_entries").insert([
-      { ...key, entry_key: `imdb:${first.id}`, imdb_id: first.id },
-      {
-        ...key,
-        entry_key: `imdb:${second.id}`,
-        imdb_id: second.id,
-        detected_at: daysAgo(3),
-      },
-      {
-        ...key,
-        entry_key: `imdb:${third.id}`,
-        imdb_id: third.id,
-        detected_at: daysAgo(2),
-      },
-    ]);
-    if (entries.error) throw entries.error;
+    await seedDetectionHistory(
+      accountId,
+      { provider: "imdb", sourceRef: CATALOG_FIXTURE_USER },
+      { baselineAt: daysAgo(5), lastSyncAt: daysAgo(2) },
+      [
+        { imdbId: first.id },
+        { imdbId: second.id, detectedAt: daysAgo(3) },
+        { imdbId: third.id, detectedAt: daysAgo(2) },
+      ],
+    );
 
     await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
     const toggle = page.getByRole("checkbox", {
@@ -386,10 +356,9 @@ test(
     expect(
       (await getManifest(accountId)).catalogs.map((catalog) => catalog.id),
     ).not.toContain("new-titles-movie");
-    expect(
-      (await fetch(
-        `${BACKEND_URL}/${accountId}/catalog/movie/new-titles-movie.json`,
-      ).then((res) => res.json())) as { metas: unknown[] },
-    ).toEqual({ metas: [] });
+    expect(await getCatalog(accountId, "movie", "new-titles-movie")).toEqual({
+      status: 200,
+      metas: [],
+    });
   },
 );

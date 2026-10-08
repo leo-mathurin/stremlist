@@ -130,10 +130,13 @@ CREATE TABLE public.source_list_syncs (
   -- The latest complete, successful synchronization, which the next one is
   -- compared with.
   last_complete_sync_at timestamptz NOT NULL,
-  -- For Source lists that only a Connection can read (`me/history`…): the
-  -- Provider user of that Connection. Another user means another history.
+  -- Whether only a Connection can read the Source list (`me/history`…). Its
+  -- history then belongs to `connection_user`, the Provider user of that
+  -- Connection: another user means another history.
+  requires_connection boolean NOT NULL DEFAULT false,
   connection_user text,
-  PRIMARY KEY (account_id, provider, source_ref)
+  PRIMARY KEY (account_id, provider, source_ref),
+  CHECK (requires_connection OR connection_user IS NULL)
 );
 ALTER TABLE public.source_list_syncs ENABLE ROW LEVEL SECURITY;
 
@@ -234,10 +237,10 @@ BEGIN
 
   INSERT INTO public.source_list_syncs (
     account_id, provider, source_ref, baseline_at, last_complete_sync_at,
-    connection_user
+    requires_connection, connection_user
   ) VALUES (
     p_account_id, p_provider, p_source_ref, p_synced_at, p_synced_at,
-    CASE WHEN p_requires_connection THEN p_connection_user END
+    p_requires_connection, CASE WHEN p_requires_connection THEN p_connection_user END
   )
   ON CONFLICT DO NOTHING;
 
@@ -376,10 +379,10 @@ TO service_role;
 -- the current Connection stays (none after a disconnect). That user is read
 -- when the rows are deleted, so a refresh or a newer Connection that comes
 -- in between (even a reconnect right after a disconnect) keeps its history.
+-- The entries go with their row (ON DELETE CASCADE).
 CREATE FUNCTION public.forget_connection_history(
   p_account_id text,
-  p_provider text,
-  p_source_refs text[]
+  p_provider text
 )
 RETURNS integer
 LANGUAGE sql
@@ -395,7 +398,7 @@ AS $$
     DELETE FROM public.source_list_syncs s
     WHERE s.account_id = p_account_id
       AND s.provider = p_provider
-      AND s.source_ref = ANY (p_source_refs)
+      AND s.requires_connection
       AND (
         NOT EXISTS (SELECT 1 FROM current_connection)
         OR s.connection_user IS DISTINCT FROM
@@ -406,7 +409,7 @@ AS $$
   SELECT count(*)::integer FROM forgotten;
 $$;
 
-REVOKE ALL ON FUNCTION public.forget_connection_history(text, text, text[])
+REVOKE ALL ON FUNCTION public.forget_connection_history(text, text)
 FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.forget_connection_history(text, text, text[])
+GRANT EXECUTE ON FUNCTION public.forget_connection_history(text, text)
 TO service_role;

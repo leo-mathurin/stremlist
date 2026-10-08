@@ -6,7 +6,10 @@ import {
 } from "@stremlist/shared/constants";
 import type { Tables } from "@stremlist/shared/database.types";
 import type { ProviderId } from "@stremlist/shared/providers";
-import { isProviderId } from "@stremlist/shared/providers";
+import {
+  isProviderId,
+  sourceRequiresConnection,
+} from "@stremlist/shared/providers";
 import type { AddonAccess, ConfigList } from "@stremlist/shared/stremio.types";
 import { supabase } from "../lib/supabase";
 import { catalogSettingsSchema } from "./catalog-settings";
@@ -35,6 +38,21 @@ export interface Account {
 export interface AccountAccess {
   account: Account;
   via: AddonAccess;
+}
+
+/**
+ * The Lists that a request may see. A Legacy alias can be guessed, so it
+ * never sees the Lists that only a Connection can read.
+ */
+export function visibleLists(
+  { via }: AccountAccess,
+  lists: ConfigList[],
+): ConfigList[] {
+  return via === "private"
+    ? lists
+    : lists.filter(
+        (list) => !sourceRequiresConnection(list.provider, list.sourceRef),
+      );
 }
 
 export interface ListInput {
@@ -189,6 +207,13 @@ export async function getAccountLists(
   return data.map(mapList).filter((list): list is ConfigList => !!list);
 }
 
+/** The Account's Lists that the request may see (see visibleLists). */
+export async function getVisibleLists(
+  access: AccountAccess,
+): Promise<ConfigList[]> {
+  return visibleLists(access, await getAccountLists(access.account.id));
+}
+
 export async function getAccountListById(
   accountId: string,
   listId: string,
@@ -212,10 +237,14 @@ export async function replaceAccountConfig(
   accountId: string,
   lists: ListInput[],
   rpdbApiKey: string | null,
-  actions?: { enabled: boolean; providers: ProviderId[] },
-  /** The "New titles" catalog setting; undefined keeps the stored value. */
-  newTitlesCatalog?: boolean,
+  /** Settings to change; an omitted one keeps its stored value. */
+  settings: {
+    actions?: { enabled: boolean; providers: ProviderId[] };
+    /** The "New titles" catalog (ADR 0007). */
+    newTitlesCatalog?: boolean;
+  } = {},
 ): Promise<ConfigList[]> {
+  const { actions, newTitlesCatalog } = settings;
   const { data: before, error: beforeError } = await supabase
     .from("lists")
     .select("id, provider, source_ref")
@@ -297,10 +326,9 @@ export async function createPrivateCopy(legacy: Account): Promise<Account> {
       catalogSettings: list.catalogSettings,
     })),
     legacy.rpdbApiKey,
-    undefined,
     // The detection history stays with the legacy Account: the copy starts
     // with its own Baseline.
-    legacy.newTitlesCatalog,
+    { newTitlesCatalog: legacy.newTitlesCatalog },
   );
   await supabase
     .from("accounts")

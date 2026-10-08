@@ -388,7 +388,9 @@ export async function validateImdbWatchlist(
  * Every item of a watchlist, up to MAX_ITEMS. `complete` is false when the
  * cap cut the watchlist short.
  */
-async function readImdbWatchlist(input: string): Promise<PagedRead<ImdbEdge>> {
+export async function getImdbWatchlist(
+  input: string,
+): Promise<PagedRead<ImdbEdge>> {
   const userId = await normalizeImdbUserId(input);
   const edges: ImdbEdge[] = [];
   let after: string | null = null;
@@ -453,10 +455,6 @@ async function readImdbWatchlist(input: string): Promise<PagedRead<ImdbEdge>> {
   }
 
   return { items: edges, complete };
-}
-
-export async function getImdbWatchlist(input: string): Promise<ImdbEdge[]> {
-  return (await readImdbWatchlist(input)).items;
 }
 
 function processWatchlist(edges: ImdbEdge[]): ProcessedItem[] {
@@ -604,12 +602,12 @@ export function isListId(id: string): boolean {
  * A Source list read from IMDb. `complete` is false when MAX_ITEMS cut it
  * short (see SourceSnapshot).
  */
-export type ImdbCatalog = CatalogData & { complete?: boolean };
+export type ImdbCatalog = CatalogData & { complete: boolean };
 
 export async function fetchWatchlist(imdbUserId: string): Promise<ImdbCatalog> {
   console.log(`Fetching IMDb watchlist for user ${imdbUserId}...`);
 
-  const { items: edges, complete } = await readImdbWatchlist(imdbUserId);
+  const { items: edges, complete } = await getImdbWatchlist(imdbUserId);
 
   console.log(
     `Raw watchlist data received from IMDb for user ${imdbUserId} (${edges.length} items)`,
@@ -765,8 +763,10 @@ export async function validateImdbList(
   }
 }
 
-/** Every item of a list, up to MAX_ITEMS (see readImdbWatchlist). */
-async function readImdbList(listId: string): Promise<PagedRead<ImdbEdge>> {
+/** Every item of a list, up to MAX_ITEMS (see getImdbWatchlist). */
+export async function getImdbList(
+  listId: string,
+): Promise<PagedRead<ImdbEdge>> {
   const edges: ImdbEdge[] = [];
   let after: string | null = null;
   let targetItems = MAX_ITEMS;
@@ -834,14 +834,10 @@ async function readImdbList(listId: string): Promise<PagedRead<ImdbEdge>> {
   return { items: edges, complete };
 }
 
-export async function getImdbList(listId: string): Promise<ImdbEdge[]> {
-  return (await readImdbList(listId)).items;
-}
-
 export async function fetchList(listId: string): Promise<ImdbCatalog> {
   console.log(`Fetching IMDb list ${listId}...`);
 
-  const { items: edges, complete } = await readImdbList(listId);
+  const { items: edges, complete } = await getImdbList(listId);
 
   console.log(
     `Raw list data received from IMDb for ${listId} (${edges.length} items)`,

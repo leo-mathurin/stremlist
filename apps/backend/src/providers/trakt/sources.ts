@@ -1,13 +1,14 @@
 import { HttpError } from "../http";
 import type {
   ConnectionAccess,
+  PagedRead,
   SourceEntry,
   SourceSnapshot,
   SourceValidation,
 } from "../types";
 import { SourceUnavailableError } from "../types";
 import type { TraktReadOptions } from "./api";
-import { nonEmpty, toSourceError, traktGetJson, traktReadAll } from "./api";
+import { nonEmpty, toSourceError, traktGetJson, traktGetAll } from "./api";
 import type { TraktItem, TraktMedia } from "./entries";
 import {
   interleave,
@@ -168,7 +169,7 @@ async function listedEntries(
   connection: ConnectionAccess | null,
   options: TraktReadOptions,
 ): Promise<SourceSnapshot> {
-  const { items, complete } = await traktReadAll<TraktItem>(path, connection, {
+  const { items, complete } = await traktGetAll<TraktItem>(path, connection, {
     ...options,
     maxItems: MAX_SOURCE_ITEMS,
   });
@@ -239,9 +240,9 @@ async function recommendationEntries(
 async function upNextEntries(
   connection: ConnectionAccess,
 ): Promise<SourceSnapshot> {
-  let read: { items: TraktItem[]; complete: boolean };
+  let read: PagedRead<TraktItem>;
   try {
-    read = await traktReadAll<TraktItem>("/sync/progress/up_next", connection, {
+    read = await traktGetAll<TraktItem>("/sync/progress/up_next", connection, {
       maxItems: MAX_SOURCE_ITEMS,
     });
   } catch (error) {
@@ -253,7 +254,7 @@ async function upNextEntries(
     ) {
       throw error;
     }
-    read = await traktReadAll<TraktItem>(
+    read = await traktGetAll<TraktItem>(
       "/sync/progress/watched?hide_completed=true",
       connection,
       { maxItems: MAX_SOURCE_ITEMS },
@@ -289,7 +290,7 @@ async function collectionEntries(
   connection: ConnectionAccess,
 ): Promise<SourceSnapshot> {
   const [movies, shows] = await Promise.all([
-    traktReadAll<TraktItem>("/sync/collection/movies", connection, {
+    traktGetAll<TraktItem>("/sync/collection/movies", connection, {
       maxItems: MAX_SOURCE_ITEMS,
     }),
     traktGetJson<TraktItem[]>("/sync/collection/shows", connection),
@@ -327,13 +328,18 @@ export async function readSource(
         break;
       case "chart":
         // A chart is its first CHART_ITEMS titles: the read is complete.
-        snapshot = { entries: await chartEntries(source.chart, connection) };
+        snapshot = {
+          entries: await chartEntries(source.chart, connection),
+          complete: true,
+        };
         break;
       case "recommendations":
+        // Like a chart, the first CHART_ITEMS titles: the read is complete.
         snapshot = {
           entries: await recommendationEntries(
             personalConnection(source, connection),
           ),
+          complete: true,
         };
         break;
       case "up_next":

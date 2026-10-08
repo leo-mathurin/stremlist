@@ -12,7 +12,7 @@ import type {
 import { supabase } from "../lib/supabase";
 import type { ProviderAdapter, SourceEntry } from "../providers/types";
 import type { AccountAccess } from "./accounts";
-import { getAccountLists } from "./accounts";
+import { getVisibleLists, visibleLists } from "./accounts";
 import { buildPosterUrl } from "./imdb-scraper";
 import { getCachedList } from "./list-cache";
 
@@ -22,18 +22,6 @@ import { getCachedList } from "./list-cache";
  * records when an entry first appears. The first complete synchronization is
  * the Baseline.
  */
-
-interface SourceKey {
-  provider: ProviderId;
-  sourceRef: string;
-}
-
-/** One entry of a complete synchronization, by its stable key. */
-export interface SynchronizedEntry {
-  key: string;
-  /** Null for an Unresolved entry. */
-  imdbId: string | null;
-}
 
 /** One Title of the "New titles" catalog, with its first detection. */
 interface Detection {
@@ -56,20 +44,9 @@ const DATE_FORMAT = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC",
 });
 
-function sourceKey(source: SourceKey): string {
+/** One Source list, as a Map key. Rows from the database have plain strings. */
+function sourceKey(source: { provider: string; sourceRef: string }): string {
   return `${source.provider}\u0000${source.sourceRef}`;
-}
-
-/** Lists a request may see: Legacy alias requests only see public ones. */
-function visibleLists(
-  { via }: AccountAccess,
-  lists: ConfigList[],
-): ConfigList[] {
-  return via === "private"
-    ? lists
-    : lists.filter(
-        (list) => !sourceRequiresConnection(list.provider, list.sourceRef),
-      );
 }
 
 function normalizeTitle(title: string): string {
@@ -98,29 +75,23 @@ export function entryKey(
   return title ? `title:${title}:${entry.year ?? ""}` : null;
 }
 
-/** The entries of a complete synchronization, with their Titles if known. */
-export function synchronizedEntries(
-  adapter: ProviderAdapter,
-  entries: SourceEntry[],
-  imdbIdOf: (entry: SourceEntry) => string | null,
-): SynchronizedEntry[] {
-  return entries.flatMap((entry) => {
-    const key = entryKey(adapter, entry);
-    return key ? [{ key, imdbId: imdbIdOf(entry) }] : [];
-  });
-}
-
 /**
  * Record one complete, successful synchronization of a Source list: no
- * Provider error and every page read. Unresolved entries are fine. Callers
- * must not call this for a failed or cut-short read: a missing entry would
- * look like a removal. Never throws, because a catalog must not fail on its
- * history.
+ * Provider error and every page read. Unresolved entries (without an IMDb ID
+ * in `imdbIds`) count by their entry key. Callers must not call this for a
+ * failed or cut-short read: a missing entry would look like a removal. Never
+ * throws, because a catalog must not fail on its history.
  */
 export async function recordSynchronization(
-  accountId: string,
-  source: SourceKey & { listId: string },
-  entries: SynchronizedEntry[],
+  source: {
+    accountId: string;
+    listId: string;
+    provider: ProviderId;
+    sourceRef: string;
+  },
+  adapter: ProviderAdapter,
+  entries: SourceEntry[],
+  imdbIds: ReadonlyMap<SourceEntry, string>,
   read: {
     /** When the read started: a slower, older read never wins. */
     startedAt: Date;
@@ -128,6 +99,10 @@ export async function recordSynchronization(
     connectionUser: string | null;
   },
 ): Promise<void> {
+  const keyed = entries.flatMap((entry) => {
+    const key = entryKey(adapter, entry);
+    return key ? [{ key, imdbId: imdbIds.get(entry) ?? null }] : [];
+  });
   // History of a Source list that only a Connection can read belongs to
   // that Connection's Provider user. The database refuses the write when
   // that Connection is gone or replaced (a disconnect during the read).
@@ -136,11 +111,11 @@ export async function recordSynchronization(
     source.sourceRef,
   );
   const { data, error } = await supabase.rpc("record_source_list_sync", {
-    p_account_id: accountId,
+    p_account_id: source.accountId,
     p_provider: source.provider,
     p_source_ref: source.sourceRef,
-    p_entry_keys: entries.map((entry) => entry.key),
-    p_imdb_ids: entries.map((entry) => entry.imdbId),
+    p_entry_keys: keyed.map((entry) => entry.key),
+    p_imdb_ids: keyed.map((entry) => entry.imdbId),
     p_synced_at: read.startedAt.toISOString(),
     p_requires_connection: requiresConnection,
     p_connection_user: requiresConnection ? read.connectionUser : null,
@@ -178,10 +153,7 @@ async function loadDetections(
   const listsBySource = new Map(lists.map((list) => [sourceKey(list), list]));
   return data.flatMap((row) => {
     const list = listsBySource.get(
-      sourceKey({
-        provider: row.provider as ProviderId,
-        sourceRef: row.source_ref,
-      }),
+      sourceKey({ provider: row.provider, sourceRef: row.source_ref }),
     );
     return list
       ? [{ imdbId: row.imdb_id, detectedAt: new Date(row.detected_at), list }]
@@ -218,7 +190,7 @@ export async function getNewTitlesCatalog(
   access: AccountAccess,
   type: "movie" | "series",
 ): Promise<StremioMeta[]> {
-  const lists = visibleLists(access, await getAccountLists(access.account.id));
+  const lists = await getVisibleLists(access);
   const detections = await loadDetections(access.account.id, lists);
   if (detections.length === 0) return [];
 
@@ -260,26 +232,24 @@ export async function getNewTitlesSummary(
   allLists: ConfigList[],
 ): Promise<NewTitlesSummary | null> {
   const lists = visibleLists(access, allLists);
+  if (lists.length === 0) {
+    return { detected: 0, latestDetectedAt: null, waitingLists: 0 };
+  }
   try {
     const [detections, syncs] = await Promise.all([
       loadDetections(access.account.id, lists),
-      lists.length === 0
-        ? Promise.resolve([])
-        : supabase
-            .from("source_list_syncs")
-            .select("provider, source_ref")
-            .eq("account_id", access.account.id)
-            .then(({ data, error }) => {
-              if (error) throw error;
-              return data;
-            }),
+      supabase
+        .from("source_list_syncs")
+        .select("provider, source_ref")
+        .eq("account_id", access.account.id)
+        .then(({ data, error }) => {
+          if (error) throw error;
+          return data;
+        }),
     ]);
     const synced = new Set(
       syncs.map((row) =>
-        sourceKey({
-          provider: row.provider as ProviderId,
-          sourceRef: row.source_ref,
-        }),
+        sourceKey({ provider: row.provider, sourceRef: row.source_ref }),
       ),
     );
     return {
@@ -309,21 +279,9 @@ export async function forgetConnectionDetections(
   accountId: string,
   provider: ProviderId,
 ): Promise<void> {
-  const { data, error } = await supabase
-    .from("source_list_syncs")
-    .select("source_ref")
-    .eq("account_id", accountId)
-    .eq("provider", provider);
+  const { error } = await supabase.rpc("forget_connection_history", {
+    p_account_id: accountId,
+    p_provider: provider,
+  });
   if (error) throw error;
-  const refs = data
-    .map((row) => row.source_ref)
-    .filter((ref) => sourceRequiresConnection(provider, ref));
-  if (refs.length === 0) return;
-  // The entries go with their row (ON DELETE CASCADE), so a history is never
-  // left without its Baseline.
-  const { error: forgetError } = await supabase.rpc(
-    "forget_connection_history",
-    { p_account_id: accountId, p_provider: provider, p_source_refs: refs },
-  );
-  if (forgetError) throw forgetError;
 }

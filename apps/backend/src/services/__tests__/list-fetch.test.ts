@@ -117,7 +117,10 @@ describe("getListCatalog", () => {
 
   it("does not share a read between a Connection request and a public one", async () => {
     const fetchSource = vi.fn(() =>
-      Promise.resolve({ entries: [{ imdbId: MOVIE.id, meta: MOVIE }] }),
+      Promise.resolve({
+        entries: [{ imdbId: MOVIE.id, meta: MOVIE }],
+        complete: true,
+      }),
     );
     useFakeProvider(fakeAdapter("trakt", { fetchSource }));
     const account = seedAccount();

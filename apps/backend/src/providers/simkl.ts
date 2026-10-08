@@ -11,9 +11,9 @@ import type {
   ConnectionAccess,
   ExternalIds,
   Membership,
-  PagedRead,
   ProviderAdapter,
   SourceEntry,
+  SourceSnapshot,
   SourceValidation,
 } from "./types";
 import { connectionToken, SourceUnavailableError } from "./types";
@@ -745,7 +745,7 @@ function listItemEntry(item: RawListItem): SourceEntry | null {
 async function fetchCustomList(
   connection: ConnectionAccess,
   listId: string,
-): Promise<PagedRead<SourceEntry>> {
+): Promise<SourceSnapshot> {
   const library = await syncLibrary(connection);
   const gate = library.activities.custom_lists?.lists?.all ?? null;
   const key = listKey(connection.accountId, listId);
@@ -762,7 +762,7 @@ async function fetchCustomList(
       Date.now() - previous.fetchedAt < AUTO_LIST_MAX_AGE_MS)
   ) {
     if (previous.premiumOnly) throw premiumOnlyError();
-    return { items: previous.entries, complete: previous.complete ?? false };
+    return { entries: previous.entries, complete: previous.complete ?? false };
   }
 
   const token = await connectionToken(connection);
@@ -805,7 +805,7 @@ async function fetchCustomList(
     throw error;
   }
   await save({ listType, entries, complete });
-  return { items: entries, complete };
+  return { entries, complete };
 }
 
 // ---------------------------------------------------------------------------
@@ -1013,15 +1013,14 @@ export const simklProvider: ProviderAdapter = {
       );
     }
     const connection = requireConnection(ctx);
-    if (listId) {
-      const { items, complete } = await fetchCustomList(connection, listId);
-      return { entries: items, complete };
-    }
+    if (listId) return fetchCustomList(connection, listId);
     const library = await syncLibrary(connection);
     return {
       entries: status
         ? statusEntries(library.items, status)
         : historyEntries(library.items),
+      // The library sync has no page cap: it is the whole library.
+      complete: true,
     };
   },
 
