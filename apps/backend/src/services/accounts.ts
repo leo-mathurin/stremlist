@@ -204,8 +204,9 @@ export async function getAccountListById(
 }
 
 /**
- * Replace an Account's Lists and settings in one transaction. Removed Lists
- * lose their cached Catalogs afterwards (R2 cannot join the transaction).
+ * Replace an Account's Lists and settings in one transaction. Removed Lists,
+ * and Lists that now read another Source list, lose their cached Catalogs
+ * afterwards (R2 cannot join the transaction).
  */
 export async function replaceAccountConfig(
   accountId: string,
@@ -215,6 +216,15 @@ export async function replaceAccountConfig(
   /** The "New titles" catalog setting; undefined keeps the stored value. */
   newTitlesCatalog?: boolean,
 ): Promise<ConfigList[]> {
+  const { data: before, error: beforeError } = await supabase
+    .from("lists")
+    .select("id, provider, source_ref")
+    .eq("account_id", accountId);
+  if (beforeError) throw beforeError;
+  const sourceBefore = new Map(
+    before.map((row) => [row.id, `${row.provider}:${row.source_ref}`]),
+  );
+
   const { data, error } = await supabase.rpc("replace_account_config", {
     p_account_id: accountId,
     p_rpdb_api_key: rpdbApiKey,
@@ -237,21 +247,33 @@ export async function replaceAccountConfig(
   if (error) throw error;
 
   const result = data[0];
+  const rows = result.lists as ListRow[];
+  // Reads also check the source of a cached Catalog, but caches written
+  // before that check have none: drop them so the next read uses the new
+  // Source list.
+  const changed = rows
+    .filter((row) => {
+      const previous = sourceBefore.get(row.id);
+      return (
+        previous !== undefined &&
+        previous !== `${row.provider}:${row.source_ref}`
+      );
+    })
+    .map((row) => row.id);
+  const stale = [...result.deleted_ids, ...changed];
   const cleanup = await Promise.allSettled(
-    result.deleted_ids.map((id) => deleteCachedList(id)),
+    stale.map((id) => deleteCachedList(id)),
   );
   cleanup.forEach((outcome, index) => {
     if (outcome.status === "rejected") {
       console.error(
-        `Failed to delete the R2 cache of removed list ${result.deleted_ids[index]}:`,
+        `Failed to delete the R2 cache of list ${stale[index]}:`,
         outcome.reason,
       );
     }
   });
 
-  return (result.lists as ListRow[])
-    .map(mapList)
-    .filter((list): list is ConfigList => !!list);
+  return rows.map(mapList).filter((list): list is ConfigList => !!list);
 }
 
 /**

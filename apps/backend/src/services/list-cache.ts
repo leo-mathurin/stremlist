@@ -40,6 +40,9 @@ const cacheManifestSchema = z.object({
   cachedAt: z.string().datetime(),
   catalogKey: z.string(),
   metaKeys: z.array(z.string()),
+  // The Source list the catalog was read from. A List that now points to
+  // another source must not serve it. Older generations have none.
+  source: z.string().optional(),
   // Older cache generations acquire summaries on their next refresh.
   genres: z
     .object({ movie: z.array(z.string()), series: z.array(z.string()) })
@@ -73,6 +76,25 @@ interface ManifestRead {
 interface CatalogRead {
   manifest: CacheManifest;
   catalog: CatalogObject;
+}
+
+/** The Source list a cached catalog was read from. */
+export interface CacheSource {
+  provider: string;
+  sourceRef: string;
+}
+
+function sourceKey(source: CacheSource): string {
+  return `${source.provider}:${source.sourceRef}`;
+}
+
+/** Whether a manifest may serve a List that now reads from `source`. */
+function servesSource(manifest: CacheManifest, source?: CacheSource): boolean {
+  return (
+    !source ||
+    manifest.source === undefined ||
+    manifest.source === sourceKey(source)
+  );
 }
 
 export interface CachedList {
@@ -303,25 +325,38 @@ function hasSortedKey(keys: string[], target: string): boolean {
 
 export async function getCachedListSummary(
   listId: string,
+  source?: CacheSource,
 ): Promise<{ movie: string[]; series: string[] } | null> {
   try {
     const manifest = await readManifest(listId);
-    return manifest?.genres ?? null;
+    if (!manifest || !servesSource(manifest, source)) return null;
+    return manifest.genres ?? null;
   } catch (error) {
     console.error(`Failed to read R2 cache summary for ${listId}:`, error);
     return null;
   }
 }
 
+/**
+ * The cached catalog of a List. With `source`, a catalog read from another
+ * Source list (the List was edited since) is a miss.
+ */
 export async function getCachedList(
   listId: string,
+  source?: CacheSource,
 ): Promise<CachedList | null> {
   try {
     const manifest = await readManifest(listId);
     if (!manifest) return null;
 
     const current = await readCatalogWithManifestRefresh(listId, manifest);
-    if (!current || current.catalog.metas.length === 0) return null;
+    if (
+      !current ||
+      current.catalog.metas.length === 0 ||
+      !servesSource(current.manifest, source)
+    ) {
+      return null;
+    }
 
     return {
       data: { metas: current.catalog.metas },
@@ -338,6 +373,7 @@ export async function writeCachedList(
   listId: string,
   listData: CatalogData,
   cachedAt = new Date(),
+  source?: CacheSource,
 ): Promise<string> {
   const metas = uniqueMetas(listData.metas);
   if (metas.length === 0) {
@@ -357,6 +393,7 @@ export async function writeCachedList(
     cachedAt: cachedAt.toISOString(),
     catalogKey: nextCatalogKey,
     metaKeys: catalog.metas.map(metaKey).sort(),
+    ...(source ? { source: sourceKey(source) } : {}),
     genres: {
       movie: collectGenres(catalog.metas, "movie"),
       series: collectGenres(catalog.metas, "series"),
