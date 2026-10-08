@@ -13,7 +13,7 @@ const ACTION_LABELS: Record<ActionKind, string> = {
   rating: "rating",
 };
 
-const BRAND_CHECKBOX =
+export const BRAND_CHECKBOX =
   "focus-visible:border-brand focus-visible:ring-brand/40 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-black";
 
 /**

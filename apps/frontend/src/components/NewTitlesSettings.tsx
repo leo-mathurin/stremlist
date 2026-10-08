@@ -3,9 +3,7 @@ import type { NewTitlesSummary } from "@stremlist/shared/stremio.types";
 import { Sparkles } from "lucide-react";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
-
-const BRAND_CHECKBOX =
-  "focus-visible:border-brand focus-visible:ring-brand/40 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-black";
+import { BRAND_CHECKBOX } from "./ActionsSettings";
 
 function plural(count: number, one: string, other: string): string {
   return `${count} ${count === 1 ? one : other}`;
