@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-05T21:19:14.913Z",
+  "createdAt": "2026-10-08T18:53:25.122Z",
   "payload": {
     "actions": [
       {
@@ -34,16 +34,20 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Submitted e2e@example.test in the newsletter form. The application confirmed the subscription with “Test subscription confirmed.”",
+    "summary": "Subscribed e2e@example.test using the newsletter form. The application confirmed: “Test subscription confirmed.”",
     "startPath": "/",
     "endPath": "/",
     "endAnchors": [
       {
-        "role": "alert",
-        "name": "Test subscription confirmed"
+        "role": "button",
+        "name": "Close toast"
       },
       {
         "text": "Test subscription confirmed"
+      },
+      {
+        "role": "listitem",
+        "name": "Close toast Test subscription confirmed"
       }
     ],
     "goneAnchors": [
@@ -51,6 +55,6 @@
         "text": "Please enter a valid email address."
       }
     ],
-    "endWaitMs": 12787
+    "endWaitMs": 11686
   }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-06T23:06:01.319Z",
+  "createdAt": "2026-10-08T18:53:13.932Z",
   "payload": {
     "actions": [
       {
@@ -32,13 +32,27 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Added the Trakt Trending chart to Your Lists and saved. The app confirmed “Saved!” and indicates reinstalling in Stremio will apply the catalog changes.",
+    "summary": "Added the Trakt Trending chart to Your Lists and saved. The screen confirms “Saved!” and shows the list with Trakt Trending; reinstall is indicated for Stremio to reflect the changes.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions."
+        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. I did it Reinstall"
+      },
+      {
+        "text": "Reinstall Stremlist in Stremio"
+      },
+      {
+        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
+      },
+      {
+        "role": "button",
+        "name": "I did it"
+      },
+      {
+        "role": "link",
+        "name": "Reinstall"
       },
       {
         "role": "button",
@@ -49,21 +63,6 @@
       },
       {
         "text": "Trakt · Chart"
-      },
-      {
-        "role": "link",
-        "name": "Open on Trakt"
-      },
-      {
-        "role": "button",
-        "name": "Remove Trakt Trending"
-      },
-      {
-        "text": "2 of 10 lists. Drag the handle to reorder."
-      },
-      {
-        "role": "heading",
-        "name": "Reinstall in Stremio to see your changes"
       }
     ],
     "goneAnchors": [
@@ -78,6 +77,6 @@
         "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
       }
     ],
-    "endWaitMs": 11715
+    "endWaitMs": 12494
   }
 }

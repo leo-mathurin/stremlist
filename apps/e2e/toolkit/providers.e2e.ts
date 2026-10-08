@@ -21,10 +21,14 @@ import {
   row,
   savedLists,
   toJson,
+  saveButton,
+  SAVE_NEW,
+  holdToasts,
 } from "./config-fixture";
 
 // Provider journeys of the configure page: links of every available Provider
-// (Letterboxd is out of scope), Connections and their OAuth round trip,
+// (Letterboxd links only explain the MDBList import), the kill switch,
+// Connections and their OAuth round trip,
 // disconnect, Actions settings and the Legacy alias upgrade. The API is
 // intercepted; tests/provider-journeys.spec.ts runs the real backend.
 
@@ -149,7 +153,7 @@ test("pasted links of every available Provider become Lists of a new setup", asy
     await expect(field).toHaveValue("");
   }
   await expect(screen.getByText(/^4 of 10 lists/)).toBeVisible();
-  await screen.getByRole("button", "Save and get my Addon URL").tap();
+  await saveButton(screen, SAVE_NEW).tap();
   await expect(browser).toHaveURL(`/configure?account=${accountId}`);
   expect(inputs.map((entry) => entry.input)).toEqual(Object.values(links));
   expect(created[0].lists).toMatchObject([
@@ -180,6 +184,7 @@ test(
   "a Provider chart is added from Quick add",
   { tags: ["agent"] },
   async ({ app, agent, browser, screen }) => {
+    await holdToasts(browser);
     const submissions = await captureConfig(browser);
     await app.open(`/configure?account=${accountId}`);
     await agent.act("Add the Trakt Trending chart to my Lists, then save.", {
@@ -314,7 +319,8 @@ for (const [error, message] of [
     );
     await expect(screen.getByText(message)).toBeVisible();
     await expect(browser).toHaveURL(`/configure?account=${accountId}`);
-    await screen.getByRole("button", "Dismiss").tap();
+    // The message is a toast with a close button.
+    await screen.getByRole("button", "Close toast").tap();
     await expect(screen.getByText(message)).not.toBeVisible();
   });
 }
@@ -323,6 +329,7 @@ test(
   "disconnecting a Provider asks first, then its Lists offer to connect again",
   { tags: ["agent"] },
   async ({ app, agent, browser, screen }) => {
+    await holdToasts(browser);
     await baseRoutes(
       browser,
       providerStatus({
@@ -373,7 +380,7 @@ test(
     );
     await app.open(`/configure?account=${accountId}`);
     await expect(screen.getByText("@someone")).toBeVisible();
-    await screen.getByRole("button", "Disconnect").tap();
+    await screen.getByRole("button", "Connected to Trakt. Disconnect").tap();
     const confirm = screen.getByRole("group", "Disconnect Trakt?");
     await expect(
       confirm.getByText(
@@ -399,7 +406,7 @@ test(
     await expect(
       screen.getByText("Connect Trakt, Simkl or MDBList to use Actions."),
     ).toBeVisible();
-    await screen.getByRole("button", "Save", { exact: true }).tap();
+    await saveButton(screen).tap();
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     expect(submissions.at(-1)?.actions).toEqual({
       enabled: true,
@@ -447,7 +454,7 @@ test("Actions settings save the chosen Providers in their order", async ({
   await screen.getByRole("button", "Move Simkl up").tap();
   await screen.getByRole("checkbox", /^Trakt/).tap();
   await expect(screen.getByRole("checkbox", /^Trakt/)).not.toBeChecked();
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   // Actions add a stream resource that Stremio reads only at install time.
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(submissions.at(-1)?.actions).toEqual({
@@ -516,13 +523,85 @@ test("a Legacy alias install that moved to a private URL cannot be changed", asy
     screen.getByRole("heading", "This install has a private URL now"),
   ).toBeVisible();
   await expect(
-    screen.getByText("Saving is off for this install"),
+    screen
+      .getByText(
+        "This install has a private URL now. Make changes from the configure page of your new install.",
+      )
+      .first(),
   ).toBeVisible();
-  await expect(
-    screen.getByRole("button", "Save", { exact: true }),
-  ).toBeDisabled();
+  // Only the hidden floating Save button stays in the page, and it is off.
+  await expect(screen.getByRole("button", "Save", { exact: true })).toHaveCount(
+    1,
+  );
+  await expect(saveButton(screen)).toBeDisabled();
   await expect(screen.getByLabel(PASTE)).toBeDisabled();
   await expect(
     screen.getByRole("button", "Create a new private URL"),
   ).toBeEnabled();
+});
+
+test("a Provider turned off is unavailable to connect, link or add", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  // The kill switch (DISABLED_PROVIDERS) reports Trakt as off.
+  await baseRoutes(browser, providerStatus({ trakt: { enabled: false } }));
+  await browser.route(`${backend}/${accountId}/config`, async (route) => {
+    await route.fulfill({ json: toJson(configuration) });
+  });
+  const link = "https://trakt.tv/users/someone/lists/weekend";
+  const inputs = await routeResolve(browser, (input) =>
+    input === link
+      ? { ok: false, reason: "disabled", provider: "trakt" }
+      : null,
+  );
+  await app.open(`/configure?account=${accountId}`);
+  await expect(screen.getByText("Test catalog")).toBeVisible();
+  const off = screen
+    .getByRole("listitem")
+    .filter({ hasText: "Temporarily unavailable" });
+  await expect(off).toHaveCount(1);
+  await expect(off.getByText("Trakt", { exact: true })).toBeVisible();
+  // Simkl and MDBList can still connect; Trakt cannot.
+  await expect(screen.getByRole("button", "Connect")).toHaveCount(2);
+  await expect(screen.getByText("Trakt charts")).toHaveCount(0);
+  await expect(screen.getByRole("button", "Trending")).toHaveCount(0);
+
+  await screen.getByLabel(PASTE).fill(link);
+  await screen.getByRole("button", "Add", { exact: true }).tap();
+  await expect(screen.getByRole("alert")).toHaveText(
+    "Trakt is temporarily unavailable. Please try again later.",
+  );
+  await expect(screen.getByText(/^1 of 10 lists/)).toBeVisible();
+  expect(inputs).toEqual([{ input: link, accountKey: accountId }]);
+});
+
+test("a Letterboxd link explains the MDBList import without a lookup", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await captureConfig(browser);
+  const inputs = await routeResolve(browser, () => null);
+  await app.open(`/configure?account=${accountId}`);
+  await expect(screen.getByText("Test catalog")).toBeVisible();
+  await screen
+    .getByLabel(PASTE)
+    .fill("https://letterboxd.com/someone/watchlist/");
+  await expect(screen.getByText("Letterboxd: coming soon")).toBeVisible();
+  await expect(screen.getByText("Coming soon")).toBeVisible();
+  await screen.getByRole("button", "Add", { exact: true }).tap();
+  const problem = screen.getByRole("alert");
+  await expect(
+    problem.getByText(
+      "Letterboxd is coming soon. Tip: import it into MDBList, then add the MDBList list.",
+    ),
+  ).toBeVisible();
+  await expect(problem.getByRole("listitem")).toHaveCount(3);
+  await expect(
+    problem.getByRole("link", "Open MDBList external lists"),
+  ).toHaveAttribute("href", "https://mdblist.com/mylists/#external_lists");
+  await expect(screen.getByText(/^1 of 10 lists/)).toBeVisible();
+  expect(inputs).toEqual([]);
 });
