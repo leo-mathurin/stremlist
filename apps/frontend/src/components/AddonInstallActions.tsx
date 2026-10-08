@@ -17,12 +17,15 @@ interface AddonInstallActionsProps {
   /** A private Account ID or a Legacy alias. */
   accountKey: string;
   className?: string;
+  /** Called when the user installs, opens Stremio Web or copies the URL. */
+  onUse?: () => void;
 }
 
 /** Install links and the copyable Addon URL of one Account. */
 export default function AddonInstallActions({
   accountKey,
   className,
+  onUse,
 }: AddonInstallActionsProps) {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
@@ -59,6 +62,7 @@ export default function AddonInstallActions({
     setCopyError(false);
     try {
       await navigator.clipboard.writeText(urls.addonUrl);
+      onUse?.();
       setCopied(true);
       clearTimeout(copiedTimeout.current);
       copiedTimeout.current = setTimeout(() => setCopied(false), 2000);
@@ -71,15 +75,19 @@ export default function AddonInstallActions({
   return (
     <div className={cn("space-y-4", className)}>
       <div className="flex flex-col gap-2 sm:flex-row">
-        <a
-          href={urls.stremioUrl}
-          className="inline-flex h-11 w-full items-center sm:flex-1 justify-center gap-2 rounded-full bg-brand px-5 text-sm font-bold text-black transition-[background-color,scale] duration-150 hover:bg-brand-dark active:scale-[0.97]"
-        >
-          <Download className="size-4" />
-          Install in Stremio
-        </a>
+        {urls.stremioUrl && (
+          <a
+            href={urls.stremioUrl}
+            onClick={onUse}
+            className="inline-flex h-11 w-full items-center sm:flex-1 justify-center gap-2 rounded-full bg-brand px-5 text-sm font-bold text-black transition-[background-color,scale] duration-150 hover:bg-brand-dark active:scale-[0.97]"
+          >
+            <Download className="size-4" />
+            Install in Stremio
+          </a>
+        )}
         <a
           href={urls.webUrl}
+          onClick={onUse}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex h-11 w-full items-center sm:flex-1 justify-center gap-2 rounded-full border border-black/15 bg-white px-5 text-sm font-semibold text-ink transition-[background-color,scale] duration-150 hover:bg-black/5 active:scale-[0.97]"

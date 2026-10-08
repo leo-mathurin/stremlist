@@ -13,7 +13,11 @@ import { toast } from "sonner";
 import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import ActionsSettings from "../components/ActionsSettings";
-import { AddonUrlCard, LegacyUpgradeCard } from "../components/AccountCards";
+import {
+  AddonUrlCard,
+  LegacyUpgradeCard,
+  ReinstallNotice,
+} from "../components/AccountCards";
 import LinkPaste from "../components/LinkPaste";
 import type { ResolvedLink } from "../components/LinkPaste";
 import ProviderList from "../components/ProviderList";
@@ -406,6 +410,14 @@ export default function Configure() {
           )}
         </div>
 
+        {ready && accountKey && !moved && config.reinstall !== "none" && (
+          <ReinstallNotice
+            accountKey={accountKey}
+            state={config.reinstall}
+            onReinstalled={config.markReinstalled}
+          />
+        )}
+
         {rawKey && !keyIsValid ? (
           <NotFoundCard />
         ) : loading ? (
@@ -604,7 +616,8 @@ export default function Configure() {
               <AddonUrlCard
                 accountKey={accountKey}
                 variant="install"
-                reinstallHint={config.showReinstallHint}
+                reinstallHint={config.reinstall === "required"}
+                onUse={config.markReinstalled}
               />
             )}
 

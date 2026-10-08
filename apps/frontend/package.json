@@ -14,7 +14,7 @@
     "typecheck": "tsc -b --noEmit",
     "dev:app": "vite",
     "dev:tailnet": "portless --tailscale",
-    "test": "node --test scripts/dev-proxy.test.mjs scripts/reinstall.test.ts"
+    "test": "node --test scripts/dev-proxy.test.mjs scripts/reinstall.test.ts scripts/stremio-links.test.ts"
   },
   "dependencies": {
     "@dnd-kit/helpers": "^0.3.2",
