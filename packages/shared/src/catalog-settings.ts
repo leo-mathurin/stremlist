@@ -15,7 +15,7 @@ export interface CatalogSettings {
 }
 
 /** The settings that filter a Catalog (presets add Catalogs instead). */
-export const CATALOG_FILTER_KEYS = [
+const CATALOG_FILTER_KEYS = [
   "genre",
   "decade",
   "maxRuntime",

@@ -4,10 +4,6 @@ import type {
   CatalogPreviewRow,
   PreviewUnresolvedEntry,
 } from "@stremlist/shared/catalog-preview";
-import {
-  PREVIEW_TITLES_PER_CATALOG,
-  PREVIEW_UNRESOLVED_LIMIT,
-} from "@stremlist/shared/catalog-preview";
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { DisplayMode } from "@stremlist/shared/constants";
 import type { ProviderId } from "@stremlist/shared/providers";
@@ -30,6 +26,10 @@ const READING_TTL_MS = 5 * 60_000;
 /** A read that left entries unchecked is read again sooner. */
 const UNFINISHED_READING_TTL_MS = 30_000;
 const MAX_READINGS = 50;
+/** Most Titles that a preview shows for each Catalog. */
+const TITLES_PER_CATALOG = 12;
+/** Most Unresolved entries that a preview lists. */
+const UNRESOLVED_LIMIT = 50;
 
 export interface PreviewRequest {
   provider: ProviderId;
@@ -86,20 +86,13 @@ async function readSource(request: PreviewRequest): Promise<BuiltCatalog> {
   const cached = readings.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.built;
 
-  const built = buildCatalog(
-    getProvider(request.provider),
-    { provider: request.provider, sourceRef: request.sourceRef },
-    ctx,
-  );
-  const reading: Reading = {
-    built,
-    expiresAt: Date.now() + READING_TTL_MS,
-  };
+  const built = buildCatalog(getProvider(request.provider), request, ctx);
+  const reading: Reading = { built, expiresAt: Date.now() + READING_TTL_MS };
   readings.delete(key);
   readings.set(key, reading);
-  while (readings.size > MAX_READINGS) {
-    const oldest = readings.keys().next().value;
-    if (oldest === undefined) break;
+  // One read is added at a time: dropping the oldest keeps the limit.
+  if (readings.size > MAX_READINGS) {
+    const [oldest] = readings.keys();
     readings.delete(oldest);
   }
   built.then(
@@ -181,7 +174,7 @@ function presentPreview(
         type,
         preset,
         total: matching.length,
-        titles: matching.slice(0, PREVIEW_TITLES_PER_CATALOG).map((meta) => ({
+        titles: matching.slice(0, TITLES_PER_CATALOG).map((meta) => ({
           id: meta.id,
           type: meta.type,
           name: meta.name,
@@ -204,7 +197,7 @@ function presentPreview(
       count: built.unresolvedEntries.length,
       notCheckedYet: built.deferred,
       entries: built.unresolvedEntries
-        .slice(0, PREVIEW_UNRESOLVED_LIMIT)
+        .slice(0, UNRESOLVED_LIMIT)
         .map(toUnresolvedEntry),
     },
     withoutDetails: built.withoutMetadata,

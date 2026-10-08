@@ -173,10 +173,11 @@ export async function buildCatalog(
     };
   }
 
-  const { resolved, unresolved, unresolvedEntries, deferred } =
-    await resolveEntries(adapter, snapshot.entries, {
-      budgetMs: config.resolveBudgetMs ?? DEFAULT_RESOLVE_BUDGET_MS,
-    });
+  const { resolved, unresolvedEntries, deferred } = await resolveEntries(
+    adapter,
+    snapshot.entries,
+    { budgetMs: config.resolveBudgetMs ?? DEFAULT_RESOLVE_BUDGET_MS },
+  );
 
   const previous = new Map<string, StremioMeta>();
   const cached = config.listId ? await getCachedList(config.listId) : null;
@@ -206,9 +207,9 @@ export async function buildCatalog(
     metas.push(withLinkBack(meta, entry, config.provider));
   }
 
-  if (unresolved > 0 || unknown > 0) {
+  if (unresolvedEntries.length > 0 || unknown > 0) {
     console.log(
-      `List ${config.listId ?? "preview"} (${config.provider}): ${metas.length} titles, ${unresolved} unresolved entries (${deferred} not tried yet), ${unknown} without metadata`,
+      `List ${config.listId ?? "preview"} (${config.provider}): ${metas.length} titles, ${unresolvedEntries.length} unresolved entries (${deferred} not tried yet), ${unknown} without metadata`,
     );
   }
   return {

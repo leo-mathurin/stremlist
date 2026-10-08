@@ -32,8 +32,6 @@ export interface ResolutionResult {
   /** Resolved entries, in Source list order. */
   resolved: ResolvedEntry[];
   /** Entries without an IMDb ID yet (Unresolved entries, see CONTEXT.md). */
-  unresolved: number;
-  /** The Unresolved entries themselves, in Source list order. */
   unresolvedEntries: SourceEntry[];
   /**
    * Unresolved entries that no strategy tried yet (cap or time budget). The
@@ -215,10 +213,5 @@ export async function resolveEntries(
     if (imdbId) resolved.push({ imdbId, entry });
     else unresolvedEntries.push(entry);
   });
-  return {
-    resolved,
-    unresolved: unresolvedEntries.length,
-    unresolvedEntries,
-    deferred,
-  };
+  return { resolved, unresolvedEntries, deferred };
 }

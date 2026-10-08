@@ -1,11 +1,6 @@
 import type { CatalogPreset } from "./catalog-settings";
 import type { SourceProblemReason } from "./source-problems";
 
-/** Most Titles that a preview shows for each Catalog. */
-export const PREVIEW_TITLES_PER_CATALOG = 12;
-/** Most Unresolved entries that a preview lists. */
-export const PREVIEW_UNRESOLVED_LIMIT = 50;
-
 /** One Title of a Catalog preview: only what a poster tile needs. */
 export interface PreviewTitle {
   id: string;

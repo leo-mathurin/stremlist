@@ -1,5 +1,6 @@
+import type { CatalogPreview } from "@stremlist/shared/catalog-preview";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const enrichMocks = vi.hoisted(() => ({
   enrichTitles: vi.fn(),
@@ -17,7 +18,11 @@ vi.mock("../../providers/registry", async () => {
 });
 vi.mock("../../titles/enrich", () => enrichMocks);
 
-import { seedAccount, seedConnection } from "../../__tests__/helpers/fixtures";
+import {
+  movie,
+  seedAccount,
+  seedConnection,
+} from "../../__tests__/helpers/fixtures";
 import { cache } from "../../__tests__/helpers/mock-list-cache";
 import {
   fakeAdapter,
@@ -38,44 +43,27 @@ import {
   resetPreviewReadings,
 } from "../list-preview";
 
-function meta(
-  id: string,
-  type: "movie" | "series",
-  overrides: Partial<StremioMeta> = {},
-): StremioMeta {
-  return {
-    id,
-    type,
-    name: `Title ${id}`,
-    poster: `https://images.test/${id}.jpg`,
-    posterShape: "poster",
-    genres: [],
-    description: "",
-    ...overrides,
-  };
-}
-
 const MOVIES = [
-  meta("tt0000001", "movie", {
+  movie("tt0000001", {
     name: "Charlie",
     imdbRating: "6.1",
     runtime: "1h 50min",
     releaseInfo: "1999",
   }),
-  meta("tt0000002", "movie", {
+  movie("tt0000002", {
     name: "Alpha",
     imdbRating: "8.4",
     runtime: "85min",
     releaseInfo: "2004",
   }),
-  meta("tt0000003", "movie", {
+  movie("tt0000003", {
     name: "Bravo",
     imdbRating: "7.2",
     runtime: "1h 20min",
     releaseInfo: "2012",
   }),
 ];
-const SERIES = [meta("tt0000004", "series", { name: "Delta" })];
+const SERIES = [movie("tt0000004", { type: "series", name: "Delta" })];
 
 function entries(metas: StremioMeta[]): SourceEntry[] {
   return metas.map((item) => ({
@@ -96,6 +84,13 @@ function request(overrides: Partial<PreviewRequest> = {}): PreviewRequest {
   };
 }
 
+/** A preview that must succeed. */
+async function previewOk(req: PreviewRequest): Promise<CatalogPreview> {
+  const preview = await previewList(req);
+  if (!preview.ok) throw new Error(`Preview refused: ${preview.reason}`);
+  return preview;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   db.reset();
@@ -106,6 +101,9 @@ beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => undefined);
   vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("previewList: Catalogs", () => {
   it("shows one Catalog per type for a split List, in the saved sort", async () => {
@@ -113,14 +111,13 @@ describe("previewList: Catalogs", () => {
       fakeAdapter("trakt", { entries: entries([...MOVIES, ...SERIES]) }),
     );
 
-    const preview = await previewList(request({ sortOption: "title-asc" }));
+    const preview = await previewOk(request({ sortOption: "title-asc" }));
 
     expect(preview).toMatchObject({
       ok: true,
       titleCount: 4,
       typeCounts: { movie: 3, series: 1 },
     });
-    if (!preview.ok) throw new Error("expected a preview");
     expect(
       preview.catalogs.map(({ type, preset, total, titles }) => ({
         type,
@@ -139,29 +136,15 @@ describe("previewList: Catalogs", () => {
     ]);
   });
 
-  it("shows only the Catalog of the chosen type, and still counts the other type", async () => {
-    useFakeProvider(
-      fakeAdapter("trakt", { entries: entries([...MOVIES, ...SERIES]) }),
-    );
-
-    const preview = await previewList(request({ displayMode: "movie" }));
-
-    if (!preview.ok) throw new Error("expected a preview");
-    expect(preview.catalogs.map((catalog) => catalog.type)).toEqual(["movie"]);
-    expect(preview.typeCounts).toEqual({ movie: 3, series: 1 });
-  });
-
   it("applies the List's filters and adds a Catalog for each preset", async () => {
     useFakeProvider(fakeAdapter("trakt", { entries: entries(MOVIES) }));
 
-    const preview = await previewList(
+    const preview = await previewOk(
       request({
         displayMode: "movie",
         catalogSettings: { minRating: 7, presets: ["short", "rated"] },
       }),
     );
-
-    if (!preview.ok) throw new Error("expected a preview");
     expect(
       preview.catalogs.map(({ preset, total, titles }) => ({
         preset,
@@ -178,12 +161,10 @@ describe("previewList: Catalogs", () => {
     ]);
   });
 
-  it("returns an empty Catalog when no Title matches, so the page can say so", async () => {
+  it("shows only the Catalog of the chosen type, empty when no Title matches, and counts the other type", async () => {
     useFakeProvider(fakeAdapter("trakt", { entries: entries(MOVIES) }));
 
-    const preview = await previewList(request({ displayMode: "series" }));
-
-    if (!preview.ok) throw new Error("expected a preview");
+    const preview = await previewOk(request({ displayMode: "series" }));
     expect(preview.catalogs).toEqual([
       { type: "series", preset: null, total: 0, titles: [] },
     ]);
@@ -192,20 +173,18 @@ describe("previewList: Catalogs", () => {
 
   it("shows at most 12 Titles per Catalog, with the full count", async () => {
     const many = Array.from({ length: 30 }, (_, index) =>
-      meta(`tt${String(index + 1).padStart(7, "0")}`, "movie"),
+      movie(`tt${String(index + 1).padStart(7, "0")}`),
     );
     useFakeProvider(fakeAdapter("trakt", { entries: entries(many) }));
 
-    const preview = await previewList(request({ displayMode: "movie" }));
-
-    if (!preview.ok) throw new Error("expected a preview");
+    const preview = await previewOk(request({ displayMode: "movie" }));
     expect(preview.catalogs[0].total).toBe(30);
     expect(preview.catalogs[0].titles).toHaveLength(12);
     expect(preview.catalogs[0].titles[0]).toEqual({
       id: "tt0000001",
       type: "movie",
-      name: "Title tt0000001",
-      poster: "https://images.test/tt0000001.jpg",
+      name: "Movie tt0000001",
+      poster: null,
       releaseInfo: null,
     });
   });
@@ -220,8 +199,8 @@ describe("previewList: Catalogs", () => {
 });
 
 describe("previewList: Unresolved entries", () => {
-  it("lists the entries without an IMDb ID and counts the ones not checked yet", async () => {
-    const resolvedMeta = meta("tt0137523", "movie", { name: "Fight Club" });
+  it("lists the entries without an IMDb ID, with a page about each when known", async () => {
+    const resolvedMeta = movie("tt0137523", { name: "Fight Club" });
     enrichMocks.enrichTitles.mockResolvedValue(
       new Map([[resolvedMeta.id, resolvedMeta]]),
     );
@@ -240,19 +219,23 @@ describe("previewList: Unresolved entries", () => {
             originalTitle: "Original Only",
             externalIds: { tmdb: { id: 42, type: "series" } },
           },
+          // The Provider's own page comes first.
+          {
+            title: "On Simkl",
+            sourceUrl: "https://simkl.com/movies/1/on-simkl",
+            externalIds: { tmdb: { id: 1, type: "movie" } },
+          },
           { title: "Nothing known" },
         ],
       }),
     );
 
-    const preview = await previewList(
+    const preview = await previewOk(
       request({ provider: "senscritique", sourceRef: "lists/1" }),
     );
-
-    if (!preview.ok) throw new Error("expected a preview");
     expect(preview.titleCount).toBe(1);
     expect(preview.unresolved).toEqual({
-      count: 3,
+      count: 4,
       notCheckedYet: 0,
       entries: [
         {
@@ -267,38 +250,15 @@ describe("previewList: Unresolved entries", () => {
           type: "series",
           url: "https://www.themoviedb.org/tv/42",
         },
+        {
+          title: "On Simkl",
+          year: null,
+          type: "movie",
+          url: "https://simkl.com/movies/1/on-simkl",
+        },
         { title: "Nothing known", year: null, type: null, url: null },
       ],
     });
-  });
-
-  it("keeps the Provider's page for an entry when it gives one", async () => {
-    useFakeProvider(
-      fakeAdapter("simkl", {
-        entries: [
-          {
-            type: "movie",
-            title: "No IDs",
-            sourceUrl: "https://simkl.com/movies/1/no-ids",
-          },
-        ],
-      }),
-    );
-    const account = seedAccount();
-    seedConnection(account.id, "simkl");
-
-    const preview = await previewList(
-      request({
-        provider: "simkl",
-        sourceRef: "me/plantowatch",
-        connectionAccountId: account.id,
-      }),
-    );
-
-    if (!preview.ok) throw new Error("expected a preview");
-    expect(preview.unresolved.entries[0].url).toBe(
-      "https://simkl.com/movies/1/no-ids",
-    );
   });
 
   it("lists at most 50 Unresolved entries, with the full count", async () => {
@@ -310,11 +270,9 @@ describe("previewList: Unresolved entries", () => {
       }),
     );
 
-    const preview = await previewList(
+    const preview = await previewOk(
       request({ provider: "senscritique", sourceRef: "lists/2" }),
     );
-
-    if (!preview.ok) throw new Error("expected a preview");
     expect(preview.unresolved.count).toBe(60);
     expect(preview.unresolved.entries).toHaveLength(50);
     expect(preview.unresolved.entries[0].title).toBe("Entry 0");
@@ -327,9 +285,7 @@ describe("previewList: Unresolved entries", () => {
       }),
     );
 
-    const preview = await previewList(request());
-
-    if (!preview.ok) throw new Error("expected a preview");
+    const preview = await previewOk(request());
     expect(preview.titleCount).toBe(0);
     expect(preview.withoutDetails).toBe(1);
   });
@@ -420,12 +376,11 @@ describe("previewList: reads", () => {
     useFakeProvider(fakeAdapter("trakt", { fetchSource }));
 
     await previewList(request());
-    const sorted = await previewList(
+    const sorted = await previewOk(
       request({ sortOption: "rating-desc", catalogSettings: { minRating: 7 } }),
     );
 
     expect(fetchSource).toHaveBeenCalledOnce();
-    if (!sorted.ok) throw new Error("expected a preview");
     expect(sorted.catalogs[0].titles.map((title) => title.name)).toEqual([
       "Alpha",
       "Bravo",
@@ -480,60 +435,51 @@ describe("previewList: reads", () => {
 
   it("reads the Source list again after five minutes", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    try {
-      const fetchSource = vi.fn(() =>
-        Promise.resolve({ entries: entries(MOVIES) }),
-      );
-      useFakeProvider(fakeAdapter("trakt", { fetchSource }));
+    const fetchSource = vi.fn(() =>
+      Promise.resolve({ entries: entries(MOVIES) }),
+    );
+    useFakeProvider(fakeAdapter("trakt", { fetchSource }));
 
-      await previewList(request());
-      vi.advanceTimersByTime(60_000);
-      await previewList(request());
-      expect(fetchSource).toHaveBeenCalledOnce();
+    await previewList(request());
+    vi.advanceTimersByTime(60_000);
+    await previewList(request());
+    expect(fetchSource).toHaveBeenCalledOnce();
 
-      vi.advanceTimersByTime(5 * 60_000);
-      await previewList(request());
-      expect(fetchSource).toHaveBeenCalledTimes(2);
-    } finally {
-      vi.useRealTimers();
-    }
+    vi.advanceTimersByTime(5 * 60_000);
+    await previewList(request());
+    expect(fetchSource).toHaveBeenCalledTimes(2);
   });
 
   it("reads again after 30 seconds when entries were not checked yet", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    try {
-      // More entries than one refresh sends through the strategies.
-      const unknown = Array.from(
-        { length: 301 },
-        (_, index): SourceEntry => ({
-          type: "movie",
-          externalIds: { tmdb: { id: index + 1, type: "movie" } },
+    // More entries than one refresh sends through the strategies.
+    const unknown = Array.from(
+      { length: 301 },
+      (_, index): SourceEntry => ({
+        type: "movie",
+        externalIds: { tmdb: { id: index + 1, type: "movie" } },
+      }),
+    );
+    const fetchSource = vi.fn(() => Promise.resolve({ entries: unknown }));
+    useFakeProvider(
+      fakeAdapter("trakt", {
+        fetchSource,
+        resolutionKey: (entry) => ({
+          namespace: "tmdb:movie",
+          externalId: String(entry.externalIds?.tmdb?.id),
         }),
-      );
-      const fetchSource = vi.fn(() => Promise.resolve({ entries: unknown }));
-      useFakeProvider(
-        fakeAdapter("trakt", {
-          fetchSource,
-          resolutionKey: (entry) => ({
-            namespace: "tmdb:movie",
-            externalId: String(entry.externalIds?.tmdb?.id),
-          }),
-          resolverStrategies: [
-            { name: "none", resolve: () => Promise.resolve(new Map()) },
-          ],
-        }),
-      );
+        resolverStrategies: [
+          { name: "none", resolve: () => Promise.resolve(new Map()) },
+        ],
+      }),
+    );
 
-      const first = await previewList(request());
-      if (!first.ok) throw new Error("expected a preview");
-      expect(first.unresolved).toMatchObject({ count: 301, notCheckedYet: 1 });
+    const first = await previewOk(request());
+    expect(first.unresolved).toMatchObject({ count: 301, notCheckedYet: 1 });
 
-      vi.advanceTimersByTime(31_000);
-      await previewList(request());
-      expect(fetchSource).toHaveBeenCalledTimes(2);
-    } finally {
-      vi.useRealTimers();
-    }
+    vi.advanceTimersByTime(31_000);
+    await previewList(request());
+    expect(fetchSource).toHaveBeenCalledTimes(2);
   });
 });
 
