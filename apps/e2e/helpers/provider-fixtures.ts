@@ -1,4 +1,5 @@
-// Loaded only by the isolated Provider backend of provider-journeys.spec.ts.
+// Loaded only by the isolated Provider backends of provider-journeys.spec.ts
+// and catalog-preview.spec.ts (the synthetic list of preview-fixture.ts).
 // The real adapters, OAuth flow, ID resolver, database and R2 code run; every
 // outbound request to a Provider is answered here with deterministic data.
 // Loopback requests (the local Supabase stack) use the real fetch. Any other
@@ -6,6 +7,11 @@
 // credential exists in this process. Each Provider request is appended as one
 // JSON line to E2E_PROVIDER_LOG, so tests can check what the backend sent.
 import { appendFileSync } from "node:fs";
+import {
+  PREVIEW_PRIVATE_LIST,
+  PREVIEW_PRODUCTS,
+  PREVIEW_PUBLIC_LIST,
+} from "./preview-fixture.js";
 
 const realFetch = globalThis.fetch;
 const LOG = process.env.E2E_PROVIDER_LOG;
@@ -17,7 +23,7 @@ const SHAWSHANK = { title: "The Shawshank Redemption", year: 1994 };
 const BREAKING_BAD = { title: "Breaking Bad", year: 2008 };
 const IMDB_TITLES: Record<
   string,
-  { text: string; type: string; year: number }
+  { text: string; type: string; year: number; rating?: number }
 > = {
   tt0111161: { text: SHAWSHANK.title, type: "Movie", year: SHAWSHANK.year },
   tt0903747: {
@@ -25,6 +31,23 @@ const IMDB_TITLES: Record<
     type: "TV Series",
     year: BREAKING_BAD.year,
   },
+  ...Object.fromEntries(
+    PREVIEW_PRODUCTS.flatMap((product) =>
+      product.imdbId
+        ? [
+            [
+              product.imdbId,
+              {
+                text: product.englishTitle,
+                type: "Movie",
+                year: product.year,
+                rating: product.rating,
+              },
+            ],
+          ]
+        : [],
+    ),
+  ),
 };
 
 const traktEntries = [
@@ -281,8 +304,54 @@ function justwatch(body: unknown): Response {
   });
 }
 
+/** A user list of the Catalog preview tests (preview-fixture.ts). */
+function senscritiqueList(variables: { id: number; offset?: number }) {
+  const { id, offset = 0 } = variables;
+  if (id === PREVIEW_PRIVATE_LIST) {
+    return json({ data: { userList: { id, isPrivate: true } } });
+  }
+  // Every other ID of the fixture range is the same public list, so a test
+  // can ask for a list that the backend did not read yet.
+  if (id < PREVIEW_PUBLIC_LIST || id >= PREVIEW_PUBLIC_LIST + 1000) {
+    throw new Error(`Unexpected SensCritique list ${id}`);
+  }
+  const items =
+    offset === 0
+      ? PREVIEW_PRODUCTS.map((product) => ({
+          product: {
+            id: product.id,
+            title: product.title,
+            originalTitle: null,
+            yearOfProduction: product.year,
+            dateReleaseOriginal: `${product.year}-01-01`,
+            dateRelease: null,
+            duration: 7200,
+            universe: product.type === "movie" ? 1 : 4,
+            directors: [],
+            creators: [],
+            // No JustWatch link: the JustWatch strategy has nothing to do.
+            providers: [],
+          },
+        }))
+      : [];
+  return json({
+    data: {
+      userList: {
+        id,
+        isPrivate: false,
+        productsList: { total: PREVIEW_PRODUCTS.length, items },
+      },
+    },
+  });
+}
+
 function senscritique(body: unknown): Response {
   const operation = graphqlOperation(body);
+  if (operation === "StremlistList") {
+    return senscritiqueList(
+      (body as { variables: { id: number; offset?: number } }).variables,
+    );
+  }
   const { variables } = body as {
     variables: { username?: string; universe?: string };
   };
@@ -343,6 +412,11 @@ function wikidata(body: unknown): Response {
   const known: Record<string, string> = {
     "101": "tt0111161",
     "202": "tt0903747",
+    ...Object.fromEntries(
+      PREVIEW_PRODUCTS.flatMap((product) =>
+        product.imdbId ? [[String(product.id), product.imdbId]] : [],
+      ),
+    ),
   };
   const bindings = Object.entries(known)
     .filter(([id]) => query.includes(`"${id}"`))
@@ -368,6 +442,9 @@ function imdb(body: unknown): Response {
               titleText: { text: title.text },
               titleType: { text: title.type },
               releaseYear: { year: title.year },
+              ...(title.rating && {
+                ratingsSummary: { aggregateRating: title.rating },
+              }),
             }
           : null;
       }),

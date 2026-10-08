@@ -1,6 +1,3 @@
-import { spawn } from "node:child_process";
-import type { ChildProcess } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 import type { APIRequestContext, Page } from "@playwright/test";
 import type { CatalogPreviewResponse } from "@stremlist/shared/catalog-preview";
@@ -28,96 +25,38 @@ import {
   PREVIEW_PRODUCT_IDS,
   PREVIEW_PUBLIC_LIST,
 } from "../helpers/preview-fixture.js";
+import type { ProviderBackend } from "../helpers/provider-backend.js";
+import { startProviderBackend } from "../helpers/provider-backend.js";
 import { countCacheObjects } from "../helpers/r2.js";
 import { CATALOG_FIXTURE_USER, PUBLIC_LIST } from "../helpers/test-data.js";
 
 // The Catalog preview (POST /lists/preview, STR-57) against real handlers.
 // A second backend reads a synthetic SensCritique list through the real
 // adapter, ID resolver (with its Supabase cache) and IMDb enrichment, with
-// only the outbound Provider transport replaced (helpers/preview-transport.ts).
+// only the outbound Provider transport replaced (helpers/provider-fixtures.ts).
 // The standard backend covers the access rules and a live IMDb list.
 
 const PUBLIC_REF = `lists/${PREVIEW_PUBLIC_LIST}`;
 const PRIVATE_REF = `lists/${PREVIEW_PRIVATE_LIST}`;
 
-let child: ChildProcess;
-let fixtureBackend: string;
+let backend: ProviderBackend;
 
 test.beforeAll(async () => {
-  child = spawn(
-    "bun",
-    [
-      "--no-env-file",
-      "--preload",
-      fileURLToPath(
-        new URL("../helpers/preview-transport.ts", import.meta.url),
-      ),
-      "src/dev.ts",
-    ],
-    {
-      cwd: fileURLToPath(new URL("../../backend/", import.meta.url)),
-      // No TMDB key: the TMDB strategy stays off, so only Wikidata resolves.
-      env: {
-        PATH: process.env.PATH,
-        PORT: "0",
-        HOST: "127.0.0.1",
-        SUPABASE_URL,
-        SUPABASE_SERVICE_ROLE_KEY,
-        FRONTEND_URL,
-        R2_ENDPOINT,
-        R2_ACCESS_KEY_ID,
-        R2_SECRET_ACCESS_KEY,
-        R2_BUCKET,
-        CONNECTION_ENCRYPTION_KEY,
-        RESEND_API_KEY: "re_fixture_only",
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
-  fixtureBackend = await new Promise<string>((resolve, reject) => {
-    const timeout = setTimeout(
-      () => reject(new Error("Preview test backend did not start")),
-      20_000,
-    );
-    let output = "";
-    child.stdout?.on("data", (chunk: Buffer) => {
-      output += chunk.toString();
-      const port = output.match(
-        /backend running on http:\/\/localhost:(\d+)/,
-      )?.[1];
-      if (port) {
-        clearTimeout(timeout);
-        resolve(`http://127.0.0.1:${port}`);
-      }
-    });
-    child.once("error", (error) => {
-      clearTimeout(timeout);
-      reject(error);
-    });
-    child.once("exit", (code) => {
-      clearTimeout(timeout);
-      reject(new Error(`Preview backend exited (${code})`));
-    });
-    child.stderr?.resume();
+  // No TMDB key: the TMDB strategy stays off, so only Wikidata resolves.
+  backend = await startProviderBackend("./provider-fixtures.ts", {
+    SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY,
+    FRONTEND_URL,
+    R2_ENDPOINT,
+    R2_ACCESS_KEY_ID,
+    R2_SECRET_ACCESS_KEY,
+    R2_BUCKET,
+    CONNECTION_ENCRYPTION_KEY,
+    RESEND_API_KEY: "re_fixture_only",
   });
 });
-
 test.afterAll(async () => {
-  if (child && child.exitCode === null) {
-    await new Promise<void>((resolve, reject) => {
-      const force = setTimeout(() => child.kill("SIGKILL"), 3_000);
-      const deadline = setTimeout(() => {
-        child.unref();
-        reject(new Error("Preview backend did not exit after SIGKILL"));
-      }, 6_000);
-      child.once("exit", () => {
-        clearTimeout(force);
-        clearTimeout(deadline);
-        resolve();
-      });
-      child.kill("SIGTERM");
-    });
-  }
+  await backend?.stop();
 });
 
 /** Forget what earlier runs resolved for the synthetic products. */
@@ -159,7 +98,7 @@ test(
     // The backend keeps a read for minutes: a retry asks for a list that it
     // did not read yet, so the resolver runs (and writes its cache) again.
     const result = previewOk(
-      await preview(request, fixtureBackend, {
+      await preview(request, backend.url, {
         provider: "senscritique",
         sourceRef: `lists/${PREVIEW_PUBLIC_LIST + 100 + testInfo.retry}`,
       }),
@@ -239,7 +178,7 @@ test(
   { tag: "@local" },
   async ({ request }) => {
     const result = previewOk(
-      await preview(request, fixtureBackend, {
+      await preview(request, backend.url, {
         provider: "senscritique",
         sourceRef: PUBLIC_REF,
         sortOption: "title-asc",
@@ -275,7 +214,7 @@ test(
   { tag: "@local" },
   async ({ request }) => {
     expect(
-      await preview(request, fixtureBackend, {
+      await preview(request, backend.url, {
         provider: "senscritique",
         sourceRef: PRIVATE_REF,
       }),
@@ -300,7 +239,7 @@ test(
     const before = await getListRows(accountId);
 
     previewOk(
-      await preview(request, fixtureBackend, {
+      await preview(request, backend.url, {
         accountKey: accountId,
         provider: "senscritique",
         sourceRef: PUBLIC_REF,
@@ -359,7 +298,7 @@ async function routePreviews(
       return;
     }
     const response = await route.fetch({
-      url: `${fixtureBackend}/lists/preview`,
+      url: `${backend.url}/lists/preview`,
     });
     await route.fulfill({ response });
   });

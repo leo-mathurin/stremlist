@@ -3,6 +3,8 @@ import type {
   CatalogPreview,
   CatalogPreviewRow,
 } from "@stremlist/shared/catalog-preview";
+import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
+import type { DisplayMode } from "@stremlist/shared/constants";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDER_IDS } from "@stremlist/shared/providers";
 import type {
@@ -82,8 +84,8 @@ export interface PreviewRequest {
   provider: ProviderId;
   sourceRef: string;
   sortOption: string;
-  displayMode: "split" | "movie" | "series";
-  catalogSettings?: Record<string, unknown>;
+  displayMode: DisplayMode;
+  catalogSettings?: CatalogSettings;
 }
 
 /**

@@ -40,11 +40,12 @@ R2. The configure/onboarding pages of the frontend are covered too.
 - The default run and pull request CI execute all three projects: deterministic
   local coverage (60 tests), four live smoke tests, and the broader live
   regression suite (26 tests).
-- `tests/catalog-preview.spec.ts` starts a second backend with a Provider
-  transport fixture (`helpers/preview-transport.ts`): a synthetic SensCritique
-  list goes through the real adapter, Wikidata resolver, resolver cache and
-  IMDb enrichment, so the Catalog preview and its Unresolved entries are
-  deterministic. Only the local Supabase origin reaches the network.
+- `tests/catalog-preview.spec.ts` starts a second backend with the Provider
+  fixtures of `helpers/provider-fixtures.ts`: a synthetic SensCritique list
+  (`helpers/preview-fixture.ts`) goes through the real adapter, Wikidata
+  resolver, resolver cache and IMDb enrichment, so the Catalog preview and its
+  Unresolved entries are deterministic. Only loopback requests (the local
+  Supabase stack) reach the network.
 - The backend gets a fixed, public `CONNECTION_ENCRYPTION_KEY` from `env.ts`,
   so seeded Connections (`helpers/db.ts` `seedConnection`) decrypt like real
   ones. It is not a production key.

@@ -126,14 +126,13 @@ create real contacts or send mail. The process is closed after tests, with a
 bounded SIGTERM/SIGKILL fallback. No production test hook or CI credentials were
 added.
 
-`catalog-preview.spec.ts` starts its own backend the same way, with
-`helpers/preview-transport.ts`. That backend uses the local Supabase and
+`catalog-preview.spec.ts` starts its own backend with `startProviderBackend`
+and `helpers/provider-fixtures.ts`. That backend uses the local Supabase and
 RustFS, so the resolver cache (`title_id_map`) and the absence of a Catalog
-cache are checked in real storage. The transport answers SensCritique,
-Wikidata and IMDb with the synthetic list of `helpers/preview-fixture.ts`
-(product IDs far above the real range), lets only the loopback Supabase
-origin through, and rejects every other destination. No TMDB key is set, so
-the TMDB strategy stays off.
+cache are checked in real storage. The fixtures answer SensCritique, Wikidata
+and IMDb with the synthetic list of `helpers/preview-fixture.ts` (product IDs
+far above the real range) and refuse every non-loopback destination. No TMDB
+key is set, so the TMDB strategy stays off.
 
 The harness seeds controlled state through `helpers/db.ts` (service-role
 client, loopback databases only):
@@ -148,7 +147,8 @@ client, loopback databases only):
   key) and the required `redirect_uri`.
 - `helpers/provider-backend.ts` `startProviderBackend(preload, env)`: a
   second backend on a free loopback port with only the given variables.
-- `helpers/provider-fixtures.ts`: the preload of `provider-journeys.spec.ts`.
+- `helpers/provider-fixtures.ts`: the preload of `provider-journeys.spec.ts`
+  and `catalog-preview.spec.ts`.
   It answers Trakt, MDBList, Simkl, JustWatch, SensCritique, Wikidata and
   IMDb title requests with fixed data, passes loopback requests (Supabase)
   to the real fetch, refuses every other host and logs each Provider request
