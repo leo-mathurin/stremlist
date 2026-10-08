@@ -15,5 +15,14 @@ export default [
       curly: ["error", "multi-line"],
     },
   },
+  {
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      parserOptions: {
+        project: null,
+        projectService: { allowDefaultProject: ["scripts/*.mjs"] },
+      },
+    },
+  },
   prettier,
 ];

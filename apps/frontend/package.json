@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "portless",
+    "dev:local": "portless",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "format": "prettier . --write",

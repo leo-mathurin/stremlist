@@ -74,6 +74,12 @@
   * {
     @apply border-border outline-ring/50;
   }
+  /* No rubber-band overscroll: it shows the page color around the dark
+     panel. */
+  html,
+  body {
+    overscroll-behavior: none;
+  }
   body {
     @apply text-foreground;
     margin: 0;

@@ -1,6 +1,13 @@
-import { Link } from "react-router";
-import Header from "../components/Header";
+import DocPanel from "../components/DocPanel";
+import { SplitLayout } from "../components/brand";
 import { useSEO } from "../hooks/useSEO";
+
+const SECTIONS = [
+  { id: "terms", label: "Terms and Conditions" },
+  { id: "privacy", label: "Privacy Policy" },
+];
+
+const SECTION_CLASS = "scroll-mt-6 py-10 first:pt-0 last:pb-0";
 
 export default function Terms() {
   useSEO({
@@ -10,28 +17,30 @@ export default function Terms() {
     canonical: "https://stremlist.com/terms",
   });
   return (
-    <div className="max-w-3xl mx-auto my-8 bg-white rounded-lg shadow-md p-8">
-      <Header />
-
-      <main className="space-y-8">
-        <Link to="/" className="text-stremlist hover:underline text-sm">
-          &larr; Back to Home
-        </Link>
-
-        {/* Terms and Conditions */}
-        <section>
-          <h2 className="text-xl font-bold text-gray-900 pb-2 mb-4 border-b-2 border-imdb">
+    <SplitLayout
+      panel={
+        <DocPanel
+          title="Terms and privacy"
+          lead="How Stremlist works, what it stores, and what you can ask for."
+          links={SECTIONS.map((section) => ({
+            href: `#${section.id}`,
+            label: section.label,
+          }))}
+        />
+      }
+    >
+      <div className="mx-auto max-w-2xl divide-y divide-black/10 p-5 pb-16 sm:p-8 lg:p-12">
+        <section id="terms" className={SECTION_CLASS}>
+          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
             Terms and Conditions
           </h2>
-          <p className="text-sm text-gray-500 mb-4">
+          <p className="mt-1 mb-6 text-sm text-black/45">
             Last updated: October 6, 2026
           </p>
 
-          <div className="space-y-4 text-sm text-gray-700">
+          <div className="space-y-5 text-[15px] leading-relaxed text-pretty text-black/65">
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
-                1. Introduction
-              </h3>
+              <h3 className="mb-1 font-bold text-ink">1. Introduction</h3>
               <p>
                 Welcome to Stremlist ("Service"), a personal project that shows
                 watchlists and lists kept on other services (IMDb, Trakt, Simkl,
@@ -42,7 +51,7 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
+              <h3 className="mb-1 font-bold text-ink">
                 2. Description of Service
               </h3>
               <p>
@@ -54,9 +63,7 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
-                3. Use of the Service
-              </h3>
+              <h3 className="mb-1 font-bold text-ink">3. Use of the Service</h3>
               <p>
                 You may use the Service with lists that you are allowed to view.
                 When you connect a Provider account, you allow Stremlist to read
@@ -68,9 +75,7 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
-                4. Limitations
-              </h3>
+              <h3 className="mb-1 font-bold text-ink">4. Limitations</h3>
               <p>
                 The Service is provided "as is" and "as available" without any
                 warranties of any kind. The Service developer is not responsible
@@ -80,7 +85,7 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
+              <h3 className="mb-1 font-bold text-ink">
                 5. Third-Party Services
               </h3>
               <p>
@@ -93,7 +98,7 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
+              <h3 className="mb-1 font-bold text-ink">
                 6. Modifications to Service
               </h3>
               <p>
@@ -104,12 +109,12 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">7. Contact</h3>
+              <h3 className="mb-1 font-bold text-ink">7. Contact</h3>
               <p>
                 If you have any questions about these Terms, please contact{" "}
                 <a
                   href="mailto:me@leomathurin.com"
-                  className="text-stremlist hover:underline"
+                  className="font-semibold text-stremlist hover:underline"
                 >
                   me@leomathurin.com
                 </a>
@@ -119,18 +124,17 @@ export default function Terms() {
           </div>
         </section>
 
-        {/* Privacy Policy */}
-        <section>
-          <h2 className="text-xl font-bold text-gray-900 pb-2 mb-4 border-b-2 border-imdb">
+        <section id="privacy" className={SECTION_CLASS}>
+          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
             Privacy Policy
           </h2>
-          <p className="text-sm text-gray-500 mb-4">
+          <p className="mt-1 mb-6 text-sm text-black/45">
             Last updated: October 6, 2026
           </p>
 
-          <div className="space-y-4 text-sm text-gray-700">
+          <div className="space-y-5 text-[15px] leading-relaxed text-pretty text-black/65">
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
+              <h3 className="mb-1 font-bold text-ink">
                 1. Information Collection
               </h3>
               <p>
@@ -144,9 +148,7 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
-                2. Use of Information
-              </h3>
+              <h3 className="mb-1 font-bold text-ink">2. Use of Information</h3>
               <p>
                 Your lists and access tokens are used only to read your lists
                 from the Providers, convert them for Stremio, and perform the
@@ -156,7 +158,7 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
+              <h3 className="mb-1 font-bold text-ink">
                 3. Data Storage with Supabase
               </h3>
               <p>
@@ -197,7 +199,7 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
+              <h3 className="mb-1 font-bold text-ink">
                 4. Cookies and Tracking
               </h3>
               <p>
@@ -207,7 +209,7 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
+              <h3 className="mb-1 font-bold text-ink">
                 5. Email Communications
               </h3>
               <p>
@@ -218,7 +220,7 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
+              <h3 className="mb-1 font-bold text-ink">
                 6. Third-Party Services
               </h3>
               <p>
@@ -230,9 +232,7 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
-                7. Data Security
-              </h3>
+              <h3 className="mb-1 font-bold text-ink">7. Data Security</h3>
               <p>
                 While we implement reasonable security measures, no method of
                 transmission over the Internet is 100% secure. We cannot
@@ -241,9 +241,7 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
-                8. Children's Privacy
-              </h3>
+              <h3 className="mb-1 font-bold text-ink">8. Children's Privacy</h3>
               <p>
                 The Service is not directed to children under 13. We do not
                 knowingly collect personal information from children under 13.
@@ -251,7 +249,7 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
+              <h3 className="mb-1 font-bold text-ink">
                 9. Changes to This Privacy Policy
               </h3>
               <p>
@@ -262,15 +260,13 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
-                10. Contact Us
-              </h3>
+              <h3 className="mb-1 font-bold text-ink">10. Contact Us</h3>
               <p>
                 If you have any questions about this Privacy Policy, please
                 contact us at{" "}
                 <a
                   href="mailto:me@leomathurin.com"
-                  className="text-stremlist hover:underline"
+                  className="font-semibold text-stremlist hover:underline"
                 >
                   me@leomathurin.com
                 </a>
@@ -279,16 +275,7 @@ export default function Terms() {
             </div>
           </div>
         </section>
-      </main>
-
-      <footer className="mt-8 pt-6 border-t border-gray-200 text-center text-sm text-gray-500 space-y-2">
-        <p>
-          <Link to="/" className="text-stremlist hover:underline">
-            Return to Home
-          </Link>
-        </p>
-        <p>&copy; {new Date().getFullYear()} Stremlist</p>
-      </footer>
-    </div>
+      </div>
+    </SplitLayout>
   );
 }
