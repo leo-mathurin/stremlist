@@ -73,6 +73,7 @@ export default function NewsletterForm() {
                       {...field}
                       type="email"
                       placeholder="your@email.com"
+                      className="h-11 rounded-full bg-white px-4"
                     />
                   </FormControl>
                   <FormMessage className="text-left mt-1" />
@@ -82,7 +83,7 @@ export default function NewsletterForm() {
             <Button
               type="submit"
               disabled={form.formState.isSubmitting}
-              className="rounded-full bg-brand font-bold whitespace-nowrap text-black hover:bg-brand-dark"
+              className="h-11 rounded-full bg-brand px-5 font-bold whitespace-nowrap text-black hover:bg-brand-dark"
             >
               {form.formState.isSubmitting ? "Subscribing..." : "Subscribe"}
             </Button>

@@ -90,15 +90,38 @@ bun install
 
 ### Run in Development
 
-Decrypt the backend environment first (see below), then run:
+Decrypt the backend environment first (see below).
+
+The database selected by `apps/backend/.env` must have all migrations from
+`supabase/migrations` applied. `bun dev` starts the apps; it does not migrate
+the database. In particular, `PGRST205` for `public.accounts` means you should
+check that the Accounts migration above is applied to that database.
+
+For development before the multi-provider release, use a separate local
+Supabase database and set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in
+`apps/backend/.env` to its local values. See the [local stack setup](apps/e2e/README.md#running-locally)
+for the database and S3-compatible cache services, and the environment variables
+below. Do not apply the Accounts migration to a shared database while an older
+backend still uses it: the migration renames the tables that backend reads.
+Restart the dev server after changing the backend environment.
+
+Then run:
 
 ```bash
 bun run dev             # both apps through Portless
+bun run dev:local       # start local database + cache, then both apps
 bun run dev:tailnet     # both apps; share the frontend over Tailscale HTTPS
 bun run dev:backend     # backend only
 bun run dev:frontend    # frontend only (requires a running backend)
 bunx portless list
 ```
+
+`bun dev:local` requires Docker running and the Supabase CLI installed. It
+creates or reuses an isolated stack in `.dev.local`, applies pending migrations,
+and starts a local S3-compatible cache. The backend receives the local connection
+settings for that process; `.env` is not rewritten. Provider credentials still
+come from `apps/backend/.env`. Stop an existing `bun dev` before switching modes.
+The containers and their data remain available after you stop the dev servers.
 
 Portless 0.15.6 is pinned as a dev dependency. In the main checkout, the
 local names are `https://stremlist.localhost` and

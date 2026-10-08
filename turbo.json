@@ -22,6 +22,19 @@
     "transit": {
       "dependsOn": ["^transit"]
     },
+    "dev:local": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "DOCKER_*",
+        "PORTLESS",
+        "PORTLESS_*",
+        "NODE_EXTRA_CA_CERTS",
+        "VITE_BACKEND_URL",
+        "DEV_BACKEND_URL",
+        "VERCEL_RELATED_PROJECTS"
+      ]
+    },
     "lint": {
       "dependsOn": ["transit"]
     },

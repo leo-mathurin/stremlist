@@ -18,7 +18,7 @@ import type { ResolvedLink } from "../components/LinkPaste";
 import ProviderList from "../components/ProviderList";
 import QuickAdd from "../components/QuickAdd";
 import SortableListRow from "../components/SortableListRow";
-import { Eyebrow, SplitLayout, Wordmark } from "../components/brand";
+import { SectionHeading, SplitLayout, Wordmark } from "../components/brand";
 import { useSEO } from "../hooks/useSEO";
 import {
   MAX_LISTS,
@@ -276,7 +276,7 @@ export default function Configure() {
   );
 
   return (
-    <SplitLayout panel={panel} panelWidth="narrow">
+    <SplitLayout panel={panel}>
       <div className="mx-auto max-w-3xl space-y-6 p-5 pb-24 sm:p-8 lg:p-12">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -439,7 +439,7 @@ export default function Configure() {
             </section>
 
             <section className="space-y-3">
-              <Eyebrow>Quick add</Eyebrow>
+              <SectionHeading size="md" title="Quick add" />
               <QuickAdd
                 connections={config.connections}
                 connectionSources={config.connectionSources}
@@ -465,7 +465,7 @@ export default function Configure() {
             </section>
 
             <section className="space-y-3">
-              <Eyebrow>Options</Eyebrow>
+              <SectionHeading size="md" title="Options" />
               <div className="rounded-3xl bg-white p-4 ring-1 ring-black/5 sm:p-5">
                 <label htmlFor="rpdb-api-key" className="block font-bold">
                   RPDB API key{" "}
