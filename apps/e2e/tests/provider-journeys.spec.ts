@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import type { ProviderId } from "@stremlist/shared/providers";
+import { CONNECTION_SOURCES } from "@stremlist/shared/providers";
 import type {
   AccountConfigResponse,
   ConfigListInput,
@@ -46,10 +47,9 @@ let backend: ProviderBackend;
 let logDir: string;
 let logFile: string;
 
-test.beforeAll(async () => {
-  logDir = mkdtempSync(join(tmpdir(), "stremlist-provider-log-"));
-  logFile = join(logDir, "requests.jsonl");
-  backend = await startProviderBackend("./provider-fixtures.ts", {
+/** The variables of a fixture backend; `extra` adds or overrides some. */
+function backendEnv(extra: Record<string, string> = {}) {
+  return {
     SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY,
     R2_ENDPOINT,
@@ -63,7 +63,14 @@ test.beforeAll(async () => {
     SIMKL_CLIENT_ID: "fixture-simkl-client",
     MDBLIST_CLIENT_ID: "fixture-mdblist-client",
     E2E_PROVIDER_LOG: logFile,
-  });
+    ...extra,
+  };
+}
+
+test.beforeAll(async () => {
+  logDir = mkdtempSync(join(tmpdir(), "stremlist-provider-log-"));
+  logFile = join(logDir, "requests.jsonl");
+  backend = await startProviderBackend("./provider-fixtures.ts", backendEnv());
 });
 test.afterAll(async () => {
   await backend?.stop();
@@ -98,9 +105,9 @@ function requests(match: (url: URL) => boolean): LoggedRequest[] {
 
 async function call<T = Record<string, unknown>>(
   path: string,
-  init: { method?: string; json?: unknown } = {},
+  init: { method?: string; json?: unknown; base?: string } = {},
 ): Promise<{ status: number; body: T }> {
-  const response = await fetch(`${backend.url}${path}`, {
+  const response = await fetch(`${init.base ?? backend.url}${path}`, {
     method: init.method ?? (init.json === undefined ? "GET" : "POST"),
     headers:
       init.json === undefined ? {} : { "Content-Type": "application/json" },
@@ -648,5 +655,294 @@ test(
         )
       ).body.streams,
     ).toEqual([]);
+  },
+);
+
+test(
+  "Simkl and MDBList OAuth round trips store their Connection",
+  { tag: "@local" },
+  async () => {
+    const { body: created } = await call<{ accountId: string }>("/accounts", {
+      json: { lists: [] },
+    });
+    const accountId = created.accountId;
+    for (const [provider, authorizeUrl, clientId] of [
+      ["simkl", "https://simkl.com/oauth2/authorize", "fixture-simkl-client"],
+      [
+        "mdblist",
+        "https://mdblist.com/oauth/authorize/",
+        "fixture-mdblist-client",
+      ],
+    ] as const) {
+      const start = await call<{ authorizeUrl: string }>(
+        `/${accountId}/connections/${provider}/start`,
+        { method: "POST" },
+      );
+      expect(start.status).toBe(200);
+      const authorize = new URL(start.body.authorizeUrl);
+      expect(`${authorize.origin}${authorize.pathname}`).toBe(authorizeUrl);
+      expect(Object.fromEntries(authorize.searchParams)).toMatchObject({
+        response_type: "code",
+        client_id: clientId,
+        redirect_uri: `${backend.url}/oauth/${provider}/callback`,
+      });
+      const state = authorize.searchParams.get("state")!;
+      const callback = await fetch(
+        `${backend.url}/oauth/${provider}/callback?code=fixture-code&state=${encodeURIComponent(state)}`,
+        { redirect: "manual" },
+      );
+      expect(callback.status).toBe(302);
+      expect(callback.headers.get("location")).toBe(
+        `${FRONTEND_URL}/configure?account=${accountId}&connected=${provider}`,
+      );
+      const row = await getConnectionRow(accountId, provider);
+      expect(row).toMatchObject({
+        provider_username: "fixture-user",
+        redirect_uri: `${backend.url}/oauth/${provider}/callback`,
+      });
+      expect(row?.access_token).toMatch(/^v1:/);
+    }
+    const config = await call<AccountConfigResponse>(`/${accountId}/config`);
+    expect(
+      config.body.connections.map((connection) => connection.provider).sort(),
+    ).toEqual(["mdblist", "simkl"]);
+    // Both token exchanges sent the one-time code.
+    expect(
+      requests((url) => /\/oauth2?\/token\/?$/.test(url.pathname)).map(
+        (entry) => entry.body?.code,
+      ),
+    ).toEqual(["fixture-code", "fixture-code"]);
+  },
+);
+
+test(
+  "every Trakt Action intent opens its page, writes Trakt and updates the entries",
+  { tag: "@local" },
+  async ({ page }) => {
+    const accountId = await seedAccount();
+    await seedConnection(accountId, "trakt");
+    await db
+      .from("accounts")
+      .update({ actions_enabled: true, action_providers: ["trakt"] })
+      .eq("id", accountId);
+    const entries = async (type: string, id: string) =>
+      (
+        await call<{ streams: { title?: string; externalUrl?: string }[] }>(
+          `/${accountId}/stream/${type}/${id}.json`,
+        )
+      ).body.streams;
+    const action = (path: string) =>
+      `${backend.url}/${accountId}/actions/${path}`;
+    const writes = (path: string) =>
+      requests((url) => url.pathname === path).map((entry) => entry.body);
+
+    // Watched, for one episode, then undone from the updated entry.
+    await page.goto(action("watched/add/series/tt0903747%3A1%3A2"));
+    await expect(
+      page.getByRole("heading", {
+        name: "✓ Breaking Bad S01E02 is marked as watched on Trakt",
+      }),
+    ).toBeVisible();
+    const episode = {
+      shows: [
+        {
+          ids: { imdb: "tt0903747" },
+          seasons: [{ number: 1, episodes: [{ number: 2 }] }],
+        },
+      ],
+    };
+    expect(writes("/sync/history")).toEqual([episode]);
+    const watched = (await entries("series", "tt0903747:1:2")).find((entry) =>
+      entry.title?.startsWith("✅"),
+    );
+    expect(watched).toEqual({
+      name: "Stremlist",
+      title: "✅ S01E02 watched on Trakt\nSelect to mark as unwatched",
+      externalUrl: action("watched/remove/series/tt0903747%3A1%3A2"),
+    });
+    await page.goto(watched!.externalUrl!);
+    await expect(
+      page.getByRole("heading", {
+        name: "✓ Breaking Bad S01E02 is marked as unwatched on Trakt",
+      }),
+    ).toBeVisible();
+    expect(writes("/sync/history/remove")).toEqual([episode]);
+
+    // Watchlist: add, then remove from the entry that says it is there.
+    const movie = { movies: [{ ids: { imdb: "tt0111161" } }] };
+    await page.goto(action("watchlist/add/movie/tt0111161"));
+    await expect(
+      page.getByRole("heading", {
+        name: "✓ The Shawshank Redemption is in your watchlist on Trakt",
+      }),
+    ).toBeVisible();
+    const inWatchlist = (await entries("movie", "tt0111161"))[0];
+    expect(inWatchlist).toEqual({
+      name: "Stremlist",
+      title: "🔖 In your Trakt watchlist\nSelect to remove",
+      externalUrl: action("watchlist/remove/movie/tt0111161"),
+    });
+    await page.goto(inWatchlist.externalUrl!);
+    await expect(
+      page.getByRole("heading", {
+        name: "✓ The Shawshank Redemption is out of your watchlist on Trakt",
+      }),
+    ).toBeVisible();
+    expect(writes("/sync/watchlist/remove")).toEqual([movie]);
+
+    // Rating: a form with 1 to 10, then the saved rating can be removed.
+    const rate = (await entries("movie", "tt0111161")).at(-1);
+    expect(rate).toEqual({
+      name: "Stremlist",
+      title: "⭐ Rate on Trakt",
+      externalUrl: action("rating/rate/movie/tt0111161"),
+    });
+    await page.goto(rate!.externalUrl!);
+    await expect(
+      page.getByRole("heading", { name: "Rate The Shawshank Redemption" }),
+    ).toBeVisible();
+    await expect(page.getByRole("radio")).toHaveCount(10);
+    await expect(page.getByRole("checkbox", { name: "Trakt" })).toBeChecked();
+    await expect(page.getByText("Not rated")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Remove rating" }),
+    ).toHaveCount(0);
+    await page.getByText("8", { exact: true }).click();
+    await page.getByRole("button", { name: "Save rating" }).click();
+    await expect(
+      page.getByRole("heading", {
+        name: "✓ The Shawshank Redemption is rated 8/10 on Trakt",
+      }),
+    ).toBeVisible();
+    expect(writes("/sync/ratings")).toEqual([
+      { movies: [{ ids: { imdb: "tt0111161" }, rating: 8 }] },
+    ]);
+    expect((await entries("movie", "tt0111161")).at(-1)?.title).toBe(
+      "⭐ Rated 8/10, change\nTrakt",
+    );
+    await page.goto(rate!.externalUrl!);
+    await expect(page.getByText("Now 8/10")).toBeVisible();
+    await expect(page.getByRole("radio", { name: "8" })).toBeChecked();
+    await page.getByRole("button", { name: "Remove rating" }).click();
+    await expect(
+      page.getByRole("heading", {
+        name: "✓ The Shawshank Redemption has no rating on Trakt now",
+      }),
+    ).toBeVisible();
+    expect(writes("/sync/ratings/remove")).toEqual([movie]);
+
+    // A link with an unknown intent, or for another Account, changes nothing.
+    const before = requests((url) => url.pathname.startsWith("/sync/")).length;
+    for (const path of [
+      `/${accountId}/actions/watchlist/toggle/movie/tt0111161`,
+      `/${accountId}/actions/watched/add/movie/not-a-title`,
+      "/sl_0000000000000000000000/actions/watchlist/add/movie/tt0111161",
+    ]) {
+      const response = await page.goto(`${backend.url}${path}`);
+      expect(response?.status()).toBe(404);
+      await expect(
+        page.getByRole("heading", { name: "This link does not work" }),
+      ).toBeVisible();
+    }
+    expect(requests((url) => url.pathname.startsWith("/sync/")).length).toBe(
+      before,
+    );
+  },
+);
+
+test(
+  "the kill switch stops every Provider request but keeps cached Catalogs",
+  { tag: "@local" },
+  async () => {
+    const accountId = await seedAccount();
+    await seedConnection(accountId, "trakt");
+    await db
+      .from("accounts")
+      .update({ actions_enabled: true, action_providers: ["trakt"] })
+      .eq("id", accountId);
+    const justwatchRef = "tl-us-11111111-2222-4333-8444-555555555555";
+    const cached = await seedList(accountId, {
+      provider: "justwatch",
+      sourceRef: justwatchRef,
+      catalogTitle: "",
+      position: 0,
+    });
+    const uncached = await seedList(accountId, {
+      provider: "senscritique",
+      sourceRef: "users/fixture-user/wishes",
+      catalogTitle: "",
+      position: 1,
+    });
+    // The running backend reads the JustWatch list once, into R2.
+    expect(await catalogNames(accountId, cached, "movie")).toEqual([
+      "The Shawshank Redemption",
+    ]);
+
+    const off = await startProviderBackend(
+      "./provider-fixtures.ts",
+      backendEnv({ DISABLED_PROVIDERS: "justwatch,senscritique,trakt" }),
+    );
+    try {
+      writeFileSync(logFile, "");
+      const at = { base: off.url };
+      const status = await call<{
+        providers: { id: string; enabled: boolean }[];
+      }>("/providers", at);
+      expect(
+        status.body.providers
+          .filter((provider) => !provider.enabled)
+          .map((provider) => provider.id)
+          .sort(),
+      ).toEqual(["justwatch", "senscritique", "trakt"]);
+      expect(
+        (
+          await call("/links/resolve", {
+            ...at,
+            json: {
+              input: `https://www.justwatch.com/us/lists/${justwatchRef}`,
+            },
+          })
+        ).body,
+      ).toEqual({ ok: false, reason: "disabled", provider: "justwatch" });
+
+      // The cached Catalog stays; a List without a cache explains why.
+      const catalog = async (listId: string) =>
+        (
+          await call<{ metas: StremioMeta[] }>(
+            `/${accountId}/catalog/movie/wl-${listId}-movie.json`,
+            at,
+          )
+        ).body.metas;
+      expect((await catalog(cached)).map((meta) => meta.name)).toEqual([
+        "The Shawshank Redemption",
+      ]);
+      expect(await catalog(uncached)).toMatchObject([
+        {
+          id: "stremlist:unavailable:disabled",
+          name: "⚠️ SensCritique is temporarily unavailable",
+          description: "Please try again later.",
+        },
+      ]);
+
+      // No Connection, own list or Action goes through a Provider that is off.
+      expect(
+        await call(`/${accountId}/connections/trakt/start`, {
+          ...at,
+          method: "POST",
+        }),
+      ).toEqual({
+        status: 503,
+        body: { error: "Trakt is temporarily unavailable." },
+      });
+      expect(
+        (await call(`/${accountId}/connections/trakt/sources`, at)).body,
+      ).toEqual({ sources: CONNECTION_SOURCES.trakt });
+      expect(
+        (await call(`/${accountId}/stream/movie/tt0111161.json`, at)).body,
+      ).toEqual({ streams: [], cacheMaxAge: 0 });
+      expect(requests(() => true)).toEqual([]);
+    } finally {
+      await off.stop();
+    }
   },
 );

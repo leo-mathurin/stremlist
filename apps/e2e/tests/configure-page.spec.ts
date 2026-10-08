@@ -326,7 +326,7 @@ test(
     await bootstrapLegacy(PUBLIC_USER);
     for (const key of [accountId, PUBLIC_USER]) {
       await page.goto(FRONTEND_URL);
-      await page.getByRole("button", { name: "I already have one" }).click();
+      await page.getByRole("button", { name: "Open it" }).click();
       await page
         .getByLabel("Your Addon URL")
         .fill(`stremio://127.0.0.1:7301/${key}/manifest.json`);
