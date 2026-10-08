@@ -333,11 +333,12 @@ export function useAccountConfiguration(
     [],
   );
 
+  /** Add a built-in IMDb chart. Returns an error message, like `addList`. */
   const addChartList = useCallback(
-    (chartId: string) => {
+    (chartId: string): string | null => {
       const entry = CHART_BY_ID.get(chartId);
-      if (!entry) return;
-      addList(
+      if (!entry) return null;
+      return addList(
         {
           provider: "imdb",
           sourceRef: entry.id,

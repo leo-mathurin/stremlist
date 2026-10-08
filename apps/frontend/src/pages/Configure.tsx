@@ -474,7 +474,13 @@ export default function Configure() {
                   if (error)
                     config.setStatus({ type: "error", message: error });
                 }}
-                onAddChart={config.addChartList}
+                onAddChart={(chartId) => {
+                  // The chart menu is off only when the List limit is
+                  // reached; the Source list limit is checked here.
+                  const error = config.addChartList(chartId);
+                  if (error)
+                    config.setStatus({ type: "error", message: error });
+                }}
               />
             </section>
 

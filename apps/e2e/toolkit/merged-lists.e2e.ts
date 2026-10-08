@@ -28,6 +28,7 @@ const MERGE = "Merge another List into this one";
 const NO_DATES =
   "Date added sorting is off: Top 250 Movies does not give the date when each Title was added.";
 const ONE_TYPE = 'Top 250 Movies has only movies, so "TV shows only" is off.';
+const SOURCE_LIMIT = "You can have at most 20 Source lists in all your Lists.";
 
 const watchlist = {
   ...row,
@@ -416,4 +417,50 @@ test("merging the last other List moves focus to the Source lists", async ({
   await browser.keyboard.press("Enter");
   await expect(screen.getByText("2 Source lists · IMDb")).toBeVisible();
   await expect(screen.getByText("Source lists", { exact: true })).toBeFocused();
+});
+
+test("an Account with 20 Source lists refuses one more, from Quick add or a link", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  // Four Lists of five Source lists: the Account limit, with room for Lists.
+  const groups = [1, 2, 3, 4].map(
+    (group) =>
+      ({
+        ...row,
+        id: `00000000-0000-4000-8000-00000000002${group}`,
+        sourceRef: `ls99${group}00000`,
+        catalogTitle: `Group ${group}`,
+        sortOption: "title-asc",
+        position: group - 1,
+        mergedSources: [1, 2, 3, 4].map((n) => ({
+          provider: "imdb" as const,
+          sourceRef: `ls99${group}0000${n}`,
+        })),
+      }) satisfies ConfigList,
+  );
+  const submissions = await captureConfig(browser, withLists(groups));
+  const inputs = await routeResolve(browser, () =>
+    resolved("imdb", "ls99123456", "list"),
+  );
+  await app.open(`/configure?account=${accountId}`);
+  await expect(screen.getByText(/^4 of 10 lists/)).toBeVisible();
+
+  await screen.getByRole("button", "Add an IMDb chart").tap();
+  await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
+  await expect(screen.getByText(SOURCE_LIMIT)).toBeVisible();
+  await expect(screen.getByText(/^4 of 10 lists/)).toBeVisible();
+
+  // A Trakt chart is refused the same way: the message stays, no List.
+  await screen.getByRole("button", "Trending").tap();
+  await expect(screen.getByText(SOURCE_LIMIT)).toHaveCount(1);
+  await expect(screen.getByText(/^4 of 10 lists/)).toBeVisible();
+
+  await screen.getByLabel(PASTE).fill("https://www.imdb.com/list/ls99123456/");
+  await screen.getByRole("button", "Add", { exact: true }).tap();
+  await expect(screen.getByText(SOURCE_LIMIT)).toHaveCount(2);
+  await expect(screen.getByText(/^4 of 10 lists/)).toBeVisible();
+  expect(inputs).toHaveLength(1);
+  expect(submissions).toHaveLength(0);
 });
