@@ -176,7 +176,7 @@ test(
     // The test backend cannot start a Trakt authorization (no client ID),
     // so the page offers no Connect button; the toolkit covers that click.
     await expect(
-      page.getByRole("button", { name: "Connect again", exact: true }),
+      page.getByRole("button", { name: /^Connect again/ }),
     ).toHaveCount(0);
 
     await page.reload();

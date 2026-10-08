@@ -99,11 +99,14 @@ export function ListSyncLine({
  * Nothing when the List refreshes fine.
  */
 export function ListSyncNotice({
+  title,
   provider,
   sourceRef,
   sync,
   onConnect,
 }: {
+  /** The List's name, so its button names the List it renews. */
+  title: string;
   provider: ProviderId;
   sourceRef: string;
   sync: ListSyncState;
@@ -177,6 +180,7 @@ export function ListSyncNotice({
         <button
           type="button"
           onClick={onConnect}
+          aria-label={`Connect again for ${title}`}
           className="inline-flex h-8 shrink-0 items-center rounded-full bg-brand px-3 text-xs font-bold text-black transition-[background-color,scale] duration-150 hover:bg-brand-dark active:scale-[0.96]"
         >
           Connect again

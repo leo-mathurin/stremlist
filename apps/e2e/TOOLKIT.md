@@ -175,6 +175,14 @@ docker stop stremlist-e2e-base-r2
 
 ## Current verification and defects found
 
+On 2026-10-08 the "Connect again" button in the notice of a List got the
+name of its List ("Connect again for Trakt Watchlist"), like the other buttons
+of a List row. The recording of the renewal goal tapped the second of two
+"Connect again" buttons by position; it now taps the named button. That goal
+and the disconnect goal of `providers.e2e.ts` were recorded again (3 model
+calls). The strict replay passed all 58 toolkit tests with zero model calls,
+and the Playwright run passed all 87 tests with an isolated stack.
+
 On 2026-10-07 the List sync status journeys (STR-58) were added: seven toolkit
 tests in `sync-status.e2e.ts`, one with a new AI goal (2 model calls to record),
 and five Playwright tests in `sync-status.spec.ts` (four `local`, one

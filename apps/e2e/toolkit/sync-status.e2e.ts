@@ -315,9 +315,15 @@ test(
         { exact: true },
       ),
     ).toBeVisible();
+    // One in the Providers panel, one in the List's notice.
     await expect(
       screen.getByRole("button", "Connect again", { exact: true }),
-    ).toHaveCount(2);
+    ).toBeVisible();
+    await expect(
+      screen.getByRole("button", "Connect again for Trakt Watchlist", {
+        exact: true,
+      }),
+    ).toBeVisible();
     expect(starts).toHaveLength(0);
 
     await agent.act(
@@ -355,7 +361,9 @@ test("a List whose Provider is not connected offers to connect it", async ({
     screen.getByText("1 List needs attention", { exact: true }),
   ).toBeVisible();
 
-  await screen.getByRole("button", "Connect again", { exact: true }).tap();
+  await screen
+    .getByRole("button", "Connect again for Trakt Watchlist", { exact: true })
+    .tap();
 
   await browser.waitForURL(`${backend}/authorize-fixture`);
   expect(starts).toEqual(["POST"]);

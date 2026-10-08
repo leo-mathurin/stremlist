@@ -190,6 +190,7 @@ export default function SortableListRow({
 
       {sync && (
         <ListSyncNotice
+          title={title}
           provider={list.provider}
           sourceRef={list.sourceRef}
           sync={sync}

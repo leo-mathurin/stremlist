@@ -419,7 +419,9 @@ test(
       enabled: true,
       providers: [],
     });
-    await screen.getByRole("button", "Connect again").tap();
+    await screen
+      .getByRole("button", "Connect again for Trakt Watchlist", { exact: true })
+      .tap();
     await expect(
       screen.getByText(
         "You cancelled the connection to Trakt. Nothing changed.",

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-06T23:06:15.029Z",
+  "createdAt": "2026-10-08T14:30:29.944Z",
   "payload": {
     "actions": [
       {
@@ -34,10 +34,14 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Opened the Trakt disconnect confirmation and confirmed it. The account now shows as not connected, and the screen confirms: “Trakt is disconnected. Lists read through Trakt stop showing in Stremio until you connect it again.”",
+    "summary": "Trakt is disconnected: the account shows a “Not connected” state, the Trakt list is marked as not showing in Stremio, and a confirmation status says Trakt is disconnected.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
+      {
+        "role": "status",
+        "name": "Trakt is not connected, so this List does not show in Stremio. Connect again for Trakt Watchlist"
+      },
       {
         "role": "status",
         "name": "Trakt is disconnected. Lists read through Trakt stop showing in Stremio until you connect it again."
@@ -53,18 +57,13 @@
         "text": "A free Trakt account can connect only one app. If Stremio's own Trakt sync uses it, paste public Trakt links instead."
       },
       {
+        "text": "1 List needs attention"
+      },
+      {
+        "text": "Not connected"
+      },
+      {
         "text": "Trakt is not connected, so this List does not show in Stremio."
-      },
-      {
-        "role": "button",
-        "name": "Connect again"
-      },
-      {
-        "text": "Connect Trakt, Simkl or MDBList to use Actions."
-      },
-      {
-        "role": "listitem",
-        "name": "Trakt Paste a link, or connect Connect A free Trakt account can connect only one app. If Stremio's own Trakt sync uses it, paste public Trakt links instead."
       }
     ],
     "goneAnchors": [
@@ -77,6 +76,9 @@
       {
         "role": "button",
         "name": "Disconnect"
+      },
+      {
+        "text": "Not refreshed yet"
       },
       {
         "text": "Your Trakt (@someone)"
@@ -92,12 +94,8 @@
       {
         "role": "button",
         "name": "Up Next"
-      },
-      {
-        "role": "button",
-        "name": "History"
       }
     ],
-    "endWaitMs": 12855
+    "endWaitMs": 37966
   }
 }

@@ -1,18 +1,15 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-06T23:07:52.952Z",
+  "createdAt": "2026-10-08T14:30:34.649Z",
   "payload": {
     "actions": [
       {
         "name": "tap",
-        "summary": "tap button \"Connect again\" (2 of 2)",
+        "summary": "tap button \"Connect again for Trakt Watchlist\"",
         "target": {
           "role": "button",
-          "name": "Connect again",
-          "position": {
-            "index": 1,
-            "of": 2
-          }
+          "name": "Connect again for Trakt Watchlist",
+          "text": "Connect again"
         }
       }
     ],
@@ -28,7 +25,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Clicked Connect again from the Trakt Watchlist's renewal notice. The app navigated to /authorize-fixture and displays the Trakt authorization fixture, confirming the renewal flow was launched.",
+    "summary": "Clicked “Connect again for Trakt Watchlist,” which navigated to the Trakt authorization fixture, renewing the connection flow.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "http://127.0.0.1:4314/authorize-fixture",
     "endAnchors": [
@@ -40,7 +37,7 @@
     "goneAnchors": [
       {
         "role": "status",
-        "name": "Trakt refused the Stremlist Connection, so this List does not show in Stremio. Connect Trakt again to renew it. Connect again"
+        "name": "Trakt refused the Stremlist Connection, so this List does not show in Stremio. Connect Trakt again to renew it. Connect again for Trakt Watchlist"
       },
       {
         "text": "Stremlist"
@@ -68,6 +65,6 @@
         "text": "IMDb, Trakt, MDBList, JustWatch and SensCritique links work."
       }
     ],
-    "endWaitMs": 11508
+    "endWaitMs": 12279
   }
 }
