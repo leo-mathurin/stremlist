@@ -13,6 +13,7 @@
   },
   "scripts": {
     "dev": "portless",
+    "dev:local": "bun scripts/dev-local.mjs",
     "build": "bun build.ts",
     "lint": "eslint .",
     "format": "prettier . --write",

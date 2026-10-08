@@ -82,7 +82,7 @@ export default function ProviderList({
           );
         } else if (soon) {
           trailing = (
-            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-white/50">
+            <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs font-semibold text-white/50">
               Soon
             </span>
           );

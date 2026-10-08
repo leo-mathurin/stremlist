@@ -10,7 +10,7 @@ interface SEOOptions {
 const DEFAULTS = {
   title: "Stremlist - Your watchlists and lists, all in Stremio",
   description:
-    "Free Stremio addon that shows your watchlists and lists from IMDb, Trakt, Simkl, MDBList, JustWatch and SensCritique as catalogs on your Stremio home.",
+    "Free Stremio addon that shows your watchlists and lists from IMDb, Trakt, Simkl, MDBList, JustWatch and SensCritique as catalogs in Stremio.",
   robots: "index, follow",
   canonical: "https://stremlist.com/",
 };

@@ -15,12 +15,7 @@ export default function NotFound() {
       <Header />
 
       <main className="py-12 text-center">
-        <p className="text-sm font-semibold uppercase tracking-wider text-stremlist">
-          404
-        </p>
-        <h2 className="mt-2 text-2xl font-bold text-gray-900">
-          Page not found
-        </h2>
+        <h2 className="text-2xl font-bold text-gray-900">Page not found</h2>
         <p className="mx-auto mt-3 max-w-md text-gray-600">
           This address does not match a Stremlist page.
         </p>

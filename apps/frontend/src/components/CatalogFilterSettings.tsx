@@ -209,7 +209,7 @@ export default function CatalogFilterSettings({
 
             <div className="mt-4">
               <p className="text-xs font-semibold text-gray-600">
-                Extra catalogs on your Stremio home
+                Extra catalogs in Stremio
               </p>
               <p className="mt-0.5 text-xs text-pretty text-gray-500">
                 Use the same list and filters. Reinstall after changing these
