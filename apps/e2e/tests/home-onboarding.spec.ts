@@ -141,9 +141,7 @@ test(
     await page.getByRole("link", { name: "Return to home" }).click();
     await expect(page).toHaveURL(`${FRONTEND_URL}/`);
     await expect(
-      page.getByRole("heading", {
-        name: "Your watchlists and lists, all in Stremio.",
-      }),
+      page.getByRole("heading", { name: "Your lists, all in Stremio." }),
     ).toBeVisible();
   },
 );

@@ -24,7 +24,8 @@ import {
 } from "./config-fixture";
 
 // Provider journeys of the configure page: links of every available Provider
-// (Letterboxd is out of scope), Connections and their OAuth round trip,
+// (Letterboxd links only explain the MDBList import), the kill switch,
+// Connections and their OAuth round trip,
 // disconnect, Actions settings and the Legacy alias upgrade. The API is
 // intercepted; tests/provider-journeys.spec.ts runs the real backend.
 
@@ -527,4 +528,70 @@ test("a Legacy alias install that moved to a private URL cannot be changed", asy
   await expect(
     screen.getByRole("button", "Create a new private URL"),
   ).toBeEnabled();
+});
+
+test("a Provider turned off is unavailable to connect, link or add", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  // The kill switch (DISABLED_PROVIDERS) reports Trakt as off.
+  await baseRoutes(browser, providerStatus({ trakt: { enabled: false } }));
+  await browser.route(`${backend}/${accountId}/config`, async (route) => {
+    await route.fulfill({ json: toJson(configuration) });
+  });
+  const link = "https://trakt.tv/users/someone/lists/weekend";
+  const inputs = await routeResolve(browser, (input) =>
+    input === link
+      ? { ok: false, reason: "disabled", provider: "trakt" }
+      : null,
+  );
+  await app.open(`/configure?account=${accountId}`);
+  await expect(screen.getByText("Test catalog")).toBeVisible();
+  const off = screen
+    .getByRole("listitem")
+    .filter({ hasText: "Temporarily unavailable" });
+  await expect(off).toHaveCount(1);
+  await expect(off.getByText("Trakt", { exact: true })).toBeVisible();
+  // Simkl and MDBList can still connect; Trakt cannot.
+  await expect(screen.getByRole("button", "Connect")).toHaveCount(2);
+  await expect(screen.getByText("Trakt charts")).toHaveCount(0);
+  await expect(screen.getByRole("button", "Trending")).toHaveCount(0);
+
+  await screen.getByLabel(PASTE).fill(link);
+  await screen.getByRole("button", "Add", { exact: true }).tap();
+  await expect(screen.getByRole("alert")).toHaveText(
+    "Trakt is temporarily unavailable. Please try again later.",
+  );
+  await expect(screen.getByText(/^1 of 10 lists/)).toBeVisible();
+  expect(inputs).toEqual([{ input: link, accountKey: accountId }]);
+});
+
+test("a Letterboxd link explains the MDBList import without a lookup", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await captureConfig(browser);
+  const inputs = await routeResolve(browser, () => null);
+  await app.open(`/configure?account=${accountId}`);
+  await expect(screen.getByText("Test catalog")).toBeVisible();
+  await screen
+    .getByLabel(PASTE)
+    .fill("https://letterboxd.com/someone/watchlist/");
+  await expect(screen.getByText("Letterboxd: coming soon")).toBeVisible();
+  await expect(screen.getByText("Coming soon")).toBeVisible();
+  await screen.getByRole("button", "Add", { exact: true }).tap();
+  const problem = screen.getByRole("alert");
+  await expect(
+    problem.getByText(
+      "Letterboxd is coming soon. Tip: import it into MDBList, then add the MDBList list.",
+    ),
+  ).toBeVisible();
+  await expect(problem.getByRole("listitem")).toHaveCount(3);
+  await expect(
+    problem.getByRole("link", "Open MDBList external lists"),
+  ).toHaveAttribute("href", "https://mdblist.com/mylists/#external_lists");
+  await expect(screen.getByText(/^1 of 10 lists/)).toBeVisible();
+  expect(inputs).toEqual([]);
 });

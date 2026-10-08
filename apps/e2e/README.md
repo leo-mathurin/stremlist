@@ -38,7 +38,7 @@ R2. The configure/onboarding pages of the frontend are covered too.
   counts) or compare the Stremio UI against the addon's own catalog JSON from
   the same run, so they do not depend on what is in the watchlist today.
 - The default run and pull request CI execute all three projects: deterministic
-  local coverage (58 tests), four live smoke tests, and the broader live
+  local coverage (61 tests), four live smoke tests, and the broader live
   regression suite (25 tests).
 - `tests/new-titles.spec.ts` starts a second backend with
   `helpers/source-transport.ts` preloaded. It reads Source lists from a JSON
@@ -114,9 +114,11 @@ Supabase and RustFS stack, dummy OAuth client IDs and no real credential. The
 real adapters, OAuth flow, ID resolver and Action pages run; only the Provider
 responses are fixtures, and any request to an unknown host fails. It covers
 public links (Trakt, JustWatch, SensCritique), Source lists read through a
-Connection (MDBList, Simkl, Trakt), Trakt OAuth start and callback, disconnect,
-expired Connections, Legacy alias limits and Actions. Letterboxd is out of
-scope. The UI side of the same journeys is in `toolkit/providers.e2e.ts`.
+Connection (MDBList, Simkl, Trakt), OAuth start and callback (Trakt, Simkl,
+MDBList), disconnect, expired Connections, Legacy alias limits, every Trakt
+Action intent and its page, and the Provider kill switch (a third backend
+with `DISABLED_PROVIDERS`). Letterboxd has no adapter yet; the configure page
+only explains its MDBList import. The UI side of the same journeys is in `toolkit/providers.e2e.ts`.
 
 ## Environment knobs
 
