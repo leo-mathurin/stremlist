@@ -1,14 +1,14 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-06T19:47:15.716Z",
+  "createdAt": "2026-10-08T16:13:43.174Z",
   "payload": {
     "actions": [
       {
         "name": "tap",
-        "summary": "tap button \"I already have one\"",
+        "summary": "tap button \"Open it\"",
         "target": {
           "role": "button",
-          "name": "I already have one"
+          "name": "Open it"
         }
       },
       {
@@ -42,7 +42,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Opened the existing Stremlist using the supplied manifest URL. The configure page loaded for account sl_E2eFixtureAccount00001 and shows its existing “Test catalog” list.",
+    "summary": "Opened the existing Stremlist using the supplied Addon URL. The Configure page is open for account sl_E2eFixtureAccount00001, showing the existing “Test catalog” list and the matching Addon URL.",
     "startPath": "/",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
@@ -66,14 +66,13 @@
         "text": "IMDb, Trakt, MDBList, JustWatch and SensCritique links work."
       },
       {
+        "text": "Paste a link"
+      },
+      {
         "text": "Link"
       },
       {
         "text": "Paste a link, or connect"
-      },
-      {
-        "role": "button",
-        "name": "Connect"
       }
     ],
     "goneAnchors": [
@@ -81,7 +80,7 @@
         "text": "Stremio."
       },
       {
-        "text": "Paste a link from IMDb, Trakt, MDBList, JustWatch or SensCritique, or connect Trakt, Simkl or MDBList. Every List shows up as its own row on your Stremio home."
+        "text": "Paste a link to any watchlist or list, or connect your account. Each one shows up as its own row in Stremio."
       },
       {
         "role": "textbox",
@@ -93,19 +92,20 @@
         "name": "Build my Stremlist"
       },
       {
-        "text": "IMDb, Trakt, MDBList, JustWatch and SensCritique links work. Or start empty and connect an account."
-      },
-      {
         "role": "button",
-        "name": "I already have one"
+        "name": "Open it"
       },
       {
-        "text": "Live on 2 Stremio homes"
+        "text": "2 people use Stremlist"
       },
       {
-        "text": "Many sites, one addon"
+        "text": "people use Stremlist"
+      },
+      {
+        "role": "heading",
+        "name": "Many sites, one addon"
       }
     ],
-    "endWaitMs": 11971
+    "endWaitMs": 12087
   }
 }
