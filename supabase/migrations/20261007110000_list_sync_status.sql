@@ -1,13 +1,10 @@
--- Synchronization status of each List (STR-58).
+-- Sync status of each List (STR-58, ADR 0005).
 --
 -- * `list_sync_status` keeps the outcome of the last refresh of each Source
---   list that a List reads: when it last succeeded, how many Titles it had,
---   and why the latest refresh failed. The configure page shows it per List.
---   Rows are keyed by the Source list too, so a List that changes its Source
---   list (another IMDb chart) does not show the status of the old one.
+--   list that a List reads. Rows are keyed by the Source list too, so a List
+--   that changes its Source list does not show the status of the old one.
 -- * `connections.needs_renewal_since` is set when a Provider refuses a
---   Connection (revoked grant, refresh refused). The configure page asks the
---   user to connect again. A new authorization or a working private read clears it.
+--   Connection, so the configure page asks the user to connect again.
 
 CREATE TABLE public.list_sync_status (
   list_id uuid NOT NULL REFERENCES public.lists(id) ON DELETE CASCADE,
@@ -55,7 +52,7 @@ AS $$
       CASE WHEN p_failure_reason IS NULL THEN outcome.at END,
       CASE WHEN p_failure_reason IS NULL THEN p_title_count END,
       p_failure_reason,
-      CASE WHEN p_failure_reason IS NULL THEN NULL ELSE outcome.at END
+      CASE WHEN p_failure_reason IS NOT NULL THEN outcome.at END
     FROM public.lists l, outcome
     WHERE l.id = p_list_id
     ON CONFLICT (list_id, provider, source_ref) DO UPDATE SET

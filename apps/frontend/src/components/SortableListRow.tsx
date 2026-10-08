@@ -179,23 +179,22 @@ export default function SortableListRow({
       </div>
 
       {sync && (
-        // Under the name column, but as wide as the row, so the status
-        // never truncates behind the sort control.
-        <div className="-mt-2 flex gap-3 px-3 pb-3 sm:-mt-3 sm:gap-4 sm:px-4 sm:pb-4">
-          <span aria-hidden="true" className="-ml-1 w-6 shrink-0" />
-          <span aria-hidden="true" className="w-8 shrink-0" />
-          <ListSyncLine sync={sync} saved={!!list.id} />
-        </div>
-      )}
-
-      {sync && (
-        <ListSyncNotice
-          title={title}
-          provider={list.provider}
-          sourceRef={list.sourceRef}
-          sync={sync}
-          onConnect={onConnect}
-        />
+        <>
+          {/* Under the name column, but as wide as the row, so the status
+              never truncates behind the sort control. */}
+          <div className="-mt-2 flex gap-3 px-3 pb-3 sm:-mt-3 sm:gap-4 sm:px-4 sm:pb-4">
+            <span aria-hidden="true" className="-ml-1 w-6 shrink-0" />
+            <span aria-hidden="true" className="w-8 shrink-0" />
+            <ListSyncLine sync={sync} saved={!!list.id} />
+          </div>
+          <ListSyncNotice
+            title={title}
+            provider={list.provider}
+            sourceRef={list.sourceRef}
+            sync={sync}
+            onConnect={onConnect}
+          />
+        </>
       )}
 
       <div
