@@ -21,6 +21,7 @@
   "homepage": "https://github.com/leo-mathurin/imdb-watchlist-stremio#readme",
   "scripts": {
     "dev": "turbo run dev",
+    "dev:local": "turbo run dev:local",
     "dev:backend": "turbo run dev --filter=@stremlist/backend",
     "dev:frontend": "turbo run dev --filter=@stremlist/frontend",
     "build": "turbo run build",
