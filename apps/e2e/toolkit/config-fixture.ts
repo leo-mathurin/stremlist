@@ -5,6 +5,7 @@ import type {
 } from "@stremlist/shared/catalog-preview";
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { DisplayMode } from "@stremlist/shared/constants";
+import type { Screen } from "e2e";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDER_IDS } from "@stremlist/shared/providers";
 import type {
@@ -26,9 +27,37 @@ export const imdbUser = "ur99123456";
 
 export const SAVED = "Saved! Your catalogs will refresh with the new settings.";
 export const SAVED_REINSTALL =
-  "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions.";
+  "Saved! Reinstall Stremlist in Stremio to see your changes.";
 export const SAVED_WITH_CHANGES =
   "Saved the submitted settings. You have unsaved changes: save again to apply them.";
+
+/** The label of the Save button before the first save creates the Account. */
+export const SAVE_NEW = "Save and get my Addon URL";
+
+/**
+ * The Save button at the top of the Lists column. The floating Save button
+ * at the bottom has the same name and stays in the page while it is hidden,
+ * so take the first one.
+ */
+export function saveButton(screen: Screen, name = "Save") {
+  return screen.getByRole("button", name, { exact: true }).first();
+}
+
+/**
+ * Keeps toasts on screen until they are replaced or closed. Save and
+ * newsletter results are toasts that close after 6 to 10 seconds, and an AI
+ * goal can take longer than that to finish, so a check of the toast after the
+ * goal could find it gone. Sonner pauses its timers while the document is
+ * hidden, so the page reports a hidden document.
+ */
+export async function holdToasts(browser: Browser) {
+  await browser.addInitScript(() => {
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      get: () => true,
+    });
+  });
+}
 
 export const row = {
   id: "00000000-0000-4000-8000-000000000001",

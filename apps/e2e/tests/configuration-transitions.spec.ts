@@ -11,6 +11,7 @@ import { CATALOG_TITLES, seedCatalog } from "../helpers/catalog-fixture.js";
 import { resetDb, seedList } from "../helpers/db.js";
 import { seedCachedCatalog } from "../helpers/r2.js";
 import { CATALOG_FIXTURE_USER } from "../helpers/test-data.js";
+import { saveButton } from "../helpers/configure.js";
 
 async function open(page: Page, accountId: string, title = "Release QA") {
   await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
@@ -23,7 +24,7 @@ async function save(page: Page) {
   const response = page.waitForResponse(
     (res) => res.url().endsWith("/config") && res.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await saveButton(page).click();
   expect((await response).status()).toBe(200);
   await expect(page.getByText("Saved!", { exact: false })).toBeVisible();
 }
@@ -230,9 +231,7 @@ test(
     // An Account keeps at least one List: without one, Save is off.
     await page.getByRole("button", { name: "Remove Keep me" }).click();
     await expect(page.getByText("No Lists yet")).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Save", exact: true }),
-    ).toBeDisabled();
+    await expect(saveButton(page)).toBeDisabled();
   },
 );
 

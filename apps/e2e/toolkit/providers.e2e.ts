@@ -21,6 +21,9 @@ import {
   row,
   savedLists,
   toJson,
+  saveButton,
+  SAVE_NEW,
+  holdToasts,
 } from "./config-fixture";
 
 // Provider journeys of the configure page: links of every available Provider
@@ -150,7 +153,7 @@ test("pasted links of every available Provider become Lists of a new setup", asy
     await expect(field).toHaveValue("");
   }
   await expect(screen.getByText(/^4 of 10 lists/)).toBeVisible();
-  await screen.getByRole("button", "Save and get my Addon URL").tap();
+  await saveButton(screen, SAVE_NEW).tap();
   await expect(browser).toHaveURL(`/configure?account=${accountId}`);
   expect(inputs.map((entry) => entry.input)).toEqual(Object.values(links));
   expect(created[0].lists).toMatchObject([
@@ -181,6 +184,7 @@ test(
   "a Provider chart is added from Quick add",
   { tags: ["agent"] },
   async ({ app, agent, browser, screen }) => {
+    await holdToasts(browser);
     const submissions = await captureConfig(browser);
     await app.open(`/configure?account=${accountId}`);
     await agent.act("Add the Trakt Trending chart to my Lists, then save.", {
@@ -315,7 +319,8 @@ for (const [error, message] of [
     );
     await expect(screen.getByText(message)).toBeVisible();
     await expect(browser).toHaveURL(`/configure?account=${accountId}`);
-    await screen.getByRole("button", "Dismiss").tap();
+    // The message is a toast with a close button.
+    await screen.getByRole("button", "Close toast").tap();
     await expect(screen.getByText(message)).not.toBeVisible();
   });
 }
@@ -324,6 +329,7 @@ test(
   "disconnecting a Provider asks first, then its Lists offer to connect again",
   { tags: ["agent"] },
   async ({ app, agent, browser, screen }) => {
+    await holdToasts(browser);
     await baseRoutes(
       browser,
       providerStatus({
@@ -374,7 +380,7 @@ test(
     );
     await app.open(`/configure?account=${accountId}`);
     await expect(screen.getByText("@someone")).toBeVisible();
-    await screen.getByRole("button", "Disconnect").tap();
+    await screen.getByRole("button", "Connected to Trakt. Disconnect").tap();
     const confirm = screen.getByRole("group", "Disconnect Trakt?");
     await expect(
       confirm.getByText(
@@ -400,7 +406,7 @@ test(
     await expect(
       screen.getByText("Connect Trakt, Simkl or MDBList to use Actions."),
     ).toBeVisible();
-    await screen.getByRole("button", "Save", { exact: true }).tap();
+    await saveButton(screen).tap();
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     expect(submissions.at(-1)?.actions).toEqual({
       enabled: true,
@@ -448,7 +454,7 @@ test("Actions settings save the chosen Providers in their order", async ({
   await screen.getByRole("button", "Move Simkl up").tap();
   await screen.getByRole("checkbox", /^Trakt/).tap();
   await expect(screen.getByRole("checkbox", /^Trakt/)).not.toBeChecked();
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   // Actions add a stream resource that Stremio reads only at install time.
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(submissions.at(-1)?.actions).toEqual({
@@ -517,11 +523,17 @@ test("a Legacy alias install that moved to a private URL cannot be changed", asy
     screen.getByRole("heading", "This install has a private URL now"),
   ).toBeVisible();
   await expect(
-    screen.getByText("Saving is off for this install"),
+    screen
+      .getByText(
+        "This install has a private URL now. Make changes from the configure page of your new install.",
+      )
+      .first(),
   ).toBeVisible();
-  await expect(
-    screen.getByRole("button", "Save", { exact: true }),
-  ).toBeDisabled();
+  // Only the hidden floating Save button stays in the page, and it is off.
+  await expect(screen.getByRole("button", "Save", { exact: true })).toHaveCount(
+    1,
+  );
+  await expect(saveButton(screen)).toBeDisabled();
   await expect(screen.getByLabel(PASTE)).toBeDisabled();
   await expect(
     screen.getByRole("button", "Create a new private URL"),

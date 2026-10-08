@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-06T19:47:05.915Z",
+  "createdAt": "2026-10-08T18:42:17.742Z",
   "payload": {
     "actions": [
       {
@@ -26,7 +26,8 @@
         "summary": "tap button \"Save and get my Addon URL\"",
         "target": {
           "role": "button",
-          "name": "Save and get my Addon URL"
+          "name": "Save and get my Addon URL",
+          "text": "Save"
         }
       }
     ],
@@ -42,14 +43,10 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Added the provided IMDb profile and saved the setup. Installation choices are now visible (Install in Stremio / Open Stremio Web, plus the Addon URL); I stopped without opening Stremio.",
+    "summary": "The IMDb profile was already added: the configured account shows an IMDb Watchlist for ur99123456, and the Addon URL is ready with installation choices visible. Stopped here without opening Stremio.",
     "startPath": "/",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
-      {
-        "role": "status",
-        "name": "Saved! Install Stremlist in Stremio with your Addon URL."
-      },
       {
         "role": "heading",
         "name": "Providers"
@@ -70,6 +67,9 @@
         "text": "IMDb, Trakt, MDBList, JustWatch and SensCritique links work."
       },
       {
+        "text": "Paste a link"
+      },
+      {
         "text": "Link"
       },
       {
@@ -81,7 +81,7 @@
         "text": "Stremio."
       },
       {
-        "text": "Paste a link from IMDb, Trakt, MDBList, JustWatch or SensCritique, or connect Trakt, Simkl or MDBList. Every List shows up as its own row on your Stremio home."
+        "text": "Paste a link to any watchlist or list, or connect your account. Each one shows up as its own row in Stremio."
       },
       {
         "role": "textbox",
@@ -93,19 +93,20 @@
         "name": "Build my Stremlist"
       },
       {
-        "text": "IMDb, Trakt, MDBList, JustWatch and SensCritique links work. Or start empty and connect an account."
-      },
-      {
         "role": "button",
-        "name": "I already have one"
+        "name": "Open it"
       },
       {
-        "text": "Live on 2 Stremio homes"
+        "text": "2 people use Stremlist"
       },
       {
-        "text": "Many sites, one addon"
+        "role": "heading",
+        "name": "Many sites, one addon"
+      },
+      {
+        "text": "Paste a link from any of these sites, or connect your Trakt, Simkl or MDBList account."
       }
     ],
-    "endWaitMs": 12142
+    "endWaitMs": 28264
   }
 }

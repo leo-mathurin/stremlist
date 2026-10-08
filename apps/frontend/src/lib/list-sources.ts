@@ -9,6 +9,7 @@ import type {
   ProviderId,
   SourceKind,
 } from "@stremlist/shared/providers";
+import { stremioDeepLink } from "./stremio-links";
 
 /** Reorders Stremio addons, so Stremlist can sit just after Cinemeta. */
 export const ADDON_MANAGER_URL = "https://stremio-addon-manager.vercel.app/";
@@ -216,13 +217,16 @@ export function extractAccountKey(input: string): string | null {
   return ADDON_KEY_IN_TEXT.exec(trimmed)?.[1] ?? null;
 }
 
-/** The Addon URL and its install links for an Account key. */
+/**
+ * The Addon URL and its install links for an Account key. `stremioUrl` is
+ * null when Stremio cannot open the Addon URL from a deep link (local dev).
+ */
 export function buildAddonUrls(accountKey: string) {
   const addonUrl = new URL(
     `${import.meta.env.VITE_BACKEND_URL}/${accountKey}/manifest.json`,
     window.location.origin,
   ).href;
   const webUrl = `https://web.stremio.com/#/addons?addon=${encodeURIComponent(addonUrl)}`;
-  const stremioUrl = `stremio://${addonUrl.replace(/^https?:\/\//, "")}`;
+  const stremioUrl = stremioDeepLink(addonUrl);
   return { addonUrl, webUrl, stremioUrl };
 }
