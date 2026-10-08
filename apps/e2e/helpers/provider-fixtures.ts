@@ -140,11 +140,17 @@ function trakt(request: Request, url: URL, body: unknown): Response {
     case "/sync/ratings/shows":
       return json([]);
     case "/sync/watchlist":
+    case "/sync/watchlist/remove":
+    case "/sync/history":
+    case "/sync/history/remove":
+    case "/sync/ratings":
+    case "/sync/ratings/remove":
+      // Every Action write: Trakt knows both fixture Titles.
       return json(
         {
           added: { movies: 1, shows: 0 },
           existing: { movies: 0, shows: 0 },
-          not_found: { movies: [], shows: [] },
+          not_found: { movies: [], shows: [], episodes: [] },
         },
         201,
       );

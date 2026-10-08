@@ -79,13 +79,13 @@ test("public pages and unknown routes provide navigation", async ({
 }) => {
   await baseRoutes(browser);
   for (const [path, heading] of [
-    ["/", /^Your watchlists and lists, all in/],
-    ["/terms", /Terms/],
-    ["/changelog", /Changelog/],
+    ["/", "Your lists, all in Stremio."],
+    ["/terms", "Terms and privacy"],
+    ["/changelog", "Changelog"],
     ["/unknown", "Page not found"],
   ] as const) {
     await app.open(path);
-    await expect(screen.getByRole("heading", heading).first()).toBeVisible();
+    await expect(screen.getByRole("heading", heading)).toBeVisible();
   }
   await screen.getByRole("link", "Return to home").tap();
   await expect(browser).toHaveURL("/");
@@ -110,13 +110,15 @@ test("Home detects the Provider of a link and clearing it resets the entry", asy
   await expect(screen.getByText("Trakt list detected")).toBeVisible();
   await field.fill(addonUrl(accountId));
   await expect(screen.getByText("Addon URL detected")).toBeVisible();
+  await field.fill("https://letterboxd.com/someone/watchlist/");
+  await expect(screen.getByText("Letterboxd: coming soon")).toBeVisible();
   await field.fill("");
   await expect(screen.getByRole("button", "Build my Stremlist")).toBeVisible();
+  // An empty field shows no hint.
+  await expect(screen.getByText("Letterboxd: coming soon")).toBeHidden();
   await expect(
-    screen.getByText(
-      "IMDb, Trakt, MDBList, JustWatch and SensCritique links work. Or start empty and connect an account.",
-    ),
-  ).toBeVisible();
+    screen.getByText("No supported site recognized yet."),
+  ).toBeHidden();
   await expect(browser).toHaveURL("/");
 });
 
@@ -391,7 +393,7 @@ for (const entry of ["typed", "query"] as const) {
     });
     if (entry === "typed") {
       await app.open("/");
-      await screen.getByRole("button", "I already have one").tap();
+      await screen.getByRole("button", "Open it").tap();
       await screen.getByLabel("Your Addon URL").fill(addonUrl(key));
       await screen.getByRole("button", "Open", { exact: true }).tap();
     } else {
