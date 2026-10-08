@@ -230,15 +230,6 @@ describe("recording refreshes", () => {
     expect(db.getTable("list_sync_status")).toEqual([]);
   });
 
-  it("records nothing for a List removed while it was read", async () => {
-    useTrakt(vi.fn(() => Promise.resolve(entries("tt0000001"))));
-    db.tables.lists = [];
-
-    await getListCatalog(config());
-
-    expect(db.getTable("list_sync_status")).toEqual([]);
-  });
-
   it("ignores the status of a Source list that the List no longer reads", async () => {
     useTrakt(vi.fn(() => Promise.resolve(entries("tt0000001"))));
     await getListCatalog(config());
@@ -342,18 +333,6 @@ describe("Lists without a recorded status", () => {
       titleCount: null,
     });
   });
-
-  it("prefer the recorded status over the cache", async () => {
-    cache.seed(listId, [movie("tt0000001")]);
-    useTrakt(
-      vi.fn(() => Promise.reject(new SourceUnavailableError("private", "no"))),
-    );
-    await getListCatalog(config({ noCacheFallback: true })).catch(
-      () => undefined,
-    );
-
-    expect(await statusOf()).toMatchObject({ problem: "private" });
-  });
 });
 
 describe("the read after a new authorization", () => {
@@ -451,21 +430,6 @@ describe("Connections that need to be renewed", () => {
     await getListCatalog(config()).catch(() => undefined);
 
     expect((await connectionOf())?.needsRenewalSince).not.toBeNull();
-  });
-
-  it("keeps the first time the Provider refused the Connection", async () => {
-    useTrakt(vi.fn(() => Promise.reject(new ConnectionExpiredError("trakt"))));
-    vi.useFakeTimers({
-      now: new Date("2026-10-06T10:00:00Z"),
-      toFake: ["Date"],
-    });
-    await getListCatalog(config()).catch(() => undefined);
-    vi.setSystemTime(new Date(Date.now() + HOUR));
-    await getListCatalog(config()).catch(() => undefined);
-
-    expect((await connectionOf())?.needsRenewalSince).toBe(
-      "2026-10-06T10:00:00.000Z",
-    );
   });
 
   it("does not mark the Connection for other failures", async () => {

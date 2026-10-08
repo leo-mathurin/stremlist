@@ -190,7 +190,7 @@ export async function getConnectionRow(accountId: string, provider: string) {
   const { data, error } = await db
     .from("connections")
     .select(
-      "provider, provider_username, expires_at, access_token, redirect_uri",
+      "provider, provider_username, expires_at, access_token, redirect_uri, needs_renewal_since",
     )
     .eq("account_id", accountId)
     .eq("provider", provider)
@@ -229,31 +229,21 @@ export async function getListRows(accountId: string) {
   return data;
 }
 
-/**
- * Store a sync status row as the backend records it after a refresh (STR-58),
- * for Lists whose earlier refreshes the test does not run itself.
- */
+/** Store the sync status of a refresh at `at` that gave `titleCount` Titles. */
 export async function seedSyncStatus(
   listId: string,
-  status: {
-    provider?: ProviderId;
-    sourceRef: string;
-    lastAttemptAt: Date;
-    lastSuccessAt?: Date | null;
-    titleCount?: number | null;
-    failureReason?: string | null;
-    failingSince?: Date | null;
-  },
+  provider: ProviderId,
+  sourceRef: string,
+  at: Date,
+  titleCount: number,
 ): Promise<void> {
   const { error } = await db.from("list_sync_status").insert({
     list_id: listId,
-    provider: status.provider ?? "imdb",
-    source_ref: status.sourceRef,
-    last_attempt_at: status.lastAttemptAt.toISOString(),
-    last_success_at: status.lastSuccessAt?.toISOString() ?? null,
-    title_count: status.titleCount ?? null,
-    failure_reason: status.failureReason ?? null,
-    failing_since: status.failingSince?.toISOString() ?? null,
+    provider,
+    source_ref: sourceRef,
+    last_attempt_at: at.toISOString(),
+    last_success_at: at.toISOString(),
+    title_count: titleCount,
   });
   if (error) throw error;
 }
@@ -265,19 +255,4 @@ export async function getSyncStatusRows(listId: string) {
     .eq("list_id", listId);
   if (error) throw error;
   return data;
-}
-
-/** When the Provider started to refuse the Connection, or null. */
-export async function getConnectionRenewal(
-  accountId: string,
-  provider: ProviderId,
-): Promise<string | null> {
-  const { data, error } = await db
-    .from("connections")
-    .select("needs_renewal_since")
-    .eq("account_id", accountId)
-    .eq("provider", provider)
-    .single();
-  if (error) throw error;
-  return data.needs_renewal_since;
 }

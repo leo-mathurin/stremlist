@@ -5,6 +5,7 @@ import type {
   AccountConfigInput,
   AccountConfigResponse,
   ConfigList,
+  ConnectionSummary,
 } from "@stremlist/shared/stremio.types";
 import type { ListSyncStatus } from "@stremlist/shared/sync-status";
 
@@ -53,6 +54,19 @@ export function syncedStatus(
   } satisfies ListSyncStatus;
 }
 
+/** A Connection that the Provider accepts. */
+export function connected(
+  provider: ProviderId,
+  username: string | null = "someone",
+): ConnectionSummary {
+  return {
+    provider,
+    username,
+    connectedAt: "2026-10-01T00:00:00.000Z",
+    needsRenewalSince: null,
+  };
+}
+
 export const configuration = {
   access: "private",
   accountId,
@@ -92,8 +106,8 @@ export function providerStatus(
 
 /**
  * Register first: answers the requests every page makes (`/providers`,
- * `/stats`, the `/sync-status` poll) and fails the test on any other request that a later, more
- * specific route did not take.
+ * `/stats`, the `/sync-status` poll) and fails the test on any other request
+ * that a later, more specific route did not take.
  */
 export async function baseRoutes(
   browser: Browser,
@@ -104,8 +118,7 @@ export async function baseRoutes(
     if (pathname === "/providers") await route.fulfill({ json: providers });
     else if (pathname === "/stats")
       await route.fulfill({ json: { activeUsers: 2 } });
-    // The configure page polls this while a saved List waits for its first
-    // refresh. Tests that check sync states route it themselves.
+    // Tests that check sync states route the poll themselves.
     else if (pathname.endsWith("/sync-status"))
       await route.fulfill({
         json: toJson({

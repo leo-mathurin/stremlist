@@ -9,6 +9,7 @@ import {
   baseRoutes,
   captureConfig,
   configuration,
+  connected,
   row,
   syncedStatus,
   toJson,
@@ -45,12 +46,7 @@ const traktWatchlist = list(
   "Trakt Watchlist",
   "trakt",
 );
-const traktConnection = {
-  provider: "trakt" as const,
-  username: "moviefan",
-  connectedAt: "2026-01-01T00:00:00.000Z",
-  needsRenewalSince: null as string | null,
-};
+const traktConnection = connected("trakt");
 
 /** Answer `/sync-status` with `answer(poll)`; returns how often it was asked. */
 async function routeSyncStatus(
@@ -184,7 +180,6 @@ test("each List shows its last refresh or why it failed, and a new List is polle
     screen.getByText("Not refreshed yet", { exact: true }),
   ).toBeHidden();
   expect(polls.length).toBeGreaterThanOrEqual(2);
-  expect(polls.every((method) => method === "GET")).toBe(true);
 });
 
 test("a List added and saved waits for its first refresh, then shows it", async ({

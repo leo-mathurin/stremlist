@@ -2,9 +2,10 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { FRONTEND_URL } from "../env.js";
 import { getConfig, getSyncStatus, refresh } from "../helpers/api.js";
+import { CATALOG_TITLES } from "../helpers/catalog-fixture.js";
 import {
   clearRefreshCooldown,
-  getConnectionRenewal,
+  getConnectionRow,
   getSyncStatusRows,
   resetDb,
   seedAccount,
@@ -17,27 +18,13 @@ import { seedCachedCatalog } from "../helpers/r2.js";
 import { CATALOG_FIXTURE_USER } from "../helpers/test-data.js";
 
 // The sync status of each List (STR-58) against the real backend, database
-// and cache. The test backend has no Trakt client ID, so every Trakt read
-// fails as "Trakt is temporarily unavailable", and a Trakt token cannot be
-// refreshed: both are deterministic, offline failures.
+// and cache. Trakt reads fail offline here: see README.md.
 
 const HOUR = 60 * 60_000;
 const PUBLIC_TRAKT_LIST = "users/fixture/lists/horror";
 
 const configureUrl = (accountKey: string) =>
   `${FRONTEND_URL}/configure?account=${accountKey}`;
-
-function meta(id: string) {
-  return {
-    id,
-    name: `QA Sync ${id}`,
-    type: "movie" as const,
-    poster: null,
-    posterShape: "poster" as const,
-    description: "Controlled sync status fixture",
-    genres: ["Drama"],
-  };
-}
 
 async function open(page: Page, accountKey: string, title: string) {
   await page.goto(configureUrl(accountKey));
@@ -64,14 +51,7 @@ test(
       },
     ]);
     const lastSuccess = new Date(Date.now() - HOUR);
-    await seedSyncStatus(listId, {
-      provider: "trakt",
-      sourceRef: PUBLIC_TRAKT_LIST,
-      lastAttemptAt: lastSuccess,
-      lastSuccessAt: lastSuccess,
-      titleCount: 2,
-    });
-    await seedCachedCatalog(listId, [meta("tt9910001"), meta("tt9910002")]);
+    await seedSyncStatus(listId, "trakt", PUBLIC_TRAKT_LIST, lastSuccess, 2);
     await clearRefreshCooldown(accountId);
 
     const { body } = await refresh(accountId);
@@ -136,11 +116,13 @@ test(
       expiresAt: new Date(Date.now() - HOUR),
     });
     await clearRefreshCooldown(accountId);
-    expect(await getConnectionRenewal(accountId, "trakt")).toBeNull();
+    const renewal = async () =>
+      (await getConnectionRow(accountId, "trakt"))?.needs_renewal_since;
+    expect(await renewal()).toBeNull();
 
     await refresh(accountId);
 
-    expect(await getConnectionRenewal(accountId, "trakt")).not.toBeNull();
+    expect(await renewal()).not.toBeNull();
     expect(await getSyncStatusRows(watchlistId)).toMatchObject([
       { failure_reason: "needs_connection", last_success_at: null },
     ]);
@@ -207,18 +189,8 @@ test(
     });
     await seedConnection(accountId, "trakt");
     const at = new Date(Date.now() - HOUR);
-    for (const [listId, provider, sourceRef] of [
-      [watchlistId, "imdb", CATALOG_FIXTURE_USER],
-      [historyId, "trakt", "me/history"],
-    ] as const) {
-      await seedSyncStatus(listId, {
-        provider,
-        sourceRef,
-        lastAttemptAt: at,
-        lastSuccessAt: at,
-        titleCount: 4,
-      });
-    }
+    await seedSyncStatus(watchlistId, "imdb", CATALOG_FIXTURE_USER, at, 4);
+    await seedSyncStatus(historyId, "trakt", "me/history", at, 4);
 
     const { status, body } = await getSyncStatus(CATALOG_FIXTURE_USER);
 
@@ -247,11 +219,7 @@ test(
         displayMode: "split",
       },
     ]);
-    await seedCachedCatalog(listId, [
-      meta("tt9910001"),
-      meta("tt9910002"),
-      meta("tt9910003"),
-    ]);
+    await seedCachedCatalog(listId, CATALOG_TITLES.slice(0, 3));
 
     const { body } = await getSyncStatus(accountId);
     expect(body.syncStatus[listId]).toMatchObject({
@@ -281,7 +249,7 @@ test(
         displayMode: "split",
       },
     ]);
-    await seedCachedCatalog(listId, [meta("tt9910001")]);
+    await seedCachedCatalog(listId, CATALOG_TITLES.slice(0, 1));
     await open(page, accountId, "Cached watchlist");
 
     await page.getByRole("button", { name: "Add an IMDb chart" }).click();
