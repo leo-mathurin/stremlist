@@ -114,6 +114,8 @@ export interface SeedListInput {
   catalogSettings?: CatalogSettings;
   /** More Source lists of a merged List, after the first one. */
   mergedSources?: ListSource[];
+  /** The label of the first Source list, when it was merged in earlier. */
+  sourceLabel?: string;
 }
 
 /** Add a controlled List row without a save-triggered external prewarm. */
@@ -135,7 +137,9 @@ export async function seedList(
     merged_sources: (list.mergedSources ?? []).map((source) => ({
       provider: source.provider,
       source_ref: source.sourceRef,
+      ...(source.label ? { label: source.label } : {}),
     })),
+    source_label: list.sourceLabel ?? null,
   });
   if (error) throw error;
   return id;

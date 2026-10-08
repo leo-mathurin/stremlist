@@ -9,12 +9,17 @@ import type {
 import {
   SAVED_REINSTALL,
   accountId,
+  backend,
+  baseRoutes,
   captureConfig,
   configuration,
   imdbUser,
+  parseBody,
   resolved,
   routeResolve,
   row,
+  savedLists,
+  toJson,
 } from "./config-fixture";
 
 // Merged Lists (STR-59, ADR 0006): one List, several Source lists, one
@@ -29,6 +34,8 @@ const NO_DATES =
   "Date added sorting is off: Top 250 Movies does not give the date when each Title was added.";
 const ONE_TYPE = 'Top 250 Movies has only movies, so "TV shows only" is off.';
 const SOURCE_LIMIT = "You can have at most 20 Source lists in all your Lists.";
+const CHANGED_ELSEWHERE =
+  "Your Lists changed in another window. Reload the page and try again.";
 
 const watchlist = {
   ...row,
@@ -463,4 +470,209 @@ test("an Account with 20 Source lists refuses one more, from Quick add or a link
   await expect(screen.getByText(/^4 of 10 lists/)).toBeVisible();
   expect(inputs).toHaveLength(1);
   expect(submissions).toHaveLength(0);
+});
+
+test("a Source list cannot move to its own List when the Account has 10 Lists", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  const merged = {
+    ...watchlist,
+    mergedSources: [
+      { provider: "imdb", sourceRef: "ls99123456", label: "Favourite films" },
+    ],
+  } satisfies ConfigList;
+  const others = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(
+    (n) =>
+      ({
+        ...row,
+        id: `00000000-0000-4000-8000-00000000003${n}`,
+        sourceRef: `ls9930000${n}`,
+        catalogTitle: `Other ${n}`,
+        position: n,
+      }) satisfies ConfigList,
+  );
+  const submissions = await captureConfig(
+    browser,
+    withLists([merged, ...others]),
+  );
+  await app.open(`/configure?account=${accountId}`);
+  await expect(screen.getByText(/^10 of 10 lists/)).toBeVisible();
+  await openSettings(screen, "IMDb Watchlist");
+  const move = screen.getByRole(
+    "button",
+    "Move Favourite films to its own List",
+  );
+  await expect(move).toBeDisabled();
+  await expect(move).toHaveAttribute(
+    "title",
+    "You have the maximum number of lists",
+  );
+  // Removing a Source list stays possible.
+  await expect(
+    screen.getByRole("button", "Remove Favourite films from this List"),
+  ).toBeEnabled();
+
+  // With room for one more List, the Source list can move.
+  await screen.getByRole("button", "Remove Other 9", { exact: true }).tap();
+  await expect(screen.getByText(/^9 of 10 lists/)).toBeVisible();
+  await expect(move).toBeEnabled();
+  await move.tap();
+  await expect(
+    screen.getByRole("button", "Settings for Favourite films"),
+  ).toBeVisible();
+  await expect(screen.getByText(/^10 of 10 lists/)).toBeVisible();
+  expect(submissions).toHaveLength(0);
+});
+
+test("a movie chart and a TV chart in one List show both, with the reasons", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  const top250tv = {
+    ...row,
+    id: "00000000-0000-4000-8000-000000000005",
+    sourceRef: "imdb:top-rated-tv",
+    catalogTitle: "Top 250 TV Shows",
+    displayMode: "series",
+    position: 1,
+  } satisfies ConfigList;
+  const submissions = await captureConfig(
+    browser,
+    withLists([
+      { ...top250, position: 0 },
+      top250tv,
+      { ...trending, position: 2 },
+    ]),
+  );
+  await app.open(`/configure?account=${accountId}`);
+  await openSettings(screen, "Top 250 Movies");
+  await screen.getByRole("button", MERGE).first().tap();
+  await screen.getByRole("menuitem", "Top 250 TV Shows").tap();
+  await expect(screen.getByText("2 Source lists · IMDb")).toBeVisible();
+
+  await expect(
+    screen.getByText(
+      "Top 250 Movies has only movies and Top 250 TV Shows has only TV shows, so this List shows both.",
+    ),
+  ).toBeVisible();
+  await expect(
+    screen.getByText(
+      "Date added sorting is off: Top 250 Movies and Top 250 TV Shows do not give the date when each Title was added.",
+    ),
+  ).toBeVisible();
+  // "Movies only" falls back to both Title types; neither single type is left.
+  const show = screen.getByLabel("Show", { exact: true }).first();
+  await expect(show).toHaveText("Movies & TV shows");
+  await show.tap();
+  for (const option of ["Movies only", "TV shows only"]) {
+    await expect(screen.getByRole("option", option)).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  }
+  await screen.getByRole("option", "Movies & TV shows").tap();
+
+  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  expect(sources(submissions[0])[0]).toEqual({
+    id: top250.id,
+    provider: "imdb",
+    sourceRef: "imdb:top-rated-movies",
+    catalogTitle: "Top 250 Movies",
+    sortOption: "title-asc",
+    displayMode: "split",
+    position: 0,
+    mergedSources: [
+      {
+        provider: "imdb",
+        sourceRef: "imdb:top-rated-tv",
+        label: "Top 250 TV Shows",
+      },
+    ],
+  });
+});
+
+test("a merged Source list without its Connection says so and offers to connect", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  const merged = {
+    ...watchlist,
+    sortOption: "title-asc",
+    mergedSources: [
+      { provider: "trakt", sourceRef: "me/watchlist", label: "My Trakt picks" },
+    ],
+  } satisfies ConfigList;
+  await captureConfig(browser, withLists([merged]));
+  await app.open(`/configure?account=${accountId}`);
+  await expect(screen.getByText("2 Source lists · IMDb, Trakt")).toBeVisible();
+  await expect(
+    screen.getByText(
+      "Trakt is not connected, so its Source list does not show in this catalog.",
+    ),
+  ).toBeVisible();
+  await expect(
+    screen.getByRole("button", "Connect again", { exact: true }),
+  ).toBeVisible();
+  await openSettings(screen, "IMDb Watchlist");
+  // Only the Trakt Source list has the badge.
+  await expect(screen.getByText("Not connected", { exact: true })).toHaveCount(
+    1,
+  );
+
+  // Without the Trakt Source list, the List needs no Connection.
+  await screen
+    .getByRole("button", "Remove My Trakt picks from this List")
+    .tap();
+  await expect(
+    screen.getByText(
+      "Trakt is not connected, so its Source list does not show in this catalog.",
+    ),
+  ).toBeHidden();
+  await expect(screen.getByText("Not connected", { exact: true })).toHaveCount(
+    0,
+  );
+});
+
+test("a save refused because the Lists changed in another window keeps the merge", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  await baseRoutes(browser);
+  const submissions: AccountConfigInput[] = [];
+  await browser.route(`${backend}/${accountId}/config`, async (route) => {
+    if (route.request.method === "GET") {
+      await route.fulfill({
+        json: toJson(withLists([watchlist, favourites, top250])),
+      });
+      return;
+    }
+    const submitted = parseBody<AccountConfigInput>(route);
+    submissions.push(submitted);
+    await route.fulfill(
+      submissions.length === 1
+        ? { status: 409, json: { error: CHANGED_ELSEWHERE } }
+        : { json: toJson({ ok: true, lists: savedLists(submitted) }) },
+    );
+  });
+  await app.open(`/configure?account=${accountId}`);
+  await openSettings(screen, "IMDb Watchlist");
+  await screen.getByRole("button", MERGE).first().tap();
+  await screen.getByRole("menuitem", "Favourite films").tap();
+  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await expect(screen.getByText(CHANGED_ELSEWHERE)).toBeVisible();
+  await expect(screen.getByText("2 Source lists · IMDb")).toBeVisible();
+
+  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  expect(submissions).toHaveLength(2);
+  expect(submissions[1]).toEqual(submissions[0]);
+  expect(submissions[1].lists[0].mergedSources).toEqual([
+    { provider: "imdb", sourceRef: "ls99123456", label: "Favourite films" },
+  ]);
 });
