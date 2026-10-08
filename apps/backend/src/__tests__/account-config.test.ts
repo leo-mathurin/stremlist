@@ -926,6 +926,33 @@ describe("List CRUD via the config API", () => {
       expect(cache.get(UUID_2)).toBeNull();
     });
 
+    it("drops the cache of a List that now reads another Source list", async () => {
+      seedWatchlist({ id: UUID_1, sourceRef: "imdb:top-rated-movies" });
+      seedWatchlist({ id: UUID_2, sourceRef: OTHER_IMDB, position: 1 });
+      cache.seed(UUID_1, []);
+      cache.seed(UUID_2, []);
+
+      const res = await postConfig(OWNER, {
+        lists: [
+          {
+            id: UUID_1,
+            sourceRef: "imdb:most-popular-movies",
+            sortOption: "added_at-asc",
+          },
+          {
+            id: UUID_2,
+            sourceRef: OTHER_IMDB,
+            sortOption: "title-asc",
+            catalogTitle: "Renamed",
+          },
+        ],
+      });
+
+      expect(res.status).toBe(200);
+      expect(cache.get(UUID_1)).toBeNull();
+      expect(cache.get(UUID_2)).not.toBeNull();
+    });
+
     it("rejects a List ID that belongs to another Account", async () => {
       const other = seedAccount();
       seedWatchlist({ id: UUID_2, accountId: other.id });

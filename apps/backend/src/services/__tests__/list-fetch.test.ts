@@ -163,6 +163,47 @@ describe("getListCatalog", () => {
     ]);
   });
 
+  it("reads the new Source list of an edited List, even with a fresh cache", async () => {
+    cache.seed(LIST_ID, [MOVIE], new Date(), {
+      provider: "imdb",
+      sourceRef: "ls111111111",
+    });
+    scraperMocks.fetchList.mockResolvedValue({ metas: [meta("tt0000002")] });
+
+    const result = await getListCatalog(config());
+
+    expect(scraperMocks.fetchList).toHaveBeenCalledOnce();
+    expect(result.metas.map((item) => item.id)).toEqual(["tt0000002"]);
+    await expect(getListCatalog(config())).resolves.toEqual(result);
+    expect(scraperMocks.fetchList).toHaveBeenCalledOnce();
+  });
+
+  it("does not fall back on the cache of the previous Source list", async () => {
+    cache.seed(LIST_ID, [MOVIE], new Date(), {
+      provider: "imdb",
+      sourceRef: "ls111111111",
+    });
+    scraperMocks.fetchList.mockRejectedValue(new Error("IMDb is down"));
+
+    await expect(getListCatalog(config())).rejects.toBeInstanceOf(
+      ListUnavailableError,
+    );
+  });
+
+  it("does not share a read between two Source lists of the same List", async () => {
+    scraperMocks.fetchList.mockImplementation((ref: string) =>
+      Promise.resolve({ metas: [meta(ref === "ls111111111" ? "tt1" : "tt2")] }),
+    );
+
+    const [before, after] = await Promise.all([
+      getListCatalog(config({ sourceRef: "ls111111111" })),
+      getListCatalog(config()),
+    ]);
+
+    expect(before.metas.map((item) => item.id)).toEqual(["tt1"]);
+    expect(after.metas.map((item) => item.id)).toEqual(["tt2"]);
+  });
+
   it("updates last_fetched_at after a Provider read unless asked not to", async () => {
     const account = seedAccount({ last_fetched_at: new Date(0).toISOString() });
     scraperMocks.fetchList.mockResolvedValue({ metas: [MOVIE] });

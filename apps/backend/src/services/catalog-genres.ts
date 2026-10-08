@@ -6,7 +6,7 @@ export async function withAvailableGenres(
 ): Promise<ConfigList[]> {
   return Promise.all(
     lists.map(async (list) => {
-      const summary = await getCachedListSummary(list.id);
+      const summary = await getCachedListSummary(list.id, list);
       const genres = !summary
         ? []
         : list.displayMode === "split"
