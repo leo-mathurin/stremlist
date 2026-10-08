@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sourceRequiresConnection } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
-import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
+import type {
+  ConfigList,
+  ConnectionSummary,
+} from "@stremlist/shared/stremio.types";
 import { listSyncState } from "@stremlist/shared/sync-status";
 import type {
   ListConnectionState,
@@ -16,13 +19,21 @@ const SYNC_POLL_MS = 4000;
 /** Stop asking after this many polls (two minutes). */
 const SYNC_POLL_LIMIT = 30;
 
+/** The saved Source list of each saved List. */
+type SavedList = Pick<ConfigList, "id" | "sourceRef">;
+
 /**
- * A server answer with the sync status and the Connections. An older backend
- * answers without statuses.
+ * A server answer with the sync status and the Connections, and the saved
+ * Lists when it has them. An older backend answers without statuses.
  */
 interface SyncAnswer {
   syncStatus?: ListSyncStatuses;
   connections: ConnectionSummary[];
+  lists?: SavedList[];
+}
+
+function sourcesOf(lists: SavedList[]): Record<string, string> {
+  return Object.fromEntries(lists.map((list) => [list.id, list.sourceRef]));
 }
 
 /**
@@ -38,6 +49,9 @@ export function useListSyncStatus(
 ) {
   const [connections, setConnections] = useState<ConnectionSummary[]>([]);
   const [syncStatus, setSyncStatus] = useState<ListSyncStatuses>({});
+  // The saved Source list by List ID. A row whose Source list differs (a
+  // changed chart) is not saved yet, so it has no status to wait for.
+  const [savedSources, setSavedSources] = useState<Record<string, string>>({});
   // Bumped by every update that does not come from a poll, so a poll that
   // started before it cannot bring older values back.
   const epoch = useRef(0);
@@ -47,7 +61,19 @@ export function useListSyncStatus(
     epoch.current += 1;
     setConnections(answer.connections);
     setSyncStatus(answer.syncStatus ?? {});
+    if (answer.lists) setSavedSources(sourcesOf(answer.lists));
   }, []);
+
+  /** Take the Lists that a save stored. */
+  const rememberSaved = useCallback((lists: SavedList[]) => {
+    setSavedSources(sourcesOf(lists));
+  }, []);
+
+  /** True when the row is a saved List with its saved Source list. */
+  const isSaved = useCallback(
+    (row: ListFormRow) => !!row.id && savedSources[row.id] === row.sourceRef,
+    [savedSources],
+  );
 
   /** Forget a Connection that the user removed. */
   const dropConnection = useCallback((provider: ProviderId) => {
@@ -59,7 +85,8 @@ export function useListSyncStatus(
 
   /**
    * What a List row shows about its refreshes. Null on a new setup. A row
-   * whose Source list changed since the save has no status yet.
+   * that is not saved, or whose Source list changed since the save, has no
+   * status yet.
    */
   const syncStateOf = useCallback(
     (row: ListFormRow): ListSyncState | null => {
@@ -70,18 +97,18 @@ export function useListSyncStatus(
         : connection.needsRenewalSince
           ? "renew"
           : "ok";
-      const status = row.id ? syncStatus[row.id] : undefined;
+      const status = row.id && isSaved(row) ? syncStatus[row.id] : undefined;
       return listSyncState(
         status?.sourceRef === row.sourceRef ? status : undefined,
         connectionState,
         sourceRequiresConnection(row.provider, row.sourceRef),
       );
     },
-    [saved, connections, syncStatus],
+    [saved, connections, syncStatus, isSaved],
   );
 
   const waitingKey = lists
-    .filter((row) => row.id && syncStateOf(row)?.kind === "waiting")
+    .filter((row) => isSaved(row) && syncStateOf(row)?.kind === "waiting")
     .map((row) => row.id)
     .join(",");
   useEffect(() => {
@@ -121,5 +148,12 @@ export function useListSyncStatus(
     };
   }, [accountKey, waitingKey]);
 
-  return { connections, syncStateOf, applySync, dropConnection };
+  return {
+    connections,
+    syncStateOf,
+    isSaved,
+    applySync,
+    rememberSaved,
+    dropConnection,
+  };
 }

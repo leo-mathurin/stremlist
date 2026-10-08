@@ -426,6 +426,7 @@ export default function Configure() {
                         onFieldChange={config.setListField}
                         onRemove={config.removeList}
                         sync={syncStates[index]}
+                        saved={config.isListSaved(list)}
                         onConnect={
                           config.providerStatus[list.provider].connectable
                             ? () => connectFor(list.provider)

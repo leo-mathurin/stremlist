@@ -43,12 +43,15 @@ export default function SortableListRow({
   onFieldChange,
   onRemove,
   sync,
+  saved,
   onConnect,
 }: {
   list: ListFormRow;
   index: number;
   /** Its refreshes, or null on a new setup that has nothing saved yet. */
   sync: ListSyncState | null;
+  /** Saved with its current Source list. */
+  saved: boolean;
   /** Start the Connection again; absent when it cannot be started here. */
   onConnect?: () => void;
   onFieldChange: <K extends keyof ListFormRow>(
@@ -185,7 +188,7 @@ export default function SortableListRow({
           <div className="-mt-2 flex gap-3 px-3 pb-3 sm:-mt-3 sm:gap-4 sm:px-4 sm:pb-4">
             <span aria-hidden="true" className="-ml-1 w-6 shrink-0" />
             <span aria-hidden="true" className="w-8 shrink-0" />
-            <ListSyncLine sync={sync} saved={!!list.id} />
+            <ListSyncLine sync={sync} saved={saved} />
           </div>
           <ListSyncNotice
             title={title}

@@ -124,8 +124,14 @@ export function useAccountConfiguration(
   );
   const [accountId, setAccountId] = useState<string | null>(null);
   const [movedAt, setMovedAt] = useState<string | null>(null);
-  const { connections, syncStateOf, applySync, dropConnection } =
-    useListSyncStatus(accountKey, access !== "new", lists);
+  const {
+    connections,
+    syncStateOf,
+    isSaved,
+    applySync,
+    rememberSaved,
+    dropConnection,
+  } = useListSyncStatus(accountKey, access !== "new", lists);
   const [connectionSources, setConnectionSources] = useState<
     Partial<Record<ProviderId, ConnectionSource[]>>
   >({});
@@ -486,6 +492,7 @@ export function useAccountConfiguration(
         throw new Error(errorMessage(body, "Failed to save."));
       }
 
+      rememberSaved(body.lists);
       const savedRows = submittedLists.map((row, index) => {
         const saved = body.lists[index];
         return saved
@@ -733,6 +740,7 @@ export function useAccountConfiguration(
     connectionSources,
     providerStatus,
     syncStateOf,
+    isListSaved: isSaved,
     actionsEnabled,
     // Turning Actions on selects every capable Provider, so saving right
     // away gives working Actions.

@@ -1,7 +1,10 @@
 import { test } from "@e2e-dev/web";
 import type { Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
-import type { AccountConfigResponse } from "@stremlist/shared/stremio.types";
+import type {
+  AccountConfigResponse,
+  ConfigList,
+} from "@stremlist/shared/stremio.types";
 import {
   SAVED_REINSTALL,
   accountId,
@@ -10,6 +13,8 @@ import {
   captureConfig,
   configuration,
   connected,
+  imdbUser,
+  legacyConfiguration,
   row,
   syncedStatus,
   toJson,
@@ -29,13 +34,21 @@ const ids = {
   missing: "00000000-0000-4000-8000-000000000003",
   waiting: "00000000-0000-4000-8000-000000000004",
   trakt: "00000000-0000-4000-8000-000000000005",
+  chart: "00000000-0000-4000-8000-000000000006",
+  history: "00000000-0000-4000-8000-000000000007",
+  justwatch: "00000000-0000-4000-8000-000000000008",
+  mdblist: "00000000-0000-4000-8000-000000000009",
+  empty: "00000000-0000-4000-8000-00000000000a",
 };
+
+/** Wait without a condition: proves that something does not happen. */
+const pause = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
 function list(
   id: string,
   sourceRef: string,
   catalogTitle: string,
-  provider: "imdb" | "trakt" = "imdb",
+  provider: ConfigList["provider"] = "imdb",
 ) {
   return { ...row, id, provider, sourceRef, catalogTitle };
 }
@@ -48,13 +61,17 @@ const traktWatchlist = list(
 );
 const traktConnection = connected("trakt");
 
-/** Answer `/sync-status` with `answer(poll)`; returns how often it was asked. */
+/**
+ * Answer `/sync-status` of `key` with `answer(poll)`; returns how often it
+ * was asked.
+ */
 async function routeSyncStatus(
   browser: Browser,
   answer: (poll: number) => object,
+  key = accountId,
 ) {
   const polls: string[] = [];
-  await browser.route(`${backend}/${accountId}/sync-status`, async (route) => {
+  await browser.route(`${backend}/${key}/sync-status`, async (route) => {
     polls.push(route.request.method);
     await route.fulfill({ json: toJson(answer(polls.length)) });
   });
@@ -180,6 +197,10 @@ test("each List shows its last refresh or why it failed, and a new List is polle
     screen.getByText("Not refreshed yet", { exact: true }),
   ).toBeHidden();
   expect(polls.length).toBeGreaterThanOrEqual(2);
+  // Nothing waits any more, so the page stops asking (one poll is 4 s).
+  const asked = polls.length;
+  await pause(5_000);
+  expect(polls).toHaveLength(asked);
 });
 
 test("a List added and saved waits for its first refresh, then shows it", async ({
@@ -440,4 +461,255 @@ test("a refused Connection noticed elsewhere does not claim its cached List is g
   await expect(
     screen.getByText("1 List needs attention", { exact: true }),
   ).toBeVisible();
+});
+
+test("each failure reason says what to do, next to Lists that refresh fine", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const lists = [
+    row,
+    list(ids.empty, "imdb:box-office", "Box office"),
+    list(ids.history, "users/fixture/lists/horror", "Horror nights", "trakt"),
+    list(
+      ids.justwatch,
+      "tl-us-11111111-2222-4333-8444-555555555555",
+      "Weekend picks",
+      "justwatch",
+    ),
+    list(ids.mdblist, "lists/4242", "Top rated", "mdblist"),
+  ];
+  await captureConfig(browser, {
+    ...configuration,
+    lists,
+    syncStatus: {
+      [row.id]: syncedStatus(row.sourceRef, 1, ago(2 * 60 * MINUTE)),
+      [ids.empty]: syncedStatus("imdb:box-office", 0, ago(30 * MINUTE)),
+      // A public Trakt list that Trakt refused without an account.
+      [ids.history]: {
+        sourceRef: "users/fixture/lists/horror",
+        lastAttemptAt: ago(MINUTE),
+        lastSuccessAt: null,
+        titleCount: null,
+        problem: "needs_connection",
+        failingSince: ago(20 * MINUTE),
+      },
+      [ids.justwatch]: {
+        sourceRef: "tl-us-11111111-2222-4333-8444-555555555555",
+        lastAttemptAt: ago(MINUTE),
+        lastSuccessAt: ago(3 * 24 * 60 * MINUTE),
+        titleCount: 8,
+        problem: "private",
+        failingSince: ago(2 * 24 * 60 * MINUTE),
+      },
+      [ids.mdblist]: {
+        sourceRef: "lists/4242",
+        lastAttemptAt: ago(MINUTE),
+        lastSuccessAt: null,
+        titleCount: null,
+        problem: "premium_only",
+        failingSince: ago(3 * 60 * MINUTE),
+      },
+    },
+    connections: [connected("mdblist")],
+  } as AccountConfigResponse);
+  await browser.route(
+    `${backend}/${accountId}/connections/mdblist/sources`,
+    async (route) => {
+      await route.fulfill({ json: { sources: [] } });
+    },
+  );
+  await app.open(`/configure?account=${accountId}`);
+
+  await expect(
+    screen.getByText("Updated 2 hours ago · 1 title", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    screen.getByText("Updated 30 minutes ago · no titles", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    screen.getByText(
+      "This list needs your Trakt account. Connect Trakt in the Providers panel. This problem started 20 minutes ago.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    screen.getByText(
+      "This JustWatch list is not shared. In JustWatch, open the list and choose Share to get its link. Stremio shows the titles from the last refresh, 3 days ago.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    screen.getByText("Refresh failed · titles from 3 days ago", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    screen.getByText(
+      "This list needs a paid MDBList plan. MDBList only shares it with paid accounts. This problem started 3 hours ago.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  // The Trakt and MDBList Lists show nothing in Stremio; JustWatch shows older titles.
+  await expect(
+    screen.getByText("Not showing in Stremio", { exact: true }),
+  ).toHaveCount(2);
+  await expect(
+    screen.getByText("3 Lists need attention", { exact: true }),
+  ).toBeVisible();
+  // A public List does not offer to renew a Connection.
+  await expect(screen.getByRole("button", /^Connect again for /)).toHaveCount(
+    0,
+  );
+});
+
+test("each List that needs a Connection names its own Connect again button", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await captureConfig(browser, {
+    ...configuration,
+    lists: [
+      row,
+      traktWatchlist,
+      list(ids.history, "me/history", "Trakt History", "trakt"),
+    ],
+  });
+  const starts = await routeConnectStart(browser);
+  await app.open(`/configure?account=${accountId}`);
+
+  await expect(
+    screen.getByRole("button", "Connect again for Trakt Watchlist", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(screen.getByText("Not connected", { exact: true })).toHaveCount(
+    2,
+  );
+  await expect(
+    screen.getByText("2 Lists need attention", { exact: true }),
+  ).toBeVisible();
+
+  await screen
+    .getByRole("button", "Connect again for Trakt History", { exact: true })
+    .tap();
+
+  await browser.waitForURL(`${backend}/authorize-fixture`);
+  expect(starts).toEqual(["POST"]);
+});
+
+test("a Legacy alias install shows the sync status of its Lists and polls through its alias", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const statuses = {
+    [row.id]: syncedStatus(row.sourceRef, 12, ago(5 * MINUTE)),
+  };
+  await captureConfig(
+    browser,
+    {
+      ...legacyConfiguration,
+      lists: [row, list(ids.waiting, "imdb:box-office", "Box office")],
+      syncStatus: statuses,
+    },
+    imdbUser,
+  );
+  const polls = await routeSyncStatus(
+    browser,
+    (poll) => ({
+      syncStatus:
+        poll < 2
+          ? statuses
+          : {
+              ...statuses,
+              [ids.waiting]: syncedStatus("imdb:box-office", 10, ago(0)),
+            },
+      connections: [],
+    }),
+    imdbUser,
+  );
+  await app.open(`/configure?account=${imdbUser}`);
+
+  await expect(
+    screen.getByText("Updated 5 minutes ago · 12 titles", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    screen.getByText("Not refreshed yet", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    screen.getByText("Updated just now · 10 titles", { exact: true }),
+  ).toBeVisible({ timeout: 15_000 });
+  expect(polls.length).toBeGreaterThanOrEqual(2);
+});
+
+test("a new setup shows no sync status before its first save", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await baseRoutes(browser);
+  await app.open("/configure");
+  await screen.getByRole("button", "Add an IMDb chart").tap();
+  await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
+
+  await expect(
+    screen.getByRole("button", "Save and get my Addon URL"),
+  ).toBeEnabled();
+  await expect(screen.getByText("Not saved yet", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(screen.getByText(/needs? attention/)).toHaveCount(0);
+});
+
+test("a saved List whose chart changes is not saved yet, and is polled only after the save", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const chart = list(ids.chart, "imdb:top-rated-movies", "Top movies");
+  const submissions = await captureConfig(browser, {
+    ...configuration,
+    lists: [row, chart],
+    syncStatus: {
+      ...configuration.syncStatus,
+      [ids.chart]: syncedStatus(chart.sourceRef, 250, ago(5 * MINUTE)),
+    },
+  });
+  const polls = await routeSyncStatus(browser, () => ({
+    syncStatus: {
+      ...configuration.syncStatus,
+      [ids.chart]: syncedStatus("imdb:top-rated-tv", 250, ago(0)),
+    },
+    connections: [],
+  }));
+  await app.open(`/configure?account=${accountId}`);
+  await expect(
+    screen.getByText("Updated 5 minutes ago · 250 titles", { exact: true }),
+  ).toBeVisible();
+
+  await screen.getByRole("button", "Settings for Top movies").tap();
+  await screen.getByRole("combobox", "Built-in chart").tap();
+  await screen.getByRole("option", "Top 250 TV Shows", { exact: true }).tap();
+
+  await expect(
+    screen.getByText("Not saved yet", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    screen.getByText("Not refreshed yet", { exact: true }),
+  ).toHaveCount(0);
+  await pause(5_000);
+  expect(polls).toHaveLength(0);
+
+  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await expect(screen.getByText(/^Saved!/)).toBeVisible();
+  await expect(
+    screen.getByText("Updated just now · 250 titles", { exact: true }),
+  ).toBeVisible({ timeout: 15_000 });
+  expect(submissions.at(-1)?.lists[1]).toMatchObject({
+    id: ids.chart,
+    sourceRef: "imdb:top-rated-tv",
+  });
 });
