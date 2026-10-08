@@ -227,9 +227,10 @@ describe("getImdbWatchlist (unit)", () => {
       );
     });
 
-    const { items: result } = await getImdbWatchlist("ur195879360");
+    const { items: result, complete } = await getImdbWatchlist("ur195879360");
 
     expect(result).toHaveLength(15_000);
+    expect(complete).toBe(false);
     expect(requestedPageSizes).toEqual([
       ...Array<number>(13).fill(750),
       250,
@@ -453,37 +454,6 @@ describe("fetchWatchlist (unit)", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-  });
-
-  it("marks a watchlist cut by the item cap as incomplete", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    let served = 0;
-    vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
-      const body = JSON.parse(init?.body as string) as {
-        variables: { first: number };
-      };
-      const edges = Array.from({ length: body.variables.first }, (_, index) =>
-        makeEdge({ id: `tt${String(served + index).padStart(7, "0")}` }),
-      );
-      served += edges.length;
-      return Promise.resolve(
-        mockGraphQLResponse({
-          id: "ls123",
-          visibility: { id: "PUBLIC" },
-          titleListItemSearch: {
-            total: 15_001,
-            edges,
-            pageInfo: { hasNextPage: true, endCursor: `item-${served}` },
-          },
-        }),
-      );
-    });
-
-    const { metas, complete } = await fetchWatchlist("ur195879360");
-
-    expect(metas).toHaveLength(15_000);
-    // Served, but not a complete synchronization (ADR 0007).
-    expect(complete).toBe(false);
   });
 
   it("keeps complete release dates without inventing partial or invalid dates", async () => {

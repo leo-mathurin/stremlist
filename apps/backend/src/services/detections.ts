@@ -16,13 +16,6 @@ import { getVisibleLists, visibleLists } from "./accounts";
 import { buildPosterUrl } from "./imdb-scraper";
 import { getCachedList } from "./list-cache";
 
-/**
- * Detections (ADR 0007): Stremlist compares each complete, successful
- * synchronization of a Source list with the one before, entry by entry, and
- * records when an entry first appears. The first complete synchronization is
- * the Baseline.
- */
-
 /** One Title of the "New titles" catalog, with its first detection. */
 interface Detection {
   imdbId: string;
@@ -236,17 +229,14 @@ export async function getNewTitlesSummary(
     return { detected: 0, latestDetectedAt: null, waitingLists: 0 };
   }
   try {
-    const [detections, syncs] = await Promise.all([
+    const [detections, { data: syncs, error }] = await Promise.all([
       loadDetections(access.account.id, lists),
       supabase
         .from("source_list_syncs")
         .select("provider, source_ref")
-        .eq("account_id", access.account.id)
-        .then(({ data, error }) => {
-          if (error) throw error;
-          return data;
-        }),
+        .eq("account_id", access.account.id),
     ]);
+    if (error) throw error;
     const synced = new Set(
       syncs.map((row) =>
         sourceKey({ provider: row.provider, sourceRef: row.source_ref }),
@@ -267,13 +257,9 @@ export async function getNewTitlesSummary(
 }
 
 /**
- * After a disconnect, or a new Connection as another Provider user: forget
- * the history of the Source lists that only that Connection could read, so
- * nothing private stays stored and a new user starts with a new Baseline.
- * Only the history of the current Connection's Provider user stays (none
- * after a disconnect). The database reads that user when it deletes the
- * rows, so a refresh or a newer Connection that comes in between keeps its
- * history. The history of public Source lists always stays.
+ * After a disconnect or a new Connection: forget the history of the Source
+ * lists that only a previous Provider user's Connection could read (see
+ * public.forget_connection_history).
  */
 export async function forgetConnectionDetections(
   accountId: string,

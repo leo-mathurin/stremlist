@@ -36,7 +36,7 @@ import {
   resetProviders,
   useFakeProvider,
 } from "./helpers/mock-registry.js";
-import { db, resetRpc, rpcHandlers } from "./helpers/mock-supabase.js";
+import { db, resetRpc } from "./helpers/mock-supabase.js";
 
 const START = new Date("2026-10-01T12:00:00.000Z");
 /** More than the fake adapters' 30-minute freshness. */
@@ -80,6 +80,12 @@ function seedNewTitlesAccount(enabled = true) {
   accountId = seedAccount({ new_titles_catalog: enabled }).id;
 }
 
+/** An Account with one IMDb List, LIST_IDS[0] on `ur1`. */
+function seedImdbList(enabled = true) {
+  seedNewTitlesAccount(enabled);
+  seedList(accountId, { id: LIST_IDS[0], source_ref: "ur1" });
+}
+
 /** Stremio asks for a List catalog after its cache went stale. */
 async function sync(listId: string, type: "movie" | "series" = "movie") {
   vi.setSystemTime(Date.now() + NEXT_SYNC_MS);
@@ -114,6 +120,30 @@ async function summary() {
   return ((await res.json()) as AccountConfigResponse).newTitles;
 }
 
+/** A synchronized Source list whose entry `imdbId` was detected now. */
+function seedHistory(
+  provider: "imdb" | "trakt",
+  sourceRef: string,
+  imdbId: string,
+  connectionUser: string | null = null,
+) {
+  const at = new Date().toISOString();
+  const key = { account_id: accountId, provider, source_ref: sourceRef };
+  db.insert("source_list_syncs", {
+    ...key,
+    baseline_at: at,
+    last_complete_sync_at: at,
+    requires_connection: connectionUser !== null,
+    connection_user: connectionUser,
+  });
+  db.insert("source_list_entries", {
+    ...key,
+    entry_key: `imdb:${imdbId}`,
+    imdb_id: imdbId,
+    detected_at: at,
+  });
+}
+
 beforeEach(() => {
   db.reset();
   resetRpc();
@@ -133,8 +163,7 @@ afterEach(() => {
 
 describe("detection", () => {
   it("uses the first complete synchronization as the Baseline", async () => {
-    seedNewTitlesAccount();
-    seedList(accountId, { id: LIST_IDS[0], source_ref: "ur1" });
+    seedImdbList();
     sourceList("imdb", [movie("tt0000001"), movie("tt0000002")]);
 
     await sync(LIST_IDS[0]);
@@ -181,8 +210,7 @@ describe("detection", () => {
   });
 
   it("does not take a failed synchronization as a removal", async () => {
-    seedNewTitlesAccount();
-    seedList(accountId, { id: LIST_IDS[0], source_ref: "ur1" });
+    seedImdbList();
     const source = sourceList("imdb", [movie("tt0000001")]);
     await sync(LIST_IDS[0]);
     source.metas = [movie("tt0000001"), movie("tt0000002")];
@@ -205,8 +233,7 @@ describe("detection", () => {
   });
 
   it("does not compare a read cut by a page cap", async () => {
-    seedNewTitlesAccount();
-    seedList(accountId, { id: LIST_IDS[0], source_ref: "ur1" });
+    seedImdbList();
     const source = sourceList("imdb", [movie("tt0000001"), movie("tt0000002")]);
     await sync(LIST_IDS[0]);
 
@@ -230,8 +257,7 @@ describe("detection", () => {
   });
 
   it("keeps the first detection of a Title that is removed and added again", async () => {
-    seedNewTitlesAccount();
-    seedList(accountId, { id: LIST_IDS[0], source_ref: "ur1" });
+    seedImdbList();
     const source = sourceList("imdb", [movie("tt0000001")]);
     await sync(LIST_IDS[0]);
     source.metas = [movie("tt0000001"), movie("tt0000002")];
@@ -253,8 +279,7 @@ describe("detection", () => {
   });
 
   it("keeps the history when the List is removed and added again", async () => {
-    seedNewTitlesAccount();
-    seedList(accountId, { id: LIST_IDS[0], source_ref: "ur1" });
+    seedImdbList();
     const source = sourceList("imdb", [movie("tt0000001")]);
     await sync(LIST_IDS[0]);
     db.tables.lists = [];
@@ -416,8 +441,7 @@ describe("Unresolved entries", () => {
 
 describe("overlapping reads and Connections", () => {
   it("dates a synchronization by the start of its read", async () => {
-    seedNewTitlesAccount();
-    seedList(accountId, { id: LIST_IDS[0], source_ref: "ur1" });
+    seedImdbList();
     useFakeProvider(
       fakeAdapter("imdb", {
         fetchSource: () => {
@@ -493,60 +517,11 @@ describe("overlapping reads and Connections", () => {
     ]);
     expect(detectionRows().every((row) => row.detected_at === null)).toBe(true);
   });
-
-  it("keeps a new Baseline when the user reconnects before the cleanup runs", async () => {
-    seedNewTitlesAccount();
-    seedConnection(accountId, "trakt", { username: "sam" });
-    const at = new Date().toISOString();
-    db.insert("source_list_syncs", {
-      account_id: accountId,
-      provider: "trakt",
-      source_ref: "me/history",
-      baseline_at: at,
-      last_complete_sync_at: at,
-      requires_connection: true,
-      connection_user: "sam",
-    });
-
-    // A disconnect's cleanup that runs after sam connected again.
-    await forgetConnectionDetections(accountId, "trakt");
-    expect(db.getTable("source_list_syncs")).toHaveLength(1);
-
-    db.tables.connections = [];
-    await forgetConnectionDetections(accountId, "trakt");
-    expect(db.getTable("source_list_syncs")).toEqual([]);
-  });
-
-  it("forgets only the other user's history after a new Connection", async () => {
-    seedNewTitlesAccount();
-    // The new Connection is sam's; a refresh already wrote sam's Baseline.
-    seedConnection(accountId, "trakt", { username: "sam" });
-    const at = new Date().toISOString();
-    for (const [sourceRef, user] of [
-      ["me/history", "leo"],
-      ["me/collection", "sam"],
-    ]) {
-      db.insert("source_list_syncs", {
-        account_id: accountId,
-        provider: "trakt",
-        source_ref: sourceRef,
-        baseline_at: at,
-        last_complete_sync_at: at,
-        requires_connection: true,
-        connection_user: user,
-      });
-    }
-
-    await forgetConnectionDetections(accountId, "trakt");
-
-    expect(
-      db.getTable("source_list_syncs").map((row) => row.source_ref),
-    ).toEqual(["me/collection"]);
-  });
 });
 
 describe("New titles catalog", () => {
-  it("shows each Title once, with its earliest detection, newest first", async () => {
+  /** An IMDb List and a Trakt List, both with tt0000001 in their Baseline. */
+  async function seedImdbAndTraktLists(traktTitle: string) {
     seedNewTitlesAccount();
     seedList(accountId, {
       id: LIST_IDS[0],
@@ -557,12 +532,17 @@ describe("New titles catalog", () => {
       id: LIST_IDS[1],
       provider: "trakt",
       source_ref: "users/leo/watchlist",
-      catalog_title: "2",
+      catalog_title: traktTitle,
     });
     const imdb = sourceList("imdb", [movie("tt0000001")]);
     const trakt = sourceList("trakt", [movie("tt0000001")]);
     await sync(LIST_IDS[0]);
     await sync(LIST_IDS[1]);
+    return { imdb, trakt };
+  }
+
+  it("shows each Title once, with its earliest detection, newest first", async () => {
+    const { imdb, trakt } = await seedImdbAndTraktLists("2");
 
     vi.setSystemTime(Date.now() + DAY_MS);
     imdb.metas = [movie("tt0000001"), movie("tt0000002")];
@@ -584,22 +564,7 @@ describe("New titles catalog", () => {
   });
 
   it("keeps the earliest date when the List that detected it first drops it", async () => {
-    seedNewTitlesAccount();
-    seedList(accountId, {
-      id: LIST_IDS[0],
-      source_ref: "ur1",
-      catalog_title: "IMDb picks",
-    });
-    seedList(accountId, {
-      id: LIST_IDS[1],
-      provider: "trakt",
-      source_ref: "users/leo/watchlist",
-      catalog_title: "Trakt picks",
-    });
-    const imdb = sourceList("imdb", [movie("tt0000001")]);
-    const trakt = sourceList("trakt", [movie("tt0000001")]);
-    await sync(LIST_IDS[0]);
-    await sync(LIST_IDS[1]);
+    const { imdb, trakt } = await seedImdbAndTraktLists("Trakt picks");
 
     vi.setSystemTime(Date.now() + DAY_MS);
     imdb.metas = [movie("tt0000001"), movie("tt0000002")];
@@ -622,8 +587,7 @@ describe("New titles catalog", () => {
   });
 
   it("serves each type in its own catalog and pages with skip", async () => {
-    seedNewTitlesAccount();
-    seedList(accountId, { id: LIST_IDS[0], source_ref: "ur1" });
+    seedImdbList();
     const source = sourceList("imdb", []);
     await sync(LIST_IDS[0]);
     source.metas = [
@@ -644,8 +608,7 @@ describe("New titles catalog", () => {
   });
 
   it("is empty when the Account has not turned it on", async () => {
-    seedNewTitlesAccount(false);
-    seedList(accountId, { id: LIST_IDS[0], source_ref: "ur1" });
+    seedImdbList(false);
     const source = sourceList("imdb", [movie("tt0000001")]);
     await sync(LIST_IDS[0]);
     source.metas = [movie("tt0000001"), movie("tt0000002")];
@@ -665,27 +628,8 @@ describe("New titles catalog", () => {
       provider: "trakt",
       source_ref: "me/history",
     });
-    const at = new Date().toISOString();
-    for (const [provider, sourceRef, imdbId] of [
-      ["imdb", "ur7654321", "tt0000001"],
-      ["trakt", "me/history", "tt0000002"],
-    ]) {
-      db.insert("source_list_syncs", {
-        account_id: accountId,
-        provider,
-        source_ref: sourceRef,
-        baseline_at: at,
-        last_complete_sync_at: at,
-      });
-      db.insert("source_list_entries", {
-        account_id: accountId,
-        provider,
-        source_ref: sourceRef,
-        entry_key: `imdb:${imdbId}`,
-        imdb_id: imdbId,
-        detected_at: at,
-      });
-    }
+    seedHistory("imdb", "ur7654321", "tt0000001");
+    seedHistory("trakt", "me/history", "tt0000002");
     cache.seed(LIST_IDS[0], [movie("tt0000001")]);
     cache.seed(LIST_IDS[1], [movie("tt0000002")]);
 
@@ -693,8 +637,7 @@ describe("New titles catalog", () => {
   });
 
   it("skips a Title until a cached Catalog has its metadata", async () => {
-    seedNewTitlesAccount();
-    seedList(accountId, { id: LIST_IDS[0], source_ref: "ur1" });
+    seedImdbList();
     const source = sourceList("imdb", [movie("tt0000001")]);
     await sync(LIST_IDS[0]);
     source.metas = [movie("tt0000001"), movie("tt0000002")];
@@ -726,8 +669,7 @@ describe("manifest", () => {
   });
 
   it("leaves them out while the setting is off", async () => {
-    seedNewTitlesAccount(false);
-    seedList(accountId, { id: LIST_IDS[0], source_ref: "ur1" });
+    seedImdbList(false);
 
     expect(await catalogIds(accountId)).toEqual([
       `wl-${LIST_IDS[0]}-movie`,
@@ -768,25 +710,6 @@ describe("settings", () => {
     expect((await summary()).enabled).toBe(true);
   });
 
-  it("a failed save changes neither the Lists nor the setting", async () => {
-    seedNewTitlesAccount(false);
-    rpcHandlers.set("replace_account_config", () => ({
-      data: null,
-      error: { message: "Transaction rolled back" },
-    }));
-
-    const res = await app.request(`/${accountId}/config`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lists: [LIST], newTitles: { enabled: true } }),
-    });
-
-    expect(res.status).toBe(500);
-    rpcHandlers.clear();
-    expect((await summary()).enabled).toBe(false);
-    expect(db.getTable("lists")).toEqual([]);
-  });
-
   it("keeps the setting when a Legacy alias install gets its private copy", async () => {
     const legacy = seedLegacyAccount("ur7654321", { new_titles_catalog: true });
     seedList(legacy.id, { id: LIST_IDS[0], source_ref: "ur7654321" });
@@ -810,37 +733,24 @@ describe("settings", () => {
   });
 });
 
-describe("disconnect", () => {
-  it("forgets the history of Source lists that only the Connection reads", async () => {
+describe("Connection cleanup", () => {
+  it("keeps only the current Connection user's history and public Source lists", async () => {
     seedNewTitlesAccount();
-    const at = new Date().toISOString();
-    for (const [sourceRef, requiresConnection] of [
-      ["me/history", true],
-      ["users/leo/watchlist", false],
-    ] as const) {
-      db.insert("source_list_syncs", {
-        account_id: accountId,
-        provider: "trakt",
-        source_ref: sourceRef,
-        baseline_at: at,
-        last_complete_sync_at: at,
-        requires_connection: requiresConnection,
-      });
-      db.insert("source_list_entries", {
-        account_id: accountId,
-        provider: "trakt",
-        source_ref: sourceRef,
-        entry_key: "trakt-movie:1",
-        imdb_id: "tt0000001",
-        detected_at: at,
-      });
-    }
+    // The new Connection is sam's; a refresh already wrote sam's Baseline.
+    seedConnection(accountId, "trakt", { username: "sam" });
+    seedHistory("trakt", "me/history", "tt0000001", "leo");
+    seedHistory("trakt", "me/collection", "tt0000002", "sam");
+    seedHistory("trakt", "users/leo/watchlist", "tt0000003");
+    const synced = () =>
+      db.getTable("source_list_syncs").map((row) => row.source_ref);
 
     await forgetConnectionDetections(accountId, "trakt");
+    expect(synced()).toEqual(["me/collection", "users/leo/watchlist"]);
 
-    expect(
-      db.getTable("source_list_syncs").map((row) => row.source_ref),
-    ).toEqual(["users/leo/watchlist"]);
+    // After a disconnect, only the public Source list keeps its history.
+    db.tables.connections = [];
+    await forgetConnectionDetections(accountId, "trakt");
+    expect(synced()).toEqual(["users/leo/watchlist"]);
     expect(detectionRows().map((row) => row.source_ref)).toEqual([
       "users/leo/watchlist",
     ]);

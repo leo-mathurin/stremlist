@@ -23,7 +23,7 @@ interface ListCatalogId {
 }
 
 /** A catalog of the manifest: one of a List, or a "New titles" one. */
-export type ParsedCatalogId =
+type ParsedCatalogId =
   | ({ kind: "list" } & ListCatalogId)
   | { kind: "new-titles"; type: CatalogContentType };
 

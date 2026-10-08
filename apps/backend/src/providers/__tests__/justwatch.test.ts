@@ -159,9 +159,7 @@ describe("justwatchProvider.fetchSource", () => {
 
     const { entries, complete } = await justwatchProvider.fetchSource(
       PUBLIC_LIST_ID,
-      {
-        connection: null,
-      },
+      { connection: null },
     );
     expect(complete).toBe(true);
 

@@ -384,10 +384,6 @@ export async function validateImdbWatchlist(
   }
 }
 
-/**
- * Every item of a watchlist, up to MAX_ITEMS. `complete` is false when the
- * cap cut the watchlist short.
- */
 export async function getImdbWatchlist(
   input: string,
 ): Promise<PagedRead<ImdbEdge>> {
@@ -598,11 +594,7 @@ export function isListId(id: string): boolean {
   return id.startsWith("ls");
 }
 
-/**
- * A Source list read from IMDb. `complete` is false when MAX_ITEMS cut it
- * short (see SourceSnapshot).
- */
-export type ImdbCatalog = CatalogData & { complete: boolean };
+type ImdbCatalog = CatalogData & { complete: boolean };
 
 export async function fetchWatchlist(imdbUserId: string): Promise<ImdbCatalog> {
   console.log(`Fetching IMDb watchlist for user ${imdbUserId}...`);
@@ -763,7 +755,6 @@ export async function validateImdbList(
   }
 }
 
-/** Every item of a list, up to MAX_ITEMS (see getImdbWatchlist). */
 export async function getImdbList(
   listId: string,
 ): Promise<PagedRead<ImdbEdge>> {

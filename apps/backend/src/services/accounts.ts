@@ -240,7 +240,6 @@ export async function replaceAccountConfig(
   /** Settings to change; an omitted one keeps its stored value. */
   settings: {
     actions?: { enabled: boolean; providers: ProviderId[] };
-    /** The "New titles" catalog (ADR 0007). */
     newTitlesCatalog?: boolean;
   } = {},
 ): Promise<ConfigList[]> {

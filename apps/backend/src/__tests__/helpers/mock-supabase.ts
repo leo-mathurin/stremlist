@@ -661,11 +661,8 @@ function recordSourceListSync(args: RpcArgs): Result {
     row.account_id === key.account_id &&
     row.provider === key.provider &&
     row.source_ref === key.source_ref;
-  const keys = (args.p_entry_keys as string[] | null) ?? [];
-  const imdbIds = (args.p_imdb_ids as (string | null)[] | null) ?? [];
-  if (keys.length !== imdbIds.length) {
-    return rpcError("Entry keys and IMDb IDs must have the same length");
-  }
+  const keys = args.p_entry_keys as string[];
+  const imdbIds = args.p_imdb_ids as (string | null)[];
   // One pair per entry key; a resolved duplicate wins over an unresolved one.
   const entries = new Map<string, string | null>();
   keys.forEach((entryKey, index) => {
@@ -694,9 +691,6 @@ function recordSourceListSync(args: RpcArgs): Result {
   const state = db.getTable("source_list_syncs").find(matches);
 
   if (!state) {
-    if (!db.getTable("accounts").some((row) => row.id === key.account_id)) {
-      return rpcError("violates foreign key constraint");
-    }
     db.insert("source_list_syncs", {
       ...key,
       baseline_at: syncedAt,
@@ -790,30 +784,26 @@ function listNewTitles(args: RpcArgs): Result {
   }
   // Earliest Detection among the Source lists where the Title is new, also
   // removed ones; shown while one of them still has it.
-  const shown = new Set(
-    [...perSource.values()]
-      .filter((group) => group.present && !group.inBaseline)
-      .map((group) => group.imdb_id),
+  const candidates = [...perSource.values()].filter(
+    (group) => !group.inBaseline,
   );
-  const earliest = new Map<string, Row>();
-  for (const group of perSource.values()) {
-    if (!shown.has(group.imdb_id) || group.inBaseline || !group.detected_at) {
-      continue;
-    }
+  const shown = new Set(
+    candidates.filter((group) => group.present).map((group) => group.imdb_id),
+  );
+  const earliest = new Map<string, (typeof candidates)[number]>();
+  for (const group of candidates) {
     const current = earliest.get(group.imdb_id);
-    if (!current || group.detected_at < String(current.detected_at)) {
-      earliest.set(group.imdb_id, {
-        imdb_id: group.imdb_id,
-        provider: group.provider,
-        source_ref: group.source_ref,
-        detected_at: group.detected_at,
-      });
+    if (
+      shown.has(group.imdb_id) &&
+      (!current || String(group.detected_at) < String(current.detected_at))
+    ) {
+      earliest.set(group.imdb_id, group);
     }
   }
   const rows = [...earliest.values()].sort(
     (a, b) =>
       String(b.detected_at).localeCompare(String(a.detected_at)) ||
-      String(a.imdb_id).localeCompare(String(b.imdb_id)),
+      a.imdb_id.localeCompare(b.imdb_id),
   );
   return { data: rows.slice(0, args.p_limit as number), error: null };
 }

@@ -37,11 +37,7 @@ export interface NewTitlesSummary {
   detected: number;
   /** The most recent detection, or null before the first one. */
   latestDetectedAt: string | null;
-  /**
-   * Lists without a complete, successful refresh yet (every read failed or
-   * was cut short by a page cap). They have no Baseline, so nothing can be
-   * detected in them until they get one. Unresolved entries do not count.
-   */
+  /** Lists without a Baseline yet: every read failed or was cut short. */
   waitingLists: number;
 }
 

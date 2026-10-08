@@ -334,7 +334,6 @@ export type Database = {
           p_account_id: string;
           p_provider: string;
         };
-        /** Source lists whose history was deleted. */
         Returns: number;
       };
       generate_account_id: { Args: never; Returns: string };
@@ -355,21 +354,14 @@ export type Database = {
       record_source_list_sync: {
         Args: {
           p_account_id: string;
-          /** The Provider user of the Connection that the read went through. */
           p_connection_user?: string | null;
           p_entry_keys: string[];
-          /** Parallel to p_entry_keys; null for an Unresolved entry. */
           p_imdb_ids: (string | null)[];
           p_provider: string;
-          /** The Source list needs a Connection (see p_connection_user). */
           p_requires_connection?: boolean;
           p_source_ref: string;
           p_synced_at: string;
         };
-        /**
-         * New entries; null when a newer sync was already recorded or the
-         * Connection that read it is gone.
-         */
         Returns: number | null;
       };
       release_connection_refresh: {
@@ -386,7 +378,6 @@ export type Database = {
           p_action_providers: string[] | null;
           p_actions_enabled: boolean | null;
           p_lists: Json;
-          /** Null or omitted keeps the stored value. */
           p_new_titles_catalog?: boolean | null;
           p_rpdb_api_key: string | null;
         };

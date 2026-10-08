@@ -410,10 +410,7 @@ export async function findMetaInAccountCache(
   type: string,
   id: string,
 ): Promise<StremioMeta | null> {
-  const { account } = access;
   try {
-    // A Legacy alias can be guessed: it must not reveal what Connection
-    // lists (history, collection…) contain.
     const lists = await getVisibleLists(access);
     if (lists.length === 0) return null;
     const found = await findCachedMeta(
@@ -424,11 +421,11 @@ export async function findMetaInAccountCache(
     if (!found) return null;
     return {
       ...found,
-      poster: buildPosterUrl(found.id, found.poster, account.rpdbApiKey),
+      poster: buildPosterUrl(found.id, found.poster, access.account.rpdbApiKey),
     };
   } catch (error) {
     console.error(
-      `findMetaInAccountCache failed for ${account.id}:`,
+      `findMetaInAccountCache failed for ${access.account.id}:`,
       error instanceof Error ? error.message : error,
     );
     return null;

@@ -8,7 +8,7 @@ import type {
 } from "../types";
 import { SourceUnavailableError } from "../types";
 import type { TraktReadOptions } from "./api";
-import { nonEmpty, toSourceError, traktGetJson, traktGetAll } from "./api";
+import { nonEmpty, toSourceError, traktGetAll, traktGetJson } from "./api";
 import type { TraktItem, TraktMedia } from "./entries";
 import {
   interleave,
@@ -327,18 +327,12 @@ export async function readSource(
         );
         break;
       case "chart":
-        // A chart is its first CHART_ITEMS titles: the read is complete.
-        snapshot = {
-          entries: await chartEntries(source.chart, connection),
-          complete: true,
-        };
-        break;
       case "recommendations":
-        // Like a chart, the first CHART_ITEMS titles: the read is complete.
+        // The first CHART_ITEMS titles are the whole Source list.
         snapshot = {
-          entries: await recommendationEntries(
-            personalConnection(source, connection),
-          ),
+          entries: await (source.kind === "chart"
+            ? chartEntries(source.chart, connection)
+            : recommendationEntries(personalConnection(source, connection))),
           complete: true,
         };
         break;
