@@ -13,12 +13,14 @@ import {
   baseRoutes,
   captureConfig,
   configuration,
+  holdToasts,
   imdbUser,
   legacyConfiguration,
   parseBody,
   previewOf,
   resolved,
   routeResolve,
+  SAVED_REINSTALL,
   toJson,
 } from "./config-fixture";
 
@@ -27,6 +29,8 @@ import {
 // intercepted; `tests/catalog-preview.spec.ts` covers the real handler.
 
 const PASTE = "Paste a link to a watchlist or list";
+/** The notice of unsaved edits that change the Catalogs of Stremio. */
+const NEEDS_REINSTALL = "These changes need a reinstall.";
 const LIST_LINK = "https://www.imdb.com/list/ls99887766/";
 
 /**
@@ -125,10 +129,14 @@ test("the preview follows the sort and Show of the List", async ({
   await app.open(`/configure?account=${accountId}`);
   await screen.getByRole("button", "Preview Test catalog").tap();
   await expect(screen.getByText("5 titles")).toBeVisible();
+  // Opening a preview changes nothing that Stremio reads at install time.
+  await expect(screen.getByText(NEEDS_REINSTALL)).not.toBeVisible();
 
   await screen.getByRole("combobox", "Sort order").tap();
   await screen.getByRole("option", "IMDb Rating (Highest First)").tap();
   await expect.poll(() => requests.at(-1)?.sortOption).toBe("rating-desc");
+  // A sort applies without a reinstall, even though the preview changed.
+  await expect(screen.getByText(NEEDS_REINSTALL)).not.toBeVisible();
 
   await screen.getByRole("button", "Settings for Test catalog").tap();
   await screen.getByRole("combobox", "Show", { exact: true }).tap();
@@ -140,6 +148,8 @@ test("the preview follows the sort and Show of the List", async ({
     ),
   ).toBeVisible();
   await expect(screen.getByRole("heading", /^TV shows/)).not.toBeVisible();
+  // Show removes a Catalog, so the save will need a reinstall.
+  await expect(screen.getByText(NEEDS_REINSTALL)).toBeVisible();
   // The preview reads; it does not save.
   expect(submissions).toHaveLength(0);
 });
@@ -303,7 +313,7 @@ test("disconnecting the Provider reads the open preview again", async ({
   await screen.getByRole("button", "Preview Trakt history").tap();
   await expect(screen.getByText("The Godfather")).toBeVisible();
 
-  await screen.getByRole("button", "Disconnect", { exact: true }).tap();
+  await screen.getByRole("button", "Connected to Trakt. Disconnect").tap();
   await screen
     .getByRole("group", "Disconnect Trakt?")
     .getByRole("button", "Disconnect", { exact: true })
@@ -520,6 +530,7 @@ test(
   "the empty Catalog hint leads the user to the Show setting",
   { tags: ["agent"] },
   async ({ app, agent, browser, screen }) => {
+    await holdToasts(browser);
     const submissions = await captureConfig(browser);
     const requests = await routePreview(browser, (request) =>
       previewOf(request),
@@ -529,7 +540,10 @@ test(
       "Open the preview of Test catalog. Its TV shows catalog stays empty: do what the preview says to remove that catalog, then save.",
       { maxModelCalls: 9 },
     );
-    await expect(screen.getByText(/^Saved!/)).toBeVisible();
+    // Removing a Catalog changes what Stremio read at install time.
+    await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+    // The reminder stays until the user says they reinstalled.
+    await expect(screen.getByRole("button", "I did it")).toBeVisible();
     expect(submissions.at(-1)?.lists[0]).toMatchObject({
       sourceRef: imdbUser,
       displayMode: "movie",

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-08T16:31:38.858Z",
+  "createdAt": "2026-10-08T19:23:25.008Z",
   "payload": {
     "actions": [
       {
@@ -56,13 +56,27 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Opened Test catalog preview, saw the TV-shows-empty instruction, changed Show to Movies only in Settings, and saved. The app confirmed “Saved!” and the empty TV shows catalog was removed from the preview.",
+    "summary": "Previewed Test catalog, changed Show to Movies only as instructed by the empty TV-shows preview, and saved. The app confirmed “Saved!” and indicated reinstalling Stremlist is needed to see the changes.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions."
+        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. I did it Reinstall"
+      },
+      {
+        "text": "Reinstall Stremlist in Stremio"
+      },
+      {
+        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
+      },
+      {
+        "role": "button",
+        "name": "I did it"
+      },
+      {
+        "role": "link",
+        "name": "Reinstall"
       },
       {
         "role": "button",
@@ -79,18 +93,6 @@
         "name": "Catalog title",
         "placeholder": "IMDb Watchlist",
         "value": "Test catalog"
-      },
-      {
-        "text": "Show"
-      },
-      {
-        "text": "Movies only"
-      },
-      {
-        "text": "Filters & extra catalogs"
-      },
-      {
-        "text": "Preview"
       }
     ],
     "goneAnchors": [
@@ -110,6 +112,6 @@
         "name": "Settings for Test catalog"
       }
     ],
-    "endWaitMs": 12418
+    "endWaitMs": 12297
   }
 }
