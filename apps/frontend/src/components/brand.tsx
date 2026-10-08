@@ -120,61 +120,68 @@ function SiteLinks({ className }: { className?: string }) {
 
 /**
  * The C-ours split layout: a dark brand panel (sticky on wide screens) next
- * to the main column. On phones the panel stacks above the content.
+ * to the main column. On phones the panel stacks above the content. The
+ * panel has the same width on every page, so moving between Home and
+ * Configure does not shift the layout.
  */
 export function SplitLayout({
   panel,
   children,
-  panelWidth = "wide",
   siteLinksBelow = true,
 }: {
   panel: ReactNode;
   children: ReactNode;
-  panelWidth?: "wide" | "narrow";
-  /** On phones, repeat the site links after the content (no Footer there). */
+  /** Show the site links after the content (pages without a Footer). */
   siteLinksBelow?: boolean;
 }) {
   return (
-    <div
-      className={cn(
-        "grid min-h-screen bg-paper font-rounded text-ink",
-        panelWidth === "wide"
-          ? "lg:grid-cols-[42%_minmax(0,1fr)]"
-          : "lg:grid-cols-[minmax(340px,36%)_minmax(0,1fr)]",
-      )}
-    >
+    <div className="grid min-h-screen bg-paper font-rounded text-ink lg:grid-cols-[minmax(340px,38%)_minmax(0,1fr)]">
       <div className="min-w-0 bg-ink text-cloud">
-        <aside className="flex flex-col justify-between gap-10 p-6 sm:p-8 lg:sticky lg:top-0 lg:max-h-screen lg:min-h-screen lg:overflow-y-auto lg:p-12">
-          <div className="min-w-0">{panel}</div>
-          <SiteLinks className="hidden text-white/45 lg:flex" />
+        <aside className="p-6 sm:p-8 lg:sticky lg:top-0 lg:max-h-screen lg:min-h-screen lg:overflow-y-auto lg:p-12">
+          {panel}
         </aside>
       </div>
       <main className="min-w-0">
         {children}
         {siteLinksBelow && (
-          <SiteLinks className="flex border-t border-black/10 px-5 py-6 text-black/45 sm:px-8 lg:hidden" />
+          <SiteLinks className="flex border-t border-black/10 px-5 py-6 text-black/45 sm:px-8 lg:px-12" />
         )}
       </main>
     </div>
   );
 }
 
-/** Small uppercase label above a section. */
-export function Eyebrow({
-  children,
+/**
+ * A section title: a real heading with an optional lead line. Stremlist has
+ * no small uppercase labels above sections; the heading itself names it.
+ */
+export function SectionHeading({
+  id,
+  title,
+  lead,
+  size = "lg",
   className,
 }: {
-  children: ReactNode;
+  id?: string;
+  title: ReactNode;
+  lead?: ReactNode;
+  size?: "md" | "lg";
   className?: string;
 }) {
   return (
-    <p
-      className={cn(
-        "text-xs font-semibold uppercase tracking-wider text-black/45",
-        className,
+    <div className={className}>
+      <h2
+        id={id}
+        className={cn(
+          "font-bold tracking-tight text-balance",
+          size === "lg" ? "text-2xl sm:text-3xl" : "text-xl",
+        )}
+      >
+        {title}
+      </h2>
+      {lead && (
+        <p className="mt-1.5 max-w-xl text-pretty text-black/55">{lead}</p>
       )}
-    >
-      {children}
-    </p>
+    </div>
   );
 }
