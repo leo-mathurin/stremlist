@@ -7,7 +7,8 @@ import {
   sourceRequiresConnection,
 } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
-import { Eye, EyeOff, Loader2, RefreshCw, X } from "lucide-react";
+import { Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import ActionsSettings from "../components/ActionsSettings";
@@ -110,15 +111,6 @@ export default function Configure() {
   const keyIsValid = !!rawKey && ACCOUNT_KEY_PATTERN.test(rawKey);
   const accountKey = keyIsValid ? rawKey : null;
 
-  // Read the OAuth result once, then clean the URL (and move the old
-  // `?userId=` to `?account=`) so a reload does not show it again.
-  const [notice, setNotice] = useState<Notice | null>(() =>
-    connectionNotice(
-      searchParams.get("connected"),
-      searchParams.get("connection_error"),
-      searchParams.get("provider"),
-    ),
-  );
   const [pendingLink, setPendingLink] = useState<string | null>(() => {
     const homeLink = (location.state as { link?: unknown } | null)?.link;
     if (typeof homeLink === "string") return homeLink;
@@ -139,11 +131,20 @@ export default function Configure() {
   useEffect(() => {
     const cleanup = ["connected", "connection_error", "provider", "userId"];
     if (!cleanup.some((key) => searchParams.has(key))) return;
+    const notice = connectionNotice(
+      searchParams.get("connected"),
+      searchParams.get("connection_error"),
+      searchParams.get("provider"),
+    );
+    if (notice) {
+      toast[notice.type](notice.message, { id: `connection-${location.key}` });
+    }
+    // Consume the OAuth result so reloading does not show the toast again.
     const next = new URLSearchParams(searchParams);
     for (const key of cleanup) next.delete(key);
     if (rawKey) next.set("account", rawKey);
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, rawKey]);
+  }, [searchParams, setSearchParams, rawKey, location.key]);
 
   const [createdId, setCreatedId] = useState(() =>
     readStorage(NEW_ACCOUNT_STORAGE),
@@ -324,28 +325,6 @@ export default function Configure() {
           )}
         </div>
 
-        {notice && (
-          <div
-            role="status"
-            className={cn(
-              "flex items-start gap-3 rounded-2xl px-4 py-3 text-sm ring-1",
-              notice.type === "success"
-                ? "bg-emerald-50 text-emerald-800 ring-emerald-200"
-                : "bg-red-50 text-red-700 ring-red-200",
-            )}
-          >
-            <p className="flex-1">{notice.message}</p>
-            <button
-              type="button"
-              aria-label="Dismiss"
-              onClick={() => setNotice(null)}
-              className="-m-1 rounded-full p-1 opacity-60 hover:opacity-100"
-            >
-              <X className="size-4" />
-            </button>
-          </div>
-        )}
-
         {rawKey && !keyIsValid ? (
           <NotFoundCard />
         ) : loading ? (
@@ -456,8 +435,7 @@ export default function Configure() {
                       : source.label,
                     displayMode: source.defaultDisplayMode,
                   });
-                  if (error)
-                    config.setStatus({ type: "error", message: error });
+                  if (error) toast.error(error);
                 }}
                 onAddChart={config.addChartList}
               />
@@ -577,22 +555,6 @@ export default function Configure() {
                     : "Save"}
               </button>
             </div>
-
-            {config.status && (
-              <p
-                role={config.status.type === "error" ? "alert" : "status"}
-                className={cn(
-                  "rounded-2xl px-4 py-3 text-center text-sm ring-1",
-                  config.status.type === "success"
-                    ? "bg-emerald-50 text-emerald-800 ring-emerald-200"
-                    : config.status.type === "info"
-                      ? "bg-white text-black/70 ring-black/10"
-                      : "bg-red-50 text-red-700 ring-red-200",
-                )}
-              >
-                {config.status.message}
-              </p>
-            )}
 
             {accountKey && !justCreated && !moved && (
               <AddonUrlCard

@@ -5,6 +5,7 @@ import {
   useLayoutEffect,
   useRef,
 } from "react";
+import { toast } from "sonner";
 import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
 import {
   CONNECTION_SOURCES,
@@ -32,11 +33,6 @@ export const MAX_LISTS = 10;
 
 /** "new" until the first save creates the Account. */
 export type AccountAccess = "new" | AddonAccess;
-
-export type ConfigStatus = {
-  type: "success" | "error" | "info";
-  message: string;
-} | null;
 
 export type ProviderStatus = { enabled: boolean; connectable: boolean };
 
@@ -150,8 +146,6 @@ export function useAccountConfiguration(
   const [baselineActionsLive, setBaselineActionsLive] = useState<
     boolean | null
   >(null);
-  const [status, setStatus] = useState<ConfigStatus>(null);
-  const previousKey = useRef(accountKey);
   const currentForm = useRef({ lists, rpdbApiKey });
   // Save responses must see edits committed while the request was in flight.
   useLayoutEffect(() => {
@@ -180,11 +174,6 @@ export function useAccountConfiguration(
   }, []);
 
   useEffect(() => {
-    // A status set while creating the Account (before the key existed) must
-    // survive the reload that follows; a switch between Accounts clears it.
-    if (previousKey.current !== null) setStatus(null);
-    previousKey.current = accountKey;
-
     setShowReinstallHint(false);
     setBaselineSignature(null);
     setBaselineActionsLive(null);
@@ -429,20 +418,19 @@ export function useAccountConfiguration(
   const handleSave = async () => {
     if (validationError || saving) return;
     if (lists.length === 0) {
-      setStatus({ type: "error", message: "Add at least one list first." });
+      toast.error("Add at least one list first.", { id: "configuration-save" });
       return;
     }
 
     setSaving(true);
-    setStatus(null);
     try {
       if (!accountKey) {
         const created = await createAccount();
         if (created) {
-          setStatus({
-            type: "success",
-            message: "Saved! Install Stremlist in Stremio with your Addon URL.",
-          });
+          toast.success(
+            "Saved! Install Stremlist in Stremio with your Addon URL.",
+            { id: "configuration-save" },
+          );
           onAccountCreated(created);
         }
         return;
@@ -528,18 +516,17 @@ export function useAccountConfiguration(
       setShowReinstallHint(needsReinstall);
       setBaselineSignature(getListReinstallSignature(savedRows));
       setBaselineActionsLive(actionsLive);
-      setStatus({
-        type: "success",
-        message: hasUnsavedChanges
+      toast.success(
+        hasUnsavedChanges
           ? "Saved the submitted settings. You have unsaved changes: save again to apply them."
           : needsReinstall
             ? "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions."
             : "Saved! Your catalogs will refresh with the new settings.",
-      });
+        { id: "configuration-save" },
+      );
     } catch (err) {
-      setStatus({
-        type: "error",
-        message: err instanceof Error ? err.message : "Something went wrong",
+      toast.error(err instanceof Error ? err.message : "Something went wrong", {
+        id: "configuration-save",
       });
     } finally {
       setSaving(false);
@@ -550,7 +537,6 @@ export function useAccountConfiguration(
     if (!accountKey || refreshing || onCooldown) return;
 
     setRefreshing(true);
-    setStatus(null);
     try {
       const res = await api[":accountKey"].refresh.$post({
         param: { accountKey },
@@ -577,16 +563,12 @@ export function useAccountConfiguration(
       // Success feedback is the live "Last refreshed" label and the cooldown,
       // so only report when some Lists failed.
       if (body.failed > 0) {
-        setStatus({
-          type: "error",
-          message: `Refreshed ${body.refreshed} of ${body.total} lists. Some lists failed to update.`,
-        });
+        toast.error(
+          `Refreshed ${body.refreshed} of ${body.total} lists. Some lists failed to update.`,
+        );
       }
     } catch (err) {
-      setStatus({
-        type: "error",
-        message: err instanceof Error ? err.message : "Something went wrong",
-      });
+      toast.error(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setRefreshing(false);
     }
@@ -595,7 +577,6 @@ export function useAccountConfiguration(
   /** Give a Legacy alias install a private Addon URL. Returns the new ID. */
   const upgrade = async (): Promise<string | null> => {
     if (!accountKey || access !== "legacy") return null;
-    setStatus(null);
     try {
       const res = await api[":accountKey"].upgrade.$post({
         param: { accountKey },
@@ -608,10 +589,7 @@ export function useAccountConfiguration(
       }
       return body.accountId;
     } catch (err) {
-      setStatus({
-        type: "error",
-        message: err instanceof Error ? err.message : "Something went wrong",
-      });
+      toast.error(err instanceof Error ? err.message : "Something went wrong");
       return null;
     }
   };
@@ -623,14 +601,12 @@ export function useAccountConfiguration(
   const connect = async (provider: ProviderId) => {
     const label = PROVIDERS[provider].label;
     if (access === "legacy") {
-      setStatus({
-        type: "info",
-        message: `To connect ${label}, upgrade this install to a private URL first.`,
-      });
+      toast.info(
+        `To connect ${label}, upgrade this install to a private URL first.`,
+      );
       return;
     }
     setConnecting(provider);
-    setStatus(null);
     let id = accountId;
     try {
       if (!id) {
@@ -650,10 +626,7 @@ export function useAccountConfiguration(
       window.location.assign(body.authorizeUrl);
     } catch (err) {
       setConnecting(null);
-      setStatus({
-        type: "error",
-        message: err instanceof Error ? err.message : "Something went wrong",
-      });
+      toast.error(err instanceof Error ? err.message : "Something went wrong");
     }
   };
 
@@ -687,7 +660,6 @@ export function useAccountConfiguration(
     if (!accountId) return;
     const label = PROVIDERS[provider].label;
     setConnecting(provider);
-    setStatus(null);
     try {
       const res = await api[":accountId"].connections[":provider"].$delete({
         param: { accountId, provider },
@@ -698,16 +670,12 @@ export function useAccountConfiguration(
       );
       setActionOrder((current) => current.filter((id) => id !== provider));
       setActionSelected((current) => current.filter((id) => id !== provider));
-      setStatus({
-        type: "info",
-        message: `${label} is disconnected. Lists read through ${label} stop showing in Stremio until you connect it again.`,
-      });
+      toast.info(
+        `${label} is disconnected. Lists read through ${label} stop showing in Stremio until you connect it again.`,
+      );
       await refreshAccountState(accountId);
     } catch (err) {
-      setStatus({
-        type: "error",
-        message: err instanceof Error ? err.message : "Something went wrong",
-      });
+      toast.error(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setConnecting(null);
     }
@@ -752,8 +720,6 @@ export function useAccountConfiguration(
     notFound,
     loadError,
     showReinstallHint,
-    status,
-    setStatus,
     validationError,
     handleSave,
     handleRefresh,

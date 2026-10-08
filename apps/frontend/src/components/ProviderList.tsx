@@ -94,21 +94,33 @@ export default function ProviderList({
           );
         } else if (connection) {
           trailing = (
-            <span className="flex items-center gap-2">
-              <span className="hidden items-center gap-1 text-xs font-bold text-brand sm:flex">
-                <Check className="size-3.5" />
-                Connected
-              </span>
-              <button
-                type="button"
-                onClick={() => setConfirming(id)}
-                disabled={busy || confirming === id}
-                aria-expanded={confirming === id}
-                className="rounded-full px-2.5 py-1 text-xs font-semibold text-white/55 transition-colors hover:bg-white/10 hover:text-cloud disabled:opacity-40"
-              >
-                {busy ? "Disconnecting" : "Disconnect"}
-              </button>
-            </span>
+            <button
+              type="button"
+              onClick={() => setConfirming(id)}
+              disabled={busy || confirming === id}
+              aria-label={
+                busy
+                  ? "Disconnecting"
+                  : `Connected to ${info.label}. Disconnect`
+              }
+              aria-expanded={confirming === id}
+              title={`Disconnect ${info.label}`}
+              className="group relative grid rounded-full bg-brand/10 px-3 py-1 text-xs font-semibold transition-colors after:absolute after:inset-x-0 after:-inset-y-2 hover:bg-white/10 focus-visible:bg-white/10 disabled:opacity-40"
+            >
+              {busy ? (
+                <span className="text-white/55">Disconnecting</span>
+              ) : (
+                <>
+                  <span className="col-start-1 row-start-1 flex items-center justify-center gap-1 text-brand group-hover:invisible group-focus-visible:invisible">
+                    <Check className="size-3.5" />
+                    Connected
+                  </span>
+                  <span className="invisible col-start-1 row-start-1 text-cloud group-hover:visible group-focus-visible:visible">
+                    Disconnect
+                  </span>
+                </>
+              )}
+            </button>
           );
         } else if (canConnect) {
           trailing = (
