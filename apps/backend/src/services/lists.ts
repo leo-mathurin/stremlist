@@ -268,7 +268,7 @@ async function fetchAndCacheList(
   if (superseded()) return { data, cachedAt, generation: null };
   let generation: string | null = null;
   try {
-    generation = await writeCachedList(config.listId, data, storedAt);
+    generation = await writeCachedList(config.listId, data, storedAt, config);
   } catch (error) {
     // Later requests still get the old Catalog, so this is no "Updated";
     // the Provider did accept the Connection, though.
@@ -289,7 +289,9 @@ async function fetchAndCacheList(
 function refreshList(config: ListFetchConfig): Promise<FreshList> {
   // One read per List and per access level at a time: a save can prewarm at
   // the same moment Stremio requests the Catalog.
-  const key = `${config.listId}:${config.allowConnection ? "c" : "p"}`;
+  // The source is part of the key: a read started before an edit of the List
+  // must not answer for its new Source list.
+  const key = `${config.listId}:${config.provider}:${config.sourceRef}:${config.allowConnection ? "c" : "p"}`;
   const existing = inFlightRefreshes.get(key);
   if (existing && !config.freshRead) return existing.promise;
   // The older read may use an older Connection: its late result must not
@@ -346,7 +348,7 @@ export async function getListCatalog(
   const adapter = getProvider(config.provider);
   const freshnessMs = freshnessOf(adapter, config.sourceRef);
   if (!config.forceFresh) {
-    const cached = await getCachedList(config.listId);
+    const cached = await getCachedList(config.listId, config);
     // An empty cache is not a hit: it cannot be told apart from "the list
     // became private", which must surface its reason.
     if (
@@ -392,7 +394,7 @@ export async function getListCatalog(
       (error instanceof SourceUnavailableError &&
         error.reason === "needs_connection");
     if (!config.noCacheFallback && !lostConnection) {
-      const cached = await getCachedList(config.listId);
+      const cached = await getCachedList(config.listId, config);
       if (cached && cached.data.metas.length > 0) {
         await markAccountFetched(config.accountId, "last_cache_served_at");
         return present(

@@ -4,6 +4,20 @@ interface Entry {
   data: CatalogData;
   cachedAt: Date;
   generation: string;
+  source?: string;
+}
+
+interface CacheSource {
+  provider: string;
+  sourceRef: string;
+}
+
+function sourceKey(source?: CacheSource): string | undefined {
+  return source && `${source.provider}:${source.sourceRef}`;
+}
+
+function servesSource(entry: Entry, source?: CacheSource): boolean {
+  return !source || !entry.source || entry.source === sourceKey(source);
 }
 
 class InMemoryListCache {
@@ -13,9 +27,24 @@ class InMemoryListCache {
     this.entries.clear();
   }
 
-  seed(listId: string, metas: StremioMeta[], cachedAt = new Date()): void {
+  seed(
+    listId: string,
+    metas: StremioMeta[],
+    cachedAt = new Date(),
+    source?: CacheSource,
+  ): void {
     this.entries.set(listId, {
       data: { metas: structuredClone(metas) },
+      cachedAt,
+      generation: `${listId}:${cachedAt.toISOString()}`,
+      source: sourceKey(source),
+    });
+  }
+
+  markStale(listId: string, entry: Entry): void {
+    const cachedAt = new Date(0);
+    this.entries.set(listId, {
+      ...entry,
       cachedAt,
       generation: `${listId}:${cachedAt.toISOString()}`,
     });
@@ -32,14 +61,19 @@ class InMemoryListCache {
 
 export const cache = new InMemoryListCache();
 
-export function getCachedList(listId: string): Promise<Entry | null> {
-  return Promise.resolve(cache.get(listId));
+export function getCachedList(
+  listId: string,
+  source?: CacheSource,
+): Promise<Entry | null> {
+  const entry = cache.get(listId);
+  return Promise.resolve(entry && servesSource(entry, source) ? entry : null);
 }
 
 export function writeCachedList(
   listId: string,
   listData: CatalogData,
   cachedAt = new Date(),
+  source?: CacheSource,
 ): Promise<string> {
   const seen = new Set<string>();
   const metas = listData.metas.filter((meta) => {
@@ -49,7 +83,7 @@ export function writeCachedList(
     return true;
   });
   if (metas.length === 0) cache.delete(listId);
-  else cache.seed(listId, metas, cachedAt);
+  else cache.seed(listId, metas, cachedAt, source);
   return Promise.resolve(`${listId}:${cachedAt.toISOString()}`);
 }
 
@@ -72,9 +106,9 @@ export function deleteCachedList(listId: string): Promise<void> {
   return Promise.resolve();
 }
 
-export function getCachedListSummary(listId: string) {
+export function getCachedListSummary(listId: string, source?: CacheSource) {
   const entry = cache.get(listId);
-  if (!entry) return Promise.resolve(null);
+  if (!entry || !servesSource(entry, source)) return Promise.resolve(null);
   const genres = (type: StremioMeta["type"]) =>
     [
       ...new Set(
@@ -89,13 +123,15 @@ export function getCachedListSummary(listId: string) {
 
 export function markCachedListStale(listId: string): Promise<void> {
   const entry = cache.get(listId);
-  if (entry) cache.seed(listId, entry.data.metas, new Date(0));
+  if (entry) cache.markStale(listId, entry);
   return Promise.resolve();
 }
 
-export function getCachedListInfo(listId: string) {
+export function getCachedListInfo(listId: string, source?: CacheSource) {
   const entry = cache.get(listId);
-  if (!entry || entry.cachedAt.getTime() <= 0) return Promise.resolve(null);
+  if (!entry || !servesSource(entry, source) || entry.cachedAt.getTime() <= 0) {
+    return Promise.resolve(null);
+  }
   return Promise.resolve({
     cachedAt: entry.cachedAt.toISOString(),
     titleCount: entry.data.metas.length,

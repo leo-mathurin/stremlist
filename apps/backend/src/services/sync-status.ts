@@ -145,7 +145,7 @@ export async function getListSyncStatuses(
     lists.map(async (list) => {
       const status = list.id in statuses ? statuses[list.id] : null;
       if (changedSource.has(list.id) || status?.lastSuccessAt) return;
-      const info = await getCachedListInfo(list.id);
+      const info = await getCachedListInfo(list.id, list);
       if (!info) return;
       statuses[list.id] = status
         ? {
