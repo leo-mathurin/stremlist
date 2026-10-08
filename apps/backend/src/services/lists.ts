@@ -93,35 +93,25 @@ interface FreshList {
 
 const inFlightRefreshes = new Map<string, Promise<FreshList>>();
 
-/** The Source list of a List, and the access its read may use. */
-export type SourceAccess = Pick<
-  ListFetchConfig,
-  "accountId" | "provider" | "sourceRef" | "allowConnection"
->;
-
+/**
+ * The Provider context of a Source list read. `connectionAccountId` is the
+ * Account whose Connection the read may use, or null when the request may
+ * not use one (a Legacy alias, a new setup).
+ */
 export async function providerContext(
-  config: SourceAccess,
+  source: { provider: ProviderId; sourceRef: string },
+  connectionAccountId: string | null,
 ): Promise<ProviderContext> {
-  if (!config.allowConnection) {
-    if (sourceRequiresConnection(config.provider, config.sourceRef)) {
-      throw new SourceUnavailableError(
-        "needs_connection",
-        `${config.provider} ${config.sourceRef} needs a Connection`,
-      );
-    }
-    return { connection: null };
-  }
-  const connection = await getConnectionAccess(
-    config.accountId,
-    config.provider,
-  );
+  const connection = connectionAccountId
+    ? await getConnectionAccess(connectionAccountId, source.provider)
+    : null;
   if (
     !connection &&
-    sourceRequiresConnection(config.provider, config.sourceRef)
+    sourceRequiresConnection(source.provider, source.sourceRef)
   ) {
     throw new SourceUnavailableError(
       "needs_connection",
-      `${config.provider} ${config.sourceRef} needs a Connection`,
+      `${source.provider} ${source.sourceRef} needs a Connection`,
     );
   }
   return { connection };
@@ -241,7 +231,10 @@ async function fetchAndCacheList(config: ListFetchConfig): Promise<FreshList> {
     );
   }
   const adapter = getProvider(config.provider);
-  const ctx = await providerContext(config);
+  const ctx = await providerContext(
+    config,
+    config.allowConnection ? config.accountId : null,
+  );
   const { data, deferred } = await buildCatalog(adapter, config, ctx);
   const cachedAt = new Date();
   // Back-date the cache so the next request resumes resolution soon.
@@ -298,20 +291,15 @@ function present(
   };
 }
 
-function toListError(
-  source: { provider: ProviderId; sourceRef: string },
-  error: unknown,
-  message: string,
-): ListUnavailableError {
-  // An expired Connection is an expected state (the user revoked access):
-  // the catalog asks to connect again instead of a 500 that Stremio retries.
-  const reason =
-    error instanceof SourceUnavailableError
-      ? error.reason
-      : error instanceof ConnectionExpiredError
-        ? "needs_connection"
-        : "unavailable";
-  return new ListUnavailableError(source, reason, message);
+/**
+ * The reason of a failed Source list read. An expired Connection is an
+ * expected state (the user revoked access): it asks to connect again instead
+ * of a server error.
+ */
+export function sourceProblemReason(error: unknown): SourceProblemReason {
+  if (error instanceof SourceUnavailableError) return error.reason;
+  if (error instanceof ConnectionExpiredError) return "needs_connection";
+  return "unavailable";
 }
 
 /**
@@ -366,10 +354,7 @@ export async function getListCatalog(
 
     // A List that lost its Connection must not keep serving the private
     // items it cached while connected.
-    const lostConnection =
-      error instanceof ConnectionExpiredError ||
-      (error instanceof SourceUnavailableError &&
-        error.reason === "needs_connection");
+    const lostConnection = sourceProblemReason(error) === "needs_connection";
     if (!config.noCacheFallback && !lostConnection) {
       const cached = await getCachedList(config.listId);
       if (cached && cached.data.metas.length > 0) {
@@ -383,9 +368,9 @@ export async function getListCatalog(
       }
     }
 
-    throw toListError(
+    throw new ListUnavailableError(
       config,
-      error,
+      sourceProblemReason(error),
       `Failed to read list ${config.listId} and no cache available: ${message}`,
     );
   }

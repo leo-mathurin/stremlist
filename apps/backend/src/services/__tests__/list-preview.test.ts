@@ -87,8 +87,7 @@ function entries(metas: StremioMeta[]): SourceEntry[] {
 
 function request(overrides: Partial<PreviewRequest> = {}): PreviewRequest {
   return {
-    accountId: "",
-    allowConnection: false,
+    connectionAccountId: null,
     provider: "trakt",
     sourceRef: "users/someone/lists/favorites",
     sortOption: "added_at-asc",
@@ -292,8 +291,7 @@ describe("previewList: Unresolved entries", () => {
       request({
         provider: "simkl",
         sourceRef: "me/plantowatch",
-        accountId: account.id,
-        allowConnection: true,
+        connectionAccountId: account.id,
       }),
     );
 
@@ -445,12 +443,8 @@ describe("previewList: reads", () => {
     seedConnection(other.id, "trakt");
     const ref = { sourceRef: "users/owner/lists/private-list" };
 
-    await previewList(
-      request({ ...ref, accountId: owner.id, allowConnection: true }),
-    );
-    await previewList(
-      request({ ...ref, accountId: other.id, allowConnection: true }),
-    );
+    await previewList(request({ ...ref, connectionAccountId: owner.id }));
+    await previewList(request({ ...ref, connectionAccountId: other.id }));
     await previewList(request(ref));
 
     expect(fetchSource).toHaveBeenCalledTimes(3);
@@ -468,8 +462,7 @@ describe("previewList: reads", () => {
     seedConnection(account.id, "trakt", { accessToken: "first-user" });
     const history = request({
       sourceRef: "me/history",
-      accountId: account.id,
-      allowConnection: true,
+      connectionAccountId: account.id,
     });
 
     await previewList(history);

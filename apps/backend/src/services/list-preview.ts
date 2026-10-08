@@ -9,18 +9,17 @@ import {
   PREVIEW_UNRESOLVED_LIMIT,
 } from "@stremlist/shared/catalog-preview";
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
-import { CATALOG_PRESETS } from "@stremlist/shared/catalog-settings";
 import type { DisplayMode } from "@stremlist/shared/constants";
+import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDERS } from "@stremlist/shared/providers";
 import { createHash } from "node:crypto";
 import { getProvider, isProviderEnabled } from "../providers/registry";
 import type { ConnectionAccess, SourceEntry } from "../providers/types";
-import { SourceUnavailableError } from "../providers/types";
 import { filterCatalog, resolveCatalogSelection } from "./catalog-filters";
 import { sortCatalog } from "./catalog-sort";
-import { ConnectionExpiredError } from "./connections";
-import type { BuiltCatalog, SourceAccess } from "./lists";
-import { buildCatalog, providerContext } from "./lists";
+import type { BuiltCatalog } from "./lists";
+import { buildCatalog, providerContext, sourceProblemReason } from "./lists";
+import { listCatalogs } from "./stremio-catalogs";
 
 /**
  * How long one read of a Source list serves previews. Changing the sort or
@@ -32,9 +31,17 @@ const READING_TTL_MS = 5 * 60_000;
 const UNFINISHED_READING_TTL_MS = 30_000;
 const MAX_READINGS = 50;
 
-export interface PreviewRequest extends SourceAccess {
+export interface PreviewRequest {
+  provider: ProviderId;
+  sourceRef: string;
+  /**
+   * The Account whose Connection the read may use, or null: a new setup or a
+   * Legacy alias reads public Source lists only (ADR 0001).
+   */
+  connectionAccountId: string | null;
   sortOption: string;
-  displayMode: DisplayMode;
+  /** Absent: split, like a List saved without one. */
+  displayMode?: DisplayMode;
   catalogSettings?: CatalogSettings;
 }
 
@@ -70,7 +77,7 @@ async function connectionScope(connection: ConnectionAccess): Promise<string> {
  * request without the Connection, or a later Connection of the same Account.
  */
 async function readSource(request: PreviewRequest): Promise<BuiltCatalog> {
-  const ctx = await providerContext(request);
+  const ctx = await providerContext(request, request.connectionAccountId);
   const scope = ctx.connection
     ? await connectionScope(ctx.connection)
     : "public";
@@ -144,38 +151,28 @@ function toUnresolvedEntry(entry: SourceEntry): PreviewUnresolvedEntry {
 
 /**
  * The Catalogs that a List adds to Stremio, each with its first Titles. Uses
- * the same sort and filters as the catalog route, so the preview matches what
- * Stremio shows (RPDB posters aside).
+ * the same Catalogs, sort and filters as the manifest and the catalog route,
+ * so the preview matches what Stremio shows (RPDB posters aside).
  */
-export function presentPreview(
-  request: Pick<
-    PreviewRequest,
-    "provider" | "sourceRef" | "sortOption" | "displayMode" | "catalogSettings"
-  >,
+function presentPreview(
+  request: PreviewRequest,
   built: BuiltCatalog,
 ): CatalogPreview {
-  const settings = request.catalogSettings ?? {};
-  const types: ("movie" | "series")[] =
-    request.displayMode === "movie" || request.displayMode === "series"
-      ? [request.displayMode]
-      : ["movie", "series"];
-  const presets = CATALOG_PRESETS.filter((preset) =>
-    settings.presets?.includes(preset.id),
-  ).map((preset) => preset.id);
+  const { metas } = built.data;
   // The real Catalog seeds Shuffle with its cache generation; a preview has
   // none, so it uses a stable seed of its own.
   const generation = `preview:${request.provider}:${request.sourceRef}`;
 
-  const catalogs = types.flatMap((type) =>
-    [null, ...presets].map((preset): CatalogPreviewRow => {
+  const catalogs = listCatalogs(request).map(
+    ({ type, preset }): CatalogPreviewRow => {
       const selection = resolveCatalogSelection(
         request.sortOption,
-        settings,
+        request.catalogSettings,
         null,
         preset ?? undefined,
       );
       const matching = filterCatalog(
-        sortCatalog(built.data.metas, selection.sort, generation).filter(
+        sortCatalog(metas, selection.sort, generation).filter(
           (meta) => meta.type === type,
         ),
         selection.filters,
@@ -192,15 +189,15 @@ export function presentPreview(
           releaseInfo: meta.releaseInfo ?? null,
         })),
       };
-    }),
+    },
   );
 
   return {
     ok: true,
-    titleCount: built.data.metas.length,
+    titleCount: metas.length,
     typeCounts: {
-      movie: built.data.metas.filter((meta) => meta.type === "movie").length,
-      series: built.data.metas.filter((meta) => meta.type === "series").length,
+      movie: metas.filter((meta) => meta.type === "movie").length,
+      series: metas.filter((meta) => meta.type === "series").length,
     },
     catalogs,
     unresolved: {
@@ -231,16 +228,13 @@ export async function previewList(
   try {
     return presentPreview(request, await readSource(request));
   } catch (error) {
-    if (error instanceof SourceUnavailableError) {
-      return { ok: false, reason: error.reason };
+    const reason = sourceProblemReason(error);
+    if (reason === "unavailable") {
+      console.error(
+        `Previewing ${request.provider} ${request.sourceRef} failed:`,
+        error instanceof Error ? error.message : error,
+      );
     }
-    if (error instanceof ConnectionExpiredError) {
-      return { ok: false, reason: "needs_connection" };
-    }
-    console.error(
-      `Previewing ${request.provider} ${request.sourceRef} failed:`,
-      error instanceof Error ? error.message : error,
-    );
-    return { ok: false, reason: "unavailable" };
+    return { ok: false, reason };
   }
 }

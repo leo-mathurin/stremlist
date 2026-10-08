@@ -49,6 +49,7 @@ import {
   getImdbWatchlist,
   normalizeImdbUserId,
 } from "../services/imdb-scraper";
+import { previewList } from "../services/list-preview";
 import { prewarmLists } from "../services/list-prewarm";
 import { forgetConnectionLists, getListCatalog } from "../services/lists";
 import {
@@ -56,7 +57,6 @@ import {
   isOAuthConfigured,
   startAuthorization,
 } from "../services/oauth";
-import preview from "./preview";
 
 const REFRESH_COOLDOWN_MS =
   (Number.isFinite(Number(process.env.REFRESH_COOLDOWN_SECONDS))
@@ -343,7 +343,36 @@ const api = new Hono()
     },
   )
 
-  .route("/lists/preview", preview)
+  // Preview the Catalogs of a List, saved or not: a sample of Titles for each
+  // Catalog and the Unresolved entries of its Source list. Writes nothing.
+  .post(
+    "/lists/preview",
+    zValidator(
+      "json",
+      listBody
+        .pick({
+          provider: true,
+          sourceRef: true,
+          sortOption: true,
+          displayMode: true,
+          catalogSettings: true,
+        })
+        .extend({ accountKey: accountKeyParam.shape.accountKey.optional() }),
+    ),
+    async (c) => {
+      const { accountKey, ...list } = c.req.valid("json");
+      // Like `/links/resolve`, an unknown key previews public lists only. A
+      // Legacy alias can be guessed: it never reads through a Connection.
+      const access = accountKey ? await resolveAccountKey(accountKey) : null;
+      return c.json(
+        await previewList({
+          ...list,
+          connectionAccountId:
+            access?.via === "private" ? access.account.id : null,
+        }),
+      );
+    },
+  )
 
   // Create an Account with its first Lists. Returns the private Account ID.
   .post(
