@@ -7,8 +7,12 @@ import { readFileSync } from "node:fs";
 
 /** The Source lists that the test writes to E2E_SOURCE_FIXTURE_FILE. */
 export interface SourceFixture {
-  /** IMDb watchlists by `ur…` ID: the IMDb IDs, oldest added first. */
-  imdb: Record<string, { ids: string[]; fail?: boolean }>;
+  /**
+   * IMDb watchlists by `ur…` ID: the IMDb IDs, oldest added first. `capped`
+   * makes the watchlist longer than the page cap: the first page has the
+   * IDs and every page says that more follow, so the read is cut short.
+   */
+  imdb: Record<string, { ids: string[]; fail?: boolean; capped?: boolean }>;
   /** Public Trakt watchlists by user. An item without `imdb` stays unresolved. */
   trakt: Record<
     string,
@@ -59,15 +63,20 @@ async function imdb(request: Request): Promise<Response> {
     const list = state.imdb[String(body.variables.urConst)];
     if (!list) return Response.json({ data: { predefinedList: null } });
     if (list.fail) return new Response("Fixture outage", { status: 503 });
+    const firstPage = body.variables.after == null;
     return Response.json({
       data: {
         predefinedList: {
           id: body.variables.urConst,
           visibility: { id: "PUBLIC" },
           titleListItemSearch: {
-            total: list.ids.length,
-            edges: list.ids.map((id) => ({ listItem: titleNode(id, state) })),
-            pageInfo: { hasNextPage: false, endCursor: null },
+            total: list.capped ? 20_000 : list.ids.length,
+            edges: firstPage
+              ? list.ids.map((id) => ({ listItem: titleNode(id, state) }))
+              : [],
+            pageInfo: list.capped
+              ? { hasNextPage: true, endCursor: "fixture-next-page" }
+              : { hasNextPage: false, endCursor: null },
           },
         },
       },

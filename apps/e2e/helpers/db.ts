@@ -239,7 +239,12 @@ export async function getListRows(accountId: string) {
 export async function seedDetectionHistory(
   accountId: string,
   source: { provider: ProviderId; sourceRef: string },
-  sync: { baselineAt: string; lastSyncAt: string },
+  sync: {
+    baselineAt: string;
+    lastSyncAt: string;
+    /** The Provider user of the Connection, for Connection-only Source lists. */
+    connectionUser?: string;
+  },
   entries: { imdbId: string; detectedAt?: string }[],
 ): Promise<void> {
   const key = {
@@ -251,6 +256,8 @@ export async function seedDetectionHistory(
     ...key,
     baseline_at: sync.baselineAt,
     last_complete_sync_at: sync.lastSyncAt,
+    requires_connection: sync.connectionUser !== undefined,
+    connection_user: sync.connectionUser ?? null,
   });
   if (synced.error) throw synced.error;
   const inserted = await db.from("source_list_entries").insert(

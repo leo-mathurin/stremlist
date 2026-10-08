@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import type {
+  AccountConfigResponse,
+  ConfigListInput,
   NewTitlesSummary,
   StremioManifest,
   StremioMeta,
@@ -19,7 +21,7 @@ import {
   SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_URL,
 } from "../env.js";
-import { getCatalog, getManifest } from "../helpers/api.js";
+import { asInput, getCatalog, getManifest, getMeta } from "../helpers/api.js";
 import { CATALOG_TITLES, seedCatalog } from "../helpers/catalog-fixture.js";
 import {
   clearRefreshCooldown,
@@ -27,6 +29,7 @@ import {
   resetDb,
   seedAccount,
   seedAccountWithLists,
+  seedConnection,
   seedDetectionHistory,
   seedList,
 } from "../helpers/db.js";
@@ -47,11 +50,13 @@ const A = "tt9910001";
 const B = "tt9910002";
 const C = "tt9910003";
 const D = "tt9910004";
+const E = "tt9910005";
 const TITLES: SourceFixture["titles"] = {
   [A]: { name: "QA Detection Alpha", year: 2001, type: "movie" },
   [B]: { name: "QA Detection Bravo", year: 2002, type: "movie" },
   [C]: { name: "QA Detection Charlie", year: 2003, type: "movie" },
   [D]: { name: "QA Detection Delta", year: 2004, type: "movie" },
+  [E]: { name: "QA Detection Echo", year: 2005, type: "series" },
 };
 const NEVER_RESOLVED = { trakt: 99_009, name: "QA Never On IMDb", year: 2020 };
 
@@ -65,10 +70,17 @@ const DATE = new Intl.DateTimeFormat("en-GB", {
 function sources(
   imdb: string[],
   trakt: SourceFixture["trakt"][string]["items"] = [],
-  fail: { imdb?: boolean } = {},
+  read: { imdbFails?: boolean; imdbCapped?: boolean } = {},
+  watchlist = WATCHLIST,
 ): SourceFixture {
   return {
-    imdb: { [WATCHLIST]: { ids: imdb, fail: fail.imdb } },
+    imdb: {
+      [watchlist]: {
+        ids: imdb,
+        fail: read.imdbFails,
+        capped: read.imdbCapped,
+      },
+    },
     trakt: { [TRAKT_USER]: { items: trakt } },
     titles: TITLES,
   };
@@ -117,14 +129,19 @@ test.beforeEach(async () => {
 
 /** An Account with the New titles catalog on and these Lists. */
 function seedDetectionAccount(
-  lists: { provider: "imdb" | "trakt"; sourceRef: string; title: string }[],
+  lists: {
+    provider: "imdb" | "trakt";
+    sourceRef: string;
+    title: string;
+    displayMode?: "movie" | "split";
+  }[],
 ) {
   return seedAccountWithLists(
     lists.map((list) => ({
       provider: list.provider,
       sourceRef: list.sourceRef,
       catalogTitle: list.title,
-      displayMode: "movie" as const,
+      displayMode: list.displayMode ?? "movie",
     })),
     { newTitlesCatalog: true },
   );
@@ -145,12 +162,45 @@ async function refreshAll(accountId: string, state: SourceFixture) {
   };
 }
 
-async function newTitles(accountId: string): Promise<StremioMeta[]> {
+async function newTitles(
+  accountId: string,
+  type: "movie" | "series" = "movie",
+  extra = "",
+): Promise<StremioMeta[]> {
   const response = await fetch(
-    `${backend.url}/${accountId}/catalog/movie/new-titles-movie.json`,
+    `${backend.url}/${accountId}/catalog/${type}/new-titles-${type}${extra}.json`,
   );
   expect(response.status).toBe(200);
   return ((await response.json()) as { metas: StremioMeta[] }).metas;
+}
+
+const ids = (metas: StremioMeta[]) => metas.map((meta) => meta.id);
+
+async function readConfig(accountKey: string): Promise<AccountConfigResponse> {
+  const response = await fetch(`${backend.url}/${accountKey}/config`);
+  expect(response.status).toBe(200);
+  return (await response.json()) as AccountConfigResponse;
+}
+
+/** Save these Lists through the isolated backend, as the configure page does. */
+async function saveLists(accountId: string, lists: ConfigListInput[]) {
+  const response = await fetch(`${backend.url}/${accountId}/config`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ lists }),
+  });
+  expect(response.status).toBe(200);
+  return (await response.json()) as { newTitles: NewTitlesSummary | null };
+}
+
+async function syncRows(accountId: string) {
+  const { data, error } = await db
+    .from("source_list_syncs")
+    .select("provider, source_ref, baseline_at")
+    .eq("account_id", accountId)
+    .order("provider");
+  if (error) throw error;
+  return data;
 }
 
 async function entryRows(accountId: string) {
@@ -234,7 +284,10 @@ test(
     expect((await newTitles(accountId)).map((meta) => meta.id)).toEqual([C]);
     const before = await entryRows(accountId);
 
-    const failed = await refreshAll(accountId, sources([], [], { imdb: true }));
+    const failed = await refreshAll(
+      accountId,
+      sources([], [], { imdbFails: true }),
+    );
     expect(failed).toMatchObject({ refreshed: 0, failed: 1 });
     expect(await entryRows(accountId)).toEqual(before);
     expect((await newTitles(accountId)).map((meta) => meta.id)).toEqual([C]);
@@ -282,6 +335,315 @@ test(
       ["trakt-movie:2", B, false, null],
       ["trakt-movie:99009", null, true, null],
     ]);
+  },
+);
+
+test(
+  "a read cut short by the page cap is served but never compared",
+  { tag: "@local" },
+  async ({ page }) => {
+    const { accountId } = await seedDetectionAccount([
+      { provider: "imdb", sourceRef: WATCHLIST, title: "QA watchlist" },
+    ]);
+
+    const capped = await refreshAll(
+      accountId,
+      sources([A, B], [], { imdbCapped: true }),
+    );
+    expect(capped).toMatchObject({ refreshed: 1, failed: 0 });
+    expect(capped.newTitles).toEqual({
+      detected: 0,
+      latestDetectedAt: null,
+      waitingLists: 1,
+    });
+    expect(await syncRows(accountId)).toEqual([]);
+    // The cut-short read still serves the List's own Catalog.
+    const manifest = (await (
+      await fetch(`${backend.url}/${accountId}/manifest.json`)
+    ).json()) as StremioManifest;
+    const listCatalog = manifest.catalogs.find(
+      (catalog) => !catalog.id.startsWith("new-titles-"),
+    );
+    const served = await fetch(
+      `${backend.url}/${accountId}/catalog/movie/${listCatalog?.id}.json`,
+    );
+    expect(
+      ids(((await served.json()) as { metas: StremioMeta[] }).metas).sort(),
+    ).toEqual([A, B]);
+
+    await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
+    await expect(
+      page.getByText(
+        "No new titles detected yet. Stremlist could not read 1 List in full yet, so it cannot compare it.",
+      ),
+    ).toBeVisible();
+
+    // The first complete read is the Baseline, also for C, which the
+    // cut-short read did not have.
+    const baseline = await refreshAll(accountId, sources([A, B, C]));
+    expect(baseline.newTitles).toEqual({
+      detected: 0,
+      latestDetectedAt: null,
+      waitingLists: 0,
+    });
+    expect(await newTitles(accountId)).toEqual([]);
+    const known = await entryRows(accountId);
+    expect(
+      known.map((row) => [row.entry_key, row.detected_at, row.removed_at]),
+    ).toEqual([
+      [`imdb:${A}`, null, null],
+      [`imdb:${B}`, null, null],
+      [`imdb:${C}`, null, null],
+    ]);
+
+    // A later cut-short read without B and C removes nothing.
+    await refreshAll(accountId, sources([A], [], { imdbCapped: true }));
+    expect(await entryRows(accountId)).toEqual(known);
+
+    await refreshAll(accountId, sources([A, B, C, D]));
+    expect(ids(await newTitles(accountId))).toEqual([D]);
+    await page.reload();
+    await expect(
+      page.getByText(/^1 new title detected, the latest .+\.$/),
+    ).toBeVisible();
+  },
+);
+
+test(
+  "a Title that leaves and comes back keeps its first detection, also when its List is removed and added again",
+  { tag: "@local" },
+  async () => {
+    const { accountId } = await seedDetectionAccount([
+      { provider: "imdb", sourceRef: WATCHLIST, title: "QA watchlist" },
+      { provider: "trakt", sourceRef: TRAKT_REF, title: "QA Trakt picks" },
+    ]);
+    const trakt = [traktItem(1, A)];
+    const entryOf = async (imdbId: string) =>
+      (await entryRows(accountId)).find(
+        (row) => row.entry_key === `imdb:${imdbId}`,
+      );
+
+    await refreshAll(accountId, sources([A, B], trakt));
+    await refreshAll(accountId, sources([A, B, C], trakt));
+    const first = await entryOf(C);
+    expect(first?.detected_at).toBeTruthy();
+    const detectedAt = new Date(first!.detected_at!).toISOString();
+
+    const gone = await refreshAll(accountId, sources([A, B], trakt));
+    expect(gone.newTitles).toEqual({
+      detected: 0,
+      latestDetectedAt: null,
+      waitingLists: 0,
+    });
+    expect(await newTitles(accountId)).toEqual([]);
+    expect((await entryOf(C))?.removed_at).toBeTruthy();
+
+    const back = await refreshAll(accountId, sources([A, B, C], trakt));
+    expect(back.newTitles).toEqual({
+      detected: 1,
+      latestDetectedAt: detectedAt,
+      waitingLists: 0,
+    });
+    expect(ids(await newTitles(accountId))).toEqual([C]);
+    expect(await entryOf(C)).toMatchObject({
+      detected_at: first!.detected_at,
+      removed_at: null,
+    });
+
+    // Removing the List hides its Titles but keeps its history.
+    const [watchlistList, traktList] = (await readConfig(accountId)).lists;
+    const history = await syncRows(accountId);
+    const removed = await saveLists(accountId, asInput([traktList]));
+    expect(removed.newTitles).toEqual({
+      detected: 0,
+      latestDetectedAt: null,
+      waitingLists: 0,
+    });
+    expect(await newTitles(accountId)).toEqual([]);
+    expect(await syncRows(accountId)).toEqual(history);
+
+    // Added again as a new List, it keeps its Baseline: nothing in it
+    // becomes new, and C keeps its first detection.
+    const [readded] = asInput([watchlistList]);
+    const added = await saveLists(accountId, [
+      ...asInput([traktList]),
+      { ...readded, id: undefined },
+    ]);
+    expect(added.newTitles).toEqual({
+      detected: 1,
+      latestDetectedAt: detectedAt,
+      waitingLists: 0,
+    });
+    await refreshAll(accountId, sources([A, B, C], trakt));
+    expect(await syncRows(accountId)).toEqual(history);
+    const metas = await newTitles(accountId);
+    expect(ids(metas)).toEqual([C]);
+    expect(metas[0].description).toMatch(
+      new RegExp(`^${detected("QA watchlist")}`),
+    );
+    // Stremio opens the Title through the meta route.
+    const { status, meta } = await getMeta(accountId, "movie", C);
+    expect(status).toBe(200);
+    expect(meta).toMatchObject({ id: C, name: "QA Detection Charlie" });
+  },
+);
+
+test(
+  "series have their own New titles catalog, without search and paged with skip",
+  { tag: "@local" },
+  async () => {
+    const { accountId } = await seedDetectionAccount([
+      {
+        provider: "imdb",
+        sourceRef: WATCHLIST,
+        title: "QA watchlist",
+        displayMode: "split",
+      },
+    ]);
+    await refreshAll(accountId, sources([A]));
+    await refreshAll(accountId, sources([A, E, C]));
+
+    const manifest = (await (
+      await fetch(`${backend.url}/${accountId}/manifest.json`)
+    ).json()) as StremioManifest;
+    expect(manifest.catalogs.slice(0, 2)).toEqual([
+      {
+        id: "new-titles-movie",
+        name: "Stremlist New titles",
+        type: "movie",
+        extra: [{ name: "skip", isRequired: false }],
+      },
+      {
+        id: "new-titles-series",
+        name: "Stremlist New titles",
+        type: "series",
+        extra: [{ name: "skip", isRequired: false }],
+      },
+    ]);
+    expect(ids(await newTitles(accountId, "movie"))).toEqual([C]);
+    expect(ids(await newTitles(accountId, "series"))).toEqual([E]);
+    expect(await newTitles(accountId, "movie", "/search=Charlie")).toEqual([]);
+    expect(await newTitles(accountId, "movie", "/skip=100")).toEqual([]);
+  },
+);
+
+test(
+  "the private copy of a Legacy alias install keeps the setting and starts its own Baseline",
+  { tag: "@local" },
+  async () => {
+    const alias = "ur9999999999203";
+    const legacyId = await seedAccount({
+      legacyImdbUserId: alias,
+      newTitlesCatalog: true,
+    });
+    const listId = await seedList(legacyId, {
+      provider: "imdb",
+      sourceRef: alias,
+      catalogTitle: "QA alias",
+      displayMode: "movie",
+      position: 0,
+    });
+    const at = new Date().toISOString();
+    await seedCachedCatalog(listId, [
+      { ...CATALOG_TITLES[0], id: A, name: TITLES[A].name },
+    ]);
+    await seedDetectionHistory(
+      legacyId,
+      { provider: "imdb", sourceRef: alias },
+      { baselineAt: at, lastSyncAt: at },
+      [{ imdbId: A, detectedAt: at }],
+    );
+    expect(ids(await newTitles(alias))).toEqual([A]);
+
+    writeSources(sources([A, B], [], {}, alias));
+    const upgraded = await fetch(`${backend.url}/${alias}/upgrade`, {
+      method: "POST",
+    });
+    expect(upgraded.status).toBe(200);
+    const { accountId } = (await upgraded.json()) as { accountId: string };
+    // The upgrade reads the copy's List once: that read is its Baseline.
+    await expect.poll(() => syncRows(accountId)).toHaveLength(1);
+
+    expect((await readConfig(accountId)).newTitles).toEqual({
+      enabled: true,
+      summary: { detected: 0, latestDetectedAt: null, waitingLists: 0 },
+    });
+    const manifest = (await (
+      await fetch(`${backend.url}/${accountId}/manifest.json`)
+    ).json()) as StremioManifest;
+    expect(manifest.catalogs[0]).toMatchObject({ id: "new-titles-movie" });
+    expect(await newTitles(accountId)).toEqual([]);
+
+    await refreshAll(accountId, sources([A, B, C], [], {}, alias));
+    expect(ids(await newTitles(accountId))).toEqual([C]);
+    // The legacy Account keeps its own history.
+    expect(await syncRows(legacyId)).toHaveLength(1);
+    expect(ids(await newTitles(alias))).toEqual([A]);
+  },
+);
+
+test(
+  "a disconnect forgets only the history that the Connection could read",
+  { tag: "@local" },
+  async () => {
+    const { accountId, listIds } = await seedDetectionAccount([
+      { provider: "imdb", sourceRef: WATCHLIST, title: "QA watchlist" },
+      { provider: "trakt", sourceRef: "me/history", title: "QA history" },
+    ]);
+    await seedConnection(accountId, "trakt", { username: TRAKT_USER });
+    const daysAgo = (days: number) =>
+      new Date(Date.now() - days * 24 * 60 * 60_000).toISOString();
+    const history = [
+      {
+        listId: listIds[0],
+        source: { provider: "imdb" as const, sourceRef: WATCHLIST },
+        imdbId: A,
+        at: daysAgo(2),
+      },
+      {
+        listId: listIds[1],
+        source: { provider: "trakt" as const, sourceRef: "me/history" },
+        imdbId: B,
+        at: daysAgo(1),
+        connectionUser: TRAKT_USER,
+      },
+    ];
+    for (const entry of history) {
+      await seedCachedCatalog(entry.listId, [
+        {
+          ...CATALOG_TITLES[0],
+          id: entry.imdbId,
+          name: TITLES[entry.imdbId].name,
+        },
+      ]);
+      await seedDetectionHistory(
+        accountId,
+        entry.source,
+        {
+          baselineAt: daysAgo(5),
+          lastSyncAt: entry.at,
+          connectionUser: entry.connectionUser,
+        },
+        [{ imdbId: entry.imdbId, detectedAt: entry.at }],
+      );
+    }
+    expect(ids(await newTitles(accountId))).toEqual([B, A]);
+
+    const disconnected = await fetch(
+      `${backend.url}/${accountId}/connections/trakt`,
+      { method: "DELETE" },
+    );
+    expect(disconnected.status).toBe(200);
+    expect(
+      (await syncRows(accountId)).map((row) => [row.provider, row.source_ref]),
+    ).toEqual([["imdb", WATCHLIST]]);
+    expect(ids(await newTitles(accountId))).toEqual([A]);
+    // The history List cannot be read now, so it waits for a new Baseline.
+    expect((await readConfig(accountId)).newTitles.summary).toEqual({
+      detected: 1,
+      latestDetectedAt: history[0].at,
+      waitingLists: 1,
+    });
   },
 );
 
@@ -365,6 +727,9 @@ test(
       name: "Show newly detected titles",
     });
     await expect(toggle).not.toBeChecked();
+    await expect(toggle).toHaveAccessibleDescription(
+      /^Adds a “New titles” catalog to Stremio with the titles that appear in your Lists/,
+    );
     await expect(
       page.getByText("2 new titles detected, the latest 2 days ago."),
     ).toBeVisible();

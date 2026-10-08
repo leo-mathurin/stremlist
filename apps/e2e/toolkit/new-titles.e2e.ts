@@ -16,6 +16,7 @@ import {
   imdbUser,
   legacyConfiguration,
   parseBody,
+  providerStatus,
   row,
   savedLists,
   toJson,
@@ -205,4 +206,178 @@ test("changing the setting while a save runs keeps it as an unsaved change", asy
     { enabled: false },
     { enabled: true },
   ]);
+});
+
+test("a refresh updates the summary, and a throttled refresh keeps it", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  await captureConfig(
+    browser,
+    withNewTitles({
+      enabled: true,
+      summary: { detected: 0, latestDetectedAt: null, waitingLists: 1 },
+    }),
+  );
+  let attempts = 0;
+  await browser.route(`${backend}/${accountId}/refresh`, async (route) => {
+    attempts += 1;
+    const now = Date.now();
+    await route.fulfill({
+      json:
+        attempts === 1
+          ? {
+              ok: true,
+              refreshed: 1,
+              failed: 0,
+              total: 1,
+              lists: toJson(configuration.lists),
+              lastFetchedAt: new Date(now).toISOString(),
+              cooldownSeconds: 2,
+              newTitles: {
+                detected: 1,
+                latestDetectedAt: new Date(now - 3 * 60 * 60_000).toISOString(),
+                waitingLists: 0,
+              },
+            }
+          : {
+              ok: true,
+              throttled: true,
+              refreshed: 0,
+              failed: 0,
+              total: 0,
+              lastFetchedAt: new Date(now).toISOString(),
+              cooldownSeconds: 2,
+            },
+    });
+  });
+
+  await app.open(`/configure?account=${accountId}`);
+  await expect(
+    screen.getByText(
+      "No new titles detected yet. Stremlist could not read 1 List in full yet, so it cannot compare it.",
+    ),
+  ).toBeVisible();
+  await screen.getByRole("button", "Refresh now").tap();
+  const updated = screen.getByText(
+    "1 new title detected, the latest 3 hours ago.",
+  );
+  await expect(updated).toBeVisible();
+
+  // A throttled refresh read nothing, so the summary stays.
+  await expect(screen.getByRole("button", "Refresh now")).toBeEnabled();
+  await screen.getByRole("button", "Refresh now").tap();
+  await expect(screen.getByRole("button", /Refresh in \d+s/)).toBeDisabled();
+  expect(attempts).toBe(2);
+  await expect(updated).toBeVisible();
+});
+
+test("a save and a disconnect show the summary of what is left", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  await baseRoutes(
+    browser,
+    providerStatus({
+      simkl: { connectable: false },
+      mdblist: { connectable: false },
+    }),
+  );
+  const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60_000).toISOString();
+  const historyList = {
+    ...row,
+    id: "00000000-0000-4000-8000-000000000004",
+    provider: "trakt",
+    sourceRef: "me/history",
+    catalogTitle: "Trakt history",
+    position: 1,
+  } as const;
+  let current = withNewTitles({
+    enabled: true,
+    summary: { detected: 2, latestDetectedAt: twoDaysAgo, waitingLists: 0 },
+  });
+  current = {
+    ...current,
+    lists: [row, historyList],
+    connections: [
+      {
+        provider: "trakt",
+        username: "someone",
+        connectedAt: "2026-10-01T00:00:00.000Z",
+      },
+    ],
+  };
+  const submissions: AccountConfigInput[] = [];
+  await browser.route(`${backend}/${accountId}/config`, async (route) => {
+    if (route.request.method === "GET") {
+      await route.fulfill({ json: toJson(current) });
+      return;
+    }
+    const submitted = parseBody<AccountConfigInput>(route);
+    submissions.push(submitted);
+    const lists = savedLists(submitted);
+    current = { ...current, lists };
+    await route.fulfill({
+      json: toJson({
+        ok: true,
+        lists,
+        newTitles: {
+          detected: 1,
+          latestDetectedAt: twoDaysAgo,
+          waitingLists: 0,
+        },
+      }),
+    });
+  });
+  await browser.route(
+    `${backend}/${accountId}/connections/trakt/sources`,
+    async (route) => {
+      await route.fulfill({ json: { sources: [] } });
+    },
+  );
+  const deletes: string[] = [];
+  await browser.route(
+    `${backend}/${accountId}/connections/trakt`,
+    async (route) => {
+      deletes.push(route.request.method);
+      // The backend forgets the history of the Lists that only the
+      // Connection could read, so the history List waits again.
+      current = {
+        ...current,
+        connections: [],
+        newTitles: {
+          enabled: true,
+          summary: { detected: 0, latestDetectedAt: null, waitingLists: 1 },
+        },
+      };
+      await route.fulfill({ json: { ok: true } });
+    },
+  );
+
+  await app.open(`/configure?account=${accountId}`);
+  await expect(
+    screen.getByText("2 new titles detected, the latest 2 days ago."),
+  ).toBeVisible();
+
+  await screen.getByRole("button", "Remove Test catalog").tap();
+  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  expect(submissions[0].lists).toMatchObject([{ id: historyList.id }]);
+  await expect(
+    screen.getByText("1 new title detected, the latest 2 days ago."),
+  ).toBeVisible();
+
+  await screen.getByRole("button", "Disconnect").tap();
+  await screen
+    .getByRole("group", "Disconnect Trakt?")
+    .getByRole("button", "Disconnect")
+    .tap();
+  await expect(
+    screen.getByText(
+      "No new titles detected yet. Stremlist could not read 1 List in full yet, so it cannot compare it.",
+    ),
+  ).toBeVisible();
+  expect(deletes).toEqual(["DELETE"]);
 });
