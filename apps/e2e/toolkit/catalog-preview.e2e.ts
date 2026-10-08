@@ -2,7 +2,6 @@ import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
 import type { Browser } from "@e2e-dev/web";
 import type { CatalogPreviewResponse } from "@stremlist/shared/catalog-preview";
-import type { AccountConfigInput } from "@stremlist/shared/stremio.types";
 import type { PreviewRequest } from "./config-fixture";
 import {
   accountId,
@@ -15,7 +14,6 @@ import {
   previewOf,
   resolved,
   routeResolve,
-  savedLists,
   toJson,
 } from "./config-fixture";
 
@@ -235,22 +233,14 @@ test("a new setup previews its first List without an Account key", async ({
 }) => {
   await baseRoutes(browser);
   await routeResolve(browser, () => resolved("imdb", "ls99887766", "list"));
+  // baseRoutes fails the test if the page creates an Account.
   const requests = await routePreview(browser, (request) => previewOf(request));
-  const created: AccountConfigInput[] = [];
-  await browser.route(`${backend}/accounts`, async (route) => {
-    const body = parseBody<AccountConfigInput>(route);
-    created.push(body);
-    await route.fulfill({
-      json: toJson({ ok: true, accountId, lists: savedLists(body) }),
-    });
-  });
   await app.open("/configure");
   await screen.getByLabel(PASTE).fill(LIST_LINK);
   await screen.getByRole("button", "Add", { exact: true }).tap();
   await expect(screen.getByText("The Godfather")).toBeVisible();
   expect(requests).toHaveLength(1);
   expect(requests[0]).not.toHaveProperty("accountKey");
-  expect(created).toHaveLength(0);
 });
 
 test("disconnecting the Provider reads the open preview again", async ({

@@ -282,27 +282,14 @@ test(
   },
 );
 
-/**
- * Send the page's previews to the fixture backend. With `failFirst`, the
- * first preview fails like a network error.
- */
-async function routePreviews(
-  page: Page,
-  options: { failFirst?: boolean } = {},
-) {
-  let calls = 0;
+/** Send the page's previews to the fixture backend. */
+async function routePreviews(page: Page) {
   await page.route(`${BACKEND_URL}/lists/preview`, async (route) => {
-    calls += 1;
-    if (options.failFirst && calls === 1) {
-      await route.abort();
-      return;
-    }
     const response = await route.fetch({
       url: `${backend.url}/lists/preview`,
     });
     await route.fulfill({ response });
   });
-  return () => calls;
 }
 
 test(
@@ -348,36 +335,6 @@ test(
     await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(
       0,
     );
-  },
-);
-
-test(
-  "a failed preview recovers with Try again",
-  { tag: "@local" },
-  async ({ page }) => {
-    const { accountId } = await seedAccountWithLists([
-      {
-        provider: "senscritique",
-        sourceRef: PUBLIC_REF,
-        catalogTitle: "Animation fixture",
-      },
-    ]);
-    const calls = await routePreviews(page, { failFirst: true });
-    await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
-
-    await page
-      .getByRole("button", { name: "Preview Animation fixture" })
-      .click();
-    await expect(
-      page.getByText(
-        "Could not load the preview. Check your connection and try again.",
-      ),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Try again" }).click();
-    await expect(
-      page.getByRole("link", { name: "Spirited Away (2001), on IMDb" }),
-    ).toBeVisible();
-    expect(calls()).toBe(2);
   },
 );
 

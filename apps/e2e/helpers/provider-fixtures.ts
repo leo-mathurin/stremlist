@@ -32,17 +32,12 @@ const IMDB_TITLES: Record<
     year: BREAKING_BAD.year,
   },
   ...Object.fromEntries(
-    PREVIEW_PRODUCTS.flatMap((product) =>
-      product.imdbId
+    PREVIEW_PRODUCTS.flatMap(({ imdb, year }) =>
+      imdb
         ? [
             [
-              product.imdbId,
-              {
-                text: product.englishTitle,
-                type: "Movie",
-                year: product.year,
-                rating: product.rating,
-              },
+              imdb.id,
+              { text: imdb.title, type: "Movie", year, rating: imdb.rating },
             ],
           ]
         : [],
@@ -413,8 +408,8 @@ function wikidata(body: unknown): Response {
     "101": "tt0111161",
     "202": "tt0903747",
     ...Object.fromEntries(
-      PREVIEW_PRODUCTS.flatMap((product) =>
-        product.imdbId ? [[String(product.id), product.imdbId]] : [],
+      PREVIEW_PRODUCTS.flatMap(({ id, imdb }) =>
+        imdb ? [[String(id), imdb.id]] : [],
       ),
     ),
   };
