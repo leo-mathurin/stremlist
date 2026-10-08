@@ -1,5 +1,4 @@
 import { parseSortOption } from "@stremlist/shared/constants";
-import type { ProviderId } from "@stremlist/shared/providers";
 import type { ConfigList } from "@stremlist/shared/stremio.types";
 import { randomUUID } from "node:crypto";
 import { supabase } from "../lib/supabase";
@@ -121,42 +120,5 @@ export async function prewarmLists(
 
     generation = nextGeneration;
     lists = await getAccountLists(accountId);
-  }
-}
-
-/**
- * After a new authorization: read the Account's Lists on that Provider again,
- * so their Catalogs and sync status follow the new Connection at once instead
- * of at the next stale read.
- */
-export async function refreshProviderLists(
-  accountId: string,
-  provider: ProviderId,
-): Promise<void> {
-  const lists = (await getAccountLists(accountId)).filter(
-    (list) => list.provider === provider,
-  );
-  for (const list of lists) {
-    try {
-      await getListCatalog({
-        accountId,
-        listId: list.id,
-        provider: list.provider,
-        sourceRef: list.sourceRef,
-        sort: parseSortOption(list.sortOption),
-        rpdbApiKey: null,
-        allowConnection: true,
-        forceFresh: true,
-        skipAccountTimestamp: true,
-        noCacheFallback: true,
-        freshRead: true,
-        resolveBudgetMs: 25_000,
-      });
-    } catch (error) {
-      console.error(
-        `Failed to refresh list ${list.id} after connecting ${provider}:`,
-        error instanceof Error ? error.message : error,
-      );
-    }
   }
 }

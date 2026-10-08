@@ -1,9 +1,13 @@
+import type { Database } from "@stremlist/shared/database.types";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { sourceRequiresConnection } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { SOURCE_PROBLEM_REASONS } from "@stremlist/shared/source-problems";
 import type { ConfigList } from "@stremlist/shared/stremio.types";
-import type { ListSyncStatuses } from "@stremlist/shared/sync-status";
+import type {
+  ListSyncStatus,
+  ListSyncStatuses,
+} from "@stremlist/shared/sync-status";
 import { supabase } from "../lib/supabase";
 import type { ConnectionAccess } from "../providers/types";
 import { getCachedListInfo } from "./list-cache";
@@ -15,44 +19,69 @@ export interface RefreshedSource {
   sourceRef: string;
 }
 
+/** How one refresh of a List ended. */
 export type RefreshOutcome =
-  | { titleCount: number }
-  | { problem: SourceProblemReason };
+  | { kind: "saved"; titleCount: number }
+  /**
+   * The read worked, but the Catalog could not be saved: Stremio still gets
+   * the older one, so this is no update.
+   */
+  | { kind: "unsaved" }
+  | { kind: "failed"; problem: SourceProblemReason };
+
+type StatusRow = Database["public"]["Tables"]["list_sync_status"]["Row"];
 
 function isProblemReason(value: string): value is SourceProblemReason {
   return (SOURCE_PROBLEM_REASONS as readonly string[]).includes(value);
 }
 
+async function writeStatus(
+  source: RefreshedSource,
+  outcome: Exclude<RefreshOutcome, { kind: "unsaved" }>,
+): Promise<void> {
+  const { error } = await supabase.rpc("record_list_refresh", {
+    p_list_id: source.listId,
+    p_provider: source.provider,
+    p_source_ref: source.sourceRef,
+    p_failure_reason: outcome.kind === "failed" ? outcome.problem : null,
+    p_title_count: outcome.kind === "saved" ? outcome.titleCount : null,
+  });
+  if (error) throw new Error(error.message);
+}
+
 /**
- * Remember how a read of a List's Source list ended, for the configure page.
- * When the read went through a Connection, its outcome also tells whether the
- * Provider still accepts the tokens it used. Never throws: a status that could
- * not be written must not fail the Catalog.
+ * What a refresh tells about the Connection it read through: a refused read
+ * marks it for renewal, a working read of a private Source list clears that
+ * mark. A public Source list may have been read without the Connection, so
+ * it proves nothing.
+ */
+async function reportToConnection(
+  source: RefreshedSource,
+  outcome: RefreshOutcome,
+  connection: ConnectionAccess,
+): Promise<void> {
+  if (outcome.kind === "failed") {
+    if (outcome.problem === "needs_connection") {
+      await connection.reportRefused();
+    }
+  } else if (sourceRequiresConnection(source.provider, source.sourceRef)) {
+    await connection.reportWorking();
+  }
+}
+
+/**
+ * Remember how a refresh of a List's Source list ended, for the configure
+ * page, and what it tells about the Connection it read through. Never
+ * throws: a status that could not be written must not fail the Catalog.
  */
 export async function recordRefreshOutcome(
   source: RefreshedSource,
   outcome: RefreshOutcome,
   connection: ConnectionAccess | null,
 ): Promise<void> {
-  const problem = "problem" in outcome ? outcome.problem : null;
-  const writes: Promise<void>[] = [
-    (async () => {
-      const { error } = await supabase.rpc("record_list_refresh", {
-        p_list_id: source.listId,
-        p_provider: source.provider,
-        p_source_ref: source.sourceRef,
-        p_failure_reason: problem,
-        p_title_count: "titleCount" in outcome ? outcome.titleCount : null,
-      });
-      if (error) throw new Error(error.message);
-    })(),
-  ];
-  if (problem === null)
-    writes.push(reportConnectionWorking(source, connection));
-  if (connection?.reportRefused && problem === "needs_connection") {
-    writes.push(connection.reportRefused());
-  }
-
+  const writes: Promise<void>[] = [];
+  if (outcome.kind !== "unsaved") writes.push(writeStatus(source, outcome));
+  if (connection) writes.push(reportToConnection(source, outcome, connection));
   for (const result of await Promise.allSettled(writes)) {
     if (result.status === "rejected") {
       console.error(
@@ -61,35 +90,6 @@ export async function recordRefreshOutcome(
       );
     }
   }
-}
-
-/**
- * A read of the Source list worked through this Connection. Only a private
- * Source list proves that the Connection works: a public one may have been
- * read without it. Independent of the List status, which also needs the
- * Catalog to be saved.
- */
-export async function reportConnectionWorking(
-  source: Pick<RefreshedSource, "provider" | "sourceRef">,
-  connection: ConnectionAccess | null,
-): Promise<void> {
-  if (
-    connection?.reportWorking &&
-    sourceRequiresConnection(source.provider, source.sourceRef)
-  ) {
-    await connection.reportWorking();
-  }
-}
-
-interface StatusRow {
-  list_id: string;
-  provider: string;
-  source_ref: string;
-  last_attempt_at: string;
-  last_success_at: string | null;
-  title_count: number | null;
-  failure_reason: string | null;
-  failing_since: string | null;
 }
 
 /**
@@ -103,6 +103,58 @@ export async function forgetSyncStatuses(listIds: string[]): Promise<void> {
     .delete()
     .in("list_id", listIds);
   if (error) throw error;
+}
+
+function statusFromRow(row: StatusRow): ListSyncStatus {
+  return {
+    sourceRef: row.source_ref,
+    lastAttemptAt: row.last_attempt_at,
+    lastSuccessAt: row.last_success_at,
+    titleCount: row.title_count,
+    problem:
+      row.failure_reason === null || isProblemReason(row.failure_reason)
+        ? row.failure_reason
+        : "unavailable",
+    failingSince: row.failing_since,
+  };
+}
+
+/**
+ * The sync status of one List from its recorded rows. Lists cached before
+ * sync statuses existed take their last success from the cache, also after
+ * their first recorded refresh failed (Stremio still gets those cached
+ * Titles). A row for another Source list means the List changed its Source
+ * list: its cache may still hold the old one, so it is not used.
+ */
+async function syncStatusOf(
+  list: ConfigList,
+  rows: StatusRow[],
+): Promise<ListSyncStatus | null> {
+  const row = rows.find(
+    (candidate) =>
+      candidate.provider === list.provider &&
+      candidate.source_ref === list.sourceRef,
+  );
+  const status = row ? statusFromRow(row) : null;
+  const changedSource = rows.some((candidate) => candidate !== row);
+  if (changedSource || status?.lastSuccessAt) return status;
+
+  const cached = await getCachedListInfo(list.id, list);
+  if (!cached) return status;
+  return status
+    ? {
+        ...status,
+        lastSuccessAt: cached.cachedAt,
+        titleCount: cached.titleCount,
+      }
+    : {
+        sourceRef: list.sourceRef,
+        lastAttemptAt: cached.cachedAt,
+        lastSuccessAt: cached.cachedAt,
+        titleCount: cached.titleCount,
+        problem: null,
+        failingSince: null,
+      };
 }
 
 /**
@@ -124,57 +176,22 @@ export async function getListSyncStatuses(
   if (error) {
     console.error("Failed to read list sync statuses:", error.message);
   }
-
-  const statuses: ListSyncStatuses = {};
-  const rows = error ? [] : (data as StatusRow[]);
-  // Lists with a row for another Source list changed their Source list: their
-  // cache may still hold the old one.
-  const changedSource = new Set<string>();
-  for (const row of rows) {
-    const list = lists.find((candidate) => candidate.id === row.list_id);
-    if (!list) continue;
-    if (list.provider !== row.provider || list.sourceRef !== row.source_ref) {
-      changedSource.add(list.id);
-      continue;
-    }
-    statuses[list.id] = {
-      sourceRef: row.source_ref,
-      lastAttemptAt: row.last_attempt_at,
-      lastSuccessAt: row.last_success_at,
-      titleCount: row.title_count,
-      problem:
-        row.failure_reason === null
-          ? null
-          : isProblemReason(row.failure_reason)
-            ? row.failure_reason
-            : "unavailable",
-      failingSince: row.failing_since,
-    };
-  }
-  // Lists cached before sync statuses existed: their cache tells when they
-  // last refreshed, also after their first recorded refresh failed (Stremio
-  // still gets those cached Titles).
-  await Promise.all(
-    lists.map(async (list) => {
-      const status = list.id in statuses ? statuses[list.id] : null;
-      if (changedSource.has(list.id) || status?.lastSuccessAt) return;
-      const info = await getCachedListInfo(list.id, list);
-      if (!info) return;
-      statuses[list.id] = status
-        ? {
-            ...status,
-            lastSuccessAt: info.cachedAt,
-            titleCount: info.titleCount,
-          }
-        : {
-            sourceRef: list.sourceRef,
-            lastAttemptAt: info.cachedAt,
-            lastSuccessAt: info.cachedAt,
-            titleCount: info.titleCount,
-            problem: null,
-            failingSince: null,
-          };
-    }),
+  const rows = data ?? [];
+  const statuses = await Promise.all(
+    lists.map(
+      async (list) =>
+        [
+          list.id,
+          await syncStatusOf(
+            list,
+            rows.filter((row) => row.list_id === list.id),
+          ),
+        ] as const,
+    ),
   );
-  return statuses;
+  return Object.fromEntries(
+    statuses.filter(
+      (entry): entry is [string, ListSyncStatus] => entry[1] !== null,
+    ),
+  );
 }

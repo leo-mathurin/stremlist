@@ -1,12 +1,11 @@
 import type {
   AccountConfigResponse,
+  AccountSyncSnapshot,
   ConfigList,
   ConfigListInput,
-  ConnectionSummary,
   StremioManifest,
   StremioMeta,
 } from "@stremlist/shared/stremio.types";
-import type { ListSyncStatuses } from "@stremlist/shared/sync-status";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { hcWithType } from "@stremlist/backend/client";
 import { BACKEND_URL } from "../env.js";
@@ -53,10 +52,7 @@ export async function getSyncStatus(accountKey: string) {
   });
   return {
     status: response.status,
-    body: (await response.json()) as {
-      syncStatus: ListSyncStatuses;
-      connections: ConnectionSummary[];
-    },
+    body: (await response.json()) as AccountSyncSnapshot,
   };
 }
 

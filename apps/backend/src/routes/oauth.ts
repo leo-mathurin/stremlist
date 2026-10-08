@@ -4,7 +4,7 @@ import { scheduleBackgroundTask } from "../lib/background";
 import { frontendUrl } from "../lib/urls";
 import { getProvider } from "../providers/registry";
 import { saveConnection } from "../services/connections";
-import { refreshProviderLists } from "../services/list-prewarm";
+import { rereadConnectionLists } from "../services/lists";
 import { consumeState, exchangeCode, redirectUri } from "../services/oauth";
 
 const oauth = new Hono();
@@ -70,7 +70,7 @@ oauth.get("/oauth/:provider/callback", async (c) => {
     // Lists that failed without the Connection (or with the refused one)
     // read through the new one now.
     scheduleBackgroundTask(() =>
-      refreshProviderLists(pending.accountId, provider),
+      rereadConnectionLists(pending.accountId, provider),
     );
     return back(pending.accountId, { connected: provider });
   } catch (exchangeError) {

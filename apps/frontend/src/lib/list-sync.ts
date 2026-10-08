@@ -11,6 +11,6 @@ export function attentionTone(
   if (sync?.kind === "connection") {
     return sync.renew && !sync.stillShown ? "bad" : "warn";
   }
-  if (sync?.kind === "failing") return sync.showsOlderTitles ? "warn" : "bad";
+  if (sync?.kind === "failing") return sync.olderTitlesFrom ? "warn" : "bad";
   return null;
 }

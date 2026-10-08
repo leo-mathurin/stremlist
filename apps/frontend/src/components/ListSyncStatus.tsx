@@ -67,11 +67,11 @@ export function ListSyncLine({
         {count && ` · ${count}`}
       </>
     );
-  } else if (sync.showsOlderTitles && sync.lastSuccessAt) {
+  } else if (sync.olderTitlesFrom) {
     tone = "warn";
     text = (
       <>
-        Refresh failed · titles from <Time iso={sync.lastSuccessAt} />
+        Refresh failed · titles from <Time iso={sync.olderTitlesFrom} />
       </>
     );
   } else {
@@ -113,28 +113,20 @@ export function ListSyncNotice({
   const label = PROVIDERS[provider].label;
   const severe = attentionTone(sync) === "bad";
   let body: ReactNode;
-  let action = false;
 
   if (sync.kind === "connection") {
-    action = true;
-    body = !sync.renew ? (
-      <>{label} is not connected, so this List does not show in Stremio.</>
-    ) : sync.stillShown ? (
+    body = sync.renew ? (
       <>
         <strong className="font-semibold">
           {label} refused the Stremlist Connection
         </strong>
-        . Stremio still shows this List from its last refresh, but not after the
-        next one. Connect {label} again to renew it.
+        {sync.stillShown
+          ? ". Stremio still shows this List from its last refresh, but not after the next one."
+          : ", so this List does not show in Stremio."}{" "}
+        Connect {label} again to renew it.
       </>
     ) : (
-      <>
-        <strong className="font-semibold">
-          {label} refused the Stremlist Connection
-        </strong>
-        , so this List does not show in Stremio. Connect {label} again to renew
-        it.
-      </>
+      <>{label} is not connected, so this List does not show in Stremio.</>
     );
   } else if (sync.kind === "failing") {
     const copy = sourceProblemCopy(
@@ -150,10 +142,10 @@ export function ListSyncNotice({
       <>
         <strong className="font-semibold">{copy.title}.</strong> {fix}{" "}
         <span className="opacity-80">
-          {sync.showsOlderTitles && sync.lastSuccessAt ? (
+          {sync.olderTitlesFrom ? (
             <>
               Stremio shows the titles from the last refresh,{" "}
-              <Time iso={sync.lastSuccessAt} />.
+              <Time iso={sync.olderTitlesFrom} />.
             </>
           ) : (
             <>
@@ -181,7 +173,7 @@ export function ListSyncNotice({
       )}
     >
       <p className="min-w-0 flex-1 text-pretty tabular-nums">{body}</p>
-      {action && onConnect && (
+      {sync.kind === "connection" && onConnect && (
         <button
           type="button"
           onClick={onConnect}

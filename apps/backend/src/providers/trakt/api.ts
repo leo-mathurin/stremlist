@@ -116,7 +116,7 @@ export async function traktGet(
     }
     // Readable without the token but refused with it: the Connection is
     // broken even though this public read works.
-    await connection.reportRefused?.();
+    await connection.reportRefused();
   }
   if (response.status === 401) {
     throw new SourceUnavailableError(

@@ -128,6 +128,8 @@ function connection(tokens: string[] = ["token-1"]): ConnectionAccess & {
     getAccessToken: vi.fn(() =>
       Promise.resolve(tokens[Math.min(index++, tokens.length - 1)]),
     ),
+    reportRefused: () => Promise.resolve(),
+    reportWorking: () => Promise.resolve(),
   };
 }
 

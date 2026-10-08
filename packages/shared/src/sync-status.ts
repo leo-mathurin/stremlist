@@ -49,10 +49,21 @@ export type ListSyncState =
       kind: "failing";
       problem: SourceProblemReason;
       since: string;
-      lastSuccessAt: string | null;
-      /** Stremio still shows the Titles of the last successful refresh. */
-      showsOlderTitles: boolean;
+      /**
+       * When the Titles that Stremio still shows were refreshed, or null when
+       * Stremio shows nothing for this List.
+       */
+      olderTitlesFrom: string | null;
     };
+
+/**
+ * When the Titles that Stremio still serves for this List were refreshed, or
+ * null. A List that lost its Connection stops serving its cached Titles.
+ */
+function servedSince(status: ListSyncStatus | undefined): string | null {
+  if (!status || status.problem === "needs_connection") return null;
+  return (status.titleCount ?? 0) > 0 ? status.lastSuccessAt : null;
+}
 
 /**
  * Decide what a List's sync status means for the user.
@@ -71,11 +82,7 @@ export function listSyncState(
     return {
       kind: "connection",
       renew: true,
-      stillShown:
-        !!status &&
-        !refused &&
-        status.lastSuccessAt !== null &&
-        (status.titleCount ?? 0) > 0,
+      stillShown: servedSince(status) !== null,
     };
   }
   // A disconnect drops the cached Catalogs of these Lists.
@@ -99,9 +106,6 @@ export function listSyncState(
     kind: "failing",
     problem: status.problem,
     since: status.failingSince ?? status.lastAttemptAt,
-    lastSuccessAt: status.lastSuccessAt,
-    // A List that lost its Connection stops serving its cached Titles.
-    showsOlderTitles:
-      !refused && status.lastSuccessAt !== null && (status.titleCount ?? 0) > 0,
+    olderTitlesFrom: servedSince(status),
   };
 }

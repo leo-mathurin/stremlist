@@ -1,3 +1,4 @@
+import { parseSortOption } from "@stremlist/shared/constants";
 import type { ProviderId } from "@stremlist/shared/providers";
 import {
   PROVIDERS,
@@ -7,6 +8,7 @@ import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
 import { getProvider, isProviderEnabled } from "../providers/registry";
 import type {
+  ConnectionAccess,
   ProviderAdapter,
   ProviderContext,
   SourceEntry,
@@ -26,11 +28,8 @@ import {
   getCachedList,
   writeCachedList,
 } from "./list-cache";
-import {
-  forgetSyncStatuses,
-  recordRefreshOutcome,
-  reportConnectionWorking,
-} from "./sync-status";
+import type { RefreshOutcome } from "./sync-status";
+import { forgetSyncStatuses, recordRefreshOutcome } from "./sync-status";
 
 /**
  * When the ID resolver left entries untried, the next read comes this soon
@@ -88,11 +87,6 @@ export interface ListFetchConfig {
    * rethrown so the manual refresh can report it honestly.
    */
   noCacheFallback?: boolean;
-  /**
-   * Start a new read even when one is in flight, because that one may use
-   * an older Connection (the read right after a new authorization).
-   */
-  freshRead?: boolean;
 }
 
 interface FreshList {
@@ -103,8 +97,8 @@ interface FreshList {
 
 interface InFlightRefresh {
   promise: Promise<FreshList>;
-  /** A newer read replaced this one (`freshRead`); it must not write. */
-  state: { superseded: boolean };
+  /** Aborted when a newer read replaces this one: it must not write. */
+  controller: AbortController;
 }
 
 const inFlightRefreshes = new Map<string, InFlightRefresh>();
@@ -232,10 +226,17 @@ function problemReason(error: unknown): SourceProblemReason {
 
 async function fetchAndCacheList(
   config: ListFetchConfig,
-  superseded: () => boolean,
+  signal: AbortSignal,
 ): Promise<FreshList> {
   const adapter = getProvider(config.provider);
-  let ctx: ProviderContext | null = null;
+  let connection: ConnectionAccess | null = null;
+  // A read that a newer one replaced leaves no trace.
+  const record = async (outcome: RefreshOutcome) => {
+    if (!signal.aborted) {
+      await recordRefreshOutcome(config, outcome, connection);
+    }
+  };
+
   let built: { data: CatalogData; deferred: number };
   try {
     if (!isProviderEnabled(config.provider)) {
@@ -244,20 +245,17 @@ async function fetchAndCacheList(
         `${config.provider} is turned off`,
       );
     }
-    ctx = await providerContext(config);
+    const ctx = await providerContext(config);
+    connection = ctx.connection;
     built = await buildCatalog(adapter, config, ctx);
   } catch (error) {
-    if (!superseded()) {
-      await recordRefreshOutcome(
-        config,
-        { problem: problemReason(error) },
-        ctx?.connection ?? null,
-      );
-    }
+    await record({ kind: "failed", problem: problemReason(error) });
     throw error;
   }
+
   const { data, deferred } = built;
   const cachedAt = new Date();
+  if (signal.aborted) return { data, cachedAt, generation: null };
   // Back-date the cache so the next request resumes resolution soon.
   const storedAt =
     deferred > 0
@@ -269,43 +267,42 @@ async function fetchAndCacheList(
             ),
         )
       : cachedAt;
-  if (superseded()) return { data, cachedAt, generation: null };
   let generation: string | null = null;
   try {
     generation = await writeCachedList(config.listId, data, storedAt, config);
   } catch (error) {
-    // Later requests still get the old Catalog, so this is no "Updated";
-    // the Provider did accept the Connection, though.
     console.error(`Failed to cache list ${config.listId} in R2:`, error);
-    await reportConnectionWorking(config, ctx.connection);
-    return { data, cachedAt, generation };
   }
-  if (!superseded()) {
-    await recordRefreshOutcome(
-      config,
-      { titleCount: data.metas.length },
-      ctx.connection,
-    );
-  }
+  await record(
+    generation === null
+      ? { kind: "unsaved" }
+      : { kind: "saved", titleCount: data.metas.length },
+  );
   return { data, cachedAt, generation };
 }
 
-function refreshList(config: ListFetchConfig): Promise<FreshList> {
-  // One read per List and per access level at a time: a save can prewarm at
-  // the same moment Stremio requests the Catalog.
+/**
+ * One read per List and per access level at a time: a save can prewarm at
+ * the same moment Stremio requests the Catalog. With `supersede`, a read in
+ * flight is replaced instead of joined, because it may use an older
+ * Connection; its late result must not replace the Catalog or the status of
+ * the new one.
+ */
+function refreshList(
+  config: ListFetchConfig,
+  { supersede = false } = {},
+): Promise<FreshList> {
   // The source is part of the key: a read started before an edit of the List
   // must not answer for its new Source list.
   const key = `${config.listId}:${config.provider}:${config.sourceRef}:${config.allowConnection ? "c" : "p"}`;
   const existing = inFlightRefreshes.get(key);
-  if (existing && !config.freshRead) return existing.promise;
-  // The older read may use an older Connection: its late result must not
-  // replace the Catalog or the status of this one.
-  if (existing) existing.state.superseded = true;
+  if (existing && !supersede) return existing.promise;
+  existing?.controller.abort();
 
-  const state = { superseded: false };
+  const controller = new AbortController();
   const refresh: InFlightRefresh = {
-    promise: fetchAndCacheList(config, () => state.superseded),
-    state,
+    promise: fetchAndCacheList(config, controller.signal),
+    controller,
   };
   inFlightRefreshes.set(key, refresh);
   const clear = () => {
@@ -471,6 +468,43 @@ export async function forgetConnectionLists(
       list.provider === provider &&
       sourceRequiresConnection(list.provider, list.sourceRef),
   );
-  await Promise.all(lists.map((list) => deleteCachedList(list.id)));
-  await forgetSyncStatuses(lists.map((list) => list.id));
+  await Promise.all([
+    ...lists.map((list) => deleteCachedList(list.id)),
+    forgetSyncStatuses(lists.map((list) => list.id)),
+  ]);
+}
+
+/**
+ * After a new authorization: read the Account's Lists on that Provider again,
+ * so their Catalogs and sync statuses follow the new Connection at once
+ * instead of at the next stale read.
+ */
+export async function rereadConnectionLists(
+  accountId: string,
+  provider: ProviderId,
+): Promise<void> {
+  const lists = (await getAccountLists(accountId)).filter(
+    (list) => list.provider === provider,
+  );
+  for (const list of lists) {
+    try {
+      await refreshList(
+        {
+          accountId,
+          listId: list.id,
+          provider: list.provider,
+          sourceRef: list.sourceRef,
+          sort: parseSortOption(list.sortOption),
+          allowConnection: true,
+          resolveBudgetMs: 25_000,
+        },
+        { supersede: true },
+      );
+    } catch (error) {
+      console.error(
+        `Failed to refresh list ${list.id} after connecting ${provider}:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
 }

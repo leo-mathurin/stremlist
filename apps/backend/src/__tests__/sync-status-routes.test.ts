@@ -1,5 +1,4 @@
-import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
-import type { ListSyncStatuses } from "@stremlist/shared/sync-status";
+import type { AccountSyncSnapshot } from "@stremlist/shared/stremio.types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/supabase", async () => {
@@ -32,11 +31,6 @@ import {
 import { db, resetRpc } from "./helpers/mock-supabase.js";
 
 const TEN_MINUTES_AGO = new Date(Date.now() - 10 * 60_000).toISOString();
-
-interface SyncBody {
-  syncStatus: ListSyncStatuses;
-  connections: ConnectionSummary[];
-}
 
 function seedStatus(
   listId: string,
@@ -87,7 +81,7 @@ describe("sync status on the configure page", () => {
       "2026-10-06T12:00:00.000Z";
 
     const res = await app.request(`/${account.id}/config`);
-    const body = (await res.json()) as SyncBody;
+    const body = (await res.json()) as AccountSyncSnapshot;
 
     expect(body.syncStatus).toEqual({
       [imdb.id]: {
@@ -121,7 +115,7 @@ describe("sync status on the configure page", () => {
     const res = await app.request(`/${account.id}/sync-status`);
 
     expect(res.status).toBe(200);
-    expect((await res.json()) as SyncBody).toEqual({
+    expect((await res.json()) as AccountSyncSnapshot).toEqual({
       syncStatus: {
         [list.id]: expect.objectContaining({
           problem: "unavailable",
@@ -145,7 +139,7 @@ describe("sync status on the configure page", () => {
 
     const body = (await (
       await app.request("/ur12345678/sync-status")
-    ).json()) as SyncBody;
+    ).json()) as AccountSyncSnapshot;
 
     expect(Object.keys(body.syncStatus)).toEqual([watchlist.id]);
     expect(body.connections).toEqual([]);
@@ -181,7 +175,7 @@ describe("sync status on the configure page", () => {
     const res = await app.request(`/${account.id}/refresh`, {
       method: "POST",
     });
-    const body = (await res.json()) as SyncBody & { failed: number };
+    const body = (await res.json()) as AccountSyncSnapshot & { failed: number };
 
     expect(body.failed).toBe(1);
     expect(body.syncStatus[good.id]).toMatchObject({

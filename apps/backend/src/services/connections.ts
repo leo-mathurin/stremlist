@@ -164,39 +164,28 @@ async function updateTokens(
 }
 
 /**
- * Remember that the Provider refused these tokens (revoked grant, refused
- * refresh), so the configure page asks the user to connect again. Keeps the
- * first time it happened. Tokens replaced since (a new authorization, a
- * refresh by another request) are not marked.
+ * Mark these tokens as refused by the Provider (revoked grant, refused
+ * refresh), so the configure page asks the user to connect again, or clear
+ * the mark after a read with them worked. Marking keeps the first time it
+ * happened. Tokens replaced since (a new authorization, a refresh by another
+ * request) are left alone. Never throws.
  */
-async function markNeedsRenewal(connection: StoredConnection): Promise<void> {
-  const { error } = await supabase
+async function setNeedsRenewal(
+  connection: StoredConnection,
+  refused: boolean,
+): Promise<void> {
+  const query = supabase
     .from("connections")
-    .update({ needs_renewal_since: new Date().toISOString() })
+    .update({ needs_renewal_since: refused ? new Date().toISOString() : null })
     .eq("account_id", connection.accountId)
     .eq("provider", connection.provider)
-    .eq("access_token", connection.sealedToken)
-    .is("needs_renewal_since", null);
+    .eq("access_token", connection.sealedToken);
+  const { error } = await (refused
+    ? query.is("needs_renewal_since", null)
+    : query.not("needs_renewal_since", "is", null));
   if (error) {
     console.error(
-      `Failed to mark the ${connection.provider} connection of ${connection.accountId} for renewal:`,
-      error.message,
-    );
-  }
-}
-
-/** A read with these tokens worked: the Connection needs no renewal. */
-async function clearRenewal(connection: StoredConnection): Promise<void> {
-  const { error } = await supabase
-    .from("connections")
-    .update({ needs_renewal_since: null })
-    .eq("account_id", connection.accountId)
-    .eq("provider", connection.provider)
-    .eq("access_token", connection.sealedToken)
-    .not("needs_renewal_since", "is", null);
-  if (error) {
-    console.error(
-      `Failed to clear the renewal mark of the ${connection.provider} connection of ${connection.accountId}:`,
+      `Failed to ${refused ? "mark" : "clear"} the renewal of the ${connection.provider} connection of ${connection.accountId}:`,
       error.message,
     );
   }
@@ -268,7 +257,7 @@ async function refreshUnderLease(
       const latest = (await readConnection(accountId, provider)) ?? connection;
       if (isFresh(latest)) return latest;
       if (!latest.refreshToken) {
-        await markNeedsRenewal(latest);
+        await setNeedsRenewal(latest, true);
         throw new ConnectionExpiredError(provider);
       }
       let tokens: OAuthTokens;
@@ -283,7 +272,7 @@ async function refreshUnderLease(
           `Refreshing the ${provider} connection of ${accountId} failed:`,
           refreshError instanceof Error ? refreshError.message : refreshError,
         );
-        await markNeedsRenewal(latest);
+        await setNeedsRenewal(latest, true);
         throw new ConnectionExpiredError(provider);
       }
       const sealedToken = await updateTokens(accountId, provider, tokens);
@@ -309,7 +298,7 @@ async function refreshUnderLease(
     if (latest && isFresh(latest)) return latest;
   }
   if (isUsable(connection)) return connection;
-  await markNeedsRenewal(connection);
+  await setNeedsRenewal(connection, true);
   throw new ConnectionExpiredError(provider);
 }
 
@@ -332,7 +321,7 @@ export async function getConnectionAccess(
       if (!isFresh(current)) current = await refreshUnderLease(current);
       return current.accessToken;
     },
-    reportRefused: () => markNeedsRenewal(current),
-    reportWorking: () => clearRenewal(current),
+    reportRefused: () => setNeedsRenewal(current, true),
+    reportWorking: () => setNeedsRenewal(current, false),
   };
 }

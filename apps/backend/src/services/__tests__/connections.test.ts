@@ -440,22 +440,22 @@ describe("Connections that need renewal", () => {
       "leo",
       "https://api.stremlist.test/oauth/trakt/callback",
     );
-    await oldAccess?.reportRefused?.();
+    await oldAccess?.reportRefused();
 
     expect(connectionRow().needs_renewal_since).toBeNull();
     const newAccess = await getConnectionAccess(accountId, "trakt");
-    await newAccess?.reportRefused?.();
+    await newAccess?.reportRefused();
     expect(connectionRow().needs_renewal_since).not.toBeNull();
   });
 
   it("keeps the first time the Provider refused the Connection", async () => {
     seedConnection(accountId, "trakt");
     const access = await getConnectionAccess(accountId, "trakt");
-    await access?.reportRefused?.();
+    await access?.reportRefused();
     const first = connectionRow().needs_renewal_since;
 
     await new Promise((resolve) => setTimeout(resolve, 5));
-    await access?.reportRefused?.();
+    await access?.reportRefused();
 
     expect(connectionRow().needs_renewal_since).toBe(first);
   });
@@ -463,8 +463,8 @@ describe("Connections that need renewal", () => {
   it("clears the mark for the tokens that worked only", async () => {
     seedConnection(accountId, "trakt", { accessToken: "old" });
     const oldAccess = await getConnectionAccess(accountId, "trakt");
-    await oldAccess?.reportRefused?.();
-    await oldAccess?.reportWorking?.();
+    await oldAccess?.reportRefused();
+    await oldAccess?.reportWorking();
     expect(connectionRow().needs_renewal_since).toBeNull();
   });
 });

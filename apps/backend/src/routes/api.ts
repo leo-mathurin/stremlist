@@ -18,6 +18,7 @@ import {
 } from "@stremlist/shared/providers";
 import type {
   AccountConfigResponse,
+  AccountSyncSnapshot,
   AddonAccess,
   ConfigList,
 } from "@stremlist/shared/stremio.types";
@@ -225,6 +226,18 @@ function visibleLists(
       );
 }
 
+/** The sync status of these Lists and the Account's Connections. */
+async function syncSnapshot(
+  access: AccountAccess,
+  lists: ConfigList[],
+): Promise<AccountSyncSnapshot> {
+  const [syncStatus, connections] = await Promise.all([
+    getListSyncStatuses(lists),
+    access.via === "private" ? listConnections(access.account.id) : [],
+  ]);
+  return { syncStatus, connections };
+}
+
 function requestOrigin(c: Context): string {
   return new URL(c.req.url).origin;
 }
@@ -397,18 +410,18 @@ const api = new Hono()
         return c.json({ error: "Addon not found. Install it first." }, 404);
       }
       const { account } = access;
-      const [lists, connections] = await Promise.all([
-        getAccountLists(account.id).then((all) => visibleLists(access, all)),
-        access.via === "private" ? listConnections(account.id) : [],
+      const lists = visibleLists(access, await getAccountLists(account.id));
+      const [withGenres, sync] = await Promise.all([
+        withAvailableGenres(lists),
+        syncSnapshot(access, lists),
       ]);
       const body: AccountConfigResponse = {
         access: access.via,
         accountId: access.via === "private" ? account.id : null,
         movedAt: account.movedAt,
         rpdbApiKey: account.rpdbApiKey,
-        lists: await withAvailableGenres(lists),
-        syncStatus: await getListSyncStatuses(lists),
-        connections,
+        lists: withGenres,
+        ...sync,
         actions: {
           enabled: account.actionsEnabled,
           providers: account.actionProviders,
@@ -431,14 +444,8 @@ const api = new Hono()
       if (!access) {
         return c.json({ error: "Addon not found. Install it first." }, 404);
       }
-      const [lists, connections] = await Promise.all([
-        getAccountLists(access.account.id),
-        access.via === "private" ? listConnections(access.account.id) : [],
-      ]);
-      return c.json({
-        syncStatus: await getListSyncStatuses(visibleLists(access, lists)),
-        connections,
-      });
+      const lists = await getAccountLists(access.account.id);
+      return c.json(await syncSnapshot(access, visibleLists(access, lists)));
     },
   )
 
@@ -583,16 +590,18 @@ const api = new Hono()
           .eq("id", account.id);
       }
 
+      const [withGenres, sync] = await Promise.all([
+        withAvailableGenres(lists),
+        syncSnapshot(access, lists),
+      ]);
       return c.json({
         ok: true,
         lastFetchedAt: refreshed > 0 ? refreshedAt : account.lastFetchedAt,
         refreshed,
         failed,
         total: lists.length,
-        lists: await withAvailableGenres(lists),
-        syncStatus: await getListSyncStatuses(lists),
-        connections:
-          access.via === "private" ? await listConnections(account.id) : [],
+        lists: withGenres,
+        ...sync,
         cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
       });
     },

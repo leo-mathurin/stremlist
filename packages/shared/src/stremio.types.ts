@@ -34,7 +34,17 @@ export interface ConnectionSummary {
  */
 export type AddonAccess = "private" | "legacy";
 
-export interface AccountConfigResponse {
+/**
+ * The sync status of an Account's Lists and its Connections. The configure
+ * page gets it with the config, after "Refresh now" and from its polls.
+ */
+export interface AccountSyncSnapshot {
+  /** Sync status of the Lists, by List ID. */
+  syncStatus: ListSyncStatuses;
+  connections: ConnectionSummary[];
+}
+
+export interface AccountConfigResponse extends AccountSyncSnapshot {
   access: AddonAccess;
   /** The Account ID; only returned for private access. */
   accountId: string | null;
@@ -42,9 +52,6 @@ export interface AccountConfigResponse {
   movedAt: string | null;
   rpdbApiKey: string | null;
   lists: ConfigList[];
-  /** Sync status of the Lists above, by List ID. */
-  syncStatus: ListSyncStatuses;
-  connections: ConnectionSummary[];
   actions: { enabled: boolean; providers: ProviderId[] };
   lastFetchedAt: string;
   cooldownSeconds: number;

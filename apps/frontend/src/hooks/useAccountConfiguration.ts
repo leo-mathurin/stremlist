@@ -10,7 +10,6 @@ import {
   CONNECTION_SOURCES,
   PROVIDER_IDS,
   PROVIDERS,
-  sourceRequiresConnection,
 } from "@stremlist/shared/providers";
 import type { ConnectionSource, ProviderId } from "@stremlist/shared/providers";
 import type {
@@ -19,12 +18,6 @@ import type {
   ConfigList,
   ConnectionSummary,
 } from "@stremlist/shared/stremio.types";
-import { listSyncState } from "@stremlist/shared/sync-status";
-import type {
-  ListConnectionState,
-  ListSyncState,
-  ListSyncStatuses,
-} from "@stremlist/shared/sync-status";
 import { api } from "../lib/api";
 import {
   createListRow,
@@ -33,14 +26,10 @@ import {
 } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { requiresReinstall } from "../lib/reinstall";
+import { useListSyncStatus } from "./useListSyncStatus";
 
 /** Same limit as the backend (`MAX_LISTS`). */
 export const MAX_LISTS = 10;
-
-/** How often the page asks for the sync status while a refresh runs. */
-const SYNC_POLL_MS = 4000;
-/** Stop asking after this many polls (two minutes). */
-const SYNC_POLL_LIMIT = 30;
 
 /** "new" until the first save creates the Account. */
 export type AccountAccess = "new" | AddonAccess;
@@ -135,11 +124,8 @@ export function useAccountConfiguration(
   );
   const [accountId, setAccountId] = useState<string | null>(null);
   const [movedAt, setMovedAt] = useState<string | null>(null);
-  const [connections, setConnections] = useState<ConnectionSummary[]>([]);
-  const [syncStatus, setSyncStatus] = useState<ListSyncStatuses>({});
-  // Bumped by every non-poll update of the sync status and Connections, so
-  // a poll that started before it cannot bring older values back.
-  const syncEpoch = useRef(0);
+  const { connections, syncStateOf, applySync, dropConnection } =
+    useListSyncStatus(accountKey, access !== "new", lists);
   const [connectionSources, setConnectionSources] = useState<
     Partial<Record<ProviderId, ConnectionSource[]>>
   >({});
@@ -231,10 +217,7 @@ export function useAccountConfiguration(
         setAccountId(data.accountId);
         setMovedAt(data.movedAt);
         setRpdbApiKey(data.rpdbApiKey ?? "");
-        syncEpoch.current += 1;
-        setConnections(data.connections);
-        // An older backend answers without statuses.
-        setSyncStatus((data.syncStatus as ListSyncStatuses | undefined) ?? {});
+        applySync(data);
         setLastFetchedAt(data.lastFetchedAt);
         setCooldownSeconds(data.cooldownSeconds);
         setActionsEnabled(data.actions.enabled);
@@ -258,7 +241,7 @@ export function useAccountConfiguration(
     return () => {
       cancelled = true;
     };
-  }, [accountKey, loadAttempt]);
+  }, [accountKey, loadAttempt, applySync]);
 
   // What each Connection unlocks depends on the account (its own lists), so
   // ask the backend once the Connections are known.
@@ -302,73 +285,6 @@ export function useAccountConfiguration(
     Math.ceil((nextRefreshAt - now) / 1000),
   );
   const onCooldown = cooldownRemaining > 0;
-
-  /**
-   * What a List row shows about its refreshes. Null on a new setup, which
-   * has nothing saved yet. A row whose Source list changed since the save
-   * has no status yet.
-   */
-  const syncStateOf = useCallback(
-    (row: ListFormRow): ListSyncState | null => {
-      if (access === "new") return null;
-      const connection = connections.find((c) => c.provider === row.provider);
-      const connectionState: ListConnectionState = !connection
-        ? "none"
-        : connection.needsRenewalSince
-          ? "renew"
-          : "ok";
-      const status = row.id ? syncStatus[row.id] : undefined;
-      return listSyncState(
-        status?.sourceRef === row.sourceRef ? status : undefined,
-        connectionState,
-        sourceRequiresConnection(row.provider, row.sourceRef),
-      );
-    },
-    [access, connections, syncStatus],
-  );
-
-  // Saved Lists that wait for their first refresh (after a save or a new
-  // Connection): ask for their status until it arrives.
-  const waitingKey = lists
-    .filter((row) => row.id && syncStateOf(row)?.kind === "waiting")
-    .map((row) => row.id)
-    .join(",");
-  useEffect(() => {
-    if (!accountKey || !waitingKey) return;
-    let cancelled = false;
-    let polls = 0;
-    const poll = () => {
-      // A hidden tab does not ask (and does not use up the polls); it asks
-      // again as soon as it is visible.
-      if (document.hidden || polls >= SYNC_POLL_LIMIT) return;
-      polls += 1;
-      const epoch = syncEpoch.current;
-      api[":accountKey"]["sync-status"]
-        .$get({ param: { accountKey } })
-        .then(async (res) => {
-          if (!res.ok || cancelled) return;
-          const body = await res.json();
-          if (cancelled || epoch !== syncEpoch.current) return;
-          if (!("syncStatus" in body)) return;
-          setSyncStatus(body.syncStatus);
-          setConnections((current) =>
-            JSON.stringify(current) === JSON.stringify(body.connections)
-              ? current
-              : body.connections,
-          );
-        })
-        .catch(() => {
-          // Try again at the next tick.
-        });
-    };
-    const id = setInterval(poll, SYNC_POLL_MS);
-    document.addEventListener("visibilitychange", poll);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", poll);
-    };
-  }, [accountKey, waitingKey]);
 
   const setListField = useCallback(
     <K extends keyof ListFormRow>(
@@ -647,13 +563,7 @@ export function useAccountConfiguration(
       }
       setCooldownSeconds(body.cooldownSeconds);
       setLastFetchedAt(body.lastFetchedAt);
-      syncEpoch.current += 1;
-      if ("syncStatus" in body && body.syncStatus) {
-        setSyncStatus(body.syncStatus);
-      }
-      if ("connections" in body && body.connections) {
-        setConnections(body.connections);
-      }
+      if ("syncStatus" in body) applySync(body);
       if ("lists" in body && body.lists) {
         const refreshed = body.lists;
         setLists((current) =>
@@ -761,10 +671,7 @@ export function useAccountConfiguration(
       });
       if (!res.ok) return;
       const data = (await res.json()) as AccountConfigResponse;
-      syncEpoch.current += 1;
-      setConnections(data.connections);
-      // An older backend answers without statuses.
-      setSyncStatus((data.syncStatus as ListSyncStatuses | undefined) ?? {});
+      applySync(data);
       setLastFetchedAt(data.lastFetchedAt);
       const capable = actionCapableProviders(data.connections);
       setActionOrder((current) => [
@@ -789,10 +696,7 @@ export function useAccountConfiguration(
         param: { accountId, provider },
       });
       if (!res.ok) throw new Error(`Could not disconnect ${label}.`);
-      syncEpoch.current += 1;
-      setConnections((current) =>
-        current.filter((connection) => connection.provider !== provider),
-      );
+      dropConnection(provider);
       setActionOrder((current) => current.filter((id) => id !== provider));
       setActionSelected((current) => current.filter((id) => id !== provider));
       setStatus({
