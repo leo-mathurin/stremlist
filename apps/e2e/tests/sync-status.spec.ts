@@ -55,7 +55,21 @@ test(
     await clearRefreshCooldown(accountId);
 
     const { body } = await refresh(accountId);
-    expect(body).toMatchObject({ refreshed: 0, failed: 1, total: 1 });
+    expect(body).toMatchObject({
+      refreshed: 0,
+      failed: 1,
+      total: 1,
+      // The refresh answers with the new statuses, so the page needs no poll.
+      syncStatus: {
+        [listId]: {
+          sourceRef: PUBLIC_TRAKT_LIST,
+          problem: "disabled",
+          titleCount: 2,
+          lastSuccessAt: expect.any(String),
+        },
+      },
+      connections: [],
+    });
 
     const [row] = await getSyncStatusRows(listId);
     expect(row).toMatchObject({
@@ -170,7 +184,7 @@ test(
 );
 
 test(
-  "a Legacy alias sees the sync status of its public Lists only",
+  "a Legacy alias sees the sync status of its public Lists only, and an unknown Addon URL none",
   { tag: "@local" },
   async () => {
     const accountId = await seedAccount({
@@ -202,6 +216,9 @@ test(
       problem: null,
     });
     expect(body.connections).toEqual([]);
+
+    expect((await getSyncStatus("ur0000000404")).status).toBe(404);
+    expect((await getSyncStatus("sl_E2eUnknownAccount00001")).status).toBe(404);
   },
 );
 

@@ -38,7 +38,7 @@ R2. The configure/onboarding pages of the frontend are covered too.
   counts) or compare the Stremio UI against the addon's own catalog JSON from
   the same run, so they do not depend on what is in the watchlist today.
 - The default run and pull request CI execute all three projects: deterministic
-  local coverage (60 tests), four live smoke tests, and the broader live
+  local coverage (62 tests), four live smoke tests, and the broader live
   regression suite (26 tests).
 - The backend gets a fixed, public `CONNECTION_ENCRYPTION_KEY` from `env.ts`,
   so seeded Connections (`helpers/db.ts` `seedConnection`) decrypt like real
@@ -121,7 +121,9 @@ only explains its MDBList import. The UI side of the same journeys is in `toolki
 backend has no Trakt client ID, so Trakt reads fail and a seeded expired Trakt
 Connection becomes a refused one (`needs_renewal_since`), offline and
 deterministic. The `live-regression` case waits for the first refresh of a live
-IMDb chart through the page's polling.
+IMDb chart through the page's polling. The renewal by a new authorization, a
+working read that clears the mark and the statuses a disconnect forgets need
+the Provider fixtures, so they are in `tests/provider-journeys.spec.ts`.
 
 ## Environment knobs
 

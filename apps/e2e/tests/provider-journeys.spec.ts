@@ -7,6 +7,7 @@ import type { ProviderId } from "@stremlist/shared/providers";
 import { CONNECTION_SOURCES } from "@stremlist/shared/providers";
 import type {
   AccountConfigResponse,
+  AccountSyncSnapshot,
   ConfigListInput,
   StremioManifest,
   StremioMeta,
@@ -25,6 +26,7 @@ import {
   db,
   getAccountRow,
   getConnectionRow,
+  getSyncStatusRows,
   resetDb,
   seedAccount,
   seedConnection,
@@ -944,5 +946,147 @@ test(
     } finally {
       await off.stop();
     }
+  },
+);
+
+test(
+  "a refused Connection is marked for renewal, and a new authorization clears the mark and reads its Lists again",
+  { tag: "@local" },
+  async () => {
+    const accountId = await seedAccount();
+    // An expired token whose refresh Trakt refuses.
+    await seedConnection(accountId, "trakt", {
+      expiresAt: new Date(Date.now() - 60_000),
+      refreshToken: "rejected-refresh",
+    });
+    const listId = await seedList(accountId, {
+      provider: "trakt",
+      sourceRef: "me/watchlist",
+      catalogTitle: "Trakt Watchlist",
+      position: 0,
+      displayMode: "split",
+    });
+    const syncStatus = async () =>
+      (await call<AccountSyncSnapshot>(`/${accountId}/sync-status`)).body;
+
+    expect(await catalogNames(accountId, listId, "movie")).toEqual([
+      "⚠️ This watchlist needs your Trakt account",
+    ]);
+    expect(
+      (await getConnectionRow(accountId, "trakt"))?.needs_renewal_since,
+    ).not.toBeNull();
+    expect(await getSyncStatusRows(listId)).toMatchObject([
+      {
+        provider: "trakt",
+        source_ref: "me/watchlist",
+        failure_reason: "needs_connection",
+        last_success_at: null,
+        title_count: null,
+      },
+    ]);
+    expect(await syncStatus()).toEqual({
+      syncStatus: {
+        [listId]: expect.objectContaining({
+          sourceRef: "me/watchlist",
+          problem: "needs_connection",
+          lastSuccessAt: null,
+        }),
+      },
+      connections: [
+        expect.objectContaining({
+          provider: "trakt",
+          needsRenewalSince: expect.any(String),
+        }),
+      ],
+    });
+
+    const start = await call<{ authorizeUrl: string }>(
+      `/${accountId}/connections/trakt/start`,
+      { method: "POST" },
+    );
+    const state = new URL(start.body.authorizeUrl).searchParams.get("state")!;
+    const callback = await fetch(
+      `${backend.url}/oauth/trakt/callback?code=fixture-code&state=${encodeURIComponent(state)}`,
+      { redirect: "manual" },
+    );
+    expect(callback.status).toBe(302);
+    expect(
+      (await getConnectionRow(accountId, "trakt"))?.needs_renewal_since,
+    ).toBeNull();
+
+    // The callback reads the List again in the background, with the new token.
+    await expect
+      .poll(async () => (await syncStatus()).syncStatus[listId], {
+        timeout: 15_000,
+      })
+      .toMatchObject({ problem: null, failingSince: null, titleCount: 2 });
+    const [row] = await getSyncStatusRows(listId);
+    expect(row.last_success_at).toBe(row.last_attempt_at);
+    expect(
+      requests((url) => url.pathname === "/users/me/watchlist").at(-1)
+        ?.authorization,
+    ).toBe("fresh-access");
+    expect((await syncStatus()).connections).toEqual([
+      expect.objectContaining({ provider: "trakt", needsRenewalSince: null }),
+    ]);
+    expect(await catalogNames(accountId, listId, "movie")).toEqual([
+      "The Shawshank Redemption",
+    ]);
+  },
+);
+
+test(
+  "a working read clears a renewal mark, and a disconnect forgets the sync status of the Lists read through it",
+  { tag: "@local" },
+  async () => {
+    const accountId = await seedAccount();
+    await seedConnection(accountId, "trakt");
+    // Marked earlier, for example by an Action that Trakt refused.
+    await db
+      .from("connections")
+      .update({
+        needs_renewal_since: new Date(Date.now() - 60_000).toISOString(),
+      })
+      .eq("account_id", accountId)
+      .eq("provider", "trakt");
+    const privateId = await seedList(accountId, {
+      provider: "trakt",
+      sourceRef: "me/watchlist",
+      catalogTitle: "Trakt Watchlist",
+      position: 0,
+      displayMode: "split",
+    });
+    const publicId = await seedList(accountId, {
+      provider: "trakt",
+      sourceRef: "users/fixture-user/watchlist",
+      catalogTitle: "Shared watchlist",
+      position: 1,
+      displayMode: "split",
+    });
+
+    for (const listId of [privateId, publicId]) {
+      expect(await catalogNames(accountId, listId, "movie")).toEqual([
+        "The Shawshank Redemption",
+      ]);
+      expect(await getSyncStatusRows(listId)).toMatchObject([
+        { failure_reason: null, title_count: 2, failing_since: null },
+      ]);
+    }
+    expect(
+      (await getConnectionRow(accountId, "trakt"))?.needs_renewal_since,
+    ).toBeNull();
+
+    expect(
+      await call(`/${accountId}/connections/trakt`, { method: "DELETE" }),
+    ).toEqual({ status: 200, body: { ok: true } });
+
+    // The private List's status described a Catalog that is gone now.
+    expect(await getSyncStatusRows(privateId)).toEqual([]);
+    expect(await getSyncStatusRows(publicId)).toHaveLength(1);
+    const { body } = await call<AccountSyncSnapshot>(
+      `/${accountId}/sync-status`,
+    );
+    expect(Object.keys(body.syncStatus)).toEqual([publicId]);
+    expect(body.connections).toEqual([]);
   },
 );
