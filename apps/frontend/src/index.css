@@ -68,6 +68,8 @@
     -apple-system, "Segoe UI", Roboto, sans-serif;
   /* Strong ease-out for UI enter/reveal motion: starts fast, settles gently. */
   --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
+  /* Strong ease-in-out for elements that morph in place on screen. */
+  --ease-in-out-quart: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
 /* Registered so the edge fade of a scrollable field can transition its

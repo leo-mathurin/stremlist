@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { ACCOUNT_KEY_PATTERN } from "@stremlist/shared/constants";
 import {
@@ -19,6 +20,7 @@ import ProviderList from "../components/ProviderList";
 import QuickAdd from "../components/QuickAdd";
 import SortableListRow from "../components/SortableListRow";
 import { SectionHeading, SplitLayout, Wordmark } from "../components/brand";
+import { usePendingIndicator } from "../hooks/usePendingIndicator";
 import { useSEO } from "../hooks/useSEO";
 import {
   MAX_LISTS,
@@ -200,6 +202,69 @@ export default function Configure() {
     void config.connect(provider);
   };
 
+  // The header Save button; the floating Save button shows once it scrolls
+  // away, and spans the column once it rests at the end of the page.
+  const [headerSave, setHeaderSave] = useState<HTMLButtonElement | null>(null);
+  const [headerSaveVisible, setHeaderSaveVisible] = useState(true);
+  const [floatingSave, setFloatingSave] = useState<HTMLDivElement | null>(null);
+  const [floatingDocked, setFloatingDocked] = useState(false);
+  // Width of the floating label, so the clip shows a pill around it while
+  // the button floats.
+  const [floatingLabel, setFloatingLabel] = useState<HTMLSpanElement | null>(
+    null,
+  );
+  const [floatingLabelWidth, setFloatingLabelWidth] = useState(0);
+  useEffect(() => {
+    if (!headerSave) return;
+    const observer = new IntersectionObserver(([entry]) =>
+      setHeaderSaveVisible(entry.isIntersecting),
+    );
+    observer.observe(headerSave);
+    return () => observer.disconnect();
+  }, [headerSave]);
+  useEffect(() => {
+    if (!floatingSave) return;
+    // While stuck, the button sits 20px (bottom-5) above the viewport edge,
+    // so it is never fully inside a root shrunk by 22px. Once it rests in
+    // place at the end of the page, it is.
+    const observer = new IntersectionObserver(
+      ([entry]) => setFloatingDocked(entry.intersectionRatio === 1),
+      { rootMargin: "0px 0px -22px 0px", threshold: 1 },
+    );
+    observer.observe(floatingSave);
+    return () => observer.disconnect();
+  }, [floatingSave]);
+  useEffect(() => {
+    if (!floatingLabel) return;
+    const observer = new ResizeObserver(([entry]) =>
+      setFloatingLabelWidth(entry.borderBoxSize[0].inlineSize),
+    );
+    observer.observe(floatingLabel);
+    return () => observer.disconnect();
+  }, [floatingLabel]);
+  const canSave = !moved && lists.length > 0;
+  const showSaveBar = ready && canSave && !!headerSave && !headerSaveVisible;
+  // `handleSave` ignores clicks while a save runs, so the button stays
+  // enabled: dimming it for a fast save would flash.
+  const saveDisabled = !canSave || !!config.validationError;
+  const showSaving = usePendingIndicator(config.saving);
+  const saveClassName =
+    "inline-flex shrink-0 items-center justify-center gap-2 bg-brand font-bold text-black hover:bg-brand-dark active:scale-[0.97] disabled:opacity-40 motion-reduce:active:scale-100";
+  const saveLabel = (
+    <>
+      {showSaving && <Loader2 className="size-4 animate-spin" />}
+      {showSaving ? (
+        "Saving"
+      ) : access === "new" ? (
+        <>
+          Save<span className="hidden sm:inline"> and get my Addon URL</span>
+        </>
+      ) : (
+        "Save"
+      )}
+    </>
+  );
+
   const scrollToUpgrade = () =>
     document
       .getElementById("upgrade")
@@ -278,15 +343,31 @@ export default function Configure() {
   return (
     <SplitLayout panel={panel}>
       <div className="mx-auto max-w-3xl space-y-6 p-5 pb-24 sm:p-8 lg:p-12">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight">Your Lists</h2>
-            <p className="text-black/55">
-              Each List becomes a catalog row in Stremio, in this order.
-            </p>
+        <div className="space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="text-3xl font-bold tracking-tight">Your Lists</h2>
+              <p className="text-black/55">
+                Each List becomes a catalog row in Stremio, in this order.
+              </p>
+            </div>
+            {ready && !moved && (
+              <button
+                ref={setHeaderSave}
+                type="button"
+                onClick={config.handleSave}
+                disabled={saveDisabled}
+                className={cn(
+                  saveClassName,
+                  "h-10 rounded-full px-5 text-sm transition-[background-color,opacity,scale] duration-150 ease-out",
+                )}
+              >
+                {saveLabel}
+              </button>
+            )}
           </div>
           {accountKey && ready && (
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <p className="flex items-center gap-2 text-sm text-black/55">
                 <span
                   className={cn(
@@ -519,43 +600,6 @@ export default function Configure() {
               </p>
             )}
 
-            <div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl bg-ink p-5 text-cloud">
-              <div className="min-w-0">
-                <p className="font-bold">
-                  {access === "new"
-                    ? "Ready to go live?"
-                    : moved
-                      ? "Saving is off for this install"
-                      : "Save your changes"}
-                </p>
-                <p className="text-sm text-white/60">
-                  {access === "new"
-                    ? "Save to get your Addon URL, then install it once in Stremio."
-                    : moved
-                      ? MOVED_HINT
-                      : "Your catalogs update in Stremio after saving."}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={config.handleSave}
-                disabled={
-                  moved ||
-                  config.saving ||
-                  !!config.validationError ||
-                  lists.length === 0
-                }
-                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-brand px-6 text-sm font-bold text-black transition-[opacity,scale] duration-150 hover:bg-brand-dark active:scale-[0.97] disabled:opacity-40 sm:w-auto"
-              >
-                {config.saving && <Loader2 className="size-4 animate-spin" />}
-                {config.saving
-                  ? "Saving"
-                  : access === "new"
-                    ? "Save and get my Addon URL"
-                    : "Save"}
-              </button>
-            </div>
-
             {accountKey && !justCreated && !moved && (
               <AddonUrlCard
                 accountKey={accountKey}
@@ -563,6 +607,50 @@ export default function Configure() {
                 reinstallHint={config.showReinstallHint}
               />
             )}
+
+            <div
+              ref={setFloatingSave}
+              inert={!showSaveBar}
+              className={cn(
+                "pointer-events-none sticky bottom-5 z-20 flex justify-end transition-[opacity,translate] ease-out-quint motion-reduce:translate-y-0",
+                showSaveBar
+                  ? "duration-200"
+                  : "translate-y-4 opacity-0 duration-150",
+              )}
+            >
+              <button
+                type="button"
+                onClick={config.handleSave}
+                disabled={saveDisabled}
+                aria-busy={config.saving}
+                style={
+                  {
+                    "--pill": `${floatingLabelWidth + 64}px`,
+                  } as CSSProperties
+                }
+                className={cn(
+                  saveClassName,
+                  // Always full width; while floating, the clip shows only a
+                  // pill at the right. At the end of the page the clip opens
+                  // and the label slides to the center.
+                  "@container pointer-events-auto h-14 w-full text-base [transition:clip-path_250ms_var(--ease-in-out-quart),background-color_150ms_ease-out,opacity_150ms_ease-out,scale_150ms_ease-out] motion-reduce:[transition:background-color_150ms_ease-out,opacity_150ms_ease-out]",
+                  floatingDocked
+                    ? "[clip-path:inset(0_round_9999px)]"
+                    : "origin-right [clip-path:inset(0_0_0_calc(100%-var(--pill))_round_9999px)]",
+                )}
+              >
+                <span
+                  ref={setFloatingLabel}
+                  className={cn(
+                    "inline-flex items-center gap-2 transition-[translate] duration-250 ease-in-out-quart motion-reduce:transition-none",
+                    !floatingDocked &&
+                      "translate-x-[calc(50cqw-var(--pill)/2)]",
+                  )}
+                >
+                  {saveLabel}
+                </span>
+              </button>
+            </div>
           </>
         )}
       </div>
