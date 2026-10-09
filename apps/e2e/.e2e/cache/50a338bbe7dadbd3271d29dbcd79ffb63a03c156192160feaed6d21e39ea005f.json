@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-08T18:41:50.090Z",
+  "createdAt": "2026-10-09T15:01:15.845Z",
   "payload": {
     "actions": [
       {
@@ -34,10 +34,14 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Opened the Trakt disconnect confirmation and confirmed Disconnect. The account is now disconnected; the screen shows “Trakt is disconnected” and offers Connect again.",
+    "summary": "Trakt is disconnected. The page shows the Trakt Watchlist as “Not connected,” and a confirmation toast says “Trakt is disconnected. Lists read through Trakt stop showing in Stremio until you connect it again.”",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
+      {
+        "role": "status",
+        "name": "Trakt is not connected, so this List does not show in Stremio. Connect again for Trakt Watchlist"
+      },
       {
         "text": "Paste a link, or connect"
       },
@@ -49,21 +53,16 @@
         "text": "A free Trakt account can connect only one app. If Stremio's own Trakt sync uses it, paste public Trakt links instead."
       },
       {
+        "text": "1 List needs attention"
+      },
+      {
         "text": "These changes need a reinstall."
       },
       {
+        "text": "Not connected"
+      },
+      {
         "text": "Trakt is not connected, so this List does not show in Stremio."
-      },
-      {
-        "role": "button",
-        "name": "Connect again"
-      },
-      {
-        "text": "Connect Trakt, Simkl or MDBList to use Actions."
-      },
-      {
-        "role": "button",
-        "name": "Close toast"
       }
     ],
     "goneAnchors": [
@@ -72,6 +71,9 @@
       },
       {
         "text": "Connected"
+      },
+      {
+        "text": "Not refreshed yet"
       },
       {
         "text": "Your Trakt (@someone)"
@@ -91,12 +93,8 @@
       {
         "role": "button",
         "name": "History"
-      },
-      {
-        "role": "button",
-        "name": "Collection"
       }
     ],
-    "endWaitMs": 12332
+    "endWaitMs": 26480
   }
 }
