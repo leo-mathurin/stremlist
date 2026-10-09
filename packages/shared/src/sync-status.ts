@@ -1,4 +1,4 @@
-import type { ProviderId } from "./providers";
+import type { ProviderId, SourceId } from "./providers";
 import type { SourceProblemReason } from "./source-problems";
 
 /**
@@ -43,7 +43,7 @@ export type ListConnectionState =
  * List with one Source list.
  */
 interface MergedSourcePart {
-  source?: { provider: ProviderId; sourceRef: string };
+  source?: SourceId;
   othersShown?: boolean;
 }
 
@@ -156,7 +156,7 @@ function isShown(state: ListSyncState): boolean {
  */
 export function mergedListSyncState(
   parts: {
-    source: { provider: ProviderId; sourceRef: string };
+    source: SourceId;
     state: ListSyncState;
   }[],
 ): ListSyncState {

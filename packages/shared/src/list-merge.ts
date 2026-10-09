@@ -1,6 +1,6 @@
 import type { DisplayMode } from "./constants";
 import { CHART_BY_ID } from "./imdb-charts";
-import type { ProviderId } from "./providers";
+import type { ProviderId, SourceId } from "./providers";
 import { PROVIDERS, sourceRequiresConnection } from "./providers";
 import { storedSourceNoun } from "./source-problems";
 
@@ -11,9 +11,7 @@ import { storedSourceNoun } from "./source-problems";
  */
 
 /** One Source list of a List. */
-export interface ListSource {
-  provider: ProviderId;
-  sourceRef: string;
+export interface ListSource extends SourceId {
   /**
    * For a merged Source list: the title of the List it came from, shown on
    * the configure page. Never part of its identity.

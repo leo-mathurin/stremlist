@@ -4,7 +4,7 @@ import {
   isMergedList,
   sourcesWithoutDates,
 } from "@stremlist/shared/list-merge";
-import type { ProviderId } from "@stremlist/shared/providers";
+import type { ProviderId, SourceId } from "@stremlist/shared/providers";
 import {
   PROVIDERS,
   sourceRequiresConnection,
@@ -67,11 +67,7 @@ export class ListUnavailableError extends Error {
   readonly provider: ProviderId;
   readonly sourceRef: string;
 
-  constructor(
-    source: { provider: ProviderId; sourceRef: string },
-    reason: SourceProblemReason,
-    message: string,
-  ) {
+  constructor(source: SourceId, reason: SourceProblemReason, message: string) {
     super(message);
     this.name = "ListUnavailableError";
     this.reason = reason;
@@ -128,7 +124,7 @@ const inFlightRefreshes = new Map<string, InFlightRefresh>();
  * not use one (a Legacy alias, a new setup).
  */
 export async function providerContext(
-  source: { provider: ProviderId; sourceRef: string },
+  source: SourceId,
   connectionAccountId: string | null,
 ): Promise<ProviderContext> {
   const connection = connectionAccountId

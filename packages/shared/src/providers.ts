@@ -149,6 +149,15 @@ export interface SourceRef {
   ref: string;
 }
 
+/**
+ * The identity of a Source list, as Lists, statuses and previews name it:
+ * its Provider and the reference that the Provider understands.
+ */
+export interface SourceId {
+  provider: ProviderId;
+  sourceRef: string;
+}
+
 export interface ParsedSourceLink extends SourceRef {
   kind: SourceKind;
   /**

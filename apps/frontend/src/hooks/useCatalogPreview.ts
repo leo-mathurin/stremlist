@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { InferRequestType } from "hono/client";
 import type { CatalogPreview } from "@stremlist/shared/catalog-preview";
-import type { ProviderId } from "@stremlist/shared/providers";
+import type { SourceId } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { api } from "@/lib/api";
 import { sourceKeys } from "@/lib/list-form";
@@ -16,7 +16,7 @@ type CatalogPreviewState =
       status: "problem";
       reason: SourceProblemReason;
       /** In a merged List, the Source list that has the problem. */
-      source?: { provider: ProviderId; sourceRef: string };
+      source?: SourceId;
     }
   | { status: "error" };
 

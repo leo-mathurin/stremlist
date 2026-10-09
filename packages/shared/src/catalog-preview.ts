@@ -1,5 +1,5 @@
 import type { CatalogPreset } from "./catalog-settings";
-import type { ProviderId } from "./providers";
+import type { SourceId } from "./providers";
 import type { SourceProblemReason } from "./source-problems";
 
 /** One Title of a Catalog preview: only what a poster tile needs. */
@@ -59,9 +59,7 @@ export interface CatalogPreview {
 }
 
 /** A Source list of a merged List that the preview could not read. */
-export interface PreviewSourceProblem {
-  provider: ProviderId;
-  sourceRef: string;
+export interface PreviewSourceProblem extends SourceId {
   reason: SourceProblemReason;
 }
 
@@ -69,7 +67,7 @@ export interface CatalogPreviewProblem {
   ok: false;
   reason: SourceProblemReason;
   /** In a merged List, the Source list that has the problem. */
-  source?: { provider: ProviderId; sourceRef: string };
+  source?: SourceId;
 }
 
 export type CatalogPreviewResponse = CatalogPreview | CatalogPreviewProblem;

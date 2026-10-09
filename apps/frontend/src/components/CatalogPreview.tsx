@@ -21,7 +21,7 @@ import { DISPLAY_MODE_OPTIONS } from "@stremlist/shared/constants";
 import type { DisplayMode } from "@stremlist/shared/constants";
 import { isMergedList, listSources } from "@stremlist/shared/list-merge";
 import { PROVIDERS } from "@stremlist/shared/providers";
-import type { ProviderId } from "@stremlist/shared/providers";
+import type { SourceId } from "@stremlist/shared/providers";
 import {
   sourceProblemCopy,
   storedSourceNoun,
@@ -138,10 +138,7 @@ export default function CatalogPreview({
   );
 }
 
-function problemMessage(
-  source: { provider: ProviderId; sourceRef: string },
-  reason: SourceProblemReason,
-): string {
+function problemMessage(source: SourceId, reason: SourceProblemReason): string {
   const { title, fix } = sourceProblemCopy(
     source.provider,
     reason,

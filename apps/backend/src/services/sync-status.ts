@@ -1,6 +1,6 @@
 import type { Database } from "@stremlist/shared/database.types";
 import type { ListSource } from "@stremlist/shared/list-merge";
-import type { ProviderId } from "@stremlist/shared/providers";
+import type { ProviderId, SourceId } from "@stremlist/shared/providers";
 import { sourceRequiresConnection } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import type {
@@ -37,7 +37,7 @@ type StatusRow = Database["public"]["Tables"]["list_sync_status"]["Row"];
  * fail the Catalog.
  */
 export async function recordRefreshOutcome(
-  source: { listId: string; provider: ProviderId; sourceRef: string },
+  source: SourceId & { listId: string },
   outcome: RefreshOutcome,
   connection: ConnectionAccess | null,
 ): Promise<void> {
@@ -84,7 +84,7 @@ export async function recordRefreshOutcome(
  * in Stremio. The other Source lists of a merged List keep theirs.
  */
 export async function forgetSyncStatuses(
-  sources: { listId: string; provider: ProviderId; sourceRef: string }[],
+  sources: (SourceId & { listId: string })[],
 ): Promise<void> {
   const results = await Promise.all(
     sources.map(({ listId, provider, sourceRef }) =>
