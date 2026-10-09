@@ -96,5 +96,5 @@ The moment a complete, successful Synchronization first has an entry that the pr
 _Avoid_: Addition, added date
 
 **New titles**:
-The Catalog of an Account that shows the Titles of its detected entries across all its Lists, each Title once with its earliest Detection, newest first.
+The Catalog of an Account that shows the Titles of its detected entries across all its Lists and every Source list of each, each Title once with its earliest Detection, newest first.
 _Avoid_: Recently added, feed
