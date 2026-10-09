@@ -586,6 +586,7 @@ describe("information cards for Lists that cannot be read", () => {
     const fetchSource = vi.fn(() =>
       Promise.resolve({
         entries: [{ imdbId: CACHED_MOVIE.id, meta: CACHED_MOVIE }],
+        complete: true,
       }),
     );
     useFakeProvider(fakeAdapter("trakt", { fetchSource }));
@@ -689,7 +690,7 @@ describe("expired Connections", () => {
       fakeAdapter("trakt", {
         fetchSource: async (_ref, ctx) => {
           await ctx.connection?.getAccessToken();
-          return { entries: [] };
+          return { entries: [], complete: true };
         },
       }),
     );

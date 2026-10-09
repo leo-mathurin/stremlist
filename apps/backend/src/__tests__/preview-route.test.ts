@@ -46,6 +46,7 @@ function traktReader() {
   const fetchSource = vi.fn(() =>
     Promise.resolve({
       entries: [{ imdbId: TITLE.id, type: "movie" as const, meta: TITLE }],
+      complete: true,
     }),
   );
   useFakeProvider(fakeAdapter("trakt", { fetchSource }));

@@ -53,6 +53,16 @@ export interface ConnectionSummary {
  */
 export type AddonAccess = "private" | "legacy";
 
+/** The state of the "New titles" catalog of an Account (ADR 0007). */
+export interface NewTitlesSummary {
+  /** Detected Titles that the Lists still contain, one per Title. */
+  detected: number;
+  /** The most recent detection, or null before the first one. */
+  latestDetectedAt: string | null;
+  /** Lists without a Baseline yet: every read failed or was cut short. */
+  waitingLists: number;
+}
+
 /**
  * The sync status of an Account's Lists and its Connections. The configure
  * page gets it with the config, after "Refresh now" and from its polls.
@@ -77,6 +87,11 @@ export interface AccountConfigResponse extends AccountSyncSnapshot {
   rpdbApiKey: string | null;
   lists: ConfigList[];
   actions: { enabled: boolean; providers: ProviderId[] };
+  newTitles: {
+    enabled: boolean;
+    /** Null when the detection history cannot be read right now. */
+    summary: NewTitlesSummary | null;
+  };
   lastFetchedAt: string;
   cooldownSeconds: number;
 }
@@ -98,6 +113,7 @@ export interface AccountConfigInput {
   rpdbApiKey?: string;
   lists: ConfigListInput[];
   actions?: { enabled: boolean; providers: ProviderId[] };
+  newTitles?: { enabled: boolean };
 }
 
 export interface StremioMeta {

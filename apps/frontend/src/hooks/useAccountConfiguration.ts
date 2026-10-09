@@ -24,6 +24,7 @@ import type {
   AddonAccess,
   ConfigList,
   ConnectionSummary,
+  NewTitlesSummary,
 } from "@stremlist/shared/stremio.types";
 import { api } from "../lib/api";
 import { createListRow, rowTitle, sourceKeys } from "../lib/list-form";
@@ -188,6 +189,9 @@ export function useAccountConfiguration(
   const [actionsEnabled, setActionsEnabled] = useState(false);
   const [actionOrder, setActionOrder] = useState<ProviderId[]>([]);
   const [actionSelected, setActionSelected] = useState<ProviderId[]>([]);
+  const [newTitlesEnabled, setNewTitlesEnabled] = useState(false);
+  const [newTitlesSummary, setNewTitlesSummary] =
+    useState<NewTitlesSummary | null>(null);
   const [providerStatus, setProviderStatus] = useState(defaultProviderStatus);
   const [loading, setLoading] = useState(!!accountKey);
   const [saving, setSaving] = useState(false);
@@ -209,11 +213,11 @@ export function useAccountConfiguration(
   const [knownGenres, setKnownGenres] = useState<KnownSourceGenres | null>(
     null,
   );
-  const currentForm = useRef({ lists, rpdbApiKey });
+  const currentForm = useRef({ lists, rpdbApiKey, newTitlesEnabled });
   // Save responses must see edits committed while the request was in flight.
   useLayoutEffect(() => {
-    currentForm.current = { lists, rpdbApiKey };
-  }, [lists, rpdbApiKey]);
+    currentForm.current = { lists, rpdbApiKey, newTitlesEnabled };
+  }, [lists, rpdbApiKey, newTitlesEnabled]);
 
   useEffect(() => {
     api.providers
@@ -280,8 +284,12 @@ export function useAccountConfiguration(
           ...capable.filter((id) => !savedProviders.includes(id)),
         ]);
         setActionSelected(savedProviders);
+        setNewTitlesEnabled(data.newTitles.enabled);
+        setNewTitlesSummary(data.newTitles.summary);
         const loaded = {
-          signature: getListReinstallSignature(rows, genres),
+          signature: getListReinstallSignature(rows, genres, {
+            newTitles: data.newTitles.enabled,
+          }),
           actionsLive: data.actions.enabled && savedProviders.length > 0,
         };
         setSaved(loaded);
@@ -497,7 +505,11 @@ export function useAccountConfiguration(
    */
   const createAccount = async (): Promise<string | null> => {
     const res = await api.accounts.$post({
-      json: { rpdbApiKey, lists: listPayload() },
+      json: {
+        rpdbApiKey,
+        lists: listPayload(),
+        newTitles: { enabled: newTitlesEnabled },
+      },
     });
     const body = await res.json();
     if (!res.ok || !("accountId" in body)) {
@@ -514,7 +526,9 @@ export function useAccountConfiguration(
     access === "new"
       ? "none"
       : reinstallState(installed, saved, {
-          signature: getListReinstallSignature(lists, knownGenres),
+          signature: getListReinstallSignature(lists, knownGenres, {
+            newTitles: newTitlesEnabled,
+          }),
           actionsLive,
         });
 
@@ -547,9 +561,11 @@ export function useAccountConfiguration(
 
       const submittedActionsLive = actionsLive;
       const submittedLists = lists;
+      const submittedNewTitles = newTitlesEnabled;
       const submittedPayload = JSON.stringify({
         rpdbApiKey,
         lists: listPayload(submittedLists),
+        newTitles: submittedNewTitles,
       });
       const res = await api[":accountKey"].config.$post({
         param: { accountKey },
@@ -565,6 +581,7 @@ export function useAccountConfiguration(
                   ),
                 }
               : undefined,
+          newTitles: { enabled: submittedNewTitles },
         },
       });
       const body = await res.json();
@@ -590,6 +607,7 @@ export function useAccountConfiguration(
         JSON.stringify({
           rpdbApiKey: latest.rpdbApiKey,
           lists: listPayload(latest.lists),
+          newTitles: latest.newTitlesEnabled,
         }) !== submittedPayload;
       // Match rows by their local ID: the user may have added, removed or
       // reordered Lists while the save was in flight.
@@ -623,13 +641,17 @@ export function useAccountConfiguration(
       const genres = learnSourceGenres(knownGenres, body.lists);
       setKnownGenres(genres);
       const nowSaved = {
-        signature: getListReinstallSignature(savedRows, genres),
+        signature: getListReinstallSignature(savedRows, genres, {
+          newTitles: submittedNewTitles,
+        }),
         actionsLive: submittedActionsLive,
       };
       // Compare with what Stremio read at install time, not with the last
       // save: a reinstall stays needed until the user does it.
       const needsReinstall = requiresReinstall(installed, nowSaved);
       setSaved(nowSaved);
+      // The saved Lists change what the summary counts.
+      setNewTitlesSummary(body.newTitles);
       writeInstalled(accountKey, needsReinstall ? installed : null);
       if (hasUnsavedChanges) {
         toast.success(
@@ -683,6 +705,8 @@ export function useAccountConfiguration(
       setCooldownSeconds(body.cooldownSeconds);
       setLastFetchedAt(body.lastFetchedAt);
       if ("syncStatus" in body) applySync(body);
+      // A throttled refresh read nothing new.
+      if ("newTitles" in body) setNewTitlesSummary(body.newTitles);
       if ("lists" in body && body.lists) {
         const refreshed = body.lists;
         setLists((current) =>
@@ -782,6 +806,8 @@ export function useAccountConfiguration(
       const data = (await res.json()) as AccountConfigResponse;
       applySync(data);
       setLastFetchedAt(data.lastFetchedAt);
+      // A disconnect forgets the history of Connection-only Lists.
+      setNewTitlesSummary(data.newTitles.summary);
       const capable = actionCapableProviders(data.connections);
       setActionOrder((current) => [
         ...current.filter((id) => capable.includes(id)),
@@ -851,6 +877,9 @@ export function useAccountConfiguration(
     actionOrder,
     actionSelected,
     toggleActionProvider,
+    newTitlesEnabled,
+    setNewTitlesEnabled,
+    newTitlesSummary,
     moveActionProvider,
     loading,
     saving,

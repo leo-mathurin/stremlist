@@ -76,8 +76,9 @@ export function parseRatings(rows: RatedItem[]): Record<string, number> {
 async function getMembership(
   connection: ConnectionAccess,
 ): Promise<Membership> {
-  const all = <T>(path: string) =>
-    traktGetAll<T>(path, connection, { maxItems: MAX_MEMBERSHIP_ITEMS });
+  const all = async <T>(path: string) =>
+    (await traktGetAll<T>(path, connection, { maxItems: MAX_MEMBERSHIP_ITEMS }))
+      .items;
   const [watchlist, watchedMovies, watchedShows, movieRatings, showRatings] =
     await Promise.all([
       all<TraktItem>("/users/me/watchlist"),

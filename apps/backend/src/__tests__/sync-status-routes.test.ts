@@ -170,6 +170,7 @@ describe("sync status on the configure page", () => {
             ? Promise.reject(new SourceUnavailableError("not_found", "gone"))
             : Promise.resolve({
                 entries: [{ imdbId: "tt0000001", meta: movie("tt0000001") }],
+                complete: true,
               }),
       }),
     );
@@ -209,6 +210,7 @@ describe("after a new Connection", () => {
     const fetchSource = vi.fn(() =>
       Promise.resolve({
         entries: [{ imdbId: "tt0000001", meta: movie("tt0000001") }],
+        complete: true,
       }),
     );
     useFakeProvider(

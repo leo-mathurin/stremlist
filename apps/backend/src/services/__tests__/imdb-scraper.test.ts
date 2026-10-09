@@ -109,7 +109,7 @@ describe("getImdbWatchlist (unit)", () => {
       }),
     );
 
-    const result = await getImdbWatchlist("ur195879360");
+    const { items: result } = await getImdbWatchlist("ur195879360");
 
     expect(result).toHaveLength(1);
     expect(result[0].listItem.id).toBe("tt0068646");
@@ -189,7 +189,7 @@ describe("getImdbWatchlist (unit)", () => {
       }),
     );
 
-    const result = await getImdbWatchlist("ur195879360");
+    const { items: result } = await getImdbWatchlist("ur195879360");
     expect(result).toEqual([]);
   });
 
@@ -227,9 +227,10 @@ describe("getImdbWatchlist (unit)", () => {
       );
     });
 
-    const result = await getImdbWatchlist("ur195879360");
+    const { items: result, complete } = await getImdbWatchlist("ur195879360");
 
     expect(result).toHaveLength(15_000);
+    expect(complete).toBe(false);
     expect(requestedPageSizes).toEqual([
       ...Array<number>(13).fill(750),
       250,
@@ -275,7 +276,7 @@ describe("getImdbWatchlist (unit)", () => {
       );
     });
 
-    const result = await getImdbWatchlist("ur195879360");
+    const { items: result } = await getImdbWatchlist("ur195879360");
 
     expect(result).toHaveLength(1_000);
     expect(requestedPageSizes).toEqual([750, 250]);
@@ -355,7 +356,7 @@ describe("getImdbList (unit)", () => {
       );
     });
 
-    const result = await getImdbList("ls123456789");
+    const { items: result } = await getImdbList("ls123456789");
 
     expect(result).toHaveLength(10_001);
     expect(requestedPageSizes).toEqual([
@@ -472,7 +473,8 @@ describe("fetchWatchlist (unit)", () => {
         titleListItemSearch: { total: 3, edges },
       }),
     );
-    const { metas } = await fetchWatchlist("ur195879360");
+    const { metas, complete } = await fetchWatchlist("ur195879360");
+    expect(complete).toBe(true);
     expect(metas.map((meta) => meta.released)).toEqual([
       "2000-02-29T00:00:00.000Z",
       undefined,

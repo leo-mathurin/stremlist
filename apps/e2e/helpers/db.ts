@@ -78,13 +78,14 @@ export async function clearRefreshCooldown(accountId: string): Promise<void> {
  * a Provider. With `legacyImdbUserId` it is a Legacy alias install.
  */
 export async function seedAccount(
-  options: { legacyImdbUserId?: string } = {},
+  options: { legacyImdbUserId?: string; newTitlesCatalog?: boolean } = {},
 ): Promise<string> {
   const { data, error } = await db
     .from("accounts")
     .insert({
       legacy_imdb_user_id: options.legacyImdbUserId ?? null,
       is_active: true,
+      new_titles_catalog: options.newTitlesCatalog ?? false,
     })
     .select("id")
     .single();
@@ -95,8 +96,9 @@ export async function seedAccount(
 /** A private Account with these Lists, in this order. Returns the IDs. */
 export async function seedAccountWithLists(
   lists: Omit<SeedListInput, "position">[],
+  options: { newTitlesCatalog?: boolean } = {},
 ): Promise<{ accountId: string; listIds: string[] }> {
-  const accountId = await seedAccount();
+  const accountId = await seedAccount(options);
   const listIds: string[] = [];
   for (const [position, list] of lists.entries()) {
     listIds.push(await seedList(accountId, { ...list, position }));
@@ -238,6 +240,46 @@ export async function getListRows(accountId: string) {
     .order("position", { ascending: true });
   if (error) throw error;
   return data;
+}
+
+/**
+ * The detection history of one Source list (ADR 0007), without a refresh:
+ * its synchronization row and its entries. An entry without `detectedAt` is
+ * part of the Baseline.
+ */
+export async function seedDetectionHistory(
+  accountId: string,
+  source: { provider: ProviderId; sourceRef: string },
+  sync: {
+    baselineAt: string;
+    lastSyncAt: string;
+    /** The Provider user of the Connection, for Connection-only Source lists. */
+    connectionUser?: string;
+  },
+  entries: { imdbId: string; detectedAt?: string }[],
+): Promise<void> {
+  const key = {
+    account_id: accountId,
+    provider: source.provider,
+    source_ref: source.sourceRef,
+  };
+  const synced = await db.from("source_list_syncs").insert({
+    ...key,
+    baseline_at: sync.baselineAt,
+    last_complete_sync_at: sync.lastSyncAt,
+    requires_connection: sync.connectionUser !== undefined,
+    connection_user: sync.connectionUser ?? null,
+  });
+  if (synced.error) throw synced.error;
+  const inserted = await db.from("source_list_entries").insert(
+    entries.map((entry) => ({
+      ...key,
+      entry_key: `imdb:${entry.imdbId}`,
+      imdb_id: entry.imdbId,
+      detected_at: entry.detectedAt ?? null,
+    })),
+  );
+  if (inserted.error) throw inserted.error;
 }
 
 /** Store the sync status of a refresh at `at` that gave `titleCount` Titles. */

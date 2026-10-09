@@ -2,7 +2,7 @@ import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { DisplayMode } from "@stremlist/shared/constants";
 import type { ListSource, MergeableList } from "@stremlist/shared/list-merge";
 import { listSources, sourceKey } from "@stremlist/shared/list-merge";
-import { manifestCatalogEntries } from "@stremlist/shared/manifest-catalogs";
+import { addonCatalogEntries } from "@stremlist/shared/manifest-catalogs";
 import type { ConfigList, TitleGenres } from "@stremlist/shared/stremio.types";
 
 /** A List row of the configure page, as far as the manifest cares. */
@@ -55,8 +55,9 @@ function listGenres(row: SignatureRow, known: KnownSourceGenres): string[] {
 
 /**
  * Stremio reads the manifest Catalogs only at install time: their IDs,
- * names, types and genre options (`manifestCatalogEntries`, the same rules
- * as the backend manifest). The signature is those Catalogs, so it changes
+ * names, types and genre options (`addonCatalogEntries`, the same rules
+ * as the backend manifest), "New titles" ones included when `newTitles` is
+ * on. The signature is those Catalogs, so it changes
  * exactly when they change. Every Source list of a List counts through the
  * genres it brings; the sort, the posters and the Source list labels do not.
  * Without genres by Source list (`known` is null, an older backend), genre
@@ -66,9 +67,10 @@ function listGenres(row: SignatureRow, known: KnownSourceGenres): string[] {
 export function getListReinstallSignature(
   rows: SignatureRow[],
   known: KnownSourceGenres | null,
+  options: { newTitles: boolean } = { newTitles: false },
 ): string {
   return JSON.stringify(
-    manifestCatalogEntries(
+    addonCatalogEntries(
       rows.map((row) => {
         return {
           id: row.id ?? row.localId,
@@ -80,6 +82,7 @@ export function getListReinstallSignature(
           availableGenres: known ? listGenres(row, known) : [],
         };
       }),
+      options,
     ),
   );
 }

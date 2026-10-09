@@ -53,7 +53,7 @@ export const traktProvider: ProviderAdapter = {
         `Unknown Trakt source ${ref}`,
       );
     }
-    return { entries: await readSource(source, ctx) };
+    return readSource(source, ctx);
   },
 
   resolutionKey(entry) {

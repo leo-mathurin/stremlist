@@ -86,11 +86,29 @@ BEGIN
   ASSERT (SELECT rpdb_api_key FROM public.accounts WHERE id = 'sl_configtransactiontest00') IS NULL;
   ASSERT (SELECT actions_enabled FROM public.accounts WHERE id = 'sl_configtransactiontest00');
 
+  -- The New titles setting is saved in the same transaction; NULL keeps it.
+  PERFORM public.replace_account_config('sl_configtransactiontest00', NULL,
+    result.lists, NULL, NULL, true);
+  ASSERT (SELECT new_titles_catalog FROM public.accounts WHERE id = 'sl_configtransactiontest00');
+  PERFORM public.replace_account_config('sl_configtransactiontest00', NULL,
+    result.lists, NULL, NULL);
+  ASSERT (SELECT new_titles_catalog FROM public.accounts WHERE id = 'sl_configtransactiontest00'),
+    'An omitted New titles setting keeps the stored value';
+  BEGIN
+    PERFORM public.replace_account_config('sl_configtransactiontest00', NULL,
+      jsonb_set(result.lists, '{0,id}', '"44444444-4444-4444-8444-444444444444"'), NULL, NULL, false);
+    RAISE EXCEPTION 'Expected ownership rejection';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM <> 'List does not belong to this account' THEN RAISE; END IF;
+  END;
+  ASSERT (SELECT new_titles_catalog FROM public.accounts WHERE id = 'sl_configtransactiontest00'),
+    'A failed save must not change the New titles setting';
+
   ASSERT public.generate_account_id() ~ '^sl_[0-9A-Za-z]{22}$';
 
-  ASSERT NOT has_function_privilege('anon', 'public.replace_account_config(text,text,jsonb,boolean,text[])', 'EXECUTE');
-  ASSERT NOT has_function_privilege('authenticated', 'public.replace_account_config(text,text,jsonb,boolean,text[])', 'EXECUTE');
-  ASSERT has_function_privilege('service_role', 'public.replace_account_config(text,text,jsonb,boolean,text[])', 'EXECUTE');
+  ASSERT NOT has_function_privilege('anon', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean)', 'EXECUTE');
+  ASSERT NOT has_function_privilege('authenticated', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean)', 'EXECUTE');
+  ASSERT has_function_privilege('service_role', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean)', 'EXECUTE');
   ASSERT NOT has_function_privilege('anon', 'public.claim_connection_refresh(text,text,integer,uuid)', 'EXECUTE');
 END;
 $$;
@@ -114,6 +132,15 @@ BEGIN
       'catalog_title', 'Renamed', 'sort_option', 'title-asc', 'display_mode', 'split',
       'position', 0)), NULL, NULL);
   ASSERT result.lists->0->'merged_sources' = merged, 'Omitted merged Source lists must survive';
+
+  -- The New titles setting (STR-60) is saved without touching them.
+  SELECT * INTO result FROM public.replace_account_config('sl_configtransactiontest00', NULL,
+    jsonb_build_array(jsonb_build_object('id', list_id, 'provider', 'imdb', 'source_ref', 'ur7',
+      'catalog_title', 'Renamed', 'sort_option', 'title-asc', 'display_mode', 'split',
+      'position', 0, 'expected_merged_sources', merged)), NULL, NULL, false);
+  ASSERT result.lists->0->'merged_sources' = merged,
+    'Saving the New titles setting must keep merged Source lists';
+  ASSERT NOT (SELECT new_titles_catalog FROM public.accounts WHERE id = 'sl_configtransactiontest00');
 
   -- A save that kept merged Source lists the API read earlier is refused
   -- when another save changed them since.

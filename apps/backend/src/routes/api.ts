@@ -13,7 +13,6 @@ import {
   MAX_SOURCES_PER_ACCOUNT,
   MAX_SOURCES_PER_LIST,
   listMergeProblem,
-  listRequiresConnection,
   sourceKey,
 } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
@@ -43,6 +42,7 @@ import {
   createAccount,
   createPrivateCopy,
   getAccountLists,
+  getVisibleLists,
   replaceAccountConfig,
   resolveAccountKey,
 } from "../services/accounts";
@@ -55,6 +55,10 @@ import {
   getConnectionAccess,
   listConnections,
 } from "../services/connections";
+import {
+  forgetConnectionDetections,
+  getNewTitlesSummary,
+} from "../services/detections";
 import {
   getImdbWatchlist,
   normalizeImdbUserId,
@@ -129,6 +133,7 @@ const configBody = z.object({
   rpdbApiKey: z.string().trim().optional(),
   lists: z.array(listBody).min(1).max(MAX_LISTS),
   actions: actionsBody.optional(),
+  newTitles: z.object({ enabled: z.boolean() }).optional(),
 });
 
 // A new Account may start without Lists: Simkl and MDBList users connect
@@ -301,16 +306,6 @@ async function connectedProviders(
   );
 }
 
-/** Lists that a request may see: Legacy alias requests only see public ones. */
-function visibleLists(
-  access: AccountAccess,
-  lists: ConfigList[],
-): ConfigList[] {
-  return access.via === "private"
-    ? lists
-    : lists.filter((list) => !listRequiresConnection(list));
-}
-
 /** The sync status of these Lists and the Account's Connections. */
 async function syncSnapshot(
   access: AccountAccess,
@@ -478,7 +473,7 @@ const api = new Hono()
     "/accounts",
     zValidator("json", createBody, firstIssueAsError),
     async (c) => {
-      const { rpdbApiKey, lists } = c.req.valid("json");
+      const { rpdbApiKey, lists, newTitles } = c.req.valid("json");
       let normalized: ListInput[];
       try {
         normalized = await normalizeLists(lists, {
@@ -499,6 +494,7 @@ const api = new Hono()
           account.id,
           normalized,
           rpdbApiKey && rpdbApiKey.length > 0 ? rpdbApiKey : null,
+          { newTitlesCatalog: newTitles?.enabled },
         );
         scheduleBackgroundTask(() => prewarmLists(account.id, saved, true));
         return c.json({
@@ -528,10 +524,11 @@ const api = new Hono()
         return c.json({ error: "Addon not found. Install it first." }, 404);
       }
       const { account } = access;
-      const lists = visibleLists(access, await getAccountLists(account.id));
-      const [withGenres, sync] = await Promise.all([
+      const lists = await getVisibleLists(access);
+      const [withGenres, sync, summary] = await Promise.all([
         withAvailableGenres(lists),
         syncSnapshot(access, lists),
+        getNewTitlesSummary(access, lists),
       ]);
       const body: AccountConfigResponse = {
         access: access.via,
@@ -544,6 +541,7 @@ const api = new Hono()
           enabled: account.actionsEnabled,
           providers: account.actionProviders,
         },
+        newTitles: { enabled: account.newTitlesCatalog, summary },
         lastFetchedAt: account.lastFetchedAt,
         cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
       };
@@ -562,8 +560,7 @@ const api = new Hono()
       if (!access) {
         return c.json({ error: "Addon not found. Install it first." }, 404);
       }
-      const lists = await getAccountLists(access.account.id);
-      return c.json(await syncSnapshot(access, visibleLists(access, lists)));
+      return c.json(await syncSnapshot(access, await getVisibleLists(access)));
     },
   )
 
@@ -573,7 +570,7 @@ const api = new Hono()
     zValidator("json", configBody, firstIssueAsError),
     async (c) => {
       const { accountKey } = c.req.valid("param");
-      const { rpdbApiKey, lists, actions } = c.req.valid("json");
+      const { rpdbApiKey, lists, actions, newTitles } = c.req.valid("json");
 
       const access = await resolveAccountKey(accountKey);
       if (!access) {
@@ -623,15 +620,20 @@ const api = new Hono()
           access.account.id,
           normalized,
           rpdbApiKey && rpdbApiKey.length > 0 ? rpdbApiKey : null,
-          actions && access.via === "private"
-            ? {
-                enabled: actions.enabled,
-                providers: [...new Set(actions.providers)].filter(
-                  (provider) =>
-                    connected.has(provider) && !!getProvider(provider).actions,
-                ),
-              }
-            : undefined,
+          {
+            actions:
+              actions && access.via === "private"
+                ? {
+                    enabled: actions.enabled,
+                    providers: [...new Set(actions.providers)].filter(
+                      (provider) =>
+                        connected.has(provider) &&
+                        !!getProvider(provider).actions,
+                    ),
+                  }
+                : undefined,
+            newTitlesCatalog: newTitles?.enabled,
+          },
         );
       } catch (error) {
         if (error instanceof MergedSourcesChangedError) {
@@ -657,9 +659,15 @@ const api = new Hono()
         prewarmLists(access.account.id, saved, access.via === "private"),
       );
 
+      // The saved Lists change what the summary counts.
+      const [savedWithGenres, summary] = await Promise.all([
+        withAvailableGenres(saved),
+        getNewTitlesSummary(access, saved),
+      ]);
       return c.json({
         ok: true as const,
-        lists: await withAvailableGenres(saved),
+        lists: savedWithGenres,
+        newTitles: summary,
       });
     },
   )
@@ -691,7 +699,7 @@ const api = new Hono()
         });
       }
 
-      const lists = visibleLists(access, await getAccountLists(account.id));
+      const lists = await getVisibleLists(access);
       const refreshedAt = new Date().toISOString();
       const results = await Promise.allSettled(
         lists.map((list) =>
@@ -722,9 +730,10 @@ const api = new Hono()
           .eq("id", account.id);
       }
 
-      const [withGenres, sync] = await Promise.all([
+      const [withGenres, sync, summary] = await Promise.all([
         withAvailableGenres(lists),
         syncSnapshot(access, lists),
+        getNewTitlesSummary(access, lists),
       ]);
       return c.json({
         ok: true,
@@ -734,6 +743,7 @@ const api = new Hono()
         total: lists.length,
         lists: withGenres,
         ...sync,
+        newTitles: summary,
         cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
       });
     },
@@ -858,6 +868,7 @@ const api = new Hono()
       const cleanup = await Promise.allSettled([
         forgetConnectionLists(accountId, provider),
         forgetConnectionObjects(accountId, provider),
+        forgetConnectionDetections(accountId, provider),
       ]);
       for (const outcome of cleanup) {
         if (outcome.status === "rejected") {
@@ -970,11 +981,11 @@ const api = new Hono()
     }
 
     try {
-      const edges = await getImdbWatchlist(testUserId);
+      const { items } = await getImdbWatchlist(testUserId);
 
       await fetch(heartbeatUrl);
 
-      return c.json({ ok: true, items: edges.length });
+      return c.json({ ok: true, items: items.length });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
 

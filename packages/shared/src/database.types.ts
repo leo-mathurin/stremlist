@@ -25,6 +25,7 @@ export type Database = {
           last_fetched_at: string;
           legacy_imdb_user_id: string | null;
           moved_at: string | null;
+          new_titles_catalog: boolean;
           prewarm_lease_token: string | null;
           prewarm_locked_until: string;
           prewarm_request_generation: number;
@@ -40,6 +41,7 @@ export type Database = {
           last_fetched_at?: string;
           legacy_imdb_user_id?: string | null;
           moved_at?: string | null;
+          new_titles_catalog?: boolean;
           prewarm_lease_token?: string | null;
           prewarm_locked_until?: string;
           prewarm_request_generation?: number;
@@ -55,6 +57,7 @@ export type Database = {
           last_fetched_at?: string;
           legacy_imdb_user_id?: string | null;
           moved_at?: string | null;
+          new_titles_catalog?: boolean;
           prewarm_lease_token?: string | null;
           prewarm_locked_until?: string;
           prewarm_request_generation?: number;
@@ -250,6 +253,82 @@ export type Database = {
           },
         ];
       };
+      source_list_entries: {
+        Row: {
+          account_id: string;
+          detected_at: string | null;
+          entry_key: string;
+          imdb_id: string | null;
+          provider: string;
+          removed_at: string | null;
+          source_ref: string;
+        };
+        Insert: {
+          account_id: string;
+          detected_at?: string | null;
+          entry_key: string;
+          imdb_id?: string | null;
+          provider: string;
+          removed_at?: string | null;
+          source_ref: string;
+        };
+        Update: {
+          account_id?: string;
+          detected_at?: string | null;
+          entry_key?: string;
+          imdb_id?: string | null;
+          provider?: string;
+          removed_at?: string | null;
+          source_ref?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "source_list_entries_account_id_provider_source_ref_fkey";
+            columns: ["account_id", "provider", "source_ref"];
+            isOneToOne: false;
+            referencedRelation: "source_list_syncs";
+            referencedColumns: ["account_id", "provider", "source_ref"];
+          },
+        ];
+      };
+      source_list_syncs: {
+        Row: {
+          account_id: string;
+          baseline_at: string;
+          connection_user: string | null;
+          last_complete_sync_at: string;
+          provider: string;
+          requires_connection: boolean;
+          source_ref: string;
+        };
+        Insert: {
+          account_id: string;
+          baseline_at: string;
+          connection_user?: string | null;
+          last_complete_sync_at: string;
+          provider: string;
+          requires_connection?: boolean;
+          source_ref: string;
+        };
+        Update: {
+          account_id?: string;
+          baseline_at?: string;
+          connection_user?: string | null;
+          last_complete_sync_at?: string;
+          provider?: string;
+          requires_connection?: boolean;
+          source_ref?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "source_list_syncs_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "accounts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       title_id_map: {
         Row: {
           external_id: string;
@@ -300,7 +379,28 @@ export type Database = {
         };
         Returns: number;
       };
+      forget_connection_history: {
+        Args: {
+          p_account_id: string;
+          p_provider: string;
+        };
+        Returns: number;
+      };
       generate_account_id: { Args: never; Returns: string };
+      list_new_titles: {
+        Args: {
+          p_account_id: string;
+          p_limit: number;
+          p_providers: string[];
+          p_source_refs: string[];
+        };
+        Returns: {
+          detected_at: string;
+          imdb_id: string;
+          provider: string;
+          source_ref: string;
+        }[];
+      };
       record_list_refresh: {
         Args: {
           p_failure_reason: string | null;
@@ -310,6 +410,19 @@ export type Database = {
           p_title_count: number | null;
         };
         Returns: boolean;
+      };
+      record_source_list_sync: {
+        Args: {
+          p_account_id: string;
+          p_connection_user?: string | null;
+          p_entry_keys: string[];
+          p_imdb_ids: (string | null)[];
+          p_provider: string;
+          p_requires_connection?: boolean;
+          p_source_ref: string;
+          p_synced_at: string;
+        };
+        Returns: number | null;
       };
       release_connection_refresh: {
         Args: {
@@ -325,6 +438,7 @@ export type Database = {
           p_action_providers: string[] | null;
           p_actions_enabled: boolean | null;
           p_lists: Json;
+          p_new_titles_catalog?: boolean | null;
           p_rpdb_api_key: string | null;
         };
         Returns: { deleted_ids: string[]; lists: Json }[];

@@ -80,7 +80,10 @@ function fakeSources(
       fetchSource: (ref) => {
         const value = sources[ref];
         if (value instanceof Error) return Promise.reject(value);
-        return Promise.resolve({ entries: structuredClone(value ?? []) });
+        return Promise.resolve({
+          entries: structuredClone(value ?? []),
+          complete: true,
+        });
       },
     }),
   );

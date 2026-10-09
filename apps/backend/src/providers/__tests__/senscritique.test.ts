@@ -135,11 +135,12 @@ describe("SensCritique wishes", () => {
       return wishesPage(series.slice(offset, offset + 100), series.length);
     };
 
-    const { entries } = await senscritiqueProvider.fetchSource(
+    const { entries, complete } = await senscritiqueProvider.fetchSource(
       "users/Sergent_Pepper/wishes",
       ctx,
     );
 
+    expect(complete).toBe(true);
     expect(
       requests.map(({ json }) => [
         json.variables.universe,
@@ -227,6 +228,35 @@ describe("SensCritique lists", () => {
     expect(
       entries.map((entry) => entry.externalIds?.senscritique),
     ).not.toContain(11);
+  });
+
+  it("marks a list cut by the page cap as incomplete", async () => {
+    handler = ({ json }) => {
+      const { offset } = json.variables as { offset: number };
+      return {
+        data: {
+          userList: {
+            id: 1,
+            isPrivate: false,
+            productsList: {
+              total: 20_000,
+              items: Array.from({ length: 100 }, (_, index) => ({
+                product: product(offset + index + 1),
+              })),
+            },
+          },
+        },
+      };
+    };
+
+    const { entries, complete } = await senscritiqueProvider.fetchSource(
+      "lists/1",
+      ctx,
+    );
+
+    expect(requests).toHaveLength(100);
+    expect(entries).toHaveLength(10_000);
+    expect(complete).toBe(false);
   });
 
   it("reports an unknown list as not found", async () => {

@@ -66,7 +66,7 @@ function catalogName(listTitle: string, index: number, total: number) {
   return effective ? `Stremlist ${effective}` : "Stremlist";
 }
 
-/** The manifest Catalogs of the Lists, in order. */
+/** The manifest Catalogs of the Lists, in order (see addonCatalogEntries). */
 export function manifestCatalogEntries(
   lists: ManifestList[],
 ): ManifestCatalogEntry[] {
@@ -90,4 +90,43 @@ export function manifestCatalogEntries(
       };
     });
   });
+}
+
+/** The name of the "New titles" Catalogs (ADR 0007). */
+export const NEW_TITLES_CATALOG_NAME = "Stremlist New titles";
+
+/** What the manifest says about one "New titles" Catalog. */
+export interface NewTitlesCatalogEntry {
+  newTitles: true;
+  type: ListCatalog["type"];
+  name: string;
+}
+
+/** One "New titles" Catalog per type that the Lists show. */
+export function newTitlesCatalogEntries(
+  lists: Pick<ManifestList, "displayMode">[],
+): NewTitlesCatalogEntry[] {
+  const types = new Set(
+    lists.flatMap((list) => listCatalogs(list).map((catalog) => catalog.type)),
+  );
+  return (["movie", "series"] as const)
+    .filter((type) => types.has(type))
+    .map((type) => ({ newTitles: true, type, name: NEW_TITLES_CATALOG_NAME }));
+}
+
+export type AddonCatalogEntry = NewTitlesCatalogEntry | ManifestCatalogEntry;
+
+/**
+ * Every Catalog of the addon manifest, in order. The "New titles" Catalogs,
+ * when the Account has them on, come first: they sum up what changed in
+ * every List below.
+ */
+export function addonCatalogEntries(
+  lists: ManifestList[],
+  options: { newTitles: boolean },
+): AddonCatalogEntry[] {
+  return [
+    ...(options.newTitles ? newTitlesCatalogEntries(lists) : []),
+    ...manifestCatalogEntries(lists),
+  ];
 }

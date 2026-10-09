@@ -2,7 +2,6 @@ import { parseSortOption } from "@stremlist/shared/constants";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import {
   isMergedList,
-  listRequiresConnection,
   sourcesWithoutDates,
 } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
@@ -18,15 +17,21 @@ import type {
   ProviderAdapter,
   ProviderContext,
   SourceEntry,
+  SourceSnapshot,
 } from "../providers/types";
 import { SourceUnavailableError } from "../providers/types";
 import { enrichTitles } from "../titles/enrich";
 import { DEFAULT_RESOLVE_BUDGET_MS, resolveEntries } from "../titles/resolver";
 import type { AccountAccess } from "./accounts";
-import { getAccountLists, markAccountFetched } from "./accounts";
+import {
+  getAccountLists,
+  getVisibleLists,
+  markAccountFetched,
+} from "./accounts";
 import type { CatalogSort } from "./catalog-sort";
 import { sortCatalog } from "./catalog-sort";
 import { ConnectionExpiredError, getConnectionAccess } from "./connections";
+import { recordSynchronization } from "./detections";
 import { buildPosterUrl } from "./imdb-scraper";
 import {
   deleteCachedList,
@@ -184,6 +189,10 @@ export interface BuiltCatalog {
   unresolvedEntries: SourceEntry[];
   /** Titles with an IMDb ID but no metadata, so they are not shown. */
   withoutMetadata: number;
+  /** The Provider read, cut short or not. */
+  snapshot: SourceSnapshot;
+  /** The IMDb ID of each resolved entry. */
+  imdbIds: ReadonlyMap<SourceEntry, string>;
 }
 
 /**
@@ -212,6 +221,12 @@ export async function buildCatalog(
       deferred: 0,
       unresolvedEntries: [],
       withoutMetadata: 0,
+      snapshot,
+      imdbIds: new Map(
+        snapshot.entries.flatMap((entry) =>
+          entry.meta ? [[entry, entry.meta.id] as const] : [],
+        ),
+      ),
     };
   }
 
@@ -259,6 +274,8 @@ export async function buildCatalog(
     deferred,
     unresolvedEntries,
     withoutMetadata: unknown,
+    snapshot,
+    imdbIds: new Map(resolved.map(({ entry, imdbId }) => [entry, imdbId])),
   };
 }
 
@@ -286,6 +303,9 @@ async function fetchAndCacheList(
     }
   };
 
+  // Taken before the read: when two reads overlap, the history keeps the
+  // one that started last.
+  const startedAt = new Date();
   let built: BuiltCatalog;
   try {
     if (!isProviderEnabled(config.provider)) {
@@ -330,6 +350,16 @@ async function fetchAndCacheList(
       ? { kind: "unsaved" }
       : { kind: "saved", titleCount: data.metas.length },
   );
+  // A read cut short is served, but never compared (ADR 0007).
+  if (built.snapshot.complete) {
+    await recordSynchronization(
+      config,
+      adapter,
+      built.snapshot.entries,
+      built.imdbIds,
+      { startedAt, connectionUser: connection?.username ?? null },
+    );
+  }
   return { data, cachedAt, generation };
 }
 
@@ -534,16 +564,12 @@ export async function getListCatalog(
  * stale lists caused the production 500/504 storm on /meta.)
  */
 export async function findMetaInAccountCache(
-  { account, via }: AccountAccess,
+  access: AccountAccess,
   type: string,
   id: string,
 ): Promise<StremioMeta | null> {
   try {
-    // A Legacy alias can be guessed: it must not reveal what Connection
-    // lists (history, collection…) contain.
-    const lists = (await getAccountLists(account.id)).filter(
-      (list) => via === "private" || !listRequiresConnection(list),
-    );
+    const lists = await getVisibleLists(access);
     // Every cached copy, so the detail page keeps the link back of each
     // Source list that has the Title, as its catalog card does.
     const copies = await Promise.all(
@@ -558,11 +584,11 @@ export async function findMetaInAccountCache(
     if (!found) return null;
     return {
       ...toStremioMeta(found),
-      poster: buildPosterUrl(found.id, found.poster, account.rpdbApiKey),
+      poster: buildPosterUrl(found.id, found.poster, access.account.rpdbApiKey),
     };
   } catch (error) {
     console.error(
-      `findMetaInAccountCache failed for ${account.id}:`,
+      `findMetaInAccountCache failed for ${access.account.id}:`,
       error instanceof Error ? error.message : error,
     );
     return null;

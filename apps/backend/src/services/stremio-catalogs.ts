@@ -1,10 +1,10 @@
-import { manifestCatalogEntries } from "@stremlist/shared/manifest-catalogs";
+import { addonCatalogEntries } from "@stremlist/shared/manifest-catalogs";
 import type {
   ConfigList,
   StremioCatalog,
 } from "@stremlist/shared/stremio.types";
 import { CATALOG_FILTER_OPTIONS } from "./catalog-filters";
-import { buildCatalogId } from "./catalog-id";
+import { buildCatalogId, buildNewTitlesCatalogId } from "./catalog-id";
 
 function catalogExtras(
   genres: string[],
@@ -23,14 +23,31 @@ function catalogExtras(
 }
 
 /**
- * The manifest Catalogs of the Lists. The configure page compares the same
- * entries (`manifestCatalogEntries`) to know when a save needs a reinstall.
+ * The manifest Catalogs: the "New titles" ones (ADR 0007) when the Account
+ * has them on, then those of the Lists. The configure page compares the same
+ * entries (`addonCatalogEntries`) to know when a save needs a reinstall.
  */
-export function buildManifestCatalogs(lists: ConfigList[]): StremioCatalog[] {
-  return manifestCatalogEntries(lists).map((entry) => ({
-    id: buildCatalogId(entry.listId, entry.type, entry.preset ?? undefined),
-    name: entry.name,
-    type: entry.type,
-    extra: catalogExtras(entry.genres, entry.search),
-  }));
+export function buildManifestCatalogs(
+  lists: ConfigList[],
+  options: { newTitles: boolean } = { newTitles: false },
+): StremioCatalog[] {
+  return addonCatalogEntries(lists, options).map((entry) =>
+    "newTitles" in entry
+      ? {
+          id: buildNewTitlesCatalogId(entry.type),
+          name: entry.name,
+          type: entry.type,
+          extra: [{ name: "skip", isRequired: false }],
+        }
+      : {
+          id: buildCatalogId(
+            entry.listId,
+            entry.type,
+            entry.preset ?? undefined,
+          ),
+          name: entry.name,
+          type: entry.type,
+          extra: catalogExtras(entry.genres, entry.search),
+        },
+  );
 }

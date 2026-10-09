@@ -6,6 +6,7 @@ import {
 } from "@stremlist/shared/constants";
 import type { DisplayMode } from "@stremlist/shared/constants";
 import type { Tables } from "@stremlist/shared/database.types";
+import { listRequiresConnection } from "@stremlist/shared/list-merge";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
@@ -26,6 +27,8 @@ export interface Account {
   rpdbApiKey: string | null;
   actionsEnabled: boolean;
   actionProviders: ProviderId[];
+  /** Whether the manifest offers the "New titles" catalog (ADR 0007). */
+  newTitlesCatalog: boolean;
   lastFetchedAt: string;
 }
 
@@ -37,6 +40,19 @@ export interface Account {
 export interface AccountAccess {
   account: Account;
   via: AddonAccess;
+}
+
+/**
+ * The Lists that a request may see. A Legacy alias can be guessed, so it
+ * never sees the Lists that only a Connection can read.
+ */
+export function visibleLists(
+  { via }: AccountAccess,
+  lists: ConfigList[],
+): ConfigList[] {
+  return via === "private"
+    ? lists
+    : lists.filter((list) => !listRequiresConnection(list));
 }
 
 export interface ListInput {
@@ -96,6 +112,7 @@ function mapAccount(row: AccountRow): Account {
     rpdbApiKey: row.rpdb_api_key,
     actionsEnabled: row.actions_enabled,
     actionProviders: row.action_providers.filter(isProviderId),
+    newTitlesCatalog: row.new_titles_catalog,
     lastFetchedAt: row.last_fetched_at,
   };
 }
@@ -231,6 +248,13 @@ export async function getAccountLists(
   return data.map(mapList).filter((list): list is ConfigList => !!list);
 }
 
+/** The Account's Lists that the request may see (see visibleLists). */
+export async function getVisibleLists(
+  access: AccountAccess,
+): Promise<ConfigList[]> {
+  return visibleLists(access, await getAccountLists(access.account.id));
+}
+
 export async function getAccountListById(
   accountId: string,
   listId: string,
@@ -254,8 +278,13 @@ export async function replaceAccountConfig(
   accountId: string,
   lists: ListInput[],
   rpdbApiKey: string | null,
-  actions?: { enabled: boolean; providers: ProviderId[] },
+  /** Settings to change; an omitted one keeps its stored value. */
+  settings: {
+    actions?: { enabled: boolean; providers: ProviderId[] };
+    newTitlesCatalog?: boolean;
+  } = {},
 ): Promise<ConfigList[]> {
+  const { actions, newTitlesCatalog } = settings;
   const before = await getAccountLists(accountId);
   const { data, error } = await supabase.rpc("replace_account_config", {
     p_account_id: accountId,
@@ -278,6 +307,7 @@ export async function replaceAccountConfig(
     })),
     p_actions_enabled: actions?.enabled ?? null,
     p_action_providers: actions?.providers ?? null,
+    p_new_titles_catalog: newTitlesCatalog ?? null,
   });
   if (error) {
     // Raised by `replace_account_config` when kept Source lists changed.
@@ -332,12 +362,19 @@ export async function createPrivateCopy(legacy: Account): Promise<Account> {
       sourceLabel: list.sourceLabel,
     })),
     legacy.rpdbApiKey,
+    // The detection history stays with the legacy Account: the copy starts
+    // with its own Baseline.
+    { newTitlesCatalog: legacy.newTitlesCatalog },
   );
   await supabase
     .from("accounts")
     .update({ moved_at: new Date().toISOString() })
     .eq("id", legacy.id);
-  return { ...account, rpdbApiKey: legacy.rpdbApiKey };
+  return {
+    ...account,
+    rpdbApiKey: legacy.rpdbApiKey,
+    newTitlesCatalog: legacy.newTitlesCatalog,
+  };
 }
 
 export async function markAccountFetched(

@@ -71,6 +71,7 @@ export const imdbProvider: ProviderAdapter = {
           const addedAt = data.addedAt?.get(meta.id);
           return { imdbId: meta.id, meta, ...(addedAt ? { addedAt } : {}) };
         }),
+        complete: data.complete,
       };
     } catch (error) {
       const reason = classifyImdbError(error);

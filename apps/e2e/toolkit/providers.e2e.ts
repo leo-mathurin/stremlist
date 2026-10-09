@@ -297,7 +297,9 @@ test("a link that needs a Connection saves the setup, connects, then adds the li
   await expect(screen.getByText("@someone")).toBeVisible();
   await expect(screen.getByText("Your MDBList (@someone)")).toBeVisible();
   await expect(screen.getByRole("button", "Horror nights")).toBeVisible();
-  expect(created).toEqual([{ rpdbApiKey: "", lists: [] }]);
+  expect(created).toEqual([
+    { rpdbApiKey: "", lists: [], newTitles: { enabled: false } },
+  ]);
   expect(starts).toEqual(["POST"]);
   expect(authorized).toHaveLength(1);
   expect(inputs).toEqual([

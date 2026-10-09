@@ -371,7 +371,7 @@ describe("previewList: problems", () => {
 describe("previewList: reads", () => {
   it("reuses one read when only the sort or the filters change", async () => {
     const fetchSource = vi.fn(() =>
-      Promise.resolve({ entries: entries(MOVIES) }),
+      Promise.resolve({ entries: entries(MOVIES), complete: true }),
     );
     useFakeProvider(fakeAdapter("trakt", { fetchSource }));
 
@@ -389,7 +389,7 @@ describe("previewList: reads", () => {
 
   it("never shares a read through a Connection with another Account or a public request", async () => {
     const fetchSource = vi.fn(() =>
-      Promise.resolve({ entries: entries(MOVIES) }),
+      Promise.resolve({ entries: entries(MOVIES), complete: true }),
     );
     useFakeProvider(fakeAdapter("trakt", { fetchSource }));
     const owner = seedAccount();
@@ -410,7 +410,7 @@ describe("previewList: reads", () => {
 
   it("reads again after the Account connects the Provider again", async () => {
     const fetchSource = vi.fn(() =>
-      Promise.resolve({ entries: entries(MOVIES) }),
+      Promise.resolve({ entries: entries(MOVIES), complete: true }),
     );
     useFakeProvider(fakeAdapter("trakt", { fetchSource }));
     const account = seedAccount();
@@ -436,7 +436,7 @@ describe("previewList: reads", () => {
   it("reads the Source list again after five minutes", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const fetchSource = vi.fn(() =>
-      Promise.resolve({ entries: entries(MOVIES) }),
+      Promise.resolve({ entries: entries(MOVIES), complete: true }),
     );
     useFakeProvider(fakeAdapter("trakt", { fetchSource }));
 
@@ -460,7 +460,9 @@ describe("previewList: reads", () => {
         externalIds: { tmdb: { id: index + 1, type: "movie" } },
       }),
     );
-    const fetchSource = vi.fn(() => Promise.resolve({ entries: unknown }));
+    const fetchSource = vi.fn(() =>
+      Promise.resolve({ entries: unknown, complete: true }),
+    );
     useFakeProvider(
       fakeAdapter("trakt", {
         fetchSource,

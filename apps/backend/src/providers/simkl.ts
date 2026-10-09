@@ -13,6 +13,7 @@ import type {
   Membership,
   ProviderAdapter,
   SourceEntry,
+  SourceSnapshot,
   SourceValidation,
 } from "./types";
 import { connectionToken, SourceUnavailableError } from "./types";
@@ -657,6 +658,8 @@ interface ListSnapshot {
   premiumOnly?: boolean;
   fetchedAt: number;
   entries: SourceEntry[];
+  /** False when LIST_MAX_PAGES cut the list short. Missing: read again. */
+  complete?: boolean;
 }
 
 function premiumOnlyError(): SourceUnavailableError {
@@ -743,7 +746,7 @@ function listItemEntry(item: RawListItem): SourceEntry | null {
 async function fetchCustomList(
   connection: ConnectionAccess,
   listId: string,
-): Promise<SourceEntry[]> {
+): Promise<SourceSnapshot> {
   const library = await syncLibrary(connection);
   const gate = library.activities.custom_lists?.lists?.all ?? null;
   const key = listKey(connection.accountId, listId);
@@ -753,11 +756,14 @@ async function fetchCustomList(
     previous?.version === STATE_VERSION &&
     previous.username === connection.username &&
     previous.gate === gate &&
+    // Snapshots from before `complete` existed may have been cut short by
+    // LIST_MAX_PAGES: read them again instead of guessing.
+    (previous.premiumOnly || previous.complete !== undefined) &&
     ((previous.listType !== "auto" && !previous.premiumOnly) ||
       Date.now() - previous.fetchedAt < AUTO_LIST_MAX_AGE_MS)
   ) {
     if (previous.premiumOnly) throw premiumOnlyError();
-    return previous.entries;
+    return { entries: previous.entries, complete: previous.complete ?? false };
   }
 
   const token = await connectionToken(connection);
@@ -776,6 +782,7 @@ async function fetchCustomList(
 
   const entries: SourceEntry[] = [];
   let listType: string | undefined;
+  let complete = false;
   try {
     for (let page = 1; page <= LIST_MAX_PAGES; page++) {
       const data = await readListPage(token, listId, page, LIST_PAGE_LIMIT);
@@ -784,7 +791,10 @@ async function fetchCustomList(
         const entry = listItemEntry(item);
         if (entry) entries.push(entry);
       }
-      if (page >= (data.pagination?.total_pages ?? 1)) break;
+      if (page >= (data.pagination?.total_pages ?? 1)) {
+        complete = true;
+        break;
+      }
     }
   } catch (error) {
     if (
@@ -795,8 +805,8 @@ async function fetchCustomList(
     }
     throw error;
   }
-  await save({ listType, entries });
-  return entries;
+  await save({ listType, entries, complete });
+  return { entries, complete };
 }
 
 // ---------------------------------------------------------------------------
@@ -1004,12 +1014,14 @@ export const simklProvider: ProviderAdapter = {
       );
     }
     const connection = requireConnection(ctx);
-    if (listId) return { entries: await fetchCustomList(connection, listId) };
+    if (listId) return fetchCustomList(connection, listId);
     const library = await syncLibrary(connection);
     return {
       entries: status
         ? statusEntries(library.items, status)
         : historyEntries(library.items),
+      // The library sync has no page cap: it is the whole library.
+      complete: true,
     };
   },
 

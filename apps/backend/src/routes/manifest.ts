@@ -5,7 +5,6 @@ import {
   BASE_MANIFEST,
   IMDB_USER_ID_PATTERN,
 } from "@stremlist/shared/constants";
-import { listRequiresConnection } from "@stremlist/shared/list-merge";
 import type {
   StremioManifest,
   StremioResource,
@@ -15,7 +14,7 @@ import { createHash } from "node:crypto";
 import type { AccountAccess } from "../services/accounts";
 import {
   ensureLegacyAccount,
-  getAccountLists,
+  getVisibleLists,
   resolveAccountKey,
 } from "../services/accounts";
 import { actionProviders } from "../services/actions";
@@ -59,9 +58,7 @@ manifest.get("/:accountKey/manifest.json", async (c) => {
     if (!access) return c.json(configurationRequired());
 
     const { account } = access;
-    const lists = (await getAccountLists(account.id)).filter(
-      (list) => access.via === "private" || !listRequiresConnection(list),
-    );
+    const lists = await getVisibleLists(access);
     const resources: (string | StremioResource)[] = [
       "catalog",
       { name: "meta", types: ["movie"], idPrefixes: ["tt"] },
@@ -84,7 +81,9 @@ manifest.get("/:accountKey/manifest.json", async (c) => {
       name: "Stremlist",
       description: `${APP_DESCRIPTION}. Changelog: https://stremlist.com/changelog`,
       resources,
-      catalogs: buildManifestCatalogs(await withAvailableGenres(lists)),
+      catalogs: buildManifestCatalogs(await withAvailableGenres(lists), {
+        newTitles: account.newTitlesCatalog,
+      }),
       behaviorHints: { configurable: true, configurationRequired: false },
       config: [
         {

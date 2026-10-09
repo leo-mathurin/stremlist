@@ -4,6 +4,7 @@ import { scheduleBackgroundTask } from "../lib/background";
 import { frontendUrl } from "../lib/urls";
 import { getProvider } from "../providers/registry";
 import { saveConnection } from "../services/connections";
+import { forgetConnectionDetections } from "../services/detections";
 import { rereadConnectionLists } from "../services/lists";
 import { consumeState, exchangeCode, redirectUri } from "../services/oauth";
 
@@ -67,6 +68,16 @@ oauth.get("/oauth/:provider/callback", async (c) => {
       username,
       redirect,
     );
+    // A new Connection can be another Provider user: the history of
+    // Connection-only Source lists of the previous user must not stay.
+    try {
+      await forgetConnectionDetections(pending.accountId, provider);
+    } catch (forgetError) {
+      console.error(
+        `Forgetting the previous ${provider} history failed:`,
+        forgetError instanceof Error ? forgetError.message : forgetError,
+      );
+    }
     // Lists that failed without the Connection (or with the refused one)
     // read through the new one now.
     scheduleBackgroundTask(() =>

@@ -127,6 +127,10 @@ export const configuration = {
   syncStatus: { [row.id]: syncedStatus(row.sourceRef) },
   connections: [],
   actions: { enabled: false, providers: [] },
+  newTitles: {
+    enabled: false,
+    summary: { detected: 0, latestDetectedAt: null, waitingLists: 0 },
+  },
   lastFetchedAt: "2020-01-01T00:00:00.000Z",
   cooldownSeconds: 2,
 } satisfies AccountConfigResponse;

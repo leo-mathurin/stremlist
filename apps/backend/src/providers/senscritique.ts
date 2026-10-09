@@ -4,6 +4,7 @@ import { tmdbSearchMatchStrategy } from "../titles/tmdb-match";
 import { wikidataStrategy } from "../titles/wikidata";
 import { graphqlRequest, RateLimiter } from "./http";
 import type {
+  PagedRead,
   ProviderAdapter,
   ResolverStrategy,
   SourceEntry,
@@ -27,7 +28,6 @@ const JUSTWATCH_CONCURRENCY = 3;
 /** SensCritique universes: products of other universes (books, games…) are skipped. */
 const UNIVERSE_MOVIE = 1;
 const UNIVERSE_SERIES = 4;
-const COLLECTION_UNIVERSES = ["movie", "tvShow"] as const;
 
 /** Wikidata property "SensCritique work ID". */
 const WIKIDATA_SENSCRITIQUE_WORK = "P10100";
@@ -265,45 +265,58 @@ function isPrivateProfile(user: UserData["user"]): boolean {
   return user?.settings?.privacyProfile === true;
 }
 
-async function fetchWishes(username: string): Promise<SensCritiqueProduct[]> {
-  const byUniverse: SensCritiqueProduct[][] = [];
-  for (const universe of COLLECTION_UNIVERSES) {
-    const products: SensCritiqueProduct[] = [];
-    for (let page = 0; page < MAX_PAGES; page++) {
-      const { user } = await senscritiqueQuery<WishesData>(WISHES_QUERY, {
-        username,
-        universe,
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
-      });
-      if (!user) {
-        throw new SourceUnavailableError(
-          "not_found",
-          `SensCritique user ${username} not found`,
-        );
-      }
-      if (isPrivateProfile(user) || !user.collection) {
-        throw new SourceUnavailableError(
-          "private",
-          `SensCritique profile ${username} is private`,
-        );
-      }
-      const batch = user.collection.products ?? [];
-      products.push(...batch);
-      if (
-        batch.length < PAGE_SIZE ||
-        products.length >= (user.collection.total ?? 0)
-      ) {
-        break;
-      }
+/** The wishes of one universe, newest first, as the API returns them. */
+async function fetchUniverseWishes(
+  username: string,
+  universe: "movie" | "tvShow",
+): Promise<PagedRead<SensCritiqueProduct>> {
+  const products: SensCritiqueProduct[] = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { user } = await senscritiqueQuery<WishesData>(WISHES_QUERY, {
+      username,
+      universe,
+      limit: PAGE_SIZE,
+      offset: page * PAGE_SIZE,
+    });
+    if (!user) {
+      throw new SourceUnavailableError(
+        "not_found",
+        `SensCritique user ${username} not found`,
+      );
     }
-    // The API returns the newest wish first; the canonical order is oldest first.
-    byUniverse.push(products.reverse());
+    if (isPrivateProfile(user) || !user.collection) {
+      throw new SourceUnavailableError(
+        "private",
+        `SensCritique profile ${username} is private`,
+      );
+    }
+    const batch = user.collection.products ?? [];
+    products.push(...batch);
+    if (
+      batch.length < PAGE_SIZE ||
+      products.length >= (user.collection.total ?? 0)
+    ) {
+      return { items: products, complete: true };
+    }
   }
-  return mergeByActionId(byUniverse[0], byUniverse[1]);
+  return { items: products, complete: false };
 }
 
-async function fetchListProducts(id: number): Promise<SensCritiqueProduct[]> {
+async function fetchWishes(
+  username: string,
+): Promise<PagedRead<SensCritiqueProduct>> {
+  const movies = await fetchUniverseWishes(username, "movie");
+  const shows = await fetchUniverseWishes(username, "tvShow");
+  // The API returns the newest wish first; the canonical order is oldest first.
+  return {
+    items: mergeByActionId(movies.items.reverse(), shows.items.reverse()),
+    complete: movies.complete && shows.complete,
+  };
+}
+
+async function fetchListProducts(
+  id: number,
+): Promise<PagedRead<SensCritiqueProduct>> {
   const products: SensCritiqueProduct[] = [];
   for (let page = 0; page < MAX_PAGES; page++) {
     const { userList } = await senscritiqueQuery<ListData>(LIST_QUERY, {
@@ -331,10 +344,10 @@ async function fetchListProducts(id: number): Promise<SensCritiqueProduct[]> {
       items.length < PAGE_SIZE ||
       page * PAGE_SIZE + items.length >= (userList.productsList.total ?? 0)
     ) {
-      break;
+      return { items: products, complete: true };
     }
   }
-  return products;
+  return { items: products, complete: false };
 }
 
 /**
@@ -441,11 +454,11 @@ export const senscritiqueProvider: ProviderAdapter = {
   async fetchSource(ref) {
     const user = USER_REF.exec(ref);
     const list = LIST_REF.exec(ref);
-    let products: SensCritiqueProduct[];
+    let read: PagedRead<SensCritiqueProduct>;
     if (user) {
-      products = await fetchWishes(user[1]);
+      read = await fetchWishes(user[1]);
     } else if (list) {
-      products = await fetchListProducts(Number(list[1]));
+      read = await fetchListProducts(Number(list[1]));
     } else {
       throw new SourceUnavailableError(
         "not_found",
@@ -454,13 +467,13 @@ export const senscritiqueProvider: ProviderAdapter = {
     }
     const entries: SourceEntry[] = [];
     const seen = new Set<number>();
-    for (const product of products) {
+    for (const product of read.items) {
       const entry = productToEntry(product);
       if (!entry || seen.has(product.id)) continue;
       seen.add(product.id);
       entries.push(entry);
     }
-    return { entries };
+    return { entries, complete: read.complete };
   },
 
   resolutionKey(entry) {

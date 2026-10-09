@@ -40,6 +40,7 @@ const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
     rpdb_api_key: null,
     actions_enabled: false,
     action_providers: [],
+    new_titles_catalog: false,
     prewarm_lease_token: null,
     prewarm_locked_until: EPOCH,
     prewarm_request_generation: 0,
@@ -80,6 +81,15 @@ const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
     resolved_at: now(),
     retry_after: null,
   }),
+  source_list_syncs: () => ({
+    requires_connection: false,
+    connection_user: null,
+  }),
+  source_list_entries: () => ({
+    imdb_id: null,
+    detected_at: null,
+    removed_at: null,
+  }),
 };
 
 /** Unique constraints from the migrations, per table. */
@@ -90,7 +100,18 @@ const UNIQUE_KEYS: Partial<Record<string, string[][]>> = {
   list_sync_status: [["list_id", "provider", "source_ref"]],
   oauth_states: [["state"]],
   title_id_map: [["namespace", "external_id"]],
+  source_list_syncs: [["account_id", "provider", "source_ref"]],
+  source_list_entries: [["account_id", "provider", "source_ref", "entry_key"]],
 };
+
+/** Foreign keys with ON DELETE CASCADE, as child table and shared columns. */
+const CASCADES: Partial<Record<string, { table: string; columns: string[] }>> =
+  {
+    source_list_syncs: {
+      table: "source_list_entries",
+      columns: ["account_id", "provider", "source_ref"],
+    },
+  };
 
 function withoutUndefined(row: Row): Row {
   return Object.fromEntries(
@@ -130,6 +151,21 @@ export class InMemoryDB {
     if (conflict) throw new Error(conflict);
     this.getTable(table).push(stored);
     return stored;
+  }
+
+  /** Delete the matching rows, and their children (ON DELETE CASCADE). */
+  delete(table: string, matches: (row: Row) => boolean): Row[] {
+    const removed = this.getTable(table).filter(matches);
+    this.tables[table] = this.getTable(table).filter((row) => !matches(row));
+    const cascade = CASCADES[table];
+    if (cascade && removed.length > 0) {
+      this.delete(cascade.table, (child) =>
+        removed.some((parent) =>
+          cascade.columns.every((column) => parent[column] === child[column]),
+        ),
+      );
+    }
+    return removed;
   }
 
   /** The violated constraint, or null. `ignore` is the row being updated. */
@@ -484,13 +520,10 @@ class MockQueryBuilder {
         return this.written(updated);
       }
 
-      case "delete": {
-        const removed = table.filter((r) => this.matchesFilters(r));
-        this.db.tables[this.tableName] = table.filter(
-          (r) => !this.matchesFilters(r),
+      case "delete":
+        return this.written(
+          this.db.delete(this.tableName, (r) => this.matchesFilters(r)),
         );
-        return this.written(removed);
-      }
     }
   }
 
@@ -612,6 +645,8 @@ function replaceAccountConfig(args: RpcArgs): Result {
   account.actions_enabled = args.p_actions_enabled ?? account.actions_enabled;
   account.action_providers =
     args.p_action_providers ?? account.action_providers;
+  account.new_titles_catalog =
+    args.p_new_titles_catalog ?? account.new_titles_catalog;
 
   const saved = db
     .getTable("lists")
@@ -640,6 +675,186 @@ function findConnection(args: RpcArgs): Row | undefined {
 
 function findAccount(args: RpcArgs): Row | undefined {
   return db.getTable("accounts").find((row) => row.id === args.p_account_id);
+}
+
+/** Same rules as public.record_source_list_sync. */
+function recordSourceListSync(args: RpcArgs): Result {
+  const key = {
+    account_id: args.p_account_id,
+    provider: args.p_provider,
+    source_ref: args.p_source_ref,
+  };
+  const matches = (row: Row) =>
+    row.account_id === key.account_id &&
+    row.provider === key.provider &&
+    row.source_ref === key.source_ref;
+  const keys = args.p_entry_keys as string[];
+  const imdbIds = args.p_imdb_ids as (string | null)[];
+  // One pair per entry key; a resolved duplicate wins over an unresolved one.
+  const entries = new Map<string, string | null>();
+  keys.forEach((entryKey, index) => {
+    entries.set(entryKey, entries.get(entryKey) ?? imdbIds[index]);
+  });
+  const syncedAt = new Date(args.p_synced_at as string).toISOString();
+  const connectionUser = args.p_requires_connection
+    ? ((args.p_connection_user as string | null | undefined) ?? null)
+    : null;
+  if (args.p_requires_connection) {
+    const connected = db
+      .getTable("connections")
+      .some(
+        (row) =>
+          row.account_id === key.account_id &&
+          row.provider === key.provider &&
+          (row.provider_username ?? null) === connectionUser,
+      );
+    if (!connected) return { data: null, error: null };
+    // Another Provider user: the old history is not theirs.
+    db.delete(
+      "source_list_syncs",
+      (row) => matches(row) && row.connection_user !== connectionUser,
+    );
+  }
+  const state = db.getTable("source_list_syncs").find(matches);
+
+  if (!state) {
+    db.insert("source_list_syncs", {
+      ...key,
+      baseline_at: syncedAt,
+      last_complete_sync_at: syncedAt,
+      requires_connection: !!args.p_requires_connection,
+      connection_user: connectionUser,
+    });
+    for (const [entryKey, imdbId] of entries) {
+      db.insert("source_list_entries", {
+        ...key,
+        entry_key: entryKey,
+        imdb_id: imdbId,
+      });
+    }
+    return { data: 0, error: null };
+  }
+  if (syncedAt <= String(state.last_complete_sync_at)) {
+    return { data: null, error: null };
+  }
+
+  const rows = db.getTable("source_list_entries").filter(matches);
+  for (const row of rows) {
+    const entryKey = row.entry_key as string;
+    if (!entries.has(entryKey)) {
+      row.removed_at ??= syncedAt;
+      continue;
+    }
+    row.removed_at = null;
+    row.imdb_id = entries.get(entryKey) ?? row.imdb_id;
+  }
+  const known = new Set(rows.map((row) => row.entry_key));
+  let added = 0;
+  for (const [entryKey, imdbId] of entries) {
+    if (known.has(entryKey)) continue;
+    db.insert("source_list_entries", {
+      ...key,
+      entry_key: entryKey,
+      imdb_id: imdbId,
+      detected_at: syncedAt,
+    });
+    added += 1;
+  }
+  state.last_complete_sync_at = syncedAt;
+  return { data: added, error: null };
+}
+
+/** Same rules as public.list_new_titles. */
+function listNewTitles(args: RpcArgs): Result {
+  const providers = args.p_providers as string[];
+  const refs = args.p_source_refs as string[];
+  const sources = new Set(
+    providers.map((provider, index) => `${provider}\u0000${refs[index]}`),
+  );
+  const perSource = new Map<
+    string,
+    {
+      imdb_id: string;
+      provider: string;
+      source_ref: string;
+      detected_at: string | null;
+      inBaseline: boolean;
+      present: boolean;
+    }
+  >();
+  for (const row of db.getTable("source_list_entries")) {
+    const source = `${String(row.provider)}\u0000${String(row.source_ref)}`;
+    if (
+      row.account_id !== args.p_account_id ||
+      !row.imdb_id ||
+      !sources.has(source)
+    ) {
+      continue;
+    }
+    const imdbId = row.imdb_id as string;
+    const groupKey = `${source}\u0000${imdbId}`;
+    const group = perSource.get(groupKey) ?? {
+      imdb_id: imdbId,
+      provider: row.provider as string,
+      source_ref: row.source_ref as string,
+      detected_at: null,
+      inBaseline: false,
+      present: false,
+    };
+    const detectedAt = row.detected_at as string | null;
+    if (!detectedAt) group.inBaseline = true;
+    else if (!group.detected_at || detectedAt < group.detected_at) {
+      group.detected_at = detectedAt;
+    }
+    if (!row.removed_at) group.present = true;
+    perSource.set(groupKey, group);
+  }
+  // Earliest Detection among the Source lists where the Title is new, also
+  // removed ones; shown while one of them still has it.
+  const candidates = [...perSource.values()].filter(
+    (group) => !group.inBaseline,
+  );
+  const shown = new Set(
+    candidates.filter((group) => group.present).map((group) => group.imdb_id),
+  );
+  const earliest = new Map<string, (typeof candidates)[number]>();
+  for (const group of candidates) {
+    const current = earliest.get(group.imdb_id);
+    if (
+      shown.has(group.imdb_id) &&
+      (!current || String(group.detected_at) < String(current.detected_at))
+    ) {
+      earliest.set(group.imdb_id, group);
+    }
+  }
+  const rows = [...earliest.values()].sort(
+    (a, b) =>
+      String(b.detected_at).localeCompare(String(a.detected_at)) ||
+      a.imdb_id.localeCompare(b.imdb_id),
+  );
+  return { data: rows.slice(0, args.p_limit as number), error: null };
+}
+
+/** Same rules as public.forget_connection_history. */
+function forgetConnectionHistory(args: RpcArgs): Result {
+  const connection = db
+    .getTable("connections")
+    .find(
+      (row) =>
+        row.account_id === args.p_account_id &&
+        row.provider === args.p_provider,
+    );
+  const forgotten = db.delete(
+    "source_list_syncs",
+    (row) =>
+      row.account_id === args.p_account_id &&
+      row.provider === args.p_provider &&
+      row.requires_connection === true &&
+      (!connection ||
+        (row.connection_user ?? null) !==
+          (connection.provider_username ?? null)),
+  );
+  return { data: forgotten.length, error: null };
 }
 
 function recordListRefresh(args: RpcArgs): Result {
@@ -674,8 +889,11 @@ function recordListRefresh(args: RpcArgs): Result {
 }
 
 export const defaultRpcHandlers: Partial<Record<string, RpcHandler>> = {
+  forget_connection_history: forgetConnectionHistory,
   replace_account_config: replaceAccountConfig,
   record_list_refresh: recordListRefresh,
+  record_source_list_sync: recordSourceListSync,
+  list_new_titles: listNewTitles,
 
   claim_connection_refresh(args) {
     const row = findConnection(args);

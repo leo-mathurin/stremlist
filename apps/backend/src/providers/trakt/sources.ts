@@ -1,5 +1,11 @@
 import { HttpError } from "../http";
-import type { ConnectionAccess, SourceEntry, SourceValidation } from "../types";
+import type {
+  ConnectionAccess,
+  PagedRead,
+  SourceEntry,
+  SourceSnapshot,
+  SourceValidation,
+} from "../types";
 import { SourceUnavailableError } from "../types";
 import type { TraktReadOptions } from "./api";
 import { nonEmpty, toSourceError, traktGetAll, traktGetJson } from "./api";
@@ -163,15 +169,35 @@ async function listedEntries(
   path: string,
   connection: ConnectionAccess | null,
   options: TraktReadOptions,
-): Promise<SourceEntry[]> {
-  const items = await traktGetAll<TraktItem>(path, connection, {
+): Promise<SourceSnapshot> {
+  const { items, complete } = await traktGetAll<TraktItem>(path, connection, {
     ...options,
     maxItems: MAX_SOURCE_ITEMS,
   });
-  return oldestFirst(items, (item) => item.listed_at).flatMap((item) => {
-    const entry = itemToEntry(item);
-    return entry ? [withAddedAt(entry, item.listed_at)] : [];
-  });
+  return {
+    entries: oldestFirst(items, (item) => item.listed_at).flatMap((item) => {
+      const entry = itemToEntry(item);
+      return entry ? [withAddedAt(entry, item.listed_at)] : [];
+    }),
+    complete,
+  };
+}
+
+/** The newest MAX_SOURCE_ITEMS rows, oldest first, dated by `date`. */
+function newestRows(
+  rows: TraktItem[],
+  date: (row: TraktItem) => string | null | undefined,
+  complete = true,
+): SourceSnapshot {
+  return {
+    entries: oldestFirst(rows, date)
+      .slice(-MAX_SOURCE_ITEMS)
+      .flatMap((row) => {
+        const entry = itemToEntry(row);
+        return entry ? [withAddedAt(entry, date(row))] : [];
+      }),
+    complete: complete && rows.length <= MAX_SOURCE_ITEMS,
+  };
 }
 
 async function chartEntries(
@@ -214,10 +240,10 @@ async function recommendationEntries(
 /** Shows in progress, oldest watched first (the show, not the next episode). */
 async function upNextEntries(
   connection: ConnectionAccess,
-): Promise<SourceEntry[]> {
-  let rows: TraktItem[];
+): Promise<SourceSnapshot> {
+  let read: PagedRead<TraktItem>;
   try {
-    rows = await traktGetAll<TraktItem>("/sync/progress/up_next", connection, {
+    read = await traktGetAll<TraktItem>("/sync/progress/up_next", connection, {
       maxItems: MAX_SOURCE_ITEMS,
     });
   } catch (error) {
@@ -229,21 +255,25 @@ async function upNextEntries(
     ) {
       throw error;
     }
-    rows = await traktGetAll<TraktItem>(
+    read = await traktGetAll<TraktItem>(
       "/sync/progress/watched?hide_completed=true",
       connection,
       { maxItems: MAX_SOURCE_ITEMS },
     );
   }
-  return oldestFirst(rows, (row) => row.progress?.last_watched_at).flatMap(
-    (row) => (row.show ? [mediaToEntry(row.show, "series")] : []),
-  );
+  return {
+    entries: oldestFirst(
+      read.items,
+      (row) => row.progress?.last_watched_at,
+    ).flatMap((row) => (row.show ? [mediaToEntry(row.show, "series")] : [])),
+    complete: read.complete,
+  };
 }
 
 /** Watched movies and shows, by last watch, oldest first. */
 async function historyEntries(
   connection: ConnectionAccess,
-): Promise<SourceEntry[]> {
+): Promise<SourceSnapshot> {
   const [movies, shows] = await Promise.all([
     traktGetJson<TraktItem[]>("/users/me/watched/movies", connection),
     traktGetJson<TraktItem[]>(
@@ -251,50 +281,39 @@ async function historyEntries(
       connection,
     ),
   ]);
-  return oldestFirst(
+  return newestRows(
     [...(movies ?? []), ...(shows ?? [])],
     (row) => row.last_watched_at,
-  )
-    .slice(-MAX_SOURCE_ITEMS)
-    .flatMap((row) => {
-      const entry = itemToEntry(row);
-      return entry ? [withAddedAt(entry, row.last_watched_at)] : [];
-    });
+  );
 }
 
 async function collectionEntries(
   connection: ConnectionAccess,
-): Promise<SourceEntry[]> {
+): Promise<SourceSnapshot> {
   const [movies, shows] = await Promise.all([
     traktGetAll<TraktItem>("/sync/collection/movies", connection, {
       maxItems: MAX_SOURCE_ITEMS,
     }),
     traktGetJson<TraktItem[]>("/sync/collection/shows", connection),
   ]);
-  return oldestFirst(
-    [...movies, ...(shows ?? [])],
+  return newestRows(
+    [...movies.items, ...(shows ?? [])],
     (row) => row.collected_at ?? row.last_collected_at,
-  )
-    .slice(-MAX_SOURCE_ITEMS)
-    .flatMap((row) => {
-      const entry = itemToEntry(row);
-      return entry
-        ? [withAddedAt(entry, row.collected_at ?? row.last_collected_at)]
-        : [];
-    });
+    movies.complete,
+  );
 }
 
 export async function readSource(
   source: TraktSource,
   ctx: { connection: ConnectionAccess | null },
-): Promise<SourceEntry[]> {
+): Promise<SourceSnapshot> {
   const connection = requireConnection(source, ctx.connection);
   const options = readOptions(source);
   try {
-    let entries: SourceEntry[];
+    let snapshot: SourceSnapshot;
     switch (source.kind) {
       case "watchlist":
-        entries = await listedEntries(
+        snapshot = await listedEntries(
           `${userPath(source.user)}/watchlist?sort_by=added&sort_how=asc`,
           connection,
           options,
@@ -302,33 +321,35 @@ export async function readSource(
         break;
       case "list":
       case "shared_list":
-        entries = await listedEntries(
+        snapshot = await listedEntries(
           listItemsPath(source),
           connection,
           options,
         );
         break;
       case "chart":
-        entries = await chartEntries(source.chart, connection);
-        break;
       case "recommendations":
-        entries = await recommendationEntries(
-          personalConnection(source, connection),
-        );
+        // The first CHART_ITEMS titles are the whole Source list.
+        snapshot = {
+          entries: await (source.kind === "chart"
+            ? chartEntries(source.chart, connection)
+            : recommendationEntries(personalConnection(source, connection))),
+          complete: true,
+        };
         break;
       case "up_next":
-        entries = await upNextEntries(personalConnection(source, connection));
+        snapshot = await upNextEntries(personalConnection(source, connection));
         break;
       case "history":
-        entries = await historyEntries(personalConnection(source, connection));
+        snapshot = await historyEntries(personalConnection(source, connection));
         break;
       case "collection":
-        entries = await collectionEntries(
+        snapshot = await collectionEntries(
           personalConnection(source, connection),
         );
         break;
     }
-    return uniqueEntries(entries);
+    return { ...snapshot, entries: uniqueEntries(snapshot.entries) };
   } catch (error) {
     throw toSourceError(error);
   }
