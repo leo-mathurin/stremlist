@@ -26,6 +26,9 @@ export interface MergeableList extends ListSource {
   mergedSources?: readonly ListSource[];
 }
 
+/** An Account has at most this many Lists. */
+export const MAX_LISTS = 10;
+
 /** A List reads at most this many Source lists, its first one included. */
 export const MAX_SOURCES_PER_LIST = 5;
 
@@ -235,6 +238,43 @@ export function isSortAllowed(
   return (
     !sortOption.startsWith("added_at") || sourcesWithoutDates(list).length === 0
   );
+}
+
+/** Why the Lists of one Account cannot be saved together. */
+export interface AccountListsProblem {
+  reason: "too_many_lists" | "duplicate_source" | "too_many_sources";
+  /** The message for the user. */
+  message: string;
+}
+
+/**
+ * The first rule that the Lists of one Account break together, or null:
+ * at most MAX_LISTS Lists, each Source list in only one of them, and at
+ * most MAX_SOURCES_PER_ACCOUNT Source lists in all.
+ */
+export function accountListsProblem(
+  lists: readonly MergeableList[],
+): AccountListsProblem | null {
+  if (lists.length > MAX_LISTS) {
+    return {
+      reason: "too_many_lists",
+      message: `You can have at most ${MAX_LISTS} lists.`,
+    };
+  }
+  const keys = lists.flatMap((list) => listSources(list).map(sourceKey));
+  if (new Set(keys).size !== keys.length) {
+    return {
+      reason: "duplicate_source",
+      message: "Each list can only be added once.",
+    };
+  }
+  if (keys.length > MAX_SOURCES_PER_ACCOUNT) {
+    return {
+      reason: "too_many_sources",
+      message: `You can have at most ${MAX_SOURCES_PER_ACCOUNT} Source lists in all your Lists.`,
+    };
+  }
+  return null;
 }
 
 /**

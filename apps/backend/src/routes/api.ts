@@ -11,10 +11,10 @@ import type { TitleType } from "@stremlist/shared/constants";
 import { isChartId } from "@stremlist/shared/imdb-charts";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import {
-  MAX_SOURCES_PER_ACCOUNT,
+  MAX_LISTS,
   MAX_SOURCES_PER_LIST,
+  accountListsProblem,
   listMergeProblem,
-  sourceKey,
 } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import {
@@ -78,8 +78,6 @@ const REFRESH_COOLDOWN_MS =
   (Number.isFinite(Number(process.env.REFRESH_COOLDOWN_SECONDS))
     ? Number(process.env.REFRESH_COOLDOWN_SECONDS)
     : 60) * 1000;
-
-export const MAX_LISTS = 10;
 
 const accountKeyParam = z.object({
   accountKey: z.string().regex(ACCOUNT_KEY_PATTERN),
@@ -240,8 +238,9 @@ function submittedSources(
 /**
  * Check and normalize submitted Lists. Light on purpose: links were already
  * resolved when the user added them, so saving does not read every Source
- * list again. Each Source list may be in only one List of the Account, and
- * merged Lists follow the rules of `listMergeProblem`.
+ * list again. The Lists follow the rules of `accountListsProblem` (checked
+ * after normalization, so IMDb `p.` handles are already `ur…` IDs), then
+ * each one those of `listMergeProblem`.
  */
 async function normalizeLists(
   lists: ListBody[],
@@ -253,7 +252,6 @@ async function normalizeLists(
   },
 ): Promise<ListInput[]> {
   const normalized: ListInput[] = [];
-  const seen = new Set<string>();
   const saved = new Map(access.saved.map((list) => [list.id, list]));
   for (const [index, list] of lists.entries()) {
     const submitted = submittedSources(
@@ -262,17 +260,7 @@ async function normalizeLists(
     );
     const sources: ListSource[] = [];
     for (const source of submitted.sources) {
-      const checked = await normalizeSource(source, access);
-      if (seen.has(sourceKey(checked))) {
-        throw new ConfigError("Each list can only be added once.");
-      }
-      seen.add(sourceKey(checked));
-      sources.push(checked);
-    }
-    if (seen.size > MAX_SOURCES_PER_ACCOUNT) {
-      throw new ConfigError(
-        `You can have at most ${MAX_SOURCES_PER_ACCOUNT} Source lists in all your Lists.`,
-      );
+      sources.push(await normalizeSource(source, access));
     }
     const [first, ...mergedSources] = sources;
     const input: ListInput = {
@@ -291,9 +279,13 @@ async function normalizeLists(
       ...(first.label ? { sourceLabel: first.label } : {}),
       ...(submitted.kept ? { keptMergedSources: true } : {}),
     };
-    const problem = listMergeProblem(input);
-    if (problem) throw new ConfigError(problem);
     normalized.push(input);
+  }
+  const problem = accountListsProblem(normalized);
+  if (problem) throw new ConfigError(problem.message);
+  for (const input of normalized) {
+    const mergeProblem = listMergeProblem(input);
+    if (mergeProblem) throw new ConfigError(mergeProblem);
   }
   return normalized;
 }

@@ -1,6 +1,9 @@
 import type { DisplayMode } from "@stremlist/shared/constants";
 import {
+  MAX_LISTS,
+  MAX_SOURCES_PER_ACCOUNT,
   MAX_SOURCES_PER_LIST,
+  accountListsProblem,
   allowedDisplayModes,
   connectionProviders,
   isSortAllowed,
@@ -49,6 +52,53 @@ function merged(
 function dated(id: string, addedAt?: string, description = ""): SourceMeta {
   return { ...movie(id, { description }), ...(addedAt ? { addedAt } : {}) };
 }
+
+describe("account List rules", () => {
+  const imdbList = (n: number): ListSource => ({
+    provider: "imdb",
+    sourceRef: `ls${n}`,
+  });
+
+  it("accepts Lists that keep every rule", () => {
+    expect(
+      accountListsProblem([WATCHLIST, merged(TRAKT, [TOP_MOVIES])]),
+    ).toBeNull();
+  });
+
+  it(`allows at most ${MAX_LISTS} Lists`, () => {
+    const lists = Array.from({ length: MAX_LISTS + 1 }, (_, i) =>
+      imdbList(i + 1),
+    );
+    expect(accountListsProblem(lists.slice(0, -1))).toBeNull();
+    expect(accountListsProblem(lists)).toEqual({
+      reason: "too_many_lists",
+      message: `You can have at most ${MAX_LISTS} lists.`,
+    });
+  });
+
+  it("puts each Source list in only one List", () => {
+    expect(
+      accountListsProblem([WATCHLIST, merged(TRAKT, [WATCHLIST])]),
+    ).toEqual({
+      reason: "duplicate_source",
+      message: "Each list can only be added once.",
+    });
+  });
+
+  it(`allows at most ${MAX_SOURCES_PER_ACCOUNT} Source lists in all`, () => {
+    const lists = Array.from({ length: 5 }, (_, i) =>
+      merged(
+        imdbList(i * 5 + 1),
+        [2, 3, 4, 5].map((n) => imdbList(i * 5 + n)),
+      ),
+    );
+    expect(accountListsProblem(lists.slice(0, 4))).toBeNull();
+    expect(accountListsProblem(lists)).toEqual({
+      reason: "too_many_sources",
+      message: `You can have at most ${MAX_SOURCES_PER_ACCOUNT} Source lists in all your Lists.`,
+    });
+  });
+});
 
 describe("merge rules", () => {
   it("accepts a List with one Source list whatever its sort", () => {

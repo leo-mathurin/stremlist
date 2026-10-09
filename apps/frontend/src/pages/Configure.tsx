@@ -2,7 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { ACCOUNT_KEY_PATTERN } from "@stremlist/shared/constants";
-import { connectionProviders, listSources } from "@stremlist/shared/list-merge";
+import {
+  MAX_LISTS,
+  connectionProviders,
+  listSources,
+} from "@stremlist/shared/list-merge";
 import { isProviderId, PROVIDERS } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
@@ -24,10 +28,7 @@ import SortableListRow from "../components/SortableListRow";
 import { SectionHeading, SplitLayout, Wordmark } from "../components/brand";
 import { usePendingIndicator } from "../hooks/usePendingIndicator";
 import { useSEO } from "../hooks/useSEO";
-import {
-  MAX_LISTS,
-  useAccountConfiguration,
-} from "../hooks/useAccountConfiguration";
+import { useAccountConfiguration } from "../hooks/useAccountConfiguration";
 import { sourceKeys } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { attentionTone } from "../lib/list-sync";

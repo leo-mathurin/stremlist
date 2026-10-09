@@ -8,10 +8,9 @@ import {
 import { toast } from "sonner";
 import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
 import {
-  MAX_SOURCES_PER_ACCOUNT,
+  accountListsProblem,
   listMergeProblem,
   listSourcesKey,
-  sourceKey,
 } from "@stremlist/shared/list-merge";
 import {
   CONNECTION_SOURCES,
@@ -27,7 +26,7 @@ import type {
   NewTitlesSummary,
 } from "@stremlist/shared/stremio.types";
 import { api } from "../lib/api";
-import { createListRow, rowTitle, sourceKeys } from "../lib/list-form";
+import { createListRow, rowTitle } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { buildAddonUrls } from "../lib/list-sources";
 import { mergeRows, removeRowSource, splitRowSource } from "../lib/merged-rows";
@@ -39,9 +38,6 @@ import {
 import type { KnownSourceGenres } from "../lib/reinstall-signature";
 import type { InstallBaseline } from "../lib/reinstall";
 import { useListSyncStatus } from "./useListSyncStatus";
-
-/** Same limit as the backend (`MAX_LISTS`). */
-export const MAX_LISTS = 10;
 
 /** "new" until the first save creates the Account. */
 export type AccountAccess = "new" | AddonAccess;
@@ -373,15 +369,11 @@ export function useAccountConfiguration(
       partial: Parameters<typeof createListRow>[0],
       current: ListFormRow[],
     ): string | null => {
-      if (current.length >= MAX_LISTS) {
-        return `You can have at most ${MAX_LISTS} lists.`;
-      }
-      const used = sourceKeys(current);
-      if (used.includes(sourceKey(partial))) {
-        return "This list is already in your Stremlist.";
-      }
-      if (used.length >= MAX_SOURCES_PER_ACCOUNT) {
-        return `You can have at most ${MAX_SOURCES_PER_ACCOUNT} Source lists in all your Lists.`;
+      const problem = accountListsProblem([...current, partial]);
+      if (problem) {
+        return problem.reason === "duplicate_source"
+          ? "This list is already in your Stremlist."
+          : problem.message;
       }
       setLists((rows) => [...rows, createListRow(partial)]);
       return null;
@@ -468,16 +460,8 @@ export function useAccountConfiguration(
   );
 
   const validationError = (() => {
-    if (lists.length > MAX_LISTS) {
-      return `You can have at most ${MAX_LISTS} lists.`;
-    }
-    const keys = sourceKeys(lists);
-    if (new Set(keys).size !== keys.length) {
-      return "Each list can only be added once.";
-    }
-    if (keys.length > MAX_SOURCES_PER_ACCOUNT) {
-      return `You can have at most ${MAX_SOURCES_PER_ACCOUNT} Source lists in all your Lists.`;
-    }
+    const problem = accountListsProblem(lists);
+    if (problem) return problem.message;
     for (const list of lists) {
       const problem = listMergeProblem(list);
       if (problem) return `${rowTitle(list)}: ${problem}`;
