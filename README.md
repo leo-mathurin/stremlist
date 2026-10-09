@@ -62,18 +62,10 @@ This repository follows the Turborepo recommended structure:
 ## Deployment Architecture
 
 - Frontend and backend are deployed on [Vercel](https://vercel.com)
-  <<<<<<< ours
 - Backend serves Stremio addon endpoints and configuration flow, on the Vercel
   Bun runtime (`bunVersion` in `apps/backend/vercel.json`)
 - Supabase stores Accounts, Lists, encrypted Connections (OAuth tokens) and the Title ID cache
 - Cloudflare R2 stores gzip-compressed List cache objects and Action membership snapshots
-  \=======
-- Backend serves Stremio addon endpoints and configuration flow, on the Vercel
-  Bun runtime (`bunVersion` in `apps/backend/vercel.json`)
-- Supabase stores user configuration
-- Cloudflare R2 stores gzip-compressed watchlist cache objects
-
-> > > > > > > theirs
 
 ## Getting Started
 
