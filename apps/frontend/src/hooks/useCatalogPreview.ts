@@ -22,8 +22,8 @@ const SETTINGS_DEBOUNCE_MS = 300;
  * the current preview on screen (marked `updating`) until the new one comes;
  * a change of Source list starts again from the loading state.
  * `connectionKey` changes when the Account's Connection to the Provider
- * changes (connected, disconnected, connected again), so the preview is read
- * again. It is not sent.
+ * changes (connected, disconnected, connected again, marked for renewal or
+ * working again), so the preview is read again. It is not sent.
  */
 export function useCatalogPreview({
   list,

@@ -184,8 +184,9 @@ export default function Configure() {
     const connection = config.connections.find(
       (entry) => entry.provider === provider,
     );
+    // A renewal mark that comes or goes changes what the preview can read.
     return connection
-      ? `${connection.connectedAt}:${connection.username ?? ""}`
+      ? `${connection.connectedAt}:${connection.username ?? ""}:${connection.needsRenewalSince ?? ""}`
       : "";
   };
   const affectedLists: Partial<Record<ProviderId, number>> = {};

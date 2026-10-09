@@ -16,11 +16,14 @@ import {
   fitConfigurePage,
   imdbUser,
   legacyConfiguration,
+  parseBody,
+  previewOf,
   row,
   saveButton,
   syncedStatus,
   toJson,
 } from "./config-fixture";
+import type { PreviewRequest } from "./config-fixture";
 
 // The sync status of each List (STR-58): what each row says about its last
 // refresh, and the Connections that need to be renewed. The API is
@@ -719,4 +722,73 @@ test("a saved List whose chart changes is not saved yet, and is polled only afte
     id: ids.chart,
     sourceRef: "imdb:top-rated-tv",
   });
+});
+
+test("an open preview is read again when a refresh finds its Connection refused", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  // The Trakt Watchlist was just saved: the page polls for its first refresh.
+  await captureConfig(browser, {
+    ...configuration,
+    lists: [row, traktWatchlist],
+    connections: [traktConnection],
+  });
+  await routeTraktSources(browser);
+  const previews: PreviewRequest[] = [];
+  let refused = false;
+  await browser.route(`${backend}/lists/preview`, async (route) => {
+    const request = parseBody<PreviewRequest>(route);
+    previews.push(request);
+    await route.fulfill({
+      json: toJson(
+        refused
+          ? { ok: false, reason: "needs_connection" }
+          : previewOf(request),
+      ),
+    });
+  });
+  const polls = await routeSyncStatus(browser, () => {
+    refused = true;
+    return {
+      syncStatus: {
+        ...configuration.syncStatus,
+        [ids.trakt]: {
+          sourceRef: "me/watchlist",
+          lastAttemptAt: ago(0),
+          lastSuccessAt: null,
+          titleCount: null,
+          problem: "needs_connection",
+          failingSince: ago(0),
+        },
+      },
+      connections: [{ ...traktConnection, needsRenewalSince: ago(0) }],
+    };
+  });
+  await app.open(`/configure?account=${accountId}`);
+  await expect(
+    screen.getByText("Not refreshed yet", { exact: true }),
+  ).toBeVisible();
+  await screen.getByRole("button", "Preview Trakt Watchlist").tap();
+  await expect(screen.getByText("The Godfather")).toBeVisible();
+
+  await expect(
+    screen.getByText("Connection needs to be renewed", { exact: true }),
+  ).toBeVisible({ timeout: 15_000 });
+  // The preview does not keep Titles that the refused Connection cannot read.
+  await expect(
+    screen.getByText(
+      "This watchlist needs your Trakt account. Connect Trakt on the Stremlist configure page.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(screen.getByText("The Godfather")).toBeHidden();
+  expect(previews).toHaveLength(2);
+  expect(previews[1]).toMatchObject({
+    accountKey: accountId,
+    provider: "trakt",
+    sourceRef: "me/watchlist",
+  });
+  expect(polls.length).toBeGreaterThan(0);
 });
