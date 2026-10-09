@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { FRONTEND_URL } from "../env.js";
 import { getConfig, getSyncStatus, refresh } from "../helpers/api.js";
 import { CATALOG_TITLES } from "../helpers/catalog-fixture.js";
+import { saveButton } from "../helpers/configure.js";
 import {
   clearRefreshCooldown,
   getConnectionRow,
@@ -274,7 +275,7 @@ test(
     await expect(
       page.getByText("Not saved yet", { exact: true }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await saveButton(page).click();
 
     // The save prewarms the new List against live IMDb; the page polls.
     const updated = page.getByText(/^Updated .+ · 250 titles$/);
