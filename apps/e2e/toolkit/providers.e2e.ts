@@ -24,6 +24,7 @@ import {
   saveButton,
   SAVE_NEW,
   holdToasts,
+  fitConfigurePage,
 } from "./config-fixture";
 
 // Provider journeys of the configure page: links of every available Provider
@@ -185,6 +186,7 @@ test(
   { tags: ["agent"] },
   async ({ app, agent, browser, screen }) => {
     await holdToasts(browser);
+    await fitConfigurePage(browser);
     const submissions = await captureConfig(browser);
     await app.open(`/configure?account=${accountId}`);
     await agent.act("Add the Trakt Trending chart to my Lists, then save.", {
@@ -330,6 +332,7 @@ test(
   { tags: ["agent"] },
   async ({ app, agent, browser, screen }) => {
     await holdToasts(browser);
+    await fitConfigurePage(browser);
     await baseRoutes(
       browser,
       providerStatus({
@@ -467,6 +470,7 @@ test(
   "a Legacy alias install upgrades to a private Addon URL",
   { tags: ["agent"] },
   async ({ app, agent, browser, screen }) => {
+    await fitConfigurePage(browser);
     await captureConfig(browser, legacyConfiguration, imdbUser);
     const newId = "sl_E2eFixtureAccount00003";
     const upgrades: string[] = [];

@@ -59,6 +59,22 @@ export async function holdToasts(browser: Browser) {
   });
 }
 
+/**
+ * Makes the viewport taller than the configure page, also with the filters,
+ * a Select or a Catalog preview open, so the page cannot scroll. The Save
+ * button at the top then stays in view and the floating Save button, which
+ * has the same name, stays hidden and inert. Without it, the end state of an
+ * AI goal depends on the scroll position, which differs between machines: a
+ * recording run that scrolled the top button away saw the floating button
+ * (an end anchor and a second "Save"), and the replay in CI, which did not
+ * scroll, did not find it (REPLAY_STALE, end-mismatch). The tallest page of
+ * the toolkit ends about 2200px down on macOS; the extra height covers
+ * fonts that wrap more lines on Linux.
+ */
+export async function fitConfigurePage(browser: Browser) {
+  await browser.setViewport({ width: 1280, height: 3200 });
+}
+
 export const row = {
   id: "00000000-0000-4000-8000-000000000001",
   provider: "imdb",

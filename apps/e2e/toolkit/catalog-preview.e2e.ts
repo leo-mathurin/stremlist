@@ -14,6 +14,7 @@ import {
   captureConfig,
   configuration,
   holdToasts,
+  fitConfigurePage,
   imdbUser,
   legacyConfiguration,
   parseBody,
@@ -531,6 +532,7 @@ test(
   { tags: ["agent"] },
   async ({ app, agent, browser, screen }) => {
     await holdToasts(browser);
+    await fitConfigurePage(browser);
     const submissions = await captureConfig(browser);
     const requests = await routePreview(browser, (request) =>
       previewOf(request),

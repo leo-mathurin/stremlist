@@ -5,6 +5,7 @@ import {
   backend,
   baseRoutes,
   configuration,
+  fitConfigurePage,
   holdToasts,
   row,
   secondAccountId,
@@ -14,6 +15,7 @@ test(
   "returning home and opening another Addon URL replaces the previous form",
   { tags: ["agent", "new-journeys"] },
   async ({ app, agent, browser, screen }) => {
+    await fitConfigurePage(browser);
     await baseRoutes(browser);
     await browser.route(`${backend}/${accountId}/config`, async (route) => {
       await route.fulfill({ json: configuration });

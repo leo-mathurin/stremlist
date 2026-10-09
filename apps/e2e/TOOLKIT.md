@@ -141,6 +141,12 @@ and accessible name and checks the start and end routes and some controls
 that must be present or absent. Renaming a button, a link or a label that a
 recording uses makes it `REPLAY_STALE` under `--strict-cache`.
 
+The end state must not depend on the scroll position, which differs between
+machines. A test whose AI goal acts on or ends on the configure page calls
+`fitConfigurePage` before it opens the page: the page then cannot scroll, so
+the floating Save button stays hidden and "Save" names one button. A goal
+that checks a toast calls `holdToasts`.
+
 Write goals with unique accessible names, not positions ("the second button")
 or data that changes. Put the re-recorded cache file in the same commit as the
 test, goal or UI change that needed it, and delete the files of goals that no

@@ -20,6 +20,7 @@ import {
   saveButton,
   SAVE_NEW,
   holdToasts,
+  fitConfigurePage,
 } from "./config-fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
@@ -132,6 +133,7 @@ test(
   { tags: ["agent", "new-journeys"] },
   async ({ app, agent, browser, screen }) => {
     await holdToasts(browser);
+    await fitConfigurePage(browser);
     const submissions = await captureConfig(browser, {
       ...configuration,
       lists: [],
@@ -250,6 +252,8 @@ test(
   "a saved genre missing from refreshed choices can still be cleared",
   { tags: ["agent", "new-journeys"] },
   async ({ app, agent, browser, screen }) => {
+    await holdToasts(browser);
+    await fitConfigurePage(browser);
     const submissions = await captureConfig(browser, {
       ...configuration,
       lists: [

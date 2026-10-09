@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-08T18:41:02.595Z",
+  "createdAt": "2026-10-08T19:42:54.234Z",
   "payload": {
     "actions": [
       {
@@ -21,14 +21,10 @@
       },
       {
         "name": "tap",
-        "summary": "tap button \"Save\" (2 of 2)",
+        "summary": "tap button \"Save\"",
         "target": {
           "role": "button",
-          "name": "Save",
-          "position": {
-            "index": 1,
-            "of": 2
-          }
+          "name": "Save"
         }
       }
     ],
@@ -44,7 +40,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Saved the configuration. Genre now shows All genres, Top rated remains checked, and the app confirmed: “Saved! Your catalogs will refresh with the new settings.”",
+    "summary": "Selected All genres while Top rated remained checked, then saved. The Genre field shows All genres and the app confirmed: “Saved! Your catalogs will refresh with the new settings.”",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
@@ -53,9 +49,6 @@
       },
       {
         "text": "All genres"
-      },
-      {
-        "text": "Save"
       },
       {
         "role": "button",
@@ -98,6 +91,6 @@
         ]
       }
     ],
-    "endWaitMs": 12018
+    "endWaitMs": 12176
   }
 }
