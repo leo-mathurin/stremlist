@@ -73,6 +73,8 @@ function connection(username: string | null = "leo"): ConnectionAccess {
     provider: "mdblist",
     username,
     getAccessToken: () => Promise.resolve("user-token"),
+    reportRefused: () => Promise.resolve(),
+    reportWorking: () => Promise.resolve(),
   };
 }
 
@@ -340,6 +342,8 @@ describe("mdblistProvider.fetchSource", () => {
       provider: "mdblist",
       username: "leo",
       getAccessToken: () => Promise.reject(expired),
+      reportRefused: () => Promise.resolve(),
+      reportWorking: () => Promise.resolve(),
     };
     await expect(
       mdblistProvider.fetchSource("me/watchlist", { connection: access }),

@@ -5,6 +5,8 @@ import {
   backend,
   baseRoutes,
   configuration,
+  fitConfigurePage,
+  holdToasts,
   row,
   secondAccountId,
 } from "./config-fixture";
@@ -13,6 +15,7 @@ test(
   "returning home and opening another Addon URL replaces the previous form",
   { tags: ["agent", "new-journeys"] },
   async ({ app, agent, browser, screen }) => {
+    await fitConfigurePage(browser);
     await baseRoutes(browser);
     await browser.route(`${backend}/${accountId}/config`, async (route) => {
       await route.fulfill({ json: configuration });
@@ -66,6 +69,7 @@ test(
   "newsletter retry keeps the email and accepts already-subscribed confirmation",
   { tags: ["agent", "new-journeys"] },
   async ({ app, agent, browser, screen }) => {
+    await holdToasts(browser);
     let attempts = 0;
     await browser.route(`${backend}/newsletter/subscribe`, async (route) => {
       expect(JSON.parse(route.request.postData ?? "{}")).toEqual({

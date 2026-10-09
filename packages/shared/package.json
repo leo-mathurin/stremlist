@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "type": "module",
   "exports": {
+    "./catalog-preview": "./src/catalog-preview.ts",
     "./catalog-settings": "./src/catalog-settings.ts",
     "./constants": "./src/constants.ts",
     "./database.types": "./src/database.types.ts",
@@ -10,7 +11,8 @@
     "./list-merge": "./src/list-merge.ts",
     "./providers": "./src/providers.ts",
     "./source-problems": "./src/source-problems.ts",
-    "./stremio.types": "./src/stremio.types.ts"
+    "./stremio.types": "./src/stremio.types.ts",
+    "./sync-status": "./src/sync-status.ts"
   },
   "scripts": {
     "lint": "eslint .",

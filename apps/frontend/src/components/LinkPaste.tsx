@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { toast } from "sonner";
 import { ExternalLink, Loader2, Plug } from "lucide-react";
 import {
   joinProviderLabels,
@@ -195,9 +196,7 @@ export default function LinkPaste({
         setValue("");
       }
     } catch {
-      setProblem({
-        message: "Could not check this link. Please try again in a moment.",
-      });
+      toast.error("Could not check this link. Please try again in a moment.");
     } finally {
       setResolving(false);
     }

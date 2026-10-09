@@ -23,3 +23,31 @@ export function requiresReinstall(
       current.actionsLive !== baseline.actionsLive)
   );
 }
+
+/**
+ * - "required": the saved setup changed what Stremio read at install time.
+ * - "after-save": unsaved edits will need a reinstall once saved.
+ * - "none": Stremio is up to date, or the edits apply without a reinstall.
+ */
+export type ReinstallState = "none" | "after-save" | "required";
+
+export function reinstallState(
+  installed: InstallBaseline,
+  saved: InstallBaseline,
+  current: { signature: string; actionsLive: boolean },
+): ReinstallState {
+  if (
+    saved.signature !== null &&
+    saved.actionsLive !== null &&
+    requiresReinstall(installed, {
+      signature: saved.signature,
+      actionsLive: saved.actionsLive,
+    })
+  ) {
+    return "required";
+  }
+  return requiresReinstall(installed, current) &&
+    requiresReinstall(saved, current)
+    ? "after-save"
+    : "none";
+}

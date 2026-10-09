@@ -19,3 +19,5 @@ Each Source list of a merged List keeps its own cached Catalog, under a key made
 - `sourceHasAddedDates` must match what the adapters set; a new Provider or Source list kind updates both.
 - A save deletes the caches that it leaves unused (removed Source lists, a List that became merged or changed its Source list).
 - A client that omits a List's merged Source lists keeps the saved ones. The API checks the rules against them, and the transaction refuses the save (409) when another save changed them in between, so a stale client cannot undo a merge.
+- Each Source list records its own sync status under the List ([ADR 0005](0005-sync-status-recorded-per-list.md)). The cache key is only where its Catalog is kept.
+- The Catalog preview ([ADR 0004](0004-previews-read-live-and-cache-nothing.md)) reads every Source list and merges them with the same rules. A Source list that cannot be read is left out and named, as the Catalog leaves it out.

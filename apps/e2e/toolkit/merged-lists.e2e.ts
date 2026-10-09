@@ -1,6 +1,9 @@
 import { test } from "@e2e-dev/web";
+import type { Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
 import type { Screen } from "e2e";
+import type { CatalogPreviewResponse } from "@stremlist/shared/catalog-preview";
+import type { ListSyncStatus } from "@stremlist/shared/sync-status";
 import type {
   AccountConfigInput,
   AccountConfigResponse,
@@ -13,14 +16,21 @@ import {
   baseRoutes,
   captureConfig,
   configuration,
+  connected,
+  fitConfigurePage,
+  holdToasts,
   imdbUser,
   parseBody,
+  previewOf,
   resolved,
   routeResolve,
   row,
+  saveButton,
   savedLists,
+  syncedStatus,
   toJson,
 } from "./config-fixture";
+import type { PreviewRequest } from "./config-fixture";
 
 // Merged Lists (STR-59, ADR 0006): one List, several Source lists, one
 // Catalog. The intercepted API proves UI state and the exact save payload;
@@ -34,6 +44,7 @@ const NO_DATES =
   "Date added sorting is off: Top 250 Movies does not give the date when each Title was added.";
 const ONE_TYPE = 'Top 250 Movies has only movies, so "TV shows only" is off.';
 const SOURCE_LIMIT = "You can have at most 20 Source lists in all your Lists.";
+const NEEDS_REINSTALL = "These changes need a reinstall.";
 const CHANGED_ELSEWHERE =
   "Your Lists changed in another window. Reload the page and try again.";
 
@@ -97,6 +108,8 @@ test(
       browser,
       withLists([watchlist, favourites, top250, trending]),
     );
+    await fitConfigurePage(browser);
+    await holdToasts(browser);
     await app.open(`/configure?account=${accountId}`);
     await expect(screen.getByText("Favourite films")).toBeVisible();
     await agent.act(
@@ -196,7 +209,7 @@ test("merging a chart turns off Date added and TV shows only, with the reasons",
   );
   await browser.keyboard.press("Escape");
 
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(sources(submissions[0])).toEqual([
     {
@@ -265,7 +278,7 @@ test("a Source list moves to its own List or leaves the merged List", async ({
   await expect(screen.getByText("1 of 5").first()).toBeVisible();
   await expect(screen.getByText(/^IMDb · Watchlist/).first()).toBeVisible();
 
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(sources(submissions[0])).toEqual([
     {
@@ -387,7 +400,7 @@ test("a merged Source list keeps its name when it moves to the first place", asy
   await expect(
     screen.getByRole("button", "Move Family picks to its own List"),
   ).toBeVisible();
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(submissions[0].lists).toMatchObject([
     {
@@ -575,7 +588,7 @@ test("a movie chart and a TV chart in one List show both, with the reasons", asy
   }
   await screen.getByRole("option", "Movies & TV shows").tap();
 
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(sources(submissions[0])[0]).toEqual({
     id: top250.id,
@@ -616,12 +629,16 @@ test("a merged Source list without its Connection says so and offers to connect"
     ),
   ).toBeVisible();
   await expect(
-    screen.getByRole("button", "Connect again", { exact: true }),
+    screen.getByRole("button", "Connect again for IMDb Watchlist"),
   ).toBeVisible();
-  await openSettings(screen, "IMDb Watchlist");
-  // Only the Trakt Source list has the badge.
+  // The List's sync line, and the badge of the Trakt Source list only (the
+  // closed settings stay in the page).
   await expect(screen.getByText("Not connected", { exact: true })).toHaveCount(
-    1,
+    2,
+  );
+  await openSettings(screen, "IMDb Watchlist");
+  await expect(screen.getByText("Not connected", { exact: true })).toHaveCount(
+    2,
   );
 
   // Without the Trakt Source list, the List needs no Connection.
@@ -664,15 +681,201 @@ test("a save refused because the Lists changed in another window keeps the merge
   await openSettings(screen, "IMDb Watchlist");
   await screen.getByRole("button", MERGE).first().tap();
   await screen.getByRole("menuitem", "Favourite films").tap();
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText(CHANGED_ELSEWHERE)).toBeVisible();
   await expect(screen.getByText("2 Source lists · IMDb")).toBeVisible();
 
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(submissions).toHaveLength(2);
   expect(submissions[1]).toEqual(submissions[0]);
   expect(submissions[1].lists[0].mergedSources).toEqual([
     { provider: "imdb", sourceRef: "ls99123456", label: "Favourite films" },
   ]);
+});
+
+// How merged Lists work with the Catalog preview (STR-57), the sync status
+// (STR-58) and the reinstall notice.
+
+const MINUTE = 60_000;
+const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+/** Answer `POST /lists/preview` with `answer(request)`; returns the requests. */
+async function routePreview(
+  browser: Browser,
+  answer: (request: PreviewRequest) => CatalogPreviewResponse,
+) {
+  const requests: PreviewRequest[] = [];
+  await browser.route(`${backend}/lists/preview`, async (route) => {
+    const request = parseBody<PreviewRequest>(route);
+    requests.push(request);
+    await route.fulfill({ json: toJson(answer(request)) });
+  });
+  return requests;
+}
+
+test("a merged List previews all its Source lists and names the one it cannot read", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  const merged = {
+    ...watchlist,
+    sortOption: "title-asc",
+    mergedSources: [
+      { provider: "imdb", sourceRef: "ls99123456", label: "Favourite films" },
+    ],
+  } satisfies ConfigList;
+  await captureConfig(browser, withLists([merged]));
+  const requests = await routePreview(browser, (request) =>
+    previewOf(request, {
+      sourceProblems: request.mergedSources
+        ? [{ provider: "imdb", sourceRef: "ls99123456", reason: "private" }]
+        : undefined,
+    }),
+  );
+  await fitConfigurePage(browser);
+  await app.open(`/configure?account=${accountId}`);
+
+  await screen.getByRole("button", "Preview IMDb Watchlist").tap();
+  await expect(
+    screen.getByText(
+      "This IMDb list is private. Make your list public in your IMDb account settings. Its titles are not in this catalog.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(screen.getByText("The Godfather")).toBeVisible();
+  // The labels name Source lists on the configure page only.
+  expect(requests).toEqual([
+    {
+      accountKey: accountId,
+      provider: "imdb",
+      sourceRef: imdbUser,
+      mergedSources: [{ provider: "imdb", sourceRef: "ls99123456" }],
+      sortOption: "title-asc",
+      displayMode: "split",
+      catalogSettings: {},
+    },
+  ]);
+
+  // Without the private Source list, the preview reads the other one only.
+  await openSettings(screen, "IMDb Watchlist");
+  await screen
+    .getByRole("button", "Remove Favourite films from this List")
+    .tap();
+  await expect(
+    screen.getByText(
+      "This IMDb list is private. Make your list public in your IMDb account settings. Its titles are not in this catalog.",
+      { exact: true },
+    ),
+  ).toBeHidden();
+  expect(requests).toHaveLength(2);
+  expect(requests[1].mergedSources).toBeUndefined();
+  // A preview is no catalog change.
+  await expect(screen.getByText(NEEDS_REINSTALL, { exact: true })).toBeHidden();
+});
+
+test("a merged List shows the problem of one Source list and connects its Provider again", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  const merged = {
+    ...watchlist,
+    sortOption: "title-asc",
+    mergedSources: [
+      { provider: "trakt", sourceRef: "me/watchlist", label: "My Trakt picks" },
+    ],
+  } satisfies ConfigList;
+  const refused: ListSyncStatus = {
+    provider: "trakt",
+    sourceRef: "me/watchlist",
+    lastAttemptAt: ago(MINUTE),
+    lastSuccessAt: null,
+    titleCount: null,
+    problem: "needs_connection",
+    failingSince: ago(MINUTE),
+  };
+  await captureConfig(browser, {
+    ...withLists([merged]),
+    syncStatus: {
+      [merged.id]: { ...syncedStatus(imdbUser), provider: "imdb" },
+    },
+    sourceSyncStatus: { [merged.id]: [refused] },
+    connections: [{ ...connected("trakt"), needsRenewalSince: ago(MINUTE) }],
+  });
+  await browser.route(
+    `${backend}/${accountId}/connections/trakt/sources`,
+    async (route) => {
+      await route.fulfill({ json: { sources: [] } });
+    },
+  );
+  const starts: string[] = [];
+  await browser.route(
+    `${backend}/${accountId}/connections/trakt/start`,
+    async (route) => {
+      starts.push(route.request.method);
+      await route.fulfill({
+        json: { ok: true, authorizeUrl: `${backend}/authorize-fixture` },
+      });
+    },
+  );
+  await browser.route(`${backend}/authorize-fixture`, async (route) => {
+    await route.fulfill({
+      contentType: "text/html",
+      body: "<h1>Trakt authorization fixture</h1>",
+    });
+  });
+  await fitConfigurePage(browser);
+  await app.open(`/configure?account=${accountId}`);
+
+  await expect(
+    screen.getByText("Connection needs to be renewed", { exact: true }),
+  ).toBeVisible();
+  // The IMDb Source list still shows: only the Trakt one is left out.
+  await expect(
+    screen.getByText(
+      "Trakt refused the Stremlist Connection, so its Source list does not show in this catalog. Connect Trakt again to renew it.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await screen.getByRole("button", "Connect again for IMDb Watchlist").tap();
+  await expect(
+    screen.getByRole("heading", "Trakt authorization fixture"),
+  ).toBeVisible();
+  expect(starts).toEqual(["POST"]);
+});
+
+test("a merged List is up to date as of its oldest refresh", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  const merged = {
+    ...watchlist,
+    sortOption: "title-asc",
+    mergedSources: [
+      { provider: "imdb", sourceRef: "ls99123456", label: "Favourite films" },
+    ],
+  } satisfies ConfigList;
+  await captureConfig(browser, {
+    ...withLists([merged]),
+    syncStatus: {
+      [merged.id]: syncedStatus(imdbUser, 12, ago(5 * MINUTE)),
+    },
+    sourceSyncStatus: {
+      [merged.id]: [
+        {
+          ...syncedStatus("ls99123456", 30, ago(120 * MINUTE)),
+          provider: "imdb",
+        },
+      ],
+    },
+  });
+  await app.open(`/configure?account=${accountId}`);
+
+  // A Title in both Source lists shows once, so no count is given.
+  await expect(
+    screen.getByText("Updated 2 hours ago", { exact: true }),
+  ).toBeVisible();
 });

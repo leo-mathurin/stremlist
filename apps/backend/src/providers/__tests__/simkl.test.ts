@@ -329,6 +329,8 @@ const connection: ConnectionAccess = {
   provider: "simkl",
   username: "leo",
   getAccessToken: () => Promise.resolve("simkl_at_test"),
+  reportRefused: () => Promise.resolve(),
+  reportWorking: () => Promise.resolve(),
 };
 
 function ctx() {

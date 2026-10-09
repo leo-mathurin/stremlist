@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-07T07:07:47.521Z",
+  "createdAt": "2026-10-09T16:05:42.249Z",
   "payload": {
     "actions": [
       {
@@ -48,13 +48,27 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Merged Favourite films into the IMDb Watchlist catalog: it now shows 2 Source lists, including IMDb Watchlist and Favourite films. Saved successfully; the screen confirmed “Saved!”.",
+    "summary": "The IMDb Watchlist settings show 2 source lists, including both IMDb Watchlist and Favourite films, and the Saved! toast confirms the merge was saved.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions."
+        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. I did it Reinstall"
+      },
+      {
+        "text": "Reinstall Stremlist in Stremio"
+      },
+      {
+        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
+      },
+      {
+        "role": "button",
+        "name": "I did it"
+      },
+      {
+        "role": "link",
+        "name": "Reinstall"
       },
       {
         "text": "2 Source lists · IMDb"
@@ -67,18 +81,6 @@
         "name": "Catalog title",
         "placeholder": "IMDb Watchlist",
         "value": "IMDb Watchlist"
-      },
-      {
-        "text": "Show"
-      },
-      {
-        "text": "Movies & TV shows"
-      },
-      {
-        "text": "Source lists"
-      },
-      {
-        "text": "2 of 5"
       }
     ],
     "goneAnchors": [
@@ -88,6 +90,10 @@
       },
       {
         "text": "IMDb Rating (Highest First)"
+      },
+      {
+        "role": "button",
+        "name": "Preview Favourite films"
       },
       {
         "role": "button",
@@ -106,12 +112,8 @@
       {
         "role": "button",
         "name": "Settings for IMDb Watchlist"
-      },
-      {
-        "role": "button",
-        "name": "Settings for Favourite films"
       }
     ],
-    "endWaitMs": 15395
+    "endWaitMs": 28003
   }
 }

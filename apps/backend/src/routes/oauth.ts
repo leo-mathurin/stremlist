@@ -1,8 +1,10 @@
 import { isProviderId } from "@stremlist/shared/providers";
 import { Hono } from "hono";
+import { scheduleBackgroundTask } from "../lib/background";
 import { frontendUrl } from "../lib/urls";
 import { getProvider } from "../providers/registry";
 import { saveConnection } from "../services/connections";
+import { rereadConnectionLists } from "../services/lists";
 import { consumeState, exchangeCode, redirectUri } from "../services/oauth";
 
 const oauth = new Hono();
@@ -64,6 +66,11 @@ oauth.get("/oauth/:provider/callback", async (c) => {
       tokens,
       username,
       redirect,
+    );
+    // Lists that failed without the Connection (or with the refused one)
+    // read through the new one now.
+    scheduleBackgroundTask(() =>
+      rereadConnectionLists(pending.accountId, provider),
     );
     return back(pending.accountId, { connected: provider });
   } catch (exchangeError) {

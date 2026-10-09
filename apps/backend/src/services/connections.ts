@@ -23,6 +23,12 @@ interface StoredConnection {
   provider: ProviderId;
   username: string | null;
   accessToken: string;
+  /**
+   * The stored ciphertext of the access token. It changes with every new
+   * authorization and token refresh, so renewal marks written with it only
+   * apply to the tokens that the request used.
+   */
+  sealedToken: string;
   refreshToken: string | null;
   expiresAt: Date | null;
   redirectUri: string;
@@ -38,6 +44,7 @@ interface ConnectionRow {
   expires_at: string | null;
   redirect_uri: string;
   created_at: string;
+  needs_renewal_since: string | null;
 }
 
 function decode(row: ConnectionRow): StoredConnection | null {
@@ -48,6 +55,7 @@ function decode(row: ConnectionRow): StoredConnection | null {
       provider: row.provider,
       username: row.provider_username,
       accessToken: decryptSecret(row.access_token),
+      sealedToken: row.access_token,
       refreshToken: row.refresh_token ? decryptSecret(row.refresh_token) : null,
       expiresAt: row.expires_at ? new Date(row.expires_at) : null,
       redirectUri: row.redirect_uri,
@@ -81,7 +89,7 @@ export async function listConnections(
 ): Promise<ConnectionSummary[]> {
   const { data, error } = await supabase
     .from("connections")
-    .select("provider, provider_username, created_at")
+    .select("provider, provider_username, created_at, needs_renewal_since")
     .eq("account_id", accountId);
   if (error) {
     console.error(`Failed to list connections of ${accountId}:`, error.message);
@@ -90,7 +98,7 @@ export async function listConnections(
   return (
     data as Pick<
       ConnectionRow,
-      "provider" | "provider_username" | "created_at"
+      "provider" | "provider_username" | "created_at" | "needs_renewal_since"
     >[]
   )
     .filter((row) => isProviderId(row.provider))
@@ -98,6 +106,7 @@ export async function listConnections(
       provider: row.provider as ProviderId,
       username: row.provider_username,
       connectedAt: row.created_at,
+      needsRenewalSince: row.needs_renewal_since,
     }));
 }
 
@@ -120,6 +129,8 @@ export async function saveConnection(
         : null,
       expires_at: tokens.expiresAt?.toISOString() ?? null,
       scope: tokens.scope,
+      // A new authorization replaces a refused one.
+      needs_renewal_since: null,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "account_id,provider" },
@@ -131,21 +142,53 @@ async function updateTokens(
   accountId: string,
   provider: ProviderId,
   tokens: OAuthTokens,
-): Promise<void> {
+): Promise<string> {
+  const sealedToken = encryptSecret(tokens.accessToken);
   const { error } = await supabase
     .from("connections")
     .update({
-      access_token: encryptSecret(tokens.accessToken),
+      access_token: sealedToken,
       // Keep the old refresh token when the Provider does not rotate it.
       ...(tokens.refreshToken
         ? { refresh_token: encryptSecret(tokens.refreshToken) }
         : {}),
       expires_at: tokens.expiresAt?.toISOString() ?? null,
+      // The Provider accepted the refresh token, so the grant still works.
+      needs_renewal_since: null,
       updated_at: new Date().toISOString(),
     })
     .eq("account_id", accountId)
     .eq("provider", provider);
   if (error) throw error;
+  return sealedToken;
+}
+
+/**
+ * Mark these tokens as refused by the Provider (revoked grant, refused
+ * refresh), so the configure page asks the user to connect again, or clear
+ * the mark after a read with them worked. Marking keeps the first time it
+ * happened. Tokens replaced since (a new authorization, a refresh by another
+ * request) are left alone. Never throws.
+ */
+async function setNeedsRenewal(
+  connection: StoredConnection,
+  refused: boolean,
+): Promise<void> {
+  const query = supabase
+    .from("connections")
+    .update({ needs_renewal_since: refused ? new Date().toISOString() : null })
+    .eq("account_id", connection.accountId)
+    .eq("provider", connection.provider)
+    .eq("access_token", connection.sealedToken);
+  const { error } = await (refused
+    ? query.is("needs_renewal_since", null)
+    : query.not("needs_renewal_since", "is", null));
+  if (error) {
+    console.error(
+      `Failed to ${refused ? "mark" : "clear"} the renewal of the ${connection.provider} connection of ${connection.accountId}:`,
+      error.message,
+    );
+  }
 }
 
 export async function deleteConnection(
@@ -213,7 +256,10 @@ async function refreshUnderLease(
       // Another process may have refreshed between our read and the claim.
       const latest = (await readConnection(accountId, provider)) ?? connection;
       if (isFresh(latest)) return latest;
-      if (!latest.refreshToken) throw new ConnectionExpiredError(provider);
+      if (!latest.refreshToken) {
+        await setNeedsRenewal(latest, true);
+        throw new ConnectionExpiredError(provider);
+      }
       let tokens: OAuthTokens;
       try {
         tokens = await refreshTokens(
@@ -226,12 +272,14 @@ async function refreshUnderLease(
           `Refreshing the ${provider} connection of ${accountId} failed:`,
           refreshError instanceof Error ? refreshError.message : refreshError,
         );
+        await setNeedsRenewal(latest, true);
         throw new ConnectionExpiredError(provider);
       }
-      await updateTokens(accountId, provider, tokens);
+      const sealedToken = await updateTokens(accountId, provider, tokens);
       return {
         ...latest,
         accessToken: tokens.accessToken,
+        sealedToken,
         refreshToken: tokens.refreshToken ?? latest.refreshToken,
         expiresAt: tokens.expiresAt,
       };
@@ -250,6 +298,7 @@ async function refreshUnderLease(
     if (latest && isFresh(latest)) return latest;
   }
   if (isUsable(connection)) return connection;
+  await setNeedsRenewal(connection, true);
   throw new ConnectionExpiredError(provider);
 }
 
@@ -261,16 +310,18 @@ export async function getConnectionAccess(
   accountId: string,
   provider: ProviderId,
 ): Promise<ConnectionAccess | null> {
-  let current = await readConnection(accountId, provider);
-  if (!current) return null;
+  const stored = await readConnection(accountId, provider);
+  if (!stored) return null;
+  let current = stored;
   return {
     accountId,
     provider,
     username: current.username,
     async getAccessToken() {
-      if (!current) throw new ConnectionExpiredError(provider);
       if (!isFresh(current)) current = await refreshUnderLease(current);
       return current.accessToken;
     },
+    reportRefused: () => setNeedsRenewal(current, true),
+    reportWorking: () => setNeedsRenewal(current, false),
   };
 }

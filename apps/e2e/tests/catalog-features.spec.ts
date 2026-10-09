@@ -16,6 +16,7 @@ import {
   uninstallAddon,
 } from "../helpers/stremio.js";
 import { CATALOG_FIXTURE_USER } from "../helpers/test-data.js";
+import { saveButton, SAVED_REINSTALL } from "../helpers/configure.js";
 
 const MATCHES = ["QA Été & café + cinéma", "QA Autumn Drama"];
 
@@ -34,7 +35,7 @@ async function save(page: Page) {
   const response = page.waitForResponse(
     (res) => res.url().endsWith("/config") && res.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await saveButton(page).click();
   expect((await response).status()).toBe(200);
   await expect(page.getByText("Saved!", { exact: false })).toBeVisible();
 }
@@ -278,11 +279,7 @@ test(
       await page.getByRole("checkbox", { name, exact: true }).check();
     }
     await save(page);
-    await expect(
-      page.getByText(
-        "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions.",
-      ),
-    ).toBeVisible();
+    await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(
       page.getByRole("heading", {
         name: "Reinstall in Stremio to see your changes",

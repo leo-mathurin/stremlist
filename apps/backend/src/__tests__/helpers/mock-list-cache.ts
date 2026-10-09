@@ -123,3 +123,14 @@ export function markCachedListStale(listId: string): Promise<void> {
   if (entry) cache.markStale(listId, entry);
   return Promise.resolve();
 }
+
+export function getCachedListInfo(listId: string, source?: CacheSource) {
+  const entry = cache.get(listId);
+  if (!entry || !servesSource(entry, source) || entry.cachedAt.getTime() <= 0) {
+    return Promise.resolve(null);
+  }
+  return Promise.resolve({
+    cachedAt: entry.cachedAt.toISOString(),
+    titleCount: entry.data.metas.length,
+  });
+}

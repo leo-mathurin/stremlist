@@ -9,6 +9,7 @@ import {
   getMeta,
   postConfig,
 } from "../helpers/api.js";
+import { SAVED_REINSTALL, saveButton } from "../helpers/configure.js";
 import {
   getListRows,
   resetDb,
@@ -400,7 +401,7 @@ test(
       (res) =>
         res.url().endsWith("/config") && res.request().method() === "POST",
     );
-    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await saveButton(page).click();
     expect((await response).status()).toBe(200);
     await expect(page.getByText("Saved!", { exact: false })).toBeVisible();
 
@@ -575,7 +576,7 @@ test(
       .getByRole("button", { name: "Remove Western QA from this List" })
       .click();
     await expect(page.getByText("2 of 5")).toBeVisible();
-    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await saveButton(page).click();
     await expect(
       page.getByText(
         "Saved! Your catalogs will refresh with the new settings.",
@@ -607,11 +608,7 @@ test(
       .getByRole("button", { name: "Remove IMDb Watchlist from this List" })
       .click();
     await expect(page.getByText("2 of 5")).toBeVisible();
-    await page.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(
-      page.getByText(
-        "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions.",
-      ),
-    ).toBeVisible();
+    await saveButton(page).click();
+    await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
   },
 );

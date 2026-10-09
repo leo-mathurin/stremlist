@@ -12,6 +12,7 @@ import {
   row,
   savedLists,
   toJson,
+  saveButton,
 } from "./config-fixture";
 
 // The List has no genre choices until a refresh brings them.
@@ -61,8 +62,8 @@ for (const editFilter of [false, true]) {
     await screen.getByRole("button", "Settings for Test catalog").tap();
     await screen.getByRole("button", /Filters & extra catalogs/).tap();
     await expect(screen.getByLabel("Genre", { exact: true })).toBeDisabled();
-    await screen.getByRole("button", "Save", { exact: true }).tap();
-    await expect(screen.getByRole("button", "Saving")).toBeVisible();
+    await saveButton(screen).tap();
+    await expect(saveButton(screen, "Saving")).toBeVisible();
     await screen.getByRole("button", "Refresh now").tap();
     // Genre availability confirms that React has committed the refresh result.
     await expect(screen.getByLabel("Genre", { exact: true })).toBeEnabled();
@@ -77,7 +78,7 @@ for (const editFilter of [false, true]) {
     await expect(
       screen.getByText(editFilter ? SAVED_WITH_CHANGES : SAVED),
     ).toBeVisible();
-    await screen.getByRole("button", "Save", { exact: true }).tap();
+    await saveButton(screen).tap();
     await expect(screen.getByText(SAVED)).toBeVisible();
     expect(submissions).toHaveLength(2);
     expect(submissions[0].lists[0].catalogSettings).toEqual({});

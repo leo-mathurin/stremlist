@@ -121,6 +121,13 @@ export interface ConnectionAccess {
   provider: ProviderId;
   username: string | null;
   getAccessToken(): Promise<string>;
+  /**
+   * The Provider refused the tokens that this access gave: the configure
+   * page asks to connect again. Never throws.
+   */
+  reportRefused(): Promise<void>;
+  /** A read that needs the Connection worked with this access. Never throws. */
+  reportWorking(): Promise<void>;
 }
 
 /**

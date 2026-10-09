@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-06T23:01:11.990Z",
+  "createdAt": "2026-10-08T18:53:03.898Z",
   "payload": {
     "actions": [
       {
@@ -60,13 +60,13 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "The IMDb list is present as a catalog named “Weekend films” for ls99123456, and the screen shows the saved confirmation.",
+    "summary": "Replaced the unrecognized link with https://www.imdb.com/list/ls99123456/, added the IMDb list, named its catalog “Weekend films,” and saved. The app confirms “Saved!” and notes that reinstalling Stremlist is needed for the changes to appear.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions."
+        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. I did it Reinstall"
       },
       {
         "role": "textbox",
@@ -77,21 +77,22 @@
         "text": "IMDb, Trakt, MDBList, JustWatch and SensCritique links work."
       },
       {
+        "text": "Reinstall Stremlist in Stremio"
+      },
+      {
+        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
+      },
+      {
         "role": "button",
-        "name": "Drag to reorder Weekend films"
-      },
-      {
-        "text": "Weekend films"
-      },
-      {
-        "text": "IMDb · List · ls99123456"
+        "name": "I did it"
       },
       {
         "role": "link",
-        "name": "Open on IMDb"
+        "name": "Reinstall"
       },
       {
-        "text": "Sort order"
+        "role": "button",
+        "name": "Drag to reorder Weekend films"
       }
     ],
     "goneAnchors": [
@@ -125,6 +126,6 @@
         "name": "Install or reinstall in Stremio"
       }
     ],
-    "endWaitMs": 27218
+    "endWaitMs": 12153
   }
 }

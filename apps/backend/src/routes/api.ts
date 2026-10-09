@@ -26,6 +26,7 @@ import {
 } from "@stremlist/shared/providers";
 import type {
   AccountConfigResponse,
+  AccountSyncSnapshot,
   AddonAccess,
   ConfigList,
 } from "@stremlist/shared/stremio.types";
@@ -58,6 +59,7 @@ import {
   getImdbWatchlist,
   normalizeImdbUserId,
 } from "../services/imdb-scraper";
+import { previewList } from "../services/list-preview";
 import { prewarmLists } from "../services/list-prewarm";
 import { forgetConnectionLists, getListCatalog } from "../services/lists";
 import {
@@ -65,6 +67,7 @@ import {
   isOAuthConfigured,
   startAuthorization,
 } from "../services/oauth";
+import { getListSyncStatuses } from "../services/sync-status";
 
 const REFRESH_COOLDOWN_MS =
   (Number.isFinite(Number(process.env.REFRESH_COOLDOWN_SECONDS))
@@ -308,6 +311,18 @@ function visibleLists(
     : lists.filter((list) => !listRequiresConnection(list));
 }
 
+/** The sync status of these Lists and the Account's Connections. */
+async function syncSnapshot(
+  access: AccountAccess,
+  lists: ConfigList[],
+): Promise<AccountSyncSnapshot> {
+  const [statuses, connections] = await Promise.all([
+    getListSyncStatuses(lists),
+    access.via === "private" ? listConnections(access.account.id) : [],
+  ]);
+  return { ...statuses, connections };
+}
+
 function requestOrigin(c: Context): string {
   return new URL(c.req.url).origin;
 }
@@ -426,6 +441,38 @@ const api = new Hono()
     },
   )
 
+  // Preview the Catalogs of a List, saved or not: a sample of Titles for each
+  // Catalog and the Unresolved entries of its Source lists. Writes nothing.
+  .post(
+    "/lists/preview",
+    zValidator(
+      "json",
+      listBody
+        .pick({
+          provider: true,
+          sourceRef: true,
+          mergedSources: true,
+          sortOption: true,
+          displayMode: true,
+          catalogSettings: true,
+        })
+        .extend({ accountKey: accountKeyParam.shape.accountKey.optional() }),
+    ),
+    async (c) => {
+      const { accountKey, ...list } = c.req.valid("json");
+      // Like `/links/resolve`, an unknown key previews public lists only. A
+      // Legacy alias can be guessed: it never reads through a Connection.
+      const access = accountKey ? await resolveAccountKey(accountKey) : null;
+      return c.json(
+        await previewList({
+          ...list,
+          connectionAccountId:
+            access?.via === "private" ? access.account.id : null,
+        }),
+      );
+    },
+  )
+
   // Create an Account with its first Lists. Returns the private Account ID.
   .post(
     "/accounts",
@@ -481,17 +528,18 @@ const api = new Hono()
         return c.json({ error: "Addon not found. Install it first." }, 404);
       }
       const { account } = access;
-      const [lists, connections] = await Promise.all([
-        getAccountLists(account.id),
-        access.via === "private" ? listConnections(account.id) : [],
+      const lists = visibleLists(access, await getAccountLists(account.id));
+      const [withGenres, sync] = await Promise.all([
+        withAvailableGenres(lists),
+        syncSnapshot(access, lists),
       ]);
       const body: AccountConfigResponse = {
         access: access.via,
         accountId: access.via === "private" ? account.id : null,
         movedAt: account.movedAt,
         rpdbApiKey: account.rpdbApiKey,
-        lists: await withAvailableGenres(visibleLists(access, lists)),
-        connections,
+        lists: withGenres,
+        ...sync,
         actions: {
           enabled: account.actionsEnabled,
           providers: account.actionProviders,
@@ -500,6 +548,22 @@ const api = new Hono()
         cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
       };
       return c.json(body);
+    },
+  )
+
+  // The sync status of every List and Connection, polled by the configure
+  // page while a refresh it started is still running.
+  .get(
+    "/:accountKey/sync-status",
+    zValidator("param", accountKeyParam),
+    async (c) => {
+      const { accountKey } = c.req.valid("param");
+      const access = await resolveAccountKey(accountKey);
+      if (!access) {
+        return c.json({ error: "Addon not found. Install it first." }, 404);
+      }
+      const lists = await getAccountLists(access.account.id);
+      return c.json(await syncSnapshot(access, visibleLists(access, lists)));
     },
   )
 
@@ -658,13 +722,18 @@ const api = new Hono()
           .eq("id", account.id);
       }
 
+      const [withGenres, sync] = await Promise.all([
+        withAvailableGenres(lists),
+        syncSnapshot(access, lists),
+      ]);
       return c.json({
         ok: true,
         lastFetchedAt: refreshed > 0 ? refreshedAt : account.lastFetchedAt,
         refreshed,
         failed,
         total: lists.length,
-        lists: await withAvailableGenres(lists),
+        lists: withGenres,
+        ...sync,
         cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
       });
     },
