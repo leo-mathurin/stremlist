@@ -41,7 +41,7 @@ One Stremio catalog that a List produces. A List can produce several Catalogs (m
 _Avoid_: Row, shelf
 
 **Refresh**:
-One read of a List's Source list on its Provider, which replaces the cached Catalog when it works. A Stremio request for a stale Catalog, a save and the "Refresh now" button start one. When a refresh fails, Stremio keeps the Titles of the last successful refresh, except for a List that lost its Connection.
+One read of a List's Source list on its Provider, which replaces the cached Catalog when it works. A Stremio request for a stale Catalog, a save and the "Refresh now" button start one. When a refresh fails, Stremio keeps the Titles of the last successful refresh, except for a List that lost its Connection. A Catalog preview is not a refresh.
 _Avoid_: Sync (alone), fetch, update
 
 **Sync status**:
