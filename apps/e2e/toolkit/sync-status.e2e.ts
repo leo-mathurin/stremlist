@@ -701,14 +701,20 @@ test("a saved List whose chart changes is not saved yet, and is polled only afte
   await expect(
     screen.getByText("Not refreshed yet", { exact: true }),
   ).toHaveCount(0);
+  // Another chart is another Catalog: Stremio needs a reinstall to show it.
+  await expect(
+    screen.getByText("These changes need a reinstall.", { exact: true }),
+  ).toBeVisible();
   await pause(5_000);
   expect(polls).toHaveLength(0);
 
   await saveButton(screen).tap();
-  await expect(screen.getByText(/^Saved!/)).toBeVisible();
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   await expect(
     screen.getByText("Updated just now · 250 titles", { exact: true }),
   ).toBeVisible({ timeout: 15_000 });
+  // The new status does not end the reminder: only the user can.
+  await expect(screen.getByRole("button", "I did it")).toBeVisible();
   expect(submissions.at(-1)?.lists[1]).toMatchObject({
     id: ids.chart,
     sourceRef: "imdb:top-rated-tv",
