@@ -133,6 +133,15 @@ BEGIN
       'position', 0)), NULL, NULL);
   ASSERT result.lists->0->'merged_sources' = merged, 'Omitted merged Source lists must survive';
 
+  -- The New titles setting (STR-60) is saved without touching them.
+  SELECT * INTO result FROM public.replace_account_config('sl_configtransactiontest00', NULL,
+    jsonb_build_array(jsonb_build_object('id', list_id, 'provider', 'imdb', 'source_ref', 'ur7',
+      'catalog_title', 'Renamed', 'sort_option', 'title-asc', 'display_mode', 'split',
+      'position', 0, 'expected_merged_sources', merged)), NULL, NULL, false);
+  ASSERT result.lists->0->'merged_sources' = merged,
+    'Saving the New titles setting must keep merged Source lists';
+  ASSERT NOT (SELECT new_titles_catalog FROM public.accounts WHERE id = 'sl_configtransactiontest00');
+
   -- A save that kept merged Source lists the API read earlier is refused
   -- when another save changed them since.
   BEGIN
