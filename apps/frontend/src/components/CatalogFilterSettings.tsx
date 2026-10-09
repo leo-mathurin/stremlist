@@ -3,8 +3,12 @@ import { ChevronDown, SlidersHorizontal } from "lucide-react";
 import {
   CATALOG_DECADES,
   CATALOG_PRESETS,
+  countCatalogFilters,
 } from "@stremlist/shared/catalog-settings";
-import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
+import type {
+  CatalogFilterKey,
+  CatalogSettings,
+} from "@stremlist/shared/catalog-settings";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -21,10 +25,8 @@ import {
 // a real value of its own.
 const ANY = "__any__";
 
-type FilterKey = "genre" | "decade" | "maxRuntime" | "minRating";
-
 type Filter = {
-  key: FilterKey;
+  key: CatalogFilterKey;
   label: string;
   empty: string;
   choices: readonly (string | number)[];
@@ -55,13 +57,6 @@ const NUMERIC_FILTERS: readonly Filter[] = [
   },
 ];
 
-const FILTER_KEYS: readonly FilterKey[] = [
-  "genre",
-  "decade",
-  "maxRuntime",
-  "minRating",
-];
-
 export default function CatalogFilterSettings({
   value,
   genres,
@@ -84,9 +79,7 @@ export default function CatalogFilterSettings({
     },
     ...NUMERIC_FILTERS,
   ];
-  const activeFilters = FILTER_KEYS.filter(
-    (key) => value[key] !== undefined,
-  ).length;
+  const activeFilters = countCatalogFilters(value);
   const activeCount = activeFilters + (value.presets?.length ?? 0);
   const genreLocked = genres.length === 0 && value.genre === undefined;
 

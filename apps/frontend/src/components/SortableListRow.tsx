@@ -9,6 +9,7 @@ import { PROVIDERS } from "@stremlist/shared/providers";
 import {
   ChevronDown,
   ExternalLink,
+  Eye,
   GripVertical,
   Settings2,
   X,
@@ -18,6 +19,7 @@ import { MAX_CATALOG_TITLE_LENGTH } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { describeSource } from "../lib/list-sources";
 import CatalogFilterSettings from "./CatalogFilterSettings";
+import CatalogPreview from "./CatalogPreview";
 import { ProviderMark } from "./brand";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -29,6 +31,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const FIELD_FOCUS = "focus-visible:ring-brand/50 focus-visible:border-brand";
 const SELECT_FOCUS = "focus:ring-brand/50 focus:border-brand";
@@ -37,6 +44,8 @@ const SELECT_FOCUS = "focus:ring-brand/50 focus:border-brand";
 export default function SortableListRow({
   list,
   index,
+  accountKey,
+  connectionKey,
   onFieldChange,
   onRemove,
   connectionMissing,
@@ -44,6 +53,10 @@ export default function SortableListRow({
 }: {
   list: ListFormRow;
   index: number;
+  /** Lets the preview read through the Account's Connections. */
+  accountKey: string | null;
+  /** Identifies the Account's Connection to the List's Provider, or "". */
+  connectionKey: string;
   /** The List reads through a Connection that the Account no longer has. */
   connectionMissing?: boolean;
   /** Start the Connection again; absent when it cannot be started here. */
@@ -60,7 +73,11 @@ export default function SortableListRow({
     index,
   });
   const [open, setOpen] = useState(false);
+  // A List added in this visit opens its preview, so the user sees what it
+  // adds to Stremio before saving.
+  const [previewOpen, setPreviewOpen] = useState(!list.id);
   const panelId = useId();
+  const previewId = useId();
   const titleId = useId();
   const sortId = useId();
   const showId = useId();
@@ -143,6 +160,26 @@ export default function SortableListRow({
               ))}
             </SelectContent>
           </Select>
+          <Tooltip delayDuration={400}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-expanded={previewOpen}
+                aria-controls={previewId}
+                aria-label={`Preview ${title}`}
+                onClick={() => setPreviewOpen((current) => !current)}
+                className={cn(
+                  "flex size-8 shrink-0 items-center justify-center rounded-full transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.96]",
+                  previewOpen
+                    ? "bg-ink text-cloud"
+                    : "bg-black/5 hover:bg-black/10",
+                )}
+              >
+                <Eye className="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent sideOffset={6}>Preview</TooltipContent>
+          </Tooltip>
           <button
             type="button"
             aria-expanded={open}
@@ -315,6 +352,26 @@ export default function SortableListRow({
               }
             />
           </div>
+        </div>
+      </div>
+
+      <div
+        id={previewId}
+        inert={!previewOpen}
+        className={cn(
+          "grid transition-[grid-template-rows] ease-out-quint motion-reduce:transition-none",
+          previewOpen
+            ? "grid-rows-[1fr] duration-250"
+            : "grid-rows-[0fr] duration-200",
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <CatalogPreview
+            list={list}
+            accountKey={accountKey}
+            connectionKey={connectionKey}
+            open={previewOpen}
+          />
         </div>
       </div>
     </div>

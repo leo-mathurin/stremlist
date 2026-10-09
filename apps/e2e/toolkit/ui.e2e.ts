@@ -25,6 +25,7 @@ import {
   saveButton,
   SAVE_NEW,
   holdToasts,
+  fitConfigurePage,
 } from "./config-fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
@@ -128,6 +129,7 @@ test(
   "profile URLs resolve to canonical install URLs",
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
+    await fitConfigurePage(browser);
     await baseRoutes(browser);
     const profile = "https://www.imdb.com/user/p.example/";
     const inputs = await routeResolve(browser, (input) =>
@@ -213,6 +215,7 @@ test(
   "returning users can open configuration",
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
+    await fitConfigurePage(browser);
     await captureConfig(browser);
     await app.open("/");
     await agent.act("Open my existing Stremlist with the Addon URL {url}.", {
@@ -415,6 +418,7 @@ test(
   "built-in charts avoid duplicates and enforce the List limit",
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
+    await fitConfigurePage(browser);
     await captureConfig(browser);
     await app.open(`/configure?account=${accountId}`);
     await agent.act("Add the built-in IMDb chart Top 250 Movies.", {
@@ -518,6 +522,7 @@ test(
   "RPDB key visibility control hides the key again",
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
+    await fitConfigurePage(browser);
     await captureConfig(browser);
     await app.open(`/configure?account=${accountId}`);
     await expect(screen.getByRole("button", "Show RPDB API key")).toBeVisible();
@@ -537,6 +542,7 @@ test(
   "clipboard denial offers manual Addon URL copy",
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
+    await fitConfigurePage(browser);
     await captureConfig(browser);
     await browser.addInitScript(() => {
       Object.defineProperty(navigator.clipboard, "writeText", {
@@ -586,10 +592,7 @@ test(
   async ({ app, agent, screen, browser }) => {
     await holdToasts(browser);
     const submissions = await captureConfig(browser);
-    // The open filters fit in this viewport, so the Save button at the top
-    // stays in view and the floating Save button, which has the same name,
-    // stays hidden: "Save" names one button.
-    await browser.setViewport({ width: 1280, height: 1800 });
+    await fitConfigurePage(browser);
     await app.open(`/configure?account=${accountId}`);
     await agent.act(
       "For the Test catalog, select the Drama genre filter and enable the Top rated extra catalog, then save these settings.",

@@ -38,8 +38,8 @@ R2. The configure/onboarding pages of the frontend are covered too.
   counts) or compare the Stremio UI against the addon's own catalog JSON from
   the same run, so they do not depend on what is in the watchlist today.
 - The default run and pull request CI execute all three projects: deterministic
-  local coverage (59 tests), four live smoke tests, and the broader live
-  regression suite (25 tests).
+  local coverage (67 tests), four live smoke tests, and the broader live
+  regression suite (26 tests).
 - The backend gets a fixed, public `CONNECTION_ENCRYPTION_KEY` from `env.ts`,
   so seeded Connections (`helpers/db.ts` `seedConnection`) decrypt like real
   ones. It is not a production key.
@@ -111,9 +111,11 @@ responses are fixtures, and any request to an unknown host fails. It covers
 public links (Trakt, JustWatch, SensCritique), Source lists read through a
 Connection (MDBList, Simkl, Trakt), OAuth start and callback (Trakt, Simkl,
 MDBList), disconnect, expired Connections, Legacy alias limits, every Trakt
-Action intent and its page, and the Provider kill switch (a third backend
-with `DISABLED_PROVIDERS`). Letterboxd has no adapter yet; the configure page
+Action intent and its page, the Provider kill switch (a third backend
+with `DISABLED_PROVIDERS`), and Catalog previews read through a Connection. Letterboxd has no adapter yet; the configure page
 only explains its MDBList import. The UI side of the same journeys is in `toolkit/providers.e2e.ts`.
+`tests/catalog-preview.spec.ts` uses the same preload to read a synthetic
+SensCritique list (`helpers/preview-fixture.ts`) for the Catalog preview.
 
 ## Environment knobs
 

@@ -1,6 +1,8 @@
+import type { CatalogPreset } from "@stremlist/shared/catalog-settings";
 import { CATALOG_PRESETS } from "@stremlist/shared/catalog-settings";
 import type {
   ConfigList,
+  ConfigListInput,
   StremioCatalog,
 } from "@stremlist/shared/stremio.types";
 import { CATALOG_FILTER_OPTIONS } from "./catalog-filters";
@@ -45,53 +47,51 @@ function getEffectiveTitle(
   return total <= 1 ? "" : String(index + 1);
 }
 
+/** One Catalog that a List adds to Stremio. */
+export interface ListCatalog {
+  type: "movie" | "series";
+  /** The extra Catalog of a preset, or null for the List's main Catalog. */
+  preset: CatalogPreset | null;
+}
+
+/**
+ * The Catalogs of a List, in manifest order: each type that its display mode
+ * shows, followed by the presets of that type.
+ */
+export function listCatalogs(
+  list: Pick<ConfigListInput, "displayMode" | "catalogSettings">,
+): ListCatalog[] {
+  const types: ListCatalog["type"][] =
+    list.displayMode === "movie" || list.displayMode === "series"
+      ? [list.displayMode]
+      : ["movie", "series"];
+  const presets = CATALOG_PRESETS.filter((preset) =>
+    list.catalogSettings?.presets?.includes(preset.id),
+  ).map((preset) => preset.id);
+  return types.flatMap((type) =>
+    [null, ...presets].map((preset) => ({ type, preset })),
+  );
+}
+
 export function buildManifestCatalogs(lists: ConfigList[]): StremioCatalog[] {
   return lists.flatMap((list, index) => {
-    const effectiveTitle = getEffectiveTitle(
-      list.catalogTitle,
-      index,
-      lists.length,
+    const name = buildCatalogName(
+      getEffectiveTitle(list.catalogTitle, index, lists.length),
     );
-    const displayMode =
-      list.displayMode === "movie" || list.displayMode === "series"
-        ? list.displayMode
-        : "split";
-
     const genres = [
       ...new Set([
         ...(list.availableGenres ?? []),
         ...(list.catalogSettings?.genre ? [list.catalogSettings.genre] : []),
       ]),
     ].sort();
-    const movieCatalog: StremioCatalog = {
-      id: buildCatalogId(list.id, "movie"),
-      name: buildCatalogName(effectiveTitle),
-      type: "movie",
-      extra: catalogExtras(genres),
-    };
-    const seriesCatalog: StremioCatalog = {
-      id: buildCatalogId(list.id, "series"),
-      name: buildCatalogName(effectiveTitle),
-      type: "series",
-      extra: catalogExtras(genres),
-    };
-
-    const base =
-      displayMode === "movie"
-        ? [movieCatalog]
-        : displayMode === "series"
-          ? [seriesCatalog]
-          : [movieCatalog, seriesCatalog];
-    return base.flatMap((catalog) => [
-      catalog,
-      ...CATALOG_PRESETS.filter((preset) =>
-        list.catalogSettings?.presets?.includes(preset.id),
-      ).map((preset) => ({
-        ...catalog,
-        id: buildCatalogId(list.id, catalog.type, preset.id),
-        name: `${catalog.name} · ${preset.label}`,
-        extra: catalogExtras(genres, false),
-      })),
-    ]);
+    return listCatalogs(list).map(({ type, preset }) => {
+      const label = CATALOG_PRESETS.find((entry) => entry.id === preset)?.label;
+      return {
+        id: buildCatalogId(list.id, type, preset ?? undefined),
+        name: label ? `${name} · ${label}` : name,
+        type,
+        extra: catalogExtras(genres, !preset),
+      };
+    });
   });
 }

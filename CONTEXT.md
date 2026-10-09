@@ -40,6 +40,10 @@ _Avoid_: Watchlist, feed, collection
 One Stremio catalog that a List produces. A List can produce several Catalogs (movies, series, presets).
 _Avoid_: Row, shelf
 
+**Catalog preview**:
+What a List will show in Stremio, on the configure page before the user saves: the first Titles of each of its Catalogs, and its Unresolved entries. It does not change any Catalog.
+_Avoid_: Sample, dry run
+
 ### Titles
 
 **Title**:

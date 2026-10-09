@@ -79,7 +79,7 @@ describe("resolveEntries", () => {
         "tt0068646",
       ]);
       // The skipped entry is retried later, like any Unresolved entry.
-      expect(result.unresolved).toBe(1);
+      expect(result.unresolvedEntries).toHaveLength(1);
     } finally {
       delete process.env.DISABLED_PROVIDERS;
     }
@@ -99,7 +99,7 @@ describe("resolveEntries", () => {
         { imdbId: "tt0111161", entry: entries[0] },
         { imdbId: "tt0068646", entry: entries[1] },
       ],
-      unresolved: 0,
+      unresolvedEntries: [],
       deferred: 0,
     });
     expect(first.resolve).not.toHaveBeenCalled();
@@ -107,12 +107,17 @@ describe("resolveEntries", () => {
   });
 
   it("does not trust a malformed IMDb ID", async () => {
-    const result = await resolveEntries(adapter([]), [
+    const entries: SourceEntry[] = [
       { imdbId: "nm0000123" },
       { imdbId: "tt12abc" },
-    ]);
+    ];
+    const result = await resolveEntries(adapter([]), entries);
 
-    expect(result).toEqual({ resolved: [], unresolved: 2, deferred: 0 });
+    expect(result).toEqual({
+      resolved: [],
+      unresolvedEntries: entries,
+      deferred: 0,
+    });
   });
 
   it("counts entries without a resolution key as unresolved", async () => {
@@ -120,8 +125,23 @@ describe("resolveEntries", () => {
       { title: "No IDs at all" },
     ]);
 
-    expect(result.unresolved).toBe(1);
+    expect(result.unresolvedEntries).toEqual([{ title: "No IDs at all" }]);
     expect(db.getTable("title_id_map")).toEqual([]);
+  });
+
+  it("returns the Unresolved entries in Source list order", async () => {
+    const entries = [tmdb(1), tmdb(2), { title: "No IDs" }, tmdb(3)];
+    const result = await resolveEntries(
+      adapter([strategy("s", { 2: "tt0068646" })]),
+      entries,
+    );
+
+    expect(result.resolved.map(({ imdbId }) => imdbId)).toEqual(["tt0068646"]);
+    expect(result.unresolvedEntries).toEqual([
+      entries[0],
+      entries[2],
+      entries[3],
+    ]);
   });
 
   it("uses the cache before any strategy", async () => {
@@ -187,7 +207,7 @@ describe("resolveEntries", () => {
 
     const result = await resolveEntries(adapter([bad]), [tmdb(1)]);
 
-    expect(result.unresolved).toBe(1);
+    expect(result.unresolvedEntries).toHaveLength(1);
     expect(cacheRow("1")).toMatchObject({ imdb_id: null });
   });
 
@@ -196,7 +216,11 @@ describe("resolveEntries", () => {
 
     const result = await resolveEntries(adapter([first]), [tmdb(7)]);
 
-    expect(result).toEqual({ resolved: [], unresolved: 1, deferred: 0 });
+    expect(result).toEqual({
+      resolved: [],
+      unresolvedEntries: [tmdb(7)],
+      deferred: 0,
+    });
     const row = cacheRow("7");
     expect(row).toMatchObject({ imdb_id: null, strategy: null });
     const wait = Date.parse(row?.retry_after as string) - Date.now();
@@ -215,7 +239,7 @@ describe("resolveEntries", () => {
 
     const result = await resolveEntries(adapter([first]), [tmdb(7)]);
 
-    expect(result.unresolved).toBe(1);
+    expect(result.unresolvedEntries).toHaveLength(1);
     expect(first.resolve).not.toHaveBeenCalled();
   });
 
@@ -256,7 +280,7 @@ describe("resolveEntries", () => {
     );
     expect(sent).toEqual([50, 50, 50, 50, 50, 50]);
     expect(firstRun.resolved).toHaveLength(300);
-    expect(firstRun.unresolved).toBe(50);
+    expect(firstRun.unresolvedEntries).toHaveLength(50);
     expect(firstRun.deferred).toBe(50);
     // Entries over the cap are not marked as failures: the next refresh
     // resolves them right away.
@@ -268,7 +292,7 @@ describe("resolveEntries", () => {
     expect(
       first.resolve.mock.calls.map((call) => (call[0] as SourceEntry[]).length),
     ).toEqual([50]);
-    expect(secondRun.unresolved).toBe(0);
+    expect(secondRun.unresolvedEntries).toHaveLength(0);
     expect(secondRun.deferred).toBe(0);
   });
 

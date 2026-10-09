@@ -180,6 +180,14 @@ export default function Configure() {
   const connectedProviders = new Set(
     config.connections.map((connection) => connection.provider),
   );
+  const connectionKeyOf = (provider: ProviderId) => {
+    const connection = config.connections.find(
+      (entry) => entry.provider === provider,
+    );
+    return connection
+      ? `${connection.connectedAt}:${connection.username ?? ""}`
+      : "";
+  };
   const needsMissingConnection = (provider: ProviderId, sourceRef: string) =>
     access === "private" &&
     sourceRequiresConnection(provider, sourceRef) &&
@@ -487,6 +495,8 @@ export default function Configure() {
                         key={list.localId}
                         list={list}
                         index={index}
+                        accountKey={accountId ?? accountKey}
+                        connectionKey={connectionKeyOf(list.provider)}
                         onFieldChange={config.setListField}
                         onRemove={config.removeList}
                         connectionMissing={needsMissingConnection(
