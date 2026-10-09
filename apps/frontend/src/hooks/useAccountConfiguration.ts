@@ -10,7 +10,7 @@ import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
 import {
   MAX_SOURCES_PER_ACCOUNT,
   listMergeProblem,
-  listSources,
+  listSourcesKey,
   sourceKey,
 } from "@stremlist/shared/list-merge";
 import {
@@ -623,8 +623,7 @@ export function useAccountConfiguration(
           const submitted = submittedByLocalId.get(row.localId);
           if (!saved || !submitted) return row;
           const sourceUnchanged =
-            JSON.stringify(sourceKeys([row])) ===
-            JSON.stringify(sourceKeys([submitted]));
+            listSourcesKey(row) === listSourcesKey(submitted);
           return {
             ...row,
             id: saved.id,
@@ -714,8 +713,7 @@ export function useAccountConfiguration(
             const match = refreshed.find(
               (list) =>
                 list.id === row.id &&
-                JSON.stringify(sourceKeys([row])) ===
-                  JSON.stringify(listSources(list).map(sourceKey)),
+                listSourcesKey(row) === listSourcesKey(list),
             );
             return match
               ? { ...row, availableGenres: match.availableGenres ?? [] }

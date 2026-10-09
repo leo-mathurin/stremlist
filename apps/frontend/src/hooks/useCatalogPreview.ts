@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { InferRequestType } from "hono/client";
 import type { CatalogPreview } from "@stremlist/shared/catalog-preview";
+import { listSourcesKey } from "@stremlist/shared/list-merge";
 import type { SourceId } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { api } from "@/lib/api";
-import { sourceKeys } from "@/lib/list-form";
 import type { ListFormRow } from "@/lib/list-form";
 
 type PreviewBody = InferRequestType<typeof api.lists.preview.$post>["json"];
@@ -46,7 +46,7 @@ export function useCatalogPreview({
     status: "loading",
   });
   const [attempt, setAttempt] = useState(0);
-  const source = sourceKeys([list]).join(",");
+  const source = listSourcesKey(list);
   const shownSource = useRef<string | null>(null);
   // A string, so that a new object with the same values asks nothing again.
   const body = JSON.stringify({

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { listSources, sourceKey } from "@stremlist/shared/list-merge";
+import { listSources, listSourcesKey } from "@stremlist/shared/list-merge";
 import { sourceRequiresConnection } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type {
@@ -41,15 +41,10 @@ interface SyncAnswer {
   lists?: SavedList[];
 }
 
-/** Every Source list of a List, as one string. */
-function sourcesKey(
-  list: Pick<ConfigList, "provider" | "sourceRef" | "mergedSources">,
-) {
-  return listSources(list).map(sourceKey).join(",");
-}
-
 function sourcesOf(lists: SavedList[]): Record<string, string> {
-  return Object.fromEntries(lists.map((list) => [list.id, sourcesKey(list)]));
+  return Object.fromEntries(
+    lists.map((list) => [list.id, listSourcesKey(list)]),
+  );
 }
 
 /**
@@ -92,7 +87,8 @@ export function useListSyncStatus(
 
   /** True when the row is a saved List with its saved Source lists. */
   const isSaved = useCallback(
-    (row: ListFormRow) => !!row.id && savedSources[row.id] === sourcesKey(row),
+    (row: ListFormRow) =>
+      !!row.id && savedSources[row.id] === listSourcesKey(row),
     [savedSources],
   );
 

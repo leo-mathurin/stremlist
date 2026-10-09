@@ -49,6 +49,14 @@ export function sourceKey(source: ListSource): string {
   return `${source.provider}:${source.sourceRef}`;
 }
 
+/**
+ * Every Source list of a List, in order, as one string: equal for two Lists
+ * that read the same Source lists in the same order.
+ */
+export function listSourcesKey(list: MergeableList): string {
+  return listSources(list).map(sourceKey).join(",");
+}
+
 export function isMergedList(list: MergeableList): boolean {
   return (list.mergedSources?.length ?? 0) > 0;
 }
