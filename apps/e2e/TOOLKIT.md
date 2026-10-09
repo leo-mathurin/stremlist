@@ -1,7 +1,7 @@
 # User-journey coverage
 
-The current inventory contains 83 tester-army browser tests and 105 Playwright
-integration tests (74 `local`, 4 `live-smoke`, 27 `live-regression`). This
+The current inventory contains 99 tester-army browser tests and 116 Playwright
+integration tests (85 `local`, 4 `live-smoke`, 27 `live-regression`). This
 inventory maps supported routes and domain actions to tests. It is not a claim
 that every possible input or external-service condition is covered. CI remains
 strict, read-only and credential-free for AI replay.
@@ -14,9 +14,9 @@ when there are several) and produces **Catalogs**.
 
 The toolkit uses `e2e@0.17.0`, `@e2e-dev/web@0.12.0` (exact versions in
 `package.json`, see "Cache rules"), and the ChatGPT subscription model
-`gpt-6-luna`. Sixteen tests contain eighteen bounded AI goals. Exact locator
+`gpt-6-luna`. Seventeen tests contain nineteen bounded AI goals. Exact locator
 and payload assertions decide whether each recording is accepted. The remaining
-sixty-seven toolkit tests use deterministic actions for timing, error
+eighty-two toolkit tests use deterministic actions for timing, error
 boundaries and page content.
 
 ## Coverage matrix
@@ -457,13 +457,50 @@ Defects found:
 - Fixed: when the Account had 20 Source lists, an IMDb chart from Quick add
   did nothing and showed no message (Trakt charts and links showed the
   limit). The page now shows the limit message for IMDb charts too.
-- Open: removing a merged Source list that is not the first changes the
-  genre options of the manifest Catalog, but the page says "Saved! Your
-  catalogs will refresh with the new settings." and does not ask for a
-  reinstall. The reinstall signature in `apps/frontend/src/lib/list-form.ts`
-  has only the first Source list of each List. Removing the first Source
-  list changes the manifest in the same way and asks for a reinstall.
-  `merged-lists.spec.ts` shows both cases.
+- Fixed later (see the next section): removing a merged Source list that is
+  not the first changed the genre options of the manifest Catalog without a
+  reinstall message, and removing the first one asked for a reinstall even
+  when the manifest stayed the same.
+
+### Base merge: Catalog preview and sync status into merged Lists (2026-10-09)
+
+The base branch added the Catalog preview, the sync status of each List,
+toasts, the floating Save button and the reinstall reminder. Merged Lists
+now work with each of them:
+
+- A read of one Source list records its sync status under the List, not
+  under its cache key (the database refused those rows before). The API
+  sends the first Source list in `syncStatus` and the others in
+  `sourceSyncStatus`; the row shows the problem of one Source list, says
+  whether the others still show, and "Connect again" connects that Source
+  list's Provider. A disconnect forgets only the Source lists read through
+  that Connection, and a new authorization reads them again.
+- The Catalog preview reads every Source list, shows each Title once and
+  names a Source list that it cannot read.
+- The reinstall signature is the manifest Catalogs (ID, name, type, genre
+  options), built with the same code as the manifest
+  (`@stremlist/shared/manifest-catalogs`) and the genres of each Source list
+  (`sourceGenres`). Removing a Source list asks for a reinstall only when it
+  takes genres away; merging a List always does, because a Catalog goes away.
+
+New tests: four toolkit tests in `merged-lists.e2e.ts` (preview of a merged
+List, a refused Connection of one Source list, the oldest refresh, the
+reinstall notice), two Playwright tests in `merged-lists.spec.ts` (remove a
+Source list with and without a genre of its own, merge a List) and one in
+`provider-journeys.spec.ts` (sync status of each Source list through a
+refused Connection, a new one and a disconnect). The AI goal of
+`merged-lists.e2e.ts` now calls `fitConfigurePage` and `holdToasts`; its
+recording no longer replayed (end mismatch) and was recorded again with 1
+model call. The second recording run made zero model calls and replayed all
+19 entries. No entry was orphaned. Results on the isolated stack: strict
+replay 99/99 with 19 replays, twice; Playwright 116/116 (85 local, 4 live
+smoke, 27 live regression) with no retry; both SQL tests pass; `bunx turbo run
+typecheck lint test build format:check` 15/15 tasks (backend 832/832,
+frontend 16 + 12).
+
+Defects found and fixed: the sync statuses of merged Source lists were never
+recorded (their cache key is not a List ID); several add-list errors in a row
+stacked one toast each.
 
 ## Known limits
 
