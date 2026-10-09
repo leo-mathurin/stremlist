@@ -201,3 +201,47 @@ test("an older backend without genres by Source list leaves genre options out", 
     signature([list([FIRST])], null),
   );
 });
+
+const withNewTitles = { newTitles: true };
+
+test("turning the New titles Catalogs on or off changes the signature", () => {
+  const rows = [list([FIRST])];
+  assert.notEqual(
+    getListReinstallSignature(rows, genres, withNewTitles),
+    signature(rows),
+  );
+  // Without Lists, the manifest has no New titles Catalog to add.
+  assert.equal(
+    getListReinstallSignature([], genres, withNewTitles),
+    signature([]),
+  );
+});
+
+test("the New titles Catalogs follow the types that the Lists show", () => {
+  const movies = list([FIRST], { displayMode: "movie" });
+  const series = list([SERIES], {
+    id: "00000000-0000-4000-8000-000000000002",
+    localId: "row-2",
+    displayMode: "series",
+  });
+  const entries = (rows: SignatureRow[]) =>
+    (
+      JSON.parse(getListReinstallSignature(rows, genres, withNewTitles)) as {
+        newTitles?: true;
+        type: string;
+      }[]
+    )
+      .filter((entry) => entry.newTitles)
+      .map((entry) => entry.type);
+  assert.deepEqual(entries([movies]), ["movie"]);
+  assert.deepEqual(entries([series, movies]), ["movie", "series"]);
+});
+
+test("with New titles off, the signature has the format of a stored reminder", () => {
+  // Reminders saved before New titles keep matching.
+  assert.equal(
+    getListReinstallSignature([list([FIRST])], genres, { newTitles: false }),
+    signature([list([FIRST])]),
+  );
+  assert.doesNotMatch(signature([list([FIRST])]), /newTitles/u);
+});

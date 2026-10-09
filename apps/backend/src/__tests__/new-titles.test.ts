@@ -1,3 +1,4 @@
+import { addonCatalogEntries } from "@stremlist/shared/manifest-catalogs";
 import type {
   AccountConfigResponse,
   StremioManifest,
@@ -22,6 +23,8 @@ import app from "../index.js";
 import type { SourceEntry, SourceSnapshot } from "../providers/types";
 import { SourceUnavailableError } from "../providers/types";
 import { entryKey, forgetConnectionDetections } from "../services/detections";
+import { resetPreviewReadings } from "../services/list-preview";
+import { sourceCaches } from "../services/merged-lists";
 import {
   LIST_IDS,
   movie,
@@ -159,6 +162,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("detection", () => {
@@ -648,6 +652,197 @@ describe("New titles catalog", () => {
   });
 });
 
+describe("merged Lists", () => {
+  const TRAKT_WATCHLIST = {
+    provider: "trakt",
+    sourceRef: "users/leo/watchlist",
+  };
+
+  /**
+   * One List that merges the IMDb watchlist `ur1` and a Trakt watchlist,
+   * each with its own Baseline: tt0000001 on IMDb, tt0000005 on Trakt.
+   */
+  async function seedMergedList(catalogTitle = "Merged picks") {
+    seedNewTitlesAccount();
+    seedList(accountId, {
+      id: LIST_IDS[0],
+      source_ref: "ur1",
+      catalog_title: catalogTitle,
+      merged_sources: [
+        { provider: "trakt", source_ref: TRAKT_WATCHLIST.sourceRef },
+      ],
+    });
+    const imdb = sourceList("imdb", [movie("tt0000001")]);
+    const trakt = sourceList("trakt", [movie("tt0000005")]);
+    await sync(LIST_IDS[0]);
+    return { imdb, trakt };
+  }
+
+  it("count a Title that two of their Source lists add as one new title", async () => {
+    const { imdb, trakt } = await seedMergedList();
+    expect(await newTitles()).toEqual([]);
+    expect(db.getTable("source_list_syncs")).toHaveLength(2);
+
+    vi.setSystemTime(Date.now() + DAY_MS);
+    imdb.metas = [movie("tt0000001"), movie("tt0000002")];
+    await sync(LIST_IDS[0]);
+    vi.setSystemTime(Date.now() + DAY_MS);
+    trakt.metas = [movie("tt0000005"), movie("tt0000002")];
+    await sync(LIST_IDS[0]);
+
+    const metas = await newTitles();
+    expect(ids(metas)).toEqual(["tt0000002"]);
+    // The earliest detection, in the List as the user named it.
+    expect(metas[0].description).toBe(
+      "Detected by Stremlist on 2 Oct 2026 in Merged picks.",
+    );
+    expect((await summary()).summary).toMatchObject({
+      detected: 1,
+      waitingLists: 0,
+    });
+  });
+
+  it("name the Source list that detected the Title when the List has a default title", async () => {
+    const { trakt } = await seedMergedList("1");
+
+    vi.setSystemTime(Date.now() + DAY_MS);
+    trakt.metas = [movie("tt0000005"), movie("tt0000003")];
+    await sync(LIST_IDS[0]);
+
+    const metas = await newTitles();
+    expect(ids(metas)).toEqual(["tt0000003"]);
+    expect(metas[0].description).toBe(
+      "Detected by Stremlist on 2 Oct 2026 in your Trakt watchlist.",
+    );
+  });
+
+  it("compare their other Source lists while one of them cannot be read", async () => {
+    seedNewTitlesAccount();
+    seedList(accountId, {
+      id: LIST_IDS[0],
+      source_ref: "ur1",
+      catalog_title: "Merged picks",
+      merged_sources: [
+        { provider: "trakt", source_ref: TRAKT_WATCHLIST.sourceRef },
+      ],
+    });
+    const imdb = sourceList("imdb", [movie("tt0000001")]);
+    const trakt = sourceList("trakt", [movie("tt0000005")]);
+    trakt.read = () => {
+      throw new SourceUnavailableError("unavailable", "Trakt is down");
+    };
+    await sync(LIST_IDS[0]);
+
+    // The List waits: one of its Source lists has no Baseline yet.
+    expect((await summary()).summary).toMatchObject({ waitingLists: 1 });
+    expect(db.getTable("source_list_syncs")).toMatchObject([
+      { provider: "imdb", source_ref: "ur1" },
+    ]);
+
+    imdb.metas = [movie("tt0000001"), movie("tt0000002")];
+    await sync(LIST_IDS[0]);
+    expect(ids(await newTitles())).toEqual(["tt0000002"]);
+
+    // Trakt's first complete read is its Baseline: what it had is not new.
+    trakt.read = null;
+    trakt.metas = [movie("tt0000005"), movie("tt0000006")];
+    await sync(LIST_IDS[0]);
+    expect(ids(await newTitles())).toEqual(["tt0000002"]);
+    expect((await summary()).summary).toMatchObject({
+      detected: 1,
+      waitingLists: 0,
+    });
+    expect(detectionRows().every((row) => row.removed_at === null)).toBe(true);
+  });
+
+  it("do not compare a Source list whose read is cut short", async () => {
+    const { imdb, trakt } = await seedMergedList();
+
+    imdb.metas = [movie("tt0000001"), movie("tt0000002")];
+    // The first page only: tt0000005 is on a page that was not read.
+    trakt.read = () => ({
+      entries: [entry(movie("tt0000007"))],
+      complete: false,
+    });
+    await sync(LIST_IDS[0]);
+
+    expect(ids(await newTitles())).toEqual(["tt0000002"]);
+    expect(detectionRows().every((row) => row.removed_at === null)).toBe(true);
+    expect(detectionRows().some((row) => row.imdb_id === "tt0000007")).toBe(
+      false,
+    );
+  });
+
+  it("start a Baseline for a Source list merged in later", async () => {
+    seedImdbList();
+    const imdb = sourceList("imdb", [movie("tt0000001")]);
+    const trakt = sourceList("trakt", [movie("tt0000005"), movie("tt0000006")]);
+    await sync(LIST_IDS[0]);
+
+    db.getTable("lists")[0].merged_sources = [
+      { provider: "trakt", source_ref: TRAKT_WATCHLIST.sourceRef },
+    ];
+    await sync(LIST_IDS[0]);
+    expect(await newTitles()).toEqual([]);
+
+    imdb.metas = [movie("tt0000001"), movie("tt0000002")];
+    trakt.metas = [movie("tt0000005"), movie("tt0000006"), movie("tt0000003")];
+    await sync(LIST_IDS[0]);
+    // Read from the cache of each Source list of the merged List.
+    expect(ids(await newTitles()).sort()).toEqual(["tt0000002", "tt0000003"]);
+  });
+
+  it("are hidden from a Legacy alias when one Source list needs a Connection", async () => {
+    const legacy = seedLegacyAccount("ur7654321", { new_titles_catalog: true });
+    accountId = legacy.id;
+    const merged = {
+      id: LIST_IDS[0],
+      provider: "imdb" as const,
+      sourceRef: "ur7654321",
+      mergedSources: [{ provider: "trakt" as const, sourceRef: "me/history" }],
+    };
+    seedList(accountId, {
+      id: merged.id,
+      source_ref: merged.sourceRef,
+      merged_sources: [{ provider: "trakt", source_ref: "me/history" }],
+    });
+    seedList(accountId, { id: LIST_IDS[1], source_ref: "ls1", position: 1 });
+    seedHistory("imdb", "ur7654321", "tt0000001");
+    seedHistory("trakt", "me/history", "tt0000002");
+    seedHistory("imdb", "ls1", "tt0000003");
+    const [imdbCache, traktCache] = sourceCaches(merged);
+    cache.seed(imdbCache.cacheKey, [movie("tt0000001")]);
+    cache.seed(traktCache.cacheKey, [movie("tt0000002")]);
+    cache.seed(LIST_IDS[1], [movie("tt0000003")]);
+
+    // Not even the Titles of its public Source list: the whole List is hidden.
+    expect(ids(await newTitles("movie", "ur7654321"))).toEqual(["tt0000003"]);
+  });
+
+  it("are never compared by a Catalog preview", async () => {
+    seedNewTitlesAccount();
+    sourceList("imdb", [movie("tt0000001")]);
+    sourceList("trakt", [movie("tt0000005")]);
+    resetPreviewReadings();
+
+    const res = await app.request("/lists/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accountKey: accountId,
+        provider: "imdb",
+        sourceRef: "ur1",
+        mergedSources: [TRAKT_WATCHLIST],
+        sortOption: "title-asc",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(db.getTable("source_list_syncs")).toEqual([]);
+    expect(detectionRows()).toEqual([]);
+  });
+});
+
 describe("manifest", () => {
   async function catalogIds(key: string): Promise<string[]> {
     const res = await app.request(`/${key}/manifest.json`);
@@ -665,6 +860,32 @@ describe("manifest", () => {
     expect(await catalogIds(accountId)).toEqual([
       "new-titles-movie",
       `wl-${LIST_IDS[0]}-movie`,
+    ]);
+  });
+
+  it("serves the Catalogs that the configure page counts for a reinstall", async () => {
+    seedNewTitlesAccount();
+    seedList(accountId, {
+      id: LIST_IDS[0],
+      source_ref: "ur1",
+      catalog_title: "Merged",
+      display_mode: "series",
+      merged_sources: [{ provider: "imdb", source_ref: "ls1" }],
+    });
+    const res = await app.request(`/${accountId}/manifest.json`);
+    const { catalogs } = (await res.json()) as StremioManifest;
+    const lists = [
+      { id: LIST_IDS[0], catalogTitle: "Merged", displayMode: "series" },
+    ] as const;
+
+    expect(catalogs.map(({ name, type }) => ({ name, type }))).toEqual(
+      addonCatalogEntries([...lists], { newTitles: true }).map(
+        ({ name, type }) => ({ name, type }),
+      ),
+    );
+    expect(catalogs.map((catalog) => catalog.id)).toEqual([
+      "new-titles-series",
+      `wl-${LIST_IDS[0]}-series`,
     ]);
   });
 
@@ -754,5 +975,59 @@ describe("Connection cleanup", () => {
     expect(detectionRows().map((row) => row.source_ref)).toEqual([
       "users/leo/watchlist",
     ]);
+  });
+
+  it("forgets the previous user's history before a new Connection reads again", async () => {
+    seedNewTitlesAccount();
+    seedConnection(accountId, "trakt", { username: "leo" });
+    seedList(accountId, {
+      id: LIST_IDS[0],
+      provider: "trakt",
+      source_ref: "me/history",
+    });
+    seedHistory("trakt", "me/history", "tt0000001", "leo");
+    useFakeProvider(
+      fakeAdapter("trakt", {
+        entries: [entry(movie("tt0000002"))],
+        oauth: {
+          authorizeUrl: "https://trakt.example/oauth/authorize",
+          tokenUrl: "https://api.trakt.example/oauth/token",
+          clientId: () => "client-123",
+          scopes: [],
+          fetchUsername: () => Promise.resolve("sam"),
+        },
+      }),
+    );
+    db.insert("oauth_states", {
+      state: "state-abc",
+      account_id: accountId,
+      provider: "trakt",
+      code_verifier: "verifier-xyz",
+      expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          Response.json({ access_token: "access-1", expires_in: 7200 }),
+        ),
+      ),
+    );
+
+    const res = await app.request(
+      "/oauth/trakt/callback?code=code-1&state=state-abc",
+    );
+
+    expect(res.status).toBe(302);
+    // The new user's first read is a Baseline, not a list of new titles.
+    await vi.waitFor(() => {
+      expect(db.getTable("source_list_syncs")).toMatchObject([
+        { source_ref: "me/history", connection_user: "sam" },
+      ]);
+    });
+    expect(detectionRows()).toMatchObject([
+      { imdb_id: "tt0000002", detected_at: null },
+    ]);
+    expect(await newTitles()).toEqual([]);
   });
 });

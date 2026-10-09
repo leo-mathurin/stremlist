@@ -16,7 +16,9 @@ The entry key is the Provider's own ID for the entry (the ID resolver key, such 
 - When two reads of the same Source list overlap, the one that started last wins: a synchronization is dated by the start of its read.
 - A Title keeps its earliest Detection among the Lists where it is new, also after the first of them drops it, as long as one of them still has it.
 - The catalog setting is saved in the same transaction as the Lists (`replace_account_config`).
-- A Source list gets no Baseline while every read fails or is cut short. The configure page shows how many Lists wait for that.
+- A Source list gets no Baseline while every read fails or is cut short. The configure page shows how many Lists wait for that; a merged List waits while one of its Source lists has no Baseline.
+- Each Source list of a merged List ([ADR 0006](0006-merged-lists-cache-each-source-list.md)) keeps its own history. A Source list whose read fails or is cut short is not compared, and the others of the List still are. A Title that two Source lists of one List add is one new title, with the earliest Detection. A Source list merged into a List later starts with its own Baseline, so merging never fills the catalog with old titles.
+- The "New titles" Catalogs are part of the manifest Catalogs that the configure page compares (`addonCatalogEntries` in `@stremlist/shared/manifest-catalogs`), so turning them on or off asks for a reinstall like any other Catalog change.
 - Detections are recorded for every Account, also when the catalog is off, so turning it on shows the history at once. The catalog reads metadata from the cached Catalogs only and never calls a Provider.
 
 ## Considered Options
