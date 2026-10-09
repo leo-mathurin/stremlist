@@ -1,4 +1,5 @@
 import { asImdbId } from "@stremlist/shared/constants";
+import { mapWithConcurrency } from "../lib/concurrency";
 import { providerFetch, RateLimiter } from "../providers/http";
 import type { ResolverStrategy, SourceEntry } from "../providers/types";
 
@@ -38,26 +39,6 @@ export async function tmdbGet<T>(
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`TMDB ${path} returned ${response.status}`);
   return (await response.json()) as T;
-}
-
-/** Run `task` over `items` with at most `limit` in flight. */
-export async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  task: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let next = 0;
-  async function worker(): Promise<void> {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await task(items[index], index);
-    }
-  }
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, () => worker()),
-  );
-  return results;
 }
 
 /** IMDb ID of a TMDB movie or show, or null. */

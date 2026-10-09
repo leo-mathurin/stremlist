@@ -53,7 +53,6 @@ function useOAuthProvider(overrides: Partial<OAuthConfig> = {}) {
         clientId: () => "client-123",
         clientSecret: () => "secret-456",
         scopes: ["public", "private"],
-        authorizeParams: { prompt: "consent" },
         fetchUsername,
         ...overrides,
       },
@@ -140,7 +139,6 @@ describe("startAuthorization", () => {
         .digest("base64url"),
       code_challenge_method: "S256",
       scope: "public private",
-      prompt: "consent",
     });
     expect(row).toMatchObject({ account_id: accountId, provider: "trakt" });
     expect(row.code_verifier).toMatch(/^[A-Za-z0-9_-]{43,128}$/);

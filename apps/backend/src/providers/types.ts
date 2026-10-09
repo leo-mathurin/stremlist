@@ -26,7 +26,6 @@ export interface ExternalIds {
   justwatchPath?: string;
   /** SensCritique product ID. */
   senscritique?: number;
-  letterboxd?: string;
 }
 
 /** One entry of a Source list, before ID resolution and enrichment. */
@@ -229,10 +228,6 @@ export interface OAuthConfig {
   clientId(): string | undefined;
   clientSecret?(): string | undefined;
   scopes?: string[];
-  /** Extra query parameters for the authorize URL. */
-  authorizeParams?: Record<string, string>;
-  /** Extra headers for token requests (some APIs want their key header). */
-  tokenHeaders?(): Record<string, string>;
   /** Revoke a token when the user disconnects (best effort). */
   revoke?(accessToken: string): Promise<void>;
   /** The Provider username to show on the configure page. */

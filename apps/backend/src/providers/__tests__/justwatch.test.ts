@@ -1,6 +1,7 @@
 import { parseSourceLink } from "@stremlist/shared/providers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { justwatchProvider, justwatchRecheckStrategy } from "../justwatch";
+import { justwatchRecheckStrategy } from "../../titles/justwatch-lookup";
+import { justwatchProvider } from "../justwatch";
 import { SourceUnavailableError } from "../types";
 
 // Recorded from apis.justwatch.com on 2026-10-06 (public list "Sci-Fi

@@ -1,6 +1,7 @@
 import { IMDB_TITLE_ID_PATTERN } from "@stremlist/shared/constants";
+import { mapWithConcurrency } from "../lib/concurrency";
 import type { ResolverStrategy, SourceEntry } from "../providers/types";
-import { isTmdbConfigured, mapWithConcurrency, tmdbGet } from "./tmdb";
+import { isTmdbConfigured, tmdbGet } from "./tmdb";
 
 const CONCURRENCY = 6;
 /** Search results checked per query, in TMDB relevance order. */

@@ -1,15 +1,10 @@
 import { asImdbId } from "@stremlist/shared/constants";
 import {
-  justwatchImdbIdsByNodeIds,
   justwatchQuery,
+  justwatchRecheckStrategy,
 } from "../titles/justwatch-lookup";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
-import type {
-  ProviderAdapter,
-  ResolverStrategy,
-  SourceEntry,
-  SourceValidation,
-} from "./types";
+import type { ProviderAdapter, SourceEntry, SourceValidation } from "./types";
 import { SourceUnavailableError } from "./types";
 
 /**
@@ -164,30 +159,6 @@ function listName(list: JustwatchList): string | undefined {
 function normalizeRef(ref: string): string {
   return ref.trim().toLowerCase();
 }
-
-/**
- * JustWatch adds IMDb IDs to new releases days or weeks after the title
- * appears, so an entry that TMDB could not resolve is asked again on a later
- * refresh (the resolver retries Unresolved entries).
- */
-export const justwatchRecheckStrategy: ResolverStrategy = {
-  name: "justwatch-recheck",
-  provider: "justwatch",
-  async resolve(entries) {
-    const found = new Map<number, string>();
-    const nodeIds = entries.flatMap((entry) =>
-      entry.externalIds?.justwatch ? [entry.externalIds.justwatch] : [],
-    );
-    if (nodeIds.length === 0) return found;
-    const byNodeId = await justwatchImdbIdsByNodeIds(nodeIds);
-    entries.forEach((entry, index) => {
-      const nodeId = entry.externalIds?.justwatch;
-      const imdbId = nodeId ? byNodeId.get(nodeId) : undefined;
-      if (imdbId) found.set(index, imdbId);
-    });
-    return found;
-  },
-};
 
 /**
  * JustWatch: custom lists read anonymously through the unofficial GraphQL API

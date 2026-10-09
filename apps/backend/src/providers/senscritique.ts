@@ -1,12 +1,10 @@
-import { justwatchImdbIdByPath } from "../titles/justwatch-lookup";
-import { mapWithConcurrency } from "../titles/tmdb";
+import { justwatchPathStrategy } from "../titles/justwatch-lookup";
 import { tmdbSearchMatchStrategy } from "../titles/tmdb-match";
 import { wikidataStrategy } from "../titles/wikidata";
 import { graphqlRequest, RateLimiter } from "./http";
 import type {
   PagedRead,
   ProviderAdapter,
-  ResolverStrategy,
   SourceEntry,
   SourceValidation,
 } from "./types";
@@ -23,7 +21,6 @@ const senscritiqueLimiter = new RateLimiter(3, 1000);
 const PAGE_SIZE = 100;
 /** Stop after this many pages per universe (10,000 products). */
 const MAX_PAGES = 100;
-const JUSTWATCH_CONCURRENCY = 3;
 
 /** SensCritique universes: products of other universes (books, games…) are skipped. */
 const UNIVERSE_MOVIE = 1;
@@ -349,36 +346,6 @@ async function fetchListProducts(
   }
   return { items: products, complete: false };
 }
-
-/**
- * Exact resolution through the JustWatch link that SensCritique shows on
- * products available to stream in France.
- */
-export const justwatchPathStrategy: ResolverStrategy = {
-  name: "justwatch-path",
-  provider: "justwatch",
-  async resolve(entries) {
-    const found = new Map<number, string>();
-    await mapWithConcurrency(
-      entries,
-      JUSTWATCH_CONCURRENCY,
-      async (entry, index) => {
-        const path = entry.externalIds?.justwatchPath;
-        if (!path) return;
-        try {
-          const imdbId = await justwatchImdbIdByPath(path);
-          if (imdbId) found.set(index, imdbId);
-        } catch (error) {
-          console.warn(
-            `JustWatch lookup failed for ${path}:`,
-            error instanceof Error ? error.message : error,
-          );
-        }
-      },
-    );
-    return found;
-  },
-};
 
 export const senscritiqueWikidataStrategy = wikidataStrategy(
   "wikidata-senscritique",

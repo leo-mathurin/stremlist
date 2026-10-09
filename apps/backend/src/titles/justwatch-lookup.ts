@@ -1,6 +1,8 @@
 import { asImdbId } from "@stremlist/shared/constants";
+import { mapWithConcurrency } from "../lib/concurrency";
 import type { GraphQLResponse } from "../providers/http";
 import { graphqlRequest, RateLimiter } from "../providers/http";
+import type { ResolverStrategy } from "../providers/types";
 
 /**
  * JustWatch's unofficial GraphQL API (no documentation, introspection off).
@@ -92,3 +94,59 @@ export async function justwatchImdbIdsByNodeIds(
   }
   return found;
 }
+
+const PATH_LOOKUP_CONCURRENCY = 3;
+
+/**
+ * Exact resolution through the JustWatch link that SensCritique shows on
+ * products available to stream in France.
+ */
+export const justwatchPathStrategy: ResolverStrategy = {
+  name: "justwatch-path",
+  provider: "justwatch",
+  async resolve(entries) {
+    const found = new Map<number, string>();
+    await mapWithConcurrency(
+      entries,
+      PATH_LOOKUP_CONCURRENCY,
+      async (entry, index) => {
+        const path = entry.externalIds?.justwatchPath;
+        if (!path) return;
+        try {
+          const imdbId = await justwatchImdbIdByPath(path);
+          if (imdbId) found.set(index, imdbId);
+        } catch (error) {
+          console.warn(
+            `JustWatch lookup failed for ${path}:`,
+            error instanceof Error ? error.message : error,
+          );
+        }
+      },
+    );
+    return found;
+  },
+};
+
+/**
+ * JustWatch adds IMDb IDs to new releases days or weeks after the title
+ * appears, so an entry that TMDB could not resolve is asked again on a later
+ * refresh (the resolver retries Unresolved entries).
+ */
+export const justwatchRecheckStrategy: ResolverStrategy = {
+  name: "justwatch-recheck",
+  provider: "justwatch",
+  async resolve(entries) {
+    const found = new Map<number, string>();
+    const nodeIds = entries.flatMap((entry) =>
+      entry.externalIds?.justwatch ? [entry.externalIds.justwatch] : [],
+    );
+    if (nodeIds.length === 0) return found;
+    const byNodeId = await justwatchImdbIdsByNodeIds(nodeIds);
+    entries.forEach((entry, index) => {
+      const nodeId = entry.externalIds?.justwatch;
+      const imdbId = nodeId ? byNodeId.get(nodeId) : undefined;
+      if (imdbId) found.set(index, imdbId);
+    });
+    return found;
+  },
+};

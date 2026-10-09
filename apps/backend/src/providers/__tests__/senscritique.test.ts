@@ -12,6 +12,7 @@ vi.mock("../http", async (importOriginal) => {
   return { ...actual, RateLimiter: InstantLimiter };
 });
 
+import { justwatchPathStrategy } from "../../titles/justwatch-lookup";
 import {
   candidateMatches,
   matchOnTmdb,
@@ -21,7 +22,6 @@ import { wikidataImdbIds } from "../../titles/wikidata";
 import type * as HttpModule from "../http";
 import type { SensCritiqueProduct } from "../senscritique";
 import {
-  justwatchPathStrategy,
   productToEntry,
   senscritiqueProvider,
   senscritiqueWikidataStrategy,

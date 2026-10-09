@@ -1068,7 +1068,7 @@ describe("Trakt actions", () => {
         { kind: "watchlist", add: true },
         { imdbId: "tt11128440", type: "movie" },
       ),
-    ).rejects.toThrow(/account limit/);
+    ).rejects.toMatchObject({ name: "HttpError", status: 420 });
   });
 
   it("names the Source lists that each Action changes", () => {

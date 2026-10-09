@@ -195,41 +195,26 @@ export function toSourceError(error: unknown): unknown {
   }
 }
 
-export class TraktWriteError extends Error {
-  readonly status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.name = "TraktWriteError";
-    this.status = status;
-  }
-}
-
-/** POST a change through the Connection (1 write per second). */
+/**
+ * POST a change through the Connection (1 write per second). Throws HttpError
+ * on non-2xx (420: account limit reached, 426: Trakt VIP only).
+ */
 export async function traktPost<T>(
   path: string,
   connection: ConnectionAccess,
   body: unknown,
 ): Promise<T | null> {
   const token = await connection.getAccessToken();
-  const response = await providerFetch(`${TRAKT_API}${path}`, {
-    method: "POST",
-    headers: traktHeaders(token),
-    body: JSON.stringify(body),
-    limiter: writeLimiter,
-  });
-  if (!response.ok) {
-    const reason =
-      response.status === 420
-        ? "the Trakt account limit is reached"
-        : response.status === 426
-          ? "this needs Trakt VIP"
-          : `HTTP ${response.status}`;
-    throw new TraktWriteError(
-      response.status,
-      `Trakt ${path} failed: ${reason}`,
-    );
-  }
+  const url = `${TRAKT_API}${path}`;
+  const response = await ensureOk(
+    await providerFetch(url, {
+      method: "POST",
+      headers: traktHeaders(token),
+      body: JSON.stringify(body),
+      limiter: writeLimiter,
+    }),
+    url,
+  );
   const text = await response.text();
   return text ? (JSON.parse(text) as T) : null;
 }
