@@ -1,3 +1,4 @@
+import type { TitleType } from "@stremlist/shared/constants";
 import { listRequiresConnection } from "@stremlist/shared/list-merge";
 import {
   sourceProblemCopy,
@@ -23,7 +24,7 @@ const CATALOG_PAGE_SIZE = 100;
 // silent blank or a 500 the client retry-storms.
 function buildUnavailableMeta(
   error: ListUnavailableError,
-  type: "movie" | "series",
+  type: TitleType,
 ): StremioMeta {
   const { title, fix } = sourceProblemCopy(
     error.provider,
@@ -181,7 +182,7 @@ async function serveCatalog(c: Context) {
         return c.json({ metas: [] });
       }
       return c.json({
-        metas: [buildUnavailableMeta(err, requestedType as "movie" | "series")],
+        metas: [buildUnavailableMeta(err, requestedType as TitleType)],
       });
     }
 

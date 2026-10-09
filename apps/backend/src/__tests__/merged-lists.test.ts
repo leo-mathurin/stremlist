@@ -1,3 +1,4 @@
+import type { TitleType } from "@stremlist/shared/constants";
 import type { Tables } from "@stremlist/shared/database.types";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
@@ -60,7 +61,7 @@ let accountId = "";
 function entry(
   id: string,
   addedAt?: string,
-  type: "movie" | "series" = "movie",
+  type: TitleType = "movie",
 ): SourceEntry {
   return {
     imdbId: id,

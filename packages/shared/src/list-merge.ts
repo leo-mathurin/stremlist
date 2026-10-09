@@ -1,4 +1,4 @@
-import type { DisplayMode } from "./constants";
+import type { DisplayMode, TitleType } from "./constants";
 import { CHART_BY_ID } from "./imdb-charts";
 import type { ProviderId, SourceId } from "./providers";
 import { PROVIDERS, sourceRequiresConnection } from "./providers";
@@ -78,7 +78,7 @@ export function listRequiresConnection(list: MergeableList): boolean {
 export function sourceTitleType(
   provider: ProviderId,
   ref: string,
-): "movie" | "series" | null {
+): TitleType | null {
   if (provider === "imdb") {
     const mode = CHART_BY_ID.get(ref)?.defaultDisplayMode;
     return mode === "movie" || mode === "series" ? mode : null;
@@ -161,9 +161,9 @@ function capitalize(text: string): string {
  */
 function singleTypeSources(
   list: MergeableList,
-): Record<"movie" | "series", ListSource[]> {
+): Record<TitleType, ListSource[]> {
   const sources = isMergedList(list) ? listSources(list) : [];
-  const ofType = (type: "movie" | "series") =>
+  const ofType = (type: TitleType) =>
     sources.filter(
       (source) => sourceTitleType(source.provider, source.sourceRef) === type,
     );
@@ -176,7 +176,7 @@ function singleTypeSources(
  */
 export function singleTypeReason(
   list: MergeableList,
-  outcome: Record<"both" | "movie" | "series", string>,
+  outcome: Record<"both" | TitleType, string>,
 ): string | null {
   const { movie, series } = singleTypeSources(list);
   const parts = (

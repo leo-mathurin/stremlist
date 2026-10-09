@@ -1,5 +1,5 @@
 import type { CatalogSettings } from "./catalog-settings";
-import type { DisplayMode } from "./constants";
+import type { DisplayMode, TitleType } from "./constants";
 import type { ListSource } from "./list-merge";
 import type { ProviderId } from "./providers";
 import type { ListSyncStatus, ListSyncStatuses } from "./sync-status";
@@ -121,7 +121,7 @@ export interface StremioMeta {
   name: string;
   poster: string | null;
   posterShape: "poster" | "square" | "landscape";
-  type: "movie" | "series";
+  type: TitleType;
   genres: string[];
   description: string;
   imdbRating?: string;
@@ -135,7 +135,7 @@ export interface StremioMeta {
 export interface StremioCatalog {
   id: string;
   name: string;
-  type: "movie" | "series";
+  type: TitleType;
   extra?: {
     name: "skip" | "genre" | "search";
     isRequired?: boolean;

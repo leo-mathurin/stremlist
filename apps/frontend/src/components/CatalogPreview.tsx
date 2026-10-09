@@ -18,7 +18,7 @@ import {
 } from "@stremlist/shared/catalog-settings";
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import { DISPLAY_MODE_OPTIONS } from "@stremlist/shared/constants";
-import type { DisplayMode } from "@stremlist/shared/constants";
+import type { DisplayMode, TitleType } from "@stremlist/shared/constants";
 import { isMergedList, listSources } from "@stremlist/shared/list-merge";
 import { PROVIDERS } from "@stremlist/shared/providers";
 import type { SourceId } from "@stremlist/shared/providers";
@@ -33,8 +33,6 @@ import { cn } from "@/lib/utils";
 
 /** Unresolved entries shown before "Show all". */
 const UNRESOLVED_COLLAPSED = 5;
-
-type TitleType = CatalogPreviewRow["type"];
 
 const TYPE_LABELS = { movie: "Movies", series: "TV shows" } as const;
 const TYPE_NOUNS = {

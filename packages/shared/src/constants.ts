@@ -30,6 +30,9 @@ export const DEFAULT_DISPLAY_MODE = "split";
 
 export type DisplayMode = (typeof DISPLAY_MODE_OPTIONS)[number]["value"];
 
+/** The two kinds of Title, and of Catalog. */
+export type TitleType = "movie" | "series";
+
 export type SortField = "added_at" | "random" | "title" | "year" | "rating";
 export type SortOrder = "asc" | "desc";
 export interface SortOptions {

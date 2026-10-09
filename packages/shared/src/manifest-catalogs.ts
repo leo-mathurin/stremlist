@@ -1,6 +1,6 @@
 import { CATALOG_PRESETS } from "./catalog-settings";
 import type { CatalogPreset, CatalogSettings } from "./catalog-settings";
-import type { DisplayMode } from "./constants";
+import type { DisplayMode, TitleType } from "./constants";
 
 /**
  * The Catalogs that Lists add to the addon manifest. Stremio reads them only
@@ -11,7 +11,7 @@ import type { DisplayMode } from "./constants";
 
 /** One Catalog that a List adds to Stremio. */
 export interface ListCatalog {
-  type: "movie" | "series";
+  type: TitleType;
   /** The extra Catalog of a preset, or null for the List's main Catalog. */
   preset: CatalogPreset | null;
 }

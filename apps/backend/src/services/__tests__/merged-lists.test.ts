@@ -1,3 +1,4 @@
+import type { DisplayMode } from "@stremlist/shared/constants";
 import {
   MAX_SOURCES_PER_LIST,
   allowedDisplayModes,
@@ -35,7 +36,7 @@ const TOP_TV: ListSource = { provider: "imdb", sourceRef: "imdb:top-rated-tv" };
 function merged(
   first: ListSource,
   others: ListSource[],
-  overrides: { displayMode?: "split" | "movie" | "series"; sort?: string } = {},
+  overrides: { displayMode?: DisplayMode; sort?: string } = {},
 ) {
   return {
     ...first,

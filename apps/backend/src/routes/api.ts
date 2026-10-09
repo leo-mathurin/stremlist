@@ -7,6 +7,7 @@ import {
   SORT_OPTIONS,
   parseSortOption,
 } from "@stremlist/shared/constants";
+import type { TitleType } from "@stremlist/shared/constants";
 import { isChartId } from "@stremlist/shared/imdb-charts";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import {
@@ -94,7 +95,7 @@ const sortOptionValues = SORT_OPTIONS.map((o) => o.value) as [
 ];
 const displayModeValues = DISPLAY_MODE_OPTIONS.map((o) => o.value) as [
   "split",
-  ...("movie" | "series")[],
+  ...TitleType[],
 ];
 
 const listBody = z.object({

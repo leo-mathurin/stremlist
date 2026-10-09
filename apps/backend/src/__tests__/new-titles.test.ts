@@ -1,3 +1,4 @@
+import type { TitleType } from "@stremlist/shared/constants";
 import { addonCatalogEntries } from "@stremlist/shared/manifest-catalogs";
 import type {
   AccountConfigResponse,
@@ -90,7 +91,7 @@ function seedImdbList(enabled = true) {
 }
 
 /** Stremio asks for a List catalog after its cache went stale. */
-async function sync(listId: string, type: "movie" | "series" = "movie") {
+async function sync(listId: string, type: TitleType = "movie") {
   vi.setSystemTime(Date.now() + NEXT_SYNC_MS);
   const res = await app.request(
     `/${accountId}/catalog/${type}/wl-${listId}-${type}.json`,
@@ -99,7 +100,7 @@ async function sync(listId: string, type: "movie" | "series" = "movie") {
 }
 
 async function newTitles(
-  type: "movie" | "series" = "movie",
+  type: TitleType = "movie",
   key = accountId,
 ): Promise<StremioMeta[]> {
   const res = await app.request(

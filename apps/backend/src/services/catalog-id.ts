@@ -1,16 +1,15 @@
 import { CATALOG_PRESETS } from "@stremlist/shared/catalog-settings";
 import type { CatalogPreset } from "@stremlist/shared/catalog-settings";
+import type { TitleType } from "@stremlist/shared/constants";
 const CATALOG_ID_PREFIX = "wl";
 const CATALOG_ID_SEPARATOR = "-";
 const PREFIX_OFFSET = CATALOG_ID_PREFIX.length + CATALOG_ID_SEPARATOR.length;
 const LIST_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export type CatalogContentType = "movie" | "series";
-
 export function buildCatalogId(
   listId: string,
-  type: CatalogContentType,
+  type: TitleType,
   preset?: CatalogPreset,
 ): string {
   return `${CATALOG_ID_PREFIX}${CATALOG_ID_SEPARATOR}${listId}${CATALOG_ID_SEPARATOR}${type}${preset ? `--${preset}` : ""}`;
@@ -18,14 +17,14 @@ export function buildCatalogId(
 
 interface ListCatalogId {
   listId: string;
-  type: CatalogContentType;
+  type: TitleType;
   preset?: CatalogPreset;
 }
 
 /** A catalog of the manifest: one of a List, or a "New titles" one. */
 type ParsedCatalogId =
   | ({ kind: "list" } & ListCatalogId)
-  | { kind: "new-titles"; type: CatalogContentType };
+  | { kind: "new-titles"; type: TitleType };
 
 function parseListCatalogId(catalogId: string): ListCatalogId | null {
   const separator = catalogId.indexOf("--");
@@ -68,7 +67,7 @@ function parseListCatalogId(catalogId: string): ListCatalogId | null {
 /** The "New titles" catalogs, one per type (ADR 0007). */
 const NEW_TITLES_PREFIX = "new-titles-";
 
-export function buildNewTitlesCatalogId(type: CatalogContentType): string {
+export function buildNewTitlesCatalogId(type: TitleType): string {
   return `${NEW_TITLES_PREFIX}${type}`;
 }
 

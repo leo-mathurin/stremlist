@@ -1,3 +1,4 @@
+import type { TitleType } from "@stremlist/shared/constants";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import { listSources, sourceKey } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
@@ -213,7 +214,7 @@ function withDetectionLine(
  */
 export async function getNewTitlesCatalog(
   access: AccountAccess,
-  type: "movie" | "series",
+  type: TitleType,
 ): Promise<StremioMeta[]> {
   const lists = await getVisibleLists(access);
   const detections = await loadDetections(access.account.id, lists);

@@ -1,21 +1,19 @@
-import type { CatalogPreset } from "./catalog-settings";
+import type { TitleType } from "./constants";
+import type { ListCatalog } from "./manifest-catalogs";
 import type { SourceId } from "./providers";
 import type { SourceProblemReason } from "./source-problems";
 
 /** One Title of a Catalog preview: only what a poster tile needs. */
 export interface PreviewTitle {
   id: string;
-  type: "movie" | "series";
+  type: TitleType;
   name: string;
   poster: string | null;
   releaseInfo: string | null;
 }
 
 /** One Catalog that a List adds to Stremio, with its first Titles. */
-export interface CatalogPreviewRow {
-  type: "movie" | "series";
-  /** The extra Catalog of a preset, or null for the List's main Catalog. */
-  preset: CatalogPreset | null;
+export interface CatalogPreviewRow extends ListCatalog {
   /** Titles in this Catalog, after the List's filters. */
   total: number;
   /** The first Titles, in the order that Stremio shows them. */
@@ -26,7 +24,7 @@ export interface CatalogPreviewRow {
 export interface PreviewUnresolvedEntry {
   title: string | null;
   year: number | null;
-  type: "movie" | "series" | null;
+  type: TitleType | null;
   /** A page about the entry (its Provider, JustWatch or TMDB), when known. */
   url: string | null;
 }

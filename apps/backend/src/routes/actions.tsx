@@ -1,3 +1,4 @@
+import type { TitleType } from "@stremlist/shared/constants";
 import type { ProviderId } from "@stremlist/shared/providers";
 import {
   PROVIDERS,
@@ -86,7 +87,7 @@ function Page({ title, children }: { title: string; children: Child }) {
 /** The Title's name, or null when it cannot be found quickly. */
 async function titleName(
   imdbId: string,
-  type: "movie" | "series",
+  type: TitleType,
 ): Promise<string | null> {
   try {
     const metas = await Promise.race([
