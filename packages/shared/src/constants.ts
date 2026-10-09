@@ -71,9 +71,11 @@ export function parseSortOption(
  * A generated Account ID (ADR 0001): `sl_` and 22 base62 characters. It is the
  * secret part of the Addon URL.
  */
-export const ACCOUNT_ID_PATTERN = /^sl_[0-9A-Za-z]{22}$/;
+export const ACCOUNT_ID_SOURCE = String.raw`sl_[0-9A-Za-z]{22}`;
+export const ACCOUNT_ID_PATTERN = new RegExp(`^${ACCOUNT_ID_SOURCE}$`);
 
-const IMDB_UR_ID_SOURCE = String.raw`ur\d{4,}`;
+/** An IMDb user ID, also the form of a Legacy alias. */
+export const IMDB_UR_ID_SOURCE = String.raw`ur\d{4,}`;
 const IMDB_LS_ID_SOURCE = String.raw`ls\d+`;
 const IMDB_P_HANDLE_SOURCE = String.raw`p\.[a-zA-Z0-9]+`;
 
@@ -92,9 +94,8 @@ export const IMDB_WATCHLIST_SOURCE_ID_EXTRACT_PATTERN = new RegExp(
 );
 
 /** An Addon URL key: a generated Account ID or a Legacy alias (`ur…`). */
-export const ACCOUNT_KEY_PATTERN = new RegExp(
-  `^(sl_[0-9A-Za-z]{22}|${IMDB_UR_ID_SOURCE})$`,
-);
+export const ACCOUNT_KEY_SOURCE = `${ACCOUNT_ID_SOURCE}|${IMDB_UR_ID_SOURCE}`;
+export const ACCOUNT_KEY_PATTERN = new RegExp(`^(?:${ACCOUNT_KEY_SOURCE})$`);
 
 export const IMDB_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";

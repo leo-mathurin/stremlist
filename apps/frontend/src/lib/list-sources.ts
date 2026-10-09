@@ -1,3 +1,7 @@
+import {
+  ACCOUNT_KEY_PATTERN,
+  ACCOUNT_KEY_SOURCE,
+} from "@stremlist/shared/constants";
 import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
 import {
   CONNECTION_SOURCES,
@@ -194,8 +198,9 @@ export function describeSource(
   }
 }
 
-const ADDON_KEY_IN_TEXT =
-  /(?:^|[/\s])(sl_[0-9A-Za-z]{22}|ur\d{4,})(?=\/manifest\.json|\/configure|$|\s)/;
+const ADDON_KEY_IN_TEXT = new RegExp(
+  String.raw`(?:^|[/\s])(${ACCOUNT_KEY_SOURCE})(?=/manifest\.json|/configure|$|\s)`,
+);
 
 /**
  * Find the Account key in a pasted Addon URL (https or stremio://), a
@@ -203,12 +208,12 @@ const ADDON_KEY_IN_TEXT =
  */
 export function extractAccountKey(input: string): string | null {
   const trimmed = input.trim();
-  if (/^(sl_[0-9A-Za-z]{22}|ur\d{4,})$/.test(trimmed)) return trimmed;
+  if (ACCOUNT_KEY_PATTERN.test(trimmed)) return trimmed;
   try {
     const url = new URL(trimmed.replace(/^stremio:\/\//, "https://"));
     const account =
       url.searchParams.get("account") ?? url.searchParams.get("userId");
-    if (account && /^(sl_[0-9A-Za-z]{22}|ur\d{4,})$/.test(account)) {
+    if (account && ACCOUNT_KEY_PATTERN.test(account)) {
       return account;
     }
   } catch {
