@@ -1,4 +1,5 @@
 import type { DisplayMode } from "@stremlist/shared/constants";
+import { asImdbId } from "@stremlist/shared/constants";
 import type { ConnectionSource } from "@stremlist/shared/providers";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
 import { HttpError, providerFetch, RateLimiter } from "./http";
@@ -333,14 +334,11 @@ function isSameUser(a: string | null | undefined, b: string): boolean {
 // Entries
 // ---------------------------------------------------------------------------
 
-const IMDB_ID = /^tt\d+$/;
-
 function imdbIdOf(
   ids: MdblistIds | null | undefined,
   fallback?: string | null,
 ) {
-  const value = ids?.imdb ?? fallback;
-  return value && IMDB_ID.test(value) ? value : undefined;
+  return asImdbId(ids?.imdb ?? fallback);
 }
 
 function toEntry(item: MdblistItem): SourceEntry | null {

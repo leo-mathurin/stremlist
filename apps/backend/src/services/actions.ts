@@ -3,6 +3,7 @@ import {
   GetObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
+import { IMDB_TITLE_ID_PATTERN } from "@stremlist/shared/constants";
 import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
 import { joinProviderLabels, PROVIDERS } from "@stremlist/shared/providers";
 import type { StremioStream } from "@stremlist/shared/stremio.types";
@@ -142,7 +143,7 @@ export function parseStreamId(
   id: string,
 ): ActionTarget | null {
   const [imdbId, season, episode] = id.split(":");
-  if (!/^tt\d+$/.test(imdbId)) return null;
+  if (!IMDB_TITLE_ID_PATTERN.test(imdbId)) return null;
   if (type === "series" && season && episode) {
     const s = Number(season);
     const e = Number(episode);

@@ -1,3 +1,4 @@
+import { IMDB_TITLE_ID_PATTERN } from "@stremlist/shared/constants";
 import type { ResolverStrategy, SourceEntry } from "../providers/types";
 import { isTmdbConfigured, mapWithConcurrency, tmdbGet } from "./tmdb";
 
@@ -7,7 +8,6 @@ const CANDIDATES_PER_QUERY = 2;
 const YEAR_TOLERANCE = 1;
 const SERIES_EARLIER_YEARS = 10;
 const RUNTIME_TOLERANCE_MINUTES = 10;
-const IMDB_ID = /^tt\d+$/;
 
 interface TmdbSearchResult {
   id: number;
@@ -285,7 +285,8 @@ export async function matchOnTmdb(entry: SourceEntry): Promise<string | null> {
     for (const { result, gap } of candidates) {
       checked.add(result.id);
       const candidate = await loadCandidate(result.id, type);
-      if (!candidate?.imdbId || !IMDB_ID.test(candidate.imdbId)) continue;
+      if (!candidate?.imdbId || !IMDB_TITLE_ID_PATTERN.test(candidate.imdbId))
+        continue;
       const titles = [
         result.title,
         result.original_title,

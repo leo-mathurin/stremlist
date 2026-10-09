@@ -1,3 +1,4 @@
+import { asImdbId } from "@stremlist/shared/constants";
 import {
   justwatchImdbIdsByNodeIds,
   justwatchQuery,
@@ -135,10 +136,9 @@ function toEntry(node: JustwatchTitleNode): SourceEntry {
         ? "movie"
         : undefined;
   const content = node.content ?? {};
-  const imdbId = content.externalIds?.imdbId;
   const tmdbId = Number(content.externalIds?.tmdbId);
   return {
-    imdbId: imdbId && /^tt\d+$/.test(imdbId) ? imdbId : undefined,
+    imdbId: asImdbId(content.externalIds?.imdbId),
     externalIds: {
       justwatch: node.id,
       tmdb:

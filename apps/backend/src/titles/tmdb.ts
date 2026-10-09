@@ -1,3 +1,4 @@
+import { asImdbId } from "@stremlist/shared/constants";
 import { providerFetch, RateLimiter } from "../providers/http";
 import type { ResolverStrategy, SourceEntry } from "../providers/types";
 
@@ -67,7 +68,7 @@ export async function tmdbImdbId(
   const data = await tmdbGet<{ imdb_id?: string | null }>(
     `/${type === "movie" ? "movie" : "tv"}/${tmdbId}/external_ids`,
   );
-  return data?.imdb_id && /^tt\d+$/.test(data.imdb_id) ? data.imdb_id : null;
+  return asImdbId(data?.imdb_id) ?? null;
 }
 
 /**

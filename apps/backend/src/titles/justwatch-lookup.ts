@@ -1,3 +1,4 @@
+import { asImdbId } from "@stremlist/shared/constants";
 import type { GraphQLResponse } from "../providers/http";
 import { graphqlRequest, RateLimiter } from "../providers/http";
 
@@ -44,8 +45,7 @@ export async function justwatchImdbIdByPath(
       node?: { content?: { externalIds?: { imdbId?: string | null } } };
     } | null;
   }>(IMDB_BY_PATH, { path });
-  const imdbId = json.data?.urlV2?.node?.content?.externalIds?.imdbId;
-  return imdbId && /^tt\d+$/.test(imdbId) ? imdbId : null;
+  return asImdbId(json.data?.urlV2?.node?.content?.externalIds?.imdbId) ?? null;
 }
 
 const IMDB_BY_NODE_IDS = `
@@ -84,8 +84,8 @@ export async function justwatchImdbIdsByNodeIds(
       ids: unique.slice(start, start + NODE_IDS_PER_REQUEST),
     });
     for (const node of json.data?.nodes ?? []) {
-      const imdbId = node?.content?.externalIds?.imdbId;
-      if (node?.id && imdbId && /^tt\d+$/.test(imdbId)) {
+      const imdbId = asImdbId(node?.content?.externalIds?.imdbId);
+      if (node?.id && imdbId) {
         found.set(node.id, imdbId);
       }
     }

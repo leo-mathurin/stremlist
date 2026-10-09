@@ -1,3 +1,4 @@
+import { IMDB_TITLE_ID_PATTERN } from "@stremlist/shared/constants";
 import { supabase } from "../lib/supabase";
 import { isProviderEnabled } from "../providers/kill-switch";
 import type {
@@ -46,8 +47,6 @@ interface CacheRow {
   imdb_id: string | null;
   retry_after: string | null;
 }
-
-const IMDB_ID = /^tt\d+$/;
 
 function cacheKey(key: ResolutionKey): string {
   return `${key.namespace}\u0000${key.externalId}`;
@@ -131,7 +130,9 @@ export async function resolveEntries(
   options: ResolveOptions = { budgetMs: DEFAULT_RESOLVE_BUDGET_MS },
 ): Promise<ResolutionResult> {
   const imdbIds: (string | null)[] = entries.map((entry) =>
-    entry.imdbId && IMDB_ID.test(entry.imdbId) ? entry.imdbId : null,
+    entry.imdbId && IMDB_TITLE_ID_PATTERN.test(entry.imdbId)
+      ? entry.imdbId
+      : null,
   );
 
   const pending: { index: number; key: ResolutionKey }[] = [];
@@ -181,7 +182,7 @@ export async function resolveEntries(
           for (const [position, imdbId] of found) {
             // A strategy may answer a position that is not in the batch.
             const item = position >= 0 ? remaining.at(position) : undefined;
-            if (item && IMDB_ID.test(imdbId)) {
+            if (item && IMDB_TITLE_ID_PATTERN.test(imdbId)) {
               results.set(item.index, { imdbId, strategy: strategy.name });
             }
           }

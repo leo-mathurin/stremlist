@@ -1,3 +1,4 @@
+import { IMDB_TITLE_ID_PATTERN } from "@stremlist/shared/constants";
 import { providerFetch, RateLimiter } from "../providers/http";
 import type { ResolverStrategy, SourceEntry } from "../providers/types";
 
@@ -10,7 +11,6 @@ const BATCH_SIZE = 200;
 const wikidataLimiter = new RateLimiter(2, 1000);
 
 const PROPERTY_PATTERN = /^P\d+$/;
-const IMDB_ID = /^tt\d+$/;
 
 interface SparqlResponse {
   results?: {
@@ -64,7 +64,7 @@ export async function wikidataImdbIds(
     for (const binding of json.results?.bindings ?? []) {
       const external = binding.external?.value;
       const imdbId = binding.imdb?.value;
-      if (!external || !imdbId || !IMDB_ID.test(imdbId)) continue;
+      if (!external || !imdbId || !IMDB_TITLE_ID_PATTERN.test(imdbId)) continue;
       const previous = found.get(external);
       if (previous && previous !== imdbId) ambiguous.add(external);
       found.set(external, imdbId);

@@ -1,5 +1,5 @@
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
-import { ADDON_VERSION } from "@stremlist/shared/constants";
+import { ADDON_VERSION, asImdbId } from "@stremlist/shared/constants";
 import { CONNECTION_SOURCES } from "@stremlist/shared/providers";
 import { getR2Bucket, getR2Client } from "../lib/r2";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
@@ -185,10 +185,6 @@ function toInt(value: unknown): number | undefined {
     : undefined;
 }
 
-function toImdbId(value: unknown): string | undefined {
-  return typeof value === "string" && /^tt\d+$/.test(value) ? value : undefined;
-}
-
 // ---------------------------------------------------------------------------
 // The library: every item of the user's five statuses, with watch state
 // ---------------------------------------------------------------------------
@@ -268,7 +264,7 @@ function parseEntry(
     kind,
     status,
     slug: typeof ids.slug === "string" ? ids.slug : undefined,
-    imdb: toImdbId(ids.imdb),
+    imdb: asImdbId(ids.imdb),
     tmdb: toInt(ids.tmdb),
     tvdb: toInt(ids.tvdb),
     mal: toInt(ids.mal),
@@ -729,7 +725,7 @@ function listItemEntry(item: RawListItem): SourceEntry | null {
   const kind: SimklKind =
     item.type === "anime" ? "anime" : type === "movie" ? "movies" : "shows";
   return {
-    imdbId: toImdbId(ids.imdb),
+    imdbId: asImdbId(ids.imdb),
     externalIds,
     type,
     title: item.title,
