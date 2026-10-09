@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { FRONTEND_URL } from "../env.js";
@@ -536,56 +537,77 @@ test(
   },
 );
 
+const SAVED = "Saved! Your catalogs will refresh with the new settings.";
+const BEFORE_SAVE = "These changes need a reinstall.";
+const WESTERN: ListSource = {
+  provider: "imdb",
+  sourceRef: "ls9999999999998",
+  label: "Western QA",
+};
+
+/**
+ * A merged List of three Source lists: the first two have only Drama, the
+ * third only Western, so only the third brings a genre of its own.
+ */
+function seedThreeSources() {
+  return seedMerged(
+    [FIRST, { ...SECOND, label: "Second QA" }, WESTERN],
+    [
+      [title("tt9910001", "2020-01-01T00:00:00.000Z")],
+      [title("tt9910002", "2021-01-01T00:00:00.000Z")],
+      [
+        title("tt9910003", "2022-01-01T00:00:00.000Z", {
+          genres: ["Western"],
+        }),
+      ],
+    ],
+    { sortOption: "title-asc" },
+  );
+}
+
+/** Remove one Source list of "Merged QA" on the configure page. */
+async function removeSource(page: Page, accountId: string, name: string) {
+  await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
+  await page.getByRole("button", { name: "Settings for Merged QA" }).click();
+  await page
+    .getByRole("button", { name: `Remove ${name} from this List` })
+    .click();
+  await expect(page.getByText("2 of 5")).toBeVisible();
+}
+
 test(
-  "removing a merged Source list that is not the first changes the manifest genres without a reinstall message",
+  "removing a merged Source list asks for a reinstall only when the manifest changes",
   { tag: "@local" },
   async ({ page }) => {
-    // Known gap, reported and not fixed here: the reinstall signature of the
-    // configure page (apps/frontend/src/lib/list-form.ts) has the first
-    // Source list of each List but not its merged Source lists. Stremio
-    // reads the genre options of a Catalog only at install time, so after
-    // this save it still offers "Western", which no Source list has now.
-    // When the page asks for a reinstall here, change the expected message.
-    const western: ListSource = {
-      provider: "imdb",
-      sourceRef: "ls9999999999998",
-      label: "Western QA",
-    };
-    const seed = () =>
-      seedMerged(
-        [FIRST, { ...SECOND, label: "Second QA" }, western],
-        [
-          [title("tt9910001", "2020-01-01T00:00:00.000Z")],
-          [title("tt9910002", "2021-01-01T00:00:00.000Z")],
-          [
-            title("tt9910003", "2022-01-01T00:00:00.000Z", {
-              genres: ["Western"],
-            }),
-          ],
-        ],
-        { sortOption: "title-asc" },
-      );
-    const { accountId, catalogId } = await seed();
+    // Stremio reads the genre options of a Catalog only at install time
+    // (ADR 0006): a Source list that takes its own genres away changes the
+    // manifest, one whose genres the others have does not, whatever its place.
+    for (const name of ["Second QA", "IMDb Watchlist"]) {
+      await resetDb();
+      const { accountId } = await seedThreeSources();
+      const before = await getManifest(accountId);
+      await removeSource(page, accountId, name);
+      await expect(page.getByText(BEFORE_SAVE)).toHaveCount(0);
+      await saveButton(page).click();
+      await expect(page.getByText(SAVED)).toBeVisible();
+      expect((await getManifest(accountId)).catalogs).toEqual(before.catalogs);
+    }
+
+    await resetDb();
+    const { accountId, catalogId } = await seedThreeSources();
     expect(await genreOptions(accountId, catalogId)).toEqual(
       expect.arrayContaining(["Drama", "Western"]),
     );
-
-    await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
-    await page.getByRole("button", { name: "Settings for Merged QA" }).click();
-    await page
-      .getByRole("button", { name: "Remove Western QA from this List" })
-      .click();
-    await expect(page.getByText("2 of 5")).toBeVisible();
+    await removeSource(page, accountId, "Western QA");
+    await expect(page.getByText(BEFORE_SAVE)).toBeVisible();
     await saveButton(page).click();
+    await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(
-      page.getByText(
-        "Saved! Your catalogs will refresh with the new settings.",
-      ),
+      page.getByRole("heading", {
+        name: "Reinstall in Stremio to see your changes",
+      }),
     ).toBeVisible();
-    await expect(page.getByText(/Reinstall Stremlist/)).toHaveCount(0);
-
-    // The Catalog ID and its Titles follow the save without a reinstall, but
-    // the genre options that Stremio read at install time are now different.
+    // Same Catalog, without the genre that only Western QA had.
     expect(
       (await getManifest(accountId)).catalogs.map((catalog) => catalog.id),
     ).toEqual([catalogId]);
@@ -597,18 +619,49 @@ test(
         (meta) => meta.id,
       ),
     ).toEqual(["tt9910001", "tt9910002"]);
+  },
+);
 
-    // For comparison: removing the first Source list asks for a reinstall,
-    // although the manifest changes in the same way.
-    await resetDb();
-    const other = await seed();
-    await page.goto(`${FRONTEND_URL}/configure?account=${other.accountId}`);
-    await page.getByRole("button", { name: "Settings for Merged QA" }).click();
+test(
+  "merging a List into another asks for a reinstall: its Catalog goes away",
+  { tag: "@local" },
+  async ({ page }) => {
+    const accountId = await seedAccount();
+    const watchlist = await seedList(accountId, {
+      ...FIRST,
+      catalogTitle: "Watchlist QA",
+      position: 0,
+    });
+    const other = await seedList(accountId, {
+      ...SECOND,
+      catalogTitle: "Other QA",
+      position: 1,
+    });
+    await seedCachedCatalog(watchlist, [
+      title("tt9910001", "2020-01-01T00:00:00.000Z"),
+    ]);
+    await seedCachedCatalog(other, [
+      title("tt9910002", "2021-01-01T00:00:00.000Z"),
+    ]);
+    expect(
+      (await getManifest(accountId)).catalogs.map((catalog) => catalog.id),
+    ).toEqual([`wl-${watchlist}-movie`, `wl-${other}-movie`]);
+
+    await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
     await page
-      .getByRole("button", { name: "Remove IMDb Watchlist from this List" })
+      .getByRole("button", { name: "Settings for Watchlist QA" })
       .click();
+    await page
+      .getByRole("button", { name: "Merge another List into this one" })
+      .first()
+      .click();
+    await page.getByRole("menuitem", { name: "Other QA" }).click();
     await expect(page.getByText("2 of 5")).toBeVisible();
+    await expect(page.getByText(BEFORE_SAVE)).toBeVisible();
     await saveButton(page).click();
     await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
+    expect(
+      (await getManifest(accountId)).catalogs.map((catalog) => catalog.id),
+    ).toEqual([`wl-${watchlist}-movie`]);
   },
 );

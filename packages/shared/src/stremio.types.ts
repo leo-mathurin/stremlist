@@ -8,6 +8,12 @@ export interface CatalogData {
   metas: StremioMeta[];
 }
 
+/** Genres of Titles, by Title type. */
+export interface TitleGenres {
+  movie: string[];
+  series: string[];
+}
+
 /** One List of an Account, as the configure page and the API see it. */
 export interface ConfigList {
   id: string;
@@ -18,6 +24,11 @@ export interface ConfigList {
   displayMode: DisplayMode;
   position: number;
   availableGenres?: string[];
+  /**
+   * The genres of each Source list's cached Titles, by type, in the order of
+   * `listSources`; null when nothing is cached for it yet.
+   */
+  sourceGenres?: (TitleGenres | null)[];
   catalogSettings?: CatalogSettings;
   /**
    * More Source lists merged into this List after `provider`/`sourceRef`.

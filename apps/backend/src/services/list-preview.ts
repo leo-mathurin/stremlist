@@ -14,6 +14,7 @@ import {
   sourceKey,
   sourcesWithoutDates,
 } from "@stremlist/shared/list-merge";
+import { listCatalogs } from "@stremlist/shared/manifest-catalogs";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDERS } from "@stremlist/shared/providers";
 import { createHash } from "node:crypto";
@@ -25,7 +26,6 @@ import { sortCatalog } from "./catalog-sort";
 import type { BuiltCatalog } from "./lists";
 import { buildCatalog, providerContext, sourceProblemReason } from "./lists";
 import { mergeSourceCatalogs } from "./merged-lists";
-import { listCatalogs } from "./stremio-catalogs";
 
 /**
  * How long one read of a Source list serves previews. Changing the sort or

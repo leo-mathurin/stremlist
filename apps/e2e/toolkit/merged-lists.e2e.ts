@@ -10,6 +10,7 @@ import type {
   ConfigList,
 } from "@stremlist/shared/stremio.types";
 import {
+  SAVED,
   SAVED_REINSTALL,
   accountId,
   backend,
@@ -400,8 +401,10 @@ test("a merged Source list keeps its name when it moves to the first place", asy
   await expect(
     screen.getByRole("button", "Move Family picks to its own List"),
   ).toBeVisible();
+  // Same Catalog ID, name and type: Stremio needs no reinstall.
+  await expect(screen.getByText(NEEDS_REINSTALL, { exact: true })).toBeHidden();
   await saveButton(screen).tap();
-  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  await expect(screen.getByText(SAVED)).toBeVisible();
   expect(submissions[0].lists).toMatchObject([
     {
       provider: "imdb",
@@ -878,4 +881,47 @@ test("a merged List is up to date as of its oldest refresh", async ({
   await expect(
     screen.getByText("Updated 2 hours ago", { exact: true }),
   ).toBeVisible();
+});
+
+test("removing a merged Source list asks for a reinstall only when it takes genres away", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  const merged = {
+    ...watchlist,
+    sortOption: "title-asc",
+    mergedSources: [
+      { provider: "imdb", sourceRef: "ls99123456", label: "Favourite films" },
+      { provider: "imdb", sourceRef: "ls99123457", label: "Westerns" },
+    ],
+    availableGenres: ["Drama", "Western"],
+    sourceGenres: [
+      { movie: ["Drama"], series: [] },
+      { movie: ["Drama"], series: [] },
+      { movie: ["Western"], series: [] },
+    ],
+  } satisfies ConfigList;
+  const submissions = await captureConfig(browser, withLists([merged]));
+  await fitConfigurePage(browser);
+  await holdToasts(browser);
+  await app.open(`/configure?account=${accountId}`);
+  await openSettings(screen, "IMDb Watchlist");
+
+  // The other Source lists have Drama too: Stremio's genre options stay.
+  await screen
+    .getByRole("button", "Remove Favourite films from this List")
+    .tap();
+  await expect(screen.getByText("2 of 5")).toBeVisible();
+  await expect(screen.getByText(NEEDS_REINSTALL, { exact: true })).toBeHidden();
+
+  // Only Westerns has Western: Stremio offers it until a reinstall.
+  await screen.getByRole("button", "Remove Westerns from this List").tap();
+  await expect(screen.getByText("1 of 5")).toBeVisible();
+  await expect(
+    screen.getByText(NEEDS_REINSTALL, { exact: true }),
+  ).toBeVisible();
+  await saveButton(screen).tap();
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  expect(submissions.at(-1)?.lists[0].mergedSources).toEqual([]);
 });

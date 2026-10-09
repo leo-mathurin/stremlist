@@ -29,27 +29,6 @@ export type ListFormRow = {
   sourceLabel?: string;
 };
 
-/**
- * Stremio reads the manifest catalogs only at install time. This signature
- * covers everything that changes the catalogs, so the page can tell the user
- * when a reinstall is needed.
- */
-export function getListReinstallSignature(rows: ListFormRow[]): string {
-  return rows
-    .map((row, index) =>
-      [
-        index,
-        row.id ?? row.localId,
-        row.provider,
-        row.sourceRef.trim(),
-        row.catalogTitle.trim(),
-        row.displayMode,
-        [...(row.catalogSettings.presets ?? [])].sort().join(","),
-      ].join("|"),
-    )
-    .join("::");
-}
-
 export function createListRow(
   partial: Pick<ListFormRow, "provider" | "sourceRef"> &
     Partial<Omit<ListFormRow, "localId">>,

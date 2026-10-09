@@ -26,16 +26,16 @@ import type {
   ConnectionSummary,
 } from "@stremlist/shared/stremio.types";
 import { api } from "../lib/api";
-import {
-  createListRow,
-  getListReinstallSignature,
-  rowTitle,
-  sourceKeys,
-} from "../lib/list-form";
+import { createListRow, rowTitle, sourceKeys } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { buildAddonUrls } from "../lib/list-sources";
 import { mergeRows, removeRowSource, splitRowSource } from "../lib/merged-rows";
 import { reinstallState, requiresReinstall } from "../lib/reinstall";
+import {
+  getListReinstallSignature,
+  learnSourceGenres,
+} from "../lib/reinstall-signature";
+import type { KnownSourceGenres } from "../lib/reinstall-signature";
 import type { InstallBaseline } from "../lib/reinstall";
 import { useListSyncStatus } from "./useListSyncStatus";
 
@@ -204,6 +204,11 @@ export function useAccountConfiguration(
   // loads; the signature is "" for an Account without Lists.
   const [installed, setInstalled] = useState<InstallBaseline>(UNKNOWN_BASELINE);
   const [saved, setSaved] = useState<InstallBaseline>(UNKNOWN_BASELINE);
+  // The genres that each Source list brings to the manifest, as far as the
+  // server told: the reinstall signature counts them.
+  const [knownGenres, setKnownGenres] = useState<KnownSourceGenres | null>(
+    null,
+  );
   const currentForm = useRef({ lists, rpdbApiKey });
   // Save responses must see edits committed while the request was in flight.
   useLayoutEffect(() => {
@@ -255,7 +260,9 @@ export function useAccountConfiguration(
         const data = (await res.json()) as AccountConfigResponse;
         if (cancelled) return;
         const rows = rowsFromLists(data.lists);
+        const genres = learnSourceGenres(null, data.lists);
         setLists(rows);
+        setKnownGenres(genres);
         setAccess(data.access);
         setAccountId(data.accountId);
         setMovedAt(data.movedAt);
@@ -274,7 +281,7 @@ export function useAccountConfiguration(
         ]);
         setActionSelected(savedProviders);
         const loaded = {
-          signature: getListReinstallSignature(rows),
+          signature: getListReinstallSignature(rows, genres),
           actionsLive: data.actions.enabled && savedProviders.length > 0,
         };
         setSaved(loaded);
@@ -507,7 +514,7 @@ export function useAccountConfiguration(
     access === "new"
       ? "none"
       : reinstallState(installed, saved, {
-          signature: getListReinstallSignature(lists),
+          signature: getListReinstallSignature(lists, knownGenres),
           actionsLive,
         });
 
@@ -613,8 +620,10 @@ export function useAccountConfiguration(
           };
         }),
       );
+      const genres = learnSourceGenres(knownGenres, body.lists);
+      setKnownGenres(genres);
       const nowSaved = {
-        signature: getListReinstallSignature(savedRows),
+        signature: getListReinstallSignature(savedRows, genres),
         actionsLive: submittedActionsLive,
       };
       // Compare with what Stremio read at install time, not with the last

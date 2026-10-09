@@ -10,6 +10,7 @@ import { cache } from "../../__tests__/helpers/mock-list-cache";
 import { filterCatalog, resolveCatalogSelection } from "../catalog-filters";
 import { withAvailableGenres } from "../catalog-genres";
 import { catalogSettingsSchema } from "../catalog-settings";
+import { sourceCaches } from "../merged-lists";
 import { buildManifestCatalogs } from "../stremio-catalogs";
 
 const list: ConfigList = {
@@ -95,4 +96,40 @@ describe("genres from cached IMDb titles", () => {
       expect(catalogSettingsSchema.safeParse({ genre }).success).toBe(false);
     },
   );
+});
+
+describe("genres of a merged List", () => {
+  it("offers the genres of every Source list and tells them apart", async () => {
+    const merged: ConfigList = {
+      ...list,
+      mergedSources: [
+        { provider: "imdb", sourceRef: "ls1000002" },
+        { provider: "imdb", sourceRef: "ls1000003" },
+      ],
+    };
+    const [first, second] = sourceCaches(merged);
+    cache.seed(first.cacheKey, [{ ...movie, genres: ["Drama"] }]);
+    cache.seed(second.cacheKey, [
+      { ...movie, type: "series", genres: ["Western"] },
+    ]);
+
+    const [withGenres] = await withAvailableGenres([merged]);
+
+    expect(withGenres.availableGenres).toEqual(["Drama", "Western"]);
+    // The third Source list has no cache yet.
+    expect(withGenres.sourceGenres).toEqual([
+      { movie: ["Drama"], series: [] },
+      { movie: [], series: ["Western"] },
+      null,
+    ]);
+    expect(
+      buildManifestCatalogs([withGenres]).map(
+        (catalog) =>
+          catalog.extra?.find((extra) => extra.name === "genre")?.options,
+      ),
+    ).toEqual([
+      expect.arrayContaining(["Drama", "Western"]),
+      expect.arrayContaining(["Drama", "Western"]),
+    ]);
+  });
 });

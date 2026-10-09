@@ -789,7 +789,11 @@ describe("List CRUD via the config API", () => {
       ];
       expect(await response.json()).toEqual({
         ok: true,
-        lists: expected.map((row) => ({ ...row, availableGenres: [] })),
+        lists: expected.map((row) => ({
+          ...row,
+          availableGenres: [],
+          sourceGenres: [null],
+        })),
       });
       expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledOnce();
       await runScheduledTasks();
