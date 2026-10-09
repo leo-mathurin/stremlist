@@ -103,29 +103,25 @@ interface InFlightRefresh {
 
 const inFlightRefreshes = new Map<string, InFlightRefresh>();
 
-async function providerContext(
-  config: ListFetchConfig,
+/**
+ * The Provider context of a Source list read. `connectionAccountId` is the
+ * Account whose Connection the read may use, or null when the request may
+ * not use one (a Legacy alias, a new setup).
+ */
+export async function providerContext(
+  source: { provider: ProviderId; sourceRef: string },
+  connectionAccountId: string | null,
 ): Promise<ProviderContext> {
-  if (!config.allowConnection) {
-    if (sourceRequiresConnection(config.provider, config.sourceRef)) {
-      throw new SourceUnavailableError(
-        "needs_connection",
-        `${config.provider} ${config.sourceRef} needs a Connection`,
-      );
-    }
-    return { connection: null };
-  }
-  const connection = await getConnectionAccess(
-    config.accountId,
-    config.provider,
-  );
+  const connection = connectionAccountId
+    ? await getConnectionAccess(connectionAccountId, source.provider)
+    : null;
   if (
     !connection &&
-    sourceRequiresConnection(config.provider, config.sourceRef)
+    sourceRequiresConnection(source.provider, source.sourceRef)
   ) {
     throw new SourceUnavailableError(
       "needs_connection",
-      `${config.provider} ${config.sourceRef} needs a Connection`,
+      `${source.provider} ${source.sourceRef} needs a Connection`,
     );
   }
   return { connection };
@@ -149,12 +145,30 @@ function withLinkBack(
   return { ...meta, description: base ? `${base}\n\n${line}` : line };
 }
 
-/** Turn a Provider snapshot into a canonical Catalog (provider order). */
-async function buildCatalog(
+export interface BuiltCatalog {
+  data: CatalogData;
+  /** Unresolved entries that no strategy tried yet. */
+  deferred: number;
+  /** Entries without an IMDb ID yet, in Source list order. */
+  unresolvedEntries: SourceEntry[];
+  /** Titles with an IMDb ID but no metadata, so they are not shown. */
+  withoutMetadata: number;
+}
+
+/**
+ * Turn a Provider snapshot into a canonical Catalog (provider order). Without
+ * a `listId` (a preview of a List not saved yet), no cached metadata is reused.
+ */
+export async function buildCatalog(
   adapter: ProviderAdapter,
-  config: ListFetchConfig,
+  config: Pick<
+    ListFetchConfig,
+    "provider" | "sourceRef" | "resolveBudgetMs"
+  > & {
+    listId?: string;
+  },
   ctx: ProviderContext,
-): Promise<{ data: CatalogData; deferred: number }> {
+): Promise<BuiltCatalog> {
   const snapshot = await adapter.fetchSource(config.sourceRef, ctx);
   if (snapshot.entries.every((entry) => entry.meta)) {
     return {
@@ -164,17 +178,19 @@ async function buildCatalog(
         ),
       },
       deferred: 0,
+      unresolvedEntries: [],
+      withoutMetadata: 0,
     };
   }
 
-  const { resolved, unresolved, deferred } = await resolveEntries(
+  const { resolved, unresolvedEntries, deferred } = await resolveEntries(
     adapter,
     snapshot.entries,
     { budgetMs: config.resolveBudgetMs ?? DEFAULT_RESOLVE_BUDGET_MS },
   );
 
   const previous = new Map<string, StremioMeta>();
-  const cached = await getCachedList(config.listId);
+  const cached = config.listId ? await getCachedList(config.listId) : null;
   if (cached && Date.now() - cached.cachedAt.getTime() < METADATA_MAX_AGE_MS) {
     for (const meta of cached.data.metas) previous.set(meta.id, meta);
   }
@@ -201,27 +217,21 @@ async function buildCatalog(
     metas.push(withLinkBack(meta, entry, config.provider));
   }
 
-  if (unresolved > 0 || unknown > 0) {
+  if (unresolvedEntries.length > 0 || unknown > 0) {
     console.log(
-      `List ${config.listId} (${config.provider}): ${metas.length} titles, ${unresolved} unresolved entries (${deferred} not tried yet), ${unknown} without metadata`,
+      `List ${config.listId ?? "preview"} (${config.provider}): ${metas.length} titles, ${unresolvedEntries.length} unresolved entries (${deferred} not tried yet), ${unknown} without metadata`,
     );
   }
-  return { data: { metas }, deferred };
+  return {
+    data: { metas },
+    deferred,
+    unresolvedEntries,
+    withoutMetadata: unknown,
+  };
 }
 
 function freshnessOf(adapter: ProviderAdapter, sourceRef: string): number {
   return adapter.freshnessFor?.(sourceRef) ?? adapter.freshnessMs;
-}
-
-/** Why a read failed, in the words of the catalog card and the configure page. */
-function problemReason(error: unknown): SourceProblemReason {
-  // An expired Connection is an expected state (the user revoked access):
-  // the catalog asks to connect again instead of a 500 that Stremio retries.
-  return error instanceof SourceUnavailableError
-    ? error.reason
-    : error instanceof ConnectionExpiredError
-      ? "needs_connection"
-      : "unavailable";
 }
 
 async function fetchAndCacheList(
@@ -245,11 +255,14 @@ async function fetchAndCacheList(
         `${config.provider} is turned off`,
       );
     }
-    const ctx = await providerContext(config);
+    const ctx = await providerContext(
+      config,
+      config.allowConnection ? config.accountId : null,
+    );
     connection = ctx.connection;
     built = await buildCatalog(adapter, config, ctx);
   } catch (error) {
-    await record({ kind: "failed", problem: problemReason(error) });
+    await record({ kind: "failed", problem: sourceProblemReason(error) });
     throw error;
   }
 
@@ -330,12 +343,15 @@ function present(
   };
 }
 
-function toListError(
-  source: { provider: ProviderId; sourceRef: string },
-  error: unknown,
-  message: string,
-): ListUnavailableError {
-  return new ListUnavailableError(source, problemReason(error), message);
+/**
+ * The reason of a failed Source list read. An expired Connection is an
+ * expected state (the user revoked access): it asks to connect again instead
+ * of a server error.
+ */
+export function sourceProblemReason(error: unknown): SourceProblemReason {
+  if (error instanceof SourceUnavailableError) return error.reason;
+  if (error instanceof ConnectionExpiredError) return "needs_connection";
+  return "unavailable";
 }
 
 /**
@@ -390,10 +406,7 @@ export async function getListCatalog(
 
     // A List that lost its Connection must not keep serving the private
     // items it cached while connected.
-    const lostConnection =
-      error instanceof ConnectionExpiredError ||
-      (error instanceof SourceUnavailableError &&
-        error.reason === "needs_connection");
+    const lostConnection = sourceProblemReason(error) === "needs_connection";
     if (!config.noCacheFallback && !lostConnection) {
       const cached = await getCachedList(config.listId, config);
       if (cached && cached.data.metas.length > 0) {
@@ -407,9 +420,9 @@ export async function getListCatalog(
       }
     }
 
-    throw toListError(
+    throw new ListUnavailableError(
       config,
-      error,
+      sourceProblemReason(error),
       `Failed to read list ${config.listId} and no cache available: ${message}`,
     );
   }

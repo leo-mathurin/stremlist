@@ -16,6 +16,11 @@ import {
 } from "node:fs";
 import { setTimeout } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import {
+  excludedServices,
+  migrateSmtpConfig,
+  runSupabase,
+} from "./dev-local-supabase.mjs";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const workdir = `${root}.dev.local`;
@@ -45,27 +50,26 @@ if (!existsSync(configPath)) {
     .replace(/^inspector_port = .*$/m, `inspector_port = ${basePort + 8}`);
   writeFileSync(configPath, config);
 }
-const config = readFileSync(configPath, "utf8");
+const existingConfig = readFileSync(configPath, "utf8");
+const config = migrateSmtpConfig(existingConfig);
+if (config !== existingConfig) writeFileSync(configPath, config);
 const projectId = /^project_id = "([\w-]+)"/m.exec(config)?.[1];
 if (!projectId) throw new Error(`Missing project_id in ${configPath}`);
+const supabaseOptions = { cwd: root, projectId };
 cpSync(`${root}supabase/migrations`, `${workdir}/supabase/migrations`, {
   recursive: true,
 });
 
 console.log("Starting local Supabase and applying pending migrations…");
 // Supabase prints credentials in its startup summary; keep that stdout private.
-run(
-  "supabase",
-  [
-    "start",
-    "--workdir",
-    workdir,
-    "-x",
-    "gotrue,realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta",
-  ],
-  { capture: true },
+runSupabase(
+  ["start", "--workdir", workdir, "-x", excludedServices],
+  supabaseOptions,
 );
-run("supabase", ["migration", "up", "--local", "--workdir", workdir]);
+runSupabase(["migration", "up", "--local", "--workdir", workdir], {
+  ...supabaseOptions,
+  capture: false,
+});
 const status = z
   .object({
     API_URL: z.string().url(),
@@ -73,9 +77,10 @@ const status = z
   })
   .parse(
     JSON.parse(
-      run("supabase", ["status", "--workdir", workdir, "-o", "json"], {
-        capture: true,
-      }),
+      runSupabase(
+        ["status", "--workdir", workdir, "-o", "json"],
+        supabaseOptions,
+      ),
     ),
   );
 const api = new URL(status.API_URL);

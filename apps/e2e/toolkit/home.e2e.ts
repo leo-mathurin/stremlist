@@ -1,4 +1,4 @@
-import { test } from "@e2e-dev/web";
+import { test, type Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
 import {
   accountId,
@@ -6,6 +6,8 @@ import {
   baseRoutes,
   captureConfig,
   imdbUser,
+  saveButton,
+  SAVE_NEW,
 } from "./config-fixture";
 
 // The redesigned Home, Terms and Changelog pages: deterministic checks of
@@ -79,12 +81,65 @@ test("Home shows every Provider, the live count and the help sections", async ({
   await expect(screen.getByRole("heading", "Terms and privacy")).toBeVisible();
 });
 
+type StatsReads = { statsStarted?: number; statsRead?: number };
+
+/**
+ * Counts the `/stats` requests that the page starts and the answers that it
+ * has read. An answer counts one task after `response.json()` settles, so the
+ * app's own `.then` (which hands the number to React) has already run.
+ */
+async function countStatsReads(browser: Browser) {
+  await browser.addInitScript(() => {
+    const scope = window as unknown as StatsReads;
+    const fetch = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (new URL(url, location.href).pathname !== "/stats")
+        return fetch(input, init);
+      scope.statsStarted = (scope.statsStarted ?? 0) + 1;
+      const response = await fetch(input, init);
+      const read = response.json.bind(response);
+      response.json = () => {
+        const body = read() as Promise<unknown>;
+        const done = () =>
+          setTimeout(() => {
+            scope.statsRead = (scope.statsRead ?? 0) + 1;
+          }, 0);
+        body.then(done, done);
+        return body;
+      };
+      return response;
+    };
+  });
+}
+
+/**
+ * Waits until the page has read every `/stats` answer and rendered it.
+ * StrictMode mounts Home twice in development, so there can be two.
+ */
+async function statsRendered(browser: Browser) {
+  await expect
+    .poll(() =>
+      browser.evaluate(() => {
+        const { statsStarted = 0, statsRead = 0 } =
+          window as unknown as StatsReads;
+        return statsStarted > 0 && statsRead === statsStarted;
+      }),
+    )
+    .toBe(true);
+  // React renders the new count in a task queued before this one.
+  await browser.evaluate(
+    () => new Promise<null>((resolve) => setTimeout(() => resolve(null), 0)),
+  );
+}
+
 test("the live count reads one person and hides when stats fail", async ({
   app,
   browser,
   screen,
 }) => {
   await baseRoutes(browser);
+  await countStatsReads(browser);
   let stats: "one" | "zero" | "error" = "one";
   await browser.route(`${backend}/stats`, async (route) => {
     if (stats === "error")
@@ -94,17 +149,22 @@ test("the live count reads one person and hides when stats fail", async ({
         json: { activeUsers: stats === "one" ? 1 : 0 },
       });
   });
-  await app.open("/");
-  await expect(screen.getByText("person uses Stremlist")).toBeVisible();
-  await expect(screen.getByText("1 person uses Stremlist")).toBeAttached();
+  // The sr-only sentence and the visible label under the digits.
+  const liveCount = screen.getByText(/(person uses|people use) Stremlist$/);
 
-  for (const state of ["zero", "error"] as const) {
+  // The count starts hidden, so a check made before `/stats` answers would
+  // pass on the initial state. Each check waits for the answer to render.
+  for (const state of ["one", "zero", "error"] as const) {
     stats = state;
     await app.open("/");
-    await expect(
-      screen.getByRole("heading", "Your lists, all in Stremio."),
-    ).toBeVisible();
-    await expect(screen.getByText(/uses? Stremlist$/)).toHaveCount(0);
+    await statsRendered(browser);
+    if (state === "one") {
+      await expect(liveCount).toHaveCount(2);
+      await expect(screen.getByText("1 person uses Stremlist")).toBeAttached();
+      await expect(screen.getByText("person uses Stremlist")).toBeVisible();
+    } else {
+      await expect(liveCount).toHaveCount(0);
+    }
   }
 });
 
@@ -181,9 +241,7 @@ test("the Home field starts an empty setup or opens a pasted Addon URL", async (
   await screen.getByRole("button", "Build my Stremlist").tap();
   await expect(browser).toHaveURL("/configure");
   await expect(screen.getByText("No Lists yet")).toBeVisible();
-  await expect(
-    screen.getByRole("button", "Save and get my Addon URL"),
-  ).toBeDisabled();
+  await expect(saveButton(screen, SAVE_NEW)).toBeDisabled();
 
   await app.open("/");
   await screen

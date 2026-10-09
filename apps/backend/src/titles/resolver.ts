@@ -32,7 +32,7 @@ export interface ResolutionResult {
   /** Resolved entries, in Source list order. */
   resolved: ResolvedEntry[];
   /** Entries without an IMDb ID yet (Unresolved entries, see CONTEXT.md). */
-  unresolved: number;
+  unresolvedEntries: SourceEntry[];
   /**
    * Unresolved entries that no strategy tried yet (cap or time budget). The
    * caller should refresh soon instead of waiting for the usual freshness.
@@ -207,13 +207,11 @@ export async function resolveEntries(
   }
 
   const resolved: ResolvedEntry[] = [];
+  const unresolvedEntries: SourceEntry[] = [];
   entries.forEach((entry, index) => {
     const imdbId = imdbIds[index];
     if (imdbId) resolved.push({ imdbId, entry });
+    else unresolvedEntries.push(entry);
   });
-  return {
-    resolved,
-    unresolved: entries.length - resolved.length,
-    deferred,
-  };
+  return { resolved, unresolvedEntries, deferred };
 }

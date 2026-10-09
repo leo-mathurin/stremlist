@@ -48,6 +48,10 @@ _Avoid_: Sync (alone), fetch, update
 What the configure page shows for each List: when the last successful refresh happened and how many Titles it gave, or why the latest refresh failed and since when.
 _Avoid_: Health, state
 
+**Catalog preview**:
+What a List will show in Stremio, on the configure page before the user saves: the first Titles of each of its Catalogs, and its Unresolved entries. It does not change any Catalog.
+_Avoid_: Sample, dry run
+
 ### Titles
 
 **Title**:

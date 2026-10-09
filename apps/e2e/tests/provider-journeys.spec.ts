@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
+import type { CatalogPreviewResponse } from "@stremlist/shared/catalog-preview";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { CONNECTION_SOURCES } from "@stremlist/shared/providers";
 import type {
@@ -463,6 +464,80 @@ test(
     const config = await call<AccountConfigResponse>(`/${accountId}/config`);
     expect(config.body.connections).toEqual([]);
     expect(config.body.lists).toMatchObject([{ sourceRef: "me/watchlist" }]);
+  },
+);
+
+test(
+  "a Catalog preview reads through the Connection of its own Account only",
+  { tag: "@local" },
+  async () => {
+    const owner = await seedAccount();
+    await seedConnection(owner, "trakt");
+    const other = await seedAccount();
+    const preview = (accountKey?: string, sortOption = "added_at-asc") =>
+      call<CatalogPreviewResponse>("/lists/preview", {
+        json: {
+          accountKey,
+          provider: "trakt",
+          sourceRef: "me/watchlist",
+          sortOption,
+          displayMode: "split",
+        },
+      });
+    const reads = () =>
+      requests((url) => url.pathname === "/users/me/watchlist");
+
+    const own = await preview(owner);
+    expect(own.status).toBe(200);
+    expect(own.body).toMatchObject({
+      ok: true,
+      titleCount: 2,
+      catalogs: [
+        {
+          type: "movie",
+          preset: null,
+          total: 1,
+          titles: [{ id: "tt0111161", name: "The Shawshank Redemption" }],
+        },
+        {
+          type: "series",
+          preset: null,
+          total: 1,
+          titles: [{ id: "tt0903747", name: "Breaking Bad" }],
+        },
+      ],
+      unresolved: { count: 0 },
+    });
+    const firstReads = reads();
+    expect(firstReads.length).toBeGreaterThan(0);
+    expect(
+      firstReads.every(
+        (entry) => entry.authorization === "fixture-access-token",
+      ),
+    ).toBe(true);
+
+    // The private read never serves another Account or a new setup.
+    for (const key of [other, undefined]) {
+      expect((await preview(key)).body).toEqual({
+        ok: false,
+        reason: "needs_connection",
+      });
+    }
+    // A new sort reuses the read of the same Account.
+    expect((await preview(owner, "title-asc")).body).toMatchObject({
+      ok: true,
+    });
+    expect(reads()).toHaveLength(firstReads.length);
+
+    // After a disconnect, the kept read is not served again.
+    expect(
+      (await call(`/${owner}/connections/trakt`, { method: "DELETE" })).status,
+    ).toBe(200);
+    expect((await preview(owner)).body).toEqual({
+      ok: false,
+      reason: "needs_connection",
+    });
+    expect(reads()).toHaveLength(firstReads.length);
   },
 );
 
@@ -942,6 +1017,20 @@ test(
       expect(
         (await call(`/${accountId}/stream/movie/tt0111161.json`, at)).body,
       ).toEqual({ streams: [], cacheMaxAge: 0 });
+      // The Catalog preview reads nothing either.
+      expect(
+        (
+          await call("/lists/preview", {
+            ...at,
+            json: {
+              accountKey: accountId,
+              provider: "senscritique",
+              sourceRef: "users/fixture-user/wishes",
+              sortOption: "added_at-asc",
+            },
+          })
+        ).body,
+      ).toEqual({ ok: false, reason: "disabled" });
       expect(requests(() => true)).toEqual([]);
     } finally {
       await off.stop();

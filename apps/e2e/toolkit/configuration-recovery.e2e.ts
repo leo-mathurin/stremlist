@@ -4,6 +4,7 @@ import type { AccountConfigInput } from "@stremlist/shared/stremio.types";
 import {
   SAVED,
   SAVED_REINSTALL,
+  SAVED_WITH_CHANGES,
   accountId,
   backend,
   baseRoutes,
@@ -16,6 +17,10 @@ import {
   row,
   savedLists,
   toJson,
+  saveButton,
+  SAVE_NEW,
+  holdToasts,
+  fitConfigurePage,
 } from "./config-fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
@@ -45,7 +50,7 @@ test("a canonical duplicate is refused and the link stays for repair", async ({
   await screen.getByRole("button", "Add", { exact: true }).tap();
   await expect(screen.getByText("IMDb · List · ls99887766")).toBeVisible();
   await expect(field).toHaveValue("");
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(inputs.map((entry) => entry.accountKey)).toEqual([
     accountId,
@@ -106,16 +111,14 @@ for (const failure of ["private", "unknown", "offline"] as const) {
             : "Could not check this link. Please try again in a moment.",
       ),
     ).toBeVisible();
-    await expect(
-      screen.getByRole("button", "Save and get my Addon URL"),
-    ).toBeDisabled();
+    await expect(saveButton(screen, SAVE_NEW)).toBeDisabled();
     recover = true;
     await field.fill("https://www.imdb.com/user/p.fixture/");
     await screen.getByRole("button", "Add", { exact: true }).tap();
     await expect(
       screen.getByText(`IMDb · Watchlist · ${imdbUser}`),
     ).toBeVisible();
-    await screen.getByRole("button", "Save and get my Addon URL").tap();
+    await saveButton(screen, SAVE_NEW).tap();
     await expect(browser).toHaveURL(`/configure?account=${accountId}`);
     await expect(screen.getByText("Test catalog")).toBeVisible();
     expect(created).toHaveLength(1);
@@ -129,6 +132,8 @@ test(
   "an unrecognized link adds nothing, then a pasted list URL is added and saved",
   { tags: ["agent", "new-journeys"] },
   async ({ app, agent, browser, screen }) => {
+    await holdToasts(browser);
+    await fitConfigurePage(browser);
     const submissions = await captureConfig(browser, {
       ...configuration,
       lists: [],
@@ -145,9 +150,7 @@ test(
       screen.getByText(/^We do not recognize this link\./),
     ).toBeVisible();
     await expect(screen.getByText("No Lists yet")).toBeVisible();
-    await expect(
-      screen.getByRole("button", "Save", { exact: true }),
-    ).toBeDisabled();
+    await expect(saveButton(screen)).toBeDisabled();
     expect(inputs).toHaveLength(0);
     await agent.act(
       "Replace the unrecognized link with {url} and add it, name its catalog Weekend films, and save.",
@@ -200,12 +203,15 @@ test("a normalized handle becomes the saved source and the next save stays clean
   await expect(screen.getByText("IMDb · Watchlist · p.fixture")).toBeVisible();
   await screen.getByRole("button", "Settings for Test catalog").tap();
   await screen.getByLabel("Catalog title").fill("Handle catalog");
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText("IMDb · Watchlist · ur99887766")).toBeVisible();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
-  await screen.getByRole("button", "Save", { exact: true }).tap();
-  await expect(screen.getByText(SAVED)).toBeVisible();
-  expect(requests).toBe(2);
+  // Nothing changed since, so the next save sends the stored handle. Stremio
+  // still needs the reinstall, so the message stays.
+  await saveButton(screen).tap();
+  await expect.poll(() => requests).toBe(2);
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  await expect(screen.getByText(SAVED_WITH_CHANGES)).toHaveCount(0);
 });
 
 test("network save failure preserves values for a retry", async ({
@@ -230,14 +236,14 @@ test("network save failure preserves values for a retry", async ({
   await app.open(`/configure?account=${accountId}`);
   await screen.getByRole("button", "Settings for Test catalog").tap();
   await screen.getByLabel("Catalog title").fill("Keep my changes");
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(
     screen.getByText("Failed to fetch", { exact: true }),
   ).toBeVisible();
   await expect(screen.getByLabel("Catalog title")).toHaveValue(
     "Keep my changes",
   );
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(attempts).toBe(2);
 });
@@ -246,6 +252,8 @@ test(
   "a saved genre missing from refreshed choices can still be cleared",
   { tags: ["agent", "new-journeys"] },
   async ({ app, agent, browser, screen }) => {
+    await holdToasts(browser);
+    await fitConfigurePage(browser);
     const submissions = await captureConfig(browser, {
       ...configuration,
       lists: [

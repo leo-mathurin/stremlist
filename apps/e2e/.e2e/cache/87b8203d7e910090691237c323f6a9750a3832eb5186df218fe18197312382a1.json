@@ -1,14 +1,38 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-08T18:53:13.932Z",
+  "createdAt": "2026-10-08T19:23:25.008Z",
   "payload": {
     "actions": [
       {
         "name": "tap",
-        "summary": "tap button \"Trending\"",
+        "summary": "tap button \"Preview Test catalog\"",
         "target": {
           "role": "button",
-          "name": "Trending"
+          "name": "Preview Test catalog"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Settings for Test catalog\"",
+        "target": {
+          "role": "button",
+          "name": "Settings for Test catalog"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap combobox \"Show\"",
+        "target": {
+          "role": "combobox",
+          "name": "Show"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap option \"Movies only\"",
+        "target": {
+          "role": "option",
+          "name": "Movies only"
         }
       },
       {
@@ -25,14 +49,14 @@
       "version": "2"
     },
     "recordedFor": {
-      "testId": "toolkit/providers.e2e.ts::a%20Provider%20chart%20is%20added%20from%20Quick%20add",
+      "testId": "toolkit/catalog-preview.e2e.ts::the%20empty%20Catalog%20hint%20leads%20the%20user%20to%20the%20Show%20setting",
       "targetId": "chromium",
-      "instructionDigest": "c864864e276408fa8ebd49b3d84528f7edc721a75a7136f55376fee57b09f842",
+      "instructionDigest": "b3672fd00910f4f2d2380bf3fff8eeb219efafad6f10e793a1be02e9c2d22b6d",
       "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Added the Trakt Trending chart to Your Lists and saved. The screen confirms “Saved!” and shows the list with Trakt Trending; reinstall is indicated for Stremio to reflect the changes.",
+    "summary": "Previewed Test catalog, changed Show to Movies only as instructed by the empty TV-shows preview, and saved. The app confirmed “Saved!” and indicated reinstalling Stremlist is needed to see the changes.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
@@ -56,18 +80,25 @@
       },
       {
         "role": "button",
-        "name": "Drag to reorder Trakt Trending"
+        "name": "Preview Test catalog",
+        "states": [
+          "expanded"
+        ]
       },
       {
-        "text": "Trakt Trending"
+        "text": "Catalog title"
       },
       {
-        "text": "Trakt · Chart"
+        "role": "textbox",
+        "name": "Catalog title",
+        "placeholder": "IMDb Watchlist",
+        "value": "Test catalog"
       }
     ],
     "goneAnchors": [
       {
-        "text": "1 of 10 lists"
+        "role": "button",
+        "name": "Preview Test catalog"
       },
       {
         "role": "heading",
@@ -75,8 +106,12 @@
       },
       {
         "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
+      },
+      {
+        "role": "button",
+        "name": "Settings for Test catalog"
       }
     ],
-    "endWaitMs": 12494
+    "endWaitMs": 12297
   }
 }

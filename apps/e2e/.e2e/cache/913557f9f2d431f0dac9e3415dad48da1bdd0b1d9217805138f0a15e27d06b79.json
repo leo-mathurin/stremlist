@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-06T19:46:52.323Z",
+  "createdAt": "2026-10-08T19:42:54.234Z",
   "payload": {
     "actions": [
       {
@@ -40,14 +40,10 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Selected All genres, left Top rated checked, and saved. The app confirmed: “Saved! Your catalogs will refresh with the new settings.”",
+    "summary": "Selected All genres while Top rated remained checked, then saved. The Genre field shows All genres and the app confirmed: “Saved! Your catalogs will refresh with the new settings.”",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
-      {
-        "role": "status",
-        "name": "Saved! Your catalogs will refresh with the new settings."
-      },
       {
         "text": "1 active"
       },
@@ -56,10 +52,21 @@
       },
       {
         "role": "button",
+        "name": "Close toast"
+      },
+      {
+        "text": "Saved! Your catalogs will refresh with the new settings."
+      },
+      {
+        "role": "button",
         "name": "Filters & extra catalogs 1 active",
         "states": [
           "expanded"
         ]
+      },
+      {
+        "role": "listitem",
+        "name": "Close toast Saved! Your catalogs will refresh with the new settings."
       }
     ],
     "goneAnchors": [
@@ -84,6 +91,6 @@
         ]
       }
     ],
-    "endWaitMs": 12655
+    "endWaitMs": 12176
   }
 }

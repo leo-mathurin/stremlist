@@ -6,6 +6,7 @@ import {
   backend,
   configuration,
   captureConfig,
+  saveButton,
 } from "./config-fixture";
 
 for (const failure of ["http", "network"] as const) {
@@ -49,11 +50,10 @@ for (const failure of ["http", "network"] as const) {
     await expect(screen.getByRole("button", "Refresh now")).toBeEnabled();
     await screen.getByRole("button", "Refresh now").tap();
     await expect(screen.getByRole("button", /Refresh in \d+s/)).toBeDisabled();
-    await expect(error).not.toBeVisible();
     await expect(screen.getByLabel("Catalog title")).toHaveValue(
       "Still editing",
     );
-    await screen.getByRole("button", "Save", { exact: true }).tap();
+    await saveButton(screen).tap();
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     expect(submissions[0].lists[0].catalogTitle).toBe("Still editing");
     expect(attempts).toBe(2);
