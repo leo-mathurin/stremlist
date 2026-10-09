@@ -15,6 +15,7 @@ import {
 import {
   db,
   getListRows,
+  getSyncStatusRows,
   resetDb,
   seedAccount,
   seedAccountWithLists,
@@ -223,7 +224,7 @@ test(
 );
 
 test(
-  "a preview of a saved List writes no Catalog cache and changes no List",
+  "a preview of a saved List writes no Catalog cache or sync status and changes no List",
   { tag: "@local" },
   async ({ request }) => {
     const {
@@ -248,6 +249,8 @@ test(
     );
 
     expect(await countCacheObjects(listId)).toBe(0);
+    // A preview is not a refresh: the List keeps no sync status.
+    expect(await getSyncStatusRows(listId)).toEqual([]);
     expect(await getListRows(accountId)).toEqual(before);
   },
 );

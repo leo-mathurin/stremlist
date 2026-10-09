@@ -68,6 +68,7 @@ export type Database = {
           account_id: string;
           created_at: string;
           expires_at: string | null;
+          needs_renewal_since: string | null;
           provider: string;
           provider_username: string | null;
           redirect_uri: string;
@@ -82,6 +83,7 @@ export type Database = {
           account_id: string;
           created_at?: string;
           expires_at?: string | null;
+          needs_renewal_since?: string | null;
           provider: string;
           provider_username?: string | null;
           redirect_uri: string;
@@ -96,6 +98,7 @@ export type Database = {
           account_id?: string;
           created_at?: string;
           expires_at?: string | null;
+          needs_renewal_since?: string | null;
           provider?: string;
           provider_username?: string | null;
           redirect_uri?: string;
@@ -111,6 +114,47 @@ export type Database = {
             columns: ["account_id"];
             isOneToOne: false;
             referencedRelation: "accounts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      list_sync_status: {
+        Row: {
+          failing_since: string | null;
+          failure_reason: string | null;
+          last_attempt_at: string;
+          last_success_at: string | null;
+          list_id: string;
+          provider: string;
+          source_ref: string;
+          title_count: number | null;
+        };
+        Insert: {
+          failing_since?: string | null;
+          failure_reason?: string | null;
+          last_attempt_at: string;
+          last_success_at?: string | null;
+          list_id: string;
+          provider: string;
+          source_ref: string;
+          title_count?: number | null;
+        };
+        Update: {
+          failing_since?: string | null;
+          failure_reason?: string | null;
+          last_attempt_at?: string;
+          last_success_at?: string | null;
+          list_id?: string;
+          provider?: string;
+          source_ref?: string;
+          title_count?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "list_sync_status_list_id_fkey";
+            columns: ["list_id"];
+            isOneToOne: false;
+            referencedRelation: "lists";
             referencedColumns: ["id"];
           },
         ];
@@ -251,6 +295,16 @@ export type Database = {
         Returns: number;
       };
       generate_account_id: { Args: never; Returns: string };
+      record_list_refresh: {
+        Args: {
+          p_failure_reason: string | null;
+          p_list_id: string;
+          p_provider: string;
+          p_source_ref: string;
+          p_title_count: number | null;
+        };
+        Returns: boolean;
+      };
       release_connection_refresh: {
         Args: {
           p_account_id: string;

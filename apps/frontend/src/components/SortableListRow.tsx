@@ -4,6 +4,7 @@ import {
   DISPLAY_MODE_OPTIONS,
 } from "@stremlist/shared/constants";
 import type { DisplayMode } from "@stremlist/shared/constants";
+import type { ListSyncState } from "@stremlist/shared/sync-status";
 import { CHART_REGISTRY, CHART_BY_ID } from "@stremlist/shared/imdb-charts";
 import { PROVIDERS } from "@stremlist/shared/providers";
 import {
@@ -18,8 +19,10 @@ import { useSortable } from "@dnd-kit/react/sortable";
 import { MAX_CATALOG_TITLE_LENGTH } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { describeSource } from "../lib/list-sources";
+import { attentionTone } from "../lib/list-sync";
 import CatalogFilterSettings from "./CatalogFilterSettings";
 import CatalogPreview from "./CatalogPreview";
+import { ListSyncLine, ListSyncNotice } from "./ListSyncStatus";
 import { ProviderMark } from "./brand";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -48,7 +51,8 @@ export default function SortableListRow({
   connectionKey,
   onFieldChange,
   onRemove,
-  connectionMissing,
+  sync,
+  saved,
   onConnect,
 }: {
   list: ListFormRow;
@@ -57,8 +61,10 @@ export default function SortableListRow({
   accountKey: string | null;
   /** Identifies the Account's Connection to the List's Provider, or "". */
   connectionKey: string;
-  /** The List reads through a Connection that the Account no longer has. */
-  connectionMissing?: boolean;
+  /** Its refreshes, or null on a new setup that has nothing saved yet. */
+  sync: ListSyncState | null;
+  /** Saved with its current Source list. */
+  saved: boolean;
   /** Start the Connection again; absent when it cannot be started here. */
   onConnect?: () => void;
   onFieldChange: <K extends keyof ListFormRow>(
@@ -94,7 +100,8 @@ export default function SortableListRow({
       ref={ref}
       className={cn(
         "rounded-3xl bg-white ring-1 ring-black/5 transition-shadow",
-        connectionMissing && "ring-amber-300",
+        attentionTone(sync) === "warn" && "ring-amber-300",
+        attentionTone(sync) === "bad" && "ring-red-200",
         isDragSource && "opacity-60 shadow-lg ring-2 ring-brand/50",
       )}
     >
@@ -211,22 +218,23 @@ export default function SortableListRow({
         </div>
       </div>
 
-      {connectionMissing && (
-        <div className="mx-3 mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-amber-50 px-4 py-2.5 text-sm text-amber-900 ring-1 ring-amber-200 sm:mx-4 sm:mb-4">
-          <p className="min-w-0 flex-1 text-pretty">
-            {PROVIDERS[list.provider].label} is not connected, so this List does
-            not show in Stremio.
-          </p>
-          {onConnect && (
-            <button
-              type="button"
-              onClick={onConnect}
-              className="inline-flex h-8 shrink-0 items-center rounded-full bg-brand px-3 text-xs font-bold text-black transition-colors hover:bg-brand-dark"
-            >
-              Connect again
-            </button>
-          )}
-        </div>
+      {sync && (
+        <>
+          {/* Under the name column, but as wide as the row, so the status
+              never truncates behind the sort control. */}
+          <div className="-mt-2 flex gap-3 px-3 pb-3 sm:-mt-3 sm:gap-4 sm:px-4 sm:pb-4">
+            <span aria-hidden="true" className="-ml-1 w-6 shrink-0" />
+            <span aria-hidden="true" className="w-8 shrink-0" />
+            <ListSyncLine sync={sync} saved={saved} />
+          </div>
+          <ListSyncNotice
+            title={title}
+            provider={list.provider}
+            sourceRef={list.sourceRef}
+            sync={sync}
+            onConnect={onConnect}
+          />
+        </>
       )}
 
       <div

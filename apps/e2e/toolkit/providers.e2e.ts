@@ -12,6 +12,7 @@ import {
   baseRoutes,
   captureConfig,
   configuration,
+  connected,
   imdbUser,
   legacyConfiguration,
   parseBody,
@@ -252,7 +253,7 @@ test("a link that needs a Connection saves the setup, connects, then adds the li
   await liveConfig(browser, {
     ...configuration,
     lists: [],
-    connections: [{ provider: "mdblist", username: "someone", connectedAt }],
+    connections: [connected("mdblist")],
   });
   await browser.route(
     `${backend}/${accountId}/connections/mdblist/sources`,
@@ -343,7 +344,7 @@ test(
     const { state, submissions } = await liveConfig(browser, {
       ...configuration,
       lists: [row, traktList],
-      connections: [{ provider: "trakt", username: "someone", connectedAt }],
+      connections: [connected("trakt")],
       actions: { enabled: true, providers: ["trakt"] },
     });
     await browser.route(
@@ -415,7 +416,9 @@ test(
       enabled: true,
       providers: [],
     });
-    await screen.getByRole("button", "Connect again").tap();
+    await screen
+      .getByRole("button", "Connect again for Trakt Watchlist", { exact: true })
+      .tap();
     await expect(
       screen.getByText(
         "You cancelled the connection to Trakt. Nothing changed.",
@@ -434,10 +437,7 @@ test("Actions settings save the chosen Providers in their order", async ({
   await baseRoutes(browser);
   const { submissions } = await liveConfig(browser, {
     ...configuration,
-    connections: [
-      { provider: "trakt", username: "someone", connectedAt },
-      { provider: "simkl", username: null, connectedAt },
-    ],
+    connections: [connected("trakt"), connected("simkl", null)],
   });
   for (const provider of ["trakt", "simkl"]) {
     await browser.route(

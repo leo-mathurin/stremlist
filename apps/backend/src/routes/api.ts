@@ -18,6 +18,7 @@ import {
 } from "@stremlist/shared/providers";
 import type {
   AccountConfigResponse,
+  AccountSyncSnapshot,
   AddonAccess,
   ConfigList,
 } from "@stremlist/shared/stremio.types";
@@ -57,6 +58,7 @@ import {
   isOAuthConfigured,
   startAuthorization,
 } from "../services/oauth";
+import { getListSyncStatuses } from "../services/sync-status";
 
 const REFRESH_COOLDOWN_MS =
   (Number.isFinite(Number(process.env.REFRESH_COOLDOWN_SECONDS))
@@ -223,6 +225,18 @@ function visibleLists(
     : lists.filter(
         (list) => !sourceRequiresConnection(list.provider, list.sourceRef),
       );
+}
+
+/** The sync status of these Lists and the Account's Connections. */
+async function syncSnapshot(
+  access: AccountAccess,
+  lists: ConfigList[],
+): Promise<AccountSyncSnapshot> {
+  const [syncStatus, connections] = await Promise.all([
+    getListSyncStatuses(lists),
+    access.via === "private" ? listConnections(access.account.id) : [],
+  ]);
+  return { syncStatus, connections };
 }
 
 function requestOrigin(c: Context): string {
@@ -428,17 +442,18 @@ const api = new Hono()
         return c.json({ error: "Addon not found. Install it first." }, 404);
       }
       const { account } = access;
-      const [lists, connections] = await Promise.all([
-        getAccountLists(account.id),
-        access.via === "private" ? listConnections(account.id) : [],
+      const lists = visibleLists(access, await getAccountLists(account.id));
+      const [withGenres, sync] = await Promise.all([
+        withAvailableGenres(lists),
+        syncSnapshot(access, lists),
       ]);
       const body: AccountConfigResponse = {
         access: access.via,
         accountId: access.via === "private" ? account.id : null,
         movedAt: account.movedAt,
         rpdbApiKey: account.rpdbApiKey,
-        lists: await withAvailableGenres(visibleLists(access, lists)),
-        connections,
+        lists: withGenres,
+        ...sync,
         actions: {
           enabled: account.actionsEnabled,
           providers: account.actionProviders,
@@ -447,6 +462,22 @@ const api = new Hono()
         cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
       };
       return c.json(body);
+    },
+  )
+
+  // The sync status of every List and Connection, polled by the configure
+  // page while a refresh it started is still running.
+  .get(
+    "/:accountKey/sync-status",
+    zValidator("param", accountKeyParam),
+    async (c) => {
+      const { accountKey } = c.req.valid("param");
+      const access = await resolveAccountKey(accountKey);
+      if (!access) {
+        return c.json({ error: "Addon not found. Install it first." }, 404);
+      }
+      const lists = await getAccountLists(access.account.id);
+      return c.json(await syncSnapshot(access, visibleLists(access, lists)));
     },
   )
 
@@ -591,13 +622,18 @@ const api = new Hono()
           .eq("id", account.id);
       }
 
+      const [withGenres, sync] = await Promise.all([
+        withAvailableGenres(lists),
+        syncSnapshot(access, lists),
+      ]);
       return c.json({
         ok: true,
         lastFetchedAt: refreshed > 0 ? refreshedAt : account.lastFetchedAt,
         refreshed,
         failed,
         total: lists.length,
-        lists: await withAvailableGenres(lists),
+        lists: withGenres,
+        ...sync,
         cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
       });
     },

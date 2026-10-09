@@ -40,6 +40,14 @@ _Avoid_: Watchlist, feed, collection
 One Stremio catalog that a List produces. A List can produce several Catalogs (movies, series, presets).
 _Avoid_: Row, shelf
 
+**Refresh**:
+One read of a List's Source list on its Provider, which replaces the cached Catalog when it works. A Stremio request for a stale Catalog, a save and the "Refresh now" button start one. When a refresh fails, Stremio keeps the Titles of the last successful refresh, except for a List that lost its Connection. A Catalog preview is not a refresh.
+_Avoid_: Sync (alone), fetch, update
+
+**Sync status**:
+What the configure page shows for each List: when the last successful refresh happened and how many Titles it gave, or why the latest refresh failed and since when.
+_Avoid_: Health, state
+
 **Catalog preview**:
 What a List will show in Stremio, on the configure page before the user saves: the first Titles of each of its Catalogs, and its Unresolved entries. It does not change any Catalog.
 _Avoid_: Sample, dry run
@@ -58,6 +66,7 @@ _Avoid_: Missing item, dropped item
 
 **Connection**:
 The authorization that links one Account to its user on one Provider, so Stremlist can read private Source lists and perform Actions. An Account has at most one Connection per Provider.
+A Connection needs renewal when its Provider refuses it (revoked access, refused token refresh). The user renews it by connecting the Provider again.
 _Avoid_: Integration, link, login
 
 **Action**:

@@ -128,6 +128,8 @@ function connection(tokens: string[] = ["token-1"]): ConnectionAccess & {
     getAccessToken: vi.fn(() =>
       Promise.resolve(tokens[Math.min(index++, tokens.length - 1)]),
     ),
+    reportRefused: () => Promise.resolve(),
+    reportWorking: () => Promise.resolve(),
   };
 }
 
@@ -593,6 +595,73 @@ describe("Trakt read errors", () => {
     );
     const entries = await fetchEntries("users/sean/watchlist", connection());
     expect(entries.map((e) => e.imdbId)).toEqual(["tt11128440"]);
+  });
+
+  it("a public Source list reads without a Connection that lost its token", async () => {
+    route("GET /users/sean/watchlist", (call) =>
+      call.headers.has("Authorization")
+        ? status(500)
+        : json([listed("movie", clerks, "2022-10-14T03:19:22.000Z", 1)]),
+    );
+    const conn = connection();
+    conn.getAccessToken.mockRejectedValue(new ConnectionExpiredError("trakt"));
+
+    const entries = await fetchEntries("users/sean/watchlist", conn);
+
+    expect(entries.map((e) => e.imdbId)).toEqual(["tt11128440"]);
+    expect(calls.every((call) => !call.headers.has("Authorization"))).toBe(
+      true,
+    );
+  });
+
+  it("a public chart reads without a Connection that lost its token", async () => {
+    route("GET /movies/trending", (call) =>
+      call.headers.has("Authorization") ? status(500) : json([]),
+    );
+    route("GET /shows/trending", (call) =>
+      call.headers.has("Authorization") ? status(500) : json([]),
+    );
+    const conn = connection();
+    conn.getAccessToken.mockRejectedValue(new ConnectionExpiredError("trakt"));
+
+    await expect(fetchEntries("trending", conn)).resolves.toEqual([]);
+  });
+
+  it("a private Source list with a Connection that lost its token still needs renewal", async () => {
+    const conn = connection();
+    conn.getAccessToken.mockRejectedValue(new ConnectionExpiredError("trakt"));
+
+    await expectReason(fetchEntries("me/watchlist", conn), "needs_connection");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("a private user stays private with a Connection that lost its token", async () => {
+    route("GET /users/hidden/watchlist", status(401));
+    const conn = connection();
+    conn.getAccessToken.mockRejectedValue(new ConnectionExpiredError("trakt"));
+
+    await expectReason(fetchEntries("users/hidden/watchlist", conn), "private");
+  });
+
+  it("reports a refused token when a public read works without it", async () => {
+    route("GET /users/sean/watchlist", (call) =>
+      call.headers.has("Authorization") ? status(401) : json([]),
+    );
+    const reportRefused = vi.fn(() => Promise.resolve());
+    const conn = Object.assign(connection(), { reportRefused });
+
+    await fetchEntries("users/sean/watchlist", conn);
+
+    expect(reportRefused).toHaveBeenCalled();
+  });
+
+  it("does not report the token for a private user's list", async () => {
+    route("GET /users/hidden/watchlist", status(401));
+    const reportRefused = vi.fn(() => Promise.resolve());
+    const conn = Object.assign(connection(), { reportRefused });
+
+    await expectReason(fetchEntries("users/hidden/watchlist", conn), "private");
+    expect(reportRefused).not.toHaveBeenCalled();
   });
 
   it("a private user stays private with a Connection", async () => {

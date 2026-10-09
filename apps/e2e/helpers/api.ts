@@ -1,5 +1,6 @@
 import type {
   AccountConfigResponse,
+  AccountSyncSnapshot,
   ConfigList,
   ConfigListInput,
   StremioManifest,
@@ -41,6 +42,17 @@ export async function getConfig(
   return {
     status: response.status,
     body: (await response.json()) as AccountConfig,
+  };
+}
+
+/** The sync status of an Account's Lists and its Connections (STR-58). */
+export async function getSyncStatus(accountKey: string) {
+  const response = await api[":accountKey"]["sync-status"].$get({
+    param: { accountKey },
+  });
+  return {
+    status: response.status,
+    body: (await response.json()) as AccountSyncSnapshot,
   };
 }
 

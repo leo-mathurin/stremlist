@@ -16,6 +16,7 @@ function subtitle(
   provider: ProviderId,
   connection: ConnectionSummary | undefined,
 ): string {
+  if (connection?.needsRenewalSince) return "Needs renewal";
   if (connection) {
     return connection.username ? `@${connection.username}` : "Connected";
   }
@@ -93,7 +94,35 @@ export default function ProviderList({
             </span>
           );
         } else if (connection) {
-          trailing = (
+          trailing = connection.needsRenewalSince ? (
+            <span className="flex items-center gap-1">
+              {/* The Provider refuses the Connection: connecting again
+                    renews it. */}
+              {canConnect && (
+                <button
+                  type="button"
+                  onClick={() => onConnect(id)}
+                  disabled={connecting !== null || !!connectLocked}
+                  title={connectLocked}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1 text-xs font-bold text-black transition-[background-color,scale] duration-150 hover:bg-brand-dark active:scale-[0.96] disabled:opacity-40"
+                >
+                  {busy && <Loader2 className="size-3.5 animate-spin" />}
+                  <span className="sm:hidden">Reconnect</span>
+                  <span className="hidden sm:inline">Connect again</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setConfirming(id)}
+                disabled={busy || confirming === id}
+                aria-expanded={confirming === id}
+                title={`Disconnect ${info.label}`}
+                className="rounded-full px-2.5 py-1 text-xs font-semibold text-white/55 transition-colors hover:bg-white/10 hover:text-cloud disabled:opacity-40"
+              >
+                {busy ? "Disconnecting" : "Disconnect"}
+              </button>
+            </span>
+          ) : (
             <button
               type="button"
               onClick={() => setConfirming(id)}
@@ -173,7 +202,14 @@ export default function ProviderList({
                 <span className={cn("font-semibold", soon && "text-white/45")}>
                   {info.label}
                 </span>
-                <span className="truncate text-xs text-white/45">
+                <span
+                  className={cn(
+                    "truncate text-xs",
+                    connection?.needsRenewalSince
+                      ? "font-semibold text-amber-300"
+                      : "text-white/45",
+                  )}
+                >
                   {soon ? "Not supported yet" : subtitle(id, connection)}
                 </span>
               </span>

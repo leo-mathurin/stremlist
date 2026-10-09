@@ -338,6 +338,34 @@ export async function getCachedListSummary(
 }
 
 /**
+ * When the cached Catalog of a List was written and how many Titles it has,
+ * from the manifest only. Null when nothing is cached or the cache was marked
+ * stale.
+ */
+export async function getCachedListInfo(
+  listId: string,
+  source?: CacheSource,
+): Promise<{ cachedAt: string; titleCount: number } | null> {
+  try {
+    const manifest = await readManifest(listId);
+    if (
+      !manifest ||
+      !servesSource(manifest, source) ||
+      new Date(manifest.cachedAt).getTime() <= 0
+    ) {
+      return null;
+    }
+    return {
+      cachedAt: manifest.cachedAt,
+      titleCount: manifest.metaKeys.length,
+    };
+  } catch (error) {
+    console.error(`Failed to read R2 cache info for ${listId}:`, error);
+    return null;
+  }
+}
+
+/**
  * The cached catalog of a List. With `source`, a catalog read from another
  * Source list (the List was edited since) is a miss.
  */

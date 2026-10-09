@@ -12,7 +12,9 @@ import type {
   AccountConfigInput,
   AccountConfigResponse,
   ConfigList,
+  ConnectionSummary,
 } from "@stremlist/shared/stremio.types";
+import type { ListSyncStatus } from "@stremlist/shared/sync-status";
 
 // Intercepted API of the configure page. These fixtures record requests and
 // prove UI state; real storage and manifest behavior is covered by the
@@ -87,12 +89,42 @@ export const row = {
   availableGenres: ["Drama", "Comedy"],
 } satisfies ConfigList;
 
+/** A successful refresh of `sourceRef` at `at` that gave `titleCount` Titles. */
+export function syncedStatus(
+  sourceRef: string,
+  titleCount = 12,
+  at = "2020-01-01T00:00:00.000Z",
+) {
+  return {
+    sourceRef,
+    lastAttemptAt: at,
+    lastSuccessAt: at,
+    titleCount,
+    problem: null,
+    failingSince: null,
+  } satisfies ListSyncStatus;
+}
+
+/** A Connection that the Provider accepts. */
+export function connected(
+  provider: ProviderId,
+  username: string | null = "someone",
+): ConnectionSummary {
+  return {
+    provider,
+    username,
+    connectedAt: "2026-10-01T00:00:00.000Z",
+    needsRenewalSince: null,
+  };
+}
+
 export const configuration = {
   access: "private",
   accountId,
   movedAt: null,
   rpdbApiKey: null,
   lists: [row],
+  syncStatus: { [row.id]: syncedStatus(row.sourceRef) },
   connections: [],
   actions: { enabled: false, providers: [] },
   lastFetchedAt: "2020-01-01T00:00:00.000Z",
@@ -180,9 +212,9 @@ export function previewOf(
 
 /**
  * Register first: answers the requests every page makes (`/providers`,
- * `/stats`), and the Catalog preview that an added List opens (with
- * `previewOf`). Fails the test on any other request that a later, more
- * specific route did not take.
+ * `/stats`, the `/sync-status` poll), and the Catalog preview that an added
+ * List opens (with `previewOf`). Fails the test on any other request that a
+ * later, more specific route did not take.
  */
 export async function baseRoutes(
   browser: Browser,
@@ -193,6 +225,14 @@ export async function baseRoutes(
     if (pathname === "/providers") await route.fulfill({ json: providers });
     else if (pathname === "/stats")
       await route.fulfill({ json: { activeUsers: 2 } });
+    // Tests that check sync states route the poll themselves.
+    else if (pathname.endsWith("/sync-status"))
+      await route.fulfill({
+        json: toJson({
+          syncStatus: configuration.syncStatus,
+          connections: [],
+        }),
+      });
     else if (pathname === "/lists/preview" && route.request.method === "POST")
       await route.fulfill({
         json: toJson(previewOf(parseBody<PreviewRequest>(route))),

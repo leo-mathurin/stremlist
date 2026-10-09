@@ -29,6 +29,7 @@ import type { ListFormRow } from "../lib/list-form";
 import { buildAddonUrls } from "../lib/list-sources";
 import { reinstallState, requiresReinstall } from "../lib/reinstall";
 import type { InstallBaseline } from "../lib/reinstall";
+import { useListSyncStatus } from "./useListSyncStatus";
 
 /** Same limit as the backend (`MAX_LISTS`). */
 export const MAX_LISTS = 10;
@@ -163,7 +164,14 @@ export function useAccountConfiguration(
   );
   const [accountId, setAccountId] = useState<string | null>(null);
   const [movedAt, setMovedAt] = useState<string | null>(null);
-  const [connections, setConnections] = useState<ConnectionSummary[]>([]);
+  const {
+    connections,
+    syncStateOf,
+    isSaved,
+    applySync,
+    rememberSaved,
+    dropConnection,
+  } = useListSyncStatus(accountKey, access !== "new", lists);
   const [connectionSources, setConnectionSources] = useState<
     Partial<Record<ProviderId, ConnectionSource[]>>
   >({});
@@ -242,7 +250,7 @@ export function useAccountConfiguration(
         setAccountId(data.accountId);
         setMovedAt(data.movedAt);
         setRpdbApiKey(data.rpdbApiKey ?? "");
-        setConnections(data.connections);
+        applySync(data);
         setLastFetchedAt(data.lastFetchedAt);
         setCooldownSeconds(data.cooldownSeconds);
         setActionsEnabled(data.actions.enabled);
@@ -271,7 +279,7 @@ export function useAccountConfiguration(
     return () => {
       cancelled = true;
     };
-  }, [accountKey, loadAttempt]);
+  }, [accountKey, loadAttempt, applySync]);
 
   // What each Connection unlocks depends on the account (its own lists), so
   // ask the backend once the Connections are known.
@@ -524,6 +532,7 @@ export function useAccountConfiguration(
         throw new Error(errorMessage(body, "Failed to save."));
       }
 
+      rememberSaved(body.lists);
       const savedRows = submittedLists.map((row, index) => {
         const saved = body.lists[index];
         return saved
@@ -625,6 +634,7 @@ export function useAccountConfiguration(
       }
       setCooldownSeconds(body.cooldownSeconds);
       setLastFetchedAt(body.lastFetchedAt);
+      if ("syncStatus" in body) applySync(body);
       if ("lists" in body && body.lists) {
         const refreshed = body.lists;
         setLists((current) =>
@@ -639,10 +649,10 @@ export function useAccountConfiguration(
         );
       }
       // Success feedback is the live "Last refreshed" label and the cooldown,
-      // so only report when some Lists failed.
+      // so only report when some Lists failed. Each failed List says why.
       if (body.failed > 0) {
         toast.error(
-          `Refreshed ${body.refreshed} of ${body.total} lists. Some lists failed to update.`,
+          `Refreshed ${body.refreshed} of ${body.total} lists. The others failed to update: each List shows why.`,
         );
       }
     } catch (err) {
@@ -719,7 +729,7 @@ export function useAccountConfiguration(
       });
       if (!res.ok) return;
       const data = (await res.json()) as AccountConfigResponse;
-      setConnections(data.connections);
+      applySync(data);
       setLastFetchedAt(data.lastFetchedAt);
       const capable = actionCapableProviders(data.connections);
       setActionOrder((current) => [
@@ -743,9 +753,7 @@ export function useAccountConfiguration(
         param: { accountId, provider },
       });
       if (!res.ok) throw new Error(`Could not disconnect ${label}.`);
-      setConnections((current) =>
-        current.filter((connection) => connection.provider !== provider),
-      );
+      dropConnection(provider);
       setActionOrder((current) => current.filter((id) => id !== provider));
       setActionSelected((current) => current.filter((id) => id !== provider));
       toast.info(
@@ -777,6 +785,8 @@ export function useAccountConfiguration(
     connections,
     connectionSources,
     providerStatus,
+    syncStateOf,
+    isListSaved: isSaved,
     actionsEnabled,
     // Turning Actions on selects every capable Provider, so saving right
     // away gives working Actions.

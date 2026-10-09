@@ -1,6 +1,7 @@
 import type { CatalogSettings } from "./catalog-settings";
 import type { DisplayMode } from "./constants";
 import type { ProviderId } from "./providers";
+import type { ListSyncStatuses } from "./sync-status";
 
 export interface CatalogData {
   metas: StremioMeta[];
@@ -23,6 +24,8 @@ export interface ConnectionSummary {
   provider: ProviderId;
   username: string | null;
   connectedAt: string;
+  /** Since when the Provider refuses this Connection, or null. */
+  needsRenewalSince: string | null;
 }
 
 /**
@@ -31,7 +34,17 @@ export interface ConnectionSummary {
  */
 export type AddonAccess = "private" | "legacy";
 
-export interface AccountConfigResponse {
+/**
+ * The sync status of an Account's Lists and its Connections. The configure
+ * page gets it with the config, after "Refresh now" and from its polls.
+ */
+export interface AccountSyncSnapshot {
+  /** Sync status of the Lists, by List ID. */
+  syncStatus: ListSyncStatuses;
+  connections: ConnectionSummary[];
+}
+
+export interface AccountConfigResponse extends AccountSyncSnapshot {
   access: AddonAccess;
   /** The Account ID; only returned for private access. */
   accountId: string | null;
@@ -39,7 +52,6 @@ export interface AccountConfigResponse {
   movedAt: string | null;
   rpdbApiKey: string | null;
   lists: ConfigList[];
-  connections: ConnectionSummary[];
   actions: { enabled: boolean; providers: ProviderId[] };
   lastFetchedAt: string;
   cooldownSeconds: number;

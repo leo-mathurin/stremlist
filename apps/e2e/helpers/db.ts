@@ -190,7 +190,7 @@ export async function getConnectionRow(accountId: string, provider: string) {
   const { data, error } = await db
     .from("connections")
     .select(
-      "provider, provider_username, expires_at, access_token, redirect_uri",
+      "provider, provider_username, expires_at, access_token, redirect_uri, needs_renewal_since",
     )
     .eq("account_id", accountId)
     .eq("provider", provider)
@@ -225,6 +225,34 @@ export async function getListRows(accountId: string) {
     .select("*")
     .eq("account_id", accountId)
     .order("position", { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
+/** Store the sync status of a refresh at `at` that gave `titleCount` Titles. */
+export async function seedSyncStatus(
+  listId: string,
+  provider: ProviderId,
+  sourceRef: string,
+  at: Date,
+  titleCount: number,
+): Promise<void> {
+  const { error } = await db.from("list_sync_status").insert({
+    list_id: listId,
+    provider,
+    source_ref: sourceRef,
+    last_attempt_at: at.toISOString(),
+    last_success_at: at.toISOString(),
+    title_count: titleCount,
+  });
+  if (error) throw error;
+}
+
+export async function getSyncStatusRows(listId: string) {
+  const { data, error } = await db
+    .from("list_sync_status")
+    .select("*")
+    .eq("list_id", listId);
   if (error) throw error;
   return data;
 }
