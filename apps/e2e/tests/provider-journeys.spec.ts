@@ -542,6 +542,56 @@ test(
 );
 
 test(
+  "a Catalog preview through a refused Connection marks it for renewal, but is not a refresh",
+  { tag: "@local" },
+  async () => {
+    const accountId = await seedAccount();
+    // An expired token whose refresh Trakt refuses.
+    await seedConnection(accountId, "trakt", {
+      expiresAt: new Date(Date.now() - 60_000),
+      refreshToken: "rejected-refresh",
+    });
+    const listId = await seedList(accountId, {
+      provider: "trakt",
+      sourceRef: "me/watchlist",
+      catalogTitle: "Trakt Watchlist",
+      position: 0,
+      displayMode: "split",
+    });
+
+    const preview = await call<CatalogPreviewResponse>("/lists/preview", {
+      json: {
+        accountKey: accountId,
+        provider: "trakt",
+        sourceRef: "me/watchlist",
+        sortOption: "added_at-asc",
+        displayMode: "split",
+      },
+    });
+    expect(preview.body).toEqual({ ok: false, reason: "needs_connection" });
+
+    // The refused tokens are a fact about the Connection, whoever used them:
+    // the configure page asks to renew it.
+    expect(
+      (await getConnectionRow(accountId, "trakt"))?.needs_renewal_since,
+    ).not.toBeNull();
+    // The preview changed no Catalog, so the List keeps no sync status.
+    expect(await getSyncStatusRows(listId)).toEqual([]);
+    expect(
+      (await call<AccountSyncSnapshot>(`/${accountId}/sync-status`)).body,
+    ).toEqual({
+      syncStatus: {},
+      connections: [
+        expect.objectContaining({
+          provider: "trakt",
+          needsRenewalSince: expect.any(String),
+        }),
+      ],
+    });
+  },
+);
+
+test(
   "an expired Connection refreshes, or asks to connect again when refused",
   { tag: "@local" },
   async () => {
