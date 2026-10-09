@@ -13,9 +13,11 @@ import {
   captureConfig,
   configuration,
   connected,
+  fitConfigurePage,
   imdbUser,
   legacyConfiguration,
   row,
+  saveButton,
   syncedStatus,
   toJson,
 } from "./config-fixture";
@@ -224,7 +226,7 @@ test("a List added and saved waits for its first refresh, then shows it", async 
   await expect(
     screen.getByText("Not saved yet", { exact: true }),
   ).toBeVisible();
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   await expect(
     screen.getByText("Updated just now · 250 titles", { exact: true }),
@@ -317,6 +319,7 @@ test(
     } as AccountConfigResponse);
     const starts = await routeConnectStart(browser);
     await routeTraktSources(browser);
+    await fitConfigurePage(browser);
     await app.open(`/configure?account=${accountId}`);
 
     await expect(
@@ -655,9 +658,7 @@ test("a new setup shows no sync status before its first save", async ({
   await screen.getByRole("button", "Add an IMDb chart").tap();
   await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
 
-  await expect(
-    screen.getByRole("button", "Save and get my Addon URL"),
-  ).toBeEnabled();
+  await expect(saveButton(screen, "Save and get my Addon URL")).toBeEnabled();
   await expect(screen.getByText("Not saved yet", { exact: true })).toHaveCount(
     0,
   );
@@ -703,7 +704,7 @@ test("a saved List whose chart changes is not saved yet, and is polled only afte
   await pause(5_000);
   expect(polls).toHaveLength(0);
 
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText(/^Saved!/)).toBeVisible();
   await expect(
     screen.getByText("Updated just now · 250 titles", { exact: true }),
