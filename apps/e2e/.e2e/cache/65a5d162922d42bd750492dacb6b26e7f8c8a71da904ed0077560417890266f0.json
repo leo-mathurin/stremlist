@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-06T23:26:28.652Z",
+  "createdAt": "2026-10-09T16:53:38.939Z",
   "payload": {
     "actions": [
       {
@@ -33,13 +33,27 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Turned on “Show newly detected titles” and saved. The app confirmed “Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions.”",
+    "summary": "The newly detected titles checkbox is checked, and the saved confirmation toast is visible. The setting was successfully saved.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions."
+        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. I did it Reinstall"
+      },
+      {
+        "text": "Reinstall Stremlist in Stremio"
+      },
+      {
+        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
+      },
+      {
+        "role": "button",
+        "name": "I did it"
+      },
+      {
+        "role": "link",
+        "name": "Reinstall"
       },
       {
         "role": "checkbox",
@@ -62,6 +76,9 @@
         "name": "Show newly detected titles"
       },
       {
+        "text": "No new titles detected yet."
+      },
+      {
         "role": "heading",
         "name": "Install or reinstall in Stremio"
       },
@@ -69,6 +86,6 @@
         "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
       }
     ],
-    "endWaitMs": 12445
+    "endWaitMs": 27244
   }
 }

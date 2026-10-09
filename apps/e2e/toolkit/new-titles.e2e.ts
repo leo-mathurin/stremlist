@@ -8,17 +8,22 @@ import {
   SAVED,
   SAVED_REINSTALL,
   SAVED_WITH_CHANGES,
+  SAVE_NEW,
   accountId,
   backend,
   baseRoutes,
   captureConfig,
   configuration,
+  fitConfigurePage,
+  holdToasts,
   imdbUser,
   legacyConfiguration,
   parseBody,
   providerStatus,
   row,
+  saveButton,
   savedLists,
+  syncedStatus,
   toJson,
 } from "./config-fixture";
 
@@ -26,6 +31,7 @@ import {
 // backend; tests/new-titles.spec.ts covers it against real storage.
 
 const TOGGLE = "Show newly detected titles";
+const NEEDS_REINSTALL = "These changes need a reinstall.";
 const MOVED_HINT =
   "This install has a private URL now. Make changes from the configure page of your new install.";
 
@@ -39,6 +45,8 @@ test(
   "turning on the New titles catalog saves it and asks for a reinstall",
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
+    await fitConfigurePage(browser);
+    await holdToasts(browser);
     const submissions = await captureConfig(browser);
     await app.open(`/configure?account=${accountId}`);
     await expect(screen.getByRole("checkbox", TOGGLE)).not.toBeChecked();
@@ -51,6 +59,8 @@ test(
 
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(screen.getByRole("checkbox", TOGGLE)).toBeChecked();
+    // The reminder stays until the user says they reinstalled.
+    await expect(screen.getByRole("button", "I did it")).toBeVisible();
     expect(submissions).toHaveLength(1);
     expect(submissions[0].newTitles).toEqual({ enabled: true });
     expect(submissions[0].lists).toMatchObject([{ id: row.id }]);
@@ -102,7 +112,7 @@ test("an unreadable history hides the summary, and an unchanged save needs no re
   await expect(screen.getByRole("checkbox", TOGGLE)).toBeChecked();
   await expect(screen.getByText(/new titles? detected/)).toHaveCount(0);
 
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText(SAVED)).toBeVisible();
   expect(submissions[0].newTitles).toEqual({ enabled: true });
 });
@@ -138,7 +148,7 @@ test("a new setup sends the setting with its first save", async ({
   await screen.getByRole("button", "Add an IMDb chart").tap();
   await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
   await screen.getByRole("checkbox", TOGGLE).tap();
-  await screen.getByRole("button", "Save and get my Addon URL").tap();
+  await saveButton(screen, SAVE_NEW).tap();
 
   await expect(browser).toHaveURL(`/configure?account=${accountId}`);
   await expect(
@@ -193,14 +203,14 @@ test("changing the setting while a save runs keeps it as an unsaved change", asy
   });
 
   await app.open(`/configure?account=${accountId}`);
-  await screen.getByRole("button", "Save", { exact: true }).tap();
-  await expect(screen.getByRole("button", "Saving")).toBeVisible();
+  await saveButton(screen).tap();
+  await expect(saveButton(screen, "Saving")).toBeVisible();
   await screen.getByRole("checkbox", TOGGLE).tap();
   await expect(screen.getByRole("checkbox", TOGGLE)).toBeChecked();
   releaseSave();
 
   await expect(screen.getByText(SAVED_WITH_CHANGES)).toBeVisible();
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(submissions.map((submitted) => submitted.newTitles)).toEqual([
     { enabled: false },
@@ -301,6 +311,10 @@ test("a save and a disconnect show the summary of what is left", async ({
   current = {
     ...current,
     lists: [row, historyList],
+    syncStatus: {
+      ...configuration.syncStatus,
+      [historyList.id]: syncedStatus(historyList.sourceRef),
+    },
     connections: [
       {
         provider: "trakt",
@@ -338,6 +352,15 @@ test("a save and a disconnect show the summary of what is left", async ({
       await route.fulfill({ json: { sources: [] } });
     },
   );
+  // The sync status poll after the save answers the current Connections.
+  await browser.route(`${backend}/${accountId}/sync-status`, async (route) => {
+    await route.fulfill({
+      json: toJson({
+        syncStatus: current.syncStatus,
+        connections: current.connections,
+      }),
+    });
+  });
   const deletes: string[] = [];
   await browser.route(
     `${backend}/${accountId}/connections/trakt`,
@@ -363,14 +386,14 @@ test("a save and a disconnect show the summary of what is left", async ({
   ).toBeVisible();
 
   await screen.getByRole("button", "Remove Test catalog").tap();
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(submissions[0].lists).toMatchObject([{ id: historyList.id }]);
   await expect(
     screen.getByText("1 new title detected, the latest 2 days ago."),
   ).toBeVisible();
 
-  await screen.getByRole("button", "Disconnect").tap();
+  await screen.getByRole("button", "Connected to Trakt. Disconnect").tap();
   await screen
     .getByRole("group", "Disconnect Trakt?")
     .getByRole("button", "Disconnect")
@@ -381,4 +404,28 @@ test("a save and a disconnect show the summary of what is left", async ({
     ),
   ).toBeVisible();
   expect(deletes).toEqual(["DELETE"]);
+});
+
+test("the reinstall notice follows the New titles setting before a save", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  await captureConfig(browser);
+  await app.open(`/configure?account=${accountId}`);
+  await expect(screen.getByRole("checkbox", TOGGLE)).not.toBeChecked();
+  await expect(screen.getByText(NEEDS_REINSTALL, { exact: true })).toBeHidden();
+
+  // Two more Catalogs in the manifest, which Stremio reads at install time.
+  await screen.getByRole("checkbox", TOGGLE).tap();
+  await expect(
+    screen.getByText(NEEDS_REINSTALL, { exact: true }),
+  ).toBeVisible();
+
+  // Back to what Stremio has: nothing to reinstall.
+  await screen.getByRole("checkbox", TOGGLE).tap();
+  await expect(screen.getByText(NEEDS_REINSTALL, { exact: true })).toBeHidden();
+  await saveButton(screen).tap();
+  await expect(screen.getByText(SAVED)).toBeVisible();
+  await expect(screen.getByRole("button", "I did it")).toHaveCount(0);
 });

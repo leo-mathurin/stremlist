@@ -23,6 +23,7 @@ import {
 } from "../env.js";
 import { asInput, getCatalog, getManifest, getMeta } from "../helpers/api.js";
 import { CATALOG_TITLES, seedCatalog } from "../helpers/catalog-fixture.js";
+import { SAVED_REINSTALL, saveButton } from "../helpers/configure.js";
 import {
   clearRefreshCooldown,
   db,
@@ -690,17 +691,95 @@ test(
   },
 );
 
+test(
+  "a merged List detects in each Source list, shows a Title once and waits for each Baseline",
+  { tag: "@local" },
+  async ({ page }) => {
+    const accountId = await seedAccount({ newTitlesCatalog: true });
+    const listId = await seedList(accountId, {
+      provider: "imdb",
+      sourceRef: WATCHLIST,
+      catalogTitle: "QA merged",
+      displayMode: "movie",
+      sortOption: "added_at-asc",
+      position: 0,
+      mergedSources: [{ provider: "trakt", sourceRef: TRAKT_REF }],
+    });
+
+    // IMDb cannot be read: Trakt gets its Baseline, the List waits for IMDb.
+    const first = await refreshAll(
+      accountId,
+      sources([], [traktItem(1, A)], { imdbFails: true }),
+    );
+    expect(first.newTitles).toEqual({
+      detected: 0,
+      latestDetectedAt: null,
+      waitingLists: 1,
+    });
+    expect(await syncRows(accountId)).toMatchObject([
+      { provider: "trakt", source_ref: TRAKT_REF },
+    ]);
+
+    // The first complete IMDb read is its own Baseline, B included.
+    await refreshAll(accountId, sources([A, B], [traktItem(1, A)]));
+    expect(await newTitles(accountId)).toEqual([]);
+
+    // C reaches IMDb, then Trakt: one new title, with its first detection.
+    await refreshAll(accountId, sources([A, B, C], [traktItem(1, A)]));
+    const last = await refreshAll(
+      accountId,
+      sources([A, B, C], [traktItem(1, A), traktItem(3, C), traktItem(4, D)]),
+    );
+    const metas = await newTitles(accountId);
+    expect(ids(metas)).toEqual([D, C]);
+    expect(metas.map((meta) => meta.description)).toEqual([
+      expect.stringMatching(new RegExp(`^${detected("QA merged")}`)),
+      expect.stringMatching(new RegExp(`^${detected("QA merged")}`)),
+    ]);
+    expect(last.newTitles).toMatchObject({ detected: 2, waitingLists: 0 });
+    const imdbC = (await entryRows(accountId)).filter(
+      (row) => row.imdb_id === C,
+    );
+    expect(imdbC).toHaveLength(2);
+
+    // IMDb fails again: nothing of it is removed, and Trakt, which dropped
+    // A, is still compared.
+    const before = (await entryRows(accountId)).filter(
+      (row) => row.provider === "imdb",
+    );
+    await refreshAll(
+      accountId,
+      sources([], [traktItem(3, C), traktItem(4, D)], { imdbFails: true }),
+    );
+    const after = await entryRows(accountId);
+    expect(after.filter((row) => row.provider === "imdb")).toEqual(before);
+    expect(
+      after.find((row) => row.provider === "trakt" && row.imdb_id === A)
+        ?.removed_at,
+    ).not.toBeNull();
+    expect(ids(await newTitles(accountId))).toEqual([D, C]);
+
+    // The List's own Catalog still shows the cached IMDb Titles.
+    const served = await fetch(
+      `${backend.url}/${accountId}/catalog/movie/wl-${listId}-movie.json`,
+    );
+    expect(
+      ids(((await served.json()) as { metas: StremioMeta[] }).metas).sort(),
+    ).toEqual([A, B, C, D]);
+    await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
+    await expect(
+      page.getByText(/^2 new titles detected, the latest .+\.$/),
+    ).toBeVisible();
+  },
+);
+
 async function saveSettings(page: Page) {
   const response = page.waitForResponse(
     (res) => res.url().endsWith("/config") && res.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await saveButton(page).click();
   expect((await response).status()).toBe(200);
-  await expect(
-    page.getByText(
-      "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions.",
-    ),
-  ).toBeVisible();
+  await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
 }
 
 test(
@@ -747,7 +826,16 @@ test(
       /^Detected by Stremlist on \d{1,2} \w{3} \d{4} in Release QA\./,
     );
 
+    // The reminder survives the reload until the user reinstalls.
+    await page.getByRole("button", { name: "I did it" }).click();
+    await expect(page.getByRole("button", { name: "I did it" })).toHaveCount(0);
+
+    // Turning the catalog off removes it from the manifest: Stremio needs a
+    // reinstall again.
     await toggle.click();
+    await expect(
+      page.getByText("These changes need a reinstall.", { exact: true }),
+    ).toBeVisible();
     await saveSettings(page);
     expect(
       (await getManifest(accountId)).catalogs.map((catalog) => catalog.id),
