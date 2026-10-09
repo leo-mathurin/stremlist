@@ -68,7 +68,21 @@ export async function traktGet(
   connection: ConnectionAccess | null,
   options: TraktReadOptions = {},
 ): Promise<Response> {
-  if (!connection) {
+  // A Connection that cannot give a token any more (refused refresh) must
+  // not make Source lists that anyone may read fail.
+  const token = connection
+    ? await connectionToken(connection).catch((error: unknown) => {
+        if (
+          options.publicFallback &&
+          error instanceof SourceUnavailableError &&
+          error.reason === "needs_connection"
+        ) {
+          return null;
+        }
+        throw error;
+      })
+    : null;
+  if (!connection || token === null) {
     const response = await send(path);
     if (response.status === 401) {
       throw new SourceUnavailableError("private", `Trakt ${path} is private`);
@@ -76,7 +90,6 @@ export async function traktGet(
     return checked(response, path);
   }
 
-  const token = await connectionToken(connection);
   let response = await send(path, token);
   if (response.status === 401) {
     // ConnectionAccess refreshes a token that is about to expire; a second
@@ -89,6 +102,9 @@ export async function traktGet(
     if (response.status === 401) {
       throw new SourceUnavailableError("private", `Trakt ${path} is private`);
     }
+    // Readable without the token but refused with it: the Connection is
+    // broken even though this public read works.
+    await connection.reportRefused();
   }
   if (response.status === 401) {
     throw new SourceUnavailableError(

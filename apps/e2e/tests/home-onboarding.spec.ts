@@ -8,6 +8,7 @@ import {
   PUBLIC_USER_2,
   UNKNOWN_USER,
 } from "../helpers/test-data.js";
+import { saveButton, SAVE_NEW } from "../helpers/configure.js";
 
 // First-install flow: a link pasted on Home becomes the first List on the
 // configure page, and the first save creates the Account.
@@ -38,9 +39,7 @@ test(
     const created = page.waitForResponse((res) =>
       res.url().endsWith("/accounts"),
     );
-    await page
-      .getByRole("button", { name: "Save and get my Addon URL" })
-      .click();
+    await saveButton(page, SAVE_NEW).click();
     const { accountId } = (await (await created).json()) as {
       accountId: string;
     };
@@ -58,12 +57,11 @@ test(
       "href",
       `https://web.stremio.com/#/addons?addon=${encodeURIComponent(addonManifestUrl(accountId))}`,
     );
+    // Stremio opens `stremio://` links over HTTPS without a port, so the
+    // local http://127.0.0.1:7301 Addon URL has no app install link.
     await expect(
       page.getByRole("link", { name: "Install in Stremio" }),
-    ).toHaveAttribute(
-      "href",
-      `stremio://127.0.0.1:7301/${accountId}/manifest.json`,
-    );
+    ).toHaveCount(0);
     expect((await getConfig(accountId)).body.lists).toMatchObject([
       { provider: "imdb", sourceRef: PUBLIC_USER_2 },
     ]);
@@ -98,9 +96,7 @@ test(
       ),
     ).toBeVisible();
     await expect(page.getByText("No Lists yet")).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Save and get my Addon URL" }),
-    ).toBeDisabled();
+    await expect(saveButton(page, SAVE_NEW)).toBeDisabled();
   },
 );
 

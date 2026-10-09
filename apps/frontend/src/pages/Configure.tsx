@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { ACCOUNT_KEY_PATTERN } from "@stremlist/shared/constants";
-import {
-  isProviderId,
-  PROVIDERS,
-  sourceRequiresConnection,
-} from "@stremlist/shared/providers";
+import { connectionProviders, listSources } from "@stremlist/shared/list-merge";
+import { isProviderId, PROVIDERS } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
-import { Eye, EyeOff, Loader2, RefreshCw, X } from "lucide-react";
+import { Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import ActionsSettings from "../components/ActionsSettings";
-import { AddonUrlCard, LegacyUpgradeCard } from "../components/AccountCards";
+import {
+  AddonUrlCard,
+  LegacyUpgradeCard,
+  ReinstallNotice,
+} from "../components/AccountCards";
 import LinkPaste from "../components/LinkPaste";
 import NewTitlesSettings from "../components/NewTitlesSettings";
 import type { ResolvedLink } from "../components/LinkPaste";
@@ -19,12 +22,15 @@ import ProviderList from "../components/ProviderList";
 import QuickAdd from "../components/QuickAdd";
 import SortableListRow from "../components/SortableListRow";
 import { SectionHeading, SplitLayout, Wordmark } from "../components/brand";
+import { usePendingIndicator } from "../hooks/usePendingIndicator";
 import { useSEO } from "../hooks/useSEO";
 import {
   MAX_LISTS,
   useAccountConfiguration,
 } from "../hooks/useAccountConfiguration";
-import { listKey } from "../lib/list-form";
+import { sourceKeys } from "../lib/list-form";
+import type { ListFormRow } from "../lib/list-form";
+import { attentionTone } from "../lib/list-sync";
 import {
   describeSource,
   isStaticSource,
@@ -111,15 +117,6 @@ export default function Configure() {
   const keyIsValid = !!rawKey && ACCOUNT_KEY_PATTERN.test(rawKey);
   const accountKey = keyIsValid ? rawKey : null;
 
-  // Read the OAuth result once, then clean the URL (and move the old
-  // `?userId=` to `?account=`) so a reload does not show it again.
-  const [notice, setNotice] = useState<Notice | null>(() =>
-    connectionNotice(
-      searchParams.get("connected"),
-      searchParams.get("connection_error"),
-      searchParams.get("provider"),
-    ),
-  );
   const [pendingLink, setPendingLink] = useState<string | null>(() => {
     const homeLink = (location.state as { link?: unknown } | null)?.link;
     if (typeof homeLink === "string") return homeLink;
@@ -140,11 +137,20 @@ export default function Configure() {
   useEffect(() => {
     const cleanup = ["connected", "connection_error", "provider", "userId"];
     if (!cleanup.some((key) => searchParams.has(key))) return;
+    const notice = connectionNotice(
+      searchParams.get("connected"),
+      searchParams.get("connection_error"),
+      searchParams.get("provider"),
+    );
+    if (notice) {
+      toast[notice.type](notice.message, { id: `connection-${location.key}` });
+    }
+    // Consume the OAuth result so reloading does not show the toast again.
     const next = new URLSearchParams(searchParams);
     for (const key of cleanup) next.delete(key);
     if (rawKey) next.set("account", rawKey);
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, rawKey]);
+  }, [searchParams, setSearchParams, rawKey, location.key]);
 
   const [createdId, setCreatedId] = useState(() =>
     readStorage(NEW_ACCOUNT_STORAGE),
@@ -174,14 +180,36 @@ export default function Configure() {
   const connectedProviders = new Set(
     config.connections.map((connection) => connection.provider),
   );
-  const needsMissingConnection = (provider: ProviderId, sourceRef: string) =>
-    access === "private" &&
-    sourceRequiresConnection(provider, sourceRef) &&
-    !connectedProviders.has(provider);
+  /** Providers of a List whose Connection the Account does not have. */
+  const missingConnections = (list: ListFormRow): ProviderId[] =>
+    access === "private"
+      ? connectionProviders(list).filter(
+          (provider) => !connectedProviders.has(provider),
+        )
+      : [];
+  const syncStates = lists.map((list) => config.syncStateOf(list));
+  const attention = syncStates.filter((sync) => attentionTone(sync)).length;
+  /**
+   * Identifies the Account's Connections to the Providers of a List's
+   * Source lists. A renewal mark that comes or goes changes what the
+   * preview can read.
+   */
+  const connectionKeyOf = (list: ListFormRow) =>
+    [...new Set(listSources(list).map((source) => source.provider))]
+      .map((provider) => {
+        const connection = config.connections.find(
+          (entry) => entry.provider === provider,
+        );
+        return connection
+          ? `${provider}:${connection.connectedAt}:${connection.username ?? ""}:${connection.needsRenewalSince ?? ""}`
+          : "";
+      })
+      .filter(Boolean)
+      .join(",");
   const affectedLists: Partial<Record<ProviderId, number>> = {};
   for (const list of lists) {
-    if (sourceRequiresConnection(list.provider, list.sourceRef)) {
-      affectedLists[list.provider] = (affectedLists[list.provider] ?? 0) + 1;
+    for (const provider of connectionProviders(list)) {
+      affectedLists[provider] = (affectedLists[provider] ?? 0) + 1;
     }
   }
 
@@ -199,6 +227,69 @@ export default function Configure() {
     writeStorage(PENDING_LINK_STORAGE, link ?? null);
     void config.connect(provider);
   };
+
+  // The header Save button; the floating Save button shows once it scrolls
+  // away, and spans the column once it rests at the end of the page.
+  const [headerSave, setHeaderSave] = useState<HTMLButtonElement | null>(null);
+  const [headerSaveVisible, setHeaderSaveVisible] = useState(true);
+  const [floatingSave, setFloatingSave] = useState<HTMLDivElement | null>(null);
+  const [floatingDocked, setFloatingDocked] = useState(false);
+  // Width of the floating label, so the clip shows a pill around it while
+  // the button floats.
+  const [floatingLabel, setFloatingLabel] = useState<HTMLSpanElement | null>(
+    null,
+  );
+  const [floatingLabelWidth, setFloatingLabelWidth] = useState(0);
+  useEffect(() => {
+    if (!headerSave) return;
+    const observer = new IntersectionObserver(([entry]) =>
+      setHeaderSaveVisible(entry.isIntersecting),
+    );
+    observer.observe(headerSave);
+    return () => observer.disconnect();
+  }, [headerSave]);
+  useEffect(() => {
+    if (!floatingSave) return;
+    // While stuck, the button sits 20px (bottom-5) above the viewport edge,
+    // so it is never fully inside a root shrunk by 22px. Once it rests in
+    // place at the end of the page, it is.
+    const observer = new IntersectionObserver(
+      ([entry]) => setFloatingDocked(entry.intersectionRatio === 1),
+      { rootMargin: "0px 0px -22px 0px", threshold: 1 },
+    );
+    observer.observe(floatingSave);
+    return () => observer.disconnect();
+  }, [floatingSave]);
+  useEffect(() => {
+    if (!floatingLabel) return;
+    const observer = new ResizeObserver(([entry]) =>
+      setFloatingLabelWidth(entry.borderBoxSize[0].inlineSize),
+    );
+    observer.observe(floatingLabel);
+    return () => observer.disconnect();
+  }, [floatingLabel]);
+  const canSave = !moved && lists.length > 0;
+  const showSaveBar = ready && canSave && !!headerSave && !headerSaveVisible;
+  // `handleSave` ignores clicks while a save runs, so the button stays
+  // enabled: dimming it for a fast save would flash.
+  const saveDisabled = !canSave || !!config.validationError;
+  const showSaving = usePendingIndicator(config.saving);
+  const saveClassName =
+    "inline-flex shrink-0 items-center justify-center gap-2 bg-brand font-bold text-black hover:bg-brand-dark active:scale-[0.97] disabled:opacity-40 motion-reduce:active:scale-100";
+  const saveLabel = (
+    <>
+      {showSaving && <Loader2 className="size-4 animate-spin" />}
+      {showSaving ? (
+        "Saving"
+      ) : access === "new" ? (
+        <>
+          Save<span className="hidden sm:inline"> and get my Addon URL</span>
+        </>
+      ) : (
+        "Save"
+      )}
+    </>
+  );
 
   const scrollToUpgrade = () =>
     document
@@ -278,32 +369,60 @@ export default function Configure() {
   return (
     <SplitLayout panel={panel}>
       <div className="mx-auto max-w-3xl space-y-6 p-5 pb-24 sm:p-8 lg:p-12">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight">Your Lists</h2>
-            <p className="text-black/55">
-              Each List becomes a catalog row in Stremio, in this order.
-            </p>
+        <div className="space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="text-3xl font-bold tracking-tight">Your Lists</h2>
+              <p className="text-black/55">
+                Each List becomes a catalog row in Stremio, in this order.
+              </p>
+            </div>
+            {ready && !moved && (
+              <button
+                ref={setHeaderSave}
+                type="button"
+                onClick={config.handleSave}
+                disabled={saveDisabled}
+                className={cn(
+                  saveClassName,
+                  "h-10 rounded-full px-5 text-sm transition-[background-color,opacity,scale] duration-150 ease-out",
+                )}
+              >
+                {saveLabel}
+              </button>
+            )}
           </div>
           {accountKey && ready && (
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <p className="flex items-center gap-2 text-sm text-black/55">
                 <span
                   className={cn(
                     "size-2 shrink-0 rounded-full",
                     config.refreshing
-                      ? "animate-pulse bg-amber-400"
-                      : config.lastFetchedAt
-                        ? "bg-emerald-500"
-                        : "bg-black/20",
+                      ? "motion-safe:animate-pulse bg-amber-400"
+                      : attention > 0
+                        ? "bg-amber-500"
+                        : config.lastFetchedAt
+                          ? "bg-emerald-500"
+                          : "bg-black/20",
                   )}
                   aria-hidden="true"
                 />
-                <span>
+                <span className="tabular-nums">
                   Refreshed{" "}
                   <span className="font-semibold text-ink">
                     {formatRelativeTime(config.lastFetchedAt)}
                   </span>
+                  {attention > 0 && (
+                    <>
+                      {" · "}
+                      <span className="font-semibold text-amber-700">
+                        {attention === 1
+                          ? "1 List needs attention"
+                          : `${attention} Lists need attention`}
+                      </span>
+                    </>
+                  )}
                 </span>
               </p>
               <button
@@ -325,26 +444,12 @@ export default function Configure() {
           )}
         </div>
 
-        {notice && (
-          <div
-            role="status"
-            className={cn(
-              "flex items-start gap-3 rounded-2xl px-4 py-3 text-sm ring-1",
-              notice.type === "success"
-                ? "bg-emerald-50 text-emerald-800 ring-emerald-200"
-                : "bg-red-50 text-red-700 ring-red-200",
-            )}
-          >
-            <p className="flex-1">{notice.message}</p>
-            <button
-              type="button"
-              aria-label="Dismiss"
-              onClick={() => setNotice(null)}
-              className="-m-1 rounded-full p-1 opacity-60 hover:opacity-100"
-            >
-              <X className="size-4" />
-            </button>
-          </div>
+        {ready && accountKey && !moved && config.reinstall !== "none" && (
+          <ReinstallNotice
+            accountKey={accountKey}
+            state={config.reinstall}
+            onReinstalled={config.markReinstalled}
+          />
         )}
 
         {rawKey && !keyIsValid ? (
@@ -411,24 +516,50 @@ export default function Configure() {
                   }}
                 >
                   <div className="space-y-3">
-                    {lists.map((list, index) => (
-                      <SortableListRow
-                        key={list.localId}
-                        list={list}
-                        index={index}
-                        onFieldChange={config.setListField}
-                        onRemove={config.removeList}
-                        connectionMissing={needsMissingConnection(
-                          list.provider,
-                          list.sourceRef,
-                        )}
-                        onConnect={
-                          config.providerStatus[list.provider].connectable
-                            ? () => connectFor(list.provider)
-                            : undefined
-                        }
-                      />
-                    ))}
+                    {lists.map((list, index) => {
+                      const sync = syncStates[index];
+                      // The Provider that the List's sync status asks to
+                      // connect again: in a merged List, the one of the
+                      // Source list with the problem.
+                      const connectProvider =
+                        (sync?.kind === "connection"
+                          ? sync.source?.provider
+                          : undefined) ??
+                        missingConnections(list).at(0) ??
+                        list.provider;
+                      return (
+                        <SortableListRow
+                          key={list.localId}
+                          list={list}
+                          index={index}
+                          accountKey={accountId ?? accountKey}
+                          connectionKey={connectionKeyOf(list)}
+                          onFieldChange={config.setListField}
+                          onRemove={config.removeList}
+                          missingProviders={missingConnections(list)}
+                          sync={sync}
+                          saved={config.isListSaved(list)}
+                          onConnect={
+                            config.providerStatus[connectProvider].connectable
+                              ? () => connectFor(connectProvider)
+                              : undefined
+                          }
+                          merge={
+                            moved
+                              ? undefined
+                              : {
+                                  others: lists.filter(
+                                    (other) => other !== list,
+                                  ),
+                                  canSplit: !full,
+                                  onMerge: config.mergeLists,
+                                  onRemoveSource: config.removeSource,
+                                  onSplitSource: config.splitSource,
+                                }
+                          }
+                        />
+                      );
+                    })}
                   </div>
                 </DragDropProvider>
               )}
@@ -444,7 +575,7 @@ export default function Configure() {
                 connections={config.connections}
                 connectionSources={config.connectionSources}
                 providerStatus={config.providerStatus}
-                usedKeys={lists.map(listKey)}
+                usedKeys={sourceKeys(lists)}
                 full={full || moved}
                 onAdd={(provider, source) => {
                   const error = config.addList({
@@ -457,10 +588,14 @@ export default function Configure() {
                       : source.label,
                     displayMode: source.defaultDisplayMode,
                   });
-                  if (error)
-                    config.setStatus({ type: "error", message: error });
+                  if (error) toast.error(error, { id: "list-add" });
                 }}
-                onAddChart={config.addChartList}
+                onAddChart={(chartId) => {
+                  // The chart menu is off only when the List limit is
+                  // reached; the Source list limit is checked here.
+                  const error = config.addChartList(chartId);
+                  if (error) toast.error(error, { id: "list-add" });
+                }}
               />
             </section>
 
@@ -549,66 +684,58 @@ export default function Configure() {
               </p>
             )}
 
-            <div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl bg-ink p-5 text-cloud">
-              <div className="min-w-0">
-                <p className="font-bold">
-                  {access === "new"
-                    ? "Ready to go live?"
-                    : moved
-                      ? "Saving is off for this install"
-                      : "Save your changes"}
-                </p>
-                <p className="text-sm text-white/60">
-                  {access === "new"
-                    ? "Save to get your Addon URL, then install it once in Stremio."
-                    : moved
-                      ? MOVED_HINT
-                      : "Your catalogs update in Stremio after saving."}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={config.handleSave}
-                disabled={
-                  moved ||
-                  config.saving ||
-                  !!config.validationError ||
-                  lists.length === 0
-                }
-                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-brand px-6 text-sm font-bold text-black transition-[opacity,scale] duration-150 hover:bg-brand-dark active:scale-[0.97] disabled:opacity-40 sm:w-auto"
-              >
-                {config.saving && <Loader2 className="size-4 animate-spin" />}
-                {config.saving
-                  ? "Saving"
-                  : access === "new"
-                    ? "Save and get my Addon URL"
-                    : "Save"}
-              </button>
-            </div>
-
-            {config.status && (
-              <p
-                role={config.status.type === "error" ? "alert" : "status"}
-                className={cn(
-                  "rounded-2xl px-4 py-3 text-center text-sm ring-1",
-                  config.status.type === "success"
-                    ? "bg-emerald-50 text-emerald-800 ring-emerald-200"
-                    : config.status.type === "info"
-                      ? "bg-white text-black/70 ring-black/10"
-                      : "bg-red-50 text-red-700 ring-red-200",
-                )}
-              >
-                {config.status.message}
-              </p>
-            )}
-
             {accountKey && !justCreated && !moved && (
               <AddonUrlCard
                 accountKey={accountKey}
                 variant="install"
-                reinstallHint={config.showReinstallHint}
+                reinstallHint={config.reinstall === "required"}
+                onUse={config.markReinstalled}
               />
             )}
+
+            <div
+              ref={setFloatingSave}
+              inert={!showSaveBar}
+              className={cn(
+                "pointer-events-none sticky bottom-5 z-20 flex justify-end transition-[opacity,translate] ease-out-quint motion-reduce:translate-y-0",
+                showSaveBar
+                  ? "duration-200"
+                  : "translate-y-4 opacity-0 duration-150",
+              )}
+            >
+              <button
+                type="button"
+                onClick={config.handleSave}
+                disabled={saveDisabled}
+                aria-busy={config.saving}
+                style={
+                  {
+                    "--pill": `${floatingLabelWidth + 64}px`,
+                  } as CSSProperties
+                }
+                className={cn(
+                  saveClassName,
+                  // Always full width; while floating, the clip shows only a
+                  // pill at the right. At the end of the page the clip opens
+                  // and the label slides to the center.
+                  "@container pointer-events-auto h-14 w-full text-base [transition:clip-path_250ms_var(--ease-in-out-quart),background-color_150ms_ease-out,opacity_150ms_ease-out,scale_150ms_ease-out] motion-reduce:[transition:background-color_150ms_ease-out,opacity_150ms_ease-out]",
+                  floatingDocked
+                    ? "[clip-path:inset(0_round_9999px)]"
+                    : "origin-right [clip-path:inset(0_0_0_calc(100%-var(--pill))_round_9999px)]",
+                )}
+              >
+                <span
+                  ref={setFloatingLabel}
+                  className={cn(
+                    "inline-flex items-center gap-2 transition-[translate] duration-250 ease-in-out-quart motion-reduce:transition-none",
+                    !floatingDocked &&
+                      "translate-x-[calc(50cqw-var(--pill)/2)]",
+                  )}
+                >
+                  {saveLabel}
+                </span>
+              </button>
+            </div>
           </>
         )}
       </div>

@@ -1,4 +1,4 @@
-import { CATALOG_PRESETS } from "@stremlist/shared/catalog-settings";
+import { addonCatalogEntries } from "@stremlist/shared/manifest-catalogs";
 import type {
   ConfigList,
   StremioCatalog,
@@ -8,7 +8,7 @@ import { buildCatalogId, buildNewTitlesCatalogId } from "./catalog-id";
 
 function catalogExtras(
   genres: string[],
-  search = true,
+  search: boolean,
 ): StremioCatalog["extra"] {
   return [
     { name: "skip", isRequired: false },
@@ -22,98 +22,32 @@ function catalogExtras(
   ];
 }
 
-function buildCatalogName(baseTitle: string): string {
-  const normalizedTitle = baseTitle.trim();
-  if (!normalizedTitle) {
-    return "Stremlist";
-  }
-  if (/^\d+$/u.test(normalizedTitle)) {
-    return `Stremlist ${normalizedTitle}`;
-  }
-  return `Stremlist ${normalizedTitle}`;
-}
-
-function getEffectiveTitle(
-  listTitle: string,
-  index: number,
-  total: number,
-): string {
-  const normalizedTitle = listTitle.trim();
-  if (normalizedTitle.length > 0) {
-    return normalizedTitle;
-  }
-  return total <= 1 ? "" : String(index + 1);
-}
-
-export function buildManifestCatalogs(lists: ConfigList[]): StremioCatalog[] {
-  return lists.flatMap((list, index) => {
-    const effectiveTitle = getEffectiveTitle(
-      list.catalogTitle,
-      index,
-      lists.length,
-    );
-    const displayMode =
-      list.displayMode === "movie" || list.displayMode === "series"
-        ? list.displayMode
-        : "split";
-
-    const genres = [
-      ...new Set([
-        ...(list.availableGenres ?? []),
-        ...(list.catalogSettings?.genre ? [list.catalogSettings.genre] : []),
-      ]),
-    ].sort();
-    const movieCatalog: StremioCatalog = {
-      id: buildCatalogId(list.id, "movie"),
-      name: buildCatalogName(effectiveTitle),
-      type: "movie",
-      extra: catalogExtras(genres),
-    };
-    const seriesCatalog: StremioCatalog = {
-      id: buildCatalogId(list.id, "series"),
-      name: buildCatalogName(effectiveTitle),
-      type: "series",
-      extra: catalogExtras(genres),
-    };
-
-    const base =
-      displayMode === "movie"
-        ? [movieCatalog]
-        : displayMode === "series"
-          ? [seriesCatalog]
-          : [movieCatalog, seriesCatalog];
-    return base.flatMap((catalog) => [
-      catalog,
-      ...CATALOG_PRESETS.filter((preset) =>
-        list.catalogSettings?.presets?.includes(preset.id),
-      ).map((preset) => ({
-        ...catalog,
-        id: buildCatalogId(list.id, catalog.type, preset.id),
-        name: `${catalog.name} · ${preset.label}`,
-        extra: catalogExtras(genres, false),
-      })),
-    ]);
-  });
-}
-
 /**
- * The "New titles" catalogs (ADR 0007): one per type that the Lists show.
- * They come first, because they sum up what changed in every List below.
+ * The manifest Catalogs: the "New titles" ones (ADR 0007) when the Account
+ * has them on, then those of the Lists. The configure page compares the same
+ * entries (`addonCatalogEntries`) to know when a save needs a reinstall.
  */
-export function buildNewTitlesCatalogs(lists: ConfigList[]): StremioCatalog[] {
-  const types = new Set(
-    lists.flatMap((list) =>
-      list.displayMode === "movie" || list.displayMode === "series"
-        ? [list.displayMode]
-        : (["movie", "series"] as const),
-    ),
+export function buildManifestCatalogs(
+  lists: ConfigList[],
+  options: { newTitles: boolean } = { newTitles: false },
+): StremioCatalog[] {
+  return addonCatalogEntries(lists, options).map((entry) =>
+    "newTitles" in entry
+      ? {
+          id: buildNewTitlesCatalogId(entry.type),
+          name: entry.name,
+          type: entry.type,
+          extra: [{ name: "skip", isRequired: false }],
+        }
+      : {
+          id: buildCatalogId(
+            entry.listId,
+            entry.type,
+            entry.preset ?? undefined,
+          ),
+          name: entry.name,
+          type: entry.type,
+          extra: catalogExtras(entry.genres, entry.search),
+        },
   );
-  return (["movie", "series"] as const)
-    .filter((type) => types.has(type))
-    .map((type) => ({
-      id: buildNewTitlesCatalogId(type),
-      name: "Stremlist New titles",
-      type,
-      extra: [{ name: "skip", isRequired: false }],
-    }));
 }

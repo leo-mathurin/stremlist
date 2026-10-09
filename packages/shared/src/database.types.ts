@@ -71,6 +71,7 @@ export type Database = {
           account_id: string;
           created_at: string;
           expires_at: string | null;
+          needs_renewal_since: string | null;
           provider: string;
           provider_username: string | null;
           redirect_uri: string;
@@ -85,6 +86,7 @@ export type Database = {
           account_id: string;
           created_at?: string;
           expires_at?: string | null;
+          needs_renewal_since?: string | null;
           provider: string;
           provider_username?: string | null;
           redirect_uri: string;
@@ -99,6 +101,7 @@ export type Database = {
           account_id?: string;
           created_at?: string;
           expires_at?: string | null;
+          needs_renewal_since?: string | null;
           provider?: string;
           provider_username?: string | null;
           redirect_uri?: string;
@@ -118,6 +121,47 @@ export type Database = {
           },
         ];
       };
+      list_sync_status: {
+        Row: {
+          failing_since: string | null;
+          failure_reason: string | null;
+          last_attempt_at: string;
+          last_success_at: string | null;
+          list_id: string;
+          provider: string;
+          source_ref: string;
+          title_count: number | null;
+        };
+        Insert: {
+          failing_since?: string | null;
+          failure_reason?: string | null;
+          last_attempt_at: string;
+          last_success_at?: string | null;
+          list_id: string;
+          provider: string;
+          source_ref: string;
+          title_count?: number | null;
+        };
+        Update: {
+          failing_since?: string | null;
+          failure_reason?: string | null;
+          last_attempt_at?: string;
+          last_success_at?: string | null;
+          list_id?: string;
+          provider?: string;
+          source_ref?: string;
+          title_count?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "list_sync_status_list_id_fkey";
+            columns: ["list_id"];
+            isOneToOne: false;
+            referencedRelation: "lists";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       lists: {
         Row: {
           account_id: string;
@@ -126,9 +170,11 @@ export type Database = {
           created_at: string;
           display_mode: string;
           id: string;
+          merged_sources: Json;
           position: number;
           provider: string;
           sort_option: string;
+          source_label: string | null;
           source_ref: string;
           updated_at: string;
         };
@@ -139,9 +185,11 @@ export type Database = {
           created_at?: string;
           display_mode?: string;
           id?: string;
+          merged_sources?: Json;
           position?: number;
           provider: string;
           sort_option?: string;
+          source_label?: string | null;
           source_ref: string;
           updated_at?: string;
         };
@@ -152,9 +200,11 @@ export type Database = {
           created_at?: string;
           display_mode?: string;
           id?: string;
+          merged_sources?: Json;
           position?: number;
           provider?: string;
           sort_option?: string;
+          source_label?: string | null;
           source_ref?: string;
           updated_at?: string;
         };
@@ -350,6 +400,16 @@ export type Database = {
           provider: string;
           source_ref: string;
         }[];
+      };
+      record_list_refresh: {
+        Args: {
+          p_failure_reason: string | null;
+          p_list_id: string;
+          p_provider: string;
+          p_source_ref: string;
+          p_title_count: number | null;
+        };
+        Returns: boolean;
       };
       record_source_list_sync: {
         Args: {

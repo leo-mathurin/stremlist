@@ -2,6 +2,7 @@ import { createCipheriv, randomBytes, randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { Database } from "@stremlist/shared/database.types";
+import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import {
   BACKEND_URL,
@@ -113,6 +114,10 @@ export interface SeedListInput {
   sortOption?: string;
   displayMode?: "split" | "movie" | "series";
   catalogSettings?: CatalogSettings;
+  /** More Source lists of a merged List, after the first one. */
+  mergedSources?: ListSource[];
+  /** The label of the first Source list, when it was merged in earlier. */
+  sourceLabel?: string;
 }
 
 /** Add a controlled List row without a save-triggered external prewarm. */
@@ -131,6 +136,12 @@ export async function seedList(
     display_mode: list.displayMode ?? "movie",
     position: list.position,
     catalog_settings: { ...(list.catalogSettings ?? {}) },
+    merged_sources: (list.mergedSources ?? []).map((source) => ({
+      provider: source.provider,
+      source_ref: source.sourceRef,
+      ...(source.label ? { label: source.label } : {}),
+    })),
+    source_label: list.sourceLabel ?? null,
   });
   if (error) throw error;
   return id;
@@ -192,7 +203,7 @@ export async function getConnectionRow(accountId: string, provider: string) {
   const { data, error } = await db
     .from("connections")
     .select(
-      "provider, provider_username, expires_at, access_token, redirect_uri",
+      "provider, provider_username, expires_at, access_token, redirect_uri, needs_renewal_since",
     )
     .eq("account_id", accountId)
     .eq("provider", provider)
@@ -269,4 +280,32 @@ export async function seedDetectionHistory(
     })),
   );
   if (inserted.error) throw inserted.error;
+}
+
+/** Store the sync status of a refresh at `at` that gave `titleCount` Titles. */
+export async function seedSyncStatus(
+  listId: string,
+  provider: ProviderId,
+  sourceRef: string,
+  at: Date,
+  titleCount: number,
+): Promise<void> {
+  const { error } = await db.from("list_sync_status").insert({
+    list_id: listId,
+    provider,
+    source_ref: sourceRef,
+    last_attempt_at: at.toISOString(),
+    last_success_at: at.toISOString(),
+    title_count: titleCount,
+  });
+  if (error) throw error;
+}
+
+export async function getSyncStatusRows(listId: string) {
+  const { data, error } = await db
+    .from("list_sync_status")
+    .select("*")
+    .eq("list_id", listId);
+  if (error) throw error;
+  return data;
 }

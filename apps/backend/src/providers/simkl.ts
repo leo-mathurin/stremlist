@@ -569,7 +569,7 @@ function titleType(
   return animeType === "movie" ? "movie" : "series";
 }
 
-function toEntry(item: LibraryItem): SourceEntry {
+function toEntry(item: LibraryItem, addedAt?: string): SourceEntry {
   const type = titleType(item.kind, item.animeType);
   const externalIds: ExternalIds = { simkl: item.simkl };
   if (item.tmdb) externalIds.tmdb = { id: item.tmdb, type };
@@ -582,6 +582,7 @@ function toEntry(item: LibraryItem): SourceEntry {
     title: item.title,
     year: item.year,
     sourceUrl: simklItemUrl(item),
+    ...(addedAt ? { addedAt } : {}),
   };
 }
 
@@ -604,7 +605,7 @@ function historyEntries(items: LibraryItem[]): SourceEntry[] {
           ? -1
           : 1,
     )
-    .map(toEntry);
+    .map((item) => toEntry(item, item.lastWatchedAt));
 }
 
 function statusEntries(
@@ -614,7 +615,7 @@ function statusEntries(
   return items
     .filter((item) => item.status === status)
     .sort(compareAdded)
-    .map(toEntry);
+    .map((item) => toEntry(item, item.addedAt ?? item.lastWatchedAt));
 }
 
 /** The Simkl page of a library item, for linking back to Simkl. */

@@ -4,20 +4,34 @@ import {
   DISPLAY_MODE_OPTIONS,
 } from "@stremlist/shared/constants";
 import type { DisplayMode } from "@stremlist/shared/constants";
+import type { ListSyncState } from "@stremlist/shared/sync-status";
 import { CHART_REGISTRY, CHART_BY_ID } from "@stremlist/shared/imdb-charts";
+import {
+  allowedDisplayModes,
+  isMergedList,
+  isSortAllowed,
+  listSources,
+} from "@stremlist/shared/list-merge";
 import { PROVIDERS } from "@stremlist/shared/providers";
+import type { ProviderId } from "@stremlist/shared/providers";
 import {
   ChevronDown,
   ExternalLink,
+  Eye,
   GripVertical,
   Settings2,
   X,
 } from "lucide-react";
 import { useSortable } from "@dnd-kit/react/sortable";
-import { MAX_CATALOG_TITLE_LENGTH } from "../lib/list-form";
+import { MAX_CATALOG_TITLE_LENGTH, rowTitle } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { describeSource } from "../lib/list-sources";
+import { attentionTone } from "../lib/list-sync";
 import CatalogFilterSettings from "./CatalogFilterSettings";
+import MergedSources from "./MergedSources";
+import type { MergeControls } from "./MergedSources";
+import CatalogPreview from "./CatalogPreview";
+import { ListSyncLine, ListSyncNotice } from "./ListSyncStatus";
 import { ProviderMark } from "./brand";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -29,6 +43,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const FIELD_FOCUS = "focus-visible:ring-brand/50 focus-visible:border-brand";
 const SELECT_FOCUS = "focus:ring-brand/50 focus:border-brand";
@@ -37,16 +56,37 @@ const SELECT_FOCUS = "focus:ring-brand/50 focus:border-brand";
 export default function SortableListRow({
   list,
   index,
+  accountKey,
+  connectionKey,
   onFieldChange,
   onRemove,
-  connectionMissing,
+  missingProviders,
+  sync,
+  saved,
   onConnect,
+  merge,
 }: {
   list: ListFormRow;
   index: number;
-  /** The List reads through a Connection that the Account no longer has. */
-  connectionMissing?: boolean;
-  /** Start the Connection again; absent when it cannot be started here. */
+  /** Providers whose Connection the List reads through and the Account lacks. */
+  missingProviders: ProviderId[];
+  /** Merging other Lists into this one; absent where Lists cannot change. */
+  merge?: MergeControls;
+  /** Lets the preview read through the Account's Connections. */
+  accountKey: string | null;
+  /**
+   * Identifies the Account's Connections to the Providers of the List's
+   * Source lists, or "".
+   */
+  connectionKey: string;
+  /** Its refreshes, or null on a new setup that has nothing saved yet. */
+  sync: ListSyncState | null;
+  /** Saved with its current Source lists. */
+  saved: boolean;
+  /**
+   * Start the Connection again that the List's sync status asks for;
+   * absent when it cannot be started here.
+   */
   onConnect?: () => void;
   onFieldChange: <K extends keyof ListFormRow>(
     localId: string,
@@ -60,24 +100,40 @@ export default function SortableListRow({
     index,
   });
   const [open, setOpen] = useState(false);
+  // A List added in this visit opens its preview, so the user sees what it
+  // adds to Stremio before saving.
+  const [previewOpen, setPreviewOpen] = useState(!list.id);
   const panelId = useId();
+  const previewId = useId();
   const titleId = useId();
   const sortId = useId();
   const showId = useId();
   const chartId = useId();
 
   const source = describeSource(list.provider, list.sourceRef);
+  const merged = isMergedList(list);
+  const sources = listSources(list);
+  // A merged List shows its own settings, not the chart picker of its first
+  // Source list.
   const chartEntry =
-    list.provider === "imdb" ? CHART_BY_ID.get(list.sourceRef) : undefined;
+    list.provider === "imdb" && !merged
+      ? CHART_BY_ID.get(list.sourceRef)
+      : undefined;
   const isChart = !!chartEntry;
-  const title = list.catalogTitle.trim() || source.suggestedTitle;
+  const title = rowTitle(list);
+  const displayModes = allowedDisplayModes(list);
+  const providers = [...new Set(sources.map((item) => item.provider))];
+  const providerLabels = providers
+    .map((provider) => PROVIDERS[provider].label)
+    .join(", ");
 
   return (
     <div
       ref={ref}
       className={cn(
         "rounded-3xl bg-white ring-1 ring-black/5 transition-shadow",
-        connectionMissing && "ring-amber-300",
+        attentionTone(sync) === "warn" && "ring-amber-300",
+        attentionTone(sync) === "bad" && "ring-red-200",
         isDragSource && "opacity-60 shadow-lg ring-2 ring-brand/50",
       )}
     >
@@ -91,15 +147,39 @@ export default function SortableListRow({
           >
             <GripVertical className="size-4" />
           </button>
-          <ProviderMark provider={list.provider} />
+          {merged ? (
+            <span
+              className="relative flex shrink-0 items-center"
+              title={`${sources.length} Source lists`}
+            >
+              {providers.slice(0, 3).map((provider, position) => (
+                <ProviderMark
+                  key={provider}
+                  provider={provider}
+                  className={cn("ring-2 ring-white", position > 0 && "-ml-3")}
+                />
+              ))}
+              <span className="absolute -right-1.5 -bottom-1 min-w-4.5 rounded-full bg-ink px-1 text-center text-[10px] leading-4.5 font-bold text-cloud tabular-nums ring-2 ring-white">
+                {sources.length}
+              </span>
+            </span>
+          ) : (
+            <ProviderMark provider={list.provider} />
+          )}
           <div className="min-w-0 flex-1">
             <p className="truncate font-bold leading-tight">{title}</p>
             <p className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-black/50">
-              <span className="truncate">
-                {PROVIDERS[list.provider].label} · {source.kindLabel}
-                {source.detail ? ` · ${source.detail}` : ""}
+              <span className="truncate tabular-nums">
+                {merged ? (
+                  `${sources.length} Source lists · ${providerLabels}`
+                ) : (
+                  <>
+                    {PROVIDERS[list.provider].label} · {source.kindLabel}
+                    {source.detail ? ` · ${source.detail}` : ""}
+                  </>
+                )}
               </span>
-              {source.url && (
+              {!merged && source.url && (
                 <a
                   href={source.url}
                   target="_blank"
@@ -137,12 +217,37 @@ export default function SortableListRow({
             </SelectTrigger>
             <SelectContent>
               {SORT_OPTIONS.map((opt) => (
-                <SelectItem key={opt.value} value={opt.value}>
+                <SelectItem
+                  key={opt.value}
+                  value={opt.value}
+                  // Explained under Source lists, in the settings.
+                  disabled={!isSortAllowed(list, opt.value)}
+                >
                   {opt.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          <Tooltip delayDuration={400}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-expanded={previewOpen}
+                aria-controls={previewId}
+                aria-label={`Preview ${title}`}
+                onClick={() => setPreviewOpen((current) => !current)}
+                className={cn(
+                  "flex size-8 shrink-0 items-center justify-center rounded-full transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.96]",
+                  previewOpen
+                    ? "bg-ink text-cloud"
+                    : "bg-black/5 hover:bg-black/10",
+                )}
+              >
+                <Eye className="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent sideOffset={6}>Preview</TooltipContent>
+          </Tooltip>
           <button
             type="button"
             aria-expanded={open}
@@ -174,22 +279,23 @@ export default function SortableListRow({
         </div>
       </div>
 
-      {connectionMissing && (
-        <div className="mx-3 mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-amber-50 px-4 py-2.5 text-sm text-amber-900 ring-1 ring-amber-200 sm:mx-4 sm:mb-4">
-          <p className="min-w-0 flex-1 text-pretty">
-            {PROVIDERS[list.provider].label} is not connected, so this List does
-            not show in Stremio.
-          </p>
-          {onConnect && (
-            <button
-              type="button"
-              onClick={onConnect}
-              className="inline-flex h-8 shrink-0 items-center rounded-full bg-brand px-3 text-xs font-bold text-black transition-colors hover:bg-brand-dark"
-            >
-              Connect again
-            </button>
-          )}
-        </div>
+      {sync && (
+        <>
+          {/* Under the name column, but as wide as the row, so the status
+              never truncates behind the sort control. */}
+          <div className="-mt-2 flex gap-3 px-3 pb-3 sm:-mt-3 sm:gap-4 sm:px-4 sm:pb-4">
+            <span aria-hidden="true" className="-ml-1 w-6 shrink-0" />
+            <span aria-hidden="true" className="w-8 shrink-0" />
+            <ListSyncLine sync={sync} saved={saved} />
+          </div>
+          <ListSyncNotice
+            title={title}
+            provider={list.provider}
+            sourceRef={list.sourceRef}
+            sync={sync}
+            onConnect={onConnect}
+          />
+        </>
       )}
 
       <div
@@ -297,7 +403,11 @@ export default function SortableListRow({
                     </SelectTrigger>
                     <SelectContent>
                       {DISPLAY_MODE_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
+                        <SelectItem
+                          key={opt.value}
+                          value={opt.value}
+                          disabled={!displayModes.includes(opt.value)}
+                        >
                           {opt.label}
                         </SelectItem>
                       ))}
@@ -307,6 +417,14 @@ export default function SortableListRow({
               )}
             </div>
 
+            {merge && (
+              <MergedSources
+                list={list}
+                missingProviders={missingProviders}
+                controls={merge}
+              />
+            )}
+
             <CatalogFilterSettings
               value={list.catalogSettings}
               genres={list.availableGenres}
@@ -315,6 +433,26 @@ export default function SortableListRow({
               }
             />
           </div>
+        </div>
+      </div>
+
+      <div
+        id={previewId}
+        inert={!previewOpen}
+        className={cn(
+          "grid transition-[grid-template-rows] ease-out-quint motion-reduce:transition-none",
+          previewOpen
+            ? "grid-rows-[1fr] duration-250"
+            : "grid-rows-[0fr] duration-200",
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <CatalogPreview
+            list={list}
+            accountKey={accountKey}
+            connectionKey={connectionKey}
+            open={previewOpen}
+          />
         </div>
       </div>
     </div>

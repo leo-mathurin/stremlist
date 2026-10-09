@@ -306,6 +306,7 @@ test("a save and a disconnect show the summary of what is left", async ({
         provider: "trakt",
         username: "someone",
         connectedAt: "2026-10-01T00:00:00.000Z",
+        needsRenewalSince: null,
       },
     ],
   };

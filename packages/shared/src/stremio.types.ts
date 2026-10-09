@@ -1,9 +1,17 @@
 import type { CatalogSettings } from "./catalog-settings";
 import type { DisplayMode } from "./constants";
+import type { ListSource } from "./list-merge";
 import type { ProviderId } from "./providers";
+import type { ListSyncStatus, ListSyncStatuses } from "./sync-status";
 
 export interface CatalogData {
   metas: StremioMeta[];
+}
+
+/** Genres of Titles, by Title type. */
+export interface TitleGenres {
+  movie: string[];
+  series: string[];
 }
 
 /** One List of an Account, as the configure page and the API see it. */
@@ -16,13 +24,27 @@ export interface ConfigList {
   displayMode: DisplayMode;
   position: number;
   availableGenres?: string[];
+  /**
+   * The genres of each Source list's cached Titles, by type, in the order of
+   * `listSources`; null when nothing is cached for it yet.
+   */
+  sourceGenres?: (TitleGenres | null)[];
   catalogSettings?: CatalogSettings;
+  /**
+   * More Source lists merged into this List after `provider`/`sourceRef`.
+   * Absent for a List with one Source list.
+   */
+  mergedSources?: ListSource[];
+  /** The label of the first Source list (see `ListSource.label`). */
+  sourceLabel?: string;
 }
 
 export interface ConnectionSummary {
   provider: ProviderId;
   username: string | null;
   connectedAt: string;
+  /** Since when the Provider refuses this Connection, or null. */
+  needsRenewalSince: string | null;
 }
 
 /**
@@ -41,7 +63,22 @@ export interface NewTitlesSummary {
   waitingLists: number;
 }
 
-export interface AccountConfigResponse {
+/**
+ * The sync status of an Account's Lists and its Connections. The configure
+ * page gets it with the config, after "Refresh now" and from its polls.
+ */
+export interface AccountSyncSnapshot {
+  /** Sync status of the first Source list of each List, by List ID. */
+  syncStatus: ListSyncStatuses;
+  /**
+   * Sync status of the other Source lists of merged Lists, by List ID; a
+   * Source list that was never read has none. Absent from older backends.
+   */
+  sourceSyncStatus?: Record<string, ListSyncStatus[]>;
+  connections: ConnectionSummary[];
+}
+
+export interface AccountConfigResponse extends AccountSyncSnapshot {
   access: AddonAccess;
   /** The Account ID; only returned for private access. */
   accountId: string | null;
@@ -49,7 +86,6 @@ export interface AccountConfigResponse {
   movedAt: string | null;
   rpdbApiKey: string | null;
   lists: ConfigList[];
-  connections: ConnectionSummary[];
   actions: { enabled: boolean; providers: ProviderId[] };
   newTitles: {
     enabled: boolean;
@@ -69,6 +105,8 @@ export interface ConfigListInput {
   displayMode?: DisplayMode;
   position?: number;
   catalogSettings?: CatalogSettings;
+  mergedSources?: ListSource[];
+  sourceLabel?: string;
 }
 
 export interface AccountConfigInput {

@@ -225,9 +225,9 @@ describe("R2 watchlist cache", () => {
     const series: StremioMeta = { ...MOVIE, type: "series", name: "Series" };
     await writeCachedList(id, { metas: [MOVIE, series] });
 
-    expect(await findCachedMeta([id], "movie", MOVIE.id)).toEqual(MOVIE);
-    expect(await findCachedMeta([id], "series", MOVIE.id)).toEqual(series);
-    expect(await findCachedMeta([id], "movie", "tt9999999")).toBeNull();
+    expect(await findCachedMeta(id, "movie", MOVIE.id)).toEqual(MOVIE);
+    expect(await findCachedMeta(id, "series", MOVIE.id)).toEqual(series);
+    expect(await findCachedMeta(id, "movie", "tt9999999")).toBeNull();
   });
 
   it("uses the manifest index to avoid reading catalog blobs on a meta miss", async () => {
@@ -238,7 +238,7 @@ describe("R2 watchlist cache", () => {
     }
     r2.send.mockClear();
 
-    expect(await findCachedMeta([id], "movie", "tt9999999")).toBeNull();
+    expect(await findCachedMeta(id, "movie", "tt9999999")).toBeNull();
     expect(r2.send).toHaveBeenCalledTimes(1);
     const command = r2.send.mock.calls[0][0];
     expect(command).toBeInstanceOf(GetObjectCommand);
@@ -389,7 +389,7 @@ describe("R2 watchlist cache", () => {
 
     r2.objects.clear();
     staleObjects.forEach((body, key) => r2.objects.set(key, body));
-    expect(await findCachedMeta([id], "movie", "tt9999999")).toBeNull();
+    expect(await findCachedMeta(id, "movie", "tt9999999")).toBeNull();
 
     r2.objects.clear();
     replacementObjects.forEach((body, key) => r2.objects.set(key, body));

@@ -670,6 +670,9 @@ async function fetchSource(
   return {
     entries: ordered.flatMap((item) => {
       const entry = toEntry(item);
+      if (entry && path === "/watchlist/items" && item.watchlist_at) {
+        entry.addedAt = item.watchlist_at;
+      }
       return entry ? [entry] : [];
     }),
     complete,

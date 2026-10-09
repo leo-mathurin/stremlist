@@ -59,6 +59,7 @@ const WATCHLIST_QUERY = `
         total
         pageInfo { hasNextPage endCursor }
         edges {
+          node { createdDate }
           listItem: title { ${TITLE_FRAGMENT} }
         }
       }
@@ -76,6 +77,7 @@ const LIST_QUERY = `
         total
         pageInfo { hasNextPage endCursor }
         edges {
+          node { createdDate }
           listItem: title { ${TITLE_FRAGMENT} }
         }
       }
@@ -147,6 +149,8 @@ const VALIDATE_LIST_QUERY = `
 `;
 
 interface ImdbEdge {
+  /** Watchlist and list items: when the user added the Title. */
+  node?: { createdDate?: string | null } | null;
   listItem: {
     id: string;
     titleText?: { text: string };
@@ -590,13 +594,30 @@ function convertToStremioFormat(items: ProcessedItem[]): StremioMeta[] {
   return metas;
 }
 
+/** A watchlist, list or chart: its Titles and when each one was added. */
+export interface ImdbListData extends CatalogData {
+  /** False when the read stopped before the last page. */
+  complete: boolean;
+  /** IMDb ID to the date the Title was added to the list. */
+  addedAt?: Map<string, string>;
+}
+
+function addedDates(edges: ImdbEdge[]): Map<string, string> {
+  const dates = new Map<string, string>();
+  for (const edge of edges) {
+    const date = edge.node?.createdDate;
+    if (date && !dates.has(edge.listItem.id)) dates.set(edge.listItem.id, date);
+  }
+  return dates;
+}
+
 export function isListId(id: string): boolean {
   return id.startsWith("ls");
 }
 
-type ImdbCatalog = CatalogData & { complete: boolean };
-
-export async function fetchWatchlist(imdbUserId: string): Promise<ImdbCatalog> {
+export async function fetchWatchlist(
+  imdbUserId: string,
+): Promise<ImdbListData> {
   console.log(`Fetching IMDb watchlist for user ${imdbUserId}...`);
 
   const { items: edges, complete } = await getImdbWatchlist(imdbUserId);
@@ -609,7 +630,7 @@ export async function fetchWatchlist(imdbUserId: string): Promise<ImdbCatalog> {
   const metas = convertToStremioFormat(processed);
   console.log(`Converted ${metas.length} items to Stremio format`);
 
-  return { metas, complete };
+  return { metas, complete, addedAt: addedDates(edges) };
 }
 
 /**
@@ -701,7 +722,7 @@ async function getChartEdges(entry: ChartEntry): Promise<ImdbEdge[]> {
   }
 }
 
-export async function fetchChart(sourceId: string): Promise<ImdbCatalog> {
+export async function fetchChart(sourceId: string): Promise<ImdbListData> {
   const entry = CHART_BY_ID.get(sourceId);
   if (!entry) {
     // Unknown chart id has no fetcher. Charts are public, so there's no
@@ -825,7 +846,7 @@ export async function getImdbList(
   return { items: edges, complete };
 }
 
-export async function fetchList(listId: string): Promise<ImdbCatalog> {
+export async function fetchList(listId: string): Promise<ImdbListData> {
   console.log(`Fetching IMDb list ${listId}...`);
 
   const { items: edges, complete } = await getImdbList(listId);
@@ -838,7 +859,7 @@ export async function fetchList(listId: string): Promise<ImdbCatalog> {
   const metas = convertToStremioFormat(processed);
   console.log(`Converted ${metas.length} items to Stremio format`);
 
-  return { metas, complete };
+  return { metas, complete, addedAt: addedDates(edges) };
 }
 
 const TITLES_BY_ID_QUERY = `

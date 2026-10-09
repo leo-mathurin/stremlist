@@ -710,6 +710,8 @@ describe("List CRUD via the config API", () => {
       display_mode: "split",
       position: 0,
       catalog_settings: { minRating: 8 },
+      merged_sources: [],
+      source_label: null,
       created_at: "2026-09-15T00:00:00Z",
       updated_at: "2026-09-15T00:00:00Z",
     };
@@ -759,6 +761,8 @@ describe("List CRUD via the config API", () => {
             sort_option: "title-asc",
             display_mode: "split",
             position: 0,
+            expected_merged_sources: [],
+            source_label: null,
           },
           {
             provider: "imdb",
@@ -767,6 +771,8 @@ describe("List CRUD via the config API", () => {
             sort_option: "year-desc",
             display_mode: "split",
             position: 1,
+            merged_sources: [],
+            source_label: null,
           },
         ],
         p_actions_enabled: null,
@@ -787,7 +793,11 @@ describe("List CRUD via the config API", () => {
       ];
       expect(await response.json()).toEqual({
         ok: true,
-        lists: expected.map((row) => ({ ...row, availableGenres: [] })),
+        lists: expected.map((row) => ({
+          ...row,
+          availableGenres: [],
+          sourceGenres: [null],
+        })),
         newTitles: expect.objectContaining({ detected: 0 }),
       });
       expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledOnce();
@@ -821,6 +831,8 @@ describe("List CRUD via the config API", () => {
           sort_option: "title-asc",
           display_mode: "split",
           position: 0,
+          expected_merged_sources: [],
+          source_label: null,
         },
         {
           id: UUID_2,
@@ -831,6 +843,8 @@ describe("List CRUD via the config API", () => {
           display_mode: "split",
           position: 1,
           catalog_settings: {},
+          expected_merged_sources: [],
+          source_label: null,
         },
       ]);
     });
@@ -856,6 +870,8 @@ describe("List CRUD via the config API", () => {
           display_mode: "split",
           position: 0,
           catalog_settings: catalogSettings,
+          merged_sources: [],
+          source_label: null,
         },
       ]);
     });
@@ -1288,6 +1304,16 @@ describe("DELETE /:accountId/connections/:provider", () => {
     };
     cache.seed(privateList.id, [item]);
     cache.seed(publicList.id, [item]);
+    for (const list of [privateList, publicList]) {
+      db.insert("list_sync_status", {
+        list_id: list.id,
+        provider: "trakt",
+        source_ref: list.source_ref,
+        last_attempt_at: new Date().toISOString(),
+        last_success_at: new Date().toISOString(),
+        title_count: 1,
+      });
+    }
     r2Objects.set(`connections/${account.id}/trakt/membership.json`, "{}");
 
     const res = await app.request(`/${account.id}/connections/trakt`, {
@@ -1299,6 +1325,10 @@ describe("DELETE /:accountId/connections/:provider", () => {
     // The private List's cache is gone; the public one stays.
     expect(cache.get(privateList.id)).toBeNull();
     expect(cache.get(publicList.id)).not.toBeNull();
+    // Its old success no longer claims Titles that Stremio cannot show.
+    expect(db.getTable("list_sync_status").map((row) => row.list_id)).toEqual([
+      publicList.id,
+    ]);
     expect(
       r2Objects.has(`connections/${account.id}/trakt/membership.json`),
     ).toBe(false);

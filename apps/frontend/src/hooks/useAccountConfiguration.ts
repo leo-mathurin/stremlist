@@ -5,7 +5,14 @@ import {
   useLayoutEffect,
   useRef,
 } from "react";
+import { toast } from "sonner";
 import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
+import {
+  MAX_SOURCES_PER_ACCOUNT,
+  listMergeProblem,
+  listSources,
+  sourceKey,
+} from "@stremlist/shared/list-merge";
 import {
   CONNECTION_SOURCES,
   PROVIDER_IDS,
@@ -20,25 +27,24 @@ import type {
   NewTitlesSummary,
 } from "@stremlist/shared/stremio.types";
 import { api } from "../lib/api";
-import {
-  createListRow,
-  getListReinstallSignature,
-  listKey,
-} from "../lib/list-form";
+import { createListRow, rowTitle, sourceKeys } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
+import { buildAddonUrls } from "../lib/list-sources";
+import { mergeRows, removeRowSource, splitRowSource } from "../lib/merged-rows";
+import { reinstallState, requiresReinstall } from "../lib/reinstall";
+import {
+  getListReinstallSignature,
+  learnSourceGenres,
+} from "../lib/reinstall-signature";
+import type { KnownSourceGenres } from "../lib/reinstall-signature";
 import type { InstallBaseline } from "../lib/reinstall";
-import { requiresReinstall, UNKNOWN_INSTALL } from "../lib/reinstall";
+import { useListSyncStatus } from "./useListSyncStatus";
 
 /** Same limit as the backend (`MAX_LISTS`). */
 export const MAX_LISTS = 10;
 
 /** "new" until the first save creates the Account. */
 export type AccountAccess = "new" | AddonAccess;
-
-export type ConfigStatus = {
-  type: "success" | "error" | "info";
-  message: string;
-} | null;
 
 export type ProviderStatus = { enabled: boolean; connectable: boolean };
 
@@ -85,6 +91,48 @@ async function fetchConnectionSources(
   }
 }
 
+const UNKNOWN_BASELINE: InstallBaseline = {
+  signature: null,
+  actionsLive: null,
+};
+
+/**
+ * What Stremio read at the last install, kept per Account while a reinstall
+ * is pending, so the reminder survives a reload.
+ */
+function installedStorageKey(accountKey: string) {
+  return `stremlist:installed:${accountKey}`;
+}
+
+function readInstalled(accountKey: string): InstallBaseline | null {
+  try {
+    const raw = localStorage.getItem(installedStorageKey(accountKey));
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<InstallBaseline>;
+    return typeof value.signature === "string" &&
+      typeof value.actionsLive === "boolean"
+      ? { signature: value.signature, actionsLive: value.actionsLive }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeInstalled(accountKey: string, value: InstallBaseline | null) {
+  try {
+    if (value) {
+      localStorage.setItem(
+        installedStorageKey(accountKey),
+        JSON.stringify(value),
+      );
+    } else {
+      localStorage.removeItem(installedStorageKey(accountKey));
+    }
+  } catch {
+    // Private mode: the reminder lasts until the page closes.
+  }
+}
+
 function errorMessage(body: unknown, fallback: string): string {
   if (body && typeof body === "object" && "error" in body) {
     const error = (body as { error: unknown }).error;
@@ -104,6 +152,8 @@ function rowsFromLists(lists: ConfigList[]): ListFormRow[] {
       displayMode: list.displayMode,
       catalogSettings: list.catalogSettings,
       availableGenres: list.availableGenres,
+      mergedSources: list.mergedSources,
+      sourceLabel: list.sourceLabel,
     }),
   );
 }
@@ -125,7 +175,14 @@ export function useAccountConfiguration(
   );
   const [accountId, setAccountId] = useState<string | null>(null);
   const [movedAt, setMovedAt] = useState<string | null>(null);
-  const [connections, setConnections] = useState<ConnectionSummary[]>([]);
+  const {
+    connections,
+    syncStateOf,
+    isSaved,
+    applySync,
+    rememberSaved,
+    dropConnection,
+  } = useListSyncStatus(accountKey, access !== "new", lists);
   const [connectionSources, setConnectionSources] = useState<
     Partial<Record<ProviderId, ConnectionSource[]>>
   >({});
@@ -146,12 +203,16 @@ export function useAccountConfiguration(
   const [notFound, setNotFound] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
-  const [showReinstallHint, setShowReinstallHint] = useState(false);
-  // What the installed manifest offers, as of the last load or save. The
-  // signature is "" for an Account without Lists.
-  const [installed, setInstalled] = useState<InstallBaseline>(UNKNOWN_INSTALL);
-  const [status, setStatus] = useState<ConfigStatus>(null);
-  const previousKey = useRef(accountKey);
+  // What Stremio read at the last install, and what the last save serves.
+  // They differ until the user reinstalls. Unknown until the configuration
+  // loads; the signature is "" for an Account without Lists.
+  const [installed, setInstalled] = useState<InstallBaseline>(UNKNOWN_BASELINE);
+  const [saved, setSaved] = useState<InstallBaseline>(UNKNOWN_BASELINE);
+  // The genres that each Source list brings to the manifest, as far as the
+  // server told: the reinstall signature counts them.
+  const [knownGenres, setKnownGenres] = useState<KnownSourceGenres | null>(
+    null,
+  );
   const currentForm = useRef({ lists, rpdbApiKey, newTitlesEnabled });
   // Save responses must see edits committed while the request was in flight.
   useLayoutEffect(() => {
@@ -180,13 +241,8 @@ export function useAccountConfiguration(
   }, []);
 
   useEffect(() => {
-    // A status set while creating the Account (before the key existed) must
-    // survive the reload that follows; a switch between Accounts clears it.
-    if (previousKey.current !== null) setStatus(null);
-    previousKey.current = accountKey;
-
-    setShowReinstallHint(false);
-    setInstalled(UNKNOWN_INSTALL);
+    setInstalled(UNKNOWN_BASELINE);
+    setSaved(UNKNOWN_BASELINE);
     setNotFound(false);
     setLoadError(false);
     if (!accountKey) {
@@ -208,31 +264,36 @@ export function useAccountConfiguration(
         const data = (await res.json()) as AccountConfigResponse;
         if (cancelled) return;
         const rows = rowsFromLists(data.lists);
+        const genres = learnSourceGenres(null, data.lists);
         setLists(rows);
+        setKnownGenres(genres);
         setAccess(data.access);
         setAccountId(data.accountId);
         setMovedAt(data.movedAt);
         setRpdbApiKey(data.rpdbApiKey ?? "");
-        setConnections(data.connections);
+        applySync(data);
         setLastFetchedAt(data.lastFetchedAt);
         setCooldownSeconds(data.cooldownSeconds);
         setActionsEnabled(data.actions.enabled);
         const capable = actionCapableProviders(data.connections);
-        const saved = data.actions.providers.filter((id) =>
+        const savedProviders = data.actions.providers.filter((id) =>
           capable.includes(id),
         );
         setActionOrder([
-          ...saved,
-          ...capable.filter((id) => !saved.includes(id)),
+          ...savedProviders,
+          ...capable.filter((id) => !savedProviders.includes(id)),
         ]);
-        setActionSelected(saved);
+        setActionSelected(savedProviders);
         setNewTitlesEnabled(data.newTitles.enabled);
         setNewTitlesSummary(data.newTitles.summary);
-        setInstalled({
-          signature: getListReinstallSignature(rows),
-          actionsLive: data.actions.enabled && saved.length > 0,
-          newTitles: data.newTitles.enabled,
-        });
+        const loaded = {
+          signature: getListReinstallSignature(rows, genres, {
+            newTitles: data.newTitles.enabled,
+          }),
+          actionsLive: data.actions.enabled && savedProviders.length > 0,
+        };
+        setSaved(loaded);
+        setInstalled(readInstalled(accountKey) ?? loaded);
       })
       .catch(() => {
         if (!cancelled) setLoadError(true);
@@ -243,7 +304,7 @@ export function useAccountConfiguration(
     return () => {
       cancelled = true;
     };
-  }, [accountKey, loadAttempt]);
+  }, [accountKey, loadAttempt, applySync]);
 
   // What each Connection unlocks depends on the account (its own lists), so
   // ask the backend once the Connections are known.
@@ -315,8 +376,12 @@ export function useAccountConfiguration(
       if (current.length >= MAX_LISTS) {
         return `You can have at most ${MAX_LISTS} lists.`;
       }
-      if (current.some((row) => listKey(row) === listKey(partial))) {
+      const used = sourceKeys(current);
+      if (used.includes(sourceKey(partial))) {
         return "This list is already in your Stremlist.";
+      }
+      if (used.length >= MAX_SOURCES_PER_ACCOUNT) {
+        return `You can have at most ${MAX_SOURCES_PER_ACCOUNT} Source lists in all your Lists.`;
       }
       setLists((rows) => [...rows, createListRow(partial)]);
       return null;
@@ -324,11 +389,12 @@ export function useAccountConfiguration(
     [],
   );
 
+  /** Add a built-in IMDb chart. Returns an error message, like `addList`. */
   const addChartList = useCallback(
-    (chartId: string) => {
+    (chartId: string): string | null => {
       const entry = CHART_BY_ID.get(chartId);
-      if (!entry) return;
-      addList(
+      if (!entry) return null;
+      return addList(
         {
           provider: "imdb",
           sourceRef: entry.id,
@@ -343,6 +409,18 @@ export function useAccountConfiguration(
 
   const removeList = useCallback((localId: string) => {
     setLists((current) => current.filter((list) => list.localId !== localId));
+  }, []);
+
+  const mergeLists = useCallback((targetLocalId: string, otherId: string) => {
+    setLists((rows) => mergeRows(rows, targetLocalId, otherId));
+  }, []);
+
+  const removeSource = useCallback((localId: string, index: number) => {
+    setLists((rows) => removeRowSource(rows, localId, index));
+  }, []);
+
+  const splitSource = useCallback((localId: string, index: number) => {
+    setLists((rows) => splitRowSource(rows, localId, index));
   }, []);
 
   const reorderLists = useCallback((initialIndex: number, index: number) => {
@@ -393,12 +471,16 @@ export function useAccountConfiguration(
     if (lists.length > MAX_LISTS) {
       return `You can have at most ${MAX_LISTS} lists.`;
     }
-    const seen = new Set<string>();
+    const keys = sourceKeys(lists);
+    if (new Set(keys).size !== keys.length) {
+      return "Each list can only be added once.";
+    }
+    if (keys.length > MAX_SOURCES_PER_ACCOUNT) {
+      return `You can have at most ${MAX_SOURCES_PER_ACCOUNT} Source lists in all your Lists.`;
+    }
     for (const list of lists) {
-      if (seen.has(listKey(list))) {
-        return "Each list can only be added once.";
-      }
-      seen.add(listKey(list));
+      const problem = listMergeProblem(list);
+      if (problem) return `${rowTitle(list)}: ${problem}`;
     }
     return null;
   })();
@@ -413,6 +495,8 @@ export function useAccountConfiguration(
       displayMode: list.displayMode,
       position: index,
       catalogSettings: list.catalogSettings,
+      mergedSources: list.mergedSources,
+      sourceLabel: list.sourceLabel,
     }));
 
   /**
@@ -434,38 +518,48 @@ export function useAccountConfiguration(
     return body.accountId;
   };
 
+  // Actions add a `stream` resource to the manifest, which Stremio also reads
+  // only at install time.
+  const actionsLive =
+    access === "private" && actionsEnabled && actionSelected.length > 0;
+  const reinstall =
+    access === "new"
+      ? "none"
+      : reinstallState(installed, saved, {
+          signature: getListReinstallSignature(lists, knownGenres, {
+            newTitles: newTitlesEnabled,
+          }),
+          actionsLive,
+        });
+
+  /** The user reinstalled: Stremio now reads the saved setup. */
+  const markReinstalled = (baseline: InstallBaseline = saved) => {
+    setInstalled(baseline);
+    if (accountKey) writeInstalled(accountKey, null);
+  };
+
   const handleSave = async () => {
     if (validationError || saving) return;
     if (lists.length === 0) {
-      setStatus({ type: "error", message: "Add at least one list first." });
+      toast.error("Add at least one list first.", { id: "configuration-save" });
       return;
     }
 
     setSaving(true);
-    setStatus(null);
     try {
       if (!accountKey) {
         const created = await createAccount();
         if (created) {
-          setStatus({
-            type: "success",
-            message: "Saved! Install Stremlist in Stremio with your Addon URL.",
-          });
+          toast.success(
+            "Saved! Install Stremlist in Stremio with your Addon URL.",
+            { id: "configuration-save" },
+          );
           onAccountCreated(created);
         }
         return;
       }
 
-      // Actions add a `stream` resource to the manifest, which Stremio also
-      // reads only at install time.
-      const actionsLive =
-        access === "private" && actionsEnabled && actionSelected.length > 0;
-      const needsReinstall = requiresReinstall(installed, {
-        signature: getListReinstallSignature(lists),
-        actionsLive,
-        newTitles: newTitlesEnabled,
-      });
-
+      const submittedActionsLive = actionsLive;
       const submittedLists = lists;
       const submittedNewTitles = newTitlesEnabled;
       const submittedPayload = JSON.stringify({
@@ -495,6 +589,7 @@ export function useAccountConfiguration(
         throw new Error(errorMessage(body, "Failed to save."));
       }
 
+      rememberSaved(body.lists);
       const savedRows = submittedLists.map((row, index) => {
         const saved = body.lists[index];
         return saved
@@ -502,6 +597,7 @@ export function useAccountConfiguration(
               ...row,
               id: saved.id,
               sourceRef: saved.sourceRef,
+              mergedSources: saved.mergedSources ?? [],
               availableGenres: saved.availableGenres ?? [],
             }
           : row;
@@ -526,37 +622,68 @@ export function useAccountConfiguration(
           const saved = savedByLocalId.get(row.localId);
           const submitted = submittedByLocalId.get(row.localId);
           if (!saved || !submitted) return row;
-          const sourceUnchanged = row.sourceRef === submitted.sourceRef;
+          const sourceUnchanged =
+            JSON.stringify(sourceKeys([row])) ===
+            JSON.stringify(sourceKeys([submitted]));
           return {
             ...row,
             id: saved.id,
             sourceRef: sourceUnchanged ? saved.sourceRef : row.sourceRef,
+            mergedSources: sourceUnchanged
+              ? saved.mergedSources
+              : row.mergedSources,
             availableGenres: sourceUnchanged
               ? saved.availableGenres
               : row.availableGenres,
           };
         }),
       );
-      setShowReinstallHint(needsReinstall);
-      setInstalled({
-        signature: getListReinstallSignature(savedRows),
-        actionsLive,
-        newTitles: submittedNewTitles,
-      });
+      const genres = learnSourceGenres(knownGenres, body.lists);
+      setKnownGenres(genres);
+      const nowSaved = {
+        signature: getListReinstallSignature(savedRows, genres, {
+          newTitles: submittedNewTitles,
+        }),
+        actionsLive: submittedActionsLive,
+      };
+      // Compare with what Stremio read at install time, not with the last
+      // save: a reinstall stays needed until the user does it.
+      const needsReinstall = requiresReinstall(installed, nowSaved);
+      setSaved(nowSaved);
       // The saved Lists change what the summary counts.
       setNewTitlesSummary(body.newTitles);
-      setStatus({
-        type: "success",
-        message: hasUnsavedChanges
-          ? "Saved the submitted settings. You have unsaved changes: save again to apply them."
-          : needsReinstall
-            ? "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions."
-            : "Saved! Your catalogs will refresh with the new settings.",
-      });
+      writeInstalled(accountKey, needsReinstall ? installed : null);
+      if (hasUnsavedChanges) {
+        toast.success(
+          "Saved the submitted settings. You have unsaved changes: save again to apply them.",
+          { id: "configuration-save" },
+        );
+      } else if (needsReinstall) {
+        toast.success(
+          "Saved! Reinstall Stremlist in Stremio to see your changes.",
+          {
+            id: "configuration-save",
+            duration: 10_000,
+            action: {
+              label: "Reinstall",
+              onClick: () => {
+                markReinstalled(nowSaved);
+                const { stremioUrl, webUrl } = buildAddonUrls(accountKey);
+                if (stremioUrl) window.location.assign(stremioUrl);
+                else window.open(webUrl, "_blank", "noopener");
+              },
+            },
+          },
+        );
+      } else {
+        toast.success(
+          "Saved! Your catalogs will refresh with the new settings.",
+          { id: "configuration-save" },
+        );
+      }
     } catch (err) {
-      setStatus({
-        type: "error",
-        message: err instanceof Error ? err.message : "Something went wrong",
+      toast.error(err instanceof Error ? err.message : "Something went wrong", {
+        id: "configuration-save",
       });
     } finally {
       setSaving(false);
@@ -567,7 +694,6 @@ export function useAccountConfiguration(
     if (!accountKey || refreshing || onCooldown) return;
 
     setRefreshing(true);
-    setStatus(null);
     try {
       const res = await api[":accountKey"].refresh.$post({
         param: { accountKey },
@@ -578,6 +704,7 @@ export function useAccountConfiguration(
       }
       setCooldownSeconds(body.cooldownSeconds);
       setLastFetchedAt(body.lastFetchedAt);
+      if ("syncStatus" in body) applySync(body);
       // A throttled refresh read nothing new.
       if ("newTitles" in body) setNewTitlesSummary(body.newTitles);
       if ("lists" in body && body.lists) {
@@ -585,7 +712,10 @@ export function useAccountConfiguration(
         setLists((current) =>
           current.map((row) => {
             const match = refreshed.find(
-              (list) => list.id === row.id && list.sourceRef === row.sourceRef,
+              (list) =>
+                list.id === row.id &&
+                JSON.stringify(sourceKeys([row])) ===
+                  JSON.stringify(listSources(list).map(sourceKey)),
             );
             return match
               ? { ...row, availableGenres: match.availableGenres ?? [] }
@@ -594,18 +724,14 @@ export function useAccountConfiguration(
         );
       }
       // Success feedback is the live "Last refreshed" label and the cooldown,
-      // so only report when some Lists failed.
+      // so only report when some Lists failed. Each failed List says why.
       if (body.failed > 0) {
-        setStatus({
-          type: "error",
-          message: `Refreshed ${body.refreshed} of ${body.total} lists. Some lists failed to update.`,
-        });
+        toast.error(
+          `Refreshed ${body.refreshed} of ${body.total} lists. The others failed to update: each List shows why.`,
+        );
       }
     } catch (err) {
-      setStatus({
-        type: "error",
-        message: err instanceof Error ? err.message : "Something went wrong",
-      });
+      toast.error(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setRefreshing(false);
     }
@@ -614,7 +740,6 @@ export function useAccountConfiguration(
   /** Give a Legacy alias install a private Addon URL. Returns the new ID. */
   const upgrade = async (): Promise<string | null> => {
     if (!accountKey || access !== "legacy") return null;
-    setStatus(null);
     try {
       const res = await api[":accountKey"].upgrade.$post({
         param: { accountKey },
@@ -627,10 +752,7 @@ export function useAccountConfiguration(
       }
       return body.accountId;
     } catch (err) {
-      setStatus({
-        type: "error",
-        message: err instanceof Error ? err.message : "Something went wrong",
-      });
+      toast.error(err instanceof Error ? err.message : "Something went wrong");
       return null;
     }
   };
@@ -642,14 +764,12 @@ export function useAccountConfiguration(
   const connect = async (provider: ProviderId) => {
     const label = PROVIDERS[provider].label;
     if (access === "legacy") {
-      setStatus({
-        type: "info",
-        message: `To connect ${label}, upgrade this install to a private URL first.`,
-      });
+      toast.info(
+        `To connect ${label}, upgrade this install to a private URL first.`,
+      );
       return;
     }
     setConnecting(provider);
-    setStatus(null);
     let id = accountId;
     try {
       if (!id) {
@@ -669,10 +789,7 @@ export function useAccountConfiguration(
       window.location.assign(body.authorizeUrl);
     } catch (err) {
       setConnecting(null);
-      setStatus({
-        type: "error",
-        message: err instanceof Error ? err.message : "Something went wrong",
-      });
+      toast.error(err instanceof Error ? err.message : "Something went wrong");
     }
   };
 
@@ -687,7 +804,7 @@ export function useAccountConfiguration(
       });
       if (!res.ok) return;
       const data = (await res.json()) as AccountConfigResponse;
-      setConnections(data.connections);
+      applySync(data);
       setLastFetchedAt(data.lastFetchedAt);
       // A disconnect forgets the history of Connection-only Lists.
       setNewTitlesSummary(data.newTitles.summary);
@@ -708,27 +825,20 @@ export function useAccountConfiguration(
     if (!accountId) return;
     const label = PROVIDERS[provider].label;
     setConnecting(provider);
-    setStatus(null);
     try {
       const res = await api[":accountId"].connections[":provider"].$delete({
         param: { accountId, provider },
       });
       if (!res.ok) throw new Error(`Could not disconnect ${label}.`);
-      setConnections((current) =>
-        current.filter((connection) => connection.provider !== provider),
-      );
+      dropConnection(provider);
       setActionOrder((current) => current.filter((id) => id !== provider));
       setActionSelected((current) => current.filter((id) => id !== provider));
-      setStatus({
-        type: "info",
-        message: `${label} is disconnected. Lists read through ${label} stop showing in Stremio until you connect it again.`,
-      });
+      toast.info(
+        `${label} is disconnected. Lists read through ${label} stop showing in Stremio until you connect it again.`,
+      );
       await refreshAccountState(accountId);
     } catch (err) {
-      setStatus({
-        type: "error",
-        message: err instanceof Error ? err.message : "Something went wrong",
-      });
+      toast.error(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setConnecting(null);
     }
@@ -741,6 +851,9 @@ export function useAccountConfiguration(
       addList(partial, lists),
     addChartList,
     removeList,
+    mergeLists,
+    removeSource,
+    splitSource,
     reorderLists,
     rpdbApiKey,
     setRpdbApiKey,
@@ -752,6 +865,8 @@ export function useAccountConfiguration(
     connections,
     connectionSources,
     providerStatus,
+    syncStateOf,
+    isListSaved: isSaved,
     actionsEnabled,
     // Turning Actions on selects every capable Provider, so saving right
     // away gives working Actions.
@@ -775,9 +890,8 @@ export function useAccountConfiguration(
     onCooldown,
     notFound,
     loadError,
-    showReinstallHint,
-    status,
-    setStatus,
+    reinstall,
+    markReinstalled: () => markReinstalled(),
     validationError,
     handleSave,
     handleRefresh,

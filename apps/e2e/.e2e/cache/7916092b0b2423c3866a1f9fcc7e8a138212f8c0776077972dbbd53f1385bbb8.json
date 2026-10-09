@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-06T19:48:01.080Z",
+  "createdAt": "2026-10-08T18:57:10.098Z",
   "payload": {
     "actions": [
       {
@@ -20,15 +20,6 @@
         }
       },
       {
-        "name": "check",
-        "summary": "check checkbox \"Top rated\"",
-        "target": {
-          "role": "checkbox",
-          "name": "Top rated"
-        },
-        "checked": true
-      },
-      {
         "name": "tap",
         "summary": "tap combobox \"Genre\"",
         "target": {
@@ -45,11 +36,24 @@
         }
       },
       {
+        "name": "check",
+        "summary": "check checkbox \"Top rated\"",
+        "target": {
+          "role": "checkbox",
+          "name": "Top rated"
+        },
+        "checked": true
+      },
+      {
         "name": "tap",
-        "summary": "tap button \"Save\"",
+        "summary": "tap button \"Save\" (2 of 2)",
         "target": {
           "role": "button",
-          "name": "Save"
+          "name": "Save",
+          "position": {
+            "index": 1,
+            "of": 2
+          }
         }
       }
     ],
@@ -65,13 +69,27 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Selected Drama for Test catalog, enabled Top rated, and saved. The page confirms “Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions.”",
+    "summary": "Genre is set to Drama and Top rated is enabled. Saved the catalog settings; the app confirmed they were saved and noted that reinstalling Stremlist is needed for Stremio to show the changes.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions."
+        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. I did it Reinstall"
+      },
+      {
+        "text": "Reinstall Stremlist in Stremio"
+      },
+      {
+        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
+      },
+      {
+        "role": "button",
+        "name": "I did it"
+      },
+      {
+        "role": "link",
+        "name": "Reinstall"
       },
       {
         "text": "Catalog title"
@@ -84,18 +102,6 @@
       },
       {
         "text": "Show"
-      },
-      {
-        "text": "Movies & TV shows"
-      },
-      {
-        "text": "Filters & extra catalogs"
-      },
-      {
-        "text": "2 active"
-      },
-      {
-        "text": "All selected filters apply together, including in search. Use the sort menu of this List to order the results."
       }
     ],
     "goneAnchors": [
@@ -111,6 +117,6 @@
         "name": "Settings for Test catalog"
       }
     ],
-    "endWaitMs": 12085
+    "endWaitMs": 11963
   }
 }

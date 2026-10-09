@@ -49,6 +49,8 @@ const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
     id: crypto.randomUUID(),
     catalog_title: "",
     catalog_settings: {},
+    merged_sources: [],
+    source_label: null,
     display_mode: "split",
     position: 0,
     sort_option: "added_at-asc",
@@ -62,8 +64,15 @@ const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
     scope: null,
     refresh_locked_until: EPOCH,
     refresh_lease_token: null,
+    needs_renewal_since: null,
     created_at: now(),
     updated_at: now(),
+  }),
+  list_sync_status: () => ({
+    last_success_at: null,
+    title_count: null,
+    failure_reason: null,
+    failing_since: null,
   }),
   oauth_states: () => ({ created_at: now() }),
   title_id_map: () => ({
@@ -88,6 +97,7 @@ const UNIQUE_KEYS: Partial<Record<string, string[][]>> = {
   accounts: [["id"], ["legacy_imdb_user_id"]],
   lists: [["id"], ["account_id", "provider", "source_ref"]],
   connections: [["account_id", "provider"]],
+  list_sync_status: [["list_id", "provider", "source_ref"]],
   oauth_states: [["state"]],
   title_id_map: [["namespace", "external_id"]],
   source_list_syncs: [["account_id", "provider", "source_ref"]],
@@ -570,6 +580,17 @@ function replaceAccountConfig(args: RpcArgs): Result {
     return rpcError("List does not belong to this account");
   }
   if (new Set(ids).size !== ids.length) return rpcError("Duplicate list ID");
+  if (
+    items.some(
+      (item) =>
+        "expected_merged_sources" in item &&
+        JSON.stringify(
+          lists.find((row) => row.id === item.id)?.merged_sources,
+        ) !== JSON.stringify(item.expected_merged_sources),
+    )
+  ) {
+    return rpcError("Merged Source lists changed");
+  }
 
   const deleted = lists.filter(
     (row) => row.account_id === accountId && !ids.includes(row.id as string),
@@ -595,6 +616,10 @@ function replaceAccountConfig(args: RpcArgs): Result {
         ...("catalog_settings" in item
           ? { catalog_settings: item.catalog_settings }
           : {}),
+        ...("merged_sources" in item
+          ? { merged_sources: item.merged_sources }
+          : {}),
+        ...("source_label" in item ? { source_label: item.source_label } : {}),
         updated_at: now(),
       };
       const conflict = db.uniqueViolation("lists", next, existing);
@@ -607,6 +632,8 @@ function replaceAccountConfig(args: RpcArgs): Result {
           id: item.id,
           account_id: accountId,
           catalog_settings: item.catalog_settings ?? {},
+          merged_sources: item.merged_sources ?? [],
+          source_label: item.source_label ?? null,
         });
       } catch (error) {
         return { data: null, error: uniqueError(String(error)) };
@@ -830,9 +857,41 @@ function forgetConnectionHistory(args: RpcArgs): Result {
   return { data: forgotten.length, error: null };
 }
 
+function recordListRefresh(args: RpcArgs): Result {
+  if (!db.getTable("lists").some((row) => row.id === args.p_list_id)) {
+    return { data: false, error: null };
+  }
+  const at = now();
+  const failed = args.p_failure_reason != null;
+  const existing = db
+    .getTable("list_sync_status")
+    .find(
+      (row) =>
+        row.list_id === args.p_list_id &&
+        row.provider === args.p_provider &&
+        row.source_ref === args.p_source_ref,
+    );
+  const next: Row = {
+    list_id: args.p_list_id,
+    provider: args.p_provider,
+    source_ref: args.p_source_ref,
+    last_attempt_at: at,
+    last_success_at: failed ? (existing?.last_success_at ?? null) : at,
+    title_count: failed
+      ? (existing?.title_count ?? null)
+      : (args.p_title_count ?? null),
+    failure_reason: args.p_failure_reason ?? null,
+    failing_since: failed ? (existing?.failing_since ?? at) : null,
+  };
+  if (existing) Object.assign(existing, next);
+  else db.insert("list_sync_status", next);
+  return { data: true, error: null };
+}
+
 export const defaultRpcHandlers: Partial<Record<string, RpcHandler>> = {
   forget_connection_history: forgetConnectionHistory,
   replace_account_config: replaceAccountConfig,
+  record_list_refresh: recordListRefresh,
   record_source_list_sync: recordSourceListSync,
   list_new_titles: listNewTitles,
 

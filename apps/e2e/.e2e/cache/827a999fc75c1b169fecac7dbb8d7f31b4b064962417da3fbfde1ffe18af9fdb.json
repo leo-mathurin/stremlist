@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-06T19:48:01.081Z",
+  "createdAt": "2026-10-08T18:57:10.099Z",
   "payload": {
     "actions": [
       {
@@ -13,10 +13,31 @@
       },
       {
         "name": "tap",
-        "summary": "tap button \"Save\"",
+        "summary": "tap combobox \"Genre\"",
+        "target": {
+          "role": "combobox",
+          "name": "Genre"
+        }
+      },
+      {
+        "name": "press",
+        "summary": "press \"Escape\" on option \"All genres\"",
+        "target": {
+          "role": "option",
+          "name": "All genres"
+        },
+        "key": "Escape"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save\" (2 of 2)",
         "target": {
           "role": "button",
-          "name": "Save"
+          "name": "Save",
+          "position": {
+            "index": 1,
+            "of": 2
+          }
         }
       }
     ],
@@ -32,26 +53,15 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Cleared the Test catalog filters (Genre now shows All genres) without changing the checked Top rated extra catalog, then saved. The page confirms: “Saved! Your catalogs will refresh with the new settings.”",
+    "summary": "The genre filter is cleared (All genres), and Top rated remains checked. I tapped Save; the visible confirmation says “Saved! Reinstall Stremlist in Stremio to see your changes.”",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
-      {
-        "role": "status",
-        "name": "Saved! Your catalogs will refresh with the new settings."
-      },
       {
         "text": "1 active"
       },
       {
         "text": "All genres"
-      },
-      {
-        "role": "heading",
-        "name": "Install or reinstall in Stremio"
-      },
-      {
-        "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
       },
       {
         "role": "button",
@@ -63,10 +73,6 @@
     ],
     "goneAnchors": [
       {
-        "role": "status",
-        "name": "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions."
-      },
-      {
         "text": "2 active"
       },
       {
@@ -77,13 +83,6 @@
         "text": "Drama"
       },
       {
-        "role": "heading",
-        "name": "Reinstall in Stremio to see your changes"
-      },
-      {
-        "text": "Stremio reads the catalogs and Actions only when you install an addon, so your changes appear after you reinstall this Addon URL."
-      },
-      {
         "role": "button",
         "name": "Filters & extra catalogs 2 active",
         "states": [
@@ -91,6 +90,6 @@
         ]
       }
     ],
-    "endWaitMs": 12479
+    "endWaitMs": 15369
   }
 }

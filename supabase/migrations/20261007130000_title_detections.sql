@@ -65,6 +65,18 @@ BEGIN
     RAISE EXCEPTION 'Duplicate list ID';
   END IF;
 
+  -- The API checked the merge rules against these saved Source lists when the
+  -- client omitted them. A save in between (accounts row lock above) may
+  -- have changed them: refuse instead of writing a stale or unchecked set.
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements(p_lists) AS entries(value)
+    JOIN public.lists l ON l.id = (value->>'id')::uuid
+    WHERE value ? 'expected_merged_sources'
+      AND l.merged_sources IS DISTINCT FROM value->'expected_merged_sources'
+  ) THEN
+    RAISE EXCEPTION 'Merged Source lists changed';
+  END IF;
+
   WITH removed AS (
     DELETE FROM public.lists l
     WHERE l.account_id = p_account_id
@@ -80,12 +92,13 @@ BEGIN
   LOOP
     INSERT INTO public.lists AS l (
       id, account_id, provider, source_ref, catalog_title, sort_option,
-      display_mode, position, catalog_settings
+      display_mode, position, catalog_settings, merged_sources, source_label
     ) VALUES (
       coalesce((item->>'id')::uuid, gen_random_uuid()),
       p_account_id, item->>'provider', item->>'source_ref',
       item->>'catalog_title', item->>'sort_option', item->>'display_mode',
-      (item->>'position')::integer, coalesce(item->'catalog_settings', '{}'::jsonb)
+      (item->>'position')::integer, coalesce(item->'catalog_settings', '{}'::jsonb),
+      coalesce(item->'merged_sources', '[]'::jsonb), item->>'source_label'
     )
     ON CONFLICT (id) DO UPDATE SET
       provider = EXCLUDED.provider,
@@ -97,6 +110,12 @@ BEGIN
       -- Omitted settings preserve the locked row, not a client-side snapshot.
       catalog_settings = CASE WHEN item ? 'catalog_settings'
         THEN EXCLUDED.catalog_settings ELSE l.catalog_settings END,
+      -- Same for merged Source lists: an older client that does not know
+      -- them must not split a merged List.
+      merged_sources = CASE WHEN item ? 'merged_sources'
+        THEN EXCLUDED.merged_sources ELSE l.merged_sources END,
+      source_label = CASE WHEN item ? 'source_label'
+        THEN EXCLUDED.source_label ELSE l.source_label END,
       updated_at = now()
     WHERE l.account_id = p_account_id;
   END LOOP;

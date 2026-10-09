@@ -1,38 +1,53 @@
 /**
- * What Stremio reads only at install time: the catalog signature of the
- * Lists (see `getListReinstallSignature`), whether Actions are on (their
- * `stream` resource) and whether the "New titles" catalogs are on (ADR 0007).
+ * What Stremio read when the user last installed: the catalog signature of
+ * the Lists (see `getListReinstallSignature`) and whether Actions were on.
+ * Null parts are not known yet (the configuration has not loaded).
  */
-export interface InstallState {
-  signature: string;
-  actionsLive: boolean;
-  newTitles: boolean;
+export interface InstallBaseline {
+  signature: string | null;
+  actionsLive: boolean | null;
 }
 
 /**
- * The InstallState of the user's last install. Null parts are not known yet
- * (the configuration has not loaded) and never ask for a reinstall.
- */
-export type InstallBaseline = {
-  [Key in keyof InstallState]: InstallState[Key] | null;
-};
-
-export const UNKNOWN_INSTALL: InstallBaseline = {
-  signature: null,
-  actionsLive: null,
-  newTitles: null,
-};
-
-/**
- * A save that changes any known part of the InstallState needs a reinstall.
- * An Account saved without Lists has a known, empty signature: its first
- * List changes it.
+ * Stremio reads catalogs and the Actions `stream` resource only at install
+ * time, so a save that changes either needs a reinstall. An Account saved
+ * without Lists has a known, empty signature: its first List changes it.
  */
 export function requiresReinstall(
   baseline: InstallBaseline,
-  current: InstallState,
+  current: { signature: string; actionsLive: boolean },
 ): boolean {
-  return (Object.keys(current) as (keyof InstallState)[]).some(
-    (key) => baseline[key] !== null && baseline[key] !== current[key],
+  return (
+    (baseline.signature !== null && current.signature !== baseline.signature) ||
+    (baseline.actionsLive !== null &&
+      current.actionsLive !== baseline.actionsLive)
   );
+}
+
+/**
+ * - "required": the saved setup changed what Stremio read at install time.
+ * - "after-save": unsaved edits will need a reinstall once saved.
+ * - "none": Stremio is up to date, or the edits apply without a reinstall.
+ */
+export type ReinstallState = "none" | "after-save" | "required";
+
+export function reinstallState(
+  installed: InstallBaseline,
+  saved: InstallBaseline,
+  current: { signature: string; actionsLive: boolean },
+): ReinstallState {
+  if (
+    saved.signature !== null &&
+    saved.actionsLive !== null &&
+    requiresReinstall(installed, {
+      signature: saved.signature,
+      actionsLive: saved.actionsLive,
+    })
+  ) {
+    return "required";
+  }
+  return requiresReinstall(installed, current) &&
+    requiresReinstall(saved, current)
+    ? "after-save"
+    : "none";
 }

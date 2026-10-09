@@ -46,6 +46,12 @@ export interface SourceEntry {
    */
   sourceUrl?: string;
   /**
+   * When the Title joined the Source list (added, watched or collected), as
+   * an ISO date. Merged Lists sort their Source lists together by it; set it
+   * wherever `sourceHasAddedDates` says the Source list has dates.
+   */
+  addedAt?: string;
+  /**
    * Full Stremio metadata, when the Provider already gives everything (IMDb).
    * Entries with `meta` skip the shared enrichment step.
    */
@@ -127,6 +133,13 @@ export interface ConnectionAccess {
   provider: ProviderId;
   username: string | null;
   getAccessToken(): Promise<string>;
+  /**
+   * The Provider refused the tokens that this access gave: the configure
+   * page asks to connect again. Never throws.
+   */
+  reportRefused(): Promise<void>;
+  /** A read that needs the Connection worked with this access. Never throws. */
+  reportWorking(): Promise<void>;
 }
 
 /**

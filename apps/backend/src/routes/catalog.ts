@@ -1,4 +1,4 @@
-import { sourceRequiresConnection } from "@stremlist/shared/providers";
+import { listRequiresConnection } from "@stremlist/shared/list-merge";
 import {
   sourceProblemCopy,
   storedSourceNoun,
@@ -129,10 +129,7 @@ async function serveCatalog(c: Context) {
       return c.json({ metas: [] });
     }
     // Lists read through a Connection never answer through a Legacy alias.
-    if (
-      access.via === "legacy" &&
-      sourceRequiresConnection(list.provider, list.sourceRef)
-    ) {
+    if (access.via === "legacy" && listRequiresConnection(list)) {
       return c.json({ metas: [] });
     }
 
@@ -152,6 +149,7 @@ async function serveCatalog(c: Context) {
       listId: list.id,
       provider: list.provider,
       sourceRef: list.sourceRef,
+      mergedSources: list.mergedSources,
       sort: selection.sort,
       rpdbApiKey: access.account.rpdbApiKey,
       allowConnection: access.via === "private",

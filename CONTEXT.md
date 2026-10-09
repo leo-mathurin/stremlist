@@ -33,12 +33,28 @@ The kind of Source list that a Provider keeps as a user's default "to watch" lis
 _Avoid_: Using "watchlist" for any configured List
 
 **List**:
-One entry that an Account configures. It points to exactly one Source list and holds how to show it (title, sort, display mode, filters).
+One entry that an Account configures. It points to one or more Source lists and holds how to show them (title, sort, display mode, filters). A Source list is in at most one List of an Account.
 _Avoid_: Watchlist, feed, collection
+
+**Merged List**:
+A List that points to more than one Source list. Its Catalogs show each Title once, even when several of its Source lists contain it, and they sort by date added only when every Source list gives the date when each Title was added.
+_Avoid_: Combined list, aggregate, group
 
 **Catalog**:
 One Stremio catalog that a List produces. A List can produce several Catalogs (movies, series, presets).
 _Avoid_: Row, shelf
+
+**Refresh**:
+One read of a List's Source list on its Provider, which replaces the cached Catalog when it works. A Stremio request for a stale Catalog, a save and the "Refresh now" button start one. When a refresh fails, Stremio keeps the Titles of the last successful refresh, except for a List that lost its Connection. A Catalog preview is not a refresh.
+_Avoid_: Sync (alone), fetch, update
+
+**Sync status**:
+What the configure page shows for each List: when the last successful refresh happened and how many Titles it gave, or why the latest refresh failed and since when. Each Source list of a Merged List has its own; the List shows the problem of one of them, if any, and else the oldest refresh.
+_Avoid_: Health, state
+
+**Catalog preview**:
+What a List will show in Stremio, on the configure page before the user saves: the first Titles of each of its Catalogs, and its Unresolved entries. It does not change any Catalog.
+_Avoid_: Sample, dry run
 
 ### Titles
 
@@ -54,6 +70,7 @@ _Avoid_: Missing item, dropped item
 
 **Connection**:
 The authorization that links one Account to its user on one Provider, so Stremlist can read private Source lists and perform Actions. An Account has at most one Connection per Provider.
+A Connection needs renewal when its Provider refuses it (revoked access, refused token refresh). The user renews it by connecting the Provider again.
 _Avoid_: Integration, link, login
 
 **Action**:

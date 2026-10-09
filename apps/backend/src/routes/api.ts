@@ -8,6 +8,13 @@ import {
   parseSortOption,
 } from "@stremlist/shared/constants";
 import { isChartId } from "@stremlist/shared/imdb-charts";
+import type { ListSource } from "@stremlist/shared/list-merge";
+import {
+  MAX_SOURCES_PER_ACCOUNT,
+  MAX_SOURCES_PER_LIST,
+  listMergeProblem,
+  sourceKey,
+} from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import {
   CONNECTION_SOURCES,
@@ -18,6 +25,7 @@ import {
 } from "@stremlist/shared/providers";
 import type {
   AccountConfigResponse,
+  AccountSyncSnapshot,
   AddonAccess,
   ConfigList,
 } from "@stremlist/shared/stremio.types";
@@ -30,6 +38,7 @@ import { supabase } from "../lib/supabase";
 import { getProvider, isProviderEnabled } from "../providers/registry";
 import type { AccountAccess, ListInput } from "../services/accounts";
 import {
+  MergedSourcesChangedError,
   createAccount,
   createPrivateCopy,
   getAccountLists,
@@ -54,6 +63,7 @@ import {
   getImdbWatchlist,
   normalizeImdbUserId,
 } from "../services/imdb-scraper";
+import { previewList } from "../services/list-preview";
 import { prewarmLists } from "../services/list-prewarm";
 import { forgetConnectionLists, getListCatalog } from "../services/lists";
 import {
@@ -61,6 +71,7 @@ import {
   isOAuthConfigured,
   startAuthorization,
 } from "../services/oauth";
+import { getListSyncStatuses } from "../services/sync-status";
 
 const REFRESH_COOLDOWN_MS =
   (Number.isFinite(Number(process.env.REFRESH_COOLDOWN_SECONDS))
@@ -99,6 +110,20 @@ const listBody = z.object({
   displayMode: z.enum(displayModeValues).optional(),
   position: z.number().int().min(0).optional(),
   catalogSettings: catalogSettingsSchema.optional(),
+  sourceLabel: z.string().trim().max(60).optional(),
+  mergedSources: z
+    .array(
+      z.object({
+        provider: providerParam,
+        sourceRef: z.string().trim().min(1).max(300),
+        label: z.string().trim().max(60).optional(),
+      }),
+    )
+    .max(
+      MAX_SOURCES_PER_LIST - 1,
+      `A List can merge at most ${MAX_SOURCES_PER_LIST} Source lists.`,
+    )
+    .optional(),
 });
 const actionsBody = z.object({
   enabled: z.boolean(),
@@ -144,58 +169,115 @@ function defaultTitle(index: number, total: number): string {
 }
 
 /**
+ * Check and normalize one Source list of a submitted List. IMDb `p.`
+ * handles are turned into `ur…` IDs.
+ */
+async function normalizeSource(
+  source: ListSource,
+  access: { via: AddonAccess; connected: Set<ProviderId> },
+): Promise<ListSource> {
+  const info = PROVIDERS[source.provider];
+  if (info.availability !== "available") {
+    throw new ConfigError(`${info.label} is not available yet.`);
+  }
+  let sourceRef = source.sourceRef;
+  if (source.provider === "imdb") {
+    try {
+      sourceRef = await normalizeImdbUserId(sourceRef);
+    } catch {
+      throw new ConfigError(
+        `Could not resolve the IMDb handle "${source.sourceRef}". Please check it and try again.`,
+      );
+    }
+    // The IMDb adapter treats any other ref as a watchlist user ID, so a
+    // malformed one would be saved and fail on every catalog request.
+    if (
+      !IMDB_WATCHLIST_SOURCE_ID_PATTERN.test(sourceRef) &&
+      !isChartId(sourceRef)
+    ) {
+      throw new ConfigError(`"${source.sourceRef}" is not a valid IMDb list.`);
+    }
+  }
+  if (sourceRequiresConnection(source.provider, sourceRef)) {
+    if (access.via === "legacy") {
+      throw new ConfigError(
+        `${info.label} lists need your private Addon URL. Upgrade this install first.`,
+      );
+    }
+    if (!access.connected.has(source.provider)) {
+      throw new ConfigError(`Connect your ${info.label} account first.`);
+    }
+  }
+  return { ...source, sourceRef };
+}
+
+/**
+ * The Source lists of a submitted List, its first one first. An omitted
+ * `mergedSources` or `sourceLabel` keeps the saved one, so older clients do
+ * not split a merged List or erase its label; the transaction then checks
+ * that the kept Source lists did not change since this read (`kept`).
+ */
+function submittedSources(
+  list: ListBody,
+  saved: ConfigList | undefined,
+): { sources: ListSource[]; kept: boolean } {
+  const sameFirst =
+    saved?.provider === list.provider && saved.sourceRef === list.sourceRef;
+  return {
+    sources: [
+      {
+        provider: list.provider,
+        sourceRef: list.sourceRef,
+        label: list.sourceLabel ?? (sameFirst ? saved.sourceLabel : undefined),
+      },
+      ...(list.mergedSources ?? saved?.mergedSources ?? []),
+    ],
+    kept: !list.mergedSources && !!list.id,
+  };
+}
+
+/**
  * Check and normalize submitted Lists. Light on purpose: links were already
  * resolved when the user added them, so saving does not read every Source
- * list again. IMDb `p.` handles are still turned into `ur…` IDs.
+ * list again. Each Source list may be in only one List of the Account, and
+ * merged Lists follow the rules of `listMergeProblem`.
  */
 async function normalizeLists(
   lists: ListBody[],
-  access: { via: AddonAccess; connected: Set<ProviderId> },
+  access: {
+    via: AddonAccess;
+    connected: Set<ProviderId>;
+    /** Saved Lists, for the merged Source lists that a client omits. */
+    saved: ConfigList[];
+  },
 ): Promise<ListInput[]> {
   const normalized: ListInput[] = [];
   const seen = new Set<string>();
+  const saved = new Map(access.saved.map((list) => [list.id, list]));
   for (const [index, list] of lists.entries()) {
-    const info = PROVIDERS[list.provider];
-    if (info.availability !== "available") {
-      throw new ConfigError(`${info.label} is not available yet.`);
-    }
-    let sourceRef = list.sourceRef;
-    if (list.provider === "imdb") {
-      try {
-        sourceRef = await normalizeImdbUserId(sourceRef);
-      } catch {
-        throw new ConfigError(
-          `Could not resolve the IMDb handle "${list.sourceRef}". Please check it and try again.`,
-        );
+    const submitted = submittedSources(
+      list,
+      list.id ? saved.get(list.id) : undefined,
+    );
+    const sources: ListSource[] = [];
+    for (const source of submitted.sources) {
+      const checked = await normalizeSource(source, access);
+      if (seen.has(sourceKey(checked))) {
+        throw new ConfigError("Each list can only be added once.");
       }
-      // The IMDb adapter treats any other ref as a watchlist user ID, so a
-      // malformed one would be saved and fail on every catalog request.
-      if (
-        !IMDB_WATCHLIST_SOURCE_ID_PATTERN.test(sourceRef) &&
-        !isChartId(sourceRef)
-      ) {
-        throw new ConfigError(`"${list.sourceRef}" is not a valid IMDb list.`);
-      }
+      seen.add(sourceKey(checked));
+      sources.push(checked);
     }
-    if (sourceRequiresConnection(list.provider, sourceRef)) {
-      if (access.via === "legacy") {
-        throw new ConfigError(
-          `${info.label} lists need your private Addon URL. Upgrade this install first.`,
-        );
-      }
-      if (!access.connected.has(list.provider)) {
-        throw new ConfigError(`Connect your ${info.label} account first.`);
-      }
+    if (seen.size > MAX_SOURCES_PER_ACCOUNT) {
+      throw new ConfigError(
+        `You can have at most ${MAX_SOURCES_PER_ACCOUNT} Source lists in all your Lists.`,
+      );
     }
-    const key = `${list.provider}:${sourceRef}`;
-    if (seen.has(key)) {
-      throw new ConfigError("Each list can only be added once.");
-    }
-    seen.add(key);
-    normalized.push({
+    const [first, ...mergedSources] = sources;
+    const input: ListInput = {
       id: list.id,
-      provider: list.provider,
-      sourceRef,
+      provider: first.provider,
+      sourceRef: first.sourceRef,
       catalogTitle:
         list.catalogTitle && list.catalogTitle.length > 0
           ? list.catalogTitle
@@ -204,7 +286,13 @@ async function normalizeLists(
       displayMode: list.displayMode ?? "split",
       position: index,
       catalogSettings: list.catalogSettings,
-    });
+      mergedSources,
+      ...(first.label ? { sourceLabel: first.label } : {}),
+      ...(submitted.kept ? { keptMergedSources: true } : {}),
+    };
+    const problem = listMergeProblem(input);
+    if (problem) throw new ConfigError(problem);
+    normalized.push(input);
   }
   return normalized;
 }
@@ -216,6 +304,18 @@ async function connectedProviders(
   return new Set(
     (await listConnections(access.account.id)).map((c) => c.provider),
   );
+}
+
+/** The sync status of these Lists and the Account's Connections. */
+async function syncSnapshot(
+  access: AccountAccess,
+  lists: ConfigList[],
+): Promise<AccountSyncSnapshot> {
+  const [statuses, connections] = await Promise.all([
+    getListSyncStatuses(lists),
+    access.via === "private" ? listConnections(access.account.id) : [],
+  ]);
+  return { ...statuses, connections };
 }
 
 function requestOrigin(c: Context): string {
@@ -336,6 +436,38 @@ const api = new Hono()
     },
   )
 
+  // Preview the Catalogs of a List, saved or not: a sample of Titles for each
+  // Catalog and the Unresolved entries of its Source lists. Writes nothing.
+  .post(
+    "/lists/preview",
+    zValidator(
+      "json",
+      listBody
+        .pick({
+          provider: true,
+          sourceRef: true,
+          mergedSources: true,
+          sortOption: true,
+          displayMode: true,
+          catalogSettings: true,
+        })
+        .extend({ accountKey: accountKeyParam.shape.accountKey.optional() }),
+    ),
+    async (c) => {
+      const { accountKey, ...list } = c.req.valid("json");
+      // Like `/links/resolve`, an unknown key previews public lists only. A
+      // Legacy alias can be guessed: it never reads through a Connection.
+      const access = accountKey ? await resolveAccountKey(accountKey) : null;
+      return c.json(
+        await previewList({
+          ...list,
+          connectionAccountId:
+            access?.via === "private" ? access.account.id : null,
+        }),
+      );
+    },
+  )
+
   // Create an Account with its first Lists. Returns the private Account ID.
   .post(
     "/accounts",
@@ -347,6 +479,7 @@ const api = new Hono()
         normalized = await normalizeLists(lists, {
           via: "private",
           connected: new Set(),
+          saved: [],
         });
       } catch (error) {
         if (error instanceof ConfigError) {
@@ -391,12 +524,10 @@ const api = new Hono()
         return c.json({ error: "Addon not found. Install it first." }, 404);
       }
       const { account } = access;
-      const [lists, connections] = await Promise.all([
-        getVisibleLists(access),
-        access.via === "private" ? listConnections(account.id) : [],
-      ]);
-      const [listsWithGenres, summary] = await Promise.all([
+      const lists = await getVisibleLists(access);
+      const [withGenres, sync, summary] = await Promise.all([
         withAvailableGenres(lists),
+        syncSnapshot(access, lists),
         getNewTitlesSummary(access, lists),
       ]);
       const body: AccountConfigResponse = {
@@ -404,8 +535,8 @@ const api = new Hono()
         accountId: access.via === "private" ? account.id : null,
         movedAt: account.movedAt,
         rpdbApiKey: account.rpdbApiKey,
-        lists: listsWithGenres,
-        connections,
+        lists: withGenres,
+        ...sync,
         actions: {
           enabled: account.actionsEnabled,
           providers: account.actionProviders,
@@ -415,6 +546,21 @@ const api = new Hono()
         cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
       };
       return c.json(body);
+    },
+  )
+
+  // The sync status of every List and Connection, polled by the configure
+  // page while a refresh it started is still running.
+  .get(
+    "/:accountKey/sync-status",
+    zValidator("param", accountKeyParam),
+    async (c) => {
+      const { accountKey } = c.req.valid("param");
+      const access = await resolveAccountKey(accountKey);
+      if (!access) {
+        return c.json({ error: "Addon not found. Install it first." }, 404);
+      }
+      return c.json(await syncSnapshot(access, await getVisibleLists(access)));
     },
   )
 
@@ -450,12 +596,16 @@ const api = new Hono()
         );
       }
 
-      const connected = await connectedProviders(access);
+      const [connected, savedLists] = await Promise.all([
+        connectedProviders(access),
+        getAccountLists(access.account.id),
+      ]);
       let normalized: ListInput[];
       try {
         normalized = await normalizeLists(lists, {
           via: access.via,
           connected,
+          saved: savedLists,
         });
       } catch (error) {
         if (error instanceof ConfigError) {
@@ -486,6 +636,15 @@ const api = new Hono()
           },
         );
       } catch (error) {
+        if (error instanceof MergedSourcesChangedError) {
+          return c.json(
+            {
+              error:
+                "Your Lists changed in another window. Reload the page and try again.",
+            },
+            409,
+          );
+        }
         console.error("Failed to save the configuration:", error);
         return c.json(
           {
@@ -549,6 +708,7 @@ const api = new Hono()
             listId: list.id,
             provider: list.provider,
             sourceRef: list.sourceRef,
+            mergedSources: list.mergedSources,
             sort: parseSortOption(list.sortOption),
             rpdbApiKey: account.rpdbApiKey,
             allowConnection: access.via === "private",
@@ -570,8 +730,9 @@ const api = new Hono()
           .eq("id", account.id);
       }
 
-      const [listsWithGenres, summary] = await Promise.all([
+      const [withGenres, sync, summary] = await Promise.all([
         withAvailableGenres(lists),
+        syncSnapshot(access, lists),
         getNewTitlesSummary(access, lists),
       ]);
       return c.json({
@@ -580,7 +741,8 @@ const api = new Hono()
         refreshed,
         failed,
         total: lists.length,
-        lists: listsWithGenres,
+        lists: withGenres,
+        ...sync,
         newTitles: summary,
         cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
       });

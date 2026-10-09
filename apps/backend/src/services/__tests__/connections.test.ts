@@ -141,6 +141,7 @@ describe("listConnections and deleteConnection", () => {
         provider: "trakt",
         username: "leo",
         connectedAt: expect.any(String) as string,
+        needsRenewalSince: null,
       },
     ]);
   });
@@ -380,5 +381,90 @@ describe("getConnectionAccess", () => {
       ConnectionExpiredError,
     );
     expect(connectionRow().refresh_lease_token).toBeNull();
+  });
+});
+
+describe("Connections that need renewal", () => {
+  it("marks the Connection when the Provider refuses the token refresh", async () => {
+    seedConnection(accountId, "trakt", {
+      expiresAt: new Date(Date.now() - MINUTE),
+    });
+    oauthMocks.refreshTokens.mockRejectedValue(new Error("invalid_grant"));
+    const access = await getConnectionAccess(accountId, "trakt");
+
+    await access?.getAccessToken().catch(() => undefined);
+
+    // Any caller (a public read, an Action) sees it, not only List reads.
+    expect((await listConnections(accountId))[0].needsRenewalSince).toEqual(
+      expect.any(String),
+    );
+  });
+
+  it("marks the Connection when it expired without a refresh token", async () => {
+    seedConnection(accountId, "trakt", {
+      refreshToken: null,
+      expiresAt: new Date(Date.now() - MINUTE),
+    });
+    const access = await getConnectionAccess(accountId, "trakt");
+
+    await access?.getAccessToken().catch(() => undefined);
+
+    expect(connectionRow().needs_renewal_since).not.toBeNull();
+  });
+
+  it("clears the mark when a token refresh works", async () => {
+    seedConnection(accountId, "trakt", {
+      expiresAt: new Date(Date.now() - MINUTE),
+    });
+    connectionRow().needs_renewal_since = new Date().toISOString();
+    oauthMocks.refreshTokens.mockResolvedValue({
+      accessToken: "new",
+      refreshToken: "new-refresh",
+      expiresAt: new Date(Date.now() + 60 * MINUTE),
+      scope: null,
+    });
+    const access = await getConnectionAccess(accountId, "trakt");
+
+    await expect(access?.getAccessToken()).resolves.toBe("new");
+    expect(connectionRow().needs_renewal_since).toBeNull();
+  });
+
+  it("does not mark a Connection authorized again after the refused read started", async () => {
+    seedConnection(accountId, "trakt", { accessToken: "old" });
+    const oldAccess = await getConnectionAccess(accountId, "trakt");
+
+    await saveConnection(
+      accountId,
+      "trakt",
+      { accessToken: "new", refreshToken: null, expiresAt: null, scope: null },
+      "leo",
+      "https://api.stremlist.test/oauth/trakt/callback",
+    );
+    await oldAccess?.reportRefused();
+
+    expect(connectionRow().needs_renewal_since).toBeNull();
+    const newAccess = await getConnectionAccess(accountId, "trakt");
+    await newAccess?.reportRefused();
+    expect(connectionRow().needs_renewal_since).not.toBeNull();
+  });
+
+  it("keeps the first time the Provider refused the Connection", async () => {
+    seedConnection(accountId, "trakt");
+    const access = await getConnectionAccess(accountId, "trakt");
+    await access?.reportRefused();
+    const first = connectionRow().needs_renewal_since;
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await access?.reportRefused();
+
+    expect(connectionRow().needs_renewal_since).toBe(first);
+  });
+
+  it("clears the mark for the tokens that worked only", async () => {
+    seedConnection(accountId, "trakt", { accessToken: "old" });
+    const oldAccess = await getConnectionAccess(accountId, "trakt");
+    await oldAccess?.reportRefused();
+    await oldAccess?.reportWorking();
+    expect(connectionRow().needs_renewal_since).toBeNull();
   });
 });

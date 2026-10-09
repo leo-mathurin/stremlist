@@ -3,7 +3,7 @@ import {
   GetObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
-import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
@@ -27,7 +27,20 @@ const stremioMetaSchema = z.object({
   cast: z.array(z.string()).optional(),
   runtime: z.string().optional(),
   released: z.string().datetime().optional(),
+  // When the Title joined the Source list; never served to Stremio.
+  addedAt: z.string().datetime().optional(),
 });
+
+/**
+ * A Title as the cache keeps it: its meta, and when it joined its Source
+ * list (ADR 0006). The date is never served to Stremio.
+ */
+export type SourceMeta = StremioMeta & { addedAt?: string };
+
+/** The canonical Catalog of one Source list, as the cache keeps it. */
+export interface SourceCatalogData {
+  metas: SourceMeta[];
+}
 
 const catalogObjectSchema = z.object({
   version: z.literal(CACHE_FORMAT_VERSION),
@@ -98,7 +111,7 @@ function servesSource(manifest: CacheManifest, source?: CacheSource): boolean {
 }
 
 export interface CachedList {
-  data: CatalogData;
+  data: SourceCatalogData;
   cachedAt: Date;
   generation: string;
 }
@@ -298,7 +311,7 @@ function collectGenres(
   ].sort();
 }
 
-function uniqueMetas(metas: StremioMeta[]): StremioMeta[] {
+function uniqueMetas(metas: SourceMeta[]): SourceMeta[] {
   const seen = new Set<string>();
   return metas.filter((meta) => {
     const key = metaKey(meta);
@@ -338,6 +351,34 @@ export async function getCachedListSummary(
 }
 
 /**
+ * When the cached Catalog of a List was written and how many Titles it has,
+ * from the manifest only. Null when nothing is cached or the cache was marked
+ * stale.
+ */
+export async function getCachedListInfo(
+  listId: string,
+  source?: CacheSource,
+): Promise<{ cachedAt: string; titleCount: number } | null> {
+  try {
+    const manifest = await readManifest(listId);
+    if (
+      !manifest ||
+      !servesSource(manifest, source) ||
+      new Date(manifest.cachedAt).getTime() <= 0
+    ) {
+      return null;
+    }
+    return {
+      cachedAt: manifest.cachedAt,
+      titleCount: manifest.metaKeys.length,
+    };
+  } catch (error) {
+    console.error(`Failed to read R2 cache info for ${listId}:`, error);
+    return null;
+  }
+}
+
+/**
  * The cached catalog of a List. With `source`, a catalog read from another
  * Source list (the List was edited since) is a miss.
  */
@@ -371,7 +412,7 @@ export async function getCachedList(
 
 export async function writeCachedList(
   listId: string,
-  listData: CatalogData,
+  listData: SourceCatalogData,
   cachedAt = new Date(),
   source?: CacheSource,
 ): Promise<string> {
@@ -428,54 +469,27 @@ export async function writeCachedList(
 }
 
 export async function findCachedMeta(
-  listIds: string[],
+  listId: string,
   type: string,
   id: string,
-): Promise<StremioMeta | null> {
+): Promise<SourceMeta | null> {
   const target = `${type}:${id}`;
-  const manifestResults = await Promise.allSettled(
-    listIds.map((listId) => readManifest(listId)),
-  );
-  const candidates: {
-    listId: string;
-    manifest: CacheManifest;
-  }[] = [];
-
-  manifestResults.forEach((result, index) => {
-    if (result.status === "rejected") {
-      console.error(
-        `Failed to read R2 cache manifest for ${listIds[index]}:`,
-        result.reason,
-      );
-      return;
+  try {
+    const manifest = await readManifest(listId);
+    if (!manifest || !hasSortedKey(manifest.metaKeys, target)) return null;
+    const current = await readCatalogWithManifestRefresh(listId, manifest);
+    if (!current || !hasSortedKey(current.manifest.metaKeys, target)) {
+      return null;
     }
-    if (result.value && hasSortedKey(result.value.metaKeys, target)) {
-      candidates.push({
-        listId: listIds[index],
-        manifest: result.value,
-      });
-    }
-  });
-
-  for (const candidate of candidates) {
-    try {
-      const current = await readCatalogWithManifestRefresh(
-        candidate.listId,
-        candidate.manifest,
-      );
-      if (!current || !hasSortedKey(current.manifest.metaKeys, target)) {
-        continue;
-      }
-      const found = current.catalog.metas.find(
+    return (
+      current.catalog.metas.find(
         (item) => item.type === type && item.id === id,
-      );
-      if (found) return found;
-    } catch (error) {
-      console.error("Failed to read an indexed R2 catalog:", error);
-    }
+      ) ?? null
+    );
+  } catch (error) {
+    console.error(`Failed to read the R2 cache of ${listId}:`, error);
+    return null;
   }
-
-  return null;
 }
 
 export async function deleteCachedList(listId: string): Promise<void> {

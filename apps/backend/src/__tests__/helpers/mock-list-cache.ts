@@ -88,17 +88,14 @@ export function writeCachedList(
 }
 
 export function findCachedMeta(
-  listIds: string[],
+  listId: string,
   type: string,
   id: string,
 ): Promise<StremioMeta | null> {
-  for (const listId of listIds) {
-    const found = cache
-      .get(listId)
-      ?.data.metas.find((meta) => meta.type === type && meta.id === id);
-    if (found) return Promise.resolve(found);
-  }
-  return Promise.resolve(null);
+  const found = cache
+    .get(listId)
+    ?.data.metas.find((meta) => meta.type === type && meta.id === id);
+  return Promise.resolve(found ?? null);
 }
 
 export function deleteCachedList(listId: string): Promise<void> {
@@ -125,4 +122,15 @@ export function markCachedListStale(listId: string): Promise<void> {
   const entry = cache.get(listId);
   if (entry) cache.markStale(listId, entry);
   return Promise.resolve();
+}
+
+export function getCachedListInfo(listId: string, source?: CacheSource) {
+  const entry = cache.get(listId);
+  if (!entry || !servesSource(entry, source) || entry.cachedAt.getTime() <= 0) {
+    return Promise.resolve(null);
+  }
+  return Promise.resolve({
+    cachedAt: entry.cachedAt.toISOString(),
+    titleCount: entry.data.metas.length,
+  });
 }

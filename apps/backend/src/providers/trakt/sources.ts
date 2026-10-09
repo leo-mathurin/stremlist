@@ -16,6 +16,7 @@ import {
   mediaToEntry,
   oldestFirst,
   uniqueEntries,
+  withAddedAt,
 } from "./entries";
 
 /** Most entries read from one Source list. */
@@ -176,13 +177,13 @@ async function listedEntries(
   return {
     entries: oldestFirst(items, (item) => item.listed_at).flatMap((item) => {
       const entry = itemToEntry(item);
-      return entry ? [entry] : [];
+      return entry ? [withAddedAt(entry, item.listed_at)] : [];
     }),
     complete,
   };
 }
 
-/** The newest MAX_SOURCE_ITEMS rows, oldest first. */
+/** The newest MAX_SOURCE_ITEMS rows, oldest first, dated by `date`. */
 function newestRows(
   rows: TraktItem[],
   date: (row: TraktItem) => string | null | undefined,
@@ -193,7 +194,7 @@ function newestRows(
       .slice(-MAX_SOURCE_ITEMS)
       .flatMap((row) => {
         const entry = itemToEntry(row);
-        return entry ? [entry] : [];
+        return entry ? [withAddedAt(entry, date(row))] : [];
       }),
     complete: complete && rows.length <= MAX_SOURCE_ITEMS,
   };

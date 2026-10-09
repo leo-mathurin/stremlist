@@ -8,6 +8,7 @@ import {
   PUBLIC_USER,
   UNKNOWN_USER,
 } from "../helpers/test-data.js";
+import { saveButton, SAVED_REINSTALL } from "../helpers/configure.js";
 
 // The /configure page against the real backend: List management, options,
 // refresh, install links.
@@ -39,7 +40,7 @@ async function save(page: Page) {
   const response = page.waitForResponse(
     (res) => res.url().endsWith("/config") && res.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await saveButton(page).click();
   expect((await response).status()).toBe(200);
   await expect(page.getByText("Saved!", { exact: false })).toBeVisible();
 }
@@ -136,16 +137,12 @@ test(
     await expect(
       page.getByText("Could not load your configuration. Please try again."),
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Save", exact: true }),
-    ).not.toBeVisible();
+    await expect(saveButton(page)).not.toBeVisible();
 
     failing = false;
     await page.getByRole("button", { name: "Try again" }).click();
     await expect(page.getByText("My watchlist", { exact: true })).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Save", exact: true }),
-    ).toBeVisible();
+    await expect(saveButton(page)).toBeVisible();
   },
 );
 
@@ -195,11 +192,7 @@ test(
       .getByRole("menuitem", { name: /^Box Office \(Weekend\)/ })
       .click();
     await save(page);
-    await expect(
-      page.getByText(
-        "Saved! Reinstall Stremlist in Stremio to see your new catalogs and Actions.",
-      ),
-    ).toBeVisible();
+    await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(
       page.getByRole("heading", {
         name: "Reinstall in Stremio to see your changes",
@@ -340,5 +333,174 @@ test(
     await expect(
       page.getByRole("heading", { name: "Upgrade to a private URL" }),
     ).toBeVisible();
+  },
+);
+
+/** The Addon URL of an Account on Stremio Web, as the install links build it. */
+const stremioWebUrl = (accountKey: string) =>
+  `https://web.stremio.com/#/addons?addon=${encodeURIComponent(
+    `${BACKEND_URL}/${accountKey}/manifest.json`,
+  )}`;
+
+test(
+  "a catalog change asks for a reinstall until it is done, a sort change does not",
+  { tag: "@local" },
+  async ({ page }) => {
+    const { accountId } = await seedAccount();
+    await open(page, accountId);
+    const beforeSave = page.getByText("These changes need a reinstall.");
+    const reminder = page
+      .getByRole("status")
+      .filter({ hasText: "Reinstall Stremlist in Stremio" });
+
+    // Sort order and posters apply without a reinstall: no hint, no reminder.
+    await page.getByRole("combobox", { name: "Sort order" }).click();
+    await page
+      .getByRole("option", { name: "IMDb Rating (Highest First)" })
+      .click();
+    await page.locator("#rpdb-api-key").fill("e2e-rpdb-key");
+    await expect(beforeSave).toHaveCount(0);
+    await save(page);
+    await expect(
+      page.getByText(
+        "Saved! Your catalogs will refresh with the new settings.",
+      ),
+    ).toBeVisible();
+    await expect(reminder).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: "Install or reinstall in Stremio" }),
+    ).toBeVisible();
+
+    // A new catalog title changes what Stremio read at install time.
+    await page
+      .getByRole("button", { name: "Settings for My watchlist" })
+      .click();
+    await page.getByLabel("Catalog title").fill("Renamed watchlist");
+    await expect(beforeSave).toBeVisible();
+    await save(page);
+    await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
+    await expect(beforeSave).toHaveCount(0);
+    await expect(reminder).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: "Reinstall in Stremio to see your changes",
+      }),
+    ).toBeVisible();
+    // A local Addon URL has no `stremio://` link, so Reinstall opens Stremio Web.
+    await expect(
+      reminder.getByRole("link", { name: "Reinstall" }),
+    ).toHaveAttribute("href", stremioWebUrl(accountId));
+
+    // The reminder stays until the user reinstalls, also after a reload and
+    // after a save that changes nothing.
+    await page.reload();
+    await expect(reminder).toBeVisible();
+    await save(page);
+    await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
+    await expect(reminder).toBeVisible();
+
+    await reminder.getByRole("button", { name: "I did it" }).click();
+    await expect(reminder).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: "Install or reinstall in Stremio" }),
+    ).toBeVisible();
+    await page.reload();
+    await expect(page.getByText("Renamed watchlist")).toBeVisible();
+    await expect(reminder).toHaveCount(0);
+    await save(page);
+    await expect(
+      page.getByText(
+        "Saved! Your catalogs will refresh with the new settings.",
+      ),
+    ).toBeVisible();
+    const { body } = await getConfig(accountId);
+    expect(body.rpdbApiKey).toBe("e2e-rpdb-key");
+    expect(body.lists[0]).toMatchObject({
+      catalogTitle: "Renamed watchlist",
+      sortOption: "rating-desc",
+    });
+  },
+);
+
+test(
+  "the Reinstall action of the save toast opens Stremio Web and ends the reminder",
+  { tag: "@local" },
+  async ({ page, context }) => {
+    // Stremio Web is not under test here: answer it with an empty page.
+    await context.route("https://web.stremio.com/**", (route) =>
+      route.fulfill({
+        contentType: "text/html",
+        body: "<title>Stremio</title>",
+      }),
+    );
+    const { accountId } = await seedAccount();
+    await open(page, accountId);
+    await page.getByRole("button", { name: "Add an IMDb chart" }).click();
+    await page.getByRole("menuitem", { name: /^Top 250 Movies/ }).click();
+    await save(page);
+
+    const toast = page
+      .getByRole("listitem")
+      .filter({ hasText: SAVED_REINSTALL });
+    const reminder = page
+      .getByRole("status")
+      .filter({ hasText: "Reinstall Stremlist in Stremio" });
+    await expect(reminder).toBeVisible();
+    const popup = context.waitForEvent("page");
+    await toast.getByRole("button", { name: "Reinstall" }).click();
+    const stremioWeb = await popup;
+    await stremioWeb.waitForLoadState();
+    expect(stremioWeb.url()).toBe(stremioWebUrl(accountId));
+    await stremioWeb.close();
+    await expect(reminder).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByText("2 of 10 lists")).toBeVisible();
+    await expect(reminder).toHaveCount(0);
+  },
+);
+
+test(
+  "the floating Save button shows once the header Save scrolls away",
+  { tag: "@local" },
+  async ({ page }) => {
+    const { accountId } = await seedAccount();
+    await open(page, accountId);
+    const saves = page.getByRole("button", { name: "Save", exact: true });
+    const headerSave = saves.first();
+    const floatingSave = saves.last();
+    const floatingBar = floatingSave.locator("xpath=..");
+    await expect(saves).toHaveCount(2);
+    await expect(headerSave).toBeInViewport();
+    // Hidden while the header Save is in view: inert and transparent.
+    await expect(floatingBar).toHaveAttribute("inert", "");
+
+    // An edit at the end of the page, then Save from there.
+    await page.locator("#rpdb-api-key").fill("floating-save-key");
+    await page.evaluate(() =>
+      window.scrollTo(0, document.documentElement.scrollHeight),
+    );
+    await expect(headerSave).not.toBeInViewport();
+    await expect(floatingBar).not.toHaveAttribute("inert");
+    await expect(floatingSave).toBeInViewport();
+    await expect(floatingSave).toBeEnabled();
+    const response = page.waitForResponse(
+      (res) =>
+        res.url().endsWith("/config") && res.request().method() === "POST",
+    );
+    await floatingSave.click();
+    expect((await response).status()).toBe(200);
+    await expect(
+      page.getByText(
+        "Saved! Your catalogs will refresh with the new settings.",
+      ),
+    ).toBeVisible();
+    expect((await getConfig(accountId)).body.rpdbApiKey).toBe(
+      "floating-save-key",
+    );
+
+    // Back at the top, the header Save takes over again.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await expect(headerSave).toBeInViewport();
+    await expect(floatingBar).toHaveAttribute("inert", "");
   },
 );

@@ -12,6 +12,7 @@ import {
   validateImdbList,
   validateImdbWatchlist,
 } from "../services/imdb-scraper";
+import type { ImdbListData } from "../services/imdb-scraper";
 import type { ProviderAdapter, SourceValidation } from "./types";
 import { SourceUnavailableError } from "./types";
 
@@ -57,15 +58,19 @@ export const imdbProvider: ProviderAdapter = {
   },
 
   async fetchSource(ref) {
-    const fetcher = isChartId(ref)
-      ? fetchChart
-      : isListId(ref)
-        ? fetchList
-        : fetchWatchlist;
     try {
-      const data = await fetcher(ref);
+      // Charts are ranked, not dated; watchlists and lists say when each
+      // Title was added.
+      const data: ImdbListData = isChartId(ref)
+        ? await fetchChart(ref)
+        : isListId(ref)
+          ? await fetchList(ref)
+          : await fetchWatchlist(ref);
       return {
-        entries: data.metas.map((meta) => ({ imdbId: meta.id, meta })),
+        entries: data.metas.map((meta) => {
+          const addedAt = data.addedAt?.get(meta.id);
+          return { imdbId: meta.id, meta, ...(addedAt ? { addedAt } : {}) };
+        }),
         complete: data.complete,
       };
     } catch (error) {
