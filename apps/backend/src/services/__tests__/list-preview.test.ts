@@ -483,6 +483,151 @@ describe("previewList: reads", () => {
   });
 });
 
+describe("previewList: merged Lists", () => {
+  const IMDB = { provider: "imdb", sourceRef: "ur1000001" } as const;
+
+  function dated(metas: StremioMeta[], dates: string[]): SourceEntry[] {
+    return entries(metas).map((entry, index) => ({
+      ...entry,
+      addedAt: dates[index],
+    }));
+  }
+
+  it("shows the Titles of every Source list once, with all their Unresolved entries", async () => {
+    useFakeProvider(
+      fakeAdapter("trakt", {
+        entries: [
+          ...entries([MOVIES[0], MOVIES[1]]),
+          { title: "Lost film", year: 1970, type: "movie" },
+        ],
+      }),
+    );
+    useFakeProvider(
+      fakeAdapter("imdb", {
+        entries: [
+          ...entries([MOVIES[1], MOVIES[2], ...SERIES]),
+          { title: "Lost show", year: 1980, type: "series" },
+        ],
+      }),
+    );
+
+    const preview = await previewOk(
+      request({ mergedSources: [IMDB], sortOption: "title-asc" }),
+    );
+
+    expect(preview.titleCount).toBe(4);
+    expect(preview.typeCounts).toEqual({ movie: 3, series: 1 });
+    expect(preview.catalogs[0].titles.map((title) => title.name)).toEqual([
+      "Alpha",
+      "Bravo",
+      "Charlie",
+    ]);
+    expect(preview.catalogs[1].titles.map((title) => title.name)).toEqual([
+      "Delta",
+    ]);
+    expect(preview.unresolved.count).toBe(2);
+    expect(preview.unresolved.entries.map((entry) => entry.title)).toEqual([
+      "Lost film",
+      "Lost show",
+    ]);
+    expect(preview.sourceProblems).toBeUndefined();
+  });
+
+  it("sorts the Source lists together by date added, like the Catalog", async () => {
+    useFakeProvider(
+      fakeAdapter("trakt", {
+        entries: dated(
+          [MOVIES[0], MOVIES[1]],
+          ["2021-01-01T00:00:00.000Z", "2023-01-01T00:00:00.000Z"],
+        ),
+      }),
+    );
+    useFakeProvider(
+      fakeAdapter("imdb", {
+        entries: dated(
+          [MOVIES[2], MOVIES[0]],
+          ["2022-01-01T00:00:00.000Z", "2024-01-01T00:00:00.000Z"],
+        ),
+      }),
+    );
+
+    const preview = await previewOk(
+      request({ mergedSources: [IMDB], sortOption: "added_at-asc" }),
+    );
+
+    // Charlie keeps its first date (2021).
+    expect(preview.catalogs[0].titles.map((title) => title.name)).toEqual([
+      "Charlie",
+      "Bravo",
+      "Alpha",
+    ]);
+  });
+
+  it("leaves out a Source list that cannot be read and says why", async () => {
+    useFakeProvider(
+      fakeAdapter("trakt", {
+        fetchSource: () =>
+          Promise.reject(new SourceUnavailableError("private", "private")),
+      }),
+    );
+    useFakeProvider(fakeAdapter("imdb", { entries: entries([MOVIES[2]]) }));
+
+    const preview = await previewOk(request({ mergedSources: [IMDB] }));
+
+    expect(preview.titleCount).toBe(1);
+    expect(preview.sourceProblems).toEqual([
+      {
+        provider: "trakt",
+        sourceRef: "users/someone/lists/favorites",
+        reason: "private",
+      },
+    ]);
+  });
+
+  it("does not read a merged Source list that needs a Connection the request may not use", async () => {
+    const traktRead = vi.fn();
+    useFakeProvider(fakeAdapter("trakt", { fetchSource: traktRead }));
+    useFakeProvider(fakeAdapter("imdb", { entries: entries([MOVIES[2]]) }));
+
+    const preview = await previewOk(
+      request({
+        ...IMDB,
+        mergedSources: [{ provider: "trakt", sourceRef: "me/history" }],
+      }),
+    );
+
+    expect(traktRead).not.toHaveBeenCalled();
+    expect(preview.sourceProblems).toEqual([
+      {
+        provider: "trakt",
+        sourceRef: "me/history",
+        reason: "needs_connection",
+      },
+    ]);
+  });
+
+  it("fails when no Source list can be read, naming the first one that failed", async () => {
+    useFakeProvider(
+      fakeAdapter("trakt", {
+        fetchSource: () =>
+          Promise.reject(new SourceUnavailableError("not_found", "gone")),
+      }),
+    );
+    process.env.DISABLED_PROVIDERS = "imdb";
+
+    await expect(
+      previewList(request({ mergedSources: [IMDB] })),
+    ).resolves.toEqual({
+      ok: false,
+      reason: "not_found",
+      source: {
+        provider: "trakt",
+        sourceRef: "users/someone/lists/favorites",
+      },
+    });
+  });
+});
+
 describe("previewPoster", () => {
   it("asks IMDb for a small image", () => {
     expect(

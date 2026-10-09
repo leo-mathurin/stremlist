@@ -10,6 +10,7 @@ import {
   mediaToEntry,
   oldestFirst,
   uniqueEntries,
+  withAddedAt,
 } from "./entries";
 
 /** Most entries read from one Source list. */
@@ -169,7 +170,7 @@ async function listedEntries(
   });
   return oldestFirst(items, (item) => item.listed_at).flatMap((item) => {
     const entry = itemToEntry(item);
-    return entry ? [entry] : [];
+    return entry ? [withAddedAt(entry, item.listed_at)] : [];
   });
 }
 
@@ -257,7 +258,7 @@ async function historyEntries(
     .slice(-MAX_SOURCE_ITEMS)
     .flatMap((row) => {
       const entry = itemToEntry(row);
-      return entry ? [entry] : [];
+      return entry ? [withAddedAt(entry, row.last_watched_at)] : [];
     });
 }
 
@@ -277,7 +278,9 @@ async function collectionEntries(
     .slice(-MAX_SOURCE_ITEMS)
     .flatMap((row) => {
       const entry = itemToEntry(row);
-      return entry ? [entry] : [];
+      return entry
+        ? [withAddedAt(entry, row.collected_at ?? row.last_collected_at)]
+        : [];
     });
 }
 

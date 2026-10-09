@@ -8,6 +8,12 @@ import {
 import { toast } from "sonner";
 import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
 import {
+  MAX_SOURCES_PER_ACCOUNT,
+  listMergeProblem,
+  listSources,
+  sourceKey,
+} from "@stremlist/shared/list-merge";
+import {
   CONNECTION_SOURCES,
   PROVIDER_IDS,
   PROVIDERS,
@@ -20,14 +26,16 @@ import type {
   ConnectionSummary,
 } from "@stremlist/shared/stremio.types";
 import { api } from "../lib/api";
-import {
-  createListRow,
-  getListReinstallSignature,
-  listKey,
-} from "../lib/list-form";
+import { createListRow, rowTitle, sourceKeys } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { buildAddonUrls } from "../lib/list-sources";
+import { mergeRows, removeRowSource, splitRowSource } from "../lib/merged-rows";
 import { reinstallState, requiresReinstall } from "../lib/reinstall";
+import {
+  getListReinstallSignature,
+  learnSourceGenres,
+} from "../lib/reinstall-signature";
+import type { KnownSourceGenres } from "../lib/reinstall-signature";
 import type { InstallBaseline } from "../lib/reinstall";
 import { useListSyncStatus } from "./useListSyncStatus";
 
@@ -143,6 +151,8 @@ function rowsFromLists(lists: ConfigList[]): ListFormRow[] {
       displayMode: list.displayMode,
       catalogSettings: list.catalogSettings,
       availableGenres: list.availableGenres,
+      mergedSources: list.mergedSources,
+      sourceLabel: list.sourceLabel,
     }),
   );
 }
@@ -194,6 +204,11 @@ export function useAccountConfiguration(
   // loads; the signature is "" for an Account without Lists.
   const [installed, setInstalled] = useState<InstallBaseline>(UNKNOWN_BASELINE);
   const [saved, setSaved] = useState<InstallBaseline>(UNKNOWN_BASELINE);
+  // The genres that each Source list brings to the manifest, as far as the
+  // server told: the reinstall signature counts them.
+  const [knownGenres, setKnownGenres] = useState<KnownSourceGenres | null>(
+    null,
+  );
   const currentForm = useRef({ lists, rpdbApiKey });
   // Save responses must see edits committed while the request was in flight.
   useLayoutEffect(() => {
@@ -245,7 +260,9 @@ export function useAccountConfiguration(
         const data = (await res.json()) as AccountConfigResponse;
         if (cancelled) return;
         const rows = rowsFromLists(data.lists);
+        const genres = learnSourceGenres(null, data.lists);
         setLists(rows);
+        setKnownGenres(genres);
         setAccess(data.access);
         setAccountId(data.accountId);
         setMovedAt(data.movedAt);
@@ -264,7 +281,7 @@ export function useAccountConfiguration(
         ]);
         setActionSelected(savedProviders);
         const loaded = {
-          signature: getListReinstallSignature(rows),
+          signature: getListReinstallSignature(rows, genres),
           actionsLive: data.actions.enabled && savedProviders.length > 0,
         };
         setSaved(loaded);
@@ -351,8 +368,12 @@ export function useAccountConfiguration(
       if (current.length >= MAX_LISTS) {
         return `You can have at most ${MAX_LISTS} lists.`;
       }
-      if (current.some((row) => listKey(row) === listKey(partial))) {
+      const used = sourceKeys(current);
+      if (used.includes(sourceKey(partial))) {
         return "This list is already in your Stremlist.";
+      }
+      if (used.length >= MAX_SOURCES_PER_ACCOUNT) {
+        return `You can have at most ${MAX_SOURCES_PER_ACCOUNT} Source lists in all your Lists.`;
       }
       setLists((rows) => [...rows, createListRow(partial)]);
       return null;
@@ -360,11 +381,12 @@ export function useAccountConfiguration(
     [],
   );
 
+  /** Add a built-in IMDb chart. Returns an error message, like `addList`. */
   const addChartList = useCallback(
-    (chartId: string) => {
+    (chartId: string): string | null => {
       const entry = CHART_BY_ID.get(chartId);
-      if (!entry) return;
-      addList(
+      if (!entry) return null;
+      return addList(
         {
           provider: "imdb",
           sourceRef: entry.id,
@@ -379,6 +401,18 @@ export function useAccountConfiguration(
 
   const removeList = useCallback((localId: string) => {
     setLists((current) => current.filter((list) => list.localId !== localId));
+  }, []);
+
+  const mergeLists = useCallback((targetLocalId: string, otherId: string) => {
+    setLists((rows) => mergeRows(rows, targetLocalId, otherId));
+  }, []);
+
+  const removeSource = useCallback((localId: string, index: number) => {
+    setLists((rows) => removeRowSource(rows, localId, index));
+  }, []);
+
+  const splitSource = useCallback((localId: string, index: number) => {
+    setLists((rows) => splitRowSource(rows, localId, index));
   }, []);
 
   const reorderLists = useCallback((initialIndex: number, index: number) => {
@@ -429,12 +463,16 @@ export function useAccountConfiguration(
     if (lists.length > MAX_LISTS) {
       return `You can have at most ${MAX_LISTS} lists.`;
     }
-    const seen = new Set<string>();
+    const keys = sourceKeys(lists);
+    if (new Set(keys).size !== keys.length) {
+      return "Each list can only be added once.";
+    }
+    if (keys.length > MAX_SOURCES_PER_ACCOUNT) {
+      return `You can have at most ${MAX_SOURCES_PER_ACCOUNT} Source lists in all your Lists.`;
+    }
     for (const list of lists) {
-      if (seen.has(listKey(list))) {
-        return "Each list can only be added once.";
-      }
-      seen.add(listKey(list));
+      const problem = listMergeProblem(list);
+      if (problem) return `${rowTitle(list)}: ${problem}`;
     }
     return null;
   })();
@@ -449,6 +487,8 @@ export function useAccountConfiguration(
       displayMode: list.displayMode,
       position: index,
       catalogSettings: list.catalogSettings,
+      mergedSources: list.mergedSources,
+      sourceLabel: list.sourceLabel,
     }));
 
   /**
@@ -474,7 +514,7 @@ export function useAccountConfiguration(
     access === "new"
       ? "none"
       : reinstallState(installed, saved, {
-          signature: getListReinstallSignature(lists),
+          signature: getListReinstallSignature(lists, knownGenres),
           actionsLive,
         });
 
@@ -540,6 +580,7 @@ export function useAccountConfiguration(
               ...row,
               id: saved.id,
               sourceRef: saved.sourceRef,
+              mergedSources: saved.mergedSources ?? [],
               availableGenres: saved.availableGenres ?? [],
             }
           : row;
@@ -563,19 +604,26 @@ export function useAccountConfiguration(
           const saved = savedByLocalId.get(row.localId);
           const submitted = submittedByLocalId.get(row.localId);
           if (!saved || !submitted) return row;
-          const sourceUnchanged = row.sourceRef === submitted.sourceRef;
+          const sourceUnchanged =
+            JSON.stringify(sourceKeys([row])) ===
+            JSON.stringify(sourceKeys([submitted]));
           return {
             ...row,
             id: saved.id,
             sourceRef: sourceUnchanged ? saved.sourceRef : row.sourceRef,
+            mergedSources: sourceUnchanged
+              ? saved.mergedSources
+              : row.mergedSources,
             availableGenres: sourceUnchanged
               ? saved.availableGenres
               : row.availableGenres,
           };
         }),
       );
+      const genres = learnSourceGenres(knownGenres, body.lists);
+      setKnownGenres(genres);
       const nowSaved = {
-        signature: getListReinstallSignature(savedRows),
+        signature: getListReinstallSignature(savedRows, genres),
         actionsLive: submittedActionsLive,
       };
       // Compare with what Stremio read at install time, not with the last
@@ -640,7 +688,10 @@ export function useAccountConfiguration(
         setLists((current) =>
           current.map((row) => {
             const match = refreshed.find(
-              (list) => list.id === row.id && list.sourceRef === row.sourceRef,
+              (list) =>
+                list.id === row.id &&
+                JSON.stringify(sourceKeys([row])) ===
+                  JSON.stringify(listSources(list).map(sourceKey)),
             );
             return match
               ? { ...row, availableGenres: match.availableGenres ?? [] }
@@ -774,6 +825,9 @@ export function useAccountConfiguration(
       addList(partial, lists),
     addChartList,
     removeList,
+    mergeLists,
+    removeSource,
+    splitSource,
     reorderLists,
     rpdbApiKey,
     setRpdbApiKey,

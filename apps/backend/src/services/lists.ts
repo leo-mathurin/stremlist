@@ -1,4 +1,10 @@
 import { parseSortOption } from "@stremlist/shared/constants";
+import type { ListSource } from "@stremlist/shared/list-merge";
+import {
+  isMergedList,
+  listRequiresConnection,
+  sourcesWithoutDates,
+} from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import {
   PROVIDERS,
@@ -28,6 +34,12 @@ import {
   getCachedList,
   writeCachedList,
 } from "./list-cache";
+import type { SourceCatalogData, SourceMeta } from "./list-cache";
+import {
+  mergeSourceCatalogs,
+  sourceCaches,
+  toStremioMeta,
+} from "./merged-lists";
 import type { RefreshOutcome } from "./sync-status";
 import { forgetSyncStatuses, recordRefreshOutcome } from "./sync-status";
 
@@ -68,6 +80,8 @@ export interface ListFetchConfig {
   listId: string;
   provider: ProviderId;
   sourceRef: string;
+  /** More Source lists of a merged List (ADR 0006). */
+  mergedSources?: readonly ListSource[];
   sort: CatalogSort;
   rpdbApiKey?: string | null;
   /**
@@ -90,7 +104,7 @@ export interface ListFetchConfig {
 }
 
 interface FreshList {
-  data: CatalogData;
+  data: SourceCatalogData;
   cachedAt: Date;
   generation: string | null;
 }
@@ -145,8 +159,25 @@ function withLinkBack(
   return { ...meta, description: base ? `${base}\n\n${line}` : line };
 }
 
+/**
+ * The cached form of an entry: its meta with the link back and the date it
+ * joined the Source list (metadata reused from the previous cache may carry
+ * an older date).
+ */
+function toSourceMeta(
+  meta: StremioMeta,
+  entry: SourceEntry,
+  provider: ProviderId,
+): SourceMeta {
+  const linked: SourceMeta = toStremioMeta(withLinkBack(meta, entry, provider));
+  const time = entry.addedAt ? Date.parse(entry.addedAt) : Number.NaN;
+  return Number.isFinite(time)
+    ? { ...linked, addedAt: new Date(time).toISOString() }
+    : linked;
+}
+
 export interface BuiltCatalog {
-  data: CatalogData;
+  data: SourceCatalogData;
   /** Unresolved entries that no strategy tried yet. */
   deferred: number;
   /** Entries without an IMDb ID yet, in Source list order. */
@@ -157,7 +188,7 @@ export interface BuiltCatalog {
 
 /**
  * Turn a Provider snapshot into a canonical Catalog (provider order). Without
- * a `listId` (a preview of a List not saved yet), no cached metadata is reused.
+ * a `cacheKey` (a preview), no cached metadata is reused.
  */
 export async function buildCatalog(
   adapter: ProviderAdapter,
@@ -165,7 +196,8 @@ export async function buildCatalog(
     ListFetchConfig,
     "provider" | "sourceRef" | "resolveBudgetMs"
   > & {
-    listId?: string;
+    /** Where the Source list keeps its cached Catalog. */
+    cacheKey?: string;
   },
   ctx: ProviderContext,
 ): Promise<BuiltCatalog> {
@@ -174,7 +206,7 @@ export async function buildCatalog(
     return {
       data: {
         metas: snapshot.entries.flatMap((entry) =>
-          entry.meta ? [withLinkBack(entry.meta, entry, config.provider)] : [],
+          entry.meta ? [toSourceMeta(entry.meta, entry, config.provider)] : [],
         ),
       },
       deferred: 0,
@@ -190,7 +222,7 @@ export async function buildCatalog(
   );
 
   const previous = new Map<string, StremioMeta>();
-  const cached = config.listId ? await getCachedList(config.listId) : null;
+  const cached = config.cacheKey ? await getCachedList(config.cacheKey) : null;
   if (cached && Date.now() - cached.cachedAt.getTime() < METADATA_MAX_AGE_MS) {
     for (const meta of cached.data.metas) previous.set(meta.id, meta);
   }
@@ -203,7 +235,7 @@ export async function buildCatalog(
   );
 
   const seen = new Set<string>();
-  const metas: StremioMeta[] = [];
+  const metas: SourceMeta[] = [];
   let unknown = 0;
   for (const { imdbId, entry } of resolved) {
     const meta = entry.meta ?? enriched.get(imdbId);
@@ -214,12 +246,12 @@ export async function buildCatalog(
     const key = `${meta.type}:${meta.id}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    metas.push(withLinkBack(meta, entry, config.provider));
+    metas.push(toSourceMeta(meta, entry, config.provider));
   }
 
   if (unresolvedEntries.length > 0 || unknown > 0) {
     console.log(
-      `List ${config.listId ?? "preview"} (${config.provider}): ${metas.length} titles, ${unresolvedEntries.length} unresolved entries (${deferred} not tried yet), ${unknown} without metadata`,
+      `List ${config.cacheKey ?? "preview"} (${config.provider}): ${metas.length} titles, ${unresolvedEntries.length} unresolved entries (${deferred} not tried yet), ${unknown} without metadata`,
     );
   }
   return {
@@ -234,8 +266,15 @@ function freshnessOf(adapter: ProviderAdapter, sourceRef: string): number {
   return adapter.freshnessFor?.(sourceRef) ?? adapter.freshnessMs;
 }
 
+/**
+ * One Source list of a List, as a read handles it: `listId` stays the List
+ * (its sync status is recorded there), `cacheKey` is where this Source list
+ * keeps its cached Catalog (ADR 0006).
+ */
+type SourceReadConfig = ListFetchConfig & { cacheKey: string };
+
 async function fetchAndCacheList(
-  config: ListFetchConfig,
+  config: SourceReadConfig,
   signal: AbortSignal,
 ): Promise<FreshList> {
   const adapter = getProvider(config.provider);
@@ -247,7 +286,7 @@ async function fetchAndCacheList(
     }
   };
 
-  let built: { data: CatalogData; deferred: number };
+  let built: BuiltCatalog;
   try {
     if (!isProviderEnabled(config.provider)) {
       throw new SourceUnavailableError(
@@ -282,9 +321,9 @@ async function fetchAndCacheList(
       : cachedAt;
   let generation: string | null = null;
   try {
-    generation = await writeCachedList(config.listId, data, storedAt, config);
+    generation = await writeCachedList(config.cacheKey, data, storedAt, config);
   } catch (error) {
-    console.error(`Failed to cache list ${config.listId} in R2:`, error);
+    console.error(`Failed to cache list ${config.cacheKey} in R2:`, error);
   }
   await record(
     generation === null
@@ -302,12 +341,12 @@ async function fetchAndCacheList(
  * the new one.
  */
 function refreshList(
-  config: ListFetchConfig,
+  config: SourceReadConfig,
   { supersede = false } = {},
 ): Promise<FreshList> {
   // The source is part of the key: a read started before an edit of the List
   // must not answer for its new Source list.
-  const key = `${config.listId}:${config.provider}:${config.sourceRef}:${config.allowConnection ? "c" : "p"}`;
+  const key = `${config.cacheKey}:${config.provider}:${config.sourceRef}:${config.allowConnection ? "c" : "p"}`;
   const existing = inFlightRefreshes.get(key);
   if (existing && !supersede) return existing.promise;
   existing?.controller.abort();
@@ -325,19 +364,19 @@ function refreshList(
   return refresh.promise;
 }
 
-function contentGeneration(listId: string, data: CatalogData): string {
+function contentGeneration(listId: string, data: SourceCatalogData): string {
   return `${listId}:${data.metas.map((meta) => `${meta.type}:${meta.id}`).join(",")}`;
 }
 
 function present(
-  data: CatalogData,
+  data: SourceCatalogData,
   sort: CatalogSort,
   generation: string,
   rpdbApiKey?: string | null,
 ): CatalogData {
   return {
     metas: sortCatalog(data.metas, sort, generation).map((meta) => ({
-      ...meta,
+      ...toStremioMeta(meta),
       poster: buildPosterUrl(meta.id, meta.poster, rpdbApiKey),
     })),
   };
@@ -354,18 +393,26 @@ export function sourceProblemReason(error: unknown): SourceProblemReason {
   return "unavailable";
 }
 
+/** The canonical Catalog of one Source list, before sorting and posters. */
+interface SourceCatalog {
+  data: SourceCatalogData;
+  generation: string;
+  /** When this call read the Provider; null when the cache answered. */
+  readAt: Date | null;
+}
+
 /**
- * The Titles of a List, sorted and with posters applied. Cache first; a stale
- * or empty cache triggers a Provider read; a failed read falls back to the
- * last non-empty cached Catalog.
+ * The canonical Catalog of one Source list. Cache first; a stale or empty
+ * cache triggers a Provider read; a failed read falls back to the last
+ * non-empty cached Catalog. The caller marks when the Account was read.
  */
-export async function getListCatalog(
-  config: ListFetchConfig,
-): Promise<CatalogData> {
+async function readSourceCatalog(
+  config: SourceReadConfig,
+): Promise<SourceCatalog> {
   const adapter = getProvider(config.provider);
   const freshnessMs = freshnessOf(adapter, config.sourceRef);
   if (!config.forceFresh) {
-    const cached = await getCachedList(config.listId, config);
+    const cached = await getCachedList(config.cacheKey, config);
     // An empty cache is not a hit: it cannot be told apart from "the list
     // became private", which must surface its reason.
     if (
@@ -373,34 +420,22 @@ export async function getListCatalog(
       cached.data.metas.length > 0 &&
       Date.now() - cached.cachedAt.getTime() < freshnessMs
     ) {
-      return present(
-        cached.data,
-        config.sort,
-        cached.generation,
-        config.rpdbApiKey,
-      );
+      return { data: cached.data, generation: cached.generation, readAt: null };
     }
   }
 
   try {
     const fresh = await refreshList(config);
-    if (!config.skipAccountTimestamp) {
-      await markAccountFetched(
-        config.accountId,
-        "last_fetched_at",
-        fresh.cachedAt,
-      );
-    }
-    return present(
-      fresh.data,
-      config.sort,
-      fresh.generation ?? contentGeneration(config.listId, fresh.data),
-      config.rpdbApiKey,
-    );
+    return {
+      data: fresh.data,
+      generation:
+        fresh.generation ?? contentGeneration(config.cacheKey, fresh.data),
+      readAt: fresh.cachedAt,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(
-      `Reading list ${config.listId} (${config.provider}) failed, trying cache:`,
+      `Reading list ${config.cacheKey} (${config.provider}) failed, trying cache:`,
       message,
     );
 
@@ -408,24 +443,88 @@ export async function getListCatalog(
     // items it cached while connected.
     const lostConnection = sourceProblemReason(error) === "needs_connection";
     if (!config.noCacheFallback && !lostConnection) {
-      const cached = await getCachedList(config.listId, config);
+      const cached = await getCachedList(config.cacheKey, config);
       if (cached && cached.data.metas.length > 0) {
         await markAccountFetched(config.accountId, "last_cache_served_at");
-        return present(
-          cached.data,
-          config.sort,
-          cached.generation,
-          config.rpdbApiKey,
-        );
+        return {
+          data: cached.data,
+          generation: cached.generation,
+          readAt: null,
+        };
       }
     }
 
     throw new ListUnavailableError(
       config,
       sourceProblemReason(error),
-      `Failed to read list ${config.listId} and no cache available: ${message}`,
+      `Failed to read list ${config.cacheKey} and no cache available: ${message}`,
     );
   }
+}
+
+/**
+ * The Titles of a List, sorted and with posters applied. Each Source list is
+ * read and cached on its own (a List with one Source list has only one), and
+ * a merged List shows their Titles once each (ADR 0006). A Source list that
+ * cannot be served is left out, so the others still show; the List fails
+ * only when none can be served, or on a manual refresh (`noCacheFallback`)
+ * when any of them fails.
+ */
+export async function getListCatalog(
+  config: ListFetchConfig,
+): Promise<CatalogData> {
+  const list = {
+    id: config.listId,
+    provider: config.provider,
+    sourceRef: config.sourceRef,
+    mergedSources: config.mergedSources,
+  };
+  const results = await Promise.allSettled(
+    sourceCaches(list).map(({ source, cacheKey }) =>
+      readSourceCatalog({
+        ...config,
+        cacheKey,
+        provider: source.provider,
+        sourceRef: source.sourceRef,
+        mergedSources: undefined,
+      }),
+    ),
+  );
+  const read: SourceCatalog[] = [];
+  const failures: unknown[] = [];
+  for (const result of results) {
+    if (result.status === "fulfilled") read.push(result.value);
+    else failures.push(result.reason);
+  }
+  if (read.length === 0 || (config.noCacheFallback && failures.length > 0)) {
+    throw failures[0];
+  }
+  if (failures.length > 0) {
+    console.warn(
+      `List ${config.listId}: ${failures.length} of ${results.length} Source lists left out of the merged Catalog`,
+    );
+  }
+
+  const readAt = read.reduce<Date | null>(
+    (latest, { readAt }) =>
+      readAt && (!latest || readAt > latest) ? readAt : latest,
+    null,
+  );
+  if (readAt && !config.skipAccountTimestamp) {
+    await markAccountFetched(config.accountId, "last_fetched_at", readAt);
+  }
+  const metas = isMergedList(list)
+    ? mergeSourceCatalogs(
+        read.map((catalog) => catalog.data.metas),
+        sourcesWithoutDates(list).length === 0,
+      )
+    : read[0].data.metas;
+  return present(
+    { metas },
+    config.sort,
+    read.map((catalog) => catalog.generation).join("|"),
+    config.rpdbApiKey,
+  );
 }
 
 /**
@@ -443,19 +542,22 @@ export async function findMetaInAccountCache(
     // A Legacy alias can be guessed: it must not reveal what Connection
     // lists (history, collection…) contain.
     const lists = (await getAccountLists(account.id)).filter(
-      (list) =>
-        via === "private" ||
-        !sourceRequiresConnection(list.provider, list.sourceRef),
+      (list) => via === "private" || !listRequiresConnection(list),
     );
-    if (lists.length === 0) return null;
-    const found = await findCachedMeta(
-      lists.map((list) => list.id),
-      type,
-      id,
+    // Every cached copy, so the detail page keeps the link back of each
+    // Source list that has the Title, as its catalog card does.
+    const copies = await Promise.all(
+      lists
+        .flatMap(sourceCaches)
+        .map(({ cacheKey }) => findCachedMeta(cacheKey, type, id)),
     );
+    const found = mergeSourceCatalogs(
+      [copies.filter((copy) => copy !== null)],
+      false,
+    ).at(0);
     if (!found) return null;
     return {
-      ...found,
+      ...toStremioMeta(found),
       poster: buildPosterUrl(found.id, found.poster, account.rpdbApiKey),
     };
   } catch (error) {
@@ -468,56 +570,66 @@ export async function findMetaInAccountCache(
 }
 
 /**
- * After a disconnect: drop the cached Catalogs of the Account's Lists that
- * were read through that Connection, so nothing private stays served, and
- * their sync statuses, which described those Catalogs.
+ * After a disconnect: drop the cached Catalogs of the Source lists that were
+ * read through that Connection, so nothing private stays served, and their
+ * sync statuses, which described those Catalogs. The other Source lists of a
+ * merged List keep theirs.
  */
 export async function forgetConnectionLists(
   accountId: string,
   provider: ProviderId,
 ): Promise<void> {
-  const lists = (await getAccountLists(accountId)).filter(
-    (list) =>
-      list.provider === provider &&
-      sourceRequiresConnection(list.provider, list.sourceRef),
+  const sources = (await getAccountLists(accountId)).flatMap((list) =>
+    sourceCaches(list)
+      .filter(
+        ({ source }) =>
+          source.provider === provider &&
+          sourceRequiresConnection(source.provider, source.sourceRef),
+      )
+      .map(({ source, cacheKey }) => ({
+        ...source,
+        cacheKey,
+        listId: list.id,
+      })),
   );
   await Promise.all([
-    ...lists.map((list) => deleteCachedList(list.id)),
-    forgetSyncStatuses(lists.map((list) => list.id)),
+    ...sources.map(({ cacheKey }) => deleteCachedList(cacheKey)),
+    forgetSyncStatuses(sources),
   ]);
 }
 
 /**
- * After a new authorization: read the Account's Lists on that Provider again,
- * so their Catalogs and sync statuses follow the new Connection at once
- * instead of at the next stale read.
+ * After a new authorization: read the Source lists of the Account's Lists on
+ * that Provider again, so their Catalogs and sync statuses follow the new
+ * Connection at once instead of at the next stale read.
  */
 export async function rereadConnectionLists(
   accountId: string,
   provider: ProviderId,
 ): Promise<void> {
-  const lists = (await getAccountLists(accountId)).filter(
-    (list) => list.provider === provider,
-  );
-  for (const list of lists) {
-    try {
-      await refreshList(
-        {
-          accountId,
-          listId: list.id,
-          provider: list.provider,
-          sourceRef: list.sourceRef,
-          sort: parseSortOption(list.sortOption),
-          allowConnection: true,
-          resolveBudgetMs: 25_000,
-        },
-        { supersede: true },
-      );
-    } catch (error) {
-      console.error(
-        `Failed to refresh list ${list.id} after connecting ${provider}:`,
-        error instanceof Error ? error.message : error,
-      );
+  for (const list of await getAccountLists(accountId)) {
+    for (const { source, cacheKey } of sourceCaches(list)) {
+      if (source.provider !== provider) continue;
+      try {
+        await refreshList(
+          {
+            accountId,
+            listId: list.id,
+            cacheKey,
+            provider: source.provider,
+            sourceRef: source.sourceRef,
+            sort: parseSortOption(list.sortOption),
+            allowConnection: true,
+            resolveBudgetMs: 25_000,
+          },
+          { supersede: true },
+        );
+      } catch (error) {
+        console.error(
+          `Failed to refresh list ${cacheKey} after connecting ${provider}:`,
+          error instanceof Error ? error.message : error,
+        );
+      }
     }
   }
 }

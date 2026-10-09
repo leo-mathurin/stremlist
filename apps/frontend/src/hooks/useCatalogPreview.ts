@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { InferRequestType } from "hono/client";
 import type { CatalogPreview } from "@stremlist/shared/catalog-preview";
+import type { ProviderId } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { api } from "@/lib/api";
-import { listKey } from "@/lib/list-form";
+import { sourceKeys } from "@/lib/list-form";
 import type { ListFormRow } from "@/lib/list-form";
 
 type PreviewBody = InferRequestType<typeof api.lists.preview.$post>["json"];
@@ -11,7 +12,12 @@ type PreviewBody = InferRequestType<typeof api.lists.preview.$post>["json"];
 type CatalogPreviewState =
   | { status: "loading" }
   | { status: "ready"; preview: CatalogPreview; updating: boolean }
-  | { status: "problem"; reason: SourceProblemReason }
+  | {
+      status: "problem";
+      reason: SourceProblemReason;
+      /** In a merged List, the Source list that has the problem. */
+      source?: { provider: ProviderId; sourceRef: string };
+    }
   | { status: "error" };
 
 /** Wait this long after the last settings change before asking again. */
@@ -20,9 +26,9 @@ const SETTINGS_DEBOUNCE_MS = 300;
 /**
  * The preview of a List while `enabled`. A change of sort or filters keeps
  * the current preview on screen (marked `updating`) until the new one comes;
- * a change of Source list starts again from the loading state.
- * `connectionKey` changes when the Account's Connection to the Provider
- * changes (connected, disconnected, connected again, marked for renewal or
+ * a change of Source lists starts again from the loading state.
+ * `connectionKey` changes when the Account's Connection to a Provider of the
+ * List changes (connected, disconnected, connected again, marked for renewal or
  * working again), so the preview is read again. It is not sent.
  */
 export function useCatalogPreview({
@@ -40,13 +46,22 @@ export function useCatalogPreview({
     status: "loading",
   });
   const [attempt, setAttempt] = useState(0);
-  const source = listKey(list);
+  const source = sourceKeys([list]).join(",");
   const shownSource = useRef<string | null>(null);
   // A string, so that a new object with the same values asks nothing again.
   const body = JSON.stringify({
     accountKey: accountKey ?? undefined,
     provider: list.provider,
     sourceRef: list.sourceRef,
+    // Labels name Source lists on this page only: a new label is no new
+    // preview. A List with one Source list sends none.
+    mergedSources:
+      list.mergedSources.length > 0
+        ? list.mergedSources.map(({ provider, sourceRef }) => ({
+            provider,
+            sourceRef,
+          }))
+        : undefined,
     sortOption: list.sortOption,
     displayMode: list.displayMode,
     catalogSettings: list.catalogSettings,
@@ -73,7 +88,11 @@ export function useCatalogPreview({
             setState(
               preview.ok
                 ? { status: "ready", preview, updating: false }
-                : { status: "problem", reason: preview.reason },
+                : {
+                    status: "problem",
+                    reason: preview.reason,
+                    source: preview.source,
+                  },
             );
           })
           .catch(() => {

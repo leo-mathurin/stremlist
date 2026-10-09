@@ -167,9 +167,11 @@ export type Database = {
           created_at: string;
           display_mode: string;
           id: string;
+          merged_sources: Json;
           position: number;
           provider: string;
           sort_option: string;
+          source_label: string | null;
           source_ref: string;
           updated_at: string;
         };
@@ -180,9 +182,11 @@ export type Database = {
           created_at?: string;
           display_mode?: string;
           id?: string;
+          merged_sources?: Json;
           position?: number;
           provider: string;
           sort_option?: string;
+          source_label?: string | null;
           source_ref: string;
           updated_at?: string;
         };
@@ -193,9 +197,11 @@ export type Database = {
           created_at?: string;
           display_mode?: string;
           id?: string;
+          merged_sources?: Json;
           position?: number;
           provider?: string;
           sort_option?: string;
+          source_label?: string | null;
           source_ref?: string;
           updated_at?: string;
         };

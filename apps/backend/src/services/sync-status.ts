@@ -1,8 +1,12 @@
 import type { Database } from "@stremlist/shared/database.types";
+import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { sourceRequiresConnection } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
-import type { ConfigList } from "@stremlist/shared/stremio.types";
+import type {
+  AccountSyncSnapshot,
+  ConfigList,
+} from "@stremlist/shared/stremio.types";
 import type {
   ListSyncStatus,
   ListSyncStatuses,
@@ -10,6 +14,7 @@ import type {
 import { supabase } from "../lib/supabase";
 import type { ConnectionAccess } from "../providers/types";
 import { getCachedListInfo } from "./list-cache";
+import { sourceCaches } from "./merged-lists";
 
 /** How one refresh of a List ended. */
 export type RefreshOutcome =
@@ -74,51 +79,55 @@ export async function recordRefreshOutcome(
 }
 
 /**
- * Forget the statuses of Lists whose cached Catalogs were deleted (after a
- * disconnect): an old success must not say their Titles are still in Stremio.
+ * Forget the statuses of Source lists whose cached Catalogs were deleted
+ * (after a disconnect): an old success must not say their Titles are still
+ * in Stremio. The other Source lists of a merged List keep theirs.
  */
-export async function forgetSyncStatuses(listIds: string[]): Promise<void> {
-  if (listIds.length === 0) return;
-  const { error } = await supabase
-    .from("list_sync_status")
-    .delete()
-    .in("list_id", listIds);
-  if (error) throw error;
+export async function forgetSyncStatuses(
+  sources: { listId: string; provider: ProviderId; sourceRef: string }[],
+): Promise<void> {
+  const results = await Promise.all(
+    sources.map(({ listId, provider, sourceRef }) =>
+      supabase
+        .from("list_sync_status")
+        .delete()
+        .eq("list_id", listId)
+        .eq("provider", provider)
+        .eq("source_ref", sourceRef),
+    ),
+  );
+  const failed = results.find(({ error }) => error);
+  if (failed?.error) throw failed.error;
+}
+
+function toStatus(row: StatusRow): ListSyncStatus {
+  return {
+    provider: row.provider as ProviderId,
+    sourceRef: row.source_ref,
+    lastAttemptAt: row.last_attempt_at,
+    lastSuccessAt: row.last_success_at,
+    titleCount: row.title_count,
+    problem: row.failure_reason as SourceProblemReason | null,
+    failingSince: row.failing_since,
+  };
 }
 
 /**
- * The sync status of one List from its recorded rows. Lists cached before
- * sync statuses existed take their last success from the cache, also after
- * their first recorded refresh failed (Stremio still gets those cached
- * Titles). A row for another Source list means the List changed its Source
- * list: its cache may still hold the old one, so it is not used.
+ * Take the last success from the cache when no refresh recorded one: Lists
+ * cached before sync statuses existed, also after their first recorded
+ * refresh failed (Stremio still gets those cached Titles).
  */
-async function syncStatusOf(
-  list: ConfigList,
-  rows: StatusRow[],
+async function withCachedSuccess(
+  status: ListSyncStatus | null,
+  source: ListSource,
+  cacheKey: string,
 ): Promise<ListSyncStatus | null> {
-  const row = rows.find(
-    (candidate) =>
-      candidate.provider === list.provider &&
-      candidate.source_ref === list.sourceRef,
-  );
-  const status: ListSyncStatus | null = row
-    ? {
-        sourceRef: row.source_ref,
-        lastAttemptAt: row.last_attempt_at,
-        lastSuccessAt: row.last_success_at,
-        titleCount: row.title_count,
-        problem: row.failure_reason as SourceProblemReason | null,
-        failingSince: row.failing_since,
-      }
-    : null;
-  const changedSource = rows.some((candidate) => candidate !== row);
-  if (changedSource || status?.lastSuccessAt) return status;
-
-  const cached = await getCachedListInfo(list.id, list);
+  if (status?.lastSuccessAt) return status;
+  const cached = await getCachedListInfo(cacheKey, source);
   if (!cached) return status;
   return {
-    sourceRef: list.sourceRef,
+    provider: source.provider,
+    sourceRef: source.sourceRef,
     lastAttemptAt: cached.cachedAt,
     problem: null,
     failingSince: null,
@@ -129,14 +138,46 @@ async function syncStatusOf(
 }
 
 /**
- * The sync status of each List, for the Source list it reads now. Lists that
- * were never read are left out. When the recorded statuses cannot be read,
- * only the cache answers: the page shows Lists as waiting, not as broken.
+ * The sync status of each Source list of one List, from its recorded rows,
+ * in the List's order; null for a Source list that was never read. In a
+ * List with one Source list, a row for another Source list means the List
+ * changed its Source list: its cache (under the List ID) may still hold the
+ * old one, so it is not used. Each Source list of a merged List has a cache
+ * of its own (ADR 0006).
+ */
+async function sourceStatusesOf(
+  list: ConfigList,
+  rows: StatusRow[],
+): Promise<(ListSyncStatus | null)[]> {
+  const caches = sourceCaches(list);
+  return Promise.all(
+    caches.map(async ({ source, cacheKey }) => {
+      const row = rows.find(
+        (candidate) =>
+          candidate.provider === source.provider &&
+          candidate.source_ref === source.sourceRef,
+      );
+      const status = row ? toStatus(row) : null;
+      const changedSource =
+        caches.length === 1 && rows.some((candidate) => candidate !== row);
+      return changedSource
+        ? status
+        : await withCachedSuccess(status, source, cacheKey);
+    }),
+  );
+}
+
+/**
+ * The sync status of each List, for the Source lists it reads now: its
+ * first Source list in `syncStatus`, the others of a merged List in
+ * `sourceSyncStatus`. Source lists that were never read are left out. When
+ * the recorded statuses cannot be read, only the cache answers: the page
+ * shows Lists as waiting, not as broken.
  */
 export async function getListSyncStatuses(
   lists: ConfigList[],
-): Promise<ListSyncStatuses> {
-  if (lists.length === 0) return {};
+): Promise<Pick<AccountSyncSnapshot, "syncStatus" | "sourceSyncStatus">> {
+  if (lists.length === 0) return { syncStatus: {}, sourceSyncStatus: {} };
   const { data, error } = await supabase
     .from("list_sync_status")
     .select("*")
@@ -149,16 +190,19 @@ export async function getListSyncStatuses(
   }
   const statuses = await Promise.all(
     lists.map((list) =>
-      syncStatusOf(
+      sourceStatusesOf(
         list,
         (data ?? []).filter((row) => row.list_id === list.id),
       ),
     ),
   );
-  return Object.fromEntries(
-    lists.flatMap((list, index) => {
-      const status = statuses[index];
-      return status ? [[list.id, status]] : [];
-    }),
-  );
+  const syncStatus: ListSyncStatuses = {};
+  const sourceSyncStatus: Record<string, ListSyncStatus[]> = {};
+  lists.forEach((list, index) => {
+    const [first, ...others] = statuses[index];
+    if (first) syncStatus[list.id] = first;
+    const read = others.filter((status) => status !== null);
+    if (read.length > 0) sourceSyncStatus[list.id] = read;
+  });
+  return { syncStatus, sourceSyncStatus };
 }

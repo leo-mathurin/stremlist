@@ -591,6 +591,7 @@ describe("simkl entries", () => {
         title: "Charmed",
         year: 1998,
         sourceUrl: "https://simkl.com/tv/297/charmed",
+        addedAt: "2018-02-24T23:55:13Z",
       },
       {
         imdbId: undefined,
@@ -599,6 +600,7 @@ describe("simkl entries", () => {
         title: "Attack on Titan: The Last Attack",
         year: 2024,
         sourceUrl: "https://simkl.com/anime/2544548/",
+        addedAt: "2025-01-01T00:00:00Z",
       },
       {
         imdbId: "tt0110912",
@@ -607,6 +609,7 @@ describe("simkl entries", () => {
         title: "Pulp Fiction",
         year: 1994,
         sourceUrl: "https://simkl.com/movies/54130/pulp-fiction",
+        addedAt: "2026-05-14T06:49:56Z",
       },
     ]);
   });

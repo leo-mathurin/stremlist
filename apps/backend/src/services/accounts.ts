@@ -4,13 +4,17 @@ import {
   DEFAULT_SORT_OPTION,
   IMDB_USER_ID_PATTERN,
 } from "@stremlist/shared/constants";
+import type { DisplayMode } from "@stremlist/shared/constants";
 import type { Tables } from "@stremlist/shared/database.types";
+import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
 import type { AddonAccess, ConfigList } from "@stremlist/shared/stremio.types";
+import { z } from "zod";
 import { supabase } from "../lib/supabase";
 import { catalogSettingsSchema } from "./catalog-settings";
 import { deleteCachedList } from "./list-cache";
+import { unusedSourceCaches } from "./merged-lists";
 
 type AccountRow = Tables<"accounts">;
 type ListRow = Tables<"lists">;
@@ -41,9 +45,47 @@ export interface ListInput {
   sourceRef: string;
   catalogTitle?: string;
   sortOption: string;
-  displayMode?: string;
+  displayMode: DisplayMode;
   position: number;
   catalogSettings?: CatalogSettings;
+  mergedSources?: ListSource[];
+  sourceLabel?: string;
+  /**
+   * The client omitted the merged Source lists, so `mergedSources` are the
+   * saved ones: keep them, and refuse the save if another save changed them.
+   */
+  keptMergedSources?: boolean;
+}
+
+/** A concurrent save changed merged Source lists that this save kept. */
+export class MergedSourcesChangedError extends Error {}
+
+const storedSourcesSchema = z.array(
+  z.object({
+    provider: z.string(),
+    source_ref: z.string(),
+    label: z.string().optional(),
+  }),
+);
+
+/** The stored form of merged Source lists (`lists.merged_sources`). */
+function toStoredSources(sources: readonly ListSource[]) {
+  return sources.map((source) => ({
+    provider: source.provider,
+    source_ref: source.sourceRef,
+    ...(source.label ? { label: source.label } : {}),
+  }));
+}
+
+/** The merged Source lists of a row; unknown Providers are left out. */
+function mapMergedSources(value: unknown): ListSource[] {
+  const parsed = storedSourcesSchema.safeParse(value);
+  if (!parsed.success) return [];
+  return parsed.data.flatMap(({ provider, source_ref, label }) =>
+    isProviderId(provider)
+      ? [{ provider, sourceRef: source_ref, ...(label ? { label } : {}) }]
+      : [],
+  );
 }
 
 function mapAccount(row: AccountRow): Account {
@@ -61,6 +103,7 @@ function mapAccount(row: AccountRow): Account {
 function mapList(row: ListRow): ConfigList | null {
   if (!isProviderId(row.provider)) return null;
   const settings = catalogSettingsSchema.safeParse(row.catalog_settings);
+  const mergedSources = mapMergedSources(row.merged_sources);
   return {
     id: row.id,
     provider: row.provider,
@@ -72,6 +115,8 @@ function mapList(row: ListRow): ConfigList | null {
     ...(settings.success && Object.keys(settings.data).length > 0
       ? { catalogSettings: settings.data }
       : {}),
+    ...(mergedSources.length > 0 ? { mergedSources } : {}),
+    ...(row.source_label ? { sourceLabel: row.source_label } : {}),
   };
 }
 
@@ -201,9 +246,9 @@ export async function getAccountListById(
 }
 
 /**
- * Replace an Account's Lists and settings in one transaction. Removed Lists,
- * and Lists that now read another Source list, lose their cached Catalogs
- * afterwards (R2 cannot join the transaction).
+ * Replace an Account's Lists and settings in one transaction. Removed Lists
+ * and Source lists lose their cached Catalogs afterwards (R2 cannot join the
+ * transaction).
  */
 export async function replaceAccountConfig(
   accountId: string,
@@ -211,15 +256,7 @@ export async function replaceAccountConfig(
   rpdbApiKey: string | null,
   actions?: { enabled: boolean; providers: ProviderId[] },
 ): Promise<ConfigList[]> {
-  const { data: before, error: beforeError } = await supabase
-    .from("lists")
-    .select("id, provider, source_ref")
-    .eq("account_id", accountId);
-  if (beforeError) throw beforeError;
-  const sourceBefore = new Map(
-    before.map((row) => [row.id, `${row.provider}:${row.source_ref}`]),
-  );
-
+  const before = await getAccountLists(accountId);
   const { data, error } = await supabase.rpc("replace_account_config", {
     p_account_id: accountId,
     p_rpdb_api_key: rpdbApiKey,
@@ -229,45 +266,47 @@ export async function replaceAccountConfig(
       source_ref: list.sourceRef,
       catalog_title: list.catalogTitle ?? "",
       sort_option: list.sortOption,
-      display_mode: list.displayMode ?? "split",
+      display_mode: list.displayMode,
       position: list.position,
       ...(list.catalogSettings === undefined
         ? {}
         : { catalog_settings: { ...list.catalogSettings } }),
+      ...(list.keptMergedSources
+        ? { expected_merged_sources: toStoredSources(list.mergedSources ?? []) }
+        : { merged_sources: toStoredSources(list.mergedSources ?? []) }),
+      source_label: list.sourceLabel ?? null,
     })),
     p_actions_enabled: actions?.enabled ?? null,
     p_action_providers: actions?.providers ?? null,
   });
-  if (error) throw error;
+  if (error) {
+    // Raised by `replace_account_config` when kept Source lists changed.
+    if (error.message === "Merged Source lists changed") {
+      throw new MergedSourcesChangedError();
+    }
+    throw error;
+  }
 
   const result = data[0];
-  const rows = result.lists as ListRow[];
-  // Reads also check the source of a cached Catalog, but caches written
-  // before that check have none: drop them so the next read uses the new
-  // Source list.
-  const changed = rows
-    .filter((row) => {
-      const previous = sourceBefore.get(row.id);
-      return (
-        previous !== undefined &&
-        previous !== `${row.provider}:${row.source_ref}`
-      );
-    })
-    .map((row) => row.id);
-  const stale = [...result.deleted_ids, ...changed];
+  const saved = (result.lists as ListRow[])
+    .map(mapList)
+    .filter((list): list is ConfigList => !!list);
+  const unused = [
+    ...new Set([...result.deleted_ids, ...unusedSourceCaches(before, saved)]),
+  ];
   const cleanup = await Promise.allSettled(
-    stale.map((id) => deleteCachedList(id)),
+    unused.map((key) => deleteCachedList(key)),
   );
   cleanup.forEach((outcome, index) => {
     if (outcome.status === "rejected") {
       console.error(
-        `Failed to delete the R2 cache of list ${stale[index]}:`,
+        `Failed to delete the unused R2 cache ${unused[index]}:`,
         outcome.reason,
       );
     }
   });
 
-  return rows.map(mapList).filter((list): list is ConfigList => !!list);
+  return saved;
 }
 
 /**
@@ -289,6 +328,8 @@ export async function createPrivateCopy(legacy: Account): Promise<Account> {
       displayMode: list.displayMode,
       position: index,
       catalogSettings: list.catalogSettings,
+      mergedSources: list.mergedSources,
+      sourceLabel: list.sourceLabel,
     })),
     legacy.rpdbApiKey,
   );

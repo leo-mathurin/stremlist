@@ -160,6 +160,8 @@ export interface PreviewRequest {
   accountKey?: string;
   provider: ProviderId;
   sourceRef: string;
+  /** The other Source lists of a merged List; absent for one Source list. */
+  mergedSources?: { provider: ProviderId; sourceRef: string }[];
   sortOption: string;
   displayMode: DisplayMode;
   catalogSettings?: CatalogSettings;

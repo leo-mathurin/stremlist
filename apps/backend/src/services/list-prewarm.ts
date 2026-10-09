@@ -66,6 +66,7 @@ async function runPrewarmBatch(
           listId: list.id,
           provider: list.provider,
           sourceRef: list.sourceRef,
+          mergedSources: list.mergedSources,
           sort: parseSortOption(list.sortOption),
           // Prewarming only needs the canonical cache. Poster customization is
           // applied later when Stremio requests the catalog.

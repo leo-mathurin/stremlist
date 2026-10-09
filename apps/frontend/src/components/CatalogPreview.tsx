@@ -19,7 +19,9 @@ import {
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import { DISPLAY_MODE_OPTIONS } from "@stremlist/shared/constants";
 import type { DisplayMode } from "@stremlist/shared/constants";
+import { isMergedList, listSources } from "@stremlist/shared/list-merge";
 import { PROVIDERS } from "@stremlist/shared/providers";
+import type { ProviderId } from "@stremlist/shared/providers";
 import {
   sourceProblemCopy,
   storedSourceNoun,
@@ -69,7 +71,10 @@ export default function CatalogPreview({
 }: {
   list: ListFormRow;
   accountKey: string | null;
-  /** Identifies the Account's Connection to the List's Provider, or "". */
+  /**
+   * Identifies the Account's Connections to the Providers of the List's
+   * Source lists, or "".
+   */
   connectionKey: string;
   /** The panel is visible: only then the preview is read. */
   open: boolean;
@@ -103,13 +108,13 @@ export default function CatalogPreview({
       </div>
 
       {state.status === "loading" ? (
-        <PreviewLoading label={PROVIDERS[list.provider].label} />
+        <PreviewLoading list={list} />
       ) : state.status === "problem" ? (
         <PreviewMessage
           tone={state.reason === "unavailable" ? "error" : "info"}
           onRetry={state.reason === "unavailable" ? retry : undefined}
         >
-          {problemMessage(list, state.reason)}
+          {problemMessage(state.source ?? list, state.reason)}
         </PreviewMessage>
       ) : state.status === "error" ? (
         <PreviewMessage tone="error" onRetry={retry}>
@@ -134,23 +139,32 @@ export default function CatalogPreview({
 }
 
 function problemMessage(
-  list: Pick<ListFormRow, "provider" | "sourceRef">,
+  source: { provider: ProviderId; sourceRef: string },
   reason: SourceProblemReason,
 ): string {
   const { title, fix } = sourceProblemCopy(
-    list.provider,
+    source.provider,
     reason,
-    storedSourceNoun(list.provider, list.sourceRef),
+    storedSourceNoun(source.provider, source.sourceRef),
   );
   return `${title}. ${fix}`;
 }
 
-function PreviewLoading({ label }: { label: string }) {
+function PreviewLoading({ list }: { list: ListFormRow }) {
+  const labels = [
+    ...new Set(
+      listSources(list).map((source) => PROVIDERS[source.provider].label),
+    ),
+  ];
+  const last = labels.pop();
+  const on = labels.length > 0 ? `${labels.join(", ")} and ${last}` : last;
   return (
     <div className="space-y-2" role="status">
       <p className="flex items-center gap-2 text-xs text-black/50">
         <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-        Reading the list on {label}. A big list can take a few seconds.
+        {isMergedList(list)
+          ? `Reading the Source lists on ${on}. Big lists can take a few seconds.`
+          : `Reading the list on ${on}. A big list can take a few seconds.`}
       </p>
       <div className="flex gap-3 overflow-hidden" aria-hidden="true">
         {Array.from({ length: 8 }, (_, index) => (
@@ -238,6 +252,15 @@ function PreviewBody({
             Show is set to {showOnlyLabel(shownType)}.
           </p>
         )}
+
+      {preview.sourceProblems?.map((problem) => (
+        <PreviewMessage
+          key={`${problem.provider}:${problem.sourceRef}`}
+          tone={problem.reason === "unavailable" ? "error" : "info"}
+        >
+          {`${problemMessage(problem, problem.reason)} Its titles are not in this catalog.`}
+        </PreviewMessage>
+      ))}
 
       <UnresolvedEntries unresolved={preview.unresolved} />
 

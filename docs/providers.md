@@ -9,6 +9,7 @@ How Stremlist reads each Provider, and why that method. Vocabulary: [`CONTEXT.md
 - Kill switch: `DISABLED_PROVIDERS=trakt,justwatch` (one variable for all Providers, no deploy needed). A turned-off Provider gets no request at all: no Source list read, no ID resolution strategy that calls it (for example the JustWatch lookups of SensCritique), no Connection, no listing of a Connection's lists, no Action. Its Lists serve the last cached Catalog.
 - The configure page shows each Provider's official mark, unaltered, only to say that Stremlist works with it. The footer names the logos as trademarks of their owners, with the attribution that IMDb's brand rules ask for.
 - Actions open a Stremlist page, never a video clip ([ADR 0003](adr/0003-actions-open-a-page-not-a-clip.md)).
+- A List can merge Source lists of different Providers ([ADR 0006](adr/0006-merged-lists-cache-each-source-list.md)). Each adapter passes the date when a Title joined its Source list where the Provider gives one, so merged Lists can sort by date added; `sourceHasAddedDates` in `@stremlist/shared/list-merge` lists those Source lists.
 
 Every access method below was compared with all the others we found (official API, OAuth, client ID only, unofficial GraphQL, HTML scraping, RSS, exports, MDBList and StremThru as aggregators, browser relay, user cookies or tokens). Research and tests date from 2026-10-05 and 2026-10-06.
 

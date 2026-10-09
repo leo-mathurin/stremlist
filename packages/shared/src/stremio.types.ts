@@ -1,10 +1,17 @@
 import type { CatalogSettings } from "./catalog-settings";
 import type { DisplayMode } from "./constants";
+import type { ListSource } from "./list-merge";
 import type { ProviderId } from "./providers";
-import type { ListSyncStatuses } from "./sync-status";
+import type { ListSyncStatus, ListSyncStatuses } from "./sync-status";
 
 export interface CatalogData {
   metas: StremioMeta[];
+}
+
+/** Genres of Titles, by Title type. */
+export interface TitleGenres {
+  movie: string[];
+  series: string[];
 }
 
 /** One List of an Account, as the configure page and the API see it. */
@@ -17,7 +24,19 @@ export interface ConfigList {
   displayMode: DisplayMode;
   position: number;
   availableGenres?: string[];
+  /**
+   * The genres of each Source list's cached Titles, by type, in the order of
+   * `listSources`; null when nothing is cached for it yet.
+   */
+  sourceGenres?: (TitleGenres | null)[];
   catalogSettings?: CatalogSettings;
+  /**
+   * More Source lists merged into this List after `provider`/`sourceRef`.
+   * Absent for a List with one Source list.
+   */
+  mergedSources?: ListSource[];
+  /** The label of the first Source list (see `ListSource.label`). */
+  sourceLabel?: string;
 }
 
 export interface ConnectionSummary {
@@ -39,8 +58,13 @@ export type AddonAccess = "private" | "legacy";
  * page gets it with the config, after "Refresh now" and from its polls.
  */
 export interface AccountSyncSnapshot {
-  /** Sync status of the Lists, by List ID. */
+  /** Sync status of the first Source list of each List, by List ID. */
   syncStatus: ListSyncStatuses;
+  /**
+   * Sync status of the other Source lists of merged Lists, by List ID; a
+   * Source list that was never read has none. Absent from older backends.
+   */
+  sourceSyncStatus?: Record<string, ListSyncStatus[]>;
   connections: ConnectionSummary[];
 }
 
@@ -66,6 +90,8 @@ export interface ConfigListInput {
   displayMode?: DisplayMode;
   position?: number;
   catalogSettings?: CatalogSettings;
+  mergedSources?: ListSource[];
+  sourceLabel?: string;
 }
 
 export interface AccountConfigInput {

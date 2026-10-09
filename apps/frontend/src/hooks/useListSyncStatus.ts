@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { listSources, sourceKey } from "@stremlist/shared/list-merge";
 import { sourceRequiresConnection } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type {
   ConfigList,
   ConnectionSummary,
 } from "@stremlist/shared/stremio.types";
-import { listSyncState } from "@stremlist/shared/sync-status";
+import {
+  listSyncState,
+  mergedListSyncState,
+} from "@stremlist/shared/sync-status";
 import type {
   ListConnectionState,
   ListSyncState,
+  ListSyncStatus,
   ListSyncStatuses,
 } from "@stremlist/shared/sync-status";
 import { api } from "../lib/api";
@@ -19,8 +24,11 @@ const SYNC_POLL_MS = 4000;
 /** Stop asking after this many polls (two minutes). */
 const SYNC_POLL_LIMIT = 30;
 
-/** The saved Source list of each saved List. */
-type SavedList = Pick<ConfigList, "id" | "sourceRef">;
+/** The saved Source lists of each saved List. */
+type SavedList = Pick<
+  ConfigList,
+  "id" | "provider" | "sourceRef" | "mergedSources"
+>;
 
 /**
  * A server answer with the sync status and the Connections, and the saved
@@ -28,12 +36,20 @@ type SavedList = Pick<ConfigList, "id" | "sourceRef">;
  */
 interface SyncAnswer {
   syncStatus?: ListSyncStatuses;
+  sourceSyncStatus?: Record<string, ListSyncStatus[]>;
   connections: ConnectionSummary[];
   lists?: SavedList[];
 }
 
+/** Every Source list of a List, as one string. */
+function sourcesKey(
+  list: Pick<ConfigList, "provider" | "sourceRef" | "mergedSources">,
+) {
+  return listSources(list).map(sourceKey).join(",");
+}
+
 function sourcesOf(lists: SavedList[]): Record<string, string> {
-  return Object.fromEntries(lists.map((list) => [list.id, list.sourceRef]));
+  return Object.fromEntries(lists.map((list) => [list.id, sourcesKey(list)]));
 }
 
 /**
@@ -49,8 +65,12 @@ export function useListSyncStatus(
 ) {
   const [connections, setConnections] = useState<ConnectionSummary[]>([]);
   const [syncStatus, setSyncStatus] = useState<ListSyncStatuses>({});
-  // The saved Source list by List ID. A row whose Source list differs (a
-  // changed chart) is not saved yet, so it has no status to wait for.
+  const [sourceSyncStatus, setSourceSyncStatus] = useState<
+    Record<string, ListSyncStatus[]>
+  >({});
+  // The saved Source lists by List ID. A row whose Source lists differ (a
+  // changed chart, a merge) is not saved yet, so it has no status to wait
+  // for.
   const [savedSources, setSavedSources] = useState<Record<string, string>>({});
   // Bumped by every update that does not come from a poll, so a poll that
   // started before it cannot bring older values back.
@@ -61,6 +81,7 @@ export function useListSyncStatus(
     epoch.current += 1;
     setConnections(answer.connections);
     setSyncStatus(answer.syncStatus ?? {});
+    setSourceSyncStatus(answer.sourceSyncStatus ?? {});
     if (answer.lists) setSavedSources(sourcesOf(answer.lists));
   }, []);
 
@@ -69,9 +90,9 @@ export function useListSyncStatus(
     setSavedSources(sourcesOf(lists));
   }, []);
 
-  /** True when the row is a saved List with its saved Source list. */
+  /** True when the row is a saved List with its saved Source lists. */
   const isSaved = useCallback(
-    (row: ListFormRow) => !!row.id && savedSources[row.id] === row.sourceRef,
+    (row: ListFormRow) => !!row.id && savedSources[row.id] === sourcesKey(row),
     [savedSources],
   );
 
@@ -84,27 +105,48 @@ export function useListSyncStatus(
   }, []);
 
   /**
-   * What a List row shows about its refreshes. Null on a new setup. A row
-   * that is not saved, or whose Source list changed since the save, has no
-   * status yet.
+   * What a List row shows about its refreshes, from the state of each of its
+   * Source lists. Null on a new setup. A row that is not saved, or whose
+   * Source lists changed since the save, has no status yet.
    */
   const syncStateOf = useCallback(
     (row: ListFormRow): ListSyncState | null => {
       if (!saved) return null;
-      const connection = connections.find((c) => c.provider === row.provider);
-      const connectionState: ListConnectionState = !connection
-        ? "none"
-        : connection.needsRenewalSince
-          ? "renew"
-          : "ok";
-      const status = row.id && isSaved(row) ? syncStatus[row.id] : undefined;
-      return listSyncState(
-        status?.sourceRef === row.sourceRef ? status : undefined,
-        connectionState,
-        sourceRequiresConnection(row.provider, row.sourceRef),
+      const id = row.id;
+      const statuses =
+        id && isSaved(row)
+          ? [syncStatus[id], ...(sourceSyncStatus[id] ?? [])].filter(
+              (status) => status !== undefined,
+            )
+          : [];
+      return mergedListSyncState(
+        listSources(row).map((source) => {
+          const connection = connections.find(
+            (c) => c.provider === source.provider,
+          );
+          const connectionState: ListConnectionState = !connection
+            ? "none"
+            : connection.needsRenewalSince
+              ? "renew"
+              : "ok";
+          // Older answers name no Provider: the List's first one.
+          const status = statuses.find(
+            (candidate) =>
+              (candidate.provider ?? row.provider) === source.provider &&
+              candidate.sourceRef === source.sourceRef,
+          );
+          return {
+            source,
+            state: listSyncState(
+              status,
+              connectionState,
+              sourceRequiresConnection(source.provider, source.sourceRef),
+            ),
+          };
+        }),
       );
     },
-    [saved, connections, syncStatus, isSaved],
+    [saved, connections, syncStatus, sourceSyncStatus, isSaved],
   );
 
   const waitingKey = lists
@@ -129,6 +171,7 @@ export function useListSyncStatus(
           if (cancelled || started !== epoch.current) return;
           if (!("syncStatus" in body)) return;
           setSyncStatus(body.syncStatus);
+          setSourceSyncStatus(body.sourceSyncStatus ?? {});
           setConnections((current) =>
             JSON.stringify(current) === JSON.stringify(body.connections)
               ? current

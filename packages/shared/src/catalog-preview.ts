@@ -1,4 +1,5 @@
 import type { CatalogPreset } from "./catalog-settings";
+import type { ProviderId } from "./providers";
 import type { SourceProblemReason } from "./source-problems";
 
 /** One Title of a Catalog preview: only what a poster tile needs. */
@@ -49,11 +50,26 @@ export interface CatalogPreview {
   };
   /** Titles with an IMDb ID but no details yet, so they are not shown. */
   withoutDetails: number;
+  /**
+   * Source lists of a merged List that could not be read, so their Titles
+   * are not in the preview (Stremio leaves them out too). Absent when all
+   * were read.
+   */
+  sourceProblems?: PreviewSourceProblem[];
+}
+
+/** A Source list of a merged List that the preview could not read. */
+export interface PreviewSourceProblem {
+  provider: ProviderId;
+  sourceRef: string;
+  reason: SourceProblemReason;
 }
 
 export interface CatalogPreviewProblem {
   ok: false;
   reason: SourceProblemReason;
+  /** In a merged List, the Source list that has the problem. */
+  source?: { provider: ProviderId; sourceRef: string };
 }
 
 export type CatalogPreviewResponse = CatalogPreview | CatalogPreviewProblem;

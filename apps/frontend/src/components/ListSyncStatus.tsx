@@ -47,7 +47,7 @@ export function ListSyncLine({
   let text: ReactNode;
   let pulse = false;
   if (sync.kind === "connection") {
-    tone = sync.renew ? "bad" : "warn";
+    tone = sync.renew && !sync.othersShown ? "bad" : "warn";
     text = sync.renew ? "Connection needs to be renewed" : "Not connected";
   } else if (!saved) {
     tone = "idle";
@@ -74,6 +74,9 @@ export function ListSyncLine({
         Refresh failed · titles from <Time iso={sync.olderTitlesFrom} />
       </>
     );
+  } else if (sync.othersShown) {
+    tone = "warn";
+    text = "One Source list does not show";
   } else {
     tone = "bad";
     text = "Not showing in Stremio";
@@ -96,28 +99,50 @@ export function ListSyncLine({
 
 /**
  * What went wrong with a List and what the user can do, under its row.
- * Nothing when the List refreshes fine.
+ * Nothing when the List refreshes fine. In a merged List, the notice is
+ * about the Source list that has the problem (`sync.source`).
  */
 export function ListSyncNotice({
   title,
-  provider,
-  sourceRef,
+  provider: listProvider,
+  sourceRef: listSourceRef,
   sync,
   onConnect,
 }: {
   /** The List's name, so its button names the List it renews. */
   title: string;
+  /** The List's first Source list. */
   provider: ProviderId;
   sourceRef: string;
   sync: ListSyncState;
   /** Start the Connection again; absent when it cannot be started here. */
   onConnect?: () => void;
 }) {
+  if (sync.kind !== "connection" && sync.kind !== "failing") return null;
+  const provider = sync.source?.provider ?? listProvider;
+  const sourceRef = sync.source?.sourceRef ?? listSourceRef;
   const label = PROVIDERS[provider].label;
   const severe = attentionTone(sync) === "bad";
   let body: ReactNode;
 
-  if (sync.kind === "connection") {
+  if (sync.kind === "connection" && sync.source) {
+    body = sync.renew ? (
+      <>
+        <strong className="font-semibold">
+          {label} refused the Stremlist Connection
+        </strong>
+        {sync.stillShown
+          ? ". Stremio still shows its Source list from the last refresh, but not after the next one."
+          : ", so its Source list does not show in this catalog."}{" "}
+        Connect {label} again to renew it.
+      </>
+    ) : (
+      <>
+        {label} is not connected, so its Source list does not show in this
+        catalog.
+      </>
+    );
+  } else if (sync.kind === "connection") {
     body = sync.renew ? (
       <>
         <strong className="font-semibold">
@@ -131,7 +156,7 @@ export function ListSyncNotice({
     ) : (
       <>{label} is not connected, so this List does not show in Stremio.</>
     );
-  } else if (sync.kind === "failing") {
+  } else {
     const copy = sourceProblemCopy(
       provider,
       sync.problem,
@@ -150,6 +175,11 @@ export function ListSyncNotice({
               Stremio shows the titles from the last refresh,{" "}
               <Time iso={sync.olderTitlesFrom} />.
             </>
+          ) : sync.othersShown ? (
+            <>
+              Stremio shows the titles of the other Source lists. This problem
+              started <Time iso={sync.since} />.
+            </>
           ) : (
             <>
               This problem started <Time iso={sync.since} />.
@@ -158,8 +188,6 @@ export function ListSyncNotice({
         </span>
       </>
     );
-  } else {
-    return null;
   }
 
   return (

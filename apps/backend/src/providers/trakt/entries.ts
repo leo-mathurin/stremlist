@@ -69,6 +69,14 @@ export function itemToEntry(item: TraktItem): SourceEntry | null {
   return null;
 }
 
+/** The entry with the date it joined the Source list, when Trakt gives one. */
+export function withAddedAt(
+  entry: SourceEntry,
+  date: string | null | undefined,
+): SourceEntry {
+  return date ? { ...entry, addedAt: date } : entry;
+}
+
 /** Same Title twice (several seasons of one show in a list) keeps the first. */
 export function uniqueEntries(entries: SourceEntry[]): SourceEntry[] {
   const seen = new Set<string>();

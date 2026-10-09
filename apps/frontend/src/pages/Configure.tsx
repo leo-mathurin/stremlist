@@ -2,11 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { ACCOUNT_KEY_PATTERN } from "@stremlist/shared/constants";
-import {
-  isProviderId,
-  PROVIDERS,
-  sourceRequiresConnection,
-} from "@stremlist/shared/providers";
+import { connectionProviders, listSources } from "@stremlist/shared/list-merge";
+import { isProviderId, PROVIDERS } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -30,7 +27,8 @@ import {
   MAX_LISTS,
   useAccountConfiguration,
 } from "../hooks/useAccountConfiguration";
-import { listKey } from "../lib/list-form";
+import { sourceKeys } from "../lib/list-form";
+import type { ListFormRow } from "../lib/list-form";
 import { attentionTone } from "../lib/list-sync";
 import {
   describeSource,
@@ -178,21 +176,39 @@ export default function Configure() {
   const moved = access === "legacy" && !!config.movedAt;
   const MOVED_HINT =
     "This install has a private URL now. Make changes from the configure page of your new install.";
+  const connectedProviders = new Set(
+    config.connections.map((connection) => connection.provider),
+  );
+  /** Providers of a List whose Connection the Account does not have. */
+  const missingConnections = (list: ListFormRow): ProviderId[] =>
+    access === "private"
+      ? connectionProviders(list).filter(
+          (provider) => !connectedProviders.has(provider),
+        )
+      : [];
   const syncStates = lists.map((list) => config.syncStateOf(list));
   const attention = syncStates.filter((sync) => attentionTone(sync)).length;
-  const connectionKeyOf = (provider: ProviderId) => {
-    const connection = config.connections.find(
-      (entry) => entry.provider === provider,
-    );
-    // A renewal mark that comes or goes changes what the preview can read.
-    return connection
-      ? `${connection.connectedAt}:${connection.username ?? ""}:${connection.needsRenewalSince ?? ""}`
-      : "";
-  };
+  /**
+   * Identifies the Account's Connections to the Providers of a List's
+   * Source lists. A renewal mark that comes or goes changes what the
+   * preview can read.
+   */
+  const connectionKeyOf = (list: ListFormRow) =>
+    [...new Set(listSources(list).map((source) => source.provider))]
+      .map((provider) => {
+        const connection = config.connections.find(
+          (entry) => entry.provider === provider,
+        );
+        return connection
+          ? `${provider}:${connection.connectedAt}:${connection.username ?? ""}:${connection.needsRenewalSince ?? ""}`
+          : "";
+      })
+      .filter(Boolean)
+      .join(",");
   const affectedLists: Partial<Record<ProviderId, number>> = {};
   for (const list of lists) {
-    if (sourceRequiresConnection(list.provider, list.sourceRef)) {
-      affectedLists[list.provider] = (affectedLists[list.provider] ?? 0) + 1;
+    for (const provider of connectionProviders(list)) {
+      affectedLists[provider] = (affectedLists[provider] ?? 0) + 1;
     }
   }
 
@@ -499,24 +515,50 @@ export default function Configure() {
                   }}
                 >
                   <div className="space-y-3">
-                    {lists.map((list, index) => (
-                      <SortableListRow
-                        key={list.localId}
-                        list={list}
-                        index={index}
-                        accountKey={accountId ?? accountKey}
-                        connectionKey={connectionKeyOf(list.provider)}
-                        onFieldChange={config.setListField}
-                        onRemove={config.removeList}
-                        sync={syncStates[index]}
-                        saved={config.isListSaved(list)}
-                        onConnect={
-                          config.providerStatus[list.provider].connectable
-                            ? () => connectFor(list.provider)
-                            : undefined
-                        }
-                      />
-                    ))}
+                    {lists.map((list, index) => {
+                      const sync = syncStates[index];
+                      // The Provider that the List's sync status asks to
+                      // connect again: in a merged List, the one of the
+                      // Source list with the problem.
+                      const connectProvider =
+                        (sync?.kind === "connection"
+                          ? sync.source?.provider
+                          : undefined) ??
+                        missingConnections(list).at(0) ??
+                        list.provider;
+                      return (
+                        <SortableListRow
+                          key={list.localId}
+                          list={list}
+                          index={index}
+                          accountKey={accountId ?? accountKey}
+                          connectionKey={connectionKeyOf(list)}
+                          onFieldChange={config.setListField}
+                          onRemove={config.removeList}
+                          missingProviders={missingConnections(list)}
+                          sync={sync}
+                          saved={config.isListSaved(list)}
+                          onConnect={
+                            config.providerStatus[connectProvider].connectable
+                              ? () => connectFor(connectProvider)
+                              : undefined
+                          }
+                          merge={
+                            moved
+                              ? undefined
+                              : {
+                                  others: lists.filter(
+                                    (other) => other !== list,
+                                  ),
+                                  canSplit: !full,
+                                  onMerge: config.mergeLists,
+                                  onRemoveSource: config.removeSource,
+                                  onSplitSource: config.splitSource,
+                                }
+                          }
+                        />
+                      );
+                    })}
                   </div>
                 </DragDropProvider>
               )}
@@ -532,7 +574,7 @@ export default function Configure() {
                 connections={config.connections}
                 connectionSources={config.connectionSources}
                 providerStatus={config.providerStatus}
-                usedKeys={lists.map(listKey)}
+                usedKeys={sourceKeys(lists)}
                 full={full || moved}
                 onAdd={(provider, source) => {
                   const error = config.addList({
@@ -545,9 +587,14 @@ export default function Configure() {
                       : source.label,
                     displayMode: source.defaultDisplayMode,
                   });
-                  if (error) toast.error(error);
+                  if (error) toast.error(error, { id: "list-add" });
                 }}
-                onAddChart={config.addChartList}
+                onAddChart={(chartId) => {
+                  // The chart menu is off only when the List limit is
+                  // reached; the Source list limit is checked here.
+                  const error = config.addChartList(chartId);
+                  if (error) toast.error(error, { id: "list-add" });
+                }}
               />
             </section>
 

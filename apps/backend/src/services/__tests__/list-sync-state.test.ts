@@ -1,5 +1,11 @@
-import type { ListSyncStatus } from "@stremlist/shared/sync-status";
-import { listSyncState } from "@stremlist/shared/sync-status";
+import type {
+  ListSyncState,
+  ListSyncStatus,
+} from "@stremlist/shared/sync-status";
+import {
+  listSyncState,
+  mergedListSyncState,
+} from "@stremlist/shared/sync-status";
 import { describe, expect, it } from "vitest";
 
 describe("listSyncState", () => {
@@ -107,5 +113,82 @@ describe("listSyncState", () => {
     expect(
       listSyncState(failing("needs_connection"), "none", false),
     ).toMatchObject({ kind: "failing", olderTitlesFrom: null });
+  });
+});
+
+describe("mergedListSyncState", () => {
+  const IMDB = { provider: "imdb", sourceRef: "ur1000001" } as const;
+  const TRAKT = { provider: "trakt", sourceRef: "me/watchlist" } as const;
+  const synced = (at: string): ListSyncState => ({
+    kind: "synced",
+    at,
+    titleCount: 3,
+  });
+  const failing: ListSyncState = {
+    kind: "failing",
+    problem: "private",
+    since: "2026-10-06T13:00:00.000Z",
+    olderTitlesFrom: null,
+  };
+
+  it("keeps the state of a List with one Source list", () => {
+    expect(mergedListSyncState([{ source: IMDB, state: failing }])).toEqual(
+      failing,
+    );
+  });
+
+  it("is synced as of the oldest refresh, without a Title count", () => {
+    expect(
+      mergedListSyncState([
+        { source: IMDB, state: synced("2026-10-06T12:00:00.000Z") },
+        { source: TRAKT, state: synced("2026-10-06T10:00:00.000Z") },
+      ]),
+    ).toEqual({
+      kind: "synced",
+      at: "2026-10-06T10:00:00.000Z",
+      titleCount: null,
+    });
+  });
+
+  it("names the Source list that fails and says the others still show", () => {
+    expect(
+      mergedListSyncState([
+        { source: IMDB, state: synced("2026-10-06T12:00:00.000Z") },
+        { source: TRAKT, state: failing },
+      ]),
+    ).toEqual({ ...failing, source: TRAKT, othersShown: true });
+    expect(
+      mergedListSyncState([
+        { source: IMDB, state: { kind: "waiting", reconnected: false } },
+        { source: TRAKT, state: failing },
+      ]),
+    ).toEqual({ ...failing, source: TRAKT, othersShown: false });
+  });
+
+  it("puts a Connection problem before a failed refresh", () => {
+    expect(
+      mergedListSyncState([
+        { source: IMDB, state: failing },
+        {
+          source: TRAKT,
+          state: { kind: "connection", renew: false, stillShown: false },
+        },
+      ]),
+    ).toEqual({
+      kind: "connection",
+      renew: false,
+      stillShown: false,
+      source: TRAKT,
+      othersShown: false,
+    });
+  });
+
+  it("waits while one Source list waits for its first refresh", () => {
+    expect(
+      mergedListSyncState([
+        { source: IMDB, state: synced("2026-10-06T12:00:00.000Z") },
+        { source: TRAKT, state: { kind: "waiting", reconnected: true } },
+      ]),
+    ).toEqual({ kind: "waiting", reconnected: true });
   });
 });

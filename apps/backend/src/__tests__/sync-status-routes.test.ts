@@ -85,6 +85,7 @@ describe("sync status on the configure page", () => {
 
     expect(body.syncStatus).toEqual({
       [imdb.id]: {
+        provider: "imdb",
         sourceRef: "imdb:top-rated-movies",
         lastAttemptAt: "2026-10-06T12:00:00.000Z",
         lastSuccessAt: "2026-10-06T12:00:00.000Z",
@@ -121,6 +122,7 @@ describe("sync status on the configure page", () => {
           problem: "unavailable",
         }) as unknown,
       },
+      sourceSyncStatus: {},
       connections: [],
     });
   });

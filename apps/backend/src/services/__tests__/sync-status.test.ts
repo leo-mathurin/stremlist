@@ -1,4 +1,7 @@
-import { listSyncState } from "@stremlist/shared/sync-status";
+import {
+  listSyncState,
+  mergedListSyncState,
+} from "@stremlist/shared/sync-status";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../lib/supabase", async () => {
@@ -37,7 +40,12 @@ import { getAccountLists } from "../accounts";
 import { listConnections, saveConnection } from "../connections";
 import * as listCache from "../list-cache";
 import type { ListFetchConfig } from "../lists";
-import { getListCatalog, rereadConnectionLists } from "../lists";
+import {
+  forgetConnectionLists,
+  getListCatalog,
+  rereadConnectionLists,
+} from "../lists";
+import { sourceCaches } from "../merged-lists";
 import { getListSyncStatuses } from "../sync-status";
 
 const HOUR = 60 * 60_000;
@@ -72,7 +80,8 @@ function entries(...ids: string[]) {
 }
 
 async function statusOf(id = listId) {
-  return (await getListSyncStatuses(await getAccountLists(accountId)))[id];
+  return (await getListSyncStatuses(await getAccountLists(accountId)))
+    .syncStatus[id];
 }
 
 async function connectionOf() {
@@ -107,6 +116,7 @@ describe("recording refreshes", () => {
     await getListCatalog(config());
 
     expect(await statusOf()).toEqual({
+      provider: "trakt",
       sourceRef: "users/leo/lists/horror",
       lastAttemptAt: expect.any(String) as string,
       lastSuccessAt: expect.any(String) as string,
@@ -239,7 +249,7 @@ describe("recording refreshes", () => {
       { ...list, sourceRef: "users/leo/lists/comedy" },
     ]);
 
-    expect(statuses).toEqual({});
+    expect(statuses.syncStatus).toEqual({});
   });
 });
 
@@ -252,6 +262,7 @@ describe("Lists without a recorded status", () => {
     );
 
     expect(await statusOf()).toEqual({
+      provider: "trakt",
       sourceRef: "users/leo/lists/horror",
       lastAttemptAt: "2026-10-06T09:00:00.000Z",
       lastSuccessAt: "2026-10-06T09:00:00.000Z",
@@ -280,10 +291,12 @@ describe("Lists without a recorded status", () => {
       }),
     } as never);
 
-    expect((await getListSyncStatuses(lists))[listId]).toMatchObject({
-      problem: null,
-      titleCount: 1,
-    });
+    expect((await getListSyncStatuses(lists)).syncStatus[listId]).toMatchObject(
+      {
+        problem: null,
+        titleCount: 1,
+      },
+    );
   });
 
   it("keep their cached last refresh when their first recorded refresh fails", async () => {
@@ -523,5 +536,189 @@ describe("Connections that need to be renewed", () => {
     );
 
     expect((await connectionOf())?.needsRenewalSince).toBeNull();
+  });
+});
+
+describe("merged Lists", () => {
+  const WATCHLIST = { provider: "trakt", sourceRef: "me/watchlist" } as const;
+  let mergedId = "";
+  let keys: { imdb: string; trakt: string } = { imdb: "", trakt: "" };
+
+  beforeEach(async () => {
+    mergedId = seedList(accountId, {
+      provider: "imdb",
+      source_ref: "ur1000001",
+      position: 1,
+      merged_sources: [
+        { provider: WATCHLIST.provider, source_ref: WATCHLIST.sourceRef },
+      ],
+    }).id;
+    const [list] = (await getAccountLists(accountId)).filter(
+      (candidate) => candidate.id === mergedId,
+    );
+    const [imdb, trakt] = sourceCaches(list);
+    keys = { imdb: imdb.cacheKey, trakt: trakt.cacheKey };
+  });
+
+  function mergedConfig(): ListFetchConfig {
+    return config({
+      listId: mergedId,
+      provider: "imdb",
+      sourceRef: "ur1000001",
+      mergedSources: [WATCHLIST],
+    });
+  }
+
+  async function snapshot() {
+    return getListSyncStatuses(await getAccountLists(accountId));
+  }
+
+  it("record each Source list under the List, the first one in syncStatus", async () => {
+    seedConnection(accountId, "trakt");
+    useFakeProvider(
+      fakeAdapter("imdb", {
+        fetchSource: () =>
+          Promise.resolve(entries("tt0000001", "tt0000002")) as never,
+      }),
+    );
+    useTrakt(
+      vi.fn(() =>
+        Promise.reject(
+          new SourceUnavailableError("needs_connection", "token refused"),
+        ),
+      ),
+    );
+
+    // The IMDb Source list still shows.
+    await expect(getListCatalog(mergedConfig())).resolves.toMatchObject({
+      metas: [{ id: "tt0000001" }, { id: "tt0000002" }],
+    });
+
+    expect(
+      db
+        .getTable("list_sync_status")
+        .map((row) => [row.list_id, row.provider, row.source_ref]),
+    ).toEqual(
+      expect.arrayContaining([
+        [mergedId, "imdb", "ur1000001"],
+        [mergedId, "trakt", "me/watchlist"],
+      ]),
+    );
+    const { syncStatus, sourceSyncStatus } = await snapshot();
+    expect(syncStatus[mergedId]).toMatchObject({
+      provider: "imdb",
+      sourceRef: "ur1000001",
+      problem: null,
+      titleCount: 2,
+    });
+    expect(sourceSyncStatus?.[mergedId]).toEqual([
+      expect.objectContaining({
+        provider: "trakt",
+        sourceRef: "me/watchlist",
+        problem: "needs_connection",
+      }),
+    ]);
+
+    // The configure page asks to renew the Trakt Connection for its Source
+    // list only: the List still shows its IMDb Titles.
+    expect(
+      mergedListSyncState([
+        {
+          source: { provider: "imdb", sourceRef: "ur1000001" },
+          state: listSyncState(syncStatus[mergedId], "none", false),
+        },
+        {
+          source: WATCHLIST,
+          state: listSyncState(sourceSyncStatus?.[mergedId][0], "renew", true),
+        },
+      ]),
+    ).toEqual({
+      kind: "connection",
+      renew: true,
+      stillShown: false,
+      source: WATCHLIST,
+      othersShown: true,
+    });
+  });
+
+  it("take the last refresh of each Source list from its own cache", async () => {
+    cache.seed(
+      keys.imdb,
+      [movie("tt0000001")],
+      new Date("2026-10-06T08:00:00Z"),
+    );
+    cache.seed(
+      keys.trakt,
+      [movie("tt0000002"), movie("tt0000003")],
+      new Date("2026-10-06T09:00:00Z"),
+    );
+
+    const { syncStatus, sourceSyncStatus } = await snapshot();
+
+    expect(syncStatus[mergedId]).toMatchObject({
+      provider: "imdb",
+      lastSuccessAt: "2026-10-06T08:00:00.000Z",
+      titleCount: 1,
+    });
+    expect(sourceSyncStatus?.[mergedId]).toEqual([
+      expect.objectContaining({
+        provider: "trakt",
+        sourceRef: "me/watchlist",
+        lastSuccessAt: "2026-10-06T09:00:00.000Z",
+        titleCount: 2,
+      }),
+    ]);
+  });
+
+  it("leave out the Source lists that were never read", async () => {
+    cache.seed(keys.trakt, [movie("tt0000002")]);
+
+    const { syncStatus, sourceSyncStatus } = await snapshot();
+
+    expect(syncStatus[mergedId]).toBeUndefined();
+    expect(sourceSyncStatus?.[mergedId]).toHaveLength(1);
+  });
+
+  it("forget only the Source lists read through a Connection that goes away", async () => {
+    cache.seed(keys.imdb, [movie("tt0000001")]);
+    cache.seed(keys.trakt, [movie("tt0000002")]);
+    for (const [provider, sourceRef] of [
+      ["imdb", "ur1000001"],
+      ["trakt", "me/watchlist"],
+    ]) {
+      db.insert("list_sync_status", {
+        list_id: mergedId,
+        provider,
+        source_ref: sourceRef,
+        last_attempt_at: new Date().toISOString(),
+        last_success_at: new Date().toISOString(),
+        title_count: 1,
+      });
+    }
+
+    await forgetConnectionLists(accountId, "trakt");
+
+    expect(cache.get(keys.imdb)).not.toBeNull();
+    expect(cache.get(keys.trakt)).toBeNull();
+    expect(db.getTable("list_sync_status").map((row) => row.provider)).toEqual([
+      "imdb",
+    ]);
+  });
+
+  it("read the merged Source lists of a new Connection again, in their own cache", async () => {
+    seedConnection(accountId, "trakt");
+    const imdbRead = vi.fn(() => Promise.resolve(entries("tt0000009")));
+    useFakeProvider(fakeAdapter("imdb", { fetchSource: imdbRead as never }));
+    const traktRead = vi.fn(() => Promise.resolve(entries("tt0000002")));
+    useTrakt(traktRead);
+
+    await rereadConnectionLists(accountId, "trakt");
+
+    expect(imdbRead).not.toHaveBeenCalled();
+    expect(traktRead).toHaveBeenCalledWith("me/watchlist", expect.anything());
+    expect(cache.get(keys.trakt)?.data.metas).toHaveLength(1);
+    expect((await snapshot()).sourceSyncStatus?.[mergedId]).toEqual([
+      expect.objectContaining({ provider: "trakt", titleCount: 1 }),
+    ]);
   });
 });

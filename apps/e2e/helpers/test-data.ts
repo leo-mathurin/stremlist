@@ -28,6 +28,8 @@ export const PRIVATE_P_HANDLE = "p.e4ialbfdp3rntdahbslk5yzovm";
 // Synthetic IMDb watchlist behind the deterministic catalog scenarios. Its
 // Catalog is seeded in R2, so the backend never asks IMDb for it.
 export const CATALOG_FIXTURE_USER = "ur9999999999998";
+// A second synthetic watchlist, for merged Lists.
+export const CATALOG_FIXTURE_USER_2 = "ur9999999999995";
 
 // Synthetic Legacy aliases of the Provider journeys (no IMDb request).
 export const LEGACY_CONNECTION_USER = "ur9999999999997";
@@ -39,6 +41,7 @@ export const LEGACY_ACTIONS_USER = "ur9999999999996";
 // IDs are scoped by the run start (see helpers/db.ts).
 export const E2E_USER_IDS = [
   CATALOG_FIXTURE_USER,
+  CATALOG_FIXTURE_USER_2,
   LEGACY_CONNECTION_USER,
   LEGACY_ACTIONS_USER,
   PUBLIC_USER,

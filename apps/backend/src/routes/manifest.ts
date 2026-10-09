@@ -5,7 +5,7 @@ import {
   BASE_MANIFEST,
   IMDB_USER_ID_PATTERN,
 } from "@stremlist/shared/constants";
-import { sourceRequiresConnection } from "@stremlist/shared/providers";
+import { listRequiresConnection } from "@stremlist/shared/list-merge";
 import type {
   StremioManifest,
   StremioResource,
@@ -60,9 +60,7 @@ manifest.get("/:accountKey/manifest.json", async (c) => {
 
     const { account } = access;
     const lists = (await getAccountLists(account.id)).filter(
-      (list) =>
-        access.via === "private" ||
-        !sourceRequiresConnection(list.provider, list.sourceRef),
+      (list) => access.via === "private" || !listRequiresConnection(list),
     );
     const resources: (string | StremioResource)[] = [
       "catalog",

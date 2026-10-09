@@ -15,5 +15,5 @@ The configure page gets the statuses with the config, after "Refresh now", and f
 ## Consequences
 
 - Lists cached before this change have no row. Their status comes from the cache manifest until their next refresh, and their first failed refresh keeps the cached time and count as the last success, because Stremio still gets those Titles. A List that changed its Source list shows "Not refreshed yet" until it is read again.
-- A List with several Source lists (STR-59) gets one row per Source list; the configure page then has to combine them.
+- A List with several Source lists (STR-59) gets one row per Source list. The API sends the first one in `syncStatus` and the others in `sourceSyncStatus`, and the configure page combines them (`mergedListSyncState`): a problem names its Source list and says whether the others still show. A disconnect forgets only the rows of the Source lists read through that Connection.
 - A token refresh that fails for a network reason also marks the Connection. The next read that works clears the mark.

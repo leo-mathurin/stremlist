@@ -61,6 +61,58 @@ beforeEach(() => {
 });
 
 describe("POST /lists/preview", () => {
+  it("previews every Source list of a merged List, through the Account's Connection", async () => {
+    const account = seedAccount();
+    seedConnection(account.id, "trakt");
+    const fetchSource = traktReader();
+    useFakeProvider(
+      fakeAdapter("imdb", {
+        entries: [
+          { imdbId: TITLE.id, type: "movie", meta: TITLE },
+          {
+            imdbId: "tt0068646",
+            type: "movie",
+            meta: movie("tt0068646", { name: "The Godfather" }),
+          },
+        ],
+      }),
+    );
+
+    const res = await preview({
+      accountKey: account.id,
+      provider: "imdb",
+      sourceRef: "ur1000001",
+      mergedSources: [{ provider: "trakt", sourceRef: "me/watchlist" }],
+      sortOption: "title-asc",
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as CatalogPreviewResponse;
+    // The Title of both Source lists shows once.
+    expect(body).toMatchObject({ ok: true, titleCount: 2 });
+    expect(fetchSource).toHaveBeenCalledWith(
+      "me/watchlist",
+      expect.objectContaining({
+        connection: expect.objectContaining({
+          accountId: account.id,
+        }) as unknown,
+      }),
+    );
+  });
+
+  it("refuses more than five Source lists, like a save", async () => {
+    const res = await preview({
+      provider: "imdb",
+      sourceRef: "ur1000001",
+      mergedSources: Array.from({ length: 5 }, (_, index) => ({
+        provider: "imdb",
+        sourceRef: `ls10000000${index}`,
+      })),
+    });
+
+    expect(res.status).toBe(400);
+  });
+
   it("previews a public Source list without an Account", async () => {
     const fetchSource = traktReader();
 

@@ -2,20 +2,30 @@ import type {
   CatalogPreview,
   CatalogPreviewResponse,
   CatalogPreviewRow,
+  PreviewSourceProblem,
   PreviewUnresolvedEntry,
 } from "@stremlist/shared/catalog-preview";
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { DisplayMode } from "@stremlist/shared/constants";
+import type { ListSource } from "@stremlist/shared/list-merge";
+import {
+  isMergedList,
+  listSources,
+  sourceKey,
+  sourcesWithoutDates,
+} from "@stremlist/shared/list-merge";
+import { listCatalogs } from "@stremlist/shared/manifest-catalogs";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDERS } from "@stremlist/shared/providers";
 import { createHash } from "node:crypto";
 import { getProvider, isProviderEnabled } from "../providers/registry";
 import type { ConnectionAccess, SourceEntry } from "../providers/types";
+import { SourceUnavailableError } from "../providers/types";
 import { filterCatalog, resolveCatalogSelection } from "./catalog-filters";
 import { sortCatalog } from "./catalog-sort";
 import type { BuiltCatalog } from "./lists";
 import { buildCatalog, providerContext, sourceProblemReason } from "./lists";
-import { listCatalogs } from "./stremio-catalogs";
+import { mergeSourceCatalogs } from "./merged-lists";
 
 /**
  * How long one read of a Source list serves previews. Changing the sort or
@@ -34,6 +44,8 @@ const UNRESOLVED_LIMIT = 50;
 export interface PreviewRequest {
   provider: ProviderId;
   sourceRef: string;
+  /** The other Source lists of a merged List (ADR 0006). */
+  mergedSources?: ListSource[];
   /**
    * The Account whose Connection the read may use, or null: a new setup or a
    * Legacy alias reads public Source lists only (ADR 0001).
@@ -71,12 +83,26 @@ async function connectionScope(connection: ConnectionAccess): Promise<string> {
 }
 
 /**
- * Read the Source list of a List, or reuse a recent read. A read through a
+ * Read one Source list of a List, or reuse a recent read. A read through a
  * Connection can hold private Titles, so it is keyed by Account and by the
  * Connection's current authorization: it never serves another Account, a
  * request without the Connection, or a later Connection of the same Account.
  */
-async function readSource(request: PreviewRequest): Promise<BuiltCatalog> {
+async function readSource(
+  request: ListSource & { connectionAccountId: string | null },
+): Promise<BuiltCatalog> {
+  if (PROVIDERS[request.provider].availability !== "available") {
+    throw new SourceUnavailableError(
+      "coming_soon",
+      `${request.provider} is not available yet`,
+    );
+  }
+  if (!isProviderEnabled(request.provider)) {
+    throw new SourceUnavailableError(
+      "disabled",
+      `${request.provider} is turned off`,
+    );
+  }
   const ctx = await providerContext(request, request.connectionAccountId);
   const scope = ctx.connection
     ? await connectionScope(ctx.connection)
@@ -145,16 +171,25 @@ function toUnresolvedEntry(entry: SourceEntry): PreviewUnresolvedEntry {
 /**
  * The Catalogs that a List adds to Stremio, each with its first Titles. Uses
  * the same Catalogs, sort and filters as the manifest and the catalog route,
- * so the preview matches what Stremio shows (RPDB posters aside).
+ * so the preview matches what Stremio shows (RPDB posters aside). A merged
+ * List shows the Titles of the Source lists it could read once each, like
+ * its Catalog.
  */
 function presentPreview(
   request: PreviewRequest,
-  built: BuiltCatalog,
+  read: BuiltCatalog[],
+  sourceProblems: PreviewSourceProblem[],
 ): CatalogPreview {
-  const { metas } = built.data;
+  const metas = isMergedList(request)
+    ? mergeSourceCatalogs(
+        read.map((built) => built.data.metas),
+        sourcesWithoutDates(request).length === 0,
+      )
+    : read[0].data.metas;
+  const unresolvedEntries = read.flatMap((built) => built.unresolvedEntries);
   // The real Catalog seeds Shuffle with its cache generation; a preview has
   // none, so it uses a stable seed of its own.
-  const generation = `preview:${request.provider}:${request.sourceRef}`;
+  const generation = `preview:${listSources(request).map(sourceKey).join(",")}`;
 
   const catalogs = listCatalogs(request).map(
     ({ type, preset }): CatalogPreviewRow => {
@@ -194,40 +229,63 @@ function presentPreview(
     },
     catalogs,
     unresolved: {
-      count: built.unresolvedEntries.length,
-      notCheckedYet: built.deferred,
-      entries: built.unresolvedEntries
+      count: unresolvedEntries.length,
+      notCheckedYet: read.reduce((sum, built) => sum + built.deferred, 0),
+      entries: unresolvedEntries
         .slice(0, UNRESOLVED_LIMIT)
         .map(toUnresolvedEntry),
     },
-    withoutDetails: built.withoutMetadata,
+    withoutDetails: read.reduce((sum, built) => sum + built.withoutMetadata, 0),
+    ...(sourceProblems.length > 0 ? { sourceProblems } : {}),
   };
 }
 
 /**
- * Preview a List before it is saved: read its Source list like a catalog
+ * Preview a List before it is saved: read its Source lists like a catalog
  * request would, but write no Catalog cache. Expected problems (private list,
- * missing Connection, Provider turned off) come back as a reason.
+ * missing Connection, Provider turned off) come back as a reason. A merged
+ * List leaves out the Source lists that cannot be read, as its Catalog does,
+ * and fails only when none can be read.
  */
 export async function previewList(
   request: PreviewRequest,
 ): Promise<CatalogPreviewResponse> {
-  if (PROVIDERS[request.provider].availability !== "available") {
-    return { ok: false, reason: "coming_soon" };
-  }
-  if (!isProviderEnabled(request.provider)) {
-    return { ok: false, reason: "disabled" };
-  }
-  try {
-    return presentPreview(request, await readSource(request));
-  } catch (error) {
-    const reason = sourceProblemReason(error);
+  const sources = listSources(request);
+  const results = await Promise.allSettled(
+    sources.map((source) =>
+      readSource({
+        ...source,
+        connectionAccountId: request.connectionAccountId,
+      }),
+    ),
+  );
+  const read: BuiltCatalog[] = [];
+  const problems: PreviewSourceProblem[] = [];
+  results.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      read.push(result.value);
+      return;
+    }
+    const { provider, sourceRef } = sources[index];
+    const reason = sourceProblemReason(result.reason);
     if (reason === "unavailable") {
       console.error(
-        `Previewing ${request.provider} ${request.sourceRef} failed:`,
-        error instanceof Error ? error.message : error,
+        `Previewing ${provider} ${sourceRef} failed:`,
+        result.reason instanceof Error ? result.reason.message : result.reason,
       );
     }
-    return { ok: false, reason };
+    problems.push({ provider, sourceRef, reason });
+  });
+
+  if (read.length === 0) {
+    const [first] = problems;
+    return {
+      ok: false,
+      reason: first.reason,
+      ...(sources.length > 1
+        ? { source: { provider: first.provider, sourceRef: first.sourceRef } }
+        : {}),
+    };
   }
+  return presentPreview(request, read, problems);
 }

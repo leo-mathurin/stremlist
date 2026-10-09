@@ -48,6 +48,8 @@ const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
     id: crypto.randomUUID(),
     catalog_title: "",
     catalog_settings: {},
+    merged_sources: [],
+    source_label: null,
     display_mode: "split",
     position: 0,
     sort_option: "added_at-asc",
@@ -545,6 +547,17 @@ function replaceAccountConfig(args: RpcArgs): Result {
     return rpcError("List does not belong to this account");
   }
   if (new Set(ids).size !== ids.length) return rpcError("Duplicate list ID");
+  if (
+    items.some(
+      (item) =>
+        "expected_merged_sources" in item &&
+        JSON.stringify(
+          lists.find((row) => row.id === item.id)?.merged_sources,
+        ) !== JSON.stringify(item.expected_merged_sources),
+    )
+  ) {
+    return rpcError("Merged Source lists changed");
+  }
 
   const deleted = lists.filter(
     (row) => row.account_id === accountId && !ids.includes(row.id as string),
@@ -570,6 +583,10 @@ function replaceAccountConfig(args: RpcArgs): Result {
         ...("catalog_settings" in item
           ? { catalog_settings: item.catalog_settings }
           : {}),
+        ...("merged_sources" in item
+          ? { merged_sources: item.merged_sources }
+          : {}),
+        ...("source_label" in item ? { source_label: item.source_label } : {}),
         updated_at: now(),
       };
       const conflict = db.uniqueViolation("lists", next, existing);
@@ -582,6 +599,8 @@ function replaceAccountConfig(args: RpcArgs): Result {
           id: item.id,
           account_id: accountId,
           catalog_settings: item.catalog_settings ?? {},
+          merged_sources: item.merged_sources ?? [],
+          source_label: item.source_label ?? null,
         });
       } catch (error) {
         return { data: null, error: uniqueError(String(error)) };
