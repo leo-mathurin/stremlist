@@ -114,6 +114,8 @@ that an added List opens, with `previewOf()`, and fails the test on any other
 request that no later route takes), `captureConfig()` (`baseRoutes()`, then
 `routeConfig()`, which records saves, echoes the saved Lists like the backend
 and serves `state.config`, so a test can change it while the page is open),
+`gatedSaves()` (holds each save until the test releases it),
+`routeCreateAccount()` for the first save of a new setup,
 `routePreview()` for `/lists/preview`, `routeConnectionSources()` and
 `routeConnectStart()` for a Connection's Source lists and a Trakt
 authorization, `ago()` for relative times, `routeResolve()` for

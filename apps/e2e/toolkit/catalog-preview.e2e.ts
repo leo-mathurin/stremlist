@@ -11,6 +11,7 @@ import {
   baseRoutes,
   captureConfig,
   configuration,
+  connected,
   holdToasts,
   fitConfigurePage,
   imdbUser,
@@ -249,25 +250,18 @@ test("disconnecting the Provider reads the open preview again", async ({
     sourceRef: "me/history",
     catalogTitle: "Trakt history",
   };
-  const connected = {
+  const withTrakt = {
     ...configuration,
     lists: [history],
-    connections: [
-      {
-        provider: "trakt" as const,
-        username: "fixture-user",
-        connectedAt: "2026-10-01T00:00:00.000Z",
-        needsRenewalSince: null,
-      },
-    ],
+    connections: [connected("trakt", "fixture-user")],
   };
-  await captureConfig(browser, connected);
+  await baseRoutes(browser);
   let disconnected = false;
   // After the disconnect, the page reads the configuration again.
   await browser.route(`${backend}/${accountId}/config`, async (route) => {
     await route.fulfill({
       json: toJson(
-        disconnected ? { ...connected, connections: [] } : connected,
+        disconnected ? { ...withTrakt, connections: [] } : withTrakt,
       ),
     });
   });

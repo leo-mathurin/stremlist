@@ -25,12 +25,12 @@ import { BACKEND_URL } from "../env.js";
 
 export type CatalogMeta = StremioMeta;
 
-export interface ApiResponse<T> {
+interface ApiResponse<T> {
   status: number;
   body: T;
 }
 
-export interface ConfigOptions {
+interface ConfigOptions {
   rpdbApiKey?: string;
   actions?: { enabled: boolean; providers: ProviderId[] };
 }
@@ -54,7 +54,7 @@ export interface PreviewInput {
 }
 
 /** Stremio catalog extras: `/search=…` and `/skip=…` path segments. */
-export interface CatalogExtra {
+interface CatalogExtra {
   search?: string;
   skip?: number;
 }
@@ -151,8 +151,6 @@ export function apiAt(baseUrl: string) {
   }
 
   return {
-    url: baseUrl,
-
     async getBaseManifest(): Promise<StremioManifest> {
       return (await send<StremioManifest>("/manifest.json")).body;
     },
@@ -370,6 +368,5 @@ export const {
   getMeta,
   refresh,
   resolveLink,
-  upgrade,
   bootstrapLegacy,
 } = api;

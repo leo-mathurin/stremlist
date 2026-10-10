@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import type { CatalogPreviewResponse } from "@stremlist/shared/catalog-preview";
-import { BACKEND_URL, FRONTEND_URL } from "../env.js";
+import { BACKEND_URL } from "../env.js";
 import type { Api, PreviewInput } from "../helpers/api.js";
 import { api } from "../helpers/api.js";
+import { configureUrl } from "../helpers/configure.js";
 import {
   clearResolverCache,
   getListRows,
@@ -294,7 +295,7 @@ test(
       },
     ]);
     await routePreviews(page);
-    await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
+    await page.goto(configureUrl(accountId));
 
     await page
       .getByRole("button", { name: "Preview Animation fixture" })

@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { BACKEND_URL, FRONTEND_URL } from "../env.js";
+import { addonManifestUrl, FRONTEND_URL } from "../env.js";
 import { bootstrapLegacy, createAccount, getConfig } from "../helpers/api.js";
 import { resetDb, seedImdbAccount } from "../helpers/db.js";
+import { addonsDeepLink } from "../helpers/stremio.js";
 import {
   PUBLIC_LIST,
   PUBLIC_USER,
@@ -12,6 +13,7 @@ import {
   openConfigure,
   saveButton,
   saveConfigure,
+  SAVED,
   SAVED_REINSTALL,
 } from "../helpers/configure.js";
 
@@ -43,7 +45,7 @@ test(
       page.getByRole("link", { name: "Open Stremio Web" }),
     ).toBeVisible();
     await expect(page.getByLabel("Addon URL", { exact: true })).toHaveValue(
-      `${BACKEND_URL}/${accountId}/manifest.json`,
+      addonManifestUrl(accountId),
     );
   },
 );
@@ -66,7 +68,7 @@ test(
     ).toBeVisible();
     await expect
       .poll(() => page.evaluate(() => navigator.clipboard.readText()))
-      .toBe(`${BACKEND_URL}/${accountId}/manifest.json`);
+      .toBe(addonManifestUrl(accountId));
   },
 );
 
@@ -170,8 +172,7 @@ test(
     await page
       .getByRole("menuitem", { name: /^Box Office \(Weekend\)/ })
       .click();
-    await saveConfigure(page);
-    await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
+    await saveConfigure(page, { message: SAVED_REINSTALL });
     await expect(
       page.getByRole("heading", {
         name: "Reinstall in Stremio to see your changes",
@@ -315,12 +316,6 @@ test(
   },
 );
 
-/** The Addon URL of an Account on Stremio Web, as the install links build it. */
-const stremioWebUrl = (accountKey: string) =>
-  `https://web.stremio.com/#/addons?addon=${encodeURIComponent(
-    `${BACKEND_URL}/${accountKey}/manifest.json`,
-  )}`;
-
 test(
   "a catalog change asks for a reinstall until it is done, a sort change does not",
   { tag: "@local" },
@@ -339,12 +334,7 @@ test(
       .click();
     await page.locator("#rpdb-api-key").fill("e2e-rpdb-key");
     await expect(beforeSave).toHaveCount(0);
-    await saveConfigure(page);
-    await expect(
-      page.getByText(
-        "Saved! Your catalogs will refresh with the new settings.",
-      ),
-    ).toBeVisible();
+    await saveConfigure(page, { message: SAVED });
     await expect(reminder).toHaveCount(0);
     await expect(
       page.getByRole("heading", { name: "Install or reinstall in Stremio" }),
@@ -356,8 +346,7 @@ test(
       .click();
     await page.getByLabel("Catalog title").fill("Renamed watchlist");
     await expect(beforeSave).toBeVisible();
-    await saveConfigure(page);
-    await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
+    await saveConfigure(page, { message: SAVED_REINSTALL });
     await expect(beforeSave).toHaveCount(0);
     await expect(reminder).toBeVisible();
     await expect(
@@ -368,14 +357,13 @@ test(
     // A local Addon URL has no `stremio://` link, so Reinstall opens Stremio Web.
     await expect(
       reminder.getByRole("link", { name: "Reinstall" }),
-    ).toHaveAttribute("href", stremioWebUrl(accountId));
+    ).toHaveAttribute("href", addonsDeepLink(addonManifestUrl(accountId)));
 
     // The reminder stays until the user reinstalls, also after a reload and
     // after a save that changes nothing.
     await page.reload();
     await expect(reminder).toBeVisible();
-    await saveConfigure(page);
-    await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
+    await saveConfigure(page, { message: SAVED_REINSTALL });
     await expect(reminder).toBeVisible();
 
     await reminder.getByRole("button", { name: "I did it" }).click();
@@ -386,12 +374,7 @@ test(
     await page.reload();
     await expect(page.getByText("Renamed watchlist")).toBeVisible();
     await expect(reminder).toHaveCount(0);
-    await saveConfigure(page);
-    await expect(
-      page.getByText(
-        "Saved! Your catalogs will refresh with the new settings.",
-      ),
-    ).toBeVisible();
+    await saveConfigure(page, { message: SAVED });
     const { body } = await getConfig(accountId);
     expect(body.rpdbApiKey).toBe("e2e-rpdb-key");
     expect(body.lists[0]).toMatchObject({
@@ -429,7 +412,7 @@ test(
     await toast.getByRole("button", { name: "Reinstall" }).click();
     const stremioWeb = await popup;
     await stremioWeb.waitForLoadState();
-    expect(stremioWeb.url()).toBe(stremioWebUrl(accountId));
+    expect(stremioWeb.url()).toBe(addonsDeepLink(addonManifestUrl(accountId)));
     await stremioWeb.close();
     await expect(reminder).toHaveCount(0);
     await page.reload();
@@ -464,7 +447,7 @@ test(
     await expect(floatingSave).toBeEnabled();
     await saveConfigure(page, {
       button: floatingSave,
-      message: "Saved! Your catalogs will refresh with the new settings.",
+      message: SAVED,
     });
     expect((await getConfig(accountId)).body.rpdbApiKey).toBe(
       "floating-save-key",

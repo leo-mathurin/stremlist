@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { addonManifestUrl, FRONTEND_URL } from "../env.js";
+import { addonManifestUrl } from "../env.js";
 import { bootstrapLegacy } from "../helpers/api.js";
+import { configureUrl } from "../helpers/configure.js";
 import { resetDb, seedImdbAccount } from "../helpers/db.js";
 import {
   addonsDeepLink,
@@ -47,15 +48,13 @@ test(
   { tag: "@live-regression" },
   async ({ page, context }) => {
     const { accountId } = await seedImdbAccount();
-    await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
+    await page.goto(configureUrl(accountId));
 
     const popupPromise = context.waitForEvent("page");
     await page.getByRole("link", { name: "Open Stremio Web" }).click();
     const popup = await popupPromise;
     await popup.waitForLoadState();
-    expect(popup.url()).toBe(
-      `https://web.stremio.com/#/addons?addon=${encodeURIComponent(addonManifestUrl(accountId))}`,
-    );
+    expect(popup.url()).toBe(addonsDeepLink(addonManifestUrl(accountId)));
     await dismissDesktopAppPrompt(popup);
     await expect(
       popup.getByText("Install", { exact: true }).last(),

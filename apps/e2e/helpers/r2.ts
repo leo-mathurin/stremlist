@@ -98,12 +98,6 @@ export async function getCacheObjectKeys(listId: string): Promise<string[]> {
   return listKeys(`watchlists/${listId}/`);
 }
 
-export async function getConnectionObjectKeys(
-  accountId: string,
-): Promise<string[]> {
-  return listKeys(`connections/${accountId}/`);
-}
-
 export async function getCacheManifest(listId: string): Promise<unknown> {
   const response = await r2.send(
     new GetObjectCommand({

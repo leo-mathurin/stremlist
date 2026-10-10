@@ -1,10 +1,7 @@
 import { test } from "@e2e-dev/web";
 import type { Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
-import type {
-  AccountConfigInput,
-  AccountConfigResponse,
-} from "@stremlist/shared/stremio.types";
+import type { AccountConfigInput } from "@stremlist/shared/stremio.types";
 import {
   SAVED_REINSTALL,
   SAVED_WITH_CHANGES,
@@ -14,10 +11,12 @@ import {
   captureConfig,
   configuration,
   dragSecondAboveFirst,
+  gatedSaves,
   imdbUser,
   legacyConfiguration,
   parseBody,
   resolved,
+  routeCreateAccount,
   routeResolve,
   row,
   savedLists,
@@ -50,29 +49,6 @@ async function resolveFixtureLinks(browser: Browser) {
         ? resolved("imdb", "ls99123456", "list")
         : { ok: false, reason: "not_found", provider: "imdb" },
   );
-}
-
-/** Hold every save until the test releases it. */
-async function gatedSaves(browser: Browser, initial: AccountConfigResponse) {
-  await baseRoutes(browser);
-  let release = () => {};
-  const gate = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const submissions: AccountConfigInput[] = [];
-  await browser.route(`${backend}/${accountId}/config`, async (route) => {
-    if (route.request.method === "GET") {
-      await route.fulfill({ json: toJson(initial) });
-      return;
-    }
-    const submitted = parseBody<AccountConfigInput>(route);
-    submissions.push(submitted);
-    await gate;
-    await route.fulfill({
-      json: toJson({ ok: true, lists: savedLists(submitted) }),
-    });
-  });
-  return { submissions, release: () => release() };
 }
 
 test("public pages and unknown routes provide navigation", async ({
@@ -135,14 +111,7 @@ test(
     const inputs = await routeResolve(browser, (input) =>
       input === profile ? resolved("imdb", imdbUser, "watchlist") : null,
     );
-    const created: AccountConfigInput[] = [];
-    await browser.route(`${backend}/accounts`, async (route) => {
-      const body = parseBody<AccountConfigInput>(route);
-      created.push(body);
-      await route.fulfill({
-        json: toJson({ ok: true, accountId, lists: savedLists(body) }),
-      });
-    });
+    const created = await routeCreateAccount(browser);
     await browser.route(`${backend}/${accountId}/config`, async (route) => {
       await route.fulfill({
         json: {

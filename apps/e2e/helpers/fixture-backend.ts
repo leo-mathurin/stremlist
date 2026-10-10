@@ -18,7 +18,7 @@ import { apiAt } from "./api.js";
 import { startProviderBackend } from "./provider-backend.js";
 
 /** One outbound Provider request, as the preload logged it. */
-export interface LoggedRequest {
+interface LoggedRequest {
   method: string;
   url: string;
   authorization: string | null;

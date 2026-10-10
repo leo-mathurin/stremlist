@@ -8,7 +8,8 @@ import {
   PUBLIC_USER_2,
   UNKNOWN_USER,
 } from "../helpers/test-data.js";
-import { saveButton, SAVE_NEW } from "../helpers/configure.js";
+import { configureUrl, saveButton, SAVE_NEW } from "../helpers/configure.js";
+import { addonsDeepLink } from "../helpers/stremio.js";
 
 // First-install flow: a link pasted on Home becomes the first List on the
 // configure page, and the first save creates the Account.
@@ -44,9 +45,7 @@ test(
       accountId: string;
     };
     expect(accountId).toMatch(/^sl_[0-9A-Za-z]{22}$/);
-    await expect(page).toHaveURL(
-      `${FRONTEND_URL}/configure?account=${accountId}`,
-    );
+    await expect(page).toHaveURL(configureUrl(accountId));
     await expect(
       page.getByRole("heading", { name: "Your Stremlist is ready" }),
     ).toBeVisible();
@@ -55,7 +54,7 @@ test(
     const webInstall = page.getByRole("link", { name: "Open Stremio Web" });
     await expect(webInstall).toHaveAttribute(
       "href",
-      `https://web.stremio.com/#/addons?addon=${encodeURIComponent(addonManifestUrl(accountId))}`,
+      addonsDeepLink(addonManifestUrl(accountId)),
     );
     // Stremio opens `stremio://` links over HTTPS without a port, so the
     // local http://127.0.0.1:7301 Addon URL has no app install link.
@@ -75,9 +74,7 @@ test(
     await bootstrapLegacy(PUBLIC_USER);
     // Old links sent returning users to /?userId=ur…
     await page.goto(`${FRONTEND_URL}/?userId=${PUBLIC_USER}`);
-    await expect(page).toHaveURL(
-      `${FRONTEND_URL}/configure?account=${PUBLIC_USER}`,
-    );
+    await expect(page).toHaveURL(configureUrl(PUBLIC_USER));
     await expect(page.getByText(`IMDb install ${PUBLIC_USER}`)).toBeVisible();
     await expect(
       page.getByText(`IMDb · Watchlist · ${PUBLIC_USER}`),

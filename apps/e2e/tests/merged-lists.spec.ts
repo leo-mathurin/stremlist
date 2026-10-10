@@ -2,7 +2,6 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
-import { FRONTEND_URL } from "../env.js";
 import {
   getCatalog,
   getConfig,
@@ -11,6 +10,8 @@ import {
   postConfig,
 } from "../helpers/api.js";
 import {
+  configureUrl,
+  SAVED,
   SAVED_REINSTALL,
   saveButton,
   saveConfigure,
@@ -393,7 +394,7 @@ test(
       { ...FIRST, catalogTitle: "Release QA", sortOption: "added_at-desc" },
       { ...SECOND, catalogTitle: "Second QA", sortOption: "title-asc" },
     ]);
-    await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
+    await page.goto(configureUrl(accountId));
     await page.getByRole("button", { name: "Settings for Release QA" }).click();
     await page
       .getByRole("button", { name: "Merge another List into this one" })
@@ -535,7 +536,6 @@ test(
   },
 );
 
-const SAVED = "Saved! Your catalogs will refresh with the new settings.";
 const BEFORE_SAVE = "These changes need a reinstall.";
 const WESTERN: ListSource = {
   provider: "imdb",
@@ -565,7 +565,7 @@ function seedThreeSources() {
 
 /** Remove one Source list of "Merged QA" on the configure page. */
 async function removeSource(page: Page, accountId: string, name: string) {
-  await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
+  await page.goto(configureUrl(accountId));
   await page.getByRole("button", { name: "Settings for Merged QA" }).click();
   await page
     .getByRole("button", { name: `Remove ${name} from this List` })
@@ -645,7 +645,7 @@ test(
       (await getManifest(accountId)).catalogs.map((catalog) => catalog.id),
     ).toEqual([`wl-${watchlist}-movie`, `wl-${other}-movie`]);
 
-    await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
+    await page.goto(configureUrl(accountId));
     await page
       .getByRole("button", { name: "Settings for Watchlist QA" })
       .click();

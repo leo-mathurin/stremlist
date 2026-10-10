@@ -1,17 +1,13 @@
 import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
-import type { AccountConfigInput } from "@stremlist/shared/stremio.types";
 import {
   SAVED,
   SAVED_WITH_CHANGES,
   accountId,
   backend,
-  baseRoutes,
   configuration,
-  parseBody,
+  gatedSaves,
   row,
-  savedLists,
-  toJson,
   saveButton,
 } from "./config-fixture";
 
@@ -24,26 +20,11 @@ for (const editFilter of [false, true]) {
     screen,
     browser,
   }) => {
-    await baseRoutes(browser);
-    let releaseSave = () => {};
-    const responseGate = new Promise<void>((resolve) => {
-      releaseSave = resolve;
-    });
-    const submissions: AccountConfigInput[] = [];
-    await browser.route(`${backend}/${accountId}/config`, async (route) => {
-      if (route.request.method === "GET") {
-        await route.fulfill({
-          json: { ...configuration, lastFetchedAt: null, lists: [list] },
-        });
-        return;
-      }
-      const submitted = parseBody<AccountConfigInput>(route);
-      submissions.push(submitted);
-      await responseGate;
-      await route.fulfill({
-        json: toJson({ ok: true, lists: savedLists(submitted, ["Drama"]) }),
-      });
-    });
+    const { submissions, release } = await gatedSaves(
+      browser,
+      { ...configuration, lastFetchedAt: null, lists: [list] },
+      ["Drama"],
+    );
     await browser.route(`${backend}/${accountId}/refresh`, async (route) => {
       await route.fulfill({
         json: {
@@ -74,7 +55,7 @@ for (const editFilter of [false, true]) {
         "Drama",
       );
     }
-    releaseSave();
+    release();
     await expect(
       screen.getByText(editFilter ? SAVED_WITH_CHANGES : SAVED),
     ).toBeVisible();

@@ -5,7 +5,7 @@
 export const PREVIEW_PUBLIC_LIST = 990_000_001;
 export const PREVIEW_PRIVATE_LIST = 990_000_002;
 
-export interface PreviewProduct {
+interface PreviewProduct {
   id: number;
   type: "movie" | "series";
   /** The SensCritique title. */

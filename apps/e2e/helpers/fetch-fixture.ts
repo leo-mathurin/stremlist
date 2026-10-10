@@ -13,9 +13,7 @@ export interface FixtureRequest {
   body: unknown;
 }
 
-export type FixtureHandler = (
-  input: FixtureRequest,
-) => Response | Promise<Response>;
+type FixtureHandler = (input: FixtureRequest) => Response | Promise<Response>;
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
 

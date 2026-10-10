@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { BACKEND_URL, FRONTEND_URL, addonManifestUrl } from "../env.js";
+import { BACKEND_URL, addonManifestUrl } from "../env.js";
 import {
   getCatalog,
   getConfig,
   getManifest,
   getMeta,
+  listInput,
   postConfig,
 } from "../helpers/api.js";
 import { CATALOG_TITLES, seedCatalog } from "../helpers/catalog-fixture.js";
@@ -16,9 +17,15 @@ import {
   uninstallAddon,
 } from "../helpers/stremio.js";
 import { CATALOG_FIXTURE_USER } from "../helpers/test-data.js";
-import { saveConfigure, SAVED_REINSTALL } from "../helpers/configure.js";
+import {
+  configureUrl,
+  saveConfigure,
+  SAVED_REINSTALL,
+} from "../helpers/configure.js";
 
 const MATCHES = ["QA Été & café + cinéma", "QA Autumn Drama"];
+/** Filters that only the two MATCHES pass. */
+const FILTERS = { genre: "Drama", decade: 1990, maxRuntime: 90, minRating: 7 };
 
 async function choose(page: Page, label: string, option: string) {
   await page.getByRole("combobox", { name: label, exact: true }).click();
@@ -26,7 +33,7 @@ async function choose(page: Page, label: string, option: string) {
 }
 
 async function openFilters(page: Page, accountId: string) {
-  await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
+  await page.goto(configureUrl(accountId));
   await page.getByRole("button", { name: "Settings for Release QA" }).click();
   await page.getByRole("button", { name: /Filters & extra catalogs/ }).click();
 }
@@ -62,10 +69,7 @@ test(
       .check();
     await saveConfigure(page);
     expect((await getConfig(accountId)).body.lists[0].catalogSettings).toEqual({
-      genre: "Drama",
-      decade: 1990,
-      maxRuntime: 90,
-      minRating: 7,
+      ...FILTERS,
       presets: ["rated"],
     });
     expect(
@@ -109,19 +113,11 @@ test(
     expect(
       (
         await postConfig(accountId, [
-          {
+          listInput("imdb", CATALOG_FIXTURE_USER, {
             id,
-            provider: "imdb",
-            sourceRef: CATALOG_FIXTURE_USER,
-            sortOption: "added_at-asc",
             displayMode: "movie",
-            catalogSettings: {
-              genre: "Drama",
-              decade: 1990,
-              maxRuntime: 90,
-              minRating: 7,
-            },
-          },
+            catalogSettings: FILTERS,
+          }),
         ])
       ).status,
     ).toBe(200);
@@ -176,13 +172,7 @@ test(
     expect(
       (
         await postConfig(accountId, [
-          {
-            id,
-            provider: "imdb",
-            sourceRef: CATALOG_FIXTURE_USER,
-            sortOption: "added_at-asc",
-            displayMode: "split",
-          },
+          listInput("imdb", CATALOG_FIXTURE_USER, { id, displayMode: "split" }),
         ])
       ).status,
     ).toBe(200);
@@ -212,20 +202,12 @@ test(
     expect(
       (
         await postConfig(accountId, [
-          {
+          listInput("imdb", CATALOG_FIXTURE_USER, {
             id,
-            provider: "imdb",
-            sourceRef: CATALOG_FIXTURE_USER,
             catalogTitle: "Release QA",
-            sortOption: "added_at-asc",
             displayMode: "movie",
-            catalogSettings: {
-              genre: "Drama",
-              decade: 1990,
-              maxRuntime: 90,
-              minRating: 7,
-            },
-          },
+            catalogSettings: FILTERS,
+          }),
         ])
       ).status,
     ).toBe(200);
@@ -269,8 +251,7 @@ test(
     for (const name of ["90 min or less", "Top rated", "Shuffle"]) {
       await page.getByRole("checkbox", { name, exact: true }).check();
     }
-    await saveConfigure(page);
-    await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
+    await saveConfigure(page, { message: SAVED_REINSTALL });
     await expect(
       page.getByRole("heading", {
         name: "Reinstall in Stremio to see your changes",
@@ -328,20 +309,12 @@ test(
     expect(
       (
         await postConfig(accountId, [
-          {
+          listInput("imdb", CATALOG_FIXTURE_USER, {
             id,
-            provider: "imdb",
-            sourceRef: CATALOG_FIXTURE_USER,
             catalogTitle: "Release QA",
-            sortOption: "added_at-asc",
             displayMode: "movie",
-            catalogSettings: {
-              genre: "Drama",
-              decade: 1990,
-              maxRuntime: 90,
-              minRating: 7,
-            },
-          },
+            catalogSettings: FILTERS,
+          }),
         ])
       ).status,
     ).toBe(200);

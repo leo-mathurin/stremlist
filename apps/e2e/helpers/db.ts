@@ -127,7 +127,7 @@ export async function seedAccountWithLists(
   return { accountId, listIds };
 }
 
-export interface SeedListInput {
+interface SeedListInput {
   provider?: ProviderId;
   sourceRef: string;
   catalogTitle: string;

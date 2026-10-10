@@ -322,6 +322,52 @@ export async function captureConfig(
   return (await routeConfig(browser, initial, key)).submissions;
 }
 
+/**
+ * Answer the first save of a new setup (`POST /accounts`) as the backend
+ * does: the fixture Account with the submitted Lists. Returns the saves.
+ */
+export async function routeCreateAccount(browser: Browser) {
+  const created: AccountConfigInput[] = [];
+  await browser.route(`${backend}/accounts`, async (route) => {
+    const body = parseBody<AccountConfigInput>(route);
+    created.push(body);
+    await route.fulfill({
+      json: toJson({ ok: true, accountId, lists: savedLists(body) }),
+    });
+  });
+  return created;
+}
+
+/**
+ * `baseRoutes`, then serve `initial` and hold every save until the test
+ * calls `release()`. Saves answer the submitted Lists with `genres`.
+ */
+export async function gatedSaves(
+  browser: Browser,
+  initial: object,
+  genres?: string[],
+) {
+  await baseRoutes(browser);
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const submissions: AccountConfigInput[] = [];
+  await browser.route(`${backend}/${accountId}/config`, async (route) => {
+    if (route.request.method === "GET") {
+      await route.fulfill({ json: toJson(initial) });
+      return;
+    }
+    const submitted = parseBody<AccountConfigInput>(route);
+    submissions.push(submitted);
+    await gate;
+    await route.fulfill({
+      json: toJson({ ok: true, lists: savedLists(submitted, genres) }),
+    });
+  });
+  return { submissions, release: () => release() };
+}
+
 /** A successful `/links/resolve` answer. */
 export function resolved(
   provider: ProviderId,
@@ -429,9 +475,10 @@ export const MINUTE = 60_000;
 /** The ISO time `ms` milliseconds ago. */
 export const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 
-/** Centers of the List drag handles, in visible order. */
-export async function dragHandleCenters(browser: Browser) {
-  return browser.evaluate(() =>
+/** Drag the second List above the first one with the pointer. */
+export async function dragSecondAboveFirst(browser: Browser) {
+  // Centers of the List drag handles, in visible order.
+  const handles = await browser.evaluate(() =>
     Array.from(
       document.querySelectorAll('[aria-label^="Drag to reorder"]'),
     ).map((el) => {
@@ -439,11 +486,6 @@ export async function dragHandleCenters(browser: Browser) {
       return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
     }),
   );
-}
-
-/** Drag the second List above the first one with the pointer. */
-export async function dragSecondAboveFirst(browser: Browser) {
-  const handles = await dragHandleCenters(browser);
   await browser.mouse.move(handles[1].x, handles[1].y);
   await browser.mouse.down();
   for (let step = 1; step <= 12; step += 1) {

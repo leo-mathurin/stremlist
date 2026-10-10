@@ -1,9 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { addonManifestUrl } from "../env.js";
 import { getCatalog } from "../helpers/api.js";
-import { resetDb, seedAccountWithLists } from "../helpers/db.js";
+import { resetDb, seedImdbAccount } from "../helpers/db.js";
 import { discoverUrl, installAddon } from "../helpers/stremio.js";
-import { PUBLIC_USER } from "../helpers/test-data.js";
 
 // Clicking through from a Stremlist catalog to a detail page in Stremio Web.
 
@@ -15,12 +14,7 @@ test(
   "catalog items open their detail page",
   { tag: "@live-regression" },
   async ({ page }) => {
-    const {
-      accountId,
-      listIds: [listId],
-    } = await seedAccountWithLists([
-      { sourceRef: PUBLIC_USER, catalogTitle: "", displayMode: "split" },
-    ]);
+    const { accountId, listId } = await seedImdbAccount();
     const catalogId = `wl-${listId}-movie`;
     const manifestUrl = addonManifestUrl(accountId);
     const { metas } = await getCatalog(accountId, "movie", catalogId);

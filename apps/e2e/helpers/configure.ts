@@ -5,6 +5,9 @@ import { FRONTEND_URL } from "../env.js";
 /** The label of the Save button before the first save creates the Account. */
 export const SAVE_NEW = "Save and get my Addon URL";
 
+/** The save message when Stremio needs no reinstall. */
+export const SAVED = "Saved! Your catalogs will refresh with the new settings.";
+
 /** The save message when the saved changes need a reinstall in Stremio. */
 export const SAVED_REINSTALL =
   "Saved! Reinstall Stremlist in Stremio to see your changes.";

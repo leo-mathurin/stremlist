@@ -14,12 +14,15 @@ import {
   baseRoutes,
   captureConfig,
   configuration,
+  connected,
   fitConfigurePage,
+  gatedSaves,
   holdToasts,
   imdbUser,
   legacyConfiguration,
   parseBody,
   providerStatus,
+  routeCreateAccount,
   row,
   saveButton,
   savedLists,
@@ -124,14 +127,7 @@ test("a new setup sends the setting with its first save", async ({
   browser,
 }) => {
   await baseRoutes(browser);
-  const created: AccountConfigInput[] = [];
-  await browser.route(`${backend}/accounts`, async (route) => {
-    const body = parseBody<AccountConfigInput>(route);
-    created.push(body);
-    await route.fulfill({
-      json: toJson({ ok: true, accountId, lists: savedLists(body) }),
-    });
-  });
+  const created = await routeCreateAccount(browser);
   await browser.route(`${backend}/${accountId}/config`, async (route) => {
     await route.fulfill({
       json: toJson(
@@ -184,31 +180,14 @@ test("changing the setting while a save runs keeps it as an unsaved change", asy
   screen,
   browser,
 }) => {
-  await baseRoutes(browser);
-  let releaseSave = () => {};
-  const responseGate = new Promise<void>((resolve) => {
-    releaseSave = resolve;
-  });
-  const submissions: AccountConfigInput[] = [];
-  await browser.route(`${backend}/${accountId}/config`, async (route) => {
-    if (route.request.method === "GET") {
-      await route.fulfill({ json: toJson(configuration) });
-      return;
-    }
-    const submitted = parseBody<AccountConfigInput>(route);
-    submissions.push(submitted);
-    await responseGate;
-    await route.fulfill({
-      json: toJson({ ok: true, lists: savedLists(submitted) }),
-    });
-  });
+  const { submissions, release } = await gatedSaves(browser, configuration);
 
   await app.open(`/configure?account=${accountId}`);
   await saveButton(screen).tap();
   await expect(saveButton(screen, "Saving")).toBeVisible();
   await screen.getByRole("checkbox", TOGGLE).tap();
   await expect(screen.getByRole("checkbox", TOGGLE)).toBeChecked();
-  releaseSave();
+  release();
 
   await expect(screen.getByText(SAVED_WITH_CHANGES)).toBeVisible();
   await saveButton(screen).tap();
@@ -318,14 +297,7 @@ test("a save and a disconnect show the summary of what is left", async ({
         syncedStatus(historyList.sourceRef, 12, undefined, "trakt"),
       ],
     },
-    connections: [
-      {
-        provider: "trakt",
-        username: "someone",
-        connectedAt: "2026-10-01T00:00:00.000Z",
-        needsRenewalSince: null,
-      },
-    ],
+    connections: [connected("trakt")],
   };
   const submissions: AccountConfigInput[] = [];
   await browser.route(`${backend}/${accountId}/config`, async (route) => {

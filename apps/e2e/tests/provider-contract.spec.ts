@@ -4,7 +4,6 @@ import type { ProviderBackend } from "../helpers/provider-backend.js";
 import { startProviderBackend } from "../helpers/provider-backend.js";
 
 let backend: ProviderBackend;
-let providerBackend: string;
 
 test.beforeAll(async () => {
   backend = await startProviderBackend("./provider-transport.ts", {
@@ -13,7 +12,6 @@ test.beforeAll(async () => {
     RESEND_API_KEY: "re_fixture_only",
     RESEND_AUDIENCE_ID: "fixture-audience",
   });
-  providerBackend = backend.url;
 });
 test.afterAll(async () => {
   await backend?.stop();
@@ -52,7 +50,7 @@ for (const [scenario, status, expected] of [
     { tag: "@local" },
     async ({ request }) => {
       const response = await request.post(
-        `${providerBackend}/newsletter/subscribe`,
+        `${backend.url}/newsletter/subscribe`,
         { data: { email: `${scenario}@example.test` } },
       );
       expect(response.status()).toBe(status);
@@ -69,7 +67,7 @@ test(
     // frontend requests still use the standard local backend.
     await page.route(`${BACKEND_URL}/newsletter/subscribe`, async (route) => {
       const response = await route.fetch({
-        url: `${providerBackend}/newsletter/subscribe`,
+        url: `${backend.url}/newsletter/subscribe`,
       });
       await route.fulfill({ response });
     });
@@ -116,7 +114,7 @@ for (const [id, expected] of [
     `IMDb list ${id} is classified through the real GraphQL transport`,
     { tag: "@local" },
     async ({ request }) => {
-      const response = await request.post(`${providerBackend}/links/resolve`, {
+      const response = await request.post(`${backend.url}/links/resolve`, {
         data: { input: `https://www.imdb.com/list/${id}/` },
       });
       expect(response.status()).toBe(200);

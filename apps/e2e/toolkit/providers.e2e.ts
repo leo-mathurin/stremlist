@@ -15,9 +15,9 @@ import {
   parseBody,
   providerStatus,
   resolved,
+  routeCreateAccount,
   routeResolve,
   row,
-  savedLists,
   toJson,
   saveButton,
   SAVE_NEW,
@@ -35,7 +35,6 @@ import {
 
 const PASTE = "Paste a link to a watchlist or list";
 const app4311 = "http://127.0.0.1:4311";
-const connectedAt = "2026-10-01T00:00:00.000Z";
 const traktList = {
   ...row,
   id: "00000000-0000-4000-8000-000000000003",
@@ -101,14 +100,7 @@ test("pasted links of every available Provider become Lists of a new setup", asy
         return { ok: false, reason: "unrecognized" };
     }
   });
-  const created: AccountConfigInput[] = [];
-  await browser.route(`${backend}/accounts`, async (route) => {
-    const body = parseBody<AccountConfigInput>(route);
-    created.push(body);
-    await route.fulfill({
-      json: toJson({ ok: true, accountId, lists: savedLists(body) }),
-    });
-  });
+  const created = await routeCreateAccount(browser);
   await browser.route(`${backend}/${accountId}/config`, async (route) => {
     await route.fulfill({ json: toJson(configuration) });
   });
@@ -483,7 +475,7 @@ test("a Legacy alias install that moved to a private URL cannot be changed", asy
 }) => {
   await captureConfig(
     browser,
-    { ...legacyConfiguration, movedAt: connectedAt },
+    { ...legacyConfiguration, movedAt: "2026-10-01T00:00:00.000Z" },
     imdbUser,
   );
   await app.open(`/configure?account=${imdbUser}`);

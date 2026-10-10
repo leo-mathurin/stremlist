@@ -7,7 +7,6 @@ import type {
   NewTitlesSummary,
   StremioMeta,
 } from "@stremlist/shared/stremio.types";
-import { FRONTEND_URL } from "../env.js";
 import type { RefreshResult } from "../helpers/api.js";
 import {
   asInput,
@@ -17,7 +16,11 @@ import {
   ok,
 } from "../helpers/api.js";
 import { CATALOG_TITLES, seedCatalog } from "../helpers/catalog-fixture.js";
-import { SAVED_REINSTALL, saveConfigure } from "../helpers/configure.js";
+import {
+  configureUrl,
+  SAVED_REINSTALL,
+  saveConfigure,
+} from "../helpers/configure.js";
 import {
   clearRefreshCooldown,
   getSourceListEntries,
@@ -156,6 +159,9 @@ async function newTitles(
 
 const ids = (metas: StremioMeta[]) => metas.map((meta) => meta.id);
 
+const daysAgo = (days: number) =>
+  new Date(Date.now() - days * 24 * 60 * 60_000).toISOString();
+
 /** Save these Lists through the isolated backend, as the configure page does. */
 async function saveLists(accountId: string, lists: ConfigListInput[]) {
   return ok(
@@ -191,7 +197,7 @@ test(
     expect(await newTitles(accountId)).toEqual([]);
 
     await refreshAll(accountId, sources([A, B, C], [traktItem(1, A)]));
-    expect((await newTitles(accountId)).map((meta) => meta.id)).toEqual([C]);
+    expect(ids(await newTitles(accountId))).toEqual([C]);
 
     // C also reaches the Trakt watchlist later: it keeps its first detection.
     const last = await refreshAll(
@@ -232,7 +238,7 @@ test(
     ]);
     await refreshAll(accountId, sources([A, B]));
     await refreshAll(accountId, sources([A, B, C]));
-    expect((await newTitles(accountId)).map((meta) => meta.id)).toEqual([C]);
+    expect(ids(await newTitles(accountId))).toEqual([C]);
     const before = await getSourceListEntries(accountId);
 
     const failed = await refreshAll(
@@ -241,12 +247,12 @@ test(
     );
     expect(failed).toMatchObject({ refreshed: 0, failed: 1 });
     expect(await getSourceListEntries(accountId)).toEqual(before);
-    expect((await newTitles(accountId)).map((meta) => meta.id)).toEqual([C]);
+    expect(ids(await newTitles(accountId))).toEqual([C]);
 
     await refreshAll(accountId, sources([A, B, C]));
     expect(await getSourceListEntries(accountId)).toEqual(before);
     expect(before.every((row) => row.removed_at === null)).toBe(true);
-    expect((await newTitles(accountId)).map((meta) => meta.id)).toEqual([C]);
+    expect(ids(await newTitles(accountId))).toEqual([C]);
   },
 );
 
@@ -270,7 +276,7 @@ test(
       sources([], [traktItem(1, A), NEVER_RESOLVED, traktItem(2, B)]),
     );
     const metas = await newTitles(accountId);
-    expect(metas.map((meta) => meta.id)).toEqual([B]);
+    expect(ids(metas)).toEqual([B]);
     expect(metas[0].description).toMatch(
       new RegExp(`^${detected("QA Trakt picks")}`),
     );
@@ -320,7 +326,7 @@ test(
     );
     expect(ids(served.metas).sort()).toEqual([A, B]);
 
-    await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
+    await page.goto(configureUrl(accountId));
     await expect(
       page.getByText(
         "No new titles detected yet. Stremlist could not read 1 List in full yet, so it cannot compare it.",
@@ -538,8 +544,6 @@ test(
       { provider: "trakt", sourceRef: "me/history", title: "QA history" },
     ]);
     await seedConnection(accountId, "trakt", { username: TRAKT_USER });
-    const daysAgo = (days: number) =>
-      new Date(Date.now() - days * 24 * 60 * 60_000).toISOString();
     const history = [
       {
         listId: listIds[0],
@@ -635,7 +639,7 @@ test(
       "new-titles-movie",
     );
     expect(status).toBe(200);
-    expect(metas.map((meta) => meta.id)).toEqual([A]);
+    expect(ids(metas)).toEqual([A]);
   },
 );
 
@@ -714,7 +718,7 @@ test(
       `wl-${listId}-movie`,
     );
     expect(ids(served.metas).sort()).toEqual([A, B, C, D]);
-    await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
+    await page.goto(configureUrl(accountId));
     await expect(
       page.getByText(/^2 new titles detected, the latest .+\.$/),
     ).toBeVisible();
@@ -727,8 +731,6 @@ test(
   async ({ page }) => {
     const { accountId } = await seedCatalog();
     const [first, second, third] = CATALOG_TITLES;
-    const daysAgo = (days: number) =>
-      new Date(Date.now() - days * 24 * 60 * 60_000).toISOString();
     await seedDetectionHistory(
       accountId,
       { provider: "imdb", sourceRef: CATALOG_FIXTURE_USER },
@@ -740,7 +742,7 @@ test(
       ],
     );
 
-    await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
+    await page.goto(configureUrl(accountId));
     const toggle = page.getByRole("checkbox", {
       name: "Show newly detected titles",
     });
@@ -760,7 +762,7 @@ test(
     const manifest = await getManifest(accountId);
     expect(manifest.catalogs[0]).toMatchObject({ id: "new-titles-movie" });
     const catalog = await getCatalog(accountId, "movie", "new-titles-movie");
-    expect(catalog.metas.map((meta) => meta.id)).toEqual([third.id, second.id]);
+    expect(ids(catalog.metas)).toEqual([third.id, second.id]);
     expect(catalog.metas[0].description).toMatch(
       /^Detected by Stremlist on \d{1,2} \w{3} \d{4} in Release QA\./,
     );

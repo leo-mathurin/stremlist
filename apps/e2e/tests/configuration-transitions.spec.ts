@@ -4,6 +4,7 @@ import {
   getCatalog,
   getConfig,
   getManifest,
+  listInput,
   postConfig,
 } from "../helpers/api.js";
 import { CATALOG_TITLES, seedCatalog } from "../helpers/catalog-fixture.js";
@@ -34,14 +35,11 @@ test(
     // The API refuses a 61-character title with a readable error and keeps
     // the stored configuration.
     const rejected = await postConfig(accountId, [
-      {
+      listInput("imdb", CATALOG_FIXTURE_USER, {
         id,
-        provider: "imdb",
-        sourceRef: CATALOG_FIXTURE_USER,
         catalogTitle: "A".repeat(61),
-        sortOption: "added_at-asc",
         displayMode: "movie",
-      },
+      }),
     ]);
     expect(rejected).toEqual({
       status: 400,
@@ -123,18 +121,15 @@ test(
     expect(
       (
         await postConfig(accountId, [
-          {
+          listInput("imdb", CATALOG_FIXTURE_USER, {
             id,
-            provider: "imdb",
-            sourceRef: CATALOG_FIXTURE_USER,
             catalogTitle: "Release QA",
-            sortOption: "added_at-asc",
             displayMode: "movie",
             catalogSettings: {
               genre: "Drama",
               presets: ["rated", "short", "shuffle"],
             },
-          },
+          }),
         ])
       ).status,
     ).toBe(200);
@@ -240,22 +235,16 @@ test(
     expect(
       (
         await postConfig(accountId, [
-          {
+          listInput("imdb", CATALOG_FIXTURE_USER, {
             id,
-            provider: "imdb",
-            sourceRef: CATALOG_FIXTURE_USER,
             catalogTitle: "1",
-            sortOption: "added_at-asc",
             displayMode: "movie",
-          },
-          {
+          }),
+          listInput("imdb", "ls99123456", {
             id: second,
-            provider: "imdb",
-            sourceRef: "ls99123456",
             catalogTitle: "2",
-            sortOption: "added_at-asc",
             displayMode: "movie",
-          },
+          }),
         ])
       ).status,
     ).toBe(200);

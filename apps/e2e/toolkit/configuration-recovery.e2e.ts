@@ -13,6 +13,7 @@ import {
   imdbUser,
   parseBody,
   resolved,
+  routeCreateAccount,
   routeResolve,
   row,
   savedLists,
@@ -81,14 +82,7 @@ for (const failure of ["private", "unknown", "offline"] as const) {
               provider: "imdb",
             },
     );
-    const created: AccountConfigInput[] = [];
-    await browser.route(`${backend}/accounts`, async (route) => {
-      const body = parseBody<AccountConfigInput>(route);
-      created.push(body);
-      await route.fulfill({
-        json: toJson({ ok: true, accountId, lists: savedLists(body) }),
-      });
-    });
+    const created = await routeCreateAccount(browser);
     await browser.route(`${backend}/${accountId}/config`, async (route) => {
       await route.fulfill({ json: configuration });
     });
