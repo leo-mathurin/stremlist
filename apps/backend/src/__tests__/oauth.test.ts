@@ -169,10 +169,19 @@ describe("startAuthorization", () => {
     expect(db.getTable("oauth_states")).toEqual([]);
   });
 
-  it("prefers BACKEND_PUBLIC_URL for the redirect URI", () => {
+  it("prefers BACKEND_PUBLIC_URL for the redirect URI", async () => {
+    useOAuthProvider();
     process.env.BACKEND_PUBLIC_URL = "https://api.stremlist.com/";
     try {
-      expect(redirectUri("trakt", "http://localhost:3000")).toBe(
+      const res = await app.request(`/${accountId}/connections/trakt/start`, {
+        method: "POST",
+      });
+      const { authorizeUrl } = (await res.json()) as { authorizeUrl: string };
+
+      expect(new URL(authorizeUrl).searchParams.get("redirect_uri")).toBe(
+        "https://api.stremlist.com/oauth/trakt/callback",
+      );
+      expect(redirectUri("trakt", "https://api.stremlist.com")).toBe(
         "https://api.stremlist.com/oauth/trakt/callback",
       );
     } finally {

@@ -6,6 +6,7 @@ import { readFileSync, writeFileSync } from "fs";
 import path from "path";
 import { getImdbWatchlist } from "../services/imdb-scraper";
 import { deleteCachedList } from "../services/list-cache";
+import { listRowCacheKeys } from "../services/list-rows";
 
 console.log("Starting cleanup...");
 
@@ -153,7 +154,7 @@ async function deleteUsers(userIds: string[]): Promise<void> {
     }
     const { data: lists, error: listsError } = await supabase
       .from("lists")
-      .select("id")
+      .select("*")
       .in(
         "account_id",
         accounts.map(({ id }) => id),
@@ -164,8 +165,9 @@ async function deleteUsers(userIds: string[]): Promise<void> {
       );
     }
 
+    // A merged List keeps one cache per Source list (ADR 0006).
     const cacheDeletes = await Promise.allSettled(
-      lists.map(({ id }) => deleteCachedList(id)),
+      listRowCacheKeys(lists).map((key) => deleteCachedList(key)),
     );
     const cacheDeleteFailure = cacheDeletes.find(
       (result) => result.status === "rejected",

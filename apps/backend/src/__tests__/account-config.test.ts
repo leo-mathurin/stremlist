@@ -721,7 +721,7 @@ describe("List CRUD via the config API", () => {
       rpcMocks.rpc.mockResolvedValue({
         data: [
           {
-            deleted_ids: [],
+            previous_lists: [{ ...savedRow, account_id: legacyAccountId }],
             lists: [{ ...savedRow, account_id: legacyAccountId }],
           },
         ],
@@ -888,11 +888,25 @@ describe("List CRUD via the config API", () => {
       },
     );
 
-    it("deletes only the cache IDs returned by the committed transaction", async () => {
+    it("deletes only the caches that the committed transaction left unused", async () => {
       cache.seed(UUID_1, []);
       cache.seed(UUID_2, []);
       rpcMocks.rpc.mockResolvedValueOnce({
-        data: [{ deleted_ids: [UUID_2], lists: [savedRow] }],
+        // The Lists that the transaction replaced, read under its lock.
+        data: [
+          {
+            previous_lists: [
+              savedRow,
+              {
+                ...savedRow,
+                id: UUID_2,
+                source_ref: "ur99999999",
+                position: 1,
+              },
+            ],
+            lists: [savedRow],
+          },
+        ],
         error: null,
       });
       const response = await postConfig(OWNER, {

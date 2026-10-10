@@ -23,7 +23,8 @@ vi.mock("../lib/resend", () => ({
 import app from "../index.js";
 import type { SourceEntry, SourceSnapshot } from "../providers/types";
 import { SourceUnavailableError } from "../providers/types";
-import { entryKey, forgetConnectionDetections } from "../services/detections";
+import { deleteConnection, saveConnection } from "../services/connections";
+import { entryKey } from "../services/detections";
 import { resetPreviewReadings } from "../services/list-preview";
 import { sourceCaches } from "../services/merged-lists";
 import {
@@ -958,20 +959,32 @@ describe("settings", () => {
 describe("Connection cleanup", () => {
   it("keeps only the current Connection user's history and public Source lists", async () => {
     seedNewTitlesAccount();
-    // The new Connection is sam's; a refresh already wrote sam's Baseline.
-    seedConnection(accountId, "trakt", { username: "sam" });
+    // leo was connected; a refresh already wrote a Baseline for sam.
+    seedConnection(accountId, "trakt", { username: "leo" });
     seedHistory("trakt", "me/history", "tt0000001", "leo");
     seedHistory("trakt", "me/collection", "tt0000002", "sam");
     seedHistory("trakt", "users/leo/watchlist", "tt0000003");
     const synced = () =>
       db.getTable("source_list_syncs").map((row) => row.source_ref);
 
-    await forgetConnectionDetections(accountId, "trakt");
+    // sam connects: the history of leo goes in the same transaction.
+    await saveConnection(
+      accountId,
+      "trakt",
+      {
+        accessToken: "access-1",
+        refreshToken: null,
+        expiresAt: null,
+        scope: null,
+      },
+      "sam",
+      "https://api.stremlist.test/oauth/trakt/callback",
+    );
     expect(synced()).toEqual(["me/collection", "users/leo/watchlist"]);
 
     // After a disconnect, only the public Source list keeps its history.
-    db.tables.connections = [];
-    await forgetConnectionDetections(accountId, "trakt");
+    await deleteConnection(accountId, "trakt", []);
+    expect(db.getTable("connections")).toEqual([]);
     expect(synced()).toEqual(["users/leo/watchlist"]);
     expect(detectionRows().map((row) => row.source_ref)).toEqual([
       "users/leo/watchlist",

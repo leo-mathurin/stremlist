@@ -1,5 +1,12 @@
 import type { ListSource, MergeableList } from "@stremlist/shared/list-merge";
-import { listSources, sourceKey } from "@stremlist/shared/list-merge";
+import {
+  isMergedList,
+  listSources,
+  sourceKey,
+  sourcesWithoutDates,
+} from "@stremlist/shared/list-merge";
+import type { ProviderId } from "@stremlist/shared/providers";
+import { PROVIDERS } from "@stremlist/shared/providers";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { createHash } from "node:crypto";
 import type { SourceMeta } from "./list-cache";
@@ -48,7 +55,24 @@ export function unusedSourceCaches(
     .map(({ cacheKey }) => cacheKey);
 }
 
+/** The "More on {Provider}: {url}" line at the end of a description. */
 const LINK_BACK = /(?:^|\n\n)(More on [^\n:]+: \S+)$/u;
+
+/**
+ * Add "More on {Provider}: {url}" at the end of the description when the
+ * entry has a page on its Provider. Idempotent: metadata reused from the
+ * previous cache already carries it.
+ */
+export function withLinkBack(
+  meta: StremioMeta,
+  provider: ProviderId,
+  sourceUrl: string | undefined,
+): StremioMeta {
+  if (!sourceUrl) return meta;
+  const base = meta.description.replace(LINK_BACK, "");
+  const line = `More on ${PROVIDERS[provider].label}: ${sourceUrl}`;
+  return { ...meta, description: base ? `${base}\n\n${line}` : line };
+}
 
 /**
  * Keep the "More on {Provider}" line of a duplicate that is dropped: Simkl's
@@ -99,6 +123,22 @@ export function mergeSourceCatalogs(
     }
   }
   return merged;
+}
+
+/**
+ * The canonical Catalog of a List from the Catalogs of the Source lists it
+ * could read, in the List's order. A List with one Source list keeps its
+ * Catalog as it is, in its Provider's order and without deduplication by
+ * bare IMDb ID (a movie and a series may share one). A merged List sorts by
+ * date added only when every Source list gives dates (ADR 0006).
+ */
+export function mergeListCatalogs(
+  list: MergeableList,
+  catalogs: SourceMeta[][],
+): SourceMeta[] {
+  return isMergedList(list)
+    ? mergeSourceCatalogs(catalogs, sourcesWithoutDates(list).length === 0)
+    : catalogs[0];
 }
 
 /** The meta as Stremio gets it: the date added stays in the cache. */

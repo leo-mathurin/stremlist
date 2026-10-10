@@ -78,28 +78,6 @@ export async function recordRefreshOutcome(
   }
 }
 
-/**
- * Forget the statuses of Source lists whose cached Catalogs were deleted
- * (after a disconnect): an old success must not say their Titles are still
- * in Stremio. The other Source lists of a merged List keep theirs.
- */
-export async function forgetSyncStatuses(
-  sources: (SourceId & { listId: string })[],
-): Promise<void> {
-  const results = await Promise.all(
-    sources.map(({ listId, provider, sourceRef }) =>
-      supabase
-        .from("list_sync_status")
-        .delete()
-        .eq("list_id", listId)
-        .eq("provider", provider)
-        .eq("source_ref", sourceRef),
-    ),
-  );
-  const failed = results.find(({ error }) => error);
-  if (failed?.error) throw failed.error;
-}
-
 function toStatus(row: StatusRow): ListSyncStatus {
   return {
     provider: row.provider as ProviderId,

@@ -1,5 +1,4 @@
 import type { TitleType } from "@stremlist/shared/constants";
-import { listRequiresConnection } from "@stremlist/shared/list-merge";
 import {
   sourceProblemCopy,
   storedSourceNoun,
@@ -7,7 +6,7 @@ import {
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { getAccountListById, resolveAccountKey } from "../services/accounts";
+import { getVisibleListById, resolveAccountKey } from "../services/accounts";
 import {
   resolveCatalogSelection,
   filterCatalog,
@@ -120,17 +119,10 @@ async function serveCatalog(c: Context) {
       return c.json({ metas: metas.slice(skip, skip + CATALOG_PAGE_SIZE) });
     }
 
-    const list = await getAccountListById(
-      access.account.id,
-      parsedCatalog.listId,
-    );
-
+    // Lists read through a Connection never answer through a Legacy alias.
+    const list = await getVisibleListById(access, parsedCatalog.listId);
     if (!list) {
       console.warn(`List not found for ${accountKey}: ${parsedCatalog.listId}`);
-      return c.json({ metas: [] });
-    }
-    // Lists read through a Connection never answer through a Legacy alias.
-    if (access.via === "legacy" && listRequiresConnection(list)) {
       return c.json({ metas: [] });
     }
 
@@ -145,15 +137,12 @@ async function serveCatalog(c: Context) {
       preset,
     );
 
-    const listData = await getListCatalog({
+    const listData = await getListCatalog(list, {
       accountId: access.account.id,
-      listId: list.id,
-      provider: list.provider,
-      sourceRef: list.sourceRef,
-      mergedSources: list.mergedSources,
       sort: selection.sort,
       rpdbApiKey: access.account.rpdbApiKey,
       allowConnection: access.via === "private",
+      policy: "catalog",
     });
 
     const matchingMetas = filterCatalog(

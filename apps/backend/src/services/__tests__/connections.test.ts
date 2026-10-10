@@ -15,6 +15,7 @@ vi.mock("../../providers/registry", async () => {
 import {
   seedAccount,
   seedConnection,
+  seedList,
   useTestEncryptionKey,
 } from "../../__tests__/helpers/fixtures";
 import {
@@ -146,7 +147,7 @@ describe("listConnections and deleteConnection", () => {
     ]);
   });
 
-  it("revokes the token (best effort) and deletes the Connection", async () => {
+  it("revokes the token (best effort) and deletes the Connection with what it read", async () => {
     const revoke = vi.fn(() => Promise.reject(new Error("revoke failed")));
     useFakeProvider(
       fakeAdapter("trakt", {
@@ -159,11 +160,56 @@ describe("listConnections and deleteConnection", () => {
       }),
     );
     seedConnection(accountId, "trakt", { accessToken: "to-revoke" });
+    const list = seedList(accountId, {
+      provider: "trakt",
+      source_ref: "me/watchlist",
+      merged_sources: [
+        { provider: "trakt", source_ref: "users/leo/watchlist" },
+      ],
+    });
+    const other = seedAccount();
+    const otherList = seedList(other.id, {
+      provider: "trakt",
+      source_ref: "me/watchlist",
+    });
+    for (const [listId, sourceRef] of [
+      [list.id, "me/watchlist"],
+      [list.id, "users/leo/watchlist"],
+      [otherList.id, "me/watchlist"],
+    ]) {
+      db.insert("list_sync_status", {
+        list_id: listId,
+        provider: "trakt",
+        source_ref: sourceRef,
+        last_attempt_at: new Date().toISOString(),
+      });
+    }
+    db.insert("source_list_syncs", {
+      account_id: accountId,
+      provider: "trakt",
+      source_ref: "me/watchlist",
+      baseline_at: new Date().toISOString(),
+      last_complete_sync_at: new Date().toISOString(),
+      requires_connection: true,
+    });
 
-    await deleteConnection(accountId, "trakt");
+    await deleteConnection(accountId, "trakt", [
+      { listId: list.id, sourceRef: "me/watchlist" },
+      // Another Account's List is never touched.
+      { listId: otherList.id, sourceRef: "me/watchlist" },
+    ]);
 
     expect(revoke).toHaveBeenCalledWith("to-revoke");
     expect(db.getTable("connections")).toEqual([]);
+    expect(db.getTable("source_list_syncs")).toEqual([]);
+    expect(
+      db
+        .getTable("list_sync_status")
+        .map((row) => [row.list_id, row.source_ref]),
+    ).toEqual([
+      [list.id, "users/leo/watchlist"],
+      [otherList.id, "me/watchlist"],
+    ]);
   });
 });
 

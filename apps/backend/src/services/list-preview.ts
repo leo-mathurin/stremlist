@@ -8,12 +8,7 @@ import type {
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { DisplayMode } from "@stremlist/shared/constants";
 import type { ListSource } from "@stremlist/shared/list-merge";
-import {
-  isMergedList,
-  listSources,
-  sourceKey,
-  sourcesWithoutDates,
-} from "@stremlist/shared/list-merge";
+import { listSources, sourceKey } from "@stremlist/shared/list-merge";
 import { listCatalogs } from "@stremlist/shared/manifest-catalogs";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDERS } from "@stremlist/shared/providers";
@@ -25,7 +20,7 @@ import { filterCatalog, resolveCatalogSelection } from "./catalog-filters";
 import { sortCatalog } from "./catalog-sort";
 import type { BuiltCatalog } from "./lists";
 import { buildCatalog, providerContext, sourceProblemReason } from "./lists";
-import { mergeSourceCatalogs } from "./merged-lists";
+import { mergeListCatalogs } from "./merged-lists";
 
 /**
  * How long one read of a Source list serves previews. Changing the sort or
@@ -180,12 +175,10 @@ function presentPreview(
   read: BuiltCatalog[],
   sourceProblems: PreviewSourceProblem[],
 ): CatalogPreview {
-  const metas = isMergedList(request)
-    ? mergeSourceCatalogs(
-        read.map((built) => built.data.metas),
-        sourcesWithoutDates(request).length === 0,
-      )
-    : read[0].data.metas;
+  const metas = mergeListCatalogs(
+    request,
+    read.map((built) => built.data.metas),
+  );
   const unresolvedEntries = read.flatMap((built) => built.unresolvedEntries);
   // The real Catalog seeds Shuffle with its cache generation; a preview has
   // none, so it uses a stable seed of its own.

@@ -32,16 +32,12 @@ export function isOAuthConfigured(provider: ProviderId): boolean {
   return !!getProvider(provider).oauth?.clientId();
 }
 
-/** The callback URL registered with every Provider app. */
-export function redirectUri(
-  provider: ProviderId,
-  requestOrigin: string,
-): string {
-  const base = (process.env.BACKEND_PUBLIC_URL ?? requestOrigin).replace(
-    /\/+$/,
-    "",
-  );
-  return `${base}/oauth/${provider}/callback`;
+/**
+ * The callback URL registered with every Provider app, on the public origin
+ * of this backend (`backendOrigin`).
+ */
+export function redirectUri(provider: ProviderId, origin: string): string {
+  return `${origin}/oauth/${provider}/callback`;
 }
 
 function pkceChallenge(verifier: string): string {
@@ -55,7 +51,8 @@ function pkceChallenge(verifier: string): string {
 export async function startAuthorization(
   accountId: string,
   provider: ProviderId,
-  requestOrigin: string,
+  /** The public origin of this backend (`backendOrigin`). */
+  origin: string,
 ): Promise<string> {
   const config = getOAuthConfig(provider);
   const state = randomToken();
@@ -73,7 +70,7 @@ export async function startAuthorization(
   const url = new URL(config.authorizeUrl);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("client_id", config.clientId() ?? "");
-  url.searchParams.set("redirect_uri", redirectUri(provider, requestOrigin));
+  url.searchParams.set("redirect_uri", redirectUri(provider, origin));
   url.searchParams.set("state", state);
   url.searchParams.set("code_challenge", pkceChallenge(verifier));
   url.searchParams.set("code_challenge_method", "S256");

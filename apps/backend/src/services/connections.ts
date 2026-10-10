@@ -1,10 +1,11 @@
-import type { ProviderId } from "@stremlist/shared/providers";
-import { isProviderId } from "@stremlist/shared/providers";
+import type { Tables } from "@stremlist/shared/database.types";
+import type { ConnectionSource, ProviderId } from "@stremlist/shared/providers";
+import { CONNECTION_SOURCES, isProviderId } from "@stremlist/shared/providers";
 import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
 import { randomUUID } from "node:crypto";
 import { decryptSecret, encryptSecret } from "../lib/crypto";
 import { supabase } from "../lib/supabase";
-import { getProvider } from "../providers/registry";
+import { getProvider, isProviderEnabled } from "../providers/registry";
 import type { ConnectionAccess } from "../providers/types";
 import { ConnectionExpiredError } from "../providers/types";
 import type { OAuthTokens } from "./oauth";
@@ -35,19 +36,7 @@ interface StoredConnection {
   createdAt: string;
 }
 
-interface ConnectionRow {
-  account_id: string;
-  provider: string;
-  provider_username: string | null;
-  access_token: string;
-  refresh_token: string | null;
-  expires_at: string | null;
-  redirect_uri: string;
-  created_at: string;
-  needs_renewal_since: string | null;
-}
-
-function decode(row: ConnectionRow): StoredConnection | null {
+function decode(row: Tables<"connections">): StoredConnection | null {
   if (!isProviderId(row.provider)) return null;
   try {
     return {
@@ -95,21 +84,25 @@ export async function listConnections(
     console.error(`Failed to list connections of ${accountId}:`, error.message);
     return [];
   }
-  return (
-    data as Pick<
-      ConnectionRow,
-      "provider" | "provider_username" | "created_at" | "needs_renewal_since"
-    >[]
-  )
-    .filter((row) => isProviderId(row.provider))
-    .map((row) => ({
-      provider: row.provider as ProviderId,
-      username: row.provider_username,
-      connectedAt: row.created_at,
-      needsRenewalSince: row.needs_renewal_since,
-    }));
+  return data.flatMap((row) =>
+    isProviderId(row.provider)
+      ? [
+          {
+            provider: row.provider,
+            username: row.provider_username,
+            connectedAt: row.created_at,
+            needsRenewalSince: row.needs_renewal_since,
+          },
+        ]
+      : [],
+  );
 }
 
+/**
+ * Save a new authorization, encrypted. It replaces a refused one, and in the
+ * same transaction the detection history of Connection-only Source lists
+ * that belonged to another Provider user is forgotten (ADR 0007).
+ */
 export async function saveConnection(
   accountId: string,
   provider: ProviderId,
@@ -117,24 +110,18 @@ export async function saveConnection(
   username: string | null,
   redirectUri: string,
 ): Promise<void> {
-  const { error } = await supabase.from("connections").upsert(
-    {
-      account_id: accountId,
-      provider,
-      provider_username: username,
-      redirect_uri: redirectUri,
-      access_token: encryptSecret(tokens.accessToken),
-      refresh_token: tokens.refreshToken
-        ? encryptSecret(tokens.refreshToken)
-        : null,
-      expires_at: tokens.expiresAt?.toISOString() ?? null,
-      scope: tokens.scope,
-      // A new authorization replaces a refused one.
-      needs_renewal_since: null,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "account_id,provider" },
-  );
+  const { error } = await supabase.rpc("save_connection", {
+    p_account_id: accountId,
+    p_provider: provider,
+    p_provider_username: username,
+    p_access_token: encryptSecret(tokens.accessToken),
+    p_refresh_token: tokens.refreshToken
+      ? encryptSecret(tokens.refreshToken)
+      : null,
+    p_expires_at: tokens.expiresAt?.toISOString() ?? null,
+    p_scope: tokens.scope,
+    p_redirect_uri: redirectUri,
+  });
   if (error) throw error;
 }
 
@@ -191,9 +178,16 @@ async function setNeedsRenewal(
   }
 }
 
+/**
+ * Revoke the token (best effort), then delete the Connection in one
+ * transaction with the detection history that belongs to it and the sync
+ * statuses of `sources`, the Source lists on this Provider that were read
+ * through it.
+ */
 export async function deleteConnection(
   accountId: string,
   provider: ProviderId,
+  sources: { listId: string; sourceRef: string }[],
 ): Promise<void> {
   const stored = await readConnection(accountId, provider);
   if (stored) {
@@ -206,11 +200,12 @@ export async function deleteConnection(
       );
     }
   }
-  const { error } = await supabase
-    .from("connections")
-    .delete()
-    .eq("account_id", accountId)
-    .eq("provider", provider);
+  const { error } = await supabase.rpc("delete_connection", {
+    p_account_id: accountId,
+    p_provider: provider,
+    p_list_ids: sources.map((source) => source.listId),
+    p_source_refs: sources.map((source) => source.sourceRef),
+  });
   if (error) throw error;
 }
 
@@ -324,4 +319,35 @@ export async function getConnectionAccess(
     reportRefused: () => setNeedsRenewal(current, true),
     reportWorking: () => setNeedsRenewal(current, false),
   };
+}
+
+/**
+ * Every Source list that a Connection unlocks: the Provider's static ones,
+ * then the user's own lists that the Provider lists (without the static
+ * ones again). Without a Connection, or when the Provider is turned off,
+ * only the static ones. A failed listing is logged and leaves the user's
+ * own lists out.
+ */
+export async function connectionSources(
+  accountId: string,
+  provider: ProviderId,
+): Promise<ConnectionSource[]> {
+  const staticSources = CONNECTION_SOURCES[provider] ?? [];
+  // The kill switch also stops the call that lists the user's own lists.
+  const connection = isProviderEnabled(provider)
+    ? await getConnectionAccess(accountId, provider)
+    : null;
+  if (!connection) return staticSources;
+  let own: ConnectionSource[] = [];
+  try {
+    own =
+      (await getProvider(provider).listConnectionSources?.(connection)) ?? [];
+  } catch (error) {
+    console.error(
+      `Listing ${provider} sources for ${accountId} failed:`,
+      error instanceof Error ? error.message : error,
+    );
+  }
+  const seen = new Set(staticSources.map((source) => source.ref));
+  return [...staticSources, ...own.filter((source) => !seen.has(source.ref))];
 }

@@ -11,10 +11,9 @@ import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
 import type { AddonAccess, ConfigList } from "@stremlist/shared/stremio.types";
-import { z } from "zod";
 import { supabase } from "../lib/supabase";
-import { catalogSettingsSchema } from "./catalog-settings";
 import { deleteCachedList } from "./list-cache";
+import { mapList, toStoredSources } from "./list-rows";
 import { unusedSourceCaches } from "./merged-lists";
 
 type AccountRow = Tables<"accounts">;
@@ -76,34 +75,6 @@ export interface ListInput {
 /** A concurrent save changed merged Source lists that this save kept. */
 export class MergedSourcesChangedError extends Error {}
 
-const storedSourcesSchema = z.array(
-  z.object({
-    provider: z.string(),
-    source_ref: z.string(),
-    label: z.string().optional(),
-  }),
-);
-
-/** The stored form of merged Source lists (`lists.merged_sources`). */
-function toStoredSources(sources: readonly ListSource[]) {
-  return sources.map((source) => ({
-    provider: source.provider,
-    source_ref: source.sourceRef,
-    ...(source.label ? { label: source.label } : {}),
-  }));
-}
-
-/** The merged Source lists of a row; unknown Providers are left out. */
-function mapMergedSources(value: unknown): ListSource[] {
-  const parsed = storedSourcesSchema.safeParse(value);
-  if (!parsed.success) return [];
-  return parsed.data.flatMap(({ provider, source_ref, label }) =>
-    isProviderId(provider)
-      ? [{ provider, sourceRef: source_ref, ...(label ? { label } : {}) }]
-      : [],
-  );
-}
-
 function mapAccount(row: AccountRow): Account {
   return {
     id: row.id,
@@ -114,26 +85,6 @@ function mapAccount(row: AccountRow): Account {
     actionProviders: row.action_providers.filter(isProviderId),
     newTitlesCatalog: row.new_titles_catalog,
     lastFetchedAt: row.last_fetched_at,
-  };
-}
-
-function mapList(row: ListRow): ConfigList | null {
-  if (!isProviderId(row.provider)) return null;
-  const settings = catalogSettingsSchema.safeParse(row.catalog_settings);
-  const mergedSources = mapMergedSources(row.merged_sources);
-  return {
-    id: row.id,
-    provider: row.provider,
-    sourceRef: row.source_ref,
-    catalogTitle: row.catalog_title,
-    sortOption: row.sort_option,
-    displayMode: row.display_mode as ConfigList["displayMode"],
-    position: row.position,
-    ...(settings.success && Object.keys(settings.data).length > 0
-      ? { catalogSettings: settings.data }
-      : {}),
-    ...(mergedSources.length > 0 ? { mergedSources } : {}),
-    ...(row.source_label ? { sourceLabel: row.source_label } : {}),
   };
 }
 
@@ -218,20 +169,6 @@ export async function ensureLegacyAccount(
   return { account: mapAccount(data), via: "legacy" };
 }
 
-/** A new Account with a generated ID. Lists are saved separately. */
-export async function createAccount(): Promise<Account> {
-  const { data, error } = await supabase
-    .from("accounts")
-    .insert({ is_active: true })
-    .select("*")
-    .single();
-  if (error) {
-    console.error("Failed to create an account:", error.message);
-    throw error;
-  }
-  return mapAccount(data);
-}
-
 export async function getAccountLists(
   accountId: string,
 ): Promise<ConfigList[]> {
@@ -255,24 +192,74 @@ export async function getVisibleLists(
   return visibleLists(access, await getAccountLists(access.account.id));
 }
 
-export async function getAccountListById(
-  accountId: string,
+/** One List of the Account, if the request may see it (see visibleLists). */
+export async function getVisibleListById(
+  access: AccountAccess,
   listId: string,
 ): Promise<ConfigList | null> {
   const { data, error } = await supabase
     .from("lists")
     .select("*")
-    .eq("account_id", accountId)
+    .eq("account_id", access.account.id)
     .eq("id", listId)
     .maybeSingle();
   if (error || !data) return null;
-  return mapList(data);
+  const list = mapList(data);
+  return list && visibleLists(access, [list]).length > 0 ? list : null;
+}
+
+/** The stored form of submitted Lists (`p_lists` of the config RPCs). */
+function toStoredLists(lists: ListInput[]) {
+  return lists.map((list) => ({
+    ...(list.id ? { id: list.id } : {}),
+    provider: list.provider,
+    source_ref: list.sourceRef,
+    catalog_title: list.catalogTitle ?? "",
+    sort_option: list.sortOption,
+    display_mode: list.displayMode,
+    position: list.position,
+    ...(list.catalogSettings === undefined
+      ? {}
+      : { catalog_settings: { ...list.catalogSettings } }),
+    ...(list.keptMergedSources
+      ? { expected_merged_sources: toStoredSources(list.mergedSources ?? []) }
+      : { merged_sources: toStoredSources(list.mergedSources ?? []) }),
+    source_label: list.sourceLabel ?? null,
+  }));
+}
+
+function mapLists(rows: unknown): ConfigList[] {
+  return (rows as ListRow[])
+    .map(mapList)
+    .filter((list): list is ConfigList => !!list);
 }
 
 /**
- * Replace an Account's Lists and settings in one transaction. Removed Lists
- * and Source lists lose their cached Catalogs afterwards (R2 cannot join the
- * transaction).
+ * Create an Account with a generated ID and its first Lists and settings, in
+ * one transaction. Returns the private Account ID and the saved Lists.
+ */
+export async function createAccountWithConfig(
+  lists: ListInput[],
+  rpdbApiKey: string | null,
+  settings: { newTitlesCatalog?: boolean } = {},
+): Promise<{ accountId: string; lists: ConfigList[] }> {
+  const { data, error } = await supabase.rpc("create_account_with_config", {
+    p_rpdb_api_key: rpdbApiKey,
+    p_lists: toStoredLists(lists),
+    p_new_titles_catalog: settings.newTitlesCatalog ?? null,
+  });
+  if (error) {
+    console.error("Failed to create an account:", error.message);
+    throw error;
+  }
+  return { accountId: data[0].account_id, lists: mapLists(data[0].lists) };
+}
+
+/**
+ * Replace an Account's Lists and settings in one transaction. The caches
+ * that the save left unused (removed Lists and Source lists, compared with
+ * the Lists that the transaction replaced) are deleted afterwards: R2 cannot
+ * join the transaction.
  */
 export async function replaceAccountConfig(
   accountId: string,
@@ -285,26 +272,10 @@ export async function replaceAccountConfig(
   } = {},
 ): Promise<ConfigList[]> {
   const { actions, newTitlesCatalog } = settings;
-  const before = await getAccountLists(accountId);
   const { data, error } = await supabase.rpc("replace_account_config", {
     p_account_id: accountId,
     p_rpdb_api_key: rpdbApiKey,
-    p_lists: lists.map((list) => ({
-      ...(list.id ? { id: list.id } : {}),
-      provider: list.provider,
-      source_ref: list.sourceRef,
-      catalog_title: list.catalogTitle ?? "",
-      sort_option: list.sortOption,
-      display_mode: list.displayMode,
-      position: list.position,
-      ...(list.catalogSettings === undefined
-        ? {}
-        : { catalog_settings: { ...list.catalogSettings } }),
-      ...(list.keptMergedSources
-        ? { expected_merged_sources: toStoredSources(list.mergedSources ?? []) }
-        : { merged_sources: toStoredSources(list.mergedSources ?? []) }),
-      source_label: list.sourceLabel ?? null,
-    })),
+    p_lists: toStoredLists(lists),
     p_actions_enabled: actions?.enabled ?? null,
     p_action_providers: actions?.providers ?? null,
     p_new_titles_catalog: newTitlesCatalog ?? null,
@@ -318,12 +289,8 @@ export async function replaceAccountConfig(
   }
 
   const result = data[0];
-  const saved = (result.lists as ListRow[])
-    .map(mapList)
-    .filter((list): list is ConfigList => !!list);
-  const unused = [
-    ...new Set([...result.deleted_ids, ...unusedSourceCaches(before, saved)]),
-  ];
+  const saved = mapLists(result.lists);
+  const unused = unusedSourceCaches(mapLists(result.previous_lists), saved);
   const cleanup = await Promise.allSettled(
     unused.map((key) => deleteCachedList(key)),
   );
@@ -341,49 +308,35 @@ export async function replaceAccountConfig(
 
 /**
  * Give a Legacy alias install a private Addon URL: a new Account with a copy
- * of its Lists and settings (ADR 0001). The legacy Account stays as it is,
- * so the old install keeps serving its public Lists. A copy, not a move:
- * someone who guesses the `ur…` ID only gets their own copy.
+ * of its Lists and settings, and the Legacy alias marked as moved, in one
+ * transaction (ADR 0001). The legacy Account keeps its Lists, so the old
+ * install keeps serving its public Lists. A copy, not a move: someone who
+ * guesses the `ur…` ID only gets their own copy. The detection history
+ * stays with the legacy Account: the copy starts with its own Baseline.
  */
 export async function createPrivateCopy(legacy: Account): Promise<Account> {
-  const lists = await getAccountLists(legacy.id);
-  const account = await createAccount();
-  await replaceAccountConfig(
-    account.id,
-    lists.map((list, index) => ({
-      provider: list.provider,
-      sourceRef: list.sourceRef,
-      catalogTitle: list.catalogTitle,
-      sortOption: list.sortOption,
-      displayMode: list.displayMode,
-      position: index,
-      catalogSettings: list.catalogSettings,
-      mergedSources: list.mergedSources,
-      sourceLabel: list.sourceLabel,
-    })),
-    legacy.rpdbApiKey,
-    // The detection history stays with the legacy Account: the copy starts
-    // with its own Baseline.
-    { newTitlesCatalog: legacy.newTitlesCatalog },
-  );
-  await supabase
-    .from("accounts")
-    .update({ moved_at: new Date().toISOString() })
-    .eq("id", legacy.id);
-  return {
-    ...account,
-    rpdbApiKey: legacy.rpdbApiKey,
-    newTitlesCatalog: legacy.newTitlesCatalog,
-  };
+  const { data, error } = await supabase.rpc("copy_legacy_account", {
+    p_legacy_id: legacy.id,
+  });
+  if (error) throw error;
+  return mapAccount(data);
 }
 
+/**
+ * Remember when the Account was last read from its Providers, or last served
+ * from the cache. Never throws: a failed write is logged and must not fail
+ * the read that it describes.
+ */
 export async function markAccountFetched(
   accountId: string,
   field: "last_fetched_at" | "last_cache_served_at",
   at = new Date(),
 ): Promise<void> {
-  await supabase
+  const { error } = await supabase
     .from("accounts")
     .update({ [field]: at.toISOString() })
     .eq("id", accountId);
+  if (error) {
+    console.error(`Failed to update ${field} of ${accountId}:`, error.message);
+  }
 }
