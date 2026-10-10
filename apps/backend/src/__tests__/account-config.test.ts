@@ -10,6 +10,7 @@ import { PROVIDER_IDS } from "@stremlist/shared/providers";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import app from "../index.js";
+import { SourceUnavailableError } from "../providers/types";
 
 type ReplaceConfig = Database["public"]["Functions"]["replace_account_config"];
 interface RpcResult {
@@ -1071,6 +1072,26 @@ describe("POST /links/resolve", () => {
       ok: false,
       reason: "needs_connection",
       provider: "mdblist",
+    });
+  });
+
+  it("reports why a Provider refuses the Source list", async () => {
+    const validateSource = vi.fn(() =>
+      Promise.reject(
+        new SourceUnavailableError(
+          "private",
+          "Trakt list leo/watchlist is private",
+        ),
+      ),
+    );
+    useFakeProvider(fakeAdapter("trakt", { validateSource }));
+
+    const res = await resolve("https://trakt.tv/users/leo/watchlist");
+
+    expect(await res.json()).toEqual({
+      ok: false,
+      reason: "private",
+      provider: "trakt",
     });
   });
 

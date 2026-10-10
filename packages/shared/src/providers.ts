@@ -150,12 +150,6 @@ export type SourceKind =
   | "collection"
   | "status";
 
-export interface SourceRef {
-  provider: ProviderId;
-  /** A reference that the Provider's adapter understands. */
-  ref: string;
-}
-
 /**
  * The identity of a Source list, as Lists, statuses and previews name it:
  * its Provider and the reference that the Provider understands.
@@ -165,19 +159,11 @@ export interface SourceId {
   sourceRef: string;
 }
 
-export interface ParsedSourceLink extends SourceRef {
+export interface ParsedSourceLink extends SourceId {
   kind: SourceKind;
-  /**
-   * True when this Source list can only be read through a Connection. Always
-   * `sourceRequiresConnection(provider, ref)`: `parseSourceLink` sets it.
-   */
-  requiresConnection: boolean;
   /** Default catalog title suggestion, when the link carries one. */
   suggestedTitle?: string;
 }
-
-/** What one Provider's link parser finds. */
-type LinkMatch = Omit<ParsedSourceLink, "requiresConnection">;
 
 /** A Source list that becomes available once a Provider is connected. */
 export interface ConnectionSource {
@@ -233,12 +219,12 @@ const IMDB_P_HANDLE = new RegExp(
   String.raw`(?:^|\/)(${IMDB_P_HANDLE_SOURCE})(?:$|[/?#])`,
 );
 
-function parseImdbLink(input: string): LinkMatch | null {
+function parseImdbLink(input: string): ParsedSourceLink | null {
   const trimmed = input.trim();
   if (isChartId(trimmed)) {
     return {
       provider: "imdb",
-      ref: trimmed,
+      sourceRef: trimmed,
       kind: "chart",
     };
   }
@@ -254,7 +240,7 @@ function parseImdbLink(input: string): LinkMatch | null {
   if (list) {
     return {
       provider: "imdb",
-      ref: list[1].toLowerCase(),
+      sourceRef: list[1].toLowerCase(),
       kind: "list",
     };
   }
@@ -262,7 +248,7 @@ function parseImdbLink(input: string): LinkMatch | null {
   if (user) {
     return {
       provider: "imdb",
-      ref: user[1].toLowerCase(),
+      sourceRef: user[1].toLowerCase(),
       kind: "watchlist",
     };
   }
@@ -270,7 +256,7 @@ function parseImdbLink(input: string): LinkMatch | null {
   if (handle) {
     return {
       provider: "imdb",
-      ref: handle[1],
+      sourceRef: handle[1],
       kind: "watchlist",
     };
   }
@@ -287,7 +273,7 @@ const TRAKT_LIST_PAGES = new Set([
   "personal",
 ]);
 
-function parseTraktLink(input: string): LinkMatch | null {
+function parseTraktLink(input: string): ParsedSourceLink | null {
   const url = toUrl(input);
   // trakt.tv and app.trakt.tv share the same paths.
   if (!url || !hostIs(url, "trakt.tv")) return null;
@@ -300,7 +286,7 @@ function parseTraktLink(input: string): LinkMatch | null {
     if (parts[2] === "watchlist") {
       return {
         provider: "trakt",
-        ref: `${owner}/watchlist`,
+        sourceRef: `${owner}/watchlist`,
         kind: "watchlist",
         suggestedTitle: user === "me" ? undefined : `${parts[1]}'s watchlist`,
       };
@@ -308,7 +294,7 @@ function parseTraktLink(input: string): LinkMatch | null {
     if (parts[2] === "lists" && parts[3]) {
       return {
         provider: "trakt",
-        ref: `${owner}/lists/${parts[3].toLowerCase()}`,
+        sourceRef: `${owner}/lists/${parts[3].toLowerCase()}`,
         kind: "list",
       };
     }
@@ -322,7 +308,7 @@ function parseTraktLink(input: string): LinkMatch | null {
   ) {
     return {
       provider: "trakt",
-      ref: `lists/${parts[2].toLowerCase()}`,
+      sourceRef: `lists/${parts[2].toLowerCase()}`,
       kind: "list",
     };
   }
@@ -334,7 +320,7 @@ function parseTraktLink(input: string): LinkMatch | null {
   ) {
     return {
       provider: "trakt",
-      ref: `lists/${parts[1].toLowerCase()}`,
+      sourceRef: `lists/${parts[1].toLowerCase()}`,
       kind: "list",
     };
   }
@@ -344,7 +330,7 @@ function parseTraktLink(input: string): LinkMatch | null {
     if (chart) {
       return {
         provider: "trakt",
-        ref: chart,
+        sourceRef: chart,
         kind: "chart",
       };
     }
@@ -352,7 +338,7 @@ function parseTraktLink(input: string): LinkMatch | null {
   return null;
 }
 
-function parseMdblistLink(input: string): LinkMatch | null {
+function parseMdblistLink(input: string): ParsedSourceLink | null {
   const url = toUrl(input);
   if (!url || !hostIs(url, "mdblist.com")) return null;
   const parts = segments(url);
@@ -360,7 +346,7 @@ function parseMdblistLink(input: string): LinkMatch | null {
   if (parts[0] === "lists" && parts[1] && parts[2] && parts.length === 3) {
     return {
       provider: "mdblist",
-      ref: `lists/${parts[1]}/${parts[2]}`,
+      sourceRef: `lists/${parts[1]}/${parts[2]}`,
       kind: "list",
     };
   }
@@ -369,7 +355,7 @@ function parseMdblistLink(input: string): LinkMatch | null {
   if (parts[0] === "watchlist" && parts[1] && parts.length === 2) {
     return {
       provider: "mdblist",
-      ref: `watchlist/${parts[1]}`,
+      sourceRef: `watchlist/${parts[1]}`,
       kind: "watchlist",
       suggestedTitle: "MDBList watchlist",
     };
@@ -382,7 +368,7 @@ function parseMdblistLink(input: string): LinkMatch | null {
 const JUSTWATCH_LIST_ID =
   /\b(tl-[a-z]{2}-(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d+))\b/i;
 
-function parseJustwatchLink(input: string): LinkMatch | null {
+function parseJustwatchLink(input: string): ParsedSourceLink | null {
   const trimmed = input.trim();
   const url = toUrl(trimmed);
   const isJustwatch = url !== null && hostIs(url, "justwatch.com");
@@ -391,12 +377,12 @@ function parseJustwatchLink(input: string): LinkMatch | null {
   if (!match) return null;
   return {
     provider: "justwatch",
-    ref: match[1].toLowerCase(),
+    sourceRef: match[1].toLowerCase(),
     kind: "list",
   };
 }
 
-function parseSensCritiqueLink(input: string): LinkMatch | null {
+function parseSensCritiqueLink(input: string): ParsedSourceLink | null {
   const url = toUrl(input);
   if (!url || !hostIs(url, "senscritique.com")) return null;
   const parts = segments(url);
@@ -406,7 +392,7 @@ function parseSensCritiqueLink(input: string): LinkMatch | null {
     return id
       ? {
           provider: "senscritique",
-          ref: `lists/${id}`,
+          sourceRef: `lists/${id}`,
           kind: "list",
         }
       : null;
@@ -464,38 +450,38 @@ function parseSensCritiqueLink(input: string): LinkMatch | null {
   }
   return {
     provider: "senscritique",
-    ref: `users/${username}/wishes`,
+    sourceRef: `users/${username}/wishes`,
     kind: "watchlist",
     suggestedTitle: `${username}'s wishlist`,
   };
 }
 
-function parseLetterboxdLink(input: string): LinkMatch | null {
+function parseLetterboxdLink(input: string): ParsedSourceLink | null {
   const url = toUrl(input);
   if (!url || !hostIs(url, "letterboxd.com", "boxd.it")) return null;
   const parts = segments(url);
   if (parts[0] && parts[1] === "watchlist") {
     return {
       provider: "letterboxd",
-      ref: `users/${parts[0].toLowerCase()}/watchlist`,
+      sourceRef: `users/${parts[0].toLowerCase()}/watchlist`,
       kind: "watchlist",
     };
   }
   if (parts[0] && parts[1] === "list" && parts[2]) {
     return {
       provider: "letterboxd",
-      ref: `users/${parts[0].toLowerCase()}/lists/${parts[2].toLowerCase()}`,
+      sourceRef: `users/${parts[0].toLowerCase()}/lists/${parts[2].toLowerCase()}`,
       kind: "list",
     };
   }
   return {
     provider: "letterboxd",
-    ref: url.pathname,
+    sourceRef: url.pathname,
     kind: "list",
   };
 }
 
-const LINK_PARSERS: ((input: string) => LinkMatch | null)[] = [
+const LINK_PARSERS: ((input: string) => ParsedSourceLink | null)[] = [
   parseTraktLink,
   parseMdblistLink,
   parseJustwatchLink,
@@ -512,15 +498,7 @@ const LINK_PARSERS: ((input: string) => LinkMatch | null)[] = [
 export function parseSourceLink(input: string): ParsedSourceLink | null {
   for (const parse of LINK_PARSERS) {
     const parsed = parse(input);
-    if (parsed) {
-      return {
-        ...parsed,
-        requiresConnection: sourceRequiresConnection(
-          parsed.provider,
-          parsed.ref,
-        ),
-      };
-    }
+    if (parsed) return parsed;
   }
   return null;
 }

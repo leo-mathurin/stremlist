@@ -37,6 +37,7 @@ import { scheduleBackgroundTask } from "../lib/background";
 import { resend } from "../lib/resend";
 import { supabase } from "../lib/supabase";
 import { getProvider, isProviderEnabled } from "../providers/registry";
+import { SourceUnavailableError } from "../providers/types";
 import type { AccountAccess, ListInput } from "../services/accounts";
 import {
   MergedSourcesChangedError,
@@ -378,7 +379,11 @@ const api = new Hono()
         access?.via === "private"
           ? await getConnectionAccess(access.account.id, parsed.provider)
           : null;
-      if (parsed.requiresConnection && !connection) {
+      const requiresConnection = sourceRequiresConnection(
+        parsed.provider,
+        parsed.sourceRef,
+      );
+      if (requiresConnection && !connection) {
         return c.json({
           ok: false as const,
           reason: "needs_connection" as const,
@@ -388,7 +393,7 @@ const api = new Hono()
 
       try {
         const result = await getProvider(parsed.provider).validateSource(
-          parsed.ref,
+          parsed.sourceRef,
           { connection },
         );
         if (!result.ok) {
@@ -403,12 +408,20 @@ const api = new Hono()
           provider: parsed.provider,
           sourceRef: result.ref,
           kind: parsed.kind,
-          requiresConnection: parsed.requiresConnection,
+          requiresConnection,
           suggestedTitle:
             result.suggestedTitle ?? parsed.suggestedTitle ?? null,
           defaultDisplayMode: result.defaultDisplayMode ?? null,
         });
       } catch (error) {
+        // Expected failures of the Source list: private, missing, refused.
+        if (error instanceof SourceUnavailableError) {
+          return c.json({
+            ok: false as const,
+            reason: error.reason,
+            provider: parsed.provider,
+          });
+        }
         if (error instanceof ConnectionExpiredError) {
           return c.json({
             ok: false as const,
@@ -417,7 +430,7 @@ const api = new Hono()
           });
         }
         console.error(
-          `Validating ${parsed.provider} ${parsed.ref} failed:`,
+          `Validating ${parsed.provider} ${parsed.sourceRef} failed:`,
           error instanceof Error ? error.message : error,
         );
         return c.json({

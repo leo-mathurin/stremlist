@@ -758,8 +758,7 @@ describe("parseSourceLink for SensCritique", () => {
   ])("parses %s", (link, ref) => {
     expect(parseSourceLink(link)).toMatchObject({
       provider: "senscritique",
-      ref,
-      requiresConnection: false,
+      sourceRef: ref,
     });
   });
 

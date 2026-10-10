@@ -536,9 +536,8 @@ describe("JustWatch links", () => {
   ])("parses %s", (link, ref) => {
     expect(parseSourceLink(link)).toEqual({
       provider: "justwatch",
-      ref,
+      sourceRef: ref,
       kind: "list",
-      requiresConnection: false,
     });
   });
 

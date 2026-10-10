@@ -113,18 +113,16 @@ describe("parseSourceLink (MDBList)", () => {
       ),
     ).toEqual({
       provider: "mdblist",
-      ref: "lists/Linaspurinis/top-watched-movies-of-the-week",
+      sourceRef: "lists/Linaspurinis/top-watched-movies-of-the-week",
       kind: "list",
-      requiresConnection: true,
     });
   });
 
   it("reads watchlist links", () => {
     expect(parseSourceLink("mdblist.com/watchlist/leo")).toMatchObject({
       provider: "mdblist",
-      ref: "watchlist/leo",
+      sourceRef: "watchlist/leo",
       kind: "watchlist",
-      requiresConnection: true,
     });
   });
 

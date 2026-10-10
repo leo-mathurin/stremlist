@@ -15,7 +15,7 @@ function parsed(
   kind: ParsedSourceLink["kind"],
   extra: Partial<ParsedSourceLink> = {},
 ): ParsedSourceLink {
-  return { provider, ref, kind, requiresConnection: false, ...extra };
+  return { provider, sourceRef: ref, kind, ...extra };
 }
 
 describe("parseSourceLink: IMDb", () => {
@@ -115,11 +115,10 @@ describe("parseSourceLink: MDBList", () => {
     // The backend resolves user and slug to a list ID, so case is kept.
     expect(
       parseSourceLink("https://mdblist.com/lists/LeoM/Top-Movies-2026"),
-    ).toEqual(
-      parsed("mdblist", "lists/LeoM/Top-Movies-2026", "list", {
-        requiresConnection: true,
-      }),
-    );
+    ).toEqual(parsed("mdblist", "lists/LeoM/Top-Movies-2026", "list"));
+    expect(
+      sourceRequiresConnection("mdblist", "lists/LeoM/Top-Movies-2026"),
+    ).toBe(true);
   });
 
   it("does not read a profile page", () => {
@@ -251,7 +250,9 @@ describe("storedSourceKind", () => {
     const parsed = parseSourceLink(link);
     expect(parsed).not.toBeNull();
     if (!parsed) return;
-    expect(storedSourceKind(parsed.provider, parsed.ref)).toBe(parsed.kind);
+    expect(storedSourceKind(parsed.provider, parsed.sourceRef)).toBe(
+      parsed.kind,
+    );
   });
 
   it("knows the Source lists of the source tables", () => {
