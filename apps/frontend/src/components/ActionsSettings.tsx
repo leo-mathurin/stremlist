@@ -1,8 +1,9 @@
 import { useId } from "react";
 import { ArrowDown, ArrowUp, ExternalLink } from "lucide-react";
-import { PROVIDERS } from "@stremlist/shared/providers";
+import { joinProviderLabels, PROVIDERS } from "@stremlist/shared/providers";
 import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
 import { ADDON_MANAGER_URL } from "@/lib/list-sources";
+import { ACTION_PROVIDERS } from "@/lib/provider-groups";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ProviderMark } from "./brand";
@@ -76,7 +77,7 @@ export default function ActionsSettings({
         >
           {order.length === 0 ? (
             <p className="rounded-2xl bg-black/5 px-4 py-3 text-sm text-black/60">
-              Connect Trakt, Simkl or MDBList to use Actions.
+              {`Connect ${joinProviderLabels(ACTION_PROVIDERS, "or")} to use Actions.`}
             </p>
           ) : (
             <div>

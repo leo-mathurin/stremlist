@@ -1,10 +1,61 @@
+import { joinProviderLabels } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type { AddonAccess } from "@stremlist/shared/stremio.types";
 import { listPayload } from "./list-form";
 import type { ListFormRow } from "./list-form";
+import { ACTION_PROVIDERS } from "./provider-groups";
 
 /** "new" until the first save creates the Account. */
 export type AccountAccess = "new" | AddonAccess;
+
+/** What the configure page lets the user do for an access mode. */
+export interface AccountEditPolicy {
+  /**
+   * Why the Lists and settings cannot change here, if they cannot: a Legacy
+   * alias install that already got a private copy. The backend refuses its
+   * changes (409), so the page only offers to make a new private URL.
+   */
+  editLock?: string;
+  /** Why Actions cannot be turned on here, if they cannot. */
+  actionsLock?: string;
+  /**
+   * Connecting a Provider needs a private Addon URL: a Legacy alias install
+   * upgrades first.
+   */
+  upgradeToConnect: boolean;
+  /**
+   * What the Providers panel says about connecting: a new setup is saved
+   * first, a Legacy alias install upgrades first.
+   */
+  connectHint: "save-first" | "upgrade" | null;
+}
+
+export function accountEditPolicy(
+  access: AccountAccess,
+  movedAt: string | null,
+): AccountEditPolicy {
+  const moved = access === "legacy" && !!movedAt;
+  const editLock = moved
+    ? "This install has a private URL now. Make changes from the configure page of your new install."
+    : undefined;
+  return {
+    editLock,
+    actionsLock:
+      editLock ??
+      (access === "legacy"
+        ? "Actions need a private Addon URL. Upgrade this install first."
+        : access === "new"
+          ? `Save your setup and connect ${joinProviderLabels(ACTION_PROVIDERS, "or")} to use Actions.`
+          : undefined),
+    upgradeToConnect: access === "legacy",
+    connectHint:
+      access === "new"
+        ? "save-first"
+        : access === "legacy" && !moved
+          ? "upgrade"
+          : null,
+  };
+}
 
 /**
  * The Providers that can show Actions in Stremio, in the order the user

@@ -7,7 +7,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { listSourcesKey } from "@stremlist/shared/list-merge";
-import { PROVIDER_IDS, PROVIDERS } from "@stremlist/shared/providers";
+import { PROVIDERS } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type {
   AccountConfigResponse,
@@ -29,6 +29,7 @@ import { connectProviderOf, missingConnections } from "../lib/connections";
 import { rowsFromLists } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { buildAddonUrls } from "../lib/list-sources";
+import { ACTION_PROVIDERS } from "../lib/provider-groups";
 import { useConnectionSources } from "./useConnectionSources";
 import { useListEditor } from "./useListEditor";
 import { useListSyncStatus } from "./useListSyncStatus";
@@ -40,10 +41,8 @@ import { useReinstallBaseline } from "./useReinstallBaseline";
 function actionCapableProviders(
   connections: ConnectionSummary[],
 ): ProviderId[] {
-  return PROVIDER_IDS.filter(
-    (id) =>
-      PROVIDERS[id].actions.length > 0 &&
-      connections.some((connection) => connection.provider === id),
+  return ACTION_PROVIDERS.filter((id) =>
+    connections.some((connection) => connection.provider === id),
   );
 }
 

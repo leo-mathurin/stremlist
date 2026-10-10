@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { joinProviderLabels } from "@stremlist/shared/providers";
 import type { ConfigList } from "@stremlist/shared/stremio.types";
 import {
+  accountEditPolicy,
   configBody,
   hasUnsavedChanges,
   reconcileActionProviders,
@@ -12,6 +14,64 @@ import {
   listPayload,
   rowsFromLists,
 } from "../src/lib/list-form.ts";
+import {
+  ACTION_PROVIDERS,
+  CONNECTABLE_PROVIDERS,
+} from "../src/lib/provider-groups.ts";
+
+test("names the Providers with Connections and with Actions", () => {
+  assert.equal(
+    joinProviderLabels(CONNECTABLE_PROVIDERS),
+    "Trakt, Simkl and MDBList",
+  );
+  assert.equal(
+    joinProviderLabels(ACTION_PROVIDERS, "or"),
+    "Trakt, Simkl or MDBList",
+  );
+});
+
+describe("accountEditPolicy", () => {
+  const moved =
+    "This install has a private URL now. Make changes from the configure page of your new install.";
+
+  test("lets a private Account change everything", () => {
+    assert.deepEqual(accountEditPolicy("private", null), {
+      editLock: undefined,
+      actionsLock: undefined,
+      upgradeToConnect: false,
+      connectHint: null,
+    });
+  });
+
+  test("asks a new setup to save and connect before Actions", () => {
+    assert.deepEqual(accountEditPolicy("new", null), {
+      editLock: undefined,
+      actionsLock:
+        "Save your setup and connect Trakt, Simkl or MDBList to use Actions.",
+      upgradeToConnect: false,
+      connectHint: "save-first",
+    });
+  });
+
+  test("asks a Legacy alias install to upgrade before Connections and Actions", () => {
+    assert.deepEqual(accountEditPolicy("legacy", null), {
+      editLock: undefined,
+      actionsLock:
+        "Actions need a private Addon URL. Upgrade this install first.",
+      upgradeToConnect: true,
+      connectHint: "upgrade",
+    });
+  });
+
+  test("locks a Legacy alias install that already has a private copy", () => {
+    assert.deepEqual(accountEditPolicy("legacy", "2026-10-01T00:00:00.000Z"), {
+      editLock: moved,
+      actionsLock: moved,
+      upgradeToConnect: true,
+      connectHint: null,
+    });
+  });
+});
 
 describe("reconcileActionProviders", () => {
   test("puts the saved Providers first, then the other capable ones", () => {

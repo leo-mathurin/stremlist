@@ -20,7 +20,7 @@ import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import { DISPLAY_MODE_OPTIONS } from "@stremlist/shared/constants";
 import type { DisplayMode, TitleType } from "@stremlist/shared/constants";
 import { isMergedList, listSources } from "@stremlist/shared/list-merge";
-import { PROVIDERS } from "@stremlist/shared/providers";
+import { joinProviderLabels } from "@stremlist/shared/providers";
 import type { SourceId } from "@stremlist/shared/providers";
 import {
   sourceProblemCopy,
@@ -139,13 +139,9 @@ function problemMessage(source: SourceId, reason: SourceProblemReason): string {
 }
 
 function PreviewLoading({ list }: { list: ListFormRow }) {
-  const labels = [
-    ...new Set(
-      listSources(list).map((source) => PROVIDERS[source.provider].label),
-    ),
-  ];
-  const last = labels.pop();
-  const on = labels.length > 0 ? `${labels.join(", ")} and ${last}` : last;
+  const on = joinProviderLabels([
+    ...new Set(listSources(list).map((source) => source.provider)),
+  ]);
   return (
     <div className="space-y-2" role="status">
       <p className="flex items-center gap-2 text-xs text-black/50">
