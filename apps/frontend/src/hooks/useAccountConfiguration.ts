@@ -66,8 +66,7 @@ function defaultProviderStatus(): Record<ProviderId, ProviderStatus> {
 
 /**
  * Source lists that a Connection unlocks, including the account's own lists.
- * Falls back to the static `CONNECTION_SOURCES` when the backend does not
- * answer (or does not have the endpoint yet).
+ * Falls back to the static `CONNECTION_SOURCES` when the request fails.
  */
 async function fetchConnectionSources(
   accountId: string,
@@ -78,10 +77,8 @@ async function fetchConnectionSources(
     const res = await api[":accountId"].connections[":provider"].sources.$get({
       param: { accountId, provider },
     });
-    if (!res.ok) return fallback;
     const body = await res.json();
-    if (!("sources" in body) || body.sources.length === 0) return fallback;
-    return body.sources;
+    return res.ok && "sources" in body ? body.sources : fallback;
   } catch {
     return fallback;
   }
@@ -206,9 +203,7 @@ export function useAccountConfiguration(
   const [saved, setSaved] = useState<InstallBaseline>(UNKNOWN_BASELINE);
   // The genres that each Source list brings to the manifest, as far as the
   // server told: the reinstall signature counts them.
-  const [knownGenres, setKnownGenres] = useState<KnownSourceGenres | null>(
-    null,
-  );
+  const [knownGenres, setKnownGenres] = useState<KnownSourceGenres>({});
   const currentForm = useRef({ lists, rpdbApiKey, newTitlesEnabled });
   // Save responses must see edits committed while the request was in flight.
   useLayoutEffect(() => {
@@ -260,7 +255,7 @@ export function useAccountConfiguration(
         const data = (await res.json()) as AccountConfigResponse;
         if (cancelled) return;
         const rows = rowsFromLists(data.lists);
-        const genres = learnSourceGenres(null, data.lists);
+        const genres = learnSourceGenres({}, data.lists);
         setLists(rows);
         setKnownGenres(genres);
         setAccess(data.access);
