@@ -19,9 +19,12 @@ DECLARE
     {"id":"22222222-2222-4222-8222-222222222222","provider":"trakt","source_ref":"users/leo/watchlist","catalog_title":"Two","sort_option":"title-desc","display_mode":"split","position":1,"catalog_settings":{}}
   ]';
   before_rows jsonb;
+  before_rows_of_account jsonb;
   result record;
 BEGIN
   SELECT jsonb_agg(to_jsonb(l) ORDER BY id) INTO before_rows FROM public.lists l;
+  SELECT jsonb_agg(to_jsonb(l) ORDER BY l.position, l.created_at) INTO before_rows_of_account
+  FROM public.lists l WHERE l.account_id = 'sl_configtransactiontest00';
 
   -- The second write fails after the deletion and first update have executed.
   BEGIN
@@ -64,7 +67,10 @@ BEGIN
   ASSERT (SELECT jsonb_agg(to_jsonb(l) ORDER BY id) FROM public.lists l) = before_rows;
 
   SELECT * INTO result FROM public.replace_account_config('sl_configtransactiontest00', 'new-key', payload, true, ARRAY['trakt', 'simkl']);
-  ASSERT result.deleted_ids = ARRAY['33333333-3333-4333-8333-333333333333'::uuid];
+  ASSERT result.previous_lists = before_rows_of_account,
+    'The Lists before the save come back, read under the lock';
+  ASSERT NOT EXISTS (SELECT 1 FROM public.lists WHERE id = '33333333-3333-4333-8333-333333333333'),
+    'Lists left out of the save are deleted';
   ASSERT jsonb_array_length(result.lists) = 2;
   ASSERT result.lists->0->>'id' = payload->0->>'id', 'Updates must preserve IDs';
   ASSERT result.lists->1->>'id' = payload->1->>'id';
@@ -80,7 +86,8 @@ BEGIN
   -- NULL action settings keep the stored values.
   SELECT * INTO result FROM public.replace_account_config('sl_configtransactiontest00', NULL,
     '[{"provider":"imdb","source_ref":"ur1","catalog_title":"New","sort_option":"title-asc","display_mode":"split","position":0}]', NULL, NULL);
-  ASSERT cardinality(result.deleted_ids) = 2;
+  ASSERT jsonb_array_length(result.previous_lists) = 2,
+    'The previous Lists are the ones of the last save';
   ASSERT result.lists->0->'catalog_settings' = '{}'::jsonb;
   ASSERT result.lists->0->>'id' IS NOT NULL;
   ASSERT (SELECT rpdb_api_key FROM public.accounts WHERE id = 'sl_configtransactiontest00') IS NULL;

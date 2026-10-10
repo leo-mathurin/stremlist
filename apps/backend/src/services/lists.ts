@@ -20,9 +20,14 @@ import {
   getVisibleLists,
   markAccountFetched,
 } from "./accounts";
+import { forgetConnectionObjects } from "./actions";
 import type { CatalogSort } from "./catalog-sort";
 import { sortCatalog } from "./catalog-sort";
-import { ConnectionExpiredError, getConnectionAccess } from "./connections";
+import {
+  ConnectionExpiredError,
+  deleteConnection,
+  getConnectionAccess,
+} from "./connections";
 import { recordSynchronization } from "./detections";
 import { buildPosterUrl } from "./imdb-scraper";
 import {
@@ -40,7 +45,7 @@ import {
   withLinkBack,
 } from "./merged-lists";
 import type { RefreshOutcome } from "./sync-status";
-import { forgetSyncStatuses, recordRefreshOutcome } from "./sync-status";
+import { recordRefreshOutcome } from "./sync-status";
 
 /**
  * When the ID resolver left entries untried, the next read comes this soon
@@ -615,12 +620,14 @@ export async function findMetaInAccountCache(
 }
 
 /**
- * After a disconnect: drop the cached Catalogs of the Source lists that were
- * read through that Connection, so nothing private stays served, and their
- * sync statuses, which described those Catalogs. The other Source lists of a
- * merged List keep theirs.
+ * Disconnect a Provider. The token is revoked, then the Connection goes in
+ * one transaction with its detection history and the sync statuses of the
+ * Source lists read through it (`deleteConnection`). Then their cached
+ * Catalogs and the Connection's own R2 objects are deleted, so nothing
+ * private stays served or stored; a failed deletion is logged. The other
+ * Source lists of a merged List keep their cache and status.
  */
-export async function forgetConnectionLists(
+export async function disconnectProvider(
   accountId: string,
   provider: ProviderId,
 ): Promise<void> {
@@ -632,15 +639,24 @@ export async function forgetConnectionLists(
           sourceRequiresConnection(source.provider, source.sourceRef),
       )
       .map(({ source, cacheKey }) => ({
-        ...source,
+        sourceRef: source.sourceRef,
         cacheKey,
         listId: list.id,
       })),
   );
-  await Promise.all([
+  await deleteConnection(accountId, provider, sources);
+  const cleanup = await Promise.allSettled([
     ...sources.map(({ cacheKey }) => deleteCachedList(cacheKey)),
-    forgetSyncStatuses(sources),
+    forgetConnectionObjects(accountId, provider),
   ]);
+  for (const outcome of cleanup) {
+    if (outcome.status === "rejected") {
+      console.error(
+        `Cleaning up after the ${provider} disconnect of ${accountId} failed:`,
+        outcome.reason,
+      );
+    }
+  }
 }
 
 /**

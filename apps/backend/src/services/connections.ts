@@ -98,6 +98,11 @@ export async function listConnections(
   );
 }
 
+/**
+ * Save a new authorization, encrypted. It replaces a refused one, and in the
+ * same transaction the detection history of Connection-only Source lists
+ * that belonged to another Provider user is forgotten (ADR 0007).
+ */
 export async function saveConnection(
   accountId: string,
   provider: ProviderId,
@@ -105,24 +110,18 @@ export async function saveConnection(
   username: string | null,
   redirectUri: string,
 ): Promise<void> {
-  const { error } = await supabase.from("connections").upsert(
-    {
-      account_id: accountId,
-      provider,
-      provider_username: username,
-      redirect_uri: redirectUri,
-      access_token: encryptSecret(tokens.accessToken),
-      refresh_token: tokens.refreshToken
-        ? encryptSecret(tokens.refreshToken)
-        : null,
-      expires_at: tokens.expiresAt?.toISOString() ?? null,
-      scope: tokens.scope,
-      // A new authorization replaces a refused one.
-      needs_renewal_since: null,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "account_id,provider" },
-  );
+  const { error } = await supabase.rpc("save_connection", {
+    p_account_id: accountId,
+    p_provider: provider,
+    p_provider_username: username,
+    p_access_token: encryptSecret(tokens.accessToken),
+    p_refresh_token: tokens.refreshToken
+      ? encryptSecret(tokens.refreshToken)
+      : null,
+    p_expires_at: tokens.expiresAt?.toISOString() ?? null,
+    p_scope: tokens.scope,
+    p_redirect_uri: redirectUri,
+  });
   if (error) throw error;
 }
 
@@ -179,9 +178,16 @@ async function setNeedsRenewal(
   }
 }
 
+/**
+ * Revoke the token (best effort), then delete the Connection in one
+ * transaction with the detection history that belongs to it and the sync
+ * statuses of `sources`, the Source lists on this Provider that were read
+ * through it.
+ */
 export async function deleteConnection(
   accountId: string,
   provider: ProviderId,
+  sources: { listId: string; sourceRef: string }[],
 ): Promise<void> {
   const stored = await readConnection(accountId, provider);
   if (stored) {
@@ -194,11 +200,12 @@ export async function deleteConnection(
       );
     }
   }
-  const { error } = await supabase
-    .from("connections")
-    .delete()
-    .eq("account_id", accountId)
-    .eq("provider", provider);
+  const { error } = await supabase.rpc("delete_connection", {
+    p_account_id: accountId,
+    p_provider: provider,
+    p_list_ids: sources.map((source) => source.listId),
+    p_source_refs: sources.map((source) => source.sourceRef),
+  });
   if (error) throw error;
 }
 

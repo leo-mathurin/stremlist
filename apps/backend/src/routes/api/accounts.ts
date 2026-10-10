@@ -23,7 +23,7 @@ import {
 import type { ListInput } from "../../services/accounts";
 import {
   MergedSourcesChangedError,
-  createAccount,
+  createAccountWithConfig,
   createPrivateCopy,
   getAccountLists,
   getVisibleLists,
@@ -89,17 +89,15 @@ const accounts = new Hono()
       }
 
       try {
-        const account = await createAccount();
-        const saved = await replaceAccountConfig(
-          account.id,
+        const { accountId, lists: saved } = await createAccountWithConfig(
           normalized,
           rpdbKey(rpdbApiKey),
           { newTitlesCatalog: newTitles?.enabled },
         );
-        scheduleBackgroundTask(() => prewarmLists(account.id, saved, true));
+        scheduleBackgroundTask(() => prewarmLists(accountId, saved, true));
         return c.json({
           ok: true as const,
-          accountId: account.id,
+          accountId,
           lists: await withAvailableGenres(saved),
         });
       } catch (error) {

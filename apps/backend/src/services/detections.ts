@@ -289,19 +289,3 @@ export async function getNewTitlesSummary(
     return null;
   }
 }
-
-/**
- * After a disconnect or a new Connection: forget the history of the Source
- * lists that only a previous Provider user's Connection could read (see
- * public.forget_connection_history).
- */
-export async function forgetConnectionDetections(
-  accountId: string,
-  provider: ProviderId,
-): Promise<void> {
-  const { error } = await supabase.rpc("forget_connection_history", {
-    p_account_id: accountId,
-    p_provider: provider,
-  });
-  if (error) throw error;
-}

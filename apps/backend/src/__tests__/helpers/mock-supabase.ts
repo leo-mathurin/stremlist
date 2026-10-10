@@ -592,6 +592,7 @@ function replaceAccountConfig(args: RpcArgs): Result {
     return rpcError("Merged Source lists changed");
   }
 
+  const previous = listsOf(accountId);
   const deleted = lists.filter(
     (row) => row.account_id === accountId && !ids.includes(row.id as string),
   );
@@ -648,7 +649,15 @@ function replaceAccountConfig(args: RpcArgs): Result {
   account.new_titles_catalog =
     args.p_new_titles_catalog ?? account.new_titles_catalog;
 
-  const saved = db
+  return {
+    data: [{ previous_lists: previous, lists: listsOf(accountId) }],
+    error: null,
+  };
+}
+
+/** Copies of an Account's List rows, in their order. */
+function listsOf(accountId: string): Row[] {
+  return db
     .getTable("lists")
     .filter((row) => row.account_id === accountId)
     .sort(
@@ -657,10 +666,111 @@ function replaceAccountConfig(args: RpcArgs): Result {
         String(a.created_at).localeCompare(String(b.created_at)),
     )
     .map((row) => ({ ...row }));
-  return {
-    data: [{ deleted_ids: deleted.map((row) => row.id), lists: saved }],
-    error: null,
+}
+
+/** Same rules as public.create_account_with_config. */
+function createAccountWithConfig(args: RpcArgs): Result {
+  const account = db.insert("accounts", { is_active: true });
+  const saved = replaceAccountConfig({
+    p_account_id: account.id,
+    p_rpdb_api_key: args.p_rpdb_api_key,
+    p_lists: args.p_lists,
+    p_actions_enabled: null,
+    p_action_providers: null,
+    p_new_titles_catalog: args.p_new_titles_catalog,
+  });
+  if (saved.error) {
+    db.delete("accounts", (row) => row.id === account.id);
+    return saved;
+  }
+  const [{ lists }] = saved.data as { lists: Row[] }[];
+  return { data: [{ account_id: account.id, lists }], error: null };
+}
+
+/** Same rules as public.copy_legacy_account. */
+function copyLegacyAccount(args: RpcArgs): Result {
+  const legacy = db
+    .getTable("accounts")
+    .find((row) => row.id === args.p_legacy_id && row.legacy_imdb_user_id);
+  if (!legacy) return rpcError("Legacy account not found");
+  const copy = db.insert("accounts", {
+    is_active: true,
+    rpdb_api_key: legacy.rpdb_api_key,
+    new_titles_catalog: legacy.new_titles_catalog,
+  });
+  listsOf(legacy.id as string).forEach((list, position) => {
+    db.insert("lists", {
+      account_id: copy.id,
+      provider: list.provider,
+      source_ref: list.source_ref,
+      catalog_title: list.catalog_title,
+      sort_option: list.sort_option,
+      display_mode: list.display_mode,
+      position,
+      catalog_settings: list.catalog_settings,
+      merged_sources: list.merged_sources,
+      source_label: list.source_label,
+    });
+  });
+  legacy.moved_at = now();
+  return { data: { ...copy }, error: null };
+}
+
+/** Same rules as public.save_connection. */
+function saveConnection(args: RpcArgs): Result {
+  const fields: Row = {
+    provider_username: args.p_provider_username ?? null,
+    access_token: args.p_access_token,
+    refresh_token: args.p_refresh_token ?? null,
+    expires_at: args.p_expires_at ?? null,
+    scope: args.p_scope ?? null,
+    redirect_uri: args.p_redirect_uri,
+    needs_renewal_since: null,
+    updated_at: now(),
   };
+  const existing = findConnection(args);
+  if (existing) Object.assign(existing, fields);
+  else {
+    db.insert("connections", {
+      account_id: args.p_account_id,
+      provider: args.p_provider,
+      ...fields,
+    });
+  }
+  forgetConnectionHistory(args);
+  return { data: null, error: null };
+}
+
+/** Same rules as public.delete_connection. */
+function deleteConnection(args: RpcArgs): Result {
+  const listIds = (args.p_list_ids as string[] | null) ?? [];
+  const refs = (args.p_source_refs as string[] | null) ?? [];
+  if (listIds.length !== refs.length) {
+    return rpcError("List IDs and Source list refs must have the same length");
+  }
+  db.delete(
+    "connections",
+    (row) =>
+      row.account_id === args.p_account_id && row.provider === args.p_provider,
+  );
+  forgetConnectionHistory(args);
+  const own = new Set(
+    db
+      .getTable("lists")
+      .filter((row) => row.account_id === args.p_account_id)
+      .map((row) => row.id),
+  );
+  db.delete(
+    "list_sync_status",
+    (row) =>
+      own.has(row.list_id) &&
+      row.provider === args.p_provider &&
+      listIds.some(
+        (listId, index) =>
+          row.list_id === listId && row.source_ref === refs[index],
+      ),
+  );
+  return { data: null, error: null };
 }
 
 function findConnection(args: RpcArgs): Row | undefined {
@@ -889,8 +999,12 @@ function recordListRefresh(args: RpcArgs): Result {
 }
 
 export const defaultRpcHandlers: Partial<Record<string, RpcHandler>> = {
+  copy_legacy_account: copyLegacyAccount,
+  create_account_with_config: createAccountWithConfig,
+  delete_connection: deleteConnection,
   forget_connection_history: forgetConnectionHistory,
   replace_account_config: replaceAccountConfig,
+  save_connection: saveConnection,
   record_list_refresh: recordListRefresh,
   record_source_list_sync: recordSourceListSync,
   list_new_titles: listNewTitles,

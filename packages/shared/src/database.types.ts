@@ -370,6 +370,48 @@ export type Database = {
         };
         Returns: boolean;
       };
+      copy_legacy_account: {
+        Args: { p_legacy_id: string };
+        Returns: {
+          action_providers: string[];
+          actions_enabled: boolean;
+          created_at: string;
+          id: string;
+          is_active: boolean;
+          last_cache_served_at: string | null;
+          last_fetched_at: string;
+          legacy_imdb_user_id: string | null;
+          moved_at: string | null;
+          new_titles_catalog: boolean;
+          prewarm_lease_token: string | null;
+          prewarm_locked_until: string;
+          prewarm_request_generation: number;
+          rpdb_api_key: string | null;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "accounts";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      create_account_with_config: {
+        Args: {
+          p_lists: Json;
+          p_new_titles_catalog?: boolean | null;
+          p_rpdb_api_key: string | null;
+        };
+        Returns: { account_id: string; lists: Json }[];
+      };
+      delete_connection: {
+        Args: {
+          p_account_id: string;
+          p_list_ids: string[];
+          p_provider: string;
+          p_source_refs: string[];
+        };
+        Returns: undefined;
+      };
       finish_list_prewarm: {
         Args: {
           p_account_id: string;
@@ -441,7 +483,7 @@ export type Database = {
           p_new_titles_catalog?: boolean | null;
           p_rpdb_api_key: string | null;
         };
-        Returns: { deleted_ids: string[]; lists: Json }[];
+        Returns: { lists: Json; previous_lists: Json }[];
       };
       request_list_prewarm: {
         Args: {
@@ -450,6 +492,19 @@ export type Database = {
           p_lease_token: string;
         };
         Returns: number;
+      };
+      save_connection: {
+        Args: {
+          p_access_token: string;
+          p_account_id: string;
+          p_expires_at: string | null;
+          p_provider: string;
+          p_provider_username: string | null;
+          p_redirect_uri: string;
+          p_refresh_token: string | null;
+          p_scope: string | null;
+        };
+        Returns: undefined;
       };
     };
     Enums: {

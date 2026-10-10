@@ -40,7 +40,7 @@ import { listConnections, saveConnection } from "../connections";
 import * as listCache from "../list-cache";
 import type { ListRead } from "../lists";
 import {
-  forgetConnectionLists,
+  disconnectProvider,
   getListCatalog,
   rereadConnectionLists,
 } from "../lists";
@@ -688,7 +688,9 @@ describe("merged Lists", () => {
       });
     }
 
-    await forgetConnectionLists(accountId, "trakt");
+    seedConnection(accountId, "trakt");
+
+    await disconnectProvider(accountId, "trakt");
 
     expect(cache.get(keys.imdb)).not.toBeNull();
     expect(cache.get(keys.trakt)).toBeNull();

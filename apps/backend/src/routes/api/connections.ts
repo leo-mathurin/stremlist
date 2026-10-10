@@ -3,13 +3,8 @@ import { PROVIDER_IDS, PROVIDERS } from "@stremlist/shared/providers";
 import { Hono } from "hono";
 import { backendOrigin } from "../../lib/urls";
 import { isProviderEnabled } from "../../providers/registry";
-import { forgetConnectionObjects } from "../../services/actions";
-import {
-  connectionSources,
-  deleteConnection,
-} from "../../services/connections";
-import { forgetConnectionDetections } from "../../services/detections";
-import { forgetConnectionLists } from "../../services/lists";
+import { connectionSources } from "../../services/connections";
+import { disconnectProvider } from "../../services/lists";
 import {
   OAuthNotConfiguredError,
   isOAuthConfigured,
@@ -82,21 +77,8 @@ const connections = new Hono()
       const { accountId, provider } = c.req.valid("param");
       const access = await requireAccess(c, accountId, { privateOnly: true });
       if (access instanceof Response) return access;
-      await deleteConnection(accountId, provider);
       // Nothing read through the Connection stays served or stored.
-      const cleanup = await Promise.allSettled([
-        forgetConnectionLists(accountId, provider),
-        forgetConnectionObjects(accountId, provider),
-        forgetConnectionDetections(accountId, provider),
-      ]);
-      for (const outcome of cleanup) {
-        if (outcome.status === "rejected") {
-          console.error(
-            `Cleaning up after the ${provider} disconnect of ${accountId} failed:`,
-            outcome.reason,
-          );
-        }
-      }
+      await disconnectProvider(accountId, provider);
       return c.json({ ok: true as const });
     },
   );
