@@ -1,4 +1,4 @@
-import type { ProviderId } from "@stremlist/shared/providers";
+import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
 import { imdbProvider } from "./imdb";
 import { justwatchProvider } from "./justwatch";
 import { letterboxdProvider } from "./letterboxd";
@@ -22,4 +22,9 @@ const ADAPTERS: Record<ProviderId, ProviderAdapter> = {
 
 export function getProvider(id: ProviderId): ProviderAdapter {
   return ADAPTERS[id];
+}
+
+/** Whether the Provider supports this kind of Action. */
+export function supportsAction(id: ProviderId, kind: ActionKind): boolean {
+  return getProvider(id).actions?.kinds.includes(kind) ?? false;
 }

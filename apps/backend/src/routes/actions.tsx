@@ -7,8 +7,9 @@ import {
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Child } from "hono/jsx";
-import { getProvider } from "../providers/registry";
+import { supportsAction } from "../providers/registry";
 import type { ActionIntent } from "../providers/types";
+import { toRating } from "../providers/types";
 import type { Account } from "../services/accounts";
 import { resolveAccountKey } from "../services/accounts";
 import type { ActionOutcome } from "../services/actions";
@@ -143,9 +144,7 @@ function notFound(c: Context) {
 }
 
 function supporting(providers: ProviderId[], kind: ActionIntent["kind"]) {
-  return providers.filter((provider) =>
-    getProvider(provider).actions?.kinds.includes(kind),
-  );
+  return providers.filter((provider) => supportsAction(provider, kind));
 }
 
 // Watchlist and watched: one explicit intent per URL, so opening it twice
@@ -276,10 +275,8 @@ actions.post("/:accountId/actions/rating/rate/:type/:id", async (c) => {
 
   const form = await c.req.parseBody({ all: true });
   const remove = form.remove === "1";
-  const rating = Number(form.rating);
-  if (!remove && !(Number.isInteger(rating) && rating >= 1 && rating <= 10)) {
-    return renderRating(c);
-  }
+  const rating = toRating(Number(form.rating));
+  if (!remove && rating === null) return renderRating(c);
   const submitted: unknown = form.providers;
   const chosen = (Array.isArray(submitted) ? submitted : [submitted]).filter(
     (value): value is ProviderId =>
@@ -299,7 +296,7 @@ actions.post("/:accountId/actions/rating/rate/:type/:id", async (c) => {
   const done = (list: string) =>
     remove
       ? `${name} has no rating on ${list} now`
-      : `${name} is rated ${rating}/10 on ${list}`;
+      : `${name} is rated ${String(rating)}/10 on ${list}`;
   return c.html(<OutcomePage done={done} outcomes={outcomes} />);
 });
 

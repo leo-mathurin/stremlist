@@ -1,3 +1,4 @@
+import { bucketOf, countNotFound, episodeItem, syncIds } from "../sync-payload";
 import type {
   ActionIntent,
   ActionTarget,
@@ -6,7 +7,7 @@ import type {
   ProviderActions,
 } from "../types";
 import { traktGetAll, traktGetJson, traktPost } from "./api";
-import type { TraktItem, TraktMedia } from "./entries";
+import type { TraktItem } from "./entries";
 import { imdbIdOf } from "./entries";
 
 /** Membership is bigger than one Source list for heavy users. */
@@ -94,21 +95,13 @@ async function getMembership(
   };
 }
 
-interface SyncResponse {
-  not_found?: {
-    movies?: TraktMedia[];
-    shows?: TraktMedia[];
-    episodes?: unknown[];
-  };
-}
-
 /** The /sync body for one Title, keyed by IMDb ID. */
 export function syncBody(
   intent: ActionIntent,
   target: ActionTarget,
 ): { path: string; body: Record<string, unknown[]> } {
-  const ids = { imdb: target.imdbId };
-  const key = target.type === "movie" ? "movies" : "shows";
+  const ids = syncIds(target);
+  const key = bucketOf(target);
   switch (intent.kind) {
     case "watchlist":
       return {
@@ -120,19 +113,7 @@ export function syncBody(
       if (target.type === "series" && target.episode) {
         return {
           path,
-          body: {
-            shows: [
-              {
-                ids,
-                seasons: [
-                  {
-                    number: target.episode.season,
-                    episodes: [{ number: target.episode.episode }],
-                  },
-                ],
-              },
-            ],
-          },
+          body: { shows: [episodeItem(target, target.episode)] },
         };
       }
       // A show alone marks (or unmarks) every episode.
@@ -153,26 +134,9 @@ async function perform(
   intent: ActionIntent,
   target: ActionTarget,
 ): Promise<void> {
-  if (
-    intent.kind === "rating" &&
-    intent.rating !== null &&
-    !(
-      Number.isInteger(intent.rating) &&
-      intent.rating >= 1 &&
-      intent.rating <= 10
-    )
-  ) {
-    throw new Error(`Invalid Trakt rating ${intent.rating}`);
-  }
   const { path, body } = syncBody(intent, target);
-  const result = await traktPost<SyncResponse>(path, connection, body);
-  const missing = result?.not_found;
-  if (
-    missing &&
-    ((missing.movies?.length ?? 0) > 0 ||
-      (missing.shows?.length ?? 0) > 0 ||
-      (missing.episodes?.length ?? 0) > 0)
-  ) {
+  const result = await traktPost<unknown>(path, connection, body);
+  if (countNotFound(result, ["movies", "shows", "episodes"]) > 0) {
     throw new Error(`Trakt does not know ${target.imdbId}`);
   }
 }

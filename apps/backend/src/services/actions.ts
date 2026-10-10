@@ -9,7 +9,11 @@ import {
   readJson,
   writeJson,
 } from "../lib/r2-json";
-import { getProvider, isProviderEnabled } from "../providers/registry";
+import {
+  getProvider,
+  isProviderEnabled,
+  supportsAction,
+} from "../providers/registry";
 import type {
   ActionIntent,
   ActionTarget,
@@ -229,9 +233,7 @@ export async function buildActionStreams(
   );
 
   const supporting = (kind: ActionKind) =>
-    memberships.filter(({ provider }) =>
-      getProvider(provider).actions?.kinds.includes(kind),
-    );
+    memberships.filter(({ provider }) => supportsAction(provider, kind));
 
   const streams: StremioStream[] = [];
   const { imdbId, episode } = target;
@@ -403,7 +405,11 @@ export async function performAction(
   return Promise.all(
     providers.map(async (provider): Promise<ActionOutcome> => {
       const actions = getProvider(provider).actions;
-      if (!allowed.has(provider) || !actions?.kinds.includes(intent.kind)) {
+      if (
+        !actions ||
+        !allowed.has(provider) ||
+        !supportsAction(provider, intent.kind)
+      ) {
         return { provider, ok: false, error: "not_available" };
       }
       const connection = await getConnectionAccess(account.id, provider);
@@ -456,7 +462,7 @@ export async function currentRatings(
   imdbId: string,
 ): Promise<{ provider: ProviderId; rating: number | null }[]> {
   const providers = (await actionProviders(account)).filter((provider) =>
-    getProvider(provider).actions?.kinds.includes("rating"),
+    supportsAction(provider, "rating"),
   );
   return Promise.all(
     providers.map(async (provider) => {

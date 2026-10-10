@@ -12,6 +12,7 @@ import {
 } from "./http";
 import { oauthClient, revokeToken } from "./oauth-app";
 import { readPages } from "./paging";
+import { bucketOf, countNotFound, episodeItem, syncIds } from "./sync-payload";
 import type {
   ActionIntent,
   ActionTarget,
@@ -390,41 +391,11 @@ function watchlistOrder(items: MdblistItem[]): MdblistItem[] {
 // Actions
 // ---------------------------------------------------------------------------
 
-type Bucket = "movies" | "shows";
-
-function bucketOf(target: ActionTarget): Bucket {
-  return target.type === "movie" ? "movies" : "shows";
-}
-
-/** Sum of the `not_found` counts (numbers or arrays, per media type). */
-function notFoundCount(result: unknown): number {
-  const notFound = (result as { not_found?: unknown } | null)?.not_found;
-  if (!notFound || typeof notFound !== "object") return 0;
-  return Object.values(notFound).reduce<number>((sum, value) => {
-    if (typeof value === "number") return sum + value;
-    if (Array.isArray(value)) return sum + value.length;
-    return sum;
-  }, 0);
-}
-
 function watchedPayload(target: ActionTarget): Record<string, unknown[]> {
-  const ids = { imdb: target.imdbId };
   if (target.type === "series" && target.episode) {
-    return {
-      shows: [
-        {
-          ids,
-          seasons: [
-            {
-              number: target.episode.season,
-              episodes: [{ number: target.episode.episode }],
-            },
-          ],
-        },
-      ],
-    };
+    return { shows: [episodeItem(target, target.episode)] };
   }
-  return { [bucketOf(target)]: [{ ids }] };
+  return { [bucketOf(target)]: [{ ids: syncIds(target) }] };
 }
 
 async function perform(
@@ -432,7 +403,7 @@ async function perform(
   intent: ActionIntent,
   target: ActionTarget,
 ): Promise<void> {
-  const ids = { imdb: target.imdbId };
+  const ids = syncIds(target);
   const bucket = bucketOf(target);
   let path: string;
   let body: Record<string, unknown[]>;
@@ -452,12 +423,8 @@ async function perform(
     body = { [bucket]: [{ ids }] };
     mustExist = false;
   } else {
-    const rating = Math.round(intent.rating);
-    if (rating < 1 || rating > 10) {
-      throw new Error(`MDBList ratings go from 1 to 10, got ${intent.rating}`);
-    }
     path = "/sync/ratings";
-    body = { [bucket]: [{ ids, rating }] };
+    body = { [bucket]: [{ ids, rating: intent.rating }] };
     mustExist = true;
   }
 
@@ -465,7 +432,7 @@ async function perform(
     method: "POST",
     body,
   });
-  if (mustExist && notFoundCount(data) > 0) {
+  if (mustExist && countNotFound(data) > 0) {
     throw new Error(`MDBList does not know ${target.imdbId}`);
   }
 }

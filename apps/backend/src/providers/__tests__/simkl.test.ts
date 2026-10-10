@@ -1023,13 +1023,6 @@ describe("simkl actions", () => {
       path: "/sync/ratings/remove",
       body: { movies: [{ ids: { imdb: "tt0068646" } }] },
     });
-    await expect(
-      actions.perform(
-        connection,
-        { kind: "rating", rating: 11 },
-        { imdbId: "tt0068646", type: "movie" },
-      ),
-    ).rejects.toThrow();
   });
 
   it("fails when Simkl does not know the title", async () => {

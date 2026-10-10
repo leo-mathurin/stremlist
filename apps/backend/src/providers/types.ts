@@ -178,10 +178,24 @@ export interface Membership {
   ratings: Record<string, number>;
 }
 
+/** A rating from 1 to 10, the scale of every Provider with ratings. */
+export type Rating = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+
+/** The value as a Rating, or null when it is not an integer from 1 to 10. */
+export function toRating(value: unknown): Rating | null {
+  return typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= 10
+    ? (value as Rating)
+    : null;
+}
+
 export type ActionIntent =
   | { kind: "watchlist"; add: boolean }
   | { kind: "watched"; add: boolean }
-  | { kind: "rating"; rating: number | null };
+  /** Null removes the rating. */
+  | { kind: "rating"; rating: Rating | null };
 
 export interface ActionTarget {
   imdbId: string;

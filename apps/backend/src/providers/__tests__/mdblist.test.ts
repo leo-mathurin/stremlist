@@ -538,17 +538,6 @@ describe("mdblistProvider.actions", () => {
     });
   });
 
-  it("rejects ratings outside 1 to 10", async () => {
-    await expect(
-      actions.perform(
-        connection(),
-        { kind: "rating", rating: 11 },
-        { imdbId: "tt0111161", type: "movie" },
-      ),
-    ).rejects.toThrow();
-    expect(calls).toHaveLength(0);
-  });
-
   it("marks only the watchlist Catalog as stale", () => {
     expect(actions.kinds).toEqual(["watchlist", "watched", "rating"]);
     expect(actions.affectedSources({ kind: "watchlist", add: true })).toEqual([

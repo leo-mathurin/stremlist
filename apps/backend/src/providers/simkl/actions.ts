@@ -1,3 +1,4 @@
+import { bucketOf, countNotFound, episodeItem, syncIds } from "../sync-payload";
 import type {
   ActionIntent,
   ActionTarget,
@@ -10,10 +11,6 @@ import { simklRequest } from "./api";
 import { LIBRARY_REFS, titleType } from "./entries";
 import type { LibraryItem } from "./library";
 import { knownItems, markLibraryChanged, syncLibrary } from "./library";
-
-interface WriteResult {
-  not_found?: Record<string, unknown[] | undefined>;
-}
 
 export function membershipFrom(items: LibraryItem[]): Membership {
   const watchlist = new Set<string>();
@@ -57,7 +54,7 @@ async function buildWrite(
   intent: ActionIntent,
   target: ActionTarget,
 ): Promise<WriteRequest | null> {
-  const item: Record<string, unknown> = { ids: { imdb: target.imdbId } };
+  const item: Record<string, unknown> = { ids: syncIds(target) };
   const series = target.type === "series";
 
   if (intent.kind === "watchlist") {
@@ -79,16 +76,10 @@ async function buildWrite(
       return {
         path,
         item: {
-          ...item,
+          ...episodeItem(target, target.episode),
           // Stremio uses IMDb seasons; this maps them onto Simkl's anime
           // entries and is a no-op for other shows.
           use_tvdb_anime_seasons: true,
-          seasons: [
-            {
-              number: target.episode.season,
-              episodes: [{ number: target.episode.episode }],
-            },
-          ],
         },
       };
     }
@@ -124,13 +115,6 @@ async function buildWrite(
   }
 
   if (intent.rating === null) return { path: "/sync/ratings/remove", item };
-  if (
-    !Number.isInteger(intent.rating) ||
-    intent.rating < 1 ||
-    intent.rating > 10
-  ) {
-    throw new Error(`Simkl ratings go from 1 to 10, got ${intent.rating}`);
-  }
   return { path: "/sync/ratings", item: { ...item, rating: intent.rating } };
 }
 
@@ -143,16 +127,13 @@ async function perform(
   if (!write) return;
   const token = await connectionToken(connection);
   // Anime go under "shows" on every Simkl write endpoint.
-  const bucket = target.type === "movie" ? "movies" : "shows";
-  const result = await simklRequest<WriteResult>(write.path, {
+  const result = await simklRequest<unknown>(write.path, {
     method: "POST",
     token,
-    body: { [bucket]: [write.item] },
+    body: { [bucketOf(target)]: [write.item] },
   });
-  const notFound = Object.values(result.not_found ?? {}).some(
-    (values) => Array.isArray(values) && values.length > 0,
-  );
-  if (notFound) throw new Error(`Simkl does not know ${target.imdbId}`);
+  if (countNotFound(result) > 0)
+    throw new Error(`Simkl does not know ${target.imdbId}`);
   await markLibraryChanged(connection.accountId);
 }
 

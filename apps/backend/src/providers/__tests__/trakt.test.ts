@@ -1035,17 +1035,6 @@ describe("Trakt actions", () => {
     expect(clear.body).toEqual({ movies: [{ ids: { imdb: "tt11128440" } }] });
   });
 
-  it("rejects ratings outside 1 to 10", async () => {
-    await expect(
-      actions.perform(
-        connection(),
-        { kind: "rating", rating: 11 },
-        { imdbId: "tt1", type: "movie" },
-      ),
-    ).rejects.toThrow();
-    expect(calls).toHaveLength(0);
-  });
-
   it("fails when Trakt does not know the Title", async () => {
     route("POST /sync/watchlist", {
       added: { movies: 0 },
