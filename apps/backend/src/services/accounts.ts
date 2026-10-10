@@ -255,18 +255,20 @@ export async function getVisibleLists(
   return visibleLists(access, await getAccountLists(access.account.id));
 }
 
-export async function getAccountListById(
-  accountId: string,
+/** One List of the Account, if the request may see it (see visibleLists). */
+export async function getVisibleListById(
+  access: AccountAccess,
   listId: string,
 ): Promise<ConfigList | null> {
   const { data, error } = await supabase
     .from("lists")
     .select("*")
-    .eq("account_id", accountId)
+    .eq("account_id", access.account.id)
     .eq("id", listId)
     .maybeSingle();
   if (error || !data) return null;
-  return mapList(data);
+  const list = mapList(data);
+  return list && visibleLists(access, [list]).length > 0 ? list : null;
 }
 
 /**
@@ -377,13 +379,21 @@ export async function createPrivateCopy(legacy: Account): Promise<Account> {
   };
 }
 
+/**
+ * Remember when the Account was last read from its Providers, or last served
+ * from the cache. Never throws: a failed write is logged and must not fail
+ * the read that it describes.
+ */
 export async function markAccountFetched(
   accountId: string,
   field: "last_fetched_at" | "last_cache_served_at",
   at = new Date(),
 ): Promise<void> {
-  await supabase
+  const { error } = await supabase
     .from("accounts")
     .update({ [field]: at.toISOString() })
     .eq("id", accountId);
+  if (error) {
+    console.error(`Failed to update ${field} of ${accountId}:`, error.message);
+  }
 }

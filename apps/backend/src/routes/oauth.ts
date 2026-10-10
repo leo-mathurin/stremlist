@@ -1,7 +1,7 @@
 import { isProviderId } from "@stremlist/shared/providers";
 import { Hono } from "hono";
 import { scheduleBackgroundTask } from "../lib/background";
-import { frontendUrl } from "../lib/urls";
+import { backendOrigin, frontendUrl } from "../lib/urls";
 import { getProvider } from "../providers/registry";
 import { saveConnection } from "../services/connections";
 import { forgetConnectionDetections } from "../services/detections";
@@ -42,7 +42,7 @@ oauth.get("/oauth/:provider/callback", async (c) => {
   }
 
   try {
-    const redirect = redirectUri(provider, new URL(c.req.url).origin);
+    const redirect = redirectUri(provider, backendOrigin(c));
     const tokens = await exchangeCode(
       provider,
       code,

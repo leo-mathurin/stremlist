@@ -1,10 +1,11 @@
-import type { ProviderId } from "@stremlist/shared/providers";
-import { isProviderId } from "@stremlist/shared/providers";
+import type { Tables } from "@stremlist/shared/database.types";
+import type { ConnectionSource, ProviderId } from "@stremlist/shared/providers";
+import { CONNECTION_SOURCES, isProviderId } from "@stremlist/shared/providers";
 import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
 import { randomUUID } from "node:crypto";
 import { decryptSecret, encryptSecret } from "../lib/crypto";
 import { supabase } from "../lib/supabase";
-import { getProvider } from "../providers/registry";
+import { getProvider, isProviderEnabled } from "../providers/registry";
 import type { ConnectionAccess } from "../providers/types";
 import { ConnectionExpiredError } from "../providers/types";
 import type { OAuthTokens } from "./oauth";
@@ -35,19 +36,7 @@ interface StoredConnection {
   createdAt: string;
 }
 
-interface ConnectionRow {
-  account_id: string;
-  provider: string;
-  provider_username: string | null;
-  access_token: string;
-  refresh_token: string | null;
-  expires_at: string | null;
-  redirect_uri: string;
-  created_at: string;
-  needs_renewal_since: string | null;
-}
-
-function decode(row: ConnectionRow): StoredConnection | null {
+function decode(row: Tables<"connections">): StoredConnection | null {
   if (!isProviderId(row.provider)) return null;
   try {
     return {
@@ -95,19 +84,18 @@ export async function listConnections(
     console.error(`Failed to list connections of ${accountId}:`, error.message);
     return [];
   }
-  return (
-    data as Pick<
-      ConnectionRow,
-      "provider" | "provider_username" | "created_at" | "needs_renewal_since"
-    >[]
-  )
-    .filter((row) => isProviderId(row.provider))
-    .map((row) => ({
-      provider: row.provider as ProviderId,
-      username: row.provider_username,
-      connectedAt: row.created_at,
-      needsRenewalSince: row.needs_renewal_since,
-    }));
+  return data.flatMap((row) =>
+    isProviderId(row.provider)
+      ? [
+          {
+            provider: row.provider,
+            username: row.provider_username,
+            connectedAt: row.created_at,
+            needsRenewalSince: row.needs_renewal_since,
+          },
+        ]
+      : [],
+  );
 }
 
 export async function saveConnection(
@@ -324,4 +312,35 @@ export async function getConnectionAccess(
     reportRefused: () => setNeedsRenewal(current, true),
     reportWorking: () => setNeedsRenewal(current, false),
   };
+}
+
+/**
+ * Every Source list that a Connection unlocks: the Provider's static ones,
+ * then the user's own lists that the Provider lists (without the static
+ * ones again). Without a Connection, or when the Provider is turned off,
+ * only the static ones. A failed listing is logged and leaves the user's
+ * own lists out.
+ */
+export async function connectionSources(
+  accountId: string,
+  provider: ProviderId,
+): Promise<ConnectionSource[]> {
+  const staticSources = CONNECTION_SOURCES[provider] ?? [];
+  // The kill switch also stops the call that lists the user's own lists.
+  const connection = isProviderEnabled(provider)
+    ? await getConnectionAccess(accountId, provider)
+    : null;
+  if (!connection) return staticSources;
+  let own: ConnectionSource[] = [];
+  try {
+    own =
+      (await getProvider(provider).listConnectionSources?.(connection)) ?? [];
+  } catch (error) {
+    console.error(
+      `Listing ${provider} sources for ${accountId} failed:`,
+      error instanceof Error ? error.message : error,
+    );
+  }
+  const seen = new Set(staticSources.map((source) => source.ref));
+  return [...staticSources, ...own.filter((source) => !seen.has(source.ref))];
 }
