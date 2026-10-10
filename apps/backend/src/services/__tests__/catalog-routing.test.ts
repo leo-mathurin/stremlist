@@ -10,11 +10,15 @@ function catalogsWithoutExtra(
 
 describe("catalog id helpers", () => {
   it("builds and parses movie ids", () => {
-    const watchlistId = "77e10eda-0e07-4c60-8ec7-23fb1b1d0573";
-    const catalogId = buildCatalogId(watchlistId, "movie");
+    const listId = "77e10eda-0e07-4c60-8ec7-23fb1b1d0573";
+    const catalogId = buildCatalogId(listId, "movie");
 
     expect(catalogId).toBe("wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie");
-    expect(parseCatalogId(catalogId)).toEqual({ watchlistId, type: "movie" });
+    expect(parseCatalogId(catalogId)).toEqual({
+      kind: "list",
+      listId,
+      type: "movie",
+    });
   });
 
   it("rejects malformed ids", () => {
@@ -27,11 +31,12 @@ describe("catalog id helpers", () => {
 });
 
 describe("manifest catalog generation", () => {
-  it("creates movie and series catalogs for each watchlist title", () => {
+  it("creates movie and series catalogs for each List title", () => {
     const catalogs = buildManifestCatalogs([
       {
         id: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
-        imdbUserId: "ur12345678",
+        provider: "imdb",
+        sourceRef: "ur12345678",
         catalogTitle: "Leo Picks",
         availableGenres: ["Comedy"],
         sortOption: "added_at-asc",
@@ -40,7 +45,8 @@ describe("manifest catalog generation", () => {
       },
       {
         id: "3be4e39f-3e27-42e7-a69f-c14f0709de52",
-        imdbUserId: "ur87654321",
+        provider: "imdb",
+        sourceRef: "ur87654321",
         catalogTitle: "Family Queue",
         availableGenres: ["Comedy"],
         sortOption: "title-asc",
@@ -93,7 +99,8 @@ describe("manifest catalog generation", () => {
     const catalogs = buildManifestCatalogs([
       {
         id: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
-        imdbUserId: "ur12345678",
+        provider: "imdb",
+        sourceRef: "ur12345678",
         catalogTitle: "Picks",
         sortOption: "title-asc",
         displayMode: "movie",
@@ -118,7 +125,8 @@ describe("manifest catalog generation", () => {
         ),
     ).toBe(true);
     expect(parseCatalogId(catalogs[1].id)).toEqual({
-      watchlistId: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
+      kind: "list",
+      listId: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
       type: "movie",
       preset: "short",
     });
@@ -129,7 +137,8 @@ describe("manifest catalog generation", () => {
     const catalogs = buildManifestCatalogs([
       {
         id: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
-        imdbUserId: "ur12345678",
+        provider: "imdb",
+        sourceRef: "ur12345678",
         catalogTitle: "",
         sortOption: "added_at-asc",
         displayMode: "split",
@@ -151,11 +160,12 @@ describe("manifest catalog generation", () => {
     ]);
   });
 
-  it("defaults unnamed watchlists to numeric titles when multiple exist", () => {
+  it("defaults unnamed Lists to numeric titles when multiple exist", () => {
     const catalogs = buildManifestCatalogs([
       {
         id: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
-        imdbUserId: "ur12345678",
+        provider: "imdb",
+        sourceRef: "ur12345678",
         catalogTitle: "",
         sortOption: "added_at-asc",
         displayMode: "split",
@@ -163,7 +173,8 @@ describe("manifest catalog generation", () => {
       },
       {
         id: "3be4e39f-3e27-42e7-a69f-c14f0709de52",
-        imdbUserId: "ur87654321",
+        provider: "imdb",
+        sourceRef: "ur87654321",
         catalogTitle: "",
         sortOption: "title-asc",
         displayMode: "split",
@@ -199,7 +210,8 @@ describe("manifest catalog generation", () => {
     const catalogs = buildManifestCatalogs([
       {
         id: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
-        imdbUserId: "ur12345678",
+        provider: "imdb",
+        sourceRef: "ur12345678",
         catalogTitle: "Leo Picks",
         sortOption: "added_at-asc",
         displayMode: "movie",
@@ -220,7 +232,8 @@ describe("manifest catalog generation", () => {
     const catalogs = buildManifestCatalogs([
       {
         id: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
-        imdbUserId: "ur12345678",
+        provider: "imdb",
+        sourceRef: "ur12345678",
         catalogTitle: "Leo Picks",
         sortOption: "added_at-asc",
         displayMode: "series",
@@ -241,7 +254,8 @@ describe("manifest catalog generation", () => {
     const catalogs = buildManifestCatalogs([
       {
         id: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
-        imdbUserId: "ur12345678",
+        provider: "imdb",
+        sourceRef: "ur12345678",
         catalogTitle: "Leo Picks",
         sortOption: "added_at-asc",
         displayMode: "bogus" as never,

@@ -1,0 +1,100 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-09T15:01:15.845Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Connected to Trakt. Disconnect\" in \"Trakt\"",
+        "target": {
+          "role": "button",
+          "name": "Connected to Trakt. Disconnect",
+          "within": "Trakt"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Disconnect\" in \"Disconnect Trakt?\"",
+        "target": {
+          "role": "button",
+          "name": "Disconnect",
+          "within": "Disconnect Trakt?"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/providers.e2e.ts::disconnecting%20a%20Provider%20asks%20first%2C%20then%20its%20Lists%20offer%20to%20connect%20again",
+      "targetId": "chromium",
+      "instructionDigest": "025049d0ea90c9a92d7a706d4a4980b6455a95e9d763ddfeaa10059dda38ebff",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Trakt is disconnected. The page shows the Trakt Watchlist as “Not connected,” and a confirmation toast says “Trakt is disconnected. Lists read through Trakt stop showing in Stremio until you connect it again.”",
+    "startPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endAnchors": [
+      {
+        "role": "status",
+        "name": "Trakt is not connected, so this List does not show in Stremio. Connect again for Trakt Watchlist"
+      },
+      {
+        "text": "Paste a link, or connect"
+      },
+      {
+        "role": "button",
+        "name": "Connect"
+      },
+      {
+        "text": "A free Trakt account can connect only one app. If Stremio's own Trakt sync uses it, paste public Trakt links instead."
+      },
+      {
+        "text": "1 List needs attention"
+      },
+      {
+        "text": "These changes need a reinstall."
+      },
+      {
+        "text": "Not connected"
+      },
+      {
+        "text": "Trakt is not connected, so this List does not show in Stremio."
+      }
+    ],
+    "goneAnchors": [
+      {
+        "text": "@someone"
+      },
+      {
+        "text": "Connected"
+      },
+      {
+        "text": "Not refreshed yet"
+      },
+      {
+        "text": "Your Trakt (@someone)"
+      },
+      {
+        "role": "button",
+        "name": "Watchlist"
+      },
+      {
+        "role": "button",
+        "name": "Recommendations"
+      },
+      {
+        "role": "button",
+        "name": "Up Next"
+      },
+      {
+        "role": "button",
+        "name": "History"
+      }
+    ],
+    "endWaitMs": 26480
+  }
+}

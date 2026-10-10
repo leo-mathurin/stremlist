@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { addonManifestUrl, FRONTEND_URL } from "../env.js";
-import { bootstrapUser } from "../helpers/api.js";
-import { resetDb } from "../helpers/db.js";
+import { addonManifestUrl } from "../env.js";
+import { bootstrapLegacy } from "../helpers/api.js";
+import { configureUrl } from "../helpers/configure.js";
+import { resetDb, seedImdbAccount } from "../helpers/db.js";
 import {
   addonsDeepLink,
   dismissDesktopAppPrompt,
@@ -20,8 +21,7 @@ test(
   "installs and uninstalls the addon through Stremio Web",
   { tag: "@live-smoke" },
   async ({ page }) => {
-    await bootstrapUser(PUBLIC_USER);
-    const manifestUrl = addonManifestUrl(PUBLIC_USER);
+    const manifestUrl = addonManifestUrl((await seedImdbAccount()).accountId);
 
     await installAddon(page, manifestUrl);
 
@@ -47,19 +47,33 @@ test(
   "configure page links straight into Stremio Web's install dialog",
   { tag: "@live-regression" },
   async ({ page, context }) => {
-    await bootstrapUser(PUBLIC_USER);
-    await page.goto(`${FRONTEND_URL}/configure?userId=${PUBLIC_USER}`);
+    const { accountId } = await seedImdbAccount();
+    await page.goto(configureUrl(accountId));
 
     const popupPromise = context.waitForEvent("page");
-    await page.getByRole("link", { name: "Open in Stremio Web" }).click();
+    await page.getByRole("link", { name: "Open Stremio Web" }).click();
     const popup = await popupPromise;
     await popup.waitForLoadState();
-    expect(popup.url()).toBe(
-      `https://web.stremio.com/#/addons?addon=${encodeURIComponent(addonManifestUrl(PUBLIC_USER))}`,
-    );
+    expect(popup.url()).toBe(addonsDeepLink(addonManifestUrl(accountId)));
     await dismissDesktopAppPrompt(popup);
     await expect(
       popup.getByText("Install", { exact: true }).last(),
+    ).toBeVisible();
+  },
+);
+
+test(
+  "a Legacy alias Addon URL still installs in Stremio Web",
+  { tag: "@live-regression" },
+  async ({ page }) => {
+    await bootstrapLegacy(PUBLIC_USER);
+    const manifestUrl = addonManifestUrl(PUBLIC_USER);
+    await installAddon(page, manifestUrl);
+    await page.goto(addonsDeepLink(manifestUrl));
+    await page.reload();
+    await dismissDesktopAppPrompt(page);
+    await expect(
+      page.getByText("Uninstall", { exact: true }).last(),
     ).toBeVisible();
   },
 );

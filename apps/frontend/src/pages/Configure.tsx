@@ -1,421 +1,654 @@
-import { useState, useCallback, useRef } from "react";
-import { useSearchParams, Link } from "react-router";
-import { IMDB_USER_ID_EXTRACT_PATTERN } from "@stremlist/shared/constants";
-import { Eye, EyeOff, Plus, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
+import { ACCOUNT_KEY_PATTERN } from "@stremlist/shared/constants";
+import { MAX_LISTS, connectionProviders } from "@stremlist/shared/list-merge";
+import {
+  isProviderId,
+  PROVIDERS,
+  staticSource,
+} from "@stremlist/shared/providers";
+import type { ProviderId } from "@stremlist/shared/providers";
+import { Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
-import SortableWatchlistRow from "../components/SortableWatchlistRow";
-import Header from "../components/Header";
-import AddonInstallActions from "../components/AddonInstallActions";
-import BuiltInCatalogPicker from "../components/BuiltInCatalogPicker";
-import { api } from "../lib/api";
-import { useSEO } from "../hooks/useSEO";
+import ActionsSettings from "../components/ActionsSettings";
+import FloatingSaveButton, {
+  SAVE_BUTTON_CLASS,
+} from "../components/FloatingSaveButton";
 import {
-  MAX_WATCHLISTS,
-  useWatchlistConfiguration,
-} from "../hooks/useWatchlistConfiguration";
+  AddonUrlCard,
+  LegacyUpgradeCard,
+  ReinstallNotice,
+} from "../components/AccountCards";
+import LinkPaste from "../components/LinkPaste";
+import NewTitlesSettings from "../components/NewTitlesSettings";
+import type { ResolvedLink } from "../components/LinkPaste";
+import ProviderList from "../components/ProviderList";
+import QuickAdd from "../components/QuickAdd";
+import SortableListRow from "../components/SortableListRow";
+import { SectionHeading, SplitLayout, Wordmark } from "../components/brand";
+import { usePendingIndicator } from "../hooks/usePendingIndicator";
+import { useSEO } from "../hooks/useSEO";
+import { useAccountConfiguration } from "../hooks/useAccountConfiguration";
+import { ConnectionsContext } from "../hooks/connections-context";
+import { accountEditPolicy } from "../lib/account-config";
+import { sourceKeys } from "../lib/list-form";
+import { attentionTone } from "../lib/list-sync";
+import { describeSource, PASTE_LINK_PROMPT } from "../lib/list-sources";
 import { cn, formatRelativeTime } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 
-function extractImdbId(text: string): string {
-  if (!text) return "";
-  const match = text.match(IMDB_USER_ID_EXTRACT_PATTERN);
-  return match ? match[0] : "";
+/** The Account created in this tab, so its Addon URL warning stays visible. */
+const NEW_ACCOUNT_STORAGE = "stremlist:new-account";
+/** A link that waited for a Connection, added again after the OAuth return. */
+const PENDING_LINK_STORAGE = "stremlist:pending-link";
+
+type Notice = { type: "success" | "error"; message: string };
+
+function readStorage(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
 }
 
-function ConfigureContent() {
+function writeStorage(key: string, value: string | null) {
+  try {
+    if (value === null) sessionStorage.removeItem(key);
+    else sessionStorage.setItem(key, value);
+  } catch {
+    // Private mode: the page still works, only the hand-off is lost.
+  }
+}
+
+function connectionNotice(
+  connected: string | null,
+  error: string | null,
+  providerParam: string | null,
+): Notice | null {
+  const provider =
+    providerParam && isProviderId(providerParam) ? providerParam : null;
+  const label = provider ? PROVIDERS[provider].label : "the account";
+  if (connected && isProviderId(connected)) {
+    return {
+      type: "success",
+      message: `${PROVIDERS[connected].label} is connected. You can now add its lists.`,
+    };
+  }
+  switch (error) {
+    case null:
+      return null;
+    case "denied":
+      return {
+        type: "error",
+        message: `You cancelled the connection to ${label}. Nothing changed.`,
+      };
+    case "expired":
+      return {
+        type: "error",
+        message: `The connection to ${label} took too long. Please try again.`,
+      };
+    case "invalid_request":
+      return {
+        type: "error",
+        message: "The connection could not be completed. Please try again.",
+      };
+    default:
+      return {
+        type: "error",
+        message: `Could not connect ${label}. Please try again.`,
+      };
+  }
+}
+
+export default function Configure() {
   useSEO({
     title: "Configure - Stremlist",
     description:
-      "Configure your Stremlist addon settings, watchlists, lists, and sorting preferences.",
+      "Choose the watchlists and lists that Stremlist shows in Stremio, from IMDb, Trakt, Simkl, MDBList, JustWatch and SensCritique.",
     robots: "noindex, nofollow",
   });
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const userId = searchParams.get("userId");
-  const homePath = userId ? `/?userId=${encodeURIComponent(userId)}` : "/";
+  const navigate = useNavigate();
+  const location = useLocation();
+  const rawKey = searchParams.get("account") ?? searchParams.get("userId");
+  const keyIsValid = !!rawKey && ACCOUNT_KEY_PATTERN.test(rawKey);
+  const accountKey = keyIsValid ? rawKey : null;
 
-  const [idInput, setIdInput] = useState("");
-  const [idError, setIdError] = useState<string | null>(null);
-  const [validating, setValidating] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [pendingLink, setPendingLink] = useState<string | null>(() => {
+    const homeLink = (location.state as { link?: unknown } | null)?.link;
+    if (typeof homeLink === "string") return homeLink;
+    const stored = readStorage(PENDING_LINK_STORAGE);
+    writeStorage(PENDING_LINK_STORAGE, null);
+    return searchParams.get("connected") ? stored : null;
+  });
+  // The link from Home is consumed once; drop it so a reload does not add
+  // it again.
+  useEffect(() => {
+    if (location.state) {
+      navigate(
+        { pathname: location.pathname, search: location.search },
+        { replace: true, state: null },
+      );
+    }
+  }, [location, navigate]);
+  useEffect(() => {
+    const cleanup = ["connected", "connection_error", "provider", "userId"];
+    if (!cleanup.some((key) => searchParams.has(key))) return;
+    const notice = connectionNotice(
+      searchParams.get("connected"),
+      searchParams.get("connection_error"),
+      searchParams.get("provider"),
+    );
+    if (notice) {
+      toast[notice.type](notice.message, { id: `connection-${location.key}` });
+    }
+    // Consume the OAuth result so reloading does not show the toast again.
+    const next = new URLSearchParams(searchParams);
+    for (const key of cleanup) next.delete(key);
+    if (rawKey) next.set("account", rawKey);
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, rawKey, location.key]);
 
-  const {
-    watchlists,
-    setWatchlistField,
-    removeWatchlist,
-    addWatchlist,
-    addChartWatchlist,
-    rpdbApiKey,
-    setRpdbApiKey,
-    showRpdbApiKey,
-    setShowRpdbApiKey,
-    loading,
-    saving,
-    refreshing,
-    lastFetchedAt,
-    cooldownRemaining,
-    onCooldown,
-    userNotFound,
-    loadError,
-    showReinstallHint,
-    status,
-    validationError,
-    handleSave,
-    handleRefresh,
-    reorderWatchlists,
-    retryLoad,
-  } = useWatchlistConfiguration(userId);
-
-  const handleIdInput = useCallback(
-    (value: string) => {
-      setIdInput(value);
-      setIdError(null);
-
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-
-      const trimmed = value.trim();
-      if (!trimmed) return;
-
-      debounceRef.current = setTimeout(() => {
-        const extracted = extractImdbId(trimmed);
-
-        if (!extracted || extracted.length <= 3) {
-          setIdError(
-            'Enter a valid IMDb ID starting with "ur" (e.g., ur12345678) or "p." (e.g., p.colneedham)',
-          );
-          return;
-        }
-
-        setValidating(true);
-        setIdError(null);
-        (async () => {
-          try {
-            const res = await api.validate[":userId"].$get({
-              param: { userId: extracted },
-            });
-            const data = await res.json();
-            if (data.valid) {
-              const canonicalId = "userId" in data ? data.userId : extracted;
-              setSearchParams({ userId: canonicalId });
-            } else {
-              const reason = "reason" in data ? data.reason : undefined;
-              setIdError(
-                reason === "private"
-                  ? "This IMDb watchlist is private. Please make your watchlist public in your IMDb settings."
-                  : "This IMDb ID does not exist. Please check and try again.",
-              );
-            }
-          } catch {
-            setIdError(
-              "Could not validate this IMDb ID. Please try again later.",
-            );
-          } finally {
-            setValidating(false);
-          }
-        })();
-      }, 500);
+  const [createdId, setCreatedId] = useState(() =>
+    readStorage(NEW_ACCOUNT_STORAGE),
+  );
+  /** Open an Account created in this tab; a new setup replaces its entry. */
+  const openCreated = useCallback(
+    (id: string, replace = true) => {
+      writeStorage(NEW_ACCOUNT_STORAGE, id);
+      setCreatedId(id);
+      navigate(`/configure?account=${encodeURIComponent(id)}`, { replace });
     },
-    [setSearchParams],
+    [navigate],
+  );
+
+  const config = useAccountConfiguration(accountKey, {
+    onAccountCreated: openCreated,
+  });
+  const { lists, access, accountId, status } = config;
+  const [detected, setDetected] = useState<ProviderId | null>(null);
+  const full = lists.length >= MAX_LISTS;
+  const ready = status === "ready" && (!rawKey || keyIsValid);
+  const justCreated = !!accountId && createdId === accountId;
+  const policy = accountEditPolicy(access, config.movedAt);
+  const rows = lists.map((list) => config.rowModel(list));
+  const attention = rows.filter((row) => attentionTone(row.sync)).length;
+  const affectedLists: Partial<Record<ProviderId, number>> = {};
+  for (const list of lists) {
+    for (const provider of connectionProviders(list)) {
+      affectedLists[provider] = (affectedLists[provider] ?? 0) + 1;
+    }
+  }
+
+  const addResolved = (link: ResolvedLink): string | null =>
+    config.addList({
+      provider: link.provider,
+      sourceRef: link.sourceRef,
+      catalogTitle:
+        link.suggestedTitle ??
+        describeSource(link.provider, link.sourceRef).suggestedTitle,
+      displayMode: link.defaultDisplayMode ?? undefined,
+    });
+
+  const connectFor = (provider: ProviderId, link?: string) => {
+    writeStorage(PENDING_LINK_STORAGE, link ?? null);
+    void config.connect(provider);
+  };
+
+  // The header Save button; the floating Save button shows once it scrolls
+  // away.
+  const [headerSave, setHeaderSave] = useState<HTMLButtonElement | null>(null);
+  const [headerSaveVisible, setHeaderSaveVisible] = useState(true);
+  useEffect(() => {
+    if (!headerSave) return;
+    const observer = new IntersectionObserver(([entry]) =>
+      setHeaderSaveVisible(entry.isIntersecting),
+    );
+    observer.observe(headerSave);
+    return () => observer.disconnect();
+  }, [headerSave]);
+  const canSave = !policy.editLock && lists.length > 0;
+  const showSaveBar = ready && canSave && !!headerSave && !headerSaveVisible;
+  // `handleSave` ignores clicks while a save runs, so the button stays
+  // enabled: dimming it for a fast save would flash.
+  const saveDisabled = !canSave || !!config.validationError;
+  const showSaving = usePendingIndicator(config.saving);
+  const saveLabel = (
+    <>
+      {showSaving && <Loader2 className="size-4 animate-spin" />}
+      {showSaving ? (
+        "Saving"
+      ) : access === "new" ? (
+        <>
+          Save<span className="hidden sm:inline"> and get my Addon URL</span>
+        </>
+      ) : (
+        "Save"
+      )}
+    </>
+  );
+
+  const scrollToUpgrade = () =>
+    document
+      .getElementById("upgrade")
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+
+  const panel = (
+    <div className="space-y-8">
+      <Wordmark />
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Providers</h1>
+        <p className="mt-1 text-white/60">
+          Paste a link, or connect an account.
+        </p>
+        {access === "legacy" && accountKey && (
+          <p className="mt-2 text-xs text-white/45">
+            IMDb install{" "}
+            <span className="font-mono text-white/70">{accountKey}</span>
+          </p>
+        )}
+      </div>
+
+      {ready && (
+        <>
+          <LinkPaste
+            accountKey={accountKey}
+            access={access}
+            disabled={full || !!policy.editLock}
+            disabledReason={
+              policy.editLock ??
+              `You have ${MAX_LISTS} lists, the maximum. Remove one to add another.`
+            }
+            initialValue={pendingLink ?? undefined}
+            onInitialValueUsed={() => setPendingLink(null)}
+            onDetect={setDetected}
+            onResolved={addResolved}
+            onConnect={connectFor}
+            onUpgrade={scrollToUpgrade}
+          />
+          <ProviderList
+            access={access}
+            detected={detected}
+            connections={config.connections}
+            providerStatus={config.providerStatus}
+            connecting={config.connecting}
+            connectLocked={policy.editLock}
+            affectedLists={affectedLists}
+            onConnect={(provider) =>
+              policy.upgradeToConnect ? scrollToUpgrade() : connectFor(provider)
+            }
+            onDisconnect={config.disconnect}
+          />
+          {policy.connectHint === "save-first" && (
+            <p className="text-xs text-pretty text-white/45">
+              Connecting an account saves your setup first, because a Connection
+              belongs to your private Addon URL.
+            </p>
+          )}
+          {policy.connectHint === "upgrade" && (
+            <p className="text-xs text-pretty text-white/45">
+              Connections need a private Addon URL.{" "}
+              <button
+                type="button"
+                onClick={scrollToUpgrade}
+                className="font-semibold text-brand underline-offset-2 hover:underline"
+              >
+                Upgrade this install
+              </button>
+            </p>
+          )}
+        </>
+      )}
+    </div>
   );
 
   return (
-    <div className="max-w-3xl mx-auto my-8 bg-white rounded-lg shadow-md p-8">
-      <Header />
-
-      <main>
-        <Button
-          variant="link"
-          asChild
-          className="h-auto p-0 text-stremlist text-sm"
-        >
-          <Link to={homePath}>&larr; Back to Home</Link>
-        </Button>
-
-        <div className="mt-4 mb-6 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-          <div className="space-y-1">
-            <h2 className="text-xl font-bold text-gray-900">Configure</h2>
-            {userId && !userNotFound && (
-              <p className="text-sm text-gray-500">
-                Settings for{" "}
-                <strong className="font-semibold text-gray-700">
-                  {userId}
-                </strong>
+    <SplitLayout panel={panel}>
+      <div className="mx-auto max-w-3xl space-y-6 p-5 pb-24 sm:p-8 lg:p-12">
+        <div className="space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="text-3xl font-bold tracking-tight">Your Lists</h2>
+              <p className="text-black/55">
+                Each List becomes a catalog row in Stremio, in this order.
               </p>
+            </div>
+            {ready && !policy.editLock && (
+              <button
+                ref={setHeaderSave}
+                type="button"
+                onClick={config.handleSave}
+                disabled={saveDisabled}
+                className={cn(
+                  SAVE_BUTTON_CLASS,
+                  "h-10 rounded-full px-5 text-sm transition-[background-color,opacity,scale] duration-150 ease-out",
+                )}
+              >
+                {saveLabel}
+              </button>
             )}
           </div>
-          {userId && !loading && !userNotFound && !loadError && (
-            <div className="flex items-center gap-3">
-              <p className="flex items-center gap-2 text-sm text-gray-500">
+          {accountKey && ready && (
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="flex items-center gap-2 text-sm text-black/55">
                 <span
                   className={cn(
-                    "size-1.5 shrink-0 rounded-full",
-                    refreshing
-                      ? "animate-pulse bg-amber-400"
-                      : lastFetchedAt
-                        ? "bg-emerald-500"
-                        : "bg-gray-300",
+                    "size-2 shrink-0 rounded-full",
+                    config.refreshing
+                      ? "motion-safe:animate-pulse bg-amber-400"
+                      : attention > 0
+                        ? "bg-amber-500"
+                        : config.lastFetchedAt
+                          ? "bg-emerald-500"
+                          : "bg-black/20",
                   )}
                   aria-hidden="true"
                 />
-                <span>
-                  Last refreshed{" "}
-                  <span className="font-semibold text-gray-900">
-                    {formatRelativeTime(lastFetchedAt)}
+                <span className="tabular-nums">
+                  Refreshed{" "}
+                  <span className="font-semibold text-ink">
+                    {formatRelativeTime(config.lastFetchedAt)}
                   </span>
+                  {attention > 0 && (
+                    <>
+                      {" · "}
+                      <span className="font-semibold text-amber-700">
+                        {attention === 1
+                          ? "1 List needs attention"
+                          : `${attention} Lists need attention`}
+                      </span>
+                    </>
+                  )}
                 </span>
               </p>
-              <Button
+              <button
                 type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleRefresh}
-                disabled={refreshing || onCooldown}
-                className="gap-2 tabular-nums"
+                onClick={config.handleRefresh}
+                disabled={config.refreshing || config.onCooldown}
+                className="inline-flex h-9 items-center gap-2 rounded-full bg-white px-4 text-sm font-semibold tabular-nums ring-1 ring-black/10 transition-colors hover:bg-cloud disabled:opacity-50"
               >
                 <RefreshCw
-                  className={cn("size-4", refreshing && "animate-spin")}
+                  className={cn("size-4", config.refreshing && "animate-spin")}
                 />
-                {refreshing
-                  ? "Refreshing…"
-                  : onCooldown
-                    ? `Refresh in ${cooldownRemaining}s`
+                {config.refreshing
+                  ? "Refreshing"
+                  : config.onCooldown
+                    ? `Refresh in ${config.cooldownRemaining}s`
                     : "Refresh now"}
-              </Button>
+              </button>
             </div>
           )}
         </div>
 
-        {!userId ? (
-          <section className="bg-gray-50 rounded-lg p-6 border border-gray-200 mt-4">
-            <Label
-              htmlFor="imdb-id"
-              className="block text-sm font-semibold text-gray-700 mb-1"
-            >
-              IMDb User ID:
-            </Label>
-            <Input
-              id="imdb-id"
-              type="text"
-              value={idInput}
-              onChange={(e) => handleIdInput(e.target.value)}
-              disabled={validating}
-              placeholder="ur12345678"
-              className="focus-visible:ring-imdb focus-visible:border-imdb"
+        {ready &&
+          accountKey &&
+          !policy.editLock &&
+          config.reinstall !== "none" && (
+            <ReinstallNotice
+              accountKey={accountKey}
+              state={config.reinstall}
+              onReinstalled={config.markReinstalled}
             />
-            <p className="mt-2 text-sm text-gray-500">
-              Enter your IMDb User ID to configure your addon settings.
-            </p>
-            {validating && (
-              <p className="mt-2 text-sm text-blue-600">
-                Validating IMDb ID...
-              </p>
-            )}
-            {idError && (
-              <Alert className="mt-2 border-red-200 bg-red-50 text-red-600">
-                <AlertDescription>{idError}</AlertDescription>
-              </Alert>
-            )}
-          </section>
+          )}
+
+        {rawKey && !keyIsValid ? (
+          <NotFoundCard />
+        ) : status === "loading" ? (
+          <p className="flex items-center gap-2 text-sm text-black/45">
+            <Loader2 className="size-4 animate-spin" />
+            Loading your Stremlist
+          </p>
+        ) : status === "notFound" ? (
+          <NotFoundCard />
+        ) : status === "error" ? (
+          <div
+            role="alert"
+            className="space-y-3 rounded-3xl bg-red-50 p-5 text-sm text-red-700 ring-1 ring-red-200"
+          >
+            <p>Could not load your configuration. Please try again.</p>
+            <button
+              type="button"
+              onClick={config.retryLoad}
+              className="rounded-full bg-white px-4 py-2 font-semibold ring-1 ring-red-200 hover:bg-red-100"
+            >
+              Try again
+            </button>
+          </div>
         ) : (
           <>
-            <section>
-              {loading ? (
-                <p className="text-sm text-gray-400">Loading...</p>
-              ) : userNotFound ? (
-                <Alert className="border-red-200 bg-red-50 text-red-700">
-                  <AlertDescription>
-                    User not found. Please{" "}
-                    <Link to="/" className="underline font-semibold">
-                      install the addon
-                    </Link>{" "}
-                    first before configuring.
-                  </AlertDescription>
-                </Alert>
-              ) : loadError ? (
-                <Alert className="border-red-200 bg-red-50 text-red-700">
-                  <AlertDescription className="gap-3">
-                    <p>Could not load your configuration. Please try again.</p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={retryLoad}
-                      className="border-red-300 bg-white text-red-700 hover:bg-red-100"
-                    >
-                      Try again
-                    </Button>
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <>
-                  <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-4">
-                    <div className="flex items-center justify-between gap-3 flex-wrap">
-                      <h3 className="text-base font-semibold text-gray-900">
-                        Catalogs
-                      </h3>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <BuiltInCatalogPicker
-                          usedIds={watchlists.map((w) => w.imdbUserId)}
-                          disabled={watchlists.length >= MAX_WATCHLISTS}
-                          onAdd={addChartWatchlist}
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={addWatchlist}
-                          disabled={watchlists.length >= MAX_WATCHLISTS}
-                          className="gap-2"
-                        >
-                          <Plus className="size-4" />
-                          Add Catalog
-                        </Button>
-                      </div>
-                    </div>
+            {justCreated && accountId && (
+              <AddonUrlCard accountKey={accountId} variant="created" />
+            )}
 
-                    <DragDropProvider
-                      onDragEnd={(event) => {
-                        if (event.canceled) return;
-                        const { source } = event.operation;
-                        if (isSortable(source)) {
-                          const { initialIndex, index } = source;
-                          if (initialIndex !== index) {
-                            reorderWatchlists(initialIndex, index);
-                          }
-                        }
-                      }}
-                    >
-                      <div className="space-y-3">
-                        {watchlists.map((watchlist, index) => (
-                          <SortableWatchlistRow
-                            key={watchlist.localId}
-                            watchlist={watchlist}
-                            index={index}
-                            onFieldChange={setWatchlistField}
-                            onRemove={removeWatchlist}
-                            canRemove={watchlists.length > 1}
-                          />
-                        ))}
-                      </div>
-                    </DragDropProvider>
-                  </div>
+            {access === "legacy" && (
+              <LegacyUpgradeCard
+                movedAt={config.movedAt}
+                onUpgrade={config.upgrade}
+                onOpen={(id) => openCreated(id, false)}
+              />
+            )}
 
-                  {validationError && (
-                    <Alert className="mt-4 border-red-200 bg-red-50 text-red-700">
-                      <AlertDescription>{validationError}</AlertDescription>
-                    </Alert>
-                  )}
-
-                  <Label
-                    htmlFor="rpdb-api-key"
-                    className="block text-sm font-semibold text-gray-700 mt-4 mb-2"
-                  >
-                    RPDB API Key (Optional)
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      id="rpdb-api-key"
-                      type={showRpdbApiKey ? "text" : "password"}
-                      value={rpdbApiKey}
-                      onChange={(e) => setRpdbApiKey(e.target.value)}
-                      placeholder="Paste your RPDB API key"
-                      className="pr-10 focus-visible:ring-imdb focus-visible:border-imdb"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setShowRpdbApiKey((current) => !current)}
-                      aria-label={
-                        showRpdbApiKey
-                          ? "Hide RPDB API key"
-                          : "Show RPDB API key"
-                      }
-                      className="absolute right-1 top-1/2 size-7 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                    >
-                      {showRpdbApiKey ? <EyeOff /> : <Eye />}
-                    </Button>
-                  </div>
-                  <p className="mt-2 text-xs text-gray-500">
-                    Enables Rating Poster Database posters for this addon
-                    installation.
+            <section className="space-y-3">
+              {lists.length === 0 ? (
+                <div className="rounded-3xl border-2 border-dashed border-black/10 p-6 text-center">
+                  <p className="font-bold">No Lists yet</p>
+                  <p className="mx-auto mt-1 max-w-sm text-sm text-pretty text-black/55">
+                    {PASTE_LINK_PROMPT} in the Providers panel, or pick one
+                    below.
                   </p>
-
-                  <Button
-                    onClick={handleSave}
-                    disabled={saving || !!validationError}
-                    className="w-full mt-4 h-11 bg-imdb hover:bg-imdb-dark text-black font-semibold"
-                  >
-                    {saving ? "Saving..." : "Save"}
-                  </Button>
-
-                  {status && (
-                    <Alert
-                      className={`mt-4 text-center ${
-                        status.type === "success"
-                          ? "border-green-200 bg-green-50 text-green-700"
-                          : "border-red-200 bg-red-50 text-red-700"
-                      }`}
-                    >
-                      <AlertDescription>{status.message}</AlertDescription>
-                    </Alert>
-                  )}
-
-                  {userId && (
-                    <div
-                      className={`mt-4 rounded-lg p-4 ${
-                        showReinstallHint
-                          ? "border border-amber-200 bg-amber-50"
-                          : "border border-gray-200 bg-white"
-                      }`}
-                    >
-                      <p
-                        className={`text-sm font-semibold ${
-                          showReinstallHint ? "text-amber-900" : "text-gray-900"
-                        }`}
-                      >
-                        {showReinstallHint
-                          ? "Catalog structure changed: reinstall required in Stremio"
-                          : "Install / Reinstall Addon in Stremio"}
-                      </p>
-                      <p
-                        className={`mt-1 text-xs ${
-                          showReinstallHint ? "text-amber-800" : "text-gray-600"
-                        }`}
-                      >
-                        {showReinstallHint
-                          ? "Stremio only reads manifest catalogs at install time, so modifications to catalogs will appear after reinstalling this addon URL."
-                          : "Use these install links anytime to reopen or reinstall the addon URL in Stremio."}
-                      </p>
-                      <AddonInstallActions
-                        imdbUserId={userId}
-                        className="mt-3 space-y-4"
-                      />
+                </div>
+              ) : (
+                <DragDropProvider
+                  onDragEnd={(event) => {
+                    if (event.canceled) return;
+                    const { source } = event.operation;
+                    if (isSortable(source)) {
+                      const { initialIndex, index } = source;
+                      if (initialIndex !== index) {
+                        config.reorderLists(initialIndex, index);
+                      }
+                    }
+                  }}
+                >
+                  <ConnectionsContext value={config.connections}>
+                    <div className="space-y-3">
+                      {lists.map((list, index) => {
+                        const { sync, missing, connectProvider, saved } =
+                          rows[index];
+                        return (
+                          <SortableListRow
+                            key={list.localId}
+                            list={list}
+                            index={index}
+                            accountKey={accountId ?? accountKey}
+                            onFieldChange={config.setListField}
+                            onRemove={config.removeList}
+                            missingProviders={missing}
+                            sync={sync}
+                            saved={saved}
+                            onConnect={
+                              config.providerStatus[connectProvider].connectable
+                                ? () => connectFor(connectProvider)
+                                : undefined
+                            }
+                            merge={
+                              policy.editLock
+                                ? undefined
+                                : {
+                                    others: lists.filter(
+                                      (other) => other !== list,
+                                    ),
+                                    canSplit: !full,
+                                    onMerge: config.mergeLists,
+                                    onRemoveSource: config.removeSource,
+                                    onSplitSource: config.splitSource,
+                                  }
+                            }
+                          />
+                        );
+                      })}
                     </div>
-                  )}
-                </>
+                  </ConnectionsContext>
+                </DragDropProvider>
               )}
+              <p className="px-1 text-xs text-black/45 tabular-nums">
+                {lists.length} of {MAX_LISTS} lists
+                {lists.length > 1 && ". Drag the handle to reorder."}
+              </p>
             </section>
+
+            <section className="space-y-3">
+              <SectionHeading size="md" title="Quick add" />
+              <QuickAdd
+                connections={config.connections}
+                connectionSources={config.connectionSources}
+                providerStatus={config.providerStatus}
+                usedKeys={sourceKeys(lists)}
+                full={full || !!policy.editLock}
+                onAdd={(provider, source) => {
+                  const error = config.addList({
+                    provider,
+                    sourceRef: source.ref,
+                    // Static sources get "Trakt Watchlist"; the account's
+                    // own lists keep their real name.
+                    catalogTitle: staticSource(provider, source.ref)
+                      ? describeSource(provider, source.ref).suggestedTitle
+                      : source.label,
+                    displayMode: source.defaultDisplayMode,
+                  });
+                  if (error) toast.error(error, { id: "list-add" });
+                }}
+                onAddChart={(chartId) => {
+                  // The chart menu is off only when the List limit is
+                  // reached; the Source list limit is checked here.
+                  const error = config.addChartList(chartId);
+                  if (error) toast.error(error, { id: "list-add" });
+                }}
+              />
+            </section>
+
+            <section className="space-y-3">
+              <SectionHeading size="md" title="Options" />
+              <div className="rounded-3xl bg-white p-4 ring-1 ring-black/5 sm:p-5">
+                <label htmlFor="rpdb-api-key" className="block font-bold">
+                  RPDB API key{" "}
+                  <span className="font-normal text-black/45">(optional)</span>
+                </label>
+                <p className="mt-0.5 mb-3 text-sm text-black/55">
+                  Shows{" "}
+                  <a
+                    href="https://ratingposterdb.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-semibold text-stremlist hover:underline"
+                  >
+                    Rating Poster Database
+                  </a>{" "}
+                  posters, with ratings on the cover art.
+                </p>
+                <div className="flex items-center gap-1 rounded-2xl bg-black/5 p-1">
+                  <input
+                    id="rpdb-api-key"
+                    type={config.showRpdbApiKey ? "text" : "password"}
+                    value={config.rpdbApiKey}
+                    onChange={(e) => config.setRpdbApiKey(e.target.value)}
+                    placeholder="Paste your RPDB API key"
+                    autoComplete="off"
+                    className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      config.setShowRpdbApiKey((current) => !current)
+                    }
+                    aria-label={
+                      config.showRpdbApiKey
+                        ? "Hide RPDB API key"
+                        : "Show RPDB API key"
+                    }
+                    className="flex size-9 shrink-0 items-center justify-center rounded-xl text-black/50 transition-colors hover:bg-white hover:text-ink"
+                  >
+                    {config.showRpdbApiKey ? (
+                      <EyeOff className="size-4" />
+                    ) : (
+                      <Eye className="size-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <ActionsSettings
+                enabled={config.actionsEnabled}
+                onEnabledChange={config.setActionsEnabled}
+                order={config.actionOrder}
+                selected={config.actionSelected}
+                onToggle={config.toggleActionProvider}
+                onMove={config.moveActionProvider}
+                locked={policy.actionsLock}
+              />
+
+              <NewTitlesSettings
+                enabled={config.newTitlesEnabled}
+                onEnabledChange={config.setNewTitlesEnabled}
+                summary={config.newTitlesSummary}
+                locked={policy.editLock}
+              />
+            </section>
+
+            {config.validationError && (
+              <p
+                role="alert"
+                className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200"
+              >
+                {config.validationError}
+              </p>
+            )}
+
+            {accountKey && !justCreated && !policy.editLock && (
+              <AddonUrlCard
+                accountKey={accountKey}
+                variant="install"
+                reinstallHint={config.reinstall === "required"}
+                onUse={config.markReinstalled}
+              />
+            )}
+
+            <FloatingSaveButton
+              show={showSaveBar}
+              disabled={saveDisabled}
+              saving={config.saving}
+              onSave={config.handleSave}
+            >
+              {saveLabel}
+            </FloatingSaveButton>
           </>
         )}
-      </main>
-
-      <footer className="pt-6 text-center text-sm text-gray-500 space-y-2">
-        <p>
-          <Button variant="link" asChild className="h-auto p-0 text-stremlist">
-            <Link to={homePath}>Return to Home</Link>
-          </Button>
-        </p>
-        <p>&copy; 2025 - IMDb Watchlist for Stremio</p>
-      </footer>
-    </div>
+      </div>
+    </SplitLayout>
   );
 }
 
-export default function Configure() {
-  const [searchParams] = useSearchParams();
-  return <ConfigureContent key={searchParams.get("userId") ?? "setup"} />;
+function NotFoundCard() {
+  return (
+    <div
+      role="alert"
+      className="space-y-3 rounded-3xl bg-white p-6 ring-1 ring-black/5"
+    >
+      <p className="font-bold">We could not find this Stremlist</p>
+      <p className="text-sm text-black/60">
+        Check that you opened the configure page from your Stremio install, or
+        paste your Addon URL on the home page. You can also build a new
+        Stremlist.
+      </p>
+      <Link
+        to="/configure"
+        className="inline-flex h-10 items-center rounded-full bg-brand px-5 text-sm font-bold text-black hover:bg-brand-dark"
+      >
+        Build a new Stremlist
+      </Link>
+    </div>
+  );
 }

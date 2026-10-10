@@ -1,20 +1,35 @@
-import type { ConfigWatchlist } from "@stremlist/shared/stremio.types";
-import { getCachedWatchlistSummary } from "./watchlist-cache";
+import type { ConfigList } from "@stremlist/shared/stremio.types";
+import { getCachedListSummary } from "./list-cache";
+import { sourceCaches } from "./merged-lists";
 
+/**
+ * The Lists with the genres of their cached Titles: for the types that each
+ * List shows (`availableGenres`, the manifest genre options) and for each of
+ * its Source lists (`sourceGenres`, so the configure page can tell which
+ * genres a Source list brings).
+ */
 export async function withAvailableGenres(
-  watchlists: ConfigWatchlist[],
-): Promise<ConfigWatchlist[]> {
+  lists: ConfigList[],
+): Promise<ConfigList[]> {
   return Promise.all(
-    watchlists.map(async (watchlist) => {
-      const summary = await getCachedWatchlistSummary(watchlist.id);
-      const genres = !summary
-        ? []
-        : watchlist.displayMode === "split"
-          ? [...summary.movie, ...summary.series]
-          : summary[watchlist.displayMode];
+    lists.map(async (list) => {
+      // A merged List offers the genres of all its Source lists.
+      const summaries = await Promise.all(
+        sourceCaches(list).map(({ source, cacheKey }) =>
+          getCachedListSummary(cacheKey, source),
+        ),
+      );
+      const genres = summaries.flatMap((summary) =>
+        !summary
+          ? []
+          : list.displayMode === "split"
+            ? [...summary.movie, ...summary.series]
+            : summary[list.displayMode],
+      );
       return {
-        ...watchlist,
+        ...list,
         availableGenres: [...new Set(genres)].sort(),
+        sourceGenres: summaries,
       };
     }),
   );

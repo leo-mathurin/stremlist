@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-05T22:48:39.785Z",
+  "createdAt": "2026-10-08T18:52:52.792Z",
   "payload": {
     "actions": [
       {
@@ -24,14 +24,10 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Retried the newsletter subscription using the existing email retry@example.test. The app responded, “You're already subscribed! You'll be notified about new features and updates.”",
+    "summary": "Retried the newsletter subscription with retry@example.test. The app confirmed: “You're already subscribed! You'll be notified about new features and updates.”",
     "startPath": "/",
     "endPath": "/",
     "endAnchors": [
-      {
-        "role": "alert",
-        "name": "You're already subscribed! You'll be notified about new features and updates."
-      },
       {
         "role": "textbox",
         "name": "your@email.com",
@@ -39,13 +35,13 @@
       },
       {
         "text": "You're already subscribed! You'll be notified about new features and updates."
+      },
+      {
+        "role": "listitem",
+        "name": "Close toast You're already subscribed! You'll be notified about new features and updates."
       }
     ],
     "goneAnchors": [
-      {
-        "role": "alert",
-        "name": "Newsletter temporarily unavailable"
-      },
       {
         "role": "textbox",
         "name": "your@email.com",
@@ -54,8 +50,12 @@
       },
       {
         "text": "Newsletter temporarily unavailable"
+      },
+      {
+        "role": "listitem",
+        "name": "Close toast Newsletter temporarily unavailable"
       }
     ],
-    "endWaitMs": 12226
+    "endWaitMs": 11877
   }
 }

@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-08T18:53:13.932Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Trending\"",
+        "target": {
+          "role": "button",
+          "name": "Trending"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save\"",
+        "target": {
+          "role": "button",
+          "name": "Save"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/providers.e2e.ts::a%20Provider%20chart%20is%20added%20from%20Quick%20add",
+      "targetId": "chromium",
+      "instructionDigest": "c864864e276408fa8ebd49b3d84528f7edc721a75a7136f55376fee57b09f842",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Added the Trakt Trending chart to Your Lists and saved. The screen confirms “Saved!” and shows the list with Trakt Trending; reinstall is indicated for Stremio to reflect the changes.",
+    "startPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endAnchors": [
+      {
+        "role": "status",
+        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. I did it Reinstall"
+      },
+      {
+        "text": "Reinstall Stremlist in Stremio"
+      },
+      {
+        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
+      },
+      {
+        "role": "button",
+        "name": "I did it"
+      },
+      {
+        "role": "link",
+        "name": "Reinstall"
+      },
+      {
+        "role": "button",
+        "name": "Drag to reorder Trakt Trending"
+      },
+      {
+        "text": "Trakt Trending"
+      },
+      {
+        "text": "Trakt · Chart"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "text": "1 of 10 lists"
+      },
+      {
+        "role": "heading",
+        "name": "Install or reinstall in Stremio"
+      },
+      {
+        "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
+      }
+    ],
+    "endWaitMs": 12494
+  }
+}

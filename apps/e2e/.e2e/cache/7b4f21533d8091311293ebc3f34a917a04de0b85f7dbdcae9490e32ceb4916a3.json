@@ -1,0 +1,119 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-09T16:05:42.249Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Settings for IMDb Watchlist\"",
+        "target": {
+          "role": "button",
+          "name": "Settings for IMDb Watchlist"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Merge another List into this one\"",
+        "target": {
+          "role": "button",
+          "name": "Merge another List into this one"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap menuitem \"Favourite films\"",
+        "target": {
+          "role": "menuitem",
+          "name": "Favourite films"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save\"",
+        "target": {
+          "role": "button",
+          "name": "Save"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/merged-lists.e2e.ts::merging%20a%20List%20into%20another%20shows%20one%20catalog%20and%20saves%20its%20Source%20lists",
+      "targetId": "chromium",
+      "instructionDigest": "4be4e92d6aba2fc47f56ef1ba8c2de895912bdf87f9defc246b7543d7dbf71ba",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "The IMDb Watchlist settings show 2 source lists, including both IMDb Watchlist and Favourite films, and the Saved! toast confirms the merge was saved.",
+    "startPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endAnchors": [
+      {
+        "role": "status",
+        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. I did it Reinstall"
+      },
+      {
+        "text": "Reinstall Stremlist in Stremio"
+      },
+      {
+        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
+      },
+      {
+        "role": "button",
+        "name": "I did it"
+      },
+      {
+        "role": "link",
+        "name": "Reinstall"
+      },
+      {
+        "text": "2 Source lists · IMDb"
+      },
+      {
+        "text": "Catalog title"
+      },
+      {
+        "role": "textbox",
+        "name": "Catalog title",
+        "placeholder": "IMDb Watchlist",
+        "value": "IMDb Watchlist"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "button",
+        "name": "Drag to reorder Favourite films"
+      },
+      {
+        "text": "IMDb Rating (Highest First)"
+      },
+      {
+        "role": "button",
+        "name": "Preview Favourite films"
+      },
+      {
+        "role": "button",
+        "name": "Remove Favourite films"
+      },
+      {
+        "text": "4 of 10 lists. Drag the handle to reorder."
+      },
+      {
+        "role": "heading",
+        "name": "Install or reinstall in Stremio"
+      },
+      {
+        "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
+      },
+      {
+        "role": "button",
+        "name": "Settings for IMDb Watchlist"
+      }
+    ],
+    "endWaitMs": 28003
+  }
+}

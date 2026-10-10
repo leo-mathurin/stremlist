@@ -1,23 +1,22 @@
-import type {
-  ConfigWatchlist,
-  StremioMeta,
-} from "@stremlist/shared/stremio.types";
+import type { ConfigList, StremioMeta } from "@stremlist/shared/stremio.types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock(
-  "../watchlist-cache",
-  async () => import("../../__tests__/helpers/mock-watchlist-cache"),
+  "../list-cache",
+  async () => import("../../__tests__/helpers/mock-list-cache"),
 );
 
-import { cache } from "../../__tests__/helpers/mock-watchlist-cache";
+import { cache } from "../../__tests__/helpers/mock-list-cache";
 import { filterCatalog, resolveCatalogSelection } from "../catalog-filters";
 import { withAvailableGenres } from "../catalog-genres";
 import { catalogSettingsSchema } from "../catalog-settings";
+import { sourceCaches } from "../merged-lists";
 import { buildManifestCatalogs } from "../stremio-catalogs";
 
-const watchlist: ConfigWatchlist = {
+const list: ConfigList = {
   id: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
-  imdbUserId: "ur12345678",
+  provider: "imdb",
+  sourceRef: "ur12345678",
   catalogTitle: "Picks",
   sortOption: "added_at-asc",
   displayMode: "split",
@@ -39,11 +38,11 @@ beforeEach(() => {
 
 describe("genres from cached IMDb titles", () => {
   it("deduplicates and sorts genres, exposes them in manifests, and accepts new genres as filters", async () => {
-    cache.seed(watchlist.id, [
+    cache.seed(list.id, [
       movie,
       { ...movie, id: "tt7654321", type: "series", genres: ["Comedy"] },
     ]);
-    const rows = await withAvailableGenres([watchlist]);
+    const rows = await withAvailableGenres([list]);
     expect(rows[0].availableGenres).toEqual(["Comedy", "Drama", "New Genre"]);
     for (const catalog of buildManifestCatalogs(rows)) {
       expect(
@@ -52,30 +51,30 @@ describe("genres from cached IMDb titles", () => {
     }
     const settings = catalogSettingsSchema.parse({ genre: "New Genre" });
     const selection = resolveCatalogSelection(
-      watchlist.sortOption,
+      list.sortOption,
       settings,
       "New Genre",
     );
     expect(filterCatalog([movie], selection.filters)).toEqual([movie]);
   });
 
-  it("limits choices to the watchlist's display mode", async () => {
-    cache.seed(watchlist.id, [
+  it("limits choices to the List's display mode", async () => {
+    cache.seed(list.id, [
       movie,
       { ...movie, id: "tt7654321", type: "series", genres: ["Comedy"] },
     ]);
     const rows = await withAvailableGenres([
-      { ...watchlist, displayMode: "series" },
+      { ...list, displayMode: "series" },
     ]);
     expect(rows[0].availableGenres).toEqual(["Comedy"]);
   });
 
   it("preserves saved genre selections without a cache and keeps lists independent", async () => {
-    cache.seed(watchlist.id, [movie]);
+    cache.seed(list.id, [movie]);
     const rows = await withAvailableGenres([
-      watchlist,
+      list,
       {
-        ...watchlist,
+        ...list,
         id: "uncached",
         catalogSettings: { genre: "Western", presets: ["short"] },
       },
@@ -97,4 +96,40 @@ describe("genres from cached IMDb titles", () => {
       expect(catalogSettingsSchema.safeParse({ genre }).success).toBe(false);
     },
   );
+});
+
+describe("genres of a merged List", () => {
+  it("offers the genres of every Source list and tells them apart", async () => {
+    const merged: ConfigList = {
+      ...list,
+      mergedSources: [
+        { provider: "imdb", sourceRef: "ls1000002" },
+        { provider: "imdb", sourceRef: "ls1000003" },
+      ],
+    };
+    const [first, second] = sourceCaches(merged);
+    cache.seed(first.cacheKey, [{ ...movie, genres: ["Drama"] }]);
+    cache.seed(second.cacheKey, [
+      { ...movie, type: "series", genres: ["Western"] },
+    ]);
+
+    const [withGenres] = await withAvailableGenres([merged]);
+
+    expect(withGenres.availableGenres).toEqual(["Drama", "Western"]);
+    // The third Source list has no cache yet.
+    expect(withGenres.sourceGenres).toEqual([
+      { movie: ["Drama"], series: [] },
+      { movie: [], series: ["Western"] },
+      null,
+    ]);
+    expect(
+      buildManifestCatalogs([withGenres]).map(
+        (catalog) =>
+          catalog.extra?.find((extra) => extra.name === "genre")?.options,
+      ),
+    ).toEqual([
+      expect.arrayContaining(["Drama", "Western"]),
+      expect.arrayContaining(["Drama", "Western"]),
+    ]);
+  });
 });

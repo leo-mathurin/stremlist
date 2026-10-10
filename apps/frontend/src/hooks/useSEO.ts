@@ -8,9 +8,9 @@ interface SEOOptions {
 }
 
 const DEFAULTS = {
-  title: "Stremlist - IMDb Watchlist for Stremio",
+  title: "Stremlist - Your watchlists and lists, all in Stremio",
   description:
-    "Connect your IMDb watchlist directly to Stremio. A free addon that syncs your IMDb watchlist with Stremio's streaming platform.",
+    "Free Stremio addon that shows your watchlists and lists from IMDb, Trakt, Simkl, MDBList, JustWatch and SensCritique as catalogs in Stremio.",
   robots: "index, follow",
   canonical: "https://stremlist.com/",
 };

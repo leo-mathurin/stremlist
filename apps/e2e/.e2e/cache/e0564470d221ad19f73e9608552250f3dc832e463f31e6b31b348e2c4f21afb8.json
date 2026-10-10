@@ -1,0 +1,112 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-06T19:50:24.669Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap textbox \"Paste a link to a watchlist or list\"",
+        "target": {
+          "role": "textbox",
+          "name": "Paste a link to a watchlist or list",
+          "placeholder": "Paste a link to a watchlist or list"
+        }
+      },
+      {
+        "name": "type",
+        "summary": "type \"http://127.0.0.1:4314/sl_E2eFixtureAcco…\" into textbox \"Paste a link to a watchlist or list\"",
+        "target": {
+          "role": "textbox",
+          "name": "Paste a link to a watchlist or list",
+          "placeholder": "Paste a link to a watchlist or list"
+        },
+        "value": "http://127.0.0.1:4314/sl_E2eFixtureAccount00002/manifest.json"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Add this list\"",
+        "target": {
+          "role": "button",
+          "name": "Add this list"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/account-newsletter.e2e.ts::returning%20home%20and%20opening%20another%20Addon%20URL%20replaces%20the%20previous%20form",
+      "targetId": "chromium",
+      "instructionDigest": "2d0e7c0e905785c97bd0ed37e5a4e06c6dcfc5abca22e04b01dda6efa1d0cc45",
+      "paramsDigest": "db9890fa65f385c0ac48c1cd2700ab90134abaa5932f06821cd1f8993642ccdd",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Entered the provided Addon URL into the home page form and selected “Add this list.” The app opened /configure?account=sl_E2eFixtureAccount00002, showing the existing list “Second account” and its IMDb Watchlist.",
+    "startPath": "/",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00002",
+    "endAnchors": [
+      {
+        "role": "heading",
+        "name": "Providers"
+      },
+      {
+        "text": "Paste a link, or connect an account."
+      },
+      {
+        "role": "textbox",
+        "name": "Paste a link to a watchlist or list",
+        "placeholder": "Paste a link to any list"
+      },
+      {
+        "role": "button",
+        "name": "Add"
+      },
+      {
+        "text": "IMDb, Trakt, MDBList, JustWatch and SensCritique links work."
+      },
+      {
+        "text": "Link"
+      },
+      {
+        "text": "Paste a link, or connect"
+      },
+      {
+        "role": "button",
+        "name": "Connect"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "text": "Stremio."
+      },
+      {
+        "text": "Paste a link from IMDb, Trakt, MDBList, JustWatch or SensCritique, or connect Trakt, Simkl or MDBList. Every List shows up as its own row on your Stremio home."
+      },
+      {
+        "role": "textbox",
+        "name": "Paste a link to a watchlist or list",
+        "placeholder": "Paste a link to a watchlist or list"
+      },
+      {
+        "role": "button",
+        "name": "Build my Stremlist"
+      },
+      {
+        "text": "IMDb, Trakt, MDBList, JustWatch and SensCritique links work. Or start empty and connect an account."
+      },
+      {
+        "role": "button",
+        "name": "I already have one"
+      },
+      {
+        "text": "Live on 2 Stremio homes"
+      },
+      {
+        "text": "Many sites, one addon"
+      }
+    ],
+    "endWaitMs": 14903
+  }
+}

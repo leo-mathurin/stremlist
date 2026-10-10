@@ -2,20 +2,20 @@ import type { StremioManifest } from "./stremio.types";
 
 export const APP_NAME = "Stremlist";
 export const ADDON_VERSION = "1.10.0";
-export const APP_DESCRIPTION = "Your IMDb Watchlist in Stremio";
+export const APP_DESCRIPTION = "Your watchlists and lists, all in Stremio";
 export const APP_LOGO = "https://stremlist.com/icon.png";
 export const APP_ID_PREFIX = "com.stremlist";
 
 export const SORT_OPTIONS = [
-  { value: "added_at-asc", label: "Date Added (Oldest First) - (IMDb Order)" },
+  { value: "added_at-asc", label: "Date Added (Oldest First)" },
   { value: "added_at-desc", label: "Date Added (Newest First)" },
   { value: "random", label: "Random" },
   { value: "title-asc", label: "Title (A-Z)" },
   { value: "title-desc", label: "Title (Z-A)" },
-  { value: "year-desc", label: "Newest First" },
-  { value: "year-asc", label: "Oldest First" },
-  { value: "rating-desc", label: "Highest Rated" },
-  { value: "rating-asc", label: "Lowest Rated" },
+  { value: "year-desc", label: "Release Year (Newest First)" },
+  { value: "year-asc", label: "Release Year (Oldest First)" },
+  { value: "rating-desc", label: "IMDb Rating (Highest First)" },
+  { value: "rating-asc", label: "IMDb Rating (Lowest First)" },
 ] as const;
 
 export const DEFAULT_SORT_OPTION = "added_at-asc";
@@ -29,6 +29,9 @@ export const DISPLAY_MODE_OPTIONS = [
 export const DEFAULT_DISPLAY_MODE = "split";
 
 export type DisplayMode = (typeof DISPLAY_MODE_OPTIONS)[number]["value"];
+
+/** The two kinds of Title, and of Catalog. */
+export type TitleType = "movie" | "series";
 
 export type SortField = "added_at" | "random" | "title" | "year" | "rating";
 export type SortOrder = "asc" | "desc";
@@ -67,9 +70,28 @@ export function parseSortOption(
   return { by: by as SortField, order: order as SortOrder };
 }
 
-const IMDB_UR_ID_SOURCE = String.raw`ur\d{4,}`;
-const IMDB_LS_ID_SOURCE = String.raw`ls\d+`;
-const IMDB_P_HANDLE_SOURCE = String.raw`p\.[a-zA-Z0-9]+`;
+/**
+ * A generated Account ID (ADR 0001): `sl_` and 22 base62 characters. It is the
+ * secret part of the Addon URL.
+ */
+const ACCOUNT_ID_SOURCE = String.raw`sl_[0-9A-Za-z]{22}`;
+export const ACCOUNT_ID_PATTERN = new RegExp(`^${ACCOUNT_ID_SOURCE}$`);
+
+/** An IMDb user ID, also the form of a Legacy alias. */
+export const IMDB_UR_ID_SOURCE = String.raw`ur\d{4,}`;
+export const IMDB_LS_ID_SOURCE = String.raw`ls\d+`;
+export const IMDB_P_HANDLE_SOURCE = String.raw`p\.[a-zA-Z0-9]+`;
+const IMDB_TITLE_ID_SOURCE = String.raw`tt\d+`;
+
+/** A Title's IMDb ID (ADR 0002). */
+export const IMDB_TITLE_ID_PATTERN = new RegExp(`^${IMDB_TITLE_ID_SOURCE}$`);
+
+/** The value when it is a Title's IMDb ID (`tt…`), else undefined. */
+export function asImdbId(value: unknown): string | undefined {
+  return typeof value === "string" && IMDB_TITLE_ID_PATTERN.test(value)
+    ? value
+    : undefined;
+}
 
 export const IMDB_LIST_ID_PATTERN = new RegExp(`^${IMDB_LS_ID_SOURCE}$`);
 export const IMDB_USER_ID_PATTERN = new RegExp(
@@ -78,12 +100,10 @@ export const IMDB_USER_ID_PATTERN = new RegExp(
 export const IMDB_WATCHLIST_SOURCE_ID_PATTERN = new RegExp(
   `^(${IMDB_UR_ID_SOURCE}|${IMDB_LS_ID_SOURCE}|${IMDB_P_HANDLE_SOURCE})$`,
 );
-export const IMDB_USER_ID_EXTRACT_PATTERN = new RegExp(
-  `(${IMDB_UR_ID_SOURCE}|${IMDB_P_HANDLE_SOURCE})`,
-);
-export const IMDB_WATCHLIST_SOURCE_ID_EXTRACT_PATTERN = new RegExp(
-  `(${IMDB_UR_ID_SOURCE}|${IMDB_LS_ID_SOURCE}|${IMDB_P_HANDLE_SOURCE})`,
-);
+
+/** An Addon URL key: a generated Account ID or a Legacy alias (`ur…`). */
+export const ACCOUNT_KEY_SOURCE = `${ACCOUNT_ID_SOURCE}|${IMDB_UR_ID_SOURCE}`;
+export const ACCOUNT_KEY_PATTERN = new RegExp(`^(?:${ACCOUNT_KEY_SOURCE})$`);
 
 export const IMDB_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";

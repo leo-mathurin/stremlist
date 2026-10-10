@@ -1,98 +1,104 @@
-import { Link } from "react-router";
-import Header from "../components/Header";
+import DocPanel from "../components/DocPanel";
+import { SplitLayout } from "../components/brand";
 import { useSEO } from "../hooks/useSEO";
+
+const SECTIONS = [
+  { id: "terms", label: "Terms and Conditions" },
+  { id: "privacy", label: "Privacy Policy" },
+];
+
+const SECTION_CLASS = "scroll-mt-6 py-10 first:pt-0 last:pb-0";
 
 export default function Terms() {
   useSEO({
     title: "Terms & Privacy - Stremlist",
     description:
-      "Terms of service and privacy policy for Stremlist, the free IMDb watchlist addon for Stremio.",
+      "Terms of service and privacy policy for Stremlist, the free Stremio addon for your watchlists and lists.",
     canonical: "https://stremlist.com/terms",
   });
   return (
-    <div className="max-w-3xl mx-auto my-8 bg-white rounded-lg shadow-md p-8">
-      <Header />
-
-      <main className="space-y-8">
-        <Link to="/" className="text-stremlist hover:underline text-sm">
-          &larr; Back to Home
-        </Link>
-
-        {/* Terms and Conditions */}
-        <section>
-          <h2 className="text-xl font-bold text-gray-900 pb-2 mb-4 border-b-2 border-imdb">
+    <SplitLayout
+      panel={
+        <DocPanel
+          title="Terms and privacy"
+          lead="How Stremlist works, what it stores, and what you can ask for."
+          links={SECTIONS.map((section) => ({
+            href: `#${section.id}`,
+            label: section.label,
+          }))}
+        />
+      }
+    >
+      <div className="mx-auto max-w-2xl divide-y divide-black/10 p-5 pb-16 sm:p-8 lg:p-12">
+        <section id="terms" className={SECTION_CLASS}>
+          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
             Terms and Conditions
           </h2>
-          <p className="text-sm text-gray-500 mb-4">
-            Last updated: February 17, 2025
+          <p className="mt-1 mb-6 text-sm text-black/45">
+            Last updated: October 6, 2026
           </p>
 
-          <div className="space-y-4 text-sm text-gray-700">
+          <div className="space-y-5 text-[15px] leading-relaxed text-pretty text-black/65">
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
-                1. Introduction
-              </h3>
+              <h3 className="mb-1 font-bold text-ink">1. Introduction</h3>
               <p>
-                Welcome to Stremlist ("Service"), a personal project that
-                creates a connection between public IMDb watchlists and the
-                Stremio streaming platform. By accessing or using the Service,
-                you agree to be bound by these Terms and Conditions.
+                Welcome to Stremlist ("Service"), a personal project that shows
+                watchlists and lists kept on other services (IMDb, Trakt, Simkl,
+                MDBList, JustWatch and SensCritique, the "Providers") as
+                catalogs in Stremio. By accessing or using the Service, you
+                agree to be bound by these Terms and Conditions.
               </p>
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
+              <h3 className="mb-1 font-bold text-ink">
                 2. Description of Service
               </h3>
               <p>
-                Stremlist is a free addon for Stremio that allows users to
-                access their public IMDb watchlists directly within the Stremio
-                application. The Service processes publicly available IMDb
-                watchlist data, formats it for Stremio, and stores it in
-                Supabase (a cloud database) to provide fast catalog access and
-                sync capabilities.
+                Stremlist is a free addon for Stremio. It reads the lists that
+                you choose, either public lists that you add by link or lists of
+                a Provider account that you connect, formats them for Stremio,
+                and keeps a cached copy to provide fast catalogs.
               </p>
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
-                3. Use of the Service
-              </h3>
+              <h3 className="mb-1 font-bold text-ink">3. Use of the Service</h3>
               <p>
-                You may use this Service only if you have a public IMDb
-                watchlist and agree to provide your public IMDb user ID. The
-                Service only accesses publicly available data that you have
-                explicitly made public through IMDb's platform.
+                You may use the Service with lists that you are allowed to view.
+                When you connect a Provider account, you allow Stremlist to read
+                your lists on that Provider and, if you turn on Actions, to make
+                the changes that you ask for from Stremio (such as adding a
+                title to your watchlist). You can disconnect at any time on the
+                configure page.
               </p>
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
-                4. Limitations
-              </h3>
+              <h3 className="mb-1 font-bold text-ink">4. Limitations</h3>
               <p>
                 The Service is provided "as is" and "as available" without any
                 warranties of any kind. The Service developer is not responsible
-                for any issues related to IMDb or Stremio functionality or any
-                content accessed through these platforms.
+                for any issues related to the functionality of Stremio or of a
+                Provider, or any content accessed through these platforms.
               </p>
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
+              <h3 className="mb-1 font-bold text-ink">
                 5. Third-Party Services
               </h3>
               <p>
-                Stremlist interacts with third-party services (IMDb and
-                Stremio). Your use of these services is subject to their
+                Stremlist interacts with third-party services (Stremio and the
+                Providers). Your use of these services is subject to their
                 respective terms and conditions and privacy policies. Stremlist
-                is not affiliated with, endorsed by, or sponsored by IMDb or
-                Stremio.
+                is not affiliated with, endorsed by, or sponsored by Stremio or
+                any Provider.
               </p>
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
+              <h3 className="mb-1 font-bold text-ink">
                 6. Modifications to Service
               </h3>
               <p>
@@ -103,12 +109,12 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">7. Contact</h3>
+              <h3 className="mb-1 font-bold text-ink">7. Contact</h3>
               <p>
                 If you have any questions about these Terms, please contact{" "}
                 <a
                   href="mailto:me@leomathurin.com"
-                  className="text-stremlist hover:underline"
+                  className="font-semibold text-stremlist hover:underline"
                 >
                   me@leomathurin.com
                 </a>
@@ -118,75 +124,82 @@ export default function Terms() {
           </div>
         </section>
 
-        {/* Privacy Policy */}
-        <section>
-          <h2 className="text-xl font-bold text-gray-900 pb-2 mb-4 border-b-2 border-imdb">
+        <section id="privacy" className={SECTION_CLASS}>
+          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
             Privacy Policy
           </h2>
-          <p className="text-sm text-gray-500 mb-4">
-            Last updated: February 17, 2025
+          <p className="mt-1 mb-6 text-sm text-black/45">
+            Last updated: October 6, 2026
           </p>
 
-          <div className="space-y-4 text-sm text-gray-700">
+          <div className="space-y-5 text-[15px] leading-relaxed text-pretty text-black/65">
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
+              <h3 className="mb-1 font-bold text-ink">
                 1. Information Collection
               </h3>
               <p>
-                Stremlist collects only the IMDb user ID that you explicitly
-                provide to use the Service. This public ID is used to fetch your
-                public IMDb watchlist data. We do not collect names, email
-                addresses, or any other personally identifiable information.
+                Stremlist collects only what it needs to run the Service: the
+                lists that you add (their Provider and link or ID), your
+                settings, and for each Provider account that you connect, its
+                username and access tokens. We do not ask for names or
+                passwords. Your email address is stored only if you subscribe to
+                the newsletter.
               </p>
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
-                2. Use of Information
-              </h3>
+              <h3 className="mb-1 font-bold text-ink">2. Use of Information</h3>
               <p>
-                The IMDb user ID you provide is used solely to retrieve your
-                public watchlist data from IMDb and convert it into a format
-                usable by Stremio. Your ID is not used for any other purpose and
-                is not shared with any third parties.
+                Your lists and access tokens are used only to read your lists
+                from the Providers, convert them for Stremio, and perform the
+                Actions that you ask for. They are not used for any other
+                purpose and are not shared with any third parties.
               </p>
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
+              <h3 className="mb-1 font-bold text-ink">
                 3. Data Storage with Supabase
               </h3>
               <p>
-                Stremlist stores data using Supabase, a secure cloud database
-                platform built on PostgreSQL. We store the following:
+                Stremlist stores data with Supabase (a cloud database built on
+                PostgreSQL) and Cloudflare R2 (cloud storage). We store the
+                following:
               </p>
               <ul className="list-disc list-inside mt-2 space-y-1 ml-2">
                 <li>
-                  <strong>User records</strong> — Your IMDb user ID, account
-                  creation date, last activity timestamp, last sync time, your
-                  chosen sort preference (e.g., by date added or title), and
-                  whether your account is active.
+                  <strong>Account records:</strong> a random Account ID (the
+                  secret part of your Addon URL), the IMDb user ID of installs
+                  made before Account IDs existed, creation date, last activity
+                  and refresh times, your lists and their settings (titles,
+                  sort, filters), your RPDB key if you add one, and your Actions
+                  settings.
                 </li>
                 <li>
-                  <strong>Watchlist cache</strong> — A cached copy of your
-                  public IMDb watchlist (titles, IDs, metadata) linked to your
-                  IMDb user ID. This cache is used to serve your catalogs
-                  quickly and is refreshed periodically (roughly every 30
-                  minutes) and whenever you use “Refresh now”. It also keeps
-                  your catalogs available if IMDb is temporarily down. Each
-                  refresh overwrites the previous copy rather than keeping a
-                  history.
+                  <strong>Connections:</strong> the username and OAuth access
+                  tokens of each Provider account that you connect. Tokens are
+                  encrypted before they are stored. Disconnecting a Provider
+                  deletes them.
+                </li>
+                <li>
+                  <strong>List cache:</strong> a cached copy of your lists
+                  (titles, IDs, metadata). It is refreshed periodically (roughly
+                  every 30 minutes) and whenever you use "Refresh now", and it
+                  keeps your catalogs available if a Provider is temporarily
+                  down. Each refresh overwrites the previous copy rather than
+                  keeping a history.
                 </li>
               </ul>
               <p className="mt-2">
-                Data is stored in Supabase&apos;s hosted infrastructure with
-                standard security measures. We do not store passwords, or any
-                data beyond what is needed to provide the Service.
+                Your Addon URL gives access to your Stremlist: anyone who has it
+                can view and change your lists, so keep it private. We do not
+                store passwords, or any data beyond what is needed to provide
+                the Service.
               </p>
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
+              <h3 className="mb-1 font-bold text-ink">
                 4. Cookies and Tracking
               </h3>
               <p>
@@ -196,33 +209,30 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
+              <h3 className="mb-1 font-bold text-ink">
                 5. Email Communications
               </h3>
               <p>
-                Stremlist does not send emails to users. The only email
-                communications are system notifications sent to the
-                administrator's email address regarding system operations and
-                deployment status.
+                Stremlist sends emails only to newsletter subscribers, about new
+                features and service announcements. You can unsubscribe at any
+                time from any newsletter email.
               </p>
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
+              <h3 className="mb-1 font-bold text-ink">
                 6. Third-Party Services
               </h3>
               <p>
-                Stremlist interacts with IMDb to access your public watchlist
-                data. We do not control and are not responsible for the privacy
-                practices of IMDb. We encourage you to review IMDb's privacy
-                policy.
+                Stremlist interacts with the Providers to read your lists and,
+                when you ask for it, to perform Actions. We do not control and
+                are not responsible for the privacy practices of the Providers.
+                We encourage you to review their privacy policies.
               </p>
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
-                7. Data Security
-              </h3>
+              <h3 className="mb-1 font-bold text-ink">7. Data Security</h3>
               <p>
                 While we implement reasonable security measures, no method of
                 transmission over the Internet is 100% secure. We cannot
@@ -231,9 +241,7 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
-                8. Children's Privacy
-              </h3>
+              <h3 className="mb-1 font-bold text-ink">8. Children's Privacy</h3>
               <p>
                 The Service is not directed to children under 13. We do not
                 knowingly collect personal information from children under 13.
@@ -241,7 +249,7 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
+              <h3 className="mb-1 font-bold text-ink">
                 9. Changes to This Privacy Policy
               </h3>
               <p>
@@ -252,15 +260,13 @@ export default function Terms() {
             </div>
 
             <div>
-              <h3 className="font-semibold text-gray-800 mb-1">
-                10. Contact Us
-              </h3>
+              <h3 className="mb-1 font-bold text-ink">10. Contact Us</h3>
               <p>
                 If you have any questions about this Privacy Policy, please
                 contact us at{" "}
                 <a
                   href="mailto:me@leomathurin.com"
-                  className="text-stremlist hover:underline"
+                  className="font-semibold text-stremlist hover:underline"
                 >
                   me@leomathurin.com
                 </a>
@@ -269,16 +275,7 @@ export default function Terms() {
             </div>
           </div>
         </section>
-      </main>
-
-      <footer className="mt-8 pt-6 border-t border-gray-200 text-center text-sm text-gray-500 space-y-2">
-        <p>
-          <Link to="/" className="text-stremlist hover:underline">
-            Return to Home
-          </Link>
-        </p>
-        <p>&copy; 2025 - IMDb Watchlist for Stremio</p>
-      </footer>
-    </div>
+      </div>
+    </SplitLayout>
   );
 }

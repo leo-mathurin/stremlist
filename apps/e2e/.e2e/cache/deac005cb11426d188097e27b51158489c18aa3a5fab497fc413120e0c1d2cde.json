@@ -1,0 +1,111 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-08T16:13:43.174Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Open it\"",
+        "target": {
+          "role": "button",
+          "name": "Open it"
+        }
+      },
+      {
+        "name": "type",
+        "summary": "type \"http://127.0.0.1:4314/sl_E2eFixtureAcco…\" into textbox \"Your Addon URL\"",
+        "target": {
+          "role": "textbox",
+          "name": "Your Addon URL",
+          "placeholder": "https://…/manifest.json"
+        },
+        "value": "http://127.0.0.1:4314/sl_E2eFixtureAccount00001/manifest.json"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Open\"",
+        "target": {
+          "role": "button",
+          "name": "Open"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/ui.e2e.ts::returning%20users%20can%20open%20configuration",
+      "targetId": "chromium",
+      "instructionDigest": "e6bc862190814f4f55611af30743d31e51ae06f7daa222d5a88f74916c7454e3",
+      "paramsDigest": "e0aaea096f3359b741d95e882dc48efb4b8a06fd361554c6af328ba1317d695a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Opened the existing Stremlist using the supplied Addon URL. The Configure page is open for account sl_E2eFixtureAccount00001, showing the existing “Test catalog” list and the matching Addon URL.",
+    "startPath": "/",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endAnchors": [
+      {
+        "role": "heading",
+        "name": "Providers"
+      },
+      {
+        "text": "Paste a link, or connect an account."
+      },
+      {
+        "role": "textbox",
+        "name": "Paste a link to a watchlist or list",
+        "placeholder": "Paste a link to any list"
+      },
+      {
+        "role": "button",
+        "name": "Add"
+      },
+      {
+        "text": "IMDb, Trakt, MDBList, JustWatch and SensCritique links work."
+      },
+      {
+        "text": "Paste a link"
+      },
+      {
+        "text": "Link"
+      },
+      {
+        "text": "Paste a link, or connect"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "text": "Stremio."
+      },
+      {
+        "text": "Paste a link to any watchlist or list, or connect your account. Each one shows up as its own row in Stremio."
+      },
+      {
+        "role": "textbox",
+        "name": "Paste a link to a watchlist or list",
+        "placeholder": "Paste a link to a watchlist or list"
+      },
+      {
+        "role": "button",
+        "name": "Build my Stremlist"
+      },
+      {
+        "role": "button",
+        "name": "Open it"
+      },
+      {
+        "text": "2 people use Stremlist"
+      },
+      {
+        "text": "people use Stremlist"
+      },
+      {
+        "role": "heading",
+        "name": "Many sites, one addon"
+      }
+    ],
+    "endWaitMs": 12087
+  }
+}

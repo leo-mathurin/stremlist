@@ -1,19 +1,28 @@
 import { expect, test } from "@playwright/test";
+import type { ConfigListInput } from "@stremlist/shared/stremio.types";
 import { FRONTEND_URL, BACKEND_URL } from "../env.js";
 import {
-  bootstrapUser,
+  asInput,
+  bootstrapLegacy,
+  createAccount,
   getBaseManifest,
   getCatalog,
   getConfig,
+  getManifest,
   getMeta,
-  getUserManifest,
   postConfig,
   refresh,
-  validateList,
-  validateUser,
+  listInput,
+  resolveLink,
   type CatalogMeta,
 } from "../helpers/api.js";
-import { clearRefreshCooldown, resetDb } from "../helpers/db.js";
+import {
+  clearRefreshCooldown,
+  getAccountByLegacyAlias,
+  getListRows,
+  resetDb,
+  seedImdbAccount,
+} from "../helpers/db.js";
 import {
   countCacheObjects,
   getCacheManifest,
@@ -51,10 +60,10 @@ test.describe("manifest", () => {
   });
 
   test(
-    "first user manifest bootstraps the install",
+    "first Legacy alias manifest bootstraps the install",
     { tag: "@local" },
     async () => {
-      const manifest = await getUserManifest(PUBLIC_USER);
+      const manifest = await getManifest(PUBLIC_USER);
       expect(manifest.id).toBe(`com.stremlist.${PUBLIC_USER}`);
       expect(manifest.behaviorHints?.configurationRequired).toBe(false);
       // Default watchlist in split mode → one movie + one series catalog.
@@ -75,6 +84,29 @@ test.describe("manifest", () => {
           (r as { name?: string }).name === "meta",
       ) as { idPrefixes?: string[] } | undefined;
       expect(metaResource?.idPrefixes).toEqual(["tt"]);
+
+      // The install got a legacy Account with one IMDb watchlist List.
+      const account = await getAccountByLegacyAlias(PUBLIC_USER);
+      expect(account).not.toBeNull();
+      expect(await getListRows(account!.id)).toMatchObject([
+        { provider: "imdb", source_ref: PUBLIC_USER, position: 0 },
+      ]);
+      const config = await getConfig(PUBLIC_USER);
+      expect(config.body).toMatchObject({ access: "legacy", accountId: null });
+    },
+  );
+
+  test(
+    "a private Addon URL manifest does not expose the Account ID",
+    { tag: "@local" },
+    async () => {
+      const { accountId } = await seedImdbAccount();
+      const manifest = await getManifest(accountId);
+      expect(manifest.id).toMatch(/^com\.stremlist\.[0-9a-f]{16}$/);
+      expect(JSON.stringify(manifest)).not.toContain(accountId);
+      expect(manifest.catalogs).toHaveLength(2);
+      const config = await getConfig(accountId);
+      expect(config.body).toMatchObject({ access: "private", accountId });
     },
   );
 
@@ -82,17 +114,12 @@ test.describe("manifest", () => {
     "display mode controls emitted catalogs",
     { tag: "@local" },
     async () => {
-      const config = await bootstrapUser(PUBLIC_USER);
-      const watchlist = config.watchlists[0];
-      await postConfig(PUBLIC_USER, [
-        {
-          id: watchlist.id,
-          imdbUserId: watchlist.imdbUserId,
-          sortOption: "added_at-asc",
-          displayMode: "movie",
-        },
+      const { accountId, listId } = await seedImdbAccount();
+      const saved = await postConfig(accountId, [
+        listInput("imdb", PUBLIC_USER, { id: listId, displayMode: "movie" }),
       ]);
-      const manifest = await getUserManifest(PUBLIC_USER);
+      expect(saved.status).toBe(200);
+      const manifest = await getManifest(accountId);
       expect(manifest.catalogs).toHaveLength(1);
       expect(manifest.catalogs[0].type).toBe("movie");
     },
@@ -102,9 +129,9 @@ test.describe("manifest", () => {
     "rejects malformed installation IDs",
     { tag: "@local" },
     async ({ request }) => {
-      try {
+      for (const key of [MALFORMED_USER, "sl_tooShort"]) {
         const response = await request.get(
-          `${BACKEND_URL}/${MALFORMED_USER}/manifest.json`,
+          `${BACKEND_URL}/${key}/manifest.json`,
         );
         expect(response.status()).toBe(400);
         await expect(response.json()).resolves.toMatchObject({
@@ -113,8 +140,6 @@ test.describe("manifest", () => {
             configurationRequired: true,
           },
         });
-      } finally {
-        await resetDb();
       }
     },
   );
@@ -125,13 +150,9 @@ test.describe("catalogs", () => {
     "movie catalog serves the live IMDb watchlist",
     { tag: "@live-smoke" },
     async () => {
-      const config = await bootstrapUser(PUBLIC_USER);
-      const catalogId = `wl-${config.watchlists[0].id}-movie`;
-      const { status, metas } = await getCatalog(
-        PUBLIC_USER,
-        "movie",
-        catalogId,
-      );
+      const { accountId, listId } = await seedImdbAccount();
+      const catalogId = `wl-${listId}-movie`;
+      const { status, metas } = await getCatalog(accountId, "movie", catalogId);
       expect(status).toBe(200);
       expect(metas.length).toBeGreaterThan(0);
       for (const meta of metas) {
@@ -140,7 +161,7 @@ test.describe("catalogs", () => {
         expect(meta.name.length).toBeGreaterThan(0);
       }
       // One manifest and one compressed catalog generation are persisted.
-      expect(await countCacheObjects(config.watchlists[0].id)).toBe(2);
+      expect(await countCacheObjects(listId)).toBe(2);
     },
   );
 
@@ -148,16 +169,15 @@ test.describe("catalogs", () => {
     "every sort option orders the catalog correctly",
     { tag: "@live-regression" },
     async () => {
-      const config = await bootstrapUser(PUBLIC_USER);
-      const watchlist = config.watchlists[0];
-      const catalogId = `wl-${watchlist.id}-movie`;
+      const { accountId, listId } = await seedImdbAccount();
+      const catalogId = `wl-${listId}-movie`;
 
       const setSort = async (sortOption: string) => {
-        const { status } = await postConfig(PUBLIC_USER, [
-          { id: watchlist.id, imdbUserId: watchlist.imdbUserId, sortOption },
+        const { status } = await postConfig(accountId, [
+          listInput("imdb", PUBLIC_USER, { id: listId, sortOption }),
         ]);
         expect(status).toBe(200);
-        const { metas } = await getCatalog(PUBLIC_USER, "movie", catalogId);
+        const { metas } = await getCatalog(accountId, "movie", catalogId);
         return metas;
       };
 
@@ -205,20 +225,20 @@ test.describe("catalogs", () => {
     "ls list source serves a public IMDb list",
     { tag: "@live-regression" },
     async () => {
-      const config = await bootstrapUser(PUBLIC_USER);
-      await postConfig(PUBLIC_USER, [
-        { imdbUserId: PUBLIC_LIST, sortOption: "added_at-asc" },
-      ]);
-      const updated = await getConfig(PUBLIC_USER);
-      const watchlist = updated.body.watchlists[0];
-      expect(watchlist.imdbUserId).toBe(PUBLIC_LIST);
+      const { accountId, listId } = await seedImdbAccount();
+      expect(
+        (await postConfig(accountId, [listInput("imdb", PUBLIC_LIST)])).status,
+      ).toBe(200);
+      const updated = await getConfig(accountId);
+      const list = updated.body.lists[0];
+      expect(list).toMatchObject({ provider: "imdb", sourceRef: PUBLIC_LIST });
       const { metas } = await getCatalog(
-        PUBLIC_USER,
+        accountId,
         "movie",
-        `wl-${watchlist.id}-movie`,
+        `wl-${list.id}-movie`,
       );
       expect(metas.length).toBeGreaterThan(0);
-      expect(config.watchlists[0].id).not.toBe(watchlist.id);
+      expect(listId).not.toBe(list.id);
     },
   );
 
@@ -226,45 +246,23 @@ test.describe("catalogs", () => {
     "built-in chart catalog serves live chart data",
     { tag: "@live-regression" },
     async () => {
-      await bootstrapUser(PUBLIC_USER);
-      await postConfig(PUBLIC_USER, [
-        {
-          imdbUserId: "imdb:top-rated-movies",
-          sortOption: "added_at-asc",
-          displayMode: "movie",
-        },
+      const { accountId } = await seedImdbAccount();
+      await postConfig(accountId, [
+        listInput("imdb", "imdb:top-rated-movies", { displayMode: "movie" }),
       ]);
-      const { body } = await getConfig(PUBLIC_USER);
-      const chart = body.watchlists[0];
-      const firstPage = await getCatalog(
-        PUBLIC_USER,
-        "movie",
-        `wl-${chart.id}-movie`,
+      const { body } = await getConfig(accountId);
+      const chart = body.lists[0];
+      const pages = await Promise.all(
+        [0, 100, 200].map((skip) =>
+          getCatalog(accountId, "movie", `wl-${chart.id}-movie`, { skip }),
+        ),
       );
-      const secondPage = await getCatalog(
-        PUBLIC_USER,
-        "movie",
-        `wl-${chart.id}-movie`,
-        100,
-      );
-      const thirdPage = await getCatalog(
-        PUBLIC_USER,
-        "movie",
-        `wl-${chart.id}-movie`,
-        200,
-      );
-      expect(firstPage.status).toBe(200);
-      expect(secondPage.status).toBe(200);
-      expect(thirdPage.status).toBe(200);
-      expect(firstPage.metas).toHaveLength(100);
-      expect(secondPage.metas).toHaveLength(100);
-      expect(thirdPage.metas.length).toBeGreaterThan(0);
+      for (const page of pages) expect(page.status).toBe(200);
+      expect(pages[0].metas).toHaveLength(100);
+      expect(pages[1].metas).toHaveLength(100);
+      expect(pages[2].metas.length).toBeGreaterThan(0);
 
-      const metas = [
-        ...firstPage.metas,
-        ...secondPage.metas,
-        ...thirdPage.metas,
-      ];
+      const metas = pages.flatMap((page) => page.metas);
       // IMDb Top 250. Allow slack for titles Stremio types cannot represent,
       // but make sure pagination neither duplicates nor drops a whole page.
       expect(metas.length).toBeGreaterThan(200);
@@ -277,23 +275,18 @@ test.describe("catalogs", () => {
   );
 
   test("RPDB key rewrites posters", { tag: "@live-regression" }, async () => {
-    const config = await bootstrapUser(PUBLIC_USER);
-    const watchlist = config.watchlists[0];
+    const { accountId, listId } = await seedImdbAccount();
     await postConfig(
-      PUBLIC_USER,
-      [
-        {
-          id: watchlist.id,
-          imdbUserId: watchlist.imdbUserId,
-          sortOption: "added_at-asc",
-        },
-      ],
-      "e2e-test-key",
+      accountId,
+      [listInput("imdb", PUBLIC_USER, { id: listId })],
+      {
+        rpdbApiKey: "e2e-test-key",
+      },
     );
     const { metas } = await getCatalog(
-      PUBLIC_USER,
+      accountId,
       "movie",
-      `wl-${watchlist.id}-movie`,
+      `wl-${listId}-movie`,
     );
     expect(metas.length).toBeGreaterThan(0);
     for (const meta of metas) {
@@ -307,16 +300,16 @@ test.describe("catalogs", () => {
     "unknown watchlist degrades to an informational card, not a 500",
     { tag: "@live-regression" },
     async () => {
-      const config = await bootstrapUser(UNKNOWN_USER);
+      const { accountId, listId } = await seedImdbAccount(UNKNOWN_USER);
       const { status, metas } = await getCatalog(
-        UNKNOWN_USER,
+        accountId,
         "movie",
-        `wl-${config.watchlists[0].id}-movie`,
+        `wl-${listId}-movie`,
       );
       expect(status).toBe(200);
       expect(metas).toHaveLength(1);
       expect(metas[0].id).toBe("stremlist:unavailable:not_found");
-      expect(metas[0].name).toContain("not found");
+      expect(metas[0].name).toContain("IMDb could not find this watchlist");
     },
   );
 
@@ -324,16 +317,16 @@ test.describe("catalogs", () => {
     "private watchlist degrades to an informational card",
     { tag: "@live-regression" },
     async () => {
-      const config = await bootstrapUser(PRIVATE_USER);
+      const { accountId, listId } = await seedImdbAccount(PRIVATE_USER);
       const { status, metas } = await getCatalog(
-        PRIVATE_USER,
+        accountId,
         "movie",
-        `wl-${config.watchlists[0].id}-movie`,
+        `wl-${listId}-movie`,
       );
       expect(status).toBe(200);
       expect(metas).toHaveLength(1);
       expect(metas[0].id).toBe("stremlist:unavailable:private");
-      expect(metas[0].name).toContain("private");
+      expect(metas[0].name).toContain("This IMDb watchlist is private");
     },
   );
 
@@ -341,9 +334,9 @@ test.describe("catalogs", () => {
     "malformed catalog requests return empty catalogs",
     { tag: "@local" },
     async () => {
-      await bootstrapUser(PUBLIC_USER);
+      const { accountId } = await seedImdbAccount();
       const unknownCatalog = await getCatalog(
-        PUBLIC_USER,
+        accountId,
         "movie",
         "wl-00000000-0000-4000-8000-000000000000-movie",
       );
@@ -351,7 +344,7 @@ test.describe("catalogs", () => {
       expect(unknownCatalog.metas).toEqual([]);
 
       const badType = await getCatalog(
-        PUBLIC_USER,
+        accountId,
         "channel",
         "stremlist-movies",
       );
@@ -361,40 +354,29 @@ test.describe("catalogs", () => {
   );
 
   test(
-    "removing a watchlist deletes cached generations and leaves a tombstone",
+    "removing a List deletes cached generations and leaves a tombstone",
     { tag: "@live-regression" },
     async () => {
-      const config = await bootstrapUser(PUBLIC_USER);
-      const removed = config.watchlists[0];
-      const created = await postConfig(PUBLIC_USER, [
-        {
-          id: removed.id,
-          imdbUserId: removed.imdbUserId,
-          sortOption: removed.sortOption,
-        },
-        { imdbUserId: PUBLIC_LIST, sortOption: "added_at-asc" },
+      const { accountId, listId: removed } = await seedImdbAccount();
+      const created = await postConfig(accountId, [
+        listInput("imdb", PUBLIC_USER, { id: removed }),
+        listInput("imdb", PUBLIC_LIST),
       ]);
       expect(created.status).toBe(200);
 
-      const current = (await getConfig(PUBLIC_USER)).body.watchlists;
-      const kept = current.find((watchlist) => watchlist.id !== removed.id);
+      const current = (await getConfig(accountId)).body.lists;
+      const kept = current.find((list) => list.id !== removed);
       expect(kept).toBeDefined();
 
-      await getCatalog(PUBLIC_USER, "movie", `wl-${removed.id}-movie`);
-      expect(await countCacheObjects(removed.id)).toBe(2);
+      await getCatalog(accountId, "movie", `wl-${removed}-movie`);
+      expect(await countCacheObjects(removed)).toBe(2);
 
-      const updated = await postConfig(PUBLIC_USER, [
-        {
-          id: kept!.id,
-          imdbUserId: kept!.imdbUserId,
-          sortOption: kept!.sortOption,
-        },
-      ]);
+      const updated = await postConfig(accountId, asInput([kept!]));
       expect(updated.status).toBe(200);
-      expect(await getCacheObjectKeys(removed.id)).toEqual([
-        `watchlists/${removed.id}/manifest.json`,
+      expect(await getCacheObjectKeys(removed)).toEqual([
+        `watchlists/${removed}/manifest.json`,
       ]);
-      expect(await getCacheManifest(removed.id)).toMatchObject({
+      expect(await getCacheManifest(removed)).toMatchObject({
         version: 1,
         deleted: true,
       });
@@ -407,49 +389,67 @@ test.describe("meta", () => {
     "serves cached meta and falls back to null on misses",
     { tag: "@live-regression" },
     async () => {
-      const config = await bootstrapUser(PUBLIC_USER);
-      const catalogId = `wl-${config.watchlists[0].id}-movie`;
-      const { metas } = await getCatalog(PUBLIC_USER, "movie", catalogId);
+      const { accountId, listId } = await seedImdbAccount();
+      const catalogId = `wl-${listId}-movie`;
+      const { metas } = await getCatalog(accountId, "movie", catalogId);
       const first = metas[0];
 
-      const hit = await getMeta(PUBLIC_USER, "movie", first.id);
+      const hit = await getMeta(accountId, "movie", first.id);
       expect(hit.status).toBe(200);
       expect(hit.meta?.name).toBe(first.name);
       expect(hit.meta?.id).toBe(first.id);
 
       // Cache-only: unknown ids must return null (Stremio then asks Cinemeta),
       // never 500.
-      const miss = await getMeta(PUBLIC_USER, "movie", "tt9999999999");
+      const miss = await getMeta(accountId, "movie", "tt9999999999");
       expect(miss.status).toBe(200);
       expect(miss.meta).toBeNull();
     },
   );
 });
 
-test.describe("validation endpoints", () => {
+test.describe("link resolution", () => {
   test(
-    "validates public, unknown, and p-handle sources",
+    "resolves public, unknown, and p-handle IMDb links",
     { tag: "@live-regression" },
     async () => {
-      expect(await validateUser(PUBLIC_USER)).toEqual({
-        valid: true,
-        userId: PUBLIC_USER,
+      expect(
+        await resolveLink(`https://www.imdb.com/user/${PUBLIC_USER}/watchlist`),
+      ).toEqual({
+        ok: true,
+        provider: "imdb",
+        sourceRef: PUBLIC_USER,
+        kind: "watchlist",
+        requiresConnection: false,
+        suggestedTitle: null,
+        defaultDisplayMode: null,
       });
-      expect(await validateUser(UNKNOWN_USER)).toEqual({
-        valid: false,
+      expect(await resolveLink(UNKNOWN_USER)).toEqual({
+        ok: false,
         reason: "not_found",
+        provider: "imdb",
       });
-      expect(await validateList(PUBLIC_LIST)).toEqual({ valid: true });
-      expect(await validateList(UNKNOWN_LIST)).toEqual({
-        valid: false,
+      expect(
+        await resolveLink(`https://www.imdb.com/list/${PUBLIC_LIST}/`),
+      ).toMatchObject({
+        ok: true,
+        provider: "imdb",
+        sourceRef: PUBLIC_LIST,
+        kind: "list",
+      });
+      expect(await resolveLink(UNKNOWN_LIST)).toEqual({
+        ok: false,
         reason: "not_found",
+        provider: "imdb",
       });
 
       // p-handles resolve to a canonical ur id first. The target account's
       // watchlist visibility is not under our control, so only assert shape.
-      const handleResult = await validateUser(P_HANDLE);
-      if (handleResult.valid) {
-        expect(String(handleResult.userId)).toMatch(/^ur\d+$/);
+      const handleResult = await resolveLink(
+        `https://www.imdb.com/user/${P_HANDLE}/`,
+      );
+      if (handleResult.ok) {
+        expect(String(handleResult.sourceRef)).toMatch(/^ur\d+$/);
       } else {
         expect(["private", "not_found"]).toContain(handleResult.reason);
       }
@@ -457,61 +457,124 @@ test.describe("validation endpoints", () => {
   );
 
   test("reports private sources", { tag: "@live-regression" }, async () => {
-    expect(await validateUser(PRIVATE_USER)).toEqual({
-      valid: false,
+    expect(await resolveLink(PRIVATE_USER)).toEqual({
+      ok: false,
       reason: "private",
+      provider: "imdb",
     });
     // Same account via its p-handle: exercises handle resolution on a
     // private source.
-    expect(await validateUser(PRIVATE_P_HANDLE)).toEqual({
-      valid: false,
+    expect(await resolveLink(PRIVATE_P_HANDLE)).toEqual({
+      ok: false,
       reason: "private",
+      provider: "imdb",
     });
     if (PRIVATE_LIST) {
-      expect(await validateList(PRIVATE_LIST)).toEqual({
-        valid: false,
+      expect(await resolveLink(PRIVATE_LIST)).toEqual({
+        ok: false,
         reason: "private",
+        provider: "imdb",
       });
     }
   });
+
+  test(
+    "unrecognized links and charts resolve without a Provider call",
+    { tag: "@local" },
+    async () => {
+      expect(await resolveLink("banana bread")).toEqual({
+        ok: false,
+        reason: "unrecognized",
+      });
+      expect(await resolveLink("imdb:box-office")).toEqual({
+        ok: true,
+        provider: "imdb",
+        sourceRef: "imdb:box-office",
+        kind: "chart",
+        requiresConnection: false,
+        suggestedTitle: "Box Office (Weekend)",
+        defaultDisplayMode: "movie",
+      });
+      // MDBList Source lists always read through a Connection.
+      expect(
+        await resolveLink("https://mdblist.com/lists/someone/some-list"),
+      ).toEqual({
+        ok: false,
+        reason: "needs_connection",
+        provider: "mdblist",
+      });
+    },
+  );
 });
 
 test.describe("config API", () => {
   test("rejects invalid configurations", { tag: "@local" }, async () => {
-    await bootstrapUser(PUBLIC_USER);
-    const valid = { imdbUserId: PUBLIC_USER, sortOption: "added_at-asc" };
+    const { accountId } = await seedImdbAccount();
+    const valid = listInput("imdb", PUBLIC_USER);
+    const status = async (lists: ConfigListInput[]) =>
+      (await postConfig(accountId, lists)).status;
 
-    expect((await postConfig(PUBLIC_USER, [])).status).toBe(400);
-    expect(
-      (
-        await postConfig(
-          PUBLIC_USER,
-          Array.from({ length: 11 }, () => valid),
-        )
-      ).status,
-    ).toBe(400);
-    expect(
-      (
-        await postConfig(PUBLIC_USER, [
-          { ...valid, catalogTitle: "x".repeat(31) },
-        ])
-      ).status,
-    ).toBe(400);
-    expect(
-      (await postConfig(PUBLIC_USER, [{ ...valid, sortOption: "bogus" }]))
-        .status,
-    ).toBe(400);
-    expect((await postConfig(PUBLIC_USER, [valid, valid])).status).toBe(400);
-    expect(
-      (await postConfig(PUBLIC_USER, [{ ...valid, imdbUserId: "banana" }]))
-        .status,
-    ).toBe(400);
+    expect(await status([])).toBe(400);
+    expect(await status(Array.from({ length: 11 }, () => valid))).toBe(400);
+    expect(await status([{ ...valid, catalogTitle: "x".repeat(61) }])).toBe(
+      400,
+    );
+    expect(await status([{ ...valid, sortOption: "bogus" }])).toBe(400);
+    expect(await status([valid, valid])).toBe(400);
+    expect(await status([{ ...valid, sourceRef: "banana" }])).toBe(400);
+    // A Source list that needs a Connection the Account does not have.
+    const needsConnection = await postConfig(accountId, [
+      {
+        provider: "simkl",
+        sourceRef: "me/plantowatch",
+        sortOption: "title-asc",
+      },
+    ]);
+    expect(needsConnection).toEqual({
+      status: 400,
+      body: { error: "Connect your Simkl account first." },
+    });
+    // Nothing above changed the stored configuration.
+    expect((await getConfig(accountId)).body.lists).toMatchObject([
+      { provider: "imdb", sourceRef: PUBLIC_USER, sortOption: "added_at-asc" },
+    ]);
   });
 
-  test("404s for users that never installed", { tag: "@local" }, async () => {
-    const { status } = await getConfig(PUBLIC_USER);
-    expect(status).toBe(404);
-  });
+  test(
+    "a new Account starts from its first Lists",
+    { tag: "@local" },
+    async () => {
+      const created = await createAccount(
+        [listInput("imdb", "imdb:box-office", { displayMode: "movie" })],
+        "e2e-rpdb",
+      );
+      expect(created.status).toBe(200);
+      const accountId = created.body.accountId!;
+      expect(accountId).toMatch(/^sl_[0-9A-Za-z]{22}$/);
+      const { body } = await getConfig(accountId);
+      expect(body).toMatchObject({
+        access: "private",
+        accountId,
+        rpdbApiKey: "e2e-rpdb",
+        connections: [],
+        actions: { enabled: false, providers: [] },
+        lists: [{ provider: "imdb", sourceRef: "imdb:box-office" }],
+      });
+      // Creation validates like a save.
+      expect((await createAccount([listInput("imdb", "banana")])).status).toBe(
+        400,
+      );
+    },
+  );
+
+  test(
+    "404s for Addon URLs that never installed",
+    { tag: "@local" },
+    async () => {
+      expect((await getConfig(PUBLIC_USER)).status).toBe(404);
+      expect((await getConfig("sl_0000000000000000000000")).status).toBe(404);
+    },
+  );
 });
 
 test.describe("refresh", () => {
@@ -519,18 +582,18 @@ test.describe("refresh", () => {
     "refreshes from live IMDb and then throttles",
     { tag: "@live-regression" },
     async () => {
-      const config = await bootstrapUser(PUBLIC_USER);
-      await clearRefreshCooldown(PUBLIC_USER);
+      const { accountId, listId } = await seedImdbAccount();
+      await clearRefreshCooldown(accountId);
 
-      const first = await refresh(PUBLIC_USER);
+      const first = await refresh(accountId);
       expect(first.status).toBe(200);
       expect(first.body.ok).toBe(true);
       expect(first.body.refreshed).toBe(1);
       expect(first.body.failed).toBe(0);
       expect(first.body.total).toBe(1);
-      expect(await countCacheObjects(config.watchlists[0].id)).toBe(2);
+      expect(await countCacheObjects(listId)).toBe(2);
 
-      const second = await refresh(PUBLIC_USER);
+      const second = await refresh(accountId);
       expect(second.body.throttled).toBe(true);
     },
   );
@@ -542,18 +605,21 @@ test.describe("misc endpoints", () => {
     expect(health.status).toBe(200);
     expect(((await health.json()) as { database: string }).database).toBe("up");
 
-    await bootstrapUser(PUBLIC_USER);
+    const { accountId } = await seedImdbAccount();
+    await bootstrapLegacy(PUBLIC_USER);
     const stats = await fetch(`${BACKEND_URL}/stats`);
     expect(
       ((await stats.json()) as { activeUsers: number }).activeUsers,
-    ).toBeGreaterThanOrEqual(1);
+    ).toBeGreaterThanOrEqual(2);
 
-    const configure = await fetch(`${BACKEND_URL}/${PUBLIC_USER}/configure`, {
-      redirect: "manual",
-    });
-    expect(configure.status).toBe(302);
-    expect(configure.headers.get("location")).toBe(
-      `${FRONTEND_URL}/configure?userId=${PUBLIC_USER}`,
-    );
+    for (const key of [accountId, PUBLIC_USER]) {
+      const configure = await fetch(`${BACKEND_URL}/${key}/configure`, {
+        redirect: "manual",
+      });
+      expect(configure.status).toBe(302);
+      expect(configure.headers.get("location")).toBe(
+        `${FRONTEND_URL}/configure?account=${key}`,
+      );
+    }
   });
 });

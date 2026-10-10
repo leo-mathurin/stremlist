@@ -18,9 +18,13 @@ R2. The configure/onboarding pages of the frontend are covered too.
   servers with ports distinct from the dev ones, so tests can run next to a
   normal dev session.
 - The backend points at a local Supabase stack (`supabase start`), reset
-  between tests. Live scenarios bootstrap through the backend HTTP API. The
-  deterministic catalog scenarios seed input rows and cache objects directly,
-  then exercise the real configuration API, database transaction and cache reader.
+  between tests. Tests use the vocabulary of [CONTEXT.md](../../CONTEXT.md):
+  most scenarios seed a private **Account** (generated `sl_…` ID) with its
+  **Lists** directly, so no save-triggered prewarm reads a Provider, then
+  exercise the real configuration API, database transaction and cache reader.
+  The onboarding scenarios create the Account through the configure page
+  (`POST /accounts`), and the Legacy alias scenarios bootstrap an `ur…`
+  install through its first manifest fetch.
 - The backend points at RustFS (`:7431`) through its configurable S3 endpoint.
   Tests inspect the resulting manifest and compressed generation objects and
   remove objects owned by E2E users between cases.
@@ -34,7 +38,17 @@ R2. The configure/onboarding pages of the frontend are covered too.
   counts) or compare the Stremio UI against the addon's own catalog JSON from
   the same run, so they do not depend on what is in the watchlist today.
 - The default run and pull request CI execute all three projects: deterministic
-  local coverage, four live smoke tests, and the broader live regression suite.
+  local coverage (96 tests), four live smoke tests, and the broader live
+  regression suite (27 tests).
+- `tests/new-titles.spec.ts` starts a second backend with
+  `helpers/source-transport.ts` preloaded. It reads Source lists from a JSON
+  file that the test rewrites between refreshes, so consecutive
+  synchronizations are deterministic. A `capped` IMDb watchlist answers
+  that more pages follow until the page cap cuts the read short. Database and R2 traffic is real; any
+  other outbound request is refused.
+- The backend gets a fixed, public `CONNECTION_ENCRYPTION_KEY` from `env.ts`,
+  so seeded Connections (`helpers/db.ts` `seedConnection`) decrypt like real
+  ones. It is not a production key.
 
 ## Running locally
 
@@ -57,15 +71,19 @@ bun run --filter @stremlist/e2e test:e2e --project=live-smoke
 bun run --filter @stremlist/e2e test:e2e --project=live-regression
 ```
 
-The suite deletes test users between cases. It removes their R2 objects first,
-then relies on foreign-key cascades for their Supabase watchlists. The harness
+The suite deletes test Accounts between cases: the Legacy alias Accounts of the
+fixtures and every Account created since the run started. It removes their R2
+List caches and Connection objects first, then relies on foreign-key cascades
+for their Lists, Connections and pending authorizations. Because Account IDs
+are generated, cleanup is scoped by time, so use a disposable stack, not a
+development database that other people write to at the same time. The harness
 rejects any non-loopback Supabase URL unless the caller provides the explicit
 destructive confirmation described below.
 
 ## Catalog feature regression scenarios
 
 `tests/catalog-features.spec.ts` covers the v1.10.0 additions with controlled
-movie/series metadata in local storage. No configuration or catalog HTTP response
+movie/series metadata in local storage, read through a seeded private Account. No configuration or catalog HTTP response
 is mocked. The small fixture deliberately includes titles just outside each
 filter so a missing constraint fails the test.
 
@@ -89,18 +107,51 @@ These fixtures bypass IMDb scraping, not Stremlist behavior. Existing live tests
 still cover real IMDb fetching. The series scenario checks the addon protocol;
 it does not claim to test playback or episode selection in a native client.
 
+## Provider journeys
+
+Four `local` spec files start their own backend with
+`helpers/provider-fixtures.ts` as a preload (`helpers/fixture-backend.ts`).
+That backend uses the same local Supabase and RustFS stack, dummy OAuth
+client IDs and no real credential. The real adapters, OAuth flow, ID resolver
+and Action pages run; only the Provider responses are fixtures, and any
+request to an unknown host fails.
+
+| File                                 | Coverage                                                                                                                          |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/provider-links.spec.ts`       | Public links (Trakt, JustWatch, SensCritique) and Source lists read through a Connection (MDBList, Simkl)                         |
+| `tests/provider-connections.spec.ts` | OAuth start and callback (Trakt, Simkl, MDBList), disconnect, expired Connections, Legacy alias limits                            |
+| `tests/provider-actions.spec.ts`     | Actions in Stremio, every Trakt Action intent and its page, the Provider kill switch (a second backend with `DISABLED_PROVIDERS`) |
+| `tests/provider-sync-status.spec.ts` | Sync status of Lists read through a Connection (renewal, disconnect, merged List) and Catalog previews read through a Connection  |
+
+Letterboxd has no adapter yet; the configure page only explains its MDBList
+import. The UI side of the same journeys is in `toolkit/providers.e2e.ts`.
+`tests/catalog-preview.spec.ts` uses the same preload to read a synthetic
+SensCritique list (`helpers/preview-fixture.ts`) for the Catalog preview.
+
+## List sync status scenarios
+
+`tests/sync-status.spec.ts` checks what each refresh records (STR-58). The test
+backend has no Trakt client ID, so Trakt reads fail and a seeded expired Trakt
+Connection becomes a refused one (`needs_renewal_since`), offline and
+deterministic. The `live-regression` case waits for the first refresh of a live
+IMDb chart through the page's polling. The renewal by a new authorization, a
+working read that clears the mark and the statuses a disconnect forgets need
+the Provider fixtures, so they are in `tests/provider-sync-status.spec.ts`, with a
+Catalog preview through a refused Connection (it marks the Connection, but is
+not a refresh).
+
 ## Environment knobs
 
-| Variable                                                 | Purpose                                                                                   |
-| -------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `E2E_SUPABASE_URL` / `E2E_SUPABASE_SERVICE_ROLE_KEY`     | Non-default local Supabase stack                                                          |
-| `E2E_R2_ENDPOINT` / `E2E_R2_BUCKET`                      | Non-default S3-compatible endpoint and disposable bucket                                  |
-| `E2E_R2_ACCESS_KEY_ID` / `E2E_R2_SECRET_ACCESS_KEY`      | Credentials for the disposable S3-compatible store                                        |
-| `E2E_ALLOW_REMOTE_DATABASE=I_UNDERSTAND_THIS_WIPES_DATA` | Permit an isolated remote test project. Cleanup deletes every user and all dependent data |
-| `E2E_IMDB_USER_ID` / `E2E_IMDB_USER_ID_2`                | Override the public watchlists under test                                                 |
-| `E2E_IMDB_LIST_ID`                                       | Override the public `ls` list under test                                                  |
-| `E2E_PRIVATE_IMDB_USER_ID`                               | Override the private watchlist under test                                                 |
-| `E2E_PRIVATE_IMDB_LIST_ID`                               | Enable the private `ls` list test                                                         |
+| Variable                                                 | Purpose                                                                                 |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `E2E_SUPABASE_URL` / `E2E_SUPABASE_SERVICE_ROLE_KEY`     | Non-default local Supabase stack                                                        |
+| `E2E_R2_ENDPOINT` / `E2E_R2_BUCKET`                      | Non-default S3-compatible endpoint and disposable bucket                                |
+| `E2E_R2_ACCESS_KEY_ID` / `E2E_R2_SECRET_ACCESS_KEY`      | Credentials for the disposable S3-compatible store                                      |
+| `E2E_ALLOW_REMOTE_DATABASE=I_UNDERSTAND_THIS_WIPES_DATA` | Permit an isolated remote test project. Cleanup deletes Accounts and all dependent data |
+| `E2E_IMDB_USER_ID` / `E2E_IMDB_USER_ID_2`                | Override the public IMDb watchlists under test (also the Legacy aliases)                |
+| `E2E_IMDB_LIST_ID`                                       | Override the public `ls` list under test                                                |
+| `E2E_PRIVATE_IMDB_USER_ID`                               | Override the private watchlist under test                                               |
+| `E2E_PRIVATE_IMDB_LIST_ID`                               | Enable the private `ls` list test                                                       |
 
 ## Known limitations
 

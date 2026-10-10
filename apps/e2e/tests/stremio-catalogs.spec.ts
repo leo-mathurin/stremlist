@@ -1,12 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { addonManifestUrl } from "../env.js";
 import {
-  bootstrapUser,
   getCatalog,
   getConfig,
+  listInput,
   postConfig,
 } from "../helpers/api.js";
-import { resetDb } from "../helpers/db.js";
+import { resetDb, seedImdbAccount } from "../helpers/db.js";
 import {
   discoverItemTitles,
   discoverUrl,
@@ -31,11 +31,10 @@ test(
   "watchlist catalog renders in Discover, in catalog order",
   { tag: "@live-smoke" },
   async ({ page }) => {
-    const config = await bootstrapUser(PUBLIC_USER);
-    const watchlist = config.watchlists[0];
-    const catalogId = `wl-${watchlist.id}-movie`;
-    const manifestUrl = addonManifestUrl(PUBLIC_USER);
-    const { metas } = await getCatalog(PUBLIC_USER, "movie", catalogId);
+    const { accountId, listId } = await seedImdbAccount();
+    const manifestUrl = addonManifestUrl(accountId);
+    const catalogId = `wl-${listId}-movie`;
+    const { metas } = await getCatalog(accountId, "movie", catalogId);
     expect(metas.length).toBeGreaterThan(0);
 
     await installAddon(page, manifestUrl);
@@ -54,21 +53,16 @@ test(
   "sort option changes reorder the catalog without reinstalling",
   { tag: "@live-regression" },
   async ({ page }) => {
-    const config = await bootstrapUser(PUBLIC_USER);
-    const watchlist = config.watchlists[0];
-    const catalogId = `wl-${watchlist.id}-movie`;
-    const manifestUrl = addonManifestUrl(PUBLIC_USER);
-    await getCatalog(PUBLIC_USER, "movie", catalogId);
+    const { accountId, listId } = await seedImdbAccount();
+    const manifestUrl = addonManifestUrl(accountId);
+    const catalogId = `wl-${listId}-movie`;
+    await getCatalog(accountId, "movie", catalogId);
     await installAddon(page, manifestUrl);
 
-    await postConfig(PUBLIC_USER, [
-      {
-        id: watchlist.id,
-        imdbUserId: watchlist.imdbUserId,
-        sortOption: "title-asc",
-      },
+    await postConfig(accountId, [
+      listInput("imdb", PUBLIC_USER, { id: listId, sortOption: "title-asc" }),
     ]);
-    const { metas } = await getCatalog(PUBLIC_USER, "movie", catalogId);
+    const { metas } = await getCatalog(accountId, "movie", catalogId);
     const expected = metas.map((meta) => meta.name);
     expect(expected).toEqual([...expected].sort((a, b) => a.localeCompare(b)));
 
@@ -84,27 +78,23 @@ test(
   "built-in chart catalog renders after a reinstall",
   { tag: "@live-regression" },
   async ({ page }) => {
-    await bootstrapUser(PUBLIC_USER);
-    const manifestUrl = addonManifestUrl(PUBLIC_USER);
+    const { accountId, listId } = await seedImdbAccount();
+    const manifestUrl = addonManifestUrl(accountId);
     await installAddon(page, manifestUrl);
 
-    // Adding a catalog changes the manifest, which Stremio only picks up on
+    // Adding a List changes the manifest, which Stremio only picks up on
     // reinstall — exactly what the configure page tells the user to do.
-    await postConfig(PUBLIC_USER, [
-      { imdbUserId: PUBLIC_USER, sortOption: "added_at-asc" },
-      {
-        imdbUserId: "imdb:box-office",
-        sortOption: "added_at-asc",
-        displayMode: "movie",
-      },
+    await postConfig(accountId, [
+      listInput("imdb", PUBLIC_USER, { id: listId }),
+      listInput("imdb", "imdb:box-office", { displayMode: "movie" }),
     ]);
-    const { body } = await getConfig(PUBLIC_USER);
-    const chart = body.watchlists.find(
-      (w) => w.imdbUserId === "imdb:box-office",
+    const { body } = await getConfig(accountId);
+    const chart = body.lists.find(
+      (list) => list.sourceRef === "imdb:box-office",
     );
     expect(chart).toBeDefined();
     const catalogId = `wl-${chart!.id}-movie`;
-    const { metas } = await getCatalog(PUBLIC_USER, "movie", catalogId);
+    const { metas } = await getCatalog(accountId, "movie", catalogId);
     expect(metas.length).toBeGreaterThan(0);
 
     await uninstallAddon(page, manifestUrl);
@@ -121,19 +111,13 @@ test(
   "catalog rows appear on the Board",
   { tag: "@live-regression" },
   async ({ page }) => {
-    const config = await bootstrapUser(PUBLIC_USER);
-    const watchlist = config.watchlists[0];
+    const { accountId, listId } = await seedImdbAccount();
+    const manifestUrl = addonManifestUrl(accountId);
     // Distinctive title so the Board row is unambiguous.
-    await postConfig(PUBLIC_USER, [
-      {
-        id: watchlist.id,
-        imdbUserId: watchlist.imdbUserId,
-        sortOption: "added_at-asc",
-        catalogTitle: "E2E QA",
-      },
+    await postConfig(accountId, [
+      listInput("imdb", PUBLIC_USER, { id: listId, catalogTitle: "E2E QA" }),
     ]);
-    const manifestUrl = addonManifestUrl(PUBLIC_USER);
-    await getCatalog(PUBLIC_USER, "movie", `wl-${watchlist.id}-movie`);
+    await getCatalog(accountId, "movie", `wl-${listId}-movie`);
 
     await installAddon(page, manifestUrl);
     await page.goto("https://web.stremio.com/#/");
@@ -147,14 +131,14 @@ test(
   "broken watchlist shows the informational card in Stremio",
   { tag: "@live-regression" },
   async ({ page }) => {
-    const config = await bootstrapUser(UNKNOWN_USER);
-    const catalogId = `wl-${config.watchlists[0].id}-movie`;
-    const manifestUrl = addonManifestUrl(UNKNOWN_USER);
-
+    const { accountId, listId } = await seedImdbAccount(UNKNOWN_USER);
+    const manifestUrl = addonManifestUrl(accountId);
     await installAddon(page, manifestUrl);
-    await page.goto(discoverUrl(manifestUrl, "movie", catalogId));
+    await page.goto(discoverUrl(manifestUrl, "movie", `wl-${listId}-movie`));
     await expect(
-      page.getByText("IMDb watchlist not found", { exact: false }).first(),
+      page
+        .getByText("IMDb could not find this watchlist", { exact: false })
+        .first(),
     ).toBeVisible();
   },
 );
@@ -163,12 +147,10 @@ test(
   "private watchlist shows the private card in Stremio",
   { tag: "@live-regression" },
   async ({ page }) => {
-    const config = await bootstrapUser(PRIVATE_USER);
-    const catalogId = `wl-${config.watchlists[0].id}-movie`;
-    const manifestUrl = addonManifestUrl(PRIVATE_USER);
-
+    const { accountId, listId } = await seedImdbAccount(PRIVATE_USER);
+    const manifestUrl = addonManifestUrl(accountId);
     await installAddon(page, manifestUrl);
-    await page.goto(discoverUrl(manifestUrl, "movie", catalogId));
+    await page.goto(discoverUrl(manifestUrl, "movie", `wl-${listId}-movie`));
     await expect(
       page
         .getByText("This IMDb watchlist is private", { exact: false })

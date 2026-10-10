@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -12,7 +12,6 @@ import {
   FormItem,
   FormMessage,
 } from "@/components/ui/form";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const schema = z.object({
   email: z.string().email("Please enter a valid email address."),
@@ -21,41 +20,33 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export default function NewsletterForm() {
-  const [serverStatus, setServerStatus] = useState<{
-    type: "success" | "error";
-    message: string;
-  } | null>(null);
-
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { email: "" },
   });
 
   async function onSubmit(data: FormValues) {
-    setServerStatus(null);
-
     try {
       const res = await api.newsletter.subscribe.$post({ json: data });
       const body = await res.json();
 
       if (body.success) {
-        setServerStatus({ type: "success", message: body.message });
+        toast.success(body.message, { id: "newsletter-subscription" });
         form.reset();
       } else {
-        setServerStatus({ type: "error", message: body.error });
+        toast.error(body.error, { id: "newsletter-subscription" });
       }
     } catch {
-      setServerStatus({
-        type: "error",
-        message: "Network error. Please try again.",
+      toast.error("Network error. Please try again.", {
+        id: "newsletter-subscription",
       });
     }
   }
 
   return (
-    <div className="bg-gray-100 rounded-lg p-5 text-center max-w-md mx-auto">
+    <div className="mx-auto max-w-md rounded-3xl bg-white p-5 text-center ring-1 ring-black/5">
       <h3 className="text-base font-semibold text-gray-800 mb-1">
-        Stay Updated
+        Stay updated
       </h3>
       <p className="text-sm text-gray-500 mb-4">
         Get notified about new features and service announcements.
@@ -73,6 +64,7 @@ export default function NewsletterForm() {
                       {...field}
                       type="email"
                       placeholder="your@email.com"
+                      className="h-11 rounded-full bg-white px-4"
                     />
                   </FormControl>
                   <FormMessage className="text-left mt-1" />
@@ -82,22 +74,11 @@ export default function NewsletterForm() {
             <Button
               type="submit"
               disabled={form.formState.isSubmitting}
-              className="bg-imdb text-black hover:bg-imdb-dark whitespace-nowrap"
+              className="h-11 rounded-full bg-brand px-5 font-bold whitespace-nowrap text-black hover:bg-brand-dark"
             >
               {form.formState.isSubmitting ? "Subscribing..." : "Subscribe"}
             </Button>
           </div>
-          {serverStatus && (
-            <Alert
-              className={`mt-3 inline-flex max-w-md ${
-                serverStatus.type === "success"
-                  ? "border-green-200 bg-green-50 text-green-700"
-                  : "border-red-200 bg-red-50 text-red-600"
-              }`}
-            >
-              <AlertDescription>{serverStatus.message}</AlertDescription>
-            </Alert>
-          )}
         </form>
       </Form>
     </div>

@@ -3,20 +3,28 @@
   "version": "0.0.1",
   "type": "module",
   "exports": {
+    "./catalog-preview": "./src/catalog-preview.ts",
     "./catalog-settings": "./src/catalog-settings.ts",
     "./constants": "./src/constants.ts",
     "./database.types": "./src/database.types.ts",
     "./imdb-charts": "./src/imdb-charts.ts",
-    "./stremio.types": "./src/stremio.types.ts"
+    "./list-merge": "./src/list-merge.ts",
+    "./manifest-catalogs": "./src/manifest-catalogs.ts",
+    "./providers": "./src/providers.ts",
+    "./source-problems": "./src/source-problems.ts",
+    "./stremio.types": "./src/stremio.types.ts",
+    "./sync-status": "./src/sync-status.ts"
   },
   "scripts": {
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@stremlist/eslint-config": "workspace:*",
     "eslint": "^9.39.2",
     "prettier": "^3.8.1",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.18"
   }
 }

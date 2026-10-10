@@ -4,6 +4,11 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { withRelatedProject } from "@vercel/related-projects";
+import { ACCOUNT_KEY_SOURCE } from "@stremlist/shared/constants";
+
+const CONFIGURE_PATH = new RegExp(
+  `^/(?:${ACCOUNT_KEY_SOURCE})/configure(?:\\?|$)`,
+);
 
 // https://vite.dev/config/
 export default defineConfig(({ mode, command }) => {
@@ -37,7 +42,7 @@ export default defineConfig(({ mode, command }) => {
                   // Stremio follows the addon URL to configure; keep that
                   // redirect on the browser's local or tailnet frontend origin.
                   if (
-                    /^\/ur\d+\/configure(?:\?|$)/.test(request.url ?? "") &&
+                    CONFIGURE_PATH.test(request.url ?? "") &&
                     response.headers.location
                   ) {
                     const redirect = new URL(response.headers.location);

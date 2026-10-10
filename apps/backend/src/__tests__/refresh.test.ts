@@ -5,8 +5,8 @@ vi.mock("../lib/supabase", async () => {
   return await import("./helpers/mock-supabase.js");
 });
 
-vi.mock("../services/watchlist-cache", async () => {
-  return await import("./helpers/mock-watchlist-cache.js");
+vi.mock("../services/list-cache", async () => {
+  return await import("./helpers/mock-list-cache.js");
 });
 
 vi.mock("../lib/resend", () => ({
@@ -15,8 +15,13 @@ vi.mock("../lib/resend", () => ({
 
 import app from "../index.js";
 import * as scraper from "../services/imdb-scraper";
-import { db } from "./helpers/mock-supabase.js";
-import { cache } from "./helpers/mock-watchlist-cache.js";
+import {
+  seedAccount,
+  seedLegacyAccount,
+  seedList,
+} from "./helpers/fixtures.js";
+import { cache } from "./helpers/mock-list-cache.js";
+import { db, resetRpc } from "./helpers/mock-supabase.js";
 
 const OWNER = "ur216216210";
 const UUID_1 = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
@@ -24,33 +29,18 @@ const UUID_1 = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
 // Older than the default 60s refresh cooldown so a manual refresh is allowed.
 const TEN_MINUTES_AGO = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
+let accountId = "";
+
 function seedUser(lastFetchedAt: string) {
-  db.getTable("users").push({
-    imdb_user_id: OWNER,
-    is_active: true,
-    created_at: new Date().toISOString(),
-    last_fetched_at: lastFetchedAt,
-    rpdb_api_key: null,
-    last_cache_served_at: null,
-  });
+  accountId = seedLegacyAccount(OWNER, { last_fetched_at: lastFetchedAt }).id;
 }
 
 function seedWatchlist(id: string) {
-  db.getTable("user_watchlists").push({
-    id,
-    owner_user_id: OWNER,
-    imdb_user_id: OWNER,
-    catalog_title: "",
-    sort_option: "added_at-asc",
-    display_mode: "split",
-    position: 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  });
+  seedList(accountId, { id, source_ref: OWNER });
 }
 
-function seedCache(watchlistId: string, metas: { id: string; type: string }[]) {
-  cache.seed(watchlistId, metas as StremioMeta[]);
+function seedCache(listId: string, metas: { id: string; type: string }[]) {
+  cache.seed(listId, metas as StremioMeta[]);
 }
 
 const CACHED_MOVIE: StremioMeta = {
@@ -79,6 +69,7 @@ function requestRefresh() {
 
 beforeEach(() => {
   db.reset();
+  resetRpc();
   cache.reset();
   vi.restoreAllMocks();
 });
@@ -111,6 +102,7 @@ describe("manual refresh reports honest success/failure counts", () => {
     seedWatchlist(UUID_1);
     vi.spyOn(scraper, "fetchWatchlist").mockResolvedValue({
       metas: [CACHED_MOVIE],
+      complete: true,
     });
 
     const res = await requestRefresh();
@@ -148,6 +140,7 @@ describe("manual refresh reports honest success/failure counts", () => {
     };
     vi.spyOn(scraper, "fetchWatchlist").mockResolvedValue({
       metas: [CACHED_MOVIE, NEW],
+      complete: true,
     });
 
     const res = await requestRefresh();
@@ -171,6 +164,7 @@ describe("manual refresh reports honest success/failure counts", () => {
     };
     vi.spyOn(scraper, "fetchWatchlist").mockResolvedValue({
       metas: [CACHED_MOVIE, GODFATHER, { ...CACHED_MOVIE }],
+      complete: true,
     });
 
     const res = await requestRefresh();
@@ -198,5 +192,48 @@ describe("manual refresh reports honest success/failure counts", () => {
     expect(body.throttled).toBe(true);
     // A throttled refresh must not touch IMDb at all.
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe("manual refresh through each kind of Addon URL", () => {
+  it("refreshes through a private Account ID", async () => {
+    const account = seedAccount({ last_fetched_at: TEN_MINUTES_AGO });
+    seedList(account.id, { id: UUID_1, source_ref: OWNER });
+    vi.spyOn(scraper, "fetchWatchlist").mockResolvedValue({
+      metas: [CACHED_MOVIE],
+      complete: true,
+    });
+
+    const res = await app.request(`/${account.id}/refresh`, {
+      method: "POST",
+    });
+
+    const body = (await res.json()) as RefreshResponse;
+    expect(body).toMatchObject({ refreshed: 1, failed: 0, total: 1 });
+    expect(db.getTable("accounts")[0].last_fetched_at).toBe(body.lastFetchedAt);
+  });
+
+  it("skips Connection lists when the refresh comes through a Legacy alias", async () => {
+    seedUser(TEN_MINUTES_AGO);
+    seedWatchlist(UUID_1);
+    seedList(accountId, {
+      id: "22222222-2222-4222-8222-222222222222",
+      provider: "trakt",
+      source_ref: "me/watchlist",
+      position: 1,
+    });
+    vi.spyOn(scraper, "fetchWatchlist").mockResolvedValue({
+      metas: [CACHED_MOVIE],
+      complete: true,
+    });
+
+    const body = (await (await requestRefresh()).json()) as RefreshResponse;
+
+    expect(body).toMatchObject({ refreshed: 1, failed: 0, total: 1 });
+  });
+
+  it("returns 404 for an unknown Addon URL", async () => {
+    const res = await app.request(`/ur99999999/refresh`, { method: "POST" });
+    expect(res.status).toBe(404);
   });
 });

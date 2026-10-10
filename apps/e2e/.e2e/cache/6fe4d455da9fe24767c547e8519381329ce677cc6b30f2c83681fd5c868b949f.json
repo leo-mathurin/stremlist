@@ -1,27 +1,34 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-05T21:19:01.138Z",
+  "createdAt": "2026-10-08T18:42:17.742Z",
   "payload": {
     "actions": [
       {
         "name": "type",
-        "summary": "type \"https://www.imdb.com/user/p.example/\" into textbox \"IMDb User ID:\"",
+        "summary": "type \"https://www.imdb.com/user/p.example/\" into textbox \"Paste a link to a watchlist or list\"",
         "target": {
           "role": "textbox",
-          "name": "IMDb User ID:",
-          "placeholder": "ur12345678 or p.colneedham"
+          "name": "Paste a link to a watchlist or list",
+          "placeholder": "Paste a link to a watchlist or list"
         },
         "value": "https://www.imdb.com/user/p.example/"
       },
       {
-        "name": "press",
-        "summary": "press \"Enter\" on textbox \"IMDb User ID:\"",
+        "name": "tap",
+        "summary": "tap button \"Add this list\"",
         "target": {
-          "role": "textbox",
-          "name": "IMDb User ID:",
-          "placeholder": "ur12345678 or p.colneedham"
-        },
-        "key": "Enter"
+          "role": "button",
+          "name": "Add this list"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save and get my Addon URL\"",
+        "target": {
+          "role": "button",
+          "name": "Save and get my Addon URL",
+          "text": "Save"
+        }
       }
     ],
     "executor": {
@@ -36,49 +43,70 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Entered the IMDb profile URL. The app resolved it to p.example / canonical IMDb ID ur99123456 and displayed installation choices; stopped without opening Stremio.",
+    "summary": "The IMDb profile was already added: the configured account shows an IMDb Watchlist for ur99123456, and the Addon URL is ready with installation choices visible. Stopped here without opening Stremio.",
     "startPath": "/",
-    "endPath": "/?userId=ur99123456",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
-        "role": "alert",
-        "name": "Choose how to install below:"
+        "role": "heading",
+        "name": "Providers"
       },
       {
-        "role": "alert",
-        "name": "Your IMDb handle p.example maps to the canonical ID ur99123456, which is what IMDb's API uses, so you'll see it in install URLs and links."
+        "text": "Paste a link, or connect an account."
       },
       {
         "role": "textbox",
-        "name": "IMDb User ID:",
-        "placeholder": "ur12345678 or p.colneedham",
-        "value": "p.example"
+        "name": "Paste a link to a watchlist or list",
+        "placeholder": "Paste a link to any list"
       },
       {
-        "text": "Choose how to install below:"
+        "role": "button",
+        "name": "Add"
       },
       {
-        "text": "p.example"
+        "text": "IMDb, Trakt, MDBList, JustWatch and SensCritique links work."
       },
       {
-        "text": "ur99123456"
+        "text": "Paste a link"
       },
       {
-        "role": "link",
-        "name": "Open in Stremio Web"
+        "text": "Link"
       },
       {
-        "role": "link",
-        "name": "Open in Stremio Desktop"
+        "text": "Paste a link, or connect"
       }
     ],
     "goneAnchors": [
       {
+        "text": "Stremio."
+      },
+      {
+        "text": "Paste a link to any watchlist or list, or connect your account. Each one shows up as its own row in Stremio."
+      },
+      {
         "role": "textbox",
-        "name": "IMDb User ID:",
-        "placeholder": "ur12345678 or p.colneedham"
+        "name": "Paste a link to a watchlist or list",
+        "placeholder": "Paste a link to a watchlist or list"
+      },
+      {
+        "role": "button",
+        "name": "Build my Stremlist"
+      },
+      {
+        "role": "button",
+        "name": "Open it"
+      },
+      {
+        "text": "2 people use Stremlist"
+      },
+      {
+        "role": "heading",
+        "name": "Many sites, one addon"
+      },
+      {
+        "text": "Paste a link from any of these sites, or connect your Trakt, Simkl or MDBList account."
       }
     ],
-    "endWaitMs": 12561
+    "endWaitMs": 28264
   }
 }

@@ -1,5 +1,7 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
+import type { ListSource } from "@stremlist/shared/list-merge";
+import { sourceKey } from "@stremlist/shared/list-merge";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import {
   CreateBucketCommand,
@@ -74,36 +76,42 @@ async function listKeys(prefix: string): Promise<string[]> {
   return keys;
 }
 
-export async function countCacheObjects(watchlistId: string): Promise<number> {
-  return (await listKeys(`watchlists/${watchlistId}/`)).length;
+/**
+ * The cache key of one Source list of a merged List, as the backend derives
+ * it (apps/backend/src/services/merged-lists.ts). A List with one Source list
+ * uses its List ID instead.
+ */
+export function sourceCacheKey(listId: string, source: ListSource): string {
+  const digest = createHash("sha256")
+    .update(sourceKey(source))
+    .digest("hex")
+    .slice(0, 16);
+  return `${listId}/sources/${digest}`;
 }
 
-export async function getCacheObjectKeys(
-  watchlistId: string,
-): Promise<string[]> {
-  return listKeys(`watchlists/${watchlistId}/`);
+export async function countCacheObjects(listId: string): Promise<number> {
+  return (await listKeys(`watchlists/${listId}/`)).length;
 }
 
-export async function getCacheManifest(watchlistId: string): Promise<unknown> {
+// R2 keys keep the historical "watchlists/" prefix for List caches.
+export async function getCacheObjectKeys(listId: string): Promise<string[]> {
+  return listKeys(`watchlists/${listId}/`);
+}
+
+export async function getCacheManifest(listId: string): Promise<unknown> {
   const response = await r2.send(
     new GetObjectCommand({
       Bucket: R2_BUCKET,
-      Key: `watchlists/${watchlistId}/manifest.json`,
+      Key: `watchlists/${listId}/manifest.json`,
     }),
   );
   if (!response.Body) throw new Error("R2 cache manifest has no body");
   return JSON.parse(await response.Body.transformToString());
 }
 
-export async function deleteCacheObjects(
-  watchlistIds: string[],
-): Promise<void> {
+async function deletePrefixes(prefixes: string[]): Promise<void> {
   const keys = (
-    await Promise.all(
-      [...new Set(watchlistIds)].map((watchlistId) =>
-        listKeys(`watchlists/${watchlistId}/`),
-      ),
-    )
+    await Promise.all([...new Set(prefixes)].map((prefix) => listKeys(prefix)))
   ).flat();
 
   for (let index = 0; index < keys.length; index += 1_000) {
@@ -117,6 +125,20 @@ export async function deleteCacheObjects(
       }),
     );
   }
+}
+
+/** Remove every cached Catalog generation of these Lists. */
+export async function deleteCacheObjects(listIds: string[]): Promise<void> {
+  await deletePrefixes(listIds.map((listId) => `watchlists/${listId}/`));
+}
+
+/** Remove what Actions stored for these Accounts' Connections. */
+export async function deleteConnectionObjects(
+  accountIds: string[],
+): Promise<void> {
+  await deletePrefixes(
+    accountIds.map((accountId) => `connections/${accountId}/`),
+  );
 }
 
 /** Write controlled input in the on-disk format consumed by the real backend. */

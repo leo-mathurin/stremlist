@@ -1,9 +1,8 @@
-import { Link } from "react-router";
-import Header from "../components/Header";
+import DocPanel from "../components/DocPanel";
 import Footer from "../components/Footer";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { SplitLayout } from "../components/brand";
 import { useSEO } from "../hooks/useSEO";
+import { cn } from "@/lib/utils";
 
 type ChangeType = "enhancement" | "bugfix" | "performance" | "security";
 
@@ -20,11 +19,16 @@ interface Version {
 }
 
 const BADGE_CLASSES: Record<ChangeType, string> = {
-  enhancement: "bg-green-500 text-white border-0 hover:bg-green-500",
-  bugfix: "bg-blue-500 text-white border-0 hover:bg-blue-500",
-  performance: "bg-orange-400 text-black border-0 hover:bg-orange-400",
-  security: "bg-red-500 text-white border-0 hover:bg-red-500",
+  enhancement: "bg-brand text-black",
+  bugfix: "bg-black/[0.06] text-black/70",
+  performance: "bg-ink text-cloud",
+  security: "bg-red-100 text-red-700",
 };
+
+/** An anchor for a version, such as "v1-10-0". */
+function versionId(version: string) {
+  return version.replaceAll(".", "-");
+}
 
 const VERSIONS: Version[] = [
   {
@@ -44,7 +48,7 @@ const VERSIONS: Version[] = [
       {
         type: "enhancement",
         label: "Feature",
-        text: 'Added optional "90 min or less", "Top rated", and "Shuffle" catalogs for your Stremio home. Enable them under "Filters & extra catalogs", save, and reinstall the addon to show the new catalogs.',
+        text: 'Added optional "90 min or less", "Top rated", and "Shuffle" catalogs in Stremio. Enable them under "Filters & extra catalogs", save, and reinstall the addon to show the new catalogs.',
       },
       {
         type: "enhancement",
@@ -107,7 +111,7 @@ const VERSIONS: Version[] = [
       {
         type: "enhancement",
         label: "Feature",
-        text: "Added built-in IMDb chart catalogs — add Most Popular and Top 250 Movies & TV, the weekend Box Office, and Coming Soon releases as ready-made catalogs, no IMDb account required.",
+        text: "Added built-in IMDb chart catalogs: add Most Popular and Top 250 Movies & TV, the weekend Box Office, and Coming Soon releases as ready-made catalogs, no IMDb account required.",
       },
       {
         type: "enhancement",
@@ -128,7 +132,7 @@ const VERSIONS: Version[] = [
       {
         type: "performance",
         label: "Performance",
-        text: "Catalogs are now served cache-first, so a fresh watchlist loads from a single fast lookup with no live IMDb fetch — making catalogs noticeably quicker and more resilient.",
+        text: "Catalogs are now served cache-first, so a fresh watchlist loads from a single fast lookup with no live IMDb fetch. This makes catalogs noticeably quicker and more resilient.",
       },
       {
         type: "bugfix",
@@ -285,57 +289,64 @@ export default function Changelog() {
   useSEO({
     title: "Changelog - Stremlist",
     description:
-      "See what's new in Stremlist. A history of updates and improvements to the IMDb watchlist addon for Stremio.",
+      "See what's new in Stremlist. A history of updates and improvements to the Stremio addon for your watchlists and lists.",
     canonical: "https://stremlist.com/changelog",
   });
 
   return (
-    <div className="max-w-3xl mx-auto my-8 bg-white rounded-lg shadow-md p-8">
-      <Header />
-
-      <main>
-        <Button
-          variant="link"
-          asChild
-          className="h-auto p-0 text-stremlist text-sm"
-        >
-          <Link to="/">&larr; Back to Home</Link>
-        </Button>
-
-        <h2 className="text-xl font-bold text-gray-900 mt-4 mb-1">Changelog</h2>
-        <p className="text-sm text-gray-500 mb-6">
-          A history of updates and improvements to the Stremlist IMDb Watchlist
-          addon.
-        </p>
-
-        <div className="space-y-6">
-          {VERSIONS.map((v) => (
-            <div
-              key={v.version}
-              className="pb-6 border-b border-gray-100 last:border-b-0"
-            >
-              <div className="flex items-baseline gap-3 mb-3">
-                <span className="text-lg font-bold text-stremlist">
-                  {v.version}
-                </span>
-                <span className="text-sm text-gray-400">{v.date}</span>
-              </div>
-              <ul className="space-y-2 pl-4">
+    <SplitLayout
+      siteLinksBelow={false}
+      panel={
+        <DocPanel
+          title="Changelog"
+          lead="A history of updates and improvements to Stremlist."
+          links={VERSIONS.map((v) => ({
+            href: `#${versionId(v.version)}`,
+            label: v.version,
+            detail: v.date,
+          }))}
+        />
+      }
+    >
+      <div className="mx-auto max-w-3xl p-5 pb-12 sm:p-8 lg:p-12">
+        {VERSIONS.map((v) => (
+          <section
+            key={v.version}
+            id={versionId(v.version)}
+            aria-labelledby={`${versionId(v.version)}-title`}
+            className="grid scroll-mt-6 gap-1 border-t border-black/10 py-10 first:border-t-0 first:pt-0 sm:grid-cols-[9rem_1fr] sm:gap-8"
+          >
+            <p className="text-sm text-black/45 sm:pt-1.5">{v.date}</p>
+            <div>
+              <h2
+                id={`${versionId(v.version)}-title`}
+                className="text-2xl font-bold tracking-tight"
+              >
+                {v.version}
+              </h2>
+              <ul className="mt-4 space-y-3 text-[15px] leading-relaxed text-pretty text-black/65">
                 {v.changes.map((change, i) => (
-                  <li key={i} className="text-sm text-gray-700">
-                    <Badge className={`mr-2 ${BADGE_CLASSES[change.type]}`}>
+                  <li key={i}>
+                    <span
+                      className={cn(
+                        "mr-2 inline-block rounded-full px-2 py-0.5 align-[1px] text-xs leading-normal font-semibold",
+                        BADGE_CLASSES[change.type],
+                      )}
+                    >
                       {change.label}
-                    </Badge>
+                    </span>
                     {change.text}
                   </li>
                 ))}
               </ul>
             </div>
-          ))}
-        </div>
-      </main>
+          </section>
+        ))}
 
-      <Footer />
-    </div>
+        <div className="mt-6">
+          <Footer />
+        </div>
+      </div>
+    </SplitLayout>
   );
 }

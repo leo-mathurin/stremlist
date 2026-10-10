@@ -63,10 +63,10 @@ export default function BuiltInCatalogPicker({
         disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="gap-2"
+        className="h-8 gap-1.5 rounded-full border-0 bg-black/5 px-3 text-xs font-semibold shadow-none hover:bg-black/10"
       >
-        <Sparkles className="size-4" />
-        Add Built-in Catalog
+        <Sparkles className="size-3.5" />
+        Add an IMDb chart
         <ChevronDown
           className={cn(
             "size-4 opacity-50 transition-transform",
@@ -87,7 +87,7 @@ export default function BuiltInCatalogPicker({
               flushSync(() => setMounted(false));
             }
           }}
-          className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-top-2 data-[state=closed]:fill-mode-forwards absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] origin-top-right overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg"
+          className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=open]:slide-in-from-top-2 data-[state=closed]:fill-mode-forwards absolute left-0 z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] origin-top-left overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg"
         >
           <div className="flex items-center gap-2 border-b border-gray-100 px-3 py-2">
             <Sparkles className="size-3.5 text-imdb-dark" />

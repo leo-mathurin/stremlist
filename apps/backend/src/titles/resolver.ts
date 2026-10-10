@@ -1,0 +1,214 @@
+import { IMDB_TITLE_ID_PATTERN } from "@stremlist/shared/constants";
+import { supabase } from "../lib/supabase";
+import { isProviderEnabled } from "../providers/kill-switch";
+import type {
+  ProviderAdapter,
+  ResolutionKey,
+  SourceEntry,
+} from "../providers/types";
+
+/** How long an entry that no strategy could resolve waits before a retry. */
+const UNRESOLVED_RETRY_MS = 24 * 60 * 60_000;
+/**
+ * Most entries a single refresh sends through the strategies. A big cold list
+ * resolves over a few refreshes instead of blocking one catalog request.
+ */
+const MAX_STRATEGY_ENTRIES_PER_REFRESH = 300;
+const CACHE_QUERY_CHUNK = 200;
+const STRATEGY_CHUNK = 50;
+/** Time a catalog request may spend in strategies before serving what it has. */
+export const DEFAULT_RESOLVE_BUDGET_MS = 10_000;
+
+interface ResolveOptions {
+  /** Stop starting new chunks after this long; the rest waits for a refresh. */
+  budgetMs: number;
+}
+
+interface ResolvedEntry {
+  imdbId: string;
+  entry: SourceEntry;
+}
+
+interface ResolutionResult {
+  /** Resolved entries, in Source list order. */
+  resolved: ResolvedEntry[];
+  /** Entries without an IMDb ID yet (Unresolved entries, see CONTEXT.md). */
+  unresolvedEntries: SourceEntry[];
+  /**
+   * Unresolved entries that no strategy tried yet (cap or time budget). The
+   * caller should refresh soon instead of waiting for the usual freshness.
+   */
+  deferred: number;
+}
+
+interface CacheRow {
+  namespace: string;
+  external_id: string;
+  imdb_id: string | null;
+  retry_after: string | null;
+}
+
+function cacheKey(key: ResolutionKey): string {
+  return `${key.namespace}\u0000${key.externalId}`;
+}
+
+async function readCache(
+  keys: ResolutionKey[],
+): Promise<Map<string, CacheRow>> {
+  const rows = new Map<string, CacheRow>();
+  const byNamespace = new Map<string, string[]>();
+  for (const key of keys) {
+    const ids = byNamespace.get(key.namespace) ?? [];
+    ids.push(key.externalId);
+    byNamespace.set(key.namespace, ids);
+  }
+  for (const [namespace, ids] of byNamespace) {
+    for (let start = 0; start < ids.length; start += CACHE_QUERY_CHUNK) {
+      const { data, error } = await supabase
+        .from("title_id_map")
+        .select("namespace, external_id, imdb_id, retry_after")
+        .eq("namespace", namespace)
+        .in("external_id", ids.slice(start, start + CACHE_QUERY_CHUNK));
+      if (error) {
+        console.error("Failed to read the title ID cache:", error.message);
+        continue;
+      }
+      for (const row of data as CacheRow[]) {
+        rows.set(
+          cacheKey({ namespace: row.namespace, externalId: row.external_id }),
+          row,
+        );
+      }
+    }
+  }
+  return rows;
+}
+
+async function writeCache(
+  rows: {
+    key: ResolutionKey;
+    imdbId: string | null;
+    strategy: string | null;
+  }[],
+): Promise<void> {
+  // A Source list can hold the same entry twice, and Postgres rejects an
+  // upsert that touches one row twice: the whole batch would be lost.
+  const unique = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) {
+    const key = cacheKey(row.key);
+    if (!unique.get(key)?.imdbId) unique.set(key, row);
+  }
+  const now = Date.now();
+  const { error } = await supabase.from("title_id_map").upsert(
+    [...unique.values()].map(({ key, imdbId, strategy }) => ({
+      namespace: key.namespace,
+      external_id: key.externalId,
+      imdb_id: imdbId,
+      strategy,
+      resolved_at: new Date(now).toISOString(),
+      retry_after: imdbId
+        ? null
+        : new Date(now + UNRESOLVED_RETRY_MS).toISOString(),
+    })),
+    { onConflict: "namespace,external_id" },
+  );
+  if (error) {
+    console.error("Failed to write the title ID cache:", error.message);
+  }
+}
+
+/**
+ * Give every entry of a Source list its IMDb ID (ADR 0002). Entries that
+ * already carry one pass through. The others go through the resolver cache,
+ * then through the adapter's strategies in order. Entries that stay
+ * unresolved are retried on a later refresh, never dropped for good.
+ */
+export async function resolveEntries(
+  adapter: ProviderAdapter,
+  entries: SourceEntry[],
+  options: ResolveOptions = { budgetMs: DEFAULT_RESOLVE_BUDGET_MS },
+): Promise<ResolutionResult> {
+  const imdbIds: (string | null)[] = entries.map((entry) =>
+    entry.imdbId && IMDB_TITLE_ID_PATTERN.test(entry.imdbId)
+      ? entry.imdbId
+      : null,
+  );
+
+  const pending: { index: number; key: ResolutionKey }[] = [];
+  entries.forEach((entry, index) => {
+    if (imdbIds[index]) return;
+    const key = adapter.resolutionKey?.(entry);
+    if (key) pending.push({ index, key });
+  });
+
+  const cached = await readCache(pending.map(({ key }) => key));
+  const now = Date.now();
+  const toResolve: { index: number; key: ResolutionKey }[] = [];
+  for (const item of pending) {
+    const row = cached.get(cacheKey(item.key));
+    if (row?.imdb_id) {
+      imdbIds[item.index] = row.imdb_id;
+    } else if (
+      !row?.retry_after ||
+      new Date(row.retry_after).getTime() <= now
+    ) {
+      toResolve.push(item);
+    }
+  }
+
+  const startedAt = Date.now();
+  const capped = toResolve.slice(0, MAX_STRATEGY_ENTRIES_PER_REFRESH);
+  // Chunks let a slow strategy (one search per entry) stop at the time
+  // budget; entries not reached keep no cache row and are tried next time.
+  let attempted = 0;
+  for (let start = 0; start < capped.length; start += STRATEGY_CHUNK) {
+    if (start > 0 && Date.now() - startedAt > options.budgetMs) break;
+    attempted = Math.min(start + STRATEGY_CHUNK, capped.length);
+    const batch = capped.slice(start, start + STRATEGY_CHUNK);
+    const results = new Map<number, { imdbId: string; strategy: string }>();
+    let remaining = batch;
+    for (const strategy of adapter.resolverStrategies ?? []) {
+      if (remaining.length === 0) break;
+      if (strategy.provider && !isProviderEnabled(strategy.provider)) {
+        continue;
+      }
+      try {
+        const found = await strategy.resolve(
+          remaining.map(({ index }) => entries[index]),
+        );
+        for (const [position, imdbId] of found) {
+          // A strategy may answer a position that is not in the batch.
+          const item = position >= 0 ? remaining.at(position) : undefined;
+          if (item && IMDB_TITLE_ID_PATTERN.test(imdbId)) {
+            results.set(item.index, { imdbId, strategy: strategy.name });
+          }
+        }
+      } catch (error) {
+        console.error(
+          `ID resolver strategy ${strategy.name} failed:`,
+          error instanceof Error ? error.message : error,
+        );
+      }
+      remaining = remaining.filter(({ index }) => !results.has(index));
+    }
+
+    for (const [index, { imdbId }] of results) imdbIds[index] = imdbId;
+    await writeCache(
+      batch.map(({ index, key }) => ({
+        key,
+        imdbId: results.get(index)?.imdbId ?? null,
+        strategy: results.get(index)?.strategy ?? null,
+      })),
+    );
+  }
+  const deferred = toResolve.length - attempted;
+
+  const resolved: ResolvedEntry[] = [];
+  const unresolvedEntries: SourceEntry[] = [];
+  entries.forEach((entry, index) => {
+    const imdbId = imdbIds[index];
+    if (imdbId) resolved.push({ imdbId, entry });
+    else unresolvedEntries.push(entry);
+  });
+  return { resolved, unresolvedEntries, deferred };
+}

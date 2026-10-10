@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-05T21:20:00.266Z",
+  "createdAt": "2026-10-08T18:57:10.099Z",
   "payload": {
     "actions": [
       {
@@ -13,10 +13,31 @@
       },
       {
         "name": "tap",
-        "summary": "tap button \"Save\"",
+        "summary": "tap combobox \"Genre\"",
+        "target": {
+          "role": "combobox",
+          "name": "Genre"
+        }
+      },
+      {
+        "name": "press",
+        "summary": "press \"Escape\" on option \"All genres\"",
+        "target": {
+          "role": "option",
+          "name": "All genres"
+        },
+        "key": "Escape"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save\" (2 of 2)",
         "target": {
           "role": "button",
-          "name": "Save"
+          "name": "Save",
+          "position": {
+            "index": 1,
+            "of": 2
+          }
         }
       }
     ],
@@ -32,28 +53,15 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Cleared the Drama genre filter; the panel showed 1 active option remaining and Top rated remained checked. Saved, and the app confirmed: “Saved! Your catalogs will be refreshed with the new settings.”",
-    "startPath": "/configure?userId=ur99123456",
-    "endPath": "/configure?userId=ur99123456",
+    "summary": "The genre filter is cleared (All genres), and Top rated remains checked. I tapped Save; the visible confirmation says “Saved! Reinstall Stremlist in Stremio to see your changes.”",
+    "startPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
-      {
-        "role": "alert",
-        "name": "Saved! Your catalogs will be refreshed with the new settings."
-      },
       {
         "text": "1 active"
       },
       {
         "text": "All genres"
-      },
-      {
-        "text": "Saved! Your catalogs will be refreshed with the new settings."
-      },
-      {
-        "text": "Install / Reinstall Addon in Stremio"
-      },
-      {
-        "text": "Use these install links anytime to reopen or reinstall the addon URL in Stremio."
       },
       {
         "role": "button",
@@ -65,10 +73,6 @@
     ],
     "goneAnchors": [
       {
-        "role": "alert",
-        "name": "Saved! Catalog structure changed. Reinstall the addon in Stremio to refresh catalogs."
-      },
-      {
         "text": "2 active"
       },
       {
@@ -79,15 +83,6 @@
         "text": "Drama"
       },
       {
-        "text": "Saved! Catalog structure changed. Reinstall the addon in Stremio to refresh catalogs."
-      },
-      {
-        "text": "Catalog structure changed: reinstall required in Stremio"
-      },
-      {
-        "text": "Stremio only reads manifest catalogs at install time, so modifications to catalogs will appear after reinstalling this addon URL."
-      },
-      {
         "role": "button",
         "name": "Filters & extra catalogs 2 active",
         "states": [
@@ -95,6 +90,6 @@
         ]
       }
     ],
-    "endWaitMs": 13207
+    "endWaitMs": 15369
   }
 }

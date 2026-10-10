@@ -2,7 +2,7 @@ import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { describe, expect, it } from "vitest";
 import { filterCatalog, resolveCatalogSelection } from "../catalog-filters";
 
-import { sortWatchlist } from "../watchlist-sort";
+import { sortCatalog } from "../catalog-sort";
 
 const base: StremioMeta = {
   id: "tt1",
@@ -46,7 +46,7 @@ describe("catalog selection", () => {
     const selection = resolveCatalogSelection("added_at-asc", {}, filter);
     expect(
       filterCatalog(
-        sortWatchlist(metas, selection.sort, "test"),
+        sortCatalog(metas, selection.sort, "test"),
         selection.filters,
       ).map((meta) => meta.id),
     ).toEqual(ids);
@@ -80,8 +80,8 @@ it.each([
         filter,
         preset,
       );
-      expect(sortWatchlist(ties, selected.sort, "generation")).toEqual(
-        sortWatchlist(ties, fallback.sort, "generation"),
+      expect(sortCatalog(ties, selected.sort, "generation")).toEqual(
+        sortCatalog(ties, fallback.sort, "generation"),
       );
     }
   },

@@ -1,58 +1,54 @@
 import { test } from "@e2e-dev/web";
 import type { Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
+import type { AccountConfigInput } from "@stremlist/shared/stremio.types";
+import {
+  SAVED_REINSTALL,
+  SAVED_WITH_CHANGES,
+  accountId,
+  backend,
+  baseRoutes,
+  captureConfig,
+  configuration,
+  dragSecondAboveFirst,
+  gatedSaves,
+  imdbUser,
+  legacyConfiguration,
+  parseBody,
+  resolved,
+  routeCreateAccount,
+  routeResolve,
+  row,
+  savedLists,
+  toJson,
+  saveButton,
+  SAVE_NEW,
+  holdToasts,
+  fitConfigurePage,
+} from "./config-fixture";
 
-const userId = "ur99123456";
-const watchlist = {
-  id: "test-watchlist",
-  imdbUserId: userId,
-  catalogTitle: "Test catalog",
-  sortOption: "added_at-asc",
-  displayMode: "split",
-  position: 0,
+const PASTE = "Paste a link to a watchlist or list";
+const addonUrl = (key: string) => `${backend}/${key}/manifest.json`;
+const second = {
+  ...row,
+  id: "00000000-0000-4000-8000-000000000002",
+  sourceRef: "ls99123456",
+  catalogTitle: "Second catalog",
+  position: 1,
 };
-const config = {
-  rpdbApiKey: "",
-  lastFetchedAt: null,
-  cooldownSeconds: 2,
-  watchlists: [watchlist],
-};
+const twoLists = { ...configuration, lists: [row, second] };
+const watchlistLink = `https://www.imdb.com/user/${imdbUser}/watchlist`;
+const listLink = "https://www.imdb.com/list/ls99123456/";
 
-async function fixture(
-  browser: Browser,
-  options: {
-    existing?: boolean;
-    valid?: boolean;
-    private?: boolean;
-    unavailable?: boolean;
-  } = {},
-) {
-  await browser.route("http://127.0.0.1:4314/**", async (route) => {
-    if (options.unavailable) {
-      await route.abort();
-      return;
-    }
-    const path = new URL(route.request.url).pathname;
-    if (path.startsWith("/validate/")) {
-      await route.fulfill({
-        json: {
-          valid: options.valid ?? true,
-          userId,
-          reason: options.private ? "private" : "not_found",
-        },
-      });
-    } else if (path.endsWith("/config")) {
-      await route.fulfill({
-        status: options.existing ? 200 : 404,
-        json: options.existing ? config : { error: "not found" },
-      });
-    } else {
-      await route.fulfill({
-        status: 404,
-        json: { error: "Unmatched fixture" },
-      });
-    }
-  });
+/** Resolve the two fixture IMDb links like the backend does. */
+async function resolveFixtureLinks(browser: Browser) {
+  return routeResolve(browser, (input) =>
+    input === watchlistLink
+      ? resolved("imdb", imdbUser, "watchlist")
+      : input === listLink
+        ? resolved("imdb", "ls99123456", "list")
+        : { ok: false, reason: "not_found", provider: "imdb" },
+  );
 }
 
 test("public pages and unknown routes provide navigation", async ({
@@ -60,36 +56,48 @@ test("public pages and unknown routes provide navigation", async ({
   screen,
   browser,
 }) => {
+  await baseRoutes(browser);
   for (const [path, heading] of [
-    ["/", "Connect IMDb to Stremio"],
-    ["/terms", /Terms/],
-    ["/changelog", /Changelog/],
+    ["/", "Your lists, all in Stremio."],
+    ["/terms", "Terms and privacy"],
+    ["/changelog", "Changelog"],
     ["/unknown", "Page not found"],
   ] as const) {
     await app.open(path);
-    await expect(screen.getByRole("heading", heading).first()).toBeVisible();
+    await expect(screen.getByRole("heading", heading)).toBeVisible();
   }
   await screen.getByRole("link", "Return to home").tap();
   await expect(browser).toHaveURL("/");
 });
 
-test("format errors and clearing input remove install actions", async ({
+test("Home detects the Provider of a link and clearing it resets the entry", async ({
   app,
   screen,
   browser,
 }) => {
-  await fixture(browser);
+  await baseRoutes(browser);
   await app.open("/");
-  await screen.getByLabel("IMDb User ID:").fill("banana");
+  const field = screen.getByLabel(PASTE);
+  await field.fill("banana");
   await expect(
-    screen.getByText(/Could not find a valid IMDb ID/),
+    screen.getByText("No supported site recognized yet."),
   ).toBeVisible();
-  await screen.getByLabel("IMDb User ID:").fill(userId);
-  await expect(screen.getByRole("link", "Open in Stremio Web")).toBeVisible();
-  await screen.getByLabel("IMDb User ID:").fill("");
+  await expect(screen.getByRole("button", "Add this list")).toBeVisible();
+  await field.fill(watchlistLink);
+  await expect(screen.getByText("IMDb watchlist detected")).toBeVisible();
+  await field.fill("https://trakt.tv/users/someone/lists/weekend");
+  await expect(screen.getByText("Trakt list detected")).toBeVisible();
+  await field.fill(addonUrl(accountId));
+  await expect(screen.getByText("Addon URL detected")).toBeVisible();
+  await field.fill("https://letterboxd.com/someone/watchlist/");
+  await expect(screen.getByText("Letterboxd: coming soon")).toBeVisible();
+  await field.fill("");
+  await expect(screen.getByRole("button", "Build my Stremlist")).toBeVisible();
+  // An empty field shows no hint.
+  await expect(screen.getByText("Letterboxd: coming soon")).toBeHidden();
   await expect(
-    screen.getByRole("link", "Open in Stremio Web"),
-  ).not.toBeVisible();
+    screen.getByText("No supported site recognized yet."),
+  ).toBeHidden();
   await expect(browser).toHaveURL("/");
 });
 
@@ -97,56 +105,77 @@ test(
   "profile URLs resolve to canonical install URLs",
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
-    await fixture(browser);
+    await fitConfigurePage(browser);
+    await baseRoutes(browser);
+    const profile = "https://www.imdb.com/user/p.example/";
+    const inputs = await routeResolve(browser, (input) =>
+      input === profile ? resolved("imdb", imdbUser, "watchlist") : null,
+    );
+    const created = await routeCreateAccount(browser);
+    await browser.route(`${backend}/${accountId}/config`, async (route) => {
+      await route.fulfill({
+        json: {
+          ...configuration,
+          lists: [{ ...row, catalogTitle: "IMDb Watchlist" }],
+        },
+      });
+    });
     await app.open("/");
     await agent.act(
       "Set up the addon using IMDb profile {profile}. Stop when installation choices appear; do not open Stremio.",
-      {
-        params: { profile: "https://www.imdb.com/user/p.example/" },
-        maxModelCalls: 5,
-      },
+      { params: { profile }, maxModelCalls: 7 },
     );
     await expect(
-      screen.getByRole("link", "Open in Stremio Desktop"),
-    ).toHaveAttribute(
+      screen.getByRole("heading", "Your Stremlist is ready"),
+    ).toBeVisible();
+    // Stremio opens `stremio://` links over HTTPS without a port, so the
+    // local http://127.0.0.1:4314 Addon URL has no app install link.
+    await expect(screen.getByRole("link", "Install in Stremio")).toHaveCount(0);
+    await expect(screen.getByRole("link", "Open Stremio Web")).toHaveAttribute(
       "href",
-      `stremio://127.0.0.1:4314/${userId}/manifest.json`,
+      `https://web.stremio.com/#/addons?addon=${encodeURIComponent(addonUrl(accountId))}`,
     );
-    await expect(
-      screen.getByRole("link", "Open in Stremio Web"),
-    ).toHaveAttribute(
-      "href",
-      `https://web.stremio.com/#/addons?addon=${encodeURIComponent(`http://127.0.0.1:4314/${userId}/manifest.json`)}`,
-    );
-    await expect(browser).toHaveURL(`/?userId=${userId}`);
-    await expect(screen.getByText(/maps to the canonical ID/)).toBeVisible();
+    await expect(browser).toHaveURL(`/configure?account=${accountId}`);
+    expect(inputs).toEqual([{ input: profile }]);
+    expect(created).toHaveLength(1);
+    expect(created[0].lists).toMatchObject([
+      { provider: "imdb", sourceRef: imdbUser, position: 0 },
+    ]);
   },
 );
 
 for (const state of ["private", "unknown", "offline"] as const) {
-  test(`validation reports ${state} watchlists`, async ({
+  test(`link validation reports ${state} watchlists`, async ({
     app,
     screen,
     browser,
   }) => {
-    await fixture(browser, {
-      valid: false,
-      private: state === "private",
-      unavailable: state === "offline",
-    });
-    await app.open("/");
-    await screen.getByLabel("IMDb User ID:").fill(userId);
+    await baseRoutes(browser);
+    await routeResolve(browser, () =>
+      state === "offline"
+        ? null
+        : {
+            ok: false,
+            reason: state === "private" ? "private" : "not_found",
+            provider: "imdb",
+          },
+    );
+    await app.open("/configure");
+    await screen.getByLabel(PASTE).fill(watchlistLink);
+    await screen.getByRole("button", "Add", { exact: true }).tap();
     await expect(
       screen.getByText(
         state === "private"
-          ? /This IMDb watchlist is private/
+          ? "This IMDb watchlist is private. Make your watchlist public in your IMDb account settings."
           : state === "unknown"
-            ? /This IMDb ID does not exist/
-            : /Could not validate this IMDb ID/,
+            ? "IMDb could not find this watchlist. Check the link. The list may have been deleted."
+            : "Could not check this link. Please try again in a moment.",
       ),
     ).toBeVisible();
+    await expect(screen.getByText("No Lists yet")).toBeVisible();
+    await expect(saveButton(screen, SAVE_NEW)).toBeDisabled();
     await expect(
-      screen.getByRole("link", "Open in Stremio Web"),
+      screen.getByRole("link", "Open Stremio Web"),
     ).not.toBeVisible();
   });
 }
@@ -155,106 +184,108 @@ test(
   "returning users can open configuration",
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
-    await fixture(browser, { existing: true });
-    await app.open(`/?userId=${userId}`);
-    await expect(screen.getByText(`Welcome back, ${userId}!`)).toBeVisible();
-    await agent.act("Open the existing user's catalog configuration.", {
-      maxModelCalls: 4,
+    await fitConfigurePage(browser);
+    await captureConfig(browser);
+    await app.open("/");
+    await agent.act("Open my existing Stremlist with the Addon URL {url}.", {
+      params: { url: addonUrl(accountId) },
+      maxModelCalls: 5,
     });
-    await expect(browser).toHaveURL(`/configure?userId=${userId}`);
-    await expect(screen.getByText("Catalog 1")).toBeVisible();
+    await expect(browser).toHaveURL(`/configure?account=${accountId}`);
+    await expect(screen.getByText("Test catalog")).toBeVisible();
+    await expect(
+      screen.getByRole("heading", "Install or reinstall in Stremio"),
+    ).toBeVisible();
   },
 );
 
-test("configuration handles missing users and load retry", async ({
+test("configuration handles missing Accounts and load retry", async ({
   app,
   screen,
   browser,
 }) => {
+  await baseRoutes(browser);
+  // Development builds load twice, so the state is a flag, not a count.
   let unavailable = true;
-  await browser.route("http://127.0.0.1:4314/**", async (route) => {
+  await browser.route(`${backend}/${accountId}/config`, async (route) => {
     await route.fulfill({
       status: unavailable ? 503 : 404,
       json: { error: "test" },
     });
   });
-  await app.open(`/configure?userId=${userId}`);
+  await app.open(`/configure?account=${accountId}`);
   await expect(
     screen.getByText("Could not load your configuration. Please try again."),
   ).toBeVisible();
   unavailable = false;
   await screen.getByRole("button", "Try again").tap();
-  await expect(screen.getByText(/User not found/)).toBeVisible();
+  await expect(
+    screen.getByText("We could not find this Stremlist"),
+  ).toBeVisible();
   await expect(screen.getByRole("button", "Save")).not.toBeVisible();
 });
 
-test("catalog edits validate duplicates, save values and refresh failures", async ({
+test("List edits reject duplicates, save values and report refresh failures", async ({
   app,
   screen,
   browser,
 }) => {
-  let saved: Record<string, unknown> | undefined;
-  await browser.route("http://127.0.0.1:4314/**", async (route) => {
-    if (
-      route.request.method === "POST" &&
-      route.request.url.endsWith("/config")
-    ) {
-      saved = JSON.parse(route.request.postData ?? "{}");
-      await route.fulfill({
-        json: {
-          ok: true,
-          watchlists: (
-            saved as { watchlists: Record<string, unknown>[] }
-          ).watchlists.map((row, index) => ({ ...row, id: `saved-${index}` })),
-        },
-      });
-    } else if (route.request.url.endsWith("/refresh")) {
-      await route.fulfill({
-        json: { ok: true, failed: 1, refreshed: 0, total: 1 },
-      });
-    } else {
-      await route.fulfill({ json: config });
-    }
+  const submissions = await captureConfig(browser);
+  await resolveFixtureLinks(browser);
+  await browser.route(`${backend}/${accountId}/refresh`, async (route) => {
+    await route.fulfill({
+      json: {
+        ok: true,
+        failed: 1,
+        refreshed: 0,
+        total: 1,
+        lastFetchedAt: configuration.lastFetchedAt,
+        cooldownSeconds: 2,
+      },
+    });
   });
-  await app.open(`/configure?userId=${userId}`);
-  await expect(screen.getByText("Catalog 1")).toBeVisible();
-  await screen.getByRole("button", "Add Catalog", { exact: true }).tap();
-  const sources = screen.getByPlaceholder(
-    "ur12345678, p.colneedham, or ls593621567",
-  );
-  await sources.nth(1).fill(userId);
+  await app.open(`/configure?account=${accountId}`);
+  await expect(screen.getByText("Test catalog")).toBeVisible();
+  // The watchlist of the existing List, pasted again.
+  await screen.getByLabel(PASTE).fill(watchlistLink);
+  await screen.getByRole("button", "Add", { exact: true }).tap();
   await expect(
-    screen.getByText("IMDb IDs must be unique across catalogs."),
+    screen.getByText("This list is already in your Stremlist."),
   ).toBeVisible();
-  await expect(
-    screen.getByRole("button", "Save", { exact: true }),
-  ).toBeDisabled();
-  await sources.nth(1).fill("ls99123456");
-  await screen
-    .getByPlaceholder("Tom Hardy's Watchlist")
-    .nth(1)
-    .fill("My movies");
-  await screen.getByRole("button", "Save", { exact: true }).tap();
-  await expect(
-    screen.getByText(/Saved! Catalog structure changed/),
-  ).toBeVisible();
-  expect(saved).toMatchObject({
-    watchlists: [
-      { imdbUserId: userId, position: 0 },
-      { imdbUserId: "ls99123456", catalogTitle: "My movies", position: 1 },
-    ],
-  });
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await expect(screen.getByText("1 of 10 lists")).toBeVisible();
+  await screen.getByLabel(PASTE).fill(listLink);
+  await screen.getByRole("button", "Add", { exact: true }).tap();
+  await expect(screen.getByText("IMDb · List · ls99123456")).toBeVisible();
+  await screen.getByRole("button", "Settings for IMDb List").tap();
+  await screen.getByLabel("Catalog title").nth(1).fill("My movies");
+  await saveButton(screen).tap();
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  expect(submissions[0].lists).toMatchObject([
+    { provider: "imdb", sourceRef: imdbUser, position: 0 },
+    {
+      provider: "imdb",
+      sourceRef: "ls99123456",
+      catalogTitle: "My movies",
+      position: 1,
+    },
+  ]);
+  // The second save changes nothing. Stremio still needs the reinstall.
+  await saveButton(screen).tap();
+  await expect.poll(() => submissions.length).toBe(2);
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  await screen.getByRole("button", "Remove My movies").tap();
+  await expect(screen.getByText("1 of 10 lists")).toBeVisible();
+  // An Account keeps at least one List: without one, Save is off.
+  await screen.getByRole("button", "Remove Test catalog").tap();
+  await expect(screen.getByText("No Lists yet")).toBeVisible();
+  await expect(saveButton(screen)).toBeDisabled();
+  await screen.getByRole("button", "Refresh now").tap();
   await expect(
     screen.getByText(
-      "Saved! Your catalogs will be refreshed with the new settings.",
+      "Refreshed 0 of 1 lists. The others failed to update: each List shows why.",
     ),
   ).toBeVisible();
-  await screen.getByRole("button", "Remove catalog").nth(1).tap();
-  await expect(screen.getByRole("button", "Remove catalog")).toHaveCount(1);
-  await expect(screen.getByRole("button", "Remove catalog")).toBeDisabled();
-  await screen.getByRole("button", "Refresh now").tap();
-  await expect(screen.getByText(/some failed to update/)).toBeVisible();
+  expect(submissions).toHaveLength(2);
 });
 
 for (const result of ["success", "server-error", "offline"] as const) {
@@ -262,6 +293,7 @@ for (const result of ["success", "server-error", "offline"] as const) {
     `newsletter validates email and handles ${result}`,
     { tags: result === "success" ? ["agent"] : [] },
     async ({ app, agent, screen, browser }) => {
+      await holdToasts(browser);
       let submissions = 0;
       await browser.route(
         "http://127.0.0.1:4314/newsletter/subscribe",
@@ -317,79 +349,86 @@ for (const entry of ["typed", "query"] as const) {
     screen,
     browser,
   }) => {
+    await baseRoutes(browser);
+    const key = entry === "typed" ? accountId : imdbUser;
     let configRequests = 0;
-    let validationRequests = 0;
-    await browser.route("http://127.0.0.1:4314/**", async (route) => {
-      const path = new URL(route.request.url).pathname;
-      if (path === "/stats") {
-        await route.fulfill({ json: { users: 0, watchlists: 0 } });
-      } else if (path === `/validate/${userId}`) {
-        validationRequests += 1;
-        await route.fulfill({ json: { valid: true, userId } });
-      } else if (
-        path === `/${userId}/config` &&
-        route.request.method === "GET"
-      ) {
-        configRequests += 1;
-        await route.fulfill({ status: 503, json: { error: "Unavailable" } });
-      } else {
-        throw new Error(
-          `Unexpected test API request: ${route.request.method} ${path}`,
-        );
-      }
+    let accountCreations = 0;
+    await browser.route(`${backend}/${key}/config`, async (route) => {
+      configRequests += 1;
+      await route.fulfill({ status: 503, json: { error: "Unavailable" } });
     });
-    await app.open(entry === "query" ? `/?userId=${userId}` : "/");
-    if (entry === "typed")
-      await screen.getByLabel("IMDb User ID:").fill(userId);
+    await browser.route(`${backend}/accounts`, async (route) => {
+      accountCreations += 1;
+      await route.fulfill({ status: 500, json: { error: "Not expected" } });
+    });
+    if (entry === "typed") {
+      await app.open("/");
+      await screen.getByRole("button", "Open it").tap();
+      await screen.getByLabel("Your Addon URL").fill(addonUrl(key));
+      await screen.getByRole("button", "Open", { exact: true }).tap();
+    } else {
+      // Old links sent returning users to /?userId=ur…
+      await app.open(`/?userId=${key}`);
+    }
     await expect(
-      screen.getByText(
-        "Could not validate this IMDb ID. Please try again later.",
-      ),
+      screen.getByText("Could not load your configuration. Please try again."),
     ).toBeVisible();
     expect(configRequests).toBeGreaterThan(0);
-    // Config is checked first. A service failure must stop onboarding before
-    // validation can offer a fresh installation for an existing account.
-    expect(validationRequests).toBe(0);
+    // A failed lookup must not turn an existing install into a new setup.
+    await expect(saveButton(screen, SAVE_NEW)).not.toBeVisible();
     await expect(
-      screen.getByRole("link", "Configure your Stremlist"),
+      screen.getByRole("link", "Open Stremio Web"),
     ).not.toBeVisible();
-    await expect(
-      screen.getByRole("link", "Open in Stremio Web"),
-    ).not.toBeVisible();
-    await expect(
-      screen.getByRole("link", "Open in Stremio Desktop"),
-    ).not.toBeVisible();
-    await expect(
-      screen.getByText(`Welcome back, ${userId}!`),
-    ).not.toBeVisible();
-    await expect(browser).toHaveURL(
-      entry === "query" ? `/?userId=${userId}` : "/",
-    );
+    await expect(screen.getByLabel(PASTE)).not.toBeVisible();
+    await expect(browser).toHaveURL(`/configure?account=${key}`);
+    expect(accountCreations).toBe(0);
   });
 }
 
 test(
-  "built-in catalogs avoid duplicates and enforce the catalog limit",
+  "built-in charts avoid duplicates and enforce the List limit",
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
-    await fixture(browser, { existing: true });
-    await app.open(`/configure?userId=${userId}`);
-    await agent.act("Add the built-in Top 250 Movies catalog.", {
+    await fitConfigurePage(browser);
+    await captureConfig(browser);
+    await app.open(`/configure?account=${accountId}`);
+    await agent.act("Add the built-in IMDb chart Top 250 Movies.", {
       maxModelCalls: 5,
     });
-    await expect(screen.getByText("Catalog 2")).toBeVisible();
-    await screen.getByRole("button", "Add Built-in Catalog").tap();
-    await expect(screen.getByRole("menuitem", /Top 250 Movies/)).toBeDisabled();
+    await expect(
+      screen.getByRole("button", "Remove Top 250 Movies"),
+    ).toBeVisible();
+    await expect(screen.getByText(/^2 of 10 lists/)).toBeVisible();
+    await screen.getByRole("button", "Add an IMDb chart").tap();
+    await expect(
+      screen.getByRole("menuitem", /^Top 250 Movies/),
+    ).toBeDisabled();
     await browser.keyboard.press("Escape");
-    for (let i = 2; i < 10; i += 1)
-      await screen.getByRole("button", "Add Catalog", { exact: true }).tap();
+    for (const chart of [
+      "Most Popular Movies",
+      "Most Popular TV Shows",
+      "Top 250 TV Shows",
+      "Box Office \\(Weekend\\)",
+      "Coming Soon \\(Movies\\)",
+      "Coming Soon \\(TV\\)",
+    ]) {
+      await screen.getByRole("button", "Add an IMDb chart").tap();
+      await screen.getByRole("menuitem", new RegExp(`^${chart}`)).tap();
+    }
+    await screen.getByRole("button", "Trending").tap();
+    await screen.getByRole("button", "Popular").tap();
+    await expect(screen.getByText(/^10 of 10 lists/)).toBeVisible();
     await expect(
-      screen.getByRole("button", "Add Catalog", { exact: true }),
+      screen.getByRole("button", "Add an IMDb chart"),
     ).toBeDisabled();
+    await expect(screen.getByRole("button", "Anticipated")).toBeDisabled();
+    await expect(screen.getByLabel(PASTE)).toBeDisabled();
     await expect(
-      screen.getByRole("button", "Add Built-in Catalog"),
-    ).toBeDisabled();
-    await expect(screen.getByRole("button", "Remove catalog")).toHaveCount(10);
+      screen.getByText(
+        "You have 10 lists, the maximum. Remove one to add another.",
+      ),
+    ).toBeVisible();
+    await expect(screen.getByRole("button", /^Remove /)).toHaveCount(10);
   },
 );
 
@@ -398,29 +437,30 @@ test("save errors preserve changes and allow a successful retry", async ({
   screen,
   browser,
 }) => {
+  await baseRoutes(browser);
   let rejected = true;
-  await browser.route("http://127.0.0.1:4314/**", async (route) => {
+  await browser.route(`${backend}/${accountId}/config`, async (route) => {
     if (route.request.method === "POST") {
+      const submitted = parseBody<AccountConfigInput>(route);
       await route.fulfill({
         status: rejected ? 400 : 200,
-        json: rejected ? { error: "Test save rejected" } : { ok: true },
+        json: rejected
+          ? { error: "Test save rejected" }
+          : toJson({ ok: true, lists: savedLists(submitted) }),
       });
-    } else await route.fulfill({ json: config });
+    } else await route.fulfill({ json: configuration });
   });
-  await app.open(`/configure?userId=${userId}`);
-  await screen
-    .getByPlaceholder("Tom Hardy's Watchlist")
-    .fill("Updated catalog");
-  await screen.getByRole("button", "Save", { exact: true }).tap();
+  await app.open(`/configure?account=${accountId}`);
+  await screen.getByRole("button", "Settings for Test catalog").tap();
+  await screen.getByLabel("Catalog title").fill("Updated catalog");
+  await saveButton(screen).tap();
   await expect(screen.getByText("Test save rejected")).toBeVisible();
-  await expect(screen.getByPlaceholder("Tom Hardy's Watchlist")).toHaveValue(
+  await expect(screen.getByLabel("Catalog title")).toHaveValue(
     "Updated catalog",
   );
   rejected = false;
-  await screen.getByRole("button", "Save", { exact: true }).tap();
-  await expect(
-    screen.getByText(/Saved! Catalog structure changed/),
-  ).toBeVisible();
+  await saveButton(screen).tap();
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
 });
 
 test("successful refresh applies cooldown and blocks another refresh", async ({
@@ -428,23 +468,22 @@ test("successful refresh applies cooldown and blocks another refresh", async ({
   screen,
   browser,
 }) => {
+  await captureConfig(browser);
   let refreshes = 0;
-  await browser.route("http://127.0.0.1:4314/**", async (route) => {
-    if (route.request.url.endsWith("/refresh")) {
-      refreshes += 1;
-      await route.fulfill({
-        json: {
-          ok: true,
-          failed: 0,
-          refreshed: 1,
-          total: 1,
-          lastFetchedAt: new Date().toISOString(),
-          cooldownSeconds: 60,
-        },
-      });
-    } else await route.fulfill({ json: config });
+  await browser.route(`${backend}/${accountId}/refresh`, async (route) => {
+    refreshes += 1;
+    await route.fulfill({
+      json: {
+        ok: true,
+        failed: 0,
+        refreshed: 1,
+        total: 1,
+        lastFetchedAt: new Date().toISOString(),
+        cooldownSeconds: 60,
+      },
+    });
   });
-  await app.open(`/configure?userId=${userId}`);
+  await app.open(`/configure?account=${accountId}`);
   await screen.getByRole("button", "Refresh now").tap();
   await expect(screen.getByRole("button", /Refresh in \d+s/)).toBeDisabled();
   expect(refreshes).toBe(1);
@@ -454,13 +493,14 @@ test(
   "RPDB key visibility control hides the key again",
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
-    await fixture(browser, { existing: true });
-    await app.open(`/configure?userId=${userId}`);
+    await fitConfigurePage(browser);
+    await captureConfig(browser);
+    await app.open(`/configure?account=${accountId}`);
     await expect(screen.getByRole("button", "Show RPDB API key")).toBeVisible();
     await agent.act("Reveal the RPDB API key using its visibility control.", {
       maxModelCalls: 4,
     });
-    await expect(screen.getByLabel("RPDB API Key (Optional)")).toHaveAttribute(
+    await expect(screen.getByLabel(/^RPDB API key/)).toHaveAttribute(
       "type",
       "text",
     );
@@ -470,10 +510,11 @@ test(
 );
 
 test(
-  "clipboard denial offers manual manifest copy",
+  "clipboard denial offers manual Addon URL copy",
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
-    await fixture(browser, { existing: true });
+    await fitConfigurePage(browser);
+    await captureConfig(browser);
     await browser.addInitScript(() => {
       Object.defineProperty(navigator.clipboard, "writeText", {
         configurable: true,
@@ -481,82 +522,38 @@ test(
           Promise.reject(new DOMException("Denied", "NotAllowedError")),
       });
     });
-    await app.open(`/configure?userId=${userId}`);
+    await app.open(`/configure?account=${accountId}`);
     await agent.act(
-      "Try to copy this addon's manifest URL with its copy control. Stop after the attempt, even if the browser refuses clipboard access.",
+      "Try to copy this addon's Addon URL with its copy control. Stop after the attempt, even if the browser refuses clipboard access.",
       { maxModelCalls: 4 },
     );
     await expect(
       screen.getByText(
-        "Could not copy the manifest URL. Select it and copy it manually.",
+        "Could not copy the Addon URL. Select it and copy it manually.",
       ),
     ).toBeVisible();
   },
 );
 
-test("pointer reorder changes visible catalog order and saved positions", async ({
+test("pointer reorder changes visible List order and saved positions", async ({
   app,
   screen,
   browser,
 }) => {
-  let saved:
-    | {
-        watchlists: Array<{
-          imdbUserId: string;
-          catalogTitle: string;
-          position: number;
-        }>;
-      }
-    | undefined;
-  const second = {
-    ...watchlist,
-    id: "second-watchlist",
-    imdbUserId: "ls99123456",
-    catalogTitle: "Second catalog",
-    position: 1,
-  };
-  await browser.route("http://127.0.0.1:4314/**", async (route) => {
-    if (route.request.method === "POST") {
-      saved = JSON.parse(route.request.postData ?? "{}");
-      await route.fulfill({ json: { ok: true } });
-    } else
-      await route.fulfill({
-        json: { ...config, watchlists: [watchlist, second] },
-      });
-  });
+  const submissions = await captureConfig(browser, twoLists);
   await browser.setViewport({ width: 1280, height: 1800 });
-  await app.open(`/configure?userId=${userId}`);
-  await expect(screen.getByRole("button", "Drag to reorder")).toHaveCount(2);
-  const handles = await browser.evaluate(() =>
-    Array.from(document.querySelectorAll('[aria-label="Drag to reorder"]')).map(
-      (el) => {
-        const rect = el.getBoundingClientRect();
-        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-      },
-    ),
-  );
-  await browser.mouse.move(handles[1].x, handles[1].y);
-  await browser.mouse.down();
-  for (let step = 1; step <= 12; step += 1) {
-    await browser.mouse.move(
-      handles[1].x,
-      handles[1].y + ((handles[0].y - handles[1].y - 20) * step) / 12,
-    );
-  }
-  await browser.mouse.up();
-  await expect(
-    screen.getByPlaceholder("Tom Hardy's Watchlist").first(),
-  ).toHaveValue("Second catalog");
-  await expect(
-    screen.getByPlaceholder("Tom Hardy's Watchlist").nth(1),
-  ).toHaveValue("Test catalog");
-  await screen.getByRole("button", "Save", { exact: true }).tap();
-  await expect(
-    screen.getByText(/Saved! Catalog structure changed/),
-  ).toBeVisible();
-  expect(saved?.watchlists).toMatchObject([
-    { imdbUserId: "ls99123456", catalogTitle: "Second catalog", position: 0 },
-    { imdbUserId: userId, catalogTitle: "Test catalog", position: 1 },
+  await app.open(`/configure?account=${accountId}`);
+  await expect(screen.getByRole("button", /^Drag to reorder/)).toHaveCount(2);
+  await dragSecondAboveFirst(browser);
+  await expect(screen.getByText(/^(Test|Second) catalog$/)).toHaveText([
+    "Second catalog",
+    "Test catalog",
+  ]);
+  await saveButton(screen).tap();
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  expect(submissions[0].lists).toMatchObject([
+    { sourceRef: "ls99123456", catalogTitle: "Second catalog", position: 0 },
+    { sourceRef: imdbUser, catalogTitle: "Test catalog", position: 1 },
   ]);
 });
 
@@ -564,32 +561,16 @@ test(
   "catalog filters and extra presets survive save and clear",
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
-    let saved:
-      | { watchlists: Array<{ catalogSettings: Record<string, unknown> }> }
-      | undefined;
-    await browser.route("http://127.0.0.1:4314/**", async (route) => {
-      if (route.request.method === "POST") {
-        saved = JSON.parse(route.request.postData ?? "{}");
-        await route.fulfill({ json: { ok: true } });
-      } else
-        await route.fulfill({
-          json: {
-            ...config,
-            watchlists: [
-              { ...watchlist, availableGenres: ["Drama", "Comedy"] },
-            ],
-          },
-        });
-    });
-    await app.open(`/configure?userId=${userId}`);
+    await holdToasts(browser);
+    const submissions = await captureConfig(browser);
+    await fitConfigurePage(browser);
+    await app.open(`/configure?account=${accountId}`);
     await agent.act(
       "For the Test catalog, select the Drama genre filter and enable the Top rated extra catalog, then save these settings.",
-      { maxModelCalls: 10 },
+      { maxModelCalls: 12 },
     );
-    await expect(
-      screen.getByText(/Saved! Catalog structure changed/),
-    ).toBeVisible();
-    expect(saved?.watchlists[0].catalogSettings).toEqual({
+    await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+    expect(submissions.at(-1)?.lists[0].catalogSettings).toEqual({
       genre: "Drama",
       presets: ["rated"],
     });
@@ -597,12 +578,11 @@ test(
       "Clear this catalog's filters while keeping the Top rated extra catalog enabled, then save.",
       { maxModelCalls: 6 },
     );
-    await expect(
-      screen.getByText(
-        "Saved! Your catalogs will be refreshed with the new settings.",
-      ),
-    ).toBeVisible();
-    expect(saved?.watchlists[0].catalogSettings).toEqual({
+    // The first save added the Top rated catalog, and Stremio still needs
+    // the reinstall, so the second save keeps the reinstall message.
+    await expect.poll(() => submissions.length).toBe(2);
+    await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+    expect(submissions.at(-1)?.lists[0].catalogSettings).toEqual({
       presets: ["rated"],
     });
   },
@@ -613,177 +593,97 @@ test("edits made while saving remain available for the next save", async ({
   screen,
   browser,
 }) => {
-  let releaseSave: (() => void) | undefined;
-  let lastSubmitted: Record<string, unknown> | undefined;
-  const responseGate = new Promise<void>((resolve) => {
-    releaseSave = resolve;
+  const { submissions, release } = await gatedSaves(browser, configuration);
+  await resolveFixtureLinks(browser);
+  await app.open(`/configure?account=${accountId}`);
+  await screen.getByRole("button", "Settings for Test catalog").tap();
+  await screen.getByLabel("Catalog title").fill("Submitted title");
+  await saveButton(screen).tap();
+  await expect(saveButton(screen, "Saving")).toBeVisible();
+  await screen.getByLabel("Catalog title").fill("New unsaved title");
+  await screen.getByLabel(PASTE).fill(listLink);
+  await screen.getByRole("button", "Add", { exact: true }).tap();
+  await expect(screen.getByText("IMDb · List · ls99123456")).toBeVisible();
+  await screen.getByLabel(/^RPDB API key/).fill("e2e-synthetic-rpdb");
+  release();
+  await expect(screen.getByText(SAVED_WITH_CHANGES)).toBeVisible();
+  await expect(screen.getByLabel("Catalog title").first()).toHaveValue(
+    "New unsaved title",
+  );
+  await expect(screen.getByRole("button", /^Remove /)).toHaveCount(2);
+  await saveButton(screen).tap();
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  expect(submissions[0]).toMatchObject({
+    lists: [{ catalogTitle: "Submitted title" }],
   });
-  await browser.route("http://127.0.0.1:4314/**", async (route) => {
-    if (route.request.method === "POST") {
-      const submitted = JSON.parse(route.request.postData ?? "{}");
-      lastSubmitted = submitted;
-      await responseGate;
-      await route.fulfill({
-        json: {
-          ok: true,
-          watchlists: submitted.watchlists.map(
-            (row: Record<string, unknown>, index: number) => ({
-              ...row,
-              id: `saved-${index}`,
-            }),
-          ),
-        },
-      });
-    } else await route.fulfill({ json: config });
-  });
-  await app.open(`/configure?userId=${userId}`);
-  await screen
-    .getByPlaceholder("Tom Hardy's Watchlist")
-    .fill("Submitted title");
-  await screen.getByRole("button", "Save", { exact: true }).tap();
-  await expect(screen.getByRole("button", "Saving...")).toBeVisible();
-  await screen
-    .getByPlaceholder("Tom Hardy's Watchlist")
-    .fill("New unsaved title");
-  await screen.getByRole("button", "Add Catalog", { exact: true }).tap();
-  await screen
-    .getByPlaceholder("ur12345678, p.colneedham, or ls593621567")
-    .nth(1)
-    .fill("ls99123456");
-  await screen.getByLabel("RPDB API Key (Optional)").fill("e2e-synthetic-rpdb");
-  releaseSave!();
-  await expect(
-    screen.getByText(
-      "Saved submitted settings. You have unsaved changes; save again to apply them.",
-    ),
-  ).toBeVisible();
-  await expect(
-    screen.getByPlaceholder("Tom Hardy's Watchlist").first(),
-  ).toHaveValue("New unsaved title");
-  await expect(screen.getByRole("button", "Remove catalog")).toHaveCount(2);
-  await expect(
-    screen.getByPlaceholder("ur12345678, p.colneedham, or ls593621567").nth(1),
-  ).toHaveValue("ls99123456");
-  await screen.getByRole("button", "Save", { exact: true }).tap();
-  await expect(
-    screen.getByText(/Saved! Catalog structure changed/),
-  ).toBeVisible();
-  expect(lastSubmitted).toMatchObject({
+  expect(submissions[1]).toMatchObject({
     rpdbApiKey: "e2e-synthetic-rpdb",
-    watchlists: [
-      { imdbUserId: userId, catalogTitle: "New unsaved title", position: 0 },
-      { imdbUserId: "ls99123456", position: 1 },
+    lists: [
+      { sourceRef: imdbUser, catalogTitle: "New unsaved title", position: 0 },
+      { sourceRef: "ls99123456", position: 1 },
     ],
   });
 });
 
 for (const edit of ["remove", "reorder"] as const) {
-  test(`${edit} during save preserves current catalog structure`, async ({
+  test(`${edit} during save preserves current List structure`, async ({
     app,
     screen,
     browser,
   }) => {
-    let releaseSave: (() => void) | undefined;
-    let lastSubmitted:
-      | { watchlists: Array<{ imdbUserId: string; position: number }> }
-      | undefined;
-    const responseGate = new Promise<void>((resolve) => {
-      releaseSave = resolve;
-    });
-    const second = {
-      ...watchlist,
-      id: "second-watchlist",
-      imdbUserId: "ls99123456",
-      catalogTitle: "Second catalog",
-      position: 1,
-    };
-    await browser.route("http://127.0.0.1:4314/**", async (route) => {
-      if (route.request.method === "POST") {
-        const submitted = JSON.parse(route.request.postData ?? "{}");
-        lastSubmitted = submitted;
-        await responseGate;
-        await route.fulfill({
-          json: { ok: true, watchlists: submitted.watchlists },
-        });
-      } else
-        await route.fulfill({
-          json: { ...config, watchlists: [watchlist, second] },
-        });
-    });
+    const { submissions, release } = await gatedSaves(browser, twoLists);
     await browser.setViewport({ width: 1280, height: 1800 });
-    await app.open(`/configure?userId=${userId}`);
-    await screen.getByRole("button", "Save", { exact: true }).tap();
-    await expect(screen.getByRole("button", "Saving...")).toBeVisible();
+    await app.open(`/configure?account=${accountId}`);
+    await saveButton(screen).tap();
+    await expect(saveButton(screen, "Saving")).toBeVisible();
     if (edit === "remove") {
-      await screen.getByRole("button", "Remove catalog").first().tap();
+      await screen.getByRole("button", "Remove Test catalog").tap();
     } else {
-      const handles = await browser.evaluate(() =>
-        Array.from(
-          document.querySelectorAll('[aria-label="Drag to reorder"]'),
-        ).map((el) => {
-          const rect = el.getBoundingClientRect();
-          return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-        }),
-      );
-      await browser.mouse.move(handles[1].x, handles[1].y);
-      await browser.mouse.down();
-      for (let step = 1; step <= 12; step += 1)
-        await browser.mouse.move(
-          handles[1].x,
-          handles[1].y + ((handles[0].y - handles[1].y - 20) * step) / 12,
-        );
-      await browser.mouse.up();
-      await expect(
-        screen.getByPlaceholder("Tom Hardy's Watchlist").first(),
-      ).toHaveValue("Second catalog");
-      // Dnd-kit moves DOM nodes optimistically before React commits row indices.
-      await expect(
-        browser.locator(
-          'div.rounded-lg:has(button[aria-label="Drag to reorder"]) > div:first-child > div:first-child > p',
-        ),
-      ).toHaveText(["Catalog 1", "Catalog 2"]);
+      await dragSecondAboveFirst(browser);
     }
-    releaseSave!();
-    await expect(
-      screen.getByText(
-        "Saved submitted settings. You have unsaved changes; save again to apply them.",
-      ),
-    ).toBeVisible();
-    await expect(screen.getByRole("button", "Remove catalog")).toHaveCount(
+    await expect(screen.getByText(/^(Test|Second) catalog$/)).toHaveText(
+      edit === "remove"
+        ? ["Second catalog"]
+        : ["Second catalog", "Test catalog"],
+    );
+    release();
+    await expect(screen.getByText(SAVED_WITH_CHANGES)).toBeVisible();
+    await expect(screen.getByRole("button", /^Remove /)).toHaveCount(
       edit === "remove" ? 1 : 2,
     );
     await expect(
-      screen.getByPlaceholder("Tom Hardy's Watchlist").first(),
-    ).toHaveValue("Second catalog");
-    await screen.getByRole("button", "Save", { exact: true }).tap();
-    await expect(
-      screen.getByText(/Saved! Catalog structure changed/),
-    ).toBeVisible();
-    expect(lastSubmitted?.watchlists).toMatchObject(
+      screen.getByText(/^(Test|Second) catalog$/).first(),
+    ).toHaveText("Second catalog");
+    await saveButton(screen).tap();
+    await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+    expect(submissions.at(-1)?.lists).toMatchObject(
       edit === "remove"
-        ? [{ imdbUserId: "ls99123456", position: 0 }]
+        ? [{ sourceRef: "ls99123456", position: 0 }]
         : [
-            { imdbUserId: "ls99123456", position: 0 },
-            { imdbUserId: userId, position: 1 },
+            { sourceRef: "ls99123456", position: 0 },
+            { sourceRef: imdbUser, position: 1 },
           ],
     );
   });
 }
 
-test("selecting an IMDb ID on configuration starts a fresh account form", async ({
+test("an old ?userId link opens the Legacy alias install with a fresh form", async ({
   app,
   screen,
   browser,
 }) => {
-  await fixture(browser, { existing: true });
-  await app.open("/configure");
-  await screen.getByLabel("IMDb User ID:").fill(userId);
-  await expect(browser).toHaveURL(`/configure?userId=${userId}`);
-  await expect(screen.getByText("Catalog 1")).toBeVisible();
-  await expect(screen.getByPlaceholder("Tom Hardy's Watchlist")).toHaveValue(
-    "Test catalog",
-  );
+  await captureConfig(browser, legacyConfiguration, imdbUser);
+  await app.open(`/?userId=${imdbUser}`);
+  await expect(browser).toHaveURL(`/configure?account=${imdbUser}`);
+  await expect(screen.getByText(`IMDb install ${imdbUser}`)).toBeVisible();
+  await expect(screen.getByText("Test catalog")).toBeVisible();
   await expect(
-    screen.getByRole("button", "Save", { exact: true }),
-  ).toBeEnabled();
+    screen.getByRole("heading", "Upgrade to a private URL"),
+  ).toBeVisible();
+  await expect(
+    screen.getByText(
+      "Actions need a private Addon URL. Upgrade this install first.",
+    ),
+  ).toBeVisible();
+  await expect(saveButton(screen)).toBeEnabled();
 });

@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [main, staging]
+  # Every base branch, so stacked feature PRs get the same checks.
   pull_request:
-    branches: [main, staging]
 
 jobs:
   ci:
@@ -79,13 +79,22 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: 2.98.2
+          version: 2.118.0
 
       - name: Start local Supabase (db + REST only)
         run: supabase start -x gotrue,realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta
 
       - name: Test atomic configuration replacement
-        run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/replace_user_config.sql
+        run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/replace_account_config.sql
+
+      - name: Test List sync status recording
+        run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/record_list_refresh.sql
+
+      - name: Test detection history
+        run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/record_source_list_sync.sql
+
+      - name: Test atomic Account and Connection writes
+        run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/account_writes.sql
 
       - name: Start local R2-compatible store
         run: |

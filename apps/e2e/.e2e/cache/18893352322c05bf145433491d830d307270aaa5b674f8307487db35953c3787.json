@@ -1,0 +1,131 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-08T18:53:03.898Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"https://www.imdb.com/list/ls99123456/\" into textbox \"Paste a link to a watchlist or list\"",
+        "target": {
+          "role": "textbox",
+          "name": "Paste a link to a watchlist or list",
+          "placeholder": "Paste a link to any list"
+        },
+        "value": "https://www.imdb.com/list/ls99123456/"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Add\"",
+        "target": {
+          "role": "button",
+          "name": "Add"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Settings for IMDb List\"",
+        "target": {
+          "role": "button",
+          "name": "Settings for IMDb List"
+        }
+      },
+      {
+        "name": "type",
+        "summary": "type \"Weekend films\" into textbox \"Catalog title\"",
+        "target": {
+          "role": "textbox",
+          "name": "Catalog title",
+          "placeholder": "IMDb List"
+        },
+        "value": "Weekend films"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save\"",
+        "target": {
+          "role": "button",
+          "name": "Save"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/configuration-recovery.e2e.ts::an%20unrecognized%20link%20adds%20nothing%2C%20then%20a%20pasted%20list%20URL%20is%20added%20and%20saved",
+      "targetId": "chromium",
+      "instructionDigest": "9157169c0452ca02cddc0d662a91ae12b6d9b57d6ed6e257f178d669041118b1",
+      "paramsDigest": "9cea336b9cfdfb09af0af98b8446816dade021b671703b45e1178724bdae9120",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Replaced the unrecognized link with https://www.imdb.com/list/ls99123456/, added the IMDb list, named its catalog “Weekend films,” and saved. The app confirms “Saved!” and notes that reinstalling Stremlist is needed for the changes to appear.",
+    "startPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endAnchors": [
+      {
+        "role": "status",
+        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. I did it Reinstall"
+      },
+      {
+        "role": "textbox",
+        "name": "Paste a link to a watchlist or list",
+        "placeholder": "Paste a link to any list"
+      },
+      {
+        "text": "IMDb, Trakt, MDBList, JustWatch and SensCritique links work."
+      },
+      {
+        "text": "Reinstall Stremlist in Stremio"
+      },
+      {
+        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
+      },
+      {
+        "role": "button",
+        "name": "I did it"
+      },
+      {
+        "role": "link",
+        "name": "Reinstall"
+      },
+      {
+        "role": "button",
+        "name": "Drag to reorder Weekend films"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "alert",
+        "name": "We do not recognize this link. Paste a link to a watchlist or list on IMDb, Trakt, MDBList, JustWatch or SensCritique."
+      },
+      {
+        "role": "textbox",
+        "name": "Paste a link to a watchlist or list",
+        "placeholder": "Paste a link to any list",
+        "value": "not-an-imdb-source"
+      },
+      {
+        "text": "No supported site recognized yet."
+      },
+      {
+        "text": "We do not recognize this link. Paste a link to a watchlist or list on IMDb, Trakt, MDBList, JustWatch or SensCritique."
+      },
+      {
+        "text": "No Lists yet"
+      },
+      {
+        "text": "Paste a link to a watchlist or list in the Providers panel, or pick one below."
+      },
+      {
+        "text": "0 of 10 lists"
+      },
+      {
+        "role": "heading",
+        "name": "Install or reinstall in Stremio"
+      }
+    ],
+    "endWaitMs": 12153
+  }
+}
