@@ -724,7 +724,7 @@ describe("simkl custom lists", () => {
 
     await expect(
       simklProvider.validateSource("me/lists/123", ctx()),
-    ).resolves.toMatchObject({ ok: false, reason: "premium_only" });
+    ).rejects.toMatchObject({ reason: "premium_only" });
   });
 
   it("reads a PRO list in the owner's order, once per activity change", async () => {
@@ -845,7 +845,7 @@ describe("simkl custom lists", () => {
     routes["GET /lists/790"] = () => json({ error: "private_list" }, 403);
     await expect(
       simklProvider.validateSource("me/lists/790", ctx()),
-    ).resolves.toMatchObject({ ok: false, reason: "private" });
+    ).rejects.toMatchObject({ reason: "private" });
   });
 });
 

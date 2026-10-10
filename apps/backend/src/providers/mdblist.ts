@@ -25,7 +25,7 @@ import type {
   SourceSnapshot,
   SourceValidation,
 } from "./types";
-import { connectionToken, SourceUnavailableError } from "./types";
+import { SourceUnavailableError } from "./types";
 
 const API = "https://api.mdblist.com";
 const PAGE_SIZE = 1000;
@@ -174,7 +174,7 @@ async function mdblistRequest(
   } = {},
 ): Promise<{ data: unknown; response: Response }> {
   const method = options.method ?? "GET";
-  const token = await connectionToken(connection);
+  const token = await connection.getAccessToken();
   const limiters = limitersFor(connection);
   try {
     return await providerFetchJson<unknown>(`${API}${path}`, {
@@ -316,14 +316,6 @@ function displayModeFor(mediatype: string | null | undefined): DisplayMode {
 function firstInfo<T>(data: T | T[] | null): T | null {
   if (Array.isArray(data)) return data[0] ?? null;
   return data;
-}
-
-function needsConnection(): SourceValidation {
-  return {
-    ok: false,
-    reason: "needs_connection",
-    message: "Connect MDBList to add this list",
-  };
 }
 
 function isSameUser(a: string | null | undefined, b: string): boolean {
@@ -529,75 +521,64 @@ async function validateSource(
   const parsed = parseRef(ref);
   if (!parsed) return { ok: false, reason: "not_found" };
   const connection = ctx.connection;
-  if (!connection) return needsConnection();
+  if (!connection) return { ok: false, reason: "needs_connection" };
 
-  try {
-    switch (parsed.kind) {
-      case "watchlist":
-        return {
-          ok: true,
-          ref: "me/watchlist",
-          suggestedTitle: "MDBList watchlist",
-          defaultDisplayMode: "split",
-        };
-      case "user-watchlist":
-        // MDBList has no API for another user's watchlist.
-        return isSameUser(connection.username, parsed.user)
-          ? {
-              ok: true,
-              ref: "me/watchlist",
-              suggestedTitle: "MDBList watchlist",
-              defaultDisplayMode: "split",
-            }
-          : {
-              ok: false,
-              reason: "private",
-              message:
-                "MDBList only shares the watchlist of the connected user",
-            };
-      case "external": {
-        const { data } = await mdblistRequest(
-          connection,
-          `/external/lists/${parsed.id}`,
-        );
-        const info = firstInfo(data as ListInfoResponse);
-        if (!info) return { ok: false, reason: "not_found" };
-        return {
-          ok: true,
-          ref: `me/external/${parsed.id}`,
-          suggestedTitle: info.name,
-          defaultDisplayMode: displayModeFor(info.mediatype),
-        };
-      }
-      case "list":
-      case "list-by-slug": {
-        const path =
-          parsed.kind === "list"
-            ? `/lists/${parsed.id}`
-            : `/lists/${encodeURIComponent(parsed.user)}/${encodeURIComponent(parsed.slug)}`;
-        const { data } = await mdblistRequest(connection, path);
-        const info = firstInfo(data as ListInfoResponse);
-        if (!info || typeof info.id !== "number") {
-          return { ok: false, reason: "not_found" };
-        }
-        // The numeric ID survives a rename of the list or of its owner.
-        const normalized =
-          parsed.kind === "list" && ref.startsWith("me/")
-            ? ref
-            : `lists/${info.id}`;
-        return {
-          ok: true,
-          ref: normalized,
-          suggestedTitle: info.name,
-          defaultDisplayMode: displayModeFor(info.mediatype),
-        };
-      }
+  switch (parsed.kind) {
+    case "watchlist":
+      return {
+        ok: true,
+        ref: "me/watchlist",
+        suggestedTitle: "MDBList watchlist",
+        defaultDisplayMode: "split",
+      };
+    case "user-watchlist":
+      // MDBList has no API for another user's watchlist.
+      return isSameUser(connection.username, parsed.user)
+        ? {
+            ok: true,
+            ref: "me/watchlist",
+            suggestedTitle: "MDBList watchlist",
+            defaultDisplayMode: "split",
+          }
+        : // MDBList only shares the watchlist of the connected user.
+          { ok: false, reason: "private" };
+    case "external": {
+      const { data } = await mdblistRequest(
+        connection,
+        `/external/lists/${parsed.id}`,
+      );
+      const info = firstInfo(data as ListInfoResponse);
+      if (!info) return { ok: false, reason: "not_found" };
+      return {
+        ok: true,
+        ref: `me/external/${parsed.id}`,
+        suggestedTitle: info.name,
+        defaultDisplayMode: displayModeFor(info.mediatype),
+      };
     }
-  } catch (error) {
-    if (error instanceof SourceUnavailableError) {
-      return { ok: false, reason: error.reason, message: error.message };
+    case "list":
+    case "list-by-slug": {
+      const path =
+        parsed.kind === "list"
+          ? `/lists/${parsed.id}`
+          : `/lists/${encodeURIComponent(parsed.user)}/${encodeURIComponent(parsed.slug)}`;
+      const { data } = await mdblistRequest(connection, path);
+      const info = firstInfo(data as ListInfoResponse);
+      if (!info || typeof info.id !== "number") {
+        return { ok: false, reason: "not_found" };
+      }
+      // The numeric ID survives a rename of the list or of its owner.
+      const normalized =
+        parsed.kind === "list" && ref.startsWith("me/")
+          ? ref
+          : `lists/${info.id}`;
+      return {
+        ok: true,
+        ref: normalized,
+        suggestedTitle: info.name,
+        defaultDisplayMode: displayModeFor(info.mediatype),
+      };
     }
-    throw error;
   }
 }
 

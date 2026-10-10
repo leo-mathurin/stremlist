@@ -405,11 +405,8 @@ export const senscritiqueProvider: ProviderAdapter = {
         userList.universe !== UNIVERSE_MOVIE &&
         userList.universe !== UNIVERSE_SERIES
       ) {
-        return {
-          ok: false,
-          reason: "not_found",
-          message: "This SensCritique list has no movies or series.",
-        };
+        // The list has no movies or series.
+        return { ok: false, reason: "not_found" };
       }
       const label = userList.label?.trim();
       return {

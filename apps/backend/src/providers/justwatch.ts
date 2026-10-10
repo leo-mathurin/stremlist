@@ -178,20 +178,13 @@ export const justwatchProvider: ProviderAdapter = {
   async validateSource(rawRef): Promise<SourceValidation> {
     const ref = normalizeRef(rawRef);
     if (!LIST_ID.test(ref)) return { ok: false, reason: "not_found" };
-    try {
-      const list = await fetchListPage(ref, 1, null);
-      return {
-        ok: true,
-        ref,
-        suggestedTitle: listName(list) ?? "JustWatch list",
-        defaultDisplayMode: "split",
-      };
-    } catch (error) {
-      if (error instanceof SourceUnavailableError) {
-        return { ok: false, reason: error.reason, message: error.message };
-      }
-      throw error;
-    }
+    const list = await fetchListPage(ref, 1, null);
+    return {
+      ok: true,
+      ref,
+      suggestedTitle: listName(list) ?? "JustWatch list",
+      defaultDisplayMode: "split",
+    };
   },
 
   async fetchSource(rawRef) {

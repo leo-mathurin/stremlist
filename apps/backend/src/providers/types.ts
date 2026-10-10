@@ -91,7 +91,7 @@ export type SourceValidation =
       suggestedTitle?: string;
       defaultDisplayMode?: DisplayMode;
     }
-  | { ok: false; reason: SourceProblemReason; message?: string };
+  | { ok: false; reason: SourceProblemReason };
 
 /**
  * Thrown when a Source list cannot be read. Every reason except "unavailable"
@@ -110,7 +110,8 @@ export class SourceUnavailableError extends Error {
 
 /**
  * The Connection cannot give a token any more (refresh refused or revoked):
- * the user must connect the Provider again.
+ * the user must connect the Provider again. Adapters let it through; the
+ * services and routes read it as a "needs_connection" Source list.
  */
 export class ConnectionExpiredError extends Error {
   readonly provider: ProviderId;
@@ -139,23 +140,6 @@ export interface ConnectionAccess {
   reportRefused(): Promise<void>;
   /** A read that needs the Connection worked with this access. Never throws. */
   reportWorking(): Promise<void>;
-}
-
-/**
- * The Connection's access token. An expired Connection becomes a
- * "needs_connection" Source list, so the catalog asks the user to connect again.
- */
-export async function connectionToken(
-  connection: ConnectionAccess,
-): Promise<string> {
-  try {
-    return await connection.getAccessToken();
-  } catch (error) {
-    if (error instanceof ConnectionExpiredError) {
-      throw new SourceUnavailableError("needs_connection", error.message);
-    }
-    throw error;
-  }
 }
 
 export interface ProviderContext {
@@ -257,7 +241,10 @@ export interface ProviderAdapter {
    * public chart read on a shared app quota). Defaults to `freshnessMs`.
    */
   freshnessFor?(ref: string): number;
-  /** Check (and normalize) a Source list reference before it is saved. */
+  /**
+   * Check (and normalize) a Source list reference before it is saved. Throws
+   * SourceUnavailableError or ConnectionExpiredError like `fetchSource`.
+   */
   validateSource(ref: string, ctx: ProviderContext): Promise<SourceValidation>;
   /** Read a Source list. Throws SourceUnavailableError for expected failures. */
   fetchSource(ref: string, ctx: ProviderContext): Promise<SourceSnapshot>;

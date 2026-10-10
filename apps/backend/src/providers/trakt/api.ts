@@ -6,7 +6,7 @@ import {
 } from "../http";
 import { oauthClient } from "../oauth-app";
 import type { ConnectionAccess, PagedRead } from "../types";
-import { connectionToken, SourceUnavailableError } from "../types";
+import { ConnectionExpiredError, SourceUnavailableError } from "../types";
 
 export const TRAKT_API = "https://api.trakt.tv";
 export const TRAKT_AUTH = "https://auth.trakt.tv";
@@ -83,12 +83,8 @@ export async function traktGet(
   // A Connection that cannot give a token any more (refused refresh) must
   // not make Source lists that anyone may read fail.
   const token = connection
-    ? await connectionToken(connection).catch((error: unknown) => {
-        if (
-          options.publicFallback &&
-          error instanceof SourceUnavailableError &&
-          error.reason === "needs_connection"
-        ) {
+    ? await connection.getAccessToken().catch((error: unknown) => {
+        if (options.publicFallback && error instanceof ConnectionExpiredError) {
           return null;
         }
         throw error;
@@ -106,7 +102,7 @@ export async function traktGet(
   if (response.status === 401) {
     // ConnectionAccess refreshes a token that is about to expire; a second
     // read only helps when that gave us a new one.
-    const renewed = await connectionToken(connection);
+    const renewed = await connection.getAccessToken();
     if (renewed !== token) {
       response = await send(path, options.query, renewed);
     }

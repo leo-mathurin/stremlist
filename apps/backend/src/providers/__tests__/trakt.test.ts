@@ -597,10 +597,12 @@ describe("Trakt read errors", () => {
     );
   });
 
-  it("an expired Connection means needs_connection", async () => {
+  it("lets an expired Connection through, for the caller to ask for renewal", async () => {
     const conn = connection();
     conn.getAccessToken.mockRejectedValue(new ConnectionExpiredError("trakt"));
-    await expectReason(fetchEntries("me/history", conn), "needs_connection");
+    await expect(fetchEntries("me/history", conn)).rejects.toBeInstanceOf(
+      ConnectionExpiredError,
+    );
   });
 
   it("a public Source list read with a refused token tries without it", async () => {
@@ -647,7 +649,9 @@ describe("Trakt read errors", () => {
     const conn = connection();
     conn.getAccessToken.mockRejectedValue(new ConnectionExpiredError("trakt"));
 
-    await expectReason(fetchEntries("me/watchlist", conn), "needs_connection");
+    await expect(fetchEntries("me/watchlist", conn)).rejects.toBeInstanceOf(
+      ConnectionExpiredError,
+    );
     expect(calls).toHaveLength(0);
   });
 
@@ -713,14 +717,12 @@ describe("Trakt validateSource", () => {
   it("checks that a user exists before accepting a watchlist", async () => {
     route("GET /users/ghost", status(404));
     route("GET /users/ghost/watchlist", []);
-    await expect(
+    await expectReason(
       traktProvider.validateSource("users/ghost/watchlist", {
         connection: null,
       }),
-    ).resolves.toMatchObject({
-      ok: false,
-      reason: "not_found",
-    });
+      "not_found",
+    );
   });
 
   it("names a public watchlist after its user", async () => {
@@ -744,14 +746,12 @@ describe("Trakt validateSource", () => {
 
   it("reports a private watchlist", async () => {
     route("GET /users/hidden", status(401));
-    await expect(
+    await expectReason(
       traktProvider.validateSource("users/hidden/watchlist", {
         connection: null,
       }),
-    ).resolves.toMatchObject({
-      ok: false,
-      reason: "private",
-    });
+      "private",
+    );
   });
 
   it("treats Trakt's 204 for a missing list as not_found", async () => {
@@ -784,12 +784,10 @@ describe("Trakt validateSource", () => {
   });
 
   it("personal Source lists need a Connection, and up next shows series", async () => {
-    await expect(
+    await expectReason(
       traktProvider.validateSource("me/up-next", { connection: null }),
-    ).resolves.toMatchObject({
-      ok: false,
-      reason: "needs_connection",
-    });
+      "needs_connection",
+    );
     route("GET /users/settings", { user: { username: "leo" } });
     await expect(
       traktProvider.validateSource("me/up-next", { connection: connection() }),

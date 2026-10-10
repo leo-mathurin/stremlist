@@ -1,6 +1,5 @@
 import { asImdbId } from "@stremlist/shared/constants";
 import type { ConnectionAccess } from "../types";
-import { connectionToken } from "../types";
 import { isMaxItemsError, simklRequest } from "./api";
 import { libraryKey, readState, STATE_VERSION, writeState } from "./state";
 
@@ -385,7 +384,7 @@ async function runSync(connection: ConnectionAccess): Promise<LibrarySnapshot> {
   if (previous && Date.now() - previous.checkedAt < SYNC_GATE_MS)
     return previous;
 
-  const token = await connectionToken(connection);
+  const token = await connection.getAccessToken();
   // Read before the data it anchors, so a change made during the read is
   // newer than the saved timestamp and comes back in the next delta.
   const activities = await simklRequest<SimklActivities>("/sync/activities", {

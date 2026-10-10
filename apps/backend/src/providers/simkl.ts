@@ -22,7 +22,7 @@ import type {
   ProviderAdapter,
   SourceValidation,
 } from "./types";
-import { connectionToken, SourceUnavailableError } from "./types";
+import { SourceUnavailableError } from "./types";
 
 export { simklItemUrl } from "./simkl/entries";
 
@@ -74,21 +74,14 @@ export const simklProvider: ProviderAdapter = {
         defaultDisplayMode: source?.defaultDisplayMode,
       };
     }
-    try {
-      const token = await connectionToken(ctx.connection);
-      const page = await readListPage(token, listId ?? "", 1, 1);
-      return {
-        ok: true,
-        ref,
-        suggestedTitle: page.name,
-        defaultDisplayMode: page.media_type === "movies" ? "movie" : "series",
-      };
-    } catch (error) {
-      if (error instanceof SourceUnavailableError) {
-        return { ok: false, reason: error.reason, message: error.message };
-      }
-      throw error;
-    }
+    const token = await ctx.connection.getAccessToken();
+    const page = await readListPage(token, listId ?? "", 1, 1);
+    return {
+      ok: true,
+      ref,
+      suggestedTitle: page.name,
+      defaultDisplayMode: page.media_type === "movies" ? "movie" : "series",
+    };
   },
 
   async fetchSource(ref, ctx) {

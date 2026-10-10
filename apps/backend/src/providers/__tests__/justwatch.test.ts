@@ -422,11 +422,12 @@ describe("justwatchProvider.validateSource", () => {
   it("reports a deleted list as not found", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(NOT_FOUND));
 
-    const result = await justwatchProvider.validateSource(CUSTOM_LIST_ID, {
-      connection: null,
+    await expect(
+      justwatchProvider.validateSource(CUSTOM_LIST_ID, { connection: null }),
+    ).rejects.toMatchObject({
+      name: "SourceUnavailableError",
+      reason: "not_found",
     });
-
-    expect(result).toMatchObject({ ok: false, reason: "not_found" });
   });
 
   it("rejects a malformed ref without a request", async () => {

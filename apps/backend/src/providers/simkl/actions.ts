@@ -6,7 +6,6 @@ import type {
   Membership,
   ProviderActions,
 } from "../types";
-import { connectionToken } from "../types";
 import { simklRequest } from "./api";
 import { LIBRARY_REFS, titleType } from "./entries";
 import type { LibraryItem } from "./library";
@@ -125,7 +124,7 @@ async function perform(
 ): Promise<void> {
   const write = await buildWrite(connection, intent, target);
   if (!write) return;
-  const token = await connectionToken(connection);
+  const token = await connection.getAccessToken();
   // Anime go under "shows" on every Simkl write endpoint.
   const result = await simklRequest<unknown>(write.path, {
     method: "POST",

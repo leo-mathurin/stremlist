@@ -6,7 +6,7 @@ import type {
   SourceEntry,
   SourceSnapshot,
 } from "../types";
-import { connectionToken, SourceUnavailableError } from "../types";
+import { SourceUnavailableError } from "../types";
 import { simklRequest } from "./api";
 import { toEntry } from "./entries";
 import type { RawIds, SimklKind, SimklTitle } from "./library";
@@ -137,7 +137,7 @@ export async function fetchCustomList(
     return { entries: previous.entries, complete: previous.complete };
   }
 
-  const token = await connectionToken(connection);
+  const token = await connection.getAccessToken();
   const save = (
     snapshot: Omit<ListSnapshot, "version" | "username" | "gate" | "fetchedAt">,
   ) =>

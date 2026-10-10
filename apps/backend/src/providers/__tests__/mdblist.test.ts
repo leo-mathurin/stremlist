@@ -227,7 +227,10 @@ describe("mdblistProvider.validateSource", () => {
       mdblistProvider.validateSource("lists/leo/nope", {
         connection: connection(),
       }),
-    ).resolves.toMatchObject({ ok: false, reason: "not_found" });
+    ).rejects.toMatchObject({
+      name: "SourceUnavailableError",
+      reason: "not_found",
+    });
   });
 
   it("rejects unknown refs", async () => {
@@ -354,7 +357,7 @@ describe("mdblistProvider.fetchSource", () => {
     expect((error as SourceUnavailableError).reason).toBe(reason);
   });
 
-  it("maps an expired Connection to needs_connection", async () => {
+  it("lets an expired Connection through, for the caller to ask for renewal", async () => {
     const expired = new ConnectionExpiredError("mdblist");
     const access: ConnectionAccess = {
       accountId: "sl_testaccount0000000000",
@@ -366,7 +369,7 @@ describe("mdblistProvider.fetchSource", () => {
     };
     await expect(
       mdblistProvider.fetchSource("me/watchlist", { connection: access }),
-    ).rejects.toMatchObject({ reason: "needs_connection" });
+    ).rejects.toBe(expired);
     expect(calls).toHaveLength(0);
   });
 
