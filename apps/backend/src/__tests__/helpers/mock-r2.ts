@@ -12,7 +12,7 @@ import {
 } from "@aws-sdk/client-s3";
 
 /** Keys per ListObjectsV2 page; small, so tests cover the pagination. */
-export const LIST_PAGE_SIZE = 2;
+const LIST_PAGE_SIZE = 2;
 
 export const r2Objects = new Map<string, string>();
 

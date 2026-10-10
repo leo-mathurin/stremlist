@@ -22,7 +22,7 @@ export class OAuthNotConfiguredError extends Error {
   }
 }
 
-export function getOAuthConfig(provider: ProviderId): OAuthConfig {
+function getOAuthConfig(provider: ProviderId): OAuthConfig {
   const config = getProvider(provider).oauth;
   if (!config?.clientId()) throw new OAuthNotConfiguredError(provider);
   return config;
@@ -102,7 +102,6 @@ interface TokenResponse {
   expires_in?: number;
   scope?: string;
   error?: string;
-  error_description?: string;
 }
 
 async function requestTokens(

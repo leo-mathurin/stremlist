@@ -27,7 +27,7 @@ const REAL: Record<ProviderId, ProviderAdapter> = {
   letterboxd: letterboxdProvider,
 };
 
-export const providerOverrides = new Map<ProviderId, ProviderAdapter>();
+const providerOverrides = new Map<ProviderId, ProviderAdapter>();
 
 export function useFakeProvider(adapter: ProviderAdapter): ProviderAdapter {
   providerOverrides.set(adapter.id, adapter);

@@ -11,7 +11,10 @@ import type {
   SourceEntry,
   SourceSnapshot,
 } from "../providers/types";
-import { SourceUnavailableError } from "../providers/types";
+import {
+  ConnectionExpiredError,
+  SourceUnavailableError,
+} from "../providers/types";
 import { enrichTitles } from "../titles/enrich";
 import { DEFAULT_RESOLVE_BUDGET_MS, resolveEntries } from "../titles/resolver";
 import type { AccountAccess } from "./accounts";
@@ -23,11 +26,7 @@ import {
 import { forgetConnectionObjects } from "./actions";
 import type { CatalogSort } from "./catalog-sort";
 import { sortCatalog } from "./catalog-sort";
-import {
-  ConnectionExpiredError,
-  deleteConnection,
-  getConnectionAccess,
-} from "./connections";
+import { deleteConnection, getConnectionAccess } from "./connections";
 import { recordSynchronization } from "./detections";
 import { buildPosterUrl } from "./imdb-scraper";
 import {
@@ -79,7 +78,7 @@ export class ListUnavailableError extends Error {
  * Why a List is read. Each policy is one row of `READ_POLICIES`, so the
  * rules that go together are set together.
  */
-export type ReadPolicy = "catalog" | "prewarm" | "manual";
+type ReadPolicy = "catalog" | "prewarm" | "manual";
 
 interface ReadRules {
   /** Read the Provider even when the cached Catalog is fresh. */
@@ -135,7 +134,7 @@ export interface ListRead {
 }
 
 /** The List fields that a read needs. */
-export type ReadableList = MergeableList & { id: string };
+type ReadableList = MergeableList & { id: string };
 
 /**
  * One Source list of a List, as a read handles it: `listId` stays the List

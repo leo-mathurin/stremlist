@@ -138,7 +138,7 @@ function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
 
-export type ActionLinkBuilder = (
+type ActionLinkBuilder = (
   kind: ActionKind,
   op: "add" | "remove" | "rate",
 ) => string;

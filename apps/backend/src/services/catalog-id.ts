@@ -39,28 +39,15 @@ function parseListCatalogId(catalogId: string): ListCatalogId | null {
     return null;
   }
 
-  if (catalogId.endsWith(`${CATALOG_ID_SEPARATOR}movie`)) {
-    const listId = catalogId.slice(
-      PREFIX_OFFSET,
-      -(CATALOG_ID_SEPARATOR.length + "movie".length),
-    );
-    if (!LIST_ID_PATTERN.test(listId)) {
-      return null;
+  for (const type of ["movie", "series"] as const) {
+    if (catalogId.endsWith(`${CATALOG_ID_SEPARATOR}${type}`)) {
+      const listId = catalogId.slice(
+        PREFIX_OFFSET,
+        -(CATALOG_ID_SEPARATOR.length + type.length),
+      );
+      return LIST_ID_PATTERN.test(listId) ? { listId, type } : null;
     }
-    return { listId, type: "movie" };
   }
-
-  if (catalogId.endsWith(`${CATALOG_ID_SEPARATOR}series`)) {
-    const listId = catalogId.slice(
-      PREFIX_OFFSET,
-      -(CATALOG_ID_SEPARATOR.length + "series".length),
-    );
-    if (!LIST_ID_PATTERN.test(listId)) {
-      return null;
-    }
-    return { listId, type: "series" };
-  }
-
   return null;
 }
 

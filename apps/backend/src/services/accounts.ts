@@ -182,7 +182,7 @@ export async function getAccountLists(
     console.error(`Failed to fetch lists for ${accountId}:`, error.message);
     throw error;
   }
-  return data.map(mapList).filter((list): list is ConfigList => !!list);
+  return mapLists(data);
 }
 
 /** The Account's Lists that the request may see (see visibleLists). */

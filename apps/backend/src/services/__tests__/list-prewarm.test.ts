@@ -85,15 +85,7 @@ describe("prewarmLists", () => {
     await prewarmLists(
       ACCOUNT_ID,
       [
-        {
-          id: "11111111-1111-4111-8111-111111111111",
-          provider: "imdb",
-          sourceRef: "ur12345678",
-          catalogTitle: "Mine",
-          sortOption: "added_at-asc",
-          displayMode: "split",
-          position: 0,
-        },
+        ...SAVED_LISTS,
         {
           id: "22222222-2222-4222-8222-222222222222",
           provider: "imdb",
@@ -263,17 +255,7 @@ describe("prewarmLists", () => {
           });
         }),
     );
-    const firstLists: ConfigList[] = [
-      {
-        id: "11111111-1111-4111-8111-111111111111",
-        provider: "imdb",
-        sourceRef: "ur12345678",
-        catalogTitle: "Mine",
-        sortOption: "added_at-asc",
-        displayMode: "split" as const,
-        position: 0,
-      },
-    ];
+    const firstLists = SAVED_LISTS;
     const changedLists: ConfigList[] = [
       ...firstLists,
       {
@@ -310,21 +292,7 @@ describe("prewarmLists", () => {
   it("records the request without starting another worker when the lease is held", async () => {
     supabaseMocks.rpc.mockResolvedValue({ data: null, error: null });
 
-    await prewarmLists(
-      ACCOUNT_ID,
-      [
-        {
-          id: "11111111-1111-4111-8111-111111111111",
-          provider: "imdb",
-          sourceRef: "ur12345678",
-          catalogTitle: "Mine",
-          sortOption: "added_at-asc",
-          displayMode: "split",
-          position: 0,
-        },
-      ],
-      true,
-    );
+    await prewarmLists(ACCOUNT_ID, SAVED_LISTS, true);
 
     const [functionName, args] = supabaseMocks.rpc.mock.calls[0] as [
       string,
@@ -351,37 +319,13 @@ describe("prewarmLists", () => {
       error: { message: "database unavailable" },
     });
 
-    await prewarmLists(
-      ACCOUNT_ID,
-      [
-        {
-          id: "11111111-1111-4111-8111-111111111111",
-          provider: "imdb",
-          sourceRef: "ur12345678",
-          catalogTitle: "Mine",
-          sortOption: "added_at-asc",
-          displayMode: "split",
-          position: 0,
-        },
-      ],
-      true,
-    );
+    await prewarmLists(ACCOUNT_ID, SAVED_LISTS, true);
 
     expect(listMocks.getListCatalog).not.toHaveBeenCalled();
     expect(error).toHaveBeenCalledWith(
       `Failed to request prewarm for ${ACCOUNT_ID}:`,
       expect.objectContaining({ message: "database unavailable" }),
     );
-  });
-});
-
-describe("prewarmLists access level", () => {
-  beforeEach(() => {
-    listMocks.getListCatalog.mockReset();
-    listMocks.getListCatalog.mockResolvedValue({ metas: [] });
-    supabaseMocks.rpc.mockReset();
-    mockPrewarmQueue();
-    vi.spyOn(console, "log").mockImplementation(() => undefined);
   });
 
   it("never reads through a Connection when a Legacy alias saved", async () => {

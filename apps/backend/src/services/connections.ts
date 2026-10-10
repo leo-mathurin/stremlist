@@ -17,8 +17,6 @@ const REFRESH_LEASE_SECONDS = 30;
 const LEASE_WAIT_ATTEMPTS = 6;
 const LEASE_WAIT_MS = 500;
 
-export { ConnectionExpiredError };
-
 interface StoredConnection {
   accountId: string;
   provider: ProviderId;
@@ -33,7 +31,6 @@ interface StoredConnection {
   refreshToken: string | null;
   expiresAt: Date | null;
   redirectUri: string;
-  createdAt: string;
 }
 
 function decode(row: Tables<"connections">): StoredConnection | null {
@@ -48,7 +45,6 @@ function decode(row: Tables<"connections">): StoredConnection | null {
       refreshToken: row.refresh_token ? decryptSecret(row.refresh_token) : null,
       expiresAt: row.expires_at ? new Date(row.expires_at) : null,
       redirectUri: row.redirect_uri,
-      createdAt: row.created_at,
     };
   } catch (error) {
     console.error(

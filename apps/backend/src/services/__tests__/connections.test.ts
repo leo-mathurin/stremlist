@@ -29,8 +29,8 @@ import {
   rpcHandlers,
 } from "../../__tests__/helpers/mock-supabase";
 import { decryptSecret, encryptSecret } from "../../lib/crypto";
+import { ConnectionExpiredError } from "../../providers/types";
 import {
-  ConnectionExpiredError,
   deleteConnection,
   getConnectionAccess,
   listConnections,

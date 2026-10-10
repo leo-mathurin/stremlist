@@ -3,7 +3,7 @@ import { UNIQUE_KEYS, uniqueError, withoutUndefined } from "./store";
 
 /**
  * The chained PostgREST query patterns used throughout the backend (select,
- * insert, upsert, update, delete with eq/in/not/order/limit/single,
+ * insert, upsert, update, delete with eq/is/in/not/order/limit/single,
  * `.select()` after a write), run against the in-memory tables.
  */
 export class MockQueryBuilder {
@@ -13,7 +13,6 @@ export class MockQueryBuilder {
   private filters: ((row: Row) => boolean)[] = [];
   private orderBys: [string, { ascending: boolean }][] = [];
   private limitN: number | null = null;
-  private rangeFromTo: [number, number] | null = null;
   private isSingle = false;
   private isMaybeSingle = false;
   private selectCols: string | null = null;
@@ -47,13 +46,7 @@ export class MockQueryBuilder {
     return this;
   }
 
-  upsert(
-    data: unknown,
-    opts?: {
-      onConflict?: string;
-      ignoreDuplicates?: boolean;
-    },
-  ) {
+  upsert(data: unknown, opts?: { onConflict?: string }) {
     this.op = "upsert";
     this.payload = data;
     this.conflictCol = opts?.onConflict ?? "id";
@@ -76,11 +69,6 @@ export class MockQueryBuilder {
     return this;
   }
 
-  neq(col: string, val: unknown) {
-    this.filters.push((row) => row[col] !== val);
-    return this;
-  }
-
   is(col: string, val: null | boolean) {
     this.filters.push((row) => (row[col] ?? null) === val);
     return this;
@@ -91,49 +79,12 @@ export class MockQueryBuilder {
     return this;
   }
 
-  /** PostgREST `not`: supports the "is", "eq" and "in" operators. */
+  /** PostgREST `not`: supports the "is" operator. */
   not(col: string, operator: string, val: unknown) {
-    this.filters.push((row) => {
-      const value = row[col] ?? null;
-      switch (operator) {
-        case "is":
-          return value !== val;
-        case "eq":
-          return value !== val;
-        case "in": {
-          const list = Array.isArray(val)
-            ? val
-            : String(val)
-                .replace(/^\(|\)$/g, "")
-                .split(",")
-                .map((item) => item.trim().replace(/^"|"$/g, ""));
-          return !list.includes(value);
-        }
-        default:
-          throw new Error(`mock-supabase: unsupported not(${operator})`);
-      }
-    });
-    return this;
-  }
-
-  // String comparison works for ISO timestamps (lexicographic == chrono).
-  lt(col: string, val: unknown) {
-    this.filters.push((row) => (row[col] as never) < (val as never));
-    return this;
-  }
-
-  lte(col: string, val: unknown) {
-    this.filters.push((row) => (row[col] as never) <= (val as never));
-    return this;
-  }
-
-  gt(col: string, val: unknown) {
-    this.filters.push((row) => (row[col] as never) > (val as never));
-    return this;
-  }
-
-  gte(col: string, val: unknown) {
-    this.filters.push((row) => (row[col] as never) >= (val as never));
+    if (operator !== "is") {
+      throw new Error(`mock-supabase: unsupported not(${operator})`);
+    }
+    this.filters.push((row) => (row[col] ?? null) !== val);
     return this;
   }
 
@@ -144,11 +95,6 @@ export class MockQueryBuilder {
 
   limit(n: number) {
     this.limitN = n;
-    return this;
-  }
-
-  range(from: number, to: number) {
-    this.rangeFromTo = [from, to];
     return this;
   }
 
@@ -227,12 +173,6 @@ export class MockQueryBuilder {
             }
             return 0;
           });
-        }
-
-        // PostgREST applies range (offset/limit window) after ordering.
-        if (this.rangeFromTo !== null) {
-          const [from, to] = this.rangeFromTo;
-          rows = rows.slice(from, to + 1);
         }
 
         if (this.limitN !== null) rows = rows.slice(0, this.limitN);

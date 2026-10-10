@@ -45,7 +45,7 @@ export function seedWatchlist(overrides: {
   });
 }
 
-export interface ListBody {
+interface ListBody {
   id?: string;
   provider?: ProviderId;
   sourceRef: string;
@@ -56,7 +56,7 @@ export interface ListBody {
   catalogSettings?: CatalogSettings;
 }
 
-export interface ConfigBody {
+interface ConfigBody {
   rpdbApiKey?: string;
   lists: ListBody[];
   actions?: { enabled: boolean; providers: ProviderId[] };

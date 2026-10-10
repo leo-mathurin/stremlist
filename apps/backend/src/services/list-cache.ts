@@ -8,7 +8,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { getR2Bucket, getR2Client } from "../lib/r2";
-import { isNotFound } from "../lib/r2-json";
+import { isNotFound, writeJson } from "../lib/r2-json";
 
 const CACHE_FORMAT_VERSION = 1;
 const MEMORY_CACHE_TTL_MS = 60_000;
@@ -111,7 +111,7 @@ function servesSource(manifest: CacheManifest, source?: CacheSource): boolean {
   );
 }
 
-export interface CachedList {
+interface CachedList {
   data: SourceCatalogData;
   cachedAt: Date;
   generation: string;
@@ -441,15 +441,7 @@ export async function writeCachedList(
     }),
   );
 
-  await getR2Client().send(
-    new PutObjectCommand({
-      Bucket: getR2Bucket(),
-      Key: manifestKey(listId),
-      Body: Buffer.from(JSON.stringify(manifest)),
-      ContentType: "application/json",
-      CacheControl: "private, max-age=0, must-revalidate",
-    }),
-  );
+  await writeJson(manifestKey(listId), manifest);
 
   setMemoryValue(catalogMemoryCache, nextCatalogKey, catalog);
   setMemoryValue(manifestMemoryCache, listId, manifest);
@@ -547,14 +539,6 @@ export async function markCachedListStale(listId: string): Promise<void> {
     ...manifest,
     cachedAt: new Date(0).toISOString(),
   };
-  await getR2Client().send(
-    new PutObjectCommand({
-      Bucket: getR2Bucket(),
-      Key: manifestKey(listId),
-      Body: Buffer.from(JSON.stringify(stale)),
-      ContentType: "application/json",
-      CacheControl: "private, max-age=0, must-revalidate",
-    }),
-  );
+  await writeJson(manifestKey(listId), stale);
   setMemoryValue(manifestMemoryCache, listId, stale);
 }

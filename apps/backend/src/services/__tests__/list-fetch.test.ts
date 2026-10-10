@@ -1,7 +1,7 @@
 import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const scraperMocks = vi.hoisted(() => ({
   fetchChart: vi.fn(),
@@ -104,10 +104,6 @@ beforeEach(() => {
   scraperMocks.fetchTitlesByIds.mockResolvedValue(new Map());
   vi.spyOn(console, "log").mockImplementation(() => undefined);
   vi.spyOn(console, "error").mockImplementation(() => undefined);
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
 });
 
 describe("getListCatalog", () => {

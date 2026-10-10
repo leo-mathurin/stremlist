@@ -17,9 +17,8 @@ import { db } from "./supabase/store";
 
 // The in-memory tables, shared by the mock and the tests.
 export { db };
-export type { RpcHandler };
 
-export const defaultRpcHandlers: Partial<Record<string, RpcHandler>> = {
+const defaultRpcHandlers: Partial<Record<string, RpcHandler>> = {
   ...accountRpcs,
   ...connectionRpcs,
   ...sourceListRpcs,

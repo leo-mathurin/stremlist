@@ -5,7 +5,7 @@ import { encryptSecret } from "../../lib/crypto";
 import { db } from "./mock-supabase";
 
 /** A fixed 32-byte key, so tests never depend on the real environment. */
-export const TEST_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+const TEST_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
 
 export function useTestEncryptionKey(): void {
   process.env.CONNECTION_ENCRYPTION_KEY = TEST_ENCRYPTION_KEY;
@@ -42,7 +42,7 @@ export function seedList(
   }) as Tables<"lists">;
 }
 
-export interface ConnectionSeed {
+interface ConnectionSeed {
   accessToken?: string;
   refreshToken?: string | null;
   expiresAt?: Date | null;

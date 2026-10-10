@@ -4,9 +4,12 @@ import {
   sourceRequiresConnection,
 } from "@stremlist/shared/providers";
 import { getProvider, isProviderEnabled } from "../providers/registry";
-import { SourceUnavailableError } from "../providers/types";
+import {
+  ConnectionExpiredError,
+  SourceUnavailableError,
+} from "../providers/types";
 import type { AccountAccess } from "./accounts";
-import { ConnectionExpiredError, getConnectionAccess } from "./connections";
+import { getConnectionAccess } from "./connections";
 
 /**
  * Detect the Provider behind a pasted link and check that its Source list

@@ -14,7 +14,7 @@ export const EPOCH = "1970-01-01T00:00:00.000Z";
 const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 /** Same shape as public.generate_account_id(). */
-export function generateAccountId(): string {
+function generateAccountId(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(22));
   return `sl_${Array.from(bytes, (byte) => BASE62[byte % 62]).join("")}`;
 }
@@ -124,10 +124,6 @@ export class InMemoryDB {
 
   reset() {
     this.tables = {};
-  }
-
-  seed(table: string, rows: Row[]) {
-    this.tables[table] = rows.map((r) => this.withDefaults(table, r));
   }
 
   withDefaults(table: string, row: Row): Row {

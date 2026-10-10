@@ -1,6 +1,7 @@
 import { parseSortOption } from "@stremlist/shared/constants";
 import type { ConfigList } from "@stremlist/shared/stremio.types";
 import { randomUUID } from "node:crypto";
+import { mapWithConcurrency } from "../lib/concurrency";
 import { supabase } from "../lib/supabase";
 import { getAccountLists } from "./accounts";
 import { getListCatalog } from "./lists";
@@ -52,36 +53,24 @@ async function runPrewarmBatch(
   allowConnection: boolean,
 ): Promise<void> {
   const startedAt = performance.now();
-  let nextIndex = 0;
   let prewarmed = 0;
 
-  async function worker(): Promise<void> {
-    while (nextIndex < lists.length) {
-      const list = lists[nextIndex];
-      nextIndex += 1;
-
-      try {
-        await getListCatalog(list, {
-          accountId,
-          sort: parseSortOption(list.sortOption),
-          // Prewarming only needs the canonical cache. Poster customization is
-          // applied later when Stremio requests the catalog.
-          rpdbApiKey: null,
-          allowConnection,
-          policy: "prewarm",
-        });
-        prewarmed += 1;
-      } catch (error) {
-        console.error(`Failed to prewarm list ${list.id}:`, error);
-      }
+  await mapWithConcurrency(lists, PREWARM_CONCURRENCY, async (list) => {
+    try {
+      await getListCatalog(list, {
+        accountId,
+        sort: parseSortOption(list.sortOption),
+        // Prewarming only needs the canonical cache. Poster customization is
+        // applied later when Stremio requests the catalog.
+        rpdbApiKey: null,
+        allowConnection,
+        policy: "prewarm",
+      });
+      prewarmed += 1;
+    } catch (error) {
+      console.error(`Failed to prewarm list ${list.id}:`, error);
     }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.min(PREWARM_CONCURRENCY, lists.length) }, () =>
-      worker(),
-    ),
-  );
+  });
 
   console.log(
     `Prewarmed ${prewarmed}/${lists.length} lists in ${Math.round(performance.now() - startedAt)}ms`,

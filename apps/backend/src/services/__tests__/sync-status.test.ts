@@ -30,6 +30,7 @@ import {
   db,
   resetRpc,
   rpcHandlers,
+  supabase,
 } from "../../__tests__/helpers/mock-supabase";
 import {
   ConnectionExpiredError,
@@ -304,10 +305,7 @@ describe("Lists without a recorded status", () => {
   it("still use the cache when the recorded statuses cannot be read", async () => {
     cache.seed(listId, [movie("tt0000001")]);
     const lists = await getAccountLists(accountId);
-    const from = vi.spyOn(
-      (await import("../../__tests__/helpers/mock-supabase")).supabase,
-      "from",
-    );
+    const from = vi.spyOn(supabase, "from");
     from.mockReturnValueOnce({
       select: () => ({
         in: () => Promise.resolve({ data: null, error: { message: "down" } }),

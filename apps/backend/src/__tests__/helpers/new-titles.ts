@@ -20,7 +20,7 @@ import {
 } from "./mock-registry.js";
 import { db, resetRpc } from "./mock-supabase.js";
 
-export const START = new Date("2026-10-01T12:00:00.000Z");
+const START = new Date("2026-10-01T12:00:00.000Z");
 /** More than the fake adapters' 30-minute freshness. */
 export const NEXT_SYNC_MS = 31 * 60_000;
 export const DAY_MS = 24 * 60 * 60_000;

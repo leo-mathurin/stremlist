@@ -11,7 +11,6 @@ import type { Child } from "hono/jsx";
 import { supportsAction } from "../providers/registry";
 import type { ActionIntent } from "../providers/types";
 import { toRating } from "../providers/types";
-import type { Account } from "../services/accounts";
 import { resolveAccountKey } from "../services/accounts";
 import type { ActionOutcome } from "../services/actions";
 import {
@@ -129,9 +128,14 @@ function OutcomePage({
   );
 }
 
-async function privateAccount(c: Context): Promise<Account | null> {
+/** The Title and the private Account of an Action link, or null. */
+async function actionRequest(c: Context) {
+  const type = c.req.param("type");
+  if (type !== "movie" && type !== "series") return null;
+  const target = parseStreamId(type, decodeURIComponent(c.req.param("id")));
   const access = await resolveAccountKey(c.req.param("accountId"));
-  return access?.via === "private" ? access.account : null;
+  if (!target || access?.via !== "private") return null;
+  return { target, account: access.account };
 }
 
 function notFound(c: Context) {
@@ -151,18 +155,17 @@ function supporting(providers: ProviderId[], kind: ActionIntent["kind"]) {
 // Watchlist and watched: one explicit intent per URL, so opening it twice
 // gives the same result (ADR 0003).
 actions.get("/:accountId/actions/:kind/:op/:type/:id", async (c) => {
-  const { kind, op, type } = c.req.param();
+  const { kind, op } = c.req.param();
   if (kind === "rating") return renderRating(c);
   if (
     (kind !== "watchlist" && kind !== "watched") ||
-    (op !== "add" && op !== "remove") ||
-    (type !== "movie" && type !== "series")
+    (op !== "add" && op !== "remove")
   ) {
     return notFound(c);
   }
-  const target = parseStreamId(type, decodeURIComponent(c.req.param("id")));
-  const account = await privateAccount(c);
-  if (!target || !account) return notFound(c);
+  const request = await actionRequest(c);
+  if (!request) return notFound(c);
+  const { target, account } = request;
 
   const providers = supporting(await actionProviders(account), kind);
   const add = op === "add";
@@ -194,11 +197,9 @@ actions.get("/:accountId/actions/:kind/:op/:type/:id", async (c) => {
 });
 
 async function renderRating(c: Context) {
-  const type = c.req.param("type");
-  if (type !== "movie" && type !== "series") return notFound(c);
-  const target = parseStreamId(type, decodeURIComponent(c.req.param("id")));
-  const account = await privateAccount(c);
-  if (!target || !account) return notFound(c);
+  const request = await actionRequest(c);
+  if (!request) return notFound(c);
+  const { target, account } = request;
 
   const ratings = await currentRatings(account, target.imdbId);
   if (ratings.length === 0) return notFound(c);
@@ -210,7 +211,7 @@ async function renderRating(c: Context) {
       <h1>
         {name
           ? `Rate ${name}`
-          : `Rate this ${type === "series" ? "series" : "movie"}`}
+          : `Rate this ${target.type === "series" ? "series" : "movie"}`}
       </h1>
       <form method="post">
         <div class="stars" role="radiogroup" aria-label="Rating from 1 to 10">
@@ -268,11 +269,9 @@ async function renderRating(c: Context) {
 }
 
 actions.post("/:accountId/actions/rating/rate/:type/:id", async (c) => {
-  const type = c.req.param("type");
-  if (type !== "movie" && type !== "series") return notFound(c);
-  const target = parseStreamId(type, decodeURIComponent(c.req.param("id")));
-  const account = await privateAccount(c);
-  if (!target || !account) return notFound(c);
+  const request = await actionRequest(c);
+  if (!request) return notFound(c);
+  const { target, account } = request;
 
   const form = await c.req.parseBody({ all: true });
   const remove = form.remove === "1";
