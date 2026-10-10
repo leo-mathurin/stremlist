@@ -23,14 +23,11 @@ type SavedList = Pick<
   "id" | "provider" | "sourceRef" | "mergedSources"
 >;
 
-/**
- * A server answer with the sync status and the Connections, and the saved
- * Lists when it has them. The staging backend answers without statuses.
- */
+/** A config or refresh answer: the sync status, Connections and saved Lists. */
 interface SyncAnswer {
-  syncStatus?: ListSyncStatuses;
+  syncStatus: ListSyncStatuses;
   connections: ConnectionSummary[];
-  lists?: SavedList[];
+  lists: SavedList[];
 }
 
 function sourcesOf(lists: SavedList[]): Record<string, string> {
@@ -64,8 +61,8 @@ export function useListSyncStatus(
   const applySync = useCallback((answer: SyncAnswer) => {
     epoch.current += 1;
     setConnections(answer.connections);
-    setSyncStatus(answer.syncStatus ?? {});
-    if (answer.lists) setSavedSources(sourcesOf(answer.lists));
+    setSyncStatus(answer.syncStatus);
+    setSavedSources(sourcesOf(answer.lists));
   }, []);
 
   /** Take the Lists that a save stored. */

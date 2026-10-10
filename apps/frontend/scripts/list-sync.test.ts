@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { ListSyncStatus } from "@stremlist/shared/sync-status";
-import { listSyncState, mergedListSyncState } from "../src/lib/list-sync.ts";
+import {
+  attentionTone,
+  listSyncState,
+  mergedListSyncState,
+  syncLineTone,
+} from "../src/lib/list-sync.ts";
 import type { ListSyncState } from "../src/lib/list-sync.ts";
 
 /** Assert only the fields of `expected`, like a partial match. */
@@ -224,6 +229,65 @@ describe("mergedListSyncState", () => {
         { source: TRAKT, state: { kind: "waiting", reconnected: true } },
       ]),
       { kind: "waiting", reconnected: true },
+    );
+  });
+});
+
+describe("syncLineTone", () => {
+  const renew = (
+    stillShown: boolean,
+    othersShown?: boolean,
+  ): ListSyncState => ({
+    kind: "connection",
+    renew: true,
+    stillShown,
+    ...(othersShown === undefined ? {} : { othersShown }),
+  });
+
+  test("agrees with the row when Stremio still shows a refused List", () => {
+    assert.equal(attentionTone(renew(true)), "warn");
+    assert.equal(syncLineTone(renew(true), true), "warn");
+  });
+
+  test("is bad when a refused List shows nothing in Stremio", () => {
+    assert.equal(syncLineTone(renew(false), true), "bad");
+    assert.equal(syncLineTone(renew(false, true), true), "warn");
+  });
+
+  test("warns about a missing Connection, also before a save", () => {
+    const missing: ListSyncState = {
+      kind: "connection",
+      renew: false,
+      stillShown: false,
+    };
+    assert.equal(syncLineTone(missing, false), "warn");
+  });
+
+  test("follows the attention tone of a failed refresh", () => {
+    const failing = (olderTitlesFrom: string | null): ListSyncState => ({
+      kind: "failing",
+      problem: "unavailable",
+      since: "2026-10-06T13:00:00.000Z",
+      olderTitlesFrom,
+    });
+    assert.equal(
+      syncLineTone(failing("2026-10-06T12:00:00.000Z"), true),
+      "warn",
+    );
+    assert.equal(syncLineTone(failing(null), true), "bad");
+  });
+
+  test("is ok for a saved synced List and idle otherwise", () => {
+    const synced: ListSyncState = {
+      kind: "synced",
+      at: "2026-10-06T12:00:00.000Z",
+      titleCount: 3,
+    };
+    assert.equal(syncLineTone(synced, true), "ok");
+    assert.equal(syncLineTone(synced, false), "idle");
+    assert.equal(
+      syncLineTone({ kind: "waiting", reconnected: false }, true),
+      "idle",
     );
   });
 });

@@ -43,10 +43,7 @@ function list(
   };
 }
 
-function signature(
-  rows: SignatureRow[],
-  known: KnownSourceGenres | null = genres,
-) {
+function signature(rows: SignatureRow[], known: KnownSourceGenres = genres) {
   return getListReinstallSignature(rows, known);
 }
 
@@ -181,25 +178,8 @@ test("learned genres follow each Source list and keep what a cache gap hides", (
     learnSourceGenres(learned, [{ ...SECOND, sourceGenres: [null] }]),
     learned,
   );
-  // Older backends send no genres by Source list.
+  // A List without genres by Source list keeps what the page learned.
   assert.deepEqual(learnSourceGenres(learned, [{ ...FIRST }]), learned);
-});
-
-test("an older backend without genres by Source list leaves genre options out", () => {
-  assert.equal(learnSourceGenres(null, [{ ...FIRST }]), null);
-  // The page cannot tell which genres a change takes away.
-  assert.equal(
-    signature([list([FIRST, WESTERN])], null),
-    signature([list([FIRST])], null),
-  );
-  assert.equal(
-    signature([list([FIRST], { catalogSettings: { genre: "Horror" } })], null),
-    signature([list([FIRST])], null),
-  );
-  assert.notEqual(
-    signature([list([FIRST], { displayMode: "movie" })], null),
-    signature([list([FIRST])], null),
-  );
 });
 
 const withNewTitles = { newTitles: true };

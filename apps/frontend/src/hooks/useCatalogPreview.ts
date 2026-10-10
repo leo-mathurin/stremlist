@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import type { InferRequestType } from "hono/client";
 import type { CatalogPreview } from "@stremlist/shared/catalog-preview";
 import { listSourcesKey } from "@stremlist/shared/list-merge";
 import type { SourceId } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
+import { ConnectionsContext } from "@/hooks/connections-context";
 import { api } from "@/lib/api";
+import { previewConnectionKey } from "@/lib/connections";
 import type { ListFormRow } from "@/lib/list-form";
 
 type PreviewBody = InferRequestType<typeof api.lists.preview.$post>["json"];
@@ -23,33 +25,11 @@ type CatalogPreviewState =
 /** Wait this long after the last settings change before asking again. */
 const SETTINGS_DEBOUNCE_MS = 300;
 
-/**
- * The preview of a List while `enabled`. A change of sort or filters keeps
- * the current preview on screen (marked `updating`) until the new one comes;
- * a change of Source lists starts again from the loading state.
- * `connectionKey` changes when the Account's Connection to a Provider of the
- * List changes (connected, disconnected, connected again, marked for renewal or
- * working again), so the preview is read again. It is not sent.
- */
-export function useCatalogPreview({
-  list,
-  accountKey,
-  connectionKey,
-  enabled,
-}: {
-  list: ListFormRow;
-  accountKey: string | null;
-  connectionKey: string;
-  enabled: boolean;
-}) {
-  const [state, setState] = useState<CatalogPreviewState>({
-    status: "loading",
-  });
-  const [attempt, setAttempt] = useState(0);
-  const source = listSourcesKey(list);
-  const shownSource = useRef<string | null>(null);
-  // A string, so that a new object with the same values asks nothing again.
-  const body = JSON.stringify({
+function previewBody(
+  list: ListFormRow,
+  accountKey: string | null,
+): PreviewBody {
+  return {
     accountKey: accountKey ?? undefined,
     provider: list.provider,
     sourceRef: list.sourceRef,
@@ -65,7 +45,38 @@ export function useCatalogPreview({
     sortOption: list.sortOption,
     displayMode: list.displayMode,
     catalogSettings: list.catalogSettings,
-  } satisfies PreviewBody);
+  };
+}
+
+/**
+ * The preview of a List while `enabled`. A change of sort or filters keeps
+ * the current preview on screen (marked `updating`) until the new one comes;
+ * a change of Source lists starts again from the loading state. A change of
+ * the Account's Connection to a Provider of the List (see
+ * `previewConnectionKey`) reads the preview again.
+ */
+export function useCatalogPreview({
+  list,
+  accountKey,
+  enabled,
+}: {
+  list: ListFormRow;
+  accountKey: string | null;
+  enabled: boolean;
+}) {
+  const [state, setState] = useState<CatalogPreviewState>({
+    status: "loading",
+  });
+  const [attempt, setAttempt] = useState(0);
+  const source = listSourcesKey(list);
+  const shownSource = useRef<string | null>(null);
+  const connectionKey = previewConnectionKey(list, use(ConnectionsContext));
+  const nextBody = previewBody(list, accountKey);
+  const bodyKey = JSON.stringify(nextBody);
+  // Keyed by value, so that a new object with the same values asks nothing
+  // again.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const body = useMemo(() => nextBody, [bodyKey]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -79,7 +90,7 @@ export function useCatalogPreview({
     const timer = setTimeout(
       () => {
         api.lists.preview
-          .$post({ json: JSON.parse(body) as PreviewBody })
+          .$post({ json: body })
           .then(async (res) => {
             if (!res.ok) throw new Error("preview failed");
             const preview = await res.json();

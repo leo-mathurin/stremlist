@@ -8,7 +8,7 @@ import {
 } from "@stremlist/shared/providers";
 import type { ConnectionSource, ProviderId } from "@stremlist/shared/providers";
 import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
-import type { ProviderStatus } from "@/hooks/useAccountConfiguration";
+import type { ProviderStatus } from "@/hooks/useProviderStatus";
 import { cn } from "@/lib/utils";
 import BuiltInCatalogPicker from "./BuiltInCatalogPicker";
 import { ProviderMark } from "./brand";

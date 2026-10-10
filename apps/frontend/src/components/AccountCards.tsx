@@ -7,8 +7,10 @@ import {
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
+import { joinProviderLabels } from "@stremlist/shared/providers";
 import AddonInstallActions from "./AddonInstallActions";
 import { buildAddonUrls } from "@/lib/list-sources";
+import { CONNECTABLE_PROVIDERS } from "@/lib/provider-groups";
 import type { ReinstallState } from "@/lib/reinstall";
 import { cn } from "@/lib/utils";
 
@@ -217,7 +219,7 @@ export function LegacyUpgradeCard({
           <p className="mt-1 text-sm text-pretty text-white/65">
             {movedAt
               ? "A private Addon URL was already created from this install, so changes here are not saved. Use the configure page of your new install. Lost it? Create a new private URL."
-              : "This install uses your IMDb user ID, which anyone can guess. A private Addon URL is a secret that only you have, so Stremlist can connect Trakt, Simkl and MDBList and show Actions in Stremio. Your Lists come with it. You reinstall once."}
+              : `This install uses your IMDb user ID, which anyone can guess. A private Addon URL is a secret that only you have, so Stremlist can connect ${joinProviderLabels(CONNECTABLE_PROVIDERS)} and show Actions in Stremio. Your Lists come with it. You reinstall once.`}
           </p>
         </div>
       </div>

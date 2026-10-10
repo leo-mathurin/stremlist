@@ -17,7 +17,7 @@ import type {
   SourceNoun,
   SourceProblemReason,
 } from "@stremlist/shared/source-problems";
-import type { AccountAccess } from "@/hooks/useAccountConfiguration";
+import type { AccountAccess } from "@/lib/account-config";
 import { api } from "@/lib/api";
 import { detectedLinkHint, PASTE_LINK_PROMPT } from "@/lib/list-sources";
 import { cn } from "@/lib/utils";

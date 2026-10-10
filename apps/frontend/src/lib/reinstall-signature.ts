@@ -25,13 +25,11 @@ export type KnownSourceGenres = Record<string, TitleGenres>;
  * list whose cache is not written yet (null) keeps the genres seen before:
  * a List that becomes merged, or stops being merged, moves its Source lists
  * to new cache keys, and they have their genres again after their next read.
- * Null while no answer gave genres by Source list (an older backend).
  */
 export function learnSourceGenres(
-  known: KnownSourceGenres | null,
+  known: KnownSourceGenres,
   lists: (ListSource & Pick<ConfigList, "mergedSources" | "sourceGenres">)[],
-): KnownSourceGenres | null {
-  if (!lists.some((list) => list.sourceGenres)) return known;
+): KnownSourceGenres {
   const next = { ...known };
   for (const list of lists) {
     listSources(list).forEach((source, index) => {
@@ -60,28 +58,22 @@ function listGenres(row: SignatureRow, known: KnownSourceGenres): string[] {
  * on. The signature is those Catalogs, so it changes
  * exactly when they change. Every Source list of a List counts through the
  * genres it brings; the sort, the posters and the Source list labels do not.
- * Without genres by Source list (`known` is null, an older backend), genre
- * options are left out: the page cannot tell which genres a change takes
- * away.
+ * A Source list without known genres brings none.
  */
 export function getListReinstallSignature(
   rows: SignatureRow[],
-  known: KnownSourceGenres | null,
+  known: KnownSourceGenres,
   options: { newTitles: boolean } = { newTitles: false },
 ): string {
   return JSON.stringify(
     addonCatalogEntries(
-      rows.map((row) => {
-        return {
-          id: row.id ?? row.localId,
-          catalogTitle: row.catalogTitle,
-          displayMode: row.displayMode,
-          catalogSettings: known
-            ? row.catalogSettings
-            : { ...row.catalogSettings, genre: undefined },
-          availableGenres: known ? listGenres(row, known) : [],
-        };
-      }),
+      rows.map((row) => ({
+        id: row.id ?? row.localId,
+        catalogTitle: row.catalogTitle,
+        displayMode: row.displayMode,
+        catalogSettings: row.catalogSettings,
+        availableGenres: listGenres(row, known),
+      })),
       options,
     ),
   );

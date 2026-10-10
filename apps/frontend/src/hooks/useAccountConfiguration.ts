@@ -6,152 +6,73 @@ import {
   useRef,
 } from "react";
 import { toast } from "sonner";
-import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
-import {
-  accountListsProblem,
-  listMergeProblem,
-  listSourcesKey,
-} from "@stremlist/shared/list-merge";
-import {
-  CONNECTION_SOURCES,
-  PROVIDER_IDS,
-  PROVIDERS,
-} from "@stremlist/shared/providers";
-import type { ConnectionSource, ProviderId } from "@stremlist/shared/providers";
+import { listSourcesKey } from "@stremlist/shared/list-merge";
+import { PROVIDERS } from "@stremlist/shared/providers";
+import type { ProviderId } from "@stremlist/shared/providers";
 import type {
   AccountConfigResponse,
-  AddonAccess,
-  ConfigList,
   ConnectionSummary,
   NewTitlesSummary,
 } from "@stremlist/shared/stremio.types";
+import {
+  configBody,
+  hasUnsavedChanges,
+  reconcileActionProviders,
+} from "../lib/account-config";
+import type {
+  AccountAccess,
+  AccountForm,
+  ActionProviders,
+} from "../lib/account-config";
 import { api } from "../lib/api";
-import { createListRow, rowTitle } from "../lib/list-form";
+import { connectProviderOf, missingConnections } from "../lib/connections";
+import { rowsFromLists } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { buildAddonUrls } from "../lib/list-sources";
-import { mergeRows, removeRowSource, splitRowSource } from "../lib/merged-rows";
-import { reinstallState, requiresReinstall } from "../lib/reinstall";
-import {
-  getListReinstallSignature,
-  learnSourceGenres,
-} from "../lib/reinstall-signature";
-import type { KnownSourceGenres } from "../lib/reinstall-signature";
-import type { InstallBaseline } from "../lib/reinstall";
+import { ACTION_PROVIDERS } from "../lib/provider-groups";
+import { useConnectionSources } from "./useConnectionSources";
+import { useListEditor } from "./useListEditor";
 import { useListSyncStatus } from "./useListSyncStatus";
-
-/** "new" until the first save creates the Account. */
-export type AccountAccess = "new" | AddonAccess;
-
-export type ProviderStatus = { enabled: boolean; connectable: boolean };
+import { useProviderStatus } from "./useProviderStatus";
+import { useRefreshCooldown } from "./useRefreshCooldown";
+import { useReinstallBaseline } from "./useReinstallBaseline";
 
 /** Providers whose Actions an Account can turn on: connected, with Actions. */
-export function actionCapableProviders(
+function actionCapableProviders(
   connections: ConnectionSummary[],
 ): ProviderId[] {
-  return PROVIDER_IDS.filter(
-    (id) =>
-      PROVIDERS[id].actions.length > 0 &&
-      connections.some((connection) => connection.provider === id),
+  return ACTION_PROVIDERS.filter((id) =>
+    connections.some((connection) => connection.provider === id),
   );
 }
 
-function defaultProviderStatus(): Record<ProviderId, ProviderStatus> {
-  return Object.fromEntries(
-    PROVIDER_IDS.map((id) => [
-      id,
-      { enabled: true, connectable: PROVIDERS[id].connection !== "none" },
-    ]),
-  ) as Record<ProviderId, ProviderStatus>;
+function errorMessage(body: object, fallback: string): string {
+  return "error" in body &&
+    typeof body.error === "string" &&
+    body.error.length > 0
+    ? body.error
+    : fallback;
 }
 
-/**
- * Source lists that a Connection unlocks, including the account's own lists.
- * Falls back to the static `CONNECTION_SOURCES` when the backend does not
- * answer (or does not have the endpoint yet).
- */
-async function fetchConnectionSources(
-  accountId: string,
-  provider: ProviderId,
-): Promise<ConnectionSource[]> {
-  const fallback = CONNECTION_SOURCES[provider] ?? [];
-  try {
-    const res = await api[":accountId"].connections[":provider"].sources.$get({
-      param: { accountId, provider },
-    });
-    if (!res.ok) return fallback;
-    const body = await res.json();
-    if (!("sources" in body) || body.sources.length === 0) return fallback;
-    return body.sources;
-  } catch {
-    return fallback;
-  }
-}
-
-const UNKNOWN_BASELINE: InstallBaseline = {
-  signature: null,
-  actionsLive: null,
-};
-
-/**
- * What Stremio read at the last install, kept per Account while a reinstall
- * is pending, so the reminder survives a reload.
- */
-function installedStorageKey(accountKey: string) {
-  return `stremlist:installed:${accountKey}`;
-}
-
-function readInstalled(accountKey: string): InstallBaseline | null {
-  try {
-    const raw = localStorage.getItem(installedStorageKey(accountKey));
-    if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<InstallBaseline>;
-    return typeof value.signature === "string" &&
-      typeof value.actionsLive === "boolean"
-      ? { signature: value.signature, actionsLive: value.actionsLive }
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeInstalled(accountKey: string, value: InstallBaseline | null) {
-  try {
-    if (value) {
-      localStorage.setItem(
-        installedStorageKey(accountKey),
-        JSON.stringify(value),
-      );
-    } else {
-      localStorage.removeItem(installedStorageKey(accountKey));
-    }
-  } catch {
-    // Private mode: the reminder lasts until the page closes.
-  }
-}
-
-function errorMessage(body: unknown, fallback: string): string {
-  if (body && typeof body === "object" && "error" in body) {
-    const error = (body as { error: unknown }).error;
-    if (typeof error === "string" && error.length > 0) return error;
-  }
-  return fallback;
-}
-
-function rowsFromLists(lists: ConfigList[]): ListFormRow[] {
-  return lists.map((list) =>
-    createListRow({
-      id: list.id,
-      provider: list.provider,
-      sourceRef: list.sourceRef,
-      catalogTitle: list.catalogTitle,
-      sortOption: list.sortOption,
-      displayMode: list.displayMode,
-      catalogSettings: list.catalogSettings,
-      availableGenres: list.availableGenres,
-      mergedSources: list.mergedSources,
-      sourceLabel: list.sourceLabel,
-    }),
+function toastError(err: unknown, options?: { id: string }) {
+  toast.error(
+    err instanceof Error ? err.message : "Something went wrong",
+    options,
   );
+}
+
+/**
+ * The configuration of an Account, "notFound", or null when it cannot be
+ * read (an answer without Lists included).
+ */
+async function fetchConfig(
+  accountKey: string,
+): Promise<AccountConfigResponse | "notFound" | null> {
+  const res = await api[":accountKey"].config.$get({ param: { accountKey } });
+  if (res.status === 404) return "notFound";
+  if (!res.ok) return null;
+  const body = await res.json();
+  return "lists" in body ? body : null;
 }
 
 /**
@@ -163,7 +84,8 @@ export function useAccountConfiguration(
   options: { onAccountCreated: (accountId: string) => void },
 ) {
   const { onAccountCreated } = options;
-  const [lists, setLists] = useState<ListFormRow[]>([]);
+  const editor = useListEditor();
+  const { lists, setLists } = editor;
   const [rpdbApiKey, setRpdbApiKey] = useState("");
   const [showRpdbApiKey, setShowRpdbApiKey] = useState(false);
   const [access, setAccess] = useState<AccountAccess>(
@@ -179,322 +101,145 @@ export function useAccountConfiguration(
     rememberSaved,
     dropConnection,
   } = useListSyncStatus(accountKey, access !== "new", lists);
-  const [connectionSources, setConnectionSources] = useState<
-    Partial<Record<ProviderId, ConnectionSource[]>>
-  >({});
+  const connectionSources = useConnectionSources(accountId, connections);
+  const providerStatus = useProviderStatus();
   const [actionsEnabled, setActionsEnabled] = useState(false);
-  const [actionOrder, setActionOrder] = useState<ProviderId[]>([]);
-  const [actionSelected, setActionSelected] = useState<ProviderId[]>([]);
+  const [actions, setActions] = useState<ActionProviders>({
+    order: [],
+    selected: [],
+  });
   const [newTitlesEnabled, setNewTitlesEnabled] = useState(false);
   const [newTitlesSummary, setNewTitlesSummary] =
     useState<NewTitlesSummary | null>(null);
-  const [providerStatus, setProviderStatus] = useState(defaultProviderStatus);
-  const [loading, setLoading] = useState(!!accountKey);
+  const [status, setStatus] = useState<
+    "loading" | "ready" | "notFound" | "error"
+  >(accountKey ? "loading" : "ready");
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [connecting, setConnecting] = useState<ProviderId | null>(null);
   const [lastFetchedAt, setLastFetchedAt] = useState<string | null>(null);
   const [cooldownSeconds, setCooldownSeconds] = useState(60);
-  const [now, setNow] = useState(() => Date.now());
-  const [notFound, setNotFound] = useState(false);
-  const [loadError, setLoadError] = useState(false);
-  const [loadAttempt, setLoadAttempt] = useState(0);
-  // What Stremio read at the last install, and what the last save serves.
-  // They differ until the user reinstalls. Unknown until the configuration
-  // loads; the signature is "" for an Account without Lists.
-  const [installed, setInstalled] = useState<InstallBaseline>(UNKNOWN_BASELINE);
-  const [saved, setSaved] = useState<InstallBaseline>(UNKNOWN_BASELINE);
-  // The genres that each Source list brings to the manifest, as far as the
-  // server told: the reinstall signature counts them.
-  const [knownGenres, setKnownGenres] = useState<KnownSourceGenres | null>(
-    null,
+  const { cooldownRemaining, onCooldown } = useRefreshCooldown(
+    lastFetchedAt,
+    cooldownSeconds,
   );
-  const currentForm = useRef({ lists, rpdbApiKey, newTitlesEnabled });
+  const baseline = useReinstallBaseline(accountKey);
+  const { reset: resetBaseline, onLoaded: onBaselineLoaded } = baseline;
+
+  const form: AccountForm = {
+    lists,
+    rpdbApiKey,
+    actionsEnabled,
+    actions,
+    newTitlesEnabled,
+  };
+  const currentForm = useRef(form);
   // Save responses must see edits committed while the request was in flight.
   useLayoutEffect(() => {
-    currentForm.current = { lists, rpdbApiKey, newTitlesEnabled };
-  }, [lists, rpdbApiKey, newTitlesEnabled]);
+    currentForm.current = {
+      lists,
+      rpdbApiKey,
+      actionsEnabled,
+      actions,
+      newTitlesEnabled,
+    };
+  }, [lists, rpdbApiKey, actionsEnabled, actions, newTitlesEnabled]);
+
+  /**
+   * Take what the server says about the Account and the page does not edit:
+   * the sync status, Connections, refresh times, the New titles summary, and
+   * the Providers that can have Actions.
+   */
+  const applyServerState = useCallback(
+    (data: AccountConfigResponse) => {
+      applySync(data);
+      setLastFetchedAt(data.lastFetchedAt);
+      setCooldownSeconds(data.cooldownSeconds);
+      setNewTitlesSummary(data.newTitles.summary);
+      const capable = actionCapableProviders(data.connections);
+      setActions((current) =>
+        reconcileActionProviders(current.order, current.selected, capable),
+      );
+    },
+    [applySync],
+  );
 
   useEffect(() => {
-    api.providers
-      .$get()
-      .then((res) => res.json())
-      .then((data) => {
-        setProviderStatus((current) => {
-          const next = { ...current };
-          for (const provider of data.providers) {
-            next[provider.id] = {
-              enabled: provider.enabled,
-              connectable: provider.connectable,
-            };
-          }
-          return next;
-        });
-      })
-      .catch(() => {
-        // Keep the defaults: the backend still refuses what it cannot do.
-      });
-  }, []);
-
-  useEffect(() => {
-    setInstalled(UNKNOWN_BASELINE);
-    setSaved(UNKNOWN_BASELINE);
-    setNotFound(false);
-    setLoadError(false);
+    resetBaseline();
     if (!accountKey) {
       setAccess("new");
-      setLoading(false);
+      setStatus("ready");
       return;
     }
 
     let cancelled = false;
-    setLoading(true);
-    api[":accountKey"].config
-      .$get({ param: { accountKey } })
-      .then(async (res) => {
-        if (res.status === 404) {
-          if (!cancelled) setNotFound(true);
+    setStatus("loading");
+    fetchConfig(accountKey)
+      .then((data) => {
+        if (cancelled) return;
+        if (data === "notFound") {
+          setStatus("notFound");
           return;
         }
-        if (!res.ok) throw new Error("Failed to load configuration");
-        const data = (await res.json()) as AccountConfigResponse;
-        if (cancelled) return;
+        if (!data) throw new Error("Failed to load configuration");
         const rows = rowsFromLists(data.lists);
-        const genres = learnSourceGenres(null, data.lists);
+        // The saved Actions Providers first, in their order.
+        const saved = reconcileActionProviders(
+          data.actions.providers,
+          data.actions.providers,
+          actionCapableProviders(data.connections),
+        );
         setLists(rows);
-        setKnownGenres(genres);
         setAccess(data.access);
         setAccountId(data.accountId);
         setMovedAt(data.movedAt);
         setRpdbApiKey(data.rpdbApiKey ?? "");
-        applySync(data);
-        setLastFetchedAt(data.lastFetchedAt);
-        setCooldownSeconds(data.cooldownSeconds);
         setActionsEnabled(data.actions.enabled);
-        const capable = actionCapableProviders(data.connections);
-        const savedProviders = data.actions.providers.filter((id) =>
-          capable.includes(id),
-        );
-        setActionOrder([
-          ...savedProviders,
-          ...capable.filter((id) => !savedProviders.includes(id)),
-        ]);
-        setActionSelected(savedProviders);
+        setActions(saved);
         setNewTitlesEnabled(data.newTitles.enabled);
-        setNewTitlesSummary(data.newTitles.summary);
-        const loaded = {
-          signature: getListReinstallSignature(rows, genres, {
-            newTitles: data.newTitles.enabled,
-          }),
-          actionsLive: data.actions.enabled && savedProviders.length > 0,
-        };
-        setSaved(loaded);
-        setInstalled(readInstalled(accountKey) ?? loaded);
+        applyServerState(data);
+        onBaselineLoaded(accountKey, data.lists, {
+          rows,
+          newTitles: data.newTitles.enabled,
+          actionsLive: data.actions.enabled && saved.selected.length > 0,
+        });
+        setStatus("ready");
       })
       .catch(() => {
-        if (!cancelled) setLoadError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setStatus("error");
       });
     return () => {
       cancelled = true;
     };
-  }, [accountKey, loadAttempt, applySync]);
+  }, [
+    accountKey,
+    loadAttempt,
+    resetBaseline,
+    onBaselineLoaded,
+    applyServerState,
+    setLists,
+  ]);
 
-  // What each Connection unlocks depends on the account (its own lists), so
-  // ask the backend once the Connections are known.
-  const connectedKey = connections.map((c) => c.provider).join(",");
-  useEffect(() => {
-    if (!accountId || !connectedKey) {
-      setConnectionSources({});
-      return;
-    }
-    let cancelled = false;
-    const providers = connectedKey.split(",") as ProviderId[];
-    void Promise.all(
-      providers.map(
-        async (provider) =>
-          [
-            provider,
-            await fetchConnectionSources(accountId, provider),
-          ] as const,
-      ),
-    ).then((entries) => {
-      if (!cancelled) setConnectionSources(Object.fromEntries(entries));
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [accountId, connectedKey]);
-
-  // Tick once a second so the "last refreshed" label and the refresh cooldown
-  // countdown stay live without per-event timers.
-  useEffect(() => {
-    if (!accountKey) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [accountKey]);
-
-  const nextRefreshAt = lastFetchedAt
-    ? new Date(lastFetchedAt).getTime() + cooldownSeconds * 1000
-    : 0;
-  const cooldownRemaining = Math.max(
-    0,
-    Math.ceil((nextRefreshAt - now) / 1000),
-  );
-  const onCooldown = cooldownRemaining > 0;
-
-  const setListField = useCallback(
-    <K extends keyof ListFormRow>(
-      localId: string,
-      key: K,
-      value: ListFormRow[K],
-    ) => {
-      setLists((current) =>
-        current.map((list) =>
-          list.localId === localId ? { ...list, [key]: value } : list,
-        ),
-      );
-    },
-    [],
-  );
-
-  /**
-   * Add a List. Returns an error message when it cannot be added, so the
-   * caller can show it next to the control that asked.
-   */
-  const addList = useCallback(
-    (
-      partial: Parameters<typeof createListRow>[0],
-      current: ListFormRow[],
-    ): string | null => {
-      const problem = accountListsProblem([...current, partial]);
-      if (problem) {
-        return problem.reason === "duplicate_source"
-          ? "This list is already in your Stremlist."
-          : problem.message;
-      }
-      setLists((rows) => [...rows, createListRow(partial)]);
-      return null;
-    },
-    [],
-  );
-
-  /** Add a built-in IMDb chart. Returns an error message, like `addList`. */
-  const addChartList = useCallback(
-    (chartId: string): string | null => {
-      const entry = CHART_BY_ID.get(chartId);
-      if (!entry) return null;
-      return addList(
-        {
-          provider: "imdb",
-          sourceRef: entry.id,
-          catalogTitle: entry.label,
-          displayMode: entry.defaultDisplayMode,
-        },
-        lists,
-      );
-    },
-    [addList, lists],
-  );
-
-  const removeList = useCallback((localId: string) => {
-    setLists((current) => current.filter((list) => list.localId !== localId));
-  }, []);
-
-  const mergeLists = useCallback((targetLocalId: string, otherId: string) => {
-    setLists((rows) => mergeRows(rows, targetLocalId, otherId));
-  }, []);
-
-  const removeSource = useCallback((localId: string, index: number) => {
-    setLists((rows) => removeRowSource(rows, localId, index));
-  }, []);
-
-  const splitSource = useCallback((localId: string, index: number) => {
-    setLists((rows) => splitRowSource(rows, localId, index));
-  }, []);
-
-  const reorderLists = useCallback((initialIndex: number, index: number) => {
-    setLists((items) => {
-      const allDefaultTitles = items.every((list, i) => {
-        const title = list.catalogTitle.trim();
-        return title === "" || title === String(i + 1);
-      });
-      const reordered = [...items];
-      const [removed] = reordered.splice(initialIndex, 1);
-      reordered.splice(index, 0, removed);
-      // Numbered default titles follow the position, so drop them and let
-      // the backend number the Lists again.
-      return allDefaultTitles
-        ? reordered.map((list) => ({ ...list, catalogTitle: "" }))
-        : reordered;
-    });
-  }, []);
-
-  const toggleActionProvider = useCallback(
-    (provider: ProviderId, selected: boolean) => {
-      setActionSelected((current) =>
-        selected
-          ? [...current.filter((id) => id !== provider), provider]
-          : current.filter((id) => id !== provider),
-      );
-    },
-    [],
-  );
-
-  const moveActionProvider = useCallback(
-    (provider: ProviderId, delta: -1 | 1) => {
-      setActionOrder((current) => {
-        const index = current.indexOf(provider);
-        const target = index + delta;
-        if (index < 0 || target < 0 || target >= current.length) {
-          return current;
-        }
-        const next = [...current];
-        [next[index], next[target]] = [next[target], next[index]];
-        return next;
-      });
-    },
-    [],
-  );
-
-  const validationError = (() => {
-    const problem = accountListsProblem(lists);
-    if (problem) return problem.message;
-    for (const list of lists) {
-      const problem = listMergeProblem(list);
-      if (problem) return `${rowTitle(list)}: ${problem}`;
-    }
-    return null;
-  })();
-
-  const listPayload = (rows: ListFormRow[] = lists) =>
-    rows.map((list, index) => ({
-      id: list.id,
-      provider: list.provider,
-      sourceRef: list.sourceRef.trim(),
-      catalogTitle: list.catalogTitle.trim(),
-      sortOption: list.sortOption,
-      displayMode: list.displayMode,
-      position: index,
-      catalogSettings: list.catalogSettings,
-      mergedSources: list.mergedSources,
-      sourceLabel: list.sourceLabel,
-    }));
+  // Actions add a `stream` resource to the manifest, which Stremio also reads
+  // only at install time.
+  const actionsLive =
+    access === "private" && actionsEnabled && actions.selected.length > 0;
+  const reinstall =
+    access === "new"
+      ? "none"
+      : baseline.stateFor({
+          rows: lists,
+          newTitles: newTitlesEnabled,
+          actionsLive,
+        });
 
   /**
    * Create the Account from the current setup. Returns its ID. It may have no
    * Lists yet when it is created to connect a Provider.
    */
-  const createAccount = async (): Promise<string | null> => {
-    const res = await api.accounts.$post({
-      json: {
-        rpdbApiKey,
-        lists: listPayload(),
-        newTitles: { enabled: newTitlesEnabled },
-      },
-    });
+  const createAccount = async (): Promise<string> => {
+    const res = await api.accounts.$post({ json: configBody(form, "new") });
     const body = await res.json();
     if (!res.ok || !("accountId" in body)) {
       throw new Error(errorMessage(body, "Failed to save your configuration."));
@@ -502,28 +247,8 @@ export function useAccountConfiguration(
     return body.accountId;
   };
 
-  // Actions add a `stream` resource to the manifest, which Stremio also reads
-  // only at install time.
-  const actionsLive =
-    access === "private" && actionsEnabled && actionSelected.length > 0;
-  const reinstall =
-    access === "new"
-      ? "none"
-      : reinstallState(installed, saved, {
-          signature: getListReinstallSignature(lists, knownGenres, {
-            newTitles: newTitlesEnabled,
-          }),
-          actionsLive,
-        });
-
-  /** The user reinstalled: Stremio now reads the saved setup. */
-  const markReinstalled = (baseline: InstallBaseline = saved) => {
-    setInstalled(baseline);
-    if (accountKey) writeInstalled(accountKey, null);
-  };
-
   const handleSave = async () => {
-    if (validationError || saving) return;
+    if (editor.validationError || saving) return;
     if (lists.length === 0) {
       toast.error("Add at least one list first.", { id: "configuration-save" });
       return;
@@ -533,40 +258,18 @@ export function useAccountConfiguration(
     try {
       if (!accountKey) {
         const created = await createAccount();
-        if (created) {
-          toast.success(
-            "Saved! Install Stremlist in Stremio with your Addon URL.",
-            { id: "configuration-save" },
-          );
-          onAccountCreated(created);
-        }
+        toast.success(
+          "Saved! Install Stremlist in Stremio with your Addon URL.",
+          { id: "configuration-save" },
+        );
+        onAccountCreated(created);
         return;
       }
 
-      const submittedActionsLive = actionsLive;
-      const submittedLists = lists;
-      const submittedNewTitles = newTitlesEnabled;
-      const submittedPayload = JSON.stringify({
-        rpdbApiKey,
-        lists: listPayload(submittedLists),
-        newTitles: submittedNewTitles,
-      });
+      const submitted = form;
       const res = await api[":accountKey"].config.$post({
         param: { accountKey },
-        json: {
-          rpdbApiKey,
-          lists: listPayload(submittedLists),
-          actions:
-            access === "private"
-              ? {
-                  enabled: actionsEnabled,
-                  providers: actionOrder.filter((id) =>
-                    actionSelected.includes(id),
-                  ),
-                }
-              : undefined,
-          newTitles: { enabled: submittedNewTitles },
-        },
+        json: configBody(submitted, access),
       });
       const body = await res.json();
       if (!res.ok || !("lists" in body)) {
@@ -574,7 +277,7 @@ export function useAccountConfiguration(
       }
 
       rememberSaved(body.lists);
-      const savedRows = submittedLists.map((row, index) => {
+      const savedRows = submitted.lists.map((row, index) => {
         const saved = body.lists[index];
         return saved
           ? {
@@ -586,28 +289,22 @@ export function useAccountConfiguration(
             }
           : row;
       });
-      const latest = currentForm.current;
-      const hasUnsavedChanges =
-        JSON.stringify({
-          rpdbApiKey: latest.rpdbApiKey,
-          lists: listPayload(latest.lists),
-          newTitles: latest.newTitlesEnabled,
-        }) !== submittedPayload;
+      const unsaved = hasUnsavedChanges(submitted, currentForm.current, access);
       // Match rows by their local ID: the user may have added, removed or
       // reordered Lists while the save was in flight.
       const savedByLocalId = new Map(
         savedRows.map((row) => [row.localId, row]),
       );
       const submittedByLocalId = new Map(
-        submittedLists.map((row) => [row.localId, row]),
+        submitted.lists.map((row) => [row.localId, row]),
       );
       setLists((current) =>
         current.map((row) => {
           const saved = savedByLocalId.get(row.localId);
-          const submitted = submittedByLocalId.get(row.localId);
-          if (!saved || !submitted) return row;
+          const before = submittedByLocalId.get(row.localId);
+          if (!saved || !before) return row;
           const sourceUnchanged =
-            listSourcesKey(row) === listSourcesKey(submitted);
+            listSourcesKey(row) === listSourcesKey(before);
           return {
             ...row,
             id: saved.id,
@@ -621,22 +318,18 @@ export function useAccountConfiguration(
           };
         }),
       );
-      const genres = learnSourceGenres(knownGenres, body.lists);
-      setKnownGenres(genres);
-      const nowSaved = {
-        signature: getListReinstallSignature(savedRows, genres, {
-          newTitles: submittedNewTitles,
-        }),
-        actionsLive: submittedActionsLive,
-      };
-      // Compare with what Stremio read at install time, not with the last
-      // save: a reinstall stays needed until the user does it.
-      const needsReinstall = requiresReinstall(installed, nowSaved);
-      setSaved(nowSaved);
+      const { nowSaved, needsReinstall } = baseline.onSaved(
+        accountKey,
+        body.lists,
+        {
+          rows: savedRows,
+          newTitles: submitted.newTitlesEnabled,
+          actionsLive,
+        },
+      );
       // The saved Lists change what the summary counts.
       setNewTitlesSummary(body.newTitles);
-      writeInstalled(accountKey, needsReinstall ? installed : null);
-      if (hasUnsavedChanges) {
+      if (unsaved) {
         toast.success(
           "Saved the submitted settings. You have unsaved changes: save again to apply them.",
           { id: "configuration-save" },
@@ -650,7 +343,7 @@ export function useAccountConfiguration(
             action: {
               label: "Reinstall",
               onClick: () => {
-                markReinstalled(nowSaved);
+                baseline.markReinstalled(nowSaved);
                 const { stremioUrl, webUrl } = buildAddonUrls(accountKey);
                 if (stremioUrl) window.location.assign(stremioUrl);
                 else window.open(webUrl, "_blank", "noopener");
@@ -665,9 +358,7 @@ export function useAccountConfiguration(
         );
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Something went wrong", {
-        id: "configuration-save",
-      });
+      toastError(err, { id: "configuration-save" });
     } finally {
       setSaving(false);
     }
@@ -687,10 +378,10 @@ export function useAccountConfiguration(
       }
       setCooldownSeconds(body.cooldownSeconds);
       setLastFetchedAt(body.lastFetchedAt);
-      if ("syncStatus" in body) applySync(body);
       // A throttled refresh read nothing new.
+      if ("syncStatus" in body) applySync(body);
       if ("newTitles" in body) setNewTitlesSummary(body.newTitles);
-      if ("lists" in body && body.lists) {
+      if ("lists" in body) {
         const refreshed = body.lists;
         setLists((current) =>
           current.map((row) => {
@@ -713,7 +404,7 @@ export function useAccountConfiguration(
         );
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Something went wrong");
+      toastError(err);
     } finally {
       setRefreshing(false);
     }
@@ -734,7 +425,7 @@ export function useAccountConfiguration(
       }
       return body.accountId;
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Something went wrong");
+      toastError(err);
       return null;
     }
   };
@@ -756,7 +447,6 @@ export function useAccountConfiguration(
     try {
       if (!id) {
         id = await createAccount();
-        if (!id) return;
         onAccountCreated(id);
       }
       const res = await api[":accountId"].connections[":provider"].start.$post({
@@ -771,35 +461,7 @@ export function useAccountConfiguration(
       window.location.assign(body.authorizeUrl);
     } catch (err) {
       setConnecting(null);
-      toast.error(err instanceof Error ? err.message : "Something went wrong");
-    }
-  };
-
-  /**
-   * Read the Connections and Actions again from the server without touching
-   * the Lists being edited, so rows show what the backend now serves.
-   */
-  const refreshAccountState = async (key: string) => {
-    try {
-      const res = await api[":accountKey"].config.$get({
-        param: { accountKey: key },
-      });
-      if (!res.ok) return;
-      const data = (await res.json()) as AccountConfigResponse;
-      applySync(data);
-      setLastFetchedAt(data.lastFetchedAt);
-      // A disconnect forgets the history of Connection-only Lists.
-      setNewTitlesSummary(data.newTitles.summary);
-      const capable = actionCapableProviders(data.connections);
-      setActionOrder((current) => [
-        ...current.filter((id) => capable.includes(id)),
-        ...capable.filter((id) => !current.includes(id)),
-      ]);
-      setActionSelected((current) =>
-        current.filter((id) => capable.includes(id)),
-      );
-    } catch {
-      // The local state already reflects the disconnect.
+      toastError(err);
     }
   };
 
@@ -813,30 +475,51 @@ export function useAccountConfiguration(
       });
       if (!res.ok) throw new Error(`Could not disconnect ${label}.`);
       dropConnection(provider);
-      setActionOrder((current) => current.filter((id) => id !== provider));
-      setActionSelected((current) => current.filter((id) => id !== provider));
+      const capable = actionCapableProviders(
+        connections.filter((connection) => connection.provider !== provider),
+      );
+      setActions((current) =>
+        reconcileActionProviders(current.order, current.selected, capable),
+      );
       toast.info(
         `${label} is disconnected. Lists read through ${label} stop showing in Stremio until you connect it again.`,
       );
-      await refreshAccountState(accountId);
+      // Read the server state again without touching the Lists being
+      // edited, so rows show what the backend now serves. When it cannot be
+      // read, the local state already reflects the disconnect.
+      const data = await fetchConfig(accountId).catch(() => null);
+      if (data && data !== "notFound") applyServerState(data);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Something went wrong");
+      toastError(err);
     } finally {
       setConnecting(null);
     }
   };
 
+  /** What a List row shows about its refreshes and Connections. */
+  const rowModel = (list: ListFormRow) => {
+    const sync = syncStateOf(list);
+    // Providers whose Connection the List reads through and the Account lacks.
+    const missing =
+      access === "private" ? missingConnections(list, connections) : [];
+    return {
+      sync,
+      missing,
+      connectProvider: connectProviderOf(list, sync, missing),
+      saved: isSaved(list),
+    };
+  };
+
   return {
     lists,
-    setListField,
-    addList: (partial: Parameters<typeof createListRow>[0]) =>
-      addList(partial, lists),
-    addChartList,
-    removeList,
-    mergeLists,
-    removeSource,
-    splitSource,
-    reorderLists,
+    setListField: editor.setListField,
+    addList: editor.addList,
+    addChartList: editor.addChartList,
+    removeList: editor.removeList,
+    mergeLists: editor.mergeLists,
+    removeSource: editor.removeSource,
+    splitSource: editor.splitSource,
+    reorderLists: editor.reorderLists,
     rpdbApiKey,
     setRpdbApiKey,
     showRpdbApiKey,
@@ -847,34 +530,49 @@ export function useAccountConfiguration(
     connections,
     connectionSources,
     providerStatus,
-    syncStateOf,
-    isListSaved: isSaved,
+    rowModel,
     actionsEnabled,
     // Turning Actions on selects every capable Provider, so saving right
     // away gives working Actions.
     setActionsEnabled: (enabled: boolean) => {
       setActionsEnabled(enabled);
-      if (enabled) setActionSelected(actionOrder);
+      if (enabled) {
+        setActions((current) => ({ ...current, selected: current.order }));
+      }
     },
-    actionOrder,
-    actionSelected,
-    toggleActionProvider,
+    actionOrder: actions.order,
+    actionSelected: actions.selected,
+    toggleActionProvider: (provider: ProviderId, selected: boolean) =>
+      setActions((current) => ({
+        ...current,
+        selected: selected
+          ? [...current.selected.filter((id) => id !== provider), provider]
+          : current.selected.filter((id) => id !== provider),
+      })),
+    moveActionProvider: (provider: ProviderId, delta: -1 | 1) =>
+      setActions((current) => {
+        const index = current.order.indexOf(provider);
+        const target = index + delta;
+        if (index < 0 || target < 0 || target >= current.order.length) {
+          return current;
+        }
+        const order = [...current.order];
+        [order[index], order[target]] = [order[target], order[index]];
+        return { ...current, order };
+      }),
     newTitlesEnabled,
     setNewTitlesEnabled,
     newTitlesSummary,
-    moveActionProvider,
-    loading,
+    status,
     saving,
     refreshing,
     connecting,
     lastFetchedAt,
     cooldownRemaining,
     onCooldown,
-    notFound,
-    loadError,
     reinstall,
-    markReinstalled: () => markReinstalled(),
-    validationError,
+    markReinstalled: () => baseline.markReinstalled(),
+    validationError: editor.validationError,
     handleSave,
     handleRefresh,
     upgrade,

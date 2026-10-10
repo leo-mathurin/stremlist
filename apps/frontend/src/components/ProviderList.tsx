@@ -4,10 +4,8 @@ import { Check, Loader2 } from "lucide-react";
 import { PROVIDER_IDS, PROVIDERS } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
-import type {
-  AccountAccess,
-  ProviderStatus,
-} from "@/hooks/useAccountConfiguration";
+import type { ProviderStatus } from "@/hooks/useProviderStatus";
+import type { AccountAccess } from "@/lib/account-config";
 import { cn } from "@/lib/utils";
 import { ProviderMark } from "./brand";
 
