@@ -74,7 +74,7 @@ export function parseSortOption(
  * A generated Account ID (ADR 0001): `sl_` and 22 base62 characters. It is the
  * secret part of the Addon URL.
  */
-export const ACCOUNT_ID_SOURCE = String.raw`sl_[0-9A-Za-z]{22}`;
+const ACCOUNT_ID_SOURCE = String.raw`sl_[0-9A-Za-z]{22}`;
 export const ACCOUNT_ID_PATTERN = new RegExp(`^${ACCOUNT_ID_SOURCE}$`);
 
 /** An IMDb user ID, also the form of a Legacy alias. */
@@ -99,12 +99,6 @@ export const IMDB_USER_ID_PATTERN = new RegExp(
 );
 export const IMDB_WATCHLIST_SOURCE_ID_PATTERN = new RegExp(
   `^(${IMDB_UR_ID_SOURCE}|${IMDB_LS_ID_SOURCE}|${IMDB_P_HANDLE_SOURCE})$`,
-);
-export const IMDB_USER_ID_EXTRACT_PATTERN = new RegExp(
-  `(${IMDB_UR_ID_SOURCE}|${IMDB_P_HANDLE_SOURCE})`,
-);
-export const IMDB_WATCHLIST_SOURCE_ID_EXTRACT_PATTERN = new RegExp(
-  `(${IMDB_UR_ID_SOURCE}|${IMDB_LS_ID_SOURCE}|${IMDB_P_HANDLE_SOURCE})`,
 );
 
 /** An Addon URL key: a generated Account ID or a Legacy alias (`ur…`). */

@@ -61,7 +61,7 @@ export interface PreviewSourceProblem extends SourceId {
   reason: SourceProblemReason;
 }
 
-export interface CatalogPreviewProblem {
+interface CatalogPreviewProblem {
   ok: false;
   reason: SourceProblemReason;
   /** In a merged List, the Source list that has the problem. */

@@ -37,7 +37,6 @@ BEGIN
     'A failed write must roll back deletions and earlier updates';
   ASSERT (SELECT rpdb_api_key FROM public.accounts WHERE id = 'sl_configtransactiontest00') = 'old-key';
 
-  -- The same source on two different Providers is allowed.
   -- Failure in the final accounts update must roll back the lists too.
   ALTER TABLE public.accounts ADD CONSTRAINT config_test_key CHECK (rpdb_api_key IS DISTINCT FROM 'reject-key');
   BEGIN

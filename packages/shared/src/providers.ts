@@ -27,10 +27,8 @@ export type ProviderId = (typeof PROVIDER_IDS)[number];
 
 export type ActionKind = "watchlist" | "watched" | "rating";
 
-export interface ProviderInfo {
-  id: ProviderId;
+interface ProviderInfo {
   label: string;
-  homepage: string;
   /** "soon": shown in the UI, but no Source list can be added yet. */
   availability: "available" | "soon";
   /**
@@ -49,18 +47,14 @@ export interface ProviderInfo {
 
 export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
   imdb: {
-    id: "imdb",
     label: "IMDb",
-    homepage: "https://www.imdb.com",
     availability: "available",
     connection: "none",
     actions: [],
     linkExample: "https://www.imdb.com/user/ur12345678/watchlist",
   },
   trakt: {
-    id: "trakt",
     label: "Trakt",
-    homepage: "https://trakt.tv",
     availability: "available",
     connection: "optional",
     actions: ["watchlist", "watched", "rating"],
@@ -70,45 +64,35 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
       "A free Trakt account can connect only one app. If Stremio's own Trakt sync uses it, paste public Trakt links instead.",
   },
   simkl: {
-    id: "simkl",
     label: "Simkl",
-    homepage: "https://simkl.com",
     availability: "available",
     connection: "required",
     actions: ["watchlist", "watched", "rating"],
     linkExample: null,
   },
   mdblist: {
-    id: "mdblist",
     label: "MDBList",
-    homepage: "https://mdblist.com",
     availability: "available",
     connection: "required",
     actions: ["watchlist", "watched", "rating"],
     linkExample: "https://mdblist.com/lists/username/list-name",
   },
   justwatch: {
-    id: "justwatch",
     label: "JustWatch",
-    homepage: "https://www.justwatch.com",
     availability: "available",
     connection: "none",
     actions: [],
     linkExample: "https://www.justwatch.com/shared?id=tl-us-…",
   },
   senscritique: {
-    id: "senscritique",
     label: "SensCritique",
-    homepage: "https://www.senscritique.com",
     availability: "available",
     connection: "none",
     actions: [],
     linkExample: "https://www.senscritique.com/username/collection?action=WISH",
   },
   letterboxd: {
-    id: "letterboxd",
     label: "Letterboxd",
-    homepage: "https://letterboxd.com",
     availability: "soon",
     connection: "none",
     actions: [],
@@ -176,10 +160,6 @@ export interface ConnectionSource {
   /** The Source list page on its Provider, for a public one. */
   url?: string;
 }
-
-// ---------------------------------------------------------------------------
-// Link parsing
-// ---------------------------------------------------------------------------
 
 function toUrl(input: string): URL | null {
   const trimmed = input.trim();
@@ -646,7 +626,7 @@ export function staticSource(
 }
 
 /** What a stored Source list reference tells without reading the Source list. */
-export interface SourceRefDescription {
+interface SourceRefDescription {
   kind: SourceKind;
   /** Short human reference, such as a username or a list ID. */
   detail: string | null;
@@ -800,12 +780,4 @@ export function describeSourceRef(
     if (match) return form.describe(match);
   }
   return { kind: "list", detail: ref, url: null };
-}
-
-/** What a stored Source list is on its Provider. */
-export function storedSourceKind(
-  provider: ProviderId,
-  ref: string,
-): SourceKind {
-  return describeSourceRef(provider, ref).kind;
 }

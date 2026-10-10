@@ -39,7 +39,7 @@ describe("sourceProblemCopy", () => {
   it("has copy for every Provider and reason, without em dashes", () => {
     for (const provider of PROVIDER_IDS) {
       for (const reason of SOURCE_PROBLEM_REASONS) {
-        const { title, fix } = sourceProblemCopy(provider, reason);
+        const { title, fix } = sourceProblemCopy(provider, reason, "list");
         expect(title).not.toBe("");
         expect(fix).not.toBe("");
         expect(`${title} ${fix}`).not.toContain("—");

@@ -3,7 +3,6 @@ import {
   describeSourceRef,
   parseSourceLink,
   sourceRequiresConnection,
-  storedSourceKind,
 } from "../providers";
 import { describe, expect, it } from "vitest";
 
@@ -228,7 +227,7 @@ describe("sourceRequiresConnection", () => {
   });
 });
 
-describe("storedSourceKind", () => {
+describe("describeSourceRef kind", () => {
   it.each([
     "https://www.imdb.com/user/ur12345678/watchlist",
     "https://www.imdb.com/list/ls012345678/",
@@ -250,15 +249,14 @@ describe("storedSourceKind", () => {
     const parsed = parseSourceLink(link);
     expect(parsed).not.toBeNull();
     if (!parsed) return;
-    expect(storedSourceKind(parsed.provider, parsed.sourceRef)).toBe(
+    expect(describeSourceRef(parsed.provider, parsed.sourceRef).kind).toBe(
       parsed.kind,
     );
   });
 
   it("knows the Source lists of the source tables", () => {
-    expect(storedSourceKind("simkl", "me/plantowatch")).toBe("watchlist");
-    expect(storedSourceKind("simkl", "me/completed")).toBe("status");
-    expect(storedSourceKind("trakt", "me/up-next")).toBe("up_next");
+    expect(describeSourceRef("simkl", "me/completed").kind).toBe("status");
+    expect(describeSourceRef("trakt", "me/up-next").kind).toBe("up_next");
   });
 });
 

@@ -228,7 +228,7 @@ export function isSortAllowed(
 }
 
 /** Why the Lists of one Account cannot be saved together. */
-export interface AccountListsProblem {
+interface AccountListsProblem {
   reason: "too_many_lists" | "duplicate_source" | "too_many_sources";
   /** The message for the user. */
   message: string;
@@ -280,8 +280,6 @@ export function listMergeProblem(
   if (new Set(sources.map(sourceKey)).size !== sources.length) {
     return "Each list can only be added once.";
   }
-  if (sources.length === 1) return null;
-
   if (!allowedDisplayModes(list).includes(list.displayMode)) {
     return singleTypeReason(list, {
       both: "this List must show movies and TV shows",

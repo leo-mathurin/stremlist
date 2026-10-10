@@ -1,5 +1,5 @@
 import type { ProviderId, SourceKind } from "./providers";
-import { PROVIDERS, storedSourceKind } from "./providers";
+import { describeSourceRef, PROVIDERS } from "./providers";
 
 /**
  * Why a Source list cannot be read. Every reason except "unavailable" is an
@@ -21,7 +21,7 @@ export type SourceProblemReason = (typeof SOURCE_PROBLEM_REASONS)[number];
 /** What to call a Source list in user-facing copy. */
 export type SourceNoun = "watchlist" | "list";
 
-export function sourceNoun(kind: SourceKind | null | undefined): SourceNoun {
+export function sourceNoun(kind: SourceKind): SourceNoun {
   return kind === "watchlist" ? "watchlist" : "list";
 }
 
@@ -30,10 +30,10 @@ export function storedSourceNoun(
   provider: ProviderId,
   ref: string,
 ): SourceNoun {
-  return sourceNoun(storedSourceKind(provider, ref));
+  return sourceNoun(describeSourceRef(provider, ref).kind);
 }
 
-export interface SourceProblemCopy {
+interface SourceProblemCopy {
   /** The problem, in a few words, without a final period. */
   title: string;
   /** What the user can do about it. */
@@ -47,7 +47,7 @@ export interface SourceProblemCopy {
 export function sourceProblemCopy(
   provider: ProviderId,
   reason: SourceProblemReason,
-  noun: SourceNoun = "list",
+  noun: SourceNoun,
 ): SourceProblemCopy {
   const label = PROVIDERS[provider].label;
   switch (reason) {

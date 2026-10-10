@@ -24,7 +24,7 @@ export function listCatalogs(list: {
   displayMode?: DisplayMode;
   catalogSettings?: CatalogSettings;
 }): ListCatalog[] {
-  const types: ListCatalog["type"][] =
+  const types: TitleType[] =
     list.displayMode === "movie" || list.displayMode === "series"
       ? [list.displayMode]
       : ["movie", "series"];
@@ -37,7 +37,7 @@ export function listCatalogs(list: {
 }
 
 /** A List as far as its manifest Catalogs care. */
-export interface ManifestList {
+interface ManifestList {
   id: string;
   catalogTitle: string;
   displayMode?: DisplayMode;
@@ -50,7 +50,7 @@ export interface ManifestList {
  * What the manifest says about one Catalog. The backend adds the Catalog ID
  * prefix and the filter options, which are the same for every Catalog.
  */
-export interface ManifestCatalogEntry extends ListCatalog {
+interface ManifestCatalogEntry extends ListCatalog {
   listId: string;
   name: string;
   /** Whether the Catalog offers search (main Catalogs only). */
@@ -67,9 +67,7 @@ function catalogName(listTitle: string, index: number, total: number) {
 }
 
 /** The manifest Catalogs of the Lists, in order (see addonCatalogEntries). */
-export function manifestCatalogEntries(
-  lists: ManifestList[],
-): ManifestCatalogEntry[] {
+function manifestCatalogEntries(lists: ManifestList[]): ManifestCatalogEntry[] {
   return lists.flatMap((list, index) => {
     const name = catalogName(list.catalogTitle, index, lists.length);
     const genres = [
@@ -92,29 +90,24 @@ export function manifestCatalogEntries(
   });
 }
 
-/** The name of the "New titles" Catalogs (ADR 0007). */
-export const NEW_TITLES_CATALOG_NAME = "Stremlist New titles";
-
-/** What the manifest says about one "New titles" Catalog. */
-export interface NewTitlesCatalogEntry {
+/** What the manifest says about one "New titles" Catalog (ADR 0007). */
+interface NewTitlesCatalogEntry {
   newTitles: true;
-  type: ListCatalog["type"];
+  type: TitleType;
   name: string;
 }
 
 /** One "New titles" Catalog per type that the Lists show. */
-export function newTitlesCatalogEntries(
-  lists: Pick<ManifestList, "displayMode">[],
+function newTitlesCatalogEntries(
+  lists: ManifestList[],
 ): NewTitlesCatalogEntry[] {
   const types = new Set(
     lists.flatMap((list) => listCatalogs(list).map((catalog) => catalog.type)),
   );
   return (["movie", "series"] as const)
     .filter((type) => types.has(type))
-    .map((type) => ({ newTitles: true, type, name: NEW_TITLES_CATALOG_NAME }));
+    .map((type) => ({ newTitles: true, type, name: "Stremlist New titles" }));
 }
-
-export type AddonCatalogEntry = NewTitlesCatalogEntry | ManifestCatalogEntry;
 
 /**
  * Every Catalog of the addon manifest, in order. The "New titles" Catalogs,
@@ -124,7 +117,7 @@ export type AddonCatalogEntry = NewTitlesCatalogEntry | ManifestCatalogEntry;
 export function addonCatalogEntries(
   lists: ManifestList[],
   options: { newTitles: boolean },
-): AddonCatalogEntry[] {
+): (NewTitlesCatalogEntry | ManifestCatalogEntry)[] {
   return [
     ...(options.newTitles ? newTitlesCatalogEntries(lists) : []),
     ...manifestCatalogEntries(lists),

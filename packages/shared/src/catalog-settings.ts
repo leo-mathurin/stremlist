@@ -24,7 +24,6 @@ const CATALOG_FILTER_KEYS = [
 
 export type CatalogFilterKey = (typeof CATALOG_FILTER_KEYS)[number];
 
-/** How many filters the settings set. */
 export function countCatalogFilters(settings: CatalogSettings): number {
   return CATALOG_FILTER_KEYS.filter((key) => settings[key] !== undefined)
     .length;
