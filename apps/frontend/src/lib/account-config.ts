@@ -63,3 +63,18 @@ export function configBody(form: AccountForm, access: AccountAccess) {
     newTitles: { enabled: form.newTitlesEnabled },
   };
 }
+
+/**
+ * Whether `latest` has edits that a save of `submitted` did not send, such
+ * as edits made while the save was in flight.
+ */
+export function hasUnsavedChanges(
+  submitted: AccountForm,
+  latest: AccountForm,
+  access: AccountAccess,
+): boolean {
+  return (
+    JSON.stringify(configBody(latest, access)) !==
+    JSON.stringify(configBody(submitted, access))
+  );
+}

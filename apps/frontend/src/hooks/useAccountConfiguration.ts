@@ -14,7 +14,11 @@ import type {
   ConnectionSummary,
   NewTitlesSummary,
 } from "@stremlist/shared/stremio.types";
-import { configBody, reconcileActionProviders } from "../lib/account-config";
+import {
+  configBody,
+  hasUnsavedChanges,
+  reconcileActionProviders,
+} from "../lib/account-config";
 import type {
   AccountAccess,
   AccountForm,
@@ -264,10 +268,9 @@ export function useAccountConfiguration(
       }
 
       const submitted = form;
-      const submittedBody = configBody(submitted, access);
       const res = await api[":accountKey"].config.$post({
         param: { accountKey },
-        json: submittedBody,
+        json: configBody(submitted, access),
       });
       const body = await res.json();
       if (!res.ok || !("lists" in body)) {
@@ -287,11 +290,7 @@ export function useAccountConfiguration(
             }
           : row;
       });
-      const hasUnsavedChanges =
-        JSON.stringify({
-          ...configBody(currentForm.current, access),
-          actions: undefined,
-        }) !== JSON.stringify({ ...submittedBody, actions: undefined });
+      const unsaved = hasUnsavedChanges(submitted, currentForm.current, access);
       // Match rows by their local ID: the user may have added, removed or
       // reordered Lists while the save was in flight.
       const savedByLocalId = new Map(
@@ -331,7 +330,7 @@ export function useAccountConfiguration(
       );
       // The saved Lists change what the summary counts.
       setNewTitlesSummary(body.newTitles);
-      if (hasUnsavedChanges) {
+      if (unsaved) {
         toast.success(
           "Saved the submitted settings. You have unsaved changes: save again to apply them.",
           { id: "configuration-save" },

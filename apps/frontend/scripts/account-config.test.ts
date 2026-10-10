@@ -3,6 +3,7 @@ import { describe, test } from "node:test";
 import type { ConfigList } from "@stremlist/shared/stremio.types";
 import {
   configBody,
+  hasUnsavedChanges,
   reconcileActionProviders,
 } from "../src/lib/account-config.ts";
 import type { AccountForm } from "../src/lib/account-config.ts";
@@ -85,6 +86,45 @@ describe("configBody", () => {
     assert.equal(body.lists[0].sourceRef, "ur1000001");
     assert.equal(body.lists[0].catalogTitle, "Watchlist");
     assert.equal(body.lists[0].position, 0);
+  });
+
+  describe("hasUnsavedChanges", () => {
+    test("is false when nothing changed after the save started", () => {
+      assert.equal(hasUnsavedChanges(form, { ...form }, "private"), false);
+    });
+
+    test("sees a List or option edit made while the save was in flight", () => {
+      assert.equal(
+        hasUnsavedChanges(form, { ...form, rpdbApiKey: "other" }, "private"),
+        true,
+      );
+      assert.equal(
+        hasUnsavedChanges(form, { ...form, lists: [] }, "private"),
+        true,
+      );
+    });
+
+    test("sees an Actions edit made while the save was in flight", () => {
+      assert.equal(
+        hasUnsavedChanges(form, { ...form, actionsEnabled: false }, "private"),
+        true,
+      );
+      assert.equal(
+        hasUnsavedChanges(
+          form,
+          { ...form, actions: { ...form.actions, order: ["trakt", "simkl"] } },
+          "private",
+        ),
+        true,
+      );
+    });
+
+    test("ignores Actions where a save does not send them", () => {
+      assert.equal(
+        hasUnsavedChanges(form, { ...form, actionsEnabled: false }, "legacy"),
+        false,
+      );
+    });
   });
 });
 
