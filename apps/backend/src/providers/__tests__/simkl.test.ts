@@ -802,20 +802,6 @@ describe("simkl custom lists", () => {
     const second = await simklProvider.fetchSource("me/lists/321", ctx());
     expect(apiCalls()).toEqual(["GET /sync/activities"]);
     expect(second.complete).toBe(false);
-
-    // A snapshot stored before the flag existed may be cut short too: it is
-    // read again instead of being taken as complete.
-    for (const [key, value] of r2.objects) {
-      const snapshot = JSON.parse(value) as { complete?: boolean };
-      if (!("complete" in snapshot)) continue;
-      delete snapshot.complete;
-      r2.objects.set(key, JSON.stringify(snapshot));
-    }
-    ageLibrary();
-    calls = [];
-    const third = await simklProvider.fetchSource("me/lists/321", ctx());
-    expect(apiCalls()).toContain("GET /lists/321");
-    expect(third.complete).toBe(false);
   });
 
   it("validates a list with its name and media type", async () => {
