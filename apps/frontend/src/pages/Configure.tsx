@@ -2,11 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { ACCOUNT_KEY_PATTERN } from "@stremlist/shared/constants";
-import {
-  MAX_LISTS,
-  connectionProviders,
-  listSources,
-} from "@stremlist/shared/list-merge";
+import { MAX_LISTS, connectionProviders } from "@stremlist/shared/list-merge";
 import {
   isProviderId,
   PROVIDERS,
@@ -33,8 +29,8 @@ import { SectionHeading, SplitLayout, Wordmark } from "../components/brand";
 import { usePendingIndicator } from "../hooks/usePendingIndicator";
 import { useSEO } from "../hooks/useSEO";
 import { useAccountConfiguration } from "../hooks/useAccountConfiguration";
+import { ConnectionsContext } from "../hooks/connections-context";
 import { sourceKeys } from "../lib/list-form";
-import type { ListFormRow } from "../lib/list-form";
 import { attentionTone } from "../lib/list-sync";
 import { describeSource, PASTE_LINK_PROMPT } from "../lib/list-sources";
 import { cn, formatRelativeTime } from "@/lib/utils";
@@ -168,45 +164,18 @@ export default function Configure() {
   );
 
   const config = useAccountConfiguration(accountKey, { onAccountCreated });
-  const { lists, access, accountId, loading, notFound, loadError } = config;
+  const { lists, access, accountId, status } = config;
   const [detected, setDetected] = useState<ProviderId | null>(null);
   const full = lists.length >= MAX_LISTS;
-  const ready = !loading && !notFound && !loadError && (!rawKey || keyIsValid);
+  const ready = status === "ready" && (!rawKey || keyIsValid);
   const justCreated = !!accountId && createdId === accountId;
   // A Legacy alias install that already got a private copy: its changes are
   // refused (409), so the page only offers to make a new private URL.
   const moved = access === "legacy" && !!config.movedAt;
   const MOVED_HINT =
     "This install has a private URL now. Make changes from the configure page of your new install.";
-  const connectedProviders = new Set(
-    config.connections.map((connection) => connection.provider),
-  );
-  /** Providers of a List whose Connection the Account does not have. */
-  const missingConnections = (list: ListFormRow): ProviderId[] =>
-    access === "private"
-      ? connectionProviders(list).filter(
-          (provider) => !connectedProviders.has(provider),
-        )
-      : [];
-  const syncStates = lists.map((list) => config.syncStateOf(list));
-  const attention = syncStates.filter((sync) => attentionTone(sync)).length;
-  /**
-   * Identifies the Account's Connections to the Providers of a List's
-   * Source lists. A renewal mark that comes or goes changes what the
-   * preview can read.
-   */
-  const connectionKeyOf = (list: ListFormRow) =>
-    [...new Set(listSources(list).map((source) => source.provider))]
-      .map((provider) => {
-        const connection = config.connections.find(
-          (entry) => entry.provider === provider,
-        );
-        return connection
-          ? `${provider}:${connection.connectedAt}:${connection.username ?? ""}:${connection.needsRenewalSince ?? ""}`
-          : "";
-      })
-      .filter(Boolean)
-      .join(",");
+  const rows = lists.map((list) => config.rowModel(list));
+  const attention = rows.filter((row) => attentionTone(row.sync)).length;
   const affectedLists: Partial<Record<ProviderId, number>> = {};
   for (const list of lists) {
     for (const provider of connectionProviders(list)) {
@@ -455,14 +424,14 @@ export default function Configure() {
 
         {rawKey && !keyIsValid ? (
           <NotFoundCard />
-        ) : loading ? (
+        ) : status === "loading" ? (
           <p className="flex items-center gap-2 text-sm text-black/45">
             <Loader2 className="size-4 animate-spin" />
             Loading your Stremlist
           </p>
-        ) : notFound ? (
+        ) : status === "notFound" ? (
           <NotFoundCard />
-        ) : loadError ? (
+        ) : status === "error" ? (
           <div
             role="alert"
             className="space-y-3 rounded-3xl bg-red-50 p-5 text-sm text-red-700 ring-1 ring-red-200"
@@ -516,52 +485,45 @@ export default function Configure() {
                     }
                   }}
                 >
-                  <div className="space-y-3">
-                    {lists.map((list, index) => {
-                      const sync = syncStates[index];
-                      // The Provider that the List's sync status asks to
-                      // connect again: in a merged List, the one of the
-                      // Source list with the problem.
-                      const connectProvider =
-                        (sync?.kind === "connection"
-                          ? sync.source?.provider
-                          : undefined) ??
-                        missingConnections(list).at(0) ??
-                        list.provider;
-                      return (
-                        <SortableListRow
-                          key={list.localId}
-                          list={list}
-                          index={index}
-                          accountKey={accountId ?? accountKey}
-                          connectionKey={connectionKeyOf(list)}
-                          onFieldChange={config.setListField}
-                          onRemove={config.removeList}
-                          missingProviders={missingConnections(list)}
-                          sync={sync}
-                          saved={config.isListSaved(list)}
-                          onConnect={
-                            config.providerStatus[connectProvider].connectable
-                              ? () => connectFor(connectProvider)
-                              : undefined
-                          }
-                          merge={
-                            moved
-                              ? undefined
-                              : {
-                                  others: lists.filter(
-                                    (other) => other !== list,
-                                  ),
-                                  canSplit: !full,
-                                  onMerge: config.mergeLists,
-                                  onRemoveSource: config.removeSource,
-                                  onSplitSource: config.splitSource,
-                                }
-                          }
-                        />
-                      );
-                    })}
-                  </div>
+                  <ConnectionsContext value={config.connections}>
+                    <div className="space-y-3">
+                      {lists.map((list, index) => {
+                        const { sync, missing, connectProvider, saved } =
+                          rows[index];
+                        return (
+                          <SortableListRow
+                            key={list.localId}
+                            list={list}
+                            index={index}
+                            accountKey={accountId ?? accountKey}
+                            onFieldChange={config.setListField}
+                            onRemove={config.removeList}
+                            missingProviders={missing}
+                            sync={sync}
+                            saved={saved}
+                            onConnect={
+                              config.providerStatus[connectProvider].connectable
+                                ? () => connectFor(connectProvider)
+                                : undefined
+                            }
+                            merge={
+                              moved
+                                ? undefined
+                                : {
+                                    others: lists.filter(
+                                      (other) => other !== list,
+                                    ),
+                                    canSplit: !full,
+                                    onMerge: config.mergeLists,
+                                    onRemoveSource: config.removeSource,
+                                    onSplitSource: config.splitSource,
+                                  }
+                            }
+                          />
+                        );
+                      })}
+                    </div>
+                  </ConnectionsContext>
                 </DragDropProvider>
               )}
               <p className="px-1 text-xs text-black/45 tabular-nums">

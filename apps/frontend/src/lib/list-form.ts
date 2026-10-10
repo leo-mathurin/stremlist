@@ -7,6 +7,7 @@ import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import { listSources, sourceKey } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
+import type { ConfigList } from "@stremlist/shared/stremio.types";
 import { describeSource } from "./list-sources";
 
 /** The backend accepts catalog titles up to this length. */
@@ -49,6 +50,27 @@ export function createListRow(
     mergedSources: partial.mergedSources ?? [],
     ...(partial.sourceLabel ? { sourceLabel: partial.sourceLabel } : {}),
   };
+}
+
+/** The rows of saved Lists. */
+export function rowsFromLists(lists: ConfigList[]): ListFormRow[] {
+  return lists.map((list) => createListRow(list));
+}
+
+/** The Lists of the rows, as a save sends them. */
+export function listPayload(rows: ListFormRow[]) {
+  return rows.map((list, index) => ({
+    id: list.id,
+    provider: list.provider,
+    sourceRef: list.sourceRef.trim(),
+    catalogTitle: list.catalogTitle.trim(),
+    sortOption: list.sortOption,
+    displayMode: list.displayMode,
+    position: index,
+    catalogSettings: list.catalogSettings,
+    mergedSources: list.mergedSources,
+    sourceLabel: list.sourceLabel,
+  }));
 }
 
 /** The title that a row shows: its own, or the one its Source list suggests. */

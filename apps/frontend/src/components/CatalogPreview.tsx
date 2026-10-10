@@ -64,23 +64,16 @@ function catalogLabel(row: CatalogPreviewRow): string {
 export default function CatalogPreview({
   list,
   accountKey,
-  connectionKey,
   open,
 }: {
   list: ListFormRow;
   accountKey: string | null;
-  /**
-   * Identifies the Account's Connections to the Providers of the List's
-   * Source lists, or "".
-   */
-  connectionKey: string;
   /** The panel is visible: only then the preview is read. */
   open: boolean;
 }) {
   const { state, retry } = useCatalogPreview({
     list,
     accountKey,
-    connectionKey,
     enabled: open,
   });
 
