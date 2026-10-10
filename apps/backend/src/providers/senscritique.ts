@@ -312,8 +312,11 @@ function fetchUniverseWishes(
 async function fetchWishes(
   username: string,
 ): Promise<PagedRead<SensCritiqueProduct>> {
-  const movies = await fetchUniverseWishes(username, "movie");
-  const shows = await fetchUniverseWishes(username, "tvShow");
+  // The shared limiter keeps both reads under SensCritique's rate.
+  const [movies, shows] = await Promise.all([
+    fetchUniverseWishes(username, "movie"),
+    fetchUniverseWishes(username, "tvShow"),
+  ]);
   // The API returns the newest wish first; the canonical order is oldest first.
   return {
     items: mergeByActionId(movies.items.reverse(), shows.items.reverse()),

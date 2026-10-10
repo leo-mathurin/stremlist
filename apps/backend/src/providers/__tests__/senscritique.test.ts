@@ -141,17 +141,20 @@ describe("SensCritique wishes", () => {
     );
 
     expect(complete).toBe(true);
-    expect(
-      requests.map(({ json }) => [
-        json.variables.universe,
-        json.variables.offset,
-        json.variables.limit,
-      ]),
-    ).toEqual([
-      ["movie", 0, 100],
-      ["movie", 100, 100],
-      ["tvShow", 0, 100],
+    // Films and series are read at the same time.
+    const pages = requests.map(({ json }) => [
+      json.variables.universe,
+      json.variables.offset,
+      json.variables.limit,
     ]);
+    expect(pages).toHaveLength(3);
+    expect(pages).toEqual(
+      expect.arrayContaining([
+        ["movie", 0, 100],
+        ["movie", 100, 100],
+        ["tvShow", 0, 100],
+      ]),
+    );
     expect(requests[0].json.query).toContain("action: WISH");
     expect(entries).toHaveLength(102);
     const ids = entries.map((entry) => entry.externalIds?.senscritique);
