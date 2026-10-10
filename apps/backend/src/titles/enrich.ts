@@ -1,7 +1,7 @@
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
+import { mapWithConcurrency } from "../lib/concurrency";
 import { providerFetch, RateLimiter } from "../providers/http";
 import { fetchTitlesByIds } from "../services/imdb-scraper";
-import { mapWithConcurrency } from "./tmdb";
 
 const CINEMETA = "https://v3-cinemeta.strem.io";
 const cinemetaLimiter = new RateLimiter(20, 1000);

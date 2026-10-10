@@ -1,5 +1,8 @@
+import { asImdbId } from "@stremlist/shared/constants";
+import { mapWithConcurrency } from "../lib/concurrency";
 import type { GraphQLResponse } from "../providers/http";
 import { graphqlRequest, RateLimiter } from "../providers/http";
+import type { ResolverStrategy } from "../providers/types";
 
 /**
  * JustWatch's unofficial GraphQL API (no documentation, introspection off).
@@ -44,8 +47,7 @@ export async function justwatchImdbIdByPath(
       node?: { content?: { externalIds?: { imdbId?: string | null } } };
     } | null;
   }>(IMDB_BY_PATH, { path });
-  const imdbId = json.data?.urlV2?.node?.content?.externalIds?.imdbId;
-  return imdbId && /^tt\d+$/.test(imdbId) ? imdbId : null;
+  return asImdbId(json.data?.urlV2?.node?.content?.externalIds?.imdbId) ?? null;
 }
 
 const IMDB_BY_NODE_IDS = `
@@ -84,11 +86,67 @@ export async function justwatchImdbIdsByNodeIds(
       ids: unique.slice(start, start + NODE_IDS_PER_REQUEST),
     });
     for (const node of json.data?.nodes ?? []) {
-      const imdbId = node?.content?.externalIds?.imdbId;
-      if (node?.id && imdbId && /^tt\d+$/.test(imdbId)) {
+      const imdbId = asImdbId(node?.content?.externalIds?.imdbId);
+      if (node?.id && imdbId) {
         found.set(node.id, imdbId);
       }
     }
   }
   return found;
 }
+
+const PATH_LOOKUP_CONCURRENCY = 3;
+
+/**
+ * Exact resolution through the JustWatch link that SensCritique shows on
+ * products available to stream in France.
+ */
+export const justwatchPathStrategy: ResolverStrategy = {
+  name: "justwatch-path",
+  provider: "justwatch",
+  async resolve(entries) {
+    const found = new Map<number, string>();
+    await mapWithConcurrency(
+      entries,
+      PATH_LOOKUP_CONCURRENCY,
+      async (entry, index) => {
+        const path = entry.externalIds?.justwatchPath;
+        if (!path) return;
+        try {
+          const imdbId = await justwatchImdbIdByPath(path);
+          if (imdbId) found.set(index, imdbId);
+        } catch (error) {
+          console.warn(
+            `JustWatch lookup failed for ${path}:`,
+            error instanceof Error ? error.message : error,
+          );
+        }
+      },
+    );
+    return found;
+  },
+};
+
+/**
+ * JustWatch adds IMDb IDs to new releases days or weeks after the title
+ * appears, so an entry that TMDB could not resolve is asked again on a later
+ * refresh (the resolver retries Unresolved entries).
+ */
+export const justwatchRecheckStrategy: ResolverStrategy = {
+  name: "justwatch-recheck",
+  provider: "justwatch",
+  async resolve(entries) {
+    const found = new Map<number, string>();
+    const nodeIds = entries.flatMap((entry) =>
+      entry.externalIds?.justwatch ? [entry.externalIds.justwatch] : [],
+    );
+    if (nodeIds.length === 0) return found;
+    const byNodeId = await justwatchImdbIdsByNodeIds(nodeIds);
+    entries.forEach((entry, index) => {
+      const nodeId = entry.externalIds?.justwatch;
+      const imdbId = nodeId ? byNodeId.get(nodeId) : undefined;
+      if (imdbId) found.set(index, imdbId);
+    });
+    return found;
+  },
+};

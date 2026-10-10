@@ -3,7 +3,7 @@
  * replaces with a fake. Use it with
  * `vi.mock("…/providers/registry", () => import("…/helpers/mock-registry"))`.
  */
-import type { ProviderId } from "@stremlist/shared/providers";
+import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
 import { imdbProvider } from "../../providers/imdb";
 import { justwatchProvider } from "../../providers/justwatch";
 import { letterboxdProvider } from "../../providers/letterboxd";
@@ -41,6 +41,10 @@ export function resetProviders(): void {
 
 export function getProvider(id: ProviderId): ProviderAdapter {
   return providerOverrides.get(id) ?? REAL[id];
+}
+
+export function supportsAction(id: ProviderId, kind: ActionKind): boolean {
+  return getProvider(id).actions?.kinds.includes(kind) ?? false;
 }
 
 export { isProviderEnabled } from "../../providers/kill-switch";

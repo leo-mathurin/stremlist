@@ -1,14 +1,11 @@
+import { asImdbId } from "@stremlist/shared/constants";
 import {
-  justwatchImdbIdsByNodeIds,
   justwatchQuery,
+  justwatchRecheckStrategy,
 } from "../titles/justwatch-lookup";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
-import type {
-  ProviderAdapter,
-  ResolverStrategy,
-  SourceEntry,
-  SourceValidation,
-} from "./types";
+import { readPages } from "./paging";
+import type { ProviderAdapter, SourceEntry, SourceValidation } from "./types";
 import { SourceUnavailableError } from "./types";
 
 /**
@@ -135,10 +132,9 @@ function toEntry(node: JustwatchTitleNode): SourceEntry {
         ? "movie"
         : undefined;
   const content = node.content ?? {};
-  const imdbId = content.externalIds?.imdbId;
   const tmdbId = Number(content.externalIds?.tmdbId);
   return {
-    imdbId: imdbId && /^tt\d+$/.test(imdbId) ? imdbId : undefined,
+    imdbId: asImdbId(content.externalIds?.imdbId),
     externalIds: {
       justwatch: node.id,
       tmdb:
@@ -166,30 +162,6 @@ function normalizeRef(ref: string): string {
 }
 
 /**
- * JustWatch adds IMDb IDs to new releases days or weeks after the title
- * appears, so an entry that TMDB could not resolve is asked again on a later
- * refresh (the resolver retries Unresolved entries).
- */
-export const justwatchRecheckStrategy: ResolverStrategy = {
-  name: "justwatch-recheck",
-  provider: "justwatch",
-  async resolve(entries) {
-    const found = new Map<number, string>();
-    const nodeIds = entries.flatMap((entry) =>
-      entry.externalIds?.justwatch ? [entry.externalIds.justwatch] : [],
-    );
-    if (nodeIds.length === 0) return found;
-    const byNodeId = await justwatchImdbIdsByNodeIds(nodeIds);
-    entries.forEach((entry, index) => {
-      const nodeId = entry.externalIds?.justwatch;
-      const imdbId = nodeId ? byNodeId.get(nodeId) : undefined;
-      if (imdbId) found.set(index, imdbId);
-    });
-    return found;
-  },
-};
-
-/**
  * JustWatch: custom lists read anonymously through the unofficial GraphQL API
  * from their share link. Custom lists are UNLISTED (the server accepts no
  * other visibility today) and their random ID is the only secret, so no
@@ -206,20 +178,13 @@ export const justwatchProvider: ProviderAdapter = {
   async validateSource(rawRef): Promise<SourceValidation> {
     const ref = normalizeRef(rawRef);
     if (!LIST_ID.test(ref)) return { ok: false, reason: "not_found" };
-    try {
-      const list = await fetchListPage(ref, 1, null);
-      return {
-        ok: true,
-        ref,
-        suggestedTitle: listName(list) ?? "JustWatch list",
-        defaultDisplayMode: "split",
-      };
-    } catch (error) {
-      if (error instanceof SourceUnavailableError) {
-        return { ok: false, reason: error.reason, message: error.message };
-      }
-      throw error;
-    }
+    const list = await fetchListPage(ref, 1, null);
+    return {
+      ok: true,
+      ref,
+      suggestedTitle: listName(list) ?? "JustWatch list",
+      defaultDisplayMode: "split",
+    };
   },
 
   async fetchSource(rawRef) {
@@ -230,26 +195,29 @@ export const justwatchProvider: ProviderAdapter = {
         "This is not a JustWatch list ID",
       );
     }
-    const nodes: JustwatchTitleNode[] = [];
-    let after: string | null = null;
-    // Stays false when MAX_ENTRIES stops the read before the last page.
-    let complete = false;
-    while (nodes.length < MAX_ENTRIES) {
-      const page = await fetchListPage(
-        ref,
-        Math.min(PAGE_SIZE, MAX_ENTRIES - nodes.length),
-        after,
-      );
-      for (const edge of page.titles?.edges ?? []) {
-        if (edge?.node?.id) nodes.push(edge.node);
-      }
-      const pageInfo = page.titles?.pageInfo;
-      if (!pageInfo?.hasNextPage || !pageInfo.endCursor) {
-        complete = true;
-        break;
-      }
-      after = pageInfo.endCursor;
-    }
+    // Incomplete when MAX_ENTRIES stops the read before the last page.
+    const { items: nodes, complete } = await readPages({
+      maxPages: Number.POSITIVE_INFINITY,
+      maxItems: MAX_ENTRIES,
+      first: null as string | null,
+      async page(after, read) {
+        const page = await fetchListPage(
+          ref,
+          Math.min(PAGE_SIZE, MAX_ENTRIES - read),
+          after,
+        );
+        const pageInfo = page.titles?.pageInfo;
+        return {
+          items: (page.titles?.edges ?? []).flatMap((edge) =>
+            edge?.node?.id ? [edge.node] : [],
+          ),
+          next:
+            pageInfo?.hasNextPage && pageInfo.endCursor
+              ? pageInfo.endCursor
+              : null,
+        };
+      },
+    });
 
     // Custom lists come oldest added first, the canonical order (checked on a
     // real list on 2026-10-06); JustWatch's own lists keep their curated order.

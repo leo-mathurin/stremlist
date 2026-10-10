@@ -1,12 +1,11 @@
-import { justwatchImdbIdByPath } from "../titles/justwatch-lookup";
-import { mapWithConcurrency } from "../titles/tmdb";
+import { justwatchPathStrategy } from "../titles/justwatch-lookup";
 import { tmdbSearchMatchStrategy } from "../titles/tmdb-match";
 import { wikidataStrategy } from "../titles/wikidata";
 import { graphqlRequest, RateLimiter } from "./http";
+import { readPages } from "./paging";
 import type {
   PagedRead,
   ProviderAdapter,
-  ResolverStrategy,
   SourceEntry,
   SourceValidation,
 } from "./types";
@@ -23,7 +22,6 @@ const senscritiqueLimiter = new RateLimiter(3, 1000);
 const PAGE_SIZE = 100;
 /** Stop after this many pages per universe (10,000 products). */
 const MAX_PAGES = 100;
-const JUSTWATCH_CONCURRENCY = 3;
 
 /** SensCritique universes: products of other universes (books, games…) are skipped. */
 const UNIVERSE_MOVIE = 1;
@@ -265,48 +263,60 @@ function isPrivateProfile(user: UserData["user"]): boolean {
   return user?.settings?.privacyProfile === true;
 }
 
+/**
+ * The next page number after `page`, or null when this page of `count`
+ * items reached the end of a collection of `total`.
+ */
+function nextPage(page: number, count: number, total: number): number | null {
+  return count < PAGE_SIZE || page * PAGE_SIZE + count >= total
+    ? null
+    : page + 1;
+}
+
 /** The wishes of one universe, newest first, as the API returns them. */
-async function fetchUniverseWishes(
+function fetchUniverseWishes(
   username: string,
   universe: "movie" | "tvShow",
 ): Promise<PagedRead<SensCritiqueProduct>> {
-  const products: SensCritiqueProduct[] = [];
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const { user } = await senscritiqueQuery<WishesData>(WISHES_QUERY, {
-      username,
-      universe,
-      limit: PAGE_SIZE,
-      offset: page * PAGE_SIZE,
-    });
-    if (!user) {
-      throw new SourceUnavailableError(
-        "not_found",
-        `SensCritique user ${username} not found`,
-      );
-    }
-    if (isPrivateProfile(user) || !user.collection) {
-      throw new SourceUnavailableError(
-        "private",
-        `SensCritique profile ${username} is private`,
-      );
-    }
-    const batch = user.collection.products ?? [];
-    products.push(...batch);
-    if (
-      batch.length < PAGE_SIZE ||
-      products.length >= (user.collection.total ?? 0)
-    ) {
-      return { items: products, complete: true };
-    }
-  }
-  return { items: products, complete: false };
+  return readPages({
+    maxPages: MAX_PAGES,
+    first: 0,
+    async page(page) {
+      const { user } = await senscritiqueQuery<WishesData>(WISHES_QUERY, {
+        username,
+        universe,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      });
+      if (!user) {
+        throw new SourceUnavailableError(
+          "not_found",
+          `SensCritique user ${username} not found`,
+        );
+      }
+      if (isPrivateProfile(user) || !user.collection) {
+        throw new SourceUnavailableError(
+          "private",
+          `SensCritique profile ${username} is private`,
+        );
+      }
+      const batch = user.collection.products ?? [];
+      return {
+        items: batch,
+        next: nextPage(page, batch.length, user.collection.total ?? 0),
+      };
+    },
+  });
 }
 
 async function fetchWishes(
   username: string,
 ): Promise<PagedRead<SensCritiqueProduct>> {
-  const movies = await fetchUniverseWishes(username, "movie");
-  const shows = await fetchUniverseWishes(username, "tvShow");
+  // The shared limiter keeps both reads under SensCritique's rate.
+  const [movies, shows] = await Promise.all([
+    fetchUniverseWishes(username, "movie"),
+    fetchUniverseWishes(username, "tvShow"),
+  ]);
   // The API returns the newest wish first; the canonical order is oldest first.
   return {
     items: mergeByActionId(movies.items.reverse(), shows.items.reverse()),
@@ -314,71 +324,38 @@ async function fetchWishes(
   };
 }
 
-async function fetchListProducts(
+function fetchListProducts(
   id: number,
 ): Promise<PagedRead<SensCritiqueProduct>> {
-  const products: SensCritiqueProduct[] = [];
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const { userList } = await senscritiqueQuery<ListData>(LIST_QUERY, {
-      id,
-      limit: PAGE_SIZE,
-      offset: page * PAGE_SIZE,
-    });
-    if (!userList) {
-      throw new SourceUnavailableError(
-        "not_found",
-        `SensCritique list ${id} not found`,
-      );
-    }
-    if (userList.isPrivate || !userList.productsList) {
-      throw new SourceUnavailableError(
-        "private",
-        `SensCritique list ${id} is private`,
-      );
-    }
-    const items = userList.productsList.items ?? [];
-    for (const item of items) {
-      if (item.product) products.push(item.product);
-    }
-    if (
-      items.length < PAGE_SIZE ||
-      page * PAGE_SIZE + items.length >= (userList.productsList.total ?? 0)
-    ) {
-      return { items: products, complete: true };
-    }
-  }
-  return { items: products, complete: false };
+  return readPages({
+    maxPages: MAX_PAGES,
+    first: 0,
+    async page(page) {
+      const { userList } = await senscritiqueQuery<ListData>(LIST_QUERY, {
+        id,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      });
+      if (!userList) {
+        throw new SourceUnavailableError(
+          "not_found",
+          `SensCritique list ${id} not found`,
+        );
+      }
+      if (userList.isPrivate || !userList.productsList) {
+        throw new SourceUnavailableError(
+          "private",
+          `SensCritique list ${id} is private`,
+        );
+      }
+      const items = userList.productsList.items ?? [];
+      return {
+        items: items.flatMap((item) => (item.product ? [item.product] : [])),
+        next: nextPage(page, items.length, userList.productsList.total ?? 0),
+      };
+    },
+  });
 }
-
-/**
- * Exact resolution through the JustWatch link that SensCritique shows on
- * products available to stream in France.
- */
-export const justwatchPathStrategy: ResolverStrategy = {
-  name: "justwatch-path",
-  provider: "justwatch",
-  async resolve(entries) {
-    const found = new Map<number, string>();
-    await mapWithConcurrency(
-      entries,
-      JUSTWATCH_CONCURRENCY,
-      async (entry, index) => {
-        const path = entry.externalIds?.justwatchPath;
-        if (!path) return;
-        try {
-          const imdbId = await justwatchImdbIdByPath(path);
-          if (imdbId) found.set(index, imdbId);
-        } catch (error) {
-          console.warn(
-            `JustWatch lookup failed for ${path}:`,
-            error instanceof Error ? error.message : error,
-          );
-        }
-      },
-    );
-    return found;
-  },
-};
 
 export const senscritiqueWikidataStrategy = wikidataStrategy(
   "wikidata-senscritique",
@@ -428,11 +405,8 @@ export const senscritiqueProvider: ProviderAdapter = {
         userList.universe !== UNIVERSE_MOVIE &&
         userList.universe !== UNIVERSE_SERIES
       ) {
-        return {
-          ok: false,
-          reason: "not_found",
-          message: "This SensCritique list has no movies or series.",
-        };
+        // The list has no movies or series.
+        return { ok: false, reason: "not_found" };
       }
       const label = userList.label?.trim();
       return {

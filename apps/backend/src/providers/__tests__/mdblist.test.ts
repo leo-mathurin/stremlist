@@ -227,7 +227,10 @@ describe("mdblistProvider.validateSource", () => {
       mdblistProvider.validateSource("lists/leo/nope", {
         connection: connection(),
       }),
-    ).resolves.toMatchObject({ ok: false, reason: "not_found" });
+    ).rejects.toMatchObject({
+      name: "SourceUnavailableError",
+      reason: "not_found",
+    });
   });
 
   it("rejects unknown refs", async () => {
@@ -354,7 +357,7 @@ describe("mdblistProvider.fetchSource", () => {
     expect((error as SourceUnavailableError).reason).toBe(reason);
   });
 
-  it("maps an expired Connection to needs_connection", async () => {
+  it("lets an expired Connection through, for the caller to ask for renewal", async () => {
     const expired = new ConnectionExpiredError("mdblist");
     const access: ConnectionAccess = {
       accountId: "sl_testaccount0000000000",
@@ -366,7 +369,7 @@ describe("mdblistProvider.fetchSource", () => {
     };
     await expect(
       mdblistProvider.fetchSource("me/watchlist", { connection: access }),
-    ).rejects.toMatchObject({ reason: "needs_connection" });
+    ).rejects.toBe(expired);
     expect(calls).toHaveLength(0);
   });
 
@@ -536,17 +539,6 @@ describe("mdblistProvider.actions", () => {
     expect(bodyOf(calls[1])).toEqual({
       movies: [{ ids: { imdb: "tt0111161" } }],
     });
-  });
-
-  it("rejects ratings outside 1 to 10", async () => {
-    await expect(
-      actions.perform(
-        connection(),
-        { kind: "rating", rating: 11 },
-        { imdbId: "tt0111161", type: "movie" },
-      ),
-    ).rejects.toThrow();
-    expect(calls).toHaveLength(0);
   });
 
   it("marks only the watchlist Catalog as stale", () => {

@@ -1,6 +1,7 @@
 import { parseSourceLink } from "@stremlist/shared/providers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { justwatchProvider, justwatchRecheckStrategy } from "../justwatch";
+import { justwatchRecheckStrategy } from "../../titles/justwatch-lookup";
+import { justwatchProvider } from "../justwatch";
 import { SourceUnavailableError } from "../types";
 
 // Recorded from apis.justwatch.com on 2026-10-06 (public list "Sci-Fi
@@ -421,11 +422,12 @@ describe("justwatchProvider.validateSource", () => {
   it("reports a deleted list as not found", async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(NOT_FOUND));
 
-    const result = await justwatchProvider.validateSource(CUSTOM_LIST_ID, {
-      connection: null,
+    await expect(
+      justwatchProvider.validateSource(CUSTOM_LIST_ID, { connection: null }),
+    ).rejects.toMatchObject({
+      name: "SourceUnavailableError",
+      reason: "not_found",
     });
-
-    expect(result).toMatchObject({ ok: false, reason: "not_found" });
   });
 
   it("rejects a malformed ref without a request", async () => {

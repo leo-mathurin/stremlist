@@ -79,8 +79,19 @@ export const ACCOUNT_ID_PATTERN = new RegExp(`^${ACCOUNT_ID_SOURCE}$`);
 
 /** An IMDb user ID, also the form of a Legacy alias. */
 export const IMDB_UR_ID_SOURCE = String.raw`ur\d{4,}`;
-const IMDB_LS_ID_SOURCE = String.raw`ls\d+`;
-const IMDB_P_HANDLE_SOURCE = String.raw`p\.[a-zA-Z0-9]+`;
+export const IMDB_LS_ID_SOURCE = String.raw`ls\d+`;
+export const IMDB_P_HANDLE_SOURCE = String.raw`p\.[a-zA-Z0-9]+`;
+const IMDB_TITLE_ID_SOURCE = String.raw`tt\d+`;
+
+/** A Title's IMDb ID (ADR 0002). */
+export const IMDB_TITLE_ID_PATTERN = new RegExp(`^${IMDB_TITLE_ID_SOURCE}$`);
+
+/** The value when it is a Title's IMDb ID (`tt…`), else undefined. */
+export function asImdbId(value: unknown): string | undefined {
+  return typeof value === "string" && IMDB_TITLE_ID_PATTERN.test(value)
+    ? value
+    : undefined;
+}
 
 export const IMDB_LIST_ID_PATTERN = new RegExp(`^${IMDB_LS_ID_SOURCE}$`);
 export const IMDB_USER_ID_PATTERN = new RegExp(

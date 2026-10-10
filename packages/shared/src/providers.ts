@@ -1,5 +1,11 @@
-import { IMDB_LIST_ID_PATTERN, IMDB_USER_ID_PATTERN } from "./constants";
 import type { DisplayMode, TitleType } from "./constants";
+import {
+  IMDB_LIST_ID_PATTERN,
+  IMDB_LS_ID_SOURCE,
+  IMDB_P_HANDLE_SOURCE,
+  IMDB_UR_ID_SOURCE,
+  IMDB_USER_ID_PATTERN,
+} from "./constants";
 import { imdbChartOf, isChartId } from "./imdb-charts";
 
 /**
@@ -215,9 +221,17 @@ function segments(url: URL): string[] {
     .map((segment) => decodeURIComponent(segment));
 }
 
-const IMDB_UR = /(?:^|[^a-z0-9])(ur\d{4,})(?![0-9])/i;
-const IMDB_LS = /(?:^|[^a-z0-9])(ls\d+)(?![0-9])/i;
-const IMDB_P_HANDLE = /(?:^|\/)(p\.[a-zA-Z0-9]+)(?:$|[/?#])/;
+const IMDB_UR = new RegExp(
+  String.raw`(?:^|[^a-z0-9])(${IMDB_UR_ID_SOURCE})(?![0-9])`,
+  "i",
+);
+const IMDB_LS = new RegExp(
+  String.raw`(?:^|[^a-z0-9])(${IMDB_LS_ID_SOURCE})(?![0-9])`,
+  "i",
+);
+const IMDB_P_HANDLE = new RegExp(
+  String.raw`(?:^|\/)(${IMDB_P_HANDLE_SOURCE})(?:$|[/?#])`,
+);
 
 function parseImdbLink(input: string): LinkMatch | null {
   const trimmed = input.trim();

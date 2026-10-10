@@ -79,9 +79,6 @@ export async function startAuthorization(
   url.searchParams.set("code_challenge_method", "S256");
   if (config.scopes?.length)
     url.searchParams.set("scope", config.scopes.join(" "));
-  for (const [key, value] of Object.entries(config.authorizeParams ?? {})) {
-    url.searchParams.set(key, value);
-  }
   return url.toString();
 }
 
@@ -128,7 +125,6 @@ async function requestTokens(
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
-      ...config.tokenHeaders?.(),
     },
     body: body.toString(),
     retryOn429: true,

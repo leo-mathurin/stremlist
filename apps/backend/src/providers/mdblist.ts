@@ -1,8 +1,18 @@
 import type { DisplayMode } from "@stremlist/shared/constants";
+import { asImdbId } from "@stremlist/shared/constants";
 import type { ConnectionSource } from "@stremlist/shared/providers";
+import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
-import { HttpError, providerFetch, RateLimiter } from "./http";
+import {
+  HttpError,
+  providerFetch,
+  providerFetchJson,
+  RateLimiter,
+  sourceErrorFromHttp,
+} from "./http";
 import { oauthClient, revokeToken } from "./oauth-app";
+import { readPages } from "./paging";
+import { bucketOf, countNotFound, episodeItem, syncIds } from "./sync-payload";
 import type {
   ActionIntent,
   ActionTarget,
@@ -15,7 +25,7 @@ import type {
   SourceSnapshot,
   SourceValidation,
 } from "./types";
-import { connectionToken, SourceUnavailableError } from "./types";
+import { SourceUnavailableError } from "./types";
 
 const API = "https://api.mdblist.com";
 const PAGE_SIZE = 1000;
@@ -125,35 +135,33 @@ interface SyncPage {
  * read. MDBList answers 403 both for a revoked token ("Invalid OAuth token")
  * and for a list that the user may not see.
  */
-async function toError(response: Response, url: string): Promise<Error> {
-  const body = await response.text().catch(() => "");
+function toSourceError(error: unknown): unknown {
+  if (!(error instanceof HttpError)) return error;
   let message = "";
   try {
-    const parsed = JSON.parse(body) as { error?: unknown } | null;
+    const parsed = JSON.parse(error.body) as { error?: unknown } | null;
     message = typeof parsed?.error === "string" ? parsed.error : "";
   } catch {
-    message = body.slice(0, 200);
+    message = error.body.slice(0, 200);
   }
-  const { status } = response;
+  const { status } = error;
+  const detail = message || status;
   if (status === 401 || (status === 403 && /token/i.test(message))) {
     return new SourceUnavailableError(
       "needs_connection",
-      `MDBList refused the Connection: ${message || status}`,
+      `MDBList refused the Connection: ${detail}`,
     );
   }
-  if (status === 403 || (status < 500 && /private/i.test(message))) {
-    return new SourceUnavailableError(
-      "private",
-      `This MDBList list is private: ${message || status}`,
-    );
-  }
-  if (status === 404) {
-    return new SourceUnavailableError(
-      "not_found",
-      `MDBList list not found: ${message || status}`,
-    );
-  }
-  return new HttpError(status, body, url);
+  const reasons: Partial<Record<number, SourceProblemReason>> = {
+    403: "private",
+    404: "not_found",
+  };
+  if (status < 500 && /private/i.test(message)) reasons[status] = "private";
+  return sourceErrorFromHttp(error, reasons, (reason) =>
+    reason === "private"
+      ? `This MDBList list is private: ${detail}`
+      : `MDBList list not found: ${detail}`,
+  );
 }
 
 async function mdblistRequest(
@@ -166,57 +174,50 @@ async function mdblistRequest(
   } = {},
 ): Promise<{ data: unknown; response: Response }> {
   const method = options.method ?? "GET";
-  const url = new URL(`${API}${path}`);
-  for (const [key, value] of Object.entries(options.params ?? {})) {
-    url.searchParams.set(key, value);
-  }
-  const token = await connectionToken(connection);
+  const token = await connection.getAccessToken();
   const limiters = limitersFor(connection);
-  const response = await providerFetch(url.toString(), {
-    method,
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-      ...(options.body === undefined
-        ? {}
-        : { "Content-Type": "application/json" }),
-    },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    limiter: method === "GET" ? limiters.read : limiters.write,
-  });
-  if (!response.ok) throw await toError(response, url.toString());
-  return { data: (await response.json()) as unknown, response };
+  try {
+    return await providerFetchJson<unknown>(`${API}${path}`, {
+      method,
+      query: options.params,
+      headers: { Accept: "application/json" },
+      bearer: token,
+      json: options.body,
+      limiter: method === "GET" ? limiters.read : limiters.write,
+    });
+  } catch (error) {
+    throw toSourceError(error);
+  }
 }
 
 /**
  * Read every item of a list endpoint. With `unified=true` MDBList returns a
  * bare array in list order and gives the next page in `X-Next-Cursor`.
  */
-async function readAllItems(
+function readAllItems(
   connection: ConnectionAccess,
   path: string,
 ): Promise<PagedRead<MdblistItem>> {
-  const items: MdblistItem[] = [];
-  const seen = new Set<string>();
-  let cursor: string | null = null;
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const params: Record<string, string> = {
-      unified: "true",
-      limit: String(PAGE_SIZE),
-    };
-    if (cursor) params.cursor = cursor;
-    const { data, response } = await mdblistRequest(connection, path, {
-      params,
-    });
-    if (Array.isArray(data)) items.push(...(data as MdblistItem[]));
-    cursor = response.headers.get("X-Next-Cursor");
-    const hasMore = response.headers.get("X-Has-More") === "true";
-    if (!hasMore || !cursor) return { items, complete: true };
-    // A cursor seen before would loop: stop, but the read is not complete.
-    if (seen.has(cursor)) break;
-    seen.add(cursor);
-  }
-  return { items, complete: false };
+  return readPages({
+    maxPages: MAX_PAGES,
+    first: null as string | null,
+    async page(cursor) {
+      const params: Record<string, string> = {
+        unified: "true",
+        limit: String(PAGE_SIZE),
+      };
+      if (cursor) params.cursor = cursor;
+      const { data, response } = await mdblistRequest(connection, path, {
+        params,
+      });
+      const next = response.headers.get("X-Next-Cursor");
+      const hasMore = response.headers.get("X-Has-More") === "true";
+      return {
+        items: Array.isArray(data) ? (data as MdblistItem[]) : [],
+        next: hasMore && next ? next : null,
+      };
+    },
+  });
 }
 
 /** Read every page of a /sync/… snapshot (cursor in `pagination`). */
@@ -224,26 +225,26 @@ async function readAllSync(
   connection: ConnectionAccess,
   path: string,
 ): Promise<SyncPage> {
-  const all: Required<Pick<SyncPage, "movies" | "shows" | "episodes">> = {
-    movies: [],
-    shows: [],
-    episodes: [],
+  const { items: pages } = await readPages({
+    maxPages: MAX_PAGES,
+    first: null as string | null,
+    async page(cursor) {
+      const params: Record<string, string> = { limit: String(PAGE_SIZE) };
+      if (cursor) params.cursor = cursor;
+      const data = (await mdblistRequest(connection, path, { params }))
+        .data as SyncPage;
+      const next = data.pagination?.next_cursor ?? null;
+      return {
+        items: [data],
+        next: data.pagination?.has_more && next ? next : null,
+      };
+    },
+  });
+  return {
+    movies: pages.flatMap((page) => page.movies ?? []),
+    shows: pages.flatMap((page) => page.shows ?? []),
+    episodes: pages.flatMap((page) => page.episodes ?? []),
   };
-  const seen = new Set<string>();
-  let cursor: string | null = null;
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const params: Record<string, string> = { limit: String(PAGE_SIZE) };
-    if (cursor) params.cursor = cursor;
-    const data = (await mdblistRequest(connection, path, { params }))
-      .data as SyncPage;
-    all.movies.push(...(data.movies ?? []));
-    all.shows.push(...(data.shows ?? []));
-    all.episodes.push(...(data.episodes ?? []));
-    cursor = data.pagination?.next_cursor ?? null;
-    if (!data.pagination?.has_more || !cursor || seen.has(cursor)) break;
-    seen.add(cursor);
-  }
-  return all;
 }
 
 // ---------------------------------------------------------------------------
@@ -317,14 +318,6 @@ function firstInfo<T>(data: T | T[] | null): T | null {
   return data;
 }
 
-function needsConnection(): SourceValidation {
-  return {
-    ok: false,
-    reason: "needs_connection",
-    message: "Connect MDBList to add this list",
-  };
-}
-
 function isSameUser(a: string | null | undefined, b: string): boolean {
   return !!a && a.toLowerCase() === b.toLowerCase();
 }
@@ -333,14 +326,11 @@ function isSameUser(a: string | null | undefined, b: string): boolean {
 // Entries
 // ---------------------------------------------------------------------------
 
-const IMDB_ID = /^tt\d+$/;
-
 function imdbIdOf(
   ids: MdblistIds | null | undefined,
   fallback?: string | null,
 ) {
-  const value = ids?.imdb ?? fallback;
-  return value && IMDB_ID.test(value) ? value : undefined;
+  return asImdbId(ids?.imdb ?? fallback);
 }
 
 function toEntry(item: MdblistItem): SourceEntry | null {
@@ -393,41 +383,11 @@ function watchlistOrder(items: MdblistItem[]): MdblistItem[] {
 // Actions
 // ---------------------------------------------------------------------------
 
-type Bucket = "movies" | "shows";
-
-function bucketOf(target: ActionTarget): Bucket {
-  return target.type === "movie" ? "movies" : "shows";
-}
-
-/** Sum of the `not_found` counts (numbers or arrays, per media type). */
-function notFoundCount(result: unknown): number {
-  const notFound = (result as { not_found?: unknown } | null)?.not_found;
-  if (!notFound || typeof notFound !== "object") return 0;
-  return Object.values(notFound).reduce<number>((sum, value) => {
-    if (typeof value === "number") return sum + value;
-    if (Array.isArray(value)) return sum + value.length;
-    return sum;
-  }, 0);
-}
-
 function watchedPayload(target: ActionTarget): Record<string, unknown[]> {
-  const ids = { imdb: target.imdbId };
   if (target.type === "series" && target.episode) {
-    return {
-      shows: [
-        {
-          ids,
-          seasons: [
-            {
-              number: target.episode.season,
-              episodes: [{ number: target.episode.episode }],
-            },
-          ],
-        },
-      ],
-    };
+    return { shows: [episodeItem(target, target.episode)] };
   }
-  return { [bucketOf(target)]: [{ ids }] };
+  return { [bucketOf(target)]: [{ ids: syncIds(target) }] };
 }
 
 async function perform(
@@ -435,7 +395,7 @@ async function perform(
   intent: ActionIntent,
   target: ActionTarget,
 ): Promise<void> {
-  const ids = { imdb: target.imdbId };
+  const ids = syncIds(target);
   const bucket = bucketOf(target);
   let path: string;
   let body: Record<string, unknown[]>;
@@ -455,12 +415,8 @@ async function perform(
     body = { [bucket]: [{ ids }] };
     mustExist = false;
   } else {
-    const rating = Math.round(intent.rating);
-    if (rating < 1 || rating > 10) {
-      throw new Error(`MDBList ratings go from 1 to 10, got ${intent.rating}`);
-    }
     path = "/sync/ratings";
-    body = { [bucket]: [{ ids, rating }] };
+    body = { [bucket]: [{ ids, rating: intent.rating }] };
     mustExist = true;
   }
 
@@ -468,7 +424,7 @@ async function perform(
     method: "POST",
     body,
   });
-  if (mustExist && notFoundCount(data) > 0) {
+  if (mustExist && countNotFound(data) > 0) {
     throw new Error(`MDBList does not know ${target.imdbId}`);
   }
 }
@@ -545,7 +501,8 @@ const client = oauthClient("MDBLIST");
 
 async function fetchUsername(token: string): Promise<string | null> {
   const response = await providerFetch(`${API}/user`, {
-    headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+    headers: { Accept: "application/json" },
+    bearer: token,
   });
   if (!response.ok) return null;
   const user = (await response.json()) as { username?: string | null };
@@ -564,75 +521,64 @@ async function validateSource(
   const parsed = parseRef(ref);
   if (!parsed) return { ok: false, reason: "not_found" };
   const connection = ctx.connection;
-  if (!connection) return needsConnection();
+  if (!connection) return { ok: false, reason: "needs_connection" };
 
-  try {
-    switch (parsed.kind) {
-      case "watchlist":
-        return {
-          ok: true,
-          ref: "me/watchlist",
-          suggestedTitle: "MDBList watchlist",
-          defaultDisplayMode: "split",
-        };
-      case "user-watchlist":
-        // MDBList has no API for another user's watchlist.
-        return isSameUser(connection.username, parsed.user)
-          ? {
-              ok: true,
-              ref: "me/watchlist",
-              suggestedTitle: "MDBList watchlist",
-              defaultDisplayMode: "split",
-            }
-          : {
-              ok: false,
-              reason: "private",
-              message:
-                "MDBList only shares the watchlist of the connected user",
-            };
-      case "external": {
-        const { data } = await mdblistRequest(
-          connection,
-          `/external/lists/${parsed.id}`,
-        );
-        const info = firstInfo(data as ListInfoResponse);
-        if (!info) return { ok: false, reason: "not_found" };
-        return {
-          ok: true,
-          ref: `me/external/${parsed.id}`,
-          suggestedTitle: info.name,
-          defaultDisplayMode: displayModeFor(info.mediatype),
-        };
-      }
-      case "list":
-      case "list-by-slug": {
-        const path =
-          parsed.kind === "list"
-            ? `/lists/${parsed.id}`
-            : `/lists/${encodeURIComponent(parsed.user)}/${encodeURIComponent(parsed.slug)}`;
-        const { data } = await mdblistRequest(connection, path);
-        const info = firstInfo(data as ListInfoResponse);
-        if (!info || typeof info.id !== "number") {
-          return { ok: false, reason: "not_found" };
-        }
-        // The numeric ID survives a rename of the list or of its owner.
-        const normalized =
-          parsed.kind === "list" && ref.startsWith("me/")
-            ? ref
-            : `lists/${info.id}`;
-        return {
-          ok: true,
-          ref: normalized,
-          suggestedTitle: info.name,
-          defaultDisplayMode: displayModeFor(info.mediatype),
-        };
-      }
+  switch (parsed.kind) {
+    case "watchlist":
+      return {
+        ok: true,
+        ref: "me/watchlist",
+        suggestedTitle: "MDBList watchlist",
+        defaultDisplayMode: "split",
+      };
+    case "user-watchlist":
+      // MDBList has no API for another user's watchlist.
+      return isSameUser(connection.username, parsed.user)
+        ? {
+            ok: true,
+            ref: "me/watchlist",
+            suggestedTitle: "MDBList watchlist",
+            defaultDisplayMode: "split",
+          }
+        : // MDBList only shares the watchlist of the connected user.
+          { ok: false, reason: "private" };
+    case "external": {
+      const { data } = await mdblistRequest(
+        connection,
+        `/external/lists/${parsed.id}`,
+      );
+      const info = firstInfo(data as ListInfoResponse);
+      if (!info) return { ok: false, reason: "not_found" };
+      return {
+        ok: true,
+        ref: `me/external/${parsed.id}`,
+        suggestedTitle: info.name,
+        defaultDisplayMode: displayModeFor(info.mediatype),
+      };
     }
-  } catch (error) {
-    if (error instanceof SourceUnavailableError) {
-      return { ok: false, reason: error.reason, message: error.message };
+    case "list":
+    case "list-by-slug": {
+      const path =
+        parsed.kind === "list"
+          ? `/lists/${parsed.id}`
+          : `/lists/${encodeURIComponent(parsed.user)}/${encodeURIComponent(parsed.slug)}`;
+      const { data } = await mdblistRequest(connection, path);
+      const info = firstInfo(data as ListInfoResponse);
+      if (!info || typeof info.id !== "number") {
+        return { ok: false, reason: "not_found" };
+      }
+      // The numeric ID survives a rename of the list or of its owner.
+      const normalized =
+        parsed.kind === "list" && ref.startsWith("me/")
+          ? ref
+          : `lists/${info.id}`;
+      return {
+        ok: true,
+        ref: normalized,
+        suggestedTitle: info.name,
+        defaultDisplayMode: displayModeFor(info.mediatype),
+      };
     }
-    throw error;
   }
 }
 

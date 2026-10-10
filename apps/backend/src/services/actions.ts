@@ -1,14 +1,19 @@
-import {
-  DeleteObjectCommand,
-  GetObjectCommand,
-  PutObjectCommand,
-} from "@aws-sdk/client-s3";
+import { IMDB_TITLE_ID_PATTERN } from "@stremlist/shared/constants";
 import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
 import { joinProviderLabels, PROVIDERS } from "@stremlist/shared/providers";
 import type { StremioStream } from "@stremlist/shared/stremio.types";
 import { scheduleBackgroundTask } from "../lib/background";
-import { getR2Bucket, getR2Client } from "../lib/r2";
-import { getProvider, isProviderEnabled } from "../providers/registry";
+import {
+  connectionPrefix,
+  deletePrefix,
+  readJson,
+  writeJson,
+} from "../lib/r2-json";
+import {
+  getProvider,
+  isProviderEnabled,
+  supportsAction,
+} from "../providers/registry";
 import type {
   ActionIntent,
   ActionTarget,
@@ -38,7 +43,7 @@ interface StoredMembership {
 }
 
 function membershipKey(accountId: string, provider: ProviderId): string {
-  return `connections/${accountId}/${provider}/membership.json`;
+  return `${connectionPrefix(accountId, provider)}membership.json`;
 }
 
 const memoryMembership = new Map<string, StoredMembership>();
@@ -51,14 +56,8 @@ async function readMembership(
   const inMemory = memoryMembership.get(key);
   if (inMemory) return inMemory;
   try {
-    const response = await getR2Client().send(
-      new GetObjectCommand({ Bucket: getR2Bucket(), Key: key }),
-    );
-    if (!response.Body) return null;
-    const stored = JSON.parse(
-      await response.Body.transformToString(),
-    ) as StoredMembership;
-    memoryMembership.set(key, stored);
+    const stored = await readJson<StoredMembership>(key);
+    if (stored) memoryMembership.set(key, stored);
     return stored;
   } catch {
     return null;
@@ -76,15 +75,7 @@ async function writeMembership(
     membership,
   };
   memoryMembership.set(key, stored);
-  await getR2Client().send(
-    new PutObjectCommand({
-      Bucket: getR2Bucket(),
-      Key: key,
-      Body: Buffer.from(JSON.stringify(stored)),
-      ContentType: "application/json",
-      CacheControl: "private, max-age=0, must-revalidate",
-    }),
-  );
+  await writeJson(key, stored);
 }
 
 async function refreshMembership(
@@ -99,27 +90,17 @@ async function refreshMembership(
 }
 
 /**
- * Snapshots that a Connection keeps in R2: Action membership, and the Simkl
- * library snapshot used to skip unchanged reads.
+ * After a disconnect: delete what Stremlist stored for that Connection, in
+ * memory and in R2 (Action membership, and the Provider's own state such as
+ * Simkl's library and custom list snapshots).
  */
-const CONNECTION_OBJECTS = ["membership.json", "library.json"];
-
-/** After a disconnect: delete what Stremlist stored for that Connection. */
 export async function forgetConnectionObjects(
   accountId: string,
   provider: ProviderId,
 ): Promise<void> {
   memoryMembership.delete(membershipKey(accountId, provider));
-  await Promise.all(
-    CONNECTION_OBJECTS.map((name) =>
-      getR2Client().send(
-        new DeleteObjectCommand({
-          Bucket: getR2Bucket(),
-          Key: `connections/${accountId}/${provider}/${name}`,
-        }),
-      ),
-    ),
-  );
+  getProvider(provider).forgetConnection?.(accountId);
+  await deletePrefix(connectionPrefix(accountId, provider));
 }
 
 /** The Providers that receive Actions for this Account, in the user's order. */
@@ -142,7 +123,7 @@ export function parseStreamId(
   id: string,
 ): ActionTarget | null {
   const [imdbId, season, episode] = id.split(":");
-  if (!/^tt\d+$/.test(imdbId)) return null;
+  if (!IMDB_TITLE_ID_PATTERN.test(imdbId)) return null;
   if (type === "series" && season && episode) {
     const s = Number(season);
     const e = Number(episode);
@@ -252,9 +233,7 @@ export async function buildActionStreams(
   );
 
   const supporting = (kind: ActionKind) =>
-    memberships.filter(({ provider }) =>
-      getProvider(provider).actions?.kinds.includes(kind),
-    );
+    memberships.filter(({ provider }) => supportsAction(provider, kind));
 
   const streams: StremioStream[] = [];
   const { imdbId, episode } = target;
@@ -426,7 +405,11 @@ export async function performAction(
   return Promise.all(
     providers.map(async (provider): Promise<ActionOutcome> => {
       const actions = getProvider(provider).actions;
-      if (!allowed.has(provider) || !actions?.kinds.includes(intent.kind)) {
+      if (
+        !actions ||
+        !allowed.has(provider) ||
+        !supportsAction(provider, intent.kind)
+      ) {
         return { provider, ok: false, error: "not_available" };
       }
       const connection = await getConnectionAccess(account.id, provider);
@@ -479,7 +462,7 @@ export async function currentRatings(
   imdbId: string,
 ): Promise<{ provider: ProviderId; rating: number | null }[]> {
   const providers = (await actionProviders(account)).filter((provider) =>
-    getProvider(provider).actions?.kinds.includes("rating"),
+    supportsAction(provider, "rating"),
   );
   return Promise.all(
     providers.map(async (provider) => {

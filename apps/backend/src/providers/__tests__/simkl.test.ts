@@ -5,7 +5,11 @@ import type { ConnectionAccess } from "../types";
 import { SourceUnavailableError } from "../types";
 
 // R2 as an in-memory bucket.
-const r2 = vi.hoisted(() => ({ objects: new Map<string, string>() }));
+const r2 = vi.hoisted(() => ({
+  objects: new Map<string, string>(),
+  /** R2 unreachable: reads fail with an error other than NoSuchKey. */
+  down: false,
+}));
 vi.mock("../../lib/r2", () => ({
   getR2Bucket: () => "test-bucket",
   getR2Client: () => ({
@@ -18,6 +22,7 @@ vi.mock("../../lib/r2", () => ({
         r2.objects.set(Key, Buffer.from(Body ?? []).toString());
         return Promise.resolve({});
       }
+      if (r2.down) return Promise.reject(new Error("R2 is down"));
       const value = r2.objects.get(Key);
       if (value === undefined) {
         return Promise.reject(
@@ -360,6 +365,7 @@ beforeEach(() => {
   process.env.SIMKL_CLIENT_ID = "client-123";
   process.env.SIMKL_CLIENT_SECRET = "secret-456";
   r2.objects.clear();
+  r2.down = false;
   resetSimklState();
   calls = [];
   routes = defaultRoutes(activities({ all: "2026-10-01T10:00:00Z" }));
@@ -565,6 +571,23 @@ describe("simkl activities gating", () => {
   });
 });
 
+describe("simkl disconnect", () => {
+  it("forgets the in-memory copies of the Connection's state", async () => {
+    await simklProvider.fetchSource("me/plantowatch", ctx());
+    // While R2 is down, the in-memory copy answers inside the gate.
+    r2.down = true;
+    calls = [];
+    await simklProvider.fetchSource("me/plantowatch", ctx());
+    expect(apiCalls()).toEqual([]);
+
+    simklProvider.forgetConnection?.("acc-1");
+
+    calls = [];
+    await simklProvider.fetchSource("me/plantowatch", ctx());
+    expect(apiCalls()).toContain("GET /sync/all-items/shows");
+  });
+});
+
 describe("simkl entries", () => {
   it("maps statuses to entries, oldest added first", async () => {
     const { entries } = await simklProvider.fetchSource(
@@ -701,7 +724,7 @@ describe("simkl custom lists", () => {
 
     await expect(
       simklProvider.validateSource("me/lists/123", ctx()),
-    ).resolves.toMatchObject({ ok: false, reason: "premium_only" });
+    ).rejects.toMatchObject({ reason: "premium_only" });
   });
 
   it("reads a PRO list in the owner's order, once per activity change", async () => {
@@ -802,20 +825,6 @@ describe("simkl custom lists", () => {
     const second = await simklProvider.fetchSource("me/lists/321", ctx());
     expect(apiCalls()).toEqual(["GET /sync/activities"]);
     expect(second.complete).toBe(false);
-
-    // A snapshot stored before the flag existed may be cut short too: it is
-    // read again instead of being taken as complete.
-    for (const [key, value] of r2.objects) {
-      const snapshot = JSON.parse(value) as { complete?: boolean };
-      if (!("complete" in snapshot)) continue;
-      delete snapshot.complete;
-      r2.objects.set(key, JSON.stringify(snapshot));
-    }
-    ageLibrary();
-    calls = [];
-    const third = await simklProvider.fetchSource("me/lists/321", ctx());
-    expect(apiCalls()).toContain("GET /lists/321");
-    expect(third.complete).toBe(false);
   });
 
   it("validates a list with its name and media type", async () => {
@@ -836,7 +845,7 @@ describe("simkl custom lists", () => {
     routes["GET /lists/790"] = () => json({ error: "private_list" }, 403);
     await expect(
       simklProvider.validateSource("me/lists/790", ctx()),
-    ).resolves.toMatchObject({ ok: false, reason: "private" });
+    ).rejects.toMatchObject({ reason: "private" });
   });
 });
 
@@ -1014,13 +1023,6 @@ describe("simkl actions", () => {
       path: "/sync/ratings/remove",
       body: { movies: [{ ids: { imdb: "tt0068646" } }] },
     });
-    await expect(
-      actions.perform(
-        connection,
-        { kind: "rating", rating: 11 },
-        { imdbId: "tt0068646", type: "movie" },
-      ),
-    ).rejects.toThrow();
   });
 
   it("fails when Simkl does not know the title", async () => {

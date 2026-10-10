@@ -1333,4 +1333,35 @@ describe("DELETE /:accountId/connections/:provider", () => {
       r2Objects.has(`connections/${account.id}/trakt/membership.json`),
     ).toBe(false);
   });
+
+  it("deletes every object the Connection stored, also private list snapshots", async () => {
+    const { r2Objects } = await import("./helpers/mock-r2.js");
+    const forgetConnection = vi.fn();
+    useFakeProvider(fakeAdapter("simkl", { forgetConnection }));
+    const account = seedAccount();
+    const other = seedAccount();
+    seedConnection(account.id, "simkl");
+    const own = [
+      "membership.json",
+      "library.json",
+      "lists/1.json",
+      "lists/2.json",
+      "lists/3.json",
+    ].map((name) => `connections/${account.id}/simkl/${name}`);
+    const kept = [
+      `connections/${account.id}/trakt/membership.json`,
+      `connections/${other.id}/simkl/lists/1.json`,
+    ];
+    for (const key of [...own, ...kept]) r2Objects.set(key, "{}");
+
+    const res = await app.request(`/${account.id}/connections/simkl`, {
+      method: "DELETE",
+    });
+
+    expect(res.status).toBe(200);
+    expect(own.filter((key) => r2Objects.has(key))).toEqual([]);
+    expect(kept.filter((key) => r2Objects.has(key))).toEqual(kept);
+    // The adapter also forgets what it keeps in memory.
+    expect(forgetConnection).toHaveBeenCalledWith(account.id);
+  });
 });

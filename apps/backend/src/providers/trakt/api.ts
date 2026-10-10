@@ -1,7 +1,12 @@
-import { ensureOk, HttpError, providerFetch, RateLimiter } from "../http";
+import {
+  ensureOk,
+  providerFetch,
+  RateLimiter,
+  sourceErrorFromHttp,
+} from "../http";
 import { oauthClient } from "../oauth-app";
 import type { ConnectionAccess, PagedRead } from "../types";
-import { connectionToken, SourceUnavailableError } from "../types";
+import { ConnectionExpiredError, SourceUnavailableError } from "../types";
 
 export const TRAKT_API = "https://api.trakt.tv";
 export const TRAKT_AUTH = "https://auth.trakt.tv";
@@ -26,19 +31,18 @@ export function nonEmpty(value: string | null | undefined): string | null {
   return value;
 }
 
-export function traktHeaders(accessToken?: string): Record<string, string> {
+/** Headers of every Trakt API call; the token goes in `bearer`. */
+export function traktHeaders(): Record<string, string> {
   const clientId = traktClientId();
   if (!clientId) {
     throw new SourceUnavailableError("disabled", "Trakt is not configured");
   }
-  const headers: Record<string, string> = {
+  return {
     "Content-Type": "application/json",
     Accept: "application/json",
     "trakt-api-key": clientId,
     "trakt-api-version": "2",
   };
-  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  return headers;
 }
 
 export interface TraktReadOptions {
@@ -48,11 +52,19 @@ export interface TraktReadOptions {
    * "private" apart from "the Connection is broken".
    */
   publicFallback?: boolean;
+  /** Query parameters added to the path's own. */
+  query?: Record<string, string>;
 }
 
-async function send(path: string, token?: string): Promise<Response> {
+async function send(
+  path: string,
+  query: Record<string, string> | undefined,
+  token?: string,
+): Promise<Response> {
   return providerFetch(`${TRAKT_API}${path}`, {
-    headers: traktHeaders(token),
+    headers: traktHeaders(),
+    bearer: token,
+    query,
     limiter: token ? connectedReadLimiter : publicReadLimiter,
   });
 }
@@ -71,34 +83,32 @@ export async function traktGet(
   // A Connection that cannot give a token any more (refused refresh) must
   // not make Source lists that anyone may read fail.
   const token = connection
-    ? await connectionToken(connection).catch((error: unknown) => {
-        if (
-          options.publicFallback &&
-          error instanceof SourceUnavailableError &&
-          error.reason === "needs_connection"
-        ) {
+    ? await connection.getAccessToken().catch((error: unknown) => {
+        if (options.publicFallback && error instanceof ConnectionExpiredError) {
           return null;
         }
         throw error;
       })
     : null;
   if (!connection || token === null) {
-    const response = await send(path);
+    const response = await send(path, options.query);
     if (response.status === 401) {
       throw new SourceUnavailableError("private", `Trakt ${path} is private`);
     }
     return checked(response, path);
   }
 
-  let response = await send(path, token);
+  let response = await send(path, options.query, token);
   if (response.status === 401) {
     // ConnectionAccess refreshes a token that is about to expire; a second
     // read only helps when that gave us a new one.
-    const renewed = await connectionToken(connection);
-    if (renewed !== token) response = await send(path, renewed);
+    const renewed = await connection.getAccessToken();
+    if (renewed !== token) {
+      response = await send(path, options.query, renewed);
+    }
   }
   if (response.status === 401 && options.publicFallback) {
-    response = await send(path);
+    response = await send(path, options.query);
     if (response.status === 401) {
       throw new SourceUnavailableError("private", `Trakt ${path} is private`);
     }
@@ -131,13 +141,6 @@ export async function traktGetJson<T>(
   return text ? (JSON.parse(text) as T) : null;
 }
 
-function withQuery(path: string, params: Record<string, string>): string {
-  const [base, query] = path.split("?", 2);
-  const search = new URLSearchParams(query);
-  for (const [key, value] of Object.entries(params)) search.set(key, value);
-  return `${base}?${search.toString()}`;
-}
-
 export interface PaginateOptions extends TraktReadOptions {
   pageSize?: number;
   maxItems: number;
@@ -158,11 +161,10 @@ export async function traktGetAll<T>(
   const pageSize = options.pageSize ?? TRAKT_PAGE_SIZE;
   const items: T[] = [];
   for (let page = 1; ; page++) {
-    const response = await traktGet(
-      withQuery(path, { page: String(page), limit: String(pageSize) }),
-      connection,
-      options,
-    );
+    const response = await traktGet(path, connection, {
+      ...options,
+      query: { page: String(page), limit: String(pageSize) },
+    });
     if (response.status === 204) break;
     const data = (await response.json()) as T[];
     if (!Array.isArray(data) || data.length === 0) break;
@@ -182,54 +184,35 @@ export async function traktGetAll<T>(
 
 /** Map an HttpError from Trakt to the Source list state it means. */
 export function toSourceError(error: unknown): unknown {
-  if (!(error instanceof HttpError)) return error;
-  switch (error.status) {
-    case 404:
-      return new SourceUnavailableError("not_found", error.message);
-    // 420: account limit exceeded; 426: VIP only.
-    case 420:
-    case 426:
-      return new SourceUnavailableError("premium_only", error.message);
-    default:
-      return error;
-  }
+  // 420: account limit exceeded; 426: VIP only.
+  return sourceErrorFromHttp(error, {
+    404: "not_found",
+    420: "premium_only",
+    426: "premium_only",
+  });
 }
 
-export class TraktWriteError extends Error {
-  readonly status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.name = "TraktWriteError";
-    this.status = status;
-  }
-}
-
-/** POST a change through the Connection (1 write per second). */
+/**
+ * POST a change through the Connection (1 write per second). Throws HttpError
+ * on non-2xx (420: account limit reached, 426: Trakt VIP only).
+ */
 export async function traktPost<T>(
   path: string,
   connection: ConnectionAccess,
   body: unknown,
 ): Promise<T | null> {
   const token = await connection.getAccessToken();
-  const response = await providerFetch(`${TRAKT_API}${path}`, {
-    method: "POST",
-    headers: traktHeaders(token),
-    body: JSON.stringify(body),
-    limiter: writeLimiter,
-  });
-  if (!response.ok) {
-    const reason =
-      response.status === 420
-        ? "the Trakt account limit is reached"
-        : response.status === 426
-          ? "this needs Trakt VIP"
-          : `HTTP ${response.status}`;
-    throw new TraktWriteError(
-      response.status,
-      `Trakt ${path} failed: ${reason}`,
-    );
-  }
+  const url = `${TRAKT_API}${path}`;
+  const response = await ensureOk(
+    await providerFetch(url, {
+      method: "POST",
+      headers: traktHeaders(),
+      bearer: token,
+      json: body,
+      limiter: writeLimiter,
+    }),
+    url,
+  );
   const text = await response.text();
   return text ? (JSON.parse(text) as T) : null;
 }

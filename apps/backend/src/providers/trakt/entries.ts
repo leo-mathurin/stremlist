@@ -1,3 +1,4 @@
+import { asImdbId } from "@stremlist/shared/constants";
 import type { SourceEntry } from "../types";
 
 /** The IDs object of a Trakt movie or show. */
@@ -31,11 +32,8 @@ export interface TraktItem {
   progress?: { last_watched_at?: string | null } | null;
 }
 
-const IMDB_ID = /^tt\d+$/;
-
 export function imdbIdOf(media: TraktMedia | null | undefined): string | null {
-  const imdb = media?.ids?.imdb;
-  return imdb && IMDB_ID.test(imdb) ? imdb : null;
+  return asImdbId(media?.ids?.imdb) ?? null;
 }
 
 /** A Trakt movie or show as a Source list entry. */

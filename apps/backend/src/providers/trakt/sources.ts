@@ -378,14 +378,6 @@ const PERSONAL_TITLES: Record<string, string> = {
   collection: "Trakt Collection",
 };
 
-function invalid(error: unknown): SourceValidation {
-  const mapped = toSourceError(error);
-  if (mapped instanceof SourceUnavailableError) {
-    return { ok: false, reason: mapped.reason, message: mapped.message };
-  }
-  throw mapped;
-}
-
 /**
  * Check that a Source list exists and can be read, and normalize its ref.
  * Costs one or two small GETs.
@@ -468,6 +460,6 @@ export async function validateTraktSource(
       defaultDisplayMode: displayMode,
     };
   } catch (error) {
-    return invalid(error);
+    throw toSourceError(error);
   }
 }
