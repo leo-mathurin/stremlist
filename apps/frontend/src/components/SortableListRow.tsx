@@ -5,7 +5,11 @@ import {
 } from "@stremlist/shared/constants";
 import type { DisplayMode } from "@stremlist/shared/constants";
 import type { ListSyncState } from "@stremlist/shared/sync-status";
-import { CHART_REGISTRY, CHART_BY_ID } from "@stremlist/shared/imdb-charts";
+import {
+  CHART_BY_ID,
+  CHART_REGISTRY,
+  imdbChartOf,
+} from "@stremlist/shared/imdb-charts";
 import {
   allowedDisplayModes,
   isMergedList,
@@ -115,10 +119,7 @@ export default function SortableListRow({
   const sources = listSources(list);
   // A merged List shows its own settings, not the chart picker of its first
   // Source list.
-  const chartEntry =
-    list.provider === "imdb" && !merged
-      ? CHART_BY_ID.get(list.sourceRef)
-      : undefined;
+  const chartEntry = merged ? undefined : imdbChartOf(list);
   const isChart = !!chartEntry;
   const title = rowTitle(list);
   const displayModes = allowedDisplayModes(list);

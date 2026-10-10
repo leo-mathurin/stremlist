@@ -2,12 +2,7 @@ import {
   ACCOUNT_KEY_PATTERN,
   ACCOUNT_KEY_SOURCE,
 } from "@stremlist/shared/constants";
-import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
-import {
-  CONNECTION_SOURCES,
-  PROVIDERS,
-  PUBLIC_SOURCES,
-} from "@stremlist/shared/providers";
+import { PROVIDERS, describeSourceRef } from "@stremlist/shared/providers";
 import type {
   ParsedSourceLink,
   ProviderId,
@@ -40,17 +35,6 @@ export const PROVIDER_LOGOS: Record<
 /** The prompt of every link field. */
 export const PASTE_LINK_PROMPT = "Paste a link to a watchlist or list";
 
-/** Display order on Home and Configure: the most used Providers first. */
-export const PROVIDER_ORDER: readonly ProviderId[] = [
-  "imdb",
-  "trakt",
-  "simkl",
-  "mdblist",
-  "justwatch",
-  "senscritique",
-  "letterboxd",
-];
-
 const KIND_LABELS: Record<SourceKind, string> = {
   watchlist: "Watchlist",
   list: "List",
@@ -80,19 +64,6 @@ export interface SourceDescription {
   suggestedTitle: string;
 }
 
-/** Whether a ref is one of the fixed connection or public sources. */
-export function isStaticSource(provider: ProviderId, ref: string): boolean {
-  return knownSource(provider, ref) !== null;
-}
-
-function knownSource(provider: ProviderId, ref: string) {
-  return (
-    CONNECTION_SOURCES[provider]?.find((source) => source.ref === ref) ??
-    PUBLIC_SOURCES[provider]?.find((source) => source.ref === ref) ??
-    null
-  );
-}
-
 /**
  * Describe a stored Source list reference for the configure page. The
  * reference formats are the ones in `@stremlist/shared/providers`.
@@ -101,101 +72,15 @@ export function describeSource(
   provider: ProviderId,
   ref: string,
 ): SourceDescription {
-  const label = PROVIDERS[provider].label;
-  const known = knownSource(provider, ref);
-  if (known) {
-    const fromConnection = ref.startsWith("me/");
-    return {
-      kind: known.kind,
-      kindLabel: KIND_LABELS[known.kind],
-      detail: fromConnection ? "Your account" : null,
-      url:
-        provider === "trakt" && !fromConnection
-          ? `https://trakt.tv/movies/${ref}`
-          : null,
-      suggestedTitle: `${label} ${known.label}`,
-    };
-  }
-
-  const describe = (
-    kind: SourceKind,
-    detail: string | null,
-    url: string | null,
-    suggestedTitle?: string,
-  ): SourceDescription => ({
+  const { kind, detail, url, title } = describeSourceRef(provider, ref);
+  return {
     kind,
     kindLabel: KIND_LABELS[kind],
     detail,
     url,
-    suggestedTitle: suggestedTitle ?? `${label} ${KIND_LABELS[kind]}`,
-  });
-
-  const parts = ref.split("/");
-  switch (provider) {
-    case "imdb": {
-      const chart = CHART_BY_ID.get(ref);
-      if (chart) return describe("chart", null, chart.url, chart.label);
-      if (/^ls\d+$/.test(ref)) {
-        return describe("list", ref, `https://www.imdb.com/list/${ref}/`);
-      }
-      return describe(
-        "watchlist",
-        ref,
-        `https://www.imdb.com/user/${ref}/watchlist`,
-      );
-    }
-    case "trakt": {
-      if (parts[0] === "users" && parts[2] === "watchlist") {
-        return describe(
-          "watchlist",
-          parts[1],
-          `https://trakt.tv/users/${parts[1]}/watchlist`,
-          `${parts[1]}'s watchlist`,
-        );
-      }
-      if (parts[0] === "users" && parts[2] === "lists") {
-        return describe(
-          "list",
-          `${parts[1]}/${parts[3]}`,
-          `https://trakt.tv/users/${parts[1]}/lists/${parts[3]}`,
-        );
-      }
-      if (parts[0] === "lists") {
-        return describe("list", parts[1], `https://trakt.tv/lists/${parts[1]}`);
-      }
-      return describe("list", ref, null);
-    }
-    case "mdblist": {
-      // Validation stores pasted links as `lists/{id}`, which has no public
-      // page; only `lists/{user}/{slug}` maps back to one.
-      if (parts[0] === "lists" && parts.length === 2) {
-        return describe("list", `List ${parts[1]}`, null);
-      }
-      if (parts[0] === "lists") {
-        return describe(
-          "list",
-          `${parts[1]}/${parts[2]}`,
-          `https://mdblist.com/lists/${parts[1]}/${parts[2]}`,
-        );
-      }
-      return describe("list", ref, null);
-    }
-    case "justwatch":
-      return describe("list", "Shared list", null);
-    case "senscritique": {
-      if (parts[0] === "users") {
-        return describe(
-          "watchlist",
-          parts[1],
-          `https://www.senscritique.com/${parts[1]}/collection?action=WISH`,
-          `${parts[1]}'s wishlist`,
-        );
-      }
-      return describe("list", parts[1] ?? ref, null);
-    }
-    default:
-      return describe("list", ref, null);
-  }
+    suggestedTitle:
+      title ?? `${PROVIDERS[provider].label} ${KIND_LABELS[kind]}`,
+  };
 }
 
 const ADDON_KEY_IN_TEXT = new RegExp(

@@ -1,9 +1,14 @@
 import { Check, Plus } from "lucide-react";
-import { PROVIDERS, PUBLIC_SOURCES } from "@stremlist/shared/providers";
+import { CHART_REGISTRY } from "@stremlist/shared/imdb-charts";
+import { sourceKey } from "@stremlist/shared/list-merge";
+import {
+  PROVIDER_IDS,
+  PROVIDERS,
+  PUBLIC_SOURCES,
+} from "@stremlist/shared/providers";
 import type { ConnectionSource, ProviderId } from "@stremlist/shared/providers";
 import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
 import type { ProviderStatus } from "@/hooks/useAccountConfiguration";
-import { PROVIDER_ORDER } from "@/lib/list-sources";
 import { cn } from "@/lib/utils";
 import BuiltInCatalogPicker from "./BuiltInCatalogPicker";
 import { ProviderMark } from "./brand";
@@ -38,7 +43,7 @@ export default function QuickAdd({
   onAddChart: (chartId: string) => void;
 }) {
   const groups: SourceGroup[] = [];
-  for (const provider of PROVIDER_ORDER) {
+  for (const provider of PROVIDER_IDS) {
     if (!providerStatus[provider].enabled) continue;
     const label = PROVIDERS[provider].label;
     const connection = connections.find((c) => c.provider === provider);
@@ -61,9 +66,9 @@ export default function QuickAdd({
       });
     }
   }
-  const usedChartIds = usedKeys
-    .filter((key) => key.startsWith("imdb:"))
-    .map((key) => key.slice("imdb:".length));
+  const usedChartIds = CHART_REGISTRY.filter((chart) =>
+    usedKeys.includes(sourceKey({ provider: "imdb", sourceRef: chart.id })),
+  ).map((chart) => chart.id);
 
   return (
     <div className="space-y-4 rounded-3xl bg-white p-4 ring-1 ring-black/5 sm:p-5">
@@ -76,7 +81,7 @@ export default function QuickAdd({
           <div className="flex flex-wrap gap-2">
             {group.sources.map((source) => {
               const added = usedKeys.includes(
-                `${group.provider}:${source.ref}`,
+                sourceKey({ provider: group.provider, sourceRef: source.ref }),
               );
               return (
                 <button

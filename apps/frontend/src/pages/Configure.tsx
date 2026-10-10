@@ -7,7 +7,11 @@ import {
   connectionProviders,
   listSources,
 } from "@stremlist/shared/list-merge";
-import { isProviderId, PROVIDERS } from "@stremlist/shared/providers";
+import {
+  isProviderId,
+  PROVIDERS,
+  staticSource,
+} from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -32,11 +36,7 @@ import { useAccountConfiguration } from "../hooks/useAccountConfiguration";
 import { sourceKeys } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { attentionTone } from "../lib/list-sync";
-import {
-  describeSource,
-  isStaticSource,
-  PASTE_LINK_PROMPT,
-} from "../lib/list-sources";
+import { describeSource, PASTE_LINK_PROMPT } from "../lib/list-sources";
 import { cn, formatRelativeTime } from "@/lib/utils";
 
 /** The Account created in this tab, so its Addon URL warning stays visible. */
@@ -584,7 +584,7 @@ export default function Configure() {
                     sourceRef: source.ref,
                     // Static sources get "Trakt Watchlist"; the account's
                     // own lists keep their real name.
-                    catalogTitle: isStaticSource(provider, source.ref)
+                    catalogTitle: staticSource(provider, source.ref)
                       ? describeSource(provider, source.ref).suggestedTitle
                       : source.label,
                     displayMode: source.defaultDisplayMode,

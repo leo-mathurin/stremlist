@@ -1,5 +1,6 @@
-import type { DisplayMode } from "./constants";
-import { isChartId } from "./imdb-charts";
+import { IMDB_LIST_ID_PATTERN, IMDB_USER_ID_PATTERN } from "./constants";
+import type { DisplayMode, TitleType } from "./constants";
+import { imdbChartOf, isChartId } from "./imdb-charts";
 
 /**
  * Providers: the external services that keep lists of Titles. See CONTEXT.md.
@@ -178,6 +179,10 @@ export interface ConnectionSource {
   kind: SourceKind;
   label: string;
   defaultDisplayMode: DisplayMode;
+  /** The only Title type that this Source list contains, if it has one. */
+  titleType?: TitleType;
+  /** The Source list page on its Provider, for a public one. */
+  url?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -526,11 +531,13 @@ export const CONNECTION_SOURCES: Partial<
       label: "Recommendations",
       defaultDisplayMode: "split",
     },
+    // Up Next lists the series in progress (docs/providers.md).
     {
       ref: "me/up-next",
       kind: "up_next",
       label: "Up Next",
       defaultDisplayMode: "series",
+      titleType: "series",
     },
     {
       ref: "me/history",
@@ -603,18 +610,21 @@ export const PUBLIC_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>> = {
       kind: "chart",
       label: "Trending",
       defaultDisplayMode: "split",
+      url: "https://trakt.tv/movies/trending",
     },
     {
       ref: "popular",
       kind: "chart",
       label: "Popular",
       defaultDisplayMode: "split",
+      url: "https://trakt.tv/movies/popular",
     },
     {
       ref: "anticipated",
       kind: "chart",
       label: "Anticipated",
       defaultDisplayMode: "split",
+      url: "https://trakt.tv/movies/anticipated",
     },
   ],
 };
@@ -626,4 +636,184 @@ export function sourceRequiresConnection(
 ): boolean {
   if (PROVIDERS[provider].connection === "required") return true;
   return ref.startsWith("me/");
+}
+
+/**
+ * The fixed Source list behind a stored reference: one that a Connection
+ * unlocks or a public chart of a Provider, or null.
+ */
+export function staticSource(
+  provider: ProviderId,
+  ref: string,
+): ConnectionSource | null {
+  return (
+    CONNECTION_SOURCES[provider]?.find((source) => source.ref === ref) ??
+    PUBLIC_SOURCES[provider]?.find((source) => source.ref === ref) ??
+    null
+  );
+}
+
+/** What a stored Source list reference tells without reading the Source list. */
+export interface SourceRefDescription {
+  kind: SourceKind;
+  /** Short human reference, such as a username or a list ID. */
+  detail: string | null;
+  /** The Source list page on its Provider, when Stremlist can build it. */
+  url: string | null;
+  /** A title that the reference suggests, such as a chart name. */
+  title?: string;
+}
+
+/**
+ * One form of the stored references of a Provider: the reverse of its link
+ * parser above, for the references that `staticSource` does not know.
+ */
+interface StoredRefForm {
+  pattern: RegExp;
+  describe: (match: RegExpExecArray) => SourceRefDescription;
+}
+
+const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
+  {
+    imdb: [
+      {
+        pattern: IMDB_LIST_ID_PATTERN,
+        describe: ([ref]) => ({
+          kind: "list",
+          detail: ref,
+          url: `https://www.imdb.com/list/${ref}/`,
+        }),
+      },
+      {
+        pattern: IMDB_USER_ID_PATTERN,
+        describe: ([ref]) => ({
+          kind: "watchlist",
+          detail: ref,
+          url: `https://www.imdb.com/user/${ref}/watchlist`,
+        }),
+      },
+    ],
+    trakt: [
+      {
+        pattern: /^users\/([^/]+)\/watchlist$/,
+        describe: ([, user]) => ({
+          kind: "watchlist",
+          detail: user,
+          url: `https://trakt.tv/users/${user}/watchlist`,
+          title: `${user}'s watchlist`,
+        }),
+      },
+      {
+        pattern: /^users\/([^/]+)\/lists\/([^/]+)$/,
+        describe: ([, user, list]) => ({
+          kind: "list",
+          detail: `${user}/${list}`,
+          url: `https://trakt.tv/users/${user}/lists/${list}`,
+        }),
+      },
+      {
+        pattern: /^lists\/([^/]+)$/,
+        describe: ([, list]) => ({
+          kind: "list",
+          detail: list,
+          url: `https://trakt.tv/lists/${list}`,
+        }),
+      },
+    ],
+    mdblist: [
+      // Validation stores pasted links as `lists/{id}`, which has no public
+      // page; only `lists/{user}/{slug}` maps back to one.
+      {
+        pattern: /^lists\/([^/]+)$/,
+        describe: ([, id]) => ({
+          kind: "list",
+          detail: `List ${id}`,
+          url: null,
+        }),
+      },
+      {
+        pattern: /^lists\/([^/]+)\/([^/]+)$/,
+        describe: ([, user, slug]) => ({
+          kind: "list",
+          detail: `${user}/${slug}`,
+          url: `https://mdblist.com/lists/${user}/${slug}`,
+        }),
+      },
+      {
+        pattern: /^watchlist\/([^/]+)$/,
+        describe: ([, user]) => ({
+          kind: "watchlist",
+          detail: user,
+          url: null,
+        }),
+      },
+    ],
+    justwatch: [
+      {
+        pattern: /^/,
+        describe: () => ({ kind: "list", detail: "Shared list", url: null }),
+      },
+    ],
+    senscritique: [
+      {
+        pattern: /^users\/([^/]+)\/wishes$/,
+        describe: ([, user]) => ({
+          kind: "watchlist",
+          detail: user,
+          url: `https://www.senscritique.com/${user}/collection?action=WISH`,
+          title: `${user}'s wishlist`,
+        }),
+      },
+      {
+        pattern: /^lists\/([^/]+)$/,
+        describe: ([, id]) => ({ kind: "list", detail: id, url: null }),
+      },
+    ],
+    letterboxd: [
+      {
+        pattern: /^users\/([^/]+)\/watchlist$/,
+        describe: ([, user]) => ({
+          kind: "watchlist",
+          detail: user,
+          url: null,
+        }),
+      },
+    ],
+  };
+
+/**
+ * Describe a stored Source list reference: the formats that the link
+ * parsers and the source tables above produce. An unknown reference is a
+ * list named by its reference.
+ */
+export function describeSourceRef(
+  provider: ProviderId,
+  ref: string,
+): SourceRefDescription {
+  const chart = imdbChartOf({ provider, sourceRef: ref });
+  if (chart) {
+    return { kind: "chart", detail: null, url: chart.url, title: chart.label };
+  }
+  const known = staticSource(provider, ref);
+  if (known) {
+    return {
+      kind: known.kind,
+      detail: sourceRequiresConnection(provider, ref) ? "Your account" : null,
+      url: known.url ?? null,
+      title: `${PROVIDERS[provider].label} ${known.label}`,
+    };
+  }
+  for (const form of STORED_REF_FORMS[provider] ?? []) {
+    const match = form.pattern.exec(ref);
+    if (match) return form.describe(match);
+  }
+  return { kind: "list", detail: ref, url: null };
+}
+
+/** What a stored Source list is on its Provider. */
+export function storedSourceKind(
+  provider: ProviderId,
+  ref: string,
+): SourceKind {
+  return describeSourceRef(provider, ref).kind;
 }

@@ -1,7 +1,7 @@
 import type { DisplayMode, TitleType } from "./constants";
-import { CHART_BY_ID } from "./imdb-charts";
+import { CHART_BY_ID, imdbChartOf } from "./imdb-charts";
 import type { ProviderId, SourceId } from "./providers";
-import { PROVIDERS, sourceRequiresConnection } from "./providers";
+import { PROVIDERS, sourceRequiresConnection, staticSource } from "./providers";
 import { storedSourceNoun } from "./source-problems";
 
 /**
@@ -90,13 +90,9 @@ export function sourceTitleType(
   provider: ProviderId,
   ref: string,
 ): TitleType | null {
-  if (provider === "imdb") {
-    const mode = CHART_BY_ID.get(ref)?.defaultDisplayMode;
-    return mode === "movie" || mode === "series" ? mode : null;
-  }
-  // Up Next lists the series in progress (docs/providers.md).
-  if (provider === "trakt" && ref === "me/up-next") return "series";
-  return null;
+  const mode = imdbChartOf({ provider, sourceRef: ref })?.defaultDisplayMode;
+  if (mode === "movie" || mode === "series") return mode;
+  return staticSource(provider, ref)?.titleType ?? null;
 }
 
 const TRAKT_DATED =
@@ -127,26 +123,17 @@ export function sourceHasAddedDates(
   }
 }
 
-const TRAKT_NAMES: Record<string, string> = {
-  trending: "Trakt Trending",
-  popular: "Trakt Popular",
-  anticipated: "Trakt Anticipated",
-  "me/recommendations": "Trakt Recommendations",
-  "me/up-next": "Trakt Up Next",
-};
-
 /**
- * A short name for a Source list inside a sentence, such as "Top 250 Movies"
- * or "the SensCritique list".
+ * A short name for a Source list inside a sentence, such as "Top 250 Movies",
+ * "Trakt Trending" or "the SensCritique list".
  */
 function sourceName(source: ListSource): string {
-  const chart =
-    source.provider === "imdb" ? CHART_BY_ID.get(source.sourceRef) : undefined;
+  const chart = imdbChartOf(source);
   if (chart) return chart.label;
-  if (source.provider === "trakt" && TRAKT_NAMES[source.sourceRef]) {
-    return TRAKT_NAMES[source.sourceRef];
-  }
-  return `the ${PROVIDERS[source.provider].label} ${storedSourceNoun(source.provider, source.sourceRef)}`;
+  const label = PROVIDERS[source.provider].label;
+  const known = staticSource(source.provider, source.sourceRef);
+  if (known) return `${label} ${known.label}`;
+  return `the ${label} ${storedSourceNoun(source.provider, source.sourceRef)}`;
 }
 
 /** "the JustWatch list does", "A, B and C do": the names and the verb that agrees. */

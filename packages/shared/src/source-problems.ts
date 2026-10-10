@@ -1,5 +1,5 @@
 import type { ProviderId, SourceKind } from "./providers";
-import { PROVIDERS } from "./providers";
+import { PROVIDERS, storedSourceKind } from "./providers";
 
 /**
  * Why a Source list cannot be read. Every reason except "unavailable" is an
@@ -25,16 +25,12 @@ export function sourceNoun(kind: SourceKind | null | undefined): SourceNoun {
   return kind === "watchlist" ? "watchlist" : "list";
 }
 
-/**
- * The noun for a stored Source list. IMDb watchlists are `ur…` IDs; other
- * Providers name their watchlist ref `…watchlist` (or `plantowatch` on Simkl).
- */
+/** The noun for a stored Source list, from its kind. */
 export function storedSourceNoun(
   provider: ProviderId,
   ref: string,
 ): SourceNoun {
-  if (provider === "imdb") return ref.startsWith("ur") ? "watchlist" : "list";
-  return /(?:^|\/)(?:watchlist|plantowatch)$/.test(ref) ? "watchlist" : "list";
+  return sourceNoun(storedSourceKind(provider, ref));
 }
 
 export interface SourceProblemCopy {

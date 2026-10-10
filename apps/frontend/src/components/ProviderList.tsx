@@ -1,14 +1,13 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { Check, Loader2 } from "lucide-react";
-import { PROVIDERS } from "@stremlist/shared/providers";
+import { PROVIDER_IDS, PROVIDERS } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
 import type {
   AccountAccess,
   ProviderStatus,
 } from "@/hooks/useAccountConfiguration";
-import { PROVIDER_ORDER } from "@/lib/list-sources";
 import { cn } from "@/lib/utils";
 import { ProviderMark } from "./brand";
 
@@ -61,7 +60,7 @@ export default function ProviderList({
 
   return (
     <ul className="space-y-1">
-      {PROVIDER_ORDER.map((id) => {
+      {PROVIDER_IDS.map((id) => {
         const info = PROVIDERS[id];
         const status = providerStatus[id];
         const connection = connections.find((c) => c.provider === id);

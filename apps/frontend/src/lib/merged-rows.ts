@@ -1,4 +1,4 @@
-import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
+import { imdbChartOf } from "@stremlist/shared/imdb-charts";
 import {
   allowedDisplayModes,
   isSortAllowed,
@@ -91,10 +91,7 @@ export function splitRowSource(
   return rows.flatMap((row) => {
     if (row.localId !== localId) return [row];
     const source = listSources(row)[index];
-    const chart =
-      source.provider === "imdb"
-        ? CHART_BY_ID.get(source.sourceRef)
-        : undefined;
+    const chart = imdbChartOf(source);
     return [
       withoutSource(row, index),
       createListRow({

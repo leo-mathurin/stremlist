@@ -17,6 +17,10 @@ describe("storedSourceNoun", () => {
     ["simkl", "me/plantowatch", "watchlist"],
     ["simkl", "me/completed", "list"],
     ["mdblist", "me/watchlist", "watchlist"],
+    ["senscritique", "users/leom/wishes", "watchlist"],
+    ["senscritique", "lists/369869", "list"],
+    ["justwatch", "tl-us-12653", "list"],
+    ["letterboxd", "users/leom/watchlist", "watchlist"],
   ] as const)("%s %s is a %s", (provider, ref, noun) => {
     expect(storedSourceNoun(provider, ref)).toBe(noun);
   });

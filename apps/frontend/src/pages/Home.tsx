@@ -22,7 +22,11 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { ACCOUNT_KEY_PATTERN } from "@stremlist/shared/constants";
-import { PROVIDERS, type ProviderId } from "@stremlist/shared/providers";
+import {
+  PROVIDER_IDS,
+  PROVIDERS,
+  type ProviderId,
+} from "@stremlist/shared/providers";
 import Footer from "../components/Footer";
 import HomeEntry from "../components/HomeEntry";
 import {
@@ -35,7 +39,7 @@ import {
 import StremioPreview from "../components/StremioPreview";
 import { AnimatedBeam } from "@/components/ui/animated-beam";
 import { api } from "../lib/api";
-import { ADDON_MANAGER_URL, PROVIDER_ORDER } from "../lib/list-sources";
+import { ADDON_MANAGER_URL } from "../lib/list-sources";
 import { useSEO } from "../hooks/useSEO";
 import { cn } from "@/lib/utils";
 
@@ -153,7 +157,7 @@ function ProvidersDiagram() {
   const containerRef = useRef<HTMLDivElement>(null);
   const hubRef = useRef<HTMLDivElement>(null);
   const [anchorRefs] = useState(() =>
-    PROVIDER_ORDER.map(() => createRef<HTMLSpanElement>()),
+    PROVIDER_IDS.map(() => createRef<HTMLSpanElement>()),
   );
 
   return (
@@ -181,7 +185,7 @@ function ProvidersDiagram() {
           ref={containerRef}
           className="relative mx-auto flex max-w-lg items-center justify-between gap-6 px-5 py-8 sm:px-8 sm:py-10"
         >
-          {PROVIDER_ORDER.map((id, i) => (
+          {PROVIDER_IDS.map((id, i) => (
             <AnimatedBeam
               key={id}
               containerRef={containerRef}
@@ -192,7 +196,7 @@ function ProvidersDiagram() {
             />
           ))}
           <ul className="relative z-10 flex flex-col gap-3 sm:gap-4">
-            {PROVIDER_ORDER.map((id, i) => (
+            {PROVIDER_IDS.map((id, i) => (
               <ProviderRow
                 key={id}
                 provider={id}
