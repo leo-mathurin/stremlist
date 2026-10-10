@@ -618,12 +618,27 @@ test title, tag, goal text and cache entry:
   `toolkit/config-fixture.ts`. The strict replay keeps its 20 recordings and
   makes no model call.
 
-The strict replay passed 107 of 108 tests with 20 replays and zero model
-calls. "a saved List whose chart changes is not saved yet, and is polled only
-after the save" (`sync-status.e2e.ts`) fails in the same way on the commit
-before these fixes: after the save, the row shows the status of the old
-chart, so the page does not poll. `listSyncState` takes the saved status of
-each position and does not check that it belongs to the saved Source list.
+The same review changed the app code. The strict replay found two
+regressions of those changes before they were pushed, and both are fixed:
+
+- The sync status of a List is now sent as one array in `listSources` order.
+  After a save that changed a chart, the row took the status of the old
+  chart at the same position, so the page did not poll ("a saved List whose
+  chart changes is not saved yet, and is polled only after the save"). A
+  status now counts only for the Source list that it names
+  (`statusOfSource`).
+- Removing the reinstall check's null genre baseline made a genre filter
+  count as a Catalog change for answers without `sourceGenres`, which most
+  toolkit fixtures send ("refresh during save preserves a later filter
+  edit", "a saved genre missing from refreshed choices can still be
+  cleared"). The null baseline is back.
+
+Results on an isolated stack (project `stremlist-e2e-tnr16`, Supabase API
+port 61221, RustFS on 7671): strict replay 108/108 with 20 replays and zero
+model calls, so no entry was recorded again; Playwright 127/127 (96 local,
+4 live smoke, 27 live regression) with no retry; all four SQL tests pass,
+with the new `account_writes.sql`; `bunx turbo run typecheck lint test build
+format:check` 16/16 tasks (backend 806, shared 102, frontend 3 + 71).
 
 ## Known limits
 
