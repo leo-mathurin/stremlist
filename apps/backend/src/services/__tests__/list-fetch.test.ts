@@ -1,3 +1,5 @@
+import type { ListSource } from "@stremlist/shared/list-merge";
+import type { ProviderId } from "@stremlist/shared/providers";
 import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -39,7 +41,7 @@ import {
 import { db, resetRpc } from "../../__tests__/helpers/mock-supabase";
 import type { SourceEntry } from "../../providers/types";
 import * as listCache from "../list-cache";
-import type { ListFetchConfig } from "../lists";
+import type { ListRead } from "../lists";
 import { getListCatalog, ListUnavailableError } from "../lists";
 
 const LIST_ID = "22222222-2222-4222-8222-222222222222";
@@ -58,15 +60,37 @@ function meta(id: string, overrides: Partial<StremioMeta> = {}): StremioMeta {
   return { ...MOVIE, id, name: `Title ${id}`, ...overrides };
 }
 
-function config(overrides: Partial<ListFetchConfig> = {}): ListFetchConfig {
+/** A read of one List, its fields and the read options side by side. */
+interface TestRead extends ListRead {
+  listId: string;
+  provider: ProviderId;
+  sourceRef: string;
+  mergedSources?: ListSource[];
+}
+
+function readList({
+  listId,
+  provider,
+  sourceRef,
+  mergedSources,
+  ...read
+}: TestRead): Promise<CatalogData> {
+  return getListCatalog(
+    { id: listId, provider, sourceRef, mergedSources },
+    read,
+  );
+}
+
+function config(overrides: Partial<TestRead> = {}): TestRead {
   return {
     accountId: "sl_0000000000000000000000",
     listId: LIST_ID,
     provider: "imdb",
     sourceRef: "ls123456789",
     sort: { by: "added_at", order: "asc" },
+    rpdbApiKey: null,
     allowConnection: false,
-    skipAccountTimestamp: true,
+    policy: "catalog",
     ...overrides,
   };
 }
@@ -96,8 +120,8 @@ describe("getListCatalog", () => {
         }),
     );
 
-    const first = getListCatalog(config());
-    const second = getListCatalog(config());
+    const first = readList(config());
+    const second = readList(config());
 
     await vi.waitFor(() => {
       expect(listCache.getCachedList).toHaveBeenCalledTimes(2);
@@ -132,8 +156,8 @@ describe("getListCatalog", () => {
     });
 
     await Promise.all([
-      getListCatalog({ ...base, allowConnection: true }),
-      getListCatalog({ ...base, allowConnection: false }),
+      readList({ ...base, allowConnection: true }),
+      readList({ ...base, allowConnection: false }),
     ]);
 
     expect(fetchSource).toHaveBeenCalledTimes(2);
@@ -148,7 +172,7 @@ describe("getListCatalog", () => {
   it("serves a fresh non-empty cache without reading the Provider", async () => {
     cache.seed(LIST_ID, [MOVIE]);
 
-    await expect(getListCatalog(config())).resolves.toEqual({
+    await expect(readList(config())).resolves.toEqual({
       metas: [MOVIE],
     });
     expect(scraperMocks.fetchList).not.toHaveBeenCalled();
@@ -158,7 +182,7 @@ describe("getListCatalog", () => {
     cache.seed(LIST_ID, [MOVIE], new Date(Date.now() - 2 * 60 * 60_000));
     scraperMocks.fetchList.mockResolvedValue({ metas: [meta("tt0000002")] });
 
-    const result = await getListCatalog(config());
+    const result = await readList(config());
 
     expect(result.metas.map((item) => item.id)).toEqual(["tt0000002"]);
     expect(cache.get(LIST_ID)?.data.metas.map((item) => item.id)).toEqual([
@@ -173,11 +197,11 @@ describe("getListCatalog", () => {
     });
     scraperMocks.fetchList.mockResolvedValue({ metas: [meta("tt0000002")] });
 
-    const result = await getListCatalog(config());
+    const result = await readList(config());
 
     expect(scraperMocks.fetchList).toHaveBeenCalledOnce();
     expect(result.metas.map((item) => item.id)).toEqual(["tt0000002"]);
-    await expect(getListCatalog(config())).resolves.toEqual(result);
+    await expect(readList(config())).resolves.toEqual(result);
     expect(scraperMocks.fetchList).toHaveBeenCalledOnce();
   });
 
@@ -188,7 +212,7 @@ describe("getListCatalog", () => {
     });
     scraperMocks.fetchList.mockRejectedValue(new Error("IMDb is down"));
 
-    await expect(getListCatalog(config())).rejects.toBeInstanceOf(
+    await expect(readList(config())).rejects.toBeInstanceOf(
       ListUnavailableError,
     );
   });
@@ -199,8 +223,8 @@ describe("getListCatalog", () => {
     );
 
     const [before, after] = await Promise.all([
-      getListCatalog(config({ sourceRef: "ls111111111" })),
-      getListCatalog(config()),
+      readList(config({ sourceRef: "ls111111111" })),
+      readList(config()),
     ]);
 
     expect(before.metas.map((item) => item.id)).toEqual(["tt1"]);
@@ -211,9 +235,7 @@ describe("getListCatalog", () => {
     const account = seedAccount({ last_fetched_at: new Date(0).toISOString() });
     scraperMocks.fetchList.mockResolvedValue({ metas: [MOVIE] });
 
-    await getListCatalog(
-      config({ accountId: account.id, skipAccountTimestamp: false }),
-    );
+    await readList(config({ accountId: account.id }));
 
     expect(db.getTable("accounts")[0].last_fetched_at).not.toBe(
       new Date(0).toISOString(),
@@ -256,7 +278,7 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
       Promise.resolve(new Map(ids.map((id) => [id, meta(id)]))),
     );
 
-    const result = await getListCatalog(
+    const result = await readList(
       config({ provider: "trakt", sourceRef: "users/leo/watchlist" }),
     );
 
@@ -322,7 +344,7 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
       Promise.resolve(new Map(ids.map((id) => [id, meta(id)]))),
     );
 
-    await getListCatalog(
+    await readList(
       config({ provider: "senscritique", sourceRef: "users/leo/wishes" }),
     );
 
@@ -346,7 +368,7 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
       Promise.resolve(new Map(ids.map((id) => [id, meta(id)]))),
     );
 
-    const result = await getListCatalog(
+    const result = await readList(
       config({ provider: "trakt", sourceRef: "users/leo/watchlist" }),
     );
 
@@ -384,7 +406,7 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
       Promise.resolve(new Map(ids.map((id) => [id, meta(id)]))),
     );
 
-    const result = await getListCatalog(
+    const result = await readList(
       config({ provider: "trakt", sourceRef: "users/leo/watchlist" }),
     );
 
@@ -400,7 +422,7 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
     useFakeProvider(fakeAdapter("trakt", { fetchSource }));
     process.env.DISABLED_PROVIDERS = "trakt";
 
-    const error = await getListCatalog(
+    const error = await readList(
       config({ provider: "trakt", sourceRef: "users/leo/watchlist" }),
     ).catch((caught: unknown) => caught);
 
@@ -415,7 +437,7 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
     const account = seedAccount();
     seedConnection(account.id, "trakt");
 
-    const error = await getListCatalog(
+    const error = await readList(
       config({
         accountId: account.id,
         provider: "trakt",
@@ -432,7 +454,7 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
     useFakeProvider(fakeAdapter("simkl"));
     const account = seedAccount();
 
-    const error = await getListCatalog(
+    const error = await readList(
       config({
         accountId: account.id,
         provider: "simkl",
@@ -450,7 +472,7 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
     // Cached while connected, and stale now.
     cache.seed(LIST_ID, [MOVIE], new Date(Date.now() - 2 * 60 * 60_000));
 
-    const error = await getListCatalog(
+    const error = await readList(
       config({
         accountId: account.id,
         provider: "simkl",
@@ -466,10 +488,10 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
     cache.seed(LIST_ID, [MOVIE], new Date(0));
     scraperMocks.fetchList.mockRejectedValue(new Error("boom"));
 
-    await expect(
-      getListCatalog(config({ forceFresh: true, noCacheFallback: true })),
-    ).rejects.toMatchObject({ reason: "unavailable" });
-    await expect(getListCatalog(config())).resolves.toEqual({
+    await expect(readList(config({ policy: "manual" }))).rejects.toMatchObject({
+      reason: "unavailable",
+    });
+    await expect(readList(config())).resolves.toEqual({
       metas: [MOVIE],
     });
   });

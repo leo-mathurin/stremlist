@@ -61,22 +61,14 @@ async function runPrewarmBatch(
       nextIndex += 1;
 
       try {
-        await getListCatalog({
+        await getListCatalog(list, {
           accountId,
-          listId: list.id,
-          provider: list.provider,
-          sourceRef: list.sourceRef,
-          mergedSources: list.mergedSources,
           sort: parseSortOption(list.sortOption),
           // Prewarming only needs the canonical cache. Poster customization is
           // applied later when Stremio requests the catalog.
           rpdbApiKey: null,
           allowConnection,
-          skipAccountTimestamp: true,
-          // Runs in the background after a save, so it can resolve more of a
-          // big cold list. Kept short because a catalog request for the same
-          // List joins this read instead of starting its own.
-          resolveBudgetMs: 25_000,
+          policy: "prewarm",
         });
         prewarmed += 1;
       } catch (error) {

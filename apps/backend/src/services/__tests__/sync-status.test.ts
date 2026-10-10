@@ -1,3 +1,6 @@
+import type { ListSource } from "@stremlist/shared/list-merge";
+import type { ProviderId } from "@stremlist/shared/providers";
+import type { CatalogData } from "@stremlist/shared/stremio.types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../lib/supabase", async () => {
@@ -35,7 +38,7 @@ import {
 import { getAccountLists } from "../accounts";
 import { listConnections, saveConnection } from "../connections";
 import * as listCache from "../list-cache";
-import type { ListFetchConfig } from "../lists";
+import type { ListRead } from "../lists";
 import {
   forgetConnectionLists,
   getListCatalog,
@@ -49,16 +52,41 @@ const HOUR = 60 * 60_000;
 let accountId = "";
 let listId = "";
 
-function config(overrides: Partial<ListFetchConfig> = {}): ListFetchConfig {
+/** A read of one List, its fields and the read options side by side. */
+interface TestRead extends ListRead {
+  listId: string;
+  provider: ProviderId;
+  sourceRef: string;
+  mergedSources?: ListSource[];
+}
+
+function readList({
+  listId,
+  provider,
+  sourceRef,
+  mergedSources,
+  ...read
+}: TestRead): Promise<CatalogData> {
+  return getListCatalog(
+    { id: listId, provider, sourceRef, mergedSources },
+    read,
+  );
+}
+
+/**
+ * A catalog read. The fake Providers below never count as fresh, so each
+ * read asks the Provider again and a failed one can fall back to the cache.
+ */
+function config(overrides: Partial<TestRead> = {}): TestRead {
   return {
     accountId,
     listId,
     provider: "trakt",
     sourceRef: "users/leo/lists/horror",
     sort: { by: "added_at", order: "asc" },
+    rpdbApiKey: null,
     allowConnection: true,
-    skipAccountTimestamp: true,
-    forceFresh: true,
+    policy: "catalog",
     ...overrides,
   };
 }
@@ -66,6 +94,7 @@ function config(overrides: Partial<ListFetchConfig> = {}): ListFetchConfig {
 function useTrakt(fetchSource: ReturnType<typeof vi.fn>) {
   useFakeProvider(
     fakeAdapter("trakt", {
+      freshnessMs: 0,
       fetchSource: fetchSource as never,
     }),
   );
@@ -112,7 +141,7 @@ describe("recording refreshes", () => {
   it("stores the time and Title count of a successful refresh", async () => {
     useTrakt(vi.fn(() => Promise.resolve(entries("tt0000001", "tt0000002"))));
 
-    await getListCatalog(config());
+    await readList(config());
 
     expect(await statusOf()).toEqual({
       provider: "trakt",
@@ -135,11 +164,11 @@ describe("recording refreshes", () => {
       now: new Date("2026-10-06T10:00:00Z"),
       toFake: ["Date"],
     });
-    await getListCatalog(config());
+    await readList(config());
 
     vi.setSystemTime(new Date("2026-10-06T12:00:00Z"));
     // Stremio still gets the cached Titles.
-    await expect(getListCatalog(config())).resolves.toMatchObject({
+    await expect(readList(config())).resolves.toMatchObject({
       metas: [{ id: "tt0000001" }],
     });
 
@@ -164,9 +193,9 @@ describe("recording refreshes", () => {
       toFake: ["Date"],
     });
 
-    await getListCatalog(config()).catch(() => undefined);
+    await readList(config()).catch(() => undefined);
     vi.setSystemTime(new Date("2026-10-06T11:00:00Z"));
-    await getListCatalog(config()).catch(() => undefined);
+    await readList(config()).catch(() => undefined);
 
     expect(await statusOf()).toMatchObject({
       problem: "not_found",
@@ -176,7 +205,7 @@ describe("recording refreshes", () => {
     });
 
     vi.setSystemTime(new Date("2026-10-06T12:00:00Z"));
-    await getListCatalog(config());
+    await readList(config());
 
     // An empty Source list is a success with no Titles, not a failure.
     expect(await statusOf()).toMatchObject({
@@ -192,7 +221,7 @@ describe("recording refreshes", () => {
     useTrakt(fetchSource);
     process.env.DISABLED_PROVIDERS = "trakt";
 
-    await getListCatalog(config()).catch(() => undefined);
+    await readList(config()).catch(() => undefined);
 
     expect(fetchSource).not.toHaveBeenCalled();
     expect(await statusOf()).toMatchObject({ problem: "disabled" });
@@ -203,7 +232,7 @@ describe("recording refreshes", () => {
     rpcHandlers.set("record_list_refresh", record);
     useTrakt(vi.fn(() => Promise.resolve(entries("tt0000001"))));
 
-    await Promise.all([getListCatalog(config()), getListCatalog(config())]);
+    await Promise.all([readList(config()), readList(config())]);
 
     expect(record).toHaveBeenCalledOnce();
   });
@@ -215,7 +244,7 @@ describe("recording refreshes", () => {
     }));
     useTrakt(vi.fn(() => Promise.resolve(entries("tt0000001"))));
 
-    await expect(getListCatalog(config())).resolves.toMatchObject({
+    await expect(readList(config())).resolves.toMatchObject({
       metas: [{ id: "tt0000001" }],
     });
   });
@@ -227,7 +256,7 @@ describe("recording refreshes", () => {
     useTrakt(vi.fn(() => Promise.resolve(entries("tt0000001"))));
 
     // This request still gets the Titles it read.
-    await expect(getListCatalog(config())).resolves.toMatchObject({
+    await expect(readList(config())).resolves.toMatchObject({
       metas: [{ id: "tt0000001" }],
     });
 
@@ -236,7 +265,7 @@ describe("recording refreshes", () => {
 
   it("ignores the status of a Source list that the List no longer reads", async () => {
     useTrakt(vi.fn(() => Promise.resolve(entries("tt0000001"))));
-    await getListCatalog(config());
+    await readList(config());
 
     const [list] = await getAccountLists(accountId);
     const statuses = await getListSyncStatuses([
@@ -296,7 +325,7 @@ describe("Lists without a recorded status", () => {
     useTrakt(vi.fn(() => Promise.reject(new Error("socket hang up"))));
 
     // Stremio still gets the cached Titles.
-    await expect(getListCatalog(config())).resolves.toMatchObject({
+    await expect(readList(config())).resolves.toMatchObject({
       metas: [{ id: "tt0000001" }, { id: "tt0000002" }],
     });
 
@@ -322,9 +351,7 @@ describe("Lists without a recorded status", () => {
       vi.fn(() => Promise.reject(new SourceUnavailableError("private", "no"))),
     );
 
-    await getListCatalog(config({ noCacheFallback: true })).catch(
-      () => undefined,
-    );
+    await readList(config({ policy: "manual" })).catch(() => undefined);
 
     expect(await statusOf()).toMatchObject({
       sourceRef: "users/leo/lists/horror",
@@ -351,7 +378,7 @@ describe("the read after a new authorization", () => {
       )
       .mockResolvedValue(entries("tt0000001"));
     useTrakt(fetchSource);
-    const older = getListCatalog(
+    const older = readList(
       config({ listId: watchlist.id, sourceRef: "me/watchlist" }),
     );
     await vi.waitFor(() => {
@@ -389,7 +416,7 @@ describe("the read after a new authorization", () => {
       )
       .mockResolvedValue(entries("tt0000001"));
     useTrakt(fetchSource);
-    const older = getListCatalog(config()).catch(() => undefined);
+    const older = readList(config()).catch(() => undefined);
     await vi.waitFor(() => {
       expect(fetchSource).toHaveBeenCalledOnce();
     });
@@ -416,7 +443,7 @@ describe("Connections that need to be renewed", () => {
       ),
     );
 
-    await getListCatalog(config()).catch(() => undefined);
+    await readList(config()).catch(() => undefined);
 
     expect((await connectionOf())?.needsRenewalSince).toEqual(
       expect.any(String),
@@ -427,7 +454,7 @@ describe("Connections that need to be renewed", () => {
   it("marks the Connection when its token cannot be refreshed", async () => {
     useTrakt(vi.fn(() => Promise.reject(new ConnectionExpiredError("trakt"))));
 
-    await getListCatalog(config()).catch(() => undefined);
+    await readList(config()).catch(() => undefined);
 
     expect((await connectionOf())?.needsRenewalSince).not.toBeNull();
   });
@@ -435,7 +462,7 @@ describe("Connections that need to be renewed", () => {
   it("does not mark the Connection for other failures", async () => {
     useTrakt(vi.fn(() => Promise.reject(new Error("timeout"))));
 
-    await getListCatalog(config()).catch(() => undefined);
+    await readList(config()).catch(() => undefined);
 
     expect((await connectionOf())?.needsRenewalSince).toBeNull();
   });
@@ -453,8 +480,8 @@ describe("Connections that need to be renewed", () => {
     });
     const read = config({ listId: watchlist.id, sourceRef: "me/watchlist" });
 
-    await getListCatalog(read).catch(() => undefined);
-    await getListCatalog(read);
+    await readList(read).catch(() => undefined);
+    await readList(read);
 
     expect((await connectionOf())?.needsRenewalSince).toBeNull();
   });
@@ -472,9 +499,7 @@ describe("Connections that need to be renewed", () => {
     db.getTable("connections")[0].needs_renewal_since =
       new Date().toISOString();
 
-    await getListCatalog(
-      config({ listId: watchlist.id, sourceRef: "me/watchlist" }),
-    );
+    await readList(config({ listId: watchlist.id, sourceRef: "me/watchlist" }));
 
     expect((await connectionOf())?.needsRenewalSince).toBeNull();
     // The List status waits for a saved Catalog.
@@ -488,9 +513,9 @@ describe("Connections that need to be renewed", () => {
       .mockResolvedValue(entries("tt0000001"));
     useTrakt(fetchSource);
 
-    await getListCatalog(config()).catch(() => undefined);
+    await readList(config()).catch(() => undefined);
     // Trakt reads a public list without the refused Connection.
-    await getListCatalog(config());
+    await readList(config());
 
     expect((await connectionOf())?.needsRenewalSince).not.toBeNull();
     expect(await statusOf()).toMatchObject({ problem: null, titleCount: 1 });
@@ -498,7 +523,7 @@ describe("Connections that need to be renewed", () => {
 
   it("clears the mark when the user connects again", async () => {
     useTrakt(vi.fn(() => Promise.reject(new ConnectionExpiredError("trakt"))));
-    await getListCatalog(config()).catch(() => undefined);
+    await readList(config()).catch(() => undefined);
 
     await saveConnection(
       accountId,
@@ -518,9 +543,7 @@ describe("Connections that need to be renewed", () => {
       ),
     );
 
-    await getListCatalog(config({ allowConnection: false })).catch(
-      () => undefined,
-    );
+    await readList(config({ allowConnection: false })).catch(() => undefined);
 
     expect((await connectionOf())?.needsRenewalSince).toBeNull();
   });
@@ -547,7 +570,7 @@ describe("merged Lists", () => {
     keys = { imdb: imdb.cacheKey, trakt: trakt.cacheKey };
   });
 
-  function mergedConfig(): ListFetchConfig {
+  function mergedConfig(): TestRead {
     return config({
       listId: mergedId,
       provider: "imdb",
@@ -564,6 +587,7 @@ describe("merged Lists", () => {
     seedConnection(accountId, "trakt");
     useFakeProvider(
       fakeAdapter("imdb", {
+        freshnessMs: 0,
         fetchSource: () =>
           Promise.resolve(entries("tt0000001", "tt0000002")) as never,
       }),
@@ -577,7 +601,7 @@ describe("merged Lists", () => {
     );
 
     // The IMDb Source list still shows.
-    await expect(getListCatalog(mergedConfig())).resolves.toMatchObject({
+    await expect(readList(mergedConfig())).resolves.toMatchObject({
       metas: [{ id: "tt0000001" }, { id: "tt0000002" }],
     });
 
@@ -676,7 +700,9 @@ describe("merged Lists", () => {
   it("read the merged Source lists of a new Connection again, in their own cache", async () => {
     seedConnection(accountId, "trakt");
     const imdbRead = vi.fn(() => Promise.resolve(entries("tt0000009")));
-    useFakeProvider(fakeAdapter("imdb", { fetchSource: imdbRead as never }));
+    useFakeProvider(
+      fakeAdapter("imdb", { freshnessMs: 0, fetchSource: imdbRead as never }),
+    );
     const traktRead = vi.fn(() => Promise.resolve(entries("tt0000002")));
     useTrakt(traktRead);
 

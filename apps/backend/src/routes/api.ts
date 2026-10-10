@@ -709,19 +709,13 @@ const api = new Hono()
       const refreshedAt = new Date().toISOString();
       const results = await Promise.allSettled(
         lists.map((list) =>
-          getListCatalog({
+          // A failed read counts as failed, not masked by a stale cache.
+          getListCatalog(list, {
             accountId: account.id,
-            listId: list.id,
-            provider: list.provider,
-            sourceRef: list.sourceRef,
-            mergedSources: list.mergedSources,
             sort: parseSortOption(list.sortOption),
             rpdbApiKey: account.rpdbApiKey,
             allowConnection: access.via === "private",
-            forceFresh: true,
-            skipAccountTimestamp: true,
-            // A failed read must count as failed, not be masked by stale cache.
-            noCacheFallback: true,
+            policy: "manual",
           }),
         ),
       );

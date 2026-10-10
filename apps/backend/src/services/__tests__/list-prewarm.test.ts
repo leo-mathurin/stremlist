@@ -108,28 +108,34 @@ describe("prewarmLists", () => {
     );
 
     expect(listMocks.getListCatalog).toHaveBeenCalledTimes(2);
-    expect(listMocks.getListCatalog).toHaveBeenNthCalledWith(1, {
-      accountId: ACCOUNT_ID,
-      listId: "11111111-1111-4111-8111-111111111111",
-      provider: "imdb",
-      sourceRef: "ur12345678",
-      sort: { by: "added_at", order: "asc" },
-      rpdbApiKey: null,
-      allowConnection: true,
-      skipAccountTimestamp: true,
-      resolveBudgetMs: 25_000,
-    });
-    expect(listMocks.getListCatalog).toHaveBeenNthCalledWith(2, {
-      accountId: ACCOUNT_ID,
-      listId: "22222222-2222-4222-8222-222222222222",
-      provider: "imdb",
-      sourceRef: "ls123456789",
-      sort: { by: "year", order: "desc" },
-      rpdbApiKey: null,
-      allowConnection: true,
-      skipAccountTimestamp: true,
-      resolveBudgetMs: 25_000,
-    });
+    expect(listMocks.getListCatalog).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        id: "11111111-1111-4111-8111-111111111111",
+        sourceRef: "ur12345678",
+      }),
+      {
+        accountId: ACCOUNT_ID,
+        sort: { by: "added_at", order: "asc" },
+        rpdbApiKey: null,
+        allowConnection: true,
+        policy: "prewarm",
+      },
+    );
+    expect(listMocks.getListCatalog).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        id: "22222222-2222-4222-8222-222222222222",
+        sourceRef: "ls123456789",
+      }),
+      {
+        accountId: ACCOUNT_ID,
+        sort: { by: "year", order: "desc" },
+        rpdbApiKey: null,
+        allowConnection: true,
+        policy: "prewarm",
+      },
+    );
     expect(console.log).toHaveBeenCalledWith(
       expect.stringMatching(/^Prewarmed 2\/2 lists in \d+ms$/),
     );
@@ -382,6 +388,7 @@ describe("prewarmLists access level", () => {
     await prewarmLists(ACCOUNT_ID, SAVED_LISTS, false);
 
     expect(listMocks.getListCatalog).toHaveBeenCalledExactlyOnceWith(
+      expect.anything(),
       expect.objectContaining({ allowConnection: false }),
     );
   });

@@ -145,15 +145,12 @@ async function serveCatalog(c: Context) {
       preset,
     );
 
-    const listData = await getListCatalog({
+    const listData = await getListCatalog(list, {
       accountId: access.account.id,
-      listId: list.id,
-      provider: list.provider,
-      sourceRef: list.sourceRef,
-      mergedSources: list.mergedSources,
       sort: selection.sort,
       rpdbApiKey: access.account.rpdbApiKey,
       allowConnection: access.via === "private",
+      policy: "catalog",
     });
 
     const matchingMetas = filterCatalog(

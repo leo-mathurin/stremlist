@@ -1,14 +1,6 @@
-import { parseSortOption } from "@stremlist/shared/constants";
-import type { ListSource } from "@stremlist/shared/list-merge";
-import {
-  isMergedList,
-  sourcesWithoutDates,
-} from "@stremlist/shared/list-merge";
+import type { MergeableList } from "@stremlist/shared/list-merge";
 import type { ProviderId, SourceId } from "@stremlist/shared/providers";
-import {
-  PROVIDERS,
-  sourceRequiresConnection,
-} from "@stremlist/shared/providers";
+import { sourceRequiresConnection } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
 import { getProvider, isProviderEnabled } from "../providers/registry";
@@ -41,9 +33,11 @@ import {
 } from "./list-cache";
 import type { SourceCatalogData, SourceMeta } from "./list-cache";
 import {
+  mergeListCatalogs,
   mergeSourceCatalogs,
   sourceCaches,
   toStremioMeta,
+  withLinkBack,
 } from "./merged-lists";
 import type { RefreshOutcome } from "./sync-status";
 import { forgetSyncStatuses, recordRefreshOutcome } from "./sync-status";
@@ -76,32 +70,77 @@ export class ListUnavailableError extends Error {
   }
 }
 
-export interface ListFetchConfig {
+/**
+ * Why a List is read. Each policy is one row of `READ_POLICIES`, so the
+ * rules that go together are set together.
+ */
+export type ReadPolicy = "catalog" | "prewarm" | "manual";
+
+interface ReadRules {
+  /** Read the Provider even when the cached Catalog is fresh. */
+  forceFresh: boolean;
+  /**
+   * A failed read is not masked by the existing cache: the error is rethrown
+   * so the manual refresh can report it honestly.
+   */
+  noCacheFallback: boolean;
+  /** A Provider read marks when the Account was read (`last_fetched_at`). */
+  marksAccount: boolean;
+  /** Time the ID resolver may spend on entries without an IMDb ID. */
+  resolveBudgetMs: number;
+}
+
+const READ_POLICIES: Record<ReadPolicy, ReadRules> = {
+  // A Stremio catalog request.
+  catalog: {
+    forceFresh: false,
+    noCacheFallback: false,
+    marksAccount: true,
+    resolveBudgetMs: DEFAULT_RESOLVE_BUDGET_MS,
+  },
+  // A background read after a save or a new Connection: it can resolve more
+  // of a big cold list. Kept short because a catalog request for the same
+  // List joins this read instead of starting its own.
+  prewarm: {
+    forceFresh: false,
+    noCacheFallback: false,
+    marksAccount: false,
+    resolveBudgetMs: 25_000,
+  },
+  // The "Refresh now" button. The route marks the Account itself, once.
+  manual: {
+    forceFresh: true,
+    noCacheFallback: true,
+    marksAccount: false,
+    resolveBudgetMs: DEFAULT_RESOLVE_BUDGET_MS,
+  },
+};
+
+/** How a request reads the Lists of an Account. */
+export interface ListRead {
   accountId: string;
-  listId: string;
-  provider: ProviderId;
-  sourceRef: string;
-  /** More Source lists of a merged List (ADR 0006). */
-  mergedSources?: readonly ListSource[];
   sort: CatalogSort;
-  rpdbApiKey?: string | null;
+  rpdbApiKey: string | null;
   /**
    * Whether this request may read through the Account's Connection. False for
    * requests that come through a Legacy alias (ADR 0001).
    */
   allowConnection: boolean;
-  forceFresh?: boolean;
-  skipAccountTimestamp?: boolean;
-  /**
-   * Time the ID resolver may spend on entries without an IMDb ID. Catalog
-   * requests keep the default; background prewarms can afford more.
-   */
-  resolveBudgetMs?: number;
-  /**
-   * When true, a failed read is not masked by the existing cache: the error is
-   * rethrown so the manual refresh can report it honestly.
-   */
-  noCacheFallback?: boolean;
+  policy: ReadPolicy;
+}
+
+/** The List fields that a read needs. */
+export type ReadableList = MergeableList & { id: string };
+
+/**
+ * One Source list of a List, as a read handles it: `listId` stays the List
+ * (its sync status is recorded there), `cacheKey` is where this Source list
+ * keeps its cached Catalog (ADR 0006).
+ */
+interface SourceRead extends Omit<ListRead, "sort" | "rpdbApiKey"> {
+  source: SourceId;
+  listId: string;
+  cacheKey: string;
 }
 
 interface FreshList {
@@ -142,24 +181,6 @@ export async function providerContext(
   return { connection };
 }
 
-const LINK_BACK = /(?:^|\n\n)More on [^\n:]+: \S+$/u;
-
-/**
- * Add "More on {Provider}: {url}" at the end of the description when the
- * entry has a page on its Provider. Idempotent: metadata reused from the
- * previous cache already carries it.
- */
-function withLinkBack(
-  meta: StremioMeta,
-  entry: SourceEntry,
-  provider: ProviderId,
-): StremioMeta {
-  if (!entry.sourceUrl) return meta;
-  const base = meta.description.replace(LINK_BACK, "");
-  const line = `More on ${PROVIDERS[provider].label}: ${entry.sourceUrl}`;
-  return { ...meta, description: base ? `${base}\n\n${line}` : line };
-}
-
 /**
  * The cached form of an entry: its meta with the link back and the date it
  * joined the Source list (metadata reused from the previous cache may carry
@@ -170,7 +191,9 @@ function toSourceMeta(
   entry: SourceEntry,
   provider: ProviderId,
 ): SourceMeta {
-  const linked: SourceMeta = toStremioMeta(withLinkBack(meta, entry, provider));
+  const linked: SourceMeta = toStremioMeta(
+    withLinkBack(meta, provider, entry.sourceUrl),
+  );
   const time = entry.addedAt ? Date.parse(entry.addedAt) : Number.NaN;
   return Number.isFinite(time)
     ? { ...linked, addedAt: new Date(time).toISOString() }
@@ -197,12 +220,11 @@ export interface BuiltCatalog {
  */
 export async function buildCatalog(
   adapter: ProviderAdapter,
-  config: Pick<
-    ListFetchConfig,
-    "provider" | "sourceRef" | "resolveBudgetMs"
-  > & {
+  config: SourceId & {
     /** Where the Source list keeps its cached Catalog. */
     cacheKey?: string;
+    /** Time the ID resolver may spend on entries without an IMDb ID. */
+    resolveBudgetMs?: number;
   },
   ctx: ProviderContext,
 ): Promise<BuiltCatalog> {
@@ -279,23 +301,21 @@ function freshnessOf(adapter: ProviderAdapter, sourceRef: string): number {
   return adapter.freshnessFor?.(sourceRef) ?? adapter.freshnessMs;
 }
 
-/**
- * One Source list of a List, as a read handles it: `listId` stays the List
- * (its sync status is recorded there), `cacheKey` is where this Source list
- * keeps its cached Catalog (ADR 0006).
- */
-type SourceReadConfig = ListFetchConfig & { cacheKey: string };
-
 async function fetchAndCacheList(
-  config: SourceReadConfig,
+  read: SourceRead,
   signal: AbortSignal,
 ): Promise<FreshList> {
-  const adapter = getProvider(config.provider);
+  const { source, cacheKey } = read;
+  const adapter = getProvider(source.provider);
   let connection: ConnectionAccess | null = null;
   // A read that a newer one replaced leaves no trace.
   const record = async (outcome: RefreshOutcome) => {
     if (!signal.aborted) {
-      await recordRefreshOutcome(config, outcome, connection);
+      await recordRefreshOutcome(
+        { ...source, listId: read.listId },
+        outcome,
+        connection,
+      );
     }
   };
 
@@ -304,18 +324,26 @@ async function fetchAndCacheList(
   const startedAt = new Date();
   let built: BuiltCatalog;
   try {
-    if (!isProviderEnabled(config.provider)) {
+    if (!isProviderEnabled(source.provider)) {
       throw new SourceUnavailableError(
         "disabled",
-        `${config.provider} is turned off`,
+        `${source.provider} is turned off`,
       );
     }
     const ctx = await providerContext(
-      config,
-      config.allowConnection ? config.accountId : null,
+      source,
+      read.allowConnection ? read.accountId : null,
     );
     connection = ctx.connection;
-    built = await buildCatalog(adapter, config, ctx);
+    built = await buildCatalog(
+      adapter,
+      {
+        ...source,
+        cacheKey,
+        resolveBudgetMs: READ_POLICIES[read.policy].resolveBudgetMs,
+      },
+      ctx,
+    );
   } catch (error) {
     await record({ kind: "failed", problem: sourceProblemReason(error) });
     throw error;
@@ -330,16 +358,16 @@ async function fetchAndCacheList(
       ? new Date(
           cachedAt.getTime() -
             Math.max(
-              freshnessOf(adapter, config.sourceRef) - RESUME_RESOLUTION_MS,
+              freshnessOf(adapter, source.sourceRef) - RESUME_RESOLUTION_MS,
               0,
             ),
         )
       : cachedAt;
   let generation: string | null = null;
   try {
-    generation = await writeCachedList(config.cacheKey, data, storedAt, config);
+    generation = await writeCachedList(cacheKey, data, storedAt, source);
   } catch (error) {
-    console.error(`Failed to cache list ${config.cacheKey} in R2:`, error);
+    console.error(`Failed to cache list ${cacheKey} in R2:`, error);
   }
   await record(
     generation === null
@@ -349,7 +377,7 @@ async function fetchAndCacheList(
   // A read cut short is served, but never compared (ADR 0007).
   if (built.snapshot.complete) {
     await recordSynchronization(
-      config,
+      { ...source, accountId: read.accountId, listId: read.listId },
       adapter,
       built.snapshot.entries,
       built.imdbIds,
@@ -367,19 +395,19 @@ async function fetchAndCacheList(
  * the new one.
  */
 function refreshList(
-  config: SourceReadConfig,
+  read: SourceRead,
   { supersede = false } = {},
 ): Promise<FreshList> {
   // The source is part of the key: a read started before an edit of the List
   // must not answer for its new Source list.
-  const key = `${config.cacheKey}:${config.provider}:${config.sourceRef}:${config.allowConnection ? "c" : "p"}`;
+  const key = `${read.cacheKey}:${read.source.provider}:${read.source.sourceRef}:${read.allowConnection ? "c" : "p"}`;
   const existing = inFlightRefreshes.get(key);
   if (existing && !supersede) return existing.promise;
   existing?.controller.abort();
 
   const controller = new AbortController();
   const refresh: InFlightRefresh = {
-    promise: fetchAndCacheList(config, controller.signal),
+    promise: fetchAndCacheList(read, controller.signal),
     controller,
   };
   inFlightRefreshes.set(key, refresh);
@@ -432,13 +460,13 @@ interface SourceCatalog {
  * cache triggers a Provider read; a failed read falls back to the last
  * non-empty cached Catalog. The caller marks when the Account was read.
  */
-async function readSourceCatalog(
-  config: SourceReadConfig,
-): Promise<SourceCatalog> {
-  const adapter = getProvider(config.provider);
-  const freshnessMs = freshnessOf(adapter, config.sourceRef);
-  if (!config.forceFresh) {
-    const cached = await getCachedList(config.cacheKey, config);
+async function readSourceCatalog(read: SourceRead): Promise<SourceCatalog> {
+  const { source, cacheKey } = read;
+  const rules = READ_POLICIES[read.policy];
+  const adapter = getProvider(source.provider);
+  const freshnessMs = freshnessOf(adapter, source.sourceRef);
+  if (!rules.forceFresh) {
+    const cached = await getCachedList(cacheKey, source);
     // An empty cache is not a hit: it cannot be told apart from "the list
     // became private", which must surface its reason.
     if (
@@ -451,27 +479,26 @@ async function readSourceCatalog(
   }
 
   try {
-    const fresh = await refreshList(config);
+    const fresh = await refreshList(read);
     return {
       data: fresh.data,
-      generation:
-        fresh.generation ?? contentGeneration(config.cacheKey, fresh.data),
+      generation: fresh.generation ?? contentGeneration(cacheKey, fresh.data),
       readAt: fresh.cachedAt,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(
-      `Reading list ${config.cacheKey} (${config.provider}) failed, trying cache:`,
+      `Reading list ${cacheKey} (${source.provider}) failed, trying cache:`,
       message,
     );
 
     // A List that lost its Connection must not keep serving the private
     // items it cached while connected.
     const lostConnection = sourceProblemReason(error) === "needs_connection";
-    if (!config.noCacheFallback && !lostConnection) {
-      const cached = await getCachedList(config.cacheKey, config);
+    if (!rules.noCacheFallback && !lostConnection) {
+      const cached = await getCachedList(cacheKey, source);
       if (cached && cached.data.metas.length > 0) {
-        await markAccountFetched(config.accountId, "last_cache_served_at");
+        await markAccountFetched(read.accountId, "last_cache_served_at");
         return {
           data: cached.data,
           generation: cached.generation,
@@ -481,9 +508,9 @@ async function readSourceCatalog(
     }
 
     throw new ListUnavailableError(
-      config,
+      source,
       sourceProblemReason(error),
-      `Failed to read list ${config.cacheKey} and no cache available: ${message}`,
+      `Failed to read list ${cacheKey} and no cache available: ${message}`,
     );
   }
 }
@@ -493,63 +520,59 @@ async function readSourceCatalog(
  * read and cached on its own (a List with one Source list has only one), and
  * a merged List shows their Titles once each (ADR 0006). A Source list that
  * cannot be served is left out, so the others still show; the List fails
- * only when none can be served, or on a manual refresh (`noCacheFallback`)
- * when any of them fails.
+ * only when none can be served, or on a manual refresh when any of them
+ * fails.
  */
 export async function getListCatalog(
-  config: ListFetchConfig,
+  list: ReadableList,
+  read: ListRead,
 ): Promise<CatalogData> {
-  const list = {
-    id: config.listId,
-    provider: config.provider,
-    sourceRef: config.sourceRef,
-    mergedSources: config.mergedSources,
-  };
+  const rules = READ_POLICIES[read.policy];
   const results = await Promise.allSettled(
     sourceCaches(list).map(({ source, cacheKey }) =>
       readSourceCatalog({
-        ...config,
+        accountId: read.accountId,
+        allowConnection: read.allowConnection,
+        policy: read.policy,
+        listId: list.id,
+        source: { provider: source.provider, sourceRef: source.sourceRef },
         cacheKey,
-        provider: source.provider,
-        sourceRef: source.sourceRef,
-        mergedSources: undefined,
       }),
     ),
   );
-  const read: SourceCatalog[] = [];
+  const catalogs: SourceCatalog[] = [];
   const failures: unknown[] = [];
   for (const result of results) {
-    if (result.status === "fulfilled") read.push(result.value);
+    if (result.status === "fulfilled") catalogs.push(result.value);
     else failures.push(result.reason);
   }
-  if (read.length === 0 || (config.noCacheFallback && failures.length > 0)) {
+  if (catalogs.length === 0 || (rules.noCacheFallback && failures.length > 0)) {
     throw failures[0];
   }
   if (failures.length > 0) {
     console.warn(
-      `List ${config.listId}: ${failures.length} of ${results.length} Source lists left out of the merged Catalog`,
+      `List ${list.id}: ${failures.length} of ${results.length} Source lists left out of the merged Catalog`,
     );
   }
 
-  const readAt = read.reduce<Date | null>(
+  const readAt = catalogs.reduce<Date | null>(
     (latest, { readAt }) =>
       readAt && (!latest || readAt > latest) ? readAt : latest,
     null,
   );
-  if (readAt && !config.skipAccountTimestamp) {
-    await markAccountFetched(config.accountId, "last_fetched_at", readAt);
+  if (readAt && rules.marksAccount) {
+    await markAccountFetched(read.accountId, "last_fetched_at", readAt);
   }
-  const metas = isMergedList(list)
-    ? mergeSourceCatalogs(
-        read.map((catalog) => catalog.data.metas),
-        sourcesWithoutDates(list).length === 0,
-      )
-    : read[0].data.metas;
   return present(
-    { metas },
-    config.sort,
-    read.map((catalog) => catalog.generation).join("|"),
-    config.rpdbApiKey,
+    {
+      metas: mergeListCatalogs(
+        list,
+        catalogs.map((catalog) => catalog.data.metas),
+      ),
+    },
+    read.sort,
+    catalogs.map((catalog) => catalog.generation).join("|"),
+    read.rpdbApiKey,
   );
 }
 
@@ -638,11 +661,9 @@ export async function rereadConnectionLists(
             accountId,
             listId: list.id,
             cacheKey,
-            provider: source.provider,
-            sourceRef: source.sourceRef,
-            sort: parseSortOption(list.sortOption),
+            source: { provider: source.provider, sourceRef: source.sourceRef },
             allowConnection: true,
-            resolveBudgetMs: 25_000,
+            policy: "prewarm",
           },
           { supersede: true },
         );
