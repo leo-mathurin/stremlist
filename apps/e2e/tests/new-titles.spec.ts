@@ -2,7 +2,6 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
 import type {
   ConfigListInput,
   NewTitlesSummary,
@@ -18,7 +17,7 @@ import {
   ok,
 } from "../helpers/api.js";
 import { CATALOG_TITLES, seedCatalog } from "../helpers/catalog-fixture.js";
-import { SAVED_REINSTALL, saveButton } from "../helpers/configure.js";
+import { SAVED_REINSTALL, saveConfigure } from "../helpers/configure.js";
 import {
   clearRefreshCooldown,
   getSourceListEntries,
@@ -722,15 +721,6 @@ test(
   },
 );
 
-async function saveSettings(page: Page) {
-  const response = page.waitForResponse(
-    (res) => res.url().endsWith("/config") && res.request().method() === "POST",
-  );
-  await saveButton(page).click();
-  expect((await response).status()).toBe(200);
-  await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
-}
-
 test(
   "the configure page shows the detections and turns the catalog on and off",
   { tag: "@local" },
@@ -763,7 +753,7 @@ test(
     ).toBeVisible();
 
     await toggle.click();
-    await saveSettings(page);
+    await saveConfigure(page, { message: SAVED_REINSTALL });
     await page.reload();
     await expect(toggle).toBeChecked();
 
@@ -785,7 +775,7 @@ test(
     await expect(
       page.getByText("These changes need a reinstall.", { exact: true }),
     ).toBeVisible();
-    await saveSettings(page);
+    await saveConfigure(page, { message: SAVED_REINSTALL });
     expect(
       (await getManifest(accountId)).catalogs.map((catalog) => catalog.id),
     ).not.toContain("new-titles-movie");

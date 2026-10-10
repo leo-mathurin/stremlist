@@ -12,6 +12,7 @@ import {
   getMeta,
   postConfig,
   refresh,
+  listInput,
   resolveLink,
   type CatalogMeta,
 } from "../helpers/api.js";
@@ -20,7 +21,7 @@ import {
   getAccountByLegacyAlias,
   getListRows,
   resetDb,
-  seedAccountWithLists,
+  seedImdbAccount,
 } from "../helpers/db.js";
 import {
   countCacheObjects,
@@ -45,27 +46,6 @@ import {
 
 const CATALOG_ID_PATTERN =
   /^wl-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-(movie|series)$/;
-
-/** A private Account whose only List is one IMDb Source list (no prewarm). */
-async function seedImdbAccount(sourceRef = PUBLIC_USER) {
-  const {
-    accountId,
-    listIds: [listId],
-  } = await seedAccountWithLists([
-    { sourceRef, catalogTitle: "", displayMode: "split" },
-  ]);
-  return { accountId, listId };
-}
-
-const imdbList = (
-  sourceRef: string,
-  extra: Partial<ConfigListInput> = {},
-): ConfigListInput => ({
-  provider: "imdb",
-  sourceRef,
-  sortOption: "added_at-asc",
-  ...extra,
-});
 
 test.beforeEach(async () => {
   await resetDb();
@@ -136,7 +116,7 @@ test.describe("manifest", () => {
     async () => {
       const { accountId, listId } = await seedImdbAccount();
       const saved = await postConfig(accountId, [
-        imdbList(PUBLIC_USER, { id: listId, displayMode: "movie" }),
+        listInput("imdb", PUBLIC_USER, { id: listId, displayMode: "movie" }),
       ]);
       expect(saved.status).toBe(200);
       const manifest = await getManifest(accountId);
@@ -194,7 +174,7 @@ test.describe("catalogs", () => {
 
       const setSort = async (sortOption: string) => {
         const { status } = await postConfig(accountId, [
-          imdbList(PUBLIC_USER, { id: listId, sortOption }),
+          listInput("imdb", PUBLIC_USER, { id: listId, sortOption }),
         ]);
         expect(status).toBe(200);
         const { metas } = await getCatalog(accountId, "movie", catalogId);
@@ -247,7 +227,7 @@ test.describe("catalogs", () => {
     async () => {
       const { accountId, listId } = await seedImdbAccount();
       expect(
-        (await postConfig(accountId, [imdbList(PUBLIC_LIST)])).status,
+        (await postConfig(accountId, [listInput("imdb", PUBLIC_LIST)])).status,
       ).toBe(200);
       const updated = await getConfig(accountId);
       const list = updated.body.lists[0];
@@ -268,7 +248,7 @@ test.describe("catalogs", () => {
     async () => {
       const { accountId } = await seedImdbAccount();
       await postConfig(accountId, [
-        imdbList("imdb:top-rated-movies", { displayMode: "movie" }),
+        listInput("imdb", "imdb:top-rated-movies", { displayMode: "movie" }),
       ]);
       const { body } = await getConfig(accountId);
       const chart = body.lists[0];
@@ -296,9 +276,13 @@ test.describe("catalogs", () => {
 
   test("RPDB key rewrites posters", { tag: "@live-regression" }, async () => {
     const { accountId, listId } = await seedImdbAccount();
-    await postConfig(accountId, [imdbList(PUBLIC_USER, { id: listId })], {
-      rpdbApiKey: "e2e-test-key",
-    });
+    await postConfig(
+      accountId,
+      [listInput("imdb", PUBLIC_USER, { id: listId })],
+      {
+        rpdbApiKey: "e2e-test-key",
+      },
+    );
     const { metas } = await getCatalog(
       accountId,
       "movie",
@@ -375,8 +359,8 @@ test.describe("catalogs", () => {
     async () => {
       const { accountId, listId: removed } = await seedImdbAccount();
       const created = await postConfig(accountId, [
-        imdbList(PUBLIC_USER, { id: removed }),
-        imdbList(PUBLIC_LIST),
+        listInput("imdb", PUBLIC_USER, { id: removed }),
+        listInput("imdb", PUBLIC_LIST),
       ]);
       expect(created.status).toBe(200);
 
@@ -526,7 +510,7 @@ test.describe("link resolution", () => {
 test.describe("config API", () => {
   test("rejects invalid configurations", { tag: "@local" }, async () => {
     const { accountId } = await seedImdbAccount();
-    const valid = imdbList(PUBLIC_USER);
+    const valid = listInput("imdb", PUBLIC_USER);
     const status = async (lists: ConfigListInput[]) =>
       (await postConfig(accountId, lists)).status;
 
@@ -561,7 +545,7 @@ test.describe("config API", () => {
     { tag: "@local" },
     async () => {
       const created = await createAccount(
-        [imdbList("imdb:box-office", { displayMode: "movie" })],
+        [listInput("imdb", "imdb:box-office", { displayMode: "movie" })],
         "e2e-rpdb",
       );
       expect(created.status).toBe(200);
@@ -577,7 +561,9 @@ test.describe("config API", () => {
         lists: [{ provider: "imdb", sourceRef: "imdb:box-office" }],
       });
       // Creation validates like a save.
-      expect((await createAccount([imdbList("banana")])).status).toBe(400);
+      expect((await createAccount([listInput("imdb", "banana")])).status).toBe(
+        400,
+      );
     },
   );
 
