@@ -17,10 +17,11 @@
 ALTER TABLE public.accounts
   ADD COLUMN new_titles_catalog boolean NOT NULL DEFAULT false;
 
--- The "New titles" setting is saved in the same transaction as the Lists, so a
--- save never leaves one request's Lists with another request's setting.
-DROP FUNCTION public.replace_account_config(text, text, jsonb, boolean, text[]);
-
+-- Replace an Account's Lists and settings in one transaction. The "New
+-- titles" setting is saved with the Lists, so a save never leaves one
+-- request's Lists with another request's setting. A List whose saved merged
+-- Source lists changed since the API checked them is refused
+-- (`expected_merged_sources`, STR-59).
 CREATE FUNCTION public.replace_account_config(
   p_account_id text,
   p_rpdb_api_key text,
