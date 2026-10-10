@@ -63,7 +63,7 @@ export interface InstallSetup {
 
 function baselineOf(
   setup: InstallSetup,
-  genres: KnownSourceGenres,
+  genres: KnownSourceGenres | null,
 ): { signature: string; actionsLive: boolean } {
   return {
     signature: getListReinstallSignature(setup.rows, genres, {
@@ -89,7 +89,10 @@ type AnswerLists = Pick<
 export function useReinstallBaseline(accountKey: string | null) {
   const [installed, setInstalled] = useState<InstallBaseline>(UNKNOWN_BASELINE);
   const [saved, setSaved] = useState<InstallBaseline>(UNKNOWN_BASELINE);
-  const [knownGenres, setKnownGenres] = useState<KnownSourceGenres>({});
+  // Null until an answer gives genres by Source list (see learnSourceGenres).
+  const [knownGenres, setKnownGenres] = useState<KnownSourceGenres | null>(
+    null,
+  );
 
   /** Forget the baselines while another configuration loads. */
   const reset = useCallback(() => {
@@ -100,7 +103,7 @@ export function useReinstallBaseline(accountKey: string | null) {
   /** The configuration loaded: it is what the last save serves. */
   const onLoaded = useCallback(
     (key: string, lists: AnswerLists, setup: InstallSetup) => {
-      const genres = learnSourceGenres({}, lists);
+      const genres = learnSourceGenres(null, lists);
       setKnownGenres(genres);
       const loaded = baselineOf(setup, genres);
       setSaved(loaded);

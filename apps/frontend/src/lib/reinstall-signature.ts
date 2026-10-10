@@ -25,11 +25,13 @@ export type KnownSourceGenres = Record<string, TitleGenres>;
  * list whose cache is not written yet (null) keeps the genres seen before:
  * a List that becomes merged, or stops being merged, moves its Source lists
  * to new cache keys, and they have their genres again after their next read.
+ * Null while no answer gave genres by Source list.
  */
 export function learnSourceGenres(
-  known: KnownSourceGenres,
+  known: KnownSourceGenres | null,
   lists: (ListSource & Pick<ConfigList, "mergedSources" | "sourceGenres">)[],
-): KnownSourceGenres {
+): KnownSourceGenres | null {
+  if (!lists.some((list) => list.sourceGenres)) return known;
   const next = { ...known };
   for (const list of lists) {
     listSources(list).forEach((source, index) => {
@@ -58,22 +60,28 @@ function listGenres(row: SignatureRow, known: KnownSourceGenres): string[] {
  * on. The signature is those Catalogs, so it changes
  * exactly when they change. Every Source list of a List counts through the
  * genres it brings; the sort, the posters and the Source list labels do not.
- * A Source list without known genres brings none.
+ * Without genres by Source list (`known` is null: no answer gave them), genre
+ * options are left out: the page cannot tell which genres a change takes
+ * away.
  */
 export function getListReinstallSignature(
   rows: SignatureRow[],
-  known: KnownSourceGenres,
+  known: KnownSourceGenres | null,
   options: { newTitles: boolean } = { newTitles: false },
 ): string {
   return JSON.stringify(
     addonCatalogEntries(
-      rows.map((row) => ({
-        id: row.id ?? row.localId,
-        catalogTitle: row.catalogTitle,
-        displayMode: row.displayMode,
-        catalogSettings: row.catalogSettings,
-        availableGenres: listGenres(row, known),
-      })),
+      rows.map((row) => {
+        return {
+          id: row.id ?? row.localId,
+          catalogTitle: row.catalogTitle,
+          displayMode: row.displayMode,
+          catalogSettings: known
+            ? row.catalogSettings
+            : { ...row.catalogSettings, genre: undefined },
+          availableGenres: known ? listGenres(row, known) : [],
+        };
+      }),
       options,
     ),
   );
