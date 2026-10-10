@@ -10,7 +10,8 @@
     "format:check": "prettier . --check",
     "test:toolkit": "e2e run",
     "test:toolkit:record": "e2e run --tag agent",
-    "test:toolkit:replay": "CI=1 E2E_OAUTH_CREDENTIALS='{}' e2e run --strict-cache"
+    "test:toolkit:replay": "bun toolkit-cache.ts replay",
+    "test:toolkit:check": "bun toolkit-cache.ts check"
   },
   "devDependencies": {
     "@ai-sdk/openai": "^4",
