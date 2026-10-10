@@ -224,6 +224,108 @@ test(
 );
 
 test(
+  "Simkl and MDBList Actions write each Provider, and a rating goes to the chosen ones",
+  { tag: "@local" },
+  async ({ page }) => {
+    const accountId = await seedAccount({ actions: ["simkl", "mdblist"] });
+    await seedConnection(accountId, "simkl");
+    await seedConnection(accountId, "mdblist");
+    const titles = async (type: string, id: string) =>
+      (await backend.api.getStreams(accountId, type, id)).body.streams.map(
+        (entry) => entry.title,
+      );
+    const action = (path: string) =>
+      `${backend.url}/${accountId}/actions/${path}`;
+    const writes = (host: string, path: string) =>
+      backend
+        .requests((url) => url.host === host && url.pathname === path)
+        .filter((entry) => entry.method === "POST")
+        .map((entry) => entry.body);
+    const movie = { ids: { imdb: "tt0111161" } };
+
+    // The first entries read the library of each Provider in the background:
+    // both have the movie in their watchlist, neither watched or rated it.
+    await expect
+      .poll(() => titles("movie", "tt0111161"))
+      .toEqual([
+        "🔖 In watchlist on Simkl and MDBList\nSelect to remove from all",
+        "✅ Mark as watched\nSimkl and MDBList",
+        "⭐ Rate\nFrom 1 to 10 on Simkl and MDBList",
+      ]);
+    expect(
+      backend.requests((url) => url.pathname === "/sync/all-items/movies"),
+    ).toHaveLength(1);
+
+    // Watched: one page writes both Providers.
+    await page.goto(action("watched/add/movie/tt0111161"));
+    await expect(
+      page.getByRole("heading", {
+        name: "✓ The Shawshank Redemption is marked as watched on Simkl and MDBList",
+      }),
+    ).toBeVisible();
+    expect(writes("api.simkl.com", "/sync/history")).toEqual([
+      { movies: [movie] },
+    ]);
+    expect(writes("api.mdblist.com", "/sync/watched")).toEqual([
+      { movies: [movie] },
+    ]);
+    expect((await titles("movie", "tt0111161"))[1]).toBe(
+      "✅ Watched on Simkl and MDBList\nSelect to mark as unwatched everywhere",
+    );
+
+    // Rating: the form names both Providers; only the checked one gets it.
+    await page.goto(action("rating/rate/movie/tt0111161"));
+    await expect(
+      page.getByRole("heading", { name: "Rate The Shawshank Redemption" }),
+    ).toBeVisible();
+    const simkl = page.getByRole("checkbox", { name: "Simkl" });
+    const mdblist = page.getByRole("checkbox", { name: "MDBList" });
+    await expect(simkl).toBeChecked();
+    await expect(mdblist).toBeChecked();
+    await expect(page.getByText("Not rated")).toHaveCount(2);
+    await mdblist.uncheck();
+    await page.getByText("7", { exact: true }).click();
+    await page.getByRole("button", { name: "Save rating" }).click();
+    await expect(
+      page.getByRole("heading", {
+        name: "✓ The Shawshank Redemption is rated 7/10 on Simkl",
+      }),
+    ).toBeVisible();
+    expect(writes("api.simkl.com", "/sync/ratings")).toEqual([
+      { movies: [{ ...movie, rating: 7 }] },
+    ]);
+    expect(writes("api.mdblist.com", "/sync/ratings")).toEqual([]);
+    expect((await titles("movie", "tt0111161")).at(-1)).toBe(
+      "⭐ 7/10 on Simkl, change\nNot rated on MDBList",
+    );
+
+    // A Provider that refuses the Title fails alone, and the page says so.
+    await page.goto(action("watchlist/add/movie/tt0068646"));
+    await expect(
+      page.getByRole("heading", {
+        name: "✓ This title is in your watchlist on Simkl",
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "It did not work on MDBList. Try again later, or connect the account again on the Stremlist configure page.",
+      ),
+    ).toBeVisible();
+    const godfather = { movies: [{ ids: { imdb: "tt0068646" } }] };
+    expect(writes("api.simkl.com", "/sync/add-to-list")).toEqual([
+      { movies: [{ ...godfather.movies[0], to: "plantowatch" }] },
+    ]);
+    expect(writes("api.mdblist.com", "/watchlist/items/add")).toEqual([
+      godfather,
+    ]);
+    expect((await titles("movie", "tt0068646")).slice(0, 2)).toEqual([
+      "🔖 Add to watchlist\nMDBList (already on Simkl)",
+      "🔖 Remove from watchlist\nSimkl",
+    ]);
+  },
+);
+
+test(
   "the kill switch stops every Provider request but keeps cached Catalogs",
   { tag: "@local" },
   async () => {

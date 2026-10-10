@@ -63,6 +63,27 @@ const mdblistItems = [
 const json = (body: unknown, status = 200, headers: HeadersInit = {}) =>
   Response.json(body, { status, headers });
 
+/**
+ * The answer of a Simkl or MDBList Action write (the Trakt-style /sync
+ * body): every Title of `known` is written, the others are not found.
+ */
+function syncWrite(body: unknown, known: readonly string[]): Response {
+  const notFound: Record<string, unknown[]> = { movies: [], shows: [] };
+  for (const bucket of ["movies", "shows"] as const) {
+    const items = (body as Record<string, { ids?: { imdb?: string } }[]>)[
+      bucket
+    ];
+    notFound[bucket] = (items ?? []).filter(
+      (item) => !known.includes(item.ids?.imdb ?? ""),
+    );
+  }
+  return json({ added: { movies: 1, shows: 0 }, not_found: notFound }, 201);
+}
+
+/** Titles the Simkl and MDBList fixtures know (MDBList: no Godfather). */
+const SIMKL_KNOWN = ["tt0111161", "tt0903747", "tt0068646"];
+const MDBLIST_KNOWN = ["tt0111161", "tt0903747"];
+
 /** The fields of a form-encoded request (token exchanges, SPARQL). */
 const form = (body: unknown) => (body ?? {}) as Record<string, string>;
 
@@ -155,9 +176,24 @@ function mdblist({ request, url, body }: FixtureRequest): Response {
   if (path === "/oauth/revoke_token/") return json({});
   const refused = requireToken(request);
   if (refused) return refused;
+  if (request.method === "POST") {
+    switch (path) {
+      case "/watchlist/items/add":
+      case "/watchlist/items/remove":
+      case "/sync/watched":
+      case "/sync/watched/remove":
+      case "/sync/ratings":
+      case "/sync/ratings/remove":
+        return syncWrite(body, MDBLIST_KNOWN);
+    }
+  }
   switch (path) {
     case "/user":
       return json({ username: "fixture-user" });
+    case "/sync/watched":
+    case "/sync/ratings":
+      // The Action membership: nothing watched or rated yet.
+      return json({ movies: [], shows: [], episodes: [] });
     case "/lists/fixture-user/weekend":
     case "/lists/4242":
       return json({ id: 4242, name: "Weekend", mediatype: null });
@@ -214,6 +250,12 @@ function simkl({ request, url, body }: FixtureRequest): Response {
       });
     case "/sync/all-items/anime":
       return json({});
+    case "/sync/add-to-list":
+    case "/sync/history":
+    case "/sync/history/remove":
+    case "/sync/ratings":
+    case "/sync/ratings/remove":
+      if (request.method === "POST") return syncWrite(body, SIMKL_KNOWN);
   }
   throw new Error(`Unexpected Simkl request ${request.method} ${path}`);
 }
