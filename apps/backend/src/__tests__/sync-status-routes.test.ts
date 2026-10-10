@@ -84,18 +84,22 @@ describe("sync status on the configure page", () => {
     const body = (await res.json()) as AccountSyncSnapshot;
 
     expect(body.syncStatus).toEqual({
-      [imdb.id]: {
-        provider: "imdb",
-        sourceRef: "imdb:top-rated-movies",
-        lastAttemptAt: "2026-10-06T12:00:00.000Z",
-        lastSuccessAt: "2026-10-06T12:00:00.000Z",
-        titleCount: 3,
-        problem: null,
-        failingSince: null,
-      },
-      [trakt.id]: expect.objectContaining({
-        problem: "needs_connection",
-      }) as unknown,
+      [imdb.id]: [
+        {
+          provider: "imdb",
+          sourceRef: "imdb:top-rated-movies",
+          lastAttemptAt: "2026-10-06T12:00:00.000Z",
+          lastSuccessAt: "2026-10-06T12:00:00.000Z",
+          titleCount: 3,
+          problem: null,
+          failingSince: null,
+        },
+      ],
+      [trakt.id]: [
+        expect.objectContaining({
+          problem: "needs_connection",
+        }) as unknown,
+      ],
     });
     expect(body.connections).toEqual([
       expect.objectContaining({
@@ -118,11 +122,12 @@ describe("sync status on the configure page", () => {
     expect(res.status).toBe(200);
     expect((await res.json()) as AccountSyncSnapshot).toEqual({
       syncStatus: {
-        [list.id]: expect.objectContaining({
-          problem: "unavailable",
-        }) as unknown,
+        [list.id]: [
+          expect.objectContaining({
+            problem: "unavailable",
+          }) as unknown,
+        ],
       },
-      sourceSyncStatus: {},
       connections: [],
     });
   });
@@ -181,14 +186,12 @@ describe("sync status on the configure page", () => {
     const body = (await res.json()) as AccountSyncSnapshot & { failed: number };
 
     expect(body.failed).toBe(1);
-    expect(body.syncStatus[good.id]).toMatchObject({
-      problem: null,
-      titleCount: 1,
-    });
-    expect(body.syncStatus[gone.id]).toMatchObject({
-      problem: "not_found",
-      lastSuccessAt: null,
-    });
+    expect(body.syncStatus[good.id]).toEqual([
+      expect.objectContaining({ problem: null, titleCount: 1 }),
+    ]);
+    expect(body.syncStatus[gone.id]).toEqual([
+      expect.objectContaining({ problem: "not_found", lastSuccessAt: null }),
+    ]);
   });
 });
 

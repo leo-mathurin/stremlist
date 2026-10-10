@@ -3,8 +3,10 @@ import type { Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
 import type {
   AccountConfigResponse,
+  AccountSyncSnapshot,
   ConfigList,
 } from "@stremlist/shared/stremio.types";
+import type { ListSyncStatus } from "@stremlist/shared/sync-status";
 import {
   SAVED_REINSTALL,
   accountId,
@@ -72,7 +74,7 @@ const traktConnection = connected("trakt");
  */
 async function routeSyncStatus(
   browser: Browser,
-  answer: (poll: number) => object,
+  answer: (poll: number) => AccountSyncSnapshot,
   key = accountId,
 ) {
   const polls: string[] = [];
@@ -120,7 +122,8 @@ test("each List shows its last refresh or why it failed, and a new List is polle
   screen,
 }) => {
   const synced = syncedStatus(row.sourceRef, 12, ago(5 * MINUTE));
-  const older = {
+  const older: ListSyncStatus = {
+    provider: "imdb",
     sourceRef: "imdb:most-popular-tv",
     lastAttemptAt: ago(5 * MINUTE),
     lastSuccessAt: ago(3 * 60 * MINUTE),
@@ -128,7 +131,8 @@ test("each List shows its last refresh or why it failed, and a new List is polle
     problem: "unavailable",
     failingSince: ago(40 * MINUTE),
   };
-  const missing = {
+  const missing: ListSyncStatus = {
+    provider: "imdb",
     sourceRef: "ur99000017",
     lastAttemptAt: ago(MINUTE),
     lastSuccessAt: null,
@@ -137,9 +141,9 @@ test("each List shows its last refresh or why it failed, and a new List is polle
     failingSince: ago(2 * 24 * 60 * MINUTE),
   };
   const statuses = {
-    [ids.synced]: synced,
-    [ids.older]: older,
-    [ids.missing]: missing,
+    [ids.synced]: [synced],
+    [ids.older]: [older],
+    [ids.missing]: [missing],
   };
   await captureConfig(browser, {
     ...configuration,
@@ -157,7 +161,7 @@ test("each List shows its last refresh or why it failed, and a new List is polle
         ? statuses
         : {
             ...statuses,
-            [ids.waiting]: syncedStatus("imdb:box-office", 10, ago(0)),
+            [ids.waiting]: [syncedStatus("imdb:box-office", 10, ago(0))],
           },
     connections: [],
   }));
@@ -218,7 +222,7 @@ test("a List added and saved waits for its first refresh, then shows it", async 
   await routeSyncStatus(browser, () => ({
     syncStatus: {
       ...configuration.syncStatus,
-      [saved]: syncedStatus("imdb:top-rated-movies", 250, ago(0)),
+      [saved]: [syncedStatus("imdb:top-rated-movies", 250, ago(0))],
     },
     connections: [],
   }));
@@ -259,12 +263,14 @@ test("a manual refresh shows the new status of each List", async ({
         total: 1,
         lists: configuration.lists,
         syncStatus: {
-          [row.id]: {
-            ...syncedStatus(row.sourceRef, 12, ago(10 * MINUTE)),
-            lastAttemptAt: ago(0),
-            problem: "private",
-            failingSince: ago(0),
-          },
+          [row.id]: [
+            {
+              ...syncedStatus(row.sourceRef, 12, ago(10 * MINUTE)),
+              lastAttemptAt: ago(0),
+              problem: "private",
+              failingSince: ago(0),
+            },
+          ],
         },
         connections: [],
         lastFetchedAt: configuration.lastFetchedAt,
@@ -309,14 +315,17 @@ test(
       lists: [row, traktWatchlist],
       syncStatus: {
         ...configuration.syncStatus,
-        [ids.trakt]: {
-          sourceRef: "me/watchlist",
-          lastAttemptAt: ago(MINUTE),
-          lastSuccessAt: ago(60 * MINUTE),
-          titleCount: 30,
-          problem: "needs_connection",
-          failingSince: ago(MINUTE),
-        },
+        [ids.trakt]: [
+          {
+            provider: "trakt",
+            sourceRef: "me/watchlist",
+            lastAttemptAt: ago(MINUTE),
+            lastSuccessAt: ago(60 * MINUTE),
+            titleCount: 30,
+            problem: "needs_connection",
+            failingSince: ago(MINUTE),
+          },
+        ],
       },
       connections: [{ ...traktConnection, needsRenewalSince: ago(MINUTE) }],
     } as AccountConfigResponse);
@@ -405,14 +414,17 @@ test("a Connection that works again clears the renewal state after a poll", asyn
         // The read after the new authorization has not ended yet.
         syncStatus: {
           ...configuration.syncStatus,
-          [ids.trakt]: {
-            sourceRef: "me/watchlist",
-            lastAttemptAt: ago(2 * MINUTE),
-            lastSuccessAt: null,
-            titleCount: null,
-            problem: "needs_connection",
-            failingSince: ago(2 * MINUTE),
-          },
+          [ids.trakt]: [
+            {
+              provider: "trakt",
+              sourceRef: "me/watchlist",
+              lastAttemptAt: ago(2 * MINUTE),
+              lastSuccessAt: null,
+              titleCount: null,
+              problem: "needs_connection",
+              failingSince: ago(2 * MINUTE),
+            },
+          ],
         },
         connections: [traktConnection],
       }),
@@ -421,7 +433,7 @@ test("a Connection that works again clears the renewal state after a poll", asyn
   await routeSyncStatus(browser, () => ({
     syncStatus: {
       ...configuration.syncStatus,
-      [ids.trakt]: syncedStatus("me/watchlist", 30, ago(0)),
+      [ids.trakt]: [syncedStatus("me/watchlist", 30, ago(0), "trakt")],
     },
     connections: [traktConnection],
   }));
@@ -448,7 +460,9 @@ test("a refused Connection noticed elsewhere does not claim its cached List is g
     syncStatus: {
       ...configuration.syncStatus,
       // The last read of the List worked; an Action then found the token refused.
-      [ids.trakt]: syncedStatus("me/watchlist", 30, ago(10 * MINUTE)),
+      [ids.trakt]: [
+        syncedStatus("me/watchlist", 30, ago(10 * MINUTE), "trakt"),
+      ],
     },
     connections: [{ ...traktConnection, needsRenewalSince: ago(MINUTE) }],
   });
@@ -490,33 +504,42 @@ test("each failure reason says what to do, next to Lists that refresh fine", asy
     ...configuration,
     lists,
     syncStatus: {
-      [row.id]: syncedStatus(row.sourceRef, 1, ago(2 * 60 * MINUTE)),
-      [ids.empty]: syncedStatus("imdb:box-office", 0, ago(30 * MINUTE)),
+      [row.id]: [syncedStatus(row.sourceRef, 1, ago(2 * 60 * MINUTE))],
+      [ids.empty]: [syncedStatus("imdb:box-office", 0, ago(30 * MINUTE))],
       // A public Trakt list that Trakt refused without an account.
-      [ids.history]: {
-        sourceRef: "users/fixture/lists/horror",
-        lastAttemptAt: ago(MINUTE),
-        lastSuccessAt: null,
-        titleCount: null,
-        problem: "needs_connection",
-        failingSince: ago(20 * MINUTE),
-      },
-      [ids.justwatch]: {
-        sourceRef: "tl-us-11111111-2222-4333-8444-555555555555",
-        lastAttemptAt: ago(MINUTE),
-        lastSuccessAt: ago(3 * 24 * 60 * MINUTE),
-        titleCount: 8,
-        problem: "private",
-        failingSince: ago(2 * 24 * 60 * MINUTE),
-      },
-      [ids.mdblist]: {
-        sourceRef: "lists/4242",
-        lastAttemptAt: ago(MINUTE),
-        lastSuccessAt: null,
-        titleCount: null,
-        problem: "premium_only",
-        failingSince: ago(3 * 60 * MINUTE),
-      },
+      [ids.history]: [
+        {
+          provider: "trakt",
+          sourceRef: "users/fixture/lists/horror",
+          lastAttemptAt: ago(MINUTE),
+          lastSuccessAt: null,
+          titleCount: null,
+          problem: "needs_connection",
+          failingSince: ago(20 * MINUTE),
+        },
+      ],
+      [ids.justwatch]: [
+        {
+          provider: "justwatch",
+          sourceRef: "tl-us-11111111-2222-4333-8444-555555555555",
+          lastAttemptAt: ago(MINUTE),
+          lastSuccessAt: ago(3 * 24 * 60 * MINUTE),
+          titleCount: 8,
+          problem: "private",
+          failingSince: ago(2 * 24 * 60 * MINUTE),
+        },
+      ],
+      [ids.mdblist]: [
+        {
+          provider: "mdblist",
+          sourceRef: "lists/4242",
+          lastAttemptAt: ago(MINUTE),
+          lastSuccessAt: null,
+          titleCount: null,
+          problem: "premium_only",
+          failingSince: ago(3 * 60 * MINUTE),
+        },
+      ],
     },
     connections: [connected("mdblist")],
   } as AccountConfigResponse);
@@ -612,7 +635,7 @@ test("a Legacy alias install shows the sync status of its Lists and polls throug
   screen,
 }) => {
   const statuses = {
-    [row.id]: syncedStatus(row.sourceRef, 12, ago(5 * MINUTE)),
+    [row.id]: [syncedStatus(row.sourceRef, 12, ago(5 * MINUTE))],
   };
   await captureConfig(
     browser,
@@ -631,7 +654,7 @@ test("a Legacy alias install shows the sync status of its Lists and polls throug
           ? statuses
           : {
               ...statuses,
-              [ids.waiting]: syncedStatus("imdb:box-office", 10, ago(0)),
+              [ids.waiting]: [syncedStatus("imdb:box-office", 10, ago(0))],
             },
       connections: [],
     }),
@@ -679,13 +702,13 @@ test("a saved List whose chart changes is not saved yet, and is polled only afte
     lists: [row, chart],
     syncStatus: {
       ...configuration.syncStatus,
-      [ids.chart]: syncedStatus(chart.sourceRef, 250, ago(5 * MINUTE)),
+      [ids.chart]: [syncedStatus(chart.sourceRef, 250, ago(5 * MINUTE))],
     },
   });
   const polls = await routeSyncStatus(browser, () => ({
     syncStatus: {
       ...configuration.syncStatus,
-      [ids.chart]: syncedStatus("imdb:top-rated-tv", 250, ago(0)),
+      [ids.chart]: [syncedStatus("imdb:top-rated-tv", 250, ago(0))],
     },
     connections: [],
   }));
@@ -754,14 +777,17 @@ test("an open preview is read again when a refresh finds its Connection refused"
     return {
       syncStatus: {
         ...configuration.syncStatus,
-        [ids.trakt]: {
-          sourceRef: "me/watchlist",
-          lastAttemptAt: ago(0),
-          lastSuccessAt: null,
-          titleCount: null,
-          problem: "needs_connection",
-          failingSince: ago(0),
-        },
+        [ids.trakt]: [
+          {
+            provider: "trakt",
+            sourceRef: "me/watchlist",
+            lastAttemptAt: ago(0),
+            lastSuccessAt: null,
+            titleCount: null,
+            problem: "needs_connection",
+            failingSince: ago(0),
+          },
+        ],
       },
       connections: [{ ...traktConnection, needsRenewalSince: ago(0) }],
     };

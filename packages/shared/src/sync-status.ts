@@ -6,11 +6,8 @@ import type { SourceProblemReason } from "./source-problems";
  * on the Provider, by a Stremio request, a save or a manual refresh.
  */
 export interface ListSyncStatus {
-  /**
-   * The Provider of the Source list that was read. Absent from older
-   * backends: the Provider of the List's first Source list.
-   */
-  provider?: ProviderId;
+  /** The Provider of the Source list that was read. */
+  provider: ProviderId;
   /** The Source list that was read (a List can change its Source list). */
   sourceRef: string;
   /** When Stremlist last tried to read the Source list. */
@@ -25,5 +22,8 @@ export interface ListSyncStatus {
   failingSince: string | null;
 }
 
-/** Sync status by List ID. A List that was never read has no entry. */
-export type ListSyncStatuses = Record<string, ListSyncStatus>;
+/**
+ * The sync status of each Source list of each List, by List ID, in the
+ * order of `listSources`; null for a Source list that was never read.
+ */
+export type ListSyncStatuses = Record<string, (ListSyncStatus | null)[]>;

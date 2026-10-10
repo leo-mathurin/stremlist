@@ -6,10 +6,7 @@ import type {
   ConfigList,
   ConnectionSummary,
 } from "@stremlist/shared/stremio.types";
-import type {
-  ListSyncStatus,
-  ListSyncStatuses,
-} from "@stremlist/shared/sync-status";
+import type { ListSyncStatuses } from "@stremlist/shared/sync-status";
 import { api } from "../lib/api";
 import type { ListFormRow } from "../lib/list-form";
 import { listSyncState, mergedListSyncState } from "../lib/list-sync";
@@ -28,11 +25,10 @@ type SavedList = Pick<
 
 /**
  * A server answer with the sync status and the Connections, and the saved
- * Lists when it has them. An older backend answers without statuses.
+ * Lists when it has them. The staging backend answers without statuses.
  */
 interface SyncAnswer {
   syncStatus?: ListSyncStatuses;
-  sourceSyncStatus?: Record<string, ListSyncStatus[]>;
   connections: ConnectionSummary[];
   lists?: SavedList[];
 }
@@ -56,9 +52,6 @@ export function useListSyncStatus(
 ) {
   const [connections, setConnections] = useState<ConnectionSummary[]>([]);
   const [syncStatus, setSyncStatus] = useState<ListSyncStatuses>({});
-  const [sourceSyncStatus, setSourceSyncStatus] = useState<
-    Record<string, ListSyncStatus[]>
-  >({});
   // The saved Source lists by List ID. A row whose Source lists differ (a
   // changed chart, a merge) is not saved yet, so it has no status to wait
   // for.
@@ -72,7 +65,6 @@ export function useListSyncStatus(
     epoch.current += 1;
     setConnections(answer.connections);
     setSyncStatus(answer.syncStatus ?? {});
-    setSourceSyncStatus(answer.sourceSyncStatus ?? {});
     if (answer.lists) setSavedSources(sourcesOf(answer.lists));
   }, []);
 
@@ -104,15 +96,11 @@ export function useListSyncStatus(
   const syncStateOf = useCallback(
     (row: ListFormRow): ListSyncState | null => {
       if (!saved) return null;
-      const id = row.id;
-      const statuses =
-        id && isSaved(row)
-          ? [syncStatus[id], ...(sourceSyncStatus[id] ?? [])].filter(
-              (status) => status !== undefined,
-            )
-          : [];
+      // A saved row reads its saved Source lists, in the order of the
+      // statuses.
+      const statuses = row.id && isSaved(row) ? syncStatus[row.id] : undefined;
       return mergedListSyncState(
-        listSources(row).map((source) => {
+        listSources(row).map((source, index) => {
           const connection = connections.find(
             (c) => c.provider === source.provider,
           );
@@ -121,16 +109,10 @@ export function useListSyncStatus(
             : connection.needsRenewalSince
               ? "renew"
               : "ok";
-          // Older answers name no Provider: the List's first one.
-          const status = statuses.find(
-            (candidate) =>
-              (candidate.provider ?? row.provider) === source.provider &&
-              candidate.sourceRef === source.sourceRef,
-          );
           return {
             source,
             state: listSyncState(
-              status,
+              statuses?.[index] ?? undefined,
               connectionState,
               sourceRequiresConnection(source.provider, source.sourceRef),
             ),
@@ -138,7 +120,7 @@ export function useListSyncStatus(
         }),
       );
     },
-    [saved, connections, syncStatus, sourceSyncStatus, isSaved],
+    [saved, connections, syncStatus, isSaved],
   );
 
   const waitingKey = lists
@@ -163,7 +145,6 @@ export function useListSyncStatus(
           if (cancelled || started !== epoch.current) return;
           if (!("syncStatus" in body)) return;
           setSyncStatus(body.syncStatus);
-          setSourceSyncStatus(body.sourceSyncStatus ?? {});
           setConnections((current) =>
             JSON.stringify(current) === JSON.stringify(body.connections)
               ? current

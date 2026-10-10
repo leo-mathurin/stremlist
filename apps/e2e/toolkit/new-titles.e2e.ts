@@ -313,7 +313,9 @@ test("a save and a disconnect show the summary of what is left", async ({
     lists: [row, historyList],
     syncStatus: {
       ...configuration.syncStatus,
-      [historyList.id]: syncedStatus(historyList.sourceRef),
+      [historyList.id]: [
+        syncedStatus(historyList.sourceRef, 12, undefined, "trakt"),
+      ],
     },
     connections: [
       {

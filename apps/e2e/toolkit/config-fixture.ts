@@ -89,13 +89,18 @@ export const row = {
   availableGenres: ["Drama", "Comedy"],
 } satisfies ConfigList;
 
-/** A successful refresh of `sourceRef` at `at` that gave `titleCount` Titles. */
+/**
+ * A successful refresh of `sourceRef` (of `provider`) at `at` that gave
+ * `titleCount` Titles.
+ */
 export function syncedStatus(
   sourceRef: string,
   titleCount = 12,
   at = "2020-01-01T00:00:00.000Z",
+  provider: ProviderId = "imdb",
 ) {
   return {
+    provider,
     sourceRef,
     lastAttemptAt: at,
     lastSuccessAt: at,
@@ -124,7 +129,7 @@ export const configuration = {
   movedAt: null,
   rpdbApiKey: null,
   lists: [row],
-  syncStatus: { [row.id]: syncedStatus(row.sourceRef) },
+  syncStatus: { [row.id]: [syncedStatus(row.sourceRef)] },
   connections: [],
   actions: { enabled: false, providers: [] },
   newTitles: {

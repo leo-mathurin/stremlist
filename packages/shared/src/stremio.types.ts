@@ -2,7 +2,7 @@ import type { CatalogSettings } from "./catalog-settings";
 import type { DisplayMode, TitleType } from "./constants";
 import type { ListSource } from "./list-merge";
 import type { ProviderId } from "./providers";
-import type { ListSyncStatus, ListSyncStatuses } from "./sync-status";
+import type { ListSyncStatuses } from "./sync-status";
 
 export interface CatalogData {
   metas: StremioMeta[];
@@ -68,13 +68,8 @@ export interface NewTitlesSummary {
  * page gets it with the config, after "Refresh now" and from its polls.
  */
 export interface AccountSyncSnapshot {
-  /** Sync status of the first Source list of each List, by List ID. */
+  /** Sync status of each Source list of each List. */
   syncStatus: ListSyncStatuses;
-  /**
-   * Sync status of the other Source lists of merged Lists, by List ID; a
-   * Source list that was never read has none. Absent from older backends.
-   */
-  sourceSyncStatus?: Record<string, ListSyncStatus[]>;
   connections: ConnectionSummary[];
 }
 

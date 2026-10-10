@@ -62,12 +62,14 @@ test(
       total: 1,
       // The refresh answers with the new statuses, so the page needs no poll.
       syncStatus: {
-        [listId]: {
-          sourceRef: PUBLIC_TRAKT_LIST,
-          problem: "disabled",
-          titleCount: 2,
-          lastSuccessAt: expect.any(String),
-        },
+        [listId]: [
+          {
+            sourceRef: PUBLIC_TRAKT_LIST,
+            problem: "disabled",
+            titleCount: 2,
+            lastSuccessAt: expect.any(String),
+          },
+        ],
       },
       connections: [],
     });
@@ -211,11 +213,9 @@ test(
 
     expect(status).toBe(200);
     expect(Object.keys(body.syncStatus)).toEqual([watchlistId]);
-    expect(body.syncStatus[watchlistId]).toMatchObject({
-      sourceRef: CATALOG_FIXTURE_USER,
-      titleCount: 4,
-      problem: null,
-    });
+    expect(body.syncStatus[watchlistId]).toMatchObject([
+      { sourceRef: CATALOG_FIXTURE_USER, titleCount: 4, problem: null },
+    ]);
     expect(body.connections).toEqual([]);
 
     expect((await getSyncStatus("ur0000000404")).status).toBe(404);
@@ -240,11 +240,9 @@ test(
     await seedCachedCatalog(listId, CATALOG_TITLES.slice(0, 3));
 
     const { body } = await getSyncStatus(accountId);
-    expect(body.syncStatus[listId]).toMatchObject({
-      sourceRef: CATALOG_FIXTURE_USER,
-      titleCount: 3,
-      problem: null,
-    });
+    expect(body.syncStatus[listId]).toMatchObject([
+      { sourceRef: CATALOG_FIXTURE_USER, titleCount: 3, problem: null },
+    ]);
     expect(await getSyncStatusRows(listId)).toEqual([]);
 
     await open(page, accountId, "Cached watchlist");

@@ -580,8 +580,7 @@ test(
     expect(
       (await call<AccountSyncSnapshot>(`/${accountId}/sync-status`)).body,
     ).toEqual({
-      syncStatus: {},
-      sourceSyncStatus: {},
+      syncStatus: { [listId]: [null] },
       connections: [
         expect.objectContaining({
           provider: "trakt",
@@ -1126,13 +1125,14 @@ test(
     ]);
     expect(await syncStatus()).toEqual({
       syncStatus: {
-        [listId]: expect.objectContaining({
-          sourceRef: "me/watchlist",
-          problem: "needs_connection",
-          lastSuccessAt: null,
-        }),
+        [listId]: [
+          expect.objectContaining({
+            sourceRef: "me/watchlist",
+            problem: "needs_connection",
+            lastSuccessAt: null,
+          }),
+        ],
       },
-      sourceSyncStatus: {},
       connections: [
         expect.objectContaining({
           provider: "trakt",
@@ -1157,7 +1157,7 @@ test(
 
     // The callback reads the List again in the background, with the new token.
     await expect
-      .poll(async () => (await syncStatus()).syncStatus[listId], {
+      .poll(async () => (await syncStatus()).syncStatus[listId][0], {
         timeout: 15_000,
       })
       .toMatchObject({ problem: null, failingSince: null, titleCount: 2 });
@@ -1227,7 +1227,10 @@ test(
     const { body } = await call<AccountSyncSnapshot>(
       `/${accountId}/sync-status`,
     );
-    expect(Object.keys(body.syncStatus)).toEqual([publicId]);
+    expect(body.syncStatus).toEqual({
+      [privateId]: [null],
+      [publicId]: [expect.objectContaining({ problem: null })],
+    });
     expect(body.connections).toEqual([]);
   },
 );
@@ -1259,14 +1262,12 @@ test(
     ]);
     expect(await syncStatus()).toEqual({
       syncStatus: {
-        [listId]: expect.objectContaining({
-          provider: "trakt",
-          sourceRef: "users/fixture-user/watchlist",
-          problem: null,
-        }),
-      },
-      sourceSyncStatus: {
         [listId]: [
+          expect.objectContaining({
+            provider: "trakt",
+            sourceRef: "users/fixture-user/watchlist",
+            problem: null,
+          }),
           expect.objectContaining({
             provider: "trakt",
             sourceRef: "me/watchlist",
@@ -1294,16 +1295,16 @@ test(
     );
     expect(callback.status).toBe(302);
     await expect
-      .poll(async () => (await syncStatus()).sourceSyncStatus?.[listId], {
+      .poll(async () => (await syncStatus()).syncStatus[listId][1], {
         timeout: 15_000,
       })
-      .toEqual([
+      .toEqual(
         expect.objectContaining({
           sourceRef: "me/watchlist",
           problem: null,
           failingSince: null,
         }),
-      ]);
+      );
 
     // A disconnect forgets the private Source list only.
     expect(
@@ -1312,8 +1313,11 @@ test(
     expect(
       (await getSyncStatusRows(listId)).map((row) => row.source_ref),
     ).toEqual(["users/fixture-user/watchlist"]);
-    const after = await syncStatus();
-    expect(Object.keys(after.syncStatus)).toEqual([listId]);
-    expect(after.sourceSyncStatus).toEqual({});
+    expect((await syncStatus()).syncStatus).toEqual({
+      [listId]: [
+        expect.objectContaining({ sourceRef: "users/fixture-user/watchlist" }),
+        null,
+      ],
+    });
   },
 );

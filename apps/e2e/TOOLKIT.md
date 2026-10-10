@@ -471,8 +471,8 @@ now work with each of them:
 
 - A read of one Source list records its sync status under the List, not
   under its cache key (the database refused those rows before). The API
-  sends the first Source list in `syncStatus` and the others in
-  `sourceSyncStatus`; the row shows the problem of one Source list, says
+  sends the status of each Source list in `syncStatus`, in the List's
+  order; the row shows the problem of one Source list, says
   whether the others still show, and "Connect again" connects that Source
   list's Provider. A disconnect forgets only the Source lists read through
   that Connection, and a new authorization reads them again.

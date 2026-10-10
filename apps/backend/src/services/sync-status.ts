@@ -168,16 +168,15 @@ async function sourceStatusesOf(
 }
 
 /**
- * The sync status of each List, for the Source lists it reads now: its
- * first Source list in `syncStatus`, the others of a merged List in
- * `sourceSyncStatus`. Source lists that were never read are left out. When
+ * The sync status of each List, for the Source lists it reads now, in the
+ * order of `listSources` (null for a Source list that was never read). When
  * the recorded statuses cannot be read, only the cache answers: the page
  * shows Lists as waiting, not as broken.
  */
 export async function getListSyncStatuses(
   lists: ConfigList[],
-): Promise<Pick<AccountSyncSnapshot, "syncStatus" | "sourceSyncStatus">> {
-  if (lists.length === 0) return { syncStatus: {}, sourceSyncStatus: {} };
+): Promise<Pick<AccountSyncSnapshot, "syncStatus">> {
+  if (lists.length === 0) return { syncStatus: {} };
   const { data, error } = await supabase
     .from("list_sync_status")
     .select("*")
@@ -196,13 +195,8 @@ export async function getListSyncStatuses(
       ),
     ),
   );
-  const syncStatus: ListSyncStatuses = {};
-  const sourceSyncStatus: Record<string, ListSyncStatus[]> = {};
-  lists.forEach((list, index) => {
-    const [first, ...others] = statuses[index];
-    if (first) syncStatus[list.id] = first;
-    const read = others.filter((status) => status !== null);
-    if (read.length > 0) sourceSyncStatus[list.id] = read;
-  });
-  return { syncStatus, sourceSyncStatus };
+  const syncStatus: ListSyncStatuses = Object.fromEntries(
+    lists.map((list, index) => [list.id, statuses[index]]),
+  );
+  return { syncStatus };
 }

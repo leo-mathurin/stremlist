@@ -801,10 +801,7 @@ test("a merged List shows the problem of one Source list and connects its Provid
   };
   await captureConfig(browser, {
     ...withLists([merged]),
-    syncStatus: {
-      [merged.id]: { ...syncedStatus(imdbUser), provider: "imdb" },
-    },
-    sourceSyncStatus: { [merged.id]: [refused] },
+    syncStatus: { [merged.id]: [syncedStatus(imdbUser), refused] },
     connections: [{ ...connected("trakt"), needsRenewalSince: ago(MINUTE) }],
   });
   await browser.route(
@@ -864,14 +861,9 @@ test("a merged List is up to date as of its oldest refresh", async ({
   await captureConfig(browser, {
     ...withLists([merged]),
     syncStatus: {
-      [merged.id]: syncedStatus(imdbUser, 12, ago(5 * MINUTE)),
-    },
-    sourceSyncStatus: {
       [merged.id]: [
-        {
-          ...syncedStatus("ls99123456", 30, ago(120 * MINUTE)),
-          provider: "imdb",
-        },
+        syncedStatus(imdbUser, 12, ago(5 * MINUTE)),
+        syncedStatus("ls99123456", 30, ago(120 * MINUTE)),
       ],
     },
   });
