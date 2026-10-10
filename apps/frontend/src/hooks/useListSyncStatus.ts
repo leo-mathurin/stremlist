@@ -9,7 +9,11 @@ import type {
 import type { ListSyncStatuses } from "@stremlist/shared/sync-status";
 import { api } from "../lib/api";
 import type { ListFormRow } from "../lib/list-form";
-import { listSyncState, mergedListSyncState } from "../lib/list-sync";
+import {
+  listSyncState,
+  mergedListSyncState,
+  statusOfSource,
+} from "../lib/list-sync";
 import type { ListConnectionState, ListSyncState } from "../lib/list-sync";
 
 /** How often the page asks for the sync status while a refresh runs. */
@@ -94,7 +98,8 @@ export function useListSyncStatus(
     (row: ListFormRow): ListSyncState | null => {
       if (!saved) return null;
       // A saved row reads its saved Source lists, in the order of the
-      // statuses.
+      // statuses. Right after a save, the statuses can still be about the
+      // Source lists from before it.
       const statuses = row.id && isSaved(row) ? syncStatus[row.id] : undefined;
       return mergedListSyncState(
         listSources(row).map((source, index) => {
@@ -109,7 +114,7 @@ export function useListSyncStatus(
           return {
             source,
             state: listSyncState(
-              statuses?.[index] ?? undefined,
+              statusOfSource(statuses, index, source),
               connectionState,
               sourceRequiresConnection(source.provider, source.sourceRef),
             ),

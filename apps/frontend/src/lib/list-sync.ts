@@ -61,6 +61,24 @@ function servedSince(status: ListSyncStatus | undefined): string | null {
 }
 
 /**
+ * The status of the Source list at `index` of a List, from the statuses of
+ * the List in `listSources` order. Undefined when the status is about another
+ * Source list: the statuses come from the last answer, and a save can change
+ * the Source lists of a List before the next answer arrives.
+ */
+export function statusOfSource(
+  statuses: readonly (ListSyncStatus | null)[] | undefined,
+  index: number,
+  source: SourceId,
+): ListSyncStatus | undefined {
+  const status = statuses?.[index];
+  return status?.provider === source.provider &&
+    status.sourceRef === source.sourceRef
+    ? status
+    : undefined;
+}
+
+/**
  * Decide what a List's sync status means for the user.
  *
  * `requiresConnection` is true for Source lists that only a Connection can

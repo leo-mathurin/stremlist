@@ -5,6 +5,7 @@ import {
   attentionTone,
   listSyncState,
   mergedListSyncState,
+  statusOfSource,
   syncLineTone,
 } from "../src/lib/list-sync.ts";
 import type { ListSyncState } from "../src/lib/list-sync.ts";
@@ -289,5 +290,43 @@ describe("syncLineTone", () => {
       syncLineTone({ kind: "waiting", reconnected: false }, true),
       "idle",
     );
+  });
+});
+
+describe("statusOfSource", () => {
+  const status: ListSyncStatus = {
+    provider: "imdb",
+    sourceRef: "imdb:top-rated-movies",
+    lastAttemptAt: "2026-10-08T10:00:00.000Z",
+    lastSuccessAt: "2026-10-08T10:00:00.000Z",
+    titleCount: 250,
+    problem: null,
+    failingSince: null,
+  };
+
+  test("gives the status of the Source list at its position", () => {
+    assert.equal(
+      statusOfSource([status], 0, {
+        provider: "imdb",
+        sourceRef: "imdb:top-rated-movies",
+      }),
+      status,
+    );
+  });
+
+  test("ignores a status about the Source list from before a save", () => {
+    assert.equal(
+      statusOfSource([status], 0, {
+        provider: "imdb",
+        sourceRef: "imdb:top-rated-tv",
+      }),
+      undefined,
+    );
+  });
+
+  test("gives nothing for a Source list that was never read", () => {
+    const source = { provider: "imdb", sourceRef: "ur12345678" } as const;
+    assert.equal(statusOfSource([null], 0, source), undefined);
+    assert.equal(statusOfSource(undefined, 0, source), undefined);
   });
 });
