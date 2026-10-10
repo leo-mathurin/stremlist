@@ -1,7 +1,3 @@
-import {
-  listSyncState,
-  mergedListSyncState,
-} from "@stremlist/shared/sync-status";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../lib/supabase", async () => {
@@ -150,11 +146,6 @@ describe("recording refreshes", () => {
       titleCount: 1,
       problem: "unavailable",
       failingSince: "2026-10-06T12:00:00.000Z",
-    });
-    expect(listSyncState(status, "none", false)).toMatchObject({
-      kind: "failing",
-      problem: "unavailable",
-      olderTitlesFrom: "2026-10-06T10:00:00.000Z",
     });
   });
 
@@ -314,10 +305,6 @@ describe("Lists without a recorded status", () => {
       problem: "unavailable",
       titleCount: 2,
       lastSuccessAt: cachedAt.toISOString(),
-    });
-    expect(listSyncState(status, "none", false)).toMatchObject({
-      kind: "failing",
-      olderTitlesFrom: cachedAt.toISOString(),
     });
   });
 
@@ -618,27 +605,6 @@ describe("merged Lists", () => {
         problem: "needs_connection",
       }),
     ]);
-
-    // The configure page asks to renew the Trakt Connection for its Source
-    // list only: the List still shows its IMDb Titles.
-    expect(
-      mergedListSyncState([
-        {
-          source: { provider: "imdb", sourceRef: "ur1000001" },
-          state: listSyncState(syncStatus[mergedId], "none", false),
-        },
-        {
-          source: WATCHLIST,
-          state: listSyncState(sourceSyncStatus?.[mergedId][0], "renew", true),
-        },
-      ]),
-    ).toEqual({
-      kind: "connection",
-      renew: true,
-      stillShown: false,
-      source: WATCHLIST,
-      othersShown: true,
-    });
   });
 
   it("take the last refresh of each Source list from its own cache", async () => {

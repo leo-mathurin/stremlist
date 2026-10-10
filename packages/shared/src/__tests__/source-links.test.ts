@@ -1,10 +1,10 @@
-import type { ParsedSourceLink } from "@stremlist/shared/providers";
+import type { ParsedSourceLink } from "../providers";
 import {
   describeSourceRef,
   parseSourceLink,
   sourceRequiresConnection,
   storedSourceKind,
-} from "@stremlist/shared/providers";
+} from "../providers";
 import { describe, expect, it } from "vitest";
 
 const JUSTWATCH_ID = "tl-us-0f1e2d3c-4b5a-4968-8776-655443322110";

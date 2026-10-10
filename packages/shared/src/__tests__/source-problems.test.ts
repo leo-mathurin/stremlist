@@ -1,9 +1,9 @@
-import { PROVIDER_IDS } from "@stremlist/shared/providers";
+import { PROVIDER_IDS } from "../providers";
 import {
   SOURCE_PROBLEM_REASONS,
   sourceProblemCopy,
   storedSourceNoun,
-} from "@stremlist/shared/source-problems";
+} from "../source-problems";
 import { describe, expect, it } from "vitest";
 
 describe("storedSourceNoun", () => {

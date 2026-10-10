@@ -4,7 +4,6 @@ import {
   DISPLAY_MODE_OPTIONS,
 } from "@stremlist/shared/constants";
 import type { DisplayMode } from "@stremlist/shared/constants";
-import type { ListSyncState } from "@stremlist/shared/sync-status";
 import {
   CHART_BY_ID,
   CHART_REGISTRY,
@@ -31,6 +30,7 @@ import { MAX_CATALOG_TITLE_LENGTH, rowTitle } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { describeSource } from "../lib/list-sources";
 import { attentionTone } from "../lib/list-sync";
+import type { ListSyncState } from "../lib/list-sync";
 import CatalogFilterSettings from "./CatalogFilterSettings";
 import MergedSources from "./MergedSources";
 import type { MergeControls } from "./MergedSources";

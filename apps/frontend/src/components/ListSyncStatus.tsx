@@ -5,8 +5,8 @@ import {
   sourceProblemCopy,
   storedSourceNoun,
 } from "@stremlist/shared/source-problems";
-import type { ListSyncState } from "@stremlist/shared/sync-status";
 import { attentionTone } from "@/lib/list-sync";
+import type { ListSyncState } from "@/lib/list-sync";
 import { cn, formatRelativeTime } from "@/lib/utils";
 
 type Tone = "ok" | "idle" | "warn" | "bad";

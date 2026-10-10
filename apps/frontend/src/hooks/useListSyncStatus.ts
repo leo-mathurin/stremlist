@@ -6,18 +6,14 @@ import type {
   ConfigList,
   ConnectionSummary,
 } from "@stremlist/shared/stremio.types";
-import {
-  listSyncState,
-  mergedListSyncState,
-} from "@stremlist/shared/sync-status";
 import type {
-  ListConnectionState,
-  ListSyncState,
   ListSyncStatus,
   ListSyncStatuses,
 } from "@stremlist/shared/sync-status";
 import { api } from "../lib/api";
 import type { ListFormRow } from "../lib/list-form";
+import { listSyncState, mergedListSyncState } from "../lib/list-sync";
+import type { ListConnectionState, ListSyncState } from "../lib/list-sync";
 
 /** How often the page asks for the sync status while a refresh runs. */
 const SYNC_POLL_MS = 4000;
