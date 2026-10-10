@@ -75,7 +75,6 @@ interface MdblistIds {
   mdblist?: string | null;
   imdb?: string | null;
   tmdb?: number | null;
-  tvdb?: number | null;
 }
 
 /** One item of a list, watchlist or external list (`unified=true`). */
@@ -291,9 +290,10 @@ function parseRef(ref: string): ParsedRef | null {
   return null;
 }
 
-function itemsPath(parsed: ParsedRef): string | null {
+function itemsPath(parsed: ParsedRef): string {
   switch (parsed.kind) {
     case "watchlist":
+    case "user-watchlist":
       return "/watchlist/items";
     case "list":
       return `/lists/${parsed.id}/items`;
@@ -301,8 +301,6 @@ function itemsPath(parsed: ParsedRef): string | null {
       return `/lists/${encodeURIComponent(parsed.user)}/${encodeURIComponent(parsed.slug)}/items`;
     case "external":
       return `/external/lists/${parsed.id}/items`;
-    case "user-watchlist":
-      return null;
   }
 }
 
@@ -348,9 +346,6 @@ function toEntry(item: MdblistItem): SourceEntry | null {
   if (imdbId) entry.imdbId = imdbId;
   if (typeof tmdbId === "number" && tmdbId > 0) {
     entry.externalIds = { tmdb: { id: tmdbId, type } };
-  }
-  if (typeof item.ids?.tvdb === "number") {
-    entry.externalIds = { ...entry.externalIds, tvdb: item.ids.tvdb };
   }
   if (item.title) entry.title = item.title;
   if (typeof item.release_year === "number") entry.year = item.release_year;
@@ -525,23 +520,21 @@ async function validateSource(
 
   switch (parsed.kind) {
     case "watchlist":
+    case "user-watchlist":
+      // MDBList has no API for another user's watchlist: it only shares the
+      // watchlist of the connected user.
+      if (
+        parsed.kind === "user-watchlist" &&
+        !isSameUser(connection.username, parsed.user)
+      ) {
+        return { ok: false, reason: "private" };
+      }
       return {
         ok: true,
         ref: "me/watchlist",
         suggestedTitle: "MDBList watchlist",
         defaultDisplayMode: "split",
       };
-    case "user-watchlist":
-      // MDBList has no API for another user's watchlist.
-      return isSameUser(connection.username, parsed.user)
-        ? {
-            ok: true,
-            ref: "me/watchlist",
-            suggestedTitle: "MDBList watchlist",
-            defaultDisplayMode: "split",
-          }
-        : // MDBList only shares the watchlist of the connected user.
-          { ok: false, reason: "private" };
     case "external": {
       const { data } = await mdblistRequest(
         connection,
@@ -597,19 +590,16 @@ async function fetchSource(
       "MDBList lists need a Connection",
     );
   }
-  let path = itemsPath(parsed);
-  if (parsed.kind === "user-watchlist") {
-    if (!isSameUser(connection.username, parsed.user)) {
-      throw new SourceUnavailableError(
-        "private",
-        "MDBList only shares the watchlist of the connected user",
-      );
-    }
-    path = "/watchlist/items";
+  if (
+    parsed.kind === "user-watchlist" &&
+    !isSameUser(connection.username, parsed.user)
+  ) {
+    throw new SourceUnavailableError(
+      "private",
+      "MDBList only shares the watchlist of the connected user",
+    );
   }
-  if (!path) {
-    throw new SourceUnavailableError("not_found", `Unknown MDBList ref ${ref}`);
-  }
+  const path = itemsPath(parsed);
 
   const { items, complete } = await readAllItems(connection, path);
   const ordered = path === "/watchlist/items" ? watchlistOrder(items) : items;

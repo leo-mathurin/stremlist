@@ -183,11 +183,7 @@ describe("Trakt reads", () => {
         type: "series",
         title: "The Mandalorian",
         year: 2019,
-        externalIds: {
-          tmdb: { id: 82856, type: "series" },
-          trakt: 137178,
-          tvdb: 361753,
-        },
+        externalIds: { tmdb: { id: 82856, type: "series" }, trakt: 137178 },
         addedAt: "2022-01-02T00:00:00.000Z",
       },
       {

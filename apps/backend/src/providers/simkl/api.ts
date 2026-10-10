@@ -12,7 +12,6 @@ const getLimiter = new RateLimiter(10, 1000);
 export const postLimiter = new RateLimiter(1, 1000);
 
 export const simklClient = oauthClient("SIMKL");
-const { clientId } = simklClient;
 
 interface RequestOptions {
   method?: "GET" | "POST";
@@ -25,7 +24,7 @@ export async function simklRequest<T>(
   path: string,
   options: RequestOptions,
 ): Promise<T> {
-  const id = clientId();
+  const id = simklClient.clientId();
   if (!id) {
     throw new SourceUnavailableError("unavailable", "Simkl is not configured");
   }

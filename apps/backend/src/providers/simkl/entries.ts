@@ -37,8 +37,6 @@ export function toEntry(item: SimklTitle, addedAt?: string): SourceEntry {
   const type = titleType(item.kind, item.animeType);
   const externalIds: ExternalIds = { simkl: item.simkl };
   if (item.tmdb) externalIds.tmdb = { id: item.tmdb, type };
-  if (item.tvdb) externalIds.tvdb = item.tvdb;
-  if (item.mal) externalIds.mal = item.mal;
   return {
     imdbId: item.imdb,
     externalIds,
@@ -50,25 +48,23 @@ export function toEntry(item: SimklTitle, addedAt?: string): SourceEntry {
   };
 }
 
-/** Canonical order: oldest added first; legacy items without a date first. */
-function compareAdded(a: LibraryItem, b: LibraryItem): number {
-  const left = a.addedAt ?? a.lastWatchedAt ?? "";
-  const right = b.addedAt ?? b.lastWatchedAt ?? "";
-  if (left !== right) return left < right ? -1 : 1;
-  return a.simkl - b.simkl;
+/** Oldest `date` first, then by Simkl ID; items without a date first. */
+function byDate(
+  date: (item: LibraryItem) => string | undefined,
+): (a: LibraryItem, b: LibraryItem) => number {
+  return (a, b) => {
+    const left = date(a) ?? "";
+    const right = date(b) ?? "";
+    if (left !== right) return left < right ? -1 : 1;
+    return a.simkl - b.simkl;
+  };
 }
 
 /** Watched items, in the order they were last watched (oldest first). */
 export function historyEntries(items: LibraryItem[]): SourceEntry[] {
   return items
     .filter((item) => item.lastWatchedAt)
-    .sort((a, b) =>
-      (a.lastWatchedAt ?? "") === (b.lastWatchedAt ?? "")
-        ? a.simkl - b.simkl
-        : (a.lastWatchedAt ?? "") < (b.lastWatchedAt ?? "")
-          ? -1
-          : 1,
-    )
+    .sort(byDate((item) => item.lastWatchedAt))
     .map((item) => toEntry(item, item.lastWatchedAt));
 }
 
@@ -76,8 +72,11 @@ export function statusEntries(
   items: LibraryItem[],
   status: SimklStatus,
 ): SourceEntry[] {
-  return items
-    .filter((item) => item.status === status)
-    .sort(compareAdded)
-    .map((item) => toEntry(item, item.addedAt ?? item.lastWatchedAt));
+  return (
+    items
+      .filter((item) => item.status === status)
+      // Canonical order: oldest added first; legacy items without a date first.
+      .sort(byDate((item) => item.addedAt ?? item.lastWatchedAt))
+      .map((item) => toEntry(item, item.addedAt ?? item.lastWatchedAt))
+  );
 }

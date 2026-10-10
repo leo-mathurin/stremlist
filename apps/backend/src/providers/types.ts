@@ -13,10 +13,8 @@ import type { StremioMeta } from "@stremlist/shared/stremio.types";
  */
 export interface ExternalIds {
   tmdb?: { id: number; type: "movie" | "series" };
-  tvdb?: number;
   trakt?: number;
   simkl?: number;
-  mal?: number;
   /** JustWatch title node ID, e.g. "tm92641". */
   justwatch?: string;
   /**

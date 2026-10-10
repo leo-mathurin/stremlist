@@ -1,13 +1,12 @@
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
 import { providerFetch, providerFetchJson } from "./http";
-import { oauthClient } from "./oauth-app";
 import { traktActions } from "./trakt/actions";
 import {
   nonEmpty,
   TRAKT_API,
   traktGetJson,
   TRAKT_AUTH,
-  traktClientId,
+  traktClient,
   traktHeaders,
 } from "./trakt/api";
 import {
@@ -22,8 +21,6 @@ import { SourceUnavailableError } from "./types";
 /** Public Source lists share the app's quota of 500 GETs per 5 minutes. */
 const PUBLIC_FRESHNESS_MS = 6 * 60 * 60_000;
 const PERSONAL_FRESHNESS_MS = 30 * 60_000;
-
-const { clientSecret } = oauthClient("TRAKT");
 
 /**
  * Trakt: public watchlists and lists, official lists and charts with the
@@ -41,9 +38,7 @@ export const traktProvider: ProviderAdapter = {
       : PERSONAL_FRESHNESS_MS;
   },
 
-  validateSource(ref, ctx) {
-    return validateTraktSource(ref, ctx);
-  },
+  validateSource: validateTraktSource,
 
   async fetchSource(ref, ctx) {
     const source = parseTraktRef(ref);
@@ -95,16 +90,15 @@ export const traktProvider: ProviderAdapter = {
     // Trakt wants every OAuth call on its auth host, not the API host.
     authorizeUrl: `${TRAKT_AUTH}/oauth/authorize`,
     tokenUrl: `${TRAKT_AUTH}/oauth/token`,
-    clientId: traktClientId,
     // A public PKCE client needs no secret; send it only when one is set.
-    clientSecret,
+    ...traktClient,
     async revoke(accessToken) {
-      const secret = clientSecret();
+      const secret = traktClient.clientSecret();
       await providerFetch(`${TRAKT_AUTH}/oauth/revoke`, {
         method: "POST",
         json: {
           token: accessToken,
-          client_id: traktClientId(),
+          client_id: traktClient.clientId(),
           ...(secret ? { client_secret: secret } : {}),
         },
       });

@@ -11,23 +11,17 @@ import { libraryKey, readState, STATE_VERSION, writeState } from "./state";
 const SYNC_GATE_MS = 2 * 60_000;
 
 /** Simkl's media types, in the order the full library is read. */
-export const KINDS = ["shows", "movies", "anime"] as const;
+const KINDS = ["shows", "movies", "anime"] as const;
 export type SimklKind = (typeof KINDS)[number];
 
-export type SimklStatus =
-  | "watching"
-  | "plantowatch"
-  | "hold"
-  | "completed"
-  | "dropped";
-
-export const STATUSES: readonly SimklStatus[] = [
+export const STATUSES = [
   "watching",
   "plantowatch",
   "hold",
   "completed",
   "dropped",
-];
+] as const;
+export type SimklStatus = (typeof STATUSES)[number];
 
 // ---------------------------------------------------------------------------
 // Response shapes
@@ -56,7 +50,7 @@ type RawLibrary = Partial<Record<SimklKind, RawEntry[]>>;
 
 type ActivityBlock = Record<string, string | null | undefined>;
 
-export interface SimklActivities {
+interface SimklActivities {
   all?: string | null;
   tv_shows?: ActivityBlock;
   anime?: ActivityBlock;
@@ -86,8 +80,6 @@ export interface SimklIds {
   slug?: string;
   imdb?: string;
   tmdb?: number;
-  tvdb?: number;
-  mal?: number;
 }
 
 /** Library rows carry `simkl`, custom list items `simkl_id`. */
@@ -97,8 +89,6 @@ export function parseIds(raw: RawIds): SimklIds {
     slug: typeof raw.slug === "string" ? raw.slug : undefined,
     imdb: asImdbId(raw.imdb),
     tmdb: toInt(raw.tmdb),
-    tvdb: toInt(raw.tvdb),
-    mal: toInt(raw.mal),
   };
 }
 

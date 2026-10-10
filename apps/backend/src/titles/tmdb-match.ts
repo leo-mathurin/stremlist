@@ -47,7 +47,7 @@ interface Candidate {
 }
 
 /** Lowercase, without accents, spaces or punctuation. */
-export function normalizeText(value: string): string {
+function normalizeText(value: string): string {
   return value
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
@@ -119,13 +119,11 @@ function yearOf(date: string | undefined): number | undefined {
  * Candidate year minus entry year, 0 when the entry has no year (the other
  * checks then decide alone), null when only the candidate has none.
  */
-function yearGap(
-  entryYear: number | undefined,
-  candidateYear: number | undefined,
-): number | null {
-  if (entryYear === undefined) return 0;
+function gapOf(entry: SourceEntry, result: TmdbSearchResult): number | null {
+  if (entry.year === undefined) return 0;
+  const candidateYear = yearOf(result.release_date ?? result.first_air_date);
   if (candidateYear === undefined) return null;
-  return candidateYear - entryYear;
+  return candidateYear - entry.year;
 }
 
 function yearAllowed(type: "movie" | "series", gap: number | null): boolean {
@@ -214,13 +212,6 @@ export function candidateMatches(
     titleAgrees &&
     entry.year !== undefined &&
     Math.abs(candidate.yearGap) <= YEAR_TOLERANCE
-  );
-}
-
-function gapOf(entry: SourceEntry, result: TmdbSearchResult): number | null {
-  return yearGap(
-    entry.year,
-    yearOf(result.release_date ?? result.first_air_date),
   );
 }
 
@@ -325,7 +316,7 @@ export const tmdbSearchMatchStrategy: ResolverStrategy = {
     });
     // One failed entry must not discard the others' results; a full outage
     // still surfaces as a strategy failure.
-    if (failures > 0 && found.size === 0 && failures === entries.length) {
+    if (failures > 0 && failures === entries.length) {
       throw lastError;
     }
     if (failures > 0) {

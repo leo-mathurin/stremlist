@@ -12,7 +12,7 @@ export const TRAKT_API = "https://api.trakt.tv";
 export const TRAKT_AUTH = "https://auth.trakt.tv";
 
 /** Largest page size that Trakt accepts on most paginated endpoints. */
-export const TRAKT_PAGE_SIZE = 250;
+const TRAKT_PAGE_SIZE = 250;
 
 // Trakt allows 500 GETs per 5 minutes for all unauthenticated calls of the
 // app together, and 500 per 5 minutes per user. These limiters only smooth
@@ -23,7 +23,7 @@ const connectedReadLimiter = new RateLimiter(40, 10_000);
 // Trakt allows 1 write per second per user.
 const writeLimiter = new RateLimiter(1, 1000);
 
-export const { clientId: traktClientId } = oauthClient("TRAKT");
+export const traktClient = oauthClient("TRAKT");
 
 /** The string, or null when it is missing or empty. */
 export function nonEmpty(value: string | null | undefined): string | null {
@@ -33,7 +33,7 @@ export function nonEmpty(value: string | null | undefined): string | null {
 
 /** Headers of every Trakt API call; the token goes in `bearer`. */
 export function traktHeaders(): Record<string, string> {
-  const clientId = traktClientId();
+  const clientId = traktClient.clientId();
   if (!clientId) {
     throw new SourceUnavailableError("disabled", "Trakt is not configured");
   }
@@ -75,7 +75,7 @@ async function send(
  * "private" for public reads, "needs_connection" when the Connection's token
  * keeps being refused. Other non-2xx statuses throw HttpError.
  */
-export async function traktGet(
+async function traktGet(
   path: string,
   connection: ConnectionAccess | null,
   options: TraktReadOptions = {},
@@ -141,8 +141,7 @@ export async function traktGetJson<T>(
   return text ? (JSON.parse(text) as T) : null;
 }
 
-export interface PaginateOptions extends TraktReadOptions {
-  pageSize?: number;
+interface PaginateOptions extends TraktReadOptions {
   maxItems: number;
 }
 
@@ -158,12 +157,11 @@ export async function traktGetAll<T>(
   connection: ConnectionAccess | null,
   options: PaginateOptions,
 ): Promise<PagedRead<T>> {
-  const pageSize = options.pageSize ?? TRAKT_PAGE_SIZE;
   const items: T[] = [];
   for (let page = 1; ; page++) {
     const response = await traktGet(path, connection, {
       ...options,
-      query: { page: String(page), limit: String(pageSize) },
+      query: { page: String(page), limit: String(TRAKT_PAGE_SIZE) },
     });
     if (response.status === 204) break;
     const data = (await response.json()) as T[];

@@ -7,7 +7,7 @@ import type { ConnectionAccess } from "../../types";
 import { activities, ANIME, MOVIES, SHOWS } from "./fixtures";
 import { r2 } from "./mocks";
 
-export const LIBRARY_KEY = "connections/acc-1/simkl/library.json";
+const LIBRARY_KEY = "connections/acc-1/simkl/library.json";
 
 export interface Call {
   method: string;
@@ -44,7 +44,7 @@ export function apiCalls(): string[] {
   );
 }
 
-export function defaultRoutes(current: unknown): Record<string, Route> {
+function defaultRoutes(current: unknown): Record<string, Route> {
   return {
     "GET /sync/activities": () => current,
     "GET /sync/all-items/shows": () => SHOWS,

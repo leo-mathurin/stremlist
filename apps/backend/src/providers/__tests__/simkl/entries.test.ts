@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { simklItemUrl, simklProvider } from "../../simkl";
+import { simklProvider } from "../../simkl";
+import { simklItemUrl } from "../../simkl/entries";
 import { calls, ctx, resetSimklTest, restoreSimklTest } from "./harness";
 
 vi.mock("../../../lib/r2", async () => {
@@ -30,11 +31,7 @@ describe("simkl entries", () => {
       },
       {
         imdbId: "tt0158552",
-        externalIds: {
-          simkl: 297,
-          tmdb: { id: 1981, type: "series" },
-          tvdb: 70626,
-        },
+        externalIds: { simkl: 297, tmdb: { id: 1981, type: "series" } },
         type: "series",
         title: "Charmed",
         year: 1998,
@@ -67,7 +64,7 @@ describe("simkl entries", () => {
     const bebop = entries.find((entry) => entry.title === "Cowboy Bebop");
     expect(bebop).toMatchObject({
       type: "series",
-      externalIds: { simkl: 37089, mal: 1 },
+      externalIds: { simkl: 37089 },
     });
     expect(bebop && simklProvider.resolutionKey?.(bebop)).toEqual({
       namespace: "simkl",

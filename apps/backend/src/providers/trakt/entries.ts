@@ -2,12 +2,11 @@ import { asImdbId } from "@stremlist/shared/constants";
 import type { SourceEntry } from "../types";
 
 /** The IDs object of a Trakt movie or show. */
-export interface TraktIds {
+interface TraktIds {
   trakt?: number | null;
   slug?: string | null;
   imdb?: string | null;
   tmdb?: number | null;
-  tvdb?: number | null;
 }
 
 export interface TraktMedia {
@@ -48,7 +47,6 @@ export function mediaToEntry(
   const externalIds: NonNullable<SourceEntry["externalIds"]> = {};
   if (typeof ids.tmdb === "number") externalIds.tmdb = { id: ids.tmdb, type };
   if (typeof ids.trakt === "number") externalIds.trakt = ids.trakt;
-  if (typeof ids.tvdb === "number") externalIds.tvdb = ids.tvdb;
   if (Object.keys(externalIds).length > 0) entry.externalIds = externalIds;
   if (media.title) entry.title = media.title;
   if (typeof media.year === "number") entry.year = media.year;

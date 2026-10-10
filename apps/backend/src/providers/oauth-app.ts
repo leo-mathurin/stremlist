@@ -2,7 +2,7 @@ import type { RateLimiter } from "./http";
 import { ensureOk, providerFetch } from "./http";
 
 /** An environment value; blank counts as unset. */
-export function envValue(name: string): string | undefined {
+function envValue(name: string): string | undefined {
   const value = process.env[name]?.trim();
   if (!value) return undefined;
   return value;

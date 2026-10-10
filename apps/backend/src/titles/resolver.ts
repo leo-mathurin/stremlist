@@ -19,17 +19,17 @@ const STRATEGY_CHUNK = 50;
 /** Time a catalog request may spend in strategies before serving what it has. */
 export const DEFAULT_RESOLVE_BUDGET_MS = 10_000;
 
-export interface ResolveOptions {
+interface ResolveOptions {
   /** Stop starting new chunks after this long; the rest waits for a refresh. */
   budgetMs: number;
 }
 
-export interface ResolvedEntry {
+interface ResolvedEntry {
   imdbId: string;
   entry: SourceEntry;
 }
 
-export interface ResolutionResult {
+interface ResolutionResult {
   /** Resolved entries, in Source list order. */
   resolved: ResolvedEntry[];
   /** Entries without an IMDb ID yet (Unresolved entries, see CONTEXT.md). */
@@ -91,7 +91,6 @@ async function writeCache(
     strategy: string | null;
   }[],
 ): Promise<void> {
-  if (rows.length === 0) return;
   // A Source list can hold the same entry twice, and Postgres rejects an
   // upsert that touches one row twice: the whole batch would be lost.
   const unique = new Map<string, (typeof rows)[number]>();
@@ -142,70 +141,67 @@ export async function resolveEntries(
     if (key) pending.push({ index, key });
   });
 
-  let deferred = 0;
-  if (pending.length > 0) {
-    const cached = await readCache(pending.map(({ key }) => key));
-    const now = Date.now();
-    const toResolve: { index: number; key: ResolutionKey }[] = [];
-    for (const item of pending) {
-      const row = cached.get(cacheKey(item.key));
-      if (row?.imdb_id) {
-        imdbIds[item.index] = row.imdb_id;
-      } else if (
-        !row?.retry_after ||
-        new Date(row.retry_after).getTime() <= now
-      ) {
-        toResolve.push(item);
-      }
+  const cached = await readCache(pending.map(({ key }) => key));
+  const now = Date.now();
+  const toResolve: { index: number; key: ResolutionKey }[] = [];
+  for (const item of pending) {
+    const row = cached.get(cacheKey(item.key));
+    if (row?.imdb_id) {
+      imdbIds[item.index] = row.imdb_id;
+    } else if (
+      !row?.retry_after ||
+      new Date(row.retry_after).getTime() <= now
+    ) {
+      toResolve.push(item);
     }
-
-    const startedAt = Date.now();
-    const capped = toResolve.slice(0, MAX_STRATEGY_ENTRIES_PER_REFRESH);
-    // Chunks let a slow strategy (one search per entry) stop at the time
-    // budget; entries not reached keep no cache row and are tried next time.
-    let attempted = 0;
-    for (let start = 0; start < capped.length; start += STRATEGY_CHUNK) {
-      if (start > 0 && Date.now() - startedAt > options.budgetMs) break;
-      attempted = Math.min(start + STRATEGY_CHUNK, capped.length);
-      const batch = capped.slice(start, start + STRATEGY_CHUNK);
-      const results = new Map<number, { imdbId: string; strategy: string }>();
-      let remaining = batch;
-      for (const strategy of adapter.resolverStrategies ?? []) {
-        if (remaining.length === 0) break;
-        if (strategy.provider && !isProviderEnabled(strategy.provider)) {
-          continue;
-        }
-        try {
-          const found = await strategy.resolve(
-            remaining.map(({ index }) => entries[index]),
-          );
-          for (const [position, imdbId] of found) {
-            // A strategy may answer a position that is not in the batch.
-            const item = position >= 0 ? remaining.at(position) : undefined;
-            if (item && IMDB_TITLE_ID_PATTERN.test(imdbId)) {
-              results.set(item.index, { imdbId, strategy: strategy.name });
-            }
-          }
-        } catch (error) {
-          console.error(
-            `ID resolver strategy ${strategy.name} failed:`,
-            error instanceof Error ? error.message : error,
-          );
-        }
-        remaining = remaining.filter(({ index }) => !results.has(index));
-      }
-
-      for (const [index, { imdbId }] of results) imdbIds[index] = imdbId;
-      await writeCache(
-        batch.map(({ index, key }) => ({
-          key,
-          imdbId: results.get(index)?.imdbId ?? null,
-          strategy: results.get(index)?.strategy ?? null,
-        })),
-      );
-    }
-    deferred = toResolve.length - attempted;
   }
+
+  const startedAt = Date.now();
+  const capped = toResolve.slice(0, MAX_STRATEGY_ENTRIES_PER_REFRESH);
+  // Chunks let a slow strategy (one search per entry) stop at the time
+  // budget; entries not reached keep no cache row and are tried next time.
+  let attempted = 0;
+  for (let start = 0; start < capped.length; start += STRATEGY_CHUNK) {
+    if (start > 0 && Date.now() - startedAt > options.budgetMs) break;
+    attempted = Math.min(start + STRATEGY_CHUNK, capped.length);
+    const batch = capped.slice(start, start + STRATEGY_CHUNK);
+    const results = new Map<number, { imdbId: string; strategy: string }>();
+    let remaining = batch;
+    for (const strategy of adapter.resolverStrategies ?? []) {
+      if (remaining.length === 0) break;
+      if (strategy.provider && !isProviderEnabled(strategy.provider)) {
+        continue;
+      }
+      try {
+        const found = await strategy.resolve(
+          remaining.map(({ index }) => entries[index]),
+        );
+        for (const [position, imdbId] of found) {
+          // A strategy may answer a position that is not in the batch.
+          const item = position >= 0 ? remaining.at(position) : undefined;
+          if (item && IMDB_TITLE_ID_PATTERN.test(imdbId)) {
+            results.set(item.index, { imdbId, strategy: strategy.name });
+          }
+        }
+      } catch (error) {
+        console.error(
+          `ID resolver strategy ${strategy.name} failed:`,
+          error instanceof Error ? error.message : error,
+        );
+      }
+      remaining = remaining.filter(({ index }) => !results.has(index));
+    }
+
+    for (const [index, { imdbId }] of results) imdbIds[index] = imdbId;
+    await writeCache(
+      batch.map(({ index, key }) => ({
+        key,
+        imdbId: results.get(index)?.imdbId ?? null,
+        strategy: results.get(index)?.strategy ?? null,
+      })),
+    );
+  }
+  const deferred = toResolve.length - attempted;
 
   const resolved: ResolvedEntry[] = [];
   const unresolvedEntries: SourceEntry[] = [];

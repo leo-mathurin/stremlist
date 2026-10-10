@@ -13,7 +13,7 @@ export interface Call {
   body: unknown;
 }
 
-export type Handler = (call: Call) => Response;
+type Handler = (call: Call) => Response;
 
 export let routes: { match: string; handler: Handler }[] = [];
 export let calls: Call[] = [];

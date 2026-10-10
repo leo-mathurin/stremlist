@@ -11,7 +11,7 @@ import { LIBRARY_REFS, titleType } from "./entries";
 import type { LibraryItem } from "./library";
 import { knownItems, markLibraryChanged, syncLibrary } from "./library";
 
-export function membershipFrom(items: LibraryItem[]): Membership {
+function membershipFrom(items: LibraryItem[]): Membership {
   const watchlist = new Set<string>();
   const watched = new Set<string>();
   const watchedEpisodes = new Set<string>();

@@ -1,12 +1,12 @@
 import type { PagedRead } from "./types";
 
 /** One page of a paginated read, and the cursor of the next one (null: last). */
-export interface Page<T, C> {
+interface Page<T, C> {
   items: T[];
   next: C | null;
 }
 
-export interface ReadPagesOptions<T, C> {
+interface ReadPagesOptions<T, C> {
   /** Most pages read; reaching it leaves the read incomplete. */
   maxPages: number;
   /** Stop before the next page once this many items are read. */

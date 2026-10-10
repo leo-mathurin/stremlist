@@ -20,11 +20,11 @@ import {
 } from "./entries";
 
 /** Most entries read from one Source list. */
-export const MAX_SOURCE_ITEMS = 5000;
+const MAX_SOURCE_ITEMS = 5000;
 /** Charts and recommendations: one page per kind is plenty. */
 const CHART_ITEMS = 100;
 
-export type TraktChart = "trending" | "popular" | "anticipated";
+type TraktChart = "trending" | "popular" | "anticipated";
 
 /**
  * A Trakt Source list reference, parsed. `user: "me"` reads through the
@@ -89,7 +89,7 @@ export function parseTraktRef(ref: string): TraktSource | null {
   return null;
 }
 
-export function sourceToRef(source: TraktSource): string {
+function sourceToRef(source: TraktSource): string {
   switch (source.kind) {
     case "watchlist":
       return source.user === "me"
@@ -130,18 +130,12 @@ function userPath(user: string): string {
   return `/users/${encodeURIComponent(user)}`;
 }
 
-function listItemsPath(
+function listPath(
   source: TraktSource & { kind: "list" | "shared_list" },
 ): string {
-  const base =
-    source.kind === "list"
-      ? `${userPath(source.user)}/lists/${encodeURIComponent(source.list)}`
-      : `/lists/${encodeURIComponent(source.id)}`;
-  return `${base}/items?sort_by=added&sort_how=asc`;
-}
-
-function readOptions(source: TraktSource): TraktReadOptions {
-  return { publicFallback: !isPersonal(source) };
+  return source.kind === "list"
+    ? `${userPath(source.user)}/lists/${encodeURIComponent(source.list)}`
+    : `/lists/${encodeURIComponent(source.id)}`;
 }
 
 function requireConnection(
@@ -308,7 +302,7 @@ export async function readSource(
   ctx: { connection: ConnectionAccess | null },
 ): Promise<SourceSnapshot> {
   const connection = requireConnection(source, ctx.connection);
-  const options = readOptions(source);
+  const options = { publicFallback: !isPersonal(source) };
   try {
     let snapshot: SourceSnapshot;
     switch (source.kind) {
@@ -322,7 +316,7 @@ export async function readSource(
       case "list":
       case "shared_list":
         snapshot = await listedEntries(
-          listItemsPath(source),
+          `${listPath(source)}/items?sort_by=added&sort_how=asc`,
           connection,
           options,
         );
@@ -392,7 +386,7 @@ export async function validateTraktSource(
 
   try {
     const connection = requireConnection(source, ctx.connection);
-    const options = readOptions(source);
+    const options = { publicFallback: !isPersonal(source) };
     switch (source.kind) {
       case "chart":
         return {
@@ -426,13 +420,9 @@ export async function validateTraktSource(
       }
       case "list":
       case "shared_list": {
-        const path =
-          source.kind === "list"
-            ? `${userPath(source.user)}/lists/${encodeURIComponent(source.list)}`
-            : `/lists/${encodeURIComponent(source.id)}`;
         // A missing list answers 204 with no body.
         const list = await traktGetJson<TraktListSummary>(
-          path,
+          listPath(source),
           connection,
           options,
         );
@@ -448,8 +438,6 @@ export async function validateTraktSource(
           defaultDisplayMode: displayMode,
         };
       }
-      default:
-        break;
     }
     // Personal Source lists: one small read proves the Connection works.
     await traktGetJson("/users/settings", connection);

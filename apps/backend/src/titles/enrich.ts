@@ -89,7 +89,7 @@ async function fetchCinemeta(
   return null;
 }
 
-export interface TitleToEnrich {
+interface TitleToEnrich {
   imdbId: string;
   type?: "movie" | "series";
 }

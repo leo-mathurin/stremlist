@@ -9,10 +9,10 @@ import type { ResolverStrategy } from "../providers/types";
  * Shared by the JustWatch adapter and by the SensCritique ID resolution,
  * because SensCritique products can link to a JustWatch title.
  */
-export const JUSTWATCH_GRAPHQL = "https://apis.justwatch.com/graphql";
+const JUSTWATCH_GRAPHQL = "https://apis.justwatch.com/graphql";
 
 // No published limits: stay gentle (ToS forbid scraping; see STR-18).
-export const justwatchLimiter = new RateLimiter(5, 1000);
+const justwatchLimiter = new RateLimiter(5, 1000);
 
 export function justwatchQuery<T>(
   query: string,
@@ -39,9 +39,7 @@ const IMDB_BY_PATH = `
  * IMDb ID of the JustWatch title at a site path such as "/fr/film/inception",
  * or null when JustWatch has none.
  */
-export async function justwatchImdbIdByPath(
-  path: string,
-): Promise<string | null> {
+async function justwatchImdbIdByPath(path: string): Promise<string | null> {
   const json = await justwatchQuery<{
     urlV2?: {
       node?: { content?: { externalIds?: { imdbId?: string | null } } };
@@ -71,7 +69,7 @@ const NODE_IDS_PER_REQUEST = 50;
  * are left out. A node that cannot be read only nulls its own slot in the
  * response, so one bad ID does not hide the others.
  */
-export async function justwatchImdbIdsByNodeIds(
+async function justwatchImdbIdsByNodeIds(
   ids: readonly string[],
 ): Promise<Map<string, string>> {
   const found = new Map<string, string>();
@@ -140,7 +138,6 @@ export const justwatchRecheckStrategy: ResolverStrategy = {
     const nodeIds = entries.flatMap((entry) =>
       entry.externalIds?.justwatch ? [entry.externalIds.justwatch] : [],
     );
-    if (nodeIds.length === 0) return found;
     const byNodeId = await justwatchImdbIdsByNodeIds(nodeIds);
     entries.forEach((entry, index) => {
       const nodeId = entry.externalIds?.justwatch;

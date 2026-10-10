@@ -4,7 +4,7 @@ import type { ActionTarget } from "./types";
  * The Trakt-style /sync body that Trakt, Simkl and MDBList share for
  * Actions: Titles keyed by IMDb ID, in a "movies" or "shows" bucket.
  */
-export type SyncBucket = "movies" | "shows";
+type SyncBucket = "movies" | "shows";
 
 /** The IDs object that names a Title. */
 export function syncIds(target: ActionTarget): { imdb: string } {

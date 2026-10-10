@@ -265,7 +265,7 @@ describe("mdblistProvider.fetchSource", () => {
       {
         type: "movie",
         imdbId: "tt6718170",
-        externalIds: { tmdb: { id: 502356, type: "movie" }, tvdb: 136578 },
+        externalIds: { tmdb: { id: 502356, type: "movie" } },
         title: "The Super Mario Bros. Movie",
         year: 2023,
         runtimeMinutes: 93,
@@ -279,7 +279,7 @@ describe("mdblistProvider.fetchSource", () => {
       {
         type: "series",
         imdbId: "tt0903747",
-        externalIds: { tmdb: { id: 1396, type: "series" }, tvdb: 81189 },
+        externalIds: { tmdb: { id: 1396, type: "series" } },
         title: "Breaking Bad",
         year: 2008,
       },

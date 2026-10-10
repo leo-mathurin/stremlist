@@ -18,11 +18,6 @@ interface SparqlResponse {
   };
 }
 
-/** Quote a value as a SPARQL string literal. */
-function sparqlString(value: string): string {
-  return JSON.stringify(value);
-}
-
 /**
  * Map external IDs of one Wikidata property (for example P10100, SensCritique
  * work ID) to IMDb IDs, with one SPARQL query per batch. An external ID that
@@ -41,9 +36,10 @@ export async function wikidataImdbIds(
 
   for (let start = 0; start < unique.length; start += BATCH_SIZE) {
     const batch = unique.slice(start, start + BATCH_SIZE);
-    // wdt: reads only best-rank statements, so deprecated IMDb IDs are skipped.
+    // JSON strings are valid SPARQL string literals. wdt: reads only
+    // best-rank statements, so deprecated IMDb IDs are skipped.
     const query = `SELECT ?external ?imdb WHERE {
-  VALUES ?external { ${batch.map(sparqlString).join(" ")} }
+  VALUES ?external { ${batch.map((id) => JSON.stringify(id)).join(" ")} }
   ?item wdt:${property} ?external ;
         wdt:${IMDB_PROPERTY} ?imdb .
 }`;

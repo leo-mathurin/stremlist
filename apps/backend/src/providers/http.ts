@@ -3,7 +3,7 @@ import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { SourceUnavailableError } from "./types";
 
 /** Identifying User-Agent for Provider APIs (Trakt and Simkl require one). */
-export const STREMLIST_USER_AGENT = `Stremlist/${ADDON_VERSION} (+https://stremlist.com)`;
+const STREMLIST_USER_AGENT = `Stremlist/${ADDON_VERSION} (+https://stremlist.com)`;
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_RETRY_AFTER_MS = 10_000;
@@ -194,13 +194,12 @@ export async function graphqlRequest<T>(
   options: ProviderFetchOptions = {},
 ): Promise<GraphQLResponse<T>> {
   const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
   headers.set("Accept", "application/json");
   const { data } = await providerFetchJson<GraphQLResponse<T>>(url, {
     ...options,
     method: "POST",
     headers,
-    body: JSON.stringify({ query, variables }),
+    json: { query, variables },
   });
   return data;
 }

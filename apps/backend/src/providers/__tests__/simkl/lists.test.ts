@@ -87,7 +87,7 @@ describe("simkl custom lists", () => {
     expect(entries).toEqual([
       {
         imdbId: "tt0113568",
-        externalIds: { simkl: 53536, mal: 43 },
+        externalIds: { simkl: 53536 },
         type: "movie",
         title: "Ghost in the Shell",
         year: 1995,

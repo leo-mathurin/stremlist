@@ -38,7 +38,7 @@ export async function tmdbGet<T>(
 }
 
 /** IMDb ID of a TMDB movie or show, or null. */
-export async function tmdbImdbId(
+async function tmdbImdbId(
   tmdbId: number,
   type: "movie" | "series",
 ): Promise<string | null> {

@@ -39,7 +39,7 @@ function watchlistIds(items: TraktItem[]): string[] {
 }
 
 /** Watched movies, shows with at least one watched episode, and episodes. */
-export function parseWatched(
+function parseWatched(
   movies: TraktItem[],
   shows: WatchedShow[],
 ): Pick<Membership, "watched" | "watchedEpisodes"> {
@@ -64,7 +64,7 @@ export function parseWatched(
   return { watched: [...watched], watchedEpisodes };
 }
 
-export function parseRatings(rows: RatedItem[]): Record<string, number> {
+function parseRatings(rows: RatedItem[]): Record<string, number> {
   const ratings: Record<string, number> = {};
   for (const row of rows) {
     const media = row.type === "show" ? row.show : (row.movie ?? row.show);
@@ -96,7 +96,7 @@ async function getMembership(
 }
 
 /** The /sync body for one Title, keyed by IMDb ID. */
-export function syncBody(
+function syncBody(
   intent: ActionIntent,
   target: ActionTarget,
 ): { path: string; body: Record<string, unknown[]> } {

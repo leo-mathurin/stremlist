@@ -17,14 +17,8 @@ import {
 } from "./simkl/library";
 import { fetchCustomList, readListPage } from "./simkl/lists";
 import { clearMemoryState, forgetMemoryState } from "./simkl/state";
-import type {
-  ConnectionAccess,
-  ProviderAdapter,
-  SourceValidation,
-} from "./types";
+import type { ProviderAdapter, SourceValidation } from "./types";
 import { SourceUnavailableError } from "./types";
-
-export { simklItemUrl } from "./simkl/entries";
 
 const LIST_REF = /^me\/lists\/(\d+)$/;
 
@@ -32,18 +26,6 @@ const LIST_REF = /^me\/lists\/(\d+)$/;
 export function resetSimklState(): void {
   clearMemoryState();
   clearInFlightSyncs();
-}
-
-function requireConnection(ctx: {
-  connection: ConnectionAccess | null;
-}): ConnectionAccess {
-  if (!ctx.connection) {
-    throw new SourceUnavailableError(
-      "needs_connection",
-      "Simkl lists need a Connection",
-    );
-  }
-  return ctx.connection;
 }
 
 /**
@@ -93,7 +75,13 @@ export const simklProvider: ProviderAdapter = {
         `Unknown Simkl source ${ref}`,
       );
     }
-    const connection = requireConnection(ctx);
+    const { connection } = ctx;
+    if (!connection) {
+      throw new SourceUnavailableError(
+        "needs_connection",
+        "Simkl lists need a Connection",
+      );
+    }
     if (listId) return fetchCustomList(connection, listId);
     const library = await syncLibrary(connection);
     return {
@@ -138,9 +126,7 @@ export const simklProvider: ProviderAdapter = {
     async fetchUsername(token) {
       const data = await simklRequest<{ user?: { name?: string } }>(
         "/users/settings",
-        {
-          token,
-        },
+        { token },
       );
       const name = data.user?.name?.trim();
       if (!name) return null;
