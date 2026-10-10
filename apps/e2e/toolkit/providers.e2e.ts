@@ -32,7 +32,7 @@ import {
 // (Letterboxd links only explain the MDBList import), the kill switch,
 // Connections and their OAuth round trip,
 // disconnect, Actions settings and the Legacy alias upgrade. The API is
-// intercepted; tests/provider-journeys.spec.ts runs the real backend.
+// intercepted; the tests/provider-*.spec.ts files run the real backend.
 
 const PASTE = "Paste a link to a watchlist or list";
 const app4311 = "http://127.0.0.1:4311";

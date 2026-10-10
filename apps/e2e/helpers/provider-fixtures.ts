@@ -1,4 +1,4 @@
-// Loaded only by the isolated Provider backends of provider-journeys.spec.ts
+// Loaded only by the isolated Provider backends of the provider-*.spec.ts files
 // and catalog-preview.spec.ts (the synthetic list of preview-fixture.ts).
 // The real adapters, OAuth flow, ID resolver, database and R2 code run; every
 // outbound request to a Provider is answered here with deterministic data.

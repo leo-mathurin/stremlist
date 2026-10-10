@@ -18,10 +18,7 @@ import { deleteCacheObjects, deleteConnectionObjects } from "./r2.js";
 // between tests. Live tests bootstrap through the HTTP API; controlled catalog
 // fixtures seed rows before the backend first reads them. Specs use the named
 // seeders and readers below, never the client itself.
-export const db = createClient<Database>(
-  SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY,
-);
+const db = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 /**
  * The Accounts that this run owns: the Legacy aliases of the E2E fixtures,
