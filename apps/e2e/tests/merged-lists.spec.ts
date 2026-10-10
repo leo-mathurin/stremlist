@@ -10,7 +10,11 @@ import {
   getMeta,
   postConfig,
 } from "../helpers/api.js";
-import { SAVED_REINSTALL, saveButton } from "../helpers/configure.js";
+import {
+  SAVED_REINSTALL,
+  saveButton,
+  saveConfigure,
+} from "../helpers/configure.js";
 import {
   getListRows,
   resetDb,
@@ -398,13 +402,7 @@ test(
     await page.getByRole("menuitem", { name: "Second QA" }).click();
     await expect(page.getByText("2 Source lists · IMDb")).toBeVisible();
 
-    const response = page.waitForResponse(
-      (res) =>
-        res.url().endsWith("/config") && res.request().method() === "POST",
-    );
-    await saveButton(page).click();
-    expect((await response).status()).toBe(200);
-    await expect(page.getByText("Saved!", { exact: false })).toBeVisible();
+    await saveConfigure(page);
 
     const rows = await getListRows(accountId);
     expect(

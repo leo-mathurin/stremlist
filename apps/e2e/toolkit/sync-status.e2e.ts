@@ -2,7 +2,6 @@ import { test } from "@e2e-dev/web";
 import type { Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
 import type {
-  AccountConfigResponse,
   AccountSyncSnapshot,
   ConfigList,
 } from "@stremlist/shared/stremio.types";
@@ -24,6 +23,10 @@ import {
   saveButton,
   syncedStatus,
   toJson,
+  MINUTE,
+  ago,
+  routeConnectStart,
+  routeConnectionSources,
 } from "./config-fixture";
 import type { PreviewRequest } from "./config-fixture";
 
@@ -31,9 +34,6 @@ import type { PreviewRequest } from "./config-fixture";
 // refresh, and the Connections that need to be renewed. The API is
 // intercepted; the Playwright spec `sync-status.spec.ts` checks the real
 // recording.
-
-const MINUTE = 60_000;
-const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 
 const ids = {
   synced: row.id,
@@ -85,37 +85,6 @@ async function routeSyncStatus(
   return polls;
 }
 
-/** The Source lists of the Trakt Connection (Quick add asks for them). */
-async function routeTraktSources(browser: Browser) {
-  await browser.route(
-    `${backend}/${accountId}/connections/trakt/sources`,
-    async (route) => {
-      await route.fulfill({ json: { sources: [] } });
-    },
-  );
-}
-
-/** Record starts of an authorization and end them on a fixture page. */
-async function routeConnectStart(browser: Browser) {
-  const starts: string[] = [];
-  await browser.route(
-    `${backend}/${accountId}/connections/trakt/start`,
-    async (route) => {
-      starts.push(route.request.method);
-      await route.fulfill({
-        json: { ok: true, authorizeUrl: `${backend}/authorize-fixture` },
-      });
-    },
-  );
-  await browser.route(`${backend}/authorize-fixture`, async (route) => {
-    await route.fulfill({
-      contentType: "text/html",
-      body: "<h1>Trakt authorization fixture</h1>",
-    });
-  });
-  return starts;
-}
-
 test("each List shows its last refresh or why it failed, and a new List is polled until it refreshes", async ({
   app,
   browser,
@@ -154,7 +123,7 @@ test("each List shows its last refresh or why it failed, and a new List is polle
       list(ids.waiting, "imdb:box-office", "Box office"),
     ],
     syncStatus: statuses,
-  } as AccountConfigResponse);
+  });
   const polls = await routeSyncStatus(browser, (poll) => ({
     syncStatus:
       poll < 2
@@ -328,9 +297,9 @@ test(
         ],
       },
       connections: [{ ...traktConnection, needsRenewalSince: ago(MINUTE) }],
-    } as AccountConfigResponse);
+    });
     const starts = await routeConnectStart(browser);
-    await routeTraktSources(browser);
+    await routeConnectionSources(browser);
     await fitConfigurePage(browser);
     await app.open(`/configure?account=${accountId}`);
 
@@ -437,7 +406,7 @@ test("a Connection that works again clears the renewal state after a poll", asyn
     },
     connections: [traktConnection],
   }));
-  await routeTraktSources(browser);
+  await routeConnectionSources(browser);
   await app.open(`/configure?account=${accountId}`);
 
   await expect(
@@ -466,7 +435,7 @@ test("a refused Connection noticed elsewhere does not claim its cached List is g
     },
     connections: [{ ...traktConnection, needsRenewalSince: ago(MINUTE) }],
   });
-  await routeTraktSources(browser);
+  await routeConnectionSources(browser);
   await app.open(`/configure?account=${accountId}`);
 
   await expect(
@@ -542,13 +511,8 @@ test("each failure reason says what to do, next to Lists that refresh fine", asy
       ],
     },
     connections: [connected("mdblist")],
-  } as AccountConfigResponse);
-  await browser.route(
-    `${backend}/${accountId}/connections/mdblist/sources`,
-    async (route) => {
-      await route.fulfill({ json: { sources: [] } });
-    },
-  );
+  });
+  await routeConnectionSources(browser, "mdblist");
   await app.open(`/configure?account=${accountId}`);
 
   await expect(
@@ -758,7 +722,7 @@ test("an open preview is read again when a refresh finds its Connection refused"
     lists: [row, traktWatchlist],
     connections: [traktConnection],
   });
-  await routeTraktSources(browser);
+  await routeConnectionSources(browser);
   const previews: PreviewRequest[] = [];
   let refused = false;
   await browser.route(`${backend}/lists/preview`, async (route) => {

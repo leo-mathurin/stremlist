@@ -1,10 +1,7 @@
 import { test } from "@e2e-dev/web";
 import type { Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
-import type {
-  AccountConfigInput,
-  AccountConfigResponse,
-} from "@stremlist/shared/stremio.types";
+import type { AccountConfigInput } from "@stremlist/shared/stremio.types";
 import {
   SAVED_REINSTALL,
   accountId,
@@ -26,13 +23,15 @@ import {
   SAVE_NEW,
   holdToasts,
   fitConfigurePage,
+  routeConfig,
+  routeConnectionSources,
 } from "./config-fixture";
 
 // Provider journeys of the configure page: links of every available Provider
 // (Letterboxd links only explain the MDBList import), the kill switch,
 // Connections and their OAuth round trip,
 // disconnect, Actions settings and the Legacy alias upgrade. The API is
-// intercepted; tests/provider-journeys.spec.ts runs the real backend.
+// intercepted; the tests/provider-*.spec.ts files run the real backend.
 
 const PASTE = "Paste a link to a watchlist or list";
 const app4311 = "http://127.0.0.1:4311";
@@ -63,24 +62,6 @@ async function routeAuthorize(
       body: `<!doctype html><title>Authorize</title><script>location.replace(${JSON.stringify(back)})</script>`,
     });
   });
-}
-
-/** A configuration that the test can change while the page is open. */
-async function liveConfig(browser: Browser, initial: AccountConfigResponse) {
-  const state = { config: initial };
-  const submissions: AccountConfigInput[] = [];
-  await browser.route(`${backend}/${accountId}/config`, async (route) => {
-    if (route.request.method === "GET") {
-      await route.fulfill({ json: toJson(state.config) });
-      return;
-    }
-    const submitted = parseBody<AccountConfigInput>(route);
-    submissions.push(submitted);
-    await route.fulfill({
-      json: toJson({ ok: true, lists: savedLists(submitted) }),
-    });
-  });
-  return { state, submissions };
 }
 
 test("pasted links of every available Provider become Lists of a new setup", async ({
@@ -250,34 +231,25 @@ test("a link that needs a Connection saves the setup, connects, then adds the li
     `${app4311}/configure?account=${accountId}&connected=mdblist`,
     authorized,
   );
-  await liveConfig(browser, {
+  await routeConfig(browser, {
     ...configuration,
     lists: [],
     connections: [connected("mdblist")],
   });
-  await browser.route(
-    `${backend}/${accountId}/connections/mdblist/sources`,
-    async (route) => {
-      await route.fulfill({
-        json: {
-          sources: [
-            {
-              ref: "me/watchlist",
-              kind: "watchlist",
-              label: "Watchlist",
-              defaultDisplayMode: "split",
-            },
-            {
-              ref: "me/lists/77",
-              kind: "list",
-              label: "Horror nights",
-              defaultDisplayMode: "movie",
-            },
-          ],
-        },
-      });
+  await routeConnectionSources(browser, "mdblist", [
+    {
+      ref: "me/watchlist",
+      kind: "watchlist",
+      label: "Watchlist",
+      defaultDisplayMode: "split",
     },
-  );
+    {
+      ref: "me/lists/77",
+      kind: "list",
+      label: "Horror nights",
+      defaultDisplayMode: "movie",
+    },
+  ]);
 
   await app.open("/configure");
   await screen.getByLabel(PASTE).fill(link);
@@ -343,18 +315,13 @@ test(
         mdblist: { connectable: false },
       }),
     );
-    const { state, submissions } = await liveConfig(browser, {
+    const { state, submissions } = await routeConfig(browser, {
       ...configuration,
       lists: [row, traktList],
       connections: [connected("trakt")],
       actions: { enabled: true, providers: ["trakt"] },
     });
-    await browser.route(
-      `${backend}/${accountId}/connections/trakt/sources`,
-      async (route) => {
-        await route.fulfill({ json: { sources: [] } });
-      },
-    );
+    await routeConnectionSources(browser);
     const deletes: string[] = [];
     await browser.route(
       `${backend}/${accountId}/connections/trakt`,
@@ -437,17 +404,12 @@ test("Actions settings save the chosen Providers in their order", async ({
   screen,
 }) => {
   await baseRoutes(browser);
-  const { submissions } = await liveConfig(browser, {
+  const { submissions } = await routeConfig(browser, {
     ...configuration,
     connections: [connected("trakt"), connected("simkl", null)],
   });
-  for (const provider of ["trakt", "simkl"]) {
-    await browser.route(
-      `${backend}/${accountId}/connections/${provider}/sources`,
-      async (route) => {
-        await route.fulfill({ json: { sources: [] } });
-      },
-    );
+  for (const provider of ["trakt", "simkl"] as const) {
+    await routeConnectionSources(browser, provider);
   }
   await app.open(`/configure?account=${accountId}`);
   const toggle = screen.getByRole("checkbox", "Show Actions in Stremio");

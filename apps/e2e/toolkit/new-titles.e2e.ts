@@ -25,6 +25,7 @@ import {
   savedLists,
   syncedStatus,
   toJson,
+  routeConnectionSources,
 } from "./config-fixture";
 
 // The "New titles" catalog setting (ADR 0007). Detection itself runs in the
@@ -348,12 +349,7 @@ test("a save and a disconnect show the summary of what is left", async ({
       }),
     });
   });
-  await browser.route(
-    `${backend}/${accountId}/connections/trakt/sources`,
-    async (route) => {
-      await route.fulfill({ json: { sources: [] } });
-    },
-  );
+  await routeConnectionSources(browser);
   // The sync status poll after the save answers the current Connections.
   await browser.route(`${backend}/${accountId}/sync-status`, async (route) => {
     await route.fulfill({

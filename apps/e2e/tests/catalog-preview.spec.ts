@@ -1,33 +1,26 @@
 import { expect, test } from "@playwright/test";
-import type { APIRequestContext, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import type { CatalogPreviewResponse } from "@stremlist/shared/catalog-preview";
+import { BACKEND_URL, FRONTEND_URL } from "../env.js";
+import type { Api, PreviewInput } from "../helpers/api.js";
+import { api } from "../helpers/api.js";
 import {
-  BACKEND_URL,
-  CONNECTION_ENCRYPTION_KEY,
-  FRONTEND_URL,
-  R2_ACCESS_KEY_ID,
-  R2_BUCKET,
-  R2_ENDPOINT,
-  R2_SECRET_ACCESS_KEY,
-  SUPABASE_SERVICE_ROLE_KEY,
-  SUPABASE_URL,
-} from "../env.js";
-import {
-  db,
+  clearResolverCache,
   getListRows,
+  getResolverRows,
   getSyncStatusRows,
   resetDb,
   seedAccount,
   seedAccountWithLists,
   seedConnection,
 } from "../helpers/db.js";
+import type { FixtureBackend } from "../helpers/fixture-backend.js";
+import { startFixtureBackend } from "../helpers/fixture-backend.js";
 import {
   PREVIEW_PRIVATE_LIST,
   PREVIEW_PRODUCT_IDS,
   PREVIEW_PUBLIC_LIST,
 } from "../helpers/preview-fixture.js";
-import type { ProviderBackend } from "../helpers/provider-backend.js";
-import { startProviderBackend } from "../helpers/provider-backend.js";
 import { countCacheObjects } from "../helpers/r2.js";
 import { CATALOG_FIXTURE_USER, PUBLIC_LIST } from "../helpers/test-data.js";
 
@@ -40,51 +33,33 @@ import { CATALOG_FIXTURE_USER, PUBLIC_LIST } from "../helpers/test-data.js";
 const PUBLIC_REF = `lists/${PREVIEW_PUBLIC_LIST}`;
 const PRIVATE_REF = `lists/${PREVIEW_PRIVATE_LIST}`;
 
-let backend: ProviderBackend;
+let backend: FixtureBackend;
 
 test.beforeAll(async () => {
-  // No TMDB key: the TMDB strategy stays off, so only Wikidata resolves.
-  backend = await startProviderBackend("./provider-fixtures.ts", {
-    SUPABASE_URL,
-    SUPABASE_SERVICE_ROLE_KEY,
-    FRONTEND_URL,
-    R2_ENDPOINT,
-    R2_ACCESS_KEY_ID,
-    R2_SECRET_ACCESS_KEY,
-    R2_BUCKET,
-    CONNECTION_ENCRYPTION_KEY,
-    RESEND_API_KEY: "re_fixture_only",
-  });
+  backend = await startFixtureBackend("./provider-fixtures.ts");
 });
 test.afterAll(async () => {
   await backend?.stop();
 });
 
-/** Forget what earlier runs resolved for the synthetic products. */
-async function clearResolverCache() {
-  const { error } = await db
-    .from("title_id_map")
-    .delete()
-    .eq("namespace", "senscritique")
-    .in("external_id", PREVIEW_PRODUCT_IDS);
-  if (error) throw error;
-}
-
 test.beforeEach(async () => {
   await resetDb();
-  await clearResolverCache();
+  // Forget what earlier runs resolved for the synthetic products.
+  await clearResolverCache("senscritique", PREVIEW_PRODUCT_IDS);
 });
 
+/** A preview through `through`, sorted by date added and split by default. */
 async function preview(
-  request: APIRequestContext,
-  base: string,
-  body: Record<string, unknown>,
+  through: Api,
+  input: Omit<PreviewInput, "sortOption"> & { sortOption?: string },
 ): Promise<CatalogPreviewResponse> {
-  const response = await request.post(`${base}/lists/preview`, {
-    data: { sortOption: "added_at-asc", displayMode: "split", ...body },
+  const { status, body } = await through.previewList({
+    sortOption: "added_at-asc",
+    displayMode: "split",
+    ...input,
   });
-  expect(response.status()).toBe(200);
-  return (await response.json()) as CatalogPreviewResponse;
+  expect(status).toBe(200);
+  return body;
 }
 
 function previewOk(result: CatalogPreviewResponse) {
@@ -95,13 +70,13 @@ function previewOk(result: CatalogPreviewResponse) {
 test(
   "a preview resolves the Source list and lists its Unresolved entries",
   { tag: "@local" },
-  async ({ request }, testInfo) => {
+  async () => {
     // The backend keeps a read for minutes: a retry asks for a list that it
     // did not read yet, so the resolver runs (and writes its cache) again.
     const result = previewOk(
-      await preview(request, backend.url, {
+      await preview(backend.api, {
         provider: "senscritique",
-        sourceRef: `lists/${PREVIEW_PUBLIC_LIST + 100 + testInfo.retry}`,
+        sourceRef: `lists/${PREVIEW_PUBLIC_LIST + 100 + test.info().retry}`,
       }),
     );
 
@@ -141,15 +116,9 @@ test(
     expect(result.withoutDetails).toBe(0);
 
     // The resolver remembers both outcomes; unresolved ones wait for a retry.
-    const { data: rows, error } = await db
-      .from("title_id_map")
-      .select("external_id, imdb_id, strategy, retry_after")
-      .eq("namespace", "senscritique")
-      .in("external_id", PREVIEW_PRODUCT_IDS)
-      .order("external_id");
-    expect(error).toBeNull();
+    const rows = await getResolverRows("senscritique", PREVIEW_PRODUCT_IDS);
     expect(
-      rows!.map(({ external_id, imdb_id, strategy }) => ({
+      rows.map(({ external_id, imdb_id, strategy }) => ({
         external_id,
         imdb_id,
         strategy,
@@ -168,7 +137,7 @@ test(
       },
       { external_id: "990000104", imdb_id: null, strategy: null },
     ]);
-    for (const row of rows!.filter((entry) => entry.imdb_id === null)) {
+    for (const row of rows.filter((entry) => entry.imdb_id === null)) {
       expect(Date.parse(row.retry_after!)).toBeGreaterThan(Date.now());
     }
   },
@@ -177,9 +146,9 @@ test(
 test(
   "a preview follows the sort, Show and presets of the List",
   { tag: "@local" },
-  async ({ request }) => {
+  async () => {
     const result = previewOk(
-      await preview(request, backend.url, {
+      await preview(backend.api, {
         provider: "senscritique",
         sourceRef: PUBLIC_REF,
         sortOption: "title-asc",
@@ -213,9 +182,9 @@ test(
 test(
   "a private Source list is an expected problem",
   { tag: "@local" },
-  async ({ request }) => {
+  async () => {
     expect(
-      await preview(request, backend.url, {
+      await preview(backend.api, {
         provider: "senscritique",
         sourceRef: PRIVATE_REF,
       }),
@@ -226,7 +195,7 @@ test(
 test(
   "a preview of a saved List writes no Catalog cache or sync status and changes no List",
   { tag: "@local" },
-  async ({ request }) => {
+  async () => {
     const {
       accountId,
       listIds: [listId],
@@ -240,7 +209,7 @@ test(
     const before = await getListRows(accountId);
 
     previewOk(
-      await preview(request, backend.url, {
+      await preview(backend.api, {
         accountKey: accountId,
         provider: "senscritique",
         sourceRef: PUBLIC_REF,
@@ -265,14 +234,14 @@ test(
     await seedConnection(accountId, "trakt");
 
     expect(
-      await preview(request, BACKEND_URL, {
+      await preview(api, {
         accountKey: CATALOG_FIXTURE_USER,
         provider: "trakt",
         sourceRef: "me/history",
       }),
     ).toEqual({ ok: false, reason: "needs_connection" });
     expect(
-      await preview(request, BACKEND_URL, {
+      await preview(api, {
         provider: "trakt",
         sourceRef: "me/history",
       }),
@@ -288,9 +257,9 @@ test(
 test(
   "a Provider that is coming soon is refused without a read",
   { tag: "@local" },
-  async ({ request }) => {
+  async () => {
     expect(
-      await preview(request, BACKEND_URL, {
+      await preview(api, {
         provider: "letterboxd",
         sourceRef: "someone/list/favorites",
       }),
@@ -357,9 +326,9 @@ test(
 test(
   "a live IMDb list previews its first Titles",
   { tag: "@live-regression" },
-  async ({ request }) => {
+  async () => {
     const result = previewOk(
-      await preview(request, BACKEND_URL, {
+      await preview(api, {
         provider: "imdb",
         sourceRef: PUBLIC_LIST,
       }),

@@ -1,6 +1,7 @@
 import type { Browser, WebRoute } from "@e2e-dev/web";
 import type {
   CatalogPreview,
+  CatalogPreviewResponse,
   CatalogPreviewRow,
 } from "@stremlist/shared/catalog-preview";
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
@@ -283,18 +284,20 @@ export function parseBody<T>(route: WebRoute): T {
 
 /**
  * Serve one Account's configuration and record every save. Saves succeed
- * and echo the submitted Lists, as the backend does.
+ * and echo the submitted Lists, as the backend does. A load answers
+ * `state.config`, so the test can change the configuration while the page
+ * is open. Registers no `baseRoutes`.
  */
-export async function captureConfig(
+export async function routeConfig(
   browser: Browser,
   initial: AccountConfigResponse = configuration,
   key = accountId,
 ) {
-  await baseRoutes(browser);
+  const state = { config: initial };
   const submissions: AccountConfigInput[] = [];
   await browser.route(`${backend}/${key}/config`, async (route) => {
     if (route.request.method === "GET") {
-      await route.fulfill({ json: toJson(initial) });
+      await route.fulfill({ json: toJson(state.config) });
     } else {
       const submitted = parseBody<AccountConfigInput>(route);
       submissions.push(submitted);
@@ -303,7 +306,20 @@ export async function captureConfig(
       });
     }
   });
-  return submissions;
+  return { state, submissions };
+}
+
+/**
+ * `baseRoutes`, then `routeConfig`: serve one Account's configuration and
+ * return the recorded saves.
+ */
+export async function captureConfig(
+  browser: Browser,
+  initial: AccountConfigResponse = configuration,
+  key = accountId,
+) {
+  await baseRoutes(browser);
+  return (await routeConfig(browser, initial, key)).submissions;
 }
 
 /** A successful `/links/resolve` answer. */
@@ -338,10 +354,80 @@ export async function routeResolve(
     inputs.push(body);
     const json = answer(body.input, body.accountKey);
     if (json === null) await route.abort();
-    else await route.fulfill({ json: json as never });
+    else await route.fulfill({ json: toJson(json) });
   });
   return inputs;
 }
+
+/**
+ * Answer `POST /lists/preview` with `answer(request, index)`; `null` aborts
+ * like a network failure. Returns the submitted requests.
+ */
+export async function routePreview(
+  browser: Browser,
+  answer: (
+    request: PreviewRequest,
+    index: number,
+  ) => CatalogPreviewResponse | null,
+) {
+  const requests: PreviewRequest[] = [];
+  await browser.route(`${backend}/lists/preview`, async (route) => {
+    const request = parseBody<PreviewRequest>(route);
+    requests.push(request);
+    const json = answer(request, requests.length - 1);
+    if (json === null) await route.abort();
+    else await route.fulfill({ json: toJson(json) });
+  });
+  return requests;
+}
+
+/**
+ * Answer the Source lists of the `provider` Connection of `key` (Quick add
+ * asks for them) with `sources`, none by default.
+ */
+export async function routeConnectionSources(
+  browser: Browser,
+  provider: ProviderId = "trakt",
+  sources: object[] = [],
+  key = accountId,
+) {
+  await browser.route(
+    `${backend}/${key}/connections/${provider}/sources`,
+    async (route) => {
+      await route.fulfill({ json: toJson({ sources }) });
+    },
+  );
+}
+
+/**
+ * Record the starts of a Trakt authorization of the fixture Account and end
+ * them on a fixture page (`${backend}/authorize-fixture`). Returns the
+ * request methods.
+ */
+export async function routeConnectStart(browser: Browser) {
+  const starts: string[] = [];
+  await browser.route(
+    `${backend}/${accountId}/connections/trakt/start`,
+    async (route) => {
+      starts.push(route.request.method);
+      await route.fulfill({
+        json: { ok: true, authorizeUrl: `${backend}/authorize-fixture` },
+      });
+    },
+  );
+  await browser.route(`${backend}/authorize-fixture`, async (route) => {
+    await route.fulfill({
+      contentType: "text/html",
+      body: "<h1>Trakt authorization fixture</h1>",
+    });
+  });
+  return starts;
+}
+
+export const MINUTE = 60_000;
+
+/** The ISO time `ms` milliseconds ago. */
+export const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 
 /** Centers of the List drag handles, in visible order. */
 export async function dragHandleCenters(browser: Browser) {

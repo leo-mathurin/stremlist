@@ -11,16 +11,14 @@ import {
   SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_URL,
 } from "../env.js";
-import { E2E_USER_IDS } from "./test-data.js";
+import { E2E_USER_IDS, PUBLIC_USER } from "./test-data.js";
 import { deleteCacheObjects, deleteConnectionObjects } from "./r2.js";
 
 // Service-role client: bypasses RLS, used only to reset and inspect state
 // between tests. Live tests bootstrap through the HTTP API; controlled catalog
-// fixtures seed rows before the backend first reads them.
-export const db = createClient<Database>(
-  SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY,
-);
+// fixtures seed rows before the backend first reads them. Specs use the named
+// seeders and readers below, never the client itself.
+const db = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 /**
  * The Accounts that this run owns: the Legacy aliases of the E2E fixtures,
@@ -78,7 +76,12 @@ export async function clearRefreshCooldown(accountId: string): Promise<void> {
  * a Provider. With `legacyImdbUserId` it is a Legacy alias install.
  */
 export async function seedAccount(
-  options: { legacyImdbUserId?: string; newTitlesCatalog?: boolean } = {},
+  options: {
+    legacyImdbUserId?: string;
+    newTitlesCatalog?: boolean;
+    /** Actions on, with these Providers in this order. */
+    actions?: ProviderId[];
+  } = {},
 ): Promise<string> {
   const { data, error } = await db
     .from("accounts")
@@ -86,11 +89,29 @@ export async function seedAccount(
       legacy_imdb_user_id: options.legacyImdbUserId ?? null,
       is_active: true,
       new_titles_catalog: options.newTitlesCatalog ?? false,
+      ...(options.actions && {
+        actions_enabled: true,
+        action_providers: options.actions,
+      }),
     })
     .select("id")
     .single();
   if (error) throw error;
   return data.id;
+}
+
+/** A private Account whose only List is one IMDb Source list. */
+export async function seedImdbAccount(
+  sourceRef: string = PUBLIC_USER,
+  catalogTitle = "",
+): Promise<{ accountId: string; listId: string }> {
+  const {
+    accountId,
+    listIds: [listId],
+  } = await seedAccountWithLists([
+    { sourceRef, catalogTitle, displayMode: "split" },
+  ]);
+  return { accountId, listId };
 }
 
 /** A private Account with these Lists, in this order. Returns the IDs. */
@@ -173,6 +194,8 @@ export async function seedConnection(
     expiresAt?: Date | null;
     /** The callback of the authorization; refreshes send it again. */
     redirectUri?: string;
+    /** Since when the Provider refuses it (the renewal mark). */
+    needsRenewalSince?: Date;
   } = {},
 ): Promise<void> {
   const refreshToken =
@@ -193,6 +216,9 @@ export async function seedConnection(
         options.expiresAt === undefined
           ? new Date(Date.now() + 24 * 60 * 60_000).toISOString()
           : (options.expiresAt?.toISOString() ?? null),
+      ...(options.needsRenewalSince && {
+        needs_renewal_since: options.needsRenewalSince.toISOString(),
+      }),
     },
     { onConflict: "account_id,provider" },
   );
@@ -306,6 +332,66 @@ export async function getSyncStatusRows(listId: string) {
     .from("list_sync_status")
     .select("*")
     .eq("list_id", listId);
+  if (error) throw error;
+  return data;
+}
+
+/** Forget what the ID resolver cached for these external IDs. */
+export async function clearResolverCache(
+  namespace: string,
+  externalIds: string[],
+): Promise<void> {
+  const { error } = await db
+    .from("title_id_map")
+    .delete()
+    .eq("namespace", namespace)
+    .in("external_id", externalIds);
+  if (error) throw error;
+}
+
+/** What the ID resolver cached for these external IDs, by external ID. */
+export async function getResolverRows(
+  namespace: string,
+  externalIds: string[],
+) {
+  const { data, error } = await db
+    .from("title_id_map")
+    .select("external_id, imdb_id, strategy, retry_after")
+    .eq("namespace", namespace)
+    .in("external_id", externalIds)
+    .order("external_id");
+  if (error) throw error;
+  return data;
+}
+
+/** The synchronization rows (Baselines) of an Account's Source lists. */
+export async function getSourceListSyncs(accountId: string) {
+  const { data, error } = await db
+    .from("source_list_syncs")
+    .select("provider, source_ref, baseline_at")
+    .eq("account_id", accountId)
+    .order("provider");
+  if (error) throw error;
+  return data;
+}
+
+/** The detection entries of an Account's Source lists, by entry key. */
+export async function getSourceListEntries(accountId: string) {
+  const { data, error } = await db
+    .from("source_list_entries")
+    .select("*")
+    .eq("account_id", accountId)
+    .order("entry_key");
+  if (error) throw error;
+  return data;
+}
+
+/** The pending OAuth authorizations with this state. */
+export async function getOAuthStates(state: string) {
+  const { data, error } = await db
+    .from("oauth_states")
+    .select("provider")
+    .eq("state", state);
   if (error) throw error;
   return data;
 }

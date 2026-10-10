@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { addonManifestUrl, FRONTEND_URL } from "../env.js";
 import { bootstrapLegacy } from "../helpers/api.js";
-import { resetDb, seedAccountWithLists } from "../helpers/db.js";
+import { resetDb, seedImdbAccount } from "../helpers/db.js";
 import {
   addonsDeepLink,
   dismissDesktopAppPrompt,
@@ -16,18 +16,11 @@ test.beforeEach(async () => {
   await resetDb();
 });
 
-async function privateAccount() {
-  const { accountId } = await seedAccountWithLists([
-    { sourceRef: PUBLIC_USER, catalogTitle: "", displayMode: "split" },
-  ]);
-  return accountId;
-}
-
 test(
   "installs and uninstalls the addon through Stremio Web",
   { tag: "@live-smoke" },
   async ({ page }) => {
-    const manifestUrl = addonManifestUrl(await privateAccount());
+    const manifestUrl = addonManifestUrl((await seedImdbAccount()).accountId);
 
     await installAddon(page, manifestUrl);
 
@@ -53,7 +46,7 @@ test(
   "configure page links straight into Stremio Web's install dialog",
   { tag: "@live-regression" },
   async ({ page, context }) => {
-    const accountId = await privateAccount();
+    const { accountId } = await seedImdbAccount();
     await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
 
     const popupPromise = context.waitForEvent("page");

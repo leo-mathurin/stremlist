@@ -1,8 +1,6 @@
 import { test } from "@e2e-dev/web";
-import type { Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
 import type { Screen } from "e2e";
-import type { CatalogPreviewResponse } from "@stremlist/shared/catalog-preview";
 import type { ListSyncStatus } from "@stremlist/shared/sync-status";
 import type {
   AccountConfigInput,
@@ -30,8 +28,12 @@ import {
   savedLists,
   syncedStatus,
   toJson,
+  MINUTE,
+  ago,
+  routeConnectStart,
+  routeConnectionSources,
+  routePreview,
 } from "./config-fixture";
-import type { PreviewRequest } from "./config-fixture";
 
 // Merged Lists (STR-59, ADR 0006): one List, several Source lists, one
 // Catalog. The intercepted API proves UI state and the exact save payload;
@@ -700,23 +702,6 @@ test("a save refused because the Lists changed in another window keeps the merge
 // How merged Lists work with the Catalog preview (STR-57), the sync status
 // (STR-58) and the reinstall notice.
 
-const MINUTE = 60_000;
-const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
-
-/** Answer `POST /lists/preview` with `answer(request)`; returns the requests. */
-async function routePreview(
-  browser: Browser,
-  answer: (request: PreviewRequest) => CatalogPreviewResponse,
-) {
-  const requests: PreviewRequest[] = [];
-  await browser.route(`${backend}/lists/preview`, async (route) => {
-    const request = parseBody<PreviewRequest>(route);
-    requests.push(request);
-    await route.fulfill({ json: toJson(answer(request)) });
-  });
-  return requests;
-}
-
 test("a merged List previews all its Source lists and names the one it cannot read", async ({
   app,
   screen,
@@ -804,28 +789,8 @@ test("a merged List shows the problem of one Source list and connects its Provid
     syncStatus: { [merged.id]: [syncedStatus(imdbUser), refused] },
     connections: [{ ...connected("trakt"), needsRenewalSince: ago(MINUTE) }],
   });
-  await browser.route(
-    `${backend}/${accountId}/connections/trakt/sources`,
-    async (route) => {
-      await route.fulfill({ json: { sources: [] } });
-    },
-  );
-  const starts: string[] = [];
-  await browser.route(
-    `${backend}/${accountId}/connections/trakt/start`,
-    async (route) => {
-      starts.push(route.request.method);
-      await route.fulfill({
-        json: { ok: true, authorizeUrl: `${backend}/authorize-fixture` },
-      });
-    },
-  );
-  await browser.route(`${backend}/authorize-fixture`, async (route) => {
-    await route.fulfill({
-      contentType: "text/html",
-      body: "<h1>Trakt authorization fixture</h1>",
-    });
-  });
+  await routeConnectionSources(browser);
+  const starts = await routeConnectStart(browser);
   await fitConfigurePage(browser);
   await app.open(`/configure?account=${accountId}`);
 

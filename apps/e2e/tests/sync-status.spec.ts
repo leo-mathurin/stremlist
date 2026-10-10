@@ -1,9 +1,7 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
-import { FRONTEND_URL } from "../env.js";
 import { getConfig, getSyncStatus, refresh } from "../helpers/api.js";
 import { CATALOG_TITLES } from "../helpers/catalog-fixture.js";
-import { saveButton } from "../helpers/configure.js";
+import { openConfigure, saveButton } from "../helpers/configure.js";
 import {
   clearRefreshCooldown,
   getConnectionRow,
@@ -23,14 +21,6 @@ import { CATALOG_FIXTURE_USER } from "../helpers/test-data.js";
 
 const HOUR = 60 * 60_000;
 const PUBLIC_TRAKT_LIST = "users/fixture/lists/horror";
-
-const configureUrl = (accountKey: string) =>
-  `${FRONTEND_URL}/configure?account=${accountKey}`;
-
-async function open(page: Page, accountKey: string, title: string) {
-  await page.goto(configureUrl(accountKey));
-  await expect(page.getByText(title, { exact: true })).toBeVisible();
-}
 
 test.beforeEach(async () => {
   await resetDb();
@@ -91,7 +81,7 @@ test(
 
     const notice =
       "Trakt is temporarily unavailable. Please try again later. Stremio shows the titles from the last refresh, 1 hour ago.";
-    await open(page, accountId, "Horror nights");
+    await openConfigure(page, accountId, "Horror nights");
     await expect(
       page.getByText("Refresh failed · titles from 1 hour ago", {
         exact: true,
@@ -156,7 +146,7 @@ test(
       }),
     ]);
 
-    await open(page, accountId, "Trakt Watchlist");
+    await openConfigure(page, accountId, "Trakt Watchlist");
     const renew =
       "Trakt refused the Stremlist Connection, so this List does not show in Stremio. Connect Trakt again to renew it.";
     await expect(
@@ -245,7 +235,7 @@ test(
     ]);
     expect(await getSyncStatusRows(listId)).toEqual([]);
 
-    await open(page, accountId, "Cached watchlist");
+    await openConfigure(page, accountId, "Cached watchlist");
     await expect(page.getByText(/^Updated .+ · 3 titles$/)).toBeVisible();
     await expect(page.getByText(/needs? attention/)).toHaveCount(0);
   },
@@ -266,7 +256,7 @@ test(
       },
     ]);
     await seedCachedCatalog(listId, CATALOG_TITLES.slice(0, 1));
-    await open(page, accountId, "Cached watchlist");
+    await openConfigure(page, accountId, "Cached watchlist");
 
     await page.getByRole("button", { name: "Add an IMDb chart" }).click();
     await page.getByRole("menuitem", { name: /^Top 250 Movies/ }).click();

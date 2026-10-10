@@ -109,17 +109,22 @@ it does not claim to test playback or episode selection in a native client.
 
 ## Provider journeys
 
-`tests/provider-journeys.spec.ts` (`local`) starts a second backend with
-`helpers/provider-fixtures.ts` as a preload. That backend uses the same local
-Supabase and RustFS stack, dummy OAuth client IDs and no real credential. The
-real adapters, OAuth flow, ID resolver and Action pages run; only the Provider
-responses are fixtures, and any request to an unknown host fails. It covers
-public links (Trakt, JustWatch, SensCritique), Source lists read through a
-Connection (MDBList, Simkl, Trakt), OAuth start and callback (Trakt, Simkl,
-MDBList), disconnect, expired Connections, Legacy alias limits, every Trakt
-Action intent and its page, the Provider kill switch (a third backend
-with `DISABLED_PROVIDERS`), and Catalog previews read through a Connection. Letterboxd has no adapter yet; the configure page
-only explains its MDBList import. The UI side of the same journeys is in `toolkit/providers.e2e.ts`.
+Four `local` spec files start their own backend with
+`helpers/provider-fixtures.ts` as a preload (`helpers/fixture-backend.ts`).
+That backend uses the same local Supabase and RustFS stack, dummy OAuth
+client IDs and no real credential. The real adapters, OAuth flow, ID resolver
+and Action pages run; only the Provider responses are fixtures, and any
+request to an unknown host fails.
+
+| File                                 | Coverage                                                                                                                          |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/provider-links.spec.ts`       | Public links (Trakt, JustWatch, SensCritique) and Source lists read through a Connection (MDBList, Simkl)                         |
+| `tests/provider-connections.spec.ts` | OAuth start and callback (Trakt, Simkl, MDBList), disconnect, expired Connections, Legacy alias limits                            |
+| `tests/provider-actions.spec.ts`     | Actions in Stremio, every Trakt Action intent and its page, the Provider kill switch (a second backend with `DISABLED_PROVIDERS`) |
+| `tests/provider-sync-status.spec.ts` | Sync status of Lists read through a Connection (renewal, disconnect, merged List) and Catalog previews read through a Connection  |
+
+Letterboxd has no adapter yet; the configure page only explains its MDBList
+import. The UI side of the same journeys is in `toolkit/providers.e2e.ts`.
 `tests/catalog-preview.spec.ts` uses the same preload to read a synthetic
 SensCritique list (`helpers/preview-fixture.ts`) for the Catalog preview.
 
@@ -131,7 +136,7 @@ Connection becomes a refused one (`needs_renewal_since`), offline and
 deterministic. The `live-regression` case waits for the first refresh of a live
 IMDb chart through the page's polling. The renewal by a new authorization, a
 working read that clears the mark and the statuses a disconnect forgets need
-the Provider fixtures, so they are in `tests/provider-journeys.spec.ts`, with a
+the Provider fixtures, so they are in `tests/provider-sync-status.spec.ts`, with a
 Catalog preview through a refused Connection (it marks the Connection, but is
 not a refresh).
 

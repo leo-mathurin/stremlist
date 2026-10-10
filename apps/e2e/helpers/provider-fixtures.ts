@@ -1,4 +1,4 @@
-// Loaded only by the isolated Provider backends of provider-journeys.spec.ts
+// Loaded only by the isolated Provider backends of the provider-*.spec.ts files
 // and catalog-preview.spec.ts (the synthetic list of preview-fixture.ts).
 // The real adapters, OAuth flow, ID resolver, database and R2 code run; every
 // outbound request to a Provider is answered here with deterministic data.
@@ -6,15 +6,13 @@
 // destination is refused: no request ever reaches a real Provider, and no
 // credential exists in this process. Each Provider request is appended as one
 // JSON line to E2E_PROVIDER_LOG, so tests can check what the backend sent.
-import { appendFileSync } from "node:fs";
+import type { FixtureRequest } from "./fetch-fixture.js";
+import { bearer, graphql, installFetchFixture } from "./fetch-fixture.js";
 import {
   PREVIEW_PRIVATE_LIST,
   PREVIEW_PRODUCTS,
   PREVIEW_PUBLIC_LIST,
 } from "./preview-fixture.js";
-
-const realFetch = globalThis.fetch;
-const LOG = process.env.E2E_PROVIDER_LOG;
 
 /** Tokens the fixtures accept: seeded Connections and fresh exchanges. */
 const VALID_TOKENS = new Set(["fixture-access-token", "fresh-access"]);
@@ -62,35 +60,11 @@ const mdblistItems = [
   { mediatype: "show", ids: { imdb: "tt0903747", tmdb: 1396 } },
 ];
 
-interface Logged {
-  method: string;
-  url: string;
-  authorization: string | null;
-  body: unknown;
-}
-
-function log(entry: Logged) {
-  if (LOG) appendFileSync(LOG, `${JSON.stringify(entry)}\n`);
-}
-
-function parseBody(text: string, contentType: string | null): unknown {
-  if (!text) return null;
-  if (contentType?.includes("application/x-www-form-urlencoded")) {
-    return Object.fromEntries(new URLSearchParams(text));
-  }
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
-
 const json = (body: unknown, status = 200, headers: HeadersInit = {}) =>
   Response.json(body, { status, headers });
 
-function bearer(request: Request): string | null {
-  return request.headers.get("authorization")?.replace(/^Bearer /, "") ?? null;
-}
+/** The fields of a form-encoded request (token exchanges, SPARQL). */
+const form = (body: unknown) => (body ?? {}) as Record<string, string>;
 
 /** 401 unless the request carries a token that the fixtures issued. */
 function requireToken(request: Request): Response | null {
@@ -123,11 +97,10 @@ function tokenResponse(body: Record<string, string>): Response {
   return json({ error: "unsupported_grant_type" }, 400);
 }
 
-function trakt(request: Request, url: URL, body: unknown): Response {
+function trakt({ request, url, body }: FixtureRequest): Response {
   const path = url.pathname;
   if (url.host === "auth.trakt.tv") {
-    if (path === "/oauth/token")
-      return tokenResponse(body as Record<string, string>);
+    if (path === "/oauth/token") return tokenResponse(form(body));
     if (path === "/oauth/revoke") return json({});
   }
   if (request.headers.get("trakt-api-key") !== "fixture-trakt-client") {
@@ -176,10 +149,9 @@ function trakt(request: Request, url: URL, body: unknown): Response {
   throw new Error(`Unexpected Trakt request ${request.method} ${path}`);
 }
 
-function mdblist(request: Request, url: URL, body: unknown): Response {
+function mdblist({ request, url, body }: FixtureRequest): Response {
   const path = url.pathname;
-  if (path === "/oauth/token/")
-    return tokenResponse(body as Record<string, string>);
+  if (path === "/oauth/token/") return tokenResponse(form(body));
   if (path === "/oauth/revoke_token/") return json({});
   const refused = requireToken(request);
   if (refused) return refused;
@@ -200,10 +172,9 @@ function mdblist(request: Request, url: URL, body: unknown): Response {
   throw new Error(`Unexpected MDBList request ${request.method} ${path}`);
 }
 
-function simkl(request: Request, url: URL, body: unknown): Response {
+function simkl({ request, url, body }: FixtureRequest): Response {
   const path = url.pathname;
-  if (path === "/oauth2/token")
-    return tokenResponse(body as Record<string, string>);
+  if (path === "/oauth2/token") return tokenResponse(form(body));
   if (path === "/oauth2/revoke") return json({});
   if (url.searchParams.get("client_id") !== "fixture-simkl-client") {
     return json({ error: "missing client id" }, 403);
@@ -247,18 +218,10 @@ function simkl(request: Request, url: URL, body: unknown): Response {
   throw new Error(`Unexpected Simkl request ${request.method} ${path}`);
 }
 
-function graphqlOperation(body: unknown): string {
-  const { query, operationName } = body as {
-    query?: string;
-    operationName?: string;
-  };
-  return operationName ?? /query (\w+)/.exec(query ?? "")?.[1] ?? "";
-}
-
-function justwatch(body: unknown): Response {
-  const { variables } = body as { variables: { id?: string } };
-  if (graphqlOperation(body) !== "StremlistJustwatchList") {
-    throw new Error(`Unexpected JustWatch operation ${graphqlOperation(body)}`);
+function justwatch({ body }: FixtureRequest): Response {
+  const { operation, variables } = graphql<{ id?: string }>(body);
+  if (operation !== "StremlistJustwatchList") {
+    throw new Error(`Unexpected JustWatch operation ${operation}`);
   }
   if (variables.id !== "tl-us-11111111-2222-4333-8444-555555555555") {
     return json({ data: { node: null } });
@@ -346,16 +309,14 @@ function senscritiqueList(variables: { id: number; offset?: number }) {
   });
 }
 
-function senscritique(body: unknown): Response {
-  const operation = graphqlOperation(body);
-  if (operation === "StremlistList") {
-    return senscritiqueList(
-      (body as { variables: { id: number; offset?: number } }).variables,
-    );
-  }
-  const { variables } = body as {
-    variables: { username?: string; universe?: string };
-  };
+function senscritique({ body }: FixtureRequest): Response {
+  const { operation, variables } = graphql<{
+    id: number;
+    offset?: number;
+    username?: string;
+    universe?: string;
+  }>(body);
+  if (operation === "StremlistList") return senscritiqueList(variables);
   if (variables.username === "private-user") {
     return json({
       data: {
@@ -408,8 +369,8 @@ function senscritique(body: unknown): Response {
 }
 
 /** Wikidata maps SensCritique product IDs (P10100) to IMDb IDs. */
-function wikidata(body: unknown): Response {
-  const query = String((body as { query?: string }).query ?? "");
+function wikidata({ body }: FixtureRequest): Response {
+  const query = form(body).query ?? "";
   const known: Record<string, string> = {
     "101": "tt0111161",
     "202": "tt0903747",
@@ -428,11 +389,11 @@ function wikidata(body: unknown): Response {
   return json({ results: { bindings } });
 }
 
-function imdb(body: unknown): Response {
-  if (graphqlOperation(body) !== "TitlesById") {
-    throw new Error(`Unexpected IMDb operation ${graphqlOperation(body)}`);
+function imdb({ body }: FixtureRequest): Response {
+  const { operation, variables } = graphql<{ ids: string[] }>(body);
+  if (operation !== "TitlesById") {
+    throw new Error(`Unexpected IMDb operation ${operation}`);
   }
-  const { variables } = body as { variables: { ids: string[] } };
   return json({
     data: {
       titles: variables.ids.map((id) => {
@@ -453,38 +414,16 @@ function imdb(body: unknown): Response {
   });
 }
 
-Object.defineProperty(globalThis, "fetch", {
-  value: async (input: string | URL | Request, init?: RequestInit) => {
-    const request = new Request(input, init);
-    const url = new URL(request.url);
-    if (["127.0.0.1", "localhost"].includes(url.hostname)) {
-      return realFetch(input, init);
-    }
-    const text = request.method === "GET" ? "" : await request.text();
-    const body = parseBody(text, request.headers.get("content-type"));
-    log({
-      method: request.method,
-      url: request.url,
-      authorization: bearer(request),
-      body,
-    });
-    switch (url.host) {
-      case "api.trakt.tv":
-      case "auth.trakt.tv":
-        return trakt(request, url, body);
-      case "api.mdblist.com":
-        return mdblist(request, url, body);
-      case "api.simkl.com":
-        return simkl(request, url, body);
-      case "apis.justwatch.com":
-        return justwatch(body);
-      case "apollo.senscritique.com":
-        return senscritique(body);
-      case "query.wikidata.org":
-        return wikidata(body);
-      case "api.graphql.imdb.com":
-        return imdb(body);
-    }
-    throw new Error(`Provider fixture refuses outbound request to ${url.host}`);
+installFetchFixture({
+  log: process.env.E2E_PROVIDER_LOG,
+  hosts: {
+    "api.trakt.tv": trakt,
+    "auth.trakt.tv": trakt,
+    "api.mdblist.com": mdblist,
+    "api.simkl.com": simkl,
+    "apis.justwatch.com": justwatch,
+    "apollo.senscritique.com": senscritique,
+    "query.wikidata.org": wikidata,
+    "api.graphql.imdb.com": imdb,
   },
 });

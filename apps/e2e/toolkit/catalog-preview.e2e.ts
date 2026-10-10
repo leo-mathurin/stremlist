@@ -1,8 +1,6 @@
 import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
-import type { Browser } from "@e2e-dev/web";
 import type {
-  CatalogPreviewResponse,
   CatalogPreviewRow,
   PreviewTitle,
 } from "@stremlist/shared/catalog-preview";
@@ -23,6 +21,8 @@ import {
   routeResolve,
   SAVED_REINSTALL,
   toJson,
+  routeConnectionSources,
+  routePreview,
 } from "./config-fixture";
 
 // The Catalog preview of a List (STR-57): what the List adds to Stremio and
@@ -33,28 +33,6 @@ const PASTE = "Paste a link to a watchlist or list";
 /** The notice of unsaved edits that change the Catalogs of Stremio. */
 const NEEDS_REINSTALL = "These changes need a reinstall.";
 const LIST_LINK = "https://www.imdb.com/list/ls99887766/";
-
-/**
- * Answer `POST /lists/preview` with `answer(request, index)`; `null` aborts
- * like a network failure. Returns the submitted requests.
- */
-async function routePreview(
-  browser: Browser,
-  answer: (
-    request: PreviewRequest,
-    index: number,
-  ) => CatalogPreviewResponse | null,
-) {
-  const requests: PreviewRequest[] = [];
-  await browser.route(`${backend}/lists/preview`, async (route) => {
-    const request = parseBody<PreviewRequest>(route);
-    requests.push(request);
-    const json = answer(request, requests.length - 1);
-    if (json === null) await route.abort();
-    else await route.fulfill({ json: toJson(json) });
-  });
-  return requests;
-}
 
 test("a pasted List opens its preview at once, a saved List only on request", async ({
   app,
@@ -300,12 +278,7 @@ test("disconnecting the Provider reads the open preview again", async ({
       await route.fulfill({ json: { ok: true } });
     },
   );
-  await browser.route(
-    `${backend}/${accountId}/connections/trakt/sources`,
-    async (route) => {
-      await route.fulfill({ json: { sources: [] } });
-    },
-  );
+  await routeConnectionSources(browser);
   const requests = await routePreview(browser, (request, index) =>
     index === 0
       ? previewOf(request)

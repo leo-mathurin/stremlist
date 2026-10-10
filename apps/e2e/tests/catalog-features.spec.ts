@@ -16,7 +16,7 @@ import {
   uninstallAddon,
 } from "../helpers/stremio.js";
 import { CATALOG_FIXTURE_USER } from "../helpers/test-data.js";
-import { saveButton, SAVED_REINSTALL } from "../helpers/configure.js";
+import { saveConfigure, SAVED_REINSTALL } from "../helpers/configure.js";
 
 const MATCHES = ["QA Été & café + cinéma", "QA Autumn Drama"];
 
@@ -29,15 +29,6 @@ async function openFilters(page: Page, accountId: string) {
   await page.goto(`${FRONTEND_URL}/configure?account=${accountId}`);
   await page.getByRole("button", { name: "Settings for Release QA" }).click();
   await page.getByRole("button", { name: /Filters & extra catalogs/ }).click();
-}
-
-async function save(page: Page) {
-  const response = page.waitForResponse(
-    (res) => res.url().endsWith("/config") && res.request().method() === "POST",
-  );
-  await saveButton(page).click();
-  expect((await response).status()).toBe(200);
-  await expect(page.getByText("Saved!", { exact: false })).toBeVisible();
 }
 
 async function expectTitles(page: Page, expected: string[]) {
@@ -69,7 +60,7 @@ test(
     await page
       .getByRole("checkbox", { name: "Top rated", exact: true })
       .check();
-    await save(page);
+    await saveConfigure(page);
     expect((await getConfig(accountId)).body.lists[0].catalogSettings).toEqual({
       genre: "Drama",
       decade: 1990,
@@ -100,7 +91,7 @@ test(
       page.getByRole("checkbox", { name: "Top rated", exact: true }),
     ).toBeChecked();
     await page.getByRole("button", { name: "Clear filters" }).click();
-    await save(page);
+    await saveConfigure(page);
     expect((await getConfig(accountId)).body.lists[0].catalogSettings).toEqual({
       presets: ["rated"],
     });
@@ -278,7 +269,7 @@ test(
     for (const name of ["90 min or less", "Top rated", "Shuffle"]) {
       await page.getByRole("checkbox", { name, exact: true }).check();
     }
-    await save(page);
+    await saveConfigure(page);
     await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(
       page.getByRole("heading", {

@@ -1,49 +1,28 @@
 import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
 import { BACKEND_URL, FRONTEND_URL } from "../env.js";
 import { bootstrapLegacy, createAccount, getConfig } from "../helpers/api.js";
-import { resetDb, seedAccountWithLists } from "../helpers/db.js";
+import { resetDb, seedImdbAccount } from "../helpers/db.js";
 import {
   PUBLIC_LIST,
   PUBLIC_USER,
   UNKNOWN_USER,
 } from "../helpers/test-data.js";
-import { saveButton, SAVED_REINSTALL } from "../helpers/configure.js";
+import {
+  configureUrl,
+  openConfigure,
+  saveButton,
+  saveConfigure,
+  SAVED_REINSTALL,
+} from "../helpers/configure.js";
 
 // The /configure page against the real backend: List management, options,
 // refresh, install links.
 
-const configureUrl = (accountKey: string) =>
-  `${FRONTEND_URL}/configure?account=${accountKey}`;
+/** The title of the IMDb watchlist List that `seedWatchlist` seeds. */
+const TITLE = "My watchlist";
 
 /** A private Account with one IMDb watchlist List titled "My watchlist". */
-async function seedAccount() {
-  const {
-    accountId,
-    listIds: [listId],
-  } = await seedAccountWithLists([
-    {
-      sourceRef: PUBLIC_USER,
-      catalogTitle: "My watchlist",
-      displayMode: "split",
-    },
-  ]);
-  return { accountId, listId };
-}
-
-async function open(page: Page, accountKey: string) {
-  await page.goto(configureUrl(accountKey));
-  await expect(page.getByText("My watchlist", { exact: true })).toBeVisible();
-}
-
-async function save(page: Page) {
-  const response = page.waitForResponse(
-    (res) => res.url().endsWith("/config") && res.request().method() === "POST",
-  );
-  await saveButton(page).click();
-  expect((await response).status()).toBe(200);
-  await expect(page.getByText("Saved!", { exact: false })).toBeVisible();
-}
+const seedWatchlist = () => seedImdbAccount(PUBLIC_USER, TITLE);
 
 test.beforeEach(async () => {
   await resetDb();
@@ -53,8 +32,8 @@ test(
   "loads the existing configuration",
   { tag: "@local" },
   async ({ page }) => {
-    const { accountId } = await seedAccount();
-    await open(page, accountId);
+    const { accountId } = await seedWatchlist();
+    await openConfigure(page, accountId, TITLE);
 
     await expect(
       page.getByText(`IMDb · Watchlist · ${PUBLIC_USER}`),
@@ -76,8 +55,8 @@ test(
     await context.grantPermissions(["clipboard-read", "clipboard-write"], {
       origin: FRONTEND_URL,
     });
-    const { accountId } = await seedAccount();
-    await open(page, accountId);
+    const { accountId } = await seedWatchlist();
+    await openConfigure(page, accountId, TITLE);
     const copyButton = page.getByRole("button", { name: "Copy Addon URL" });
     await expect(copyButton).toBeVisible();
 
@@ -95,8 +74,8 @@ test(
   "clipboard denial explains how to copy the Addon URL manually",
   { tag: "@local" },
   async ({ page }) => {
-    const { accountId } = await seedAccount();
-    await open(page, accountId);
+    const { accountId } = await seedWatchlist();
+    await openConfigure(page, accountId, TITLE);
     await page.evaluate(() => {
       Object.defineProperty(navigator.clipboard, "writeText", {
         configurable: true,
@@ -118,7 +97,7 @@ test(
   "failed configuration loads cannot overwrite saved settings and can retry",
   { tag: "@local" },
   async ({ page }) => {
-    const { accountId } = await seedAccount();
+    const { accountId } = await seedWatchlist();
     // Development builds run the load effect twice, so fail every load until
     // the error is on screen.
     let failing = true;
@@ -150,8 +129,8 @@ test(
   "adds an IMDb list from a pasted link and saves",
   { tag: "@live-regression" },
   async ({ page }) => {
-    const { accountId } = await seedAccount();
-    await open(page, accountId);
+    const { accountId } = await seedWatchlist();
+    await openConfigure(page, accountId, TITLE);
 
     await page
       .getByLabel("Paste a link to a watchlist or list")
@@ -169,7 +148,7 @@ test(
     await expect(page.getByText(`IMDb · List · ${PUBLIC_LIST}`)).toBeVisible();
     await expect(page.getByText("2 of 10 lists")).toBeVisible();
 
-    await save(page);
+    await saveConfigure(page);
     const { body } = await getConfig(accountId);
     expect(body.lists.map((list) => list.sourceRef)).toEqual([
       PUBLIC_USER,
@@ -191,7 +170,7 @@ test(
     await page
       .getByRole("menuitem", { name: /^Box Office \(Weekend\)/ })
       .click();
-    await save(page);
+    await saveConfigure(page);
     await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(
       page.getByRole("heading", {
@@ -205,14 +184,14 @@ test(
 );
 
 test("adds a built-in chart List", { tag: "@local" }, async ({ page }) => {
-  const { accountId } = await seedAccount();
-  await open(page, accountId);
+  const { accountId } = await seedWatchlist();
+  await openConfigure(page, accountId, TITLE);
 
   await page.getByRole("button", { name: "Add an IMDb chart" }).click();
   await page.getByRole("menuitem", { name: /^Top 250 Movies/ }).click();
   await expect(page.getByText("IMDb · Chart")).toBeVisible();
 
-  await save(page);
+  await saveConfigure(page);
   const { body } = await getConfig(accountId);
   expect(body.lists[1]).toMatchObject({
     provider: "imdb",
@@ -226,8 +205,8 @@ test(
   "changes sort order and content filter",
   { tag: "@local" },
   async ({ page }) => {
-    const { accountId } = await seedAccount();
-    await open(page, accountId);
+    const { accountId } = await seedWatchlist();
+    await openConfigure(page, accountId, TITLE);
 
     await page.getByRole("combobox", { name: "Sort order" }).click();
     await page
@@ -238,7 +217,7 @@ test(
       .click();
     await page.getByRole("combobox", { name: "Show", exact: true }).click();
     await page.getByRole("option", { name: "Movies only" }).click();
-    await save(page);
+    await saveConfigure(page);
 
     const { body } = await getConfig(accountId);
     expect(body.lists[0].sortOption).toBe("rating-desc");
@@ -247,21 +226,21 @@ test(
 );
 
 test("saves and clears the RPDB key", { tag: "@local" }, async ({ page }) => {
-  const { accountId } = await seedAccount();
-  await open(page, accountId);
+  const { accountId } = await seedWatchlist();
+  await openConfigure(page, accountId, TITLE);
 
   await page.locator("#rpdb-api-key").fill("e2e-rpdb-key");
-  await save(page);
+  await saveConfigure(page);
   expect((await getConfig(accountId)).body.rpdbApiKey).toBe("e2e-rpdb-key");
 
   await page.locator("#rpdb-api-key").fill("");
-  await save(page);
+  await saveConfigure(page);
   expect((await getConfig(accountId)).body.rpdbApiKey).toBeNull();
 });
 
 test("removes a List", { tag: "@local" }, async ({ page }) => {
-  const { accountId } = await seedAccount();
-  await open(page, accountId);
+  const { accountId } = await seedWatchlist();
+  await openConfigure(page, accountId, TITLE);
   await page.getByRole("button", { name: "Add an IMDb chart" }).click();
   await page.getByRole("menuitem", { name: /^Box Office \(Weekend\)/ }).click();
   await expect(page.getByText("2 of 10 lists")).toBeVisible();
@@ -271,7 +250,7 @@ test("removes a List", { tag: "@local" }, async ({ page }) => {
     .click();
   await expect(page.getByText("1 of 10 lists")).toBeVisible();
 
-  await save(page);
+  await saveConfigure(page);
   expect((await getConfig(accountId)).body.lists).toHaveLength(1);
 });
 
@@ -279,8 +258,8 @@ test(
   "manual refresh hits the backend and starts the cooldown",
   { tag: "@live-regression" },
   async ({ page }) => {
-    const { accountId } = await seedAccount();
-    await open(page, accountId);
+    const { accountId } = await seedWatchlist();
+    await openConfigure(page, accountId, TITLE);
 
     const refreshResponse = page.waitForResponse(
       (response) =>
@@ -315,7 +294,7 @@ test(
   "pasting an Addon URL on Home loads its configuration",
   { tag: "@local" },
   async ({ page }) => {
-    const { accountId } = await seedAccount();
+    const { accountId } = await seedWatchlist();
     await bootstrapLegacy(PUBLIC_USER);
     for (const key of [accountId, PUBLIC_USER]) {
       await page.goto(FRONTEND_URL);
@@ -346,8 +325,8 @@ test(
   "a catalog change asks for a reinstall until it is done, a sort change does not",
   { tag: "@local" },
   async ({ page }) => {
-    const { accountId } = await seedAccount();
-    await open(page, accountId);
+    const { accountId } = await seedWatchlist();
+    await openConfigure(page, accountId, TITLE);
     const beforeSave = page.getByText("These changes need a reinstall.");
     const reminder = page
       .getByRole("status")
@@ -360,7 +339,7 @@ test(
       .click();
     await page.locator("#rpdb-api-key").fill("e2e-rpdb-key");
     await expect(beforeSave).toHaveCount(0);
-    await save(page);
+    await saveConfigure(page);
     await expect(
       page.getByText(
         "Saved! Your catalogs will refresh with the new settings.",
@@ -377,7 +356,7 @@ test(
       .click();
     await page.getByLabel("Catalog title").fill("Renamed watchlist");
     await expect(beforeSave).toBeVisible();
-    await save(page);
+    await saveConfigure(page);
     await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(beforeSave).toHaveCount(0);
     await expect(reminder).toBeVisible();
@@ -395,7 +374,7 @@ test(
     // after a save that changes nothing.
     await page.reload();
     await expect(reminder).toBeVisible();
-    await save(page);
+    await saveConfigure(page);
     await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(reminder).toBeVisible();
 
@@ -407,7 +386,7 @@ test(
     await page.reload();
     await expect(page.getByText("Renamed watchlist")).toBeVisible();
     await expect(reminder).toHaveCount(0);
-    await save(page);
+    await saveConfigure(page);
     await expect(
       page.getByText(
         "Saved! Your catalogs will refresh with the new settings.",
@@ -433,11 +412,11 @@ test(
         body: "<title>Stremio</title>",
       }),
     );
-    const { accountId } = await seedAccount();
-    await open(page, accountId);
+    const { accountId } = await seedWatchlist();
+    await openConfigure(page, accountId, TITLE);
     await page.getByRole("button", { name: "Add an IMDb chart" }).click();
     await page.getByRole("menuitem", { name: /^Top 250 Movies/ }).click();
-    await save(page);
+    await saveConfigure(page);
 
     const toast = page
       .getByRole("listitem")
@@ -463,8 +442,8 @@ test(
   "the floating Save button shows once the header Save scrolls away",
   { tag: "@local" },
   async ({ page }) => {
-    const { accountId } = await seedAccount();
-    await open(page, accountId);
+    const { accountId } = await seedWatchlist();
+    await openConfigure(page, accountId, TITLE);
     const saves = page.getByRole("button", { name: "Save", exact: true });
     const headerSave = saves.first();
     const floatingSave = saves.last();
@@ -483,17 +462,10 @@ test(
     await expect(floatingBar).not.toHaveAttribute("inert");
     await expect(floatingSave).toBeInViewport();
     await expect(floatingSave).toBeEnabled();
-    const response = page.waitForResponse(
-      (res) =>
-        res.url().endsWith("/config") && res.request().method() === "POST",
-    );
-    await floatingSave.click();
-    expect((await response).status()).toBe(200);
-    await expect(
-      page.getByText(
-        "Saved! Your catalogs will refresh with the new settings.",
-      ),
-    ).toBeVisible();
+    await saveConfigure(page, {
+      button: floatingSave,
+      message: "Saved! Your catalogs will refresh with the new settings.",
+    });
     expect((await getConfig(accountId)).body.rpdbApiKey).toBe(
       "floating-save-key",
     );
