@@ -5,13 +5,11 @@ import {
   sourceProblemCopy,
   storedSourceNoun,
 } from "@stremlist/shared/source-problems";
-import { attentionTone } from "@/lib/list-sync";
+import { attentionTone, syncLineTone } from "@/lib/list-sync";
 import type { ListSyncState } from "@/lib/list-sync";
 import { cn, formatRelativeTime } from "@/lib/utils";
 
-type Tone = "ok" | "idle" | "warn" | "bad";
-
-const DOT: Record<Tone, string> = {
+const DOT: Record<ReturnType<typeof syncLineTone>, string> = {
   ok: "bg-emerald-500",
   idle: "bg-black/25",
   warn: "bg-amber-500",
@@ -43,23 +41,19 @@ export function ListSyncLine({
   sync: ListSyncState;
   saved: boolean;
 }) {
-  let tone: Tone;
+  const tone = syncLineTone(sync, saved);
   let text: ReactNode;
   let pulse = false;
   if (sync.kind === "connection") {
-    tone = sync.renew && !sync.othersShown ? "bad" : "warn";
     text = sync.renew ? "Connection needs to be renewed" : "Not connected";
   } else if (!saved) {
-    tone = "idle";
     text = "Not saved yet";
   } else if (sync.kind === "waiting") {
-    tone = "idle";
     pulse = true;
     text = sync.reconnected
       ? "Checking the new Connection"
       : "Not refreshed yet";
   } else if (sync.kind === "synced") {
-    tone = "ok";
     const count = titles(sync.titleCount);
     text = (
       <>
@@ -68,17 +62,14 @@ export function ListSyncLine({
       </>
     );
   } else if (sync.olderTitlesFrom) {
-    tone = "warn";
     text = (
       <>
         Refresh failed · titles from <Time iso={sync.olderTitlesFrom} />
       </>
     );
   } else if (sync.othersShown) {
-    tone = "warn";
     text = "One Source list does not show";
   } else {
-    tone = "bad";
     text = "Not showing in Stremio";
   }
 
@@ -125,36 +116,31 @@ export function ListSyncNotice({
   const severe = attentionTone(sync) === "bad";
   let body: ReactNode;
 
-  if (sync.kind === "connection" && sync.source) {
+  if (sync.kind === "connection") {
+    // In a merged List, the notice is about the Source list with the problem.
+    const subject = sync.source
+      ? {
+          noun: "its Source list",
+          lastRefresh: "the last refresh",
+          hidden: "its Source list does not show in this catalog",
+        }
+      : {
+          noun: "this List",
+          lastRefresh: "its last refresh",
+          hidden: "this List does not show in Stremio",
+        };
     body = sync.renew ? (
       <>
         <strong className="font-semibold">
           {label} refused the Stremlist Connection
         </strong>
         {sync.stillShown
-          ? ". Stremio still shows its Source list from the last refresh, but not after the next one."
-          : ", so its Source list does not show in this catalog."}{" "}
+          ? `. Stremio still shows ${subject.noun} from ${subject.lastRefresh}, but not after the next one.`
+          : `, so ${subject.hidden}.`}{" "}
         Connect {label} again to renew it.
       </>
     ) : (
-      <>
-        {label} is not connected, so its Source list does not show in this
-        catalog.
-      </>
-    );
-  } else if (sync.kind === "connection") {
-    body = sync.renew ? (
-      <>
-        <strong className="font-semibold">
-          {label} refused the Stremlist Connection
-        </strong>
-        {sync.stillShown
-          ? ". Stremio still shows this List from its last refresh, but not after the next one."
-          : ", so this List does not show in Stremio."}{" "}
-        Connect {label} again to renew it.
-      </>
-    ) : (
-      <>{label} is not connected, so this List does not show in Stremio.</>
+      `${label} is not connected, so ${subject.hidden}.`
     );
   } else {
     const copy = sourceProblemCopy(

@@ -187,3 +187,16 @@ export function attentionTone(
   }
   return null;
 }
+
+/**
+ * The color of the dot on a List's sync line: its attention tone when it
+ * needs the user, else "ok" once a saved List refreshed, else "idle".
+ */
+export function syncLineTone(
+  sync: ListSyncState,
+  saved: boolean,
+): "ok" | "idle" | "warn" | "bad" {
+  return (
+    attentionTone(sync) ?? (saved && sync.kind === "synced" ? "ok" : "idle")
+  );
+}
