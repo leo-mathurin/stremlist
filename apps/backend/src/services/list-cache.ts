@@ -8,6 +8,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { getR2Bucket, getR2Client } from "../lib/r2";
+import { isNotFound } from "../lib/r2-json";
 
 const CACHE_FORMAT_VERSION = 1;
 const MEMORY_CACHE_TTL_MS = 60_000;
@@ -134,18 +135,6 @@ function catalogKey(listId: string, generation: string): string {
 
 function metaKey(meta: Pick<StremioMeta, "id" | "type">): string {
   return `${meta.type}:${meta.id}`;
-}
-
-function isNotFound(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const candidate = error as {
-    name?: string;
-    $metadata?: { httpStatusCode?: number };
-  };
-  return (
-    candidate.name === "NoSuchKey" ||
-    candidate.$metadata?.httpStatusCode === 404
-  );
 }
 
 function isPreconditionFailed(error: unknown): boolean {

@@ -350,6 +350,11 @@ export function clearInFlightSyncs(): void {
   inFlightSyncs.clear();
 }
 
+/** After a disconnect: a later read must not join a sync of the old tokens. */
+export function forgetInFlightSync(accountId: string): void {
+  inFlightSyncs.delete(accountId);
+}
+
 /**
  * The user's library, kept in sync the way Simkl requires: always ask
  * /sync/activities first, reuse the previous snapshot when nothing moved, and

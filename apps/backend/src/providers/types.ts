@@ -260,4 +260,10 @@ export interface ProviderAdapter {
   listConnectionSources?(
     connection: ConnectionAccess,
   ): Promise<ConnectionSource[]>;
+  /**
+   * After a disconnect: forget what the adapter keeps in memory for this
+   * Account's Connection. Its R2 objects are deleted with the Connection's
+   * prefix.
+   */
+  forgetConnection?(accountId: string): void;
 }

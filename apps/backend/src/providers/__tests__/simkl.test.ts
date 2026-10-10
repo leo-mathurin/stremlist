@@ -5,7 +5,11 @@ import type { ConnectionAccess } from "../types";
 import { SourceUnavailableError } from "../types";
 
 // R2 as an in-memory bucket.
-const r2 = vi.hoisted(() => ({ objects: new Map<string, string>() }));
+const r2 = vi.hoisted(() => ({
+  objects: new Map<string, string>(),
+  /** R2 unreachable: reads fail with an error other than NoSuchKey. */
+  down: false,
+}));
 vi.mock("../../lib/r2", () => ({
   getR2Bucket: () => "test-bucket",
   getR2Client: () => ({
@@ -18,6 +22,7 @@ vi.mock("../../lib/r2", () => ({
         r2.objects.set(Key, Buffer.from(Body ?? []).toString());
         return Promise.resolve({});
       }
+      if (r2.down) return Promise.reject(new Error("R2 is down"));
       const value = r2.objects.get(Key);
       if (value === undefined) {
         return Promise.reject(
@@ -360,6 +365,7 @@ beforeEach(() => {
   process.env.SIMKL_CLIENT_ID = "client-123";
   process.env.SIMKL_CLIENT_SECRET = "secret-456";
   r2.objects.clear();
+  r2.down = false;
   resetSimklState();
   calls = [];
   routes = defaultRoutes(activities({ all: "2026-10-01T10:00:00Z" }));
@@ -561,6 +567,23 @@ describe("simkl activities gating", () => {
     await simklProvider.fetchSource("me/plantowatch", {
       connection: { ...connection, username: "someone-else" },
     });
+    expect(apiCalls()).toContain("GET /sync/all-items/shows");
+  });
+});
+
+describe("simkl disconnect", () => {
+  it("forgets the in-memory copies of the Connection's state", async () => {
+    await simklProvider.fetchSource("me/plantowatch", ctx());
+    // While R2 is down, the in-memory copy answers inside the gate.
+    r2.down = true;
+    calls = [];
+    await simklProvider.fetchSource("me/plantowatch", ctx());
+    expect(apiCalls()).toEqual([]);
+
+    simklProvider.forgetConnection?.("acc-1");
+
+    calls = [];
+    await simklProvider.fetchSource("me/plantowatch", ctx());
     expect(apiCalls()).toContain("GET /sync/all-items/shows");
   });
 });

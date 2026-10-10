@@ -1,15 +1,14 @@
-import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
-import { getR2Bucket, getR2Client } from "../../lib/r2";
+import { connectionPrefix, readJson, writeJson } from "../../lib/r2-json";
 
 /** Version of the snapshots below; another version is read again. */
 export const STATE_VERSION = 1;
 
 export function libraryKey(accountId: string): string {
-  return `connections/${accountId}/simkl/library.json`;
+  return `${connectionPrefix(accountId, "simkl")}library.json`;
 }
 
 export function listKey(accountId: string, listId: string): string {
-  return `connections/${accountId}/simkl/lists/${listId}.json`;
+  return `${connectionPrefix(accountId, "simkl")}lists/${listId}.json`;
 }
 
 // Only a fallback when R2 is unreachable: R2 is the shared truth, so an
@@ -19,15 +18,10 @@ const memoryState = new Map<string, unknown>();
 /** Per-Connection state in R2, next to the Action membership. */
 export async function readState<T>(key: string): Promise<T | null> {
   try {
-    const response = await getR2Client().send(
-      new GetObjectCommand({ Bucket: getR2Bucket(), Key: key }),
-    );
-    if (!response.Body) return null;
-    const value = JSON.parse(await response.Body.transformToString()) as T;
-    memoryState.set(key, value);
+    const value = await readJson<T>(key);
+    if (value !== null) memoryState.set(key, value);
     return value;
-  } catch (error) {
-    if (error instanceof Error && error.name === "NoSuchKey") return null;
+  } catch {
     return (memoryState.get(key) as T | undefined) ?? null;
   }
 }
@@ -35,20 +29,20 @@ export async function readState<T>(key: string): Promise<T | null> {
 export async function writeState(key: string, value: unknown): Promise<void> {
   memoryState.set(key, value);
   try {
-    await getR2Client().send(
-      new PutObjectCommand({
-        Bucket: getR2Bucket(),
-        Key: key,
-        Body: Buffer.from(JSON.stringify(value)),
-        ContentType: "application/json",
-        CacheControl: "private, max-age=0, must-revalidate",
-      }),
-    );
+    await writeJson(key, value);
   } catch (error) {
     console.error(
       `Failed to save Simkl state ${key}:`,
       error instanceof Error ? error.message : error,
     );
+  }
+}
+
+/** After a disconnect: forget the fallback copies of one Account's state. */
+export function forgetMemoryState(accountId: string): void {
+  const prefix = connectionPrefix(accountId, "simkl");
+  for (const key of [...memoryState.keys()]) {
+    if (key.startsWith(prefix)) memoryState.delete(key);
   }
 }
 

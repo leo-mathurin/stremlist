@@ -10,9 +10,13 @@ import {
   STATUS_REFS,
   statusEntries,
 } from "./simkl/entries";
-import { clearInFlightSyncs, syncLibrary } from "./simkl/library";
+import {
+  clearInFlightSyncs,
+  forgetInFlightSync,
+  syncLibrary,
+} from "./simkl/library";
 import { fetchCustomList, readListPage } from "./simkl/lists";
-import { clearMemoryState } from "./simkl/state";
+import { clearMemoryState, forgetMemoryState } from "./simkl/state";
 import type {
   ConnectionAccess,
   ProviderAdapter,
@@ -117,6 +121,11 @@ export const simklProvider: ProviderAdapter = {
   resolverStrategies: [tmdbExternalIdsStrategy],
 
   actions: simklActions,
+
+  forgetConnection(accountId) {
+    forgetMemoryState(accountId);
+    forgetInFlightSync(accountId);
+  },
 
   oauth: {
     authorizeUrl: "https://simkl.com/oauth2/authorize",

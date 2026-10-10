@@ -1,14 +1,14 @@
-import {
-  DeleteObjectCommand,
-  GetObjectCommand,
-  PutObjectCommand,
-} from "@aws-sdk/client-s3";
 import { IMDB_TITLE_ID_PATTERN } from "@stremlist/shared/constants";
 import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
 import { joinProviderLabels, PROVIDERS } from "@stremlist/shared/providers";
 import type { StremioStream } from "@stremlist/shared/stremio.types";
 import { scheduleBackgroundTask } from "../lib/background";
-import { getR2Bucket, getR2Client } from "../lib/r2";
+import {
+  connectionPrefix,
+  deletePrefix,
+  readJson,
+  writeJson,
+} from "../lib/r2-json";
 import { getProvider, isProviderEnabled } from "../providers/registry";
 import type {
   ActionIntent,
@@ -39,7 +39,7 @@ interface StoredMembership {
 }
 
 function membershipKey(accountId: string, provider: ProviderId): string {
-  return `connections/${accountId}/${provider}/membership.json`;
+  return `${connectionPrefix(accountId, provider)}membership.json`;
 }
 
 const memoryMembership = new Map<string, StoredMembership>();
@@ -52,14 +52,8 @@ async function readMembership(
   const inMemory = memoryMembership.get(key);
   if (inMemory) return inMemory;
   try {
-    const response = await getR2Client().send(
-      new GetObjectCommand({ Bucket: getR2Bucket(), Key: key }),
-    );
-    if (!response.Body) return null;
-    const stored = JSON.parse(
-      await response.Body.transformToString(),
-    ) as StoredMembership;
-    memoryMembership.set(key, stored);
+    const stored = await readJson<StoredMembership>(key);
+    if (stored) memoryMembership.set(key, stored);
     return stored;
   } catch {
     return null;
@@ -77,15 +71,7 @@ async function writeMembership(
     membership,
   };
   memoryMembership.set(key, stored);
-  await getR2Client().send(
-    new PutObjectCommand({
-      Bucket: getR2Bucket(),
-      Key: key,
-      Body: Buffer.from(JSON.stringify(stored)),
-      ContentType: "application/json",
-      CacheControl: "private, max-age=0, must-revalidate",
-    }),
-  );
+  await writeJson(key, stored);
 }
 
 async function refreshMembership(
@@ -100,27 +86,17 @@ async function refreshMembership(
 }
 
 /**
- * Snapshots that a Connection keeps in R2: Action membership, and the Simkl
- * library snapshot used to skip unchanged reads.
+ * After a disconnect: delete what Stremlist stored for that Connection, in
+ * memory and in R2 (Action membership, and the Provider's own state such as
+ * Simkl's library and custom list snapshots).
  */
-const CONNECTION_OBJECTS = ["membership.json", "library.json"];
-
-/** After a disconnect: delete what Stremlist stored for that Connection. */
 export async function forgetConnectionObjects(
   accountId: string,
   provider: ProviderId,
 ): Promise<void> {
   memoryMembership.delete(membershipKey(accountId, provider));
-  await Promise.all(
-    CONNECTION_OBJECTS.map((name) =>
-      getR2Client().send(
-        new DeleteObjectCommand({
-          Bucket: getR2Bucket(),
-          Key: `connections/${accountId}/${provider}/${name}`,
-        }),
-      ),
-    ),
-  );
+  getProvider(provider).forgetConnection?.(accountId);
+  await deletePrefix(connectionPrefix(accountId, provider));
 }
 
 /** The Providers that receive Actions for this Account, in the user's order. */

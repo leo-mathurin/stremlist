@@ -5,9 +5,14 @@
  */
 import {
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
+
+/** Keys per ListObjectsV2 page; small, so tests cover the pagination. */
+export const LIST_PAGE_SIZE = 2;
 
 export const r2Objects = new Map<string, string>();
 
@@ -34,6 +39,28 @@ function send(command: unknown): Promise<unknown> {
   }
   if (command instanceof DeleteObjectCommand) {
     if (command.input.Key) r2Objects.delete(command.input.Key);
+    return Promise.resolve({});
+  }
+  if (command instanceof ListObjectsV2Command) {
+    // Like S3, the continuation token resumes after the last key returned,
+    // so deleting a page before reading the next one skips nothing.
+    const prefix = command.input.Prefix ?? "";
+    const after = command.input.ContinuationToken ?? "";
+    const keys = [...r2Objects.keys()]
+      .filter((key) => key.startsWith(prefix) && key > after)
+      .sort();
+    const page = keys.slice(0, LIST_PAGE_SIZE);
+    const truncated = keys.length > LIST_PAGE_SIZE;
+    return Promise.resolve({
+      Contents: page.map((Key) => ({ Key })),
+      IsTruncated: truncated,
+      NextContinuationToken: truncated ? page.at(-1) : undefined,
+    });
+  }
+  if (command instanceof DeleteObjectsCommand) {
+    for (const object of command.input.Delete?.Objects ?? []) {
+      if (object.Key) r2Objects.delete(object.Key);
+    }
     return Promise.resolve({});
   }
   return Promise.reject(new Error("mock-r2: unsupported command"));
