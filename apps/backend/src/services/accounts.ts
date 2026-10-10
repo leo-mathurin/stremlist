@@ -11,10 +11,9 @@ import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
 import type { AddonAccess, ConfigList } from "@stremlist/shared/stremio.types";
-import { z } from "zod";
 import { supabase } from "../lib/supabase";
-import { catalogSettingsSchema } from "./catalog-settings";
 import { deleteCachedList } from "./list-cache";
+import { mapList, toStoredSources } from "./list-rows";
 import { unusedSourceCaches } from "./merged-lists";
 
 type AccountRow = Tables<"accounts">;
@@ -76,34 +75,6 @@ export interface ListInput {
 /** A concurrent save changed merged Source lists that this save kept. */
 export class MergedSourcesChangedError extends Error {}
 
-const storedSourcesSchema = z.array(
-  z.object({
-    provider: z.string(),
-    source_ref: z.string(),
-    label: z.string().optional(),
-  }),
-);
-
-/** The stored form of merged Source lists (`lists.merged_sources`). */
-function toStoredSources(sources: readonly ListSource[]) {
-  return sources.map((source) => ({
-    provider: source.provider,
-    source_ref: source.sourceRef,
-    ...(source.label ? { label: source.label } : {}),
-  }));
-}
-
-/** The merged Source lists of a row; unknown Providers are left out. */
-function mapMergedSources(value: unknown): ListSource[] {
-  const parsed = storedSourcesSchema.safeParse(value);
-  if (!parsed.success) return [];
-  return parsed.data.flatMap(({ provider, source_ref, label }) =>
-    isProviderId(provider)
-      ? [{ provider, sourceRef: source_ref, ...(label ? { label } : {}) }]
-      : [],
-  );
-}
-
 function mapAccount(row: AccountRow): Account {
   return {
     id: row.id,
@@ -114,26 +85,6 @@ function mapAccount(row: AccountRow): Account {
     actionProviders: row.action_providers.filter(isProviderId),
     newTitlesCatalog: row.new_titles_catalog,
     lastFetchedAt: row.last_fetched_at,
-  };
-}
-
-function mapList(row: ListRow): ConfigList | null {
-  if (!isProviderId(row.provider)) return null;
-  const settings = catalogSettingsSchema.safeParse(row.catalog_settings);
-  const mergedSources = mapMergedSources(row.merged_sources);
-  return {
-    id: row.id,
-    provider: row.provider,
-    sourceRef: row.source_ref,
-    catalogTitle: row.catalog_title,
-    sortOption: row.sort_option,
-    displayMode: row.display_mode as ConfigList["displayMode"],
-    position: row.position,
-    ...(settings.success && Object.keys(settings.data).length > 0
-      ? { catalogSettings: settings.data }
-      : {}),
-    ...(mergedSources.length > 0 ? { mergedSources } : {}),
-    ...(row.source_label ? { sourceLabel: row.source_label } : {}),
   };
 }
 
