@@ -1,5 +1,5 @@
 import { IMDB_TITLE_ID_PATTERN } from "@stremlist/shared/constants";
-import { providerFetch, RateLimiter } from "../providers/http";
+import { providerFetchJson, RateLimiter } from "../providers/http";
 import type { ResolverStrategy, SourceEntry } from "../providers/types";
 
 const WIKIDATA_SPARQL = "https://query.wikidata.org/sparql";
@@ -47,20 +47,19 @@ export async function wikidataImdbIds(
   ?item wdt:${property} ?external ;
         wdt:${IMDB_PROPERTY} ?imdb .
 }`;
-    const response = await providerFetch(WIKIDATA_SPARQL, {
-      method: "POST",
-      headers: {
-        Accept: "application/sparql-results+json",
-        "Content-Type": "application/x-www-form-urlencoded",
+    const { data: json } = await providerFetchJson<SparqlResponse>(
+      WIKIDATA_SPARQL,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/sparql-results+json",
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({ query }).toString(),
+        limiter: wikidataLimiter,
+        timeoutMs: 30_000,
       },
-      body: new URLSearchParams({ query }).toString(),
-      limiter: wikidataLimiter,
-      timeoutMs: 30_000,
-    });
-    if (!response.ok) {
-      throw new Error(`Wikidata SPARQL returned ${response.status}`);
-    }
-    const json = (await response.json()) as SparqlResponse;
+    );
     for (const binding of json.results?.bindings ?? []) {
       const external = binding.external?.value;
       const imdbId = binding.imdb?.value;

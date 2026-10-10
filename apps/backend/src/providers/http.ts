@@ -1,4 +1,6 @@
 import { ADDON_VERSION } from "@stremlist/shared/constants";
+import type { SourceProblemReason } from "@stremlist/shared/source-problems";
+import { SourceUnavailableError } from "./types";
 
 /** Identifying User-Agent for Provider APIs (Trakt and Simkl require one). */
 export const STREMLIST_USER_AGENT = `Stremlist/${ADDON_VERSION} (+https://stremlist.com)`;
@@ -65,6 +67,21 @@ export interface ProviderFetchOptions extends RequestInit {
   timeoutMs?: number;
   /** Retry once after a 429 whose Retry-After is short enough. */
   retryOn429?: boolean;
+  /** Query parameters to set on the URL (they replace ones with the same name). */
+  query?: Record<string, string>;
+  /** A JSON body: sent with `Content-Type: application/json`. */
+  json?: unknown;
+  /** An OAuth access token, sent as `Authorization: Bearer …` when not empty. */
+  bearer?: string;
+}
+
+/** The URL with `query` set on it. */
+function withQuery(url: string, query: Record<string, string> = {}): string {
+  const entries = Object.entries(query);
+  if (entries.length === 0) return url;
+  const target = new URL(url);
+  for (const [key, value] of entries) target.searchParams.set(key, value);
+  return target.toString();
 }
 
 /**
@@ -79,16 +96,27 @@ export async function providerFetch(
     limiter,
     timeoutMs = DEFAULT_TIMEOUT_MS,
     retryOn429 = true,
+    query,
+    json,
+    bearer,
     ...init
   } = options;
   const headers = new Headers(init.headers);
   if (!headers.has("User-Agent")) {
     headers.set("User-Agent", STREMLIST_USER_AGENT);
   }
+  if (bearer) headers.set("Authorization", `Bearer ${bearer}`);
+  if (json !== undefined) {
+    if (!headers.has("Content-Type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    init.body = JSON.stringify(json);
+  }
+  const target = withQuery(url, query);
 
   for (let attempt = 0; ; attempt++) {
     await limiter?.acquire();
-    const response = await fetch(url, {
+    const response = await fetch(target, {
       ...init,
       headers,
       signal: init.signal ?? AbortSignal.timeout(timeoutMs),
@@ -117,6 +145,25 @@ export async function ensureOk(
     );
   }
   return response;
+}
+
+/**
+ * The Source list state that an HttpError status means, with `reasons` from
+ * status to reason. Other statuses and other errors come back unchanged.
+ */
+export function sourceErrorFromHttp(
+  error: unknown,
+  reasons: Partial<Record<number, SourceProblemReason>>,
+  message: (reason: SourceProblemReason, error: HttpError) => string = (
+    _reason,
+    httpError,
+  ) => httpError.message,
+): unknown {
+  if (!(error instanceof HttpError)) return error;
+  const reason = reasons[error.status];
+  return reason
+    ? new SourceUnavailableError(reason, message(reason, error))
+    : error;
 }
 
 /** providerFetch() that parses JSON and throws HttpError on non-2xx. */

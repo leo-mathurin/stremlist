@@ -1,8 +1,15 @@
 import type { DisplayMode } from "@stremlist/shared/constants";
 import { asImdbId } from "@stremlist/shared/constants";
 import type { ConnectionSource } from "@stremlist/shared/providers";
+import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
-import { HttpError, providerFetch, RateLimiter } from "./http";
+import {
+  HttpError,
+  providerFetch,
+  providerFetchJson,
+  RateLimiter,
+  sourceErrorFromHttp,
+} from "./http";
 import { oauthClient, revokeToken } from "./oauth-app";
 import { readPages } from "./paging";
 import type {
@@ -127,35 +134,33 @@ interface SyncPage {
  * read. MDBList answers 403 both for a revoked token ("Invalid OAuth token")
  * and for a list that the user may not see.
  */
-async function toError(response: Response, url: string): Promise<Error> {
-  const body = await response.text().catch(() => "");
+function toSourceError(error: unknown): unknown {
+  if (!(error instanceof HttpError)) return error;
   let message = "";
   try {
-    const parsed = JSON.parse(body) as { error?: unknown } | null;
+    const parsed = JSON.parse(error.body) as { error?: unknown } | null;
     message = typeof parsed?.error === "string" ? parsed.error : "";
   } catch {
-    message = body.slice(0, 200);
+    message = error.body.slice(0, 200);
   }
-  const { status } = response;
+  const { status } = error;
+  const detail = message || status;
   if (status === 401 || (status === 403 && /token/i.test(message))) {
     return new SourceUnavailableError(
       "needs_connection",
-      `MDBList refused the Connection: ${message || status}`,
+      `MDBList refused the Connection: ${detail}`,
     );
   }
-  if (status === 403 || (status < 500 && /private/i.test(message))) {
-    return new SourceUnavailableError(
-      "private",
-      `This MDBList list is private: ${message || status}`,
-    );
-  }
-  if (status === 404) {
-    return new SourceUnavailableError(
-      "not_found",
-      `MDBList list not found: ${message || status}`,
-    );
-  }
-  return new HttpError(status, body, url);
+  const reasons: Partial<Record<number, SourceProblemReason>> = {
+    403: "private",
+    404: "not_found",
+  };
+  if (status < 500 && /private/i.test(message)) reasons[status] = "private";
+  return sourceErrorFromHttp(error, reasons, (reason) =>
+    reason === "private"
+      ? `This MDBList list is private: ${detail}`
+      : `MDBList list not found: ${detail}`,
+  );
 }
 
 async function mdblistRequest(
@@ -168,26 +173,20 @@ async function mdblistRequest(
   } = {},
 ): Promise<{ data: unknown; response: Response }> {
   const method = options.method ?? "GET";
-  const url = new URL(`${API}${path}`);
-  for (const [key, value] of Object.entries(options.params ?? {})) {
-    url.searchParams.set(key, value);
-  }
   const token = await connectionToken(connection);
   const limiters = limitersFor(connection);
-  const response = await providerFetch(url.toString(), {
-    method,
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${token}`,
-      ...(options.body === undefined
-        ? {}
-        : { "Content-Type": "application/json" }),
-    },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-    limiter: method === "GET" ? limiters.read : limiters.write,
-  });
-  if (!response.ok) throw await toError(response, url.toString());
-  return { data: (await response.json()) as unknown, response };
+  try {
+    return await providerFetchJson<unknown>(`${API}${path}`, {
+      method,
+      query: options.params,
+      headers: { Accept: "application/json" },
+      bearer: token,
+      json: options.body,
+      limiter: method === "GET" ? limiters.read : limiters.write,
+    });
+  } catch (error) {
+    throw toSourceError(error);
+  }
 }
 
 /**
@@ -543,7 +542,8 @@ const client = oauthClient("MDBLIST");
 
 async function fetchUsername(token: string): Promise<string | null> {
   const response = await providerFetch(`${API}/user`, {
-    headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+    headers: { Accept: "application/json" },
+    bearer: token,
   });
   if (!response.ok) return null;
   const user = (await response.json()) as { username?: string | null };

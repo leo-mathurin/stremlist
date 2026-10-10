@@ -1,4 +1,4 @@
-import { HttpError } from "../http";
+import { sourceErrorFromHttp } from "../http";
 import { readPages } from "../paging";
 import type {
   ConnectionAccess,
@@ -70,19 +70,14 @@ export async function readListPage(
       params: { limit: String(limit), page: String(page) },
     });
   } catch (error) {
-    if (error instanceof HttpError && error.status === 403) {
-      throw new SourceUnavailableError(
-        "private",
-        `Simkl list ${listId} is private`,
-      );
-    }
-    if (error instanceof HttpError && error.status === 404) {
-      throw new SourceUnavailableError(
-        "not_found",
-        `Simkl list ${listId} not found`,
-      );
-    }
-    throw error;
+    throw sourceErrorFromHttp(
+      error,
+      { 403: "private", 404: "not_found" },
+      (reason) =>
+        reason === "private"
+          ? `Simkl list ${listId} is private`
+          : `Simkl list ${listId} not found`,
+    );
   }
   // A free account gets HTTP 200 with an error body instead of the list.
   if (data.error === "premium_only") throw premiumOnlyError();

@@ -1,6 +1,6 @@
 import { asImdbId } from "@stremlist/shared/constants";
 import { mapWithConcurrency } from "../lib/concurrency";
-import { providerFetch, RateLimiter } from "../providers/http";
+import { HttpError, providerFetchJson, RateLimiter } from "../providers/http";
 import type { ResolverStrategy, SourceEntry } from "../providers/types";
 
 const TMDB_API = "https://api.themoviedb.org/3";
@@ -15,30 +15,26 @@ export function isTmdbConfigured(): boolean {
   );
 }
 
-/** GET a TMDB v3 endpoint. Returns null on 404. */
+/** GET a TMDB v3 endpoint. Returns null on 404; throws HttpError otherwise. */
 export async function tmdbGet<T>(
   path: string,
   params: Record<string, string> = {},
 ): Promise<T | null> {
-  const url = new URL(`${TMDB_API}${path}`);
-  for (const [key, value] of Object.entries(params)) {
-    url.searchParams.set(key, value);
+  const token = process.env.TMDB_READ_ACCESS_TOKEN;
+  const apiKey = process.env.TMDB_API_KEY;
+  if (!token && !apiKey) throw new Error("TMDB is not configured");
+  try {
+    const { data } = await providerFetchJson<T>(`${TMDB_API}${path}`, {
+      query: token ? params : { ...params, api_key: apiKey ?? "" },
+      headers: { Accept: "application/json" },
+      bearer: token,
+      limiter: tmdbLimiter,
+    });
+    return data;
+  } catch (error) {
+    if (error instanceof HttpError && error.status === 404) return null;
+    throw error;
   }
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (process.env.TMDB_READ_ACCESS_TOKEN) {
-    headers.Authorization = `Bearer ${process.env.TMDB_READ_ACCESS_TOKEN}`;
-  } else if (process.env.TMDB_API_KEY) {
-    url.searchParams.set("api_key", process.env.TMDB_API_KEY);
-  } else {
-    throw new Error("TMDB is not configured");
-  }
-  const response = await providerFetch(url.toString(), {
-    headers,
-    limiter: tmdbLimiter,
-  });
-  if (response.status === 404) return null;
-  if (!response.ok) throw new Error(`TMDB ${path} returned ${response.status}`);
-  return (await response.json()) as T;
 }
 
 /** IMDb ID of a TMDB movie or show, or null. */

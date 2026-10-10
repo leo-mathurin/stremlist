@@ -102,18 +102,20 @@ export const traktProvider: ProviderAdapter = {
       const secret = clientSecret();
       await providerFetch(`${TRAKT_AUTH}/oauth/revoke`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        json: {
           token: accessToken,
           client_id: traktClientId(),
           ...(secret ? { client_secret: secret } : {}),
-        }),
+        },
       });
     },
     async fetchUsername(accessToken) {
       const { data } = await providerFetchJson<{
         user?: { username?: string | null; ids?: { slug?: string | null } };
-      }>(`${TRAKT_API}/users/settings`, { headers: traktHeaders(accessToken) });
+      }>(`${TRAKT_API}/users/settings`, {
+        headers: traktHeaders(),
+        bearer: accessToken,
+      });
       return nonEmpty(data.user?.username) ?? nonEmpty(data.user?.ids?.slug);
     },
   },
