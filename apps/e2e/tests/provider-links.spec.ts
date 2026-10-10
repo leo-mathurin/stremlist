@@ -171,3 +171,97 @@ test(
     }
   },
 );
+
+test(
+  "Trakt charts and the Source lists of a Trakt Connection become Catalogs",
+  { tag: "@local" },
+  async () => {
+    const { api } = backend;
+    const split = { displayMode: "split" } as const;
+    const catalogs = async (accountId: string, listId: string) => ({
+      movie: await api.listCatalogNames(accountId, listId, "movie"),
+      series: await api.listCatalogNames(accountId, listId, "series"),
+    });
+    const both = {
+      movie: ["The Shawshank Redemption"],
+      series: ["Breaking Bad"],
+    };
+
+    // Charts need no Connection: the app's client ID reads them.
+    const created = await api.createAccount([
+      listInput("trakt", "trending", split),
+      listInput("trakt", "popular", split),
+    ]);
+    expect(created.status).toBe(200);
+    const publicId = created.body.accountId!;
+    for (const row of (await api.getConfig(publicId)).body.lists) {
+      expect(await catalogs(publicId, row.id)).toEqual(both);
+    }
+    const charts = backend.requests((url) =>
+      /^\/(movies|shows)\/(trending|popular)$/.test(url.pathname),
+    );
+    expect(new Set(charts.map((entry) => new URL(entry.url).pathname))).toEqual(
+      new Set([
+        "/movies/trending",
+        "/shows/trending",
+        "/movies/popular",
+        "/shows/popular",
+      ]),
+    );
+    expect(charts.every((entry) => entry.authorization === null)).toBe(true);
+
+    // Recommendations, Up Next, History and Collection read through the
+    // Connection, with the user's token.
+    backend.clearRequests();
+    const accountId = await seedAccount();
+    await seedConnection(accountId, "trakt");
+    const saved = await api.postConfig(accountId, [
+      listInput("trakt", "me/recommendations", split),
+      listInput("trakt", "me/up-next", { displayMode: "series" }),
+      listInput("trakt", "me/history", split),
+      listInput("trakt", "me/collection", split),
+    ]);
+    expect(saved.status).toBe(200);
+    const lists = (await api.getConfig(accountId)).body.lists;
+    expect(lists.map((row) => row.sourceRef)).toEqual([
+      "me/recommendations",
+      "me/up-next",
+      "me/history",
+      "me/collection",
+    ]);
+    for (const row of lists) {
+      expect(await catalogs(accountId, row.id)).toEqual(
+        // Up Next lists the series in progress, not movies.
+        row.sourceRef === "me/up-next"
+          ? { movie: [], series: both.series }
+          : both,
+      );
+    }
+    // Trakt refuses Up Next to some apps: the watched progress gives the same rows.
+    const progress = backend.requests((url) =>
+      url.pathname.startsWith("/sync/progress/"),
+    );
+    expect(progress.map((entry) => new URL(entry.url).pathname)).toEqual(
+      expect.arrayContaining([
+        "/sync/progress/up_next",
+        "/sync/progress/watched",
+      ]),
+    );
+    expect(
+      new URL(
+        progress.find((entry) => entry.url.includes("/watched"))!.url,
+      ).searchParams.get("hide_completed"),
+    ).toBe("true");
+    const personal = backend.requests(
+      (url) =>
+        url.host === "api.trakt.tv" &&
+        /^\/(recommendations|sync\/progress|users\/me\/watched|sync\/collection)\//.test(
+          url.pathname,
+        ),
+    );
+    expect(personal.length).toBeGreaterThanOrEqual(8);
+    expect(
+      personal.every((entry) => entry.authorization === "fixture-access-token"),
+    ).toBe(true);
+  },
+);

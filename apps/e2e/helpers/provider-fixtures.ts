@@ -43,17 +43,11 @@ const IMDB_TITLES: Record<
   ),
 };
 
+const traktMovie = { ...SHAWSHANK, ids: { trakt: 1, imdb: "tt0111161" } };
+const traktShow = { ...BREAKING_BAD, ids: { trakt: 2, imdb: "tt0903747" } };
 const traktEntries = [
-  {
-    type: "movie",
-    listed_at: "2026-01-01T00:00:00.000Z",
-    movie: { ...SHAWSHANK, ids: { trakt: 1, imdb: "tt0111161" } },
-  },
-  {
-    type: "show",
-    listed_at: "2026-01-02T00:00:00.000Z",
-    show: { ...BREAKING_BAD, ids: { trakt: 2, imdb: "tt0903747" } },
-  },
+  { type: "movie", listed_at: "2026-01-01T00:00:00.000Z", movie: traktMovie },
+  { type: "show", listed_at: "2026-01-02T00:00:00.000Z", show: traktShow },
 ];
 const mdblistItems = [
   { mediatype: "movie", ids: { imdb: "tt0111161", tmdb: 278 } },
@@ -134,6 +128,15 @@ function trakt({ request, url, body }: FixtureRequest): Response {
       return json({ error: "private" }, 401);
     case "/users/fixture-user/watchlist":
       return json(url.searchParams.has("sort_by") ? traktEntries : []);
+    // Charts: trending rows wrap the media, popular rows are the media.
+    case "/movies/trending":
+      return json([{ watchers: 9, movie: traktMovie }]);
+    case "/shows/trending":
+      return json([{ watchers: 7, show: traktShow }]);
+    case "/movies/popular":
+      return json([traktMovie]);
+    case "/shows/popular":
+      return json([traktShow]);
   }
   const refused = requireToken(request);
   if (refused) return refused;
@@ -146,6 +149,37 @@ function trakt({ request, url, body }: FixtureRequest): Response {
       return json(url.searchParams.has("sort_by") ? traktEntries : []);
     case "/users/me/lists":
       return json([{ name: "Fixture List", ids: { slug: "fixture-list" } }]);
+    // The Source lists that only a Connection reads.
+    case "/recommendations/movies":
+      return json([traktMovie]);
+    case "/recommendations/shows":
+      return json([traktShow]);
+    case "/sync/progress/up_next":
+      // A limited-access endpoint: the adapter reads the watched progress.
+      return json({ error: "forbidden" }, 403);
+    case "/sync/progress/watched":
+      return json([
+        {
+          show: traktShow,
+          progress: { last_watched_at: "2026-01-03T00:00:00.000Z" },
+        },
+      ]);
+    case "/users/me/watched/movies":
+      return json([
+        { last_watched_at: "2026-01-01T00:00:00.000Z", movie: traktMovie },
+      ]);
+    case "/users/me/watched/shows":
+      return json([
+        { last_watched_at: "2026-01-02T00:00:00.000Z", show: traktShow },
+      ]);
+    case "/sync/collection/movies":
+      return json([
+        { collected_at: "2026-01-01T00:00:00.000Z", movie: traktMovie },
+      ]);
+    case "/sync/collection/shows":
+      return json([
+        { last_collected_at: "2026-01-02T00:00:00.000Z", show: traktShow },
+      ]);
     case "/sync/watched/movies":
     case "/sync/watched/shows":
     case "/sync/ratings/movies":
