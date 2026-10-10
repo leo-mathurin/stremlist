@@ -274,7 +274,7 @@ test.describe("catalogs", () => {
       const chart = body.lists[0];
       const pages = await Promise.all(
         [0, 100, 200].map((skip) =>
-          getCatalog(accountId, "movie", `wl-${chart.id}-movie`, skip),
+          getCatalog(accountId, "movie", `wl-${chart.id}-movie`, { skip }),
         ),
       );
       for (const page of pages) expect(page.status).toBe(200);
