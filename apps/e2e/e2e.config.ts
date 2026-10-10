@@ -1,6 +1,11 @@
 import type { E2EConfig } from "e2e";
 import { chatgpt } from "e2e/oauth/chatgpt";
 import { web } from "@e2e-dev/web";
+import { replayOnlyModel } from "./replay-only-model";
+
+// CI and `test:toolkit:replay` only replay committed recordings: the cache is
+// read-only and strict, and no model can answer (replay-only-model.ts).
+const replayOnly = !!process.env.CI;
 
 export default {
   projectId: "stremlist-ui",
@@ -10,15 +15,15 @@ export default {
   timeout: 180_000,
   agents: {
     default: {
-      model: chatgpt("gpt-6-luna"),
+      model: replayOnly ? replayOnlyModel : chatgpt("gpt-6-luna"),
       maxModelCalls: 12,
       maxSteps: 18,
     },
   },
   cache: {
     dir: ".e2e/cache",
-    mode: process.env.CI ? "read-only" : "read-write",
-    strict: !!process.env.CI,
+    mode: replayOnly ? "read-only" : "read-write",
+    strict: replayOnly,
   },
   trace: "retain-on-failure",
   reporters: ["list", "markdown", "junit"],
