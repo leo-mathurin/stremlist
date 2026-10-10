@@ -1,6 +1,7 @@
 import { test } from "@e2e-dev/web";
 import type { Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
+import { CONNECTION_SOURCES } from "@stremlist/shared/providers";
 import type { AccountConfigInput } from "@stremlist/shared/stremio.types";
 import {
   SAVED_REINSTALL,
@@ -271,6 +272,73 @@ test("a link that needs a Connection saves the setup, connects, then adds the li
     { input: link, accountKey: accountId },
   ]);
 });
+
+test(
+  "a Provider connected from the Providers panel adds its own lists from Quick add",
+  { tags: ["agent"] },
+  async ({ app, agent, browser, screen }) => {
+    await fitConfigurePage(browser);
+    await holdToasts(browser);
+    await baseRoutes(browser);
+    const { state, submissions } = await routeConfig(browser);
+    const starts: string[] = [];
+    await browser.route(
+      `${backend}/${accountId}/connections/simkl/start`,
+      async (route) => {
+        starts.push(route.request.method);
+        // The user agrees on Simkl: the page that opens next is connected.
+        state.config = { ...configuration, connections: [connected("simkl")] };
+        await route.fulfill({
+          json: {
+            ok: true,
+            authorizeUrl:
+              "https://simkl.com/oauth/authorize?client_id=fixture&state=fixture-state",
+          },
+        });
+      },
+    );
+    const authorized: string[] = [];
+    await routeAuthorize(
+      browser,
+      "https://simkl.com/oauth/**",
+      `${app4311}/configure?account=${accountId}&connected=simkl`,
+      authorized,
+    );
+    // Simkl has no public lists: its Source lists come from the Connection.
+    await routeConnectionSources(browser, "simkl", CONNECTION_SOURCES.simkl);
+
+    await app.open(`/configure?account=${accountId}`);
+    await screen
+      .getByRole("listitem")
+      .filter({ hasText: "Simkl" })
+      .getByRole("button", "Connect")
+      .tap();
+    await expect(
+      screen.getByText("Simkl is connected. You can now add its lists."),
+    ).toBeVisible();
+    await expect(browser).toHaveURL(`/configure?account=${accountId}`);
+    await expect(screen.getByText("Your Simkl (@someone)")).toBeVisible();
+    expect(starts).toEqual(["POST"]);
+    expect(authorized).toHaveLength(1);
+
+    await agent.act("Add my Simkl Plan to watch list, then save.", {
+      maxModelCalls: 6,
+    });
+    await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+    await expect(screen.getByRole("button", "Plan to watch")).toBeDisabled();
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0].lists).toMatchObject([
+      { provider: "imdb", sourceRef: imdbUser, position: 0 },
+      {
+        provider: "simkl",
+        sourceRef: "me/plantowatch",
+        catalogTitle: "Simkl Plan to watch",
+        displayMode: "split",
+        position: 1,
+      },
+    ]);
+  },
+);
 
 for (const [error, message] of [
   ["denied", "You cancelled the connection to Trakt. Nothing changed."],

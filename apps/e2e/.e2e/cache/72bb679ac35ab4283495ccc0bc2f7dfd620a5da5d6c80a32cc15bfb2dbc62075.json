@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-10T18:42:30.668Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Plan to watch\"",
+        "target": {
+          "role": "button",
+          "name": "Plan to watch"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save\"",
+        "target": {
+          "role": "button",
+          "name": "Save"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/providers.e2e.ts::a%20Provider%20connected%20from%20the%20Providers%20panel%20adds%20its%20own%20lists%20from%20Quick%20add",
+      "targetId": "chromium",
+      "instructionDigest": "f64233754ef1104418661064b5764774c71993e096dcab2e8dd6d959f57c34ef",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Added the Simkl “Plan to watch” list to Your Lists and clicked Save. The app confirmed “Saved! Reinstall Stremlist in Stremio to see your changes.”",
+    "startPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endAnchors": [
+      {
+        "role": "status",
+        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. I did it Reinstall"
+      },
+      {
+        "text": "Reinstall Stremlist in Stremio"
+      },
+      {
+        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
+      },
+      {
+        "role": "button",
+        "name": "I did it"
+      },
+      {
+        "role": "link",
+        "name": "Reinstall"
+      },
+      {
+        "role": "button",
+        "name": "Drag to reorder Simkl Plan to watch"
+      },
+      {
+        "text": "Simkl Plan to watch"
+      },
+      {
+        "text": "Simkl · Watchlist · Your account"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "text": "1 of 10 lists"
+      },
+      {
+        "text": "No new titles detected yet."
+      },
+      {
+        "role": "heading",
+        "name": "Install or reinstall in Stremio"
+      },
+      {
+        "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
+      }
+    ],
+    "endWaitMs": 11926
+  }
+}
