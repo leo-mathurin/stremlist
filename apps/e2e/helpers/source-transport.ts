@@ -4,6 +4,8 @@
 // through a JSON file. Loopback requests (Supabase) use the real fetch. Every
 // other destination is refused, so no real Provider is ever called.
 import { readFileSync } from "node:fs";
+import type { FixtureRequest } from "./fetch-fixture.js";
+import { graphql, installFetchFixture } from "./fetch-fixture.js";
 
 /** The Source lists that the test writes to E2E_SOURCE_FIXTURE_FILE. */
 export interface SourceFixture {
@@ -28,7 +30,6 @@ export interface SourceFixture {
   >;
 }
 
-const realFetch = globalThis.fetch;
 const fixtureFile = process.env.E2E_SOURCE_FIXTURE_FILE;
 if (!fixtureFile) throw new Error("E2E_SOURCE_FIXTURE_FILE is not set");
 
@@ -53,21 +54,22 @@ function titleNode(id: string, state: SourceFixture) {
   };
 }
 
-async function imdb(request: Request): Promise<Response> {
-  const body = (await request.json()) as {
-    operationName: string;
-    variables: Record<string, unknown>;
-  };
+function imdb({ body }: FixtureRequest): Response {
+  const { operation, variables } = graphql<{
+    urConst?: string;
+    after?: string | null;
+    ids?: string[];
+  }>(body);
   const state = fixture();
-  if (body.operationName === "WatchListPage") {
-    const list = state.imdb[String(body.variables.urConst)];
+  if (operation === "WatchListPage") {
+    const list = state.imdb[String(variables.urConst)];
     if (!list) return Response.json({ data: { predefinedList: null } });
     if (list.fail) return new Response("Fixture outage", { status: 503 });
-    const firstPage = body.variables.after == null;
+    const firstPage = variables.after == null;
     return Response.json({
       data: {
         predefinedList: {
-          id: body.variables.urConst,
+          id: variables.urConst,
           visibility: { id: "PUBLIC" },
           titleListItemSearch: {
             total: list.capped ? 20_000 : list.ids.length,
@@ -82,8 +84,8 @@ async function imdb(request: Request): Promise<Response> {
       },
     });
   }
-  if (body.operationName === "TitlesById") {
-    const ids = body.variables.ids as string[];
+  if (operation === "TitlesById") {
+    const ids = variables.ids ?? [];
     return Response.json({
       data: {
         titles: ids
@@ -92,10 +94,10 @@ async function imdb(request: Request): Promise<Response> {
       },
     });
   }
-  throw new Error(`Unexpected IMDb operation ${body.operationName}`);
+  throw new Error(`Unexpected IMDb operation ${operation}`);
 }
 
-function trakt(url: URL): Response {
+function trakt({ url }: FixtureRequest): Response {
   const user = /^\/users\/([^/]+)\/watchlist$/.exec(url.pathname)?.[1];
   const list = user ? fixture().trakt[user] : undefined;
   if (!list) return Response.json({ error: "not found" }, { status: 404 });
@@ -113,19 +115,12 @@ function trakt(url: URL): Response {
   );
 }
 
-Object.defineProperty(globalThis, "fetch", {
-  value: async (input: string | URL | Request, init?: RequestInit) => {
-    const request = new Request(input, init);
-    const url = new URL(request.url);
-    if (["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) {
-      return realFetch(request);
-    }
-    if (url.origin === "https://api.graphql.imdb.com") return imdb(request);
-    if (url.origin === "https://api.trakt.tv") return trakt(url);
+installFetchFixture({
+  log: process.env.E2E_PROVIDER_LOG,
+  hosts: {
+    "api.graphql.imdb.com": imdb,
+    "api.trakt.tv": trakt,
     // Enrichment falls back to Cinemeta for Titles IMDb did not answer.
-    if (url.origin === "https://v3-cinemeta.strem.io") {
-      return new Response("Not found", { status: 404 });
-    }
-    throw new Error(`Source fixture refuses outbound request to ${url.origin}`);
+    "v3-cinemeta.strem.io": () => new Response("Not found", { status: 404 }),
   },
 });
