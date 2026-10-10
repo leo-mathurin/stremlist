@@ -117,7 +117,6 @@ export function ListSyncNotice({
   let body: ReactNode;
 
   if (sync.kind === "connection") {
-    // In a merged List, the notice is about the Source list with the problem.
     const subject = sync.source
       ? {
           noun: "its Source list",

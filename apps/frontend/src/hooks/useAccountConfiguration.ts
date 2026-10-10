@@ -137,14 +137,8 @@ export function useAccountConfiguration(
   const currentForm = useRef(form);
   // Save responses must see edits committed while the request was in flight.
   useLayoutEffect(() => {
-    currentForm.current = {
-      lists,
-      rpdbApiKey,
-      actionsEnabled,
-      actions,
-      newTitlesEnabled,
-    };
-  }, [lists, rpdbApiKey, actionsEnabled, actions, newTitlesEnabled]);
+    currentForm.current = form;
+  });
 
   /**
    * Take what the server says about the Account and the page does not edit:
@@ -499,7 +493,6 @@ export function useAccountConfiguration(
   /** What a List row shows about its refreshes and Connections. */
   const rowModel = (list: ListFormRow) => {
     const sync = syncStateOf(list);
-    // Providers whose Connection the List reads through and the Account lacks.
     const missing =
       access === "private" ? missingConnections(list, connections) : [];
     return {
@@ -511,15 +504,7 @@ export function useAccountConfiguration(
   };
 
   return {
-    lists,
-    setListField: editor.setListField,
-    addList: editor.addList,
-    addChartList: editor.addChartList,
-    removeList: editor.removeList,
-    mergeLists: editor.mergeLists,
-    removeSource: editor.removeSource,
-    splitSource: editor.splitSource,
-    reorderLists: editor.reorderLists,
+    ...editor,
     rpdbApiKey,
     setRpdbApiKey,
     showRpdbApiKey,
@@ -572,7 +557,6 @@ export function useAccountConfiguration(
     onCooldown,
     reinstall,
     markReinstalled: () => baseline.markReinstalled(),
-    validationError: editor.validationError,
     handleSave,
     handleRefresh,
     upgrade,

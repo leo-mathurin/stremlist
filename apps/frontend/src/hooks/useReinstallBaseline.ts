@@ -54,7 +54,7 @@ function writeInstalled(accountKey: string, value: InstallBaseline | null) {
 }
 
 /** A setup as far as Stremio reads it at install time. */
-export interface InstallSetup {
+interface InstallSetup {
   rows: SignatureRow[];
   newTitles: boolean;
   /** Actions add a `stream` resource to the manifest. */

@@ -7,7 +7,7 @@ import {
   PROVIDERS,
   parseSourceLink,
 } from "@stremlist/shared/providers";
-import type { ProviderId, SourceKind } from "@stremlist/shared/providers";
+import type { ProviderId } from "@stremlist/shared/providers";
 import type { DisplayMode } from "@stremlist/shared/constants";
 import {
   sourceNoun,
@@ -25,7 +25,6 @@ import { cn } from "@/lib/utils";
 export interface ResolvedLink {
   provider: ProviderId;
   sourceRef: string;
-  kind: SourceKind;
   suggestedTitle: string | null;
   defaultDisplayMode: DisplayMode | null;
 }
@@ -115,12 +114,12 @@ export default function LinkPaste({
 }: {
   accountKey: string | null;
   access: AccountAccess;
-  disabled?: boolean;
-  disabledReason?: string;
+  disabled: boolean;
+  disabledReason: string;
   /** Pre-filled link (from Home, or kept across an OAuth round trip). */
   initialValue?: string;
   /** Called once the initial link was submitted, so it is not added twice. */
-  onInitialValueUsed?: () => void;
+  onInitialValueUsed: () => void;
   onDetect: (provider: ProviderId | null) => void;
   /** Add the List. Returns an error message when it cannot be added. */
   onResolved: (link: ResolvedLink) => string | null;
@@ -186,7 +185,6 @@ export default function LinkPaste({
       const error = onResolved({
         provider: body.provider,
         sourceRef: body.sourceRef,
-        kind: body.kind,
         suggestedTitle: body.suggestedTitle,
         defaultDisplayMode: body.defaultDisplayMode,
       });
@@ -206,7 +204,7 @@ export default function LinkPaste({
   useEffect(() => {
     if (!initialValue || autoSubmitted.current) return;
     autoSubmitted.current = true;
-    onInitialValueUsed?.();
+    onInitialValueUsed();
     void submit(initialValue);
     // Run once for the initial link only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -262,11 +260,11 @@ export default function LinkPaste({
           detected && !problem ? "text-brand" : "text-white/45",
         )}
       >
-        {disabled && disabledReason
+        {disabled
           ? disabledReason
           : (hint ?? `${joinProviderLabels(LINK_PROVIDERS)} links work.`)}
       </p>
-      {problem && problem.message && (
+      {problem && (
         <div
           role="alert"
           className={cn(

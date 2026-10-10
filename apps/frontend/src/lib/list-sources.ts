@@ -53,8 +53,7 @@ export function detectedLinkHint(parsed: ParsedSourceLink): string {
   return `${info.label} ${KIND_LABELS[parsed.kind].toLowerCase()} detected`;
 }
 
-export interface SourceDescription {
-  kind: SourceKind;
+interface SourceDescription {
   kindLabel: string;
   /** Short human reference, such as a username or a list ID. */
   detail: string | null;
@@ -74,7 +73,6 @@ export function describeSource(
 ): SourceDescription {
   const { kind, detail, url, title } = describeSourceRef(provider, ref);
   return {
-    kind,
     kindLabel: KIND_LABELS[kind],
     detail,
     url,

@@ -16,7 +16,6 @@ const swapHiddenClassName =
 interface AddonInstallActionsProps {
   /** A private Account ID or a Legacy alias. */
   accountKey: string;
-  className?: string;
   /** Called when the user installs, opens Stremio Web or copies the URL. */
   onUse?: () => void;
 }
@@ -24,7 +23,6 @@ interface AddonInstallActionsProps {
 /** Install links and the copyable Addon URL of one Account. */
 export default function AddonInstallActions({
   accountKey,
-  className,
   onUse,
 }: AddonInstallActionsProps) {
   const [copied, setCopied] = useState(false);
@@ -73,7 +71,7 @@ export default function AddonInstallActions({
   };
 
   return (
-    <div className={cn("space-y-4", className)}>
+    <div className="space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row">
         {urls.stremioUrl && (
           <a

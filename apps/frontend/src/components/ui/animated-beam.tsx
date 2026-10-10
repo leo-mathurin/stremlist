@@ -1,24 +1,20 @@
 import { useEffect, useId, useState, type RefObject } from "react";
 import { motion, useReducedMotion } from "motion/react";
 
-import { cn } from "@/lib/utils";
-
 /** One dash and its gap, in px: the beam runs at 100 px/s. */
 const DASH = 40;
 const GAP = 160;
 const DURATION = 4;
+/** Spreads the beam ends on the target, as a share of the vertical gap. */
+const SPREAD = 0.12;
 
-export interface AnimatedBeamProps {
+interface AnimatedBeamProps {
   containerRef: RefObject<HTMLElement | null>;
   fromRef: RefObject<HTMLElement | null>;
   toRef: RefObject<HTMLElement | null>;
-  /** Spreads the beam ends on the target, as a share of the vertical gap. */
-  spread?: number;
   /** Draws the track only, without the moving dash. */
   idle?: boolean;
   delay?: number;
-  color?: string;
-  className?: string;
 }
 
 /**
@@ -30,11 +26,8 @@ export function AnimatedBeam({
   containerRef,
   fromRef,
   toRef,
-  spread = 0.12,
   idle = false,
   delay = 0,
-  color = "var(--color-brand)",
-  className,
 }: AnimatedBeamProps) {
   const id = useId();
   const reduceMotion = useReducedMotion();
@@ -61,7 +54,7 @@ export function AnimatedBeam({
       const sy = a.top - box.top + a.height / 2;
       const ex = b.left - box.left + b.width / 2;
       const cy = b.top - box.top + b.height / 2;
-      const ey = cy + (sy - cy) * spread;
+      const ey = cy + (sy - cy) * SPREAD;
       // Both control points sit halfway across, so every beam leaves its
       // source and lands on its target flat.
       const mx = (sx + ex) / 2;
@@ -70,7 +63,7 @@ export function AnimatedBeam({
     });
     observer.observe(container);
     return () => observer.disconnect();
-  }, [containerRef, fromRef, toRef, spread]);
+  }, [containerRef, fromRef, toRef]);
 
   const { d, x1, x2, width, height } = geometry;
   if (!d) return null;
@@ -82,7 +75,7 @@ export function AnimatedBeam({
       viewBox={`0 0 ${width} ${height}`}
       fill="none"
       aria-hidden="true"
-      className={cn("pointer-events-none absolute inset-0", className)}
+      className="pointer-events-none absolute inset-0"
     >
       <path
         d={d}
@@ -103,8 +96,12 @@ export function AnimatedBeam({
               y1={0}
               y2={0}
             >
-              <stop offset="0%" stopColor={color} stopOpacity={0} />
-              <stop offset="100%" stopColor={color} />
+              <stop
+                offset="0%"
+                stopColor="var(--color-brand)"
+                stopOpacity={0}
+              />
+              <stop offset="100%" stopColor="var(--color-brand)" />
             </linearGradient>
           </defs>
           <motion.path

@@ -155,18 +155,19 @@ export default function Configure() {
   const [createdId, setCreatedId] = useState(() =>
     readStorage(NEW_ACCOUNT_STORAGE),
   );
-  const onAccountCreated = useCallback(
-    (id: string) => {
+  /** Open an Account created in this tab; a new setup replaces its entry. */
+  const openCreated = useCallback(
+    (id: string, replace = true) => {
       writeStorage(NEW_ACCOUNT_STORAGE, id);
       setCreatedId(id);
-      navigate(`/configure?account=${encodeURIComponent(id)}`, {
-        replace: true,
-      });
+      navigate(`/configure?account=${encodeURIComponent(id)}`, { replace });
     },
     [navigate],
   );
 
-  const config = useAccountConfiguration(accountKey, { onAccountCreated });
+  const config = useAccountConfiguration(accountKey, {
+    onAccountCreated: openCreated,
+  });
   const { lists, access, accountId, status } = config;
   const [detected, setDetected] = useState<ProviderId | null>(null);
   const full = lists.length >= MAX_LISTS;
@@ -182,15 +183,15 @@ export default function Configure() {
     }
   }
 
-  const addResolved = (link: ResolvedLink): string | null => {
-    const description = describeSource(link.provider, link.sourceRef);
-    return config.addList({
+  const addResolved = (link: ResolvedLink): string | null =>
+    config.addList({
       provider: link.provider,
       sourceRef: link.sourceRef,
-      catalogTitle: link.suggestedTitle ?? description.suggestedTitle,
+      catalogTitle:
+        link.suggestedTitle ??
+        describeSource(link.provider, link.sourceRef).suggestedTitle,
       displayMode: link.defaultDisplayMode ?? undefined,
     });
-  };
 
   const connectFor = (provider: ProviderId, link?: string) => {
     writeStorage(PENDING_LINK_STORAGE, link ?? null);
@@ -426,11 +427,7 @@ export default function Configure() {
               <LegacyUpgradeCard
                 movedAt={config.movedAt}
                 onUpgrade={config.upgrade}
-                onOpen={(id) => {
-                  writeStorage(NEW_ACCOUNT_STORAGE, id);
-                  setCreatedId(id);
-                  navigate(`/configure?account=${encodeURIComponent(id)}`);
-                }}
+                onOpen={(id) => openCreated(id, false)}
               />
             )}
 

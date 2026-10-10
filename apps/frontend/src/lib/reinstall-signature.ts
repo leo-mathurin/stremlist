@@ -71,17 +71,15 @@ export function getListReinstallSignature(
 ): string {
   return JSON.stringify(
     addonCatalogEntries(
-      rows.map((row) => {
-        return {
-          id: row.id ?? row.localId,
-          catalogTitle: row.catalogTitle,
-          displayMode: row.displayMode,
-          catalogSettings: known
-            ? row.catalogSettings
-            : { ...row.catalogSettings, genre: undefined },
-          availableGenres: known ? listGenres(row, known) : [],
-        };
-      }),
+      rows.map((row) => ({
+        id: row.id ?? row.localId,
+        catalogTitle: row.catalogTitle,
+        displayMode: row.displayMode,
+        catalogSettings: known
+          ? row.catalogSettings
+          : { ...row.catalogSettings, genre: undefined },
+        availableGenres: known ? listGenres(row, known) : [],
+      })),
       options,
     ),
   );

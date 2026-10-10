@@ -88,7 +88,6 @@ export default function StremioPreview() {
       className="overflow-hidden rounded-[22px] bg-[radial-gradient(120%_80%_at_70%_0%,#24214a_0%,#16152a_55%,#13121f_100%)] text-white shadow-[0_24px_60px_-24px_rgba(20,16,48,0.55)] ring-1 ring-black/10 select-none"
     >
       <div className="pt-4 pb-5 pl-4 sm:pl-5">
-        {/* Search bar */}
         <div className="mr-4 mb-5 flex h-8 items-center justify-between rounded-full bg-white/[0.07] px-3.5 text-xs text-white/40 sm:mx-auto sm:max-w-72">
           Search or paste link
           <Search className="size-3.5" />

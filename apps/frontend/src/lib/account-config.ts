@@ -9,7 +9,7 @@ import { ACTION_PROVIDERS } from "./provider-groups";
 export type AccountAccess = "new" | AddonAccess;
 
 /** What the configure page lets the user do for an access mode. */
-export interface AccountEditPolicy {
+interface AccountEditPolicy {
   /**
    * Why the Lists and settings cannot change here, if they cannot: a Legacy
    * alias install that already got a private copy. The backend refuses its

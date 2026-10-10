@@ -16,11 +16,11 @@ export function Logo({ size = 34 }: { size?: number }) {
   );
 }
 
-export function Wordmark({ className }: { className?: string }) {
+export function Wordmark() {
   return (
     <Link
       to="/"
-      className={cn("flex w-fit items-center gap-2.5", className)}
+      className="flex w-fit items-center gap-2.5"
       aria-label="Stremlist home"
     >
       <Logo />
@@ -77,47 +77,6 @@ const SITE_LINKS = [
   { label: "Changelog", to: "/changelog" },
 ];
 
-function SiteLinks({ className }: { className?: string }) {
-  return (
-    <nav
-      aria-label="Site"
-      className={cn(
-        "flex-wrap items-center gap-x-4 gap-y-2 text-xs",
-        className,
-      )}
-    >
-      {SITE_LINKS.map((link) => (
-        <Link
-          key={link.to}
-          to={link.to}
-          className="transition-colors hover:text-stremlist"
-        >
-          {link.label}
-        </Link>
-      ))}
-      <a
-        href="https://github.com/leo-mathurin/stremlist"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="transition-colors hover:text-stremlist"
-      >
-        Source code
-      </a>
-      <a
-        href="mailto:me@leomathurin.com"
-        className="transition-colors hover:text-stremlist"
-      >
-        Contact
-      </a>
-      <span>
-        Not affiliated with Stremio or any list service. Logos are trademarks of
-        their owners. IMDb and all related logos are trademarks of IMDb.com,
-        Inc. or its affiliates.
-      </span>
-    </nav>
-  );
-}
-
 /**
  * The C-ours split layout: a dark brand panel (sticky on wide screens) next
  * to the main column. On phones the panel stacks above the content. The
@@ -144,7 +103,39 @@ export function SplitLayout({
       <main className="min-w-0">
         {children}
         {siteLinksBelow && (
-          <SiteLinks className="flex border-t border-black/10 px-5 py-6 text-black/45 sm:px-8 lg:px-12" />
+          <nav
+            aria-label="Site"
+            className="flex-wrap items-center gap-x-4 gap-y-2 text-xs flex border-t border-black/10 px-5 py-6 text-black/45 sm:px-8 lg:px-12"
+          >
+            {SITE_LINKS.map((link) => (
+              <Link
+                key={link.to}
+                to={link.to}
+                className="transition-colors hover:text-stremlist"
+              >
+                {link.label}
+              </Link>
+            ))}
+            <a
+              href="https://github.com/leo-mathurin/stremlist"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="transition-colors hover:text-stremlist"
+            >
+              Source code
+            </a>
+            <a
+              href="mailto:me@leomathurin.com"
+              className="transition-colors hover:text-stremlist"
+            >
+              Contact
+            </a>
+            <span>
+              Not affiliated with Stremio or any list service. Logos are
+              trademarks of their owners. IMDb and all related logos are
+              trademarks of IMDb.com, Inc. or its affiliates.
+            </span>
+          </nav>
         )}
       </main>
     </div>
