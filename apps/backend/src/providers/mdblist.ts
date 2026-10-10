@@ -4,6 +4,7 @@ import type { ConnectionSource } from "@stremlist/shared/providers";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
 import { HttpError, providerFetch, RateLimiter } from "./http";
 import { oauthClient, revokeToken } from "./oauth-app";
+import { readPages } from "./paging";
 import type {
   ActionIntent,
   ActionTarget,
@@ -193,31 +194,30 @@ async function mdblistRequest(
  * Read every item of a list endpoint. With `unified=true` MDBList returns a
  * bare array in list order and gives the next page in `X-Next-Cursor`.
  */
-async function readAllItems(
+function readAllItems(
   connection: ConnectionAccess,
   path: string,
 ): Promise<PagedRead<MdblistItem>> {
-  const items: MdblistItem[] = [];
-  const seen = new Set<string>();
-  let cursor: string | null = null;
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const params: Record<string, string> = {
-      unified: "true",
-      limit: String(PAGE_SIZE),
-    };
-    if (cursor) params.cursor = cursor;
-    const { data, response } = await mdblistRequest(connection, path, {
-      params,
-    });
-    if (Array.isArray(data)) items.push(...(data as MdblistItem[]));
-    cursor = response.headers.get("X-Next-Cursor");
-    const hasMore = response.headers.get("X-Has-More") === "true";
-    if (!hasMore || !cursor) return { items, complete: true };
-    // A cursor seen before would loop: stop, but the read is not complete.
-    if (seen.has(cursor)) break;
-    seen.add(cursor);
-  }
-  return { items, complete: false };
+  return readPages({
+    maxPages: MAX_PAGES,
+    first: null as string | null,
+    async page(cursor) {
+      const params: Record<string, string> = {
+        unified: "true",
+        limit: String(PAGE_SIZE),
+      };
+      if (cursor) params.cursor = cursor;
+      const { data, response } = await mdblistRequest(connection, path, {
+        params,
+      });
+      const next = response.headers.get("X-Next-Cursor");
+      const hasMore = response.headers.get("X-Has-More") === "true";
+      return {
+        items: Array.isArray(data) ? (data as MdblistItem[]) : [],
+        next: hasMore && next ? next : null,
+      };
+    },
+  });
 }
 
 /** Read every page of a /sync/… snapshot (cursor in `pagination`). */
@@ -225,26 +225,26 @@ async function readAllSync(
   connection: ConnectionAccess,
   path: string,
 ): Promise<SyncPage> {
-  const all: Required<Pick<SyncPage, "movies" | "shows" | "episodes">> = {
-    movies: [],
-    shows: [],
-    episodes: [],
+  const { items: pages } = await readPages({
+    maxPages: MAX_PAGES,
+    first: null as string | null,
+    async page(cursor) {
+      const params: Record<string, string> = { limit: String(PAGE_SIZE) };
+      if (cursor) params.cursor = cursor;
+      const data = (await mdblistRequest(connection, path, { params }))
+        .data as SyncPage;
+      const next = data.pagination?.next_cursor ?? null;
+      return {
+        items: [data],
+        next: data.pagination?.has_more && next ? next : null,
+      };
+    },
+  });
+  return {
+    movies: pages.flatMap((page) => page.movies ?? []),
+    shows: pages.flatMap((page) => page.shows ?? []),
+    episodes: pages.flatMap((page) => page.episodes ?? []),
   };
-  const seen = new Set<string>();
-  let cursor: string | null = null;
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const params: Record<string, string> = { limit: String(PAGE_SIZE) };
-    if (cursor) params.cursor = cursor;
-    const data = (await mdblistRequest(connection, path, { params }))
-      .data as SyncPage;
-    all.movies.push(...(data.movies ?? []));
-    all.shows.push(...(data.shows ?? []));
-    all.episodes.push(...(data.episodes ?? []));
-    cursor = data.pagination?.next_cursor ?? null;
-    if (!data.pagination?.has_more || !cursor || seen.has(cursor)) break;
-    seen.add(cursor);
-  }
-  return all;
 }
 
 // ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import {
   justwatchRecheckStrategy,
 } from "../titles/justwatch-lookup";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
+import { readPages } from "./paging";
 import type { ProviderAdapter, SourceEntry, SourceValidation } from "./types";
 import { SourceUnavailableError } from "./types";
 
@@ -201,26 +202,29 @@ export const justwatchProvider: ProviderAdapter = {
         "This is not a JustWatch list ID",
       );
     }
-    const nodes: JustwatchTitleNode[] = [];
-    let after: string | null = null;
-    // Stays false when MAX_ENTRIES stops the read before the last page.
-    let complete = false;
-    while (nodes.length < MAX_ENTRIES) {
-      const page = await fetchListPage(
-        ref,
-        Math.min(PAGE_SIZE, MAX_ENTRIES - nodes.length),
-        after,
-      );
-      for (const edge of page.titles?.edges ?? []) {
-        if (edge?.node?.id) nodes.push(edge.node);
-      }
-      const pageInfo = page.titles?.pageInfo;
-      if (!pageInfo?.hasNextPage || !pageInfo.endCursor) {
-        complete = true;
-        break;
-      }
-      after = pageInfo.endCursor;
-    }
+    // Incomplete when MAX_ENTRIES stops the read before the last page.
+    const { items: nodes, complete } = await readPages({
+      maxPages: Number.POSITIVE_INFINITY,
+      maxItems: MAX_ENTRIES,
+      first: null as string | null,
+      async page(after, read) {
+        const page = await fetchListPage(
+          ref,
+          Math.min(PAGE_SIZE, MAX_ENTRIES - read),
+          after,
+        );
+        const pageInfo = page.titles?.pageInfo;
+        return {
+          items: (page.titles?.edges ?? []).flatMap((edge) =>
+            edge?.node?.id ? [edge.node] : [],
+          ),
+          next:
+            pageInfo?.hasNextPage && pageInfo.endCursor
+              ? pageInfo.endCursor
+              : null,
+        };
+      },
+    });
 
     // Custom lists come oldest added first, the canonical order (checked on a
     // real list on 2026-10-06); JustWatch's own lists keep their curated order.

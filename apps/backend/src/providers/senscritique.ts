@@ -2,6 +2,7 @@ import { justwatchPathStrategy } from "../titles/justwatch-lookup";
 import { tmdbSearchMatchStrategy } from "../titles/tmdb-match";
 import { wikidataStrategy } from "../titles/wikidata";
 import { graphqlRequest, RateLimiter } from "./http";
+import { readPages } from "./paging";
 import type {
   PagedRead,
   ProviderAdapter,
@@ -262,41 +263,50 @@ function isPrivateProfile(user: UserData["user"]): boolean {
   return user?.settings?.privacyProfile === true;
 }
 
+/**
+ * The next page number after `page`, or null when this page of `count`
+ * items reached the end of a collection of `total`.
+ */
+function nextPage(page: number, count: number, total: number): number | null {
+  return count < PAGE_SIZE || page * PAGE_SIZE + count >= total
+    ? null
+    : page + 1;
+}
+
 /** The wishes of one universe, newest first, as the API returns them. */
-async function fetchUniverseWishes(
+function fetchUniverseWishes(
   username: string,
   universe: "movie" | "tvShow",
 ): Promise<PagedRead<SensCritiqueProduct>> {
-  const products: SensCritiqueProduct[] = [];
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const { user } = await senscritiqueQuery<WishesData>(WISHES_QUERY, {
-      username,
-      universe,
-      limit: PAGE_SIZE,
-      offset: page * PAGE_SIZE,
-    });
-    if (!user) {
-      throw new SourceUnavailableError(
-        "not_found",
-        `SensCritique user ${username} not found`,
-      );
-    }
-    if (isPrivateProfile(user) || !user.collection) {
-      throw new SourceUnavailableError(
-        "private",
-        `SensCritique profile ${username} is private`,
-      );
-    }
-    const batch = user.collection.products ?? [];
-    products.push(...batch);
-    if (
-      batch.length < PAGE_SIZE ||
-      products.length >= (user.collection.total ?? 0)
-    ) {
-      return { items: products, complete: true };
-    }
-  }
-  return { items: products, complete: false };
+  return readPages({
+    maxPages: MAX_PAGES,
+    first: 0,
+    async page(page) {
+      const { user } = await senscritiqueQuery<WishesData>(WISHES_QUERY, {
+        username,
+        universe,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      });
+      if (!user) {
+        throw new SourceUnavailableError(
+          "not_found",
+          `SensCritique user ${username} not found`,
+        );
+      }
+      if (isPrivateProfile(user) || !user.collection) {
+        throw new SourceUnavailableError(
+          "private",
+          `SensCritique profile ${username} is private`,
+        );
+      }
+      const batch = user.collection.products ?? [];
+      return {
+        items: batch,
+        next: nextPage(page, batch.length, user.collection.total ?? 0),
+      };
+    },
+  });
 }
 
 async function fetchWishes(
@@ -311,40 +321,37 @@ async function fetchWishes(
   };
 }
 
-async function fetchListProducts(
+function fetchListProducts(
   id: number,
 ): Promise<PagedRead<SensCritiqueProduct>> {
-  const products: SensCritiqueProduct[] = [];
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const { userList } = await senscritiqueQuery<ListData>(LIST_QUERY, {
-      id,
-      limit: PAGE_SIZE,
-      offset: page * PAGE_SIZE,
-    });
-    if (!userList) {
-      throw new SourceUnavailableError(
-        "not_found",
-        `SensCritique list ${id} not found`,
-      );
-    }
-    if (userList.isPrivate || !userList.productsList) {
-      throw new SourceUnavailableError(
-        "private",
-        `SensCritique list ${id} is private`,
-      );
-    }
-    const items = userList.productsList.items ?? [];
-    for (const item of items) {
-      if (item.product) products.push(item.product);
-    }
-    if (
-      items.length < PAGE_SIZE ||
-      page * PAGE_SIZE + items.length >= (userList.productsList.total ?? 0)
-    ) {
-      return { items: products, complete: true };
-    }
-  }
-  return { items: products, complete: false };
+  return readPages({
+    maxPages: MAX_PAGES,
+    first: 0,
+    async page(page) {
+      const { userList } = await senscritiqueQuery<ListData>(LIST_QUERY, {
+        id,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
+      });
+      if (!userList) {
+        throw new SourceUnavailableError(
+          "not_found",
+          `SensCritique list ${id} not found`,
+        );
+      }
+      if (userList.isPrivate || !userList.productsList) {
+        throw new SourceUnavailableError(
+          "private",
+          `SensCritique list ${id} is private`,
+        );
+      }
+      const items = userList.productsList.items ?? [];
+      return {
+        items: items.flatMap((item) => (item.product ? [item.product] : [])),
+        next: nextPage(page, items.length, userList.productsList.total ?? 0),
+      };
+    },
+  });
 }
 
 export const senscritiqueWikidataStrategy = wikidataStrategy(

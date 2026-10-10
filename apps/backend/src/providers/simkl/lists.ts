@@ -1,5 +1,11 @@
 import { HttpError } from "../http";
-import type { ConnectionAccess, SourceEntry, SourceSnapshot } from "../types";
+import { readPages } from "../paging";
+import type {
+  ConnectionAccess,
+  PagedRead,
+  SourceEntry,
+  SourceSnapshot,
+} from "../types";
 import { connectionToken, SourceUnavailableError } from "../types";
 import { simklRequest } from "./api";
 import { toEntry } from "./entries";
@@ -150,22 +156,24 @@ export async function fetchCustomList(
         } satisfies ListSnapshot)
       : Promise.resolve();
 
-  const entries: SourceEntry[] = [];
   let listType: string | undefined;
-  let complete = false;
+  let read: PagedRead<SourceEntry>;
   try {
-    for (let page = 1; page <= LIST_MAX_PAGES; page++) {
-      const data = await readListPage(token, listId, page, LIST_PAGE_LIMIT);
-      listType = data.type;
-      for (const item of data.items ?? []) {
-        const title = parseListItem(item);
-        if (title) entries.push(toEntry(title));
-      }
-      if (page >= (data.pagination?.total_pages ?? 1)) {
-        complete = true;
-        break;
-      }
-    }
+    read = await readPages({
+      maxPages: LIST_MAX_PAGES,
+      first: 1,
+      async page(page) {
+        const data = await readListPage(token, listId, page, LIST_PAGE_LIMIT);
+        listType = data.type;
+        return {
+          items: (data.items ?? []).flatMap((item) => {
+            const title = parseListItem(item);
+            return title ? [toEntry(title)] : [];
+          }),
+          next: page >= (data.pagination?.total_pages ?? 1) ? null : page + 1,
+        };
+      },
+    });
   } catch (error) {
     if (
       error instanceof SourceUnavailableError &&
@@ -175,6 +183,7 @@ export async function fetchCustomList(
     }
     throw error;
   }
+  const { items: entries, complete } = read;
   await save({ listType, entries, complete });
   return { entries, complete };
 }
