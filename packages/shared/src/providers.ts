@@ -180,11 +180,20 @@ function hostIs(url: URL, ...domains: string[]): boolean {
   );
 }
 
+/**
+ * The decoded path segments, or none when the path is not valid percent
+ * encoding (`alice%`), so the link reads as unrecognized instead of throwing
+ * while the page renders.
+ */
 function segments(url: URL): string[] {
-  return url.pathname
-    .split("/")
-    .filter(Boolean)
-    .map((segment) => decodeURIComponent(segment));
+  try {
+    return url.pathname
+      .split("/")
+      .filter(Boolean)
+      .map((segment) => decodeURIComponent(segment));
+  } catch {
+    return [];
+  }
 }
 
 const IMDB_UR = new RegExp(

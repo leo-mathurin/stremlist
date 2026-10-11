@@ -208,6 +208,10 @@ describe("parseSourceLink: junk", () => {
     "https://example.com/list/ls123456789",
     "https://netflix.com/browse/my-list",
     "javascript:alert(1)",
+    // Broken percent encoding must not throw while the page renders.
+    "https://trakt.tv/users/alice%/watchlist",
+    "https://mdblist.com/lists/alice/%E0%A4%A",
+    "https://www.senscritique.com/liste/%/123",
   ])("returns null for %j", (input) => {
     expect(parseSourceLink(input)).toBeNull();
   });

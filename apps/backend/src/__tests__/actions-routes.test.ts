@@ -242,6 +242,17 @@ describe("Action pages", () => {
     });
   });
 
+  it("answers not found for broken percent encoding", async () => {
+    const account = seedActionAccount();
+
+    const res = await app.request(
+      `/${account.id}/actions/watched/add/series/${SERIES}%`,
+    );
+
+    expect(res.status).toBe(404);
+    expect(perform).not.toHaveBeenCalled();
+  });
+
   it("marks one episode as watched", async () => {
     const account = seedActionAccount();
 

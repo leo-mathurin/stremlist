@@ -132,7 +132,7 @@ function OutcomePage({
 async function actionRequest(c: Context) {
   const type = c.req.param("type");
   if (type !== "movie" && type !== "series") return null;
-  const target = parseStreamId(type, decodeURIComponent(c.req.param("id")));
+  const target = parseStreamId(type, c.req.param("id"));
   const access = await resolveAccountKey(c.req.param("accountId"));
   if (!target || access?.via !== "private") return null;
   return { target, account: access.account };

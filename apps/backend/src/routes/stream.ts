@@ -21,7 +21,7 @@ stream.get("/:accountKey/stream/:type/:id.json", async (c) => {
   );
   if (type !== "movie" && type !== "series") return c.json(empty);
 
-  const target = parseStreamId(type, decodeURIComponent(id));
+  const target = parseStreamId(type, id);
   if (!target) return c.json(empty);
 
   try {
