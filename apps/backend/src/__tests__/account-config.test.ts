@@ -51,7 +51,7 @@ import {
   UUID_1,
   UUID_2,
 } from "./helpers/config-api.js";
-import { seedAccount, seedConnection } from "./helpers/fixtures.js";
+import { seedAccount, seedConnection, seedList } from "./helpers/fixtures.js";
 import {
   fakeActions,
   fakeAdapter,
@@ -437,6 +437,35 @@ describe("List CRUD via the config API", () => {
         );
       },
     );
+
+    it("keeps a saved Connection list after a disconnect, so other settings still save", async () => {
+      const account = seedAccount();
+      const saved = seedList(account.id, {
+        provider: "trakt",
+        source_ref: "me/watchlist",
+        position: 0,
+      });
+
+      const res = await postConfig(account.id, {
+        lists: [
+          {
+            id: saved.id,
+            provider: "trakt",
+            sourceRef: "me/watchlist",
+            sortOption: "added_at-asc",
+          },
+          { sourceRef: OWNER, sortOption: "added_at-asc" },
+        ],
+      });
+
+      expect(res.status).toBe(200);
+      expect(db.getTable("lists")).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: saved.id, source_ref: "me/watchlist" }),
+          expect.objectContaining({ provider: "imdb", source_ref: OWNER }),
+        ]),
+      );
+    });
 
     it("saves a Connection list once the Account has the Connection", async () => {
       const account = seedAccount();

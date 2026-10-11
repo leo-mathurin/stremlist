@@ -11,6 +11,8 @@ import {
   MAX_SOURCES_PER_LIST,
   accountListsProblem,
   listMergeProblem,
+  listSources,
+  sourceKey,
 } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import {
@@ -111,11 +113,17 @@ function defaultTitle(index: number, total: number): string {
 
 /**
  * Check and normalize one Source list of a submitted List. IMDb `p.`
- * handles are turned into `ur…` IDs.
+ * handles are turned into `ur…` IDs. A Source list that is already saved
+ * may stay without its Connection (after a disconnect, it shows again once
+ * the user connects), so the user can still save the other settings.
  */
 async function normalizeSource(
   source: ListSource,
-  access: { via: AddonAccess; connected: Set<ProviderId> },
+  access: {
+    via: AddonAccess;
+    connected: Set<ProviderId>;
+    savedSources: Set<string>;
+  },
 ): Promise<ListSource> {
   const info = PROVIDERS[source.provider];
   if (info.availability !== "available") {
@@ -145,7 +153,10 @@ async function normalizeSource(
         `${info.label} lists need your private Addon URL. Upgrade this install first.`,
       );
     }
-    if (!access.connected.has(source.provider)) {
+    if (
+      !access.connected.has(source.provider) &&
+      !access.savedSources.has(sourceKey({ ...source, sourceRef }))
+    ) {
       throw new ConfigError(`Connect your ${info.label} account first.`);
     }
   }
@@ -195,6 +206,9 @@ export async function normalizeLists(
 ): Promise<ListInput[]> {
   const normalized: ListInput[] = [];
   const saved = new Map(access.saved.map((list) => [list.id, list]));
+  const savedSources = new Set(
+    access.saved.flatMap((list) => listSources(list).map(sourceKey)),
+  );
   for (const [index, list] of lists.entries()) {
     const submitted = submittedSources(
       list,
@@ -202,7 +216,9 @@ export async function normalizeLists(
     );
     const sources: ListSource[] = [];
     for (const source of submitted.sources) {
-      sources.push(await normalizeSource(source, access));
+      sources.push(
+        await normalizeSource(source, { ...access, savedSources }),
+      );
     }
     const [first, ...mergedSources] = sources;
     const input: ListInput = {
