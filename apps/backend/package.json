@@ -21,7 +21,8 @@
     "start": "bun dist/index.js",
     "test": "vitest run --exclude '**/*.stress.test.ts'",
     "test:stress": "vitest run src/services/__tests__/imdb-scraper.stress.test.ts",
-    "typecheck": "tsc --noEmit",
+    "stress:load": "bun stress/run.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p stress",
     "cleanup:invalid-users": "bun src/scripts/cleanup-invalid-users.ts",
     "dev:app": "bun --watch --env-file=.env src/dev.ts",
     "dev:tailnet": "portless"
