@@ -1,5 +1,7 @@
 import { ADDON_VERSION } from "@stremlist/shared/constants";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
+import { LruCache } from "../lib/lru";
+import type { ConnectionAccess } from "./types";
 import { SourceUnavailableError } from "./types";
 
 /** Identifying User-Agent for Provider APIs (Trakt and Simkl require one). */
@@ -60,6 +62,31 @@ export class RateLimiter {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Limiters for each Provider user, for quotas that a Provider counts per
+ * user: one user's backlog never delays another user's calls. They are keyed
+ * by the Provider username, or by the Account when the username is unknown,
+ * so such users never share one. Past `maxUsers`, the least recently used
+ * are dropped.
+ */
+export function limitersPerUser<T>(
+  create: () => T,
+  maxUsers = 1000,
+): (connection: Pick<ConnectionAccess, "accountId" | "username">) => T {
+  const byUser = new LruCache<string, T>({ maxEntries: maxUsers });
+  return (connection) => {
+    const key = connection.username
+      ? `user:${connection.username.toLowerCase()}`
+      : `account:${connection.accountId}`;
+    let limiters = byUser.get(key);
+    if (!limiters) {
+      limiters = create();
+      byUser.set(key, limiters);
+    }
+    return limiters;
+  };
 }
 
 export interface ProviderFetchOptions extends RequestInit {

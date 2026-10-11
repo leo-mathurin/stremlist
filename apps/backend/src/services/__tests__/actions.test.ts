@@ -1,5 +1,5 @@
 import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const backgroundMocks = vi.hoisted(() => ({
   scheduleBackgroundTask: vi.fn(),
@@ -483,6 +483,132 @@ describe("buildActionStreams", () => {
     await buildActionStreams(account, { imdbId: MOVIE, type: "movie" }, link);
 
     expect(backgroundMocks.scheduleBackgroundTask).not.toHaveBeenCalled();
+  });
+});
+
+describe("background membership refresh", () => {
+  type Task = () => Promise<void>;
+
+  /** Run every scheduled task, as the background queue would. */
+  async function runScheduled(): Promise<void> {
+    const tasks = backgroundMocks.scheduleBackgroundTask.mock.calls.map(
+      ([task]) => task as Task,
+    );
+    backgroundMocks.scheduleBackgroundTask.mockClear();
+    await Promise.all(tasks.map((task) => task()));
+  }
+
+  async function staleAccount(
+    getMembership: ProviderActions["getMembership"],
+    stored: Membership | null = membership(),
+  ): Promise<Account> {
+    useActionProvider("trakt", { getMembership });
+    const row = seedAccount({
+      actions_enabled: true,
+      action_providers: ["trakt"],
+    });
+    seedConnection(row.id, "trakt");
+    if (stored) {
+      seedMembership(
+        row.id,
+        "trakt",
+        stored,
+        new Date(Date.now() - 60 * 60_000),
+      );
+    }
+    const account = (await resolveAccountKey(row.id))?.account;
+    if (!account) throw new Error("account missing");
+    return account;
+  }
+
+  const open = (account: Account) =>
+    buildActionStreams(account, { imdbId: MOVIE, type: "movie" }, link);
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("runs one refresh for many concurrent stream requests", async () => {
+    let finish: (value: Membership) => void = () => undefined;
+    const getMembership = vi.fn(
+      () =>
+        new Promise<Membership>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const account = await staleAccount(getMembership);
+
+    await Promise.all(Array.from({ length: 20 }, () => open(account)));
+    expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledOnce();
+
+    const running = runScheduled();
+    // While the refresh is in flight, later requests join it.
+    await Promise.all(Array.from({ length: 5 }, () => open(account)));
+    expect(backgroundMocks.scheduleBackgroundTask).not.toHaveBeenCalled();
+
+    finish(membership({ watchlist: [MOVIE] }));
+    await running;
+    expect(getMembership).toHaveBeenCalledOnce();
+    expect(storedMembership(account.id, "trakt")?.watchlist).toEqual([MOVIE]);
+  });
+
+  it("waits for a cooldown after a failed refresh, and logs once", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const getMembership = vi.fn(() =>
+      Promise.reject(new Error("Trakt is down")),
+    );
+    const account = await staleAccount(getMembership);
+
+    await open(account);
+    await runScheduled();
+    expect(getMembership).toHaveBeenCalledOnce();
+
+    for (let i = 0; i < 10; i++) await open(account);
+    expect(backgroundMocks.scheduleBackgroundTask).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledOnce();
+
+    vi.setSystemTime(Date.now() + 5 * 60_000 + 1);
+    await open(account);
+    expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledOnce();
+  });
+
+  it("remembers a missing membership for a while, then reads R2 again", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const account = await staleAccount(
+      () => Promise.reject(new Error("Trakt is down")),
+      null,
+    );
+
+    expect((await open(account))[0].title).toBe("🔖 Add to Trakt watchlist");
+    await runScheduled();
+
+    // Another instance writes the membership: this one sees it only after
+    // its copy (here, of the absence) expires.
+    seedMembership(account.id, "trakt", membership({ watchlist: [MOVIE] }));
+    expect((await open(account))[0].title).toBe("🔖 Add to Trakt watchlist");
+
+    vi.setSystemTime(Date.now() + 60_000 + 1);
+    expect((await open(account))[0].title).toBe(
+      "🔖 In your Trakt watchlist\nSelect to remove",
+    );
+  });
+
+  it("writes an Action on top of what another instance stored", async () => {
+    const account = await setup({ trakt: membership() });
+    // Read once, so this instance has its own copy.
+    await open(account);
+    seedMembership(account.id, "trakt", membership({ watched: [MOVIE] }));
+
+    await performAction(
+      account,
+      ["trakt"],
+      { kind: "watchlist", add: true },
+      { imdbId: MOVIE, type: "movie" },
+    );
+
+    expect(storedMembership(account.id, "trakt")).toEqual(
+      membership({ watchlist: [MOVIE], watched: [MOVIE] }),
+    );
   });
 });
 

@@ -3,6 +3,7 @@ import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
 import { joinProviderLabels, PROVIDERS } from "@stremlist/shared/providers";
 import type { StremioStream } from "@stremlist/shared/stremio.types";
 import { scheduleBackgroundTask } from "../lib/background";
+import { LruCache } from "../lib/lru";
 import {
   connectionPrefix,
   deletePrefix,
@@ -28,6 +29,22 @@ import { sourceCaches } from "./merged-lists";
 
 /** Membership older than this is refreshed in the background. */
 const MEMBERSHIP_FRESH_MS = 15 * 60_000;
+/**
+ * How long this instance trusts its copy of a membership (or of its absence)
+ * before it reads R2 again and sees what other instances wrote.
+ */
+const MEMORY_MEMBERSHIP_TTL_MS = 60_000;
+/**
+ * A large membership (10,000 Titles and 20,000 episodes) is ~0.5 MB of JSON,
+ * a usual one a few KB. 8 MB (~30 MB of heap for these short strings) keeps
+ * thousands of usual users.
+ */
+const MEMORY_MEMBERSHIP_MAX_WEIGHT = 8 * 1024 * 1024;
+/**
+ * After a failed refresh, stream requests wait this long before they ask for
+ * another: a Provider outage must not turn each request into a full read.
+ */
+const REFRESH_COOLDOWN_MS = 5 * 60_000;
 const STREAM_NAME = "Stremlist";
 
 const EMPTY_MEMBERSHIP: Membership = {
@@ -48,23 +65,58 @@ function membershipKey(accountId: string, provider: ProviderId): string {
   return `${connectionPrefix(accountId, provider)}membership.json`;
 }
 
-const memoryMembership = new Map<string, StoredMembership>();
+/** Copies of R2's membership objects; null when R2 has none. */
+const memoryMembership = new LruCache<string, StoredMembership | null>({
+  maxEntries: 10_000,
+  maxWeight: MEMORY_MEMBERSHIP_MAX_WEIGHT,
+  ttlMs: MEMORY_MEMBERSHIP_TTL_MS,
+});
 
-/** The stored membership of the connected Provider user, or null. */
+/** About the JSON length of a stored membership, without serializing it. */
+function membershipWeight(stored: StoredMembership | null): number {
+  if (!stored) return 100;
+  const { watchlist, watched, watchedEpisodes, ratings } = stored.membership;
+  return (
+    200 +
+    (watchlist.length + watched.length) * 13 +
+    watchedEpisodes.length * 18 +
+    Object.keys(ratings).length * 16
+  );
+}
+
+function rememberMembership(
+  key: string,
+  stored: StoredMembership | null,
+): void {
+  memoryMembership.set(key, stored, { weight: membershipWeight(stored) });
+}
+
+/**
+ * The stored membership of the connected Provider user, or null. With
+ * `fresh`, read R2 even when this instance has a recent copy (before a change
+ * is written on top of it).
+ */
 async function readMembership(
   accountId: string,
   provider: ProviderId,
   username: string | null,
+  { fresh = false }: { fresh?: boolean } = {},
 ): Promise<StoredMembership | null> {
   const key = membershipKey(accountId, provider);
-  let stored = memoryMembership.get(key) ?? null;
-  if (!stored) {
+  let stored = fresh ? undefined : memoryMembership.get(key);
+  if (stored === undefined) {
     try {
       stored = await readJson<StoredMembership>(key);
+      rememberMembership(key, stored);
     } catch {
-      return null;
+      // R2 is unreachable: use this instance's copy, and do not ask R2
+      // again on every request until the copy expires.
+      stored = memoryMembership.get(key);
+      if (stored === undefined) {
+        stored = null;
+        rememberMembership(key, null);
+      }
     }
-    if (stored) memoryMembership.set(key, stored);
   }
   return stored?.username === username ? stored : null;
 }
@@ -79,14 +131,53 @@ async function writeMembership(
     username: connection.username,
     membership,
   };
-  memoryMembership.set(key, stored);
+  rememberMembership(key, stored);
   await writeJson(key, stored);
 }
 
-async function refreshMembership(connection: ConnectionAccess): Promise<void> {
-  const actions = getProvider(connection.provider).actions;
-  if (!actions) return;
-  await writeMembership(connection, await actions.getMembership(connection));
+/** Membership keys with a refresh in flight on this instance. */
+const refreshesInFlight = new Set<string>();
+/** Membership keys whose last refresh failed, until the cooldown ends. */
+const failedRefreshes = new LruCache<string, true>({
+  maxEntries: 10_000,
+  ttlMs: REFRESH_COOLDOWN_MS,
+});
+
+/**
+ * Refresh a Connection's membership in the background. At most one refresh
+ * per Connection runs on this instance: later requests join it by not
+ * asking for another. After a failure (a failed refresh writes nothing, so
+ * the membership stays stale), none starts until the cooldown ends.
+ */
+function scheduleMembershipRefresh(
+  accountId: string,
+  provider: ProviderId,
+): void {
+  const key = membershipKey(accountId, provider);
+  if (refreshesInFlight.has(key) || failedRefreshes.has(key)) return;
+  refreshesInFlight.add(key);
+  scheduleBackgroundTask(async () => {
+    try {
+      const actions = getProvider(provider).actions;
+      const connection = await getConnectionAccess(accountId, provider);
+      if (!actions || !connection) {
+        failedRefreshes.set(key, true);
+        return;
+      }
+      await writeMembership(
+        connection,
+        await actions.getMembership(connection),
+      );
+    } catch (error) {
+      failedRefreshes.set(key, true);
+      console.error(
+        `Refreshing ${provider} membership for ${accountId} failed, next try in ${REFRESH_COOLDOWN_MS / 60_000} minutes:`,
+        error instanceof Error ? error.message : error,
+      );
+    } finally {
+      refreshesInFlight.delete(key);
+    }
+  });
 }
 
 /**
@@ -98,7 +189,9 @@ export async function forgetConnectionObjects(
   accountId: string,
   provider: ProviderId,
 ): Promise<void> {
-  memoryMembership.delete(membershipKey(accountId, provider));
+  const key = membershipKey(accountId, provider);
+  memoryMembership.delete(key);
+  failedRefreshes.delete(key);
   getProvider(provider).forgetConnection?.(accountId);
   await deletePrefix(connectionPrefix(accountId, provider));
 }
@@ -233,10 +326,7 @@ export async function buildActionStreams(
         !stored ||
         Date.now() - new Date(stored.fetchedAt).getTime() > MEMBERSHIP_FRESH_MS
       ) {
-        scheduleBackgroundTask(async () => {
-          const connection = await getConnectionAccess(account.id, provider);
-          if (connection) await refreshMembership(connection);
-        });
+        scheduleMembershipRefresh(account.id, provider);
       }
       return { provider, membership: stored?.membership ?? EMPTY_MEMBERSHIP };
     }),
@@ -439,6 +529,7 @@ export async function performAction(
           account.id,
           provider,
           connection.username,
+          { fresh: true },
         );
         await writeMembership(
           connection,

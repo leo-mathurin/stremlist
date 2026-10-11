@@ -5,6 +5,7 @@ import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
 import {
   HttpError,
+  limitersPerUser,
   providerFetch,
   providerFetchJson,
   RateLimiter,
@@ -36,36 +37,20 @@ const MAX_PAGES = 50;
 /**
  * MDBList allows 1,000 reads and 300 writes per fixed 5-minute window, per
  * MDBList account and shared with every other app of that user. These
- * limiters keep one process below 90% of it, per Connection.
+ * limiters keep one process below 90% of it, per MDBList user.
  */
 const WINDOW_MS = 5 * 60_000;
 const READS_PER_WINDOW = 900;
 const WRITES_PER_WINDOW = 270;
 const MAX_TRACKED_USERS = 500;
 
-interface UserLimiters {
-  read: RateLimiter;
-  write: RateLimiter;
-}
-
-const limitersByUser = new Map<string, UserLimiters>();
-
-function limitersFor(connection: ConnectionAccess): UserLimiters {
-  const key = connection.username?.toLowerCase() ?? "";
-  let limiters = limitersByUser.get(key);
-  if (!limiters) {
-    if (limitersByUser.size >= MAX_TRACKED_USERS) {
-      const oldest = limitersByUser.keys().next().value;
-      if (oldest !== undefined) limitersByUser.delete(oldest);
-    }
-    limiters = {
-      read: new RateLimiter(READS_PER_WINDOW, WINDOW_MS),
-      write: new RateLimiter(WRITES_PER_WINDOW, WINDOW_MS),
-    };
-    limitersByUser.set(key, limiters);
-  }
-  return limiters;
-}
+const limitersFor = limitersPerUser(
+  () => ({
+    read: new RateLimiter(READS_PER_WINDOW, WINDOW_MS),
+    write: new RateLimiter(WRITES_PER_WINDOW, WINDOW_MS),
+  }),
+  MAX_TRACKED_USERS,
+);
 
 // ---------------------------------------------------------------------------
 // Response shapes (only the fields Stremlist reads)

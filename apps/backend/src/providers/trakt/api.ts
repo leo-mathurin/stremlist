@@ -1,5 +1,6 @@
 import {
   ensureOk,
+  limitersPerUser,
   providerFetch,
   RateLimiter,
   sourceErrorFromHttp,
@@ -15,13 +16,20 @@ export const TRAKT_AUTH = "https://auth.trakt.tv";
 const TRAKT_PAGE_SIZE = 250;
 
 // Trakt allows 500 GETs per 5 minutes for all unauthenticated calls of the
-// app together, and 500 per 5 minutes per user. These limiters only smooth
-// bursts inside one instance (a big list, a prewarm); long freshness for
-// public Source lists is what keeps the shared quota safe.
+// app together, and 500 per 5 minutes per user for calls with a token. The
+// public limiter only smooths bursts inside one instance (a big list, a
+// prewarm); long freshness for public Source lists is what keeps the shared
+// quota safe. Calls with a token have limiters per Trakt user that keep one
+// instance below 90% of that user's quota: one user's backlog (a membership
+// refresh while Trakt is slow) never delays another user's reads.
 const publicReadLimiter = new RateLimiter(15, 10_000);
-const connectedReadLimiter = new RateLimiter(40, 10_000);
-// Trakt allows 1 write per second per user.
-const writeLimiter = new RateLimiter(1, 1000);
+const USER_WINDOW_MS = 5 * 60_000;
+const USER_READS_PER_WINDOW = 450;
+const limitersFor = limitersPerUser(() => ({
+  read: new RateLimiter(USER_READS_PER_WINDOW, USER_WINDOW_MS),
+  // Trakt allows 1 write per second per user.
+  write: new RateLimiter(1, 1000),
+}));
 
 export const traktClient = oauthClient("TRAKT");
 
@@ -56,16 +64,17 @@ export interface TraktReadOptions {
   query?: Record<string, string>;
 }
 
+/** One GET: with the Connection's token when given, else public. */
 async function send(
   path: string,
   query: Record<string, string> | undefined,
-  token?: string,
+  auth?: { token: string; connection: ConnectionAccess },
 ): Promise<Response> {
   return providerFetch(`${TRAKT_API}${path}`, {
     headers: traktHeaders(),
-    bearer: token,
+    bearer: auth?.token,
     query,
-    limiter: token ? connectedReadLimiter : publicReadLimiter,
+    limiter: auth ? limitersFor(auth.connection).read : publicReadLimiter,
   });
 }
 
@@ -98,13 +107,16 @@ async function traktGet(
     return checked(response, path);
   }
 
-  let response = await send(path, options.query, token);
+  let response = await send(path, options.query, { token, connection });
   if (response.status === 401) {
     // ConnectionAccess refreshes a token that is about to expire; a second
     // read only helps when that gave us a new one.
     const renewed = await connection.getAccessToken();
     if (renewed !== token) {
-      response = await send(path, options.query, renewed);
+      response = await send(path, options.query, {
+        token: renewed,
+        connection,
+      });
     }
   }
   if (response.status === 401 && options.publicFallback) {
@@ -191,7 +203,7 @@ export function toSourceError(error: unknown): unknown {
 }
 
 /**
- * POST a change through the Connection (1 write per second). Throws HttpError
+ * POST a change through the Connection (1 write per second per user). Throws HttpError
  * on non-2xx (420: account limit reached, 426: Trakt VIP only).
  */
 export async function traktPost<T>(
@@ -207,7 +219,7 @@ export async function traktPost<T>(
       headers: traktHeaders(),
       bearer: token,
       json: body,
-      limiter: writeLimiter,
+      limiter: limitersFor(connection).write,
     }),
     url,
   );
