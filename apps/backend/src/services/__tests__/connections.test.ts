@@ -286,6 +286,45 @@ describe("getConnectionAccess", () => {
     expect(oauthMocks.refreshTokens).toHaveBeenCalledOnce();
   });
 
+  it("keeps a new authorization saved while an older refresh was in flight", async () => {
+    seedConnection(accountId, "trakt", {
+      accessToken: "old",
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() - MINUTE),
+    });
+    oauthMocks.refreshTokens.mockImplementation(async () => {
+      // The user connects again (maybe as another Trakt user) meanwhile.
+      await saveConnection(
+        accountId,
+        "trakt",
+        {
+          accessToken: "reconnected",
+          refreshToken: "reconnected-refresh",
+          expiresAt: new Date(Date.now() + 60 * MINUTE),
+          scope: null,
+        },
+        "other",
+        "https://api.stremlist.test/oauth/trakt/callback",
+      );
+      return {
+        accessToken: "refreshed-old",
+        refreshToken: "refreshed-old-refresh",
+        expiresAt: new Date(Date.now() + 60 * MINUTE),
+        scope: null,
+      };
+    });
+
+    const access = await getConnectionAccess(accountId, "trakt");
+
+    await expect(access?.getAccessToken()).resolves.toBe("reconnected");
+    const row = connectionRow();
+    expect(decryptSecret(row.access_token as string)).toBe("reconnected");
+    expect(decryptSecret(row.refresh_token as string)).toBe(
+      "reconnected-refresh",
+    );
+    expect(row.provider_username).toBe("other");
+  });
+
   it("keeps the old refresh token when the Provider does not rotate it", async () => {
     seedConnection(accountId, "simkl", {
       refreshToken: "kept",

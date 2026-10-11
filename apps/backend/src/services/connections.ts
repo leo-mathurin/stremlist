@@ -121,13 +121,19 @@ export async function saveConnection(
   if (error) throw error;
 }
 
+/**
+ * Save refreshed tokens, only over the refreshed ones and while the lease is
+ * still held. Returns the sealed access token, or null when the Connection
+ * changed meanwhile (a new authorization, or a refresh after an expired
+ * lease): its tokens are newer, so they stay.
+ */
 async function updateTokens(
-  accountId: string,
-  provider: ProviderId,
+  refreshed: StoredConnection,
+  leaseToken: string,
   tokens: OAuthTokens,
-): Promise<string> {
+): Promise<string | null> {
   const sealedToken = encryptSecret(tokens.accessToken);
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("connections")
     .update({
       access_token: sealedToken,
@@ -140,10 +146,13 @@ async function updateTokens(
       needs_renewal_since: null,
       updated_at: new Date().toISOString(),
     })
-    .eq("account_id", accountId)
-    .eq("provider", provider);
+    .eq("account_id", refreshed.accountId)
+    .eq("provider", refreshed.provider)
+    .eq("access_token", refreshed.sealedToken)
+    .eq("refresh_lease_token", leaseToken)
+    .select("account_id");
   if (error) throw error;
-  return sealedToken;
+  return data.length > 0 ? sealedToken : null;
 }
 
 /**
@@ -266,7 +275,12 @@ async function refreshUnderLease(
         await setNeedsRenewal(latest, true);
         throw new ConnectionExpiredError(provider);
       }
-      const sealedToken = await updateTokens(accountId, provider, tokens);
+      const sealedToken = await updateTokens(latest, leaseToken, tokens);
+      if (!sealedToken) {
+        const current = await readConnection(accountId, provider);
+        if (current && isUsable(current)) return current;
+        throw new ConnectionExpiredError(provider);
+      }
       return {
         ...latest,
         accessToken: tokens.accessToken,
