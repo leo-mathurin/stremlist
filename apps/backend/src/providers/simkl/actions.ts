@@ -63,9 +63,17 @@ async function buildWrite(
         item: { ...item, to: "plantowatch" },
       };
     // Removing a title from Simkl also deletes its watch history and rating,
-    // so only remove titles that are planned, not ones the user watched.
-    const known = await knownItems(connection.accountId, target.imdbId);
-    if (known.some((entry) => entry.status !== "plantowatch")) return null;
+    // so only remove a title that is planned now, never one the user watched
+    // since the last read. A failed read refuses the removal.
+    await markLibraryChanged(connection.accountId);
+    const current = (await syncLibrary(connection)).items.filter(
+      (entry) => entry.imdb === target.imdbId,
+    );
+    if (
+      current.length === 0 ||
+      current.some((entry) => entry.status !== "plantowatch")
+    )
+      return null;
     return { path: "/sync/history/remove", item };
   }
 

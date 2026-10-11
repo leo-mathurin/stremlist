@@ -110,6 +110,37 @@ describe("simkl actions", () => {
     expect(calls.filter((call) => call.method === "POST")).toEqual([]);
   });
 
+  it("checks the current library before it removes a title", async () => {
+    acceptWrites();
+    await actions.getMembership(connection);
+    clearCalls();
+
+    await actions.perform(
+      connection,
+      { kind: "watchlist", add: false },
+      { imdbId: "tt0158552", type: "series" },
+    );
+    // A recent snapshot is not enough: the title may be watched since.
+    expect(apiCalls()).toEqual([
+      "GET /sync/activities",
+      "POST /sync/history/remove",
+    ]);
+  });
+
+  it("refuses to remove a title when the library cannot be read", async () => {
+    acceptWrites();
+    routes["GET /sync/activities"] = () => json({ error: "down" }, 503);
+
+    await expect(
+      actions.perform(
+        connection,
+        { kind: "watchlist", add: false },
+        { imdbId: "tt0158552", type: "series" },
+      ),
+    ).rejects.toThrow();
+    expect(calls.filter((call) => call.method === "POST")).toEqual([]);
+  });
+
   it("marks episodes, shows and movies as watched", async () => {
     acceptWrites();
     await actions.perform(
