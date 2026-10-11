@@ -7,12 +7,18 @@ import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
+import { LruCache } from "../lib/lru";
 import { getR2Bucket, getR2Client } from "../lib/r2";
 import { isNotFound, writeJson } from "../lib/r2-json";
 
 const CACHE_FORMAT_VERSION = 1;
 const MEMORY_CACHE_TTL_MS = 60_000;
 const MEMORY_CACHE_MAX_ENTRIES = 100;
+// Parsed catalogs, weighed by their JSON length. A 10,000-Title catalog is
+// ~15 MB of heap once parsed, about two to three times its JSON. 24 MB of
+// JSON keeps the catalog cache under ~75 MB of heap, with room for the other
+// in-memory caches of an instance.
+const CATALOG_MEMORY_MAX_WEIGHT = 24 * 1024 * 1024;
 
 const stremioMetaSchema = z.object({
   id: z.string(),
@@ -121,7 +127,11 @@ const manifestMemoryCache = new Map<
   string,
   MemoryEntry<CacheManifest | null>
 >();
-const catalogMemoryCache = new Map<string, MemoryEntry<CatalogObject>>();
+const catalogMemoryCache = new LruCache<string, CatalogObject>({
+  maxEntries: MEMORY_CACHE_MAX_ENTRIES,
+  maxWeight: CATALOG_MEMORY_MAX_WEIGHT,
+  ttlMs: MEMORY_CACHE_TTL_MS,
+});
 
 // R2 keys keep the "watchlists/" prefix so caches written before Lists had
 // several Providers stay readable.
@@ -242,7 +252,7 @@ async function readManifest(listId: string): Promise<CacheManifest | null> {
 async function readCatalog(
   manifest: CacheManifest,
 ): Promise<CatalogObject | null> {
-  const cached = getMemoryValue(catalogMemoryCache, manifest.catalogKey);
+  const cached = catalogMemoryCache.get(manifest.catalogKey);
   if (cached) return cached;
 
   try {
@@ -255,9 +265,11 @@ async function readCatalog(
     if (!response.Body) return null;
 
     const compressed = Buffer.from(await response.Body.transformToByteArray());
-    const parsed: unknown = JSON.parse(gunzipSync(compressed).toString("utf8"));
-    const catalog = catalogObjectSchema.parse(parsed);
-    setMemoryValue(catalogMemoryCache, manifest.catalogKey, catalog);
+    const text = gunzipSync(compressed).toString("utf8");
+    const catalog = catalogObjectSchema.parse(JSON.parse(text));
+    catalogMemoryCache.set(manifest.catalogKey, catalog, {
+      weight: text.length,
+    });
     return catalog;
   } catch (error) {
     if (!isNotFound(error)) throw error;
@@ -417,6 +429,7 @@ export async function writeCachedList(
     version: CACHE_FORMAT_VERSION,
     metas,
   });
+  const catalogJson = JSON.stringify(catalog);
   const manifest: CacheManifest = {
     version: CACHE_FORMAT_VERSION,
     generation,
@@ -434,7 +447,7 @@ export async function writeCachedList(
     new PutObjectCommand({
       Bucket: getR2Bucket(),
       Key: nextCatalogKey,
-      Body: gzipSync(Buffer.from(JSON.stringify(catalog))),
+      Body: gzipSync(Buffer.from(catalogJson)),
       ContentType: "application/json",
       ContentEncoding: "gzip",
       CacheControl: "private, max-age=0, must-revalidate",
@@ -443,7 +456,9 @@ export async function writeCachedList(
 
   await writeJson(manifestKey(listId), manifest);
 
-  setMemoryValue(catalogMemoryCache, nextCatalogKey, catalog);
+  catalogMemoryCache.set(nextCatalogKey, catalog, {
+    weight: catalogJson.length,
+  });
   setMemoryValue(manifestMemoryCache, listId, manifest);
 
   return generation;

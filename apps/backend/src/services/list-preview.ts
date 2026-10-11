@@ -13,6 +13,7 @@ import { listCatalogs } from "@stremlist/shared/manifest-catalogs";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDERS } from "@stremlist/shared/providers";
 import { createHash } from "node:crypto";
+import { LruCache } from "../lib/lru";
 import { getProvider, isProviderEnabled } from "../providers/registry";
 import type { ConnectionAccess, SourceEntry } from "../providers/types";
 import { SourceUnavailableError } from "../providers/types";
@@ -31,6 +32,12 @@ const READING_TTL_MS = 5 * 60_000;
 /** A read that left entries unchecked is read again sooner. */
 const UNFINISHED_READING_TTL_MS = 30_000;
 const MAX_READINGS = 50;
+/**
+ * Most total weight of the reads, about their JSON length. A read of a
+ * 10,000-Title list weighs ~9 MB (heap is about two to three times that): one
+ * of the largest fits, or many usual ones.
+ */
+const MAX_READINGS_WEIGHT = 16 * 1024 * 1024;
 /** Most Titles that a preview shows for each Catalog. */
 const TITLES_PER_CATALOG = 12;
 /** Most Unresolved entries that a preview lists. */
@@ -57,7 +64,23 @@ interface Reading {
   expiresAt: number;
 }
 
-const readings = new Map<string, Reading>();
+const readings = new LruCache<string, Reading>({
+  maxEntries: MAX_READINGS,
+  maxWeight: MAX_READINGS_WEIGHT,
+});
+
+/** About the JSON length of a read, without serializing it. */
+function readingWeight(built: BuiltCatalog): number {
+  let weight = built.snapshot.entries.length * 200;
+  for (const meta of built.data.metas) {
+    weight +=
+      300 +
+      meta.name.length +
+      meta.description.length +
+      (meta.poster?.length ?? 0);
+  }
+  return weight;
+}
 
 /** Forget every cached read (tests). */
 export function resetPreviewReadings(): void {
@@ -105,25 +128,26 @@ async function readSource(
   const key = `${scope}:${request.provider}:${request.sourceRef}`;
 
   const cached = readings.get(key);
-  if (cached && cached.expiresAt > Date.now()) return cached.built;
+  if (cached) return cached.built;
 
   const built = buildCatalog(getProvider(request.provider), request, ctx);
   const reading: Reading = { built, expiresAt: Date.now() + READING_TTL_MS };
-  readings.delete(key);
-  readings.set(key, reading);
-  // One read is added at a time: dropping the oldest keeps the limit.
-  if (readings.size > MAX_READINGS) {
-    const [oldest] = readings.keys();
-    readings.delete(oldest);
-  }
+  readings.set(key, reading, { ttlMs: READING_TTL_MS });
   built.then(
     (result) => {
+      if (readings.get(key) !== reading) return;
+      // Now that its size is known, weigh the read (a read too large for
+      // the budget is dropped).
       if (result.deferred > 0) {
         reading.expiresAt = Math.min(
           reading.expiresAt,
           Date.now() + UNFINISHED_READING_TTL_MS,
         );
       }
+      readings.set(key, reading, {
+        weight: readingWeight(result),
+        ttlMs: reading.expiresAt - Date.now(),
+      });
     },
     () => {
       if (readings.get(key) === reading) readings.delete(key);
