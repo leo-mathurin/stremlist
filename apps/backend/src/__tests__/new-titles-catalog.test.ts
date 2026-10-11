@@ -14,6 +14,9 @@ vi.mock("../services/list-cache", async () => {
 vi.mock("../providers/registry", async () => {
   return await import("./helpers/mock-registry.js");
 });
+vi.mock("../lib/r2", async () => {
+  return await import("./helpers/mock-r2.js");
+});
 vi.mock("../lib/resend", () => ({
   resend: { contacts: { create: vi.fn() } },
 }));
@@ -47,6 +50,7 @@ import {
   sourceList,
   summary,
   sync,
+  syncRows,
 } from "./helpers/new-titles.js";
 
 beforeEach(resetNewTitlesTest);
@@ -210,7 +214,7 @@ describe("merged Lists", () => {
   it("count a Title that two of their Source lists add as one new title", async () => {
     const { imdb, trakt } = await seedMergedList();
     expect(await newTitles()).toEqual([]);
-    expect(db.getTable("source_list_syncs")).toHaveLength(2);
+    expect(syncRows()).toHaveLength(2);
 
     vi.setSystemTime(Date.now() + DAY_MS);
     imdb.metas = [movie("tt0000001"), movie("tt0000002")];
@@ -264,9 +268,7 @@ describe("merged Lists", () => {
 
     // The List waits: one of its Source lists has no Baseline yet.
     expect((await summary()).summary).toMatchObject({ waitingLists: 1 });
-    expect(db.getTable("source_list_syncs")).toMatchObject([
-      { provider: "imdb", source_ref: "ur1" },
-    ]);
+    expect(syncRows()).toMatchObject([{ provider: "imdb", source_ref: "ur1" }]);
 
     imdb.metas = [movie("tt0000001"), movie("tt0000002")];
     await sync(LIST_IDS[0]);
@@ -367,7 +369,7 @@ describe("merged Lists", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(db.getTable("source_list_syncs")).toEqual([]);
+    expect(syncRows()).toEqual([]);
     expect(detectionRows()).toEqual([]);
   });
 });

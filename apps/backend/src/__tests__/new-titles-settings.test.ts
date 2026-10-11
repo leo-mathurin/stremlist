@@ -9,12 +9,16 @@ vi.mock("../services/list-cache", async () => {
 vi.mock("../providers/registry", async () => {
   return await import("./helpers/mock-registry.js");
 });
+vi.mock("../lib/r2", async () => {
+  return await import("./helpers/mock-r2.js");
+});
 vi.mock("../lib/resend", () => ({
   resend: { contacts: { create: vi.fn() } },
 }));
 
 import app from "../index.js";
-import { deleteConnection, saveConnection } from "../services/connections";
+import { saveConnection } from "../services/connections";
+import { disconnectProvider } from "../services/lists";
 import {
   LIST_IDS,
   movie,
@@ -35,6 +39,7 @@ import {
   seedNewTitlesAccount,
   setAccountId,
   summary,
+  syncRows,
 } from "./helpers/new-titles.js";
 
 beforeEach(resetNewTitlesTest);
@@ -100,13 +105,26 @@ describe("Connection cleanup", () => {
     seedNewTitlesAccount();
     // leo was connected; a refresh already wrote a Baseline for sam.
     seedConnection(accountId, "trakt", { username: "leo" });
+    ["me/history", "me/collection", "users/leo/watchlist"].forEach(
+      (sourceRef, position) =>
+        seedList(accountId, {
+          id: LIST_IDS[position],
+          provider: "trakt",
+          source_ref: sourceRef,
+          position,
+        }),
+    );
     seedHistory("trakt", "me/history", "tt0000001", "leo");
     seedHistory("trakt", "me/collection", "tt0000002", "sam");
     seedHistory("trakt", "users/leo/watchlist", "tt0000003");
-    const synced = () =>
-      db.getTable("source_list_syncs").map((row) => row.source_ref);
+    const counts = async () => {
+      const { summary: found } = await summary();
+      return [found?.detected, found?.waitingLists];
+    };
+    // The history of sam is not leo's: that List waits for a Baseline.
+    expect(await counts()).toEqual([2, 1]);
 
-    // sam connects: the history of leo goes in the same transaction.
+    // sam connects: the history of leo no longer counts.
     await saveConnection(
       accountId,
       "trakt",
@@ -119,15 +137,18 @@ describe("Connection cleanup", () => {
       "sam",
       "https://api.stremlist.test/oauth/trakt/callback",
     );
-    expect(synced()).toEqual(["me/collection", "users/leo/watchlist"]);
+    expect(await counts()).toEqual([2, 1]);
 
     // After a disconnect, only the public Source list keeps its history.
-    await deleteConnection(accountId, "trakt", []);
+    await disconnectProvider(accountId, "trakt");
     expect(db.getTable("connections")).toEqual([]);
-    expect(synced()).toEqual(["users/leo/watchlist"]);
+    expect(syncRows().map((row) => row.source_ref)).toEqual([
+      "users/leo/watchlist",
+    ]);
     expect(detectionRows().map((row) => row.source_ref)).toEqual([
       "users/leo/watchlist",
     ]);
+    expect(await counts()).toEqual([1, 2]);
   });
 
   it("forgets the previous user's history before a new Connection reads again", async () => {
@@ -174,7 +195,7 @@ describe("Connection cleanup", () => {
     expect(res.status).toBe(302);
     // The new user's first read is a Baseline, not a list of new titles.
     await vi.waitFor(() => {
-      expect(db.getTable("source_list_syncs")).toMatchObject([
+      expect(syncRows()).toMatchObject([
         { source_ref: "me/history", connection_user: "sam" },
       ]);
     });

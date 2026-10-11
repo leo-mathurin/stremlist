@@ -77,15 +77,6 @@ const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
     resolved_at: now(),
     retry_after: null,
   }),
-  source_list_syncs: () => ({
-    requires_connection: false,
-    connection_user: null,
-  }),
-  source_list_entries: () => ({
-    imdb_id: null,
-    detected_at: null,
-    removed_at: null,
-  }),
 };
 
 export const UNIQUE_KEYS: Partial<Record<string, string[][]>> = {
@@ -95,18 +86,7 @@ export const UNIQUE_KEYS: Partial<Record<string, string[][]>> = {
   list_sync_status: [["list_id", "provider", "source_ref"]],
   oauth_states: [["state"]],
   title_id_map: [["namespace", "external_id"]],
-  source_list_syncs: [["account_id", "provider", "source_ref"]],
-  source_list_entries: [["account_id", "provider", "source_ref", "entry_key"]],
 };
-
-/** Foreign keys with ON DELETE CASCADE, as child table and shared columns. */
-const CASCADES: Partial<Record<string, { table: string; columns: string[] }>> =
-  {
-    source_list_syncs: {
-      table: "source_list_entries",
-      columns: ["account_id", "provider", "source_ref"],
-    },
-  };
 
 export function withoutUndefined(row: Row): Row {
   return Object.fromEntries(
@@ -144,18 +124,10 @@ export class InMemoryDB {
     return stored;
   }
 
-  /** Delete the matching rows, and their children (ON DELETE CASCADE). */
+  /** Delete the matching rows. */
   delete(table: string, matches: (row: Row) => boolean): Row[] {
     const removed = this.getTable(table).filter(matches);
     this.tables[table] = this.getTable(table).filter((row) => !matches(row));
-    const cascade = CASCADES[table];
-    if (cascade && removed.length > 0) {
-      this.delete(cascade.table, (child) =>
-        removed.some((parent) =>
-          cascade.columns.every((column) => parent[column] === child[column]),
-        ),
-      );
-    }
     return removed;
   }
 

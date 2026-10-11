@@ -25,7 +25,6 @@ function saveConnection(args: RpcArgs): Result {
       ...fields,
     });
   }
-  forgetConnectionHistory(args);
   return { data: null, error: null };
 }
 
@@ -41,7 +40,6 @@ function deleteConnection(args: RpcArgs): Result {
     (row) =>
       row.account_id === args.p_account_id && row.provider === args.p_provider,
   );
-  forgetConnectionHistory(args);
   const own = new Set(
     db
       .getTable("lists")
@@ -69,21 +67,6 @@ function findConnection(args: RpcArgs): Row | undefined {
         row.account_id === args.p_account_id &&
         row.provider === args.p_provider,
     );
-}
-
-/** Same rules as public.forget_connection_history. */
-function forgetConnectionHistory(args: RpcArgs): void {
-  const connection = findConnection(args);
-  db.delete(
-    "source_list_syncs",
-    (row) =>
-      row.account_id === args.p_account_id &&
-      row.provider === args.p_provider &&
-      row.requires_connection === true &&
-      (!connection ||
-        (row.connection_user ?? null) !==
-          (connection.provider_username ?? null)),
-  );
 }
 
 export const connectionRpcs: Partial<Record<string, RpcHandler>> = {

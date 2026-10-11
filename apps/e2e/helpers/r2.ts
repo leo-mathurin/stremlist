@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import { sourceKey } from "@stremlist/shared/list-merge";
+import type { ProviderId } from "@stremlist/shared/providers";
+import { sourceRequiresConnection } from "@stremlist/shared/providers";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import {
   CreateBucketCommand,
@@ -132,12 +134,85 @@ export async function deleteCacheObjects(listIds: string[]): Promise<void> {
   await deletePrefixes(listIds.map((listId) => `watchlists/${listId}/`));
 }
 
-/** Remove what Actions stored for these Accounts' Connections. */
+/**
+ * Remove what these Accounts' Connections stored (Actions, Provider state,
+ * Connection-only detection history) and their other detection history.
+ */
 export async function deleteConnectionObjects(
   accountIds: string[],
 ): Promise<void> {
   await deletePrefixes(
-    accountIds.map((accountId) => `connections/${accountId}/`),
+    accountIds.flatMap((accountId) => [
+      `connections/${accountId}/`,
+      `history/${accountId}/`,
+    ]),
+  );
+}
+
+/**
+ * The detection history of one Source list (ADR 0008), in the format of
+ * apps/backend/src/services/title-history.ts.
+ */
+export interface StoredHistory {
+  version: 1;
+  source: string;
+  baselineAt: string;
+  lastSyncAt: string;
+  connection: { user: string | null; connectedAt: string } | null;
+  /** Entry key → [IMDb ID, detection date, removal date]. */
+  entries: Record<string, [string | null, string | null, string | null]>;
+}
+
+/** Where the backend keeps the history of a Source list. */
+export function historyObjectKey(
+  accountId: string,
+  source: { provider: ProviderId; sourceRef: string },
+): string {
+  const digest = createHash("sha256")
+    .update(sourceKey(source))
+    .digest("hex")
+    .slice(0, 16);
+  return sourceRequiresConnection(source.provider, source.sourceRef)
+    ? `connections/${accountId}/${source.provider}/history/${digest}.json`
+    : `history/${accountId}/${digest}.json`;
+}
+
+export async function writeHistoryObject(
+  key: string,
+  history: StoredHistory,
+): Promise<void> {
+  await r2.send(
+    new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: key,
+      Body: JSON.stringify(history),
+      ContentType: "application/json",
+    }),
+  );
+}
+
+/** Every stored detection history of an Account. */
+export async function readHistoryObjects(
+  accountId: string,
+): Promise<StoredHistory[]> {
+  const keys = (
+    await Promise.all([
+      listKeys(`history/${accountId}/`),
+      listKeys(`connections/${accountId}/`),
+    ])
+  )
+    .flat()
+    .filter((key) => key.startsWith("history/") || key.includes("/history/"));
+  return Promise.all(
+    keys.map(async (Key) => {
+      const response = await r2.send(
+        new GetObjectCommand({ Bucket: R2_BUCKET, Key }),
+      );
+      if (!response.Body) throw new Error(`R2 history ${Key} has no body`);
+      return JSON.parse(
+        await response.Body.transformToString(),
+      ) as StoredHistory;
+    }),
   );
 }
 

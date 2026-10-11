@@ -4,9 +4,11 @@ import { createClient } from "@supabase/supabase-js";
 import { config } from "dotenv";
 import { readFileSync, writeFileSync } from "fs";
 import path from "path";
+import { deletePrefix } from "../lib/r2-json";
 import { getImdbWatchlist } from "../services/imdb-scraper";
 import { deleteCachedList } from "../services/list-cache";
 import { listRowCacheKeys } from "../services/list-rows";
+import { accountHistoryPrefix } from "../services/title-history";
 
 console.log("Starting cleanup...");
 
@@ -165,10 +167,16 @@ async function deleteUsers(userIds: string[]): Promise<void> {
       );
     }
 
-    // A merged List keeps one cache per Source list (ADR 0006).
-    const cacheDeletes = await Promise.allSettled(
-      listRowCacheKeys(lists).map((key) => deleteCachedList(key)),
-    );
+    // A merged List keeps one cache per Source list (ADR 0006). The
+    // detection history and the Connection objects are R2 objects too
+    // (ADR 0008): the database cascade does not reach them.
+    const cacheDeletes = await Promise.allSettled([
+      ...listRowCacheKeys(lists).map((key) => deleteCachedList(key)),
+      ...accounts.flatMap(({ id }) => [
+        deletePrefix(accountHistoryPrefix(id)),
+        deletePrefix(`connections/${id}/`),
+      ]),
+    ]);
     const cacheDeleteFailure = cacheDeletes.find(
       (result) => result.status === "rejected",
     );

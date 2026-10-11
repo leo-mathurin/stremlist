@@ -9,6 +9,9 @@ vi.mock("../services/list-cache", async () => {
 vi.mock("../providers/registry", async () => {
   return await import("./helpers/mock-registry.js");
 });
+vi.mock("../lib/r2", async () => {
+  return await import("./helpers/mock-r2.js");
+});
 vi.mock("../lib/resend", () => ({
   resend: { contacts: { create: vi.fn() } },
 }));
@@ -31,8 +34,8 @@ import {
   detectionRows,
   entry,
   ids,
-  NEXT_SYNC_MS,
   newTitles,
+  NEXT_SYNC_MS,
   resetNewTitlesTest,
   restoreNewTitlesTest,
   seedImdbList,
@@ -40,6 +43,7 @@ import {
   sourceList,
   summary,
   sync,
+  syncRows,
 } from "./helpers/new-titles.js";
 
 beforeEach(resetNewTitlesTest);
@@ -254,7 +258,7 @@ describe("Unresolved entries", () => {
     source.entries = [providerEntry(1, "tt0000001"), NEVER_RESOLVED];
     await sync(LIST_IDS[0]);
 
-    expect(db.getTable("source_list_syncs")).toHaveLength(1);
+    expect(syncRows()).toHaveLength(1);
     expect((await summary()).summary?.waitingLists).toBe(0);
 
     source.entries = [...source.entries, providerEntry(2, "tt0000002")];
@@ -344,7 +348,7 @@ describe("overlapping reads and Connections", () => {
       `/${accountId}/catalog/movie/wl-${LIST_IDS[0]}-movie.json`,
     );
 
-    expect(db.getTable("source_list_syncs")[0]).toMatchObject({
+    expect(syncRows()[0]).toMatchObject({
       last_complete_sync_at: startedAt,
     });
   });
@@ -372,7 +376,7 @@ describe("overlapping reads and Connections", () => {
 
     await sync(LIST_IDS[0]);
 
-    expect(db.getTable("source_list_syncs")).toEqual([]);
+    expect(syncRows()).toEqual([]);
     expect(detectionRows()).toEqual([]);
   });
 
@@ -396,7 +400,7 @@ describe("overlapping reads and Connections", () => {
     await sync(LIST_IDS[0]);
 
     expect(await newTitles()).toEqual([]);
-    expect(db.getTable("source_list_syncs")).toMatchObject([
+    expect(syncRows()).toMatchObject([
       { source_ref: "me/history", connection_user: "sam" },
     ]);
     expect(detectionRows().every((row) => row.detected_at === null)).toBe(true);

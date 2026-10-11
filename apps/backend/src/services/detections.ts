@@ -12,14 +12,21 @@ import type {
   NewTitlesSummary,
   StremioMeta,
 } from "@stremlist/shared/stremio.types";
-import { supabase } from "../lib/supabase";
 import type { ProviderAdapter, SourceEntry } from "../providers/types";
 import type { AccountAccess } from "./accounts";
 import { getVisibleLists, visibleLists } from "./accounts";
+import { listConnections } from "./connections";
 import { buildPosterUrl } from "./imdb-scraper";
 import { getCachedList } from "./list-cache";
 import type { SourceMeta } from "./list-cache";
 import { sourceCaches, toStremioMeta } from "./merged-lists";
+import type { HistoryConnection, SourceHistory } from "./title-history";
+import {
+  historyApplies,
+  listNewTitles,
+  readHistory,
+  recordHistory,
+} from "./title-history";
 
 /** One Title of the "New titles" catalog, with its first detection. */
 interface Detection {
@@ -43,14 +50,6 @@ const DATE_FORMAT = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
   timeZone: "UTC",
 });
-
-/** A database row's Source list, as a `sourceKey`. */
-function rowSourceKey(row: { provider: string; source_ref: string }): string {
-  return sourceKey({
-    provider: row.provider as ProviderId,
-    sourceRef: row.source_ref,
-  });
-}
 
 /**
  * Every Source list of the Lists, with its List. A Source list is in one List
@@ -122,67 +121,110 @@ export async function recordSynchronization(
     const key = entryKey(adapter, entry);
     return key ? [{ key, imdbId: imdbIds.get(entry) ?? null }] : [];
   });
-  // History of a Source list that only a Connection can read belongs to
-  // that Connection's Provider user. The database refuses the write when
-  // that Connection is gone or replaced (a disconnect during the read).
-  const requiresConnection = sourceRequiresConnection(
-    source.provider,
-    source.sourceRef,
-  );
-  const { data, error } = await supabase.rpc("record_source_list_sync", {
-    p_account_id: source.accountId,
-    p_provider: source.provider,
-    p_source_ref: source.sourceRef,
-    p_entry_keys: keyed.map((entry) => entry.key),
-    p_imdb_ids: keyed.map((entry) => entry.imdbId),
-    p_synced_at: read.startedAt.toISOString(),
-    p_requires_connection: requiresConnection,
-    p_connection_user: requiresConnection ? read.connectionUser : null,
-  });
-  if (error) {
+  try {
+    // History of a Source list that only a Connection can read belongs to
+    // that Connection's Provider user: nothing is written when that
+    // Connection is gone or replaced (a disconnect during the read).
+    let connection: HistoryConnection | null = null;
+    if (sourceRequiresConnection(source.provider, source.sourceRef)) {
+      const current = (await listConnections(source.accountId)).find(
+        (candidate) => candidate.provider === source.provider,
+      );
+      if (current?.username !== read.connectionUser) return;
+      connection = { user: current.username, connectedAt: current.connectedAt };
+    }
+    const added = await recordHistory(
+      source.accountId,
+      source,
+      keyed,
+      read.startedAt,
+      connection,
+    );
+    if (added) {
+      console.log(`List ${source.listId}: ${added} new entries`);
+    }
+  } catch (error) {
     console.error(
       `Failed to record the synchronization of list ${source.listId}:`,
-      error.message,
+      error instanceof Error ? error.message : error,
     );
-    return;
   }
-  if (data) {
-    console.log(`List ${source.listId}: ${data} new entries`);
-  }
+}
+
+/**
+ * The histories of these Source lists that still apply (see
+ * `historyApplies`), by `sourceKey`. A Source list without one has no
+ * Baseline yet.
+ */
+async function loadHistories(
+  accountId: string,
+  sources: ListSource[],
+): Promise<Map<string, SourceHistory>> {
+  const needsConnection = sources.some((source) =>
+    sourceRequiresConnection(source.provider, source.sourceRef),
+  );
+  const connections = new Map<ProviderId, HistoryConnection>(
+    needsConnection
+      ? (await listConnections(accountId)).map((connection) => [
+          connection.provider,
+          { user: connection.username, connectedAt: connection.connectedAt },
+        ])
+      : [],
+  );
+  const histories = await Promise.all(
+    sources.map(async (source) => {
+      const history = await readHistory(accountId, source);
+      return history &&
+        historyApplies(
+          history,
+          source,
+          connections.get(source.provider) ?? null,
+        )
+        ? ([sourceKey(source), history] as const)
+        : null;
+    }),
+  );
+  return new Map(histories.filter((entry) => entry !== null));
 }
 
 /**
  * Detected Titles that the Lists still contain, newest first, one per Title:
  * a Title that several Source lists have (in one merged List or in several
- * Lists) keeps its earliest detection. The rules live in
- * public.list_new_titles.
+ * Lists) keeps its earliest detection. The rules live in `listNewTitles`.
  */
-async function loadDetections(
-  accountId: string,
+function toDetections(
   lists: ConfigList[],
-): Promise<Detection[]> {
+  histories: Map<string, SourceHistory>,
+): Detection[] {
   const sources = sourcesOf(lists);
-  if (sources.size === 0) return [];
-  const { data, error } = await supabase.rpc("list_new_titles", {
-    p_account_id: accountId,
-    p_providers: [...sources.values()].map(({ source }) => source.provider),
-    p_source_refs: [...sources.values()].map(({ source }) => source.sourceRef),
-    p_limit: MAX_DETECTIONS,
-  });
-  if (error) throw error;
-
-  return data.flatMap((row) => {
-    const found = sources.get(rowSourceKey(row));
+  const titles = listNewTitles(
+    [...sources.values()].flatMap(({ source }) => {
+      const history = histories.get(sourceKey(source));
+      return history ? [{ source, history }] : [];
+    }),
+    MAX_DETECTIONS,
+  );
+  return titles.flatMap((title) => {
+    const found = sources.get(sourceKey(title.source));
     return found
       ? [
           {
-            imdbId: row.imdb_id,
-            detectedAt: new Date(row.detected_at),
+            imdbId: title.imdbId,
+            detectedAt: new Date(title.detectedAt),
             ...found,
           },
         ]
       : [];
   });
+}
+
+async function loadDetections(
+  accountId: string,
+  lists: ConfigList[],
+): Promise<Detection[]> {
+  const sources = [...sourcesOf(lists).values()].map(({ source }) => source);
+  if (sources.length === 0) return [];
+  return toDetections(lists, await loadHistories(accountId, sources));
 }
 
 /** The List's name as the user sees it, for the detection line. */
@@ -264,21 +306,17 @@ export async function getNewTitlesSummary(
     return { detected: 0, latestDetectedAt: null, waitingLists: 0 };
   }
   try {
-    const [detections, { data: syncs, error }] = await Promise.all([
-      loadDetections(access.account.id, lists),
-      supabase
-        .from("source_list_syncs")
-        .select("provider, source_ref")
-        .eq("account_id", access.account.id),
-    ]);
-    if (error) throw error;
-    const synced = new Set(syncs.map(rowSourceKey));
+    const histories = await loadHistories(
+      access.account.id,
+      [...sourcesOf(lists).values()].map(({ source }) => source),
+    );
+    const detections = toDetections(lists, histories);
     return {
       detected: detections.length,
       latestDetectedAt: detections[0]?.detectedAt.toISOString() ?? null,
       // A merged List waits while one of its Source lists has no Baseline.
       waitingLists: lists.filter((list) =>
-        listSources(list).some((source) => !synced.has(sourceKey(source))),
+        listSources(list).some((source) => !histories.has(sourceKey(source))),
       ).length,
     };
   } catch (error) {

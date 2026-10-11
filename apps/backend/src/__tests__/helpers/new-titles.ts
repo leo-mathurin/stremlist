@@ -11,8 +11,11 @@ import { expect, vi } from "vitest";
 
 import app from "../../index.js";
 import type { SourceEntry, SourceSnapshot } from "../../providers/types";
+import type { SourceHistory } from "../../services/title-history";
+import { historyKey } from "../../services/title-history";
 import { LIST_IDS, movie, seedAccount, seedList } from "./fixtures.js";
 import { cache } from "./mock-list-cache.js";
+import { r2Objects } from "./mock-r2.js";
 import {
   fakeAdapter,
   resetProviders,
@@ -92,8 +95,56 @@ export function ids(metas: StremioMeta[]): string[] {
   return metas.map((meta) => meta.id);
 }
 
+/** The stored histories (ADR 0008), with the Account and Source list. */
+function storedHistories() {
+  return [...r2Objects]
+    .filter(([key]) =>
+      /^(history\/|connections\/[^/]+\/[^/]+\/history\/)/u.test(key),
+    )
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, body]) => {
+      const history = JSON.parse(body) as SourceHistory;
+      const [provider, ...ref] = history.source.split(":");
+      return {
+        account_id: key.split("/")[1],
+        provider,
+        source_ref: ref.join(":"),
+        history,
+      };
+    });
+}
+
+/** One row per stored Source list history, like the old table. */
+export function syncRows() {
+  return storedHistories()
+    .map(({ account_id, provider, source_ref, history }) => ({
+      account_id,
+      provider,
+      source_ref,
+      baseline_at: history.baselineAt,
+      last_complete_sync_at: history.lastSyncAt,
+      requires_connection: history.connection !== null,
+      connection_user: history.connection?.user ?? null,
+    }))
+    .sort((a, b) => a.source_ref.localeCompare(b.source_ref));
+}
+
+/** One row per entry of every stored history, like the old table. */
 export function detectionRows() {
-  return db.getTable("source_list_entries");
+  return storedHistories().flatMap(
+    ({ account_id, provider, source_ref, history }) =>
+      Object.entries(history.entries).map(
+        ([entry_key, [imdb_id, detected_at, removed_at]]) => ({
+          account_id,
+          provider,
+          source_ref,
+          entry_key,
+          imdb_id,
+          detected_at,
+          removed_at,
+        }),
+      ),
+  );
 }
 
 export async function summary() {
@@ -102,7 +153,11 @@ export async function summary() {
   return ((await res.json()) as AccountConfigResponse).newTitles;
 }
 
-/** A synchronized Source list whose entry `imdbId` was detected now. */
+/**
+ * A synchronized Source list whose entry `imdbId` was detected now. With a
+ * `connectionUser`, the history belongs to that user of the Account's
+ * Connection to the Provider, as it was when the history was written.
+ */
 export function seedHistory(
   provider: "imdb" | "trakt",
   sourceRef: string,
@@ -110,20 +165,30 @@ export function seedHistory(
   connectionUser: string | null = null,
 ) {
   const at = new Date().toISOString();
-  const key = { account_id: accountId, provider, source_ref: sourceRef };
-  db.insert("source_list_syncs", {
-    ...key,
-    baseline_at: at,
-    last_complete_sync_at: at,
-    requires_connection: connectionUser !== null,
-    connection_user: connectionUser,
-  });
-  db.insert("source_list_entries", {
-    ...key,
-    entry_key: `imdb:${imdbId}`,
-    imdb_id: imdbId,
-    detected_at: at,
-  });
+  const connection = db
+    .getTable("connections")
+    .find((row) => row.account_id === accountId && row.provider === provider);
+  const history: SourceHistory = {
+    version: 1,
+    source: `${provider}:${sourceRef}`,
+    baselineAt: at,
+    lastSyncAt: at,
+    connection:
+      connectionUser === null
+        ? null
+        : {
+            user: connectionUser,
+            connectedAt:
+              typeof connection?.created_at === "string"
+                ? connection.created_at
+                : at,
+          },
+    entries: { [`imdb:${imdbId}`]: [imdbId, at, null] },
+  };
+  r2Objects.set(
+    historyKey(accountId, { provider, sourceRef }),
+    JSON.stringify(history),
+  );
 }
 
 export function setAccountId(id: string) {
@@ -132,6 +197,7 @@ export function setAccountId(id: string) {
 
 export function resetNewTitlesTest() {
   db.reset();
+  r2Objects.clear();
   resetRpc();
   cache.reset();
   resetProviders();

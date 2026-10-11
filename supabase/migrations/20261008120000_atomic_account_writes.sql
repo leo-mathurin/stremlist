@@ -1,9 +1,8 @@
 -- Writes of several rows that must not stop half way (STR-16).
 --
--- * `save_connection` and `delete_connection`: a Connection is saved or
---   deleted together with the detection history that belongs to its
---   Provider user, and a deleted one also takes the sync statuses of the
---   Source lists read through it. The token revoke and the R2 objects stay
+-- * `save_connection` and `delete_connection`: a deleted Connection takes
+--   the sync statuses of the Source lists read through it. The token revoke
+--   and the R2 objects (the detection history included, ADR 0008) stay
 --   outside: they cannot join a transaction.
 -- * `create_account_with_config` and `copy_legacy_account`: a new Account
 --   gets its first configuration, and a Legacy alias install gets its
@@ -234,8 +233,9 @@ TO service_role;
 -- ---------------------------------------------------------------------------
 
 -- Save a new authorization. A new Connection can be another Provider user:
--- the history of the Source lists that only a Connection can read stays
--- only for the user of this one (`forget_connection_history`).
+-- the detection history of the Source lists that only a Connection can read
+-- (R2, ADR 0008) names the Connection it belongs to, so the backend stops
+-- using the history of another user.
 CREATE FUNCTION public.save_connection(
   p_account_id text,
   p_provider text,
@@ -270,8 +270,6 @@ BEGIN
     -- A new authorization replaces a refused one.
     needs_renewal_since = NULL,
     updated_at = EXCLUDED.updated_at;
-
-  PERFORM public.forget_connection_history(p_account_id, p_provider);
 END;
 $$;
 
@@ -280,11 +278,11 @@ FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.save_connection(text, text, text, text, text, timestamptz, text, text)
 TO service_role;
 
--- Delete a Connection with what describes the Source lists read through it:
--- the history of the Source lists that only a Connection can read, and the
--- sync statuses of the given Source lists (`p_list_ids` and `p_source_refs`
--- are parallel arrays, on this Provider; the other Source lists of a merged
--- List keep theirs). Only Lists of this Account are touched.
+-- Delete a Connection with the sync statuses of the given Source lists read
+-- through it (`p_list_ids` and `p_source_refs` are parallel arrays, on this
+-- Provider; the other Source lists of a merged List keep theirs). Only Lists
+-- of this Account are touched. The backend then deletes the Connection's R2
+-- objects, its detection history included (ADR 0008).
 CREATE FUNCTION public.delete_connection(
   p_account_id text,
   p_provider text,
@@ -304,9 +302,6 @@ BEGIN
 
   DELETE FROM public.connections c
   WHERE c.account_id = p_account_id AND c.provider = p_provider;
-
-  -- No Connection now: every Connection-only history of the Provider goes.
-  PERFORM public.forget_connection_history(p_account_id, p_provider);
 
   DELETE FROM public.list_sync_status s
   USING unnest(coalesce(p_list_ids, '{}'), coalesce(p_source_refs, '{}'))

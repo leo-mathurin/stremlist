@@ -137,7 +137,9 @@ BEGIN
 END;
 $$;
 
--- Connections are saved and deleted with the history and statuses they own.
+-- Connections are saved, and deleted with the statuses they own. The detection
+-- history is in R2 (ADR 0008): it follows the Connection by its user and
+-- `created_at`, so a renewal must keep `created_at`.
 INSERT INTO public.lists (id, account_id, provider, source_ref, catalog_title, merged_sources)
 VALUES
   ('73333333-3333-4333-8333-333333333333', 'sl_writesprivate0000000000',
@@ -153,15 +155,6 @@ VALUES
   ('73333333-3333-4333-8333-333333333333', 'imdb', 'ur7000009', now()),
   ('74444444-4444-4444-8444-444444444444', 'trakt', 'users/leo/watchlist', now()),
   ('75555555-5555-4555-8555-555555555555', 'trakt', 'me/watchlist', now());
-INSERT INTO public.source_list_syncs (
-  account_id, provider, source_ref, baseline_at, last_complete_sync_at,
-  requires_connection, connection_user
-) VALUES
-  ('sl_writesprivate0000000000', 'trakt', 'me/watchlist', now(), now(), true, 'leo'),
-  ('sl_writesprivate0000000000', 'trakt', 'me/history', now(), now(), true, 'sam'),
-  ('sl_writesprivate0000000000', 'trakt', 'users/leo/watchlist', now(), now(), false, NULL),
-  ('sl_writesprivate0000000000', 'simkl', 'me/plantowatch', now(), now(), true, 'leo');
-
 DO $$
 DECLARE
   acc constant text := 'sl_writesprivate0000000000';
@@ -173,12 +166,9 @@ BEGIN
     '2026-10-11T00:00:00Z', 'public', 'https://api.stremlist.test/oauth/trakt/callback');
   SELECT created_at INTO first_created FROM public.connections
   WHERE account_id = acc AND provider = 'trakt';
-  SELECT array_agg(provider || ':' || source_ref ORDER BY provider, source_ref) INTO syncs
-  FROM public.source_list_syncs WHERE account_id = acc;
-  ASSERT syncs = ARRAY['simkl:me/plantowatch', 'trakt:me/watchlist', 'trakt:users/leo/watchlist'],
-    format('Only the history of another Provider user goes, got %s', syncs);
 
-  -- A refused Connection renewed by leo again keeps leo's history.
+  -- A refused Connection renewed by leo again keeps leo's history: same
+  -- user, same `created_at`.
   UPDATE public.connections SET needs_renewal_since = now(),
     refresh_locked_until = '2030-01-01T00:00:00Z'
   WHERE account_id = acc AND provider = 'trakt';
@@ -191,26 +181,18 @@ BEGIN
   ASSERT (SELECT created_at FROM public.connections WHERE account_id = acc AND provider = 'trakt') = first_created;
   ASSERT (SELECT refresh_locked_until FROM public.connections WHERE account_id = acc AND provider = 'trakt')
     = '2030-01-01T00:00:00Z', 'Saving leaves the refresh lease alone';
-  ASSERT EXISTS (SELECT 1 FROM public.source_list_syncs
-    WHERE account_id = acc AND source_ref = 'me/watchlist');
 
-  -- Another Provider user: the history of leo goes in the same transaction.
+  -- Another Provider user: the history of leo no longer applies.
   PERFORM public.save_connection(acc, 'trakt', 'sam', 'enc-3', NULL, NULL, NULL,
     'https://api.stremlist.test/oauth/trakt/callback');
-  SELECT array_agg(provider || ':' || source_ref ORDER BY provider, source_ref) INTO syncs
-  FROM public.source_list_syncs WHERE account_id = acc;
-  ASSERT syncs = ARRAY['simkl:me/plantowatch', 'trakt:users/leo/watchlist'],
-    format('The history of leo goes when sam connects, got %s', syncs);
+  ASSERT (SELECT provider_username FROM public.connections
+    WHERE account_id = acc AND provider = 'trakt') = 'sam';
 
-  -- A delete that fails half way keeps the Connection and its history.
+  -- A delete that fails half way keeps the Connection.
   CREATE FUNCTION pg_temp.refuse_delete() RETURNS trigger LANGUAGE plpgsql AS
     $f$ BEGIN RAISE EXCEPTION 'status delete refused'; END; $f$;
   CREATE TRIGGER refuse_delete BEFORE DELETE ON public.list_sync_status
     FOR EACH ROW EXECUTE FUNCTION pg_temp.refuse_delete();
-  INSERT INTO public.source_list_syncs (
-    account_id, provider, source_ref, baseline_at, last_complete_sync_at,
-    requires_connection, connection_user
-  ) VALUES (acc, 'trakt', 'me/history', now(), now(), true, 'sam');
   BEGIN
     PERFORM public.delete_connection(acc, 'trakt',
       ARRAY['73333333-3333-4333-8333-333333333333']::uuid[], ARRAY['me/watchlist']);
@@ -221,9 +203,6 @@ BEGIN
   DROP TRIGGER refuse_delete ON public.list_sync_status;
   ASSERT EXISTS (SELECT 1 FROM public.connections WHERE account_id = acc AND provider = 'trakt'),
     'A failed delete keeps the Connection';
-  ASSERT EXISTS (SELECT 1 FROM public.source_list_syncs
-    WHERE account_id = acc AND source_ref = 'me/history'),
-    'A failed delete keeps the history';
 
   BEGIN
     PERFORM public.delete_connection(acc, 'trakt',
@@ -237,10 +216,6 @@ BEGIN
     ARRAY['73333333-3333-4333-8333-333333333333', '75555555-5555-4555-8555-555555555555']::uuid[],
     ARRAY['me/watchlist', 'me/watchlist']);
   ASSERT NOT EXISTS (SELECT 1 FROM public.connections WHERE account_id = acc AND provider = 'trakt');
-  SELECT array_agg(provider || ':' || source_ref ORDER BY provider, source_ref) INTO syncs
-  FROM public.source_list_syncs WHERE account_id = acc;
-  ASSERT syncs = ARRAY['simkl:me/plantowatch', 'trakt:users/leo/watchlist'],
-    format('Only the Connection-only history of the Provider goes, got %s', syncs);
   SELECT array_agg(list_id || ':' || provider || ':' || source_ref ORDER BY list_id, provider) INTO syncs
   FROM public.list_sync_status;
   ASSERT syncs = ARRAY[

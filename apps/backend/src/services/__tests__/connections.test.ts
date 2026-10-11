@@ -184,15 +184,6 @@ describe("listConnections and deleteConnection", () => {
         last_attempt_at: new Date().toISOString(),
       });
     }
-    db.insert("source_list_syncs", {
-      account_id: accountId,
-      provider: "trakt",
-      source_ref: "me/watchlist",
-      baseline_at: new Date().toISOString(),
-      last_complete_sync_at: new Date().toISOString(),
-      requires_connection: true,
-    });
-
     await deleteConnection(accountId, "trakt", [
       { listId: list.id, sourceRef: "me/watchlist" },
       // Another Account's List is never touched.
@@ -201,7 +192,6 @@ describe("listConnections and deleteConnection", () => {
 
     expect(revoke).toHaveBeenCalledWith("to-revoke");
     expect(db.getTable("connections")).toEqual([]);
-    expect(db.getTable("source_list_syncs")).toEqual([]);
     expect(
       db
         .getTable("list_sync_status")

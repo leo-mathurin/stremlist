@@ -20,6 +20,19 @@ export function isNotFound(error: unknown): boolean {
   );
 }
 
+/** Whether an R2 error means that a conditional write lost a race. */
+export function isPreconditionFailed(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as {
+    name?: string;
+    $metadata?: { httpStatusCode?: number };
+  };
+  return (
+    candidate.name === "PreconditionFailed" ||
+    candidate.$metadata?.httpStatusCode === 412
+  );
+}
+
 /**
  * Where a Connection keeps its objects (Action membership, Provider sync
  * state). A disconnect deletes everything under it.
@@ -45,8 +58,39 @@ export async function readJson<T>(key: string): Promise<T | null> {
   }
 }
 
-/** Store a private JSON object that is never cached on the way. */
-export async function writeJson(key: string, value: unknown): Promise<void> {
+/**
+ * A JSON object with its ETag, for a conditional write later (see
+ * `writeJson`). Null when it does not exist. Other errors throw.
+ */
+export async function readJsonVersion(
+  key: string,
+): Promise<{ value: unknown; etag: string | undefined } | null> {
+  try {
+    const response = await getR2Client().send(
+      new GetObjectCommand({ Bucket: getR2Bucket(), Key: key }),
+    );
+    if (!response.Body) return null;
+    return {
+      value: JSON.parse(await response.Body.transformToString()) as unknown,
+      etag: response.ETag,
+    };
+  } catch (error) {
+    if (isNotFound(error)) return null;
+    throw error;
+  }
+}
+
+/**
+ * Store a private JSON object that is never cached on the way. With
+ * `expected`, the write happens only while the object is still that version
+ * (its ETag), or still missing (null); otherwise it throws an error that
+ * `isPreconditionFailed` recognizes.
+ */
+export async function writeJson(
+  key: string,
+  value: unknown,
+  expected?: { etag: string | null },
+): Promise<void> {
   await getR2Client().send(
     new PutObjectCommand({
       Bucket: getR2Bucket(),
@@ -54,6 +98,11 @@ export async function writeJson(key: string, value: unknown): Promise<void> {
       Body: Buffer.from(JSON.stringify(value)),
       ContentType: "application/json",
       CacheControl: "private, max-age=0, must-revalidate",
+      ...(expected
+        ? expected.etag === null
+          ? { IfNoneMatch: "*" }
+          : { IfMatch: expected.etag }
+        : {}),
     }),
   );
 }

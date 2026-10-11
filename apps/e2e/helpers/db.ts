@@ -12,7 +12,13 @@ import {
   SUPABASE_URL,
 } from "../env.js";
 import { E2E_USER_IDS, PUBLIC_USER } from "./test-data.js";
-import { deleteCacheObjects, deleteConnectionObjects } from "./r2.js";
+import {
+  deleteCacheObjects,
+  deleteConnectionObjects,
+  historyObjectKey,
+  readHistoryObjects,
+  writeHistoryObject,
+} from "./r2.js";
 
 // Service-role client: bypasses RLS, used only to reset and inspect state
 // between tests. Live tests bootstrap through the HTTP API; controlled catalog
@@ -270,8 +276,8 @@ export async function getListRows(accountId: string) {
 
 /**
  * The detection history of one Source list (ADR 0007), without a refresh:
- * its synchronization row and its entries. An entry without `detectedAt` is
- * part of the Baseline.
+ * its R2 object (ADR 0008). An entry without `detectedAt` is part of the
+ * Baseline.
  */
 export async function seedDetectionHistory(
   accountId: string,
@@ -284,28 +290,43 @@ export async function seedDetectionHistory(
   },
   entries: { imdbId: string; detectedAt?: string }[],
 ): Promise<void> {
-  const key = {
-    account_id: accountId,
-    provider: source.provider,
-    source_ref: source.sourceRef,
-  };
-  const synced = await db.from("source_list_syncs").insert({
-    ...key,
-    baseline_at: sync.baselineAt,
-    last_complete_sync_at: sync.lastSyncAt,
-    requires_connection: sync.connectionUser !== undefined,
-    connection_user: sync.connectionUser ?? null,
+  let connection: { user: string; connectedAt: string } | null = null;
+  if (sync.connectionUser !== undefined) {
+    // The history belongs to the Account's current Connection.
+    const { data, error } = await db
+      .from("connections")
+      .select("created_at")
+      .eq("account_id", accountId)
+      .eq("provider", source.provider)
+      .single();
+    if (error) throw error;
+    connection = {
+      user: sync.connectionUser,
+      connectedAt: data.created_at,
+    };
+  }
+  await writeHistoryObject(historyObjectKey(accountId, source), {
+    version: 1,
+    source: `${source.provider}:${source.sourceRef}`,
+    baselineAt: sync.baselineAt,
+    lastSyncAt: sync.lastSyncAt,
+    connection,
+    entries: Object.fromEntries(
+      entries.map((entry) => [
+        `imdb:${entry.imdbId}`,
+        [entry.imdbId, entry.detectedAt ?? null, null],
+      ]),
+    ),
   });
-  if (synced.error) throw synced.error;
-  const inserted = await db.from("source_list_entries").insert(
-    entries.map((entry) => ({
-      ...key,
-      entry_key: `imdb:${entry.imdbId}`,
-      imdb_id: entry.imdbId,
-      detected_at: entry.detectedAt ?? null,
-    })),
-  );
-  if (inserted.error) throw inserted.error;
+}
+
+/** The Source list of a stored history. */
+function historySource(source: string) {
+  const separator = source.indexOf(":");
+  return {
+    provider: source.slice(0, separator),
+    source_ref: source.slice(separator + 1),
+  };
 }
 
 /** Store the sync status of a refresh at `at` that gave `titleCount` Titles. */
@@ -364,26 +385,36 @@ export async function getResolverRows(
   return data;
 }
 
-/** The synchronization rows (Baselines) of an Account's Source lists. */
+/** The Baselines of an Account's Source lists, by Provider. */
 export async function getSourceListSyncs(accountId: string) {
-  const { data, error } = await db
-    .from("source_list_syncs")
-    .select("provider, source_ref, baseline_at")
-    .eq("account_id", accountId)
-    .order("provider");
-  if (error) throw error;
-  return data;
+  return (await readHistoryObjects(accountId))
+    .map((history) => ({
+      ...historySource(history.source),
+      baseline_at: history.baselineAt,
+    }))
+    .sort(
+      (a, b) =>
+        a.provider.localeCompare(b.provider) ||
+        a.source_ref.localeCompare(b.source_ref),
+    );
 }
 
 /** The detection entries of an Account's Source lists, by entry key. */
 export async function getSourceListEntries(accountId: string) {
-  const { data, error } = await db
-    .from("source_list_entries")
-    .select("*")
-    .eq("account_id", accountId)
-    .order("entry_key");
-  if (error) throw error;
-  return data;
+  return (await readHistoryObjects(accountId))
+    .flatMap((history) =>
+      Object.entries(history.entries).map(
+        ([entry_key, [imdb_id, detected_at, removed_at]]) => ({
+          account_id: accountId,
+          ...historySource(history.source),
+          entry_key,
+          imdb_id,
+          detected_at,
+          removed_at,
+        }),
+      ),
+    )
+    .sort((a, b) => a.entry_key.localeCompare(b.entry_key));
 }
 
 /** The pending OAuth authorizations with this state. */

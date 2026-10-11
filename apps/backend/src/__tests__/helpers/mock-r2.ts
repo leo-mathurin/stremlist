@@ -10,6 +10,7 @@ import {
   ListObjectsV2Command,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
+import { createHash } from "node:crypto";
 
 /** Keys per ListObjectsV2 page; small, so tests cover the pagination. */
 const LIST_PAGE_SIZE = 2;
@@ -19,10 +20,43 @@ export const r2Objects = new Map<string, string>();
 /** Keys that a bulk delete reports as failed, like a store that keeps them. */
 export const r2Undeletable = new Set<string>();
 
+/**
+ * Writes seen, and a hook that runs just before each write is checked, so a
+ * test can play another instance that writes in between.
+ */
+export const r2Puts: { count: number; before: ((key: string) => void) | null } =
+  { count: 0, before: null };
+
+/** The ETag of a stored body, like a store that hashes its content. */
+function etagOf(body: string): string {
+  return `"${createHash("md5").update(body).digest("hex")}"`;
+}
+
+function preconditionFailed(): Promise<never> {
+  return Promise.reject(
+    Object.assign(new Error("precondition failed"), {
+      name: "PreconditionFailed",
+      $metadata: { httpStatusCode: 412 },
+    }),
+  );
+}
+
 function send(command: unknown): Promise<unknown> {
   if (command instanceof PutObjectCommand) {
-    const { Key, Body } = command.input;
+    const { Key, Body, IfMatch, IfNoneMatch } = command.input;
     if (!Key) return Promise.reject(new Error("R2 test command needs a key"));
+    r2Puts.count += 1;
+    r2Puts.before?.(Key);
+    const current = r2Objects.get(Key);
+    if (IfNoneMatch === "*" && current !== undefined) {
+      return preconditionFailed();
+    }
+    if (
+      IfMatch !== undefined &&
+      (current === undefined || etagOf(current) !== IfMatch)
+    ) {
+      return preconditionFailed();
+    }
     r2Objects.set(Key, Buffer.from(Body as Uint8Array).toString("utf8"));
     return Promise.resolve({});
   }
@@ -38,6 +72,7 @@ function send(command: unknown): Promise<unknown> {
     }
     return Promise.resolve({
       Body: { transformToString: () => Promise.resolve(body) },
+      ETag: etagOf(body),
     });
   }
   if (command instanceof DeleteObjectCommand) {

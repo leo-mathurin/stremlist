@@ -90,9 +90,6 @@ jobs:
       - name: Test List sync status recording
         run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/record_list_refresh.sql
 
-      - name: Test detection history
-        run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/record_source_list_sync.sql
-
       - name: Test atomic Account and Connection writes
         run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/account_writes.sql
 
