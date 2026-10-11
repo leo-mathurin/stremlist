@@ -17,14 +17,7 @@ import {
 } from "@stremlist/shared/list-merge";
 import { PROVIDERS } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
-import {
-  ChevronDown,
-  ExternalLink,
-  Eye,
-  GripVertical,
-  Settings2,
-  X,
-} from "lucide-react";
+import { ExternalLink, Eye, GripVertical, Settings2, X } from "lucide-react";
 import { useSortable } from "@dnd-kit/react/sortable";
 import { MAX_CATALOG_TITLE_LENGTH, rowTitle } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
@@ -126,13 +119,13 @@ export default function SortableListRow({
     <div
       ref={ref}
       className={cn(
-        "rounded-3xl bg-white ring-1 ring-black/5 transition-shadow",
+        "@container rounded-3xl bg-white ring-1 ring-black/5 transition-shadow",
         attentionTone(sync) === "warn" && "ring-amber-300",
         attentionTone(sync) === "bad" && "ring-red-200",
         isDragSource && "opacity-60 shadow-lg ring-2 ring-brand/50",
       )}
     >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 p-3 sm:flex-nowrap sm:gap-4 sm:p-4">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 p-3 sm:gap-4 sm:p-4 @min-[40rem]:flex-nowrap">
         <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
           <button
             ref={handleRef}
@@ -162,7 +155,9 @@ export default function SortableListRow({
             <ProviderMark provider={list.provider} />
           )}
           <div className="min-w-0 flex-1">
-            <p className="truncate font-bold leading-tight">{title}</p>
+            <p className="truncate font-bold leading-tight" title={title}>
+              {title}
+            </p>
             <p className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-black/50">
               <span className="truncate tabular-nums">
                 {merged ? (
@@ -190,7 +185,7 @@ export default function SortableListRow({
           </div>
         </div>
 
-        <div className="flex w-full items-center gap-2 pl-9 sm:w-auto sm:pl-0">
+        <div className="flex w-full items-center gap-2 pl-9 @min-[40rem]:w-auto @min-[40rem]:shrink-0 @min-[40rem]:pl-0">
           <Label htmlFor={sortId} className="sr-only">
             Sort order
           </Label>
@@ -204,7 +199,7 @@ export default function SortableListRow({
               id={sortId}
               size="sm"
               className={cn(
-                "min-w-0 flex-1 rounded-full border-0 bg-black/5 shadow-none sm:w-60 sm:flex-none",
+                "min-w-0 flex-1 rounded-full border-0 bg-black/5 shadow-none @min-[40rem]:w-56 @min-[40rem]:flex-none",
                 SELECT_FOCUS,
               )}
             >
@@ -243,26 +238,24 @@ export default function SortableListRow({
             </TooltipTrigger>
             <TooltipContent sideOffset={6}>Preview</TooltipContent>
           </Tooltip>
-          <button
-            type="button"
-            aria-expanded={open}
-            aria-controls={panelId}
-            aria-label={`Settings for ${title}`}
-            onClick={() => setOpen((current) => !current)}
-            className={cn(
-              "inline-flex h-8 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-semibold transition-colors",
-              open ? "bg-ink text-cloud" : "bg-black/5 hover:bg-black/10",
-            )}
-          >
-            <Settings2 className="size-3.5" />
-            <span className="hidden sm:inline">Settings</span>
-            <ChevronDown
-              className={cn(
-                "size-3.5 transition-transform duration-200 ease-out-quint",
-                open && "rotate-180",
-              )}
-            />
-          </button>
+          <Tooltip delayDuration={400}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-expanded={open}
+                aria-controls={panelId}
+                aria-label={`Settings for ${title}`}
+                onClick={() => setOpen((current) => !current)}
+                className={cn(
+                  "flex size-8 shrink-0 items-center justify-center rounded-full transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.96]",
+                  open ? "bg-ink text-cloud" : "bg-black/5 hover:bg-black/10",
+                )}
+              >
+                <Settings2 className="size-3.5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent sideOffset={6}>Settings</TooltipContent>
+          </Tooltip>
           <button
             type="button"
             aria-label={`Remove ${title}`}
