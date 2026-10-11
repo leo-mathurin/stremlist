@@ -22,6 +22,7 @@ import {
   SAVE_NEW,
   holdToasts,
   fitConfigurePage,
+  openFilters,
 } from "./config-fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
@@ -259,8 +260,7 @@ test(
       ],
     });
     await app.open(`/configure?account=${accountId}`);
-    await screen.getByRole("button", "Settings for Test catalog").tap();
-    await screen.getByRole("button", /Filters & extra catalogs/).tap();
+    await openFilters(screen, browser);
     await expect(
       screen.getByRole("combobox", "Genre", { exact: true }),
     ).toHaveText("Western");

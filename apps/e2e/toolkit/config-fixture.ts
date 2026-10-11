@@ -6,6 +6,7 @@ import type {
 } from "@stremlist/shared/catalog-preview";
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { DisplayMode } from "@stremlist/shared/constants";
+import { expect } from "e2e";
 import type { Screen } from "e2e";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDER_IDS } from "@stremlist/shared/providers";
@@ -76,6 +77,40 @@ export async function holdToasts(browser: Browser) {
  */
 export async function fitConfigurePage(browser: Browser) {
   await browser.setViewport({ width: 1280, height: 3200 });
+}
+
+/**
+ * Opens the Settings of a List, then its "Filters & extra catalogs". The
+ * filters button is in the Settings panel, which grows open with a CSS
+ * transition. A tap during that transition can be lost: the filters stay
+ * closed, and their controls stay in the page, so a check that they are
+ * enabled or disabled still passes. Wait for the panel to finish opening, then
+ * check that the filters opened.
+ */
+export async function openFilters(
+  screen: Screen,
+  browser: Browser,
+  title = "Test catalog",
+) {
+  const settings = screen.getByRole("button", `Settings for ${title}`);
+  await settings.tap();
+  await expect(settings).toBeExpanded();
+  await expect
+    .poll(() =>
+      browser.evaluate(() =>
+        document
+          .getAnimations()
+          .some(
+            (animation) =>
+              animation instanceof CSSTransition &&
+              animation.playState === "running",
+          ),
+      ),
+    )
+    .toBe(false);
+  const filters = screen.getByRole("button", /^Filters & extra catalogs/);
+  await filters.tap();
+  await expect(filters).toBeExpanded();
 }
 
 export const row = {

@@ -7,6 +7,7 @@ import {
   configuration,
   fitConfigurePage,
   holdToasts,
+  openFilters,
   row,
   secondAccountId,
 } from "./config-fixture";
@@ -53,11 +54,10 @@ test(
     );
     await expect(browser).toHaveURL(`/configure?account=${secondAccountId}`);
     await expect(screen.getByText("Second account")).toBeVisible();
-    await screen.getByRole("button", "Settings for Second account").tap();
+    await openFilters(screen, browser, "Second account");
     await expect(screen.getByLabel("Catalog title")).toHaveValue(
       "Second account",
     );
-    await screen.getByRole("button", /Filters & extra catalogs/).tap();
     await expect(
       screen.getByRole("combobox", "Genre", { exact: true }),
     ).toHaveText("Comedy");

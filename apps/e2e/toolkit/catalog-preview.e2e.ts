@@ -16,6 +16,7 @@ import {
   fitConfigurePage,
   imdbUser,
   legacyConfiguration,
+  openFilters,
   parseBody,
   previewOf,
   resolved,
@@ -375,8 +376,7 @@ test("the preview shows a loading state, then every Catalog with its empty hints
   ).toBeVisible();
   await expect(screen.getByText(LOADING)).not.toBeVisible();
 
-  await screen.getByRole("button", "Settings for Test catalog").tap();
-  await screen.getByRole("button", /^Filters & extra catalogs/).tap();
+  await openFilters(screen, browser);
   await screen.getByRole("checkbox", "Top rated", { exact: true }).tap();
   await expect
     .poll(() => requests.at(-1)?.catalogSettings)

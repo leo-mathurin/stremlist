@@ -121,7 +121,9 @@ and serves `state.config`, so a test can change it while the page is open),
 authorization, `ago()` for relative times, `routeResolve()` for
 `/links/resolve`, the exact save messages, `saveButton()` (the Save button at
 the top: the floating Save button has the same name and stays in the page
-while it is hidden) and `holdToasts()` (keeps toasts on screen, so a check
+while it is hidden), `openFilters()` (opens the Settings of a List, waits
+for the panel to finish opening, then opens its filters: a tap during that
+transition can be lost) and `holdToasts()` (keeps toasts on screen, so a check
 after an AI goal does not depend on the model's speed). Register
 `baseRoutes()` first: routes run newest first.
 

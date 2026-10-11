@@ -7,6 +7,7 @@ import {
   backend,
   configuration,
   gatedSaves,
+  openFilters,
   row,
   saveButton,
 } from "./config-fixture";
@@ -40,8 +41,7 @@ for (const editFilter of [false, true]) {
     });
 
     await app.open(`/configure?account=${accountId}`);
-    await screen.getByRole("button", "Settings for Test catalog").tap();
-    await screen.getByRole("button", /Filters & extra catalogs/).tap();
+    await openFilters(screen, browser);
     await expect(screen.getByLabel("Genre", { exact: true })).toBeDisabled();
     await saveButton(screen).tap();
     await expect(saveButton(screen, "Saving")).toBeVisible();
