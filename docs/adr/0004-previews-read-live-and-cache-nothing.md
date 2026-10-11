@@ -9,5 +9,6 @@ Changing the sort or the filters asks for a new preview each time, so each backe
 ## Consequences
 
 - A preview costs one Provider read, like a catalog request. The panel reads only while it is open, and only Lists added during the visit open it automatically.
-- Posters in the preview are the plain posters, without RPDB ratings, and Shuffle uses a seed of its own, so the order can differ from Stremio.
+- The configure page applies the current RPDB key to preview posters, including unsaved edits, using the same URL builder as the addon. Changing the key does not read the Source list again. If a RPDB poster fails to load, the preview falls back to the plain poster.
+- Shuffle uses a seed of its own, so the order can differ from Stremio.
 - The first preview of a big list with many entries without an IMDb ID can take several seconds, because the resolver runs within the normal catalog budget.

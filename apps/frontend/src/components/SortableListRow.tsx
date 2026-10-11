@@ -54,6 +54,7 @@ export default function SortableListRow({
   list,
   index,
   accountKey,
+  rpdbApiKey,
   onFieldChange,
   onRemove,
   missingProviders,
@@ -70,6 +71,7 @@ export default function SortableListRow({
   merge?: MergeControls;
   /** Lets the preview read through the Account's Connections. */
   accountKey: string | null;
+  rpdbApiKey: string;
   /** Its refreshes, or null on a new setup that has nothing saved yet. */
   sync: ListSyncState | null;
   /** Saved with its current Source lists. */
@@ -438,6 +440,7 @@ export default function SortableListRow({
           <CatalogPreview
             list={list}
             accountKey={accountKey}
+            rpdbApiKey={rpdbApiKey}
             open={previewOpen}
           />
         </div>

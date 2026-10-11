@@ -4,6 +4,8 @@ import type { ChartEntry } from "@stremlist/shared/imdb-charts";
 import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
 import type { PagedRead } from "../providers/types";
 
+export { buildPosterUrl } from "@stremlist/shared/poster";
+
 const GRAPHQL_ENDPOINT = "https://api.graphql.imdb.com/";
 const GRAPHQL_CLIENT_NAME = "imdb-next-desktop";
 
@@ -280,19 +282,6 @@ async function queryImdbGraphQL(
   }
 
   return (await response.json()) as GraphQLResponse;
-}
-
-export function buildPosterUrl(
-  imdbId: string,
-  fallbackPosterUrl: string | null,
-  rpdbApiKey?: string | null,
-): string | null {
-  const normalizedKey = rpdbApiKey?.trim();
-  if (!normalizedKey) {
-    return fallbackPosterUrl;
-  }
-
-  return `https://api.ratingposterdb.com/${encodeURIComponent(normalizedKey)}/imdb/poster-default/${imdbId}.jpg?fallback=true`;
 }
 
 export type ValidationResult =

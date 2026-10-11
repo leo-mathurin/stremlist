@@ -469,6 +469,7 @@ export default function Configure() {
                             list={list}
                             index={index}
                             accountKey={accountId ?? accountKey}
+                            rpdbApiKey={config.rpdbApiKey}
                             onFieldChange={config.setListField}
                             onRemove={config.removeList}
                             missingProviders={missing}

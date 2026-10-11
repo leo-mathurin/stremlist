@@ -16,6 +16,7 @@ import type { DisplayMode, TitleType } from "@stremlist/shared/constants";
 import { isMergedList, listSources } from "@stremlist/shared/list-merge";
 import { joinProviderLabels } from "@stremlist/shared/providers";
 import type { SourceId } from "@stremlist/shared/providers";
+import { buildPosterUrl } from "@stremlist/shared/poster";
 import {
   sourceProblemCopy,
   storedSourceNoun,
@@ -58,10 +59,12 @@ function catalogLabel(row: CatalogPreviewRow): string {
 export default function CatalogPreview({
   list,
   accountKey,
+  rpdbApiKey,
   open,
 }: {
   list: ListFormRow;
   accountKey: string | null;
+  rpdbApiKey: string;
   /** The panel is visible: only then the preview is read. */
   open: boolean;
 }) {
@@ -116,6 +119,7 @@ export default function CatalogPreview({
             preview={state.preview}
             displayMode={list.displayMode}
             settings={list.catalogSettings}
+            rpdbApiKey={rpdbApiKey}
           />
         </div>
       )}
@@ -194,10 +198,12 @@ function PreviewBody({
   preview,
   displayMode,
   settings,
+  rpdbApiKey,
 }: {
   preview: CatalogPreviewData;
   displayMode: DisplayMode;
   settings: CatalogSettings;
+  rpdbApiKey: string;
 }) {
   const shownType = displayMode === "split" ? null : displayMode;
   const hiddenType = shownType && OTHER_TYPE[shownType];
@@ -212,6 +218,7 @@ function PreviewBody({
           row={row}
           typeCounts={preview.typeCounts}
           filtered={filtered}
+          rpdbApiKey={rpdbApiKey}
         />
       ))}
 
@@ -260,10 +267,12 @@ function CatalogRow({
   row,
   typeCounts,
   filtered,
+  rpdbApiKey,
 }: {
   row: CatalogPreviewRow;
   typeCounts: CatalogPreviewData["typeCounts"];
   filtered: boolean;
+  rpdbApiKey: string;
 }) {
   const headingId = useId();
   const more = row.total - row.titles.length;
@@ -299,11 +308,18 @@ function CatalogRow({
           key={row.titles.map((title) => title.id).join(",")}
           className="-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 sm:-mx-5 sm:scroll-px-5 sm:px-5"
         >
-          {row.titles.map((title) => (
-            <li key={title.id} className="snap-start">
-              <PosterTile title={title} />
-            </li>
-          ))}
+          {row.titles.map((title) => {
+            const poster = buildPosterUrl(title.id, title.poster, rpdbApiKey);
+            return (
+              <li key={title.id} className="snap-start">
+                <PosterTile
+                  key={`${poster}:${title.poster}`}
+                  title={title}
+                  poster={poster}
+                />
+              </li>
+            );
+          })}
           {more > 0 && (
             <li className="snap-start">
               <div className="flex aspect-[2/3] w-[4.5rem] shrink-0 flex-col items-center justify-center rounded-xl bg-black/5 text-center sm:w-20">
@@ -320,9 +336,15 @@ function CatalogRow({
   );
 }
 
-function PosterTile({ title }: { title: PreviewTitle }) {
+function PosterTile({
+  title,
+  poster: initialPoster,
+}: {
+  title: PreviewTitle;
+  poster: string | null;
+}) {
+  const [poster, setPoster] = useState(initialPoster);
   const [loaded, setLoaded] = useState(false);
-  const [failed, setFailed] = useState(false);
   const label = title.releaseInfo
     ? `${title.name} (${title.releaseInfo})`
     : title.name;
@@ -337,14 +359,18 @@ function PosterTile({ title }: { title: PreviewTitle }) {
       className="group block w-[4.5rem] shrink-0 rounded-xl outline-none sm:w-20"
     >
       <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-black/5 ring-brand/60 transition-shadow duration-150 group-focus-visible:ring-2">
-        {title.poster && !failed ? (
+        {poster ? (
           <img
-            src={title.poster}
+            key={poster}
+            src={poster}
             alt=""
             loading="lazy"
             decoding="async"
             onLoad={() => setLoaded(true)}
-            onError={() => setFailed(true)}
+            onError={() => {
+              setLoaded(false);
+              setPoster(poster !== title.poster ? title.poster : null);
+            }}
             className={cn(
               "size-full object-cover transition-opacity duration-200 ease-out",
               loaded ? "opacity-100" : "opacity-0",

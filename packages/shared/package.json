@@ -10,6 +10,7 @@
     "./imdb-charts": "./src/imdb-charts.ts",
     "./list-merge": "./src/list-merge.ts",
     "./manifest-catalogs": "./src/manifest-catalogs.ts",
+    "./poster": "./src/poster.ts",
     "./providers": "./src/providers.ts",
     "./source-problems": "./src/source-problems.ts",
     "./stremio.types": "./src/stremio.types.ts",

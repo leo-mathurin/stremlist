@@ -166,7 +166,8 @@ function toUnresolvedEntry(entry: SourceEntry): PreviewUnresolvedEntry {
 /**
  * The Catalogs that a List adds to Stremio, each with its first Titles. Uses
  * the same Catalogs, sort and filters as the manifest and the catalog route,
- * so the preview matches what Stremio shows (RPDB posters aside). A merged
+ * so the preview matches what Stremio shows. The configure page applies RPDB
+ * posters using its current key. A merged
  * List shows the Titles of the Source lists it could read once each, like
  * its Catalog.
  */
