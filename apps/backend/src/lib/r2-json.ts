@@ -76,12 +76,18 @@ export async function deletePrefix(prefix: string): Promise<void> {
     );
     // A list page holds at most 1,000 keys, the most one delete accepts.
     if (keys.length > 0) {
-      await client.send(
+      const result = await client.send(
         new DeleteObjectsCommand({
           Bucket: bucket,
           Delete: { Objects: keys, Quiet: true },
         }),
       );
+      // A bulk delete succeeds even when some objects stay; it lists them.
+      if (result.Errors?.length) {
+        throw new Error(
+          `Could not delete ${result.Errors.length} objects under ${prefix}`,
+        );
+      }
     }
     continuationToken = page.IsTruncated
       ? page.NextContinuationToken

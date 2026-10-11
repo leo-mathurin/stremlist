@@ -16,6 +16,9 @@ const LIST_PAGE_SIZE = 2;
 
 export const r2Objects = new Map<string, string>();
 
+/** Keys that a bulk delete reports as failed, like a store that keeps them. */
+export const r2Undeletable = new Set<string>();
+
 function send(command: unknown): Promise<unknown> {
   if (command instanceof PutObjectCommand) {
     const { Key, Body } = command.input;
@@ -58,10 +61,16 @@ function send(command: unknown): Promise<unknown> {
     });
   }
   if (command instanceof DeleteObjectsCommand) {
+    const errors: { Key: string; Code: string }[] = [];
     for (const object of command.input.Delete?.Objects ?? []) {
-      if (object.Key) r2Objects.delete(object.Key);
+      if (!object.Key) continue;
+      if (r2Undeletable.has(object.Key)) {
+        errors.push({ Key: object.Key, Code: "AccessDenied" });
+      } else {
+        r2Objects.delete(object.Key);
+      }
     }
-    return Promise.resolve({});
+    return Promise.resolve(errors.length > 0 ? { Errors: errors } : {});
   }
   return Promise.reject(new Error("mock-r2: unsupported command"));
 }

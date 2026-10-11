@@ -307,4 +307,34 @@ describe("DELETE /:accountId/connections/:provider", () => {
     // The adapter also forgets what it keeps in memory.
     expect(forgetConnection).toHaveBeenCalledWith(account.id);
   });
+
+  it("logs the objects that the store could not delete", async () => {
+    const { r2Objects, r2Undeletable } = await import("./helpers/mock-r2.js");
+    const account = seedAccount();
+    seedConnection(account.id, "trakt");
+    const key = `connections/${account.id}/trakt/membership.json`;
+    r2Objects.set(key, "{}");
+    r2Undeletable.add(key);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      const res = await app.request(`/${account.id}/connections/trakt`, {
+        method: "DELETE",
+      });
+
+      // The disconnect still succeeds; the stray object is not silent.
+      expect(res.status).toBe(200);
+      expect(db.getTable("connections")).toEqual([]);
+      expect(logged).toHaveBeenCalledWith(
+        `Cleaning up after the trakt disconnect of ${account.id} failed:`,
+        expect.objectContaining({
+          message: `Could not delete 1 objects under connections/${account.id}/trakt/`,
+        }),
+      );
+    } finally {
+      r2Undeletable.clear();
+      r2Objects.delete(key);
+      logged.mockRestore();
+    }
+  });
 });
