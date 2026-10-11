@@ -11,6 +11,7 @@ import { PROVIDERS } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type {
   AccountConfigResponse,
+  ConfigList,
   ConnectionSummary,
   NewTitlesSummary,
 } from "@stremlist/shared/stremio.types";
@@ -36,6 +37,13 @@ import { useListSyncStatus } from "./useListSyncStatus";
 import { useProviderStatus } from "./useProviderStatus";
 import { useRefreshCooldown } from "./useRefreshCooldown";
 import { useReinstallBaseline } from "./useReinstallBaseline";
+import type { InstallSetup } from "./useReinstallBaseline";
+
+/** The Lists that a save stored, in the order it got them. */
+type StoredLists = Pick<
+  ConfigList,
+  "id" | "provider" | "sourceRef" | "mergedSources" | "availableGenres"
+>[];
 
 /** Providers whose Actions an Account can turn on: connected, with Actions. */
 function actionCapableProviders(
@@ -166,6 +174,14 @@ export function useAccountConfiguration(
   );
   const baseline = useReinstallBaseline(accountKey);
   const { reset: resetBaseline, onLoaded: onBaselineLoaded } = baseline;
+  /**
+   * The Account that the first save just created, with what it stored. The
+   * page already shows that setup, so loading the Account must not replace
+   * it with a loader.
+   */
+  const created = useRef<{ accountId: string; setup: InstallSetup } | null>(
+    null,
+  );
 
   const form: AccountForm = {
     lists,
@@ -208,15 +224,25 @@ export function useAccountConfiguration(
     }
 
     let cancelled = false;
-    setStatus("loading");
+    const justCreated =
+      created.current?.accountId === accountKey ? created.current : null;
+    // A new Account keeps its form on screen: only the server state loads.
+    if (!justCreated) setStatus("loading");
     fetchConfig(accountKey)
       .then((data) => {
         if (cancelled) return;
+        created.current = null;
         if (data === "notFound") {
           setStatus("notFound");
           return;
         }
         if (!data) throw new Error("Failed to load configuration");
+        if (justCreated) {
+          setMovedAt(data.movedAt);
+          applyServerState(data);
+          onBaselineLoaded(accountKey, data.lists, justCreated.setup);
+          return;
+        }
         const rows = rowsFromLists(data.lists);
         const capable = actionCapableProviders(data.connections);
         // The saved Actions Providers first, in their order.
@@ -268,7 +294,11 @@ export function useAccountConfiguration(
         setStatus("ready");
       })
       .catch(() => {
-        if (!cancelled) setStatus("error");
+        if (cancelled) return;
+        created.current = null;
+        // The new Account is saved and on screen: without its server state,
+        // the rows only show no sync status.
+        if (!justCreated) setStatus("error");
       });
     return () => {
       cancelled = true;
@@ -299,13 +329,59 @@ export function useAccountConfiguration(
    * Create the Account from the current setup. Returns its ID. It may have no
    * Lists yet when it is created to connect a Provider.
    */
-  const createAccount = async (): Promise<string> => {
+  const createAccount = async () => {
     const res = await api.accounts.$post({ json: configBody(form, "new") });
     const body = await res.json();
     if (!res.ok || !("accountId" in body)) {
       throw new Error(errorMessage(body, "Failed to save your configuration."));
     }
-    return body.accountId;
+    return body;
+  };
+
+  /**
+   * Give the submitted rows the IDs and Source lists that the save stored.
+   * Returns the saved rows.
+   */
+  const adoptStoredLists = (submitted: ListFormRow[], stored: StoredLists) => {
+    rememberSaved(stored);
+    const savedRows = submitted.map((row, index) => {
+      const saved = stored[index];
+      return saved
+        ? {
+            ...row,
+            id: saved.id,
+            sourceRef: saved.sourceRef,
+            mergedSources: saved.mergedSources ?? [],
+            availableGenres: saved.availableGenres ?? [],
+          }
+        : row;
+    });
+    // Match rows by their local ID: the user may have added, removed or
+    // reordered Lists while the save was in flight.
+    const savedByLocalId = new Map(savedRows.map((row) => [row.localId, row]));
+    const submittedByLocalId = new Map(
+      submitted.map((row) => [row.localId, row]),
+    );
+    setLists((current) =>
+      current.map((row) => {
+        const saved = savedByLocalId.get(row.localId);
+        const before = submittedByLocalId.get(row.localId);
+        if (!saved || !before) return row;
+        const sourceUnchanged = listSourcesKey(row) === listSourcesKey(before);
+        return {
+          ...row,
+          id: saved.id,
+          sourceRef: sourceUnchanged ? saved.sourceRef : row.sourceRef,
+          mergedSources: sourceUnchanged
+            ? saved.mergedSources
+            : row.mergedSources,
+          availableGenres: sourceUnchanged
+            ? saved.availableGenres
+            : row.availableGenres,
+        };
+      }),
+    );
+    return savedRows;
   };
 
   const handleSave = async () => {
@@ -317,17 +393,29 @@ export function useAccountConfiguration(
 
     setSaving(true);
     try {
+      const submitted = form;
       if (!accountKey) {
-        const created = await createAccount();
+        const body = await createAccount();
+        const savedRows = adoptStoredLists(submitted.lists, body.lists);
+        created.current = {
+          accountId: body.accountId,
+          setup: {
+            rows: savedRows,
+            newTitles: submitted.newTitlesEnabled,
+            actionsLive: false,
+          },
+        };
+        // Show the Account at once; its server state loads in the background.
+        setAccess("private");
+        setAccountId(body.accountId);
         toast.success(
           "Saved! Install Stremlist in Stremio with your Addon URL.",
           { id: "configuration-save" },
         );
-        onAccountCreated(created);
+        onAccountCreated(body.accountId);
         return;
       }
 
-      const submitted = form;
       const res = await api[":accountKey"].config.$post({
         param: { accountKey },
         json: configBody(submitted, access),
@@ -337,48 +425,8 @@ export function useAccountConfiguration(
         throw new Error(errorMessage(body, "Failed to save."));
       }
 
-      rememberSaved(body.lists);
-      const savedRows = submitted.lists.map((row, index) => {
-        const saved = body.lists[index];
-        return saved
-          ? {
-              ...row,
-              id: saved.id,
-              sourceRef: saved.sourceRef,
-              mergedSources: saved.mergedSources ?? [],
-              availableGenres: saved.availableGenres ?? [],
-            }
-          : row;
-      });
       const unsaved = hasUnsavedChanges(submitted, currentForm.current, access);
-      // Match rows by their local ID: the user may have added, removed or
-      // reordered Lists while the save was in flight.
-      const savedByLocalId = new Map(
-        savedRows.map((row) => [row.localId, row]),
-      );
-      const submittedByLocalId = new Map(
-        submitted.lists.map((row) => [row.localId, row]),
-      );
-      setLists((current) =>
-        current.map((row) => {
-          const saved = savedByLocalId.get(row.localId);
-          const before = submittedByLocalId.get(row.localId);
-          if (!saved || !before) return row;
-          const sourceUnchanged =
-            listSourcesKey(row) === listSourcesKey(before);
-          return {
-            ...row,
-            id: saved.id,
-            sourceRef: sourceUnchanged ? saved.sourceRef : row.sourceRef,
-            mergedSources: sourceUnchanged
-              ? saved.mergedSources
-              : row.mergedSources,
-            availableGenres: sourceUnchanged
-              ? saved.availableGenres
-              : row.availableGenres,
-          };
-        }),
-      );
+      const savedRows = adoptStoredLists(submitted.lists, body.lists);
       const { nowSaved, needsReinstall } = baseline.onSaved(
         accountKey,
         body.lists,
@@ -510,7 +558,7 @@ export function useAccountConfiguration(
         // Leaving for the Provider reloads the page: keep the unsaved edits.
         keepDraft(id, form);
       } else {
-        id = await createAccount();
+        id = (await createAccount()).accountId;
         onAccountCreated(id);
       }
       const res = await api[":accountId"].connections[":provider"].start.$post({
