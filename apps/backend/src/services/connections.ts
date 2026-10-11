@@ -194,7 +194,10 @@ export async function deleteConnection(
   provider: ProviderId,
   sources: { listId: string; sourceRef: string }[],
 ): Promise<void> {
-  const stored = await readConnection(accountId, provider);
+  // A Provider turned off (kill switch) gets no request, not even this one.
+  const stored = isProviderEnabled(provider)
+    ? await readConnection(accountId, provider)
+    : null;
   if (stored) {
     try {
       await getProvider(provider).oauth?.revoke?.(stored.accessToken);

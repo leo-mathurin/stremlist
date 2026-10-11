@@ -89,6 +89,11 @@ function connectionNotice(
         type: "error",
         message: `The connection to ${label} took too long. Please try again.`,
       };
+    case "unavailable":
+      return {
+        type: "error",
+        message: `${label} is temporarily unavailable. Please try again later.`,
+      };
     case "invalid_request":
       return {
         type: "error",

@@ -368,6 +368,21 @@ describe("List CRUD via the config API", () => {
       expect((await res.json()).error).toContain('"p.nobody"');
     });
 
+    it("does not ask IMDb to resolve a p. handle while IMDb is turned off", async () => {
+      const normalize = vi.spyOn(scraper, "normalizeImdbUserId");
+      process.env.DISABLED_PROVIDERS = "imdb";
+
+      const res = await postConfig(OWNER, {
+        lists: [{ sourceRef: "p.leo123", sortOption: "added_at-asc" }],
+      });
+
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe(
+        "IMDb is temporarily unavailable. Please try again later.",
+      );
+      expect(normalize).not.toHaveBeenCalled();
+    });
+
     it("tells a moved legacy install to use its private Addon URL (409)", async () => {
       db.getTable("accounts")[0].moved_at = new Date().toISOString();
 

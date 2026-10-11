@@ -2,7 +2,7 @@ import { isProviderId } from "@stremlist/shared/providers";
 import { Hono } from "hono";
 import { scheduleBackgroundTask } from "../lib/background";
 import { backendOrigin, frontendUrl } from "../lib/urls";
-import { getProvider } from "../providers/registry";
+import { getProvider, isProviderEnabled } from "../providers/registry";
 import { forgetConnectionObjects } from "../services/actions";
 import { saveConnection } from "../services/connections";
 import { rereadConnectionLists } from "../services/lists";
@@ -37,6 +37,13 @@ oauth.get("/oauth/:provider/callback", async (c) => {
   if (error || !code) {
     return back(pending.accountId, {
       connection_error: error === "access_denied" ? "denied" : "failed",
+      provider,
+    });
+  }
+  // Turned off (kill switch) since the authorization started.
+  if (!isProviderEnabled(provider)) {
+    return back(pending.accountId, {
+      connection_error: "unavailable",
       provider,
     });
   }

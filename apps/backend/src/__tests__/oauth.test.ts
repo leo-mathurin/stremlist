@@ -388,6 +388,22 @@ describe("GET /oauth/:provider/callback", () => {
     expect(db.getTable("connections")).toEqual([]);
   });
 
+  it("does not exchange the code when the Provider was turned off meanwhile", async () => {
+    useOAuthProvider();
+    seedState(accountId);
+    process.env.DISABLED_PROVIDERS = "trakt";
+
+    const res = await callback({ code: "code-1", state: "state-abc" });
+
+    expect(redirectParams(res).params).toEqual({
+      account: accountId,
+      connection_error: "unavailable",
+      provider: "trakt",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(db.getTable("connections")).toEqual([]);
+  });
+
   it("reports a denied authorization and consumes the state", async () => {
     useOAuthProvider();
     seedState(accountId);

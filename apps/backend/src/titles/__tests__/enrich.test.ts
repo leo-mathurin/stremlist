@@ -152,6 +152,19 @@ describe("enrichTitles", () => {
     );
   });
 
+  it("asks only Cinemeta when IMDb is turned off", async () => {
+    const id = freshId();
+    process.env.DISABLED_PROVIDERS = "imdb";
+    try {
+      await enrichTitles([{ imdbId: id, type: "movie" }]);
+    } finally {
+      delete process.env.DISABLED_PROVIDERS;
+    }
+
+    expect(scraperMocks.fetchTitlesByIds).not.toHaveBeenCalled();
+    expect(requestedUrls()).toEqual([cinemetaUrl("movie", id)]);
+  });
+
   it("asks Cinemeta only for Titles that IMDb did not answer", async () => {
     const [fromImdb, missing] = [freshId(), freshId()];
     scraperMocks.fetchTitlesByIds.mockResolvedValue(

@@ -26,6 +26,7 @@ import type {
   ConfigList,
 } from "@stremlist/shared/stremio.types";
 import { z } from "zod";
+import { isProviderEnabled } from "../providers/registry";
 import type { AccountAccess, ListInput } from "./accounts";
 import { withAvailableGenres } from "./catalog-genres";
 import { catalogSettingsSchema } from "./catalog-settings";
@@ -131,6 +132,12 @@ async function normalizeSource(
   }
   let sourceRef = source.sourceRef;
   if (source.provider === "imdb") {
+    // Resolving a `p.` handle asks IMDb, which the kill switch may turn off.
+    if (sourceRef.startsWith("p.") && !isProviderEnabled("imdb")) {
+      throw new ConfigError(
+        "IMDb is temporarily unavailable. Please try again later.",
+      );
+    }
     try {
       sourceRef = await normalizeImdbUserId(sourceRef);
     } catch {

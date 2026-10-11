@@ -213,6 +213,29 @@ describe("listConnections and deleteConnection", () => {
   });
 });
 
+describe("deleteConnection of a turned-off Provider", () => {
+  it("deletes the Connection without calling the Provider", async () => {
+    const revoke = vi.fn(() => Promise.resolve());
+    useFakeProvider(
+      fakeAdapter("trakt", {
+        oauth: {
+          authorizeUrl: "https://trakt.example/authorize",
+          tokenUrl: "https://trakt.example/token",
+          clientId: () => "id",
+          revoke,
+        },
+      }),
+    );
+    seedConnection(accountId, "trakt");
+    process.env.DISABLED_PROVIDERS = "trakt";
+
+    await deleteConnection(accountId, "trakt", []);
+
+    expect(revoke).not.toHaveBeenCalled();
+    expect(db.getTable("connections")).toEqual([]);
+  });
+});
+
 describe("getConnectionAccess", () => {
   it("returns null without a Connection", async () => {
     await expect(getConnectionAccess(accountId, "trakt")).resolves.toBeNull();

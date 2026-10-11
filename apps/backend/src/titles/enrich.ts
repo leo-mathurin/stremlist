@@ -1,6 +1,7 @@
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { mapWithConcurrency } from "../lib/concurrency";
 import { providerFetch, RateLimiter } from "../providers/http";
+import { isProviderEnabled } from "../providers/registry";
 import { fetchTitlesByIds } from "../services/imdb-scraper";
 
 const CINEMETA = "https://v3-cinemeta.strem.io";
@@ -116,18 +117,23 @@ export async function enrichTitles(
   if (missing.size === 0) return result;
 
   let notFromImdb = [...missing.values()];
-  try {
-    const fromImdb = await fetchTitlesByIds([...missing.keys()]);
-    for (const meta of fromImdb.values()) {
-      result.set(meta.id, meta);
-      remember(meta);
+  // With IMDb turned off (kill switch), every Title comes from Cinemeta.
+  if (isProviderEnabled("imdb")) {
+    try {
+      const fromImdb = await fetchTitlesByIds([...missing.keys()]);
+      for (const meta of fromImdb.values()) {
+        result.set(meta.id, meta);
+        remember(meta);
+      }
+      notFromImdb = notFromImdb.filter(
+        (title) => !fromImdb.has(title.imdbId),
+      );
+    } catch (error) {
+      console.error(
+        "IMDb title lookup failed, falling back to Cinemeta:",
+        error instanceof Error ? error.message : error,
+      );
     }
-    notFromImdb = notFromImdb.filter((title) => !fromImdb.has(title.imdbId));
-  } catch (error) {
-    console.error(
-      "IMDb title lookup failed, falling back to Cinemeta:",
-      error instanceof Error ? error.message : error,
-    );
   }
 
   const forCinemeta = notFromImdb.slice(0, MAX_CINEMETA_TITLES);
