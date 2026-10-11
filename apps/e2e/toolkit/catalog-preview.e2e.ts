@@ -66,10 +66,8 @@ test("a pasted List opens its preview at once, a saved List only on request", as
     ),
   ).toBeVisible();
   await expect(
-    screen.getByText(
-      "Every entry of this list has an IMDb ID, so Stremio can show them all.",
-    ),
-  ).toBeVisible();
+    screen.getByRole("heading", /^Unresolved entries/),
+  ).not.toBeVisible();
   expect(requests).toEqual([
     {
       accountKey: accountId,
@@ -444,11 +442,6 @@ test("one Unresolved entry and Titles without details are explained", async ({
       "1 title has no details yet, so Stremio does not show it. Stremlist tries again on the next refresh.",
     ),
   ).toBeVisible();
-  await expect(
-    screen.getByText(
-      "Every entry of this list has an IMDb ID, so Stremio can show them all.",
-    ),
-  ).not.toBeVisible();
 });
 
 test("a Source list that did not answer offers Try again", async ({

@@ -1,11 +1,5 @@
 import { useId, useState } from "react";
-import {
-  CircleCheck,
-  Clapperboard,
-  ExternalLink,
-  Loader2,
-  RotateCw,
-} from "lucide-react";
+import { Clapperboard, ExternalLink, Loader2, RotateCw } from "lucide-react";
 import type {
   CatalogPreview as CatalogPreviewData,
   CatalogPreviewRow,
@@ -246,7 +240,9 @@ function PreviewBody({
         </PreviewMessage>
       ))}
 
-      <UnresolvedEntries unresolved={preview.unresolved} />
+      {preview.unresolved.count > 0 && (
+        <UnresolvedEntries unresolved={preview.unresolved} />
+      )}
 
       {preview.withoutDetails > 0 && (
         <p className="text-xs text-pretty text-black/55">
@@ -383,18 +379,6 @@ function UnresolvedEntries({
 }) {
   const [expanded, setExpanded] = useState(false);
   const listId = useId();
-
-  if (unresolved.count === 0) {
-    return (
-      <p className="flex items-center gap-1.5 text-xs text-black/55">
-        <CircleCheck
-          className="size-3.5 shrink-0 text-emerald-600"
-          aria-hidden="true"
-        />
-        Every entry of this list has an IMDb ID, so Stremio can show them all.
-      </p>
-    );
-  }
 
   const shown = expanded
     ? unresolved.entries
