@@ -38,7 +38,7 @@ R2. The configure/onboarding pages of the frontend are covered too.
   counts) or compare the Stremio UI against the addon's own catalog JSON from
   the same run, so they do not depend on what is in the watchlist today.
 - The default run and pull request CI execute all three projects: deterministic
-  local coverage (98 tests), four live smoke tests, and the broader live
+  local coverage (101 tests), four live smoke tests, and the broader live
   regression suite (27 tests).
 - `tests/new-titles.spec.ts` starts a second backend with
   `helpers/source-transport.ts` preloaded. It reads Source lists from a JSON
@@ -116,12 +116,12 @@ client IDs and no real credential. The real adapters, OAuth flow, ID resolver
 and Action pages run; only the Provider responses are fixtures, and any
 request to an unknown host fails.
 
-| File                                 | Coverage                                                                                                                         |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/provider-links.spec.ts`       | Public links (Trakt, JustWatch, SensCritique), Trakt charts, and Source lists read through a Connection (MDBList, Simkl, Trakt)  |
-| `tests/provider-connections.spec.ts` | OAuth start and callback (Trakt, Simkl, MDBList), disconnect, expired Connections, Legacy alias limits                           |
-| `tests/provider-actions.spec.ts`     | Actions in Stremio, every Trakt Action intent, Simkl and MDBList Actions, the Provider kill switch (`DISABLED_PROVIDERS`)        |
-| `tests/provider-sync-status.spec.ts` | Sync status of Lists read through a Connection (renewal, disconnect, merged List) and Catalog previews read through a Connection |
+| File                                 | Coverage                                                                                                                                                   |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/provider-links.spec.ts`       | Public links (Trakt, JustWatch, SensCritique), Trakt charts, and Source lists read through a Connection (MDBList, Simkl, Trakt)                            |
+| `tests/provider-connections.spec.ts` | OAuth start and callback (Trakt, Simkl, MDBList), Connect from the configure page with unsaved edits, disconnect, expired Connections, Legacy alias limits |
+| `tests/provider-actions.spec.ts`     | Actions in Stremio, every Trakt Action intent, Simkl and MDBList Actions, the Provider kill switch (`DISABLED_PROVIDERS`)                                  |
+| `tests/provider-sync-status.spec.ts` | Sync status of Lists read through a Connection (renewal, disconnect, merged List) and Catalog previews read through a Connection                           |
 
 Letterboxd has no adapter yet; the configure page only explains its MDBList
 import. The UI side of the same journeys is in `toolkit/providers.e2e.ts`.

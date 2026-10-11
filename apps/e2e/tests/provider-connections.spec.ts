@@ -1,7 +1,13 @@
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
-import { FRONTEND_URL } from "../env.js";
+import type { Page } from "@playwright/test";
+import { BACKEND_URL, FRONTEND_URL } from "../env.js";
 import { listInput } from "../helpers/api.js";
+import {
+  configureUrl,
+  openConfigure,
+  saveConfigure,
+} from "../helpers/configure.js";
 import {
   getAccountRow,
   getConnectionRow,
@@ -380,5 +386,197 @@ test(
         .requests((url) => /\/oauth2?\/token\/?$/.test(url.pathname))
         .map((entry) => entry.body?.code),
     ).toEqual(["fixture-code", "fixture-code"]);
+  },
+);
+
+// The configure page against the fixture backend: the page's API requests go
+// to it, and the Provider's authorize page is a fixture. The test comes back
+// to the real OAuth callback, which sends the browser back to the page.
+
+const DRAFT_RESTORED = "Your unsaved changes are back. Save to apply them.";
+const TRAKT_LIST = "users/fixture-user/watchlist";
+
+/** Send every request of the page to the backend at `url`. */
+async function routePageTo(page: Page, url: string) {
+  await page.route(`${BACKEND_URL}/**`, async (route) => {
+    const target = new URL(route.request().url());
+    const response = await route.fetch({
+      url: `${url}${target.pathname}${target.search}`,
+    });
+    await route.fulfill({ response });
+  });
+}
+
+/**
+ * Click Connect for `label` in the Providers panel. The fixture authorize
+ * page opens; the returned function comes back to the OAuth callback of
+ * `callbackOrigin` with the fixture code, as when the user agrees.
+ */
+async function connectFromPage(
+  page: Page,
+  label: string,
+  authorizeHost: string,
+) {
+  const authorize = page.waitForRequest(
+    (request) => new URL(request.url()).host === authorizeHost,
+  );
+  await page.route(`https://${authorizeHost}/**`, (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: `<!doctype html><title>Authorize</title><h1>${label} authorization fixture</h1>`,
+    }),
+  );
+  await page
+    .getByRole("listitem")
+    .filter({ hasText: label })
+    .getByRole("button", { name: "Connect", exact: true })
+    .click();
+  const authorizeUrl = new URL((await authorize).url());
+  await expect(
+    page.getByRole("heading", { name: `${label} authorization fixture` }),
+  ).toBeVisible();
+  return async (callbackOrigin: string) => {
+    const redirect = new URL(authorizeUrl.searchParams.get("redirect_uri")!);
+    const callback = new URL(`${callbackOrigin}${redirect.pathname}`);
+    callback.searchParams.set("code", "fixture-code");
+    callback.searchParams.set(
+      "state",
+      authorizeUrl.searchParams.get("state") ?? "",
+    );
+    await page.goto(callback.toString());
+  };
+}
+
+/** A private Account with one public Trakt List. */
+async function seedTraktAccount() {
+  const accountId = await seedAccount();
+  await seedList(accountId, {
+    provider: "trakt",
+    sourceRef: TRAKT_LIST,
+    catalogTitle: "Fixture watchlist",
+    position: 0,
+    displayMode: "split",
+  });
+  return accountId;
+}
+
+test(
+  "unsaved edits come back after the Connect round trip and save",
+  { tag: "@local" },
+  async ({ page }) => {
+    const { api } = backend;
+    const accountId = await seedTraktAccount();
+    await routePageTo(page, backend.url);
+    await openConfigure(page, accountId, "Fixture watchlist");
+
+    await page
+      .getByRole("button", { name: "Settings for Fixture watchlist" })
+      .click();
+    await page
+      .getByLabel("Catalog title", { exact: true })
+      .fill("Renamed before connecting");
+    await page.locator("#rpdb-api-key").fill("draft-rpdb-key");
+
+    const comeBack = await connectFromPage(page, "Trakt", "auth.trakt.tv");
+    await comeBack(backend.url);
+    await expect(page).toHaveURL(configureUrl(accountId));
+    await expect(
+      page.getByText("Trakt is connected. You can now add its lists."),
+    ).toBeVisible();
+    await expect(page.getByText(DRAFT_RESTORED)).toBeVisible();
+    await expect(page.locator("#rpdb-api-key")).toHaveValue("draft-rpdb-key");
+    await page
+      .getByRole("button", { name: "Settings for Renamed before connecting" })
+      .click();
+    await expect(page.getByLabel("Catalog title", { exact: true })).toHaveValue(
+      "Renamed before connecting",
+    );
+    // Nothing is saved until the user saves.
+    expect(await getConnectionRow(accountId, "trakt")).toMatchObject({
+      provider_username: "fixture-user",
+    });
+    const before = (await api.getConfig(accountId)).body;
+    expect(before.lists).toMatchObject([
+      { sourceRef: TRAKT_LIST, catalogTitle: "Fixture watchlist" },
+    ]);
+    expect(before.rpdbApiKey ?? "").toBe("");
+
+    await saveConfigure(page);
+    const after = (await api.getConfig(accountId)).body;
+    expect(after.lists).toMatchObject([
+      { sourceRef: TRAKT_LIST, catalogTitle: "Renamed before connecting" },
+    ]);
+    expect(after.rpdbApiKey).toBe("draft-rpdb-key");
+    expect(after.connections).toMatchObject([
+      { provider: "trakt", username: "fixture-user" },
+    ]);
+
+    // The kept edits are used once: a reload shows the saved setup only.
+    await page.reload();
+    await expect(page.getByText("Renamed before connecting")).toBeVisible();
+    await expect(page.locator("#rpdb-api-key")).toHaveValue("draft-rpdb-key");
+    await expect(page.getByText(DRAFT_RESTORED)).toHaveCount(0);
+  },
+);
+
+test(
+  "the Connect round trip without unsaved edits brings back no draft",
+  { tag: "@local" },
+  async ({ page }) => {
+    const accountId = await seedTraktAccount();
+    await routePageTo(page, backend.url);
+    await openConfigure(page, accountId, "Fixture watchlist");
+
+    const comeBack = await connectFromPage(page, "Simkl", "simkl.com");
+    await comeBack(backend.url);
+    await expect(page).toHaveURL(configureUrl(accountId));
+    await expect(
+      page.getByText("Simkl is connected. You can now add its lists."),
+    ).toBeVisible();
+    await expect(page.getByText("Fixture watchlist")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Connected to Simkl. Disconnect" }),
+    ).toBeVisible();
+    await expect(page.getByText(DRAFT_RESTORED)).toHaveCount(0);
+    expect(await getConnectionRow(accountId, "simkl")).toMatchObject({
+      provider_username: "fixture-user",
+    });
+  },
+);
+
+test(
+  "a Provider turned off during the authorization says so and keeps the edits",
+  { tag: "@local" },
+  async ({ page }) => {
+    const { api } = backend;
+    const accountId = await seedTraktAccount();
+    await routePageTo(page, backend.url);
+    await openConfigure(page, accountId, "Fixture watchlist");
+    await page.locator("#rpdb-api-key").fill("draft-rpdb-key");
+
+    const comeBack = await connectFromPage(page, "Trakt", "auth.trakt.tv");
+    // The kill switch turns Trakt off before the user comes back.
+    const off = await startFixtureBackend("./provider-fixtures.ts", {
+      DISABLED_PROVIDERS: "trakt",
+    });
+    try {
+      await comeBack(off.url);
+      await expect(page).toHaveURL(configureUrl(accountId));
+      await expect(
+        page.getByText(
+          "Trakt is temporarily unavailable. Please try again later.",
+        ),
+      ).toBeVisible();
+      await expect(page.getByText(DRAFT_RESTORED)).toBeVisible();
+      await expect(page.locator("#rpdb-api-key")).toHaveValue("draft-rpdb-key");
+      // No token was asked for and no Connection was stored.
+      expect(off.requests((url) => url.pathname === "/oauth/token")).toEqual(
+        [],
+      );
+      expect(await getConnectionRow(accountId, "trakt")).toBeNull();
+      expect((await api.getConfig(accountId)).body.connections).toEqual([]);
+    } finally {
+      await off.stop();
+    }
   },
 );
