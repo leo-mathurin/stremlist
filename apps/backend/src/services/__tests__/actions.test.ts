@@ -69,10 +69,16 @@ function seedMembership(
   provider: ProviderId,
   value: Membership,
   fetchedAt = new Date(),
+  // The Provider user of the seeded Connections.
+  username = "leo",
 ): void {
   r2Objects.set(
     membershipKey(accountId, provider),
-    JSON.stringify({ fetchedAt: fetchedAt.toISOString(), membership: value }),
+    JSON.stringify({
+      fetchedAt: fetchedAt.toISOString(),
+      username,
+      membership: value,
+    }),
   );
 }
 
@@ -440,6 +446,35 @@ describe("buildActionStreams", () => {
       link,
     );
     expect(after[0].title).toBe("🔖 In your Trakt watchlist\nSelect to remove");
+  });
+
+  it("ignores the membership of the previous Provider user", async () => {
+    const row = seedAccount({
+      actions_enabled: true,
+      action_providers: ["trakt"],
+    });
+    useActionProvider("trakt");
+    // Connected again as another Trakt user: the stored membership is fresh,
+    // but it is the previous user's.
+    seedConnection(row.id, "trakt", { username: "other" });
+    seedMembership(
+      row.id,
+      "trakt",
+      membership({ watchlist: [MOVIE] }),
+      new Date(),
+      "leo",
+    );
+    const account = (await resolveAccountKey(row.id))?.account;
+    if (!account) throw new Error("account missing");
+
+    const streams = await buildActionStreams(
+      account,
+      { imdbId: MOVIE, type: "movie" },
+      link,
+    );
+
+    expect(streams[0].title).toBe("🔖 Add to Trakt watchlist");
+    expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledOnce();
   });
 
   it("does not refresh fresh membership", async () => {

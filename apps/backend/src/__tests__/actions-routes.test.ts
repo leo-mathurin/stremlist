@@ -73,6 +73,7 @@ function seedMembership(
     `connections/${accountId}/${provider}/membership.json`,
     JSON.stringify({
       fetchedAt: new Date().toISOString(),
+      username: "leo",
       membership: {
         watchlist: [],
         watched: [],

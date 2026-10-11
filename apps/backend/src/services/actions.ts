@@ -39,6 +39,8 @@ const EMPTY_MEMBERSHIP: Membership = {
 
 interface StoredMembership {
   fetchedAt: string;
+  /** The Provider user it was read for: a new Connection may be another one. */
+  username: string | null;
   membership: Membership;
 }
 
@@ -48,45 +50,43 @@ function membershipKey(accountId: string, provider: ProviderId): string {
 
 const memoryMembership = new Map<string, StoredMembership>();
 
+/** The stored membership of the connected Provider user, or null. */
 async function readMembership(
   accountId: string,
   provider: ProviderId,
+  username: string | null,
 ): Promise<StoredMembership | null> {
   const key = membershipKey(accountId, provider);
-  const inMemory = memoryMembership.get(key);
-  if (inMemory) return inMemory;
-  try {
-    const stored = await readJson<StoredMembership>(key);
+  let stored = memoryMembership.get(key) ?? null;
+  if (!stored) {
+    try {
+      stored = await readJson<StoredMembership>(key);
+    } catch {
+      return null;
+    }
     if (stored) memoryMembership.set(key, stored);
-    return stored;
-  } catch {
-    return null;
   }
+  return stored?.username === username ? stored : null;
 }
 
 async function writeMembership(
-  accountId: string,
-  provider: ProviderId,
+  connection: ConnectionAccess,
   membership: Membership,
 ): Promise<void> {
-  const key = membershipKey(accountId, provider);
+  const key = membershipKey(connection.accountId, connection.provider);
   const stored: StoredMembership = {
     fetchedAt: new Date().toISOString(),
+    username: connection.username,
     membership,
   };
   memoryMembership.set(key, stored);
   await writeJson(key, stored);
 }
 
-async function refreshMembership(
-  accountId: string,
-  provider: ProviderId,
-  connection: ConnectionAccess,
-): Promise<void> {
-  const actions = getProvider(provider).actions;
+async function refreshMembership(connection: ConnectionAccess): Promise<void> {
+  const actions = getProvider(connection.provider).actions;
   if (!actions) return;
-  const membership = await actions.getMembership(connection);
-  await writeMembership(accountId, provider, membership);
+  await writeMembership(connection, await actions.getMembership(connection));
 }
 
 /**
@@ -103,18 +103,29 @@ export async function forgetConnectionObjects(
   await deletePrefix(connectionPrefix(accountId, provider));
 }
 
+/**
+ * The Connections that receive Actions for this Account, in the user's
+ * order, with the connected Provider user.
+ */
+async function actionConnections(
+  account: Account,
+): Promise<{ provider: ProviderId; username: string | null }[]> {
+  if (!account.actionsEnabled) return [];
+  const connected = new Map(
+    (await listConnections(account.id)).map((c) => [c.provider, c.username]),
+  );
+  return account.actionProviders.flatMap((provider) =>
+    connected.has(provider) &&
+    isProviderEnabled(provider) &&
+    getProvider(provider).actions
+      ? [{ provider, username: connected.get(provider) ?? null }]
+      : [],
+  );
+}
+
 /** The Providers that receive Actions for this Account, in the user's order. */
 export async function actionProviders(account: Account): Promise<ProviderId[]> {
-  if (!account.actionsEnabled) return [];
-  const connected = new Set(
-    (await listConnections(account.id)).map((c) => c.provider),
-  );
-  return account.actionProviders.filter(
-    (provider) =>
-      connected.has(provider) &&
-      isProviderEnabled(provider) &&
-      !!getProvider(provider).actions,
-  );
+  return (await actionConnections(account)).map(({ provider }) => provider);
 }
 
 /** "tt123:2:5" → the series ID and the episode. */
@@ -212,20 +223,19 @@ export async function buildActionStreams(
   target: ActionTarget,
   link: ActionLinkBuilder,
 ): Promise<StremioStream[]> {
-  const providers = await actionProviders(account);
-  if (providers.length === 0) return [];
+  const connections = await actionConnections(account);
+  if (connections.length === 0) return [];
 
   const memberships = await Promise.all(
-    providers.map(async (provider) => {
-      const stored = await readMembership(account.id, provider);
+    connections.map(async ({ provider, username }) => {
+      const stored = await readMembership(account.id, provider, username);
       if (
         !stored ||
         Date.now() - new Date(stored.fetchedAt).getTime() > MEMBERSHIP_FRESH_MS
       ) {
         scheduleBackgroundTask(async () => {
           const connection = await getConnectionAccess(account.id, provider);
-          if (connection)
-            await refreshMembership(account.id, provider, connection);
+          if (connection) await refreshMembership(connection);
         });
       }
       return { provider, membership: stored?.membership ?? EMPTY_MEMBERSHIP };
@@ -425,10 +435,13 @@ export async function performAction(
       }
 
       try {
-        const stored = await readMembership(account.id, provider);
-        await writeMembership(
+        const stored = await readMembership(
           account.id,
           provider,
+          connection.username,
+        );
+        await writeMembership(
+          connection,
           applyToMembership(
             stored?.membership ?? EMPTY_MEMBERSHIP,
             intent,
@@ -461,12 +474,12 @@ export async function currentRatings(
   account: Account,
   imdbId: string,
 ): Promise<{ provider: ProviderId; rating: number | null }[]> {
-  const providers = (await actionProviders(account)).filter((provider) =>
-    supportsAction(provider, "rating"),
+  const connections = (await actionConnections(account)).filter(
+    ({ provider }) => supportsAction(provider, "rating"),
   );
   return Promise.all(
-    providers.map(async (provider) => {
-      const stored = await readMembership(account.id, provider);
+    connections.map(async ({ provider, username }) => {
+      const stored = await readMembership(account.id, provider, username);
       return { provider, rating: stored?.membership.ratings[imdbId] ?? null };
     }),
   );

@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { scheduleBackgroundTask } from "../lib/background";
 import { backendOrigin, frontendUrl } from "../lib/urls";
 import { getProvider } from "../providers/registry";
+import { forgetConnectionObjects } from "../services/actions";
 import { saveConnection } from "../services/connections";
 import { rereadConnectionLists } from "../services/lists";
 import { consumeState, exchangeCode, redirectUri } from "../services/oauth";
@@ -67,11 +68,21 @@ oauth.get("/oauth/:provider/callback", async (c) => {
       username,
       redirect,
     );
-    // Lists that failed without the Connection (or with the refused one)
-    // read through the new one now.
-    scheduleBackgroundTask(() =>
-      rereadConnectionLists(pending.accountId, provider),
-    );
+    // What Stremlist stored for the previous authorization (Action
+    // membership, the Provider's own snapshots) may be another Provider
+    // user's. Then Lists that failed without the Connection (or with the
+    // refused one) read through the new one.
+    scheduleBackgroundTask(async () => {
+      try {
+        await forgetConnectionObjects(pending.accountId, provider);
+      } catch (forgetError) {
+        console.error(
+          `Forgetting the previous ${provider} connection state failed:`,
+          forgetError instanceof Error ? forgetError.message : forgetError,
+        );
+      }
+      await rereadConnectionLists(pending.accountId, provider);
+    });
     return back(pending.accountId, { connected: provider });
   } catch (exchangeError) {
     console.error(
