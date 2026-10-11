@@ -61,6 +61,46 @@ function toastError(err: unknown, options?: { id: string }) {
   );
 }
 
+/** Unsaved edits of an Account, kept across the OAuth round trip of Connect. */
+const CONNECT_DRAFT_STORAGE = "stremlist:connect-draft";
+
+function keepDraft(accountId: string, form: AccountForm): void {
+  try {
+    sessionStorage.setItem(
+      CONNECT_DRAFT_STORAGE,
+      JSON.stringify({ accountId, form }),
+    );
+  } catch {
+    // Storage is off: the edits are lost, as before.
+  }
+}
+
+function dropDraft(): void {
+  try {
+    sessionStorage.removeItem(CONNECT_DRAFT_STORAGE);
+  } catch {
+    // Nothing was kept.
+  }
+}
+
+/** The kept edits of this Account, once: taking them forgets them. */
+function takeDraft(accountId: string): AccountForm | null {
+  try {
+    const raw = sessionStorage.getItem(CONNECT_DRAFT_STORAGE);
+    if (!raw) return null;
+    dropDraft();
+    const draft = JSON.parse(raw) as {
+      accountId?: unknown;
+      form?: AccountForm;
+    };
+    return draft.accountId === accountId && Array.isArray(draft.form?.lists)
+      ? draft.form
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The configuration of an Account, "notFound", or null when it cannot be
  * read (an answer without Lists included).
@@ -178,21 +218,48 @@ export function useAccountConfiguration(
         }
         if (!data) throw new Error("Failed to load configuration");
         const rows = rowsFromLists(data.lists);
+        const capable = actionCapableProviders(data.connections);
         // The saved Actions Providers first, in their order.
         const saved = reconcileActionProviders(
           data.actions.providers,
           data.actions.providers,
-          actionCapableProviders(data.connections),
+          capable,
         );
-        setLists(rows);
+        const savedForm: AccountForm = {
+          lists: rows,
+          rpdbApiKey: data.rpdbApiKey ?? "",
+          actionsEnabled: data.actions.enabled,
+          actions: saved,
+          newTitlesEnabled: data.newTitles.enabled,
+        };
+        // Back from Connect: the edits the user had not saved yet.
+        const draft = data.accountId ? takeDraft(data.accountId) : null;
+        const restored =
+          draft && hasUnsavedChanges(savedForm, draft, data.access)
+            ? {
+                ...draft,
+                actions: reconcileActionProviders(
+                  draft.actions.order,
+                  draft.actions.selected,
+                  capable,
+                ),
+              }
+            : null;
+        const shown = restored ?? savedForm;
+        setLists(shown.lists);
         setAccess(data.access);
         setAccountId(data.accountId);
         setMovedAt(data.movedAt);
-        setRpdbApiKey(data.rpdbApiKey ?? "");
-        setActionsEnabled(data.actions.enabled);
-        setActions(saved);
-        setNewTitlesEnabled(data.newTitles.enabled);
+        setRpdbApiKey(shown.rpdbApiKey);
+        setActionsEnabled(shown.actionsEnabled);
+        setActions(shown.actions);
+        setNewTitlesEnabled(shown.newTitlesEnabled);
         applyServerState(data);
+        if (restored) {
+          toast.info("Your unsaved changes are back. Save to apply them.", {
+            id: "configuration-draft",
+          });
+        }
         onBaselineLoaded(accountKey, data.lists, {
           rows,
           newTitles: data.newTitles.enabled,
@@ -439,7 +506,10 @@ export function useAccountConfiguration(
     setConnecting(provider);
     let id = accountId;
     try {
-      if (!id) {
+      if (id) {
+        // Leaving for the Provider reloads the page: keep the unsaved edits.
+        keepDraft(id, form);
+      } else {
         id = await createAccount();
         onAccountCreated(id);
       }
@@ -454,6 +524,7 @@ export function useAccountConfiguration(
       }
       window.location.assign(body.authorizeUrl);
     } catch (err) {
+      dropDraft();
       setConnecting(null);
       toastError(err);
     }
