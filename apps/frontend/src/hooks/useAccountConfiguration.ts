@@ -425,15 +425,11 @@ export function useAccountConfiguration(
 
       const unsaved = hasUnsavedChanges(submitted, currentForm.current, access);
       const savedRows = adoptStoredLists(submitted.lists, body.lists);
-      const { nowSaved, needsReinstall } = baseline.onSaved(
-        accountKey,
-        body.lists,
-        {
-          rows: savedRows,
-          newTitles: submitted.newTitlesEnabled,
-          actionsLive,
-        },
-      );
+      const { needsReinstall } = baseline.onSaved(accountKey, body.lists, {
+        rows: savedRows,
+        newTitles: submitted.newTitlesEnabled,
+        actionsLive,
+      });
       // The saved Lists change what the summary counts.
       setNewTitlesSummary(body.newTitles);
       if (unsaved) {
@@ -449,8 +445,9 @@ export function useAccountConfiguration(
             duration: 10_000,
             action: {
               label: "Reinstall",
+              // The reinstall takes the link twice (Uninstall, then
+              // Install), so the reminder stays until "I did it".
               onClick: () => {
-                baseline.markReinstalled(nowSaved);
                 const { stremioUrl, webUrl } = buildAddonUrls(accountKey);
                 if (stremioUrl) window.location.assign(stremioUrl);
                 else window.open(webUrl, "_blank", "noopener");

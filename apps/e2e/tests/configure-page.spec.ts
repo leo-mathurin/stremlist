@@ -385,7 +385,7 @@ test(
 );
 
 test(
-  "the Reinstall action of the save toast opens Stremio Web and ends the reminder",
+  "the Reinstall action of the save toast opens Stremio Web and keeps the reminder",
   { tag: "@local" },
   async ({ page, context }) => {
     // Stremio Web is not under test here: answer it with an empty page.
@@ -414,6 +414,13 @@ test(
     await stremioWeb.waitForLoadState();
     expect(stremioWeb.url()).toBe(addonsDeepLink(addonManifestUrl(accountId)));
     await stremioWeb.close();
+    // Stremio only offers Uninstall for an installed addon, so the user
+    // needs the link a second time: the reminder stays until "I did it".
+    await expect(reminder).toBeVisible();
+    await expect(reminder).toContainText(
+      "Select Reinstall again, then choose Install.",
+    );
+    await reminder.getByRole("button", { name: "I did it" }).click();
     await expect(reminder).toHaveCount(0);
     await page.reload();
     await expect(page.getByText("2 of 10 lists")).toBeVisible();

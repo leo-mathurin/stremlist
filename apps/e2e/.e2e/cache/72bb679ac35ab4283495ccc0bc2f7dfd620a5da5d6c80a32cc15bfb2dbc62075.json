@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-10T18:42:30.668Z",
+  "createdAt": "2026-10-12T14:31:57.203Z",
   "payload": {
     "actions": [
       {
@@ -32,13 +32,13 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Added the Simkl “Plan to watch” list to Your Lists and clicked Save. The app confirmed “Saved! Reinstall Stremlist in Stremio to see your changes.”",
+    "summary": "The Simkl “Plan to watch” list is present among Your Lists, and the “Saved! Reinstall Stremlist in Stremio to see your changes.” confirmation toast verifies the save committed.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. I did it Reinstall"
+        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. Select Reinstall, then choose Uninstall in Stremio. Select Reinstall again, then choose Install. I did it Reinstall"
       },
       {
         "text": "Reinstall Stremlist in Stremio"
@@ -47,22 +47,21 @@
         "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
       },
       {
+        "text": "Reinstall"
+      },
+      {
+        "text": "Uninstall"
+      },
+      {
+        "text": "Install"
+      },
+      {
         "role": "button",
         "name": "I did it"
       },
       {
         "role": "link",
         "name": "Reinstall"
-      },
-      {
-        "role": "button",
-        "name": "Drag to reorder Simkl Plan to watch"
-      },
-      {
-        "text": "Simkl Plan to watch"
-      },
-      {
-        "text": "Simkl · Watchlist · Your account"
       }
     ],
     "goneAnchors": [
@@ -80,6 +79,6 @@
         "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
       }
     ],
-    "endWaitMs": 11926
+    "endWaitMs": 26715
   }
 }

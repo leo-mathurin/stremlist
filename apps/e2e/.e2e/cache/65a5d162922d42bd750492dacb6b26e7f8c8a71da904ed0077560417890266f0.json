@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T16:53:38.939Z",
+  "createdAt": "2026-10-12T14:31:21.183Z",
   "payload": {
     "actions": [
       {
@@ -33,13 +33,13 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "The newly detected titles checkbox is checked, and the saved confirmation toast is visible. The setting was successfully saved.",
+    "summary": "The checkbox “Show newly detected titles” is checked, and the page shows “Saved! Reinstall Stremlist in Stremio to see your changes.” The save committed successfully.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. I did it Reinstall"
+        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. Select Reinstall, then choose Uninstall in Stremio. Select Reinstall again, then choose Install. I did it Reinstall"
       },
       {
         "text": "Reinstall Stremlist in Stremio"
@@ -48,26 +48,21 @@
         "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
       },
       {
+        "text": "Reinstall"
+      },
+      {
+        "text": "Uninstall"
+      },
+      {
+        "text": "Install"
+      },
+      {
         "role": "button",
         "name": "I did it"
       },
       {
         "role": "link",
         "name": "Reinstall"
-      },
-      {
-        "role": "checkbox",
-        "name": "Show newly detected titles",
-        "states": [
-          "checked"
-        ]
-      },
-      {
-        "role": "heading",
-        "name": "Reinstall in Stremio to see your changes"
-      },
-      {
-        "text": "Stremio reads the catalogs and Actions only when you install an addon, so your changes appear after you reinstall this Addon URL."
       }
     ],
     "goneAnchors": [
@@ -86,6 +81,6 @@
         "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
       }
     ],
-    "endWaitMs": 27244
+    "endWaitMs": 42989
   }
 }

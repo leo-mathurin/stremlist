@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-08T18:57:10.098Z",
+  "createdAt": "2026-10-12T14:32:30.227Z",
   "payload": {
     "actions": [
       {
@@ -46,14 +46,10 @@
       },
       {
         "name": "tap",
-        "summary": "tap button \"Save\" (2 of 2)",
+        "summary": "tap button \"Save\"",
         "target": {
           "role": "button",
-          "name": "Save",
-          "position": {
-            "index": 1,
-            "of": 2
-          }
+          "name": "Save"
         }
       }
     ],
@@ -69,13 +65,13 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Genre is set to Drama and Top rated is enabled. Saved the catalog settings; the app confirmed they were saved and noted that reinstalling Stremlist is needed for Stremio to show the changes.",
+    "summary": "The current screen confirms Genre is Drama and Top rated is checked. The Save action succeeded: a “Saved! Reinstall Stremlist in Stremio to see your changes.” toast is visible.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. I did it Reinstall"
+        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. Select Reinstall, then choose Uninstall in Stremio. Select Reinstall again, then choose Install. I did it Reinstall"
       },
       {
         "text": "Reinstall Stremlist in Stremio"
@@ -84,39 +80,39 @@
         "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
       },
       {
+        "text": "Reinstall"
+      },
+      {
+        "text": "Uninstall"
+      },
+      {
+        "text": "Install"
+      },
+      {
         "role": "button",
         "name": "I did it"
       },
       {
         "role": "link",
         "name": "Reinstall"
-      },
-      {
-        "text": "Catalog title"
-      },
-      {
-        "role": "textbox",
-        "name": "Catalog title",
-        "placeholder": "IMDb Watchlist",
-        "value": "Test catalog"
-      },
-      {
-        "text": "Show"
       }
     ],
     "goneAnchors": [
+      {
+        "role": "button",
+        "name": "Settings for Test catalog"
+      },
+      {
+        "text": "No new titles detected yet."
+      },
       {
         "role": "heading",
         "name": "Install or reinstall in Stremio"
       },
       {
         "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
-      },
-      {
-        "role": "button",
-        "name": "Settings for Test catalog"
       }
     ],
-    "endWaitMs": 11963
+    "endWaitMs": 27043
   }
 }

@@ -610,7 +610,11 @@ export default function Configure() {
                 accountKey={accountKey}
                 variant="install"
                 reinstallHint={config.reinstall === "required"}
-                onUse={config.markReinstalled}
+                onUse={
+                  config.reinstall === "required"
+                    ? undefined
+                    : config.markReinstalled
+                }
               />
             )}
 

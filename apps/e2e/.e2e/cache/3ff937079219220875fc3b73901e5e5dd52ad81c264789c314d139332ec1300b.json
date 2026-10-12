@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-08T18:53:13.932Z",
+  "createdAt": "2026-10-12T14:31:39.086Z",
   "payload": {
     "actions": [
       {
@@ -32,13 +32,13 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Added the Trakt Trending chart to Your Lists and saved. The screen confirms “Saved!” and shows the list with Trakt Trending; reinstall is indicated for Stremio to reflect the changes.",
+    "summary": "Confirmed the Trakt Trending chart is present in Your Lists, and the Saved! confirmation toast is visible. The requested chart was added and the configuration was saved.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. I did it Reinstall"
+        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. Select Reinstall, then choose Uninstall in Stremio. Select Reinstall again, then choose Install. I did it Reinstall"
       },
       {
         "text": "Reinstall Stremlist in Stremio"
@@ -47,27 +47,29 @@
         "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
       },
       {
+        "text": "Reinstall"
+      },
+      {
+        "text": "Uninstall"
+      },
+      {
+        "text": "Install"
+      },
+      {
         "role": "button",
         "name": "I did it"
       },
       {
         "role": "link",
         "name": "Reinstall"
-      },
-      {
-        "role": "button",
-        "name": "Drag to reorder Trakt Trending"
-      },
-      {
-        "text": "Trakt Trending"
-      },
-      {
-        "text": "Trakt · Chart"
       }
     ],
     "goneAnchors": [
       {
         "text": "1 of 10 lists"
+      },
+      {
+        "text": "No new titles detected yet."
       },
       {
         "role": "heading",
@@ -77,6 +79,6 @@
         "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
       }
     ],
-    "endWaitMs": 12494
+    "endWaitMs": 26925
   }
 }

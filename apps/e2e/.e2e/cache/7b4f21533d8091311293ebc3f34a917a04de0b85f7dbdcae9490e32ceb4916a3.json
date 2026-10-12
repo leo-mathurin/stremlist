@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T16:05:42.249Z",
+  "createdAt": "2026-10-12T14:30:46.362Z",
   "payload": {
     "actions": [
       {
@@ -48,13 +48,13 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "The IMDb Watchlist settings show 2 source lists, including both IMDb Watchlist and Favourite films, and the Saved! toast confirms the merge was saved.",
+    "summary": "Verified the saved state: IMDb Watchlist contains both source lists (IMDb Watchlist and Favourite films), shows “2 of 5,” and the page confirms “Saved! Reinstall Stremlist in Stremio to see your changes.”",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. I did it Reinstall"
+        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. Select Reinstall, then choose Uninstall in Stremio. Select Reinstall again, then choose Install. I did it Reinstall"
       },
       {
         "text": "Reinstall Stremlist in Stremio"
@@ -63,30 +63,34 @@
         "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
       },
       {
+        "text": "Reinstall"
+      },
+      {
+        "text": "Uninstall"
+      },
+      {
+        "text": "Install"
+      },
+      {
         "role": "button",
         "name": "I did it"
       },
       {
         "role": "link",
         "name": "Reinstall"
-      },
-      {
-        "text": "2 Source lists · IMDb"
-      },
-      {
-        "text": "Catalog title"
-      },
-      {
-        "role": "textbox",
-        "name": "Catalog title",
-        "placeholder": "IMDb Watchlist",
-        "value": "IMDb Watchlist"
       }
     ],
     "goneAnchors": [
       {
         "role": "button",
+        "name": "Settings for IMDb Watchlist"
+      },
+      {
+        "role": "button",
         "name": "Drag to reorder Favourite films"
+      },
+      {
+        "name": "Favourite films"
       },
       {
         "text": "IMDb Rating (Highest First)"
@@ -97,23 +101,16 @@
       },
       {
         "role": "button",
+        "name": "Settings for Favourite films"
+      },
+      {
+        "role": "button",
         "name": "Remove Favourite films"
       },
       {
         "text": "4 of 10 lists. Drag the handle to reorder."
-      },
-      {
-        "role": "heading",
-        "name": "Install or reinstall in Stremio"
-      },
-      {
-        "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
-      },
-      {
-        "role": "button",
-        "name": "Settings for IMDb Watchlist"
       }
     ],
-    "endWaitMs": 28003
+    "endWaitMs": 40344
   }
 }

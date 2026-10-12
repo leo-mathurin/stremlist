@@ -53,7 +53,7 @@ export function AddonUrlCard({
     variant === "created"
       ? "Install it in Stremio once. Your Lists then stay up to date on their own."
       : reinstallHint
-        ? "Stremio reads the catalogs and Actions only when you install an addon, so your changes appear after you reinstall this Addon URL."
+        ? "Stremio reads the catalogs and Actions only when you install an addon. Open your Addon URL in Stremio and choose Uninstall, then open it again and choose Install."
         : "Use these links anytime to open or reinstall your Addon URL in Stremio.";
 
   return (
@@ -90,8 +90,12 @@ function reinstallLinkProps(accountKey: string) {
 
 /**
  * Tells the user when catalog changes need a reinstall: before saving, so
- * they know what to expect, and after saving, until they reinstall. Other
+ * they know what to expect, and after saving, until they confirm it. Other
  * changes (sort order, filters, posters) apply without one.
+ *
+ * Stremio offers no update for an installed addon: its addon screen only
+ * shows Uninstall, and closes after it. So the reinstall takes the link
+ * twice, and opening it does not end the reminder. Only "I did it" does.
  */
 export function ReinstallNotice({
   accountKey,
@@ -130,6 +134,17 @@ export function ReinstallNotice({
           Your catalogs or Actions changed. Stremio keeps showing the old ones
           until you reinstall the addon.
         </p>
+        <ol className="mt-2 list-decimal space-y-0.5 pl-5 text-sm text-pretty text-amber-900">
+          <li>
+            Select <strong className="font-semibold">Reinstall</strong>, then
+            choose <strong className="font-semibold">Uninstall</strong> in
+            Stremio.
+          </li>
+          <li>
+            Select <strong className="font-semibold">Reinstall</strong> again,
+            then choose <strong className="font-semibold">Install</strong>.
+          </li>
+        </ol>
       </div>
       <div className="flex items-center gap-3">
         <button
@@ -141,7 +156,6 @@ export function ReinstallNotice({
         </button>
         <a
           {...reinstallLinkProps(accountKey)}
-          onClick={onReinstalled}
           className="inline-flex h-10 items-center gap-2 rounded-full bg-ink px-5 text-sm font-bold text-cloud transition-[background-color,scale] duration-150 ease-out hover:bg-black active:scale-[0.97] motion-reduce:active:scale-100"
         >
           <Download className="size-4" />

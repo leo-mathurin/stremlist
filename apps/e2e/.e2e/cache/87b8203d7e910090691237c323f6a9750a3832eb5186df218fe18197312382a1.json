@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-08T19:23:25.008Z",
+  "createdAt": "2026-10-12T14:37:21.596Z",
   "payload": {
     "actions": [
       {
@@ -56,13 +56,13 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Previewed Test catalog, changed Show to Movies only as instructed by the empty TV-shows preview, and saved. The app confirmed “Saved!” and indicated reinstalling Stremlist is needed to see the changes.",
+    "summary": "Preview showed TV shows had 0 titles and instructed setting Show to Movies only. Changed Test catalog to Movies only and saved; confirmation says “Saved! Reinstall Stremlist in Stremio to see your changes.”",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. I did it Reinstall"
+        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. Select Reinstall, then choose Uninstall in Stremio. Select Reinstall again, then choose Install. I did it Reinstall"
       },
       {
         "text": "Reinstall Stremlist in Stremio"
@@ -71,28 +71,21 @@
         "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
       },
       {
+        "text": "Reinstall"
+      },
+      {
+        "text": "Uninstall"
+      },
+      {
+        "text": "Install"
+      },
+      {
         "role": "button",
         "name": "I did it"
       },
       {
         "role": "link",
         "name": "Reinstall"
-      },
-      {
-        "role": "button",
-        "name": "Preview Test catalog",
-        "states": [
-          "expanded"
-        ]
-      },
-      {
-        "text": "Catalog title"
-      },
-      {
-        "role": "textbox",
-        "name": "Catalog title",
-        "placeholder": "IMDb Watchlist",
-        "value": "Test catalog"
       }
     ],
     "goneAnchors": [
@@ -101,17 +94,20 @@
         "name": "Preview Test catalog"
       },
       {
+        "role": "button",
+        "name": "Settings for Test catalog"
+      },
+      {
+        "text": "No new titles detected yet."
+      },
+      {
         "role": "heading",
         "name": "Install or reinstall in Stremio"
       },
       {
         "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
-      },
-      {
-        "role": "button",
-        "name": "Settings for Test catalog"
       }
     ],
-    "endWaitMs": 12297
+    "endWaitMs": 12004
   }
 }

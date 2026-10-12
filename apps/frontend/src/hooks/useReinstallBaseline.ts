@@ -113,10 +113,9 @@ export function useReinstallBaseline(accountKey: string | null) {
   );
 
   /**
-   * A save stored `setup`. Returns what it serves now and whether Stremio
-   * must reinstall to read it: compared with what Stremio read at install
-   * time, not with the last save, since a reinstall stays needed until the
-   * user does it.
+   * A save stored `setup`. Returns whether Stremio must reinstall to read
+   * it: compared with what Stremio read at install time, not with the last
+   * save, since a reinstall stays needed until the user does it.
    */
   const onSaved = (key: string, lists: AnswerLists, setup: InstallSetup) => {
     const genres = learnSourceGenres(knownGenres, lists);
@@ -125,12 +124,12 @@ export function useReinstallBaseline(accountKey: string | null) {
     const needsReinstall = requiresReinstall(installed, nowSaved);
     setSaved(nowSaved);
     writeInstalled(key, needsReinstall ? installed : null);
-    return { nowSaved, needsReinstall };
+    return { needsReinstall };
   };
 
   /** The user reinstalled: Stremio now reads the saved setup. */
-  const markReinstalled = (baseline: InstallBaseline = saved) => {
-    setInstalled(baseline);
+  const markReinstalled = () => {
+    setInstalled(saved);
     if (accountKey) writeInstalled(accountKey, null);
   };
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-08T18:53:03.898Z",
+  "createdAt": "2026-10-12T14:30:12.149Z",
   "payload": {
     "actions": [
       {
@@ -60,13 +60,13 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Replaced the unrecognized link with https://www.imdb.com/list/ls99123456/, added the IMDb list, named its catalog “Weekend films,” and saved. The app confirms “Saved!” and notes that reinstalling Stremlist is needed for the changes to appear.",
+    "summary": "The IMDb link was added as a list titled “Weekend films,” and the saved catalog is visible with the expected IMDb list ID and titles. The app confirms “Saved! Reinstall Stremlist in Stremio to see your changes.”",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. I did it Reinstall"
+        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. Select Reinstall, then choose Uninstall in Stremio. Select Reinstall again, then choose Install. I did it Reinstall"
       },
       {
         "role": "textbox",
@@ -83,16 +83,13 @@
         "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
       },
       {
-        "role": "button",
-        "name": "I did it"
+        "text": "Reinstall"
       },
       {
-        "role": "link",
-        "name": "Reinstall"
+        "text": "Uninstall"
       },
       {
-        "role": "button",
-        "name": "Drag to reorder Weekend films"
+        "text": "Install"
       }
     ],
     "goneAnchors": [
@@ -122,10 +119,9 @@
         "text": "0 of 10 lists"
       },
       {
-        "role": "heading",
-        "name": "Install or reinstall in Stremio"
+        "text": "No new titles detected yet."
       }
     ],
-    "endWaitMs": 12153
+    "endWaitMs": 26629
   }
 }
