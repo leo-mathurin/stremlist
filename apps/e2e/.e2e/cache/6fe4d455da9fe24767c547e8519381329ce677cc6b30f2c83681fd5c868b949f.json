@@ -23,10 +23,10 @@
       },
       {
         "name": "tap",
-        "summary": "tap button \"Save and get my Addon URL\"",
+        "summary": "tap button \"Save\"",
         "target": {
           "role": "button",
-          "name": "Save and get my Addon URL",
+          "name": "Save",
           "text": "Save"
         }
       }
