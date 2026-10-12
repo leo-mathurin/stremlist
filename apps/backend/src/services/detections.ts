@@ -151,40 +151,80 @@ export async function recordSynchronization(
   }
 }
 
+interface LoadedHistories {
+  /** The histories that still apply (see `historyApplies`), by `sourceKey`. */
+  histories: Map<string, SourceHistory>;
+  /** Source lists whose history could not be read now. */
+  unreadable: number;
+}
+
+function logReadError(what: string, error: unknown): void {
+  console.error(
+    `Failed to read ${what}:`,
+    error instanceof Error ? error.message : error,
+  );
+}
+
 /**
- * The histories of these Source lists that still apply (see
- * `historyApplies`), by `sourceKey`. A Source list without one has no
- * Baseline yet.
+ * The histories of these Source lists. A Source list without one has no
+ * Baseline yet. A read that fails counts as unreadable instead of failing
+ * the others: one storage error must not empty the whole catalog.
  */
 async function loadHistories(
   accountId: string,
   sources: ListSource[],
-): Promise<Map<string, SourceHistory>> {
+): Promise<LoadedHistories> {
   const needsConnection = sources.some((source) =>
     sourceRequiresConnection(source.provider, source.sourceRef),
   );
-  const connections = new Map<ProviderId, HistoryConnection>(
-    needsConnection
-      ? (await listConnections(accountId)).map((connection) => [
+  let connections: Map<ProviderId, HistoryConnection> | null = new Map();
+  if (needsConnection) {
+    try {
+      connections = new Map(
+        (await listConnections(accountId)).map((connection) => [
           connection.provider,
           { user: connection.username, connectedAt: connection.connectedAt },
-        ])
-      : [],
-  );
-  const histories = await Promise.all(
+        ]),
+      );
+    } catch (error) {
+      // Connection-only histories cannot be checked: the others still can.
+      logReadError(`the Connections of account ${accountId}`, error);
+      connections = null;
+    }
+  }
+  const histories = new Map<string, SourceHistory>();
+  let unreadable = 0;
+  await Promise.all(
     sources.map(async (source) => {
-      const history = await readHistory(accountId, source);
-      return history &&
+      const requiresConnection = sourceRequiresConnection(
+        source.provider,
+        source.sourceRef,
+      );
+      if (requiresConnection && !connections) {
+        unreadable += 1;
+        return;
+      }
+      let history: SourceHistory | null;
+      try {
+        history = await readHistory(accountId, source);
+      } catch (error) {
+        logReadError(`the detection history of ${sourceKey(source)}`, error);
+        unreadable += 1;
+        return;
+      }
+      if (
+        history &&
         historyApplies(
           history,
           source,
-          connections.get(source.provider) ?? null,
+          connections?.get(source.provider) ?? null,
         )
-        ? ([sourceKey(source), history] as const)
-        : null;
+      ) {
+        histories.set(sourceKey(source), history);
+      }
     }),
   );
-  return new Map(histories.filter((entry) => entry !== null));
+  return { histories, unreadable };
 }
 
 /**
@@ -224,7 +264,9 @@ async function loadDetections(
 ): Promise<Detection[]> {
   const sources = [...sourcesOf(lists).values()].map(({ source }) => source);
   if (sources.length === 0) return [];
-  return toDetections(lists, await loadHistories(accountId, sources));
+  // Unreadable Source lists are left out until the next request.
+  const { histories } = await loadHistories(accountId, sources);
+  return toDetections(lists, histories);
 }
 
 /** The List's name as the user sees it, for the detection line. */
@@ -305,25 +347,19 @@ export async function getNewTitlesSummary(
   if (lists.length === 0) {
     return { detected: 0, latestDetectedAt: null, waitingLists: 0 };
   }
-  try {
-    const histories = await loadHistories(
-      access.account.id,
-      [...sourcesOf(lists).values()].map(({ source }) => source),
-    );
-    const detections = toDetections(lists, histories);
-    return {
-      detected: detections.length,
-      latestDetectedAt: detections[0]?.detectedAt.toISOString() ?? null,
-      // A merged List waits while one of its Source lists has no Baseline.
-      waitingLists: lists.filter((list) =>
-        listSources(list).some((source) => !histories.has(sourceKey(source))),
-      ).length,
-    };
-  } catch (error) {
-    console.error(
-      "Failed to read the detection history:",
-      error instanceof Error ? error.message : error,
-    );
-    return null;
-  }
+  const { histories, unreadable } = await loadHistories(
+    access.account.id,
+    [...sourcesOf(lists).values()].map(({ source }) => source),
+  );
+  // Counts without some Source lists would be wrong: show only the setting.
+  if (unreadable > 0) return null;
+  const detections = toDetections(lists, histories);
+  return {
+    detected: detections.length,
+    latestDetectedAt: detections[0]?.detectedAt.toISOString() ?? null,
+    // A merged List waits while one of its Source lists has no Baseline.
+    waitingLists: lists.filter((list) =>
+      listSources(list).some((source) => !histories.has(sourceKey(source))),
+    ).length,
+  };
 }

@@ -20,6 +20,9 @@ export const r2Objects = new Map<string, string>();
 /** Keys that a bulk delete reports as failed, like a store that keeps them. */
 export const r2Undeletable = new Set<string>();
 
+/** Keys whose reads fail, like a store that has an outage. */
+export const r2Unreadable = new Set<string>();
+
 /**
  * Writes seen, and a hook that runs just before each write is checked, so a
  * test can play another instance that writes in between.
@@ -61,6 +64,14 @@ function send(command: unknown): Promise<unknown> {
     return Promise.resolve({});
   }
   if (command instanceof GetObjectCommand) {
+    if (command.input.Key && r2Unreadable.has(command.input.Key)) {
+      return Promise.reject(
+        Object.assign(new Error("internal error"), {
+          name: "InternalError",
+          $metadata: { httpStatusCode: 500 },
+        }),
+      );
+    }
     const body = command.input.Key ? r2Objects.get(command.input.Key) : null;
     if (body === undefined || body === null) {
       return Promise.reject(

@@ -15,7 +15,7 @@ import type { SourceHistory } from "../../services/title-history";
 import { historyKey } from "../../services/title-history";
 import { LIST_IDS, movie, seedAccount, seedList } from "./fixtures.js";
 import { cache } from "./mock-list-cache.js";
-import { r2Objects } from "./mock-r2.js";
+import { r2Objects, r2Unreadable } from "./mock-r2.js";
 import {
   fakeAdapter,
   resetProviders,
@@ -198,6 +198,7 @@ export function setAccountId(id: string) {
 export function resetNewTitlesTest() {
   db.reset();
   r2Objects.clear();
+  r2Unreadable.clear();
   resetRpc();
   cache.reset();
   resetProviders();

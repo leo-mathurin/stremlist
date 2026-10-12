@@ -25,6 +25,7 @@ import app from "../index.js";
 import { SourceUnavailableError } from "../providers/types";
 import { resetPreviewReadings } from "../services/list-preview";
 import { sourceCaches } from "../services/merged-lists";
+import { historyKey } from "../services/title-history";
 import {
   LIST_IDS,
   movie,
@@ -32,6 +33,7 @@ import {
   seedList,
 } from "./helpers/fixtures.js";
 import { cache } from "./helpers/mock-list-cache.js";
+import { r2Unreadable } from "./helpers/mock-r2.js";
 import { db } from "./helpers/mock-supabase.js";
 import {
   accountId,
@@ -182,6 +184,25 @@ describe("New titles catalog", () => {
     cache.reset();
 
     expect(await newTitles()).toEqual([]);
+  });
+
+  it("still shows the other Lists while one history cannot be read", async () => {
+    const { imdb, trakt } = await seedImdbAndTraktLists("Trakt picks");
+    vi.setSystemTime(Date.now() + DAY_MS);
+    imdb.metas = [movie("tt0000001"), movie("tt0000002")];
+    trakt.metas = [movie("tt0000001"), movie("tt0000003")];
+    await sync(LIST_IDS[0]);
+    await sync(LIST_IDS[1]);
+
+    r2Unreadable.add(
+      historyKey(accountId, {
+        provider: "trakt",
+        sourceRef: "users/leo/watchlist",
+      }),
+    );
+    expect(ids(await newTitles())).toEqual(["tt0000002"]);
+    // Counts without that List would be wrong: the page shows the setting.
+    expect((await summary()).summary).toBeNull();
   });
 });
 
