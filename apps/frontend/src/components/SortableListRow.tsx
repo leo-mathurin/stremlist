@@ -121,13 +121,13 @@ export default function SortableListRow({
     <div
       ref={ref}
       className={cn(
-        "@container rounded-3xl bg-white ring-1 ring-black/5 transition-shadow",
+        "rounded-3xl bg-white ring-1 ring-black/5 transition-shadow",
         attentionTone(sync) === "warn" && "ring-amber-300",
         attentionTone(sync) === "bad" && "ring-red-200",
         isDragSource && "opacity-60 shadow-lg ring-2 ring-brand/50",
       )}
     >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 p-3 sm:gap-4 sm:p-4 @min-[40rem]:flex-nowrap">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 p-3 sm:flex-nowrap sm:gap-4 sm:p-4">
         <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
           <button
             ref={handleRef}
@@ -187,7 +187,7 @@ export default function SortableListRow({
           </div>
         </div>
 
-        <div className="flex w-full items-center gap-2 pl-9 @min-[40rem]:w-auto @min-[40rem]:shrink-0 @min-[40rem]:pl-0">
+        <div className="flex w-full items-center gap-2 pl-9 sm:w-auto sm:shrink-0 sm:pl-0">
           <Label htmlFor={sortId} className="sr-only">
             Sort order
           </Label>
@@ -201,7 +201,7 @@ export default function SortableListRow({
               id={sortId}
               size="sm"
               className={cn(
-                "min-w-0 flex-1 rounded-full border-0 bg-black/5 shadow-none @min-[40rem]:w-56 @min-[40rem]:flex-none",
+                "min-w-0 flex-1 rounded-full border-0 bg-black/5 shadow-none sm:w-56 sm:flex-none",
                 SELECT_FOCUS,
               )}
             >
