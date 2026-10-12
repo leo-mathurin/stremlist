@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { getConfig, getSyncStatus, refresh } from "../helpers/api.js";
 import { CATALOG_TITLES } from "../helpers/catalog-fixture.js";
 import { openConfigure, saveButton } from "../helpers/configure.js";
@@ -21,10 +22,23 @@ import { CATALOG_FIXTURE_USER } from "../helpers/test-data.js";
 
 const HOUR = 60 * 60_000;
 const PUBLIC_TRAKT_LIST = "users/fixture/lists/horror";
+const HORROR_LIST = {
+  provider: "trakt",
+  sourceRef: PUBLIC_TRAKT_LIST,
+  catalogTitle: "Horror nights",
+  displayMode: "split",
+} as const;
+const CACHED_WATCHLIST = {
+  sourceRef: CATALOG_FIXTURE_USER,
+  catalogTitle: "Cached watchlist",
+  displayMode: "split",
+} as const;
 
-test.beforeEach(async () => {
-  await resetDb();
-});
+async function expectText(page: Page, text: string) {
+  await expect(page.getByText(text, { exact: true })).toBeVisible();
+}
+
+test.beforeEach(resetDb);
 
 test(
   "a failed refresh keeps the last success, and the page explains it after a reload",
@@ -33,14 +47,7 @@ test(
     const {
       accountId,
       listIds: [listId],
-    } = await seedAccountWithLists([
-      {
-        provider: "trakt",
-        sourceRef: PUBLIC_TRAKT_LIST,
-        catalogTitle: "Horror nights",
-        displayMode: "split",
-      },
-    ]);
+    } = await seedAccountWithLists([HORROR_LIST]);
     const lastSuccess = new Date(Date.now() - HOUR);
     await seedSyncStatus(listId, "trakt", PUBLIC_TRAKT_LIST, lastSuccess, 2);
     await clearRefreshCooldown(accountId);
@@ -71,10 +78,8 @@ test(
       failure_reason: "disabled",
       title_count: 2,
     });
-    expect(new Date(row.last_success_at!).getTime()).toBe(
-      lastSuccess.getTime(),
-    );
-    expect(new Date(row.failing_since!).getTime()).toBeGreaterThan(
+    expect(Date.parse(row.last_success_at!)).toBe(lastSuccess.getTime());
+    expect(Date.parse(row.failing_since!)).toBeGreaterThan(
       lastSuccess.getTime(),
     );
     expect(row.last_attempt_at).toBe(row.failing_since);
@@ -82,18 +87,12 @@ test(
     const notice =
       "Trakt is temporarily unavailable. Please try again later. Stremio shows the titles from the last refresh, 1 hour ago.";
     await openConfigure(page, accountId, "Horror nights");
-    await expect(
-      page.getByText("Refresh failed · titles from 1 hour ago", {
-        exact: true,
-      }),
-    ).toBeVisible();
-    await expect(page.getByText(notice, { exact: true })).toBeVisible();
-    await expect(
-      page.getByText("1 List needs attention", { exact: true }),
-    ).toBeVisible();
+    await expectText(page, "Refresh failed · titles from 1 hour ago");
+    await expectText(page, notice);
+    await expectText(page, "1 List needs attention");
 
     await page.reload();
-    await expect(page.getByText(notice, { exact: true })).toBeVisible();
+    await expectText(page, notice);
   },
 );
 
@@ -111,12 +110,7 @@ test(
         catalogTitle: "Trakt Watchlist",
         displayMode: "split",
       },
-      {
-        provider: "trakt",
-        sourceRef: PUBLIC_TRAKT_LIST,
-        catalogTitle: "Horror nights",
-        displayMode: "split",
-      },
+      HORROR_LIST,
     ]);
     // An expired token whose refresh cannot work: the Connection is refused.
     await seedConnection(accountId, "trakt", {
@@ -138,8 +132,7 @@ test(
     expect(await getSyncStatusRows(publicId)).toMatchObject([
       { failure_reason: "disabled" },
     ]);
-    const { body } = await getConfig(accountId);
-    expect(body.connections).toEqual([
+    expect((await getConfig(accountId)).body.connections).toEqual([
       expect.objectContaining({
         provider: "trakt",
         needsRenewalSince: expect.any(String),
@@ -149,19 +142,13 @@ test(
     await openConfigure(page, accountId, "Trakt Watchlist");
     const renew =
       "Trakt refused the Stremlist Connection, so this List does not show in Stremio. Connect Trakt again to renew it.";
-    await expect(
-      page.getByText("Needs renewal", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByText("Connection needs to be renewed", { exact: true }),
-    ).toBeVisible();
-    await expect(page.getByText(renew, { exact: true })).toBeVisible();
-    await expect(
-      page.getByText(
-        "Trakt is temporarily unavailable. Please try again later. This problem started just now.",
-        { exact: true },
-      ),
-    ).toBeVisible();
+    await expectText(page, "Needs renewal");
+    await expectText(page, "Connection needs to be renewed");
+    await expectText(page, renew);
+    await expectText(
+      page,
+      "Trakt is temporarily unavailable. Please try again later. This problem started just now.",
+    );
     // The test backend cannot start a Trakt authorization (no client ID),
     // so the page offers no Connect button; the toolkit covers that click.
     await expect(
@@ -169,10 +156,8 @@ test(
     ).toHaveCount(0);
 
     await page.reload();
-    await expect(page.getByText(renew, { exact: true })).toBeVisible();
-    await expect(
-      page.getByText("Needs renewal", { exact: true }),
-    ).toBeVisible();
+    await expectText(page, renew);
+    await expectText(page, "Needs renewal");
   },
 );
 
@@ -220,13 +205,7 @@ test(
     const {
       accountId,
       listIds: [listId],
-    } = await seedAccountWithLists([
-      {
-        sourceRef: CATALOG_FIXTURE_USER,
-        catalogTitle: "Cached watchlist",
-        displayMode: "split",
-      },
-    ]);
+    } = await seedAccountWithLists([CACHED_WATCHLIST]);
     await seedCachedCatalog(listId, CATALOG_TITLES.slice(0, 3));
 
     const { body } = await getSyncStatus(accountId);
@@ -248,21 +227,13 @@ test(
     const {
       accountId,
       listIds: [listId],
-    } = await seedAccountWithLists([
-      {
-        sourceRef: CATALOG_FIXTURE_USER,
-        catalogTitle: "Cached watchlist",
-        displayMode: "split",
-      },
-    ]);
+    } = await seedAccountWithLists([CACHED_WATCHLIST]);
     await seedCachedCatalog(listId, CATALOG_TITLES.slice(0, 1));
     await openConfigure(page, accountId, "Cached watchlist");
 
     await page.getByRole("button", { name: "Add an IMDb chart" }).click();
     await page.getByRole("menuitem", { name: /^Top 250 Movies/ }).click();
-    await expect(
-      page.getByText("Not saved yet", { exact: true }),
-    ).toBeVisible();
+    await expectText(page, "Not saved yet");
     await saveButton(page).click();
 
     // The save prewarms the new List against live IMDb; the page polls.

@@ -18,9 +18,7 @@ vi.mock("../lib/r2", async () => {
   return await import("./helpers/mock-r2.js");
 });
 vi.mock("../lib/background", () => ({ scheduleBackgroundTask: vi.fn() }));
-vi.mock("../lib/resend", () => ({
-  resend: { contacts: { create: vi.fn() } },
-}));
+vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 
 import app from "../index.js";
 import type { SourceEntry } from "../providers/types";

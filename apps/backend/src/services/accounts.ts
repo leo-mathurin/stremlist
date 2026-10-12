@@ -96,25 +96,21 @@ function mapAccount(row: AccountRow): Account {
 export async function resolveAccountKey(
   key: string,
 ): Promise<AccountAccess | null> {
-  if (ACCOUNT_ID_PATTERN.test(key)) {
-    const { data, error } = await supabase
-      .from("accounts")
-      .select("*")
-      .eq("id", key)
-      .maybeSingle();
-    if (error || !data || data.legacy_imdb_user_id) return null;
-    return { account: mapAccount(data), via: "private" };
+  const via = ACCOUNT_ID_PATTERN.test(key)
+    ? "private"
+    : IMDB_USER_ID_PATTERN.test(key)
+      ? "legacy"
+      : null;
+  if (!via) return null;
+  const { data, error } = await supabase
+    .from("accounts")
+    .select("*")
+    .eq(via === "private" ? "id" : "legacy_imdb_user_id", key)
+    .maybeSingle();
+  if (error || !data || (via === "private" && data.legacy_imdb_user_id)) {
+    return null;
   }
-  if (IMDB_USER_ID_PATTERN.test(key)) {
-    const { data, error } = await supabase
-      .from("accounts")
-      .select("*")
-      .eq("legacy_imdb_user_id", key)
-      .maybeSingle();
-    if (error || !data) return null;
-    return { account: mapAccount(data), via: "legacy" };
-  }
-  return null;
+  return { account: mapAccount(data), via };
 }
 
 /**

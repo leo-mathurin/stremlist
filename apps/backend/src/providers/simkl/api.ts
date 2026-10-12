@@ -54,10 +54,9 @@ export async function simklRequest<T>(
         headers: { Accept: "application/json", "simkl-api-key": id },
         bearer: options.token,
         json: options.body,
-        limiter:
-          method === "GET"
-            ? simklLimiters(options.token).get
-            : simklLimiters(options.token).post,
+        limiter: simklLimiters(options.token)[
+          method === "GET" ? "get" : "post"
+        ],
         retryOn429: method === "GET",
       },
     );

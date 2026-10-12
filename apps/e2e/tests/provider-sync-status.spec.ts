@@ -36,6 +36,28 @@ const REFUSED_TRAKT = {
   refreshToken: "rejected-refresh",
 };
 
+/** The List of the private Trakt watchlist, read through the Connection. */
+const TRAKT_WATCHLIST = {
+  provider: "trakt",
+  sourceRef: "me/watchlist",
+  catalogTitle: "Trakt Watchlist",
+  position: 0,
+  displayMode: "split",
+} as const;
+
+/** A Trakt Connection that carries a renewal mark, in a sync status. */
+const NEEDS_RENEWAL = expect.objectContaining({
+  provider: "trakt",
+  needsRenewalSince: expect.any(String),
+});
+
+const renewalMark = async (accountId: string) =>
+  (await getConnectionRow(accountId, "trakt"))?.needs_renewal_since;
+const syncStatus = async (accountId: string) =>
+  (await backend.api.getSyncStatus(accountId)).body;
+const watchlistReads = () =>
+  backend.requests((url) => url.pathname === "/users/me/watchlist");
+
 test(
   "a Catalog preview reads through the Connection of its own Account only",
   { tag: "@local" },
@@ -52,8 +74,6 @@ test(
         sortOption,
         displayMode: "split",
       });
-    const reads = () =>
-      backend.requests((url) => url.pathname === "/users/me/watchlist");
 
     const own = await preview(owner);
     expect(own.status).toBe(200);
@@ -76,7 +96,7 @@ test(
       ],
       unresolved: { count: 0 },
     });
-    const firstReads = reads();
+    const firstReads = watchlistReads();
     expect(firstReads.length).toBeGreaterThan(0);
     expect(
       firstReads.every(
@@ -95,7 +115,7 @@ test(
     expect((await preview(owner, "title-asc")).body).toMatchObject({
       ok: true,
     });
-    expect(reads()).toHaveLength(firstReads.length);
+    expect(watchlistReads()).toHaveLength(firstReads.length);
 
     // After a disconnect, the kept read is not served again.
     expect((await api.disconnect(owner, "trakt")).status).toBe(200);
@@ -103,7 +123,7 @@ test(
       ok: false,
       reason: "needs_connection",
     });
-    expect(reads()).toHaveLength(firstReads.length);
+    expect(watchlistReads()).toHaveLength(firstReads.length);
   },
 );
 
@@ -114,13 +134,7 @@ test(
     const { api } = backend;
     const accountId = await seedAccount();
     await seedConnection(accountId, "trakt", REFUSED_TRAKT);
-    const listId = await seedList(accountId, {
-      provider: "trakt",
-      sourceRef: "me/watchlist",
-      catalogTitle: "Trakt Watchlist",
-      position: 0,
-      displayMode: "split",
-    });
+    const listId = await seedList(accountId, TRAKT_WATCHLIST);
 
     const preview = await api.previewList({
       accountKey: accountId,
@@ -133,19 +147,12 @@ test(
 
     // The refused tokens are a fact about the Connection, whoever used them:
     // the configure page asks to renew it.
-    expect(
-      (await getConnectionRow(accountId, "trakt"))?.needs_renewal_since,
-    ).not.toBeNull();
+    expect(await renewalMark(accountId)).not.toBeNull();
     // The preview changed no Catalog, so the List keeps no sync status.
     expect(await getSyncStatusRows(listId)).toEqual([]);
-    expect((await api.getSyncStatus(accountId)).body).toEqual({
+    expect(await syncStatus(accountId)).toEqual({
       syncStatus: { [listId]: [null] },
-      connections: [
-        expect.objectContaining({
-          provider: "trakt",
-          needsRenewalSince: expect.any(String),
-        }),
-      ],
+      connections: [NEEDS_RENEWAL],
     });
   },
 );
@@ -157,21 +164,12 @@ test(
     const { api } = backend;
     const accountId = await seedAccount();
     await seedConnection(accountId, "trakt", REFUSED_TRAKT);
-    const listId = await seedList(accountId, {
-      provider: "trakt",
-      sourceRef: "me/watchlist",
-      catalogTitle: "Trakt Watchlist",
-      position: 0,
-      displayMode: "split",
-    });
-    const syncStatus = async () => (await api.getSyncStatus(accountId)).body;
+    const listId = await seedList(accountId, TRAKT_WATCHLIST);
 
     expect(await api.listCatalogNames(accountId, listId, "movie")).toEqual([
       "⚠️ This watchlist needs your Trakt account",
     ]);
-    expect(
-      (await getConnectionRow(accountId, "trakt"))?.needs_renewal_since,
-    ).not.toBeNull();
+    expect(await renewalMark(accountId)).not.toBeNull();
     expect(await getSyncStatusRows(listId)).toMatchObject([
       {
         provider: "trakt",
@@ -181,7 +179,7 @@ test(
         title_count: null,
       },
     ]);
-    expect(await syncStatus()).toEqual({
+    expect(await syncStatus(accountId)).toEqual({
       syncStatus: {
         [listId]: [
           expect.objectContaining({
@@ -191,33 +189,23 @@ test(
           }),
         ],
       },
-      connections: [
-        expect.objectContaining({
-          provider: "trakt",
-          needsRenewalSince: expect.any(String),
-        }),
-      ],
+      connections: [NEEDS_RENEWAL],
     });
 
     const { callback } = await backend.authorize(accountId, "trakt");
     expect(callback.status).toBe(302);
-    expect(
-      (await getConnectionRow(accountId, "trakt"))?.needs_renewal_since,
-    ).toBeNull();
+    expect(await renewalMark(accountId)).toBeNull();
 
     // The callback reads the List again in the background, with the new token.
     await expect
-      .poll(async () => (await syncStatus()).syncStatus[listId][0], {
+      .poll(async () => (await syncStatus(accountId)).syncStatus[listId][0], {
         timeout: 15_000,
       })
       .toMatchObject({ problem: null, failingSince: null, titleCount: 2 });
     const [row] = await getSyncStatusRows(listId);
     expect(row.last_success_at).toBe(row.last_attempt_at);
-    expect(
-      backend.requests((url) => url.pathname === "/users/me/watchlist").at(-1)
-        ?.authorization,
-    ).toBe("fresh-access");
-    expect((await syncStatus()).connections).toEqual([
+    expect(watchlistReads().at(-1)?.authorization).toBe("fresh-access");
+    expect((await syncStatus(accountId)).connections).toEqual([
       expect.objectContaining({ provider: "trakt", needsRenewalSince: null }),
     ]);
     expect(await api.listCatalogNames(accountId, listId, "movie")).toEqual([
@@ -236,19 +224,12 @@ test(
     await seedConnection(accountId, "trakt", {
       needsRenewalSince: new Date(Date.now() - 60_000),
     });
-    const privateId = await seedList(accountId, {
-      provider: "trakt",
-      sourceRef: "me/watchlist",
-      catalogTitle: "Trakt Watchlist",
-      position: 0,
-      displayMode: "split",
-    });
+    const privateId = await seedList(accountId, TRAKT_WATCHLIST);
     const publicId = await seedList(accountId, {
-      provider: "trakt",
+      ...TRAKT_WATCHLIST,
       sourceRef: "users/fixture-user/watchlist",
       catalogTitle: "Shared watchlist",
       position: 1,
-      displayMode: "split",
     });
 
     for (const listId of [privateId, publicId]) {
@@ -259,9 +240,7 @@ test(
         { failure_reason: null, title_count: 2, failing_since: null },
       ]);
     }
-    expect(
-      (await getConnectionRow(accountId, "trakt"))?.needs_renewal_since,
-    ).toBeNull();
+    expect(await renewalMark(accountId)).toBeNull();
 
     expect(await api.disconnect(accountId, "trakt")).toEqual({
       status: 200,
@@ -271,7 +250,7 @@ test(
     // The private List's status described a Catalog that is gone now.
     expect(await getSyncStatusRows(privateId)).toEqual([]);
     expect(await getSyncStatusRows(publicId)).toHaveLength(1);
-    const { body } = await api.getSyncStatus(accountId);
+    const body = await syncStatus(accountId);
     expect(body.syncStatus).toEqual({
       [privateId]: [null],
       [publicId]: [expect.objectContaining({ problem: null })],
@@ -295,13 +274,12 @@ test(
       displayMode: "split",
       mergedSources: [{ provider: "trakt", sourceRef: "me/watchlist" }],
     });
-    const syncStatus = async () => (await api.getSyncStatus(accountId)).body;
 
     // The public Source list still shows; the private one is left out.
     expect(await api.listCatalogNames(accountId, listId, "movie")).toEqual([
       "The Shawshank Redemption",
     ]);
-    expect(await syncStatus()).toEqual({
+    expect(await syncStatus(accountId)).toEqual({
       syncStatus: {
         [listId]: [
           expect.objectContaining({
@@ -316,19 +294,14 @@ test(
           }),
         ],
       },
-      connections: [
-        expect.objectContaining({
-          provider: "trakt",
-          needsRenewalSince: expect.any(String),
-        }),
-      ],
+      connections: [NEEDS_RENEWAL],
     });
 
     // A new authorization reads the private Source list again.
     const { callback } = await backend.authorize(accountId, "trakt");
     expect(callback.status).toBe(302);
     await expect
-      .poll(async () => (await syncStatus()).syncStatus[listId][1], {
+      .poll(async () => (await syncStatus(accountId)).syncStatus[listId][1], {
         timeout: 15_000,
       })
       .toEqual(
@@ -347,7 +320,7 @@ test(
     expect(
       (await getSyncStatusRows(listId)).map((row) => row.source_ref),
     ).toEqual(["users/fixture-user/watchlist"]);
-    expect((await syncStatus()).syncStatus).toEqual({
+    expect((await syncStatus(accountId)).syncStatus).toEqual({
       [listId]: [
         expect.objectContaining({ sourceRef: "users/fixture-user/watchlist" }),
         null,

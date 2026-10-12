@@ -1,20 +1,13 @@
 import { parseSortOption } from "@stremlist/shared/constants";
-import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { describe, expect, it } from "vitest";
+import { movie } from "../../__tests__/helpers/fixtures";
 import { sortCatalog } from "../catalog-sort";
 
-const metas: StremioMeta[] = [
-  { id: "tt1", name: "Zulu", releaseInfo: "2020", imdbRating: "5" },
-  { id: "tt2", name: "Alpha", releaseInfo: "1990", imdbRating: "9.5" },
-  { id: "tt3", name: "Mango", releaseInfo: "2005", imdbRating: "7" },
-].map((meta) => ({
-  ...meta,
-  type: "movie",
-  poster: null,
-  posterShape: "poster",
-  genres: [],
-  description: "",
-}));
+const metas = [
+  movie("tt1", { name: "Zulu", releaseInfo: "2020", imdbRating: "5" }),
+  movie("tt2", { name: "Alpha", releaseInfo: "1990", imdbRating: "9.5" }),
+  movie("tt3", { name: "Mango", releaseInfo: "2005", imdbRating: "7" }),
+];
 
 describe("watchlist sorting", () => {
   it.each([

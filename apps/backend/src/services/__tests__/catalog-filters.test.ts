@@ -1,37 +1,23 @@
-import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { describe, expect, it } from "vitest";
+import { movie } from "../../__tests__/helpers/fixtures";
 import { filterCatalog, resolveCatalogSelection } from "../catalog-filters";
-
 import { sortCatalog } from "../catalog-sort";
 
-const base: StremioMeta = {
-  id: "tt1",
-  name: "Film",
-  type: "movie",
-  poster: null,
-  posterShape: "poster",
-  genres: [],
-  description: "",
-};
-const metas: StremioMeta[] = [
-  {
-    ...base,
-    id: "tt1",
+const metas = [
+  movie("tt1", {
     runtime: "1h 30m",
     imdbRating: "8",
     releaseInfo: "2000",
     released: "2000-10-01T00:00:00.000Z",
-  },
-  {
-    ...base,
-    id: "tt2",
+  }),
+  movie("tt2", {
     runtime: "2h 0m",
     imdbRating: "7",
     releaseInfo: "2000",
     released: "2000-01-01T00:00:00.000Z",
-  },
-  { ...base, id: "tt3", runtime: "2h 1m", imdbRating: "6" },
-  { ...base, id: "tt4" },
+  }),
+  movie("tt3", { runtime: "2h 1m", imdbRating: "6" }),
+  movie("tt4"),
 ];
 
 describe("catalog selection", () => {

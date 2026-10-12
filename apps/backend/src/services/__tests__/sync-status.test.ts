@@ -49,6 +49,7 @@ import { sourceCaches } from "../merged-lists";
 import { getListSyncStatuses } from "../sync-status";
 
 const HOUR = 60 * 60_000;
+const WATCHLIST_READ = { sourceRef: "me/watchlist" } as const;
 
 let accountId = "";
 let listId = "";
@@ -61,25 +62,12 @@ interface TestRead extends ListRead {
   mergedSources?: ListSource[];
 }
 
-function readList({
-  listId,
-  provider,
-  sourceRef,
-  mergedSources,
-  ...read
-}: TestRead): Promise<CatalogData> {
-  return getListCatalog(
-    { id: listId, provider, sourceRef, mergedSources },
-    read,
-  );
-}
-
 /**
  * A catalog read. The fake Providers below never count as fresh, so each
  * read asks the Provider again and a failed one can fall back to the cache.
  */
-function config(overrides: Partial<TestRead> = {}): TestRead {
-  return {
+function read(overrides: Partial<TestRead> = {}): Promise<CatalogData> {
+  const fields: TestRead = {
     accountId,
     listId,
     provider: "trakt",
@@ -90,19 +78,38 @@ function config(overrides: Partial<TestRead> = {}): TestRead {
     policy: "catalog",
     ...overrides,
   };
+  const { listId: id, provider, sourceRef, mergedSources, ...options } = fields;
+  return getListCatalog({ id, provider, sourceRef, mergedSources }, options);
 }
 
-function useTrakt(fetchSource: ReturnType<typeof vi.fn>) {
+function tryRead(overrides: Partial<TestRead> = {}) {
+  return read(overrides).catch(() => undefined);
+}
+
+function useSource(
+  fetchSource: ReturnType<typeof vi.fn>,
+  id: ProviderId = "trakt",
+) {
   useFakeProvider(
-    fakeAdapter("trakt", {
-      freshnessMs: 0,
-      fetchSource: fetchSource as never,
-    }),
+    fakeAdapter(id, { freshnessMs: 0, fetchSource: fetchSource as never }),
   );
 }
 
 function entries(...ids: string[]) {
   return { entries: ids.map((id) => ({ imdbId: id, meta: movie(id) })) };
+}
+
+const serving = (...ids: string[]) =>
+  vi.fn(() => Promise.resolve(entries(...ids)));
+const failing = (error: Error) => vi.fn(() => Promise.reject(error));
+
+/** A second Trakt List, read through the Connection. */
+function seedWatchlist(): string {
+  return seedList(accountId, {
+    provider: "trakt",
+    source_ref: "me/watchlist",
+    position: 1,
+  }).id;
 }
 
 /** The sync status of the first Source list of a List, if it was read. */
@@ -113,10 +120,10 @@ async function statusOf(id = listId) {
   return id in syncStatus ? (syncStatus[id][0] ?? undefined) : undefined;
 }
 
-async function connectionOf() {
+async function needsRenewalSince() {
   return (await listConnections(accountId)).find(
     (connection) => connection.provider === "trakt",
-  );
+  )?.needsRenewalSince;
 }
 
 beforeEach(() => {
@@ -140,9 +147,9 @@ afterEach(() => {
 
 describe("recording refreshes", () => {
   it("stores the time and Title count of a successful refresh", async () => {
-    useTrakt(vi.fn(() => Promise.resolve(entries("tt0000001", "tt0000002"))));
+    useSource(serving("tt0000001", "tt0000002"));
 
-    await readList(config());
+    await read();
 
     expect(await statusOf()).toEqual({
       provider: "trakt",
@@ -156,25 +163,25 @@ describe("recording refreshes", () => {
   });
 
   it("keeps the last success when a refresh fails and the cache still serves", async () => {
-    const fetchSource = vi
-      .fn()
-      .mockResolvedValueOnce(entries("tt0000001"))
-      .mockRejectedValue(new Error("socket hang up"));
-    useTrakt(fetchSource);
+    useSource(
+      vi
+        .fn()
+        .mockResolvedValueOnce(entries("tt0000001"))
+        .mockRejectedValue(new Error("socket hang up")),
+    );
     vi.useFakeTimers({
       now: new Date("2026-10-06T10:00:00Z"),
       toFake: ["Date"],
     });
-    await readList(config());
+    await read();
 
     vi.setSystemTime(new Date("2026-10-06T12:00:00Z"));
     // Stremio still gets the cached Titles.
-    await expect(readList(config())).resolves.toMatchObject({
+    await expect(read()).resolves.toMatchObject({
       metas: [{ id: "tt0000001" }],
     });
 
-    const status = await statusOf();
-    expect(status).toMatchObject({
+    expect(await statusOf()).toMatchObject({
       lastSuccessAt: "2026-10-06T10:00:00.000Z",
       titleCount: 1,
       problem: "unavailable",
@@ -183,20 +190,21 @@ describe("recording refreshes", () => {
   });
 
   it("keeps the start of a failure run and ends it on the next success", async () => {
-    const fetchSource = vi
-      .fn()
-      .mockRejectedValueOnce(new SourceUnavailableError("private", "private"))
-      .mockRejectedValueOnce(new SourceUnavailableError("not_found", "gone"))
-      .mockResolvedValue(entries());
-    useTrakt(fetchSource);
+    useSource(
+      vi
+        .fn()
+        .mockRejectedValueOnce(new SourceUnavailableError("private", "private"))
+        .mockRejectedValueOnce(new SourceUnavailableError("not_found", "gone"))
+        .mockResolvedValue(entries()),
+    );
     vi.useFakeTimers({
       now: new Date("2026-10-06T10:00:00Z"),
       toFake: ["Date"],
     });
 
-    await readList(config()).catch(() => undefined);
+    await tryRead();
     vi.setSystemTime(new Date("2026-10-06T11:00:00Z"));
-    await readList(config()).catch(() => undefined);
+    await tryRead();
 
     expect(await statusOf()).toMatchObject({
       problem: "not_found",
@@ -206,7 +214,7 @@ describe("recording refreshes", () => {
     });
 
     vi.setSystemTime(new Date("2026-10-06T12:00:00Z"));
-    await readList(config());
+    await read();
 
     // An empty Source list is a success with no Titles, not a failure.
     expect(await statusOf()).toMatchObject({
@@ -219,10 +227,10 @@ describe("recording refreshes", () => {
 
   it("records a turned-off Provider without reading it", async () => {
     const fetchSource = vi.fn();
-    useTrakt(fetchSource);
+    useSource(fetchSource);
     process.env.DISABLED_PROVIDERS = "trakt";
 
-    await readList(config()).catch(() => undefined);
+    await tryRead();
 
     expect(fetchSource).not.toHaveBeenCalled();
     expect(await statusOf()).toMatchObject({ problem: "disabled" });
@@ -231,9 +239,9 @@ describe("recording refreshes", () => {
   it("records one outcome for concurrent reads of the same List", async () => {
     const record = vi.fn(() => ({ data: true, error: null }));
     rpcHandlers.set("record_list_refresh", record);
-    useTrakt(vi.fn(() => Promise.resolve(entries("tt0000001"))));
+    useSource(serving("tt0000001"));
 
-    await Promise.all([readList(config()), readList(config())]);
+    await Promise.all([read(), read()]);
 
     expect(record).toHaveBeenCalledOnce();
   });
@@ -243,9 +251,9 @@ describe("recording refreshes", () => {
       data: null,
       error: { message: "database is down" },
     }));
-    useTrakt(vi.fn(() => Promise.resolve(entries("tt0000001"))));
+    useSource(serving("tt0000001"));
 
-    await expect(readList(config())).resolves.toMatchObject({
+    await expect(read()).resolves.toMatchObject({
       metas: [{ id: "tt0000001" }],
     });
   });
@@ -254,10 +262,10 @@ describe("recording refreshes", () => {
     vi.mocked(listCache.writeCachedList).mockRejectedValueOnce(
       new Error("R2 is down"),
     );
-    useTrakt(vi.fn(() => Promise.resolve(entries("tt0000001"))));
+    useSource(serving("tt0000001"));
 
     // This request still gets the Titles it read.
-    await expect(readList(config())).resolves.toMatchObject({
+    await expect(read()).resolves.toMatchObject({
       metas: [{ id: "tt0000001" }],
     });
 
@@ -265,8 +273,8 @@ describe("recording refreshes", () => {
   });
 
   it("ignores the status of a Source list that the List no longer reads", async () => {
-    useTrakt(vi.fn(() => Promise.resolve(entries("tt0000001"))));
-    await readList(config());
+    useSource(serving("tt0000001"));
+    await read();
 
     const [list] = await getAccountLists(accountId);
     const statuses = await getListSyncStatuses([
@@ -305,8 +313,7 @@ describe("Lists without a recorded status", () => {
   it("still use the cache when the recorded statuses cannot be read", async () => {
     cache.seed(listId, [movie("tt0000001")]);
     const lists = await getAccountLists(accountId);
-    const from = vi.spyOn(supabase, "from");
-    from.mockReturnValueOnce({
+    vi.spyOn(supabase, "from").mockReturnValueOnce({
       select: () => ({
         in: () => Promise.resolve({ data: null, error: { message: "down" } }),
       }),
@@ -320,15 +327,14 @@ describe("Lists without a recorded status", () => {
   it("keep their cached last refresh when their first recorded refresh fails", async () => {
     const cachedAt = new Date(Date.now() - 2 * HOUR);
     cache.seed(listId, [movie("tt0000001"), movie("tt0000002")], cachedAt);
-    useTrakt(vi.fn(() => Promise.reject(new Error("socket hang up"))));
+    useSource(failing(new Error("socket hang up")));
 
     // Stremio still gets the cached Titles.
-    await expect(readList(config())).resolves.toMatchObject({
+    await expect(read()).resolves.toMatchObject({
       metas: [{ id: "tt0000001" }, { id: "tt0000002" }],
     });
 
-    const status = await statusOf();
-    expect(status).toMatchObject({
+    expect(await statusOf()).toMatchObject({
       problem: "unavailable",
       titleCount: 2,
       lastSuccessAt: cachedAt.toISOString(),
@@ -336,20 +342,19 @@ describe("Lists without a recorded status", () => {
   });
 
   it("do not take a cache that may hold the List's previous Source list", async () => {
+    const hourAgo = new Date(Date.now() - HOUR);
     db.insert("list_sync_status", {
       list_id: listId,
       provider: "trakt",
       source_ref: "users/leo/lists/comedy",
-      last_attempt_at: new Date(Date.now() - HOUR).toISOString(),
-      last_success_at: new Date(Date.now() - HOUR).toISOString(),
+      last_attempt_at: hourAgo.toISOString(),
+      last_success_at: hourAgo.toISOString(),
       title_count: 9,
     });
-    cache.seed(listId, [movie("tt0000001")], new Date(Date.now() - HOUR));
-    useTrakt(
-      vi.fn(() => Promise.reject(new SourceUnavailableError("private", "no"))),
-    );
+    cache.seed(listId, [movie("tt0000001")], hourAgo);
+    useSource(failing(new SourceUnavailableError("private", "no")));
 
-    await readList(config({ policy: "manual" })).catch(() => undefined);
+    await tryRead({ policy: "manual" });
 
     expect(await statusOf()).toMatchObject({
       sourceRef: "users/leo/lists/horror",
@@ -361,24 +366,19 @@ describe("Lists without a recorded status", () => {
 });
 
 describe("the read after a new authorization", () => {
-  it("does not join a read that started with the older Connection", async () => {
+  beforeEach(() => {
     seedConnection(accountId, "trakt");
-    const watchlist = seedList(accountId, {
-      provider: "trakt",
-      source_ref: "me/watchlist",
-      position: 1,
-    });
-    let release: (value: unknown) => void = () => undefined;
+  });
+
+  it("does not join a read that started with the older Connection", async () => {
+    const watchlistId = seedWatchlist();
+    const first = Promise.withResolvers<ReturnType<typeof entries>>();
     const fetchSource = vi
       .fn()
-      .mockImplementationOnce(
-        () => new Promise((resolve) => (release = resolve)),
-      )
+      .mockReturnValueOnce(first.promise)
       .mockResolvedValue(entries("tt0000001"));
-    useTrakt(fetchSource);
-    const older = readList(
-      config({ listId: watchlist.id, sourceRef: "me/watchlist" }),
-    );
+    useSource(fetchSource);
+    const older = read({ listId: watchlistId, ...WATCHLIST_READ });
     await vi.waitFor(() => {
       expect(fetchSource).toHaveBeenCalledOnce();
     });
@@ -387,40 +387,29 @@ describe("the read after a new authorization", () => {
 
     // Both Trakt Lists were read again; the older read did not count.
     expect(fetchSource).toHaveBeenCalledTimes(3);
-    expect(await statusOf(watchlist.id)).toMatchObject({
-      problem: null,
-      titleCount: 1,
-    });
+    const expected = { problem: null, titleCount: 1 };
+    expect(await statusOf(watchlistId)).toMatchObject(expected);
     // The older read ends last and must not undo the new one.
-    release(entries());
+    first.resolve(entries());
     await older;
-    expect(await statusOf(watchlist.id)).toMatchObject({
-      problem: null,
-      titleCount: 1,
-    });
-    expect(cache.get(watchlist.id)?.data.metas).toHaveLength(1);
+    expect(await statusOf(watchlistId)).toMatchObject(expected);
+    expect(cache.get(watchlistId)?.data.metas).toHaveLength(1);
   });
 
   it("does not record a late failure of the older read", async () => {
-    seedConnection(accountId, "trakt");
-    let fail: (error: unknown) => void = () => undefined;
+    const first = Promise.withResolvers<never>();
     const fetchSource = vi
       .fn()
-      .mockImplementationOnce(
-        () =>
-          new Promise((_resolve, reject) => {
-            fail = reject;
-          }),
-      )
+      .mockReturnValueOnce(first.promise)
       .mockResolvedValue(entries("tt0000001"));
-    useTrakt(fetchSource);
-    const older = readList(config()).catch(() => undefined);
+    useSource(fetchSource);
+    const older = tryRead();
     await vi.waitFor(() => {
       expect(fetchSource).toHaveBeenCalledOnce();
     });
 
     await rereadConnectionLists(accountId, "trakt");
-    fail(new SourceUnavailableError("needs_connection", "old token"));
+    first.reject(new SourceUnavailableError("needs_connection", "old token"));
     await older;
 
     expect(await statusOf()).toMatchObject({ problem: null, titleCount: 1 });
@@ -432,96 +421,96 @@ describe("Connections that need to be renewed", () => {
     seedConnection(accountId, "trakt");
   });
 
-  it("marks the Connection when the Provider refuses it", async () => {
-    useTrakt(
-      vi.fn(() =>
-        Promise.reject(
-          new SourceUnavailableError("needs_connection", "token refused"),
-        ),
-      ),
+  it.each([
+    [
+      "marks the Connection when the Provider refuses it",
+      new SourceUnavailableError("needs_connection", "token refused"),
+      {},
+      true,
+      "needs_connection",
+    ],
+    [
+      "marks the Connection when its token cannot be refreshed",
+      new ConnectionExpiredError("trakt"),
+      {},
+      true,
+      "needs_connection",
+    ],
+    [
+      "does not mark the Connection for other failures",
+      new Error("timeout"),
+      {},
+      false,
+      "unavailable",
+    ],
+    [
+      "does not mark anything for a read without a Connection",
+      new SourceUnavailableError("needs_connection", "no"),
+      { allowConnection: false },
+      false,
+      "needs_connection",
+    ],
+  ])("%s", async (_, error, overrides, marked, problem) => {
+    useSource(failing(error));
+
+    await tryRead(overrides);
+
+    expect(await needsRenewalSince()).toEqual(
+      marked ? expect.any(String) : null,
     );
-
-    await readList(config()).catch(() => undefined);
-
-    expect((await connectionOf())?.needsRenewalSince).toEqual(
-      expect.any(String),
-    );
-    expect(await statusOf()).toMatchObject({ problem: "needs_connection" });
-  });
-
-  it("marks the Connection when its token cannot be refreshed", async () => {
-    useTrakt(vi.fn(() => Promise.reject(new ConnectionExpiredError("trakt"))));
-
-    await readList(config()).catch(() => undefined);
-
-    expect((await connectionOf())?.needsRenewalSince).not.toBeNull();
-  });
-
-  it("does not mark the Connection for other failures", async () => {
-    useTrakt(vi.fn(() => Promise.reject(new Error("timeout"))));
-
-    await readList(config()).catch(() => undefined);
-
-    expect((await connectionOf())?.needsRenewalSince).toBeNull();
+    expect(await statusOf()).toMatchObject({ problem });
   });
 
   it("clears the mark when a private Source list reads through the Connection again", async () => {
-    const fetchSource = vi
-      .fn()
-      .mockRejectedValueOnce(new ConnectionExpiredError("trakt"))
-      .mockResolvedValue(entries("tt0000001"));
-    useTrakt(fetchSource);
-    const watchlist = seedList(accountId, {
-      provider: "trakt",
-      source_ref: "me/watchlist",
-      position: 1,
-    });
-    const read = config({ listId: watchlist.id, sourceRef: "me/watchlist" });
+    useSource(
+      vi
+        .fn()
+        .mockRejectedValueOnce(new ConnectionExpiredError("trakt"))
+        .mockResolvedValue(entries("tt0000001")),
+    );
+    const watchlist = { listId: seedWatchlist(), ...WATCHLIST_READ };
 
-    await readList(read).catch(() => undefined);
-    await readList(read);
+    await tryRead(watchlist);
+    await read(watchlist);
 
-    expect((await connectionOf())?.needsRenewalSince).toBeNull();
+    expect(await needsRenewalSince()).toBeNull();
   });
 
   it("clears the mark after a private read whose Catalog could not be saved", async () => {
     vi.mocked(listCache.writeCachedList).mockRejectedValueOnce(
       new Error("R2 is down"),
     );
-    useTrakt(vi.fn(() => Promise.resolve(entries("tt0000001"))));
-    const watchlist = seedList(accountId, {
-      provider: "trakt",
-      source_ref: "me/watchlist",
-      position: 1,
-    });
+    useSource(serving("tt0000001"));
+    const watchlistId = seedWatchlist();
     db.getTable("connections")[0].needs_renewal_since =
       new Date().toISOString();
 
-    await readList(config({ listId: watchlist.id, sourceRef: "me/watchlist" }));
+    await read({ listId: watchlistId, ...WATCHLIST_READ });
 
-    expect((await connectionOf())?.needsRenewalSince).toBeNull();
+    expect(await needsRenewalSince()).toBeNull();
     // The List status waits for a saved Catalog.
-    expect(await statusOf(watchlist.id)).toBeUndefined();
+    expect(await statusOf(watchlistId)).toBeUndefined();
   });
 
   it("keeps the mark when only a public Source list reads fine", async () => {
-    const fetchSource = vi
-      .fn()
-      .mockRejectedValueOnce(new ConnectionExpiredError("trakt"))
-      .mockResolvedValue(entries("tt0000001"));
-    useTrakt(fetchSource);
+    useSource(
+      vi
+        .fn()
+        .mockRejectedValueOnce(new ConnectionExpiredError("trakt"))
+        .mockResolvedValue(entries("tt0000001")),
+    );
 
-    await readList(config()).catch(() => undefined);
+    await tryRead();
     // Trakt reads a public list without the refused Connection.
-    await readList(config());
+    await read();
 
-    expect((await connectionOf())?.needsRenewalSince).not.toBeNull();
+    expect(await needsRenewalSince()).not.toBeNull();
     expect(await statusOf()).toMatchObject({ problem: null, titleCount: 1 });
   });
 
   it("clears the mark when the user connects again", async () => {
-    useTrakt(vi.fn(() => Promise.reject(new ConnectionExpiredError("trakt"))));
-    await readList(config()).catch(() => undefined);
+    useSource(failing(new ConnectionExpiredError("trakt")));
+    await tryRead();
 
     await saveConnection(
       accountId,
@@ -531,26 +520,14 @@ describe("Connections that need to be renewed", () => {
       "https://api.stremlist.test/oauth/trakt/callback",
     );
 
-    expect((await connectionOf())?.needsRenewalSince).toBeNull();
-  });
-
-  it("does not mark anything for a read without a Connection", async () => {
-    useTrakt(
-      vi.fn(() =>
-        Promise.reject(new SourceUnavailableError("needs_connection", "no")),
-      ),
-    );
-
-    await readList(config({ allowConnection: false })).catch(() => undefined);
-
-    expect((await connectionOf())?.needsRenewalSince).toBeNull();
+    expect(await needsRenewalSince()).toBeNull();
   });
 });
 
 describe("merged Lists", () => {
   const WATCHLIST = { provider: "trakt", sourceRef: "me/watchlist" } as const;
   let mergedId = "";
-  let keys: { imdb: string; trakt: string } = { imdb: "", trakt: "" };
+  let keys = { imdb: "", trakt: "" };
 
   beforeEach(async () => {
     mergedId = seedList(accountId, {
@@ -561,45 +538,37 @@ describe("merged Lists", () => {
         { provider: WATCHLIST.provider, source_ref: WATCHLIST.sourceRef },
       ],
     }).id;
-    const [list] = (await getAccountLists(accountId)).filter(
+    const list = (await getAccountLists(accountId)).find(
       (candidate) => candidate.id === mergedId,
     );
+    if (!list) throw new Error("merged List missing");
     const [imdb, trakt] = sourceCaches(list);
     keys = { imdb: imdb.cacheKey, trakt: trakt.cacheKey };
   });
 
-  function mergedConfig(): TestRead {
-    return config({
-      listId: mergedId,
-      provider: "imdb",
-      sourceRef: "ur1000001",
-      mergedSources: [WATCHLIST],
-    });
-  }
-
-  async function snapshot() {
-    return getListSyncStatuses(await getAccountLists(accountId));
+  async function mergedStatus() {
+    const { syncStatus } = await getListSyncStatuses(
+      await getAccountLists(accountId),
+    );
+    return syncStatus[mergedId];
   }
 
   it("record each Source list under the List, in the List's order", async () => {
     seedConnection(accountId, "trakt");
-    useFakeProvider(
-      fakeAdapter("imdb", {
-        freshnessMs: 0,
-        fetchSource: () =>
-          Promise.resolve(entries("tt0000001", "tt0000002")) as never,
-      }),
-    );
-    useTrakt(
-      vi.fn(() =>
-        Promise.reject(
-          new SourceUnavailableError("needs_connection", "token refused"),
-        ),
-      ),
+    useSource(serving("tt0000001", "tt0000002"), "imdb");
+    useSource(
+      failing(new SourceUnavailableError("needs_connection", "token refused")),
     );
 
     // The IMDb Source list still shows.
-    await expect(readList(mergedConfig())).resolves.toMatchObject({
+    await expect(
+      read({
+        listId: mergedId,
+        provider: "imdb",
+        sourceRef: "ur1000001",
+        mergedSources: [WATCHLIST],
+      }),
+    ).resolves.toMatchObject({
       metas: [{ id: "tt0000001" }, { id: "tt0000002" }],
     });
 
@@ -613,8 +582,7 @@ describe("merged Lists", () => {
         [mergedId, "trakt", "me/watchlist"],
       ]),
     );
-    const { syncStatus } = await snapshot();
-    expect(syncStatus[mergedId]).toEqual([
+    expect(await mergedStatus()).toEqual([
       expect.objectContaining({
         provider: "imdb",
         sourceRef: "ur1000001",
@@ -642,9 +610,7 @@ describe("merged Lists", () => {
       new Date("2026-10-06T09:00:00Z"),
     );
 
-    const { syncStatus } = await snapshot();
-
-    expect(syncStatus[mergedId]).toEqual([
+    expect(await mergedStatus()).toEqual([
       expect.objectContaining({
         provider: "imdb",
         lastSuccessAt: "2026-10-06T08:00:00.000Z",
@@ -663,9 +629,7 @@ describe("merged Lists", () => {
     seedConnection(accountId, "trakt");
     cache.seed(keys.trakt, [movie("tt0000002")]);
 
-    const { syncStatus } = await snapshot();
-
-    expect(syncStatus[mergedId]).toEqual([
+    expect(await mergedStatus()).toEqual([
       null,
       expect.objectContaining({ provider: "trakt" }),
     ]);
@@ -687,7 +651,6 @@ describe("merged Lists", () => {
         title_count: 1,
       });
     }
-
     seedConnection(accountId, "trakt");
 
     await disconnectProvider(accountId, "trakt");
@@ -701,19 +664,17 @@ describe("merged Lists", () => {
 
   it("read the merged Source lists of a new Connection again, in their own cache", async () => {
     seedConnection(accountId, "trakt");
-    const imdbRead = vi.fn(() => Promise.resolve(entries("tt0000009")));
-    useFakeProvider(
-      fakeAdapter("imdb", { freshnessMs: 0, fetchSource: imdbRead as never }),
-    );
-    const traktRead = vi.fn(() => Promise.resolve(entries("tt0000002")));
-    useTrakt(traktRead);
+    const imdbRead = serving("tt0000009");
+    useSource(imdbRead, "imdb");
+    const traktRead = serving("tt0000002");
+    useSource(traktRead);
 
     await rereadConnectionLists(accountId, "trakt");
 
     expect(imdbRead).not.toHaveBeenCalled();
     expect(traktRead).toHaveBeenCalledWith("me/watchlist", expect.anything());
     expect(cache.get(keys.trakt)?.data.metas).toHaveLength(1);
-    expect((await snapshot()).syncStatus[mergedId][1]).toEqual(
+    expect((await mergedStatus())[1]).toEqual(
       expect.objectContaining({ provider: "trakt", titleCount: 1 }),
     );
   });

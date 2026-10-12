@@ -20,7 +20,6 @@ import {
   rpdbKey,
   syncSnapshot,
 } from "../../services/account-config";
-import type { ListInput } from "../../services/accounts";
 import {
   MergedSourcesChangedError,
   createAccountWithConfig,
@@ -52,6 +51,21 @@ function firstIssueAsError(
   }
 }
 
+/** The normalized Lists, or the 400 answer to return. */
+async function normalizeOrReject(
+  c: Context,
+  ...args: Parameters<typeof normalizeLists>
+) {
+  try {
+    return await normalizeLists(...args);
+  } catch (error) {
+    if (error instanceof ConfigError) {
+      return c.json({ error: error.message }, error.status);
+    }
+    throw error;
+  }
+}
+
 /** Accounts: creation, configuration, refresh and upgrade. */
 const accounts = new Hono()
   .get("/stats", async (c) => {
@@ -74,19 +88,12 @@ const accounts = new Hono()
     zValidator("json", createBody, firstIssueAsError),
     async (c) => {
       const { rpdbApiKey, lists, newTitles } = c.req.valid("json");
-      let normalized: ListInput[];
-      try {
-        normalized = await normalizeLists(lists, {
-          via: "private",
-          connected: new Set(),
-          saved: [],
-        });
-      } catch (error) {
-        if (error instanceof ConfigError) {
-          return c.json({ error: error.message }, error.status);
-        }
-        throw error;
-      }
+      const normalized = await normalizeOrReject(c, lists, {
+        via: "private",
+        connected: new Set(),
+        saved: [],
+      });
+      if (normalized instanceof Response) return normalized;
 
       try {
         const { accountId, lists: saved } = await createAccountWithConfig(
@@ -186,19 +193,12 @@ const accounts = new Hono()
         connectedProviders(access),
         getAccountLists(access.account.id),
       ]);
-      let normalized: ListInput[];
-      try {
-        normalized = await normalizeLists(lists, {
-          via: access.via,
-          connected,
-          saved: savedLists,
-        });
-      } catch (error) {
-        if (error instanceof ConfigError) {
-          return c.json({ error: error.message }, error.status);
-        }
-        throw error;
-      }
+      const normalized = await normalizeOrReject(c, lists, {
+        via: access.via,
+        connected,
+        saved: savedLists,
+      });
+      if (normalized instanceof Response) return normalized;
 
       let saved: ConfigList[];
       try {

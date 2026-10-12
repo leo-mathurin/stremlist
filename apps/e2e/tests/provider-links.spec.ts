@@ -17,6 +17,17 @@ import { startFixtureBackend } from "../helpers/fixture-backend.js";
 
 let backend: FixtureBackend;
 
+const SPLIT = { displayMode: "split" } as const;
+const JUSTWATCH_REF = "tl-us-11111111-2222-4333-8444-555555555555";
+/** What every fixture Source list shows. */
+const BOTH = { movie: ["The Shawshank Redemption"], series: ["Breaking Bad"] };
+
+/** The names in the movie and series Catalogs of a List. */
+const catalogs = async (accountId: string, listId: string) => ({
+  movie: await backend.api.listCatalogNames(accountId, listId, "movie"),
+  series: await backend.api.listCatalogNames(accountId, listId, "series"),
+});
+
 test.beforeAll(async () => {
   backend = await startFixtureBackend("./provider-fixtures.ts");
 });
@@ -38,8 +49,7 @@ test(
     const { api } = backend;
     const links = {
       trakt: "https://trakt.tv/users/fixture-user/watchlist",
-      justwatch:
-        "https://www.justwatch.com/us/lists/tl-us-11111111-2222-4333-8444-555555555555",
+      justwatch: `https://www.justwatch.com/us/lists/${JUSTWATCH_REF}`,
       senscritique:
         "https://www.senscritique.com/fixture-user/collection?action=WISH",
     };
@@ -55,7 +65,7 @@ test(
     expect(await api.resolveLink(links.justwatch)).toMatchObject({
       ok: true,
       provider: "justwatch",
-      sourceRef: "tl-us-11111111-2222-4333-8444-555555555555",
+      sourceRef: JUSTWATCH_REF,
       kind: "list",
       suggestedTitle: "Weekend picks",
     });
@@ -78,15 +88,10 @@ test(
       await api.resolveLink("https://www.senscritique.com/private-user"),
     ).toEqual({ ok: false, reason: "private", provider: "senscritique" });
 
-    const split = { displayMode: "split" } as const;
     const created = await api.createAccount([
-      listInput("trakt", "users/fixture-user/watchlist", split),
-      listInput(
-        "justwatch",
-        "tl-us-11111111-2222-4333-8444-555555555555",
-        split,
-      ),
-      listInput("senscritique", "users/fixture-user/wishes", split),
+      listInput("trakt", "users/fixture-user/watchlist", SPLIT),
+      listInput("justwatch", JUSTWATCH_REF, SPLIT),
+      listInput("senscritique", "users/fixture-user/wishes", SPLIT),
     ]);
     expect(created.status).toBe(200);
     const accountId = created.body.accountId!;
@@ -97,12 +102,7 @@ test(
       "senscritique",
     ]);
     for (const row of lists) {
-      expect(await api.listCatalogNames(accountId, row.id, "movie")).toEqual([
-        "The Shawshank Redemption",
-      ]);
-      expect(await api.listCatalogNames(accountId, row.id, "series")).toEqual([
-        "Breaking Bad",
-      ]);
+      expect(await catalogs(accountId, row.id)).toEqual(BOTH);
     }
     // Public reads carry the app's client ID and no user token.
     const traktReads = backend.requests((url) => url.host === "api.trakt.tv");
@@ -151,16 +151,11 @@ test(
         catalogTitle: "Weekend",
         displayMode: "split",
       }),
-      listInput("simkl", "me/plantowatch", { displayMode: "split" }),
+      listInput("simkl", "me/plantowatch", SPLIT),
     ]);
     expect(saved.status).toBe(200);
     for (const row of (await api.getConfig(accountId)).body.lists) {
-      expect(await api.listCatalogNames(accountId, row.id, "movie")).toEqual([
-        "The Shawshank Redemption",
-      ]);
-      expect(await api.listCatalogNames(accountId, row.id, "series")).toEqual([
-        "Breaking Bad",
-      ]);
+      expect(await catalogs(accountId, row.id)).toEqual(BOTH);
     }
     for (const host of ["api.mdblist.com", "api.simkl.com"]) {
       const reads = backend.requests((url) => url.host === host);
@@ -177,25 +172,16 @@ test(
   { tag: "@local" },
   async () => {
     const { api } = backend;
-    const split = { displayMode: "split" } as const;
-    const catalogs = async (accountId: string, listId: string) => ({
-      movie: await api.listCatalogNames(accountId, listId, "movie"),
-      series: await api.listCatalogNames(accountId, listId, "series"),
-    });
-    const both = {
-      movie: ["The Shawshank Redemption"],
-      series: ["Breaking Bad"],
-    };
 
     // Charts need no Connection: the app's client ID reads them.
     const created = await api.createAccount([
-      listInput("trakt", "trending", split),
-      listInput("trakt", "popular", split),
+      listInput("trakt", "trending", SPLIT),
+      listInput("trakt", "popular", SPLIT),
     ]);
     expect(created.status).toBe(200);
     const publicId = created.body.accountId!;
     for (const row of (await api.getConfig(publicId)).body.lists) {
-      expect(await catalogs(publicId, row.id)).toEqual(both);
+      expect(await catalogs(publicId, row.id)).toEqual(BOTH);
     }
     const charts = backend.requests((url) =>
       /^\/(movies|shows)\/(trending|popular)$/.test(url.pathname),
@@ -216,10 +202,10 @@ test(
     const accountId = await seedAccount();
     await seedConnection(accountId, "trakt");
     const saved = await api.postConfig(accountId, [
-      listInput("trakt", "me/recommendations", split),
+      listInput("trakt", "me/recommendations", SPLIT),
       listInput("trakt", "me/up-next", { displayMode: "series" }),
-      listInput("trakt", "me/history", split),
-      listInput("trakt", "me/collection", split),
+      listInput("trakt", "me/history", SPLIT),
+      listInput("trakt", "me/collection", SPLIT),
     ]);
     expect(saved.status).toBe(200);
     const lists = (await api.getConfig(accountId)).body.lists;
@@ -233,8 +219,8 @@ test(
       expect(await catalogs(accountId, row.id)).toEqual(
         // Up Next lists the series in progress, not movies.
         row.sourceRef === "me/up-next"
-          ? { movie: [], series: both.series }
-          : both,
+          ? { movie: [], series: BOTH.series }
+          : BOTH,
       );
     }
     // Trakt refuses Up Next to some apps: the watched progress gives the same rows.

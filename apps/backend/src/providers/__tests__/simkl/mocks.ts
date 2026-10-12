@@ -1,10 +1,7 @@
 /**
- * Module fakes for the Simkl adapter tests. The test files hand them to
- * `vi.mock` factories, so this module must not import the adapter.
+ * R2 as an in-memory bucket for the Simkl adapter tests. The test files hand
+ * it to a `vi.mock` factory, so this module must not import the adapter.
  */
-import type * as Http from "../../http";
-
-// R2 as an in-memory bucket.
 export const r2 = {
   objects: new Map<string, string>(),
   /** R2 unreachable: reads fail with an error other than NoSuchKey. */
@@ -36,18 +33,3 @@ export const r2Module = {
     },
   }),
 };
-
-// No real waiting in tests; remember the limits each limiter was built with.
-export const limiters: [number, number][] = [];
-
-export function httpModule(actual: typeof Http) {
-  class RateLimiter {
-    constructor(limit: number, windowMs: number) {
-      limiters.push([limit, windowMs]);
-    }
-    acquire(): Promise<void> {
-      return Promise.resolve();
-    }
-  }
-  return { ...actual, RateLimiter };
-}

@@ -3,16 +3,7 @@ import { CHART_REGISTRY, isChartId } from "@stremlist/shared/imdb-charts";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fetchChart, normalizeImdbUserId } from "../imdb-scraper.js";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function makeTitleNode(overrides: {
-  id?: string;
-  title?: string;
-  type?: string;
-}) {
-  const { id = "tt0000001", title = "Test Title", type = "Movie" } = overrides;
+function titleNode(id: string, title = "Test Title", type = "Movie") {
   return {
     id,
     titleText: { text: title },
@@ -27,16 +18,14 @@ function makeTitleNode(overrides: {
   };
 }
 
-function jsonResponse(body: object) {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  });
+function respondWith(data: object) {
+  vi.mocked(globalThis.fetch).mockResolvedValueOnce(
+    new Response(JSON.stringify({ data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }),
+  );
 }
-
-// ---------------------------------------------------------------------------
-// Registry / isChartId
-// ---------------------------------------------------------------------------
 
 describe("isChartId", () => {
   it("is true for every registry id", () => {
@@ -46,23 +35,26 @@ describe("isChartId", () => {
   });
 
   it("is false for watchlist/list/handle/empty/bogus ids", () => {
-    expect(isChartId("ur12345678")).toBe(false);
-    expect(isChartId("ls593621567")).toBe(false);
-    expect(isChartId("p.colneedham")).toBe(false);
-    expect(isChartId("")).toBe(false);
-    expect(isChartId("imdb:bogus")).toBe(false);
+    for (const id of [
+      "ur12345678",
+      "ls593621567",
+      "p.colneedham",
+      "",
+      "imdb:bogus",
+    ]) {
+      expect(isChartId(id)).toBe(false);
+    }
   });
 });
 
 describe("CHART_REGISTRY invariants", () => {
   it("has unique ids matching imdb:[a-z0-9-]+", () => {
-    const seen = new Set<string>();
     for (const entry of CHART_REGISTRY) {
       expect(entry.id).toMatch(/^imdb:[a-z0-9-]+$/);
-      expect(seen.has(entry.id)).toBe(false);
-      seen.add(entry.id);
     }
-    expect(seen.size).toBe(CHART_REGISTRY.length);
+    expect(new Set(CHART_REGISTRY.map((entry) => entry.id)).size).toBe(
+      CHART_REGISTRY.length,
+    );
   });
 
   it("declares a valid defaultDisplayMode", () => {
@@ -78,10 +70,6 @@ describe("CHART_REGISTRY invariants", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// fetchChart — fetch mocked
-// ---------------------------------------------------------------------------
-
 describe("fetchChart", () => {
   beforeEach(() => {
     vi.spyOn(globalThis, "fetch");
@@ -92,32 +80,16 @@ describe("fetchChart", () => {
   });
 
   it("normalizes chartTitles edges and splits movie/series by title type", async () => {
-    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
-      jsonResponse({
-        data: {
-          chartTitles: {
-            total: 2,
-            pageInfo: { hasNextPage: false, endCursor: null },
-            edges: [
-              {
-                node: makeTitleNode({
-                  id: "tt0111161",
-                  title: "The Shawshank Redemption",
-                  type: "Movie",
-                }),
-              },
-              {
-                node: makeTitleNode({
-                  id: "tt0903747",
-                  title: "Breaking Bad",
-                  type: "TV Series",
-                }),
-              },
-            ],
-          },
-        },
-      }),
-    );
+    respondWith({
+      chartTitles: {
+        total: 2,
+        pageInfo: { hasNextPage: false, endCursor: null },
+        edges: [
+          { node: titleNode("tt0111161", "The Shawshank Redemption") },
+          { node: titleNode("tt0903747", "Breaking Bad", "TV Series") },
+        ],
+      },
+    });
 
     const { metas } = await fetchChart("imdb:top-rated-movies");
 
@@ -135,27 +107,14 @@ describe("fetchChart", () => {
   });
 
   it("maps boxOffice releases and skips edges with empty titles[]", async () => {
-    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
-      jsonResponse({
-        data: {
-          topGrossingReleases: {
-            edges: [
-              {
-                node: {
-                  release: {
-                    titles: [
-                      makeTitleNode({ id: "tt1234567", title: "Blockbuster" }),
-                    ],
-                  },
-                },
-              },
-              // Unreleased / unresolved title — must be skipped, not crash.
-              { node: { release: { titles: [] } } },
-            ],
-          },
-        },
-      }),
-    );
+    respondWith({
+      topGrossingReleases: {
+        edges: [
+          { node: { release: { titles: [titleNode("tt1234567")] } } },
+          { node: { release: { titles: [] } } },
+        ],
+      },
+    });
 
     const { metas } = await fetchChart("imdb:box-office");
 
@@ -164,23 +123,7 @@ describe("fetchChart", () => {
   });
 
   it("normalizes comingSoon edges", async () => {
-    vi.mocked(globalThis.fetch).mockResolvedValueOnce(
-      jsonResponse({
-        data: {
-          comingSoon: {
-            edges: [
-              {
-                node: makeTitleNode({
-                  id: "tt7654321",
-                  title: "Future Film",
-                  type: "Movie",
-                }),
-              },
-            ],
-          },
-        },
-      }),
-    );
+    respondWith({ comingSoon: { edges: [{ node: titleNode("tt7654321") }] } });
 
     const { metas } = await fetchChart("imdb:coming-soon-movies");
 
@@ -192,71 +135,43 @@ describe("fetchChart", () => {
     await expect(fetchChart("imdb:bogus")).rejects.toThrow(/Could not find/);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
-});
 
-// ---------------------------------------------------------------------------
-// normalizeImdbUserId — chart passthrough
-// ---------------------------------------------------------------------------
-
-describe("normalizeImdbUserId chart passthrough", () => {
-  beforeEach(() => {
-    vi.spyOn(globalThis, "fetch");
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("returns a chart id unchanged with no network call", async () => {
-    const result = await normalizeImdbUserId("imdb:top-rated-movies");
-    expect(result).toBe("imdb:top-rated-movies");
+  it("normalizeImdbUserId returns a chart id unchanged with no network call", async () => {
+    expect(await normalizeImdbUserId("imdb:top-rated-movies")).toBe(
+      "imdb:top-rated-movies",
+    );
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 });
 
-// ---------------------------------------------------------------------------
-// config body source-id rule (mirrors api.ts refine predicate)
-// ---------------------------------------------------------------------------
-
-describe("config source-id rule", () => {
-  const accepts = (v: string) =>
-    IMDB_WATCHLIST_SOURCE_ID_PATTERN.test(v) || isChartId(v);
-
-  it("accepts a chart id", () => {
-    expect(accepts("imdb:top-rated-movies")).toBe(true);
-  });
-
-  it("rejects an unknown imdb: id", () => {
-    expect(accepts("imdb:unknown")).toBe(false);
-  });
-
-  it("still accepts watchlist/list/handle ids", () => {
-    expect(accepts("ur12345678")).toBe(true);
-    expect(accepts("ls593621567")).toBe(true);
-    expect(accepts("p.colneedham")).toBe(true);
+describe("config source-id rule (mirrors the api.ts refine predicate)", () => {
+  it.each([
+    ["imdb:top-rated-movies", true],
+    ["imdb:unknown", false],
+    ["ur12345678", true],
+    ["ls593621567", true],
+    ["p.colneedham", true],
+  ])("treats %s as accepted: %s", (id, accepted) => {
+    expect(IMDB_WATCHLIST_SOURCE_ID_PATTERN.test(id) || isChartId(id)).toBe(
+      accepted,
+    );
   });
 });
 
-// ---------------------------------------------------------------------------
-// Integration tests — real network calls to IMDb GraphQL for every chart.
-//
-// These hit the live GraphQL API (no mocks) so a query that drifts out of sync
-// with IMDb's schema fails here instead of silently in prod — exactly the
-// box-office enum-vs-string bug a mocked-only suite cannot catch.
-// ---------------------------------------------------------------------------
-
+// Live IMDb GraphQL calls, so a query that drifts from IMDb's schema fails
+// here instead of silently in prod (a mocked suite missed the box-office
+// enum-vs-string bug).
 describe("integration: every built-in chart returns Stremio-shaped data", () => {
   it.each(CHART_REGISTRY.map((entry) => [entry.id, entry] as const))(
     "fetches %s",
     async (_id, entry) => {
       const { metas } = await fetchChart(entry.id);
 
-      // Editorial charts are always populated; an empty result means the query
-      // broke or the schema changed.
+      // Editorial charts are always populated.
       expect(metas.length).toBeGreaterThan(0);
 
-      // Every chart maps to exactly one Stremio type (movie | series) so its
-      // default display mode never produces an empty companion catalog.
+      // One Stremio type per chart, so its default display mode never
+      // produces an empty companion catalog.
       const expectedType =
         entry.defaultDisplayMode === "series" ? "series" : "movie";
 
@@ -273,11 +188,10 @@ describe("integration: every built-in chart returns Stremio-shaped data", () => 
   it("returns the full Top 250 in rank order (first item is rank #1)", async () => {
     const { metas } = await fetchChart("imdb:top-rated-movies");
     expect(metas.length).toBe(250);
-    // DEFAULT_SORT_OPTIONS (added_at-asc) preserves chart rank order.
     expect(metas[0].id).toBe("tt0111161"); // The Shawshank Redemption
   });
 
-  it("returns exactly the 10 weekend box-office releases", async () => {
+  it("returns at most the 10 weekend box-office releases", async () => {
     const { metas } = await fetchChart("imdb:box-office");
     expect(metas.length).toBeGreaterThan(0);
     expect(metas.length).toBeLessThanOrEqual(10);

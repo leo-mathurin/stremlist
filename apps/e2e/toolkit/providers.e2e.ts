@@ -1,8 +1,6 @@
-import { test } from "@e2e-dev/web";
-import type { Browser } from "@e2e-dev/web";
+import { test, type Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
 import { CONNECTION_SOURCES } from "@stremlist/shared/providers";
-import type { AccountConfigInput } from "@stremlist/shared/stremio.types";
 import {
   SAVED_REINSTALL,
   accountId,
@@ -13,7 +11,6 @@ import {
   connected,
   imdbUser,
   legacyConfiguration,
-  parseBody,
   providerStatus,
   resolved,
   routeCreateAccount,
@@ -35,7 +32,6 @@ import {
 // intercepted; the tests/provider-*.spec.ts files run the real backend.
 
 const PASTE = "Paste a link to a watchlist or list";
-const app4311 = "http://127.0.0.1:4311";
 const traktList = {
   ...row,
   id: "00000000-0000-4000-8000-000000000003",
@@ -46,22 +42,40 @@ const traktList = {
 } as const;
 
 /**
- * Serve an OAuth authorize page that sends the browser straight back to the
- * configure page, as the Provider does after the user agrees.
+ * Start the `provider` Connection on `authorizeUrl`, whose OAuth page sends
+ * the browser straight back to the configure page with `query`, as the
+ * Provider does after the user answers. Returns the start request methods
+ * and the authorize page URLs.
  */
-async function routeAuthorize(
+async function routeOAuth(
   browser: Browser,
-  pattern: string,
-  back: string,
-  seen: string[],
+  provider: string,
+  authorizeUrl: string,
+  query: string,
+  onStart = () => {},
 ) {
-  await browser.route(pattern, async (route) => {
-    seen.push(route.request.url);
-    await route.fulfill({
-      contentType: "text/html",
-      body: `<!doctype html><title>Authorize</title><script>location.replace(${JSON.stringify(back)})</script>`,
-    });
-  });
+  const starts: string[] = [];
+  const authorized: string[] = [];
+  await browser.route(
+    `${backend}/${accountId}/connections/${provider}/start`,
+    async (route) => {
+      starts.push(route.request.method);
+      onStart();
+      await route.fulfill({ json: { ok: true, authorizeUrl } });
+    },
+  );
+  const back = `http://127.0.0.1:4311/configure?account=${accountId}&${query}`;
+  await browser.route(
+    `${new URL(authorizeUrl).origin}/oauth/**`,
+    async (route) => {
+      authorized.push(route.request.url);
+      await route.fulfill({
+        contentType: "text/html",
+        body: `<!doctype html><title>Authorize</title><script>location.replace(${JSON.stringify(back)})</script>`,
+      });
+    },
+  );
+  return { starts, authorized };
 }
 
 test("pasted links of every available Provider become Lists of a new setup", async ({
@@ -102,9 +116,9 @@ test("pasted links of every available Provider become Lists of a new setup", asy
     }
   });
   const created = await routeCreateAccount(browser);
-  await browser.route(`${backend}/${accountId}/config`, async (route) => {
-    await route.fulfill({ json: toJson(configuration) });
-  });
+  await browser.route(`${backend}/${accountId}/config`, (route) =>
+    route.fulfill({ json: toJson(configuration) }),
+  );
   await app.open("/configure");
   const field = screen.getByLabel(PASTE);
   for (const [link, hint, row] of [
@@ -197,32 +211,12 @@ test("a link that needs a Connection saves the setup, connects, then adds the li
           })
         : { ok: false, reason: "needs_connection", provider: "mdblist" },
   );
-  const created: AccountConfigInput[] = [];
-  await browser.route(`${backend}/accounts`, async (route) => {
-    const body = parseBody<AccountConfigInput>(route);
-    created.push(body);
-    await route.fulfill({ json: { ok: true, accountId, lists: [] } });
-  });
-  const starts: string[] = [];
-  await browser.route(
-    `${backend}/${accountId}/connections/mdblist/start`,
-    async (route) => {
-      starts.push(route.request.method);
-      await route.fulfill({
-        json: {
-          ok: true,
-          authorizeUrl:
-            "https://mdblist.com/oauth/authorize?client_id=fixture&state=fixture-state",
-        },
-      });
-    },
-  );
-  const authorized: string[] = [];
-  await routeAuthorize(
+  const created = await routeCreateAccount(browser);
+  const { starts, authorized } = await routeOAuth(
     browser,
-    "https://mdblist.com/oauth/**",
-    `${app4311}/configure?account=${accountId}&connected=mdblist`,
-    authorized,
+    "mdblist",
+    "https://mdblist.com/oauth/authorize?client_id=fixture&state=fixture-state",
+    "connected=mdblist",
   );
   await routeConfig(browser, {
     ...configuration,
@@ -281,28 +275,15 @@ test(
     await holdToasts(browser);
     await baseRoutes(browser);
     const { state, submissions } = await routeConfig(browser);
-    const starts: string[] = [];
-    await browser.route(
-      `${backend}/${accountId}/connections/simkl/start`,
-      async (route) => {
-        starts.push(route.request.method);
+    const { starts, authorized } = await routeOAuth(
+      browser,
+      "simkl",
+      "https://simkl.com/oauth/authorize?client_id=fixture&state=fixture-state",
+      "connected=simkl",
+      () => {
         // The user agrees on Simkl: the page that opens next is connected.
         state.config = { ...configuration, connections: [connected("simkl")] };
-        await route.fulfill({
-          json: {
-            ok: true,
-            authorizeUrl:
-              "https://simkl.com/oauth/authorize?client_id=fixture&state=fixture-state",
-          },
-        });
       },
-    );
-    const authorized: string[] = [];
-    await routeAuthorize(
-      browser,
-      "https://simkl.com/oauth/**",
-      `${app4311}/configure?account=${accountId}&connected=simkl`,
-      authorized,
     );
     // Simkl has no public lists: its Source lists come from the Connection.
     await routeConnectionSources(browser, "simkl", CONNECTION_SOURCES.simkl);
@@ -391,25 +372,11 @@ test(
         await route.fulfill({ json: { ok: true } });
       },
     );
-    const starts: string[] = [];
-    await browser.route(
-      `${backend}/${accountId}/connections/trakt/start`,
-      async (route) => {
-        starts.push(route.request.method);
-        await route.fulfill({
-          json: {
-            ok: true,
-            authorizeUrl: "https://auth.trakt.tv/oauth/authorize?state=again",
-          },
-        });
-      },
-    );
-    const authorized: string[] = [];
-    await routeAuthorize(
+    const { starts, authorized } = await routeOAuth(
       browser,
-      "https://auth.trakt.tv/oauth/**",
-      `${app4311}/configure?account=${accountId}&connection_error=denied&provider=trakt`,
-      authorized,
+      "trakt",
+      "https://auth.trakt.tv/oauth/authorize?state=again",
+      "connection_error=denied&provider=trakt",
     );
     await app.open(`/configure?account=${accountId}`);
     await expect(screen.getByText("@someone")).toBeVisible();
@@ -502,11 +469,9 @@ test(
       upgrades.push(route.request.method);
       await route.fulfill({ json: { ok: true, accountId: newId } });
     });
-    await browser.route(`${backend}/${newId}/config`, async (route) => {
-      await route.fulfill({
-        json: toJson({ ...configuration, accountId: newId }),
-      });
-    });
+    await browser.route(`${backend}/${newId}/config`, (route) =>
+      route.fulfill({ json: toJson({ ...configuration, accountId: newId }) }),
+    );
     const starts: string[] = [];
     await browser.route(`${backend}/*/connections/**`, async (route) => {
       starts.push(route.request.url);
@@ -575,9 +540,9 @@ test("a Provider turned off is unavailable to connect, link or add", async ({
 }) => {
   // The kill switch (DISABLED_PROVIDERS) reports Trakt as off.
   await baseRoutes(browser, providerStatus({ trakt: { enabled: false } }));
-  await browser.route(`${backend}/${accountId}/config`, async (route) => {
-    await route.fulfill({ json: toJson(configuration) });
-  });
+  await browser.route(`${backend}/${accountId}/config`, (route) =>
+    route.fulfill({ json: toJson(configuration) }),
+  );
   const link = "https://trakt.tv/users/someone/lists/weekend";
   const inputs = await routeResolve(browser, (input) =>
     input === link

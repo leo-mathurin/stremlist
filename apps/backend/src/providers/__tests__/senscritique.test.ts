@@ -41,20 +41,12 @@ interface RecordedRequest {
 let requests: RecordedRequest[] = [];
 let handler: (request: RecordedRequest) => unknown;
 
-function jsonResponse(data: unknown, status = 200): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
 beforeEach(() => {
   requests = [];
   vi.stubGlobal(
     "fetch",
-    vi.fn((input: string | URL | Request, init?: RequestInit) => {
-      const url = input instanceof Request ? input.url : String(input);
-      const body = typeof init?.body === "string" ? init.body : "";
+    vi.fn((url: string, init: RequestInit) => {
+      const body = typeof init.body === "string" ? init.body : "";
       const request: RecordedRequest = {
         url,
         body,
@@ -65,7 +57,7 @@ beforeEach(() => {
       requests.push(request);
       const result = handler(request);
       return Promise.resolve(
-        result instanceof Response ? result : jsonResponse(result),
+        result instanceof Response ? result : Response.json(result),
       );
     }),
   );
@@ -112,7 +104,22 @@ function wishesPage(
   };
 }
 
-describe("SensCritique wishes", () => {
+function listPage(products: SensCritiqueProduct[], total: number) {
+  return {
+    data: {
+      userList: {
+        isPrivate: false,
+        productsList: { total, items: products.map((p) => ({ product: p })) },
+      },
+    },
+  };
+}
+
+function pageVariables({ json }: RecordedRequest) {
+  return json.variables as { universe: string; offset: number; limit: number };
+}
+
+describe("SensCritique fetchSource", () => {
   it("pages through films and series, oldest wish first", async () => {
     // The API answers newest first. Films: action IDs 1050 (newest) … 50.
     const films = Array.from({ length: 101 }, (_, index) =>
@@ -124,15 +131,10 @@ describe("SensCritique wishes", () => {
       product(2001, { universe: 4, otherUserInfos: { id: 1055 } }),
       product(2002, { universe: 4, otherUserInfos: { id: 45 } }),
     ];
-    handler = ({ json }) => {
-      const { universe, offset } = json.variables as {
-        universe: string;
-        offset: number;
-      };
-      if (universe === "movie") {
-        return wishesPage(films.slice(offset, offset + 100), films.length);
-      }
-      return wishesPage(series.slice(offset, offset + 100), series.length);
+    handler = (request) => {
+      const { universe, offset } = pageVariables(request);
+      const products = universe === "movie" ? films : series;
+      return wishesPage(products.slice(offset, offset + 100), products.length);
     };
 
     const { entries, complete } = await senscritiqueProvider.fetchSource(
@@ -142,11 +144,10 @@ describe("SensCritique wishes", () => {
 
     expect(complete).toBe(true);
     // Films and series are read at the same time.
-    const pages = requests.map(({ json }) => [
-      json.variables.universe,
-      json.variables.offset,
-      json.variables.limit,
-    ]);
+    const pages = requests.map((request) => {
+      const { universe, offset, limit } = pageVariables(request);
+      return [universe, offset, limit];
+    });
     expect(pages).toHaveLength(3);
     expect(pages).toEqual(
       expect.arrayContaining([
@@ -158,29 +159,25 @@ describe("SensCritique wishes", () => {
     expect(requests[0].json.query).toContain("action: WISH");
     expect(entries).toHaveLength(102);
     const ids = entries.map((entry) => entry.externalIds?.senscritique);
-    expect(ids[0]).toBe(2002);
-    expect(ids[1]).toBe(900);
-    expect(ids.at(-1)).toBe(2001);
-    expect(ids.at(-2)).toBe(1000);
+    expect([ids[0], ids[1], ids.at(-2), ids.at(-1)]).toEqual([
+      2002, 900, 1000, 2001,
+    ]);
     expect(ids).not.toContain(5);
     expect(entries[0].type).toBe("series");
     expect(entries[1].type).toBe("movie");
   });
 
-  it("reports an unknown user as not found", async () => {
-    handler = () => ({ data: { user: null } });
-    await expect(
-      senscritiqueProvider.fetchSource("users/nobody/wishes", ctx),
-    ).rejects.toMatchObject({ reason: "not_found" });
-  });
-
-  it("reports a private profile as private", async () => {
-    handler = () => wishesPage([], 0, true);
+  it.each([
+    ["users/nobody/wishes", { data: { user: null } }, "not_found"],
+    ["users/hidden/wishes", wishesPage([], 0, true), "private"],
+    ["lists/1", { data: { userList: null } }, "not_found"],
+  ])("reports %s as %s", async (ref, response, reason) => {
+    handler = () => response;
     const error = await senscritiqueProvider
-      .fetchSource("users/hidden/wishes", ctx)
+      .fetchSource(ref, ctx)
       .catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(SourceUnavailableError);
-    expect(error).toMatchObject({ reason: "private" });
+    expect(error).toMatchObject({ reason });
   });
 
   it("treats a Cloudflare block as unavailable, not as an expected state", async () => {
@@ -190,32 +187,16 @@ describe("SensCritique wishes", () => {
       .catch((caught: unknown) => caught);
     expect(error).not.toBeInstanceOf(SourceUnavailableError);
   });
-});
 
-describe("SensCritique lists", () => {
   it("pages through a list in its own order and keeps only films and series", async () => {
-    const items = Array.from({ length: 130 }, (_, index) => ({
-      product: product(index + 1, {
+    const products = Array.from({ length: 130 }, (_, index) =>
+      product(index + 1, {
         universe: index === 10 ? 3 : index % 2 === 0 ? 1 : 4,
       }),
-    }));
-    handler = ({ json }) => {
-      const { offset, limit } = json.variables as {
-        offset: number;
-        limit: number;
-      };
-      return {
-        data: {
-          userList: {
-            id: 369869,
-            isPrivate: false,
-            productsList: {
-              total: items.length,
-              items: items.slice(offset, offset + limit),
-            },
-          },
-        },
-      };
+    );
+    handler = (request) => {
+      const { offset, limit } = pageVariables(request);
+      return listPage(products.slice(offset, offset + limit), products.length);
     };
 
     const { entries } = await senscritiqueProvider.fetchSource(
@@ -223,33 +204,23 @@ describe("SensCritique lists", () => {
       ctx,
     );
 
-    expect(requests.map(({ json }) => json.variables.offset)).toEqual([0, 100]);
+    expect(requests.map((request) => pageVariables(request).offset)).toEqual([
+      0, 100,
+    ]);
     expect(requests[0].json.variables.id).toBe(369869);
-    expect(entries).toHaveLength(129);
-    expect(entries[0].externalIds?.senscritique).toBe(1);
-    expect(entries.at(-1)?.externalIds?.senscritique).toBe(130);
-    expect(
-      entries.map((entry) => entry.externalIds?.senscritique),
-    ).not.toContain(11);
+    const ids = entries.map((entry) => entry.externalIds?.senscritique);
+    expect(ids).toHaveLength(129);
+    expect([ids[0], ids.at(-1)]).toEqual([1, 130]);
+    expect(ids).not.toContain(11);
   });
 
   it("marks a list cut by the page cap as incomplete", async () => {
-    handler = ({ json }) => {
-      const { offset } = json.variables as { offset: number };
-      return {
-        data: {
-          userList: {
-            id: 1,
-            isPrivate: false,
-            productsList: {
-              total: 20_000,
-              items: Array.from({ length: 100 }, (_, index) => ({
-                product: product(offset + index + 1),
-              })),
-            },
-          },
-        },
-      };
+    handler = (request) => {
+      const { offset } = pageVariables(request);
+      return listPage(
+        Array.from({ length: 100 }, (_, index) => product(offset + index + 1)),
+        20_000,
+      );
     };
 
     const { entries, complete } = await senscritiqueProvider.fetchSource(
@@ -260,13 +231,6 @@ describe("SensCritique lists", () => {
     expect(requests).toHaveLength(100);
     expect(entries).toHaveLength(10_000);
     expect(complete).toBe(false);
-  });
-
-  it("reports an unknown list as not found", async () => {
-    handler = () => ({ data: { userList: null } });
-    await expect(
-      senscritiqueProvider.fetchSource("lists/1", ctx),
-    ).rejects.toMatchObject({ reason: "not_found" });
   });
 });
 
@@ -311,29 +275,16 @@ describe("SensCritique validateSource", () => {
     });
   });
 
-  it("rejects unknown users, private lists and book lists", async () => {
-    handler = () => ({ data: { user: null } });
+  it.each([
+    ["users/nobody/wishes", { user: null }, "not_found"],
+    ["lists/2", { userList: { isPrivate: true, universe: 1 } }, "private"],
+    ["lists/3", { userList: { isPrivate: false, universe: 2 } }, "not_found"],
+    ["nonsense", {}, "not_found"],
+  ])("rejects %s as %s", async (ref, data, reason) => {
+    handler = () => ({ data });
     await expect(
-      senscritiqueProvider.validateSource("users/nobody/wishes", ctx),
-    ).resolves.toMatchObject({ ok: false, reason: "not_found" });
-
-    handler = () => ({
-      data: { userList: { id: 2, label: "x", isPrivate: true, universe: 1 } },
-    });
-    await expect(
-      senscritiqueProvider.validateSource("lists/2", ctx),
-    ).resolves.toMatchObject({ ok: false, reason: "private" });
-
-    handler = () => ({
-      data: { userList: { id: 3, label: "x", isPrivate: false, universe: 2 } },
-    });
-    await expect(
-      senscritiqueProvider.validateSource("lists/3", ctx),
-    ).resolves.toMatchObject({ ok: false, reason: "not_found" });
-
-    await expect(
-      senscritiqueProvider.validateSource("nonsense", ctx),
-    ).resolves.toMatchObject({ ok: false, reason: "not_found" });
+      senscritiqueProvider.validateSource(ref, ctx),
+    ).resolves.toMatchObject({ ok: false, reason });
   });
 });
 
@@ -394,31 +345,22 @@ describe("productToEntry", () => {
     });
   });
 
-  it("uses the original release year, not the French one", () => {
-    expect(
-      productToEntry(
-        product(464483, {
-          title: "Hantise",
-          yearOfProduction: 1947,
-          dateReleaseOriginal: "1944-05-04",
-          dateRelease: "1944-05-04",
-        }),
-      )?.year,
-    ).toBe(1944);
-    expect(
-      productToEntry(
-        product(1, {
-          yearOfProduction: null,
-          dateReleaseOriginal: "1966-07-00",
-          dateRelease: null,
-        }),
-      )?.year,
-    ).toBe(1966);
-  });
+  it.each([
+    [1947, "1944-05-04", "1944-05-04", 1944],
+    [null, "1966-07-00", null, 1966],
+  ])(
+    "uses the original release year, not the French one (%s, %s, %s)",
+    (yearOfProduction, dateReleaseOriginal, dateRelease, year) => {
+      expect(
+        productToEntry(
+          product(1, { yearOfProduction, dateReleaseOriginal, dateRelease }),
+        )?.year,
+      ).toBe(year);
+    },
+  );
 
-  it("skips books, games and music", () => {
-    expect(productToEntry(product(1, { universe: 2 }))).toBeNull();
-    expect(productToEntry(product(1, { universe: 3 }))).toBeNull();
+  it.each([2, 3])("skips universe %i (books, games, music)", (universe) => {
+    expect(productToEntry(product(1, { universe }))).toBeNull();
   });
 
   it("gives the resolver a SensCritique key", () => {
@@ -505,14 +447,49 @@ describe("TMDB search match", () => {
     externalIds: { senscritique: 473747 },
   };
 
-  function tmdbHandler(movie: {
-    imdbId: string;
-    year: string;
-    runtime: number;
-    director: string;
-    title?: string;
-  }) {
-    return ({ url }: RecordedRequest) => {
+  beforeEach(() => {
+    vi.stubEnv("TMDB_READ_ACCESS_TOKEN", "test-token");
+    vi.stubEnv("TMDB_API_KEY", "");
+  });
+
+  it.each([
+    [
+      "accepts the candidate when the director agrees",
+      { year: "2014", runtime: 90, director: "Guillermo Del Toro" },
+      pacificRim.directors,
+      "tt1663662",
+    ],
+    [
+      "rejects the candidate when the director disagrees, even if the runtime agrees",
+      { imdbId: "tt9999999", runtime: 131, director: "Michael Bay" },
+      pacificRim.directors,
+      null,
+    ],
+    [
+      "accepts on runtime and exact title when the director is unknown",
+      { runtime: 125 },
+      [],
+      "tt1663662",
+    ],
+    [
+      "rejects on a runtime mismatch when the director is unknown",
+      { runtime: 95 },
+      [],
+      null,
+    ],
+  ])("%s", async (_, movie, directors, expected) => {
+    const {
+      imdbId = "tt1663662",
+      year = "2013",
+      runtime,
+      director = "Guillermo del Toro",
+    }: {
+      imdbId?: string;
+      year?: string;
+      runtime: number;
+      director?: string;
+    } = movie;
+    handler = ({ url }) => {
       const parsed = new URL(url);
       if (parsed.pathname === "/3/search/movie") {
         expect(parsed.searchParams.get("language")).toBe("fr-FR");
@@ -522,9 +499,9 @@ describe("TMDB search match", () => {
             { id: 1, title: "Pacific Rim", release_date: "1990-01-01" },
             {
               id: 68726,
-              title: movie.title ?? "Pacific Rim",
-              original_title: movie.title ?? "Pacific Rim",
-              release_date: `${movie.year}-07-11`,
+              title: "Pacific Rim",
+              original_title: "Pacific Rim",
+              release_date: `${year}-07-11`,
             },
           ],
         };
@@ -532,117 +509,54 @@ describe("TMDB search match", () => {
       if (parsed.pathname === "/3/movie/68726") {
         expect(parsed.searchParams.get("append_to_response")).toBe("credits");
         return {
-          imdb_id: movie.imdbId,
-          runtime: movie.runtime,
+          imdb_id: imdbId,
+          runtime,
           credits: {
             crew: [
               { name: "Someone Else", job: "Producer" },
-              { name: movie.director, job: "Director" },
+              { name: director, job: "Director" },
             ],
           },
         };
       }
       throw new Error(`Unexpected request ${url}`);
     };
-  }
-
-  beforeEach(() => {
-    vi.stubEnv("TMDB_READ_ACCESS_TOKEN", "test-token");
-    vi.stubEnv("TMDB_API_KEY", "");
-  });
-
-  it("accepts the candidate when the director agrees", async () => {
-    handler = tmdbHandler({
-      imdbId: "tt1663662",
-      year: "2014",
-      runtime: 90,
-      director: "Guillermo Del Toro",
-    });
-    await expect(matchOnTmdb(pacificRim)).resolves.toBe("tt1663662");
+    await expect(matchOnTmdb({ ...pacificRim, directors })).resolves.toBe(
+      expected,
+    );
     expect(requests.some(({ url }) => url.includes("/movie/1?"))).toBe(false);
   });
 
-  it("rejects the candidate when the director disagrees, even if the runtime agrees", async () => {
-    handler = tmdbHandler({
-      imdbId: "tt9999999",
-      year: "2013",
-      runtime: 131,
-      director: "Michael Bay",
-    });
-    await expect(matchOnTmdb(pacificRim)).resolves.toBeNull();
-  });
-
-  it("accepts on runtime and exact title when the director is unknown", async () => {
-    handler = tmdbHandler({
-      imdbId: "tt1663662",
-      year: "2013",
-      runtime: 125,
-      director: "Guillermo del Toro",
-    });
-    await expect(matchOnTmdb({ ...pacificRim, directors: [] })).resolves.toBe(
-      "tt1663662",
-    );
-  });
-
-  it("rejects on a runtime mismatch when the director is unknown", async () => {
-    handler = tmdbHandler({
-      imdbId: "tt1663662",
-      year: "2013",
-      runtime: 95,
-      director: "Guillermo del Toro",
-    });
-    await expect(
-      matchOnTmdb({ ...pacificRim, directors: [] }),
-    ).resolves.toBeNull();
-  });
-
-  it("rejects runtime-only matches whose title differs", () => {
+  it.each([
+    [
+      "rejects runtime-only matches whose title differs",
+      [],
+      { titles: ["Pacific Rim: Uprising"], people: [], runtimes: [131] },
+      false,
+    ],
+    [
+      "tolerates transliterated director names",
+      ["Andreï Tarkovski"],
+      { titles: [], people: ["Andrei Tarkovsky"], runtimes: [] },
+      true,
+    ],
+  ])("%s", (_, directors, candidate, expected) => {
     expect(
       candidateMatches(
-        { ...pacificRim, directors: [] },
-        {
-          titles: ["Pacific Rim: Uprising"],
-          people: [],
-          runtimes: [131],
-          yearGap: 0,
-        },
+        { ...pacificRim, directors },
+        { ...candidate, yearGap: 0 },
       ),
-    ).toBe(false);
+    ).toBe(expected);
   });
 
   it.each([
-    ["Lee Sang-Il", "Sang-il Lee"],
-    ["Pernilla August (Pernilla Östergren)", "Pernilla August"],
-    ["Guillermo del Toro", "Guillermo Del Toro"],
-  ])("treats %s and %s as the same person", (a, b) => {
-    expect(samePerson(a, b)).toBe(true);
-  });
-
-  it.each([
-    ["Joel Coen", "Ethan Coen"],
-    ["Tony Scott", "Ridley Scott"],
-  ])("tells %s and %s apart", (a, b) => {
-    expect(samePerson(a, b)).toBe(false);
-  });
-
-  it("tolerates transliterated director names", () => {
-    expect(
-      candidateMatches(
-        { ...pacificRim, directors: ["Andreï Tarkovski"] },
-        {
-          titles: [],
-          people: ["Andrei Tarkovsky"],
-          runtimes: [],
-          yearGap: 0,
-        },
-      ),
-    ).toBe(true);
-  });
-});
-
-describe("TMDB search match: years", () => {
-  beforeEach(() => {
-    vi.stubEnv("TMDB_READ_ACCESS_TOKEN", "test-token");
+    ["Lee Sang-Il", "Sang-il Lee", true],
+    ["Pernilla August (Pernilla Östergren)", "Pernilla August", true],
+    ["Guillermo del Toro", "Guillermo Del Toro", true],
+    ["Joel Coen", "Ethan Coen", false],
+    ["Tony Scott", "Ridley Scott", false],
+  ])("samePerson(%s, %s) is %s", (a, b, same) => {
+    expect(samePerson(a, b)).toBe(same);
   });
 
   it("prefers the closest year among candidates by the same director", async () => {
@@ -680,13 +594,12 @@ describe("TMDB search match: years", () => {
     handler = ({ url }) => {
       const parsed = new URL(url);
       if (parsed.pathname === "/3/search/movie") {
-        return parsed.searchParams.get("year") === "1948"
-          ? {
-              results: [{ id: 7, title: "Escape", release_date: "1948-03-01" }],
-            }
-          : {
-              results: [{ id: 8, title: "Escape", release_date: "2012-01-01" }],
-            };
+        const year = parsed.searchParams.get("year") === "1948" ? 1948 : 2012;
+        return {
+          results: [
+            { id: year, title: "Escape", release_date: `${year}-03-01` },
+          ],
+        };
       }
       return {
         imdb_id: "tt0040330",
@@ -741,37 +654,28 @@ describe("TMDB search match: years", () => {
 });
 
 describe("parseSourceLink for SensCritique", () => {
+  const wishes = {
+    sourceRef: "users/Sergent_Pepper/wishes",
+    kind: "watchlist",
+    suggestedTitle: "Sergent_Pepper's wishlist",
+  };
+
   it.each([
-    [
-      "https://www.senscritique.com/Sergent_Pepper",
-      "users/Sergent_Pepper/wishes",
-    ],
+    ["https://www.senscritique.com/Sergent_Pepper", wishes],
     [
       "https://www.senscritique.com/Sergent_Pepper/collection?action=WISH&universe=1",
-      "users/Sergent_Pepper/wishes",
+      wishes,
     ],
-    ["senscritique.com/Sergent_Pepper/listes", "users/Sergent_Pepper/wishes"],
+    ["senscritique.com/Sergent_Pepper/listes", wishes],
     [
       "https://www.senscritique.com/liste/les_arcanes_du_blockbuster/369869",
-      "lists/369869",
+      { sourceRef: "lists/369869", kind: "list" },
     ],
-  ])("parses %s", (link, ref) => {
+  ])("parses %s", (link, expected) => {
     expect(parseSourceLink(link)).toMatchObject({
       provider: "senscritique",
-      sourceRef: ref,
+      ...expected,
     });
-  });
-
-  it("marks wishes as a watchlist with a title", () => {
-    expect(
-      parseSourceLink("https://www.senscritique.com/Sergent_Pepper"),
-    ).toMatchObject({
-      kind: "watchlist",
-      suggestedTitle: "Sergent_Pepper's wishlist",
-    });
-    expect(
-      parseSourceLink("https://www.senscritique.com/liste/x/369869"),
-    ).toMatchObject({ kind: "list" });
   });
 
   it.each([

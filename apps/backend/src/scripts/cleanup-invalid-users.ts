@@ -125,9 +125,7 @@ async function validateUserId(
   }
 
   const timeoutPromise = new Promise<never>((_, reject) =>
-    setTimeout(() => {
-      reject(new Error("timeout"));
-    }, timeoutMs),
+    setTimeout(reject, timeoutMs, new Error("timeout")),
   );
 
   try {

@@ -10,6 +10,7 @@ import {
   SAVED_WITH_CHANGES,
   SAVE_NEW,
   accountId,
+  ago,
   backend,
   baseRoutes,
   captureConfig,
@@ -20,6 +21,7 @@ import {
   holdToasts,
   imdbUser,
   legacyConfiguration,
+  MINUTE,
   parseBody,
   providerStatus,
   routeCreateAccount,
@@ -35,14 +37,16 @@ import {
 // backend; tests/new-titles.spec.ts covers it against real storage.
 
 const TOGGLE = "Show newly detected titles";
-const NEEDS_REINSTALL = "These changes need a reinstall.";
 const MOVED_HINT =
   "This install has a private URL now. Make changes from the configure page of your new install.";
+const NONE_YET_ONE_WAITING =
+  "No new titles detected yet. Stremlist could not read 1 List in full yet, so it cannot compare it.";
+const ONE_WAITING = { detected: 0, latestDetectedAt: null, waitingLists: 1 };
 
 function withNewTitles(
-  newTitles: AccountConfigResponse["newTitles"],
+  summary: AccountConfigResponse["newTitles"]["summary"],
 ): AccountConfigResponse {
-  return { ...configuration, newTitles };
+  return { ...configuration, newTitles: { enabled: true, summary } };
 }
 
 test(
@@ -79,14 +83,9 @@ test("the summary says what was detected and which Lists still wait", async ({
   await captureConfig(
     browser,
     withNewTitles({
-      enabled: true,
-      summary: {
-        detected: 3,
-        latestDetectedAt: new Date(
-          Date.now() - 2 * 24 * 60 * 60_000,
-        ).toISOString(),
-        waitingLists: 1,
-      },
+      detected: 3,
+      latestDetectedAt: ago(2 * 24 * 60 * MINUTE),
+      waitingLists: 1,
     }),
   );
   await app.open(`/configure?account=${accountId}`);
@@ -108,10 +107,7 @@ test("an unreadable history hides the summary, and an unchanged save needs no re
   screen,
   browser,
 }) => {
-  const submissions = await captureConfig(
-    browser,
-    withNewTitles({ enabled: true, summary: null }),
-  );
+  const submissions = await captureConfig(browser, withNewTitles(null));
   await app.open(`/configure?account=${accountId}`);
   await expect(screen.getByRole("checkbox", TOGGLE)).toBeChecked();
   await expect(screen.getByText(/new titles? detected/)).toHaveCount(0);
@@ -129,14 +125,7 @@ test("a new setup sends the setting with its first save", async ({
   await baseRoutes(browser);
   const created = await routeCreateAccount(browser);
   await browser.route(`${backend}/${accountId}/config`, async (route) => {
-    await route.fulfill({
-      json: toJson(
-        withNewTitles({
-          enabled: true,
-          summary: { detected: 0, latestDetectedAt: null, waitingLists: 1 },
-        }),
-      ),
-    });
+    await route.fulfill({ json: toJson(withNewTitles(ONE_WAITING)) });
   });
 
   await app.open("/configure");
@@ -148,11 +137,7 @@ test("a new setup sends the setting with its first save", async ({
   await saveButton(screen, SAVE_NEW).tap();
 
   await expect(browser).toHaveURL(`/configure?account=${accountId}`);
-  await expect(
-    screen.getByText(
-      "No new titles detected yet. Stremlist could not read 1 List in full yet, so it cannot compare it.",
-    ),
-  ).toBeVisible();
+  await expect(screen.getByText(NONE_YET_ONE_WAITING)).toBeVisible();
   expect(created).toHaveLength(1);
   expect(created[0].newTitles).toEqual({ enabled: true });
   expect(created[0].lists).toMatchObject([
@@ -203,52 +188,37 @@ test("a refresh updates the summary, and a throttled refresh keeps it", async ({
   screen,
   browser,
 }) => {
-  await captureConfig(
-    browser,
-    withNewTitles({
-      enabled: true,
-      summary: { detected: 0, latestDetectedAt: null, waitingLists: 1 },
-    }),
-  );
+  await captureConfig(browser, withNewTitles(ONE_WAITING));
   let attempts = 0;
   await browser.route(`${backend}/${accountId}/refresh`, async (route) => {
     attempts += 1;
     const now = Date.now();
+    const answer = {
+      ok: true,
+      failed: 0,
+      lastFetchedAt: new Date(now).toISOString(),
+      cooldownSeconds: 2,
+    };
     await route.fulfill({
       json:
         attempts === 1
           ? {
-              ok: true,
+              ...answer,
               refreshed: 1,
-              failed: 0,
               total: 1,
               lists: toJson(configuration.lists),
-              lastFetchedAt: new Date(now).toISOString(),
-              cooldownSeconds: 2,
               newTitles: {
                 detected: 1,
                 latestDetectedAt: new Date(now - 3 * 60 * 60_000).toISOString(),
                 waitingLists: 0,
               },
             }
-          : {
-              ok: true,
-              throttled: true,
-              refreshed: 0,
-              failed: 0,
-              total: 0,
-              lastFetchedAt: new Date(now).toISOString(),
-              cooldownSeconds: 2,
-            },
+          : { ...answer, throttled: true, refreshed: 0, total: 0 },
     });
   });
 
   await app.open(`/configure?account=${accountId}`);
-  await expect(
-    screen.getByText(
-      "No new titles detected yet. Stremlist could not read 1 List in full yet, so it cannot compare it.",
-    ),
-  ).toBeVisible();
+  await expect(screen.getByText(NONE_YET_ONE_WAITING)).toBeVisible();
   await screen.getByRole("button", "Refresh now").tap();
   const updated = screen.getByText(
     "1 new title detected, the latest 3 hours ago.",
@@ -275,7 +245,7 @@ test("a save and a disconnect show the summary of what is left", async ({
       mdblist: { connectable: false },
     }),
   );
-  const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60_000).toISOString();
+  const twoDaysAgo = ago(2 * 24 * 60 * MINUTE);
   const historyList = {
     ...row,
     id: "00000000-0000-4000-8000-000000000004",
@@ -284,12 +254,12 @@ test("a save and a disconnect show the summary of what is left", async ({
     catalogTitle: "Trakt history",
     position: 1,
   } as const;
-  let current = withNewTitles({
-    enabled: true,
-    summary: { detected: 2, latestDetectedAt: twoDaysAgo, waitingLists: 0 },
-  });
-  current = {
-    ...current,
+  let current: AccountConfigResponse = {
+    ...withNewTitles({
+      detected: 2,
+      latestDetectedAt: twoDaysAgo,
+      waitingLists: 0,
+    }),
     lists: [row, historyList],
     syncStatus: {
       ...configuration.syncStatus,
@@ -341,10 +311,7 @@ test("a save and a disconnect show the summary of what is left", async ({
       current = {
         ...current,
         connections: [],
-        newTitles: {
-          enabled: true,
-          summary: { detected: 0, latestDetectedAt: null, waitingLists: 1 },
-        },
+        newTitles: { enabled: true, summary: ONE_WAITING },
       };
       await route.fulfill({ json: { ok: true } });
     },
@@ -368,11 +335,7 @@ test("a save and a disconnect show the summary of what is left", async ({
     .getByRole("group", "Disconnect Trakt?")
     .getByRole("button", "Disconnect")
     .tap();
-  await expect(
-    screen.getByText(
-      "No new titles detected yet. Stremlist could not read 1 List in full yet, so it cannot compare it.",
-    ),
-  ).toBeVisible();
+  await expect(screen.getByText(NONE_YET_ONE_WAITING)).toBeVisible();
   expect(deletes).toEqual(["DELETE"]);
 });
 
@@ -383,18 +346,19 @@ test("the reinstall notice follows the New titles setting before a save", async 
 }) => {
   await captureConfig(browser);
   await app.open(`/configure?account=${accountId}`);
+  const notice = screen.getByText("These changes need a reinstall.", {
+    exact: true,
+  });
   await expect(screen.getByRole("checkbox", TOGGLE)).not.toBeChecked();
-  await expect(screen.getByText(NEEDS_REINSTALL, { exact: true })).toBeHidden();
+  await expect(notice).toBeHidden();
 
   // Two more Catalogs in the manifest, which Stremio reads at install time.
   await screen.getByRole("checkbox", TOGGLE).tap();
-  await expect(
-    screen.getByText(NEEDS_REINSTALL, { exact: true }),
-  ).toBeVisible();
+  await expect(notice).toBeVisible();
 
   // Back to what Stremio has: nothing to reinstall.
   await screen.getByRole("checkbox", TOGGLE).tap();
-  await expect(screen.getByText(NEEDS_REINSTALL, { exact: true })).toBeHidden();
+  await expect(notice).toBeHidden();
   await saveButton(screen).tap();
   await expect(screen.getByText(SAVED)).toBeVisible();
   await expect(screen.getByRole("button", "I did it")).toHaveCount(0);

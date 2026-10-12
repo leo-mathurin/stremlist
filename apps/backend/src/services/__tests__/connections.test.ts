@@ -1,3 +1,4 @@
+import type { ProviderId } from "@stremlist/shared/providers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const oauthMocks = vi.hoisted(() => ({
@@ -36,13 +37,75 @@ import {
   listConnections,
   saveConnection,
 } from "../connections";
+import type { OAuthTokens } from "../oauth";
 
 const MINUTE = 60_000;
+const inAnHour = () => new Date(Date.now() + 60 * MINUTE);
+const ago = () => new Date(Date.now() - MINUTE);
+const callbackUrl = (provider: ProviderId) =>
+  `https://api.stremlist.test/oauth/${provider}/callback`;
 
 function connectionRow() {
   const row = db.getTable("connections").at(0);
   if (!row) throw new Error("no connection row");
   return row;
+}
+
+function storedToken(column: "access_token" | "refresh_token") {
+  return decryptSecret(connectionRow()[column] as string);
+}
+
+function tokens(
+  accessToken: string,
+  overrides: Partial<OAuthTokens> = {},
+): OAuthTokens {
+  return {
+    accessToken,
+    refreshToken: null,
+    expiresAt: inAnHour(),
+    scope: null,
+    ...overrides,
+  };
+}
+
+function save(
+  accessToken: string,
+  overrides: Partial<OAuthTokens> = {},
+  username: string | null = "leo",
+  provider: ProviderId = "trakt",
+) {
+  return saveConnection(
+    accountId,
+    provider,
+    tokens(accessToken, overrides),
+    username,
+    callbackUrl(provider),
+  );
+}
+
+async function accessToken(provider: ProviderId = "trakt") {
+  return (await getConnectionAccess(accountId, provider))?.getAccessToken();
+}
+
+/** Another instance holds the refresh lease. */
+function leaseTaken(onClaim: () => void = () => undefined) {
+  rpcHandlers.set("claim_connection_refresh", () => {
+    onClaim();
+    return { data: false, error: null };
+  });
+}
+
+function useRevokingTrakt(revoke: (token: string) => Promise<void>) {
+  useFakeProvider(
+    fakeAdapter("trakt", {
+      oauth: {
+        authorizeUrl: "https://trakt.example/authorize",
+        tokenUrl: "https://trakt.example/token",
+        clientId: () => "id",
+        revoke,
+      },
+    }),
+  );
 }
 
 let accountId = "";
@@ -64,65 +127,32 @@ afterEach(() => {
 
 describe("saveConnection", () => {
   it("stores tokens encrypted, never in plaintext", async () => {
-    const expiresAt = new Date(Date.now() + 60 * MINUTE);
+    const expiresAt = inAnHour();
 
-    await saveConnection(
-      accountId,
-      "trakt",
-      {
-        accessToken: "plain-access",
-        refreshToken: "plain-refresh",
-        expiresAt,
-        scope: "public",
-      },
-      "leo",
-      "https://api.stremlist.test/oauth/trakt/callback",
-    );
+    await save("plain-access", {
+      refreshToken: "plain-refresh",
+      expiresAt,
+      scope: "public",
+    });
 
-    const row = connectionRow();
     expect(JSON.stringify(db.tables)).not.toContain("plain-access");
     expect(JSON.stringify(db.tables)).not.toContain("plain-refresh");
-    expect(row).toMatchObject({
+    expect(connectionRow()).toMatchObject({
       account_id: accountId,
       provider: "trakt",
       provider_username: "leo",
       expires_at: expiresAt.toISOString(),
       scope: "public",
-      redirect_uri: "https://api.stremlist.test/oauth/trakt/callback",
+      redirect_uri: callbackUrl("trakt"),
     });
-    expect(decryptSecret(row.access_token as string)).toBe("plain-access");
-    expect(decryptSecret(row.refresh_token as string)).toBe("plain-refresh");
+    expect(storedToken("access_token")).toBe("plain-access");
+    expect(storedToken("refresh_token")).toBe("plain-refresh");
   });
 
   it("replaces the Connection of the same Provider (one per Provider)", async () => {
-    const tokens = (accessToken: string) => ({
-      accessToken,
-      refreshToken: null,
-      expiresAt: null,
-      scope: null,
-    });
-
-    await saveConnection(
-      accountId,
-      "trakt",
-      tokens("first"),
-      "leo",
-      "https://api.stremlist.test/oauth/trakt/callback",
-    );
-    await saveConnection(
-      accountId,
-      "trakt",
-      tokens("second"),
-      "leo2",
-      "https://api.stremlist.test/oauth/trakt/callback",
-    );
-    await saveConnection(
-      accountId,
-      "simkl",
-      tokens("other"),
-      null,
-      "https://api.stremlist.test/oauth/simkl/callback",
-    );
+    await save("first", { expiresAt: null });
+    await save("second", { expiresAt: null }, "leo2");
+    await save("other", { expiresAt: null }, null, "simkl");
 
     expect(db.getTable("connections")).toHaveLength(2);
     const access = await getConnectionAccess(accountId, "trakt");
@@ -135,9 +165,7 @@ describe("listConnections and deleteConnection", () => {
   it("lists Connections without any token", async () => {
     seedConnection(accountId, "trakt", { username: "leo" });
 
-    const list = await listConnections(accountId);
-
-    expect(list).toEqual([
+    expect(await listConnections(accountId)).toEqual([
       {
         provider: "trakt",
         username: "leo",
@@ -149,16 +177,7 @@ describe("listConnections and deleteConnection", () => {
 
   it("revokes the token (best effort) and deletes the Connection with what it read", async () => {
     const revoke = vi.fn(() => Promise.reject(new Error("revoke failed")));
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        oauth: {
-          authorizeUrl: "https://trakt.example/authorize",
-          tokenUrl: "https://trakt.example/token",
-          clientId: () => "id",
-          revoke,
-        },
-      }),
-    );
+    useRevokingTrakt(revoke);
     seedConnection(accountId, "trakt", { accessToken: "to-revoke" });
     const list = seedList(accountId, {
       provider: "trakt",
@@ -167,8 +186,7 @@ describe("listConnections and deleteConnection", () => {
         { provider: "trakt", source_ref: "users/leo/watchlist" },
       ],
     });
-    const other = seedAccount();
-    const otherList = seedList(other.id, {
+    const otherList = seedList(seedAccount().id, {
       provider: "trakt",
       source_ref: "me/watchlist",
     });
@@ -201,21 +219,10 @@ describe("listConnections and deleteConnection", () => {
       [otherList.id, "me/watchlist"],
     ]);
   });
-});
 
-describe("deleteConnection of a turned-off Provider", () => {
-  it("deletes the Connection without calling the Provider", async () => {
+  it("deletes the Connection of a turned-off Provider without calling it", async () => {
     const revoke = vi.fn(() => Promise.resolve());
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        oauth: {
-          authorizeUrl: "https://trakt.example/authorize",
-          tokenUrl: "https://trakt.example/token",
-          clientId: () => "id",
-          revoke,
-        },
-      }),
-    );
+    useRevokingTrakt(revoke);
     seedConnection(accountId, "trakt");
     process.env.DISABLED_PROVIDERS = "trakt";
 
@@ -240,27 +247,14 @@ describe("getConnectionAccess", () => {
     await expect(getConnectionAccess(accountId, "trakt")).resolves.toBeNull();
   });
 
-  it("uses a fresh token without refreshing", async () => {
-    seedConnection(accountId, "trakt", {
-      accessToken: "fresh",
-      expiresAt: new Date(Date.now() + 60 * MINUTE),
-    });
+  it.each([
+    ["a fresh token", inAnHour()],
+    ["a token without an expiry", null],
+  ])("uses %s without refreshing", async (_, expiresAt) => {
+    seedConnection(accountId, "trakt", { accessToken: "fresh", expiresAt });
 
-    const access = await getConnectionAccess(accountId, "trakt");
-
-    await expect(access?.getAccessToken()).resolves.toBe("fresh");
+    await expect(accessToken()).resolves.toBe("fresh");
     expect(oauthMocks.refreshTokens).not.toHaveBeenCalled();
-  });
-
-  it("treats a token without an expiry as fresh", async () => {
-    seedConnection(accountId, "trakt", {
-      accessToken: "forever",
-      expiresAt: null,
-    });
-
-    const access = await getConnectionAccess(accountId, "trakt");
-
-    await expect(access?.getAccessToken()).resolves.toBe("forever");
   });
 
   it("refreshes a dying token under the lease and saves the new one", async () => {
@@ -270,26 +264,22 @@ describe("getConnectionAccess", () => {
       expiresAt: new Date(Date.now() + 5 * MINUTE),
     });
     const newExpiry = new Date(Date.now() + 24 * 60 * MINUTE);
-    oauthMocks.refreshTokens.mockResolvedValue({
-      accessToken: "new",
-      refreshToken: "new-refresh",
-      expiresAt: newExpiry,
-      scope: null,
-    });
+    oauthMocks.refreshTokens.mockResolvedValue(
+      tokens("new", { refreshToken: "new-refresh", expiresAt: newExpiry }),
+    );
 
     const access = await getConnectionAccess(accountId, "trakt");
-    const token = await access?.getAccessToken();
 
-    expect(token).toBe("new");
+    expect(await access?.getAccessToken()).toBe("new");
     // The same redirect URI as the authorization, whatever the origin now.
     expect(oauthMocks.refreshTokens).toHaveBeenCalledExactlyOnceWith(
       "trakt",
       "old-refresh",
-      "https://api.stremlist.test/oauth/trakt/callback",
+      callbackUrl("trakt"),
     );
+    expect(storedToken("access_token")).toBe("new");
+    expect(storedToken("refresh_token")).toBe("new-refresh");
     const row = connectionRow();
-    expect(decryptSecret(row.access_token as string)).toBe("new");
-    expect(decryptSecret(row.refresh_token as string)).toBe("new-refresh");
     expect(row.expires_at).toBe(newExpiry.toISOString());
     // The lease is released for the next refresh.
     expect(row.refresh_lease_token).toBeNull();
@@ -303,57 +293,34 @@ describe("getConnectionAccess", () => {
     seedConnection(accountId, "trakt", {
       accessToken: "old",
       refreshToken: "old-refresh",
-      expiresAt: new Date(Date.now() - MINUTE),
+      expiresAt: ago(),
     });
     oauthMocks.refreshTokens.mockImplementation(async () => {
       // The user connects again (maybe as another Trakt user) meanwhile.
-      await saveConnection(
-        accountId,
-        "trakt",
-        {
-          accessToken: "reconnected",
-          refreshToken: "reconnected-refresh",
-          expiresAt: new Date(Date.now() + 60 * MINUTE),
-          scope: null,
-        },
+      await save(
+        "reconnected",
+        { refreshToken: "reconnected-refresh" },
         "other",
-        "https://api.stremlist.test/oauth/trakt/callback",
       );
-      return {
-        accessToken: "refreshed-old",
-        refreshToken: "refreshed-old-refresh",
-        expiresAt: new Date(Date.now() + 60 * MINUTE),
-        scope: null,
-      };
+      return tokens("refreshed-old", { refreshToken: "refreshed-old-refresh" });
     });
 
-    const access = await getConnectionAccess(accountId, "trakt");
-
-    await expect(access?.getAccessToken()).resolves.toBe("reconnected");
-    const row = connectionRow();
-    expect(decryptSecret(row.access_token as string)).toBe("reconnected");
-    expect(decryptSecret(row.refresh_token as string)).toBe(
-      "reconnected-refresh",
-    );
-    expect(row.provider_username).toBe("other");
+    await expect(accessToken()).resolves.toBe("reconnected");
+    expect(storedToken("access_token")).toBe("reconnected");
+    expect(storedToken("refresh_token")).toBe("reconnected-refresh");
+    expect(connectionRow().provider_username).toBe("other");
   });
 
   it("keeps the old refresh token when the Provider does not rotate it", async () => {
     seedConnection(accountId, "simkl", {
       refreshToken: "kept",
-      expiresAt: new Date(Date.now() - MINUTE),
+      expiresAt: ago(),
     });
-    oauthMocks.refreshTokens.mockResolvedValue({
-      accessToken: "new",
-      refreshToken: null,
-      expiresAt: new Date(Date.now() + 60 * MINUTE),
-      scope: null,
-    });
+    oauthMocks.refreshTokens.mockResolvedValue(tokens("new"));
 
-    const access = await getConnectionAccess(accountId, "simkl");
-    await access?.getAccessToken();
+    await accessToken("simkl");
 
-    expect(decryptSecret(connectionRow().refresh_token as string)).toBe("kept");
+    expect(storedToken("refresh_token")).toBe("kept");
   });
 
   it("refreshes only once when two requests need a new token at the same time", async () => {
@@ -361,20 +328,8 @@ describe("getConnectionAccess", () => {
       accessToken: "old",
       expiresAt: new Date(Date.now() + MINUTE),
     });
-    const pending: (() => void)[] = [];
-    oauthMocks.refreshTokens.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          pending.push(() => {
-            resolve({
-              accessToken: "new",
-              refreshToken: "rotated",
-              expiresAt: new Date(Date.now() + 60 * MINUTE),
-              scope: null,
-            });
-          });
-        }),
-    );
+    const refreshed = Promise.withResolvers<OAuthTokens>();
+    oauthMocks.refreshTokens.mockReturnValue(refreshed.promise);
 
     const first = await getConnectionAccess(accountId, "trakt");
     const second = await getConnectionAccess(accountId, "trakt");
@@ -385,9 +340,7 @@ describe("getConnectionAccess", () => {
     const secondToken = second?.getAccessToken();
     // The second request sees the lease taken and waits for the new token.
     await new Promise((resolve) => setTimeout(resolve, 50));
-    pending.forEach((finish) => {
-      finish();
-    });
+    refreshed.resolve(tokens("new", { refreshToken: "rotated" }));
 
     await expect(firstToken).resolves.toBe("new");
     await expect(secondToken).resolves.toBe("new");
@@ -399,18 +352,13 @@ describe("getConnectionAccess", () => {
       accessToken: "old",
       expiresAt: new Date(Date.now() + MINUTE),
     });
-    // Another instance holds the lease and saves its new token meanwhile.
-    rpcHandlers.set("claim_connection_refresh", () => {
+    // The other instance saves its new token meanwhile.
+    leaseTaken(() => {
       connectionRow().access_token = encryptSecret("from-other-instance");
-      connectionRow().expires_at = new Date(
-        Date.now() + 60 * MINUTE,
-      ).toISOString();
-      return { data: false, error: null };
+      connectionRow().expires_at = inAnHour().toISOString();
     });
 
-    const access = await getConnectionAccess(accountId, "trakt");
-
-    await expect(access?.getAccessToken()).resolves.toBe("from-other-instance");
+    await expect(accessToken()).resolves.toBe("from-other-instance");
     expect(oauthMocks.refreshTokens).not.toHaveBeenCalled();
   });
 
@@ -420,13 +368,9 @@ describe("getConnectionAccess", () => {
       accessToken: "still-valid",
       expiresAt: new Date(Date.now() + 5 * MINUTE),
     });
-    rpcHandlers.set("claim_connection_refresh", () => ({
-      data: false,
-      error: null,
-    }));
+    leaseTaken();
 
-    const access = await getConnectionAccess(accountId, "trakt");
-    const token = access?.getAccessToken();
+    const token = accessToken();
     await vi.advanceTimersByTimeAsync(10_000);
 
     await expect(token).resolves.toBe("still-valid");
@@ -434,96 +378,50 @@ describe("getConnectionAccess", () => {
 
   it("gives up with ConnectionExpiredError when the token expired and nobody refreshed it", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "Date"] });
-    seedConnection(accountId, "trakt", {
-      expiresAt: new Date(Date.now() - MINUTE),
-    });
-    rpcHandlers.set("claim_connection_refresh", () => ({
-      data: false,
-      error: null,
-    }));
+    seedConnection(accountId, "trakt", { expiresAt: ago() });
+    leaseTaken();
 
-    const access = await getConnectionAccess(accountId, "trakt");
-    const token = access?.getAccessToken();
-    const settled = expect(token).rejects.toBeInstanceOf(
+    const settled = expect(accessToken()).rejects.toBeInstanceOf(
       ConnectionExpiredError,
     );
     await vi.advanceTimersByTimeAsync(10_000);
     await settled;
   });
 
-  it("throws ConnectionExpiredError for an expired token without a refresh token", async () => {
-    seedConnection(accountId, "trakt", {
-      refreshToken: null,
-      expiresAt: new Date(Date.now() - MINUTE),
-    });
+  it.each([
+    ["for an expired token without a refresh token", null],
+    ["when the Provider refuses the refresh", "refresh-token"],
+  ])(
+    "throws ConnectionExpiredError %s and marks the Connection for renewal",
+    async (_, refreshToken) => {
+      seedConnection(accountId, "trakt", { refreshToken, expiresAt: ago() });
+      oauthMocks.refreshTokens.mockRejectedValue(new Error("invalid_grant"));
 
-    const access = await getConnectionAccess(accountId, "trakt");
-
-    await expect(access?.getAccessToken()).rejects.toBeInstanceOf(
-      ConnectionExpiredError,
-    );
-    expect(oauthMocks.refreshTokens).not.toHaveBeenCalled();
-    // The lease is released even when the refresh fails.
-    expect(connectionRow().refresh_lease_token).toBeNull();
-  });
-
-  it("throws ConnectionExpiredError when the Provider refuses the refresh", async () => {
-    seedConnection(accountId, "trakt", {
-      expiresAt: new Date(Date.now() - MINUTE),
-    });
-    oauthMocks.refreshTokens.mockRejectedValue(new Error("invalid_grant"));
-
-    const access = await getConnectionAccess(accountId, "trakt");
-
-    await expect(access?.getAccessToken()).rejects.toBeInstanceOf(
-      ConnectionExpiredError,
-    );
-    expect(connectionRow().refresh_lease_token).toBeNull();
-  });
+      await expect(accessToken()).rejects.toBeInstanceOf(
+        ConnectionExpiredError,
+      );
+      expect(oauthMocks.refreshTokens).toHaveBeenCalledTimes(
+        refreshToken ? 1 : 0,
+      );
+      // The lease is released even when the refresh fails.
+      expect(connectionRow().refresh_lease_token).toBeNull();
+      // Any caller (a public read, an Action) sees it, not only List reads.
+      expect((await listConnections(accountId))[0].needsRenewalSince).toEqual(
+        expect.any(String),
+      );
+    },
+  );
 });
 
 describe("Connections that need renewal", () => {
-  it("marks the Connection when the Provider refuses the token refresh", async () => {
-    seedConnection(accountId, "trakt", {
-      expiresAt: new Date(Date.now() - MINUTE),
-    });
-    oauthMocks.refreshTokens.mockRejectedValue(new Error("invalid_grant"));
-    const access = await getConnectionAccess(accountId, "trakt");
-
-    await access?.getAccessToken().catch(() => undefined);
-
-    // Any caller (a public read, an Action) sees it, not only List reads.
-    expect((await listConnections(accountId))[0].needsRenewalSince).toEqual(
-      expect.any(String),
-    );
-  });
-
-  it("marks the Connection when it expired without a refresh token", async () => {
-    seedConnection(accountId, "trakt", {
-      refreshToken: null,
-      expiresAt: new Date(Date.now() - MINUTE),
-    });
-    const access = await getConnectionAccess(accountId, "trakt");
-
-    await access?.getAccessToken().catch(() => undefined);
-
-    expect(connectionRow().needs_renewal_since).not.toBeNull();
-  });
-
   it("clears the mark when a token refresh works", async () => {
-    seedConnection(accountId, "trakt", {
-      expiresAt: new Date(Date.now() - MINUTE),
-    });
+    seedConnection(accountId, "trakt", { expiresAt: ago() });
     connectionRow().needs_renewal_since = new Date().toISOString();
-    oauthMocks.refreshTokens.mockResolvedValue({
-      accessToken: "new",
-      refreshToken: "new-refresh",
-      expiresAt: new Date(Date.now() + 60 * MINUTE),
-      scope: null,
-    });
-    const access = await getConnectionAccess(accountId, "trakt");
+    oauthMocks.refreshTokens.mockResolvedValue(
+      tokens("new", { refreshToken: "new-refresh" }),
+    );
 
-    await expect(access?.getAccessToken()).resolves.toBe("new");
+    await expect(accessToken()).resolves.toBe("new");
     expect(connectionRow().needs_renewal_since).toBeNull();
   });
 
@@ -531,13 +429,7 @@ describe("Connections that need renewal", () => {
     seedConnection(accountId, "trakt", { accessToken: "old" });
     const oldAccess = await getConnectionAccess(accountId, "trakt");
 
-    await saveConnection(
-      accountId,
-      "trakt",
-      { accessToken: "new", refreshToken: null, expiresAt: null, scope: null },
-      "leo",
-      "https://api.stremlist.test/oauth/trakt/callback",
-    );
+    await save("new", { expiresAt: null });
     await oldAccess?.reportRefused();
 
     expect(connectionRow().needs_renewal_since).toBeNull();

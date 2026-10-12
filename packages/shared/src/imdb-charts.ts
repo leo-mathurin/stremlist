@@ -115,13 +115,9 @@ export const CHART_BY_ID: ReadonlyMap<string, ChartEntry> = new Map(
   CHART_REGISTRY.map((entry) => [entry.id, entry]),
 );
 
-export const CHART_ID_SET: ReadonlySet<string> = new Set(
-  CHART_REGISTRY.map((entry) => entry.id),
-);
-
 /** True only for ids that have a fetcher in the registry (closed set). */
 export function isChartId(id: string): boolean {
-  return CHART_ID_SET.has(id);
+  return CHART_BY_ID.has(id);
 }
 
 /** The IMDb chart that a Source list is, if it is one. */

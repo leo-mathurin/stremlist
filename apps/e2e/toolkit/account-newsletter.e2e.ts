@@ -8,6 +8,7 @@ import {
   fitConfigurePage,
   holdToasts,
   openFilters,
+  routeConfig,
   row,
   secondAccountId,
 } from "./config-fixture";
@@ -18,31 +19,27 @@ test(
   async ({ app, agent, browser, screen }) => {
     await fitConfigurePage(browser);
     await baseRoutes(browser);
-    await browser.route(`${backend}/${accountId}/config`, async (route) => {
-      await route.fulfill({ json: configuration });
-    });
-    await browser.route(
-      `${backend}/${secondAccountId}/config`,
-      async (route) => {
-        await route.fulfill({
-          json: {
-            ...configuration,
-            accountId: secondAccountId,
-            lists: [
-              {
-                ...row,
-                sourceRef: "ur99887766",
-                catalogTitle: "Second account",
-                catalogSettings: { genre: "Comedy" },
-              },
-            ],
+    await routeConfig(browser);
+    await routeConfig(
+      browser,
+      {
+        ...configuration,
+        accountId: secondAccountId,
+        lists: [
+          {
+            ...row,
+            sourceRef: "ur99887766",
+            catalogTitle: "Second account",
+            catalogSettings: { genre: "Comedy" },
           },
-        });
+        ],
       },
+      secondAccountId,
     );
     await app.open(`/configure?account=${accountId}`);
     await screen.getByRole("button", "Settings for Test catalog").tap();
-    await screen.getByLabel("Catalog title").fill("Discarded draft");
+    const title = screen.getByLabel("Catalog title");
+    await title.fill("Discarded draft");
     await screen.getByRole("link", "Stremlist home").tap();
     await expect(browser).toHaveURL("/");
     await agent.act(
@@ -55,9 +52,7 @@ test(
     await expect(browser).toHaveURL(`/configure?account=${secondAccountId}`);
     await expect(screen.getByText("Second account")).toBeVisible();
     await openFilters(screen, browser, "Second account");
-    await expect(screen.getByLabel("Catalog title")).toHaveValue(
-      "Second account",
-    );
+    await expect(title).toHaveValue("Second account");
     await expect(
       screen.getByRole("combobox", "Genre", { exact: true }),
     ).toHaveText("Comedy");
@@ -89,14 +84,13 @@ test(
       });
     });
     await app.open("/");
-    await screen.getByPlaceholder("your@email.com").fill("retry@example.test");
+    const email = screen.getByPlaceholder("your@email.com");
+    await email.fill("retry@example.test");
     await screen.getByRole("button", "Subscribe", { exact: true }).tap();
     await expect(
       screen.getByText("Newsletter temporarily unavailable"),
     ).toBeVisible();
-    await expect(screen.getByPlaceholder("your@email.com")).toHaveValue(
-      "retry@example.test",
-    );
+    await expect(email).toHaveValue("retry@example.test");
     await agent.act(
       "Retry the newsletter subscription using the email already in the form.",
       { maxModelCalls: 4 },
@@ -105,7 +99,7 @@ test(
     await expect(
       screen.getByText("Newsletter temporarily unavailable"),
     ).not.toBeVisible();
-    await expect(screen.getByPlaceholder("your@email.com")).toHaveValue("");
+    await expect(email).toHaveValue("");
     expect(attempts).toBe(2);
   },
 );
@@ -129,16 +123,15 @@ test("newsletter pending request blocks duplicate submissions", async ({
   });
   await app.open("/");
   await screen.getByPlaceholder("your@email.com").fill("pending@example.test");
+  const subscribe = screen.getByRole("button", "Subscribe", { exact: true });
   try {
-    await screen.getByRole("button", "Subscribe", { exact: true }).tap();
+    await subscribe.tap();
     await expect(screen.getByRole("button", "Subscribing...")).toBeDisabled();
     expect(attempts).toBe(1);
   } finally {
     release();
   }
   await expect(screen.getByText("Fixture subscription saved")).toBeVisible();
-  await expect(
-    screen.getByRole("button", "Subscribe", { exact: true }),
-  ).toBeEnabled();
+  await expect(subscribe).toBeEnabled();
   expect(attempts).toBe(1);
 });

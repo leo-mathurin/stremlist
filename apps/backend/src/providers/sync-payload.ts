@@ -1,10 +1,7 @@
 import type { ActionTarget } from "./types";
 
-/**
- * The Trakt-style /sync body that Trakt, Simkl and MDBList share for
- * Actions: Titles keyed by IMDb ID, in a "movies" or "shows" bucket.
- */
-type SyncBucket = "movies" | "shows";
+// The Trakt-style /sync body that Trakt, Simkl and MDBList share for
+// Actions: Titles keyed by IMDb ID, in a "movies" or "shows" bucket.
 
 /** The IDs object that names a Title. */
 export function syncIds(target: ActionTarget): { imdb: string } {
@@ -12,7 +9,7 @@ export function syncIds(target: ActionTarget): { imdb: string } {
 }
 
 /** Where a Title goes in a /sync body (anime and series go under "shows"). */
-export function bucketOf(target: ActionTarget): SyncBucket {
+export function bucketOf(target: ActionTarget): "movies" | "shows" {
   return target.type === "movie" ? "movies" : "shows";
 }
 
@@ -20,10 +17,7 @@ export function bucketOf(target: ActionTarget): SyncBucket {
 export function episodeItem(
   target: ActionTarget,
   episode: { season: number; episode: number },
-): {
-  ids: { imdb: string };
-  seasons: { number: number; episodes: { number: number }[] }[];
-} {
+) {
   return {
     ids: syncIds(target),
     seasons: [

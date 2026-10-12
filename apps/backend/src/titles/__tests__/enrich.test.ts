@@ -31,6 +31,10 @@ function meta(id: string, overrides: Partial<StremioMeta> = {}): StremioMeta {
   };
 }
 
+function fresh(m: StremioMeta): StremioMeta & { enrichedAt: string } {
+  return { ...m, enrichedAt: new Date().toISOString() };
+}
+
 const fetchMock = vi.fn<typeof fetch>();
 
 function cinemetaUrl(type: string, id: string): string {
@@ -88,7 +92,7 @@ describe("enrichTitles", () => {
         },
       ],
       [legacy, meta(legacy)],
-      [recent, { ...meta(recent), enrichedAt: new Date().toISOString() }],
+      [recent, fresh(meta(recent))],
     ]);
     scraperMocks.fetchTitlesByIds.mockImplementation((ids) =>
       Promise.resolve(
@@ -110,15 +114,7 @@ describe("enrichTitles", () => {
 
   it("reuses metadata from the previous cache generation without any lookup", async () => {
     const id = freshId();
-    const previous = new Map([
-      [
-        id,
-        {
-          ...meta(id, { name: "Cached" }),
-          enrichedAt: new Date().toISOString(),
-        },
-      ],
-    ]);
+    const previous = new Map([[id, fresh(meta(id, { name: "Cached" }))]]);
 
     const result = await enrichTitles([{ imdbId: id }], previous);
 
@@ -135,15 +131,7 @@ describe("enrichTitles", () => {
 
     const result = await enrichTitles(
       [{ imdbId: a }, { imdbId: known }, { imdbId: b }, { imdbId: a }],
-      new Map([
-        [
-          known,
-          {
-            ...meta(known, { name: "Known" }),
-            enrichedAt: new Date().toISOString(),
-          },
-        ],
-      ]),
+      new Map([[known, fresh(meta(known, { name: "Known" }))]]),
     );
 
     expect(scraperMocks.fetchTitlesByIds).toHaveBeenCalledExactlyOnceWith([

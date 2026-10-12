@@ -1,9 +1,11 @@
 /**
- * Mocks for the configuration API tests. The test files hand them to
- * `vi.mock` factories, so this module must not import the app.
+ * Mocks for the configuration API tests. The test files load them with
+ * `await vi.hoisted(() => import(…))` for their `vi.mock` factories, so this
+ * module must not import the app.
  */
 import type { Mock } from "vitest";
 import { vi } from "vitest";
+import { supabase } from "./mock-supabase.js";
 
 interface RpcResult {
   data: unknown;
@@ -16,6 +18,8 @@ export const rpcMocks = {
     (name: string, args: Record<string, unknown>) => Promise<RpcResult>
   >(),
 };
+
+export const supabaseMocks = { supabase: { ...supabase, rpc: rpcMocks.rpc } };
 
 export const backgroundMocks: { scheduleBackgroundTask: Mock } = {
   scheduleBackgroundTask: vi.fn(),

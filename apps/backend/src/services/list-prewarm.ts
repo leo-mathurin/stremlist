@@ -7,11 +7,9 @@ import { getAccountLists } from "./accounts";
 import { getListCatalog } from "./lists";
 
 const PREWARM_CONCURRENCY = 2;
+const leaseSeconds = Number(process.env.PREWARM_LEASE_SECONDS);
 const PREWARM_LEASE_SECONDS =
-  Number.isFinite(Number(process.env.PREWARM_LEASE_SECONDS)) &&
-  Number(process.env.PREWARM_LEASE_SECONDS) > 0
-    ? Number(process.env.PREWARM_LEASE_SECONDS)
-    : 600;
+  Number.isFinite(leaseSeconds) && leaseSeconds > 0 ? leaseSeconds : 600;
 
 async function requestPrewarm(
   accountId: string,
@@ -99,7 +97,6 @@ export async function prewarmLists(
       generation,
     );
     if (nextGeneration === null) return;
-
     generation = nextGeneration;
     lists = await getAccountLists(accountId);
   }

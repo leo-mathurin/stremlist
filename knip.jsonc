@@ -1,0 +1,23 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+  "workspaces": {
+    "apps/backend": {
+      // Bun and k6 load these scripts in child processes.
+      "entry": ["stress/server.ts", "stress/k6/{actions,board}.js"],
+      // Supabase and k6 are system tools, not npm dependencies.
+      "ignoreBinaries": ["supabase"],
+      "ignoreDependencies": ["k6"],
+    },
+    "apps/e2e": {
+      // The e2e CLI discovers toolkit tests; fixture backends load preloads by path.
+      "entry": [
+        "e2e.config.ts",
+        "toolkit/**/*.e2e.ts",
+        "helpers/provider-fixtures.ts",
+        "helpers/provider-transport.ts",
+      ],
+      // Keeps the frontend build in Turbo's dependency graph for browser tests.
+      "ignoreDependencies": ["@stremlist/frontend"],
+    },
+  },
+}

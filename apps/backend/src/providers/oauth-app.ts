@@ -8,14 +8,11 @@ function envValue(name: string): string | undefined {
   return value;
 }
 
-export interface OAuthClient {
-  /** Undefined when the Provider app is not configured. */
-  clientId: () => string | undefined;
-  clientSecret: () => string | undefined;
-}
-
-/** A Provider app's credentials, read from `{PREFIX}_CLIENT_ID` and `{PREFIX}_CLIENT_SECRET`. */
-export function oauthClient(prefix: string): OAuthClient {
+/**
+ * A Provider app's credentials, read from `{PREFIX}_CLIENT_ID` and
+ * `{PREFIX}_CLIENT_SECRET`; undefined when the app is not configured.
+ */
+export function oauthClient(prefix: string) {
   return {
     clientId: () => envValue(`${prefix}_CLIENT_ID`),
     clientSecret: () => envValue(`${prefix}_CLIENT_SECRET`),
@@ -29,7 +26,7 @@ export function oauthClient(prefix: string): OAuthClient {
 export async function revokeToken(
   url: string,
   token: string,
-  client: OAuthClient,
+  client: ReturnType<typeof oauthClient>,
   limiter?: RateLimiter,
 ): Promise<void> {
   const body = new URLSearchParams({

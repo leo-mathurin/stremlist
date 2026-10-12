@@ -52,10 +52,6 @@ const limitersFor = limitersPerUser(
   MAX_TRACKED_USERS,
 );
 
-// ---------------------------------------------------------------------------
-// Response shapes (only the fields Stremlist reads)
-// ---------------------------------------------------------------------------
-
 interface MdblistIds {
   mdblist?: string | null;
   imdb?: string | null;
@@ -75,22 +71,14 @@ interface MdblistItem {
   watchlist_at?: string | null;
 }
 
+/** A list's info, or one of the user's lists. */
 interface MdblistListInfo {
   id?: number;
   name?: string;
-  slug?: string;
   mediatype?: string | null;
-  private?: boolean;
-  user_name?: string;
 }
 
 type ListInfoResponse = MdblistListInfo | MdblistListInfo[] | null;
-
-interface MdblistUserListSummary {
-  id?: number;
-  name?: string;
-  mediatype?: string | null;
-}
 
 interface SyncMedia {
   ids?: MdblistIds | null;
@@ -109,10 +97,6 @@ interface SyncPage {
   episodes?: { episode?: SyncEpisode | null }[];
   pagination?: { has_more?: boolean; next_cursor?: string | null };
 }
-
-// ---------------------------------------------------------------------------
-// HTTP
-// ---------------------------------------------------------------------------
 
 /**
  * Turn an MDBList error response into the reason a Source list cannot be
@@ -231,10 +215,6 @@ async function readAllSync(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Source refs
-// ---------------------------------------------------------------------------
-
 /**
  * Source list refs:
  * - `lists/{id}`: any list the user can see, by numeric ID (stored form).
@@ -305,10 +285,6 @@ function isSameUser(a: string | null | undefined, b: string): boolean {
   return !!a && a.toLowerCase() === b.toLowerCase();
 }
 
-// ---------------------------------------------------------------------------
-// Entries
-// ---------------------------------------------------------------------------
-
 function imdbIdOf(
   ids: MdblistIds | null | undefined,
   fallback?: string | null,
@@ -358,10 +334,6 @@ function watchlistOrder(items: MdblistItem[]): MdblistItem[] {
   }
   return oldestFirst;
 }
-
-// ---------------------------------------------------------------------------
-// Actions
-// ---------------------------------------------------------------------------
 
 function watchedPayload(target: ActionTarget): Record<string, unknown[]> {
   if (target.type === "series" && target.episode) {
@@ -430,13 +402,12 @@ async function getMembership(
   });
 
   const watchedIds = new Set<string>();
-  for (const row of watched.movies ?? []) {
-    const id = imdbIdOf(row.movie?.ids);
-    if (id) watchedIds.add(id);
-  }
   // MDBList lists a show here as soon as one episode is watched.
-  for (const row of watched.shows ?? []) {
-    const id = imdbIdOf(row.show?.ids);
+  for (const ids of [
+    ...(watched.movies ?? []).map((row) => row.movie?.ids),
+    ...(watched.shows ?? []).map((row) => row.show?.ids),
+  ]) {
+    const id = imdbIdOf(ids);
     if (id) watchedIds.add(id);
   }
   const watchedEpisodes: string[] = [];
@@ -454,14 +425,12 @@ async function getMembership(
   }
 
   const ratings: Record<string, number> = {};
-  for (const row of rated.movies ?? []) {
-    const id = imdbIdOf(row.movie?.ids);
-    const rating = validRating(row.rating);
-    if (id && rating !== null) ratings[id] = rating;
-  }
-  for (const row of rated.shows ?? []) {
-    const id = imdbIdOf(row.show?.ids);
-    const rating = validRating(row.rating);
+  for (const [ids, value] of [
+    ...(rated.movies ?? []).map((row) => [row.movie?.ids, row.rating] as const),
+    ...(rated.shows ?? []).map((row) => [row.show?.ids, row.rating] as const),
+  ]) {
+    const id = imdbIdOf(ids);
+    const rating = validRating(value);
     if (id && rating !== null) ratings[id] = rating;
   }
 
@@ -472,10 +441,6 @@ async function getMembership(
     ratings,
   };
 }
-
-// ---------------------------------------------------------------------------
-// OAuth
-// ---------------------------------------------------------------------------
 
 const client = oauthClient("MDBLIST");
 
@@ -489,10 +454,6 @@ async function fetchUsername(token: string): Promise<string | null> {
   if (!user.username) return null;
   return user.username;
 }
-
-// ---------------------------------------------------------------------------
-// Adapter
-// ---------------------------------------------------------------------------
 
 async function validateSource(
   ref: string,
@@ -600,8 +561,8 @@ async function fetchSource(
   };
 }
 
-function asSummaries(data: unknown): MdblistUserListSummary[] {
-  return Array.isArray(data) ? (data as MdblistUserListSummary[]) : [];
+function asSummaries(data: unknown): MdblistListInfo[] {
+  return Array.isArray(data) ? (data as MdblistListInfo[]) : [];
 }
 
 /**
@@ -617,7 +578,7 @@ export async function listMdblistUserSources(
   ]);
   const toSource = (
     prefix: string,
-    list: MdblistUserListSummary,
+    list: MdblistListInfo,
   ): ConnectionSource[] =>
     typeof list.id === "number"
       ? [

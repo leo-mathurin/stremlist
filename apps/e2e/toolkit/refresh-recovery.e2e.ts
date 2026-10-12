@@ -40,7 +40,8 @@ for (const failure of ["http", "network"] as const) {
     });
     await app.open(`/configure?account=${accountId}`);
     await screen.getByRole("button", "Settings for Test catalog").tap();
-    await screen.getByLabel("Catalog title").fill("Still editing");
+    const title = screen.getByLabel("Catalog title");
+    await title.fill("Still editing");
     await screen.getByRole("button", "Refresh now").tap();
     const error = screen.getByText(
       failure === "network" ? "Failed to fetch" : "Refresh service unavailable",
@@ -50,9 +51,7 @@ for (const failure of ["http", "network"] as const) {
     await expect(screen.getByRole("button", "Refresh now")).toBeEnabled();
     await screen.getByRole("button", "Refresh now").tap();
     await expect(screen.getByRole("button", /Refresh in \d+s/)).toBeDisabled();
-    await expect(screen.getByLabel("Catalog title")).toHaveValue(
-      "Still editing",
-    );
+    await expect(title).toHaveValue("Still editing");
     await saveButton(screen).tap();
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     expect(submissions[0].lists[0].catalogTitle).toBe("Still editing");

@@ -77,11 +77,7 @@ async function serveCatalog(c: Context) {
     if (!accountKey || !requestedType || !catalogId) {
       console.warn(
         `Missing route params`,
-        JSON.stringify({
-          accountKey,
-          requestedType,
-          catalogId,
-        }),
+        JSON.stringify({ accountKey, requestedType, catalogId }),
       );
       return c.json({ metas: [] });
     }

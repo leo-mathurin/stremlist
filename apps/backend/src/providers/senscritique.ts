@@ -169,6 +169,13 @@ async function senscritiqueQuery<T>(
   return json.data;
 }
 
+function universeType(
+  universe: number | null | undefined,
+): "movie" | "series" | null {
+  if (universe === UNIVERSE_MOVIE) return "movie";
+  return universe === UNIVERSE_SERIES ? "series" : null;
+}
+
 function yearFromDate(date: string | null | undefined): number | undefined {
   const year = Number(date?.slice(0, 4));
   return Number.isInteger(year) && year > 0 ? year : undefined;
@@ -211,12 +218,7 @@ function justwatchPath(product: SensCritiqueProduct): string | undefined {
 export function productToEntry(
   product: SensCritiqueProduct,
 ): SourceEntry | null {
-  const type =
-    product.universe === UNIVERSE_MOVIE
-      ? "movie"
-      : product.universe === UNIVERSE_SERIES
-        ? "series"
-        : null;
+  const type = universeType(product.universe);
   if (!type || !product.id) return null;
   const directors = names(product.directors);
   return {
@@ -400,12 +402,9 @@ export const senscritiqueProvider: ProviderAdapter = {
       );
       if (!userList) return { ok: false, reason: "not_found" };
       if (userList.isPrivate) return { ok: false, reason: "private" };
-      if (
-        typeof userList.universe === "number" &&
-        userList.universe !== UNIVERSE_MOVIE &&
-        userList.universe !== UNIVERSE_SERIES
-      ) {
-        // The list has no movies or series.
+      const type = universeType(userList.universe);
+      // A list of another universe has no movies or series.
+      if (typeof userList.universe === "number" && !type) {
         return { ok: false, reason: "not_found" };
       }
       const label = userList.label?.trim();
@@ -413,12 +412,7 @@ export const senscritiqueProvider: ProviderAdapter = {
         ok: true,
         ref: `lists/${userList.id}`,
         suggestedTitle: label === "" ? undefined : label,
-        defaultDisplayMode:
-          userList.universe === UNIVERSE_MOVIE
-            ? "movie"
-            : userList.universe === UNIVERSE_SERIES
-              ? "series"
-              : "split",
+        defaultDisplayMode: type ?? "split",
       };
     }
 

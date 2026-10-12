@@ -49,6 +49,14 @@ import {
 const FIELD_FOCUS = "focus-visible:ring-brand/50 focus-visible:border-brand";
 const SELECT_FOCUS = "focus:ring-brand/50 focus:border-brand";
 
+/** A panel under the row that opens to its own height. */
+function revealClass(open: boolean) {
+  return cn(
+    "grid transition-[grid-template-rows] ease-out-quint motion-reduce:transition-none",
+    open ? "grid-rows-[1fr] duration-250" : "grid-rows-[0fr] duration-200",
+  );
+}
+
 /** One List of the configure page: summary row, then its settings. */
 export default function SortableListRow({
   list,
@@ -220,44 +228,40 @@ export default function SortableListRow({
               ))}
             </SelectContent>
           </Select>
-          <Tooltip delayDuration={400}>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-expanded={previewOpen}
-                aria-controls={previewId}
-                aria-label={`Preview ${title}`}
-                onClick={() => setPreviewOpen((current) => !current)}
-                className={cn(
-                  "flex size-8 shrink-0 items-center justify-center rounded-full transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.96]",
-                  previewOpen
-                    ? "bg-ink text-cloud"
-                    : "bg-black/5 hover:bg-black/10",
-                )}
-              >
-                <Eye className="size-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent sideOffset={6}>Preview</TooltipContent>
-          </Tooltip>
-          <Tooltip delayDuration={400}>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                aria-expanded={open}
-                aria-controls={panelId}
-                aria-label={`Settings for ${title}`}
-                onClick={() => setOpen((current) => !current)}
-                className={cn(
-                  "flex size-8 shrink-0 items-center justify-center rounded-full transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.96]",
-                  open ? "bg-ink text-cloud" : "bg-black/5 hover:bg-black/10",
-                )}
-              >
-                <Settings2 className="size-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent sideOffset={6}>Settings</TooltipContent>
-          </Tooltip>
+          {(
+            [
+              [
+                previewOpen,
+                setPreviewOpen,
+                previewId,
+                "Preview",
+                "Preview",
+                Eye,
+              ],
+              [open, setOpen, panelId, "Settings", "Settings for", Settings2],
+            ] as const
+          ).map(([expanded, setExpanded, controls, tooltip, action, Icon]) => (
+            <Tooltip key={tooltip} delayDuration={400}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  aria-controls={controls}
+                  aria-label={`${action} ${title}`}
+                  onClick={() => setExpanded((current) => !current)}
+                  className={cn(
+                    "flex size-8 shrink-0 items-center justify-center rounded-full transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.96]",
+                    expanded
+                      ? "bg-ink text-cloud"
+                      : "bg-black/5 hover:bg-black/10",
+                  )}
+                >
+                  <Icon className="size-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent sideOffset={6}>{tooltip}</TooltipContent>
+            </Tooltip>
+          ))}
           <button
             type="button"
             aria-label={`Remove ${title}`}
@@ -288,16 +292,7 @@ export default function SortableListRow({
         </>
       )}
 
-      <div
-        id={panelId}
-        inert={!open}
-        className={cn(
-          "grid transition-[grid-template-rows] ease-out-quint motion-reduce:transition-none",
-          open
-            ? "grid-rows-[1fr] duration-250"
-            : "grid-rows-[0fr] duration-200",
-        )}
-      >
+      <div id={panelId} inert={!open} className={revealClass(open)}>
         <div className="-mx-1 min-h-0 overflow-hidden px-1">
           <div className="border-t border-black/5 px-4 pt-4 pb-4 sm:px-5">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -429,12 +424,7 @@ export default function SortableListRow({
       <div
         id={previewId}
         inert={!previewOpen}
-        className={cn(
-          "grid transition-[grid-template-rows] ease-out-quint motion-reduce:transition-none",
-          previewOpen
-            ? "grid-rows-[1fr] duration-250"
-            : "grid-rows-[0fr] duration-200",
-        )}
+        className={revealClass(previewOpen)}
       >
         <div className="min-h-0 overflow-hidden">
           <CatalogPreview

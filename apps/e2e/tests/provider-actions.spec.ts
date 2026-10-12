@@ -108,14 +108,12 @@ test(
       backend
         .requests((url) => url.pathname === path)
         .map((entry) => entry.body);
+    const expectHeading = (name: string) =>
+      expect(page.getByRole("heading", { name })).toBeVisible();
 
     // Watched, for one episode, then undone from the updated entry.
     await page.goto(action("watched/add/series/tt0903747%3A1%3A2"));
-    await expect(
-      page.getByRole("heading", {
-        name: "✓ Breaking Bad S01E02 is marked as watched on Trakt",
-      }),
-    ).toBeVisible();
+    await expectHeading("✓ Breaking Bad S01E02 is marked as watched on Trakt");
     const episode = {
       shows: [
         {
@@ -134,21 +132,17 @@ test(
       externalUrl: action("watched/remove/series/tt0903747%3A1%3A2"),
     });
     await page.goto(watched!.externalUrl!);
-    await expect(
-      page.getByRole("heading", {
-        name: "✓ Breaking Bad S01E02 is marked as unwatched on Trakt",
-      }),
-    ).toBeVisible();
+    await expectHeading(
+      "✓ Breaking Bad S01E02 is marked as unwatched on Trakt",
+    );
     expect(writes("/sync/history/remove")).toEqual([episode]);
 
     // Watchlist: add, then remove from the entry that says it is there.
     const movie = { movies: [{ ids: { imdb: "tt0111161" } }] };
     await page.goto(action("watchlist/add/movie/tt0111161"));
-    await expect(
-      page.getByRole("heading", {
-        name: "✓ The Shawshank Redemption is in your watchlist on Trakt",
-      }),
-    ).toBeVisible();
+    await expectHeading(
+      "✓ The Shawshank Redemption is in your watchlist on Trakt",
+    );
     const inWatchlist = (await entries("movie", "tt0111161"))[0];
     expect(inWatchlist).toEqual({
       name: "Stremlist",
@@ -156,11 +150,9 @@ test(
       externalUrl: action("watchlist/remove/movie/tt0111161"),
     });
     await page.goto(inWatchlist.externalUrl!);
-    await expect(
-      page.getByRole("heading", {
-        name: "✓ The Shawshank Redemption is out of your watchlist on Trakt",
-      }),
-    ).toBeVisible();
+    await expectHeading(
+      "✓ The Shawshank Redemption is out of your watchlist on Trakt",
+    );
     expect(writes("/sync/watchlist/remove")).toEqual([movie]);
 
     // Rating: a form with 1 to 10, then the saved rating can be removed.
@@ -171,9 +163,7 @@ test(
       externalUrl: action("rating/rate/movie/tt0111161"),
     });
     await page.goto(rate!.externalUrl!);
-    await expect(
-      page.getByRole("heading", { name: "Rate The Shawshank Redemption" }),
-    ).toBeVisible();
+    await expectHeading("Rate The Shawshank Redemption");
     await expect(page.getByRole("radio")).toHaveCount(10);
     await expect(page.getByRole("checkbox", { name: "Trakt" })).toBeChecked();
     await expect(page.getByText("Not rated")).toBeVisible();
@@ -182,11 +172,7 @@ test(
     ).toHaveCount(0);
     await page.getByText("8", { exact: true }).click();
     await page.getByRole("button", { name: "Save rating" }).click();
-    await expect(
-      page.getByRole("heading", {
-        name: "✓ The Shawshank Redemption is rated 8/10 on Trakt",
-      }),
-    ).toBeVisible();
+    await expectHeading("✓ The Shawshank Redemption is rated 8/10 on Trakt");
     expect(writes("/sync/ratings")).toEqual([
       { movies: [{ ids: { imdb: "tt0111161" }, rating: 8 }] },
     ]);
@@ -197,11 +183,9 @@ test(
     await expect(page.getByText("Now 8/10")).toBeVisible();
     await expect(page.getByRole("radio", { name: "8" })).toBeChecked();
     await page.getByRole("button", { name: "Remove rating" }).click();
-    await expect(
-      page.getByRole("heading", {
-        name: "✓ The Shawshank Redemption has no rating on Trakt now",
-      }),
-    ).toBeVisible();
+    await expectHeading(
+      "✓ The Shawshank Redemption has no rating on Trakt now",
+    );
     expect(writes("/sync/ratings/remove")).toEqual([movie]);
 
     // A link with an unknown intent, or for another Account, changes nothing.
@@ -215,9 +199,7 @@ test(
     ]) {
       const response = await page.goto(`${backend.url}${path}`);
       expect(response?.status()).toBe(404);
-      await expect(
-        page.getByRole("heading", { name: "This link does not work" }),
-      ).toBeVisible();
+      await expectHeading("This link does not work");
     }
     expect(syncWrites()).toBe(before);
   },
@@ -241,6 +223,8 @@ test(
         .requests((url) => url.host === host && url.pathname === path)
         .filter((entry) => entry.method === "POST")
         .map((entry) => entry.body);
+    const expectHeading = (name: string) =>
+      expect(page.getByRole("heading", { name })).toBeVisible();
     const movie = { ids: { imdb: "tt0111161" } };
 
     // The first entries read the library of each Provider in the background:
@@ -258,11 +242,9 @@ test(
 
     // Watched: one page writes both Providers.
     await page.goto(action("watched/add/movie/tt0111161"));
-    await expect(
-      page.getByRole("heading", {
-        name: "✓ The Shawshank Redemption is marked as watched on Simkl and MDBList",
-      }),
-    ).toBeVisible();
+    await expectHeading(
+      "✓ The Shawshank Redemption is marked as watched on Simkl and MDBList",
+    );
     expect(writes("api.simkl.com", "/sync/history")).toEqual([
       { movies: [movie] },
     ]);
@@ -275,9 +257,7 @@ test(
 
     // Rating: the form names both Providers; only the checked one gets it.
     await page.goto(action("rating/rate/movie/tt0111161"));
-    await expect(
-      page.getByRole("heading", { name: "Rate The Shawshank Redemption" }),
-    ).toBeVisible();
+    await expectHeading("Rate The Shawshank Redemption");
     const simkl = page.getByRole("checkbox", { name: "Simkl" });
     const mdblist = page.getByRole("checkbox", { name: "MDBList" });
     await expect(simkl).toBeChecked();
@@ -286,11 +266,7 @@ test(
     await mdblist.uncheck();
     await page.getByText("7", { exact: true }).click();
     await page.getByRole("button", { name: "Save rating" }).click();
-    await expect(
-      page.getByRole("heading", {
-        name: "✓ The Shawshank Redemption is rated 7/10 on Simkl",
-      }),
-    ).toBeVisible();
+    await expectHeading("✓ The Shawshank Redemption is rated 7/10 on Simkl");
     expect(writes("api.simkl.com", "/sync/ratings")).toEqual([
       { movies: [{ ...movie, rating: 7 }] },
     ]);
@@ -301,11 +277,7 @@ test(
 
     // A Provider that refuses the Title fails alone, and the page says so.
     await page.goto(action("watchlist/add/movie/tt0068646"));
-    await expect(
-      page.getByRole("heading", {
-        name: "✓ This title is in your watchlist on Simkl",
-      }),
-    ).toBeVisible();
+    await expectHeading("✓ This title is in your watchlist on Simkl");
     await expect(
       page.getByText(
         "It did not work on MDBList. Try again later, or connect the account again on the Stremlist configure page.",

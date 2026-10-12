@@ -42,18 +42,17 @@ for (const editFilter of [false, true]) {
 
     await app.open(`/configure?account=${accountId}`);
     await openFilters(screen, browser);
-    await expect(screen.getByLabel("Genre", { exact: true })).toBeDisabled();
+    const genre = screen.getByLabel("Genre", { exact: true });
+    await expect(genre).toBeDisabled();
     await saveButton(screen).tap();
     await expect(saveButton(screen, "Saving")).toBeVisible();
     await screen.getByRole("button", "Refresh now").tap();
     // Genre availability confirms that React has committed the refresh result.
-    await expect(screen.getByLabel("Genre", { exact: true })).toBeEnabled();
+    await expect(genre).toBeEnabled();
     if (editFilter) {
-      await screen.getByLabel("Genre", { exact: true }).tap();
+      await genre.tap();
       await screen.getByRole("option", "Drama", { exact: true }).tap();
-      await expect(screen.getByLabel("Genre", { exact: true })).toHaveText(
-        "Drama",
-      );
+      await expect(genre).toHaveText("Drama");
     }
     release();
     await expect(

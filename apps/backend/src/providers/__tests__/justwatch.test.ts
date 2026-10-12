@@ -4,91 +4,83 @@ import { justwatchRecheckStrategy } from "../../titles/justwatch-lookup";
 import { justwatchProvider } from "../justwatch";
 import { SourceUnavailableError } from "../types";
 
+function edge(
+  id: string,
+  objectType: string,
+  title: string,
+  originalReleaseYear: number,
+  imdbId: string | null,
+  tmdbId: string,
+) {
+  return {
+    node: {
+      id,
+      objectType,
+      content: { title, originalReleaseYear, externalIds: { imdbId, tmdbId } },
+    },
+  };
+}
+
 // Recorded from apis.justwatch.com on 2026-10-06 (public list "Sci-Fi
 // Military", tl-pa-037cf385-…). The first two titles have IMDb IDs; the last
 // two have none on JustWatch.
-const HALO_4 = {
-  node: {
-    id: "ts44021",
-    objectType: "SHOW",
-    content: {
-      title: "Halo 4: Forward Unto Dawn",
-      originalReleaseYear: 2012,
-      externalIds: { imdbId: "tt2262308", tmdbId: "56295" },
-    },
-  },
-};
-const TERMINATION_POINT = {
-  node: {
-    id: "tm37681",
-    objectType: "MOVIE",
-    content: {
-      title: "Termination Point",
-      originalReleaseYear: 2007,
-      externalIds: { imdbId: "tt0898949", tmdbId: "55914" },
-    },
-  },
-};
-const ROBOCOP = {
-  node: {
-    id: "tm18591",
-    objectType: "MOVIE",
-    content: {
-      title: "RoboCop: Prime Directives",
-      originalReleaseYear: 2001,
-      externalIds: { imdbId: null, tmdbId: "74236" },
-    },
-  },
-};
-const HALO = {
-  node: {
-    id: "ts397055",
-    objectType: "SHOW",
-    content: {
-      title: "Halo",
-      originalReleaseYear: 2001,
-      externalIds: { imdbId: null, tmdbId: "231220" },
-    },
-  },
-};
+const HALO_4 = edge(
+  "ts44021",
+  "SHOW",
+  "Halo 4: Forward Unto Dawn",
+  2012,
+  "tt2262308",
+  "56295",
+);
+const TERMINATION_POINT = edge(
+  "tm37681",
+  "MOVIE",
+  "Termination Point",
+  2007,
+  "tt0898949",
+  "55914",
+);
+const ROBOCOP = edge(
+  "tm18591",
+  "MOVIE",
+  "RoboCop: Prime Directives",
+  2001,
+  null,
+  "74236",
+);
+const HALO = edge("ts397055", "SHOW", "Halo", 2001, null, "231220");
 
 const PUBLIC_LIST_ID = "tl-pa-037cf385-37d5-45a3-921f-f0606dd8a17a";
 const CUSTOM_LIST_ID = "tl-us-3f1c2a9e-7b4d-4e2a-9c1f-0a2b3c4d5e6f";
+const CUSTOM_LIST = {
+  id: CUSTOM_LIST_ID,
+  type: "USER_LIST",
+  visibility: "UNLISTED",
+};
 
-function listPage(options: {
-  id?: string;
-  type?: string;
-  visibility?: string;
-  name?: string;
-  contentName?: string | null;
-  edges: unknown[];
-  totalCount: number;
-  endCursor: string;
-  hasNextPage: boolean;
-}) {
-  return {
+function listPage(
+  edges: unknown[],
+  { endCursor = "", hasNextPage = false } = {},
+  node: Record<string, unknown> = {},
+) {
+  return Response.json({
     data: {
       node: {
         __typename: "GenericTitleList",
-        id: options.id ?? PUBLIC_LIST_ID,
-        type: options.type ?? "PERMANENT_AUDIENCE_LIST",
-        visibility: options.visibility ?? "PUBLIC",
-        name: options.name ?? "",
-        content:
-          options.contentName === null
-            ? null
-            : { name: options.contentName ?? "Sci-Fi Military" },
+        id: PUBLIC_LIST_ID,
+        type: "PERMANENT_AUDIENCE_LIST",
+        visibility: "PUBLIC",
+        name: "",
+        content: { name: "Sci-Fi Military" },
         titles: {
-          totalCount: options.totalCount,
-          pageInfo: {
-            hasNextPage: options.hasNextPage,
-            endCursor: options.endCursor,
-          },
-          edges: options.edges,
+          totalCount: edges.length,
+          pageInfo: { hasNextPage, endCursor },
+          edges,
         },
+        ...node,
       },
     },
-  };
+  });
 }
 
 // Recorded response for a deleted list or a bad ID.
@@ -102,13 +94,6 @@ const NOT_FOUND = {
   ],
   data: { node: null },
 };
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
 
 interface GraphQLBody {
   query: string;
@@ -125,6 +110,8 @@ function requestBodies(): GraphQLBody[] {
   return fetchMock.mock.calls.map(([, init]) => parseBody(init));
 }
 
+const ctx = { connection: null };
+
 beforeEach(() => {
   fetchMock = vi.fn<typeof fetch>();
   vi.stubGlobal("fetch", fetchMock);
@@ -138,29 +125,16 @@ describe("justwatchProvider.fetchSource", () => {
   it("reads every page and maps the titles", async () => {
     fetchMock
       .mockResolvedValueOnce(
-        jsonResponse(
-          listPage({
-            edges: [HALO_4, TERMINATION_POINT],
-            totalCount: 4,
-            endCursor: "Mg==",
-            hasNextPage: true,
-          }),
-        ),
+        listPage([HALO_4, TERMINATION_POINT], {
+          endCursor: "Mg==",
+          hasNextPage: true,
+        }),
       )
-      .mockResolvedValueOnce(
-        jsonResponse(
-          listPage({
-            edges: [ROBOCOP, HALO],
-            totalCount: 4,
-            endCursor: "NA==",
-            hasNextPage: false,
-          }),
-        ),
-      );
+      .mockResolvedValueOnce(listPage([ROBOCOP, HALO], { endCursor: "NA==" }));
 
     const { entries, complete } = await justwatchProvider.fetchSource(
       PUBLIC_LIST_ID,
-      { connection: null },
+      ctx,
     );
     expect(complete).toBe(true);
 
@@ -226,23 +200,13 @@ describe("justwatchProvider.fetchSource", () => {
 
   it("keeps a custom list in the API order, which is oldest added first", async () => {
     fetchMock.mockResolvedValueOnce(
-      jsonResponse(
-        listPage({
-          id: CUSTOM_LIST_ID,
-          type: "USER_LIST",
-          visibility: "UNLISTED",
-          contentName: "Weekend",
-          edges: [HALO_4, TERMINATION_POINT, ROBOCOP],
-          totalCount: 3,
-          endCursor: "Mw==",
-          hasNextPage: false,
-        }),
-      ),
+      listPage([HALO_4, TERMINATION_POINT, ROBOCOP], {}, CUSTOM_LIST),
     );
 
-    const { entries } = await justwatchProvider.fetchSource(CUSTOM_LIST_ID, {
-      connection: null,
-    });
+    const { entries } = await justwatchProvider.fetchSource(
+      CUSTOM_LIST_ID,
+      ctx,
+    );
 
     expect(entries.map((entry) => entry.externalIds?.justwatch)).toEqual([
       HALO_4.node.id,
@@ -260,20 +224,13 @@ describe("justwatchProvider.fetchSource", () => {
       }));
       served += edges.length;
       return Promise.resolve(
-        jsonResponse(
-          listPage({
-            edges,
-            totalCount: 5_000,
-            endCursor: btoa(String(served)),
-            hasNextPage: true,
-          }),
-        ),
+        listPage(edges, { endCursor: btoa(String(served)), hasNextPage: true }),
       );
     });
 
     const { entries, complete } = await justwatchProvider.fetchSource(
       PUBLIC_LIST_ID,
-      { connection: null },
+      ctx,
     );
 
     expect(entries).toHaveLength(2_000);
@@ -284,23 +241,17 @@ describe("justwatchProvider.fetchSource", () => {
 
   it("keeps entries without content or a known type", async () => {
     fetchMock.mockResolvedValueOnce(
-      jsonResponse(
-        listPage({
-          edges: [
-            { node: { id: "tm1", objectType: "MOVIE", content: null } },
-            { node: { id: "tse5", objectType: "SHOW_SEASON", content: null } },
-            null,
-          ],
-          totalCount: 3,
-          endCursor: "Mw==",
-          hasNextPage: false,
-        }),
-      ),
+      listPage([
+        { node: { id: "tm1", objectType: "MOVIE", content: null } },
+        { node: { id: "tse5", objectType: "SHOW_SEASON", content: null } },
+        null,
+      ]),
     );
 
-    const { entries } = await justwatchProvider.fetchSource(PUBLIC_LIST_ID, {
-      connection: null,
-    });
+    const { entries } = await justwatchProvider.fetchSource(
+      PUBLIC_LIST_ID,
+      ctx,
+    );
 
     expect(entries).toEqual([
       {
@@ -321,46 +272,39 @@ describe("justwatchProvider.fetchSource", () => {
   });
 
   it("reports a deleted list as not found", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(NOT_FOUND));
-
+    fetchMock.mockResolvedValueOnce(Response.json(NOT_FOUND));
     const error = await justwatchProvider
-      .fetchSource(CUSTOM_LIST_ID, { connection: null })
+      .fetchSource(CUSTOM_LIST_ID, ctx)
       .catch((caught: unknown) => caught);
-
     expect(error).toBeInstanceOf(SourceUnavailableError);
     expect((error as SourceUnavailableError).reason).toBe("not_found");
   });
 
   it("rejects a ref that is not a list ID without a request", async () => {
-    const error = await justwatchProvider
-      .fetchSource("tm18591", { connection: null })
-      .catch((caught: unknown) => caught);
-
-    expect((error as SourceUnavailableError).reason).toBe("not_found");
+    await expect(
+      justwatchProvider.fetchSource("tm18591", ctx),
+    ).rejects.toMatchObject({ reason: "not_found" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("treats other GraphQL errors as failures, not as a deleted list", async () => {
     fetchMock.mockResolvedValueOnce(
-      jsonResponse({
+      Response.json({
         errors: [{ message: "upstream timeout" }],
         data: { node: null },
       }),
     );
-
     const error = await justwatchProvider
-      .fetchSource(CUSTOM_LIST_ID, { connection: null })
+      .fetchSource(CUSTOM_LIST_ID, ctx)
       .catch((caught: unknown) => caught);
-
     expect(error).toBeInstanceOf(Error);
     expect(error).not.toBeInstanceOf(SourceUnavailableError);
   });
 
   it("fails on an HTTP error", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({}, 503));
-
+    fetchMock.mockResolvedValueOnce(Response.json({}, { status: 503 }));
     await expect(
-      justwatchProvider.fetchSource(CUSTOM_LIST_ID, { connection: null }),
+      justwatchProvider.fetchSource(CUSTOM_LIST_ID, ctx),
     ).rejects.toThrow(/503/);
   });
 });
@@ -368,19 +312,12 @@ describe("justwatchProvider.fetchSource", () => {
 describe("justwatchProvider.validateSource", () => {
   it("returns the list name as the suggested title", async () => {
     fetchMock.mockResolvedValueOnce(
-      jsonResponse(
-        listPage({
-          edges: [HALO_4],
-          totalCount: 108,
-          endCursor: "MQ==",
-          hasNextPage: true,
-        }),
-      ),
+      listPage([HALO_4], { endCursor: "MQ==", hasNextPage: true }),
     );
 
     const result = await justwatchProvider.validateSource(
       ` ${PUBLIC_LIST_ID.toUpperCase()} `,
-      { connection: null },
+      ctx,
     );
 
     expect(result).toEqual({
@@ -395,35 +332,17 @@ describe("justwatchProvider.validateSource", () => {
 
   it("falls back to a generic title when the list has no name", async () => {
     fetchMock.mockResolvedValueOnce(
-      jsonResponse(
-        listPage({
-          id: CUSTOM_LIST_ID,
-          type: "USER_LIST",
-          visibility: "UNLISTED",
-          contentName: null,
-          edges: [],
-          totalCount: 0,
-          endCursor: "",
-          hasNextPage: false,
-        }),
-      ),
+      listPage([], {}, { ...CUSTOM_LIST, content: null }),
     );
-
-    const result = await justwatchProvider.validateSource(CUSTOM_LIST_ID, {
-      connection: null,
-    });
-
-    expect(result).toMatchObject({
-      ok: true,
-      suggestedTitle: "JustWatch list",
-    });
+    await expect(
+      justwatchProvider.validateSource(CUSTOM_LIST_ID, ctx),
+    ).resolves.toMatchObject({ ok: true, suggestedTitle: "JustWatch list" });
   });
 
   it("reports a deleted list as not found", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(NOT_FOUND));
-
+    fetchMock.mockResolvedValueOnce(Response.json(NOT_FOUND));
     await expect(
-      justwatchProvider.validateSource(CUSTOM_LIST_ID, { connection: null }),
+      justwatchProvider.validateSource(CUSTOM_LIST_ID, ctx),
     ).rejects.toMatchObject({
       name: "SourceUnavailableError",
       reason: "not_found",
@@ -431,11 +350,9 @@ describe("justwatchProvider.validateSource", () => {
   });
 
   it("rejects a malformed ref without a request", async () => {
-    const result = await justwatchProvider.validateSource("not a list", {
-      connection: null,
-    });
-
-    expect(result).toEqual({ ok: false, reason: "not_found" });
+    await expect(
+      justwatchProvider.validateSource("not a list", ctx),
+    ).resolves.toEqual({ ok: false, reason: "not_found" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
@@ -459,7 +376,7 @@ describe("JustWatch ID resolution", () => {
   it("re-reads the IMDb IDs of the nodes", async () => {
     // Recorded shape: an unknown node nulls only its own slot.
     fetchMock.mockResolvedValueOnce(
-      jsonResponse({
+      Response.json({
         errors: [
           {
             message:
@@ -496,7 +413,7 @@ describe("JustWatch ID resolution", () => {
 
   it("asks in chunks of 50 node IDs", async () => {
     fetchMock.mockImplementation(() =>
-      Promise.resolve(jsonResponse({ data: { nodes: [] } })),
+      Promise.resolve(Response.json({ data: { nodes: [] } })),
     );
 
     await justwatchRecheckStrategy.resolve(

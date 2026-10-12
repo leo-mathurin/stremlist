@@ -13,9 +13,7 @@ import { PUBLIC_USER } from "../helpers/test-data.js";
 // Install lifecycle inside the real Stremio Web app (anonymous profile —
 // a fresh browser context has its own local addon collection).
 
-test.beforeEach(async () => {
-  await resetDb();
-});
+test.beforeEach(resetDb);
 
 test(
   "installs and uninstalls the addon through Stremio Web",

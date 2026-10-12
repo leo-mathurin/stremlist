@@ -1,7 +1,7 @@
 import { parseSourceLink } from "@stremlist/shared/providers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listMdblistUserSources, mdblistProvider } from "../mdblist";
-import type { ConnectionAccess } from "../types";
+import type { ActionIntent, ActionTarget, ConnectionAccess } from "../types";
 import { ConnectionExpiredError, SourceUnavailableError } from "../types";
 
 // Shapes recorded from api.mdblist.com on 2026-10-06 (trimmed).
@@ -54,16 +54,14 @@ interface Call {
 }
 
 let calls: Call[];
-let handler: (url: URL, init: RequestInit) => Response;
+let handler: (url: URL) => Response;
 
-function json(
-  body: unknown,
-  status = 200,
-  headers: Record<string, string> = {},
-): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json", ...headers },
+/** One page of items, with MDBList's cursor headers. */
+function itemsPage(items: unknown[], nextCursor?: string): Response {
+  return Response.json(items, {
+    headers: nextCursor
+      ? { "X-Has-More": "true", "X-Next-Cursor": nextCursor }
+      : { "X-Has-More": "false" },
   });
 }
 
@@ -89,13 +87,13 @@ function bodyOf(call: Call): unknown {
 
 beforeEach(() => {
   calls = [];
-  handler = () => json({ error: "unexpected" }, 500);
+  handler = () => Response.json({ error: "unexpected" }, { status: 500 });
   vi.stubGlobal(
     "fetch",
-    vi.fn((input: string | URL, init: RequestInit = {}) => {
-      const url = new URL(String(input));
+    vi.fn((input: string, init: RequestInit = {}) => {
+      const url = new URL(input);
       calls.push({ url, init });
-      return Promise.resolve(handler(url, init));
+      return Promise.resolve(handler(url));
     }),
   );
 });
@@ -126,15 +124,11 @@ describe("parseSourceLink (MDBList)", () => {
     });
   });
 
-  it("ignores other MDBList pages", () => {
-    expect(
-      parseSourceLink(
-        "https://mdblist.com/lists/official/movies/justwatch-streaming-charts",
-      ),
-    ).toBeNull();
-    expect(
-      parseSourceLink("https://mdblist.com/movie/2xwba-the-love-hypothesis"),
-    ).toBeNull();
+  it.each([
+    "https://mdblist.com/lists/official/movies/justwatch-streaming-charts",
+    "https://mdblist.com/movie/2xwba-the-love-hypothesis",
+  ])("ignores %s", (link) => {
+    expect(parseSourceLink(link)).toBeNull();
   });
 });
 
@@ -148,7 +142,7 @@ describe("mdblistProvider.validateSource", () => {
 
   it("resolves an owner and slug to the numeric list ID", async () => {
     handler = () =>
-      json([
+      Response.json([
         {
           id: 14,
           user_name: "linaspurinis",
@@ -179,21 +173,22 @@ describe("mdblistProvider.validateSource", () => {
   it("keeps the user's own lists and external lists under me/", async () => {
     handler = (url) =>
       url.pathname.startsWith("/external/")
-        ? json({ id: 77, name: "Letterboxd watchlist", mediatype: "movie" })
-        : json({ id: 42, name: "Mixed", mediatype: null });
+        ? Response.json({
+            id: 77,
+            name: "Letterboxd watchlist",
+            mediatype: "movie",
+          })
+        : Response.json({ id: 42, name: "Mixed", mediatype: null });
+    const ctx = { connection: connection() };
     await expect(
-      mdblistProvider.validateSource("me/lists/42", {
-        connection: connection(),
-      }),
+      mdblistProvider.validateSource("me/lists/42", ctx),
     ).resolves.toMatchObject({
       ok: true,
       ref: "me/lists/42",
       defaultDisplayMode: "split",
     });
     await expect(
-      mdblistProvider.validateSource("me/external/77", {
-        connection: connection(),
-      }),
+      mdblistProvider.validateSource("me/external/77", ctx),
     ).resolves.toMatchObject({
       ok: true,
       ref: "me/external/77",
@@ -206,21 +201,18 @@ describe("mdblistProvider.validateSource", () => {
   });
 
   it("accepts only the connected user's own watchlist link", async () => {
+    const ctx = { connection: connection("leo") };
     await expect(
-      mdblistProvider.validateSource("watchlist/LEO", {
-        connection: connection("leo"),
-      }),
+      mdblistProvider.validateSource("watchlist/LEO", ctx),
     ).resolves.toMatchObject({ ok: true, ref: "me/watchlist" });
     await expect(
-      mdblistProvider.validateSource("watchlist/someone", {
-        connection: connection("leo"),
-      }),
+      mdblistProvider.validateSource("watchlist/someone", ctx),
     ).resolves.toMatchObject({ ok: false, reason: "private" });
     expect(calls).toHaveLength(0);
   });
 
   it("maps a missing list to not_found", async () => {
-    handler = () => json({ error: "Not found" }, 404);
+    handler = () => Response.json({ error: "Not found" }, { status: 404 });
     await expect(
       mdblistProvider.validateSource("lists/leo/nope", {
         connection: connection(),
@@ -239,19 +231,14 @@ describe("mdblistProvider.validateSource", () => {
 });
 
 describe("mdblistProvider.fetchSource", () => {
+  const ctx = () => ({ connection: connection() });
+
   it("follows X-Next-Cursor and keeps the list order", async () => {
-    handler = (url) => {
-      if (!url.searchParams.get("cursor")) {
-        return json([SUPER_MARIO, EPISODE_ITEM], 200, {
-          "X-Has-More": "true",
-          "X-Next-Cursor": "page-2",
-        });
-      }
-      return json([NO_IMDB, BREAKING_BAD], 200, { "X-Has-More": "false" });
-    };
-    const snapshot = await mdblistProvider.fetchSource("lists/14", {
-      connection: connection(),
-    });
+    handler = (url) =>
+      url.searchParams.get("cursor")
+        ? itemsPage([NO_IMDB, BREAKING_BAD])
+        : itemsPage([SUPER_MARIO, EPISODE_ITEM], "page-2");
+    const snapshot = await mdblistProvider.fetchSource("lists/14", ctx());
 
     expect(calls.map((call) => call.url.pathname)).toEqual([
       "/lists/14/items",
@@ -286,41 +273,25 @@ describe("mdblistProvider.fetchSource", () => {
     ]);
   });
 
+  // Items may be missing after a loop or a cap: not a complete synchronization.
   it("stops when the cursor repeats", async () => {
-    handler = () =>
-      json([SUPER_MARIO], 200, {
-        "X-Has-More": "true",
-        "X-Next-Cursor": "same",
-      });
-    const snapshot = await mdblistProvider.fetchSource("lists/14", {
-      connection: connection(),
-    });
+    handler = () => itemsPage([SUPER_MARIO], "same");
+    const snapshot = await mdblistProvider.fetchSource("lists/14", ctx());
     expect(calls).toHaveLength(2);
-    // Items may be missing after a loop: not a complete synchronization.
     expect(snapshot.complete).toBe(false);
   });
 
   it("marks a list cut by the page cap as incomplete", async () => {
-    let page = 0;
-    handler = () =>
-      json([SUPER_MARIO], 200, {
-        "X-Has-More": "true",
-        "X-Next-Cursor": `page-${++page}`,
-      });
-    const snapshot = await mdblistProvider.fetchSource("lists/14", {
-      connection: connection(),
-    });
+    handler = () => itemsPage([SUPER_MARIO], `page-${calls.length}`);
+    const snapshot = await mdblistProvider.fetchSource("lists/14", ctx());
     expect(calls).toHaveLength(50);
     expect(snapshot.complete).toBe(false);
   });
 
   it("reads the watchlist oldest added first", async () => {
     // MDBList returns the watchlist newest first.
-    handler = () =>
-      json([BREAKING_BAD, SHAWSHANK], 200, { "X-Has-More": "false" });
-    const snapshot = await mdblistProvider.fetchSource("me/watchlist", {
-      connection: connection(),
-    });
+    handler = () => itemsPage([BREAKING_BAD, SHAWSHANK]);
+    const snapshot = await mdblistProvider.fetchSource("me/watchlist", ctx());
     expect(calls[0].url.pathname).toBe("/watchlist/items");
     expect(snapshot.entries.map((entry) => entry.imdbId)).toEqual([
       "tt0111161",
@@ -329,11 +300,10 @@ describe("mdblistProvider.fetchSource", () => {
   });
 
   it("reads lists by slug, own lists and external lists", async () => {
-    handler = () => json([], 200, { "X-Has-More": "false" });
-    const ctx = { connection: connection() };
-    await mdblistProvider.fetchSource("lists/leo/my-list", ctx);
-    await mdblistProvider.fetchSource("me/lists/42", ctx);
-    await mdblistProvider.fetchSource("me/external/77", ctx);
+    handler = () => itemsPage([]);
+    for (const ref of ["lists/leo/my-list", "me/lists/42", "me/external/77"]) {
+      await mdblistProvider.fetchSource(ref, ctx());
+    }
     expect(calls.map((call) => call.url.pathname)).toEqual([
       "/lists/leo/my-list/items",
       "/lists/42/items",
@@ -347,9 +317,9 @@ describe("mdblistProvider.fetchSource", () => {
     [403, { error: "List is private" }, "private"],
     [404, { error: "List Not found" }, "not_found"],
   ])("maps HTTP %i %j to %s", async (status, body, reason) => {
-    handler = () => json(body, status);
+    handler = () => Response.json(body, { status });
     const error = await mdblistProvider
-      .fetchSource("lists/14", { connection: connection() })
+      .fetchSource("lists/14", ctx())
       .catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(SourceUnavailableError);
     expect((error as SourceUnavailableError).reason).toBe(reason);
@@ -357,13 +327,9 @@ describe("mdblistProvider.fetchSource", () => {
 
   it("lets an expired Connection through, for the caller to ask for renewal", async () => {
     const expired = new ConnectionExpiredError("mdblist");
-    const access: ConnectionAccess = {
-      accountId: "sl_testaccount0000000000",
-      provider: "mdblist",
-      username: "leo",
+    const access = {
+      ...connection(),
       getAccessToken: () => Promise.reject(expired),
-      reportRefused: () => Promise.resolve(),
-      reportWorking: () => Promise.resolve(),
     };
     await expect(
       mdblistProvider.fetchSource("me/watchlist", { connection: access }),
@@ -372,9 +338,9 @@ describe("mdblistProvider.fetchSource", () => {
   });
 
   it("does not treat server errors as an expected state", async () => {
-    handler = () => json({ error: "boom" }, 502);
+    handler = () => Response.json({ error: "boom" }, { status: 502 });
     const error = await mdblistProvider
-      .fetchSource("lists/14", { connection: connection() })
+      .fetchSource("lists/14", ctx())
       .catch((caught: unknown) => caught);
     expect(error).not.toBeInstanceOf(SourceUnavailableError);
   });
@@ -412,131 +378,103 @@ describe("mdblistProvider.resolutionKey", () => {
 
 describe("mdblistProvider.actions", () => {
   const actions = defined(mdblistProvider.actions);
-  const ok = () =>
-    json({ updated: { movies: 1 }, not_found: { movies: [], shows: [] } });
+  const synced = {
+    updated: { movies: 1 },
+    not_found: { movies: [], shows: [] },
+  };
+  const movie: ActionTarget = { imdbId: "tt0111161", type: "movie" };
+  const episode = (season: number, number: number): ActionTarget => ({
+    imdbId: "tt0903747",
+    type: "series",
+    episode: { season, episode: number },
+  });
+  const movieBody = { movies: [{ ids: { imdb: "tt0111161" } }] };
+  const episodeBody = {
+    shows: [
+      {
+        ids: { imdb: "tt0903747" },
+        seasons: [{ number: 1, episodes: [{ number: 1 }] }],
+      },
+    ],
+  };
 
-  it("adds a movie to the watchlist", async () => {
-    handler = () =>
-      json({
-        added: { movies: 1, shows: 0 },
-        not_found: { movies: 0, shows: 0 },
-      });
-    await actions.perform(
-      connection(),
+  it.each<[string, ActionIntent, ActionTarget, unknown, string, unknown]>([
+    [
+      "adds a movie to the watchlist",
       { kind: "watchlist", add: true },
-      { imdbId: "tt0111161", type: "movie" },
-    );
-    expect(calls[0].url.pathname).toBe("/watchlist/items/add");
+      movie,
+      { added: { movies: 1, shows: 0 }, not_found: { movies: 0, shows: 0 } },
+      "/watchlist/items/add",
+      movieBody,
+    ],
+    [
+      "removes the series, not the episode, from the watchlist",
+      { kind: "watchlist", add: false },
+      episode(1, 2),
+      { removed: { movies: 0, shows: 0 }, not_found: { movies: 0, shows: 1 } },
+      "/watchlist/items/remove",
+      { shows: [{ ids: { imdb: "tt0903747" } }] },
+    ],
+    [
+      "marks one episode as watched",
+      { kind: "watched", add: true },
+      episode(1, 1),
+      synced,
+      "/sync/watched",
+      episodeBody,
+    ],
+    [
+      "marks one episode as unwatched",
+      { kind: "watched", add: false },
+      episode(1, 1),
+      synced,
+      "/sync/watched/remove",
+      episodeBody,
+    ],
+    [
+      "marks a whole movie as watched",
+      { kind: "watched", add: true },
+      movie,
+      synced,
+      "/sync/watched",
+      movieBody,
+    ],
+    [
+      "rates the series, not the episode",
+      { kind: "rating", rating: 9 },
+      episode(2, 3),
+      synced,
+      "/sync/ratings",
+      { shows: [{ ids: { imdb: "tt0903747" }, rating: 9 }] },
+    ],
+    [
+      "removes a rating",
+      { kind: "rating", rating: null },
+      movie,
+      synced,
+      "/sync/ratings/remove",
+      movieBody,
+    ],
+  ])("%s", async (_, intent, target, response, path, body) => {
+    handler = () => Response.json(response);
+    await actions.perform(connection(), intent, target);
+    expect(calls[0].url.pathname).toBe(path);
     expect(calls[0].init.method).toBe("POST");
     expect(new Headers(calls[0].init.headers).get("Content-Type")).toBe(
       "application/json",
     );
-    expect(bodyOf(calls[0])).toEqual({
-      movies: [{ ids: { imdb: "tt0111161" } }],
-    });
-  });
-
-  it("removes the series, not the episode, from the watchlist", async () => {
-    handler = () =>
-      json({
-        removed: { movies: 0, shows: 0 },
-        not_found: { movies: 0, shows: 1 },
-      });
-    await actions.perform(
-      connection(),
-      { kind: "watchlist", add: false },
-      {
-        imdbId: "tt0903747",
-        type: "series",
-        episode: { season: 1, episode: 2 },
-      },
-    );
-    expect(calls[0].url.pathname).toBe("/watchlist/items/remove");
-    expect(bodyOf(calls[0])).toEqual({
-      shows: [{ ids: { imdb: "tt0903747" } }],
-    });
+    expect(bodyOf(calls[0])).toEqual(body);
   });
 
   it("fails when MDBList does not know the Title", async () => {
     handler = () =>
-      json({
+      Response.json({
         added: { movies: 0, shows: 0 },
         not_found: { movies: 1, shows: 0 },
       });
     await expect(
-      actions.perform(
-        connection(),
-        { kind: "watchlist", add: true },
-        { imdbId: "tt0000001", type: "movie" },
-      ),
+      actions.perform(connection(), { kind: "watchlist", add: true }, movie),
     ).rejects.toThrow(/does not know/);
-  });
-
-  it("marks one episode as watched and unwatched", async () => {
-    handler = ok;
-    const target = {
-      imdbId: "tt0903747",
-      type: "series" as const,
-      episode: { season: 1, episode: 1 },
-    };
-    await actions.perform(connection(), { kind: "watched", add: true }, target);
-    await actions.perform(
-      connection(),
-      { kind: "watched", add: false },
-      target,
-    );
-    const episodeBody = {
-      shows: [
-        {
-          ids: { imdb: "tt0903747" },
-          seasons: [{ number: 1, episodes: [{ number: 1 }] }],
-        },
-      ],
-    };
-    expect(calls.map((call) => call.url.pathname)).toEqual([
-      "/sync/watched",
-      "/sync/watched/remove",
-    ]);
-    expect(bodyOf(calls[0])).toEqual(episodeBody);
-    expect(bodyOf(calls[1])).toEqual(episodeBody);
-  });
-
-  it("marks a whole movie as watched", async () => {
-    handler = ok;
-    await actions.perform(
-      connection(),
-      { kind: "watched", add: true },
-      { imdbId: "tt0111161", type: "movie" },
-    );
-    expect(bodyOf(calls[0])).toEqual({
-      movies: [{ ids: { imdb: "tt0111161" } }],
-    });
-  });
-
-  it("rates a series and removes a rating", async () => {
-    handler = ok;
-    await actions.perform(
-      connection(),
-      { kind: "rating", rating: 9 },
-      {
-        imdbId: "tt0903747",
-        type: "series",
-        episode: { season: 2, episode: 3 },
-      },
-    );
-    await actions.perform(
-      connection(),
-      { kind: "rating", rating: null },
-      { imdbId: "tt0111161", type: "movie" },
-    );
-    expect(calls[0].url.pathname).toBe("/sync/ratings");
-    expect(bodyOf(calls[0])).toEqual({
-      shows: [{ ids: { imdb: "tt0903747" }, rating: 9 }],
-    });
-    expect(calls[1].url.pathname).toBe("/sync/ratings/remove");
-    expect(bodyOf(calls[1])).toEqual({
-      movies: [{ ids: { imdb: "tt0111161" } }],
-    });
   });
 
   it("marks only the watchlist Catalog as stale", () => {
@@ -549,29 +487,33 @@ describe("mdblistProvider.actions", () => {
   });
 
   it("reads membership from the watchlist, watched and ratings syncs", async () => {
+    const sync = (page: object) =>
+      Response.json({
+        movies: [],
+        shows: [],
+        seasons: [],
+        episodes: [],
+        pagination: { has_more: false },
+        ...page,
+      });
     handler = (url) => {
       if (url.pathname === "/watchlist/items") {
-        return json([BREAKING_BAD, NO_IMDB], 200, { "X-Has-More": "false" });
+        return itemsPage([BREAKING_BAD, NO_IMDB]);
       }
       if (url.pathname === "/sync/watched") {
         if (!url.searchParams.get("cursor")) {
-          return json({
+          return sync({
             movies: [
               {
                 last_watched_at: "2026-10-05T23:46:19.000Z",
                 movie: { ids: { imdb: "tt0111161", tmdb: 278 } },
               },
             ],
-            shows: [],
-            seasons: [],
-            episodes: [],
             pagination: { has_more: true, next_cursor: "w2" },
           });
         }
-        return json({
-          movies: [],
+        return sync({
           shows: [{ show: { ids: { imdb: "tt0903747", tmdb: 1396 } } }],
-          seasons: [],
           episodes: [
             {
               episode: {
@@ -582,11 +524,10 @@ describe("mdblistProvider.actions", () => {
               },
             },
           ],
-          pagination: { has_more: false },
         });
       }
       if (url.pathname === "/sync/ratings") {
-        return json({
+        return sync({
           movies: [
             {
               rating: 8,
@@ -595,12 +536,9 @@ describe("mdblistProvider.actions", () => {
             },
           ],
           shows: [{ rating: 9, show: { ids: { imdb: "tt0903747" } } }],
-          seasons: [],
-          episodes: [],
-          pagination: { has_more: false },
         });
       }
-      return json({ error: "unexpected" }, 500);
+      return Response.json({ error: "unexpected" }, { status: 500 });
     };
 
     const membership = await actions.getMembership(connection());
@@ -622,24 +560,26 @@ describe("mdblistProvider.actions", () => {
 describe("listMdblistUserSources", () => {
   it("offers the user's own lists and external lists", async () => {
     handler = (url) =>
-      url.pathname === "/lists/user"
-        ? json([
-            {
-              id: 42,
-              name: "Favorites",
-              slug: "favorites",
-              items: 3,
-              mediatype: "movie",
-            },
-          ])
-        : json([
-            {
-              id: 77,
-              name: "Letterboxd watchlist",
-              source: "letterboxd",
-              items: 10,
-            },
-          ]);
+      Response.json(
+        url.pathname === "/lists/user"
+          ? [
+              {
+                id: 42,
+                name: "Favorites",
+                slug: "favorites",
+                items: 3,
+                mediatype: "movie",
+              },
+            ]
+          : [
+              {
+                id: 77,
+                name: "Letterboxd watchlist",
+                source: "letterboxd",
+                items: 10,
+              },
+            ],
+      );
     await expect(listMdblistUserSources(connection())).resolves.toEqual([
       {
         ref: "me/lists/42",
@@ -677,7 +617,7 @@ describe("mdblistProvider.oauth", () => {
 
   it("reads the username from /user", async () => {
     handler = () =>
-      json({ user_id: 269425, username: "leo", auth_method: "oauth" });
+      Response.json({ user_id: 269425, username: "leo", auth_method: "oauth" });
     await expect(oauth.fetchUsername?.("token")).resolves.toBe("leo");
     expect(calls[0].url.toString()).toBe("https://api.mdblist.com/user");
     expect(new Headers(calls[0].init.headers).get("Authorization")).toBe(
@@ -688,7 +628,7 @@ describe("mdblistProvider.oauth", () => {
   it("revokes the token with the client credentials", async () => {
     vi.stubEnv("MDBLIST_CLIENT_ID", "client-id");
     vi.stubEnv("MDBLIST_CLIENT_SECRET", "client-secret");
-    handler = () => new Response("", { status: 200 });
+    handler = () => new Response("");
     await oauth.revoke?.("token");
     expect(calls[0].url.toString()).toBe(
       "https://api.mdblist.com/oauth/revoke_token/",

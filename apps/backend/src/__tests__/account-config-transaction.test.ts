@@ -3,39 +3,16 @@ import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { Tables } from "@stremlist/shared/database.types";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-vi.mock("../lib/background", async () => {
-  return (await import("./helpers/config-api-mocks.js")).backgroundMocks;
-});
-vi.mock("../services/list-prewarm", async () => {
-  return (await import("./helpers/config-api-mocks.js")).prewarmMocks;
-});
+const { backgroundMocks, prewarmMocks, rpcMocks, supabaseMocks } =
+  await vi.hoisted(() => import("./helpers/config-api-mocks.js"));
+vi.mock("../lib/background", () => backgroundMocks);
+vi.mock("../services/list-prewarm", () => prewarmMocks);
+vi.mock("../lib/supabase", () => supabaseMocks);
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
+vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
+vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
 
-vi.mock("../lib/supabase", async () => {
-  const { supabase } = await import("./helpers/mock-supabase.js");
-  const { rpcMocks } = await import("./helpers/config-api-mocks.js");
-  return { supabase: { ...supabase, rpc: rpcMocks.rpc } };
-});
-
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-
-vi.mock("../lib/r2", async () => {
-  return await import("./helpers/mock-r2.js");
-});
-vi.mock("../lib/resend", () => ({
-  resend: { contacts: { create: vi.fn() } },
-}));
-
-import {
-  backgroundMocks,
-  prewarmMocks,
-  rpcMocks,
-} from "./helpers/config-api-mocks.js";
 import {
   legacyAccountId,
   OTHER_IMDB,
@@ -287,8 +264,6 @@ describe("List CRUD via the config API", () => {
       expect(backgroundMocks.scheduleBackgroundTask).not.toHaveBeenCalled();
     });
   });
-
-  // ---- in-memory transaction (mirrors replace_account_config) ----
 
   describe("saving through the transaction", () => {
     it("updates kept Lists, inserts new ones and deletes removed ones with their cache", async () => {

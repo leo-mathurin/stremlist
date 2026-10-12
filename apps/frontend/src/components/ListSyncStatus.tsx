@@ -161,13 +161,10 @@ export function ListSyncNotice({
               Stremio shows the titles from the last refresh,{" "}
               <Time iso={sync.olderTitlesFrom} />.
             </>
-          ) : sync.othersShown ? (
-            <>
-              Stremio shows the titles of the other Source lists. This problem
-              started <Time iso={sync.since} />.
-            </>
           ) : (
             <>
+              {sync.othersShown &&
+                "Stremio shows the titles of the other Source lists. "}
               This problem started <Time iso={sync.since} />.
             </>
           )}

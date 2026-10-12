@@ -1,18 +1,10 @@
 import type { StremioManifest } from "@stremlist/shared/stremio.types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../lib/supabase", async () => {
-  return await import("./helpers/mock-supabase.js");
-});
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-vi.mock("../lib/resend", () => ({
-  resend: { contacts: { create: vi.fn() } },
-}));
+vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
+vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 
 import app from "../index.js";
 import {
@@ -32,6 +24,7 @@ import {
 import { db, resetRpc } from "./helpers/mock-supabase.js";
 
 const IMDB_USER = "ur12345678";
+const META_RESOURCE = { name: "meta", types: ["movie"], idPrefixes: ["tt"] };
 const STREAM_RESOURCE = {
   name: "stream",
   types: ["movie", "series"],
@@ -104,52 +97,30 @@ describe("private manifest", () => {
     ]);
   });
 
-  it("has no stream resource while Actions are off", async () => {
-    useFakeProvider(fakeAdapter("trakt", { actions: fakeActions() }));
-    const account = seedAccount({ action_providers: ["trakt"] });
-    seedConnection(account.id, "trakt");
-
-    expect((await manifest(account.id)).resources).toEqual([
-      "catalog",
-      { name: "meta", types: ["movie"], idPrefixes: ["tt"] },
-    ]);
-  });
-
-  it("adds the stream resource when Actions are on with a connected Provider that acts", async () => {
-    useFakeProvider(fakeAdapter("trakt", { actions: fakeActions() }));
-    const account = seedAccount({
-      actions_enabled: true,
-      action_providers: ["trakt"],
-    });
-    seedConnection(account.id, "trakt");
-
-    expect((await manifest(account.id)).resources).toEqual([
-      "catalog",
-      { name: "meta", types: ["movie"], idPrefixes: ["tt"] },
-      STREAM_RESOURCE,
-    ]);
-  });
-
   it.each([
-    ["the Provider has no Connection", false, true, false],
-    ["the Provider has no Actions", true, false, false],
-    ["the Provider is turned off", true, true, true],
+    ["none while Actions are off", false, true, true, false, false],
+    ["none if the Provider has no Connection", true, false, true, false, false],
+    ["none if the Provider has no Actions", true, true, false, false, false],
+    ["none if the Provider is turned off", true, true, true, true, false],
+    ["added for a connected Provider that acts", true, true, true, false, true],
   ])(
-    "has no stream resource when %s",
-    async (_label, connected, withActions, disabled) => {
+    "stream resource: %s",
+    async (_label, actionsOn, connected, withActions, disabled, stream) => {
       useFakeProvider(
         fakeAdapter("trakt", withActions ? { actions: fakeActions() } : {}),
       );
       if (disabled) process.env.DISABLED_PROVIDERS = "trakt";
       const account = seedAccount({
-        actions_enabled: true,
+        ...(actionsOn ? { actions_enabled: true } : {}),
         action_providers: ["trakt"],
       });
       if (connected) seedConnection(account.id, "trakt");
 
-      expect((await manifest(account.id)).resources).not.toContainEqual(
-        STREAM_RESOURCE,
-      );
+      expect((await manifest(account.id)).resources).toEqual([
+        "catalog",
+        META_RESOURCE,
+        ...(stream ? [STREAM_RESOURCE] : []),
+      ]);
     },
   );
 });

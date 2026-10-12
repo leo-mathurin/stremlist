@@ -13,7 +13,7 @@ import { randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { LruCache } from "../lib/lru";
 import { getR2Bucket, getR2Client } from "../lib/r2";
-import { isNotFound, writeJson } from "../lib/r2-json";
+import { isNotFound, isPreconditionFailed, writeJson } from "../lib/r2-json";
 import {
   connectionIdentitySchema,
   isCurrentConnection,
@@ -97,11 +97,6 @@ const storedManifestSchema = z.union([
 type CatalogObject = z.infer<typeof catalogObjectSchema>;
 type CacheManifest = z.infer<typeof cacheManifestSchema>;
 
-interface MemoryEntry<T> {
-  value: T;
-  expiresAt: number;
-}
-
 interface ManifestRead {
   manifest: CacheManifest | null;
   etag?: string;
@@ -152,7 +147,7 @@ interface CachedList {
 
 const manifestMemoryCache = new Map<
   string,
-  MemoryEntry<CacheManifest | null>
+  { value: CacheManifest | null; expiresAt: number }
 >();
 const catalogMemoryCache = new LruCache<string, CatalogObject>({
   maxEntries: MEMORY_CACHE_MAX_ENTRIES,
@@ -174,55 +169,31 @@ function metaKey(meta: Pick<StremioMeta, "id" | "type">): string {
   return `${meta.type}:${meta.id}`;
 }
 
-function isPreconditionFailed(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const candidate = error as {
-    name?: string;
-    $metadata?: { httpStatusCode?: number };
-  };
-  return (
-    candidate.name === "PreconditionFailed" ||
-    candidate.$metadata?.httpStatusCode === 412
-  );
-}
-
-function getMemoryValue<T>(
-  cache: Map<string, MemoryEntry<T>>,
-  key: string,
-): T | undefined {
-  const entry = cache.get(key);
-  if (!entry || entry.expiresAt <= Date.now()) {
-    cache.delete(key);
-    return undefined;
-  }
-
-  cache.delete(key);
-  cache.set(key, entry);
+function getMemoryManifest(listId: string): CacheManifest | null | undefined {
+  const entry = manifestMemoryCache.get(listId);
+  manifestMemoryCache.delete(listId);
+  if (!entry || entry.expiresAt <= Date.now()) return undefined;
+  manifestMemoryCache.set(listId, entry);
   return entry.value;
 }
 
-function setMemoryValue<T>(
-  cache: Map<string, MemoryEntry<T>>,
-  key: string,
-  value: T,
-): void {
-  cache.delete(key);
-  cache.set(key, {
+function setMemoryManifest(listId: string, value: CacheManifest | null): void {
+  manifestMemoryCache.delete(listId);
+  manifestMemoryCache.set(listId, {
     value,
     expiresAt: Date.now() + MEMORY_CACHE_TTL_MS,
   });
-
-  while (cache.size > MEMORY_CACHE_MAX_ENTRIES) {
-    const oldestKey = cache.keys().next().value;
+  while (manifestMemoryCache.size > MEMORY_CACHE_MAX_ENTRIES) {
+    const oldestKey = manifestMemoryCache.keys().next().value;
     if (!oldestKey) break;
-    cache.delete(oldestKey);
+    manifestMemoryCache.delete(oldestKey);
   }
 }
 
 function cacheDeletedManifest(listId: string, deletedGeneration: string): void {
   const entry = manifestMemoryCache.get(listId);
   if (entry?.value && entry.value.generation !== deletedGeneration) return;
-  setMemoryValue(manifestMemoryCache, listId, null);
+  setMemoryManifest(listId, null);
 }
 
 function evictManifestGeneration(
@@ -262,17 +233,17 @@ async function readManifestFromR2(listId: string): Promise<ManifestRead> {
 }
 
 async function readManifest(listId: string): Promise<CacheManifest | null> {
-  const cached = getMemoryValue(manifestMemoryCache, listId);
+  const cached = getMemoryManifest(listId);
   if (cached !== undefined) return cached;
 
   const entryBeforeRead = manifestMemoryCache.get(listId);
   const { manifest } = await readManifestFromR2(listId);
   const concurrentEntry = manifestMemoryCache.get(listId);
   if (concurrentEntry !== entryBeforeRead) {
-    const concurrentValue = getMemoryValue(manifestMemoryCache, listId);
+    const concurrentValue = getMemoryManifest(listId);
     if (concurrentValue !== undefined) return concurrentValue;
   }
-  setMemoryValue(manifestMemoryCache, listId, manifest);
+  setMemoryManifest(listId, manifest);
   return manifest;
 }
 
@@ -488,7 +459,7 @@ export async function writeCachedList(
   catalogMemoryCache.set(nextCatalogKey, catalog, {
     weight: catalogJson.length,
   });
-  setMemoryValue(manifestMemoryCache, listId, manifest);
+  setMemoryManifest(listId, manifest);
 
   return generation;
 }
@@ -540,7 +511,7 @@ export async function deleteCachedList(listId: string): Promise<void> {
   }
 
   if (!current.manifest) {
-    setMemoryValue(manifestMemoryCache, listId, null);
+    setMemoryManifest(listId, null);
     return;
   }
   if (!current.etag) {
@@ -548,26 +519,17 @@ export async function deleteCachedList(listId: string): Promise<void> {
   }
 
   try {
-    await getR2Client().send(
-      new PutObjectCommand({
-        Bucket: getR2Bucket(),
-        Key: manifestKey(listId),
-        Body: Buffer.from(
-          JSON.stringify({
-            version: CACHE_FORMAT_VERSION,
-            deleted: true,
-            deletedAt: new Date().toISOString(),
-          }),
-        ),
-        ContentType: "application/json",
-        CacheControl: "private, max-age=0, must-revalidate",
-        IfMatch: current.etag,
-      }),
+    await writeJson(
+      manifestKey(listId),
+      {
+        version: CACHE_FORMAT_VERSION,
+        deleted: true,
+        deletedAt: new Date().toISOString(),
+      },
+      { etag: current.etag },
     );
   } catch (error) {
-    if (isPreconditionFailed(error)) {
-      return;
-    }
+    if (isPreconditionFailed(error)) return;
     throw error;
   }
 
@@ -589,10 +551,7 @@ export async function deleteCachedList(listId: string): Promise<void> {
 export async function markCachedListStale(listId: string): Promise<void> {
   const manifest = await readManifest(listId);
   if (!manifest) return;
-  const stale: CacheManifest = {
-    ...manifest,
-    cachedAt: new Date(0).toISOString(),
-  };
+  const stale = { ...manifest, cachedAt: new Date(0).toISOString() };
   await writeJson(manifestKey(listId), stale);
-  setMemoryValue(manifestMemoryCache, listId, stale);
+  setMemoryManifest(listId, stale);
 }

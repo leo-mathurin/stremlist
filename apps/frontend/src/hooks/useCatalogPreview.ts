@@ -1,13 +1,26 @@
-import { use, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  use,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { InferRequestType } from "hono/client";
 import type { CatalogPreview } from "@stremlist/shared/catalog-preview";
 import { listSourcesKey } from "@stremlist/shared/list-merge";
 import type { SourceId } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
-import { ConnectionsContext } from "@/hooks/connections-context";
+import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
 import { api } from "@/lib/api";
 import { previewConnectionKey } from "@/lib/connections";
 import type { ListFormRow } from "@/lib/list-form";
+
+/**
+ * The Account's Connections, for the parts of the configure page that read
+ * through them, such as the Catalog preview. None outside the page.
+ */
+export const ConnectionsContext = createContext<ConnectionSummary[]>([]);
 
 type PreviewBody = InferRequestType<typeof api.lists.preview.$post>["json"];
 

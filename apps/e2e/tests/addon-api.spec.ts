@@ -47,9 +47,14 @@ import {
 const CATALOG_ID_PATTERN =
   /^wl-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-(movie|series)$/;
 
-test.beforeEach(async () => {
-  await resetDb();
+/** What resolveLink answers for a link that it cannot read. */
+const failedLink = (reason: string, provider = "imdb") => ({
+  ok: false,
+  reason,
+  provider,
 });
+
+test.beforeEach(resetDb);
 
 test.describe("manifest", () => {
   test("base manifest requires configuration", { tag: "@local" }, async () => {
@@ -135,10 +140,7 @@ test.describe("manifest", () => {
         );
         expect(response.status()).toBe(400);
         await expect(response.json()).resolves.toMatchObject({
-          behaviorHints: {
-            configurable: true,
-            configurationRequired: true,
-          },
+          behaviorHints: { configurable: true, configurationRequired: true },
         });
       }
     },
@@ -279,9 +281,7 @@ test.describe("catalogs", () => {
     await postConfig(
       accountId,
       [listInput("imdb", PUBLIC_USER, { id: listId })],
-      {
-        rpdbApiKey: "e2e-test-key",
-      },
+      { rpdbApiKey: "e2e-test-key" },
     );
     const { metas } = await getCatalog(
       accountId,
@@ -424,11 +424,7 @@ test.describe("link resolution", () => {
         suggestedTitle: null,
         defaultDisplayMode: null,
       });
-      expect(await resolveLink(UNKNOWN_USER)).toEqual({
-        ok: false,
-        reason: "not_found",
-        provider: "imdb",
-      });
+      expect(await resolveLink(UNKNOWN_USER)).toEqual(failedLink("not_found"));
       expect(
         await resolveLink(`https://www.imdb.com/list/${PUBLIC_LIST}/`),
       ).toMatchObject({
@@ -437,11 +433,7 @@ test.describe("link resolution", () => {
         sourceRef: PUBLIC_LIST,
         kind: "list",
       });
-      expect(await resolveLink(UNKNOWN_LIST)).toEqual({
-        ok: false,
-        reason: "not_found",
-        provider: "imdb",
-      });
+      expect(await resolveLink(UNKNOWN_LIST)).toEqual(failedLink("not_found"));
 
       // p-handles resolve to a canonical ur id first. The target account's
       // watchlist visibility is not under our control, so only assert shape.
@@ -457,24 +449,12 @@ test.describe("link resolution", () => {
   );
 
   test("reports private sources", { tag: "@live-regression" }, async () => {
-    expect(await resolveLink(PRIVATE_USER)).toEqual({
-      ok: false,
-      reason: "private",
-      provider: "imdb",
-    });
+    expect(await resolveLink(PRIVATE_USER)).toEqual(failedLink("private"));
     // Same account via its p-handle: exercises handle resolution on a
     // private source.
-    expect(await resolveLink(PRIVATE_P_HANDLE)).toEqual({
-      ok: false,
-      reason: "private",
-      provider: "imdb",
-    });
+    expect(await resolveLink(PRIVATE_P_HANDLE)).toEqual(failedLink("private"));
     if (PRIVATE_LIST) {
-      expect(await resolveLink(PRIVATE_LIST)).toEqual({
-        ok: false,
-        reason: "private",
-        provider: "imdb",
-      });
+      expect(await resolveLink(PRIVATE_LIST)).toEqual(failedLink("private"));
     }
   });
 
@@ -498,11 +478,7 @@ test.describe("link resolution", () => {
       // MDBList Source lists always read through a Connection.
       expect(
         await resolveLink("https://mdblist.com/lists/someone/some-list"),
-      ).toEqual({
-        ok: false,
-        reason: "needs_connection",
-        provider: "mdblist",
-      });
+      ).toEqual(failedLink("needs_connection", "mdblist"));
     },
   );
 });

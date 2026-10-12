@@ -8,8 +8,8 @@ import type {
   NewTitlesSummary,
   StremioMeta,
 } from "@stremlist/shared/stremio.types";
-import type { RefreshResult } from "../helpers/api.js";
 import {
+  type RefreshResult,
   asInput,
   getCatalog,
   getManifest,
@@ -76,11 +76,7 @@ function sources(
 ): SourceFixture {
   return {
     imdb: {
-      [watchlist]: {
-        ids: imdb,
-        fail: read.imdbFails,
-        capped: read.imdbCapped,
-      },
+      [watchlist]: { ids: imdb, fail: read.imdbFails, capped: read.imdbCapped },
     },
     trakt: { [TRAKT_USER]: { items: trakt } },
     titles: TITLES,
@@ -90,6 +86,13 @@ function sources(
 function traktItem(trakt: number, imdb: string) {
   return { trakt, imdb, name: TITLES[imdb].name, year: TITLES[imdb].year };
 }
+
+/** A cached Catalog entry for one of the TITLES. */
+const cachedTitle = (imdbId: string) => ({
+  ...CATALOG_TITLES[0],
+  id: imdbId,
+  name: TITLES[imdbId].name,
+});
 
 let backend: FixtureBackend;
 let fixtureDir: string;
@@ -112,9 +115,7 @@ test.afterAll(async () => {
   await backend?.stop();
   rmSync(fixtureDir, { recursive: true, force: true });
 });
-test.beforeEach(async () => {
-  await resetDb();
-});
+test.beforeEach(resetDb);
 
 /** An Account with the New titles catalog on and these Lists. */
 function seedDetectionAccount(
@@ -175,7 +176,11 @@ async function saveLists(accountId: string, lists: ConfigListInput[]) {
 }
 
 const detected = (list: string) =>
-  `Detected by Stremlist on ${DATE.format(new Date())} in ${list}.`;
+  new RegExp(
+    `^Detected by Stremlist on ${DATE.format(new Date())} in ${list}.`,
+  );
+
+const EMPTY_SUMMARY = { detected: 0, latestDetectedAt: null, waitingLists: 0 };
 
 test(
   "the first refresh is the Baseline; later additions show once, newest first",
@@ -191,11 +196,7 @@ test(
       sources([A, B], [traktItem(1, A)]),
     );
     expect(baseline).toMatchObject({ refreshed: 2, failed: 0 });
-    expect(baseline.newTitles).toEqual({
-      detected: 0,
-      latestDetectedAt: null,
-      waitingLists: 0,
-    });
+    expect(baseline.newTitles).toEqual(EMPTY_SUMMARY);
     expect(await newTitles(accountId)).toEqual([]);
 
     await refreshAll(accountId, sources([A, B, C], [traktItem(1, A)]));
@@ -211,12 +212,8 @@ test(
       [D, "QA Detection Delta"],
       [C, "QA Detection Charlie"],
     ]);
-    expect(metas[0].description).toMatch(
-      new RegExp(`^${detected("QA Trakt picks")}`),
-    );
-    expect(metas[1].description).toMatch(
-      new RegExp(`^${detected("QA watchlist")}`),
-    );
+    expect(metas[0].description).toMatch(detected("QA Trakt picks"));
+    expect(metas[1].description).toMatch(detected("QA watchlist"));
     expect(last.newTitles).toMatchObject({ detected: 2, waitingLists: 0 });
 
     const manifest = await backend.api.getManifest(accountId);
@@ -279,9 +276,7 @@ test(
     );
     const metas = await newTitles(accountId);
     expect(ids(metas)).toEqual([B]);
-    expect(metas[0].description).toMatch(
-      new RegExp(`^${detected("QA Trakt picks")}`),
-    );
+    expect(metas[0].description).toMatch(detected("QA Trakt picks"));
     expect(
       (await getSourceListEntries(accountId)).map((row) => [
         row.entry_key,
@@ -310,11 +305,7 @@ test(
       sources([A, B], [], { imdbCapped: true }),
     );
     expect(capped).toMatchObject({ refreshed: 1, failed: 0 });
-    expect(capped.newTitles).toEqual({
-      detected: 0,
-      latestDetectedAt: null,
-      waitingLists: 1,
-    });
+    expect(capped.newTitles).toEqual({ ...EMPTY_SUMMARY, waitingLists: 1 });
     expect(await getSourceListSyncs(accountId)).toEqual([]);
     // The cut-short read still serves the List's own Catalog.
     const manifest = await backend.api.getManifest(accountId);
@@ -338,11 +329,7 @@ test(
     // The first complete read is the Baseline, also for C, which the
     // cut-short read did not have.
     const baseline = await refreshAll(accountId, sources([A, B, C]));
-    expect(baseline.newTitles).toEqual({
-      detected: 0,
-      latestDetectedAt: null,
-      waitingLists: 0,
-    });
+    expect(baseline.newTitles).toEqual(EMPTY_SUMMARY);
     expect(await newTitles(accountId)).toEqual([]);
     const known = await getSourceListEntries(accountId);
     expect(
@@ -384,23 +371,19 @@ test(
     await refreshAll(accountId, sources([A, B, C], trakt));
     const first = await entryOf(C);
     expect(first?.detected_at).toBeTruthy();
-    const detectedAt = new Date(first!.detected_at!).toISOString();
+    const detectedC = {
+      ...EMPTY_SUMMARY,
+      detected: 1,
+      latestDetectedAt: new Date(first!.detected_at!).toISOString(),
+    };
 
     const gone = await refreshAll(accountId, sources([A, B], trakt));
-    expect(gone.newTitles).toEqual({
-      detected: 0,
-      latestDetectedAt: null,
-      waitingLists: 0,
-    });
+    expect(gone.newTitles).toEqual(EMPTY_SUMMARY);
     expect(await newTitles(accountId)).toEqual([]);
     expect((await entryOf(C))?.removed_at).toBeTruthy();
 
     const back = await refreshAll(accountId, sources([A, B, C], trakt));
-    expect(back.newTitles).toEqual({
-      detected: 1,
-      latestDetectedAt: detectedAt,
-      waitingLists: 0,
-    });
+    expect(back.newTitles).toEqual(detectedC);
     expect(ids(await newTitles(accountId))).toEqual([C]);
     expect(await entryOf(C)).toMatchObject({
       detected_at: first!.detected_at,
@@ -413,11 +396,7 @@ test(
     ).lists;
     const history = await getSourceListSyncs(accountId);
     const removed = await saveLists(accountId, asInput([traktList]));
-    expect(removed.newTitles).toEqual({
-      detected: 0,
-      latestDetectedAt: null,
-      waitingLists: 0,
-    });
+    expect(removed.newTitles).toEqual(EMPTY_SUMMARY);
     expect(await newTitles(accountId)).toEqual([]);
     expect(await getSourceListSyncs(accountId)).toEqual(history);
 
@@ -428,18 +407,12 @@ test(
       ...asInput([traktList]),
       { ...readded, id: undefined },
     ]);
-    expect(added.newTitles).toEqual({
-      detected: 1,
-      latestDetectedAt: detectedAt,
-      waitingLists: 0,
-    });
+    expect(added.newTitles).toEqual(detectedC);
     await refreshAll(accountId, sources([A, B, C], trakt));
     expect(await getSourceListSyncs(accountId)).toEqual(history);
     const metas = await newTitles(accountId);
     expect(ids(metas)).toEqual([C]);
-    expect(metas[0].description).toMatch(
-      new RegExp(`^${detected("QA watchlist")}`),
-    );
+    expect(metas[0].description).toMatch(detected("QA watchlist"));
     // Stremio opens the Title through the meta route.
     const { status, meta } = await getMeta(accountId, "movie", C);
     expect(status).toBe(200);
@@ -463,20 +436,15 @@ test(
     await refreshAll(accountId, sources([A, E, C]));
 
     const manifest = await backend.api.getManifest(accountId);
-    expect(manifest.catalogs.slice(0, 2)).toEqual([
-      {
-        id: "new-titles-movie",
-        name: "Stremlist New titles",
-        type: "movie",
-        extra: [{ name: "skip", isRequired: false }],
-      },
-      {
-        id: "new-titles-series",
-        name: "Stremlist New titles",
-        type: "series",
-        extra: [{ name: "skip", isRequired: false }],
-      },
-    ]);
+    const catalogOf = (type: string) => ({
+      id: `new-titles-${type}`,
+      name: "Stremlist New titles",
+      type,
+      extra: [{ name: "skip", isRequired: false }],
+    });
+    expect(manifest.catalogs.slice(0, 2)).toEqual(
+      ["movie", "series"].map(catalogOf),
+    );
     expect(ids(await newTitles(accountId, "movie"))).toEqual([C]);
     expect(ids(await newTitles(accountId, "series"))).toEqual([E]);
     expect(await newTitles(accountId, "movie", { search: "Charlie" })).toEqual(
@@ -503,9 +471,7 @@ test(
       position: 0,
     });
     const at = new Date().toISOString();
-    await seedCachedCatalog(listId, [
-      { ...CATALOG_TITLES[0], id: A, name: TITLES[A].name },
-    ]);
+    await seedCachedCatalog(listId, [cachedTitle(A)]);
     await seedDetectionHistory(
       legacyId,
       { provider: "imdb", sourceRef: alias },
@@ -523,7 +489,7 @@ test(
 
     expect(ok(await backend.api.getConfig(accountId)).newTitles).toEqual({
       enabled: true,
-      summary: { detected: 0, latestDetectedAt: null, waitingLists: 0 },
+      summary: EMPTY_SUMMARY,
     });
     const manifest = await backend.api.getManifest(accountId);
     expect(manifest.catalogs[0]).toMatchObject({ id: "new-titles-movie" });
@@ -573,13 +539,7 @@ test(
     for (const entry of history) {
       await seedCachedCatalog(
         entry.listId,
-        [
-          {
-            ...CATALOG_TITLES[0],
-            id: entry.imdbId,
-            name: TITLES[entry.imdbId].name,
-          },
-        ],
+        [cachedTitle(entry.imdbId)],
         entry.source.provider === "trakt" ? identity : undefined,
       );
       await seedDetectionHistory(
@@ -637,9 +597,7 @@ test(
         displayMode: "movie",
         position,
       });
-      await seedCachedCatalog(listId, [
-        { ...CATALOG_TITLES[0], id: list.id, name: TITLES[list.id].name },
-      ]);
+      await seedCachedCatalog(listId, [cachedTitle(list.id)]);
       await seedDetectionHistory(
         accountId,
         list,
@@ -678,11 +636,7 @@ test(
       accountId,
       sources([], [traktItem(1, A)], { imdbFails: true }),
     );
-    expect(first.newTitles).toEqual({
-      detected: 0,
-      latestDetectedAt: null,
-      waitingLists: 1,
-    });
+    expect(first.newTitles).toEqual({ ...EMPTY_SUMMARY, waitingLists: 1 });
     expect(await getSourceListSyncs(accountId)).toMatchObject([
       { provider: "trakt", source_ref: TRAKT_REF },
     ]);
@@ -699,10 +653,9 @@ test(
     );
     const metas = await newTitles(accountId);
     expect(ids(metas)).toEqual([D, C]);
-    expect(metas.map((meta) => meta.description)).toEqual([
-      expect.stringMatching(new RegExp(`^${detected("QA merged")}`)),
-      expect.stringMatching(new RegExp(`^${detected("QA merged")}`)),
-    ]);
+    for (const meta of metas) {
+      expect(meta.description).toMatch(detected("QA merged"));
+    }
     expect(last.newTitles).toMatchObject({ detected: 2, waitingLists: 0 });
     const imdbC = (await getSourceListEntries(accountId)).filter(
       (row) => row.imdb_id === C,

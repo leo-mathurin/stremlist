@@ -215,12 +215,12 @@ export function scheduleMembershipRefresh(
       };
       try {
         await writeJson(key, stored, { etag: version.etag });
+      } catch (error) {
+        if (!isPreconditionFailed(error)) throw error;
+      } finally {
         // Write responses can finish out of order. Read the winning R2 state
         // on the next display instead of installing this writer's snapshot.
         memoryMembership.delete(key);
-      } catch (error) {
-        memoryMembership.delete(key);
-        if (!isPreconditionFailed(error)) throw error;
       }
     } catch (error) {
       failedRefreshes.set(key, true);

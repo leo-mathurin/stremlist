@@ -17,7 +17,7 @@ import {
 } from "./harness";
 
 vi.mock("../../http", async (importOriginal) => {
-  const { httpModule } = await import("./mocks");
+  const { httpModule } = await import("../oauth-harness");
   return httpModule(await importOriginal());
 });
 

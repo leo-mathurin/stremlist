@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { ACCOUNT_KEY_PATTERN } from "@stremlist/shared/constants";
 import { MAX_LISTS, connectionProviders } from "@stremlist/shared/list-merge";
@@ -30,10 +30,10 @@ import RelativeTime from "../components/RelativeTime";
 import SortableListRow from "../components/SortableListRow";
 import { SectionHeading, SplitLayout, Wordmark } from "../components/brand";
 import { usePendingIndicator } from "../hooks/usePendingIndicator";
-import { useRefreshCooldown } from "../hooks/useRefreshCooldown";
+import { useNow } from "../hooks/useNow";
 import { useSEO } from "../hooks/useSEO";
 import { useAccountConfiguration } from "../hooks/useAccountConfiguration";
-import { ConnectionsContext } from "../hooks/connections-context";
+import { ConnectionsContext } from "../hooks/useCatalogPreview";
 import { accountEditPolicy } from "../lib/account-config";
 import { sourceKeys } from "../lib/list-form";
 import { attentionTone } from "../lib/list-sync";
@@ -69,44 +69,29 @@ function connectionNotice(
   error: string | null,
   providerParam: string | null,
 ): Notice | null {
-  const provider =
-    providerParam && isProviderId(providerParam) ? providerParam : null;
-  const label = provider ? PROVIDERS[provider].label : "the account";
   if (connected && isProviderId(connected)) {
     return {
       type: "success",
       message: `${PROVIDERS[connected].label} is connected. You can now add its lists.`,
     };
   }
-  switch (error) {
-    case null:
-      return null;
-    case "denied":
-      return {
-        type: "error",
-        message: `You cancelled the connection to ${label}. Nothing changed.`,
-      };
-    case "expired":
-      return {
-        type: "error",
-        message: `The connection to ${label} took too long. Please try again.`,
-      };
-    case "unavailable":
-      return {
-        type: "error",
-        message: `${label} is temporarily unavailable. Please try again later.`,
-      };
-    case "invalid_request":
-      return {
-        type: "error",
-        message: "The connection could not be completed. Please try again.",
-      };
-    default:
-      return {
-        type: "error",
-        message: `Could not connect ${label}. Please try again.`,
-      };
-  }
+  if (error === null) return null;
+  const label =
+    providerParam && isProviderId(providerParam)
+      ? PROVIDERS[providerParam].label
+      : "the account";
+  const messages: Record<string, string> = {
+    denied: `You cancelled the connection to ${label}. Nothing changed.`,
+    expired: `The connection to ${label} took too long. Please try again.`,
+    unavailable: `${label} is temporarily unavailable. Please try again later.`,
+    invalid_request: "The connection could not be completed. Please try again.",
+  };
+  return {
+    type: "error",
+    message: Object.hasOwn(messages, error)
+      ? messages[error]
+      : `Could not connect ${label}. Please try again.`,
+  };
 }
 
 export default function Configure() {
@@ -163,20 +148,18 @@ export default function Configure() {
     readStorage(NEW_ACCOUNT_STORAGE),
   );
   /** Open an Account created in this tab; a new setup replaces its entry. */
-  const openCreated = useCallback(
-    (id: string, replace = true) => {
-      writeStorage(NEW_ACCOUNT_STORAGE, id);
-      setCreatedId(id);
-      navigate(`/configure?account=${encodeURIComponent(id)}`, { replace });
-    },
-    [navigate],
-  );
+  const openCreated = (id: string, replace = true) => {
+    writeStorage(NEW_ACCOUNT_STORAGE, id);
+    setCreatedId(id);
+    navigate(`/configure?account=${encodeURIComponent(id)}`, { replace });
+  };
 
   const config = useAccountConfiguration(accountKey, {
     onAccountCreated: openCreated,
   });
   const { lists, access, accountId, status } = config;
   const [detected, setDetected] = useState<ProviderId | null>(null);
+  const [showRpdbApiKey, setShowRpdbApiKey] = useState(false);
   const full = lists.length >= MAX_LISTS;
   const ready = status === "ready" && (!rawKey || keyIsValid);
   const justCreated = !!accountId && createdId === accountId;
@@ -383,15 +366,29 @@ export default function Configure() {
             />
           )}
 
-        {rawKey && !keyIsValid ? (
-          <NotFoundCard />
+        {(rawKey && !keyIsValid) || status === "notFound" ? (
+          <div
+            role="alert"
+            className="space-y-3 rounded-3xl bg-white p-6 ring-1 ring-black/5"
+          >
+            <p className="font-bold">We could not find this Stremlist</p>
+            <p className="text-sm text-black/60">
+              Check that you opened the configure page from your Stremio
+              install, or paste your Addon URL on the home page. You can also
+              build a new Stremlist.
+            </p>
+            <Link
+              to="/configure"
+              className="inline-flex h-10 items-center rounded-full bg-brand px-5 text-sm font-bold text-black hover:bg-brand-dark"
+            >
+              Build a new Stremlist
+            </Link>
+          </div>
         ) : status === "loading" ? (
           <p className="flex items-center gap-2 text-sm text-black/45">
             <Loader2 className="size-4 animate-spin" />
             Loading your Stremlist
           </p>
-        ) : status === "notFound" ? (
-          <NotFoundCard />
         ) : status === "error" ? (
           <div
             role="alert"
@@ -542,7 +539,7 @@ export default function Configure() {
                 <div className="flex items-center gap-1 rounded-2xl bg-black/5 p-1">
                   <input
                     id="rpdb-api-key"
-                    type={config.showRpdbApiKey ? "text" : "password"}
+                    type={showRpdbApiKey ? "text" : "password"}
                     value={config.rpdbApiKey}
                     onChange={(e) => config.setRpdbApiKey(e.target.value)}
                     placeholder="Paste your RPDB API key"
@@ -551,17 +548,13 @@ export default function Configure() {
                   />
                   <button
                     type="button"
-                    onClick={() =>
-                      config.setShowRpdbApiKey((current) => !current)
-                    }
+                    onClick={() => setShowRpdbApiKey((current) => !current)}
                     aria-label={
-                      config.showRpdbApiKey
-                        ? "Hide RPDB API key"
-                        : "Show RPDB API key"
+                      showRpdbApiKey ? "Hide RPDB API key" : "Show RPDB API key"
                     }
                     className="flex size-9 shrink-0 items-center justify-center rounded-xl text-black/50 transition-colors hover:bg-white hover:text-ink"
                   >
-                    {config.showRpdbApiKey ? (
+                    {showRpdbApiKey ? (
                       <EyeOff className="size-4" />
                     ) : (
                       <Eye className="size-4" />
@@ -635,7 +628,11 @@ function RefreshButton({
   nextRefreshAt: number;
   onRefresh: () => void;
 }) {
-  const { cooldownRemaining, onCooldown } = useRefreshCooldown(nextRefreshAt);
+  const cooldownRemaining = Math.max(
+    0,
+    Math.ceil((nextRefreshAt - useNow()) / 1000),
+  );
+  const onCooldown = cooldownRemaining > 0;
   return (
     <button
       type="button"
@@ -650,27 +647,5 @@ function RefreshButton({
           ? `Refresh in ${cooldownRemaining}s`
           : "Refresh now"}
     </button>
-  );
-}
-
-function NotFoundCard() {
-  return (
-    <div
-      role="alert"
-      className="space-y-3 rounded-3xl bg-white p-6 ring-1 ring-black/5"
-    >
-      <p className="font-bold">We could not find this Stremlist</p>
-      <p className="text-sm text-black/60">
-        Check that you opened the configure page from your Stremio install, or
-        paste your Addon URL on the home page. You can also build a new
-        Stremlist.
-      </p>
-      <Link
-        to="/configure"
-        className="inline-flex h-10 items-center rounded-full bg-brand px-5 text-sm font-bold text-black hover:bg-brand-dark"
-      >
-        Build a new Stremlist
-      </Link>
-    </div>
   );
 }

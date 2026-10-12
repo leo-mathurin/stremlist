@@ -4,8 +4,8 @@ import type {
   CatalogPreviewRow,
   PreviewTitle,
 } from "@stremlist/shared/catalog-preview";
-import type { PreviewRequest } from "./config-fixture";
 import {
+  type PreviewRequest,
   accountId,
   backend,
   baseRoutes,
@@ -35,6 +35,13 @@ const PASTE = "Paste a link to a watchlist or list";
 /** The notice of unsaved edits that change the Catalogs of Stremio. */
 const NEEDS_REINSTALL = "These changes need a reinstall.";
 const LIST_LINK = "https://www.imdb.com/list/ls99887766/";
+/** The request of an IMDb List preview with the default List settings. */
+const IMDB_REQUEST = {
+  provider: "imdb",
+  sortOption: "added_at-asc",
+  displayMode: "split",
+  catalogSettings: {},
+};
 
 test("a pasted List opens its preview at once, a saved List only on request", async ({
   app,
@@ -70,14 +77,7 @@ test("a pasted List opens its preview at once, a saved List only on request", as
     screen.getByRole("heading", /^Unresolved entries/),
   ).not.toBeVisible();
   expect(requests).toEqual([
-    {
-      accountKey: accountId,
-      provider: "imdb",
-      sourceRef: "ls99887766",
-      sortOption: "added_at-asc",
-      displayMode: "split",
-      catalogSettings: {},
-    },
+    { ...IMDB_REQUEST, accountKey: accountId, sourceRef: "ls99887766" },
   ]);
 
   // The saved List opens on request, and closes again.
@@ -85,10 +85,7 @@ test("a pasted List opens its preview at once, a saved List only on request", as
   await toggle.tap();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect.poll(() => requests.length).toBe(2);
-  expect(requests[1]).toMatchObject({
-    provider: "imdb",
-    sourceRef: imdbUser,
-  });
+  expect(requests[1]).toMatchObject({ provider: "imdb", sourceRef: imdbUser });
   await toggle.tap();
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
 });
@@ -100,10 +97,7 @@ test("the preview follows the sort and Show of the List", async ({
 }) => {
   const submissions = await captureConfig(browser);
   const requests = await routePreview(browser, (request) =>
-    previewOf(request, {
-      typeCounts: { movie: 2, series: 3 },
-      titleCount: 5,
-    }),
+    previewOf(request, { typeCounts: { movie: 2, series: 3 }, titleCount: 5 }),
   );
   await app.open(`/configure?account=${accountId}`);
   await screen.getByRole("button", "Preview Test catalog").tap();
@@ -147,9 +141,7 @@ test("Unresolved entries are listed, with the ones not checked yet", async ({
       index === 0 ? "https://www.justwatch.com/fr/film/unmatched-entry" : null,
   }));
   await routePreview(browser, (request) =>
-    previewOf(request, {
-      unresolved: { count: 9, notCheckedYet: 2, entries },
-    }),
+    previewOf(request, { unresolved: { count: 9, notCheckedYet: 2, entries } }),
   );
   await app.open(`/configure?account=${accountId}`);
   await screen.getByRole("button", "Preview Test catalog").tap();
@@ -257,13 +249,13 @@ test("disconnecting the Provider reads the open preview again", async ({
   await baseRoutes(browser);
   let disconnected = false;
   // After the disconnect, the page reads the configuration again.
-  await browser.route(`${backend}/${accountId}/config`, async (route) => {
-    await route.fulfill({
+  await browser.route(`${backend}/${accountId}/config`, (route) =>
+    route.fulfill({
       json: toJson(
         disconnected ? { ...withTrakt, connections: [] } : withTrakt,
       ),
-    });
-  });
+    }),
+  );
   await browser.route(
     `${backend}/${accountId}/connections/trakt`,
     async (route) => {
@@ -477,14 +469,7 @@ test("the Legacy alias view previews with the alias as its key", async ({
   await screen.getByRole("button", "Preview Test catalog").tap();
   await expect(screen.getByText("The Godfather")).toBeVisible();
   expect(requests).toEqual([
-    {
-      accountKey: imdbUser,
-      provider: "imdb",
-      sourceRef: imdbUser,
-      sortOption: "added_at-asc",
-      displayMode: "split",
-      catalogSettings: {},
-    },
+    { ...IMDB_REQUEST, accountKey: imdbUser, sourceRef: imdbUser },
   ]);
 });
 

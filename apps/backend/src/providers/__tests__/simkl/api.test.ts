@@ -2,26 +2,26 @@ import { ADDON_VERSION } from "@stremlist/shared/constants";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { simklProvider } from "../../simkl";
 import { simklLimiters } from "../../simkl/api";
+import { limiters } from "../oauth-harness";
 import {
   calls,
   ctx,
   json,
   resetSimklTest,
-  restoreSimklTest,
+  restoreStubs,
   routes,
 } from "./harness";
-import { limiters } from "./mocks";
 
 vi.mock("../../../lib/r2", async () => {
   return (await import("./mocks")).r2Module;
 });
 vi.mock("../../http", async (importOriginal) => {
-  const { httpModule } = await import("./mocks");
+  const { httpModule } = await import("../oauth-harness");
   return httpModule(await importOriginal());
 });
 
 beforeEach(resetSimklTest);
-afterEach(restoreSimklTest);
+afterEach(restoreStubs);
 
 describe("simkl requests", () => {
   it("identify the app on every call", async () => {

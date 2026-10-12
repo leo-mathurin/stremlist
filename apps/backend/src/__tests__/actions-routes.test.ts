@@ -2,22 +2,12 @@ import type { ProviderId } from "@stremlist/shared/providers";
 import type { StremioStream } from "@stremlist/shared/stremio.types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../lib/supabase", async () => {
-  return await import("./helpers/mock-supabase.js");
-});
-vi.mock("../lib/r2", async () => {
-  return await import("./helpers/mock-r2.js");
-});
+vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
+vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
 vi.mock("../lib/background", () => ({ scheduleBackgroundTask: vi.fn() }));
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-vi.mock("../lib/resend", () => ({
-  resend: { contacts: { create: vi.fn() } },
-}));
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
+vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
 // Pages name the Title; tests use a fixed name instead of IMDb.
 vi.mock("../titles/enrich", () => ({
   enrichTitles: vi.fn((titles: { imdbId: string; type?: string }[]) =>
@@ -34,11 +24,7 @@ vi.mock("../titles/enrich", () => ({
 
 import app from "../index.js";
 import type { Membership, ProviderActions } from "../providers/types";
-import {
-  seedAccount,
-  seedConnection,
-  seedLegacyAccount,
-} from "./helpers/fixtures.js";
+import { seedAccount, seedConnection } from "./helpers/fixtures.js";
 import { r2Objects } from "./helpers/mock-r2.js";
 import {
   fakeActions,
@@ -85,14 +71,19 @@ function seedMembership(
   );
 }
 
-/** A private Account with Actions on Trakt, connected. */
+/** An Account with Actions on Trakt, connected; private unless `legacy`. */
 function seedActionAccount(
-  overrides: { enabled?: boolean; providers?: ProviderId[] } = {},
+  overrides: {
+    enabled?: boolean;
+    providers?: ProviderId[];
+    legacy?: true;
+  } = {},
 ) {
   const providers = overrides.providers ?? ["trakt"];
   const account = seedAccount({
     actions_enabled: overrides.enabled ?? true,
     action_providers: providers,
+    legacy_imdb_user_id: overrides.legacy && "ur12345678",
   });
   for (const provider of providers) seedConnection(account.id, provider);
   return account;
@@ -159,11 +150,7 @@ describe("GET /:accountKey/stream/:type/:id.json", () => {
   });
 
   it("returns nothing through a Legacy alias, even with Actions on", async () => {
-    const legacy = seedLegacyAccount("ur12345678", {
-      actions_enabled: true,
-      action_providers: ["trakt"],
-    });
-    seedConnection(legacy.id, "trakt");
+    seedActionAccount({ legacy: true });
 
     const res = await app.request(`/ur12345678/stream/movie/${MOVIE}.json`);
 
@@ -243,17 +230,6 @@ describe("Action pages", () => {
     });
   });
 
-  it("answers not found for broken percent encoding", async () => {
-    const account = seedActionAccount();
-
-    const res = await app.request(
-      `/${account.id}/actions/watched/add/series/${SERIES}%`,
-    );
-
-    expect(res.status).toBe(404);
-    expect(perform).not.toHaveBeenCalled();
-  });
-
   it("marks one episode as watched", async () => {
     const account = seedActionAccount();
 
@@ -284,24 +260,22 @@ describe("Action pages", () => {
   });
 
   it.each([
-    "watchlist/toggle/movie",
-    "watchlist/add/channel",
-    "delete/add/movie",
+    `watchlist/toggle/movie/${MOVIE}`,
+    `watchlist/add/channel/${MOVIE}`,
+    `delete/add/movie/${MOVIE}`,
+    // Broken percent encoding.
+    `watched/add/series/${SERIES}%`,
   ])("refuses the malformed Action %s", async (path) => {
     const account = seedActionAccount();
 
-    const res = await app.request(`/${account.id}/actions/${path}/${MOVIE}`);
+    const res = await app.request(`/${account.id}/actions/${path}`);
 
     expect(res.status).toBe(404);
     expect(perform).not.toHaveBeenCalled();
   });
 
   it("refuses a Legacy alias", async () => {
-    const legacy = seedLegacyAccount("ur12345678", {
-      actions_enabled: true,
-      action_providers: ["trakt"],
-    });
-    seedConnection(legacy.id, "trakt");
+    const legacy = seedActionAccount({ legacy: true });
 
     for (const key of ["ur12345678", legacy.id]) {
       const res = await app.request(
@@ -418,10 +392,7 @@ describe("Action pages", () => {
     );
 
     it("refuses a Legacy alias", async () => {
-      seedLegacyAccount("ur12345678", {
-        actions_enabled: true,
-        action_providers: ["trakt"],
-      });
+      seedActionAccount({ legacy: true });
 
       const res = await postForm(
         `/ur12345678/actions/rating/rate/movie/${MOVIE}`,

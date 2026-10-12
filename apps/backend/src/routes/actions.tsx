@@ -93,9 +93,7 @@ async function titleName(
     const metas = await Promise.race([
       enrichTitles([{ imdbId, type }]),
       new Promise<null>((resolve) =>
-        setTimeout(() => {
-          resolve(null);
-        }, NAME_TIMEOUT_MS),
+        setTimeout(resolve, NAME_TIMEOUT_MS, null),
       ),
     ]);
     return metas?.get(imdbId)?.name ?? null;
@@ -208,11 +206,7 @@ async function renderRating(c: Context) {
 
   return c.html(
     <Page title="Rate">
-      <h1>
-        {name
-          ? `Rate ${name}`
-          : `Rate this ${target.type === "series" ? "series" : "movie"}`}
-      </h1>
+      <h1>{name ? `Rate ${name}` : `Rate this ${target.type}`}</h1>
       <form method="post">
         <div class="stars" role="radiogroup" aria-label="Rating from 1 to 10">
           {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (

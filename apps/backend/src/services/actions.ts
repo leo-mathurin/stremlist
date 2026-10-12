@@ -285,15 +285,15 @@ export async function buildActionStreams(
       new Set(ratings.map((r) => r.rating)).size === 1
     ) {
       title = `⭐ Rated ${ratings[0].rating}/10, change\n${names}`;
-    } else if (ratings.length < raters.length) {
-      // Say where the rating is, and where it is still missing.
-      const rated = new Set(ratings.map((r) => r.provider));
-      const missing = joinProviderLabels(
-        raters.map((r) => r.provider).filter((p) => !rated.has(p)),
-      );
-      title = `⭐ ${ratings.map((r) => `${r.rating}/10 on ${PROVIDERS[r.provider].label}`).join(", ")}, change\nNot rated on ${missing}`;
     } else {
       title = `⭐ ${ratings.map((r) => `${r.rating}/10 on ${PROVIDERS[r.provider].label}`).join(", ")}, change`;
+      if (ratings.length < raters.length) {
+        // Say where the rating is, and where it is still missing.
+        const rated = new Set(ratings.map((r) => r.provider));
+        title += `\nNot rated on ${joinProviderLabels(
+          raters.map((r) => r.provider).filter((p) => !rated.has(p)),
+        )}`;
+      }
     }
     streams.push({
       name: STREAM_NAME,

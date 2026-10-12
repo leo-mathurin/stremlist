@@ -204,24 +204,21 @@ export async function seedConnection(
     needsRenewalSince?: Date;
   } = {},
 ): Promise<void> {
-  const refreshToken =
-    options.refreshToken === undefined
-      ? "fixture-refresh-token"
-      : options.refreshToken;
+  const {
+    username = "fixture-user",
+    refreshToken = "fixture-refresh-token",
+    expiresAt = new Date(Date.now() + 24 * 60 * 60_000),
+  } = options;
   const { error } = await db.from("connections").upsert(
     {
       account_id: accountId,
       provider,
-      provider_username:
-        options.username === undefined ? "fixture-user" : options.username,
+      provider_username: username,
       redirect_uri:
         options.redirectUri ?? `${BACKEND_URL}/oauth/${provider}/callback`,
       access_token: encryptToken(options.accessToken ?? "fixture-access-token"),
       refresh_token: refreshToken ? encryptToken(refreshToken) : null,
-      expires_at:
-        options.expiresAt === undefined
-          ? new Date(Date.now() + 24 * 60 * 60_000).toISOString()
-          : (options.expiresAt?.toISOString() ?? null),
+      expires_at: expiresAt?.toISOString() ?? null,
       ...(options.needsRenewalSince && {
         needs_renewal_since: options.needsRenewalSince.toISOString(),
       }),

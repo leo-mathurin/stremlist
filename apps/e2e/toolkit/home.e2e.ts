@@ -197,12 +197,12 @@ test("Terms and Changelog link their sections and lead back Home", async ({
   await baseRoutes(browser);
   await browser.setViewport({ width: 1280, height: 900 });
   await app.open("/terms");
-  const terms = screen.getByRole("navigation", "On this page");
-  await expect(terms.getByRole("link")).toHaveText([
+  const toc = screen.getByRole("navigation", "On this page");
+  await expect(toc.getByRole("link")).toHaveText([
     "Terms and Conditions",
     "Privacy Policy",
   ]);
-  await terms.getByRole("link", "Privacy Policy").tap();
+  await toc.getByRole("link", "Privacy Policy").tap();
   await expect(browser).toHaveURL("/terms#privacy");
   await expect(screen.getByRole("heading", "Privacy Policy")).toBeVisible();
   await screen
@@ -211,11 +211,10 @@ test("Terms and Changelog link their sections and lead back Home", async ({
     .tap();
   await expect(browser).toHaveURL("/changelog");
 
-  const versions = screen.getByRole("navigation", "On this page");
-  await expect(versions.getByRole("link").first()).toHaveText(
+  await expect(toc.getByRole("link").first()).toHaveText(
     "v1.10.0 September 15, 2026",
   );
-  await versions.getByRole("link", /^v1\.0\.0/).tap();
+  await toc.getByRole("link", /^v1\.0\.0/).tap();
   await expect(browser).toHaveURL("/changelog#v1-0-0");
   await expect(screen.getByRole("heading", "v1.0.0")).toBeVisible();
   await expect(

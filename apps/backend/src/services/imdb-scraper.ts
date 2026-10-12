@@ -236,9 +236,9 @@ export const ERROR_NOT_FOUND =
 export const ERROR_PRIVATE =
   "This IMDb watchlist is private. Please make your watchlist public in your IMDb settings.";
 
-export const ERROR_LIST_NOT_FOUND =
+const ERROR_LIST_NOT_FOUND =
   "Could not find an IMDb list for this ID. Please check and try again.";
-export const ERROR_LIST_PRIVATE =
+const ERROR_LIST_PRIVATE =
   "This IMDb list is private. Please ask the list owner to make it public.";
 
 export type WatchlistErrorReason = "private" | "not_found";
@@ -340,6 +340,28 @@ const VALIDATE_QUERY = `
   }
 `;
 
+type ImdbList =
+  | { visibility?: { id: string }; titleListItemSearch?: TitleListItemSearch }
+  | null
+  | undefined;
+
+/** Whether a watchlist or list that a validation query returned is public. */
+function validationResult(
+  json: GraphQLResponse,
+  list: ImdbList,
+): ListValidationResult {
+  if (json.errors?.length) {
+    return {
+      valid: false,
+      reason: hasForbiddenError(json.errors) ? "private" : "not_found",
+    };
+  }
+  if (!list) return { valid: false, reason: "not_found" };
+  return list.visibility?.id === "PUBLIC"
+    ? { valid: true }
+    : { valid: false, reason: "private" };
+}
+
 export async function validateImdbWatchlist(
   input: string,
 ): Promise<ValidationResult> {
@@ -354,63 +376,45 @@ export async function validateImdbWatchlist(
     const json = await queryImdbGraphQL("ValidateWatchlist", VALIDATE_QUERY, {
       urConst: userId,
     });
-
-    if (json.errors?.length) {
-      return {
-        valid: false,
-        reason: hasForbiddenError(json.errors) ? "private" : "not_found",
-      };
-    }
-
-    const list = json.data?.predefinedList;
-    if (!list) {
-      return { valid: false, reason: "not_found" };
-    }
-
-    if (list.visibility?.id === "PUBLIC") {
-      return { valid: true, userId };
-    }
-
-    return { valid: false, reason: "private" };
+    const result = validationResult(json, json.data?.predefinedList);
+    return result.valid ? { valid: true, userId } : result;
   } catch {
     return { valid: false, reason: "not_found" };
   }
 }
 
-export async function getImdbWatchlist(
-  input: string,
+/** Every page of a watchlist or list, up to MAX_ITEMS. */
+async function readListPages(
+  label: string,
+  errors: { private: string; notFound: string },
+  readPage: (
+    first: number,
+    after: string | null,
+  ) => Promise<{ json: GraphQLResponse; list: ImdbList }>,
 ): Promise<PagedRead<ImdbEdge>> {
-  const userId = await normalizeImdbUserId(input);
   const edges: ImdbEdge[] = [];
   let after: string | null = null;
   let targetItems = MAX_ITEMS;
   let complete = true;
+  const truncate = () => {
+    complete = false;
+    console.warn(
+      `${label} exceeded the ${MAX_ITEMS.toLocaleString("en-US")}-item limit; remaining items truncated.`,
+    );
+  };
 
   for (let page = 0; page < MAX_PAGES; page++) {
     const first = getPageSize(edges.length, targetItems);
     if (first <= 0) break;
 
-    const json = await queryImdbGraphQL("WatchListPage", WATCHLIST_QUERY, {
-      urConst: userId,
-      first,
-      after,
-    });
-
+    const { json, list } = await readPage(first, after);
     if (json.errors?.length) {
       throw new Error(
-        hasForbiddenError(json.errors) ? ERROR_PRIVATE : ERROR_NOT_FOUND,
+        hasForbiddenError(json.errors) ? errors.private : errors.notFound,
       );
     }
-
-    const list = json.data?.predefinedList;
-
-    if (!list) {
-      throw new Error(ERROR_NOT_FOUND);
-    }
-
-    if (list.visibility?.id === "PRIVATE") {
-      throw new Error(ERROR_PRIVATE);
-    }
+    if (!list) throw new Error(errors.notFound);
+    if (list.visibility?.id === "PRIVATE") throw new Error(errors.private);
 
     const search = list.titleListItemSearch;
     targetItems = Math.min(search?.total ?? MAX_ITEMS, MAX_ITEMS);
@@ -423,27 +427,35 @@ export async function getImdbWatchlist(
         (search?.total ?? 0) > MAX_ITEMS ||
         (targetItems === MAX_ITEMS && pageInfo?.hasNextPage)
       ) {
-        complete = false;
-        console.warn(
-          `Watchlist for ${userId} exceeded the ${MAX_ITEMS.toLocaleString("en-US")}-item limit; remaining items truncated.`,
-        );
+        truncate();
       }
       break;
     }
-    if (!pageInfo?.hasNextPage || !pageInfo.endCursor) {
-      break;
-    }
+    if (!pageInfo?.hasNextPage || !pageInfo.endCursor) break;
     after = pageInfo.endCursor;
 
-    if (page === MAX_PAGES - 1) {
-      complete = false;
-      console.warn(
-        `Watchlist for ${userId} exceeded the ${MAX_ITEMS.toLocaleString("en-US")}-item limit; remaining items truncated.`,
-      );
-    }
+    if (page === MAX_PAGES - 1) truncate();
   }
 
   return { items: edges, complete };
+}
+
+export async function getImdbWatchlist(
+  input: string,
+): Promise<PagedRead<ImdbEdge>> {
+  const userId = await normalizeImdbUserId(input);
+  return readListPages(
+    `Watchlist for ${userId}`,
+    { private: ERROR_PRIVATE, notFound: ERROR_NOT_FOUND },
+    async (first, after) => {
+      const json = await queryImdbGraphQL("WatchListPage", WATCHLIST_QUERY, {
+        urConst: userId,
+        first,
+        after,
+      });
+      return { json, list: json.data?.predefinedList };
+    },
+  );
 }
 
 function processWatchlist(edges: ImdbEdge[]): ProcessedItem[] {
@@ -604,22 +616,24 @@ export function isListId(id: string): boolean {
   return id.startsWith("ls");
 }
 
+/** Stremio metas of IMDb edges, with the logs of a read. */
+function toMetas(edges: ImdbEdge[], read: string): StremioMeta[] {
+  console.log(`Raw ${read} (${edges.length} items)`);
+  const metas = convertToStremioFormat(processWatchlist(edges));
+  console.log(`Converted ${metas.length} items to Stremio format`);
+  return metas;
+}
+
 export async function fetchWatchlist(
   imdbUserId: string,
 ): Promise<ImdbListData> {
   console.log(`Fetching IMDb watchlist for user ${imdbUserId}...`);
-
-  const { items: edges, complete } = await getImdbWatchlist(imdbUserId);
-
-  console.log(
-    `Raw watchlist data received from IMDb for user ${imdbUserId} (${edges.length} items)`,
+  const { items, complete } = await getImdbWatchlist(imdbUserId);
+  const metas = toMetas(
+    items,
+    `watchlist data received from IMDb for user ${imdbUserId}`,
   );
-
-  const processed = processWatchlist(edges);
-  const metas = convertToStremioFormat(processed);
-  console.log(`Converted ${metas.length} items to Stremio format`);
-
-  return { metas, complete, addedAt: addedDates(edges) };
+  return { metas, complete, addedAt: addedDates(items) };
 }
 
 /**
@@ -720,17 +734,8 @@ export async function fetchChart(sourceId: string): Promise<ImdbListData> {
   }
 
   console.log(`Fetching IMDb chart ${sourceId}...`);
-
   const edges = await getChartEdges(entry);
-
-  console.log(
-    `Raw chart data received from IMDb for ${sourceId} (${edges.length} items)`,
-  );
-
-  const processed = processWatchlist(edges);
-  const metas = convertToStremioFormat(processed);
-  console.log(`Converted ${metas.length} items to Stremio format`);
-
+  const metas = toMetas(edges, `chart data received from IMDb for ${sourceId}`);
   // A chart is its first N titles by definition, so the read is complete.
   return { metas, complete: true };
 }
@@ -742,113 +747,32 @@ export async function validateImdbList(
     const json = await queryImdbGraphQL("ValidateList", VALIDATE_LIST_QUERY, {
       listId,
     });
-
-    if (json.errors?.length) {
-      return {
-        valid: false,
-        reason: hasForbiddenError(json.errors) ? "private" : "not_found",
-      };
-    }
-
-    const list = json.data?.list;
-    if (!list) {
-      return { valid: false, reason: "not_found" };
-    }
-
-    if (list.visibility?.id === "PUBLIC") {
-      return { valid: true };
-    }
-
-    return { valid: false, reason: "private" };
+    return validationResult(json, json.data?.list);
   } catch {
     return { valid: false, reason: "not_found" };
   }
 }
 
-export async function getImdbList(
-  listId: string,
-): Promise<PagedRead<ImdbEdge>> {
-  const edges: ImdbEdge[] = [];
-  let after: string | null = null;
-  let targetItems = MAX_ITEMS;
-  let complete = true;
-
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const first = getPageSize(edges.length, targetItems);
-    if (first <= 0) break;
-
-    const json = await queryImdbGraphQL("ListPage", LIST_QUERY, {
-      listId,
-      first,
-      after,
-    });
-
-    if (json.errors?.length) {
-      throw new Error(
-        hasForbiddenError(json.errors)
-          ? ERROR_LIST_PRIVATE
-          : ERROR_LIST_NOT_FOUND,
-      );
-    }
-
-    const list = json.data?.list;
-
-    if (!list) {
-      throw new Error(ERROR_LIST_NOT_FOUND);
-    }
-
-    if (list.visibility?.id === "PRIVATE") {
-      throw new Error(ERROR_LIST_PRIVATE);
-    }
-
-    const search = list.titleListItemSearch;
-    targetItems = Math.min(search?.total ?? MAX_ITEMS, MAX_ITEMS);
-    const pageInfo = search?.pageInfo;
-    const pageCapacity = Math.max(targetItems - edges.length, 0);
-    edges.push(...(search?.edges ?? []).slice(0, pageCapacity));
-
-    if (edges.length >= targetItems) {
-      if (
-        (search?.total ?? 0) > MAX_ITEMS ||
-        (targetItems === MAX_ITEMS && pageInfo?.hasNextPage)
-      ) {
-        complete = false;
-        console.warn(
-          `List ${listId} exceeded the ${MAX_ITEMS.toLocaleString("en-US")}-item limit; remaining items truncated.`,
-        );
-      }
-      break;
-    }
-    if (!pageInfo?.hasNextPage || !pageInfo.endCursor) {
-      break;
-    }
-    after = pageInfo.endCursor;
-
-    if (page === MAX_PAGES - 1) {
-      complete = false;
-      console.warn(
-        `List ${listId} exceeded the ${MAX_ITEMS.toLocaleString("en-US")}-item limit; remaining items truncated.`,
-      );
-    }
-  }
-
-  return { items: edges, complete };
+export function getImdbList(listId: string): Promise<PagedRead<ImdbEdge>> {
+  return readListPages(
+    `List ${listId}`,
+    { private: ERROR_LIST_PRIVATE, notFound: ERROR_LIST_NOT_FOUND },
+    async (first, after) => {
+      const json = await queryImdbGraphQL("ListPage", LIST_QUERY, {
+        listId,
+        first,
+        after,
+      });
+      return { json, list: json.data?.list };
+    },
+  );
 }
 
 export async function fetchList(listId: string): Promise<ImdbListData> {
   console.log(`Fetching IMDb list ${listId}...`);
-
-  const { items: edges, complete } = await getImdbList(listId);
-
-  console.log(
-    `Raw list data received from IMDb for ${listId} (${edges.length} items)`,
-  );
-
-  const processed = processWatchlist(edges);
-  const metas = convertToStremioFormat(processed);
-  console.log(`Converted ${metas.length} items to Stremio format`);
-
-  return { metas, complete, addedAt: addedDates(edges) };
+  const { items, complete } = await getImdbList(listId);
+  const metas = toMetas(items, `list data received from IMDb for ${listId}`);
+  return { metas, complete, addedAt: addedDates(items) };
 }
 
 const TITLES_BY_ID_QUERY = `

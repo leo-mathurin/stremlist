@@ -9,7 +9,7 @@ import {
   ctx,
   json,
   resetSimklTest,
-  restoreSimklTest,
+  restoreStubs,
   routes,
 } from "./harness";
 
@@ -17,12 +17,12 @@ vi.mock("../../../lib/r2", async () => {
   return (await import("./mocks")).r2Module;
 });
 vi.mock("../../http", async (importOriginal) => {
-  const { httpModule } = await import("./mocks");
+  const { httpModule } = await import("../oauth-harness");
   return httpModule(await importOriginal());
 });
 
 beforeEach(resetSimklTest);
-afterEach(restoreSimklTest);
+afterEach(restoreStubs);
 
 describe("simkl custom lists", () => {
   it("reports premium_only from a 200 body and remembers it", async () => {

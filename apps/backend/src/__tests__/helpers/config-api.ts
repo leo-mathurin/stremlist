@@ -10,8 +10,9 @@ import { vi } from "vitest";
 
 import app from "../../index.js";
 import { backgroundMocks, prewarmMocks, rpcMocks } from "./config-api-mocks.js";
-import { seedLegacyAccount, seedList } from "./fixtures.js";
+import { LIST_IDS, seedLegacyAccount, seedList } from "./fixtures.js";
 import { cache } from "./mock-list-cache.js";
+import { r2Objects, r2Undeletable } from "./mock-r2.js";
 import { resetProviders } from "./mock-registry.js";
 import { callRpc, db } from "./mock-supabase.js";
 
@@ -21,8 +22,7 @@ type ReplaceConfig = Database["public"]["Functions"]["replace_account_config"];
 export const OWNER = "ur12345678";
 export const OTHER_IMDB = "ur87654321";
 
-export const UUID_1 = "11111111-1111-4111-8111-111111111111";
-export const UUID_2 = "22222222-2222-4222-8222-222222222222";
+export const [UUID_1, UUID_2] = LIST_IDS;
 
 export let legacyAccountId = "";
 
@@ -100,6 +100,8 @@ export function resetConfigTest() {
   rpcMocks.rpc.mockReset();
   rpcMocks.rpc.mockImplementation(callRpc);
   cache.reset();
+  r2Objects.clear();
+  r2Undeletable.clear();
   resetProviders();
   vi.restoreAllMocks();
   legacyAccountId = seedLegacyAccount(OWNER).id;

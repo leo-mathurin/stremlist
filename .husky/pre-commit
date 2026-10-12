@@ -1,2 +1,3 @@
 bunx lint-staged
+bun run knip
 bunx turbo run build test

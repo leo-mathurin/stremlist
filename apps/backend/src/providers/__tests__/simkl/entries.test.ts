@@ -1,18 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { simklProvider } from "../../simkl";
 import { simklItemUrl } from "../../simkl/entries";
-import { calls, ctx, resetSimklTest, restoreSimklTest } from "./harness";
+import { calls, ctx, resetSimklTest, restoreStubs } from "./harness";
 
 vi.mock("../../../lib/r2", async () => {
   return (await import("./mocks")).r2Module;
 });
 vi.mock("../../http", async (importOriginal) => {
-  const { httpModule } = await import("./mocks");
+  const { httpModule } = await import("../oauth-harness");
   return httpModule(await importOriginal());
 });
 
 beforeEach(resetSimklTest);
-afterEach(restoreSimklTest);
+afterEach(restoreStubs);
 
 describe("simkl entries", () => {
   it("maps statuses to entries, oldest added first", async () => {

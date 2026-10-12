@@ -79,14 +79,9 @@ interface JustwatchTitleNode {
 
 interface JustwatchList {
   __typename?: string;
-  id?: string;
-  /** USER_LIST for custom lists; PERMANENT_AUDIENCE_LIST, TECHNICAL_USER_LIST for JustWatch's own. */
-  type?: string | null;
-  visibility?: string | null;
   name?: string | null;
   content?: { name?: string | null } | null;
   titles?: {
-    totalCount?: number;
     pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
     edges?: ({ node?: JustwatchTitleNode | null } | null)[];
   } | null;

@@ -19,8 +19,7 @@ export function titleType(
   kind: SimklKind,
   animeType?: string | null,
 ): "movie" | "series" {
-  if (kind === "movies") return "movie";
-  return animeType === "movie" ? "movie" : "series";
+  return kind === "movies" || animeType === "movie" ? "movie" : "series";
 }
 
 /** The Simkl page of a title, for linking back to Simkl. */

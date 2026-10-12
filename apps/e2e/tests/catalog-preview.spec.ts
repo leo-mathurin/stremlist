@@ -33,6 +33,11 @@ import { CATALOG_FIXTURE_USER, PUBLIC_LIST } from "../helpers/test-data.js";
 
 const PUBLIC_REF = `lists/${PREVIEW_PUBLIC_LIST}`;
 const PRIVATE_REF = `lists/${PREVIEW_PRIVATE_LIST}`;
+const ANIMATION_LIST = {
+  provider: "senscritique",
+  sourceRef: PUBLIC_REF,
+  catalogTitle: "Animation fixture",
+} as const;
 
 let backend: FixtureBackend;
 
@@ -200,13 +205,7 @@ test(
     const {
       accountId,
       listIds: [listId],
-    } = await seedAccountWithLists([
-      {
-        provider: "senscritique",
-        sourceRef: PUBLIC_REF,
-        catalogTitle: "Animation fixture",
-      },
-    ]);
+    } = await seedAccountWithLists([ANIMATION_LIST]);
     const before = await getListRows(accountId);
 
     previewOk(
@@ -234,19 +233,15 @@ test(
     });
     await seedConnection(accountId, "trakt");
 
-    expect(
-      await preview(api, {
-        accountKey: CATALOG_FIXTURE_USER,
-        provider: "trakt",
-        sourceRef: "me/history",
-      }),
-    ).toEqual({ ok: false, reason: "needs_connection" });
-    expect(
-      await preview(api, {
-        provider: "trakt",
-        sourceRef: "me/history",
-      }),
-    ).toEqual({ ok: false, reason: "needs_connection" });
+    for (const accountKey of [CATALOG_FIXTURE_USER, undefined]) {
+      expect(
+        await preview(api, {
+          accountKey,
+          provider: "trakt",
+          sourceRef: "me/history",
+        }),
+      ).toEqual({ ok: false, reason: "needs_connection" });
+    }
 
     const malformed = await request.post(`${BACKEND_URL}/lists/preview`, {
       data: { provider: "netflix", sourceRef: "x", sortOption: "title-asc" },
@@ -271,9 +266,7 @@ test(
 /** Send the page's previews to the fixture backend. */
 async function routePreviews(page: Page) {
   await page.route(`${BACKEND_URL}/lists/preview`, async (route) => {
-    const response = await route.fetch({
-      url: `${backend.url}/lists/preview`,
-    });
+    const response = await route.fetch({ url: `${backend.url}/lists/preview` });
     await route.fulfill({ response });
   });
 }
@@ -283,11 +276,7 @@ test(
   { tag: "@local" },
   async ({ page }) => {
     const { accountId } = await seedAccountWithLists([
-      {
-        provider: "senscritique",
-        sourceRef: PUBLIC_REF,
-        catalogTitle: "Animation fixture",
-      },
+      ANIMATION_LIST,
       {
         provider: "senscritique",
         sourceRef: PRIVATE_REF,
@@ -300,12 +289,11 @@ test(
     await page
       .getByRole("button", { name: "Preview Animation fixture" })
       .click();
-    await expect(
-      page.getByRole("link", { name: "Spirited Away (2001), on IMDb" }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("link", { name: "Princess Mononoke (1997), on IMDb" }),
-    ).toBeVisible();
+    for (const name of ["Spirited Away (2001)", "Princess Mononoke (1997)"]) {
+      await expect(
+        page.getByRole("link", { name: `${name}, on IMDb` }),
+      ).toBeVisible();
+    }
     await expect(
       page.getByRole("heading", { name: /^Unresolved entries/ }),
     ).toBeVisible();
@@ -329,10 +317,7 @@ test(
   { tag: "@live-regression" },
   async () => {
     const result = previewOk(
-      await preview(api, {
-        provider: "imdb",
-        sourceRef: PUBLIC_LIST,
-      }),
+      await preview(api, { provider: "imdb", sourceRef: PUBLIC_LIST }),
     );
 
     expect(result.titleCount).toBe(

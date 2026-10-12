@@ -48,6 +48,26 @@ function adapter(strategies: ResolverStrategy[]) {
   });
 }
 
+const tt = (n: number) => `tt${String(n).padStart(7, "0")}`;
+
+function knowing(entries: SourceEntry[]): Record<number, string> {
+  return Object.fromEntries(
+    entries.map((_, index) => [index + 1, tt(index + 1)]),
+  );
+}
+
+function imdbIds(result: Awaited<ReturnType<typeof resolveEntries>>) {
+  return result.resolved.map(({ imdbId }) => imdbId);
+}
+
+function seedCache(externalId: string, row: Record<string, unknown>) {
+  db.insert("title_id_map", {
+    namespace: "tmdb:movie",
+    external_id: externalId,
+    ...row,
+  });
+}
+
 function cacheRow(externalId: string) {
   return db
     .getTable("title_id_map")
@@ -75,9 +95,7 @@ describe("resolveEntries", () => {
       ]);
 
       expect(justwatch.resolve).not.toHaveBeenCalled();
-      expect(result.resolved.map(({ imdbId }) => imdbId)).toEqual([
-        "tt0068646",
-      ]);
+      expect(imdbIds(result)).toEqual(["tt0068646"]);
       // The skipped entry is retried later, like any Unresolved entry.
       expect(result.unresolvedEntries).toHaveLength(1);
     } finally {
@@ -136,7 +154,7 @@ describe("resolveEntries", () => {
       entries,
     );
 
-    expect(result.resolved.map(({ imdbId }) => imdbId)).toEqual(["tt0068646"]);
+    expect(imdbIds(result)).toEqual(["tt0068646"]);
     expect(result.unresolvedEntries).toEqual([
       entries[0],
       entries[2],
@@ -145,17 +163,12 @@ describe("resolveEntries", () => {
   });
 
   it("uses the cache before any strategy", async () => {
-    db.insert("title_id_map", {
-      namespace: "tmdb:movie",
-      external_id: "550",
-      imdb_id: "tt0137523",
-      strategy: "first",
-    });
+    seedCache("550", { imdb_id: "tt0137523", strategy: "first" });
     const first = strategy("first", { 550: "tt9999999" });
 
     const result = await resolveEntries(adapter([first]), [tmdb(550)]);
 
-    expect(result.resolved.map((item) => item.imdbId)).toEqual(["tt0137523"]);
+    expect(imdbIds(result)).toEqual(["tt0137523"]);
     expect(first.resolve).not.toHaveBeenCalled();
   });
 
@@ -170,7 +183,7 @@ describe("resolveEntries", () => {
       entries,
     );
 
-    expect(result.resolved.map((item) => item.imdbId)).toEqual([
+    expect(imdbIds(result)).toEqual([
       "tt0000001",
       "tt0000002",
       "tt0000003",
@@ -199,7 +212,7 @@ describe("resolveEntries", () => {
 
     const result = await resolveEntries(adapter([broken, backup]), [tmdb(1)]);
 
-    expect(result.resolved.map((item) => item.imdbId)).toEqual(["tt0000001"]);
+    expect(imdbIds(result)).toEqual(["tt0000001"]);
   });
 
   it("ignores a strategy answer that is not an IMDb ID", async () => {
@@ -229,9 +242,7 @@ describe("resolveEntries", () => {
   });
 
   it("does not retry an unresolved entry before its retry time", async () => {
-    db.insert("title_id_map", {
-      namespace: "tmdb:movie",
-      external_id: "7",
+    seedCache("7", {
       imdb_id: null,
       retry_after: new Date(Date.now() + DAY).toISOString(),
     });
@@ -244,9 +255,7 @@ describe("resolveEntries", () => {
   });
 
   it("retries an unresolved entry after its retry time and caches the new answer", async () => {
-    db.insert("title_id_map", {
-      namespace: "tmdb:movie",
-      external_id: "7",
+    seedCache("7", {
       imdb_id: null,
       retry_after: new Date(Date.now() - 1000).toISOString(),
     });
@@ -254,7 +263,7 @@ describe("resolveEntries", () => {
 
     const result = await resolveEntries(adapter([first]), [tmdb(7)]);
 
-    expect(result.resolved.map((item) => item.imdbId)).toEqual(["tt0000007"]);
+    expect(imdbIds(result)).toEqual(["tt0000007"]);
     expect(cacheRow("7")).toMatchObject({
       imdb_id: "tt0000007",
       retry_after: null,
@@ -264,21 +273,14 @@ describe("resolveEntries", () => {
 
   it("sends at most 300 entries through the strategies per refresh", async () => {
     const entries = Array.from({ length: 350 }, (_, index) => tmdb(index + 1));
-    const all = Object.fromEntries(
-      entries.map((_, index) => [
-        index + 1,
-        `tt${String(index + 1).padStart(7, "0")}`,
-      ]),
-    );
-    const first = strategy("first", all);
+    const first = strategy("first", knowing(entries));
 
     const firstRun = await resolveEntries(adapter([first]), entries);
 
     // Chunks of 50, so a slow strategy can stop at the time budget.
-    const sent = first.resolve.mock.calls.map(
-      (call) => (call[0] as SourceEntry[]).length,
-    );
-    expect(sent).toEqual([50, 50, 50, 50, 50, 50]);
+    const sent = () =>
+      first.resolve.mock.calls.map((call) => (call[0] as SourceEntry[]).length);
+    expect(sent()).toEqual([50, 50, 50, 50, 50, 50]);
     expect(firstRun.resolved).toHaveLength(300);
     expect(firstRun.unresolvedEntries).toHaveLength(50);
     expect(firstRun.deferred).toBe(50);
@@ -289,24 +291,14 @@ describe("resolveEntries", () => {
     first.resolve.mockClear();
     const secondRun = await resolveEntries(adapter([first]), entries);
 
-    expect(
-      first.resolve.mock.calls.map((call) => (call[0] as SourceEntry[]).length),
-    ).toEqual([50]);
+    expect(sent()).toEqual([50]);
     expect(secondRun.unresolvedEntries).toHaveLength(0);
     expect(secondRun.deferred).toBe(0);
   });
 
   it("stops starting chunks once the time budget is spent", async () => {
     const entries = Array.from({ length: 120 }, (_, index) => tmdb(index + 1));
-    const known = strategy(
-      "slow",
-      Object.fromEntries(
-        entries.map((_, index) => [
-          index + 1,
-          `tt${String(index + 1).padStart(7, "0")}`,
-        ]),
-      ),
-    );
+    const known = strategy("slow", knowing(entries));
     const slow = {
       name: "slow",
       resolve: vi.fn(async (batch: SourceEntry[]) => {
@@ -335,10 +327,7 @@ describe("resolveEntries", () => {
       tmdb(550),
     ]);
 
-    expect(result.resolved.map((item) => item.imdbId)).toEqual([
-      "tt0137523",
-      "tt0137523",
-    ]);
+    expect(imdbIds(result)).toEqual(["tt0137523", "tt0137523"]);
     expect(cacheRow("550")).toMatchObject({ imdb_id: "tt0137523" });
 
     // The next refresh finds it in the cache.
@@ -347,11 +336,7 @@ describe("resolveEntries", () => {
   });
 
   it("keeps the order of the Source list", async () => {
-    db.insert("title_id_map", {
-      namespace: "tmdb:movie",
-      external_id: "2",
-      imdb_id: "tt0000002",
-    });
+    seedCache("2", { imdb_id: "tt0000002" });
     const first = strategy("first", { 1: "tt0000001", 3: "tt0000003" });
 
     const result = await resolveEntries(adapter([first]), [
@@ -361,7 +346,7 @@ describe("resolveEntries", () => {
       tmdb(1),
     ]);
 
-    expect(result.resolved.map((item) => item.imdbId)).toEqual([
+    expect(imdbIds(result)).toEqual([
       "tt0000003",
       "tt0000002",
       "tt0000009",

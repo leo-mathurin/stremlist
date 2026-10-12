@@ -36,7 +36,8 @@
     "dev:tailnet": "turbo run dev:tailnet",
     "test:toolkit": "bun run --cwd apps/e2e test:toolkit",
     "test:toolkit:record": "bun run --cwd apps/e2e test:toolkit:record",
-    "test:toolkit:replay": "bun run --cwd apps/e2e test:toolkit:replay"
+    "test:toolkit:replay": "bun run --cwd apps/e2e test:toolkit:replay",
+    "knip": "knip"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -44,6 +45,7 @@
   "packageManager": "bun@1.4.0",
   "devDependencies": {
     "husky": "^9.1.7",
+    "knip": "6.41.0",
     "lint-staged": "^16.2.7",
     "portless": "0.15.6",
     "turbo": "^2.11.7"

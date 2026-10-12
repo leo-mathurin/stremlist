@@ -6,6 +6,7 @@ import {
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+
 vi.mock(
   "../../lib/supabase",
   () => import("../../__tests__/helpers/mock-supabase"),
@@ -14,28 +15,25 @@ import { seedAccount, seedConnection } from "../../__tests__/helpers/fixtures";
 import { db } from "../../__tests__/helpers/mock-supabase";
 import { getConnectionAccess, saveConnection } from "../connections";
 
-function requiredKey(key: string | undefined): string {
-  if (!key) throw new Error("R2 test command is missing a key");
-  return key;
-}
-
 const r2 = vi.hoisted(() => ({
   objects: new Map<string, Uint8Array>(),
   failGetContaining: null as string | null,
   failPutContaining: null as string | null,
   beforeConditionalPut: null as (() => void) | null,
   afterConditionalPut: null as (() => Promise<void>) | null,
-  send: vi.fn((command: unknown) => Promise.resolve(command)),
+  send: vi.fn<(command: unknown) => Promise<unknown>>(),
 }));
+
+function requiredKey(key: string | undefined): string {
+  if (!key) throw new Error("R2 test command is missing a key");
+  return key;
+}
 
 function etagFor(body: Uint8Array): string {
   return `"${Buffer.from(body).toString("base64")}"`;
 }
 
-function storedObject(
-  objects: Map<string, Uint8Array>,
-  key: string,
-): Uint8Array {
+function stored(objects: Map<string, Uint8Array>, key: string): Uint8Array {
   const body = objects.get(key);
   if (!body) throw new Error(`Missing R2 test object: ${key}`);
   return body;
@@ -66,10 +64,7 @@ function handleCommand(command: unknown): unknown {
       }
     }
     r2.objects.set(key, Uint8Array.from(command.input.Body));
-    if (afterConditionalPut) {
-      return afterConditionalPut().then(() => ({}));
-    }
-    return {};
+    return afterConditionalPut ? afterConditionalPut().then(() => ({})) : {};
   }
 
   if (command instanceof GetObjectCommand) {
@@ -129,10 +124,30 @@ const MOVIE: StremioMeta = {
   description: "A film.",
 };
 
+const GODFATHER = { ...MOVIE, id: "tt0068646", name: "The Godfather" };
+const DRAMA_SUMMARY = { movie: ["Drama"], series: [] };
+const TRAKT_WATCHLIST = { provider: "trakt", sourceRef: "me/watchlist" };
+
 let sequence = 0;
 function watchlistId(): string {
   sequence += 1;
   return `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`;
+}
+
+/** Writes more Lists than the process caches hold, so reads go to R2. */
+async function evictMemoryCaches(): Promise<void> {
+  for (let index = 0; index <= 100; index += 1) {
+    await writeCachedList(watchlistId(), { metas: [MOVIE] });
+  }
+}
+
+function expectOnlyManifestRead(id: string): void {
+  expect(r2.send).toHaveBeenCalledTimes(1);
+  const command = r2.send.mock.calls[0][0];
+  expect(command).toBeInstanceOf(GetObjectCommand);
+  expect((command as GetObjectCommand).input.Key).toBe(
+    `watchlists/${id}/manifest.json`,
+  );
 }
 
 beforeEach(() => {
@@ -179,9 +194,7 @@ describe("R2 watchlist cache", () => {
         { ...MOVIE, type: "series", genres: ["Comedy", "Drama"] },
       ],
     });
-    for (let index = 0; index <= 100; index += 1) {
-      await writeCachedList(watchlistId(), { metas: [MOVIE] });
-    }
+    await evictMemoryCaches();
     r2.send.mockClear();
     r2.failGetContaining = "/generations/";
 
@@ -189,12 +202,7 @@ describe("R2 watchlist cache", () => {
       movie: ["Action", "Drama"],
       series: ["Comedy", "Drama"],
     });
-    expect(r2.send).toHaveBeenCalledTimes(1);
-    const command = r2.send.mock.calls[0][0];
-    expect(command).toBeInstanceOf(GetObjectCommand);
-    if (!(command instanceof GetObjectCommand))
-      throw new Error("Expected manifest read");
-    expect(command.input.Key).toBe(`watchlists/${id}/manifest.json`);
+    expectOnlyManifestRead(id);
   });
 
   it("keeps legacy catalogs readable and adds their summary on refresh", async () => {
@@ -203,21 +211,16 @@ describe("R2 watchlist cache", () => {
     const key = `watchlists/${id}/manifest.json`;
     const manifest = z
       .record(z.unknown())
-      .parse(JSON.parse(Buffer.from(storedObject(r2.objects, key)).toString()));
+      .parse(JSON.parse(Buffer.from(stored(r2.objects, key)).toString()));
     delete manifest.genres;
     r2.objects.set(key, Buffer.from(JSON.stringify(manifest)));
-    for (let index = 0; index <= 100; index += 1) {
-      await writeCachedList(watchlistId(), { metas: [MOVIE] });
-    }
+    await evictMemoryCaches();
     r2.send.mockClear();
     expect(await getCachedListSummary(id)).toBeNull();
     expect(r2.send).toHaveBeenCalledTimes(1);
     expect((await getCachedList(id))?.data.metas).toEqual([MOVIE]);
     await writeCachedList(id, { metas: [MOVIE] });
-    expect(await getCachedListSummary(id)).toEqual({
-      movie: ["Drama"],
-      series: [],
-    });
+    expect(await getCachedListSummary(id)).toEqual(DRAMA_SUMMARY);
   });
 
   it("returns no summary for missing, deleted, or unreadable manifests", async () => {
@@ -245,16 +248,11 @@ describe("R2 watchlist cache", () => {
   it("uses the manifest index to avoid reading catalog blobs on a meta miss", async () => {
     const id = watchlistId();
     await writeCachedList(id, { metas: [MOVIE] });
-    for (let index = 0; index <= 100; index += 1) {
-      await writeCachedList(watchlistId(), { metas: [MOVIE] });
-    }
+    await evictMemoryCaches();
     r2.send.mockClear();
 
     expect(await findCachedMeta(id, "movie", "tt9999999")).toBeNull();
-    expect(r2.send).toHaveBeenCalledTimes(1);
-    const command = r2.send.mock.calls[0][0];
-    expect(command).toBeInstanceOf(GetObjectCommand);
-    expect((command as GetObjectCommand).input.Key).toMatch(/manifest\.json$/u);
+    expectOnlyManifestRead(id);
   });
 
   it("treats R2 read failures as cache misses", async () => {
@@ -274,11 +272,9 @@ describe("R2 watchlist cache", () => {
     await writeCachedList(id, { metas: [MOVIE] });
     r2.failPutContaining = "/generations/";
 
-    await expect(
-      writeCachedList(id, {
-        metas: [{ ...MOVIE, id: "tt0068646", name: "The Godfather" }],
-      }),
-    ).rejects.toThrow("simulated R2 write failure");
+    await expect(writeCachedList(id, { metas: [GODFATHER] })).rejects.toThrow(
+      "simulated R2 write failure",
+    );
 
     r2.failPutContaining = null;
     expect((await getCachedList(id))?.data.metas).toEqual([MOVIE]);
@@ -289,11 +285,9 @@ describe("R2 watchlist cache", () => {
     await writeCachedList(id, { metas: [MOVIE] });
     r2.failPutContaining = "manifest.json";
 
-    await expect(
-      writeCachedList(id, {
-        metas: [{ ...MOVIE, id: "tt0068646", name: "The Godfather" }],
-      }),
-    ).rejects.toThrow("simulated R2 write failure");
+    await expect(writeCachedList(id, { metas: [GODFATHER] })).rejects.toThrow(
+      "simulated R2 write failure",
+    );
 
     r2.failPutContaining = null;
     expect((await getCachedList(id))?.data.metas).toEqual([MOVIE]);
@@ -301,10 +295,7 @@ describe("R2 watchlist cache", () => {
     // after a network error would be unsafe because the manifest PUT may have
     // committed even when the client did not receive the response.
     expect(r2.objects.size).toBe(3);
-    expect(await getCachedListSummary(id)).toEqual({
-      movie: ["Drama"],
-      series: [],
-    });
+    expect(await getCachedListSummary(id)).toEqual(DRAMA_SUMMARY);
   });
 
   it("keeps the previous generation readable after replacement", async () => {
@@ -313,13 +304,11 @@ describe("R2 watchlist cache", () => {
     const previousCatalogKey = [...r2.objects.keys()].find((key) =>
       key.includes("/generations/"),
     );
-    if (!previousCatalogKey) throw new Error("Missing previous generation");
 
-    await writeCachedList(id, {
-      metas: [{ ...MOVIE, id: "tt0068646", name: "The Godfather" }],
-    });
+    await writeCachedList(id, { metas: [GODFATHER] });
 
-    expect(r2.objects.has(previousCatalogKey)).toBe(true);
+    expect(previousCatalogKey).toBeDefined();
+    expect(r2.objects.has(requiredKey(previousCatalogKey))).toBe(true);
     expect(r2.objects.size).toBe(3);
   });
 
@@ -327,58 +316,38 @@ describe("R2 watchlist cache", () => {
     const id = watchlistId();
     await writeCachedList(id, { metas: [MOVIE] });
     const previousObjects = new Map(r2.objects);
-
-    const replacement = {
-      ...MOVIE,
-      id: "tt0068646",
-      name: "The Godfather",
-    };
-    await writeCachedList(id, { metas: [replacement] });
+    await writeCachedList(id, { metas: [GODFATHER] });
     const replacementObjects = new Map(r2.objects);
-    const currentManifestKey = [...replacementObjects.keys()].find((key) =>
-      key.endsWith("/manifest.json"),
+    const replaced = [...replacementObjects.keys()].filter(
+      (key) =>
+        key.endsWith("/manifest.json") ||
+        (key.includes("/generations/") && !previousObjects.has(key)),
     );
-    const replacementCatalogKey = [...replacementObjects.keys()].find(
-      (key) => key.includes("/generations/") && !previousObjects.has(key),
-    );
-    if (!currentManifestKey || !replacementCatalogKey) {
-      throw new Error("Missing replacement R2 test objects");
-    }
+    expect(replaced).toHaveLength(2);
 
-    r2.objects.clear();
-    previousObjects.forEach((body, key) => r2.objects.set(key, body));
+    r2.objects = new Map(previousObjects);
     r2.beforeConditionalPut = () => {
-      r2.objects.set(
-        currentManifestKey,
-        storedObject(replacementObjects, currentManifestKey),
-      );
-      r2.objects.set(
-        replacementCatalogKey,
-        storedObject(replacementObjects, replacementCatalogKey),
-      );
+      for (const key of replaced) {
+        r2.objects.set(key, stored(replacementObjects, key));
+      }
     };
 
     await deleteCachedList(id);
 
-    expect((await getCachedList(id))?.data.metas).toEqual([replacement]);
-    expect(r2.objects.has(replacementCatalogKey)).toBe(true);
+    expect((await getCachedList(id))?.data.metas).toEqual([GODFATHER]);
+    expect(r2.objects.size).toBe(3);
   });
 
   it("keeps a local replacement cached when it follows the tombstone", async () => {
     const id = watchlistId();
     await writeCachedList(id, { metas: [MOVIE] });
-    const replacement = {
-      ...MOVIE,
-      id: "tt0068646",
-      name: "The Godfather",
-    };
     r2.afterConditionalPut = () =>
-      writeCachedList(id, { metas: [replacement] }).then(() => undefined);
+      writeCachedList(id, { metas: [GODFATHER] }).then(() => undefined);
 
     await deleteCachedList(id);
     r2.failGetContaining = "manifest.json";
 
-    expect((await getCachedList(id))?.data.metas).toEqual([replacement]);
+    expect((await getCachedList(id))?.data.metas).toEqual([GODFATHER]);
   });
 
   it("refreshes a stale manifest when its generation is missing", async () => {
@@ -387,26 +356,15 @@ describe("R2 watchlist cache", () => {
     const staleObjects = new Map(r2.objects);
 
     r2.objects.clear();
-    const replacement = {
-      ...MOVIE,
-      id: "tt0068646",
-      name: "The Godfather",
-    };
-    await writeCachedList(id, { metas: [replacement] });
+    await writeCachedList(id, { metas: [GODFATHER] });
     const replacementObjects = new Map(r2.objects);
+    await evictMemoryCaches();
 
-    for (let index = 0; index <= 100; index += 1) {
-      await writeCachedList(watchlistId(), { metas: [MOVIE] });
-    }
-
-    r2.objects.clear();
-    staleObjects.forEach((body, key) => r2.objects.set(key, body));
+    r2.objects = new Map(staleObjects);
     expect(await findCachedMeta(id, "movie", "tt9999999")).toBeNull();
 
-    r2.objects.clear();
-    replacementObjects.forEach((body, key) => r2.objects.set(key, body));
-
-    expect((await getCachedList(id))?.data.metas).toEqual([replacement]);
+    r2.objects = new Map(replacementObjects);
+    expect((await getCachedList(id))?.data.metas).toEqual([GODFATHER]);
   });
 
   it("misses for a List that now reads another Source list", async () => {
@@ -418,10 +376,7 @@ describe("R2 watchlist cache", () => {
     expect((await getCachedList(id, top))?.data.metas).toEqual([MOVIE]);
     expect(await getCachedList(id, popular)).toBeNull();
     expect(await getCachedListSummary(id, popular)).toBeNull();
-    expect(await getCachedListSummary(id, top)).toEqual({
-      movie: ["Drama"],
-      series: [],
-    });
+    expect(await getCachedListSummary(id, top)).toEqual(DRAMA_SUMMARY);
   });
 
   it("serves a cache written without a source to any Source list", async () => {
@@ -450,43 +405,42 @@ describe("R2 watchlist cache", () => {
 });
 
 describe("private cache ownership", () => {
-  it("rejects every cached view after disconnect, even with warm memory", async () => {
+  /** Writes MOVIE as read through a new Trakt Connection of a new Account. */
+  async function writePrivate() {
     const account = seedAccount();
     seedConnection(account.id, "trakt");
     const connection = await getConnectionAccess(account.id, "trakt");
     if (!connection) throw new Error("Expected seeded Connection");
-    const source = { provider: "trakt", sourceRef: "me/watchlist" };
     const id = watchlistId();
-    await writeCachedList(
-      id,
-      { metas: [MOVIE] },
-      new Date(),
-      source,
-      connection.identity,
-    );
-    expect((await getCachedList(id, source))?.data.metas).toEqual([MOVIE]);
+    const write = () =>
+      writeCachedList(
+        id,
+        { metas: [MOVIE] },
+        new Date(),
+        TRAKT_WATCHLIST,
+        connection.identity,
+      );
+    await write();
+    return { accountId: account.id, id, write };
+  }
+
+  it("rejects every cached view after disconnect, even with warm memory", async () => {
+    const { id } = await writePrivate();
+    expect((await getCachedList(id, TRAKT_WATCHLIST))?.data.metas).toEqual([
+      MOVIE,
+    ]);
     db.getTable("connections").splice(0);
-    expect(await getCachedList(id, source)).toBeNull();
-    expect(await getCachedListSummary(id, source)).toBeNull();
-    expect(await findCachedMeta(id, "movie", MOVIE.id, source)).toBeNull();
+    expect(await getCachedList(id, TRAKT_WATCHLIST)).toBeNull();
+    expect(await getCachedListSummary(id, TRAKT_WATCHLIST)).toBeNull();
+    expect(
+      await findCachedMeta(id, "movie", MOVIE.id, TRAKT_WATCHLIST),
+    ).toBeNull();
   });
 
   it("does not reuse private data from an older authorization", async () => {
-    const account = seedAccount();
-    seedConnection(account.id, "trakt");
-    const connection = await getConnectionAccess(account.id, "trakt");
-    if (!connection) throw new Error("Expected seeded Connection");
-    const source = { provider: "trakt", sourceRef: "me/watchlist" };
-    const id = watchlistId();
-    await writeCachedList(
-      id,
-      { metas: [MOVIE] },
-      new Date(),
-      source,
-      connection.identity,
-    );
+    const { accountId, id, write } = await writePrivate();
     await saveConnection(
-      account.id,
+      accountId,
       "trakt",
       {
         accessToken: "replacement",
@@ -497,23 +451,20 @@ describe("private cache ownership", () => {
       "another-user",
       "https://example.test/callback",
     );
-    expect(await getCachedList(id, source)).toBeNull();
+    expect(await getCachedList(id, TRAKT_WATCHLIST)).toBeNull();
     // A late old writer is equally unreadable.
-    await writeCachedList(
-      id,
-      { metas: [MOVIE] },
-      new Date(),
-      source,
-      connection.identity,
-    );
-    expect(await findCachedMeta(id, "movie", MOVIE.id, source)).toBeNull();
+    await write();
+    expect(
+      await findCachedMeta(id, "movie", MOVIE.id, TRAKT_WATCHLIST),
+    ).toBeNull();
   });
 
   it("rebuilds legacy private caches that have no authorization identity", async () => {
     const id = watchlistId();
-    const source = { provider: "trakt", sourceRef: "me/watchlist" };
-    await writeCachedList(id, { metas: [MOVIE] }, new Date(), source);
-    expect(await getCachedList(id, source)).toBeNull();
-    expect(await findCachedMeta(id, "movie", MOVIE.id, source)).toBeNull();
+    await writeCachedList(id, { metas: [MOVIE] }, new Date(), TRAKT_WATCHLIST);
+    expect(await getCachedList(id, TRAKT_WATCHLIST)).toBeNull();
+    expect(
+      await findCachedMeta(id, "movie", MOVIE.id, TRAKT_WATCHLIST),
+    ).toBeNull();
   });
 });

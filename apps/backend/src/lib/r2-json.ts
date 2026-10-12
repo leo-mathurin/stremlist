@@ -7,30 +7,25 @@ import {
 import type { ProviderId } from "@stremlist/shared/providers";
 import { getR2Bucket, getR2Client } from "./r2";
 
-/** Whether an R2 error means that the object does not exist. */
-export function isNotFound(error: unknown): boolean {
+function isR2Error(error: unknown, name: string, status: number): boolean {
   if (!error || typeof error !== "object") return false;
   const candidate = error as {
     name?: string;
     $metadata?: { httpStatusCode?: number };
   };
   return (
-    candidate.name === "NoSuchKey" ||
-    candidate.$metadata?.httpStatusCode === 404
+    candidate.name === name || candidate.$metadata?.httpStatusCode === status
   );
+}
+
+/** Whether an R2 error means that the object does not exist. */
+export function isNotFound(error: unknown): boolean {
+  return isR2Error(error, "NoSuchKey", 404);
 }
 
 /** Whether an R2 error means that a conditional write lost a race. */
 export function isPreconditionFailed(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const candidate = error as {
-    name?: string;
-    $metadata?: { httpStatusCode?: number };
-  };
-  return (
-    candidate.name === "PreconditionFailed" ||
-    candidate.$metadata?.httpStatusCode === 412
-  );
+  return isR2Error(error, "PreconditionFailed", 412);
 }
 
 /**
@@ -42,20 +37,6 @@ export function connectionPrefix(
   provider: ProviderId,
 ): string {
   return `connections/${accountId}/${provider}/`;
-}
-
-/** A JSON object, or null when it does not exist. Other errors throw. */
-export async function readJson<T>(key: string): Promise<T | null> {
-  try {
-    const response = await getR2Client().send(
-      new GetObjectCommand({ Bucket: getR2Bucket(), Key: key }),
-    );
-    if (!response.Body) return null;
-    return JSON.parse(await response.Body.transformToString()) as T;
-  } catch (error) {
-    if (isNotFound(error)) return null;
-    throw error;
-  }
 }
 
 /**
@@ -78,6 +59,11 @@ export async function readJsonVersion(
     if (isNotFound(error)) return null;
     throw error;
   }
+}
+
+/** A JSON object, or null when it does not exist. Other errors throw. */
+export async function readJson<T>(key: string): Promise<T | null> {
+  return ((await readJsonVersion(key))?.value ?? null) as T | null;
 }
 
 /**

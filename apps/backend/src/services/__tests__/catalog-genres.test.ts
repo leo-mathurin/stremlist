@@ -1,16 +1,16 @@
-import type { ConfigList, StremioMeta } from "@stremlist/shared/stremio.types";
+import type { ConfigList } from "@stremlist/shared/stremio.types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock(
   "../../lib/supabase",
   () => import("../../__tests__/helpers/mock-supabase"),
 );
-
 vi.mock(
   "../list-cache",
   async () => import("../../__tests__/helpers/mock-list-cache"),
 );
 
+import { movie as meta } from "../../__tests__/helpers/fixtures";
 import { cache } from "../../__tests__/helpers/mock-list-cache";
 import { filterCatalog, resolveCatalogSelection } from "../catalog-filters";
 import { withAvailableGenres } from "../catalog-genres";
@@ -27,15 +27,10 @@ const list: ConfigList = {
   displayMode: "split",
   position: 0,
 };
-const movie: StremioMeta = {
-  id: "tt1234567",
-  name: "Example",
-  type: "movie",
-  poster: null,
-  posterShape: "poster",
-  description: "",
+const movie = meta("tt1234567", {
   genres: ["Drama", "New Genre", "Drama", ""],
-};
+});
+const series = meta("tt7654321", { type: "series", genres: ["Comedy"] });
 
 beforeEach(() => {
   cache.reset();
@@ -43,10 +38,7 @@ beforeEach(() => {
 
 describe("genres from cached IMDb titles", () => {
   it("deduplicates and sorts genres, exposes them in manifests, and accepts new genres as filters", async () => {
-    cache.seed(list.id, [
-      movie,
-      { ...movie, id: "tt7654321", type: "series", genres: ["Comedy"] },
-    ]);
+    cache.seed(list.id, [movie, series]);
     const rows = await withAvailableGenres([list]);
     expect(rows[0].availableGenres).toEqual(["Comedy", "Drama", "New Genre"]);
     for (const catalog of buildManifestCatalogs(rows)) {
@@ -64,10 +56,7 @@ describe("genres from cached IMDb titles", () => {
   });
 
   it("limits choices to the List's display mode", async () => {
-    cache.seed(list.id, [
-      movie,
-      { ...movie, id: "tt7654321", type: "series", genres: ["Comedy"] },
-    ]);
+    cache.seed(list.id, [movie, series]);
     const rows = await withAvailableGenres([
       { ...list, displayMode: "series" },
     ]);

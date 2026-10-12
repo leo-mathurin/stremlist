@@ -108,10 +108,6 @@ export function rpdbKey(value: string | undefined): string | null {
   return value && value.length > 0 ? value : null;
 }
 
-function defaultTitle(index: number, total: number): string {
-  return total <= 1 ? "" : String(index + 1);
-}
-
 /**
  * Check and normalize one Source list of a submitted List. IMDb `p.`
  * handles are turned into `ur…` IDs. A Source list that is already saved
@@ -226,14 +222,17 @@ export async function normalizeLists(
       sources.push(await normalizeSource(source, { ...access, savedSources }));
     }
     const [first, ...mergedSources] = sources;
-    const input: ListInput = {
+    normalized.push({
       id: list.id,
       provider: first.provider,
       sourceRef: first.sourceRef,
+      // Default titles are positions, and none for a single List.
       catalogTitle:
         list.catalogTitle && list.catalogTitle.length > 0
           ? list.catalogTitle
-          : defaultTitle(index, lists.length),
+          : lists.length <= 1
+            ? ""
+            : String(index + 1),
       sortOption: list.sortOption,
       displayMode: list.displayMode ?? "split",
       position: index,
@@ -241,8 +240,7 @@ export async function normalizeLists(
       mergedSources,
       ...(first.label ? { sourceLabel: first.label } : {}),
       ...(submitted.kept ? { keptMergedSources: true } : {}),
-    };
-    normalized.push(input);
+    });
   }
   const problem = accountListsProblem(normalized);
   if (problem) throw new ConfigError(problem.message);

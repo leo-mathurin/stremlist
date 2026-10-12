@@ -104,7 +104,7 @@ async function traktGet(
     if (response.status === 401) {
       throw new SourceUnavailableError("private", `Trakt ${path} is private`);
     }
-    return checked(response, path);
+    return ensureOk(response, `${TRAKT_API}${path}`);
   }
 
   let response = await send(path, options.query, { token, connection });
@@ -134,10 +134,6 @@ async function traktGet(
       "Trakt refused the Connection's token",
     );
   }
-  return checked(response, path);
-}
-
-function checked(response: Response, path: string): Promise<Response> {
   return ensureOk(response, `${TRAKT_API}${path}`);
 }
 

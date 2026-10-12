@@ -28,13 +28,15 @@ export async function resolveSourceLink(
     return { ok: false as const, reason: "unrecognized" as const };
   }
   const { provider } = parsed;
-  const info = PROVIDERS[provider];
-  if (info.availability !== "available") {
-    return { ok: false as const, reason: "coming_soon" as const, provider };
+  const refuse = <R extends string>(reason: R) => ({
+    ok: false as const,
+    reason,
+    provider,
+  });
+  if (PROVIDERS[provider].availability !== "available") {
+    return refuse("coming_soon");
   }
-  if (!isProviderEnabled(provider)) {
-    return { ok: false as const, reason: "disabled" as const, provider };
-  }
+  if (!isProviderEnabled(provider)) return refuse("disabled");
 
   const connection =
     access?.via === "private"
@@ -44,22 +46,14 @@ export async function resolveSourceLink(
     provider,
     parsed.sourceRef,
   );
-  if (requiresConnection && !connection) {
-    return {
-      ok: false as const,
-      reason: "needs_connection" as const,
-      provider,
-    };
-  }
+  if (requiresConnection && !connection) return refuse("needs_connection");
 
   try {
     const result = await getProvider(provider).validateSource(
       parsed.sourceRef,
       { connection },
     );
-    if (!result.ok) {
-      return { ok: false as const, reason: result.reason, provider };
-    }
+    if (!result.ok) return refuse(result.reason);
     return {
       ok: true as const,
       provider,
@@ -71,20 +65,14 @@ export async function resolveSourceLink(
     };
   } catch (error) {
     // Expected failures of the Source list: private, missing, refused.
-    if (error instanceof SourceUnavailableError) {
-      return { ok: false as const, reason: error.reason, provider };
-    }
+    if (error instanceof SourceUnavailableError) return refuse(error.reason);
     if (error instanceof ConnectionExpiredError) {
-      return {
-        ok: false as const,
-        reason: "needs_connection" as const,
-        provider,
-      };
+      return refuse("needs_connection");
     }
     console.error(
       `Validating ${provider} ${parsed.sourceRef} failed:`,
       error instanceof Error ? error.message : error,
     );
-    return { ok: false as const, reason: "unavailable" as const, provider };
+    return refuse("unavailable");
   }
 }

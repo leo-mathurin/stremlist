@@ -92,6 +92,14 @@ export function ok<T>(response: ApiResponse<T>): T {
   return response.body;
 }
 
+/** The status and JSON body of a typed client answer. */
+async function answer<T>(response: {
+  status: number;
+  json(): Promise<unknown>;
+}): Promise<ApiResponse<T>> {
+  return { status: response.status, body: (await response.json()) as T };
+}
+
 /** The readers and writers of the backend at `baseUrl`. */
 export function apiAt(baseUrl: string) {
   const client = hcWithType(baseUrl);
@@ -122,13 +130,9 @@ export function apiAt(baseUrl: string) {
   async function getConfig(
     accountKey: string,
   ): Promise<ApiResponse<AccountConfigResponse>> {
-    const response = await client[":accountKey"].config.$get({
-      param: { accountKey },
-    });
-    return {
-      status: response.status,
-      body: (await response.json()) as AccountConfigResponse,
-    };
+    return answer(
+      await client[":accountKey"].config.$get({ param: { accountKey } }),
+    );
   }
 
   async function getCatalog(
@@ -162,13 +166,11 @@ export function apiAt(baseUrl: string) {
     async getSyncStatus(
       accountKey: string,
     ): Promise<ApiResponse<AccountSyncSnapshot>> {
-      const response = await client[":accountKey"]["sync-status"].$get({
-        param: { accountKey },
-      });
-      return {
-        status: response.status,
-        body: (await response.json()) as AccountSyncSnapshot,
-      };
+      return answer(
+        await client[":accountKey"]["sync-status"].$get({
+          param: { accountKey },
+        }),
+      );
     },
 
     async postConfig<T = Record<string, unknown>>(
@@ -176,11 +178,12 @@ export function apiAt(baseUrl: string) {
       lists: ConfigListInput[],
       options: ConfigOptions = {},
     ): Promise<ApiResponse<T>> {
-      const response = await client[":accountKey"].config.$post({
-        param: { accountKey },
-        json: { lists, ...options },
-      });
-      return { status: response.status, body: (await response.json()) as T };
+      return answer(
+        await client[":accountKey"].config.$post({
+          param: { accountKey },
+          json: { lists, ...options },
+        }),
+      );
     },
 
     /** Create an Account the way the configure page does on its first save. */
@@ -190,17 +193,9 @@ export function apiAt(baseUrl: string) {
     ): Promise<
       ApiResponse<{ accountId?: string; lists?: ConfigList[]; error?: string }>
     > {
-      const response = await client.accounts.$post({
-        json: { lists, rpdbApiKey },
-      });
-      return {
-        status: response.status,
-        body: (await response.json()) as {
-          accountId?: string;
-          lists?: ConfigList[];
-          error?: string;
-        },
-      };
+      return answer(
+        await client.accounts.$post({ json: { lists, rpdbApiKey } }),
+      );
     },
 
     getCatalog,
@@ -247,10 +242,9 @@ export function apiAt(baseUrl: string) {
     async refresh<T = Record<string, unknown>>(
       accountKey: string,
     ): Promise<ApiResponse<T>> {
-      const response = await client[":accountKey"].refresh.$post({
-        param: { accountKey },
-      });
-      return { status: response.status, body: (await response.json()) as T };
+      return answer(
+        await client[":accountKey"].refresh.$post({ param: { accountKey } }),
+      );
     },
 
     /** What the configure page asks when the user adds a pasted link. */
@@ -268,13 +262,9 @@ export function apiAt(baseUrl: string) {
     async upgrade(
       accountKey: string,
     ): Promise<ApiResponse<Record<string, unknown>>> {
-      const response = await client[":accountKey"].upgrade.$post({
-        param: { accountKey },
-      });
-      return {
-        status: response.status,
-        body: (await response.json()) as Record<string, unknown>,
-      };
+      return answer(
+        await client[":accountKey"].upgrade.$post({ param: { accountKey } }),
+      );
     },
 
     /**

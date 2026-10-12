@@ -3,8 +3,6 @@ import type { StremioManifest } from "./stremio.types";
 export const APP_NAME = "Stremlist";
 export const ADDON_VERSION = "1.10.0";
 export const APP_DESCRIPTION = "Your watchlists and lists, all in Stremio";
-export const APP_LOGO = "https://stremlist.com/icon.png";
-export const APP_ID_PREFIX = "com.stremlist";
 
 export const SORT_OPTIONS = [
   { value: "added_at-asc", label: "Date Added (Oldest First)" },
@@ -105,13 +103,10 @@ export const IMDB_WATCHLIST_SOURCE_ID_PATTERN = new RegExp(
 export const ACCOUNT_KEY_SOURCE = `${ACCOUNT_ID_SOURCE}|${IMDB_UR_ID_SOURCE}`;
 export const ACCOUNT_KEY_PATTERN = new RegExp(`^(?:${ACCOUNT_KEY_SOURCE})$`);
 
-export const IMDB_USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
-
 export const FACEBOOK_EXTERNAL_HIT_USER_AGENT = "facebookexternalhit/1.1";
 
 export const BASE_MANIFEST: StremioManifest = {
-  id: APP_ID_PREFIX,
+  id: "com.stremlist",
   version: ADDON_VERSION,
   name: APP_NAME,
   description: APP_DESCRIPTION,
@@ -136,7 +131,7 @@ export const BASE_MANIFEST: StremioManifest = {
       type: "series",
     },
   ],
-  logo: APP_LOGO,
+  logo: "https://stremlist.com/icon.png",
   behaviorHints: {
     configurable: true,
     configurationRequired: false,

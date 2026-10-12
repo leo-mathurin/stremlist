@@ -188,11 +188,8 @@ export default function LinkPaste({
         suggestedTitle: body.suggestedTitle,
         defaultDisplayMode: body.defaultDisplayMode,
       });
-      if (error) {
-        setProblem({ message: error });
-      } else {
-        setValue("");
-      }
+      if (error) setProblem({ message: error });
+      else setValue("");
     } catch {
       toast.error("Could not check this link. Please try again in a moment.");
     } finally {

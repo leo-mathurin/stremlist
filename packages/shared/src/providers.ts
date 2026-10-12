@@ -211,11 +211,7 @@ const IMDB_P_HANDLE = new RegExp(
 function parseImdbLink(input: string): ParsedSourceLink | null {
   const trimmed = input.trim();
   if (isChartId(trimmed)) {
-    return {
-      provider: "imdb",
-      sourceRef: trimmed,
-      kind: "chart",
-    };
+    return { provider: "imdb", sourceRef: trimmed, kind: "chart" };
   }
   const url = toUrl(trimmed);
   const isImdbUrl = url !== null && hostIs(url, "imdb.com");
@@ -227,11 +223,7 @@ function parseImdbLink(input: string): ParsedSourceLink | null {
 
   const list = IMDB_LS.exec(trimmed);
   if (list) {
-    return {
-      provider: "imdb",
-      sourceRef: list[1].toLowerCase(),
-      kind: "list",
-    };
+    return { provider: "imdb", sourceRef: list[1].toLowerCase(), kind: "list" };
   }
   const user = IMDB_UR.exec(trimmed);
   if (user) {
@@ -243,11 +235,7 @@ function parseImdbLink(input: string): ParsedSourceLink | null {
   }
   const handle = IMDB_P_HANDLE.exec(trimmed);
   if (handle) {
-    return {
-      provider: "imdb",
-      sourceRef: handle[1],
-      kind: "watchlist",
-    };
+    return { provider: "imdb", sourceRef: handle[1], kind: "watchlist" };
   }
   return null;
 }
@@ -317,11 +305,7 @@ function parseTraktLink(input: string): ParsedSourceLink | null {
   if ((parts[0] === "movies" || parts[0] === "shows") && parts.length === 2) {
     const chart = TRAKT_CHARTS.find((name) => name === parts[1].toLowerCase());
     if (chart) {
-      return {
-        provider: "trakt",
-        sourceRef: chart,
-        kind: "chart",
-      };
+      return { provider: "trakt", sourceRef: chart, kind: "chart" };
     }
   }
   return null;
@@ -379,11 +363,7 @@ function parseSensCritiqueLink(input: string): ParsedSourceLink | null {
   if (parts[0]?.toLowerCase() === "liste") {
     const id = parts.slice(1).find((part) => /^\d+$/.test(part));
     return id
-      ? {
-          provider: "senscritique",
-          sourceRef: `lists/${id}`,
-          kind: "list",
-        }
+      ? { provider: "senscritique", sourceRef: `lists/${id}`, kind: "list" }
       : null;
   }
   // Top-level paths of senscritique.com that are not user profiles.
@@ -463,11 +443,7 @@ function parseLetterboxdLink(input: string): ParsedSourceLink | null {
       kind: "list",
     };
   }
-  return {
-    provider: "letterboxd",
-    sourceRef: url.pathname,
-    kind: "list",
-  };
+  return { provider: "letterboxd", sourceRef: url.pathname, kind: "list" };
 }
 
 const LINK_PARSERS: ((input: string) => ParsedSourceLink | null)[] = [

@@ -7,33 +7,16 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import app from "../index.js";
 import { SourceUnavailableError } from "../providers/types";
 
-vi.mock("../lib/background", async () => {
-  return (await import("./helpers/config-api-mocks.js")).backgroundMocks;
-});
-vi.mock("../services/list-prewarm", async () => {
-  return (await import("./helpers/config-api-mocks.js")).prewarmMocks;
-});
-
-vi.mock("../lib/supabase", async () => {
-  const { supabase } = await import("./helpers/mock-supabase.js");
-  const { rpcMocks } = await import("./helpers/config-api-mocks.js");
-  return { supabase: { ...supabase, rpc: rpcMocks.rpc } };
-});
-
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-
-vi.mock("../lib/r2", async () => {
-  return await import("./helpers/mock-r2.js");
-});
-vi.mock("../lib/resend", () => ({
-  resend: { contacts: { create: vi.fn() } },
-}));
+const { backgroundMocks, prewarmMocks, supabaseMocks } = await vi.hoisted(
+  () => import("./helpers/config-api-mocks.js"),
+);
+vi.mock("../lib/background", () => backgroundMocks);
+vi.mock("../services/list-prewarm", () => prewarmMocks);
+vi.mock("../lib/supabase", () => supabaseMocks);
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
+vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
+vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
 
 import * as scraper from "../services/imdb-scraper";
 import {
@@ -47,27 +30,24 @@ import { fakeAdapter, useFakeProvider } from "./helpers/mock-registry.js";
 
 beforeEach(resetConfigTest);
 
-// ---------------------------------------------------------------------------
-// Link resolution
-// ---------------------------------------------------------------------------
-
 describe("POST /links/resolve", () => {
   function resolve(input: string, accountKey?: string) {
     return postJson("/links/resolve", { input, accountKey });
   }
 
-  it("says when no Provider recognizes the input", async () => {
-    const res = await resolve("not a link");
-    expect(await res.json()).toEqual({ ok: false, reason: "unrecognized" });
-  });
-
-  it("says Letterboxd is coming soon", async () => {
-    const res = await resolve("https://letterboxd.com/leo/watchlist/");
-    expect(await res.json()).toEqual({
-      ok: false,
-      reason: "coming_soon",
-      provider: "letterboxd",
-    });
+  it.each([
+    ["not a link", { reason: "unrecognized" }],
+    [
+      "https://letterboxd.com/leo/watchlist/",
+      { reason: "coming_soon", provider: "letterboxd" },
+    ],
+    [
+      "https://mdblist.com/lists/leo/top-movies",
+      { reason: "needs_connection", provider: "mdblist" },
+    ],
+  ])("refuses %j with %j", async (input, expected) => {
+    const res = await resolve(input);
+    expect(await res.json()).toEqual({ ok: false, ...expected });
   });
 
   it("says when a Provider is turned off", async () => {
@@ -83,15 +63,6 @@ describe("POST /links/resolve", () => {
       provider: "trakt",
     });
     expect(validateSource).not.toHaveBeenCalled();
-  });
-
-  it("asks for a Connection when the list needs one", async () => {
-    const res = await resolve("https://mdblist.com/lists/leo/top-movies");
-    expect(await res.json()).toEqual({
-      ok: false,
-      reason: "needs_connection",
-      provider: "mdblist",
-    });
   });
 
   it("never uses a Connection for a Legacy alias", async () => {
@@ -248,10 +219,6 @@ describe("POST /links/resolve", () => {
     });
   });
 });
-
-// ---------------------------------------------------------------------------
-// Provider status
-// ---------------------------------------------------------------------------
 
 describe("GET /providers", () => {
   it("lists every Provider with its kill switch and OAuth status", async () => {

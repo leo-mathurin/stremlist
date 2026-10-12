@@ -2,10 +2,12 @@ import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
 import type { Screen } from "e2e";
 import type { ListSyncStatus } from "@stremlist/shared/sync-status";
+import type { ListSource } from "@stremlist/shared/list-merge";
 import type {
   AccountConfigInput,
   AccountConfigResponse,
   ConfigList,
+  ConfigListInput,
 } from "@stremlist/shared/stremio.types";
 import {
   SAVED,
@@ -81,13 +83,29 @@ const trending = {
   position: 3,
 } satisfies ConfigList;
 
+const favouritesSource = {
+  provider: "imdb",
+  sourceRef: "ls99123456",
+  label: "Favourite films",
+} satisfies ListSource;
+const seanPicks = {
+  provider: "trakt",
+  sourceRef: "users/sean/watchlist",
+  label: "Sean picks",
+} satisfies ListSource;
+const myTraktPicks = {
+  provider: "trakt",
+  sourceRef: "me/watchlist",
+  label: "My Trakt picks",
+} satisfies ListSource;
+
 function withLists(lists: ConfigList[]): AccountConfigResponse {
   return { ...configuration, lists };
 }
 
-/** The Lists of a save as the fields that the merge changes. */
-function sources(submitted: AccountConfigInput) {
-  return submitted.lists.map((list) => ({
+/** The fields of a List that the merge changes. */
+function mergeFields(list: ConfigListInput) {
+  return {
     id: list.id,
     provider: list.provider,
     sourceRef: list.sourceRef,
@@ -96,7 +114,17 @@ function sources(submitted: AccountConfigInput) {
     displayMode: list.displayMode,
     position: list.position,
     mergedSources: list.mergedSources,
-  }));
+  };
+}
+
+/** The Lists of a save as the fields that the merge changes. */
+function sources(submitted: AccountConfigInput) {
+  return submitted.lists.map(mergeFields);
+}
+
+/** What a save sends for `list` with `changes`: no merge unless they say. */
+function saved(list: ConfigListInput, changes: Partial<ConfigListInput> = {}) {
+  return mergeFields({ ...list, mergedSources: [], ...changes });
 }
 
 async function openSettings(screen: Screen, title: string) {
@@ -124,43 +152,10 @@ test(
     await expect(screen.getByText(/^3 of 10 lists/)).toBeVisible();
     expect(submissions).toHaveLength(1);
     expect(sources(submissions[0])).toEqual([
-      {
-        id: watchlist.id,
-        provider: "imdb",
-        sourceRef: imdbUser,
-        catalogTitle: "IMDb Watchlist",
-        sortOption: "added_at-desc",
-        displayMode: "split",
-        position: 0,
-        // The merged List's title names its Source list.
-        mergedSources: [
-          {
-            provider: "imdb",
-            sourceRef: "ls99123456",
-            label: "Favourite films",
-          },
-        ],
-      },
-      {
-        id: top250.id,
-        provider: "imdb",
-        sourceRef: "imdb:top-rated-movies",
-        catalogTitle: "Top 250 Movies",
-        sortOption: "added_at-asc",
-        displayMode: "movie",
-        position: 1,
-        mergedSources: [],
-      },
-      {
-        id: trending.id,
-        provider: "trakt",
-        sourceRef: "trending",
-        catalogTitle: "Trakt Trending",
-        sortOption: "added_at-asc",
-        displayMode: "split",
-        position: 2,
-        mergedSources: [],
-      },
+      // The merged List's title names its Source list.
+      saved(watchlist, { mergedSources: [favouritesSource] }),
+      saved(top250, { position: 1 }),
+      saved(trending, { position: 2 }),
     ]);
   },
 );
@@ -194,12 +189,15 @@ test("merging a chart turns off Date added and TV shows only, with the reasons",
     "Title (A-Z)",
   );
   await screen.getByLabel("Sort order").first().tap();
-  await expect(
-    screen.getByRole("option", "Date Added (Newest First)"),
-  ).toHaveAttribute("aria-disabled", "true");
-  await expect(
-    screen.getByRole("option", "Date Added (Oldest First)"),
-  ).toHaveAttribute("aria-disabled", "true");
+  for (const option of [
+    "Date Added (Newest First)",
+    "Date Added (Oldest First)",
+  ]) {
+    await expect(screen.getByRole("option", option)).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  }
   await browser.keyboard.press("Escape");
   await screen.getByLabel("Show", { exact: true }).first().tap();
   await expect(screen.getByRole("option", "TV shows only")).toHaveAttribute(
@@ -215,14 +213,8 @@ test("merging a chart turns off Date added and TV shows only, with the reasons",
   await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(sources(submissions[0])).toEqual([
-    {
-      id: watchlist.id,
-      provider: "imdb",
-      sourceRef: imdbUser,
-      catalogTitle: "IMDb Watchlist",
+    saved(watchlist, {
       sortOption: "title-asc",
-      displayMode: "split",
-      position: 0,
       mergedSources: [
         {
           provider: "imdb",
@@ -230,17 +222,8 @@ test("merging a chart turns off Date added and TV shows only, with the reasons",
           label: "Top 250 Movies",
         },
       ],
-    },
-    {
-      id: trending.id,
-      provider: "trakt",
-      sourceRef: "trending",
-      catalogTitle: "Trakt Trending",
-      sortOption: "added_at-asc",
-      displayMode: "split",
-      position: 1,
-      mergedSources: [],
-    },
+    }),
+    saved(trending, { position: 1 }),
   ]);
 });
 
@@ -251,14 +234,7 @@ test("a Source list moves to its own List or leaves the merged List", async ({
 }) => {
   const merged = {
     ...watchlist,
-    mergedSources: [
-      { provider: "imdb", sourceRef: "ls99123456", label: "Favourite films" },
-      {
-        provider: "trakt",
-        sourceRef: "users/sean/watchlist",
-        label: "Sean picks",
-      },
-    ],
+    mergedSources: [favouritesSource, seanPicks],
   } satisfies ConfigList;
   const submissions = await captureConfig(
     browser,
@@ -284,36 +260,15 @@ test("a Source list moves to its own List or leaves the merged List", async ({
   await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(sources(submissions[0])).toEqual([
-    {
-      id: watchlist.id,
-      provider: "imdb",
-      sourceRef: imdbUser,
-      catalogTitle: "IMDb Watchlist",
-      sortOption: "added_at-desc",
-      displayMode: "split",
-      position: 0,
-      mergedSources: [],
-    },
-    {
+    saved(watchlist),
+    saved({
+      ...row,
       id: undefined,
-      provider: "imdb",
       sourceRef: "ls99123456",
       catalogTitle: "Favourite films",
-      sortOption: "added_at-asc",
-      displayMode: "split",
       position: 1,
-      mergedSources: [],
-    },
-    {
-      id: trending.id,
-      provider: "trakt",
-      sourceRef: "trending",
-      catalogTitle: "Trakt Trending",
-      sortOption: "added_at-asc",
-      displayMode: "split",
-      position: 2,
-      mergedSources: [],
-    },
+    }),
+    saved(trending, { position: 2 }),
   ]);
 });
 
@@ -382,16 +337,8 @@ test("a merged Source list keeps its name when it moves to the first place", asy
   const merged = {
     ...watchlist,
     mergedSources: [
-      {
-        provider: "imdb",
-        sourceRef: "ls99123456",
-        label: "Family picks",
-      },
-      {
-        provider: "trakt",
-        sourceRef: "users/sean/watchlist",
-        label: "Sean picks",
-      },
+      { provider: "imdb", sourceRef: "ls99123456", label: "Family picks" },
+      seanPicks,
     ],
   } satisfies ConfigList;
   const submissions = await captureConfig(browser, withLists([merged]));
@@ -412,13 +359,7 @@ test("a merged Source list keeps its name when it moves to the first place", asy
       provider: "imdb",
       sourceRef: "ls99123456",
       sourceLabel: "Family picks",
-      mergedSources: [
-        {
-          provider: "trakt",
-          sourceRef: "users/sean/watchlist",
-          label: "Sean picks",
-        },
-      ],
+      mergedSources: [seanPicks],
     },
   ]);
 
@@ -497,9 +438,7 @@ test("a Source list cannot move to its own List when the Account has 10 Lists", 
 }) => {
   const merged = {
     ...watchlist,
-    mergedSources: [
-      { provider: "imdb", sourceRef: "ls99123456", label: "Favourite films" },
-    ],
+    mergedSources: [favouritesSource],
   } satisfies ConfigList;
   const others = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(
     (n) =>
@@ -595,22 +534,20 @@ test("a movie chart and a TV chart in one List show both, with the reasons", asy
 
   await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
-  expect(sources(submissions[0])[0]).toEqual({
-    id: top250.id,
-    provider: "imdb",
-    sourceRef: "imdb:top-rated-movies",
-    catalogTitle: "Top 250 Movies",
-    sortOption: "title-asc",
-    displayMode: "split",
-    position: 0,
-    mergedSources: [
-      {
-        provider: "imdb",
-        sourceRef: "imdb:top-rated-tv",
-        label: "Top 250 TV Shows",
-      },
-    ],
-  });
+  expect(sources(submissions[0])[0]).toEqual(
+    saved(top250, {
+      sortOption: "title-asc",
+      displayMode: "split",
+      position: 0,
+      mergedSources: [
+        {
+          provider: "imdb",
+          sourceRef: "imdb:top-rated-tv",
+          label: "Top 250 TV Shows",
+        },
+      ],
+    }),
+  );
 });
 
 test("a merged Source list without its Connection says so and offers to connect", async ({
@@ -621,43 +558,31 @@ test("a merged Source list without its Connection says so and offers to connect"
   const merged = {
     ...watchlist,
     sortOption: "title-asc",
-    mergedSources: [
-      { provider: "trakt", sourceRef: "me/watchlist", label: "My Trakt picks" },
-    ],
+    mergedSources: [myTraktPicks],
   } satisfies ConfigList;
   await captureConfig(browser, withLists([merged]));
   await app.open(`/configure?account=${accountId}`);
+  const notInCatalog = screen.getByText(
+    "Trakt is not connected, so its Source list does not show in this catalog.",
+  );
+  const notConnected = screen.getByText("Not connected", { exact: true });
   await expect(screen.getByText("2 Source lists · IMDb, Trakt")).toBeVisible();
-  await expect(
-    screen.getByText(
-      "Trakt is not connected, so its Source list does not show in this catalog.",
-    ),
-  ).toBeVisible();
+  await expect(notInCatalog).toBeVisible();
   await expect(
     screen.getByRole("button", "Connect again for IMDb Watchlist"),
   ).toBeVisible();
   // The List's sync line, and the badge of the Trakt Source list only (the
   // closed settings stay in the page).
-  await expect(screen.getByText("Not connected", { exact: true })).toHaveCount(
-    2,
-  );
+  await expect(notConnected).toHaveCount(2);
   await openSettings(screen, "IMDb Watchlist");
-  await expect(screen.getByText("Not connected", { exact: true })).toHaveCount(
-    2,
-  );
+  await expect(notConnected).toHaveCount(2);
 
   // Without the Trakt Source list, the List needs no Connection.
   await screen
     .getByRole("button", "Remove My Trakt picks from this List")
     .tap();
-  await expect(
-    screen.getByText(
-      "Trakt is not connected, so its Source list does not show in this catalog.",
-    ),
-  ).toBeHidden();
-  await expect(screen.getByText("Not connected", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(notInCatalog).toBeHidden();
+  await expect(notConnected).toHaveCount(0);
 });
 
 test("a save refused because the Lists changed in another window keeps the merge", async ({
@@ -694,9 +619,7 @@ test("a save refused because the Lists changed in another window keeps the merge
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(submissions).toHaveLength(2);
   expect(submissions[1]).toEqual(submissions[0]);
-  expect(submissions[1].lists[0].mergedSources).toEqual([
-    { provider: "imdb", sourceRef: "ls99123456", label: "Favourite films" },
-  ]);
+  expect(submissions[1].lists[0].mergedSources).toEqual([favouritesSource]);
 });
 
 // How merged Lists work with the Catalog preview (STR-57), the sync status
@@ -710,9 +633,7 @@ test("a merged List previews all its Source lists and names the one it cannot re
   const merged = {
     ...watchlist,
     sortOption: "title-asc",
-    mergedSources: [
-      { provider: "imdb", sourceRef: "ls99123456", label: "Favourite films" },
-    ],
+    mergedSources: [favouritesSource],
   } satisfies ConfigList;
   await captureConfig(browser, withLists([merged]));
   const requests = await routePreview(browser, (request) =>
@@ -724,14 +645,13 @@ test("a merged List previews all its Source lists and names the one it cannot re
   );
   await fitConfigurePage(browser);
   await app.open(`/configure?account=${accountId}`);
+  const privateSource = screen.getByText(
+    "This IMDb list is private. Make your list public in your IMDb account settings. Its titles are not in this catalog.",
+    { exact: true },
+  );
 
   await screen.getByRole("button", "Preview IMDb Watchlist").tap();
-  await expect(
-    screen.getByText(
-      "This IMDb list is private. Make your list public in your IMDb account settings. Its titles are not in this catalog.",
-      { exact: true },
-    ),
-  ).toBeVisible();
+  await expect(privateSource).toBeVisible();
   await expect(screen.getByText("The Godfather")).toBeVisible();
   // The labels name Source lists on the configure page only.
   expect(requests).toEqual([
@@ -751,12 +671,7 @@ test("a merged List previews all its Source lists and names the one it cannot re
   await screen
     .getByRole("button", "Remove Favourite films from this List")
     .tap();
-  await expect(
-    screen.getByText(
-      "This IMDb list is private. Make your list public in your IMDb account settings. Its titles are not in this catalog.",
-      { exact: true },
-    ),
-  ).toBeHidden();
+  await expect(privateSource).toBeHidden();
   expect(requests).toHaveLength(2);
   expect(requests[1].mergedSources).toBeUndefined();
   // A preview is no catalog change.
@@ -771,9 +686,7 @@ test("a merged List shows the problem of one Source list and connects its Provid
   const merged = {
     ...watchlist,
     sortOption: "title-asc",
-    mergedSources: [
-      { provider: "trakt", sourceRef: "me/watchlist", label: "My Trakt picks" },
-    ],
+    mergedSources: [myTraktPicks],
   } satisfies ConfigList;
   const refused: ListSyncStatus = {
     provider: "trakt",
@@ -819,9 +732,7 @@ test("a merged List is up to date as of its oldest refresh", async ({
   const merged = {
     ...watchlist,
     sortOption: "title-asc",
-    mergedSources: [
-      { provider: "imdb", sourceRef: "ls99123456", label: "Favourite films" },
-    ],
+    mergedSources: [favouritesSource],
   } satisfies ConfigList;
   await captureConfig(browser, {
     ...withLists([merged]),
@@ -849,7 +760,7 @@ test("removing a merged Source list asks for a reinstall only when it takes genr
     ...watchlist,
     sortOption: "title-asc",
     mergedSources: [
-      { provider: "imdb", sourceRef: "ls99123456", label: "Favourite films" },
+      favouritesSource,
       { provider: "imdb", sourceRef: "ls99123457", label: "Westerns" },
     ],
     availableGenres: ["Drama", "Western"],
@@ -869,15 +780,14 @@ test("removing a merged Source list asks for a reinstall only when it takes genr
   await screen
     .getByRole("button", "Remove Favourite films from this List")
     .tap();
+  const reinstall = screen.getByText(NEEDS_REINSTALL, { exact: true });
   await expect(screen.getByText("2 of 5")).toBeVisible();
-  await expect(screen.getByText(NEEDS_REINSTALL, { exact: true })).toBeHidden();
+  await expect(reinstall).toBeHidden();
 
   // Only Westerns has Western: Stremio offers it until a reinstall.
   await screen.getByRole("button", "Remove Westerns from this List").tap();
   await expect(screen.getByText("1 of 5")).toBeVisible();
-  await expect(
-    screen.getByText(NEEDS_REINSTALL, { exact: true }),
-  ).toBeVisible();
+  await expect(reinstall).toBeVisible();
   await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(submissions.at(-1)?.lists[0].mergedSources).toEqual([]);

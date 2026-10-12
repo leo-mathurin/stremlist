@@ -1,15 +1,9 @@
 import type { ConfigList } from "@stremlist/shared/stremio.types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const listMocks = vi.hoisted(() => ({
-  getListCatalog: vi.fn(),
-}));
-const supabaseMocks = vi.hoisted(() => ({
-  rpc: vi.fn(),
-}));
-const accountMocks = vi.hoisted(() => ({
-  getAccountLists: vi.fn(),
-}));
+const listMocks = vi.hoisted(() => ({ getListCatalog: vi.fn() }));
+const supabaseMocks = vi.hoisted(() => ({ rpc: vi.fn() }));
+const accountMocks = vi.hoisted(() => ({ getAccountLists: vi.fn() }));
 
 vi.mock("../lists", () => listMocks);
 vi.mock("../accounts", () => accountMocks);
@@ -17,6 +11,7 @@ vi.mock("../../lib/supabase", () => ({
   supabase: { rpc: supabaseMocks.rpc },
 }));
 
+import { LIST_IDS } from "../../__tests__/helpers/fixtures";
 import { prewarmLists } from "../list-prewarm";
 
 interface RequestPrewarmArgs {
@@ -56,19 +51,49 @@ function mockPrewarmQueue(): void {
   });
 }
 
-const ACCOUNT_ID = "sl_AbCdEfGhIjKlMnOpQrStUv";
+/** Makes each List read wait until the test finishes it. */
+function holdReads(): (() => void)[] {
+  const finishFetches: (() => void)[] = [];
+  listMocks.getListCatalog.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finishFetches.push(() => {
+          resolve({ metas: [] });
+        });
+      }),
+  );
+  return finishFetches;
+}
 
-const SAVED_LISTS: ConfigList[] = [
-  {
-    id: "11111111-1111-4111-8111-111111111111",
+const ACCOUNT_ID = "sl_AbCdEfGhIjKlMnOpQrStUv";
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+function savedList(
+  position: number,
+  overrides: Partial<ConfigList> = {},
+): ConfigList {
+  return {
+    id: LIST_IDS[position],
     provider: "imdb",
-    sourceRef: "ur12345678",
+    sourceRef: `ur1234567${position}`,
     catalogTitle: "Mine",
     sortOption: "added_at-asc",
     displayMode: "split",
-    position: 0,
-  },
-];
+    position,
+    ...overrides,
+  };
+}
+
+const SAVED_LISTS = [savedList(0)];
+
+function expectRequest(args: RequestPrewarmArgs): void {
+  expect(args).toEqual({
+    p_account_id: ACCOUNT_ID,
+    p_lease_seconds: 600,
+    p_lease_token: expect.stringMatching(UUID) as unknown,
+  });
+}
 
 describe("prewarmLists", () => {
   beforeEach(() => {
@@ -84,75 +109,43 @@ describe("prewarmLists", () => {
   it("uses the cache-first fetch path for every saved List", async () => {
     await prewarmLists(
       ACCOUNT_ID,
-      [
-        ...SAVED_LISTS,
-        {
-          id: "22222222-2222-4222-8222-222222222222",
-          provider: "imdb",
-          sourceRef: "ls123456789",
-          catalogTitle: "List",
-          sortOption: "year-desc",
-          displayMode: "split",
-          position: 1,
-        },
-      ],
+      [...SAVED_LISTS, savedList(1, { sortOption: "year-desc" })],
       true,
     );
 
     expect(listMocks.getListCatalog).toHaveBeenCalledTimes(2);
-    expect(listMocks.getListCatalog).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        id: "11111111-1111-4111-8111-111111111111",
-        sourceRef: "ur12345678",
-      }),
-      {
-        accountId: ACCOUNT_ID,
-        sort: { by: "added_at", order: "asc" },
-        rpdbApiKey: null,
-        allowConnection: true,
-        policy: "prewarm",
-      },
-    );
-    expect(listMocks.getListCatalog).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        id: "22222222-2222-4222-8222-222222222222",
-        sourceRef: "ls123456789",
-      }),
-      {
-        accountId: ACCOUNT_ID,
-        sort: { by: "year", order: "desc" },
-        rpdbApiKey: null,
-        allowConnection: true,
-        policy: "prewarm",
-      },
-    );
+    for (const [index, sort] of [
+      { by: "added_at", order: "asc" },
+      { by: "year", order: "desc" },
+    ].entries()) {
+      expect(listMocks.getListCatalog).toHaveBeenNthCalledWith(
+        index + 1,
+        expect.objectContaining({
+          id: LIST_IDS[index],
+          sourceRef: `ur1234567${index}`,
+        }),
+        {
+          accountId: ACCOUNT_ID,
+          sort,
+          rpdbApiKey: null,
+          allowConnection: true,
+          policy: "prewarm",
+        },
+      );
+    }
     expect(console.log).toHaveBeenCalledWith(
       expect.stringMatching(/^Prewarmed 2\/2 lists in \d+ms$/),
     );
-    const [requestFunction, requestArgs] = supabaseMocks.rpc.mock.calls[0] as [
-      string,
-      RequestPrewarmArgs,
-    ];
-    const [finishFunction, finishArgs] = supabaseMocks.rpc.mock.calls[1] as [
-      string,
-      FinishPrewarmArgs,
-    ];
+    const [[requestFunction, requestArgs], [finishFunction, finishArgs]] =
+      supabaseMocks.rpc.mock.calls as [
+        [string, RequestPrewarmArgs],
+        [string, FinishPrewarmArgs],
+      ];
     expect(requestFunction).toBe("request_list_prewarm");
-    expect(requestArgs).toEqual({
-      p_account_id: ACCOUNT_ID,
-      p_lease_seconds: 600,
-      p_lease_token: finishArgs.p_lease_token,
-    });
-    expect(requestArgs.p_lease_token).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-    );
+    expectRequest(requestArgs);
     expect(finishFunction).toBe("finish_list_prewarm");
     expect(finishArgs).toEqual({
-      p_account_id: ACCOUNT_ID,
-      p_lease_seconds: 600,
-      p_lease_token: requestArgs.p_lease_token,
+      ...requestArgs,
       p_completed_generation: 1,
     });
   });
@@ -174,35 +167,12 @@ describe("prewarmLists", () => {
       .mockImplementation(() => undefined);
 
     await expect(
-      prewarmLists(
-        ACCOUNT_ID,
-        [
-          {
-            id: "11111111-1111-4111-8111-111111111111",
-            provider: "imdb",
-            sourceRef: "ur12345678",
-            catalogTitle: "",
-            sortOption: "added_at-asc",
-            displayMode: "split",
-            position: 0,
-          },
-          {
-            id: "22222222-2222-4222-8222-222222222222",
-            provider: "imdb",
-            sourceRef: "ls123456789",
-            catalogTitle: "Still runs",
-            sortOption: "added_at-asc",
-            displayMode: "split",
-            position: 1,
-          },
-        ],
-        true,
-      ),
+      prewarmLists(ACCOUNT_ID, [savedList(0), savedList(1)], true),
     ).resolves.toBeUndefined();
 
     expect(listMocks.getListCatalog).toHaveBeenCalledTimes(2);
     expect(error).toHaveBeenCalledWith(
-      "Failed to prewarm list 11111111-1111-4111-8111-111111111111:",
+      `Failed to prewarm list ${LIST_IDS[0]}:`,
       expect.any(Error),
     );
     expect(console.log).toHaveBeenCalledWith(
@@ -211,26 +181,13 @@ describe("prewarmLists", () => {
   });
 
   it("runs at most two prewarms concurrently", async () => {
-    const finishFetches: (() => void)[] = [];
-    listMocks.getListCatalog.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finishFetches.push(() => {
-            resolve({ metas: [] });
-          });
-        }),
-    );
-    const lists = Array.from({ length: 3 }, (_, index) => ({
-      id: `${index + 1}1111111-1111-4111-8111-111111111111`,
-      provider: "imdb" as const,
-      sourceRef: `ur1234567${index}`,
-      catalogTitle: String(index),
-      sortOption: "added_at-asc",
-      displayMode: "split" as const,
-      position: index,
-    }));
+    const finishFetches = holdReads();
 
-    const batch = prewarmLists(ACCOUNT_ID, lists, true);
+    const batch = prewarmLists(
+      ACCOUNT_ID,
+      [0, 1, 2].map((position) => savedList(position)),
+      true,
+    );
 
     await vi.waitFor(() => {
       expect(listMocks.getListCatalog).toHaveBeenCalledTimes(2);
@@ -246,37 +203,16 @@ describe("prewarmLists", () => {
   });
 
   it("picks up a cross-instance request after the active batch", async () => {
-    const finishFetches: (() => void)[] = [];
-    listMocks.getListCatalog.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finishFetches.push(() => {
-            resolve({ metas: [] });
-          });
-        }),
-    );
-    const firstLists = SAVED_LISTS;
-    const changedLists: ConfigList[] = [
-      ...firstLists,
-      {
-        id: "22222222-2222-4222-8222-222222222222",
-        provider: "imdb" as const,
-        sourceRef: "ur87654321",
-        catalogTitle: "Friend",
-        sortOption: "added_at-asc",
-        displayMode: "split" as const,
-        position: 1,
-      },
-    ];
+    const finishFetches = holdReads();
+    const changedLists = [...SAVED_LISTS, savedList(1)];
     accountMocks.getAccountLists.mockResolvedValue(changedLists);
 
-    const first = prewarmLists(ACCOUNT_ID, firstLists, true);
+    const first = prewarmLists(ACCOUNT_ID, SAVED_LISTS, true);
     await vi.waitFor(() => {
       expect(listMocks.getListCatalog).toHaveBeenCalledOnce();
     });
-    const second = prewarmLists(ACCOUNT_ID, changedLists, true);
+    await prewarmLists(ACCOUNT_ID, changedLists, true);
 
-    await second;
     expect(listMocks.getListCatalog).toHaveBeenCalledOnce();
     finishFetches[0]();
     await vi.waitFor(() => {
@@ -299,14 +235,7 @@ describe("prewarmLists", () => {
       RequestPrewarmArgs,
     ];
     expect(functionName).toBe("request_list_prewarm");
-    expect(args).toEqual({
-      p_account_id: ACCOUNT_ID,
-      p_lease_seconds: 600,
-      p_lease_token: args.p_lease_token,
-    });
-    expect(args.p_lease_token).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-    );
+    expectRequest(args);
     expect(listMocks.getListCatalog).not.toHaveBeenCalled();
   });
 

@@ -23,9 +23,7 @@ import {
 // from the addon's own catalog endpoint in the same run, so assertions stay
 // deterministic even though the underlying IMDb data is live.
 
-test.beforeEach(async () => {
-  await resetDb();
-});
+test.beforeEach(resetDb);
 
 test(
   "watchlist catalog renders in Discover, in catalog order",
@@ -127,34 +125,24 @@ test(
   },
 );
 
-test(
-  "broken watchlist shows the informational card in Stremio",
-  { tag: "@live-regression" },
-  async ({ page }) => {
-    const { accountId, listId } = await seedImdbAccount(UNKNOWN_USER);
+// An unreadable watchlist shows its informational card in Discover.
+for (const [title, sourceRef, card] of [
+  [
+    "broken watchlist shows the informational card in Stremio",
+    UNKNOWN_USER,
+    "IMDb could not find this watchlist",
+  ],
+  [
+    "private watchlist shows the private card in Stremio",
+    PRIVATE_USER,
+    "This IMDb watchlist is private",
+  ],
+] as const) {
+  test(title, { tag: "@live-regression" }, async ({ page }) => {
+    const { accountId, listId } = await seedImdbAccount(sourceRef);
     const manifestUrl = addonManifestUrl(accountId);
     await installAddon(page, manifestUrl);
     await page.goto(discoverUrl(manifestUrl, "movie", `wl-${listId}-movie`));
-    await expect(
-      page
-        .getByText("IMDb could not find this watchlist", { exact: false })
-        .first(),
-    ).toBeVisible();
-  },
-);
-
-test(
-  "private watchlist shows the private card in Stremio",
-  { tag: "@live-regression" },
-  async ({ page }) => {
-    const { accountId, listId } = await seedImdbAccount(PRIVATE_USER);
-    const manifestUrl = addonManifestUrl(accountId);
-    await installAddon(page, manifestUrl);
-    await page.goto(discoverUrl(manifestUrl, "movie", `wl-${listId}-movie`));
-    await expect(
-      page
-        .getByText("This IMDb watchlist is private", { exact: false })
-        .first(),
-    ).toBeVisible();
-  },
-);
+    await expect(page.getByText(card, { exact: false }).first()).toBeVisible();
+  });
+}

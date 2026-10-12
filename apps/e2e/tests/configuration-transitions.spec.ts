@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import type { ConfigListInput } from "@stremlist/shared/stremio.types";
 import {
   getCatalog,
   getConfig,
@@ -19,6 +20,25 @@ import {
 
 async function openSettings(page: Page, title: string) {
   await page.getByRole("button", { name: `Settings for ${title}` }).click();
+}
+async function openFilters(page: Page) {
+  await openSettings(page, "Release QA");
+  await page.getByRole("button", { name: /Filters & extra catalogs/ }).click();
+}
+async function choose(page: Page, label: string, option: string) {
+  await page.getByRole("combobox", { name: label, exact: true }).click();
+  await page.getByRole("option", { name: option, exact: true }).click();
+}
+async function catalogNames(accountId: string, catalogId: string) {
+  return (await getCatalog(accountId, "movie", catalogId)).metas.map(
+    (meta) => meta.name,
+  );
+}
+async function saveLists(accountId: string, lists: ConfigListInput[]) {
+  expect((await postConfig(accountId, lists)).status).toBe(200);
+}
+async function manifestCatalogIds(accountId: string) {
+  return (await getManifest(accountId)).catalogs.map((catalog) => catalog.id);
 }
 /** The "Provider · kind · detail" line of each List row, in order. */
 function rowSources(page: Page) {
@@ -56,16 +76,15 @@ test(
     // Clear first: Chromium counts a selected value against maxlength.
     await title.fill("");
     await title.fill("A".repeat(61));
-    await expect(title).toHaveValue("A".repeat(60));
+    const maxTitle = "A".repeat(60);
+    await expect(title).toHaveValue(maxTitle);
     await saveConfigure(page);
     expect((await getConfig(accountId)).body.lists[0].catalogTitle).toBe(
-      "A".repeat(60),
+      maxTitle,
     );
     await page.reload();
-    await openSettings(page, "A".repeat(60));
-    await expect(page.getByLabel("Catalog title", { exact: true })).toHaveValue(
-      "A".repeat(60),
-    );
+    await openSettings(page, maxTitle);
+    await expect(title).toHaveValue(maxTitle);
   },
 );
 
@@ -118,31 +137,25 @@ test(
   { tag: "@local" },
   async ({ page }) => {
     const { accountId, id, catalogId } = await seedCatalog();
-    expect(
-      (
-        await postConfig(accountId, [
-          listInput("imdb", CATALOG_FIXTURE_USER, {
-            id,
-            catalogTitle: "Release QA",
-            displayMode: "movie",
-            catalogSettings: {
-              genre: "Drama",
-              presets: ["rated", "short", "shuffle"],
-            },
-          }),
-        ])
-      ).status,
-    ).toBe(200);
+    const presetLabels = ["Top rated", "90 min or less", "Shuffle"];
+    await saveLists(accountId, [
+      listInput("imdb", CATALOG_FIXTURE_USER, {
+        id,
+        catalogTitle: "Release QA",
+        displayMode: "movie",
+        catalogSettings: {
+          genre: "Drama",
+          presets: ["rated", "short", "shuffle"],
+        },
+      }),
+    ]);
     expect(
       (await getCatalog(accountId, "movie", `${catalogId}--rated`)).metas
         .length,
     ).toBeGreaterThan(0);
     await openConfigure(page, accountId, "Release QA");
-    await openSettings(page, "Release QA");
-    await page
-      .getByRole("button", { name: /Filters & extra catalogs/ })
-      .click();
-    for (const name of ["Top rated", "90 min or less", "Shuffle"]) {
+    await openFilters(page);
+    for (const name of presetLabels) {
       const checkbox = page.getByRole("checkbox", { name, exact: true });
       await expect(checkbox).toBeChecked();
       await checkbox.press("Space");
@@ -153,27 +166,20 @@ test(
       genre: "Drama",
       presets: [],
     });
-    expect(
-      (await getManifest(accountId)).catalogs.map((catalog) => catalog.id),
-    ).toEqual([catalogId]);
+    expect(await manifestCatalogIds(accountId)).toEqual([catalogId]);
     for (const preset of ["rated", "short", "shuffle"])
       expect(
         (await getCatalog(accountId, "movie", `${catalogId}--${preset}`)).metas,
       ).toEqual([]);
-    expect(
-      (await getCatalog(accountId, "movie", catalogId)).metas.map(
-        (meta) => meta.name,
-      ),
-    ).not.toContain("QA Comedy Night");
+    expect(await catalogNames(accountId, catalogId)).not.toContain(
+      "QA Comedy Night",
+    );
     await page.reload();
-    await openSettings(page, "Release QA");
-    await page
-      .getByRole("button", { name: /Filters & extra catalogs/ })
-      .click();
+    await openFilters(page);
     await expect(
       page.getByRole("combobox", { name: "Genre", exact: true }),
     ).toHaveText("Drama");
-    for (const name of ["Top rated", "90 min or less", "Shuffle"])
+    for (const name of presetLabels)
       await expect(
         page.getByRole("checkbox", { name, exact: true }),
       ).not.toBeChecked();
@@ -200,17 +206,13 @@ test(
     expect(
       (await getConfig(accountId)).body.lists.map((row) => row.id),
     ).toEqual([kept]);
-    expect(
-      (await getManifest(accountId)).catalogs.map((catalog) => catalog.id),
-    ).toEqual([`wl-${kept}-movie`]);
+    expect(await manifestCatalogIds(accountId)).toEqual([`wl-${kept}-movie`]);
     expect(
       (await getCatalog(accountId, "movie", `wl-${id}-movie`)).metas,
     ).toEqual([]);
-    expect(
-      (await getCatalog(accountId, "movie", `wl-${kept}-movie`)).metas.map(
-        (meta) => meta.name,
-      ),
-    ).toEqual(["QA Comedy Night"]);
+    expect(await catalogNames(accountId, `wl-${kept}-movie`)).toEqual([
+      "QA Comedy Night",
+    ]);
     await page.reload();
     await expect(page.getByText("Keep me", { exact: true })).toBeVisible();
     await expect(page.getByText("Release QA", { exact: true })).toHaveCount(0);
@@ -232,22 +234,18 @@ test(
       position: 1,
     });
     await seedCachedCatalog(second, [CATALOG_TITLES[5]]);
-    expect(
-      (
-        await postConfig(accountId, [
-          listInput("imdb", CATALOG_FIXTURE_USER, {
-            id,
-            catalogTitle: "1",
-            displayMode: "movie",
-          }),
-          listInput("imdb", "ls99123456", {
-            id: second,
-            catalogTitle: "2",
-            displayMode: "movie",
-          }),
-        ])
-      ).status,
-    ).toBe(200);
+    await saveLists(accountId, [
+      listInput("imdb", CATALOG_FIXTURE_USER, {
+        id,
+        catalogTitle: "1",
+        displayMode: "movie",
+      }),
+      listInput("imdb", "ls99123456", {
+        id: second,
+        catalogTitle: "2",
+        displayMode: "movie",
+      }),
+    ]);
     await page.setViewportSize({ width: 1280, height: 1800 });
     await openConfigure(page, accountId, "1");
     const firstBox = await page
@@ -267,11 +265,12 @@ test(
       steps: 12,
     });
     await page.mouse.up();
-    // Numbered default titles follow the position, so the page drops them.
-    await expect(rowSources(page)).toHaveText([
+    const reordered = [
       "IMDb · List · ls99123456",
       `IMDb · Watchlist · ${CATALOG_FIXTURE_USER}`,
-    ]);
+    ];
+    // Numbered default titles follow the position, so the page drops them.
+    await expect(rowSources(page)).toHaveText(reordered);
     await expect(page.getByText("1", { exact: true })).toHaveCount(0);
     await saveConfigure(page);
     expect((await getConfig(accountId)).body.lists).toMatchObject([
@@ -279,16 +278,14 @@ test(
       { id, position: 1, catalogTitle: "2" },
     ]);
     await page.reload();
-    await expect(rowSources(page)).toHaveText([
-      "IMDb · List · ls99123456",
-      `IMDb · Watchlist · ${CATALOG_FIXTURE_USER}`,
-    ]);
+    await expect(rowSources(page)).toHaveText(reordered);
     await expect(
       page.getByRole("button", { name: "Drag to reorder 1", exact: true }),
     ).toBeVisible();
-    expect(
-      (await getManifest(accountId)).catalogs.map((catalog) => catalog.id),
-    ).toEqual([`wl-${second}-movie`, `wl-${id}-movie`]);
+    expect(await manifestCatalogIds(accountId)).toEqual([
+      `wl-${second}-movie`,
+      `wl-${id}-movie`,
+    ]);
   },
 );
 
@@ -298,31 +295,18 @@ test(
   async ({ page }) => {
     const { accountId, catalogId } = await seedCatalog();
     await openConfigure(page, accountId, "Release QA");
-    await openSettings(page, "Release QA");
-    await page
-      .getByRole("button", { name: /Filters & extra catalogs/ })
-      .click();
-    await page.getByRole("combobox", { name: "Genre", exact: true }).click();
-    await page.getByRole("option", { name: "Comedy", exact: true }).click();
-    await page.getByRole("combobox", { name: "Decade", exact: true }).click();
-    await page.getByRole("option", { name: "2020s", exact: true }).click();
+    await openFilters(page);
+    await choose(page, "Genre", "Comedy");
+    await choose(page, "Decade", "2020s");
     await saveConfigure(page);
     expect((await getCatalog(accountId, "movie", catalogId)).metas).toEqual([]);
-    await page.getByRole("combobox", { name: "Decade", exact: true }).click();
-    await page
-      .getByRole("option", { name: "All decades", exact: true })
-      .click();
+    await choose(page, "Decade", "All decades");
     await saveConfigure(page);
-    expect(
-      (await getCatalog(accountId, "movie", catalogId)).metas.map(
-        (meta) => meta.name,
-      ),
-    ).toEqual(["QA Comedy Night"]);
+    expect(await catalogNames(accountId, catalogId)).toEqual([
+      "QA Comedy Night",
+    ]);
     await page.reload();
-    await openSettings(page, "Release QA");
-    await page
-      .getByRole("button", { name: /Filters & extra catalogs/ })
-      .click();
+    await openFilters(page);
     await expect(
       page.getByRole("combobox", { name: "Genre", exact: true }),
     ).toHaveText("Comedy");

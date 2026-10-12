@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
 import {
   accountListsProblem,
@@ -12,20 +12,16 @@ import { mergeRows, removeRowSource, splitRowSource } from "../lib/merged-rows";
 export function useListEditor() {
   const [lists, setLists] = useState<ListFormRow[]>([]);
 
-  const setListField = useCallback(
-    <K extends keyof ListFormRow>(
-      localId: string,
-      key: K,
-      value: ListFormRow[K],
-    ) => {
-      setLists((current) =>
-        current.map((list) =>
-          list.localId === localId ? { ...list, [key]: value } : list,
-        ),
-      );
-    },
-    [],
-  );
+  const setListField = <K extends keyof ListFormRow>(
+    localId: string,
+    key: K,
+    value: ListFormRow[K],
+  ) =>
+    setLists((current) =>
+      current.map((list) =>
+        list.localId === localId ? { ...list, [key]: value } : list,
+      ),
+    );
 
   /**
    * Add a List. Returns an error message when it cannot be added, so the
@@ -54,23 +50,7 @@ export function useListEditor() {
     });
   };
 
-  const removeList = useCallback((localId: string) => {
-    setLists((current) => current.filter((list) => list.localId !== localId));
-  }, []);
-
-  const mergeLists = useCallback((targetLocalId: string, otherId: string) => {
-    setLists((rows) => mergeRows(rows, targetLocalId, otherId));
-  }, []);
-
-  const removeSource = useCallback((localId: string, index: number) => {
-    setLists((rows) => removeRowSource(rows, localId, index));
-  }, []);
-
-  const splitSource = useCallback((localId: string, index: number) => {
-    setLists((rows) => splitRowSource(rows, localId, index));
-  }, []);
-
-  const reorderLists = useCallback((initialIndex: number, index: number) => {
+  const reorderLists = (initialIndex: number, index: number) =>
     setLists((items) => {
       const allDefaultTitles = items.every((list, i) => {
         const title = list.catalogTitle.trim();
@@ -85,7 +65,6 @@ export function useListEditor() {
         ? reordered.map((list) => ({ ...list, catalogTitle: "" }))
         : reordered;
     });
-  }, []);
 
   const validationError = (() => {
     const problem = accountListsProblem(lists);
@@ -103,10 +82,14 @@ export function useListEditor() {
     setListField,
     addList,
     addChartList,
-    removeList,
-    mergeLists,
-    removeSource,
-    splitSource,
+    removeList: (localId: string) =>
+      setLists((current) => current.filter((list) => list.localId !== localId)),
+    mergeLists: (targetLocalId: string, otherId: string) =>
+      setLists((rows) => mergeRows(rows, targetLocalId, otherId)),
+    removeSource: (localId: string, index: number) =>
+      setLists((rows) => removeRowSource(rows, localId, index)),
+    splitSource: (localId: string, index: number) =>
+      setLists((rows) => splitRowSource(rows, localId, index)),
     reorderLists,
     validationError,
   };

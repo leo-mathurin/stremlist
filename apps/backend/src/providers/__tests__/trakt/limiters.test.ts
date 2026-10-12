@@ -31,14 +31,14 @@ function user(
   return { ...connection(), username, accountId };
 }
 
-/** Whether the promise settles without any timer firing. */
+/** Whether the promise settles without advancing the rate-limit clock. */
 async function settlesNow(promise: Promise<unknown>): Promise<boolean> {
   let settled = false;
   void promise.then(
     () => (settled = true),
     () => (settled = true),
   );
-  for (let i = 0; i < 20; i++) await Promise.resolve();
+  await vi.advanceTimersByTimeAsync(0);
   return settled;
 }
 

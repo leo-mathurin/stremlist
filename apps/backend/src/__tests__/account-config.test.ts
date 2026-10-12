@@ -3,40 +3,17 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-vi.mock("../lib/background", async () => {
-  return (await import("./helpers/config-api-mocks.js")).backgroundMocks;
-});
-vi.mock("../services/list-prewarm", async () => {
-  return (await import("./helpers/config-api-mocks.js")).prewarmMocks;
-});
-
-vi.mock("../lib/supabase", async () => {
-  const { supabase } = await import("./helpers/mock-supabase.js");
-  const { rpcMocks } = await import("./helpers/config-api-mocks.js");
-  return { supabase: { ...supabase, rpc: rpcMocks.rpc } };
-});
-
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-
-vi.mock("../lib/r2", async () => {
-  return await import("./helpers/mock-r2.js");
-});
-vi.mock("../lib/resend", () => ({
-  resend: { contacts: { create: vi.fn() } },
-}));
+const { backgroundMocks, prewarmMocks, rpcMocks, supabaseMocks } =
+  await vi.hoisted(() => import("./helpers/config-api-mocks.js"));
+vi.mock("../lib/background", () => backgroundMocks);
+vi.mock("../services/list-prewarm", () => prewarmMocks);
+vi.mock("../lib/supabase", () => supabaseMocks);
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
+vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
+vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
 
 import * as scraper from "../services/imdb-scraper";
-import {
-  backgroundMocks,
-  prewarmMocks,
-  rpcMocks,
-} from "./helpers/config-api-mocks.js";
 import {
   getConfig,
   legacyAccountId,
@@ -82,22 +59,13 @@ describe("List CRUD via the config API", () => {
     expect(response.status).toBe(400);
   });
 
-  // ---- GET /:accountKey/config ----
-
   describe("GET /:accountKey/config", () => {
-    it("returns 404 for an unknown Legacy alias", async () => {
-      const res = await getConfig("ur99999999");
-      expect(res.status).toBe(404);
-    });
-
-    it("returns 404 for an unknown Account ID", async () => {
-      const res = await getConfig("sl_0000000000000000000000");
-      expect(res.status).toBe(404);
-    });
-
-    it("returns 400 for a key that is not an Addon URL key", async () => {
-      const res = await getConfig("ls123456789");
-      expect(res.status).toBe(400);
+    it.each([
+      ["an unknown Legacy alias", "ur99999999", 404],
+      ["an unknown Account ID", "sl_0000000000000000000000", 404],
+      ["a key that is not an Addon URL key", "ls123456789", 400],
+    ])("refuses %s", async (_, key, status) => {
+      expect((await getConfig(key)).status).toBe(status);
     });
 
     it("returns empty lists when none exist", async () => {
@@ -109,46 +77,31 @@ describe("List CRUD via the config API", () => {
       expect(typeof data.lastFetchedAt).toBe("string");
     });
 
-    it("returns existing lists with their IDs", async () => {
+    it("returns existing lists with their IDs, sorted by position", async () => {
+      seedWatchlist({
+        id: UUID_2,
+        sourceRef: OTHER_IMDB,
+        catalogTitle: "Friend",
+        position: 1,
+      });
       seedWatchlist({ id: UUID_1, catalogTitle: "Movies" });
-      seedWatchlist({
-        id: UUID_2,
-        sourceRef: OTHER_IMDB,
-        catalogTitle: "Friend",
-        position: 1,
-      });
 
-      const res = await getConfig(OWNER);
-      const data = await res.json();
+      const data = await (await getConfig(OWNER)).json();
 
-      expect(data.lists).toHaveLength(2);
-      expect(data.lists[0]).toMatchObject({
-        id: UUID_1,
-        provider: "imdb",
-        sourceRef: OWNER,
-        catalogTitle: "Movies",
-      });
-      expect(data.lists[1]).toMatchObject({
-        id: UUID_2,
-        provider: "imdb",
-        sourceRef: OTHER_IMDB,
-        catalogTitle: "Friend",
-      });
-    });
-
-    it("returns lists sorted by position", async () => {
-      seedWatchlist({
-        id: UUID_2,
-        sourceRef: OTHER_IMDB,
-        position: 1,
-        catalogTitle: "Second",
-      });
-      seedWatchlist({ id: UUID_1, position: 0, catalogTitle: "First" });
-
-      const data = await getConfig(OWNER);
-      const json = await data.json();
-      expect(json.lists[0].catalogTitle).toBe("First");
-      expect(json.lists[1].catalogTitle).toBe("Second");
+      expect(data.lists).toMatchObject([
+        {
+          id: UUID_1,
+          provider: "imdb",
+          sourceRef: OWNER,
+          catalogTitle: "Movies",
+        },
+        {
+          id: UUID_2,
+          provider: "imdb",
+          sourceRef: OTHER_IMDB,
+          catalogTitle: "Friend",
+        },
+      ]);
     });
 
     it("hides the Account ID, Connections and Connection lists from a Legacy alias", async () => {
@@ -211,8 +164,6 @@ describe("List CRUD via the config API", () => {
     });
   });
 
-  // ---- POST /:accountKey/config ----
-
   describe("POST /:accountKey/config", () => {
     it("returns 404 for an unknown Addon URL", async () => {
       const res = await postConfig("ur99999999", {
@@ -251,8 +202,27 @@ describe("List CRUD via the config API", () => {
       expect(res.status).toBe(200);
     });
 
-    it("rejects an empty list array", async () => {
-      const res = await postConfig(OWNER, { lists: [] });
+    it.each<[string, Record<string, unknown>[]]>([
+      ["no list", []],
+      [
+        "an invalid sort option",
+        [{ sourceRef: OWNER, sortOption: "invalid-sort" }],
+      ],
+      [
+        "an unknown Provider",
+        [{ provider: "netflix", sourceRef: OWNER, sortOption: "added_at-asc" }],
+      ],
+      [
+        "more than 10 lists",
+        Array.from({ length: 11 }, (_, i) => ({
+          sourceRef: `ur${String(10000000 + i)}`,
+          sortOption: "added_at-asc",
+        })),
+      ],
+    ])("rejects %s", async (_, lists) => {
+      const res = await postJson(`/${OWNER}/config`, {
+        lists: lists.map((list) => ({ provider: "imdb", ...list })),
+      });
       expect(res.status).toBe(400);
     });
 
@@ -280,22 +250,6 @@ describe("List CRUD via the config API", () => {
       },
     );
 
-    it("rejects an invalid sort option", async () => {
-      const res = await postConfig(OWNER, {
-        lists: [{ sourceRef: OWNER, sortOption: "invalid-sort" }],
-      });
-      expect(res.status).toBe(400);
-    });
-
-    it("rejects an unknown Provider", async () => {
-      const res = await postJson(`/${OWNER}/config`, {
-        lists: [
-          { provider: "netflix", sourceRef: OWNER, sortOption: "added_at-asc" },
-        ],
-      });
-      expect(res.status).toBe(400);
-    });
-
     it("rejects a Provider that is not available yet", async () => {
       const res = await postConfig(OWNER, {
         lists: [
@@ -308,15 +262,6 @@ describe("List CRUD via the config API", () => {
       });
       expect(res.status).toBe(400);
       expect((await res.json()).error).toBe("Letterboxd is not available yet.");
-    });
-
-    it("rejects more than 10 lists", async () => {
-      const lists = Array.from({ length: 11 }, (_, i) => ({
-        sourceRef: `ur${String(10000000 + i)}`,
-        sortOption: "added_at-asc",
-      }));
-      const res = await postConfig(OWNER, { lists });
-      expect(res.status).toBe(400);
     });
 
     it("turns IMDb p. handles into user IDs before saving", async () => {

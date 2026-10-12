@@ -20,15 +20,12 @@ import {
 // The /configure page against the real backend: List management, options,
 // refresh, install links.
 
-/** The title of the IMDb watchlist List that `seedWatchlist` seeds. */
 const TITLE = "My watchlist";
 
-/** A private Account with one IMDb watchlist List titled "My watchlist". */
+/** A private Account with one IMDb watchlist List titled `TITLE`. */
 const seedWatchlist = () => seedImdbAccount(PUBLIC_USER, TITLE);
 
-test.beforeEach(async () => {
-  await resetDb();
-});
+test.beforeEach(resetDb);
 
 test(
   "loads the existing configuration",
@@ -452,10 +449,7 @@ test(
     await expect(floatingBar).not.toHaveAttribute("inert");
     await expect(floatingSave).toBeInViewport();
     await expect(floatingSave).toBeEnabled();
-    await saveConfigure(page, {
-      button: floatingSave,
-      message: SAVED,
-    });
+    await saveConfigure(page, { button: floatingSave, message: SAVED });
     expect((await getConfig(accountId)).body.rpdbApiKey).toBe(
       "floating-save-key",
     );

@@ -134,7 +134,6 @@ export function useAccountConfiguration(
   const editor = useListEditor();
   const { lists, setLists } = editor;
   const [rpdbApiKey, setRpdbApiKey] = useState("");
-  const [showRpdbApiKey, setShowRpdbApiKey] = useState(false);
   const [access, setAccess] = useState<AccountAccess>(
     accountKey ? "private" : "new",
   );
@@ -621,8 +620,6 @@ export function useAccountConfiguration(
     ...editor,
     rpdbApiKey,
     setRpdbApiKey,
-    showRpdbApiKey,
-    setShowRpdbApiKey,
     access,
     accountId,
     movedAt,
@@ -669,7 +666,7 @@ export function useAccountConfiguration(
     lastFetchedAt,
     nextRefreshAt,
     reinstall,
-    markReinstalled: () => baseline.markReinstalled(),
+    markReinstalled: baseline.markReinstalled,
     handleSave,
     handleRefresh,
     upgrade,

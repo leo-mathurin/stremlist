@@ -331,14 +331,6 @@ async function runScenario(
     BASE: `http://127.0.0.1:${String(options.port)}`,
     TARGETS: targets,
   };
-  const ramp = (rate: number, hold: number) =>
-    JSON.stringify([
-      { target: Math.max(1, Math.round(rate)), duration: "20s" },
-      {
-        target: Math.max(1, Math.round(rate)),
-        duration: `${String(Math.round(hold))}s`,
-      },
-    ]);
   if (name === "cold") {
     Object.assign(env, { MODE: "cold", VUS: String(options.vus) });
   } else if (name === "warm") {
@@ -355,8 +347,13 @@ async function runScenario(
     ]);
   } else if (name === "stale") {
     // Long enough for list caches to expire and refresh more than once.
+    const target = Math.max(1, Math.round(options.staleRate));
+    const hold = Math.round(Math.max(90, options.hold * 2.5));
     env.MODE = "warm";
-    env.STAGES = ramp(options.staleRate, Math.max(90, options.hold * 2.5));
+    env.STAGES = JSON.stringify([
+      { target, duration: "20s" },
+      { target, duration: `${String(hold)}s` },
+    ]);
   } else {
     const seeded = await seedTrakt(stack);
     traktAccounts = seeded.accounts;

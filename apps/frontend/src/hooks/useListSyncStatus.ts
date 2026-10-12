@@ -70,60 +70,53 @@ export function useListSyncStatus(
   }, []);
 
   /** Take the Lists that a save stored. */
-  const rememberSaved = useCallback((lists: SavedList[]) => {
+  const rememberSaved = (lists: SavedList[]) =>
     setSavedSources(sourcesOf(lists));
-  }, []);
 
   /** True when the row is a saved List with its saved Source lists. */
-  const isSaved = useCallback(
-    (row: ListFormRow) =>
-      !!row.id && savedSources[row.id] === listSourcesKey(row),
-    [savedSources],
-  );
+  const isSaved = (row: ListFormRow) =>
+    !!row.id && savedSources[row.id] === listSourcesKey(row);
 
   /** Forget a Connection that the user removed. */
-  const dropConnection = useCallback((provider: ProviderId) => {
+  const dropConnection = (provider: ProviderId) => {
     epoch.current += 1;
     setConnections((current) =>
       current.filter((connection) => connection.provider !== provider),
     );
-  }, []);
+  };
 
   /**
    * What a List row shows about its refreshes, from the state of each of its
    * Source lists. Null on a new setup. A row that is not saved, or whose
    * Source lists changed since the save, has no status yet.
    */
-  const syncStateOf = useCallback(
-    (row: ListFormRow): ListSyncState | null => {
-      if (!saved) return null;
-      // A saved row reads its saved Source lists, in the order of the
-      // statuses. Right after a save, the statuses can still be about the
-      // Source lists from before it.
-      const statuses = row.id && isSaved(row) ? syncStatus[row.id] : undefined;
-      return mergedListSyncState(
-        listSources(row).map((source, index) => {
-          const connection = connections.find(
-            (c) => c.provider === source.provider,
-          );
-          const connectionState: ListConnectionState = !connection
-            ? "none"
-            : connection.needsRenewalSince
-              ? "renew"
-              : "ok";
-          return {
-            source,
-            state: listSyncState(
-              statusOfSource(statuses, index, source),
-              connectionState,
-              sourceRequiresConnection(source.provider, source.sourceRef),
-            ),
-          };
-        }),
-      );
-    },
-    [saved, connections, syncStatus, isSaved],
-  );
+  const syncStateOf = (row: ListFormRow): ListSyncState | null => {
+    if (!saved) return null;
+    // A saved row reads its saved Source lists, in the order of the
+    // statuses. Right after a save, the statuses can still be about the
+    // Source lists from before it.
+    const statuses = row.id && isSaved(row) ? syncStatus[row.id] : undefined;
+    return mergedListSyncState(
+      listSources(row).map((source, index) => {
+        const connection = connections.find(
+          (c) => c.provider === source.provider,
+        );
+        const connectionState: ListConnectionState = !connection
+          ? "none"
+          : connection.needsRenewalSince
+            ? "renew"
+            : "ok";
+        return {
+          source,
+          state: listSyncState(
+            statusOfSource(statuses, index, source),
+            connectionState,
+            sourceRequiresConnection(source.provider, source.sourceRef),
+          ),
+        };
+      }),
+    );
+  };
 
   const waitingKey = lists
     .filter((row) => isSaved(row) && syncStateOf(row)?.kind === "waiting")

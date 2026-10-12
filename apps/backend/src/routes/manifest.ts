@@ -1,14 +1,10 @@
 import {
   ACCOUNT_KEY_PATTERN,
-  ADDON_VERSION,
   APP_DESCRIPTION,
   BASE_MANIFEST,
   IMDB_USER_ID_PATTERN,
 } from "@stremlist/shared/constants";
-import type {
-  StremioManifest,
-  StremioResource,
-} from "@stremlist/shared/stremio.types";
+import type { StremioManifest } from "@stremlist/shared/stremio.types";
 import { Hono } from "hono";
 import { createHash } from "node:crypto";
 import type { AccountAccess } from "../services/accounts";
@@ -59,10 +55,7 @@ manifest.get("/:accountKey/manifest.json", async (c) => {
 
     const { account } = access;
     const lists = await getVisibleLists(access);
-    const resources: (string | StremioResource)[] = [
-      "catalog",
-      { name: "meta", types: ["movie"], idPrefixes: ["tt"] },
-    ];
+    const resources = [...BASE_MANIFEST.resources];
     if (
       access.via === "private" &&
       (await actionProviders(account)).length > 0
@@ -77,14 +70,11 @@ manifest.get("/:accountKey/manifest.json", async (c) => {
     const userManifest: StremioManifest = {
       ...structuredClone(BASE_MANIFEST),
       id: manifestId(access, key),
-      version: ADDON_VERSION,
-      name: "Stremlist",
       description: `${APP_DESCRIPTION}. Changelog: https://stremlist.com/changelog`,
       resources,
       catalogs: buildManifestCatalogs(await withAvailableGenres(lists), {
         newTitles: account.newTitlesCatalog,
       }),
-      behaviorHints: { configurable: true, configurationRequired: false },
       config: [
         {
           key: "rpdbApiKey",

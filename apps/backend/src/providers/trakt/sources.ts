@@ -138,19 +138,12 @@ function listPath(
     : `/lists/${encodeURIComponent(source.id)}`;
 }
 
+/** The Connection to read through: personal Source lists need one. */
 function requireConnection(
   source: TraktSource,
   connection: ConnectionAccess | null,
 ): ConnectionAccess | null {
-  if (isPersonal(source)) return personalConnection(source, connection);
-  return connection;
-}
-
-function personalConnection(
-  source: TraktSource,
-  connection: ConnectionAccess | null,
-): ConnectionAccess {
-  if (!connection) {
+  if (isPersonal(source) && !connection) {
     throw new SourceUnavailableError(
       "needs_connection",
       `Trakt ${sourceToRef(source)} needs a Connection`,
@@ -168,13 +161,7 @@ async function listedEntries(
     ...options,
     maxItems: MAX_SOURCE_ITEMS,
   });
-  return {
-    entries: oldestFirst(items, (item) => item.listed_at).flatMap((item) => {
-      const entry = itemToEntry(item);
-      return entry ? [withAddedAt(entry, item.listed_at)] : [];
-    }),
-    complete,
-  };
+  return newestRows(items, (item) => item.listed_at, complete);
 }
 
 /** The newest MAX_SOURCE_ITEMS rows, oldest first, dated by `date`. */
@@ -194,46 +181,34 @@ function newestRows(
   };
 }
 
-async function chartEntries(
-  chart: TraktChart,
+/** Movies and shows interleaved, each in Trakt's rank order. */
+async function rankedEntries(
+  source: TraktSource & { kind: "chart" | "recommendations" },
   connection: ConnectionAccess | null,
+  options: TraktReadOptions,
 ): Promise<SourceEntry[]> {
   const read = (kind: "movies" | "shows") =>
     traktGetJson<(TraktItem & TraktMedia)[]>(
-      `/${kind}/${chart}?limit=${CHART_ITEMS}`,
+      source.kind === "chart"
+        ? `/${kind}/${source.chart}?limit=${CHART_ITEMS}`
+        : `/recommendations/${kind}?limit=${CHART_ITEMS}`,
       connection,
-      { publicFallback: true },
+      options,
     );
   const [movies, shows] = await Promise.all([read("movies"), read("shows")]);
-  // Popular rows are the media itself; trending and anticipated wrap it.
-  const toEntry = (row: TraktItem & TraktMedia, type: "movie" | "series") => {
-    const media = (type === "movie" ? row.movie : row.show) ?? row;
-    return mediaToEntry(media, type);
-  };
+  // Popular rows and recommendations are the media itself; trending and
+  // anticipated rows wrap it.
+  const toEntry = (row: TraktItem & TraktMedia, type: "movie" | "series") =>
+    mediaToEntry((type === "movie" ? row.movie : row.show) ?? row, type);
   return interleave(
     (movies ?? []).map((row) => toEntry(row, "movie")),
     (shows ?? []).map((row) => toEntry(row, "series")),
   );
 }
 
-async function recommendationEntries(
-  connection: ConnectionAccess,
-): Promise<SourceEntry[]> {
-  const read = (kind: "movies" | "shows") =>
-    traktGetJson<TraktMedia[]>(
-      `/recommendations/${kind}?limit=${CHART_ITEMS}`,
-      connection,
-    );
-  const [movies, shows] = await Promise.all([read("movies"), read("shows")]);
-  return interleave(
-    (movies ?? []).map((media) => mediaToEntry(media, "movie")),
-    (shows ?? []).map((media) => mediaToEntry(media, "series")),
-  );
-}
-
 /** Shows in progress, oldest watched first (the show, not the next episode). */
 async function upNextEntries(
-  connection: ConnectionAccess,
+  connection: ConnectionAccess | null,
 ): Promise<SourceSnapshot> {
   let read: PagedRead<TraktItem>;
   try {
@@ -266,7 +241,7 @@ async function upNextEntries(
 
 /** Watched movies and shows, by last watch, oldest first. */
 async function historyEntries(
-  connection: ConnectionAccess,
+  connection: ConnectionAccess | null,
 ): Promise<SourceSnapshot> {
   const [movies, shows] = await Promise.all([
     traktGetJson<TraktItem[]>("/users/me/watched/movies", connection),
@@ -282,7 +257,7 @@ async function historyEntries(
 }
 
 async function collectionEntries(
-  connection: ConnectionAccess,
+  connection: ConnectionAccess | null,
 ): Promise<SourceSnapshot> {
   const [movies, shows] = await Promise.all([
     traktGetAll<TraktItem>("/sync/collection/movies", connection, {
@@ -325,22 +300,18 @@ export async function readSource(
       case "recommendations":
         // The first CHART_ITEMS titles are the whole Source list.
         snapshot = {
-          entries: await (source.kind === "chart"
-            ? chartEntries(source.chart, connection)
-            : recommendationEntries(personalConnection(source, connection))),
+          entries: await rankedEntries(source, connection, options),
           complete: true,
         };
         break;
       case "up_next":
-        snapshot = await upNextEntries(personalConnection(source, connection));
+        snapshot = await upNextEntries(connection);
         break;
       case "history":
-        snapshot = await historyEntries(personalConnection(source, connection));
+        snapshot = await historyEntries(connection);
         break;
       case "collection":
-        snapshot = await collectionEntries(
-          personalConnection(source, connection),
-        );
+        snapshot = await collectionEntries(connection);
         break;
     }
     return { ...snapshot, entries: uniqueEntries(snapshot.entries) };
@@ -351,16 +322,11 @@ export async function readSource(
 
 interface TraktListSummary {
   name?: string | null;
-  ids?: { trakt?: number | null; slug?: string | null } | null;
-  user?: {
-    username?: string | null;
-    ids?: { slug?: string | null } | null;
-  } | null;
+  ids?: { trakt?: number | null } | null;
 }
 
 interface TraktUser {
   username?: string | null;
-  name?: string | null;
   ids?: { slug?: string | null } | null;
 }
 

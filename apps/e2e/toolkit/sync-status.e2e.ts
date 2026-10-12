@@ -1,6 +1,7 @@
 import { test } from "@e2e-dev/web";
 import type { Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
+import type { Screen } from "e2e";
 import type {
   AccountSyncSnapshot,
   ConfigList,
@@ -70,6 +71,50 @@ const traktWatchlist = list(
 const traktConnection = connected("trakt");
 
 /**
+ * A refresh of `sourceRef` that fails with `problem` since `failingSince`,
+ * with no Titles unless `changes` gives the last success.
+ */
+function failing(
+  provider: ListSyncStatus["provider"],
+  sourceRef: string,
+  problem: ListSyncStatus["problem"],
+  failingSince: string,
+  changes: Partial<ListSyncStatus> = {},
+): ListSyncStatus {
+  return {
+    provider,
+    sourceRef,
+    lastAttemptAt: failingSince,
+    lastSuccessAt: null,
+    titleCount: null,
+    problem,
+    failingSince,
+    ...changes,
+  };
+}
+
+/** `statuses`, and from the second poll the first refresh of Box office. */
+function boxOfficeFromSecondPoll(statuses: AccountSyncSnapshot["syncStatus"]) {
+  return (poll: number): AccountSyncSnapshot => ({
+    syncStatus:
+      poll < 2
+        ? statuses
+        : {
+            ...statuses,
+            [ids.waiting]: [syncedStatus("imdb:box-office", 10, ago(0))],
+          },
+    connections: [],
+  });
+}
+
+/** Expects each of `texts`, in order, to show exactly. */
+async function expectTexts(screen: Screen, texts: string[]) {
+  for (const text of texts) {
+    await expect(screen.getByText(text, { exact: true })).toBeVisible();
+  }
+}
+
+/**
  * Answer `/sync-status` of `key` with `answer(poll)`; returns how often it
  * was asked.
  */
@@ -92,24 +137,24 @@ test("each List shows its last refresh or why it failed, and a new List is polle
   screen,
 }) => {
   const synced = syncedStatus(row.sourceRef, 12, ago(5 * MINUTE));
-  const older: ListSyncStatus = {
-    provider: "imdb",
-    sourceRef: "imdb:most-popular-tv",
-    lastAttemptAt: ago(5 * MINUTE),
-    lastSuccessAt: ago(3 * 60 * MINUTE),
-    titleCount: 100,
-    problem: "unavailable",
-    failingSince: ago(40 * MINUTE),
-  };
-  const missing: ListSyncStatus = {
-    provider: "imdb",
-    sourceRef: "ur99000017",
-    lastAttemptAt: ago(MINUTE),
-    lastSuccessAt: null,
-    titleCount: null,
-    problem: "not_found",
-    failingSince: ago(2 * 24 * 60 * MINUTE),
-  };
+  const older = failing(
+    "imdb",
+    "imdb:most-popular-tv",
+    "unavailable",
+    ago(40 * MINUTE),
+    {
+      lastAttemptAt: ago(5 * MINUTE),
+      lastSuccessAt: ago(3 * 60 * MINUTE),
+      titleCount: 100,
+    },
+  );
+  const missing = failing(
+    "imdb",
+    "ur99000017",
+    "not_found",
+    ago(2 * 24 * 60 * MINUTE),
+    { lastAttemptAt: ago(MINUTE) },
+  );
   const statuses = {
     [ids.synced]: [synced],
     [ids.older]: [older],
@@ -125,50 +170,23 @@ test("each List shows its last refresh or why it failed, and a new List is polle
     ],
     syncStatus: statuses,
   });
-  const polls = await routeSyncStatus(browser, (poll) => ({
-    syncStatus:
-      poll < 2
-        ? statuses
-        : {
-            ...statuses,
-            [ids.waiting]: [syncedStatus("imdb:box-office", 10, ago(0))],
-          },
-    connections: [],
-  }));
+  const polls = await routeSyncStatus(
+    browser,
+    boxOfficeFromSecondPoll(statuses),
+  );
 
   await app.open(`/configure?account=${accountId}`);
 
-  await expect(
-    screen.getByText("Updated 5 minutes ago · 12 titles", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    screen.getByText("Refresh failed · titles from 3 hours ago", {
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(
-    screen.getByText(
-      "IMDb did not answer. Please try again in a moment. Stremio shows the titles from the last refresh, 3 hours ago.",
-      { exact: true },
-    ),
-  ).toBeVisible();
-  await expect(
-    screen.getByText("Not showing in Stremio", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    screen.getByText(
-      "IMDb could not find this watchlist. Check the link. The list may have been deleted. This problem started 2 days ago.",
-      { exact: true },
-    ),
-  ).toBeVisible();
-  await expect(
-    screen.getByText("2 Lists need attention", { exact: true }),
-  ).toBeVisible();
-
-  // The List without a status waits, and the page asks again until it has one.
-  await expect(
-    screen.getByText("Not refreshed yet", { exact: true }),
-  ).toBeVisible();
+  await expectTexts(screen, [
+    "Updated 5 minutes ago · 12 titles",
+    "Refresh failed · titles from 3 hours ago",
+    "IMDb did not answer. Please try again in a moment. Stremio shows the titles from the last refresh, 3 hours ago.",
+    "Not showing in Stremio",
+    "IMDb could not find this watchlist. Check the link. The list may have been deleted. This problem started 2 days ago.",
+    "2 Lists need attention",
+    // The List without a status waits, and the page asks again until it has one.
+    "Not refreshed yet",
+  ]);
   await expect(
     screen.getByText("Updated just now · 10 titles", { exact: true }),
   ).toBeVisible({ timeout: 15_000 });
@@ -200,9 +218,7 @@ test("a List added and saved waits for its first refresh, then shows it", async 
   await screen.getByRole("button", "Add an IMDb chart").tap();
   await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
 
-  await expect(
-    screen.getByText("Not saved yet", { exact: true }),
-  ).toBeVisible();
+  await expectTexts(screen, ["Not saved yet"]);
   await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   await expect(
@@ -253,26 +269,12 @@ test("a manual refresh shows the new status of each List", async ({
 
   await screen.getByRole("button", "Refresh now").tap();
 
-  await expect(
-    screen.getByText(
-      "Refreshed 0 of 1 lists. The others failed to update: each List shows why.",
-      { exact: true },
-    ),
-  ).toBeVisible();
-  await expect(
-    screen.getByText(
-      "This IMDb watchlist is private. Make your watchlist public in your IMDb account settings. Stremio shows the titles from the last refresh, 10 minutes ago.",
-      { exact: true },
-    ),
-  ).toBeVisible();
-  await expect(
-    screen.getByText("Refresh failed · titles from 10 minutes ago", {
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(
-    screen.getByText("1 List needs attention", { exact: true }),
-  ).toBeVisible();
+  await expectTexts(screen, [
+    "Refreshed 0 of 1 lists. The others failed to update: each List shows why.",
+    "This IMDb watchlist is private. Make your watchlist public in your IMDb account settings. Stremio shows the titles from the last refresh, 10 minutes ago.",
+    "Refresh failed · titles from 10 minutes ago",
+    "1 List needs attention",
+  ]);
   expect(refreshes).toBe(1);
 });
 
@@ -286,15 +288,10 @@ test(
       syncStatus: {
         ...configuration.syncStatus,
         [ids.trakt]: [
-          {
-            provider: "trakt",
-            sourceRef: "me/watchlist",
-            lastAttemptAt: ago(MINUTE),
+          failing("trakt", "me/watchlist", "needs_connection", ago(MINUTE), {
             lastSuccessAt: ago(60 * MINUTE),
             titleCount: 30,
-            problem: "needs_connection",
-            failingSince: ago(MINUTE),
-          },
+          }),
         ],
       },
       connections: [{ ...traktConnection, needsRenewalSince: ago(MINUTE) }],
@@ -304,18 +301,11 @@ test(
     await fitConfigurePage(browser);
     await app.open(`/configure?account=${accountId}`);
 
-    await expect(
-      screen.getByText("Needs renewal", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      screen.getByText("Connection needs to be renewed", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      screen.getByText(
-        "Trakt refused the Stremlist Connection, so this List does not show in Stremio. Connect Trakt again to renew it.",
-        { exact: true },
-      ),
-    ).toBeVisible();
+    await expectTexts(screen, [
+      "Needs renewal",
+      "Connection needs to be renewed",
+      "Trakt refused the Stremlist Connection, so this List does not show in Stremio. Connect Trakt again to renew it.",
+    ]);
     // One in the Providers panel, one in the List's notice.
     await expect(
       screen.getByRole("button", "Connect again", { exact: true }),
@@ -349,18 +339,11 @@ test("a List whose Provider is not connected offers to connect it", async ({
   const starts = await routeConnectStart(browser);
   await app.open(`/configure?account=${accountId}`);
 
-  await expect(
-    screen.getByText("Not connected", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    screen.getByText(
-      "Trakt is not connected, so this List does not show in Stremio.",
-      { exact: true },
-    ),
-  ).toBeVisible();
-  await expect(
-    screen.getByText("1 List needs attention", { exact: true }),
-  ).toBeVisible();
+  await expectTexts(screen, [
+    "Not connected",
+    "Trakt is not connected, so this List does not show in Stremio.",
+    "1 List needs attention",
+  ]);
 
   await screen
     .getByRole("button", "Connect again for Trakt Watchlist", { exact: true })
@@ -385,15 +368,12 @@ test("a Connection that works again clears the renewal state after a poll", asyn
         syncStatus: {
           ...configuration.syncStatus,
           [ids.trakt]: [
-            {
-              provider: "trakt",
-              sourceRef: "me/watchlist",
-              lastAttemptAt: ago(2 * MINUTE),
-              lastSuccessAt: null,
-              titleCount: null,
-              problem: "needs_connection",
-              failingSince: ago(2 * MINUTE),
-            },
+            failing(
+              "trakt",
+              "me/watchlist",
+              "needs_connection",
+              ago(2 * MINUTE),
+            ),
           ],
         },
         connections: [traktConnection],
@@ -410,9 +390,7 @@ test("a Connection that works again clears the renewal state after a poll", asyn
   await routeConnectionSources(browser);
   await app.open(`/configure?account=${accountId}`);
 
-  await expect(
-    screen.getByText("Checking the new Connection", { exact: true }),
-  ).toBeVisible();
+  await expectTexts(screen, ["Checking the new Connection"]);
   await expect(
     screen.getByText("Updated just now · 30 titles", { exact: true }),
   ).toBeVisible({ timeout: 15_000 });
@@ -439,18 +417,11 @@ test("a refused Connection noticed elsewhere does not claim its cached List is g
   await routeConnectionSources(browser);
   await app.open(`/configure?account=${accountId}`);
 
-  await expect(
-    screen.getByText(
-      "Trakt refused the Stremlist Connection. Stremio still shows this List from its last refresh, but not after the next one. Connect Trakt again to renew it.",
-      { exact: true },
-    ),
-  ).toBeVisible();
-  await expect(
-    screen.getByText("Connection needs to be renewed", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    screen.getByText("1 List needs attention", { exact: true }),
-  ).toBeVisible();
+  await expectTexts(screen, [
+    "Trakt refused the Stremlist Connection. Stremio still shows this List from its last refresh, but not after the next one. Connect Trakt again to renew it.",
+    "Connection needs to be renewed",
+    "1 List needs attention",
+  ]);
 });
 
 test("each failure reason says what to do, next to Lists that refresh fine", async ({
@@ -478,37 +449,31 @@ test("each failure reason says what to do, next to Lists that refresh fine", asy
       [ids.empty]: [syncedStatus("imdb:box-office", 0, ago(30 * MINUTE))],
       // A public Trakt list that Trakt refused without an account.
       [ids.history]: [
-        {
-          provider: "trakt",
-          sourceRef: "users/fixture/lists/horror",
-          lastAttemptAt: ago(MINUTE),
-          lastSuccessAt: null,
-          titleCount: null,
-          problem: "needs_connection",
-          failingSince: ago(20 * MINUTE),
-        },
+        failing(
+          "trakt",
+          "users/fixture/lists/horror",
+          "needs_connection",
+          ago(20 * MINUTE),
+          { lastAttemptAt: ago(MINUTE) },
+        ),
       ],
       [ids.justwatch]: [
-        {
-          provider: "justwatch",
-          sourceRef: "tl-us-11111111-2222-4333-8444-555555555555",
-          lastAttemptAt: ago(MINUTE),
-          lastSuccessAt: ago(3 * 24 * 60 * MINUTE),
-          titleCount: 8,
-          problem: "private",
-          failingSince: ago(2 * 24 * 60 * MINUTE),
-        },
+        failing(
+          "justwatch",
+          "tl-us-11111111-2222-4333-8444-555555555555",
+          "private",
+          ago(2 * 24 * 60 * MINUTE),
+          {
+            lastAttemptAt: ago(MINUTE),
+            lastSuccessAt: ago(3 * 24 * 60 * MINUTE),
+            titleCount: 8,
+          },
+        ),
       ],
       [ids.mdblist]: [
-        {
-          provider: "mdblist",
-          sourceRef: "lists/4242",
+        failing("mdblist", "lists/4242", "premium_only", ago(3 * 60 * MINUTE), {
           lastAttemptAt: ago(MINUTE),
-          lastSuccessAt: null,
-          titleCount: null,
-          problem: "premium_only",
-          failingSince: ago(3 * 60 * MINUTE),
-        },
+        }),
       ],
     },
     connections: [connected("mdblist")],
@@ -516,42 +481,19 @@ test("each failure reason says what to do, next to Lists that refresh fine", asy
   await routeConnectionSources(browser, "mdblist");
   await app.open(`/configure?account=${accountId}`);
 
-  await expect(
-    screen.getByText("Updated 2 hours ago · 1 title", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    screen.getByText("Updated 30 minutes ago · no titles", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    screen.getByText(
-      "This list needs your Trakt account. Connect Trakt in the Providers panel. This problem started 20 minutes ago.",
-      { exact: true },
-    ),
-  ).toBeVisible();
-  await expect(
-    screen.getByText(
-      "This JustWatch list is not shared. In JustWatch, open the list and choose Share to get its link. Stremio shows the titles from the last refresh, 3 days ago.",
-      { exact: true },
-    ),
-  ).toBeVisible();
-  await expect(
-    screen.getByText("Refresh failed · titles from 3 days ago", {
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(
-    screen.getByText(
-      "This list needs a paid MDBList plan. MDBList only shares it with paid accounts. This problem started 3 hours ago.",
-      { exact: true },
-    ),
-  ).toBeVisible();
+  await expectTexts(screen, [
+    "Updated 2 hours ago · 1 title",
+    "Updated 30 minutes ago · no titles",
+    "This list needs your Trakt account. Connect Trakt in the Providers panel. This problem started 20 minutes ago.",
+    "This JustWatch list is not shared. In JustWatch, open the list and choose Share to get its link. Stremio shows the titles from the last refresh, 3 days ago.",
+    "Refresh failed · titles from 3 days ago",
+    "This list needs a paid MDBList plan. MDBList only shares it with paid accounts. This problem started 3 hours ago.",
+  ]);
   // The Trakt and MDBList Lists show nothing in Stremio; JustWatch shows older titles.
   await expect(
     screen.getByText("Not showing in Stremio", { exact: true }),
   ).toHaveCount(2);
-  await expect(
-    screen.getByText("3 Lists need attention", { exact: true }),
-  ).toBeVisible();
+  await expectTexts(screen, ["3 Lists need attention"]);
   // A public List does not offer to renew a Connection.
   await expect(screen.getByRole("button", /^Connect again for /)).toHaveCount(
     0,
@@ -582,9 +524,7 @@ test("each List that needs a Connection names its own Connect again button", asy
   await expect(screen.getByText("Not connected", { exact: true })).toHaveCount(
     2,
   );
-  await expect(
-    screen.getByText("2 Lists need attention", { exact: true }),
-  ).toBeVisible();
+  await expectTexts(screen, ["2 Lists need attention"]);
 
   await screen
     .getByRole("button", "Connect again for Trakt History", { exact: true })
@@ -613,26 +553,15 @@ test("a Legacy alias install shows the sync status of its Lists and polls throug
   );
   const polls = await routeSyncStatus(
     browser,
-    (poll) => ({
-      syncStatus:
-        poll < 2
-          ? statuses
-          : {
-              ...statuses,
-              [ids.waiting]: [syncedStatus("imdb:box-office", 10, ago(0))],
-            },
-      connections: [],
-    }),
+    boxOfficeFromSecondPoll(statuses),
     imdbUser,
   );
   await app.open(`/configure?account=${imdbUser}`);
 
-  await expect(
-    screen.getByText("Updated 5 minutes ago · 12 titles", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    screen.getByText("Not refreshed yet", { exact: true }),
-  ).toBeVisible();
+  await expectTexts(screen, [
+    "Updated 5 minutes ago · 12 titles",
+    "Not refreshed yet",
+  ]);
   await expect(
     screen.getByText("Updated just now · 10 titles", { exact: true }),
   ).toBeVisible({ timeout: 15_000 });
@@ -678,24 +607,18 @@ test("a saved List whose chart changes is not saved yet, and is polled only afte
     connections: [],
   }));
   await app.open(`/configure?account=${accountId}`);
-  await expect(
-    screen.getByText("Updated 5 minutes ago · 250 titles", { exact: true }),
-  ).toBeVisible();
+  await expectTexts(screen, ["Updated 5 minutes ago · 250 titles"]);
 
   await screen.getByRole("button", "Settings for Top movies").tap();
   await screen.getByRole("combobox", "Built-in chart").tap();
   await screen.getByRole("option", "Top 250 TV Shows", { exact: true }).tap();
 
-  await expect(
-    screen.getByText("Not saved yet", { exact: true }),
-  ).toBeVisible();
+  await expectTexts(screen, ["Not saved yet"]);
   await expect(
     screen.getByText("Not refreshed yet", { exact: true }),
   ).toHaveCount(0);
   // Another chart is another Catalog: Stremio needs a reinstall to show it.
-  await expect(
-    screen.getByText("These changes need a reinstall.", { exact: true }),
-  ).toBeVisible();
+  await expectTexts(screen, ["These changes need a reinstall."]);
   await pause(5_000);
   expect(polls).toHaveLength(0);
 
@@ -743,24 +666,14 @@ test("an open preview is read again when a refresh finds its Connection refused"
       syncStatus: {
         ...configuration.syncStatus,
         [ids.trakt]: [
-          {
-            provider: "trakt",
-            sourceRef: "me/watchlist",
-            lastAttemptAt: ago(0),
-            lastSuccessAt: null,
-            titleCount: null,
-            problem: "needs_connection",
-            failingSince: ago(0),
-          },
+          failing("trakt", "me/watchlist", "needs_connection", ago(0)),
         ],
       },
       connections: [{ ...traktConnection, needsRenewalSince: ago(0) }],
     };
   });
   await app.open(`/configure?account=${accountId}`);
-  await expect(
-    screen.getByText("Not refreshed yet", { exact: true }),
-  ).toBeVisible();
+  await expectTexts(screen, ["Not refreshed yet"]);
   await screen.getByRole("button", "Preview Trakt Watchlist").tap();
   await expect(screen.getByText("The Godfather")).toBeVisible();
 
@@ -768,12 +681,9 @@ test("an open preview is read again when a refresh finds its Connection refused"
     screen.getByText("Connection needs to be renewed", { exact: true }),
   ).toBeVisible({ timeout: 15_000 });
   // The preview does not keep Titles that the refused Connection cannot read.
-  await expect(
-    screen.getByText(
-      "This watchlist needs your Trakt account. Connect Trakt on the Stremlist configure page.",
-      { exact: true },
-    ),
-  ).toBeVisible();
+  await expectTexts(screen, [
+    "This watchlist needs your Trakt account. Connect Trakt on the Stremlist configure page.",
+  ]);
   await expect(screen.getByText("The Godfather")).toBeHidden();
   expect(previews).toHaveLength(2);
   expect(previews[1]).toMatchObject({

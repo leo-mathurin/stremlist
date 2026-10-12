@@ -319,14 +319,15 @@ export function parseBody<T>(route: WebRoute): T {
 
 /**
  * Serve one Account's configuration and record every save. Saves succeed
- * and echo the submitted Lists, as the backend does. A load answers
- * `state.config`, so the test can change the configuration while the page
- * is open. Registers no `baseRoutes`.
+ * and echo the submitted Lists (with `genres`), as the backend does, once
+ * `gate` resolves. A load answers `state.config`, so the test can change the
+ * configuration while the page is open. Registers no `baseRoutes`.
  */
 export async function routeConfig(
   browser: Browser,
   initial: AccountConfigResponse = configuration,
   key = accountId,
+  options: { gate?: Promise<void>; genres?: string[] } = {},
 ) {
   const state = { config: initial };
   const submissions: AccountConfigInput[] = [];
@@ -336,8 +337,12 @@ export async function routeConfig(
     } else {
       const submitted = parseBody<AccountConfigInput>(route);
       submissions.push(submitted);
+      if (options.gate) await options.gate;
       await route.fulfill({
-        json: toJson({ ok: true, lists: savedLists(submitted) }),
+        json: toJson({
+          ok: true,
+          lists: savedLists(submitted, options.genres),
+        }),
       });
     }
   });
@@ -387,18 +392,11 @@ export async function gatedSaves(
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const submissions: AccountConfigInput[] = [];
-  await browser.route(`${backend}/${accountId}/config`, async (route) => {
-    if (route.request.method === "GET") {
-      await route.fulfill({ json: toJson(initial) });
-      return;
-    }
-    const submitted = parseBody<AccountConfigInput>(route);
-    submissions.push(submitted);
-    await gate;
-    await route.fulfill({
-      json: toJson({ ok: true, lists: savedLists(submitted, genres) }),
-    });
+  // `initial` may hold values the type does not allow (`lastFetchedAt: null`).
+  const config = initial as AccountConfigResponse;
+  const { submissions } = await routeConfig(browser, config, accountId, {
+    gate,
+    genres,
   });
   return { submissions, release: () => release() };
 }

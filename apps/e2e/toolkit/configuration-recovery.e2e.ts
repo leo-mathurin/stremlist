@@ -113,16 +113,13 @@ for (const failure of ["private", "unknown", "offline"] as const) {
     recover = true;
     await field.fill("https://www.imdb.com/user/p.fixture/");
     await screen.getByRole("button", "Add", { exact: true }).tap();
-    await expect(
-      screen.getByText(`IMDb · Watchlist · ${imdbUser}`),
-    ).toBeVisible();
+    const added = screen.getByText(`IMDb · Watchlist · ${imdbUser}`);
+    await expect(added).toBeVisible();
     await saveButton(screen, SAVE_NEW).tap();
     await expect(browser).toHaveURL(`/configure?account=${accountId}`);
     // The saved List stays on screen while the Account loads.
     await expect(screen.getByText("Not refreshed yet")).toBeVisible();
-    await expect(
-      screen.getByText(`IMDb · Watchlist · ${imdbUser}`),
-    ).toBeVisible();
+    await expect(added).toBeVisible();
     await expect(screen.getByText("Not saved yet")).toHaveCount(0);
     expect(created).toHaveLength(1);
     expect(created[0].lists).toMatchObject([
@@ -238,14 +235,13 @@ test("network save failure preserves values for a retry", async ({
   });
   await app.open(`/configure?account=${accountId}`);
   await screen.getByRole("button", "Settings for Test catalog").tap();
-  await screen.getByLabel("Catalog title").fill("Keep my changes");
+  const title = screen.getByLabel("Catalog title");
+  await title.fill("Keep my changes");
   await saveButton(screen).tap();
   await expect(
     screen.getByText("Failed to fetch", { exact: true }),
   ).toBeVisible();
-  await expect(screen.getByLabel("Catalog title")).toHaveValue(
-    "Keep my changes",
-  );
+  await expect(title).toHaveValue("Keep my changes");
   await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(attempts).toBe(2);
@@ -269,19 +265,14 @@ test(
     });
     await app.open(`/configure?account=${accountId}`);
     await openFilters(screen, browser);
-    await expect(
-      screen.getByRole("combobox", "Genre", { exact: true }),
-    ).toHaveText("Western");
-    await expect(
-      screen.getByRole("combobox", "Genre", { exact: true }),
-    ).toBeEnabled();
+    const genre = screen.getByRole("combobox", "Genre", { exact: true });
+    await expect(genre).toHaveText("Western");
+    await expect(genre).toBeEnabled();
     await agent.act(
       "Remove the Western genre restriction by selecting All genres. Keep the Top rated extra catalog enabled, and save.",
       { maxModelCalls: 6 },
     );
-    await expect(
-      screen.getByRole("combobox", "Genre", { exact: true }),
-    ).toHaveText("All genres");
+    await expect(genre).toHaveText("All genres");
     await expect(
       screen.getByRole("checkbox", "Top rated", { exact: true }),
     ).toBeChecked();

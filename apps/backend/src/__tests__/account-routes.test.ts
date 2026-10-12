@@ -2,40 +2,21 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-import type { Tables } from "@stremlist/shared/database.types";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import app from "../index.js";
 
-vi.mock("../lib/background", async () => {
-  return (await import("./helpers/config-api-mocks.js")).backgroundMocks;
-});
-vi.mock("../services/list-prewarm", async () => {
-  return (await import("./helpers/config-api-mocks.js")).prewarmMocks;
-});
+const { backgroundMocks, prewarmMocks, supabaseMocks } = await vi.hoisted(
+  () => import("./helpers/config-api-mocks.js"),
+);
+vi.mock("../lib/background", () => backgroundMocks);
+vi.mock("../services/list-prewarm", () => prewarmMocks);
+vi.mock("../lib/supabase", () => supabaseMocks);
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
+vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
+vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
 
-vi.mock("../lib/supabase", async () => {
-  const { supabase } = await import("./helpers/mock-supabase.js");
-  const { rpcMocks } = await import("./helpers/config-api-mocks.js");
-  return { supabase: { ...supabase, rpc: rpcMocks.rpc } };
-});
-
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-
-vi.mock("../lib/r2", async () => {
-  return await import("./helpers/mock-r2.js");
-});
-vi.mock("../lib/resend", () => ({
-  resend: { contacts: { create: vi.fn() } },
-}));
-
-import { prewarmMocks } from "./helpers/config-api-mocks.js";
 import {
   getConfig,
   legacyAccountId,
@@ -48,32 +29,43 @@ import {
   UUID_2,
   withProviders,
 } from "./helpers/config-api.js";
-import { seedAccount, seedConnection } from "./helpers/fixtures.js";
+import {
+  movie,
+  seedAccount,
+  seedConnection,
+  seedList,
+} from "./helpers/fixtures.js";
 import { cache } from "./helpers/mock-list-cache.js";
+import { r2Objects, r2Undeletable } from "./helpers/mock-r2.js";
 import { fakeAdapter, useFakeProvider } from "./helpers/mock-registry.js";
 import { db } from "./helpers/mock-supabase.js";
 
 beforeEach(resetConfigTest);
 
-describe("List CRUD via the config API", () => {
-  // ---- POST /accounts ----
+function createAccount(body: Parameters<typeof withProviders>[0]) {
+  return postJson("/accounts", withProviders(body));
+}
 
+function disconnect(accountId: string, provider: string) {
+  return app.request(`/${accountId}/connections/${provider}`, {
+    method: "DELETE",
+  });
+}
+
+describe("List CRUD via the config API", () => {
   describe("POST /accounts", () => {
     it("creates an Account with a private ID and its first Lists", async () => {
-      const res = await postJson(
-        "/accounts",
-        withProviders({
-          rpdbApiKey: "rpdb",
-          lists: [
-            {
-              sourceRef: OWNER,
-              sortOption: "added_at-asc",
-              catalogTitle: "Mine",
-            },
-            { sourceRef: "imdb:top-rated-movies", sortOption: "rating-desc" },
-          ],
-        }),
-      );
+      const res = await createAccount({
+        rpdbApiKey: "rpdb",
+        lists: [
+          {
+            sourceRef: OWNER,
+            sortOption: "added_at-asc",
+            catalogTitle: "Mine",
+          },
+          { sourceRef: "imdb:top-rated-movies", sortOption: "rating-desc" },
+        ],
+      });
 
       expect(res.status).toBe(200);
       const data = await res.json();
@@ -122,44 +114,32 @@ describe("List CRUD via the config API", () => {
       expect(manifest.catalogs).toEqual([]);
     });
 
-    it("rejects Connection lists: a new Account has no Connection yet", async () => {
-      const res = await postJson(
-        "/accounts",
-        withProviders({
-          lists: [
-            {
-              provider: "trakt",
-              sourceRef: "me/watchlist",
-              sortOption: "added_at-asc",
-            },
-          ],
-        }),
-      );
-
-      expect(res.status).toBe(400);
-      expect(db.getTable("accounts")).toHaveLength(1);
-    });
-
-    it("rejects duplicates without creating an Account", async () => {
-      const res = await postJson(
-        "/accounts",
-        withProviders({
-          lists: [
-            { sourceRef: OWNER, sortOption: "added_at-asc" },
-            { sourceRef: OWNER, sortOption: "title-asc" },
-          ],
-        }),
-      );
+    it.each([
+      [
+        "Connection lists: a new Account has no Connection yet",
+        [
+          {
+            provider: "trakt" as const,
+            sourceRef: "me/watchlist",
+            sortOption: "added_at-asc",
+          },
+        ],
+      ],
+      [
+        "duplicates",
+        [
+          { sourceRef: OWNER, sortOption: "added_at-asc" },
+          { sourceRef: OWNER, sortOption: "title-asc" },
+        ],
+      ],
+    ])("rejects %s without creating an Account", async (_, lists) => {
+      const res = await createAccount({ lists });
 
       expect(res.status).toBe(400);
       expect(db.getTable("accounts")).toHaveLength(1);
     });
   });
 });
-
-// ---------------------------------------------------------------------------
-// Upgrade from a Legacy alias
-// ---------------------------------------------------------------------------
 
 describe("POST /:accountKey/upgrade", () => {
   it("copies a legacy install into a new private Account", async () => {
@@ -203,50 +183,30 @@ describe("POST /:accountKey/upgrade", () => {
     );
   });
 
-  it("refuses a private Addon URL", async () => {
-    const account = seedAccount();
-    const res = await app.request(`/${account.id}/upgrade`, {
-      method: "POST",
-    });
-    expect(res.status).toBe(400);
-  });
-
-  it("returns 404 for an unknown Legacy alias", async () => {
-    const res = await app.request(`/ur99999999/upgrade`, { method: "POST" });
-    expect(res.status).toBe(404);
+  it.each([
+    ["a private Addon URL", () => seedAccount().id, 400],
+    ["an unknown Legacy alias", () => "ur99999999", 404],
+  ])("refuses %s", async (_, key, status) => {
+    const res = await app.request(`/${key()}/upgrade`, { method: "POST" });
+    expect(res.status).toBe(status);
   });
 });
 
 describe("DELETE /:accountId/connections/:provider", () => {
   it("stops serving and storing what was read through the Connection", async () => {
-    const { r2Objects } = await import("./helpers/mock-r2.js");
     const account = seedAccount();
     seedConnection(account.id, "trakt");
-    const privateList = db.insert("lists", {
-      account_id: account.id,
+    const privateList = seedList(account.id, {
       provider: "trakt",
       source_ref: "me/watchlist",
-      catalog_title: "",
-      position: 0,
-    }) as Tables<"lists">;
-    const publicList = db.insert("lists", {
-      account_id: account.id,
+    });
+    const publicList = seedList(account.id, {
       provider: "trakt",
       source_ref: "users/leo/watchlist",
-      catalog_title: "",
       position: 1,
-    }) as Tables<"lists">;
-    const item = {
-      id: "tt0111161",
-      type: "movie" as const,
-      name: "The Shawshank Redemption",
-      poster: null,
-      posterShape: "poster" as const,
-      genres: [],
-      description: "",
-    };
-    cache.seed(privateList.id, [item]);
-    cache.seed(publicList.id, [item]);
+    });
+    cache.seed(privateList.id, [movie("tt0111161")]);
+    cache.seed(publicList.id, [movie("tt0111161")]);
     for (const list of [privateList, publicList]) {
       db.insert("list_sync_status", {
         list_id: list.id,
@@ -259,9 +219,7 @@ describe("DELETE /:accountId/connections/:provider", () => {
     }
     r2Objects.set(`connections/${account.id}/trakt/membership.json`, "{}");
 
-    const res = await app.request(`/${account.id}/connections/trakt`, {
-      method: "DELETE",
-    });
+    const res = await disconnect(account.id, "trakt");
 
     expect(res.status).toBe(200);
     expect(db.getTable("connections")).toEqual([]);
@@ -278,7 +236,6 @@ describe("DELETE /:accountId/connections/:provider", () => {
   });
 
   it("deletes every object the Connection stored, also private list snapshots", async () => {
-    const { r2Objects } = await import("./helpers/mock-r2.js");
     const forgetConnection = vi.fn();
     useFakeProvider(fakeAdapter("simkl", { forgetConnection }));
     const account = seedAccount();
@@ -297,9 +254,7 @@ describe("DELETE /:accountId/connections/:provider", () => {
     ];
     for (const key of [...own, ...kept]) r2Objects.set(key, "{}");
 
-    const res = await app.request(`/${account.id}/connections/simkl`, {
-      method: "DELETE",
-    });
+    const res = await disconnect(account.id, "simkl");
 
     expect(res.status).toBe(200);
     expect(own.filter((key) => r2Objects.has(key))).toEqual([]);
@@ -309,7 +264,6 @@ describe("DELETE /:accountId/connections/:provider", () => {
   });
 
   it("logs the objects that the store could not delete", async () => {
-    const { r2Objects, r2Undeletable } = await import("./helpers/mock-r2.js");
     const account = seedAccount();
     seedConnection(account.id, "trakt");
     const key = `connections/${account.id}/trakt/membership.json`;
@@ -317,24 +271,16 @@ describe("DELETE /:accountId/connections/:provider", () => {
     r2Undeletable.add(key);
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    try {
-      const res = await app.request(`/${account.id}/connections/trakt`, {
-        method: "DELETE",
-      });
+    const res = await disconnect(account.id, "trakt");
 
-      // The disconnect still succeeds; the stray object is not silent.
-      expect(res.status).toBe(200);
-      expect(db.getTable("connections")).toEqual([]);
-      expect(logged).toHaveBeenCalledWith(
-        `Cleaning up after the trakt disconnect of ${account.id} failed:`,
-        expect.objectContaining({
-          message: `Could not delete 1 objects under connections/${account.id}/trakt/`,
-        }),
-      );
-    } finally {
-      r2Undeletable.clear();
-      r2Objects.delete(key);
-      logged.mockRestore();
-    }
+    // The disconnect still succeeds; the stray object is not silent.
+    expect(res.status).toBe(200);
+    expect(db.getTable("connections")).toEqual([]);
+    expect(logged).toHaveBeenCalledWith(
+      `Cleaning up after the trakt disconnect of ${account.id} failed:`,
+      expect.objectContaining({
+        message: `Could not delete 1 objects under connections/${account.id}/trakt/`,
+      }),
+    );
   });
 });

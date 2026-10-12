@@ -1,7 +1,9 @@
-import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import type { ListSource } from "@stremlist/shared/list-merge";
-import type { StremioMeta } from "@stremlist/shared/stremio.types";
+import type {
+  ConfigListInput,
+  StremioMeta,
+} from "@stremlist/shared/stremio.types";
 import {
   getCatalog,
   getConfig,
@@ -49,12 +51,15 @@ const NO_CONNECTION: ListSource = {
   provider: "trakt",
   sourceRef: "me/watchlist",
 };
+const HISTORY: ListSource = { provider: "trakt", sourceRef: "me/history" };
 
+/** A cached Title, added on 1 January of `addedIn`. */
 function title(
   id: string,
-  addedAt: string,
+  addedIn: number,
   overrides: Partial<StremioMeta> = {},
 ): StremioMeta {
+  const addedAt = `${addedIn}-01-01T00:00:00.000Z`;
   // The cache keeps the date added next to the meta; Stremio never gets it.
   return {
     id,
@@ -93,6 +98,9 @@ async function seedMerged(
   return { accountId, listId, catalogId: `wl-${listId}-movie` };
 }
 
+const catalogIds = async (accountKey: string) =>
+  (await getManifest(accountKey)).catalogs.map((catalog) => catalog.id);
+
 test.beforeEach(resetDb);
 
 test(
@@ -102,14 +110,11 @@ test(
     const { accountId, listId, catalogId } = await seedMerged(
       [FIRST, SECOND],
       [
+        [title("tt9910001", 2020), title("tt9910002", 2024)],
         [
-          title("tt9910001", "2020-01-01T00:00:00.000Z"),
-          title("tt9910002", "2024-01-01T00:00:00.000Z"),
-        ],
-        [
-          title("tt9910003", "2022-01-01T00:00:00.000Z"),
+          title("tt9910003", 2022),
           // Also in the first Source list: it keeps its first date.
-          title("tt9910001", "2025-01-01T00:00:00.000Z"),
+          title("tt9910001", 2025),
         ],
       ],
     );
@@ -124,8 +129,7 @@ test(
     expect(metas.some((meta) => "addedAt" in meta)).toBe(false);
 
     // One List, one Catalog in the manifest.
-    const manifest = await getManifest(accountId);
-    expect(manifest.catalogs.map((catalog) => catalog.id)).toEqual([catalogId]);
+    expect(await catalogIds(accountId)).toEqual([catalogId]);
     // The meta route finds a Title of the second Source list, from its cache.
     const { meta } = await getMeta(accountId, "movie", "tt9910003");
     expect(meta?.name).toBe("QA tt9910003");
@@ -148,7 +152,7 @@ test(
   async () => {
     const { accountId, catalogId } = await seedMerged(
       [FIRST, NO_CONNECTION],
-      [[title("tt9910001", "2020-01-01T00:00:00.000Z")], null],
+      [[title("tt9910001", 2020)], null],
     );
     const { status, metas } = await getCatalog(accountId, "movie", catalogId);
     expect(status).toBe(200);
@@ -156,11 +160,9 @@ test(
 
     // When no Source list can be read, the card of the first problem shows.
     await resetDb();
-    const failing = await seedMerged(
-      [NO_CONNECTION, { provider: "trakt", sourceRef: "me/history" }],
-      [null, null],
-      { sortOption: "title-asc" },
-    );
+    const failing = await seedMerged([NO_CONNECTION, HISTORY], [null, null], {
+      sortOption: "title-asc",
+    });
     const card = await getCatalog(
       failing.accountId,
       "movie",
@@ -183,8 +185,8 @@ test(
     const alias = CATALOG_FIXTURE_USER;
     const accountId = await seedAccount({ legacyImdbUserId: alias });
     const merged = await seedMerged(
-      [FIRST, { provider: "trakt", sourceRef: "me/history" }],
-      [[title("tt9910001", "2020-01-01T00:00:00.000Z")], null],
+      [FIRST, HISTORY],
+      [[title("tt9910001", 2020)], null],
       { accountId },
     );
     const plainId = await seedList(accountId, {
@@ -193,10 +195,7 @@ test(
       position: 1,
     });
 
-    const manifest = await getManifest(alias);
-    expect(manifest.catalogs.map((catalog) => catalog.id)).toEqual([
-      `wl-${plainId}-movie`,
-    ]);
+    expect(await catalogIds(alias)).toEqual([`wl-${plainId}-movie`]);
     expect((await getCatalog(alias, "movie", merged.catalogId)).metas).toEqual(
       [],
     );
@@ -205,11 +204,7 @@ test(
     ).toEqual(["Plain QA"]);
 
     const refused = await postConfig(alias, [
-      {
-        ...SECOND,
-        sortOption: "title-asc",
-        mergedSources: [{ provider: "trakt", sourceRef: "me/history" }],
-      },
+      { ...SECOND, sortOption: "title-asc", mergedSources: [HISTORY] },
     ]);
     expect(refused).toEqual({
       status: 400,
@@ -230,6 +225,7 @@ test(
       listIds: [listId],
     } = await seedAccountWithLists([{ ...FIRST, catalogTitle: "Release QA" }]);
     const before = await getListRows(accountId);
+    const top250 = { provider: "imdb", sourceRef: "imdb:top-rated-movies" };
     const cases: [unknown[], string][] = [
       [
         [
@@ -239,15 +235,7 @@ test(
         "Each list can only be added once.",
       ],
       [
-        [
-          {
-            ...FIRST,
-            sortOption: "added_at-desc",
-            mergedSources: [
-              { provider: "imdb", sourceRef: "imdb:top-rated-movies" },
-            ],
-          },
-        ],
+        [{ ...FIRST, sortOption: "added_at-desc", mergedSources: [top250] }],
         "Top 250 Movies does not give the date when each Title was added, so this List cannot sort by date added.",
       ],
       [
@@ -256,9 +244,7 @@ test(
             ...FIRST,
             sortOption: "title-asc",
             displayMode: "series",
-            mergedSources: [
-              { provider: "imdb", sourceRef: "imdb:top-rated-movies" },
-            ],
+            mergedSources: [top250],
           },
         ],
         "Top 250 Movies has only movies, so this List cannot show only TV shows.",
@@ -315,9 +301,9 @@ test(
     const { accountId, listId } = await seedMerged(
       [FIRST, SECOND, third],
       [
-        [title("tt9910001", "2020-01-01T00:00:00.000Z")],
-        [title("tt9910002", "2021-01-01T00:00:00.000Z")],
-        [title("tt9910003", "2022-01-01T00:00:00.000Z")],
+        [title("tt9910001", 2020)],
+        [title("tt9910002", 2021)],
+        [title("tt9910003", 2022)],
       ],
     );
     const prefix = (source: ListSource) =>
@@ -328,17 +314,17 @@ test(
       );
     expect(await keysOf(third)).toHaveLength(2);
 
+    const mergedList = (mergedSources: ListSource[]): ConfigListInput => ({
+      id: listId,
+      ...FIRST,
+      catalogTitle: "Merged QA",
+      sortOption: "added_at-desc",
+      displayMode: "movie",
+      mergedSources,
+    });
+
     // Removing one Source list drops only its cache.
-    const removed = await postConfig(accountId, [
-      {
-        id: listId,
-        ...FIRST,
-        catalogTitle: "Merged QA",
-        sortOption: "added_at-desc",
-        displayMode: "movie",
-        mergedSources: [SECOND],
-      },
-    ]);
+    const removed = await postConfig(accountId, [mergedList([SECOND])]);
     expect(removed.status).toBe(200);
     // A deleted cache keeps only a tombstone manifest (no generation).
     expect(await keysOf(third)).toEqual([`${prefix(third)}manifest.json`]);
@@ -350,14 +336,7 @@ test(
 
     // Splitting the List back to one Source list drops every merged cache.
     const split = await postConfig(accountId, [
-      {
-        id: listId,
-        ...FIRST,
-        catalogTitle: "Merged QA",
-        sortOption: "added_at-desc",
-        displayMode: "movie",
-        mergedSources: [],
-      },
+      mergedList([]),
       { ...SECOND, sortOption: "title-asc", displayMode: "movie" },
     ]);
     expect(split.status).toBe(200);
@@ -421,9 +400,7 @@ test(
         ],
       ],
     ]);
-    expect(
-      (await getManifest(accountId)).catalogs.map((catalog) => catalog.id),
-    ).toEqual([`wl-${firstId}-movie`]);
+    expect(await catalogIds(accountId)).toEqual([`wl-${firstId}-movie`]);
 
     await page.reload();
     await expect(page.getByText("2 Source lists · IMDb")).toBeVisible();
@@ -457,22 +434,19 @@ test(
       [FIRST, trakt],
       [
         [
-          title(shared, "2021-01-01T00:00:00.000Z", {
+          title(shared, 2021, {
             name: "Bravo",
             description: `Merged List fixture\n\nMore on IMDb: https://www.imdb.com/title/${shared}/`,
           }),
-          title("tt9910002", "2020-01-01T00:00:00.000Z", { name: "Charlie" }),
+          title("tt9910002", 2020, { name: "Charlie" }),
         ],
         [
-          title(shared, "2019-01-01T00:00:00.000Z", {
+          title(shared, 2019, {
             name: "Bravo",
             description:
               "Merged List fixture\n\nMore on Trakt: https://trakt.tv/movies/bravo",
           }),
-          title("tt9910004", "2022-01-01T00:00:00.000Z", {
-            name: "Alpha",
-            genres: ["Western"],
-          }),
+          title("tt9910004", 2022, { name: "Alpha", genres: ["Western"] }),
         ],
       ],
       { sortOption: "title-asc" },
@@ -551,13 +525,9 @@ function seedThreeSources() {
   return seedMerged(
     [FIRST, { ...SECOND, label: "Second QA" }, WESTERN],
     [
-      [title("tt9910001", "2020-01-01T00:00:00.000Z")],
-      [title("tt9910002", "2021-01-01T00:00:00.000Z")],
-      [
-        title("tt9910003", "2022-01-01T00:00:00.000Z", {
-          genres: ["Western"],
-        }),
-      ],
+      [title("tt9910001", 2020)],
+      [title("tt9910002", 2021)],
+      [title("tt9910003", 2022, { genres: ["Western"] })],
     ],
     { sortOption: "title-asc" },
   );
@@ -606,9 +576,7 @@ test(
       }),
     ).toBeVisible();
     // Same Catalog, without the genre that only Western QA had.
-    expect(
-      (await getManifest(accountId)).catalogs.map((catalog) => catalog.id),
-    ).toEqual([catalogId]);
+    expect(await catalogIds(accountId)).toEqual([catalogId]);
     const options = await genreOptions(accountId, catalogId);
     expect(options).toContain("Drama");
     expect(options).not.toContain("Western");
@@ -635,15 +603,12 @@ test(
       catalogTitle: "Other QA",
       position: 1,
     });
-    await seedCachedCatalog(watchlist, [
-      title("tt9910001", "2020-01-01T00:00:00.000Z"),
+    await seedCachedCatalog(watchlist, [title("tt9910001", 2020)]);
+    await seedCachedCatalog(other, [title("tt9910002", 2021)]);
+    expect(await catalogIds(accountId)).toEqual([
+      `wl-${watchlist}-movie`,
+      `wl-${other}-movie`,
     ]);
-    await seedCachedCatalog(other, [
-      title("tt9910002", "2021-01-01T00:00:00.000Z"),
-    ]);
-    expect(
-      (await getManifest(accountId)).catalogs.map((catalog) => catalog.id),
-    ).toEqual([`wl-${watchlist}-movie`, `wl-${other}-movie`]);
 
     await page.goto(configureUrl(accountId));
     await page
@@ -658,8 +623,6 @@ test(
     await expect(page.getByText(BEFORE_SAVE)).toBeVisible();
     await saveButton(page).click();
     await expect(page.getByText(SAVED_REINSTALL)).toBeVisible();
-    expect(
-      (await getManifest(accountId)).catalogs.map((catalog) => catalog.id),
-    ).toEqual([`wl-${watchlist}-movie`]);
+    expect(await catalogIds(accountId)).toEqual([`wl-${watchlist}-movie`]);
   },
 );

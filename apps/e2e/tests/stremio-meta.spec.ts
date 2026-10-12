@@ -6,9 +6,7 @@ import { discoverUrl, installAddon } from "../helpers/stremio.js";
 
 // Clicking through from a Stremlist catalog to a detail page in Stremio Web.
 
-test.beforeEach(async () => {
-  await resetDb();
-});
+test.beforeEach(resetDb);
 
 test(
   "catalog items open their detail page",

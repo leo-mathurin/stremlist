@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import type { BucketUsage } from "./stack";
 
-export const ROUTES = [
+const ROUTES = [
   "manifest",
   "catalog",
   "new_titles",
@@ -21,7 +21,7 @@ interface K6Summary {
   state?: { testRunDurationMs?: number };
 }
 
-export interface RouteResult {
+interface RouteResult {
   requests: number;
   ok: number;
   errors5xx: number;
@@ -119,14 +119,14 @@ function duration(ms: number): string {
   return `${(ms / 1000).toFixed(1)} s`;
 }
 
-export function bytes(value: number): string {
+function bytes(value: number): string {
   if (value < 1024) return `${num(value)} B`;
   if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`;
   if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MB`;
   return `${(value / 1024 ** 3).toFixed(2)} GB`;
 }
 
-export function table(rows: string[][]): string {
+function table(rows: string[][]): string {
   const widths = (rows.at(0) ?? []).map((_, column) =>
     Math.max(...rows.map((row) => (row[column] ?? "").length)),
   );

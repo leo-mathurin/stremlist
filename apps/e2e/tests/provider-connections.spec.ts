@@ -42,6 +42,11 @@ test.beforeEach(async () => {
   backend.clearRequests();
 });
 
+/** The movie Catalog of the List `listId`, from the fixture backend. */
+const movieCatalog = async (accountKey: string, listId: string) =>
+  (await backend.api.getCatalog(accountKey, "movie", `wl-${listId}-movie`))
+    .metas;
+
 test(
   "Trakt OAuth start and callback store an encrypted Connection",
   { tag: "@local" },
@@ -68,10 +73,9 @@ test(
     });
     expect(await getOAuthStates(state)).toEqual([{ provider: "trakt" }]);
 
-    const callback = await api.oauthCallback("trakt", {
-      code: "fixture-code",
-      state,
-    });
+    const returnWithCode = () =>
+      api.oauthCallback("trakt", { code: "fixture-code", state });
+    const callback = await returnWithCode();
     expect(callback.status).toBe(302);
     expect(callback.location).toBe(
       `${FRONTEND_URL}/configure?account=${accountId}&connected=trakt`,
@@ -104,10 +108,7 @@ test(
     ]);
 
     // A state works once; a refusal and a broken request say why.
-    const replay = await api.oauthCallback("trakt", {
-      code: "fixture-code",
-      state,
-    });
+    const replay = await returnWithCode();
     expect(replay.location).toBe(
       `${FRONTEND_URL}/configure?connection_error=expired&provider=trakt`,
     );
@@ -189,12 +190,7 @@ test(
     expect(await getConnectionRow(accountId, "trakt")).toBeNull();
     // Nothing read through the Connection stays stored or served.
     expect(await getCacheManifest(listId)).toMatchObject({ deleted: true });
-    const { metas } = await api.getCatalog(
-      accountId,
-      "movie",
-      `wl-${listId}-movie`,
-    );
-    expect(metas).toMatchObject([
+    expect(await movieCatalog(accountId, listId)).toMatchObject([
       {
         id: "stremlist:unavailable:needs_connection",
         name: "⚠️ This watchlist needs your Trakt account",
@@ -213,23 +209,20 @@ test(
   async () => {
     const { api } = backend;
     const past = new Date(Date.now() - 60_000);
+    const seedWatchlist = (accountId: string) =>
+      seedList(accountId, {
+        provider: "trakt",
+        sourceRef: "me/watchlist",
+        catalogTitle: "",
+        position: 0,
+      });
     const refused = await seedAccount();
     await seedConnection(refused, "trakt", {
       expiresAt: past,
       refreshToken: "rejected-refresh",
     });
-    const refusedList = await seedList(refused, {
-      provider: "trakt",
-      sourceRef: "me/watchlist",
-      catalogTitle: "",
-      position: 0,
-    });
-    const { metas } = await api.getCatalog(
-      refused,
-      "movie",
-      `wl-${refusedList}-movie`,
-    );
-    expect(metas).toMatchObject([
+    const refusedList = await seedWatchlist(refused);
+    expect(await movieCatalog(refused, refusedList)).toMatchObject([
       {
         id: "stremlist:unavailable:needs_connection",
         name: "⚠️ This watchlist needs your Trakt account",
@@ -250,12 +243,7 @@ test(
 
     const renewed = await seedAccount();
     await seedConnection(renewed, "trakt", { expiresAt: past });
-    const renewedList = await seedList(renewed, {
-      provider: "trakt",
-      sourceRef: "me/watchlist",
-      catalogTitle: "",
-      position: 0,
-    });
+    const renewedList = await seedWatchlist(renewed);
     const before = await getConnectionRow(renewed, "trakt");
     expect(await api.listCatalogNames(renewed, renewedList, "movie")).toEqual([
       "The Shawshank Redemption",

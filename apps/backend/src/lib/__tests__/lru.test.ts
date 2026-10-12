@@ -10,6 +10,9 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+const weighted = () =>
+  new LruCache<string, string>({ maxEntries: 10, maxWeight: 100 });
+
 describe("LruCache", () => {
   it("drops the least recently used entry past the entry limit", () => {
     const cache = new LruCache<string, number>({ maxEntries: 2 });
@@ -24,10 +27,7 @@ describe("LruCache", () => {
   });
 
   it("drops the least recently used entries past the weight limit", () => {
-    const cache = new LruCache<string, string>({
-      maxEntries: 10,
-      maxWeight: 100,
-    });
+    const cache = weighted();
     cache.set("a", "a", { weight: 40 });
     cache.set("b", "b", { weight: 40 });
     cache.set("c", "c", { weight: 40 });
@@ -37,10 +37,7 @@ describe("LruCache", () => {
   });
 
   it("does not keep an entry heavier than the whole budget", () => {
-    const cache = new LruCache<string, string>({
-      maxEntries: 10,
-      maxWeight: 100,
-    });
+    const cache = weighted();
     cache.set("small", "s", { weight: 10 });
     cache.set("huge", "h", { weight: 101 });
 
@@ -50,10 +47,7 @@ describe("LruCache", () => {
   });
 
   it("counts the new weight when an entry is replaced", () => {
-    const cache = new LruCache<string, string>({
-      maxEntries: 10,
-      maxWeight: 100,
-    });
+    const cache = weighted();
     cache.set("a", "first", { weight: 60 });
     cache.set("a", "second", { weight: 30 });
 
@@ -100,10 +94,7 @@ describe("LruCache", () => {
   });
 
   it("forgets everything on clear", () => {
-    const cache = new LruCache<string, string>({
-      maxEntries: 10,
-      maxWeight: 100,
-    });
+    const cache = weighted();
     cache.set("a", "a", { weight: 50 });
     cache.clear();
 

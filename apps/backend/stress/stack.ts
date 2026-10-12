@@ -24,10 +24,6 @@ export const STRESS_BUCKET = "stremlist-stress";
 // used by dev-local.mjs when Auth is excluded.
 const SERVICE_ROLE_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU";
-const R2_CREDENTIALS = {
-  accessKeyId: "stremlist-local",
-  secretAccessKey: "stremlist-local-secret",
-};
 
 export class StackError extends Error {}
 
@@ -99,8 +95,8 @@ export async function findStack(): Promise<Stack> {
     supabaseUrl: `http://127.0.0.1:${await hostPort(containers.kong, "8000/tcp")}`,
     serviceRoleKey: SERVICE_ROLE_KEY,
     r2Endpoint: `http://127.0.0.1:${await hostPort(containers.r2, "9000/tcp")}`,
-    r2AccessKeyId: R2_CREDENTIALS.accessKeyId,
-    r2SecretAccessKey: R2_CREDENTIALS.secretAccessKey,
+    r2AccessKeyId: "stremlist-local",
+    r2SecretAccessKey: "stremlist-local-secret",
   };
   const response = await fetch(
     `${stack.supabaseUrl}/rest/v1/accounts?select=id&limit=0`,
@@ -194,7 +190,7 @@ export async function dockerCpu(
   return cpu;
 }
 
-export function s3Client(stack: Stack): S3Client {
+function s3Client(stack: Stack): S3Client {
   return new S3Client({
     endpoint: stack.r2Endpoint,
     region: "auto",
@@ -206,21 +202,14 @@ export function s3Client(stack: Stack): S3Client {
   });
 }
 
-function httpStatus(error: unknown): number | undefined {
-  if (!error || typeof error !== "object" || !("$metadata" in error)) {
-    return undefined;
-  }
-  const metadata = (error as { $metadata?: { httpStatusCode?: number } })
-    .$metadata;
-  return metadata?.httpStatusCode;
-}
-
 async function bucketExists(s3: S3Client): Promise<boolean> {
   try {
     await s3.send(new HeadBucketCommand({ Bucket: STRESS_BUCKET }));
     return true;
   } catch (error) {
-    if (httpStatus(error) === 404) return false;
+    const status = (error as { $metadata?: { httpStatusCode?: number } } | null)
+      ?.$metadata?.httpStatusCode;
+    if (status === 404) return false;
     throw error;
   }
 }
@@ -245,25 +234,17 @@ async function* listObjects(
 }
 
 async function emptyBucket(s3: S3Client): Promise<void> {
-  let batch: { Key: string }[] = [];
-  const flush = async () => {
-    if (batch.length === 0) return;
+  // Delete in a second pass: deleting while listing skips keys.
+  const keys: { Key: string }[] = [];
+  for await (const { key } of listObjects(s3)) keys.push({ Key: key });
+  for (let start = 0; start < keys.length; start += 1000) {
     await s3.send(
       new DeleteObjectsCommand({
         Bucket: STRESS_BUCKET,
-        Delete: { Objects: batch, Quiet: true },
+        Delete: { Objects: keys.slice(start, start + 1000), Quiet: true },
       }),
     );
-    batch = [];
-  };
-  // Delete in a second pass: deleting while listing skips keys.
-  const keys: string[] = [];
-  for await (const object of listObjects(s3)) keys.push(object.key);
-  for (const key of keys) {
-    batch.push({ Key: key });
-    if (batch.length === 1000) await flush();
   }
-  await flush();
 }
 
 /** A fresh, empty stress bucket (a crashed run may have left one). */

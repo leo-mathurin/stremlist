@@ -7,10 +7,7 @@ import type {
   AccountSyncSnapshot,
   ConfigList,
 } from "@stremlist/shared/stremio.types";
-import type {
-  ListSyncStatus,
-  ListSyncStatuses,
-} from "@stremlist/shared/sync-status";
+import type { ListSyncStatus } from "@stremlist/shared/sync-status";
 import { supabase } from "../lib/supabase";
 import type { ConnectionAccess } from "../providers/types";
 import { getCachedListInfo } from "./list-cache";
@@ -173,8 +170,9 @@ export async function getListSyncStatuses(
       ),
     ),
   );
-  const syncStatus: ListSyncStatuses = Object.fromEntries(
-    lists.map((list, index) => [list.id, statuses[index]]),
-  );
-  return { syncStatus };
+  return {
+    syncStatus: Object.fromEntries(
+      lists.map((list, index) => [list.id, statuses[index]]),
+    ),
+  };
 }

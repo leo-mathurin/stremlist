@@ -19,9 +19,7 @@ vi.mock("../services/list-cache", async () => {
 vi.mock("../providers/registry", async () => {
   return await import("./helpers/mock-registry.js");
 });
-vi.mock("../lib/resend", () => ({
-  resend: { contacts: { create: vi.fn() } },
-}));
+vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 
 import app from "../index.js";
 import { decryptSecret } from "../lib/crypto";

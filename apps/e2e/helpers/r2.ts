@@ -78,21 +78,25 @@ async function listKeys(prefix: string): Promise<string[]> {
   return keys;
 }
 
+/** The short digest by which the backend names a Source list's objects. */
+function sourceDigest(source: ListSource): string {
+  return createHash("sha256")
+    .update(sourceKey(source))
+    .digest("hex")
+    .slice(0, 16);
+}
+
 /**
  * The cache key of one Source list of a merged List, as the backend derives
  * it (apps/backend/src/services/merged-lists.ts). A List with one Source list
  * uses its List ID instead.
  */
 export function sourceCacheKey(listId: string, source: ListSource): string {
-  const digest = createHash("sha256")
-    .update(sourceKey(source))
-    .digest("hex")
-    .slice(0, 16);
-  return `${listId}/sources/${digest}`;
+  return `${listId}/sources/${sourceDigest(source)}`;
 }
 
 export async function countCacheObjects(listId: string): Promise<number> {
-  return (await listKeys(`watchlists/${listId}/`)).length;
+  return (await getCacheObjectKeys(listId)).length;
 }
 
 // R2 keys keep the historical "watchlists/" prefix for List caches.
@@ -100,15 +104,17 @@ export async function getCacheObjectKeys(listId: string): Promise<string[]> {
   return listKeys(`watchlists/${listId}/`);
 }
 
-export async function getCacheManifest(listId: string): Promise<unknown> {
+/** The JSON object at `Key`; `what` names it in the error without a body. */
+async function readJson(Key: string, what: string): Promise<unknown> {
   const response = await r2.send(
-    new GetObjectCommand({
-      Bucket: R2_BUCKET,
-      Key: `watchlists/${listId}/manifest.json`,
-    }),
+    new GetObjectCommand({ Bucket: R2_BUCKET, Key }),
   );
-  if (!response.Body) throw new Error("R2 cache manifest has no body");
+  if (!response.Body) throw new Error(`R2 ${what} has no body`);
   return JSON.parse(await response.Body.transformToString());
+}
+
+export async function getCacheManifest(listId: string): Promise<unknown> {
+  return readJson(`watchlists/${listId}/manifest.json`, "cache manifest");
 }
 
 async function deletePrefixes(prefixes: string[]): Promise<void> {
@@ -168,10 +174,7 @@ export function historyObjectKey(
   accountId: string,
   source: { provider: ProviderId; sourceRef: string },
 ): string {
-  const digest = createHash("sha256")
-    .update(sourceKey(source))
-    .digest("hex")
-    .slice(0, 16);
+  const digest = sourceDigest(source);
   return sourceRequiresConnection(source.provider, source.sourceRef)
     ? `connections/${accountId}/${source.provider}/history/${digest}.json`
     : `history/${accountId}/${digest}.json`;
@@ -204,15 +207,9 @@ export async function readHistoryObjects(
     .flat()
     .filter((key) => key.startsWith("history/") || key.includes("/history/"));
   return Promise.all(
-    keys.map(async (Key) => {
-      const response = await r2.send(
-        new GetObjectCommand({ Bucket: R2_BUCKET, Key }),
-      );
-      if (!response.Body) throw new Error(`R2 history ${Key} has no body`);
-      return JSON.parse(
-        await response.Body.transformToString(),
-      ) as StoredHistory;
-    }),
+    keys.map(
+      async (Key) => (await readJson(Key, `history ${Key}`)) as StoredHistory,
+    ),
   );
 }
 

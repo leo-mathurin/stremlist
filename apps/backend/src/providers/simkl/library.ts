@@ -23,10 +23,6 @@ export const STATUSES = [
 ] as const;
 export type SimklStatus = (typeof STATUSES)[number];
 
-// ---------------------------------------------------------------------------
-// Response shapes
-// ---------------------------------------------------------------------------
-
 export type RawIds = Record<string, unknown>;
 
 interface RawEpisode {
@@ -91,10 +87,6 @@ export function parseIds(raw: RawIds): SimklIds {
     tmdb: toInt(raw.tmdb),
   };
 }
-
-// ---------------------------------------------------------------------------
-// The library: every item of the user's five statuses, with watch state
-// ---------------------------------------------------------------------------
 
 /** A Simkl title, from the library or from a custom list. */
 export interface SimklTitle extends SimklIds {
@@ -312,11 +304,10 @@ async function applyChanges(
     });
     for (const row of parseLibrary(raw, false)) {
       const existing = items.get(row.simkl);
-      if (existing) {
-        items.set(row.simkl, { ...existing, rating: row.rating });
-      } else {
-        items.set(row.simkl, row);
-      }
+      items.set(
+        row.simkl,
+        existing ? { ...existing, rating: row.rating } : row,
+      );
     }
   }
 
@@ -327,9 +318,10 @@ function usableSnapshot(
   snapshot: LibrarySnapshot | null,
   connection: ConnectionAccess,
 ): LibrarySnapshot | null {
-  if (snapshot?.version !== STATE_VERSION) return null;
-  if (snapshot.username !== connection.username) return null;
-  return snapshot;
+  return snapshot?.version === STATE_VERSION &&
+    snapshot.username === connection.username
+    ? snapshot
+    : null;
 }
 
 const inFlightSyncs = new Map<string, Promise<LibrarySnapshot>>();

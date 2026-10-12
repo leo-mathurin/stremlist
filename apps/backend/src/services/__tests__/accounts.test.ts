@@ -33,9 +33,7 @@ describe("resolveAccountKey", () => {
   it("opens an Account through its private ID", async () => {
     const account = seedAccount({ rpdb_api_key: "rpdb" });
 
-    const access = await resolveAccountKey(account.id);
-
-    expect(access).toMatchObject({
+    expect(await resolveAccountKey(account.id)).toMatchObject({
       via: "private",
       account: { id: account.id, legacyImdbUserId: null, rpdbApiKey: "rpdb" },
     });
@@ -44,9 +42,7 @@ describe("resolveAccountKey", () => {
   it("opens an Account through its Legacy alias", async () => {
     const account = seedLegacyAccount(IMDB_USER);
 
-    const access = await resolveAccountKey(IMDB_USER);
-
-    expect(access).toMatchObject({
+    expect(await resolveAccountKey(IMDB_USER)).toMatchObject({
       via: "legacy",
       account: { id: account.id, legacyImdbUserId: IMDB_USER },
     });
@@ -79,9 +75,7 @@ describe("resolveAccountKey", () => {
       action_providers: ["trakt", "netflix", "simkl"],
     });
 
-    const access = await resolveAccountKey(account.id);
-
-    expect(access?.account).toMatchObject({
+    expect((await resolveAccountKey(account.id))?.account).toMatchObject({
       actionsEnabled: true,
       actionProviders: ["trakt", "simkl"],
     });
@@ -132,6 +126,12 @@ describe("ensureLegacyAccount", () => {
 });
 
 describe("createPrivateCopy", () => {
+  async function copyLegacyAccount() {
+    const legacy = await resolveAccountKey(IMDB_USER);
+    if (!legacy) throw new Error("legacy Account missing");
+    return createPrivateCopy(legacy.account);
+  }
+
   it("copies Lists and settings into a new private Account and marks the legacy one moved", async () => {
     const legacy = seedLegacyAccount(IMDB_USER, { rpdb_api_key: "rpdb" });
     const kept = seedList(legacy.id, {
@@ -144,10 +144,7 @@ describe("createPrivateCopy", () => {
     });
     seedList(legacy.id, { source_ref: "imdb:top-rated-tv", position: 1 });
     cache.seed(kept.id, []);
-    const legacyAccess = await resolveAccountKey(IMDB_USER);
-    if (!legacyAccess) throw new Error("legacy Account missing");
-
-    const copy = await createPrivateCopy(legacyAccess.account);
+    const copy = await copyLegacyAccount();
 
     expect(copy.id).not.toBe(legacy.id);
     expect(copy.legacyImdbUserId).toBeNull();
@@ -184,10 +181,7 @@ describe("createPrivateCopy", () => {
       action_providers: ["trakt"],
     });
     seedList(legacy.id, { source_ref: IMDB_USER });
-    const legacyAccess = await resolveAccountKey(IMDB_USER);
-    if (!legacyAccess) throw new Error("legacy Account missing");
-
-    const copy = await createPrivateCopy(legacyAccess.account);
+    const copy = await copyLegacyAccount();
 
     expect(copy.actionsEnabled).toBe(false);
     expect(copy.actionProviders).toEqual([]);

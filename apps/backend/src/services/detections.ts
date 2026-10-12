@@ -196,11 +196,10 @@ async function loadHistories(
   let unreadable = 0;
   await Promise.all(
     sources.map(async (source) => {
-      const requiresConnection = sourceRequiresConnection(
-        source.provider,
-        source.sourceRef,
-      );
-      if (requiresConnection && !connections) {
+      if (
+        !connections &&
+        sourceRequiresConnection(source.provider, source.sourceRef)
+      ) {
         unreadable += 1;
         return;
       }
@@ -258,17 +257,6 @@ function toDetections(
   });
 }
 
-async function loadDetections(
-  accountId: string,
-  lists: ConfigList[],
-): Promise<Detection[]> {
-  const sources = [...sourcesOf(lists).values()].map(({ source }) => source);
-  if (sources.length === 0) return [];
-  // Unreadable Source lists are left out until the next request.
-  const { histories } = await loadHistories(accountId, sources);
-  return toDetections(lists, histories);
-}
-
 /** The List's name as the user sees it, for the detection line. */
 function listName({ list, source }: Detection): string {
   const title = list.catalogTitle.trim();
@@ -301,7 +289,11 @@ export async function getNewTitlesCatalog(
   type: TitleType,
 ): Promise<StremioMeta[]> {
   const lists = await getVisibleLists(access);
-  const detections = await loadDetections(access.account.id, lists);
+  const sources = [...sourcesOf(lists).values()].map(({ source }) => source);
+  if (sources.length === 0) return [];
+  // Unreadable Source lists are left out until the next request.
+  const { histories } = await loadHistories(access.account.id, sources);
+  const detections = toDetections(lists, histories);
   if (detections.length === 0) return [];
 
   const cached = await Promise.all(

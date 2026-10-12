@@ -18,6 +18,7 @@ import {
 
 const SOURCE = { provider: "imdb" as const, sourceRef: "ur1" };
 const PRIVATE = { provider: "trakt" as const, sourceRef: "me/history" };
+const OTHER = { provider: "trakt" as const, sourceRef: "users/a/watchlist" };
 const DAY_MS = 24 * 60 * 60_000;
 const T0 = new Date("2026-10-01T00:00:00.000Z");
 
@@ -35,20 +36,19 @@ function recorded(result: { history: SourceHistory } | null): SourceHistory {
   return result.history;
 }
 
+/** The history after a synchronization of SOURCE, `days` after T0. */
 function apply(
   previous: SourceHistory | null,
-  ids: string[],
+  ids: string[] | { key: string; imdbId: string | null }[],
   days: number,
+  source: typeof SOURCE | typeof PRIVATE | typeof OTHER = SOURCE,
 ): SourceHistory {
-  const result = applySynchronization(
-    previous,
-    SOURCE,
-    keyed(...ids),
-    at(days),
-    null,
+  const entries = ids.map((id) =>
+    typeof id === "string" ? { key: `imdb:${id}`, imdbId: id } : id,
   );
-  if (!result) throw new Error("expected a recorded synchronization");
-  return result.history;
+  return recorded(
+    applySynchronization(previous, source, entries, at(days), null),
+  );
 }
 
 describe("applySynchronization", () => {
@@ -89,24 +89,8 @@ describe("applySynchronization", () => {
 
   it("keeps the detection date of an entry that resolves later", () => {
     let history = apply(null, ["tt1"], 0);
-    history = recorded(
-      applySynchronization(
-        history,
-        SOURCE,
-        [{ key: "trakt-movie:9", imdbId: null }],
-        at(1),
-        null,
-      ),
-    );
-    history = recorded(
-      applySynchronization(
-        history,
-        SOURCE,
-        [{ key: "trakt-movie:9", imdbId: "tt9" }],
-        at(2),
-        null,
-      ),
-    );
+    history = apply(history, [{ key: "trakt-movie:9", imdbId: null }], 1);
+    history = apply(history, [{ key: "trakt-movie:9", imdbId: "tt9" }], 2);
     expect(history.entries["trakt-movie:9"]).toEqual([
       "tt9",
       at(1).toISOString(),
@@ -182,26 +166,19 @@ describe("historyApplies", () => {
 
 describe("listNewTitles", () => {
   it("keeps the earliest detection across Source lists, newest first", () => {
-    const other = {
-      provider: "trakt" as const,
-      sourceRef: "users/a/watchlist",
-    };
     const first = apply(apply(null, ["tt0"], 0), ["tt0", "tt1", "tt2"], 1);
-    const second = recorded(
-      applySynchronization(
-        recorded(applySynchronization(null, other, keyed("tt0"), at(0), null)),
-        other,
-        keyed("tt0", "tt2", "tt3"),
-        at(3),
-        null,
-      ),
+    const second = apply(
+      apply(null, ["tt0"], 0, OTHER),
+      ["tt0", "tt2", "tt3"],
+      3,
+      OTHER,
     );
 
     expect(
       listNewTitles(
         [
           { source: SOURCE, history: first },
-          { source: other, history: second },
+          { source: OTHER, history: second },
         ],
         10,
       ).map(({ imdbId, source, detectedAt }) => [
@@ -224,27 +201,15 @@ describe("listNewTitles", () => {
   });
 
   it("never lists a Title that one of its entries has in the Baseline", () => {
-    let history = recorded(
-      applySynchronization(
-        null,
-        SOURCE,
-        [{ key: "imdb:tt1", imdbId: "tt1" }],
-        at(0),
-        null,
-      ),
-    );
+    let history = apply(null, ["tt1"], 0);
     // The Provider gave the same Title a new key.
-    history = recorded(
-      applySynchronization(
-        history,
-        SOURCE,
-        [
-          { key: "imdb:tt1", imdbId: "tt1" },
-          { key: "trakt-movie:1", imdbId: "tt1" },
-        ],
-        at(1),
-        null,
-      ),
+    history = apply(
+      history,
+      [
+        { key: "imdb:tt1", imdbId: "tt1" },
+        { key: "trakt-movie:1", imdbId: "tt1" },
+      ],
+      1,
     );
     expect(listNewTitles([{ source: SOURCE, history }], 10)).toEqual([]);
   });

@@ -1,5 +1,4 @@
-import { test } from "@e2e-dev/web";
-import type { Browser } from "@e2e-dev/web";
+import { test, type Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
 import type { AccountConfigInput } from "@stremlist/shared/stremio.types";
 import {
@@ -112,14 +111,14 @@ test(
       input === profile ? resolved("imdb", imdbUser, "watchlist") : null,
     );
     const created = await routeCreateAccount(browser);
-    await browser.route(`${backend}/${accountId}/config`, async (route) => {
-      await route.fulfill({
+    await browser.route(`${backend}/${accountId}/config`, (route) =>
+      route.fulfill({
         json: {
           ...configuration,
           lists: [{ ...row, catalogTitle: "IMDb Watchlist" }],
         },
-      });
-    });
+      }),
+    );
     await app.open("/");
     await agent.act(
       "Set up the addon using IMDb profile {profile}. Stop when installation choices appear; do not open Stremio.",
@@ -207,12 +206,9 @@ test("configuration handles missing Accounts and load retry", async ({
   await baseRoutes(browser);
   // Development builds load twice, so the state is a flag, not a count.
   let unavailable = true;
-  await browser.route(`${backend}/${accountId}/config`, async (route) => {
-    await route.fulfill({
-      status: unavailable ? 503 : 404,
-      json: { error: "test" },
-    });
-  });
+  await browser.route(`${backend}/${accountId}/config`, (route) =>
+    route.fulfill({ status: unavailable ? 503 : 404, json: { error: "test" } }),
+  );
   await app.open(`/configure?account=${accountId}`);
   await expect(
     screen.getByText("Could not load your configuration. Please try again."),
@@ -232,8 +228,8 @@ test("List edits reject duplicates, save values and report refresh failures", as
 }) => {
   const submissions = await captureConfig(browser);
   await resolveFixtureLinks(browser);
-  await browser.route(`${backend}/${accountId}/refresh`, async (route) => {
-    await route.fulfill({
+  await browser.route(`${backend}/${accountId}/refresh`, (route) =>
+    route.fulfill({
       json: {
         ok: true,
         failed: 1,
@@ -242,8 +238,8 @@ test("List edits reject duplicates, save values and report refresh failures", as
         lastFetchedAt: configuration.lastFetchedAt,
         cooldownSeconds: 2,
       },
-    });
-  });
+    }),
+  );
   await app.open(`/configure?account=${accountId}`);
   await expect(screen.getByText("Test catalog")).toBeVisible();
   // The watchlist of the existing List, pasted again.
@@ -295,23 +291,20 @@ for (const result of ["success", "server-error", "offline"] as const) {
     async ({ app, agent, screen, browser }) => {
       await holdToasts(browser);
       let submissions = 0;
-      await browser.route(
-        "http://127.0.0.1:4314/newsletter/subscribe",
-        async (route) => {
-          submissions += 1;
-          expect(JSON.parse(route.request.postData ?? "{}")).toEqual({
-            email: "e2e@example.test",
+      await browser.route(`${backend}/newsletter/subscribe`, async (route) => {
+        submissions += 1;
+        expect(JSON.parse(route.request.postData ?? "{}")).toEqual({
+          email: "e2e@example.test",
+        });
+        if (result === "offline") await route.abort();
+        else
+          await route.fulfill({
+            json:
+              result === "success"
+                ? { success: true, message: "Test subscription confirmed" }
+                : { success: false, error: "Test service unavailable" },
           });
-          if (result === "offline") await route.abort();
-          else
-            await route.fulfill({
-              json:
-                result === "success"
-                  ? { success: true, message: "Test subscription confirmed" }
-                  : { success: false, error: "Test service unavailable" },
-            });
-        },
-      );
+      });
       await app.open("/");
       await screen.getByRole("button", "Subscribe", { exact: true }).tap();
       await expect(
