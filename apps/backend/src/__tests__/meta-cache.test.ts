@@ -21,6 +21,7 @@ vi.mock("../lib/resend", () => ({
 import * as listsSvc from "../services/lists";
 import {
   seedAccount,
+  seedConnection,
   seedLegacyAccount,
   seedList,
 } from "./helpers/fixtures.js";
@@ -258,6 +259,7 @@ describe("meta route privacy", () => {
 
   it("serves Connection lists to the private Addon URL", async () => {
     const account = seedAccount();
+    seedConnection(account.id, "trakt");
     seedList(account.id, {
       id: UUID_1,
       provider: "trakt",

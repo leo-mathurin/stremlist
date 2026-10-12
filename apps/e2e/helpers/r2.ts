@@ -220,6 +220,11 @@ export async function readHistoryObjects(
 export async function seedCachedCatalog(
   id: string,
   metas: StremioMeta[],
+  connection?: {
+    accountId: string;
+    provider: ProviderId;
+    authorization: string;
+  },
 ): Promise<void> {
   const generation = randomUUID();
   const catalogKey = `watchlists/${id}/generations/${generation}.json.gz`;
@@ -249,6 +254,7 @@ export async function seedCachedCatalog(
         generation,
         cachedAt: new Date().toISOString(),
         catalogKey,
+        connection,
         metaKeys: metas.map((meta) => `${meta.type}:${meta.id}`).sort(),
         genres: { movie: genres("movie"), series: genres("series") },
       }),

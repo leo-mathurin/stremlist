@@ -630,6 +630,7 @@ describe("merged Lists", () => {
   });
 
   it("take the last refresh of each Source list from its own cache", async () => {
+    seedConnection(accountId, "trakt");
     cache.seed(
       keys.imdb,
       [movie("tt0000001")],
@@ -659,6 +660,7 @@ describe("merged Lists", () => {
   });
 
   it("give no status to the Source lists that were never read", async () => {
+    seedConnection(accountId, "trakt");
     cache.seed(keys.trakt, [movie("tt0000002")]);
 
     const { syncStatus } = await snapshot();

@@ -5,7 +5,6 @@ import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
 import { getProvider, isProviderEnabled } from "../providers/registry";
 import type {
-  ConnectionAccess,
   ProviderAdapter,
   ProviderContext,
   SourceEntry,
@@ -26,7 +25,9 @@ import {
 import { forgetConnectionObjects } from "./actions";
 import type { CatalogSort } from "./catalog-sort";
 import { sortCatalog } from "./catalog-sort";
+import { isCurrentConnection } from "./connection-identity";
 import { deleteConnection, getConnectionAccess } from "./connections";
+import type { OwnedConnectionAccess } from "./connections";
 import { recordSynchronization } from "./detections";
 import { buildPosterUrl } from "./imdb-scraper";
 import {
@@ -169,7 +170,7 @@ const inFlightRefreshes = new Map<string, InFlightRefresh>();
 export async function providerContext(
   source: SourceId,
   connectionAccountId: string | null,
-): Promise<ProviderContext> {
+): Promise<{ connection: OwnedConnectionAccess | null }> {
   const connection = connectionAccountId
     ? await getConnectionAccess(connectionAccountId, source.provider)
     : null;
@@ -259,7 +260,9 @@ export async function buildCatalog(
   );
 
   const previous = new Map<string, StremioMeta>();
-  const cached = config.cacheKey ? await getCachedList(config.cacheKey) : null;
+  const cached = config.cacheKey
+    ? await getCachedList(config.cacheKey, config)
+    : null;
   if (cached && Date.now() - cached.cachedAt.getTime() < METADATA_MAX_AGE_MS) {
     for (const meta of cached.data.metas) previous.set(meta.id, meta);
   }
@@ -311,7 +314,7 @@ async function fetchAndCacheList(
 ): Promise<FreshList> {
   const { source, cacheKey } = read;
   const adapter = getProvider(source.provider);
-  let connection: ConnectionAccess | null = null;
+  let connection: OwnedConnectionAccess | null = null;
   // A read that a newer one replaced leaves no trace.
   const record = async (outcome: RefreshOutcome) => {
     if (!signal.aborted) {
@@ -353,6 +356,9 @@ async function fetchAndCacheList(
     throw error;
   }
 
+  if (connection && !(await isCurrentConnection(connection.identity))) {
+    throw new ConnectionExpiredError(source.provider);
+  }
   const { data, deferred } = built;
   const cachedAt = new Date();
   if (signal.aborted) return { data, cachedAt, generation: null };
@@ -369,7 +375,13 @@ async function fetchAndCacheList(
       : cachedAt;
   let generation: string | null = null;
   try {
-    generation = await writeCachedList(cacheKey, data, storedAt, source);
+    generation = await writeCachedList(
+      cacheKey,
+      data,
+      storedAt,
+      source,
+      connection?.identity,
+    );
   } catch (error) {
     console.error(`Failed to cache list ${cacheKey} in R2:`, error);
   }
@@ -598,7 +610,9 @@ export async function findMetaInAccountCache(
     const copies = await Promise.all(
       lists
         .flatMap(sourceCaches)
-        .map(({ cacheKey }) => findCachedMeta(cacheKey, type, id)),
+        .map(({ source, cacheKey }) =>
+          findCachedMeta(cacheKey, type, id, source),
+        ),
     );
     const found = mergeSourceCatalogs(
       [copies.filter((copy) => copy !== null)],

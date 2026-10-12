@@ -10,6 +10,8 @@ const scraperMocks = vi.hoisted(() => ({
   fetchTitlesByIds: vi.fn(),
 }));
 
+vi.mock("../../lib/r2", () => import("../../__tests__/helpers/mock-r2"));
+
 vi.mock("../../lib/supabase", async () => {
   return await import("../../__tests__/helpers/mock-supabase");
 });
@@ -31,7 +33,11 @@ vi.mock("../../providers/registry", async () => {
   return await import("../../__tests__/helpers/mock-registry");
 });
 
-import { seedAccount, seedConnection } from "../../__tests__/helpers/fixtures";
+import {
+  seedAccount,
+  seedConnection,
+  seedList,
+} from "../../__tests__/helpers/fixtures";
 import { cache } from "../../__tests__/helpers/mock-list-cache";
 import {
   fakeAdapter,
@@ -39,10 +45,14 @@ import {
   useFakeProvider,
 } from "../../__tests__/helpers/mock-registry";
 import { db, resetRpc } from "../../__tests__/helpers/mock-supabase";
-import type { SourceEntry } from "../../providers/types";
+import type { SourceEntry, SourceSnapshot } from "../../providers/types";
 import * as listCache from "../list-cache";
 import type { ListRead } from "../lists";
-import { getListCatalog, ListUnavailableError } from "../lists";
+import {
+  getListCatalog,
+  ListUnavailableError,
+  disconnectProvider,
+} from "../lists";
 
 const LIST_ID = "22222222-2222-4222-8222-222222222222";
 
@@ -490,5 +500,49 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
     await expect(readList(config())).resolves.toEqual({
       metas: [MOVIE],
     });
+  });
+});
+
+it("rejects a read that finishes after its Connection was disconnected", async () => {
+  const account = seedAccount();
+  seedConnection(account.id, "trakt");
+  seedList(account.id, {
+    id: LIST_ID,
+    provider: "trakt",
+    source_ref: "me/watchlist",
+  });
+  let started!: () => void;
+  const began = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  let finish!: (snapshot: SourceSnapshot) => void;
+  const snapshot = new Promise<SourceSnapshot>((resolve) => {
+    finish = resolve;
+  });
+  useFakeProvider(
+    fakeAdapter("trakt", {
+      fetchSource: () => {
+        started();
+        return snapshot;
+      },
+    }),
+  );
+  const read = config({
+    accountId: account.id,
+    provider: "trakt",
+    sourceRef: "me/watchlist",
+    allowConnection: true,
+  });
+  const pending = readList(read);
+  const refused = expect(pending).rejects.toMatchObject({
+    reason: "needs_connection",
+  });
+  await began;
+  await disconnectProvider(account.id, "trakt");
+  finish({ entries: [{ imdbId: MOVIE.id, meta: MOVIE }], complete: true });
+  await refused;
+  expect(cache.get(LIST_ID)).toBeNull();
+  await expect(readList(read)).rejects.toMatchObject({
+    reason: "needs_connection",
   });
 });

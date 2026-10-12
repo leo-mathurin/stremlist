@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,6 +24,7 @@ import {
 } from "../helpers/configure.js";
 import {
   clearRefreshCooldown,
+  getConnectionRow,
   getSourceListEntries,
   getSourceListSyncs,
   resetDb,
@@ -544,6 +546,15 @@ test(
       { provider: "trakt", sourceRef: "me/history", title: "QA history" },
     ]);
     await seedConnection(accountId, "trakt", { username: TRAKT_USER });
+    const connection = await getConnectionRow(accountId, "trakt");
+    if (!connection) throw new Error("Missing seeded Connection");
+    const identity = {
+      accountId,
+      provider: "trakt" as const,
+      authorization: createHash("sha256")
+        .update(`${connection.created_at}\0${connection.access_token}`)
+        .digest("hex"),
+    };
     const history = [
       {
         listId: listIds[0],
@@ -560,13 +571,17 @@ test(
       },
     ];
     for (const entry of history) {
-      await seedCachedCatalog(entry.listId, [
-        {
-          ...CATALOG_TITLES[0],
-          id: entry.imdbId,
-          name: TITLES[entry.imdbId].name,
-        },
-      ]);
+      await seedCachedCatalog(
+        entry.listId,
+        [
+          {
+            ...CATALOG_TITLES[0],
+            id: entry.imdbId,
+            name: TITLES[entry.imdbId].name,
+          },
+        ],
+        entry.source.provider === "trakt" ? identity : undefined,
+      );
       await seedDetectionHistory(
         accountId,
         entry.source,

@@ -2,6 +2,11 @@ import type { ConfigList, StremioMeta } from "@stremlist/shared/stremio.types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock(
+  "../../lib/supabase",
+  () => import("../../__tests__/helpers/mock-supabase"),
+);
+
+vi.mock(
   "../list-cache",
   async () => import("../../__tests__/helpers/mock-list-cache"),
 );

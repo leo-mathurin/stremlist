@@ -8,8 +8,14 @@ import { supabase } from "../lib/supabase";
 import { getProvider, isProviderEnabled } from "../providers/registry";
 import type { ConnectionAccess } from "../providers/types";
 import { ConnectionExpiredError } from "../providers/types";
+import { authorizationFingerprint } from "./connection-identity";
+import type { ConnectionIdentity } from "./connection-identity";
 import type { OAuthTokens } from "./oauth";
 import { refreshTokens } from "./oauth";
+
+export interface OwnedConnectionAccess extends ConnectionAccess {
+  readonly identity: ConnectionIdentity;
+}
 
 /** Refresh a little before expiry so a request never uses a dying token. */
 const REFRESH_MARGIN_MS = 10 * 60_000;
@@ -18,6 +24,7 @@ const LEASE_WAIT_ATTEMPTS = 6;
 const LEASE_WAIT_MS = 500;
 
 interface StoredConnection {
+  createdAt: string;
   accountId: string;
   provider: ProviderId;
   username: string | null;
@@ -37,6 +44,7 @@ function decode(row: Tables<"connections">): StoredConnection | null {
   if (!isProviderId(row.provider)) return null;
   try {
     return {
+      createdAt: row.created_at,
       accountId: row.account_id,
       provider: row.provider,
       username: row.provider_username,
@@ -317,14 +325,26 @@ async function refreshUnderLease(
 export async function getConnectionAccess(
   accountId: string,
   provider: ProviderId,
-): Promise<ConnectionAccess | null> {
+): Promise<OwnedConnectionAccess | null> {
   const stored = await readConnection(accountId, provider);
   if (!stored) return null;
   let current = stored;
   return {
     accountId,
     provider,
-    username: current.username,
+    get username() {
+      return current.username;
+    },
+    get identity() {
+      return {
+        accountId,
+        provider,
+        authorization: authorizationFingerprint({
+          created_at: current.createdAt,
+          access_token: current.sealedToken,
+        }),
+      };
+    },
     async getAccessToken() {
       if (!isFresh(current)) current = await refreshUnderLease(current);
       return current.accessToken;

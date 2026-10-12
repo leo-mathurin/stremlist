@@ -6,6 +6,13 @@ import {
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+vi.mock(
+  "../../lib/supabase",
+  () => import("../../__tests__/helpers/mock-supabase"),
+);
+import { seedAccount, seedConnection } from "../../__tests__/helpers/fixtures";
+import { db } from "../../__tests__/helpers/mock-supabase";
+import { getConnectionAccess, saveConnection } from "../connections";
 
 function requiredKey(key: string | undefined): string {
   if (!key) throw new Error("R2 test command is missing a key");
@@ -434,5 +441,74 @@ describe("R2 watchlist cache", () => {
         key.startsWith(`watchlists/${id}/`),
       ),
     ).toEqual([`watchlists/${id}/manifest.json`]);
+  });
+});
+
+describe("private cache ownership", () => {
+  it("rejects every cached view after disconnect, even with warm memory", async () => {
+    const account = seedAccount();
+    seedConnection(account.id, "trakt");
+    const connection = await getConnectionAccess(account.id, "trakt");
+    if (!connection) throw new Error("Expected seeded Connection");
+    const source = { provider: "trakt", sourceRef: "me/watchlist" };
+    const id = watchlistId();
+    await writeCachedList(
+      id,
+      { metas: [MOVIE] },
+      new Date(),
+      source,
+      connection.identity,
+    );
+    expect((await getCachedList(id, source))?.data.metas).toEqual([MOVIE]);
+    db.getTable("connections").splice(0);
+    expect(await getCachedList(id, source)).toBeNull();
+    expect(await getCachedListSummary(id, source)).toBeNull();
+    expect(await findCachedMeta(id, "movie", MOVIE.id, source)).toBeNull();
+  });
+
+  it("does not reuse private data from an older authorization", async () => {
+    const account = seedAccount();
+    seedConnection(account.id, "trakt");
+    const connection = await getConnectionAccess(account.id, "trakt");
+    if (!connection) throw new Error("Expected seeded Connection");
+    const source = { provider: "trakt", sourceRef: "me/watchlist" };
+    const id = watchlistId();
+    await writeCachedList(
+      id,
+      { metas: [MOVIE] },
+      new Date(),
+      source,
+      connection.identity,
+    );
+    await saveConnection(
+      account.id,
+      "trakt",
+      {
+        accessToken: "replacement",
+        refreshToken: null,
+        expiresAt: null,
+        scope: null,
+      },
+      "another-user",
+      "https://example.test/callback",
+    );
+    expect(await getCachedList(id, source)).toBeNull();
+    // A late old writer is equally unreadable.
+    await writeCachedList(
+      id,
+      { metas: [MOVIE] },
+      new Date(),
+      source,
+      connection.identity,
+    );
+    expect(await findCachedMeta(id, "movie", MOVIE.id, source)).toBeNull();
+  });
+
+  it("rebuilds legacy private caches that have no authorization identity", async () => {
+    const id = watchlistId();
+    const source = { provider: "trakt", sourceRef: "me/watchlist" };
+    await writeCachedList(id, { metas: [MOVIE] }, new Date(), source);
+    expect(await getCachedList(id, source)).toBeNull();
+    expect(await findCachedMeta(id, "movie", MOVIE.id, source)).toBeNull();
   });
 });

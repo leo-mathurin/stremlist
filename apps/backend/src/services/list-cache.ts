@@ -3,6 +3,10 @@ import {
   GetObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
+import {
+  isProviderId,
+  sourceRequiresConnection,
+} from "@stremlist/shared/providers";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
@@ -10,6 +14,11 @@ import { gunzipSync, gzipSync } from "node:zlib";
 import { LruCache } from "../lib/lru";
 import { getR2Bucket, getR2Client } from "../lib/r2";
 import { isNotFound, writeJson } from "../lib/r2-json";
+import {
+  connectionIdentitySchema,
+  isCurrentConnection,
+} from "./connection-identity";
+import type { ConnectionIdentity } from "./connection-identity";
 
 const CACHE_FORMAT_VERSION = 1;
 const MEMORY_CACHE_TTL_MS = 60_000;
@@ -63,6 +72,7 @@ const cacheManifestSchema = z.object({
   // The Source list the catalog was read from. A List that now points to
   // another source must not serve it. Older generations have none.
   source: z.string().optional(),
+  connection: connectionIdentitySchema.optional(),
   // Older cache generations acquire summaries on their next refresh.
   genres: z
     .object({ movie: z.array(z.string()), series: z.array(z.string()) })
@@ -109,7 +119,20 @@ function sourceKey(source: CacheSource): string {
 }
 
 /** Whether a manifest may serve a List that now reads from `source`. */
-function servesSource(manifest: CacheManifest, source?: CacheSource): boolean {
+async function servesSource(
+  manifest: CacheManifest,
+  source?: CacheSource,
+): Promise<boolean> {
+  if (manifest.connection) {
+    if (!(await isCurrentConnection(manifest.connection))) return false;
+  } else if (
+    source &&
+    isProviderId(source.provider) &&
+    sourceRequiresConnection(source.provider, source.sourceRef)
+  ) {
+    // Private caches written before ownership was recorded must be rebuilt.
+    return false;
+  }
   return (
     !source ||
     manifest.source === undefined ||
@@ -343,7 +366,7 @@ export async function getCachedListSummary(
 ): Promise<{ movie: string[]; series: string[] } | null> {
   try {
     const manifest = await readManifest(listId);
-    if (!manifest || !servesSource(manifest, source)) return null;
+    if (!manifest || !(await servesSource(manifest, source))) return null;
     return manifest.genres ?? null;
   } catch (error) {
     console.error(`Failed to read R2 cache summary for ${listId}:`, error);
@@ -364,7 +387,7 @@ export async function getCachedListInfo(
     const manifest = await readManifest(listId);
     if (
       !manifest ||
-      !servesSource(manifest, source) ||
+      !(await servesSource(manifest, source)) ||
       new Date(manifest.cachedAt).getTime() <= 0
     ) {
       return null;
@@ -395,7 +418,7 @@ export async function getCachedList(
     if (
       !current ||
       current.catalog.metas.length === 0 ||
-      !servesSource(current.manifest, source)
+      !(await servesSource(current.manifest, source))
     ) {
       return null;
     }
@@ -416,6 +439,7 @@ export async function writeCachedList(
   listData: SourceCatalogData,
   cachedAt = new Date(),
   source?: CacheSource,
+  connection?: ConnectionIdentity,
 ): Promise<string> {
   const metas = uniqueMetas(listData.metas);
   if (metas.length === 0) {
@@ -437,6 +461,7 @@ export async function writeCachedList(
     catalogKey: nextCatalogKey,
     metaKeys: catalog.metas.map(metaKey).sort(),
     ...(source ? { source: sourceKey(source) } : {}),
+    ...(connection ? { connection } : {}),
     genres: {
       movie: collectGenres(catalog.metas, "movie"),
       series: collectGenres(catalog.metas, "series"),
@@ -468,13 +493,23 @@ export async function findCachedMeta(
   listId: string,
   type: string,
   id: string,
+  source?: CacheSource,
 ): Promise<SourceMeta | null> {
   const target = `${type}:${id}`;
   try {
     const manifest = await readManifest(listId);
-    if (!manifest || !hasSortedKey(manifest.metaKeys, target)) return null;
+    if (
+      !manifest ||
+      !(await servesSource(manifest, source)) ||
+      !hasSortedKey(manifest.metaKeys, target)
+    )
+      return null;
     const current = await readCatalogWithManifestRefresh(listId, manifest);
-    if (!current || !hasSortedKey(current.manifest.metaKeys, target)) {
+    if (
+      !current ||
+      !(await servesSource(current.manifest, source)) ||
+      !hasSortedKey(current.manifest.metaKeys, target)
+    ) {
       return null;
     }
     return (
