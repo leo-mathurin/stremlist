@@ -84,8 +84,11 @@ for (const failure of ["private", "unknown", "offline"] as const) {
             },
     );
     const created = await routeCreateAccount(browser);
+    // The new Account loads the Lists that its creation stored.
     await browser.route(`${backend}/${accountId}/config`, async (route) => {
-      await route.fulfill({ json: configuration });
+      await route.fulfill({
+        json: toJson({ ...configuration, lists: savedLists(created[0]) }),
+      });
     });
     await app.open("/configure");
     const field = screen.getByLabel(PASTE);
@@ -115,7 +118,12 @@ for (const failure of ["private", "unknown", "offline"] as const) {
     ).toBeVisible();
     await saveButton(screen, SAVE_NEW).tap();
     await expect(browser).toHaveURL(`/configure?account=${accountId}`);
-    await expect(screen.getByText("Test catalog")).toBeVisible();
+    // The saved List stays on screen while the Account loads.
+    await expect(screen.getByText("Not refreshed yet")).toBeVisible();
+    await expect(
+      screen.getByText(`IMDb · Watchlist · ${imdbUser}`),
+    ).toBeVisible();
+    await expect(screen.getByText("Not saved yet")).toHaveCount(0);
     expect(created).toHaveLength(1);
     expect(created[0].lists).toMatchObject([
       { provider: "imdb", sourceRef: imdbUser },
