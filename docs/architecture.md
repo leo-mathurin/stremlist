@@ -31,8 +31,9 @@ stream responses are uncached. LG/Samsung clients cannot open these URLs.
 Previews read Providers through the shared pipeline without writing Catalog
 caches or sync statuses. They may populate the shared Title ID map. In-memory
 reads last five minutes (30 seconds if entries remain unchecked); private reads
-are isolated by Account and access-token fingerprint. Changing authorization
-invalidates that scope. Preview shuffle can differ from the saved Catalog.
+are isolated by Account and authorization version. Reconnecting invalidates
+that scope; routine token refreshes retain it. Preview shuffle can differ from
+the saved Catalog.
 
 ## ADR 0005: Sync status is per Source list
 
@@ -70,19 +71,22 @@ Detections are recorded even when the Catalog is disabled.
 
 One JSON object per Account/Source list avoids millions of Postgres entry rows
 that exceeded the database storage budget. ETag-conditional writes retry on
-conflicts; reads older than the recorded synchronization are refused. Unchanged
-history is touched daily so active Sources survive the bucket's 30-day lifecycle.
-Expired histories start a new Baseline. Removed entries are forgotten after
+conflicts; reads older than the recorded synchronization are refused. Every
+complete read advances the stored timestamp, even when its entries are unchanged,
+so a slower earlier read cannot record titles that the newer read no longer saw.
+Active Sources survive the bucket's 30-day lifecycle. Expired histories start a
+new Baseline. Removed entries are forgotten after
 180 days. Private objects live under `connections/<account>/<provider>/history/`;
 other histories use `history/<account>/`. Disconnect and Account deletion clean
-up the relevant R2 prefixes. An unchanged read keeps the older synchronization
-date, so an overlapping slower read can still be compared.
+up the relevant R2 prefixes.
 
 ## Provider constraints
 
 Adapters live in `apps/backend/src/providers/`. Prefer anonymous public reads;
 use encrypted OAuth Connections for private Sources and Actions. Refresh leases
 serialize rotating tokens, and refreshes retain the original redirect URI.
+Private caches belong to a stable authorization version: token refresh preserves
+it, while reconnect or disconnect invalidates cached data from the old grant.
 `DISABLED_PROVIDERS` blocks all outbound access to those Providers, including ID
 lookups and Actions, while Lists continue serving their last cached Catalog.
 
