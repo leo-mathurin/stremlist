@@ -4,68 +4,33 @@
 
 Stremlist is a Stremio addon that shows your watchlists and lists from IMDb, Trakt, Simkl, MDBList, JustWatch and SensCritique as catalogs in Stremio, so you can browse your saved movies and TV shows directly inside Stremio. With a connected Trakt, Simkl or MDBList account, it can also add titles to your watchlist, mark them as watched and rate them from Stremio.
 
-The vocabulary used in the code and in these docs (Account, Provider, Source list, List, Catalog, Title, Connection, Action) is defined in [`CONTEXT.md`](CONTEXT.md). Architecture decisions are in [`docs/adr/`](docs/adr/), and how each Provider is read is in [`docs/providers.md`](docs/providers.md).
+The vocabulary used in the code and in these docs (Account, Provider, Source list, List, Catalog, Title, Connection, Action) is defined in [`CONTEXT.md`](CONTEXT.md). Architecture decisions and Provider constraints are in [`docs/architecture.md`](docs/architecture.md).
 
 ## Features
 
-- Paste a link to a list from any supported Provider; Stremlist detects the Provider
-- IMDb watchlists, lists and charts; Trakt, Simkl and MDBList lists (public or through a connected account); JustWatch shared lists; SensCritique wishlists and lists
-- Up to 10 Lists per addon install, each shown as its own catalogs
-- Actions in Stremio (optional): add to watchlist, mark as watched and rate on your connected Trakt, Simkl or MDBList accounts
-- Supports sorting by title, year, complete release date, rating, runtime, and random order
-- Filter by genre or decade, or choose a sort directly from Stremio's Discover genre dropdown (one option at a time)
-- Combine genre, decade, maximum runtime and minimum IMDb rating in each catalog configuration
-- Search your configured lists from Stremio search
-- Optional extra home catalogs: 90 min or less, Top rated, and Shuffle
-- Optional Rating Poster Database (RPDB) poster support via API key
-- Simple install flow through a hosted configuration UI
-- Cache-first watchlist serving with periodic auto-refresh and a manual "Refresh now" control
-- Lightweight backend with Supabase for account configuration and Cloudflare R2 for list caching
-- Monorepo architecture with Turborepo (`apps` + `packages`)
+- IMDb, Trakt, Simkl, MDBList, JustWatch and SensCritique lists, including merged Lists
+- Catalog sorting, genre/decade/runtime/rating filters, search and extra home catalogs
+- A "New titles" catalog of entries detected after the first complete synchronization
+- Optional Trakt, Simkl and MDBList Actions and RPDB rating posters
+- Cache-first serving with automatic refresh and "Refresh now"
 
-Reinstall an existing addon to load the new dropdown options. Selecting a genre
-or decade preserves the configured sort; selecting a sort temporarily overrides
-it. Saved filters always apply together, including to search and extra catalogs.
-The dropdown adds one further filter or overrides the sort; None clears only
-that temporary selection. Extra catalogs reuse the original list and cache.
+Reinstall after changing manifest catalogs or dropdown options. Saved filters also
+apply to search and extra catalogs; the Stremio dropdown adds one temporary filter
+or overrides the sort. Shuffle stays stable within a cache generation.
 
-Release Year sorts by the IMDb year; Release Date sorts by the complete date
-returned by IMDb (which may differ from the original release year). Incomplete
-dates sort last, without inventing a day or month. Refresh an older cache to
-populate release dates. Date-added sorting uses the Provider's list order. Shuffle stays
-stable within a cache generation so scrolling does not repeat items. Popularity
-is not offered: the tested IMDb meterRanking field reported an entitlement denial.
+`apps/backend` is the Hono API, `apps/frontend` is the Vite/React UI, and
+`packages/shared` holds shared types and rules. Both apps deploy on Vercel.
+Supabase stores configuration, encrypted Connections and the Title ID cache;
+Cloudflare R2 stores catalog generations, Connection state and detection history.
 
-### Deploying the multi-provider version
+## Using the Addon
 
-Apply `supabase/migrations/20261006120000_accounts_providers_connections.sql`
-in the same release as the backend: it renames `users` to `accounts` and
-`user_watchlists` to `lists`, which the previous backend cannot read. List IDs
-do not change, so installed addons and their Catalog IDs keep working, and the
-R2 cache stays valid. Set the new environment variables below before the deploy.
+1. Open [Configure](https://stremlist.com/configure), paste a list link or connect a Provider.
+2. Save and install the generated Addon URL in Stremio.
+3. Keep the URL: it is the only credential for your configuration.
 
-## Monorepo Structure
-
-This repository follows the Turborepo recommended structure:
-
-```text
-.
-├── apps
-│   ├── backend      # Hono API + Stremio addon endpoints
-│   └── frontend     # Vite/React configuration UI
-├── packages
-│   └── shared       # Shared types/constants used by apps
-├── turbo.json
-└── package.json     # Bun workspaces
-```
-
-## Deployment Architecture
-
-- Frontend and backend are deployed on [Vercel](https://vercel.com)
-- Backend serves Stremio addon endpoints and configuration flow, on the Vercel
-  Bun runtime (`bunVersion` in `apps/backend/vercel.json`)
-- Supabase stores Accounts, Lists, encrypted Connections (OAuth tokens) and the Title ID cache
-- Cloudflare R2 stores gzip-compressed List cache objects and Action membership snapshots
+Legacy `ur…` installs still serve public Lists. Upgrade on the configure page
+and reinstall to connect a Provider or use Actions.
 
 ## Getting Started
 
@@ -84,18 +49,13 @@ bun install
 
 Decrypt the backend environment first (see below).
 
-The database selected by `apps/backend/.env` must have all migrations from
-`supabase/migrations` applied. `bun dev` starts the apps; it does not migrate
-the database. In particular, `PGRST205` for `public.accounts` means you should
-check that the Accounts migration above is applied to that database.
+The database selected by `apps/backend/.env` must have all migrations in
+`supabase/migrations` applied. `bun run dev` does not migrate it. Use
+`bun run dev:local` for an isolated stack; do not migrate a shared database while
+an older backend still expects its previous schema. Restart after changing env.
 
-For development before the multi-provider release, use a separate local
-Supabase database and set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in
-`apps/backend/.env` to its local values. See the [local stack setup](apps/e2e/README.md#running-locally)
-for the database and S3-compatible cache services, and the environment variables
-below. Do not apply the Accounts migration to a shared database while an older
-backend still uses it: the migration renames the tables that backend reads.
-Restart the dev server after changing the backend environment.
+Run `bunx portless proxy start` once in an interactive terminal to initialize
+HTTPS and trust its local certificate authority (may require sudo).
 
 Then run:
 
@@ -115,19 +75,18 @@ settings for that process; `.env` is not rewritten. Provider credentials still
 come from `apps/backend/.env`. Stop an existing `bun dev` before switching modes.
 The containers and their data remain available after you stop the dev servers.
 
-Portless 0.15.6 is pinned as a dev dependency. In the main checkout, the
-local names are `https://stremlist.localhost` and
-`https://api.stremlist.localhost`. Linked worktrees receive a branch prefix;
-use the printed URLs or `bunx portless list` instead of hardcoding them.
-A previously configured proxy port (such as 1355) appears in these URLs too.
+Use the printed URLs or `bunx portless list`: worktrees add a branch prefix and
+proxy ports can vary. The browser calls `/api` on the frontend origin; Vite
+forwards it to the matching backend. For tailnet access, use the printed
+Tailscale HTTPS URL (requires Tailscale and HTTPS certificates enabled).
 
-For access from another tailnet device, open the **Tailscale URL** printed for
-the frontend. The browser uses `/api` on that same origin, and Vite forwards
-requests to the matching worktree's backend. Stremio install links and configure
-redirects use that origin too. No machine-specific browser API URL is needed.
+- `DEV_BACKEND_URL` overrides Vite's internal proxy target.
+- `VITE_BACKEND_URL` sets the API URL for production and direct Vite/E2E runs.
+- `PORTLESS=0 bun run dev` bypasses the proxy (backend 7001, frontend 5173).
+- `bunx portless doctor` diagnoses routing; `bunx portless trust` repairs CA trust.
 
-See [the Portless development guide](docs/portless-development.md) for first-run
-setup, HTTPS, environment overrides, plain-port fallback, and cleanup.
+Stop the owning dev process with Ctrl-C. Avoid stopping or cleaning the shared
+Portless proxy while other projects use it.
 
 ### Decrypt environment files
 
@@ -186,55 +145,34 @@ CI authenticates with OpenID Connect instead of a stored token. It needs:
 Without the variable, on pull requests from forks, or if the token exchange
 fails, CI runs with only a local cache.
 
-## Using the Addon
-
-### Public/Hosted Instance
-
-1. Open the configure page and paste a link to a list (or connect a Trakt, Simkl or MDBList account)
-2. Save: Stremlist creates your private Addon URL (`[BACKEND_URL]/sl_…/manifest.json`)
-3. Install it in Stremio. Keep the URL: it is the only key to your configuration
-4. (Optional) Add your RPDB API key on the configure page to use rating posters
-
-Installs made before private URLs existed (`[BACKEND_URL]/ur…/manifest.json`) keep working as Legacy aliases. To connect an account or use Actions, upgrade them to a private URL on the configure page and reinstall once.
-
-### Local Instance
-
-1. Start backend (or full dev stack)
-2. In Stremio -> Addons -> **Add Addon URL**
-3. Enter:
-
-```text
-http://localhost:7001/manifest.json
-```
-
 ## Backend Environment Variables
 
 Set backend env vars in `apps/backend/.env`.
 
-| Variable                    | Required | Description                                                                                                                       | Default                 |
-| --------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| `PORT`                      | No       | Backend HTTP port                                                                                                                 | `7001`                  |
-| `FRONTEND_URL`              | No       | Configure site, used for redirects (`/:accountKey/configure`, OAuth callbacks)                                                    | `https://stremlist.com` |
-| `BACKEND_PUBLIC_URL`        | Yes\*    | Public URL of the backend, used for OAuth redirect URIs and Action links                                                          | request origin          |
-| `SUPABASE_URL`              | Yes      | Supabase project URL                                                                                                              | -                       |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes      | Supabase service role key                                                                                                         | -                       |
-| `R2_ACCOUNT_ID`             | Yes      | Cloudflare account ID used by the R2 S3 endpoint                                                                                  | -                       |
-| `R2_ACCESS_KEY_ID`          | Yes      | Bucket-scoped R2 API token access key                                                                                             | -                       |
-| `R2_SECRET_ACCESS_KEY`      | Yes      | Bucket-scoped R2 API token secret                                                                                                 | -                       |
-| `R2_BUCKET`                 | Yes      | Private R2 cache bucket name                                                                                                      | -                       |
-| `CONNECTION_ENCRYPTION_KEY` | Yes\*    | 32 random bytes in base64 (`openssl rand -base64 32`); encrypts OAuth tokens. Never rotate it without re-encrypting `connections` | -                       |
-| `TRAKT_CLIENT_ID`           | Yes\*    | Trakt API app client ID (public reads and OAuth with PKCE)                                                                        | -                       |
-| `TRAKT_CLIENT_SECRET`       | No       | Only for Trakt apps created before 2026-10-01; new apps have none                                                                 | -                       |
-| `SIMKL_CLIENT_ID`           | Yes\*    | Simkl OAuth V2 app client ID                                                                                                      | -                       |
-| `SIMKL_CLIENT_SECRET`       | Yes\*    | Simkl OAuth V2 app client secret                                                                                                  | -                       |
-| `MDBLIST_CLIENT_ID`         | Yes\*    | MDBList OAuth app client ID                                                                                                       | -                       |
-| `MDBLIST_CLIENT_SECRET`     | Yes\*    | MDBList OAuth app client secret                                                                                                   | -                       |
-| `TMDB_READ_ACCESS_TOKEN`    | Yes\*    | TMDB v4 read access token (Title ID resolution). `TMDB_API_KEY` (v3) also works                                                   | -                       |
-| `DISABLED_PROVIDERS`        | No       | Kill switch: comma-separated Provider IDs to turn off (e.g. `trakt,justwatch`). No request goes to them; their Lists keep serving the last cached Catalog  | -                       |
-| `CACHE_TTL_MINUTES`         | No       | How long a cached IMDb List is served before it is refreshed on the next request                                                  | `30`                    |
-| `REFRESH_COOLDOWN_SECONDS`  | No       | Minimum time between manual "Refresh now" requests per Account                                                                    | `60`                    |
-| `RESEND_API_KEY`            | No       | Resend API key for newsletter subscription endpoint                                                                               | -                       |
-| `RESEND_AUDIENCE_ID`        | No       | Resend audience ID for newsletter subscription endpoint                                                                           | -                       |
+| Variable                    | Required | Description                                                                                                                                               | Default                 |
+| --------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `PORT`                      | No       | Backend HTTP port                                                                                                                                         | `7001`                  |
+| `FRONTEND_URL`              | No       | Configure site, used for redirects (`/:accountKey/configure`, OAuth callbacks)                                                                            | `https://stremlist.com` |
+| `BACKEND_PUBLIC_URL`        | Yes\*    | Public URL of the backend, used for OAuth redirect URIs and Action links                                                                                  | request origin          |
+| `SUPABASE_URL`              | Yes      | Supabase project URL                                                                                                                                      | -                       |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes      | Supabase service role key                                                                                                                                 | -                       |
+| `R2_ACCOUNT_ID`             | Yes      | Cloudflare account ID used by the R2 S3 endpoint                                                                                                          | -                       |
+| `R2_ACCESS_KEY_ID`          | Yes      | Bucket-scoped R2 API token access key                                                                                                                     | -                       |
+| `R2_SECRET_ACCESS_KEY`      | Yes      | Bucket-scoped R2 API token secret                                                                                                                         | -                       |
+| `R2_BUCKET`                 | Yes      | Private R2 cache bucket name                                                                                                                              | -                       |
+| `CONNECTION_ENCRYPTION_KEY` | Yes\*    | 32 random bytes in base64 (`openssl rand -base64 32`); encrypts OAuth tokens. Never rotate it without re-encrypting `connections`                         | -                       |
+| `TRAKT_CLIENT_ID`           | Yes\*    | Trakt API app client ID (public reads and OAuth with PKCE)                                                                                                | -                       |
+| `TRAKT_CLIENT_SECRET`       | No       | Only for Trakt apps created before 2026-10-01; new apps have none                                                                                         | -                       |
+| `SIMKL_CLIENT_ID`           | Yes\*    | Simkl OAuth V2 app client ID                                                                                                                              | -                       |
+| `SIMKL_CLIENT_SECRET`       | Yes\*    | Simkl OAuth V2 app client secret                                                                                                                          | -                       |
+| `MDBLIST_CLIENT_ID`         | Yes\*    | MDBList OAuth app client ID                                                                                                                               | -                       |
+| `MDBLIST_CLIENT_SECRET`     | Yes\*    | MDBList OAuth app client secret                                                                                                                           | -                       |
+| `TMDB_READ_ACCESS_TOKEN`    | Yes\*    | TMDB v4 read access token (Title ID resolution). `TMDB_API_KEY` (v3) also works                                                                           | -                       |
+| `DISABLED_PROVIDERS`        | No       | Kill switch: comma-separated Provider IDs to turn off (e.g. `trakt,justwatch`). No request goes to them; their Lists keep serving the last cached Catalog | -                       |
+| `CACHE_TTL_MINUTES`         | No       | How long a cached IMDb List is served before it is refreshed on the next request                                                                          | `30`                    |
+| `REFRESH_COOLDOWN_SECONDS`  | No       | Minimum time between manual "Refresh now" requests per Account                                                                                            | `60`                    |
+| `RESEND_API_KEY`            | No       | Resend API key for newsletter subscription endpoint                                                                                                       | -                       |
+| `RESEND_AUDIENCE_ID`        | No       | Resend audience ID for newsletter subscription endpoint                                                                                                   | -                       |
 
 \* Required for the Provider or feature that uses it. Without a Provider's credentials, its Connect button is hidden and its public reads fail.
 
@@ -252,8 +190,17 @@ bun run generate:types
 
 This updates `packages/shared/src/database.types.ts`.
 
-The production R2 rollout and cleanup procedure is documented in
-[`docs/r2-cache-migration.md`](docs/r2-cache-migration.md).
+## R2 setup
+
+Create a private Standard R2 bucket, a bucket-scoped Object Read & Write token,
+and a 30-day object-expiration lifecycle rule. Set the R2 variables above on the
+backend only. Leave `R2_ENDPOINT` unset in production; it is for local
+S3-compatible stores. Cache generations populate on demand.
+
+## End-to-end and load tests
+
+See [E2E setup and toolkit recordings](apps/e2e/README.md) and
+[local load testing](apps/backend/stress/README.md).
 
 ## License
 

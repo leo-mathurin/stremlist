@@ -1,59 +1,52 @@
-# @stremlist/e2e
+# End-to-end tests
 
-The tester-army toolkit uses the existing ChatGPT subscription to record AI
-browser journeys, then replays committed actions without credentials in CI.
-Application API responses are intercepted. Run `bun run test:toolkit` from the
-repository root. See [TOOLKIT.md](./TOOLKIT.md) for setup, coverage, reports,
-and isolated integration verification.
+Two suites cover the frontend and addon:
 
-End-to-end tests that exercise Stremlist the way a real user does: the addon
-is installed into the **hosted Stremio Web app** (web.stremio.com) from a
-backend running locally, with **live IMDb data** or controlled catalog fixtures, a **local Supabase stack**,
-and a **local RustFS bucket** exercising the same S3 API used for Cloudflare
-R2. The configure/onboarding pages of the frontend are covered too.
+- **Toolkit:** browser journeys with intercepted API responses, plus recorded AI
+  actions replayed without credentials in CI. No database is needed.
+- **Playwright:** real backend, Supabase and S3-compatible storage, with controlled
+  Provider fixtures or live IMDb and hosted Stremio Web. Runs on ports 7301/7302.
 
-## How it works
+## Toolkit
 
-- Playwright starts the backend (`:7301`) and the frontend (`:7302`) as web
-  servers with ports distinct from the dev ones, so tests can run next to a
-  normal dev session.
-- The backend points at a local Supabase stack (`supabase start`), reset
-  between tests. Tests use the vocabulary of [CONTEXT.md](../../CONTEXT.md):
-  most scenarios seed a private **Account** (generated `sl_…` ID) with its
-  **Lists** directly, so no save-triggered prewarm reads a Provider, then
-  exercise the real configuration API, database transaction and cache reader.
-  The onboarding scenarios create the Account through the configure page
-  (`POST /accounts`), and the Legacy alias scenarios bootstrap an `ur…`
-  install through its first manifest fetch.
-- The backend points at RustFS (`:7431`) through its configurable S3 endpoint.
-  Tests inspect the resulting manifest and compressed generation objects and
-  remove objects owned by E2E users between cases.
-- Stremio Web runs in anonymous mode: each fresh browser context has its own
-  local addon collection. No Stremio account or shared state is involved.
-- Chromium is launched with `--disable-features=LocalNetworkAccessChecks,...`
-  because Chrome otherwise blocks the HTTPS Stremio Web page from fetching the
-  addon on `127.0.0.1` (Local Network Access permission, never grantable in
-  headless runs).
-- Live IMDb assertions are structural (ordering invariants, id shapes,
-  counts) or compare the Stremio UI against the addon's own catalog JSON from
-  the same run, so they do not depend on what is in the watchlist today.
-- The default run and pull request CI execute all three projects: deterministic
-  local coverage (101 tests), four live smoke tests, and the broader live
-  regression suite (27 tests).
-- `tests/new-titles.spec.ts` starts a second backend with
-  `helpers/source-transport.ts` preloaded. It reads Source lists from a JSON
-  file that the test rewrites between refreshes, so consecutive
-  synchronizations are deterministic. A `capped` IMDb watchlist answers
-  that more pages follow until the page cap cuts the read short. Database and R2 traffic is real; any
-  other outbound request is refused.
-- The backend gets a fixed, public `CONNECTION_ENCRYPTION_KEY` from `env.ts`,
-  so seeded Connections (`helpers/db.ts` `seedConnection`) decrypt like real
-  ones. It is not a production key.
+From the repository root:
+
+```sh
+bun run test:toolkit:replay
+
+# One-time login, then record changed AI goals locally
+bun run --cwd apps/e2e e2e login openai --device
+bun run test:toolkit:record
+# Or use the workstation's subscription session:
+e2e-chatgpt-session bun run test:toolkit:record
+```
+
+The toolkit starts Vite on `127.0.0.1:4311`; requests to `127.0.0.1:4314`
+are intercepted. Configuration lives in `e2e.config.ts`, journeys in `toolkit/`,
+and shared routes/fixtures in `toolkit/config-fixture.ts`. Interception verifies
+UI behavior and requests; Playwright verifies handlers and storage.
+
+### Cache rules
+
+- Commit assertion-verified `.e2e/cache/*.json` recordings with the UI/test change;
+  never edit recordings by hand. Reports, traces and screenshots stay ignored.
+- Renaming tests, changing goals/params, app identity, URL or ports, or upgrading
+  the pinned `e2e` / `@e2e-dev/web` versions requires new recordings. Changed
+  accessible names can make an existing recording stale too.
+- Run recording twice to verify the second pass makes zero model calls, then
+  run `bun run test:toolkit:replay`. CI uses this same strict, read-only replay
+  and refuses model calls, new recordings and stale/missing cache entries.
+- `bun run --cwd apps/e2e test:toolkit:check` checks the last report and recordings;
+  add `--prune` after a full replay to delete orphaned entries.
+- AI goals use unique accessible names. Configure-page goals call
+  `fitConfigurePage` to avoid duplicate Save controls. Toast checks use
+  `holdToasts`; it hides the document and suppresses sync-status polling.
 
 ## Running locally
 
+Playwright requires Docker, the Supabase CLI and these disposable services:
+
 ```sh
-# One-time / per boot: start the local Supabase stack (needs Docker running)
 supabase start -x gotrue,realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta
 
 docker run --rm -d --name stremlist-e2e-r2 \
@@ -62,100 +55,30 @@ docker run --rm -d --name stremlist-e2e-r2 \
   -e RUSTFS_SECRET_KEY=stremlist-e2e-secret \
   rustfs/rustfs:1.0.1 /data
 
-# From the repo root: run every E2E project
 bun run test:e2e
-
-# Select one project while debugging
 bun run --filter @stremlist/e2e test:e2e --project=local
 bun run --filter @stremlist/e2e test:e2e --project=live-smoke
 bun run --filter @stremlist/e2e test:e2e --project=live-regression
 ```
 
-The suite deletes test Accounts between cases: the Legacy alias Accounts of the
-fixtures and every Account created since the run started. It removes their R2
-List caches and Connection objects first, then relies on foreign-key cascades
-for their Lists, Connections and pending authorizations. Because Account IDs
-are generated, cleanup is scoped by time, so use a disposable stack, not a
-development database that other people write to at the same time. The harness
-rejects any non-loopback Supabase URL unless the caller provides the explicit
-destructive confirmation described below.
+Tests delete fixture Legacy alias Accounts and Accounts created since the run
+started, their R2 caches/Connection objects and dependent database rows. Use a
+separate disposable stack, never a shared development database. Non-loopback
+Supabase URLs are rejected unless explicitly enabled below.
 
-## Catalog feature regression scenarios
+## Environment
 
-`tests/catalog-features.spec.ts` covers the v1.10.0 additions with controlled
-movie/series metadata in local storage, read through a seeded private Account. No configuration or catalog HTTP response
-is mocked. The small fixture deliberately includes titles just outside each
-filter so a missing constraint fails the test.
+| Variable                                                       | Purpose                                                          |
+| -------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `E2E_SUPABASE_URL` / `E2E_SUPABASE_SERVICE_ROLE_KEY`           | Override local database                                          |
+| `E2E_R2_ENDPOINT` / `E2E_R2_BUCKET`                            | Override disposable S3 store                                     |
+| `E2E_R2_ACCESS_KEY_ID` / `E2E_R2_SECRET_ACCESS_KEY`            | Local S3 credentials                                             |
+| `E2E_ALLOW_REMOTE_DATABASE=I_UNDERSTAND_THIS_WIPES_DATA`       | Allow an isolated remote test database; cleanup deletes Accounts |
+| `E2E_IMDB_USER_ID` / `E2E_IMDB_USER_ID_2` / `E2E_IMDB_LIST_ID` | Public live fixtures                                             |
+| `E2E_PRIVATE_IMDB_USER_ID` / `E2E_PRIVATE_IMDB_LIST_ID`        | Private fixtures (the list ID enables the private-list case)     |
 
-| Project           | Coverage                                                                                                                         |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `local`           | Combined genre/decade/runtime/rating filters saved through Configure, reload persistence, clearing filters while keeping presets |
-| `local`           | Search with accents and literal `&`/`+`, combined with saved filters and empty results                                           |
-| `local`           | Stable shuffle pagination over 215 titles, with no duplicates or missing items                                                   |
-| `local`           | Series catalog preserved, movie-only metadata advertisement and null series metadata fallback                                    |
-| `live-regression` | Filtered results and all four new runtime/release-date sorts in the real Stremio dropdown                                        |
-| `live-regression` | Enable all three presets in Configure, reinstall in Stremio, verify home rows and catalog contents                               |
-| `live-regression` | Enter searches in Stremio and verify both the actual backend response and rendered results                                       |
-
-Run just these scenarios (the same file is included automatically in PR CI):
-
-```sh
-bun run --filter @stremlist/e2e test:e2e tests/catalog-features.spec.ts
-```
-
-These fixtures bypass IMDb scraping, not Stremlist behavior. Existing live tests
-still cover real IMDb fetching. The series scenario checks the addon protocol;
-it does not claim to test playback or episode selection in a native client.
-
-## Provider journeys
-
-Four `local` spec files start their own backend with
-`helpers/provider-fixtures.ts` as a preload (`helpers/fixture-backend.ts`).
-That backend uses the same local Supabase and RustFS stack, dummy OAuth
-client IDs and no real credential. The real adapters, OAuth flow, ID resolver
-and Action pages run; only the Provider responses are fixtures, and any
-request to an unknown host fails.
-
-| File                                 | Coverage                                                                                                                                                   |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/provider-links.spec.ts`       | Public links (Trakt, JustWatch, SensCritique), Trakt charts, and Source lists read through a Connection (MDBList, Simkl, Trakt)                            |
-| `tests/provider-connections.spec.ts` | OAuth start and callback (Trakt, Simkl, MDBList), Connect from the configure page with unsaved edits, disconnect, expired Connections, Legacy alias limits |
-| `tests/provider-actions.spec.ts`     | Actions in Stremio, every Trakt Action intent, Simkl and MDBList Actions, the Provider kill switch (`DISABLED_PROVIDERS`)                                  |
-| `tests/provider-sync-status.spec.ts` | Sync status of Lists read through a Connection (renewal, disconnect, merged List) and Catalog previews read through a Connection                           |
-
-Letterboxd has no adapter yet; the configure page only explains its MDBList
-import. The UI side of the same journeys is in `toolkit/providers.e2e.ts`.
-`tests/catalog-preview.spec.ts` uses the same preload to read a synthetic
-SensCritique list (`helpers/preview-fixture.ts`) for the Catalog preview.
-
-## List sync status scenarios
-
-`tests/sync-status.spec.ts` checks what each refresh records (STR-58). The test
-backend has no Trakt client ID, so Trakt reads fail and a seeded expired Trakt
-Connection becomes a refused one (`needs_renewal_since`), offline and
-deterministic. The `live-regression` case waits for the first refresh of a live
-IMDb chart through the page's polling. The renewal by a new authorization, a
-working read that clears the mark and the statuses a disconnect forgets need
-the Provider fixtures, so they are in `tests/provider-sync-status.spec.ts`, with a
-Catalog preview through a refused Connection (it marks the Connection, but is
-not a refresh).
-
-## Environment knobs
-
-| Variable                                                 | Purpose                                                                                 |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `E2E_SUPABASE_URL` / `E2E_SUPABASE_SERVICE_ROLE_KEY`     | Non-default local Supabase stack                                                        |
-| `E2E_R2_ENDPOINT` / `E2E_R2_BUCKET`                      | Non-default S3-compatible endpoint and disposable bucket                                |
-| `E2E_R2_ACCESS_KEY_ID` / `E2E_R2_SECRET_ACCESS_KEY`      | Credentials for the disposable S3-compatible store                                      |
-| `E2E_ALLOW_REMOTE_DATABASE=I_UNDERSTAND_THIS_WIPES_DATA` | Permit an isolated remote test project. Cleanup deletes Accounts and all dependent data |
-| `E2E_IMDB_USER_ID` / `E2E_IMDB_USER_ID_2`                | Override the public IMDb watchlists under test (also the Legacy aliases)                |
-| `E2E_IMDB_LIST_ID`                                       | Override the public `ls` list under test                                                |
-| `E2E_PRIVATE_IMDB_USER_ID`                               | Override the private watchlist under test                                               |
-| `E2E_PRIVATE_IMDB_LIST_ID`                               | Enable the private `ls` list test                                                       |
-
-## Known limitations
-
-- Pointer-based catalog reordering is covered by the toolkit, including saved positions.
-- Newsletter UI states use intercepted toolkit responses. Real delivery is not tested.
-- The live smoke and regression suites depend on web.stremio.com and IMDb. CI
-  retries failures twice.
+`playwright.config.ts` defines projects; `tests/` contains coverage and assertions.
+Provider specs use real adapters with fixture transports and reject unknown
+outbound destinations. Live projects depend on IMDb and web.stremio.com. Actual
+newsletter delivery, authenticated RPDB delivery, playback and desktop protocol
+handling require separate manual verification.

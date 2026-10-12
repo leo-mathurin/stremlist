@@ -1,4 +1,4 @@
-// The replay cache of the toolkit (TOOLKIT.md, "Cache rules").
+// The replay cache of the toolkit (README.md, "Cache rules").
 //
 //   bun toolkit-cache.ts replay [e2e run arguments]
 //     Strict replay (CI=1, no credentials, --strict-cache), then `check`.

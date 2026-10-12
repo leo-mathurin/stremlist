@@ -59,7 +59,7 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     connection: "optional",
     actions: ["watchlist", "watched", "rating"],
     linkExample: "https://trakt.tv/users/username/watchlist",
-    // Since 2026-07-22 (docs/providers.md).
+    // Since 2026-07-22 (docs/architecture.md).
     connectNote:
       "A free Trakt account can connect only one app. If Stremio's own Trakt sync uses it, paste public Trakt links instead.",
   },
@@ -488,7 +488,7 @@ export const CONNECTION_SOURCES: Partial<
       label: "Recommendations",
       defaultDisplayMode: "split",
     },
-    // Up Next lists the series in progress (docs/providers.md).
+    // Up Next lists the series in progress (docs/architecture.md).
     {
       ref: "me/up-next",
       kind: "up_next",
