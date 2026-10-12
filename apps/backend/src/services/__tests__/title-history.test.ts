@@ -236,17 +236,40 @@ describe("recordHistory", () => {
     );
   });
 
-  it("skips the write when nothing changed, at most for a day", async () => {
+  it("advances the synchronization timestamp even when nothing changed", async () => {
     await recordHistory("acc", SOURCE, keyed("tt1"), at(0), null);
     expect(r2Puts.count).toBe(1);
 
     await recordHistory("acc", SOURCE, keyed("tt1"), at(0.5), null);
-    expect(r2Puts.count).toBe(1);
+    expect(r2Puts.count).toBe(2);
+    expect((await readHistory("acc", SOURCE))?.lastSyncAt).toBe(
+      at(0.5).toISOString(),
+    );
 
     await recordHistory("acc", SOURCE, keyed("tt1"), at(1.5), null);
     expect((await readHistory("acc", SOURCE))?.lastSyncAt).toBe(
       at(1.5).toISOString(),
     );
+  });
+
+  it("refuses an older changed read after a newer unchanged read completed", async () => {
+    await recordHistory("acc", SOURCE, keyed("tt1"), at(0), null);
+    await recordHistory("acc", SOURCE, keyed("tt1"), at(0.75), null);
+
+    // The slower read saw a temporary addition that the newer read did not.
+    expect(
+      await recordHistory("acc", SOURCE, keyed("tt1", "tt2"), at(0.5), null),
+    ).toBeNull();
+    expect((await readHistory("acc", SOURCE))?.entries).toEqual({
+      "imdb:tt1": ["tt1", null, null],
+    });
+
+    await recordHistory("acc", SOURCE, keyed("tt1", "tt2"), at(1), null);
+    expect((await readHistory("acc", SOURCE))?.entries["imdb:tt2"]).toEqual([
+      "tt2",
+      at(1).toISOString(),
+      null,
+    ]);
   });
 
   it("compares with the version that another instance wrote in between", async () => {

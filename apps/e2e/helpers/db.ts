@@ -232,7 +232,7 @@ export async function getConnectionRow(accountId: string, provider: string) {
   const { data, error } = await db
     .from("connections")
     .select(
-      "provider, provider_username, created_at, expires_at, access_token, redirect_uri, needs_renewal_since",
+      "provider, provider_username, created_at, authorization_version, expires_at, access_token, redirect_uri, needs_renewal_since",
     )
     .eq("account_id", accountId)
     .eq("provider", provider)

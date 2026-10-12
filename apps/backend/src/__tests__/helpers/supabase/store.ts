@@ -54,6 +54,7 @@ const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
     updated_at: now(),
   }),
   connections: () => ({
+    authorization_version: crypto.randomUUID(),
     provider_username: null,
     refresh_token: null,
     expires_at: null,

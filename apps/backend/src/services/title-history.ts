@@ -26,13 +26,6 @@ const HISTORY_FORMAT_VERSION = 1;
  */
 export const REMOVED_ENTRY_RETENTION_MS = 180 * 24 * 60 * 60_000;
 
-/**
- * A complete synchronization that changes nothing still moves the history
- * on at least this often, so the bucket's lifecycle rule never deletes the
- * history of a List that is still read.
- */
-const UNCHANGED_WRITE_INTERVAL_MS = 24 * 60 * 60_000;
-
 /** Conditional writes that lose a race to another instance are tried again. */
 const MAX_WRITE_ATTEMPTS = 4;
 
@@ -348,16 +341,9 @@ export async function recordHistory(
       connection,
     );
     if (!result) return null;
-    if (
-      previous &&
-      !result.changed &&
-      syncedAt.getTime() - Date.parse(previous.lastSyncAt) <
-        UNCHANGED_WRITE_INTERVAL_MS
-    ) {
-      // Nothing to keep: skip the write (R2 bills each one).
-      return 0;
-    }
     try {
+      // Even unchanged reads must advance the timestamp: an older read on
+      // another instance may still contain a title that disappeared since.
       await writeJson(key, result.history, { etag: stored.etag });
       return result.added;
     } catch (error) {

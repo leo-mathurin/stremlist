@@ -8,7 +8,6 @@ import { supabase } from "../lib/supabase";
 import { getProvider, isProviderEnabled } from "../providers/registry";
 import type { ConnectionAccess } from "../providers/types";
 import { ConnectionExpiredError } from "../providers/types";
-import { authorizationFingerprint } from "./connection-identity";
 import type { ConnectionIdentity } from "./connection-identity";
 import type { OAuthTokens } from "./oauth";
 import { refreshTokens } from "./oauth";
@@ -24,7 +23,7 @@ const LEASE_WAIT_ATTEMPTS = 6;
 const LEASE_WAIT_MS = 500;
 
 interface StoredConnection {
-  createdAt: string;
+  authorizationVersion: string;
   accountId: string;
   provider: ProviderId;
   username: string | null;
@@ -44,7 +43,7 @@ function decode(row: Tables<"connections">): StoredConnection | null {
   if (!isProviderId(row.provider)) return null;
   try {
     return {
-      createdAt: row.created_at,
+      authorizationVersion: row.authorization_version,
       accountId: row.account_id,
       provider: row.provider,
       username: row.provider_username,
@@ -339,10 +338,7 @@ export async function getConnectionAccess(
       return {
         accountId,
         provider,
-        authorization: authorizationFingerprint({
-          created_at: current.createdAt,
-          access_token: current.sealedToken,
-        }),
+        authorization: current.authorizationVersion,
       };
     },
     async getAccessToken() {

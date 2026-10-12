@@ -159,13 +159,20 @@ DO $$
 DECLARE
   acc constant text := 'sl_writesprivate0000000000';
   first_created timestamptz;
+  first_authorization uuid;
   syncs text[];
 BEGIN
   -- A new Connection for leo.
   PERFORM public.save_connection(acc, 'trakt', 'leo', 'enc-1', 'refresh-1',
     '2026-10-11T00:00:00Z', 'public', 'https://api.stremlist.test/oauth/trakt/callback');
-  SELECT created_at INTO first_created FROM public.connections
+  SELECT created_at, authorization_version INTO first_created, first_authorization FROM public.connections
   WHERE account_id = acc AND provider = 'trakt';
+
+  UPDATE public.connections SET access_token = 'enc-refreshed', refresh_token = 'refresh-rotated'
+  WHERE account_id = acc AND provider = 'trakt';
+  ASSERT (SELECT authorization_version FROM public.connections
+    WHERE account_id = acc AND provider = 'trakt') = first_authorization,
+    'Token rotation preserves ownership of private caches';
 
   -- A refused Connection renewed by leo again keeps leo's history: same
   -- user, same `created_at`.
@@ -179,6 +186,9 @@ BEGIN
     IS NOT DISTINCT FROM row('enc-2'::text, NULL::text, NULL::timestamptz, NULL::text, NULL::timestamptz),
     'A new authorization replaces the tokens and the renewal mark';
   ASSERT (SELECT created_at FROM public.connections WHERE account_id = acc AND provider = 'trakt') = first_created;
+  ASSERT (SELECT authorization_version FROM public.connections
+    WHERE account_id = acc AND provider = 'trakt') <> first_authorization,
+    'A new authorization invalidates old private data, including for the same user';
   ASSERT (SELECT refresh_locked_until FROM public.connections WHERE account_id = acc AND provider = 'trakt')
     = '2030-01-01T00:00:00Z', 'Saving leaves the refresh lease alone';
 

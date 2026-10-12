@@ -69,6 +69,7 @@ export type Database = {
         Row: {
           access_token: string;
           account_id: string;
+          authorization_version: string;
           created_at: string;
           expires_at: string | null;
           needs_renewal_since: string | null;
@@ -84,6 +85,7 @@ export type Database = {
         Insert: {
           access_token: string;
           account_id: string;
+          authorization_version?: string;
           created_at?: string;
           expires_at?: string | null;
           needs_renewal_since?: string | null;
@@ -99,6 +101,7 @@ export type Database = {
         Update: {
           access_token?: string;
           account_id?: string;
+          authorization_version?: string;
           created_at?: string;
           expires_at?: string | null;
           needs_renewal_since?: string | null;

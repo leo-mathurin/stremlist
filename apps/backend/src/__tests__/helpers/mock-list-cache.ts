@@ -4,10 +4,7 @@ import {
   sourceRequiresConnection,
 } from "@stremlist/shared/providers";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
-import {
-  authorizationFingerprint,
-  isCurrentConnection,
-} from "../../services/connection-identity";
+import { isCurrentConnection } from "../../services/connection-identity";
 import type { ConnectionIdentity } from "../../services/connection-identity";
 import type { SourceMeta, SourceCatalogData } from "../../services/list-cache";
 import { mapList } from "../../services/list-rows";
@@ -86,16 +83,12 @@ class InMemoryListCache {
       !connection &&
       stored &&
       typeof owner.accountId === "string" &&
-      typeof stored.created_at === "string" &&
-      typeof stored.access_token === "string"
+      typeof stored.authorization_version === "string"
     ) {
       connection = {
         accountId: owner.accountId,
         provider: owner.source.provider,
-        authorization: authorizationFingerprint({
-          created_at: stored.created_at,
-          access_token: stored.access_token,
-        }),
+        authorization: stored.authorization_version,
       };
     }
     this.entries.set(listId, {

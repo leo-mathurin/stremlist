@@ -13,6 +13,7 @@ vi.mock(
 );
 import { seedAccount, seedConnection } from "../../__tests__/helpers/fixtures";
 import { db } from "../../__tests__/helpers/mock-supabase";
+import { encryptSecret } from "../../lib/crypto";
 import { getConnectionAccess, saveConnection } from "../connections";
 
 const r2 = vi.hoisted(() => ({
@@ -435,6 +436,21 @@ describe("private cache ownership", () => {
     expect(
       await findCachedMeta(id, "movie", MOVIE.id, TRAKT_WATCHLIST),
     ).toBeNull();
+  });
+
+  it("keeps private cached fallback when only the access token rotates", async () => {
+    const { id } = await writePrivate();
+    const connection = db.getTable("connections").at(0);
+    if (!connection) throw new Error("Expected seeded Connection");
+    connection.access_token = encryptSecret("refreshed-token");
+
+    expect((await getCachedList(id, TRAKT_WATCHLIST))?.data.metas).toEqual([
+      MOVIE,
+    ]);
+    expect(await getCachedListSummary(id, TRAKT_WATCHLIST)).not.toBeNull();
+    expect(
+      await findCachedMeta(id, "movie", MOVIE.id, TRAKT_WATCHLIST),
+    ).toEqual(MOVIE);
   });
 
   it("does not reuse private data from an older authorization", async () => {

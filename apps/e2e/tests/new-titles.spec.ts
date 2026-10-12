@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -517,9 +516,7 @@ test(
     const identity = {
       accountId,
       provider: "trakt" as const,
-      authorization: createHash("sha256")
-        .update(`${connection.created_at}\0${connection.access_token}`)
-        .digest("hex"),
+      authorization: connection.authorization_version,
     };
     const history = [
       {

@@ -7,6 +7,7 @@ import { EPOCH, db, now } from "./store";
 /** Same rules as public.save_connection. */
 function saveConnection(args: RpcArgs): Result {
   const fields: Row = {
+    authorization_version: crypto.randomUUID(),
     provider_username: args.p_provider_username ?? null,
     access_token: args.p_access_token,
     refresh_token: args.p_refresh_token ?? null,

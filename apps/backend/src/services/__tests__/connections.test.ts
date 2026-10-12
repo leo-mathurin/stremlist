@@ -31,6 +31,7 @@ import {
 } from "../../__tests__/helpers/mock-supabase";
 import { decryptSecret, encryptSecret } from "../../lib/crypto";
 import { ConnectionExpiredError } from "../../providers/types";
+import { isCurrentConnection } from "../connection-identity";
 import {
   deleteConnection,
   getConnectionAccess,
@@ -269,8 +270,12 @@ describe("getConnectionAccess", () => {
     );
 
     const access = await getConnectionAccess(accountId, "trakt");
+    if (!access) throw new Error("Expected seeded Connection");
+    const identity = access.identity;
 
-    expect(await access?.getAccessToken()).toBe("new");
+    expect(await access.getAccessToken()).toBe("new");
+    expect(access.identity).toEqual(identity);
+    expect(await isCurrentConnection(identity)).toBe(true);
     // The same redirect URI as the authorization, whatever the origin now.
     expect(oauthMocks.refreshTokens).toHaveBeenCalledExactlyOnceWith(
       "trakt",
@@ -285,8 +290,20 @@ describe("getConnectionAccess", () => {
     expect(row.refresh_lease_token).toBeNull();
     expect(row.refresh_locked_until).toBe("1970-01-01T00:00:00.000Z");
     // The next call reuses the new token.
-    await expect(access?.getAccessToken()).resolves.toBe("new");
+    await expect(access.getAccessToken()).resolves.toBe("new");
     expect(oauthMocks.refreshTokens).toHaveBeenCalledOnce();
+  });
+
+  it("invalidates old private data on reconnect even for the same user and token", async () => {
+    await save("same-token", { expiresAt: null });
+    const access = await getConnectionAccess(accountId, "trakt");
+    if (!access) throw new Error("Expected seeded Connection");
+    const identity = access.identity;
+
+    await save("same-token", { expiresAt: null });
+    expect(await isCurrentConnection(identity)).toBe(false);
+    const reconnected = await getConnectionAccess(accountId, "trakt");
+    expect(reconnected?.identity).not.toEqual(identity);
   });
 
   it("keeps a new authorization saved while an older refresh was in flight", async () => {
