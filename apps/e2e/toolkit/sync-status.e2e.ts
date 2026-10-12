@@ -8,6 +8,7 @@ import type {
 import type { ListSyncStatus } from "@stremlist/shared/sync-status";
 import {
   SAVED_REINSTALL,
+  SAVE_NEW,
   accountId,
   backend,
   baseRoutes,
@@ -648,7 +649,7 @@ test("a new setup shows no sync status before its first save", async ({
   await screen.getByRole("button", "Add an IMDb chart").tap();
   await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
 
-  await expect(saveButton(screen, "Save and get my Addon URL")).toBeEnabled();
+  await expect(saveButton(screen, SAVE_NEW)).toBeEnabled();
   await expect(screen.getByText("Not saved yet", { exact: true })).toHaveCount(
     0,
   );

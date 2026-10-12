@@ -226,15 +226,7 @@ export default function Configure() {
   const saveLabel = (
     <>
       {showSaving && <Loader2 className="size-4 animate-spin" />}
-      {showSaving ? (
-        "Saving"
-      ) : access === "new" ? (
-        <>
-          Save<span className="hidden sm:inline"> and get my Addon URL</span>
-        </>
-      ) : (
-        "Save"
-      )}
+      {showSaving ? "Saving" : "Save"}
     </>
   );
 

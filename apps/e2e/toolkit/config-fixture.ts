@@ -36,7 +36,7 @@ export const SAVED_WITH_CHANGES =
   "Saved the submitted settings. You have unsaved changes: save again to apply them.";
 
 /** The label of the Save button before the first save creates the Account. */
-export const SAVE_NEW = "Save and get my Addon URL";
+export const SAVE_NEW = "Save";
 
 /**
  * The Save button at the top of the Lists column. The floating Save button

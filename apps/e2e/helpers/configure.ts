@@ -3,7 +3,7 @@ import type { Locator, Page } from "@playwright/test";
 import { FRONTEND_URL } from "../env.js";
 
 /** The label of the Save button before the first save creates the Account. */
-export const SAVE_NEW = "Save and get my Addon URL";
+export const SAVE_NEW = "Save";
 
 /** The save message when Stremio needs no reinstall. */
 export const SAVED = "Saved! Your catalogs will refresh with the new settings.";
