@@ -31,9 +31,9 @@ stream responses are uncached. LG/Samsung clients cannot open these URLs.
 Previews read Providers through the shared pipeline without writing Catalog
 caches or sync statuses. They may populate the shared Title ID map. In-memory
 reads last five minutes (30 seconds if entries remain unchecked); private reads
-are isolated by Account and authorization version. Reconnecting invalidates
-that scope; routine token refreshes retain it. Preview shuffle can differ from
-the saved Catalog.
+are isolated by Account and a hash of the access token. Changing the token,
+including during a routine refresh, changes that scope. Preview shuffle can
+differ from the saved Catalog.
 
 ## ADR 0005: Sync status is per Source list
 
@@ -85,8 +85,9 @@ up the relevant R2 prefixes.
 Adapters live in `apps/backend/src/providers/`. Prefer anonymous public reads;
 use encrypted OAuth Connections for private Sources and Actions. Refresh leases
 serialize rotating tokens, and refreshes retain the original redirect URI.
-Private caches belong to a stable authorization version: token refresh preserves
-it, while reconnect or disconnect invalidates cached data from the old grant.
+Saved private Catalog caches belong to a stable authorization version: token
+refresh preserves it, while reconnect or disconnect invalidates cached data
+from the old grant.
 `DISABLED_PROVIDERS` blocks all outbound access to those Providers, including ID
 lookups and Actions, while Lists continue serving their last cached Catalog.
 
