@@ -223,9 +223,7 @@ export async function normalizeLists(
     );
     const sources: ListSource[] = [];
     for (const source of submitted.sources) {
-      sources.push(
-        await normalizeSource(source, { ...access, savedSources }),
-      );
+      sources.push(await normalizeSource(source, { ...access, savedSources }));
     }
     const [first, ...mergedSources] = sources;
     const input: ListInput = {

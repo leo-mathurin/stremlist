@@ -125,9 +125,7 @@ export async function enrichTitles(
         result.set(meta.id, meta);
         remember(meta);
       }
-      notFromImdb = notFromImdb.filter(
-        (title) => !fromImdb.has(title.imdbId),
-      );
+      notFromImdb = notFromImdb.filter((title) => !fromImdb.has(title.imdbId));
     } catch (error) {
       console.error(
         "IMDb title lookup failed, falling back to Cinemeta:",
