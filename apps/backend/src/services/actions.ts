@@ -189,11 +189,25 @@ export async function forgetConnectionObjects(
   accountId: string,
   provider: ProviderId,
 ): Promise<void> {
+  forgetConnectionMemory(accountId, provider);
+  await deletePrefix(connectionPrefix(accountId, provider));
+}
+
+/** Reauthorization replaces snapshots, but the same user's history survives. */
+export async function resetConnectionCaches(
+  accountId: string,
+  provider: ProviderId,
+): Promise<void> {
+  forgetConnectionMemory(accountId, provider);
+  const prefix = connectionPrefix(accountId, provider);
+  await deletePrefix(prefix, `${prefix}history/`);
+}
+
+function forgetConnectionMemory(accountId: string, provider: ProviderId): void {
   const key = membershipKey(accountId, provider);
   memoryMembership.delete(key);
   failedRefreshes.delete(key);
   getProvider(provider).forgetConnection?.(accountId);
-  await deletePrefix(connectionPrefix(accountId, provider));
 }
 
 /**

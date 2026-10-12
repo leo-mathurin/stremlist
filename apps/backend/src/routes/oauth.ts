@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { scheduleBackgroundTask } from "../lib/background";
 import { backendOrigin, frontendUrl } from "../lib/urls";
 import { getProvider, isProviderEnabled } from "../providers/registry";
-import { forgetConnectionObjects } from "../services/actions";
+import { resetConnectionCaches } from "../services/actions";
 import { saveConnection } from "../services/connections";
 import { rereadConnectionLists } from "../services/lists";
 import { consumeState, exchangeCode, redirectUri } from "../services/oauth";
@@ -81,7 +81,7 @@ oauth.get("/oauth/:provider/callback", async (c) => {
     // refused one) read through the new one.
     scheduleBackgroundTask(async () => {
       try {
-        await forgetConnectionObjects(pending.accountId, provider);
+        await resetConnectionCaches(pending.accountId, provider);
       } catch (forgetError) {
         console.error(
           `Forgetting the previous ${provider} connection state failed:`,

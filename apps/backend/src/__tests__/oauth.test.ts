@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 
+const background = vi.hoisted(() => ({
+  tasks: [] as (() => Promise<unknown>)[],
+}));
+vi.mock("../lib/background", () => ({
+  scheduleBackgroundTask: (task: () => Promise<unknown>) =>
+    background.tasks.push(task),
+}));
+vi.mock("../lib/r2", async () => await import("./helpers/mock-r2.js"));
+
 vi.mock("../lib/supabase", async () => {
   return await import("./helpers/mock-supabase.js");
 });
@@ -17,17 +26,25 @@ vi.mock("../lib/resend", () => ({
 import app from "../index.js";
 import { decryptSecret } from "../lib/crypto";
 import type { OAuthConfig, ProviderAdapter } from "../providers/types";
+import { forgetConnectionObjects } from "../services/actions";
 import {
   OAuthNotConfiguredError,
   redirectUri,
   startAuthorization,
 } from "../services/oauth";
 import {
+  applySynchronization,
+  historyApplies,
+  historyKey,
+  readHistory,
+} from "../services/title-history";
+import {
   seedAccount,
   seedConnection,
   seedLegacyAccount,
   useTestEncryptionKey,
 } from "./helpers/fixtures.js";
+import { r2Objects } from "./helpers/mock-r2.js";
 import {
   fakeAdapter,
   resetProviders,
@@ -99,6 +116,8 @@ let accountId = "";
 
 beforeEach(() => {
   db.reset();
+  r2Objects.clear();
+  background.tasks.length = 0;
   resetRpc();
   resetProviders();
   useTestEncryptionKey();
@@ -276,6 +295,63 @@ describe("GET /:accountId/connections/:provider/sources", () => {
 });
 
 describe("GET /oauth/:provider/callback", () => {
+  it.each(["leo", "another-user"])(
+    "keeps durable history on renewal, applying it only to its owner (%s)",
+    async (username) => {
+      useOAuthProvider();
+      const original = seedConnection(accountId, "trakt", { username: "leo" });
+      const source = { provider: "trakt" as const, sourceRef: "me/history" };
+      const identity = { user: "leo", connectedAt: original.created_at };
+      const baseline = applySynchronization(
+        null,
+        source,
+        [],
+        new Date("2026-01-01"),
+        identity,
+      );
+      const detected = applySynchronization(
+        baseline?.history ?? null,
+        source,
+        [{ key: "imdb:tt1", imdbId: "tt1" }],
+        new Date("2026-01-02"),
+        identity,
+      );
+      if (!detected) throw new Error("missing history");
+      const key = historyKey(accountId, source);
+      r2Objects.set(key, JSON.stringify(detected.history));
+      const prefix = `connections/${accountId}/trakt/`;
+      for (const name of [
+        "membership.json",
+        "library.json",
+        "lists/1.json",
+        "lists/2.json",
+      ])
+        r2Objects.set(prefix + name, "{}");
+      const before = r2Objects.get(key);
+      seedState(accountId);
+      fetchMock.mockResolvedValue(Response.json({ access_token: "renewed" }));
+      fetchUsername.mockResolvedValue(username);
+
+      const response = await callback({ code: "code-1", state: "state-abc" });
+      expect(redirectParams(response).params.connected).toBe("trakt");
+      for (const task of background.tasks.splice(0)) await task();
+
+      expect([...r2Objects.keys()]).toEqual([key]);
+      expect(r2Objects.get(key)).toBe(before);
+      const history = await readHistory(accountId, source);
+      if (!history) throw new Error("missing stored history");
+      const current = db.getTable("connections")[0];
+      expect(
+        historyApplies(history, source, {
+          user: username,
+          connectedAt: String(current.created_at),
+        }),
+      ).toBe(username === "leo");
+      await forgetConnectionObjects(accountId, "trakt");
+      expect(r2Objects.size).toBe(0);
+    },
+  );
+
   it("exchanges the code, stores the encrypted Connection and returns to the configure page", async () => {
     useOAuthProvider();
     seedState(accountId);

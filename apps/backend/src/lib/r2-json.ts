@@ -107,8 +107,11 @@ export async function writeJson(
   );
 }
 
-/** Delete every object whose key starts with `prefix`, page by page. */
-export async function deletePrefix(prefix: string): Promise<void> {
+/** Delete a prefix page by page, optionally retaining a nested prefix. */
+export async function deletePrefix(
+  prefix: string,
+  retainedPrefix?: string,
+): Promise<void> {
   const client = getR2Client();
   const bucket = getR2Bucket();
   let continuationToken: string | undefined;
@@ -121,7 +124,9 @@ export async function deletePrefix(prefix: string): Promise<void> {
       }),
     );
     const keys = (page.Contents ?? []).flatMap((object) =>
-      object.Key ? [{ Key: object.Key }] : [],
+      object.Key && (!retainedPrefix || !object.Key.startsWith(retainedPrefix))
+        ? [{ Key: object.Key }]
+        : [],
     );
     // A list page holds at most 1,000 keys, the most one delete accepts.
     if (keys.length > 0) {
