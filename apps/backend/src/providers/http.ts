@@ -65,28 +65,40 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Limiters for each key (a user, a token): one key's backlog never delays
+ * another key's calls. Past `maxKeys`, the least recently used are dropped.
+ */
+export function limitersByKey<T>(
+  create: () => T,
+  maxKeys = 1000,
+): (key: string) => T {
+  const byKey = new LruCache<string, T>({ maxEntries: maxKeys });
+  return (key) => {
+    let limiters = byKey.get(key);
+    if (!limiters) {
+      limiters = create();
+      byKey.set(key, limiters);
+    }
+    return limiters;
+  };
+}
+
+/**
  * Limiters for each Provider user, for quotas that a Provider counts per
- * user: one user's backlog never delays another user's calls. They are keyed
- * by the Provider username, or by the Account when the username is unknown,
- * so such users never share one. Past `maxUsers`, the least recently used
- * are dropped.
+ * user. They are keyed by the Provider username, or by the Account when the
+ * username is unknown, so such users never share one.
  */
 export function limitersPerUser<T>(
   create: () => T,
   maxUsers = 1000,
 ): (connection: Pick<ConnectionAccess, "accountId" | "username">) => T {
-  const byUser = new LruCache<string, T>({ maxEntries: maxUsers });
-  return (connection) => {
-    const key = connection.username
-      ? `user:${connection.username.toLowerCase()}`
-      : `account:${connection.accountId}`;
-    let limiters = byUser.get(key);
-    if (!limiters) {
-      limiters = create();
-      byUser.set(key, limiters);
-    }
-    return limiters;
-  };
+  const forKey = limitersByKey(create, maxUsers);
+  return (connection) =>
+    forKey(
+      connection.username
+        ? `user:${connection.username.toLowerCase()}`
+        : `account:${connection.accountId}`,
+    );
 }
 
 export interface ProviderFetchOptions extends RequestInit {

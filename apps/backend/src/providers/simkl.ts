@@ -2,7 +2,12 @@ import { CONNECTION_SOURCES } from "@stremlist/shared/providers";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
 import { revokeToken } from "./oauth-app";
 import { simklActions } from "./simkl/actions";
-import { postLimiter, SIMKL_API, simklClient, simklRequest } from "./simkl/api";
+import {
+  SIMKL_API,
+  simklClient,
+  simklLimiters,
+  simklRequest,
+} from "./simkl/api";
 import {
   historyEntries,
   HISTORY_REF,
@@ -120,7 +125,7 @@ export const simklProvider: ProviderAdapter = {
         `${SIMKL_API}/oauth2/revoke`,
         token,
         simklClient,
-        postLimiter,
+        simklLimiters(token).post,
       ),
 
     async fetchUsername(token) {

@@ -1,6 +1,7 @@
 import { ADDON_VERSION } from "@stremlist/shared/constants";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { simklProvider } from "../../simkl";
+import { simklLimiters } from "../../simkl/api";
 import {
   calls,
   ctx,
@@ -38,9 +39,15 @@ describe("simkl requests", () => {
     }
   });
 
-  it("stay under 10 GET and 1 POST per second", () => {
-    expect(limiters).toContainEqual([10, 1000]);
-    expect(limiters).toContainEqual([1, 1000]);
+  it("stay under 10 GET and 1 POST per second for each user token", () => {
+    const first = simklLimiters("simkl_at_first");
+    expect(limiters.slice(-2)).toEqual([
+      [10, 1000],
+      [1, 1000],
+    ]);
+    expect(simklLimiters("simkl_at_first")).toBe(first);
+    // AUTH V2 has no app-wide cap: another user never waits for this one.
+    expect(simklLimiters("simkl_at_second")).not.toBe(first);
   });
 
   it("treat a rejected token as a lost Connection", async () => {

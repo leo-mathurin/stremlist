@@ -1,15 +1,25 @@
 import { ADDON_VERSION } from "@stremlist/shared/constants";
-import { HttpError, providerFetchJson, RateLimiter } from "../http";
+import {
+  HttpError,
+  limitersByKey,
+  providerFetchJson,
+  RateLimiter,
+} from "../http";
 import { oauthClient } from "../oauth-app";
 import { SourceUnavailableError } from "../types";
 
 export const SIMKL_API = "https://api.simkl.com";
 const APP_NAME = "stremlist";
 
-// Simkl allows 10 GET and 1 POST per second for each user token. A POST over
-// the limit gets the token blocked for a while, so writes are never retried.
-const getLimiter = new RateLimiter(10, 1000);
-export const postLimiter = new RateLimiter(1, 1000);
+// With AUTH V2, Simkl allows 10 GET and 1 POST per second for each user and
+// has no app-wide cap. Every call carries the user's token, so the limiters
+// go by token (a refresh gives a new one about once a week): one user's
+// backlog never delays another user's reads. A POST over the limit gets the
+// token blocked for a while, so writes are never retried.
+export const simklLimiters = limitersByKey(() => ({
+  get: new RateLimiter(10, 1000),
+  post: new RateLimiter(1, 1000),
+}));
 
 export const simklClient = oauthClient("SIMKL");
 
@@ -44,7 +54,10 @@ export async function simklRequest<T>(
         headers: { Accept: "application/json", "simkl-api-key": id },
         bearer: options.token,
         json: options.body,
-        limiter: method === "GET" ? getLimiter : postLimiter,
+        limiter:
+          method === "GET"
+            ? simklLimiters(options.token).get
+            : simklLimiters(options.token).post,
         retryOn429: method === "GET",
       },
     );
