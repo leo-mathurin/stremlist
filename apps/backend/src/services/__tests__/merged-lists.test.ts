@@ -372,9 +372,16 @@ describe("mergeSourceCatalogs", () => {
     );
   });
 
-  it("never serves the date added to Stremio", () => {
-    const meta = dated("tt1", "2020-01-01T00:00:00.000Z");
-    expect(toStremioMeta(meta)).toEqual(movie("tt1"));
-    expect(meta.addedAt).toBe("2020-01-01T00:00:00.000Z");
-  });
+  it.each([undefined, "2020-01-01T00:00:00.000Z"])(
+    "never serves internal timestamps to Stremio (addedAt: %s)",
+    (addedAt) => {
+      const meta = {
+        ...dated("tt1", addedAt),
+        enrichedAt: "2026-01-01T00:00:00.000Z",
+      };
+      expect(toStremioMeta(meta)).toEqual(movie("tt1"));
+      expect(meta.addedAt).toBe(addedAt);
+      expect(meta.enrichedAt).toBe("2026-01-01T00:00:00.000Z");
+    },
+  );
 });

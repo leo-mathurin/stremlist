@@ -4,7 +4,7 @@ import {
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 vi.mock(
   "../../lib/supabase",
@@ -144,15 +144,20 @@ beforeEach(() => {
   r2.send.mockClear();
 });
 
+afterEach(() => vi.useRealTimers());
+
 describe("R2 watchlist cache", () => {
   it("round-trips a compressed catalog and de-duplicates repeated items", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
     const id = watchlistId();
     const cachedAt = new Date("2026-08-26T10:00:00.000Z");
 
-    await writeCachedList(id, { metas: [MOVIE, { ...MOVIE }] }, cachedAt);
-
+    const meta = { ...MOVIE, enrichedAt: "2026-08-20T00:00:00.000Z" };
+    await writeCachedList(id, { metas: [meta, { ...meta }] }, cachedAt);
+    // Drop the process caches: enrichment time must survive persisted JSON.
+    vi.setSystemTime(Date.now() + 61_000);
     const cached = await getCachedList(id);
-    expect(cached?.data).toEqual({ metas: [MOVIE] });
+    expect(cached?.data).toEqual({ metas: [meta] });
     expect(cached?.cachedAt).toEqual(cachedAt);
     expect(cached?.generation).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,

@@ -58,14 +58,67 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
 describe("enrichTitles", () => {
+  it("does not renew the enrichment timestamp on memory reuse", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const id = freshId();
+    const at = new Date("2026-02-01T00:00:00Z");
+    vi.setSystemTime(at);
+    scraperMocks.fetchTitlesByIds.mockResolvedValue(new Map([[id, meta(id)]]));
+    await enrichTitles([{ imdbId: id }]);
+    vi.setSystemTime(at.getTime() + 60 * 60_000);
+    expect((await enrichTitles([{ imdbId: id }])).get(id)?.enrichedAt).toBe(
+      at.toISOString(),
+    );
+  });
+
+  it("re-enriches expired and undated metadata while retaining recent entries", async () => {
+    const [old, legacy, recent] = [freshId(), freshId(), freshId()];
+    const previous = new Map<string, StremioMeta & { enrichedAt?: string }>([
+      [
+        old,
+        {
+          ...meta(old),
+          enrichedAt: new Date(Date.now() - 8 * 24 * 60 * 60_000).toISOString(),
+        },
+      ],
+      [legacy, meta(legacy)],
+      [recent, { ...meta(recent), enrichedAt: new Date().toISOString() }],
+    ]);
+    scraperMocks.fetchTitlesByIds.mockImplementation((ids) =>
+      Promise.resolve(
+        new Map(ids.map((id) => [id, meta(id, { imdbRating: "9.0" })])),
+      ),
+    );
+    const result = await enrichTitles(
+      [old, legacy, recent].map((imdbId) => ({ imdbId })),
+      previous,
+    );
+    expect(scraperMocks.fetchTitlesByIds).toHaveBeenCalledExactlyOnceWith([
+      old,
+      legacy,
+    ]);
+    expect(result.get(old)?.imdbRating).toBe("9.0");
+    expect(result.get(legacy)?.enrichedAt).toBeDefined();
+    expect(result.get(recent)).toEqual(previous.get(recent));
+  });
+
   it("reuses metadata from the previous cache generation without any lookup", async () => {
     const id = freshId();
-    const previous = new Map([[id, meta(id, { name: "Cached" })]]);
+    const previous = new Map([
+      [
+        id,
+        {
+          ...meta(id, { name: "Cached" }),
+          enrichedAt: new Date().toISOString(),
+        },
+      ],
+    ]);
 
     const result = await enrichTitles([{ imdbId: id }], previous);
 
@@ -82,7 +135,15 @@ describe("enrichTitles", () => {
 
     const result = await enrichTitles(
       [{ imdbId: a }, { imdbId: known }, { imdbId: b }, { imdbId: a }],
-      new Map([[known, meta(known, { name: "Known" })]]),
+      new Map([
+        [
+          known,
+          {
+            ...meta(known, { name: "Known" }),
+            enrichedAt: new Date().toISOString(),
+          },
+        ],
+      ]),
     );
 
     expect(scraperMocks.fetchTitlesByIds).toHaveBeenCalledExactlyOnceWith([
@@ -131,7 +192,7 @@ describe("enrichTitles", () => {
     const result = await enrichTitles([{ imdbId: id, type: "series" }]);
 
     expect(requestedUrls()).toEqual([cinemetaUrl("series", id)]);
-    expect(result.get(id)).toEqual({
+    expect(result.get(id)).toMatchObject({
       id,
       type: "series",
       name: "From Cinemeta",

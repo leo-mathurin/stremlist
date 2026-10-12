@@ -1,7 +1,7 @@
 import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const scraperMocks = vi.hoisted(() => ({
   fetchChart: vi.fn(),
@@ -250,6 +250,37 @@ describe("getListCatalog", () => {
 });
 
 describe("Provider pipeline: resolve, enrich, cache", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("refreshes metadata after seven days despite daily catalog refreshes", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const origin = new Date("2026-01-01T00:00:00Z");
+    vi.setSystemTime(origin);
+    const id = "tt8800001";
+    useFakeProvider(fakeAdapter("trakt", { entries: [{ imdbId: id }] }));
+    scraperMocks.fetchTitlesByIds.mockResolvedValue(
+      new Map([[id, meta(id, { imdbRating: "7.0" })]]),
+    );
+    const source = config({
+      provider: "trakt",
+      sourceRef: "users/leo/watchlist",
+      policy: "manual",
+    });
+    await readList(source);
+    for (let day = 1; day < 7; day++) {
+      vi.setSystemTime(origin.getTime() + day * 24 * 60 * 60_000);
+      expect((await readList(source)).metas[0].imdbRating).toBe("7.0");
+    }
+    expect(scraperMocks.fetchTitlesByIds).toHaveBeenCalledOnce();
+    vi.setSystemTime(origin.getTime() + 7 * 24 * 60 * 60_000);
+    scraperMocks.fetchTitlesByIds.mockResolvedValue(
+      new Map([[id, meta(id, { imdbRating: "8.0" })]]),
+    );
+    const refreshed = await readList(source);
+    expect(refreshed.metas[0].imdbRating).toBe("8.0");
+    expect(scraperMocks.fetchTitlesByIds).toHaveBeenCalledTimes(2);
+    expect(refreshed.metas[0]).not.toHaveProperty("enrichedAt");
+  });
   it("resolves and enriches the entries of an adapter that only returns IDs", async () => {
     const entries: SourceEntry[] = [
       { imdbId: "tt0000001", type: "movie" },
@@ -364,7 +395,16 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
 
   it("reuses metadata from the previous cache generation", async () => {
     const cachedAt = new Date(Date.now() - 2 * 60 * 60_000);
-    cache.seed(LIST_ID, [meta("tt0000001", { name: "Cached" })], cachedAt);
+    cache.seed(
+      LIST_ID,
+      [
+        {
+          ...meta("tt0000001", { name: "Cached" }),
+          enrichedAt: cachedAt.toISOString(),
+        },
+      ],
+      cachedAt,
+    );
     useFakeProvider(
       fakeAdapter("trakt", {
         entries: [{ imdbId: "tt0000001" }, { imdbId: "tt0000002" }],
@@ -393,9 +433,12 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
     cache.seed(
       LIST_ID,
       [
-        meta("tt0000001", {
-          description: `A banker.\n\nMore on Trakt: ${url}`,
-        }),
+        {
+          ...meta("tt0000001", {
+            description: `A banker.\n\nMore on Trakt: ${url}`,
+          }),
+          enrichedAt: cachedAt.toISOString(),
+        },
       ],
       cachedAt,
     );

@@ -3,18 +3,19 @@ import {
   isProviderId,
   sourceRequiresConnection,
 } from "@stremlist/shared/providers";
-import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import {
   authorizationFingerprint,
   isCurrentConnection,
 } from "../../services/connection-identity";
 import type { ConnectionIdentity } from "../../services/connection-identity";
+import type { SourceMeta, SourceCatalogData } from "../../services/list-cache";
 import { mapList } from "../../services/list-rows";
 import { sourceCaches } from "../../services/merged-lists";
 import { db } from "./mock-supabase";
 
 interface Entry {
-  data: CatalogData;
+  data: SourceCatalogData;
   cachedAt: Date;
   generation: string;
   source?: string;
@@ -54,7 +55,7 @@ class InMemoryListCache {
 
   seed(
     listId: string,
-    metas: StremioMeta[],
+    metas: SourceMeta[],
     cachedAt = new Date(),
     source?: CacheSource,
     connection?: ConnectionIdentity,
@@ -138,7 +139,7 @@ export async function getCachedList(
 
 export function writeCachedList(
   listId: string,
-  listData: CatalogData,
+  listData: SourceCatalogData,
   cachedAt = new Date(),
   source?: CacheSource,
   connection?: ConnectionIdentity,

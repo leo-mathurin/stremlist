@@ -143,8 +143,9 @@ export function mergeListCatalogs(
 
 /** The meta as Stremio gets it: the date added stays in the cache. */
 export function toStremioMeta(meta: SourceMeta): StremioMeta {
-  if (meta.addedAt === undefined) return meta;
+  if (meta.addedAt === undefined && meta.enrichedAt === undefined) return meta;
   const copy = { ...meta };
   delete copy.addedAt;
+  delete copy.enrichedAt;
   return copy;
 }

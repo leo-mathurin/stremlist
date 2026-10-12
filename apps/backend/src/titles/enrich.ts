@@ -6,24 +6,31 @@ import { fetchTitlesByIds } from "../services/imdb-scraper";
 
 const CINEMETA = "https://v3-cinemeta.strem.io";
 const cinemetaLimiter = new RateLimiter(20, 1000);
+/** Maximum age of metadata reused from a persisted Source catalog. */
+const METADATA_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
 const MEMORY_TTL_MS = 6 * 60 * 60_000;
 const MEMORY_MAX_ENTRIES = 5000;
 /** Most titles one refresh asks Cinemeta for when IMDb fails. */
 const MAX_CINEMETA_TITLES = 200;
 
-const memory = new Map<string, { meta: StremioMeta; expiresAt: number }>();
+export type EnrichedMeta = StremioMeta & { enrichedAt: string };
+type PreviousMeta = StremioMeta & { enrichedAt?: string };
 
-function remember(meta: StremioMeta): void {
+const memory = new Map<string, { meta: EnrichedMeta; expiresAt: number }>();
+
+function remember(meta: StremioMeta): EnrichedMeta {
+  const dated = { ...meta, enrichedAt: new Date().toISOString() };
   memory.delete(meta.id);
-  memory.set(meta.id, { meta, expiresAt: Date.now() + MEMORY_TTL_MS });
+  memory.set(meta.id, { meta: dated, expiresAt: Date.now() + MEMORY_TTL_MS });
   while (memory.size > MEMORY_MAX_ENTRIES) {
     const oldest = memory.keys().next().value;
     if (!oldest) break;
     memory.delete(oldest);
   }
+  return dated;
 }
 
-function recall(imdbId: string): StremioMeta | null {
+function recall(imdbId: string): EnrichedMeta | null {
   const entry = memory.get(imdbId);
   if (!entry) return null;
   if (entry.expiresAt <= Date.now()) {
@@ -103,14 +110,21 @@ interface TitleToEnrich {
  */
 export async function enrichTitles(
   titles: TitleToEnrich[],
-  previous = new Map<string, StremioMeta>(),
-): Promise<Map<string, StremioMeta>> {
-  const result = new Map<string, StremioMeta>();
+  previous = new Map<string, PreviousMeta>(),
+): Promise<Map<string, EnrichedMeta>> {
+  const result = new Map<string, EnrichedMeta>();
   const missing = new Map<string, TitleToEnrich>();
   // A Source list can hold a Title twice (history, two seasons): look it up once.
   for (const title of titles) {
     if (result.has(title.imdbId) || missing.has(title.imdbId)) continue;
-    const known = previous.get(title.imdbId) ?? recall(title.imdbId);
+    const cached = previous.get(title.imdbId);
+    const age = cached?.enrichedAt
+      ? Date.now() - Date.parse(cached.enrichedAt)
+      : NaN;
+    const known =
+      cached?.enrichedAt && age >= 0 && age < METADATA_MAX_AGE_MS
+        ? { ...cached, enrichedAt: cached.enrichedAt }
+        : recall(title.imdbId);
     if (known) result.set(title.imdbId, known);
     else missing.set(title.imdbId, title);
   }
@@ -122,8 +136,7 @@ export async function enrichTitles(
     try {
       const fromImdb = await fetchTitlesByIds([...missing.keys()]);
       for (const meta of fromImdb.values()) {
-        result.set(meta.id, meta);
-        remember(meta);
+        result.set(meta.id, remember(meta));
       }
       notFromImdb = notFromImdb.filter((title) => !fromImdb.has(title.imdbId));
     } catch (error) {
@@ -139,8 +152,7 @@ export async function enrichTitles(
     try {
       const meta = await fetchCinemeta(title.imdbId, title.type);
       if (meta) {
-        result.set(meta.id, meta);
-        remember(meta);
+        result.set(meta.id, remember(meta));
       }
     } catch (error) {
       console.error(

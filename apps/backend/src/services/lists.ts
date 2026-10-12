@@ -53,9 +53,6 @@ import { recordRefreshOutcome } from "./sync-status";
  */
 const RESUME_RESOLUTION_MS = 2 * 60_000;
 
-/** Re-enrich every Title at least this often, so ratings stay current. */
-const METADATA_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
-
 /**
  * Thrown when a List cannot be served at all: the Provider read failed and no
  * cached Catalog is available. Every reason except "unavailable" is an
@@ -192,13 +189,14 @@ export async function providerContext(
  * an older date).
  */
 function toSourceMeta(
-  meta: StremioMeta,
+  meta: SourceMeta,
   entry: SourceEntry,
   provider: ProviderId,
 ): SourceMeta {
-  const linked: SourceMeta = toStremioMeta(
-    withLinkBack(meta, provider, entry.sourceUrl),
-  );
+  const linked: SourceMeta = {
+    ...toStremioMeta(withLinkBack(meta, provider, entry.sourceUrl)),
+    enrichedAt: meta.enrichedAt ?? new Date().toISOString(),
+  };
   const time = entry.addedAt ? Date.parse(entry.addedAt) : Number.NaN;
   return Number.isFinite(time)
     ? { ...linked, addedAt: new Date(time).toISOString() }
@@ -259,11 +257,11 @@ export async function buildCatalog(
     { budgetMs: config.resolveBudgetMs ?? DEFAULT_RESOLVE_BUDGET_MS },
   );
 
-  const previous = new Map<string, StremioMeta>();
+  const previous = new Map<string, SourceMeta>();
   const cached = config.cacheKey
     ? await getCachedList(config.cacheKey, config)
     : null;
-  if (cached && Date.now() - cached.cachedAt.getTime() < METADATA_MAX_AGE_MS) {
+  if (cached) {
     for (const meta of cached.data.metas) previous.set(meta.id, meta);
   }
 

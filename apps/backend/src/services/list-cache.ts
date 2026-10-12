@@ -45,13 +45,17 @@ const stremioMetaSchema = z.object({
   released: z.string().datetime().optional(),
   // When the Title joined the Source list; never served to Stremio.
   addedAt: z.string().datetime().optional(),
+  enrichedAt: z.string().datetime().optional(),
 });
 
 /**
  * A Title as the cache keeps it: its meta, and when it joined its Source
  * list (ADR 0006). The date is never served to Stremio.
  */
-export type SourceMeta = StremioMeta & { addedAt?: string };
+export type SourceMeta = StremioMeta & {
+  addedAt?: string;
+  enrichedAt?: string;
+};
 
 /** The canonical Catalog of one Source list, as the cache keeps it. */
 export interface SourceCatalogData {
