@@ -2,183 +2,28 @@ import { IMDB_TITLE_ID_PATTERN } from "@stremlist/shared/constants";
 import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
 import { joinProviderLabels, PROVIDERS } from "@stremlist/shared/providers";
 import type { StremioStream } from "@stremlist/shared/stremio.types";
-import { scheduleBackgroundTask } from "../lib/background";
-import { LruCache } from "../lib/lru";
-import {
-  connectionPrefix,
-  deletePrefix,
-  readJson,
-  writeJson,
-} from "../lib/r2-json";
+import { connectionPrefix, deletePrefix } from "../lib/r2-json";
 import {
   getProvider,
   isProviderEnabled,
   supportsAction,
 } from "../providers/registry";
-import type {
-  ActionIntent,
-  ActionTarget,
-  ConnectionAccess,
-  Membership,
-} from "../providers/types";
+import type { ActionIntent, ActionTarget } from "../providers/types";
 import type { Account } from "./accounts";
 import { getAccountLists } from "./accounts";
+import {
+  applyMembershipAction,
+  EMPTY_MEMBERSHIP,
+  forgetMembership,
+  MEMBERSHIP_FRESH_MS,
+  readMembership,
+  scheduleMembershipRefresh,
+} from "./action-membership";
 import { getConnectionAccess, listConnections } from "./connections";
 import { markCachedListStale } from "./list-cache";
 import { sourceCaches } from "./merged-lists";
 
-/** Membership older than this is refreshed in the background. */
-const MEMBERSHIP_FRESH_MS = 15 * 60_000;
-/**
- * How long this instance trusts its copy of a membership (or of its absence)
- * before it reads R2 again and sees what other instances wrote.
- */
-const MEMORY_MEMBERSHIP_TTL_MS = 60_000;
-/**
- * A large membership (10,000 Titles and 20,000 episodes) is ~0.5 MB of JSON,
- * a usual one a few KB. 8 MB (~30 MB of heap for these short strings) keeps
- * thousands of usual users.
- */
-const MEMORY_MEMBERSHIP_MAX_WEIGHT = 8 * 1024 * 1024;
-/**
- * After a failed refresh, stream requests wait this long before they ask for
- * another: a Provider outage must not turn each request into a full read.
- */
-const REFRESH_COOLDOWN_MS = 5 * 60_000;
 const STREAM_NAME = "Stremlist";
-
-const EMPTY_MEMBERSHIP: Membership = {
-  watchlist: [],
-  watched: [],
-  watchedEpisodes: [],
-  ratings: {},
-};
-
-interface StoredMembership {
-  fetchedAt: string;
-  /** The Provider user it was read for: a new Connection may be another one. */
-  username: string | null;
-  membership: Membership;
-}
-
-function membershipKey(accountId: string, provider: ProviderId): string {
-  return `${connectionPrefix(accountId, provider)}membership.json`;
-}
-
-/** Copies of R2's membership objects; null when R2 has none. */
-const memoryMembership = new LruCache<string, StoredMembership | null>({
-  maxEntries: 10_000,
-  maxWeight: MEMORY_MEMBERSHIP_MAX_WEIGHT,
-  ttlMs: MEMORY_MEMBERSHIP_TTL_MS,
-});
-
-/** About the JSON length of a stored membership, without serializing it. */
-function membershipWeight(stored: StoredMembership | null): number {
-  if (!stored) return 100;
-  const { watchlist, watched, watchedEpisodes, ratings } = stored.membership;
-  return (
-    200 +
-    (watchlist.length + watched.length) * 13 +
-    watchedEpisodes.length * 18 +
-    Object.keys(ratings).length * 16
-  );
-}
-
-function rememberMembership(
-  key: string,
-  stored: StoredMembership | null,
-): void {
-  memoryMembership.set(key, stored, { weight: membershipWeight(stored) });
-}
-
-/**
- * The stored membership of the connected Provider user, or null. With
- * `fresh`, read R2 even when this instance has a recent copy (before a change
- * is written on top of it).
- */
-async function readMembership(
-  accountId: string,
-  provider: ProviderId,
-  username: string | null,
-  { fresh = false }: { fresh?: boolean } = {},
-): Promise<StoredMembership | null> {
-  const key = membershipKey(accountId, provider);
-  let stored = fresh ? undefined : memoryMembership.get(key);
-  if (stored === undefined) {
-    try {
-      stored = await readJson<StoredMembership>(key);
-      rememberMembership(key, stored);
-    } catch {
-      // R2 is unreachable: use this instance's copy, and do not ask R2
-      // again on every request until the copy expires.
-      stored = memoryMembership.get(key);
-      if (stored === undefined) {
-        stored = null;
-        rememberMembership(key, null);
-      }
-    }
-  }
-  return stored?.username === username ? stored : null;
-}
-
-async function writeMembership(
-  connection: ConnectionAccess,
-  membership: Membership,
-): Promise<void> {
-  const key = membershipKey(connection.accountId, connection.provider);
-  const stored: StoredMembership = {
-    fetchedAt: new Date().toISOString(),
-    username: connection.username,
-    membership,
-  };
-  rememberMembership(key, stored);
-  await writeJson(key, stored);
-}
-
-/** Membership keys with a refresh in flight on this instance. */
-const refreshesInFlight = new Set<string>();
-/** Membership keys whose last refresh failed, until the cooldown ends. */
-const failedRefreshes = new LruCache<string, true>({
-  maxEntries: 10_000,
-  ttlMs: REFRESH_COOLDOWN_MS,
-});
-
-/**
- * Refresh a Connection's membership in the background. At most one refresh
- * per Connection runs on this instance: later requests join it by not
- * asking for another. After a failure (a failed refresh writes nothing, so
- * the membership stays stale), none starts until the cooldown ends.
- */
-function scheduleMembershipRefresh(
-  accountId: string,
-  provider: ProviderId,
-): void {
-  const key = membershipKey(accountId, provider);
-  if (refreshesInFlight.has(key) || failedRefreshes.has(key)) return;
-  refreshesInFlight.add(key);
-  scheduleBackgroundTask(async () => {
-    try {
-      const actions = getProvider(provider).actions;
-      const connection = await getConnectionAccess(accountId, provider);
-      if (!actions || !connection) {
-        failedRefreshes.set(key, true);
-        return;
-      }
-      await writeMembership(
-        connection,
-        await actions.getMembership(connection),
-      );
-    } catch (error) {
-      failedRefreshes.set(key, true);
-      console.error(
-        `Refreshing ${provider} membership for ${accountId} failed, next try in ${REFRESH_COOLDOWN_MS / 60_000} minutes:`,
-        error instanceof Error ? error.message : error,
-      );
-    } finally {
-      refreshesInFlight.delete(key);
-    }
-  });
-}
 
 /**
  * After a disconnect: delete what Stremlist stored for that Connection, in
@@ -204,9 +49,7 @@ export async function resetConnectionCaches(
 }
 
 function forgetConnectionMemory(accountId: string, provider: ProviderId): void {
-  const key = membershipKey(accountId, provider);
-  memoryMembership.delete(key);
-  failedRefreshes.delete(key);
+  forgetMembership(accountId, provider);
   getProvider(provider).forgetConnection?.(accountId);
 }
 
@@ -468,41 +311,6 @@ export interface ActionOutcome {
   error?: string;
 }
 
-function applyToMembership(
-  membership: Membership,
-  intent: ActionIntent,
-  target: ActionTarget,
-): Membership {
-  const next = structuredClone(membership);
-  const toggle = (values: string[], value: string, add: boolean) => {
-    const without = values.filter((v) => v !== value);
-    return add ? [...without, value] : without;
-  };
-  if (intent.kind === "watchlist") {
-    next.watchlist = toggle(next.watchlist, target.imdbId, intent.add);
-  } else if (intent.kind === "watched") {
-    if (target.episode) {
-      next.watchedEpisodes = toggle(
-        next.watchedEpisodes,
-        `${target.imdbId}:${target.episode.season}:${target.episode.episode}`,
-        intent.add,
-      );
-      if (intent.add) next.watched = toggle(next.watched, target.imdbId, true);
-    } else {
-      next.watched = toggle(next.watched, target.imdbId, intent.add);
-    }
-  } else if (intent.rating === null) {
-    next.ratings = Object.fromEntries(
-      Object.entries(next.ratings).filter(
-        ([imdbId]) => imdbId !== target.imdbId,
-      ),
-    );
-  } else {
-    next.ratings[target.imdbId] = intent.rating;
-  }
-  return next;
-}
-
 /**
  * Run an Action on each selected Provider. Afterwards the cached membership is
  * updated and the Catalogs whose Source lists changed are marked stale.
@@ -539,30 +347,17 @@ export async function performAction(
       }
 
       try {
-        const stored = await readMembership(
-          account.id,
-          provider,
-          connection.username,
-          { fresh: true },
-        );
-        await writeMembership(
-          connection,
-          applyToMembership(
-            stored?.membership ?? EMPTY_MEMBERSHIP,
-            intent,
-            target,
-          ),
-        );
         const affected = new Set(actions.affectedSources(intent));
-        await Promise.all(
-          lists
+        await Promise.all([
+          applyMembershipAction(connection, intent, target),
+          ...lists
             .flatMap(sourceCaches)
             .filter(
               ({ source }) =>
                 source.provider === provider && affected.has(source.sourceRef),
             )
             .map(({ cacheKey }) => markCachedListStale(cacheKey)),
-        );
+        ]);
       } catch (error) {
         console.error(
           `Updating caches after an action on ${provider} failed:`,

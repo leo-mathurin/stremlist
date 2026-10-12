@@ -411,3 +411,40 @@ test(
     }
   },
 );
+
+test(
+  "concurrent Actions from separate backends preserve both membership changes",
+  { tag: "@local" },
+  async ({ request }) => {
+    const writer = await startFixtureBackend("./provider-fixtures.ts");
+    const reader = await startFixtureBackend("./provider-fixtures.ts");
+    try {
+      const accountId = await seedAccount({ actions: ["trakt"] });
+      await seedConnection(accountId, "trakt");
+      const responses = await Promise.all([
+        request.get(
+          `${backend.url}/${accountId}/actions/watchlist/add/movie/tt0111161`,
+        ),
+        request.get(
+          `${writer.url}/${accountId}/actions/watched/add/movie/tt0111161`,
+        ),
+      ]);
+      for (const response of responses) {
+        expect(response.status()).toBe(200);
+        expect(await response.text()).toContain('class="ok"');
+      }
+      // A third process has no local copy: both changes must be stored in R2.
+      const streams = (
+        await reader.api.getStreams(accountId, "movie", "tt0111161")
+      ).body.streams;
+      expect(streams.map((stream) => stream.title)).toEqual(
+        expect.arrayContaining([
+          "🔖 In your Trakt watchlist\nSelect to remove",
+          "✅ Watched on Trakt\nSelect to mark as unwatched",
+        ]),
+      );
+    } finally {
+      await Promise.all([writer.stop(), reader.stop()]);
+    }
+  },
+);

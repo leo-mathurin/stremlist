@@ -26,7 +26,11 @@ import {
   seedList,
 } from "../../__tests__/helpers/fixtures";
 import { cache } from "../../__tests__/helpers/mock-list-cache";
-import { r2Objects } from "../../__tests__/helpers/mock-r2";
+import {
+  r2Objects,
+  r2Puts,
+  r2Unreadable,
+} from "../../__tests__/helpers/mock-r2";
 import {
   fakeActions,
   fakeAdapter,
@@ -146,6 +150,8 @@ beforeEach(() => {
   resetRpc();
   cache.reset();
   r2Objects.clear();
+  r2Unreadable.clear();
+  r2Puts.before = null;
   resetProviders();
   actionsByProvider.clear();
   performMocks.clear();
@@ -552,6 +558,33 @@ describe("background membership refresh", () => {
     expect(storedMembership(account.id, "trakt")?.watchlist).toEqual([MOVIE]);
   });
 
+  it.each([{ watchlist: [] }, { watchlist: [MOVIE] }])(
+    "discards a background snapshot overtaken by an Action ($watchlist)",
+    async ({ watchlist }) => {
+      const started = Promise.withResolvers<undefined>();
+      const snapshot = Promise.withResolvers<Membership>();
+      const account = await staleAccount(() => {
+        started.resolve(undefined);
+        return snapshot.promise;
+      }, membership({ watchlist }));
+      await open(account);
+      const refreshing = runScheduled();
+      await started.promise;
+      await performAction(
+        account,
+        ["trakt"],
+        { kind: "watchlist", add: true },
+        { imdbId: MOVIE, type: "movie" },
+      );
+      snapshot.resolve(membership());
+      await refreshing;
+      expect(storedMembership(account.id, "trakt")?.watchlist).toEqual([MOVIE]);
+      expect((await open(account))[0].title).toContain(
+        "In your Trakt watchlist",
+      );
+    },
+  );
+
   it("waits for a cooldown after a failed refresh, and logs once", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const getMembership = vi.fn(() =>
@@ -613,6 +646,49 @@ describe("background membership refresh", () => {
 });
 
 describe("performAction", () => {
+  it.each([true, false])(
+    "merges concurrent successful Actions with an existing cache: %s",
+    async (seeded) => {
+      const account = await setup({ trakt: membership() });
+      if (!seeded) r2Objects.delete(membershipKey(account.id, "trakt"));
+      const outcomes = await Promise.all([
+        performAction(
+          account,
+          ["trakt"],
+          { kind: "watchlist", add: true },
+          { imdbId: MOVIE, type: "movie" },
+        ),
+        performAction(
+          account,
+          ["trakt"],
+          { kind: "rating", rating: 8 },
+          { imdbId: SERIES, type: "series" },
+        ),
+      ]);
+      expect(outcomes.flat().every((result) => result.ok)).toBe(true);
+      expect(storedMembership(account.id, "trakt")).toEqual(
+        membership({ watchlist: [MOVIE], ratings: { [SERIES]: 8 } }),
+      );
+    },
+  );
+
+  it("does not overwrite R2 from a memory fallback when the fresh read fails", async () => {
+    const account = await setup({ trakt: membership() });
+    await buildActionStreams(account, { imdbId: MOVIE, type: "movie" }, link);
+    seedMembership(account.id, "trakt", membership({ watched: [SERIES] }));
+    r2Unreadable.add(membershipKey(account.id, "trakt"));
+    const result = await performAction(
+      account,
+      ["trakt"],
+      { kind: "watchlist", add: true },
+      { imdbId: MOVIE, type: "movie" },
+    );
+    expect(result[0].ok).toBe(true);
+    expect(storedMembership(account.id, "trakt")).toEqual(
+      membership({ watched: [SERIES] }),
+    );
+  });
+
   it("performs the Action, updates membership and marks affected Lists stale", async () => {
     const account = await setup({ trakt: membership(), simkl: membership() });
     const watchlist = seedList(account.id, {
