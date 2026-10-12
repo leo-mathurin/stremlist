@@ -7,7 +7,8 @@ import {
 } from "@stremlist/shared/source-problems";
 import { attentionTone, syncLineTone } from "@/lib/list-sync";
 import type { ListSyncState } from "@/lib/list-sync";
-import { cn, formatRelativeTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import RelativeTime from "./RelativeTime";
 
 const DOT: Record<ReturnType<typeof syncLineTone>, string> = {
   ok: "bg-emerald-500",
@@ -25,7 +26,7 @@ function titles(count: number | null): string | null {
 function Time({ iso }: { iso: string }) {
   return (
     <time dateTime={iso} title={new Date(iso).toLocaleString()}>
-      {formatRelativeTime(iso)}
+      <RelativeTime iso={iso} />
     </time>
   );
 }

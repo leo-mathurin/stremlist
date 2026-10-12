@@ -35,7 +35,6 @@ import { useConnectionSources } from "./useConnectionSources";
 import { useListEditor } from "./useListEditor";
 import { useListSyncStatus } from "./useListSyncStatus";
 import { useProviderStatus } from "./useProviderStatus";
-import { useRefreshCooldown } from "./useRefreshCooldown";
 import { useReinstallBaseline } from "./useReinstallBaseline";
 import type { InstallSetup } from "./useReinstallBaseline";
 
@@ -168,10 +167,9 @@ export function useAccountConfiguration(
   const [connecting, setConnecting] = useState<ProviderId | null>(null);
   const [lastFetchedAt, setLastFetchedAt] = useState<string | null>(null);
   const [cooldownSeconds, setCooldownSeconds] = useState(60);
-  const { cooldownRemaining, onCooldown } = useRefreshCooldown(
-    lastFetchedAt,
-    cooldownSeconds,
-  );
+  const nextRefreshAt = lastFetchedAt
+    ? new Date(lastFetchedAt).getTime() + cooldownSeconds * 1000
+    : 0;
   const baseline = useReinstallBaseline(accountKey);
   const { reset: resetBaseline, onLoaded: onBaselineLoaded } = baseline;
   /**
@@ -474,7 +472,7 @@ export function useAccountConfiguration(
   };
 
   const handleRefresh = async () => {
-    if (!accountKey || refreshing || onCooldown) return;
+    if (!accountKey || refreshing || Date.now() < nextRefreshAt) return;
 
     setRefreshing(true);
     try {
@@ -672,8 +670,7 @@ export function useAccountConfiguration(
     refreshing,
     connecting,
     lastFetchedAt,
-    cooldownRemaining,
-    onCooldown,
+    nextRefreshAt,
     reinstall,
     markReinstalled: () => baseline.markReinstalled(),
     handleSave,

@@ -26,9 +26,11 @@ import NewTitlesSettings from "../components/NewTitlesSettings";
 import type { ResolvedLink } from "../components/LinkPaste";
 import ProviderList from "../components/ProviderList";
 import QuickAdd from "../components/QuickAdd";
+import RelativeTime from "../components/RelativeTime";
 import SortableListRow from "../components/SortableListRow";
 import { SectionHeading, SplitLayout, Wordmark } from "../components/brand";
 import { usePendingIndicator } from "../hooks/usePendingIndicator";
+import { useRefreshCooldown } from "../hooks/useRefreshCooldown";
 import { useSEO } from "../hooks/useSEO";
 import { useAccountConfiguration } from "../hooks/useAccountConfiguration";
 import { ConnectionsContext } from "../hooks/connections-context";
@@ -36,7 +38,7 @@ import { accountEditPolicy } from "../lib/account-config";
 import { sourceKeys } from "../lib/list-form";
 import { attentionTone } from "../lib/list-sync";
 import { describeSource, PASTE_LINK_PROMPT } from "../lib/list-sources";
-import { cn, formatRelativeTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 /** The Account created in this tab, so its Addon URL warning stays visible. */
 const NEW_ACCOUNT_STORAGE = "stremlist:new-account";
@@ -355,7 +357,7 @@ export default function Configure() {
                 <span className="tabular-nums">
                   Refreshed{" "}
                   <span className="font-semibold text-ink">
-                    {formatRelativeTime(config.lastFetchedAt)}
+                    <RelativeTime iso={config.lastFetchedAt} />
                   </span>
                   {attention > 0 && (
                     <>
@@ -369,21 +371,11 @@ export default function Configure() {
                   )}
                 </span>
               </p>
-              <button
-                type="button"
-                onClick={config.handleRefresh}
-                disabled={config.refreshing || config.onCooldown}
-                className="inline-flex h-9 items-center gap-2 rounded-full bg-white px-4 text-sm font-semibold tabular-nums ring-1 ring-black/10 transition-colors hover:bg-cloud disabled:opacity-50"
-              >
-                <RefreshCw
-                  className={cn("size-4", config.refreshing && "animate-spin")}
-                />
-                {config.refreshing
-                  ? "Refreshing"
-                  : config.onCooldown
-                    ? `Refresh in ${config.cooldownRemaining}s`
-                    : "Refresh now"}
-              </button>
+              <RefreshButton
+                refreshing={config.refreshing}
+                nextRefreshAt={config.nextRefreshAt}
+                onRefresh={config.handleRefresh}
+              />
             </div>
           )}
         </div>
@@ -634,6 +626,34 @@ export default function Configure() {
         )}
       </div>
     </SplitLayout>
+  );
+}
+
+/** "Refresh now", with a live countdown while it waits for the cooldown. */
+function RefreshButton({
+  refreshing,
+  nextRefreshAt,
+  onRefresh,
+}: {
+  refreshing: boolean;
+  nextRefreshAt: number;
+  onRefresh: () => void;
+}) {
+  const { cooldownRemaining, onCooldown } = useRefreshCooldown(nextRefreshAt);
+  return (
+    <button
+      type="button"
+      onClick={onRefresh}
+      disabled={refreshing || onCooldown}
+      className="inline-flex h-9 items-center gap-2 rounded-full bg-white px-4 text-sm font-semibold tabular-nums ring-1 ring-black/10 transition-colors hover:bg-cloud disabled:opacity-50"
+    >
+      <RefreshCw className={cn("size-4", refreshing && "animate-spin")} />
+      {refreshing
+        ? "Refreshing"
+        : onCooldown
+          ? `Refresh in ${cooldownRemaining}s`
+          : "Refresh now"}
+    </button>
   );
 }
 

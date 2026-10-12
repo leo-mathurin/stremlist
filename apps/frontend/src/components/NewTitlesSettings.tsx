@@ -2,6 +2,7 @@ import { useId } from "react";
 import type { NewTitlesSummary } from "@stremlist/shared/stremio.types";
 import { Sparkles } from "lucide-react";
 import { cn, formatRelativeTime } from "@/lib/utils";
+import { useNow } from "@/hooks/useNow";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BRAND_CHECKBOX } from "./ActionsSettings";
 
@@ -10,7 +11,7 @@ function plural(count: number, one: string, other: string): string {
 }
 
 /** What Stremlist detected so far, or why nothing is detected yet. */
-function summaryText(summary: NewTitlesSummary): string {
+function summaryText(summary: NewTitlesSummary, now: number): string {
   const waiting =
     summary.waitingLists > 0
       ? ` Stremlist could not read ${plural(summary.waitingLists, "List", "Lists")} in full yet, so it cannot compare ${summary.waitingLists === 1 ? "it" : "them"}.`
@@ -18,7 +19,12 @@ function summaryText(summary: NewTitlesSummary): string {
   if (summary.detected === 0) {
     return `No new titles detected yet.${waiting}`;
   }
-  return `${plural(summary.detected, "new title", "new titles")} detected, the latest ${formatRelativeTime(summary.latestDetectedAt)}.${waiting}`;
+  return `${plural(summary.detected, "new title", "new titles")} detected, the latest ${formatRelativeTime(summary.latestDetectedAt, now)}.${waiting}`;
+}
+
+/** The summary, kept live on its own so the setting does not render each second. */
+function SummaryText({ summary }: { summary: NewTitlesSummary }) {
+  return <span>{summaryText(summary, useNow())}</span>;
 }
 
 /**
@@ -78,7 +84,7 @@ export default function NewTitlesSettings({
               className="mt-0.5 size-4 shrink-0 text-black/40"
               aria-hidden="true"
             />
-            <span>{summaryText(summary)}</span>
+            <SummaryText summary={summary} />
           </p>
         )
       )}

@@ -1,26 +1,11 @@
-import { useEffect, useState } from "react";
+import { useNow } from "./useNow";
 
 /**
- * The seconds left before "Refresh now" works again. While the Account has a
- * last refresh, the page renders once a second, so the "last refreshed"
- * label and the countdown stay live without per-event timers.
+ * The seconds left before "Refresh now" works again. Only the component that
+ * calls it renders each second, so the countdown stays live.
  */
-export function useRefreshCooldown(
-  lastFetchedAt: string | null,
-  cooldownSeconds: number,
-) {
-  const [now, setNow] = useState(() => Date.now());
-  const ticking = lastFetchedAt !== null;
-
-  useEffect(() => {
-    if (!ticking) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [ticking]);
-
-  const nextRefreshAt = lastFetchedAt
-    ? new Date(lastFetchedAt).getTime() + cooldownSeconds * 1000
-    : 0;
+export function useRefreshCooldown(nextRefreshAt: number) {
+  const now = useNow();
   const cooldownRemaining = Math.max(
     0,
     Math.ceil((nextRefreshAt - now) / 1000),

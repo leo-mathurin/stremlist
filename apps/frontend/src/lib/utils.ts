@@ -19,13 +19,16 @@ const RELATIVE_TIME_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
  * Formats an ISO timestamp as a human-relative string (e.g. "5 minutes ago").
  * Returns "never" when no timestamp is available or it can't be parsed.
  */
-export function formatRelativeTime(iso: string | null | undefined): string {
+export function formatRelativeTime(
+  iso: string | null | undefined,
+  now = Date.now(),
+): string {
   if (!iso) return "never";
 
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return "never";
 
-  const diffSeconds = Math.round((then - Date.now()) / 1000);
+  const diffSeconds = Math.round((then - now) / 1000);
   const absSeconds = Math.abs(diffSeconds);
 
   if (absSeconds < 5) return "just now";
