@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
+import { useRef } from "react";
 import { Link } from "react-router";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDER_LOGOS } from "@/lib/list-sources";
 import { cn } from "@/lib/utils";
+import { useSafariEdges } from "@/hooks/useSafariEdges";
 
 export function Logo({ size = 34 }: { size?: number }) {
   return (
@@ -93,9 +95,12 @@ export function SplitLayout({
   /** Show the site links after the content (pages without a Footer). */
   siteLinksBelow?: boolean;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useSafariEdges(panelRef);
+
   return (
-    <div className="grid min-h-screen bg-paper font-rounded text-ink lg:grid-cols-[minmax(340px,38%)_minmax(0,1fr)]">
-      <div className="min-w-0 bg-ink text-cloud">
+    <div className="split-layout grid min-h-screen bg-paper font-rounded text-ink lg:grid-cols-[minmax(340px,38%)_minmax(0,1fr)]">
+      <div ref={panelRef} className="min-w-0 bg-ink text-cloud">
         <aside className="p-6 sm:p-8 lg:sticky lg:top-0 lg:max-h-screen lg:min-h-screen lg:overflow-y-auto lg:p-12">
           {panel}
         </aside>

@@ -33,15 +33,22 @@ export default function FloatingSaveButton({
   const [labelWidth, setLabelWidth] = useState(0);
   useEffect(() => {
     if (!bar) return;
-    // While stuck, the button sits 20px (bottom-5) above the viewport edge,
-    // so it is never fully inside a root shrunk by 22px. Once it rests in
-    // place at the end of the page, it is.
-    const observer = new IntersectionObserver(
-      ([entry]) => setDocked(entry.intersectionRatio === 1),
-      { rootMargin: "0px 0px -22px 0px", threshold: 1 },
-    );
-    observer.observe(bar);
-    return () => observer.disconnect();
+    let observer: IntersectionObserver;
+    const observe = () => {
+      observer?.disconnect();
+      const bottom = parseFloat(getComputedStyle(bar).bottom) + 2;
+      observer = new IntersectionObserver(
+        ([entry]) => setDocked(entry.intersectionRatio === 1),
+        { rootMargin: `0px 0px -${bottom}px 0px`, threshold: 1 },
+      );
+      observer.observe(bar);
+    };
+    observe();
+    window.addEventListener("resize", observe);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", observe);
+    };
   }, [bar]);
   useEffect(() => {
     if (!label) return;
@@ -57,7 +64,7 @@ export default function FloatingSaveButton({
       ref={setBar}
       inert={!show}
       className={cn(
-        "pointer-events-none sticky bottom-5 z-20 flex justify-end transition-[opacity,translate] ease-out-quint motion-reduce:translate-y-0",
+        "safari-save-bar pointer-events-none sticky bottom-5 z-20 flex justify-end transition-[opacity,translate] ease-out-quint motion-reduce:translate-y-0",
         show ? "duration-200" : "translate-y-4 opacity-0 duration-150",
       )}
     >
