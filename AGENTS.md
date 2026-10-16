@@ -1,3 +1,7 @@
+# Verification
+
+Before handing off a behavior change, run the local [verify-stremlist skill](.agents/skills/verify-stremlist/SKILL.md). Use its feature map to select user journeys and its delivery criteria to report evidence and coverage gaps. A blocked or skipped check remains unverified.
+
 <!-- BEGIN:turborepo-agent-rules -->
 
 # This is NOT the Turborepo you know
