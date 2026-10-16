@@ -30,12 +30,17 @@ export function useSafariEdges(panelRef: RefObject<HTMLElement | null>) {
       const bottom = top + (viewport?.height ?? window.innerHeight);
       const colorAt = (y: number) =>
         mobile.matches && y >= bounds.top && y < bounds.bottom ? ink : paper;
-      const topInset = topEdge
-        ? parseFloat(getComputedStyle(topEdge, "::after").height) || 12
-        : 12;
-      const bottomInset = bottomEdge
-        ? parseFloat(getComputedStyle(bottomEdge, "::after").height) || 12
-        : 12;
+      const topStyle = topEdge ? getComputedStyle(topEdge) : null;
+      const bottomStyle = bottomEdge ? getComputedStyle(bottomEdge) : null;
+      const topInset = topStyle
+        ? Math.max(0, parseFloat(topStyle.height) + parseFloat(topStyle.top))
+        : 5;
+      const bottomInset = bottomStyle
+        ? Math.max(
+            0,
+            parseFloat(bottomStyle.height) + parseFloat(bottomStyle.bottom),
+          )
+        : 5;
       const topColor = colorAt(top + topInset);
       root.style.setProperty(properties[0], topColor);
       root.style.setProperty(properties[1], colorAt(bottom - bottomInset - 1));

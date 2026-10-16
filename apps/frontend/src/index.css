@@ -141,32 +141,59 @@
   }
 
   body {
-    padding-top: max(12px, env(safe-area-inset-top));
-    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    padding-top: max(5px, env(safe-area-inset-top));
+    padding-bottom: max(5px, env(safe-area-inset-bottom));
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
   }
 
-  .edge-top::after,
-  .edge-bottom::after {
-    content: "";
+  .edge-top,
+  .edge-bottom {
     position: fixed;
     left: 0;
     right: 0;
+    height: 12px;
     z-index: 10;
     pointer-events: none;
   }
 
-  .edge-top::after {
-    top: 0;
-    height: max(12px, env(safe-area-inset-top));
+  .edge-top {
+    top: -7px;
     background: var(--edge-top-background);
   }
 
-  .edge-bottom::after {
-    bottom: 0;
-    height: max(12px, env(safe-area-inset-bottom));
+  .edge-bottom {
+    bottom: -7px;
     background: var(--edge-bottom-background);
+  }
+
+  .edge-top::before,
+  .edge-bottom::before {
+    content: "";
+    position: fixed;
+    left: 0;
+    right: 0;
+    height: 48px;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .edge-top::before {
+    top: 5px;
+    background: linear-gradient(
+      to bottom,
+      var(--edge-top-background),
+      transparent
+    );
+  }
+
+  .edge-bottom::before {
+    bottom: 5px;
+    background: linear-gradient(
+      to top,
+      var(--edge-bottom-background),
+      transparent
+    );
   }
 
   .safari-save-bar {
