@@ -167,35 +167,6 @@
     background: var(--edge-bottom-background);
   }
 
-  .edge-top::before,
-  .edge-bottom::before {
-    content: "";
-    position: fixed;
-    left: 0;
-    right: 0;
-    height: 48px;
-    z-index: 10;
-    pointer-events: none;
-  }
-
-  .edge-top::before {
-    top: 5px;
-    background: linear-gradient(
-      to bottom,
-      var(--edge-top-background),
-      transparent
-    );
-  }
-
-  .edge-bottom::before {
-    bottom: 5px;
-    background: linear-gradient(
-      to top,
-      var(--edge-bottom-background),
-      transparent
-    );
-  }
-
   .safari-save-bar {
     bottom: calc(1.25rem + env(safe-area-inset-bottom));
   }
