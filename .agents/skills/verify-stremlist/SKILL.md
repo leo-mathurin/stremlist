@@ -135,4 +135,6 @@ Use executable `scripts/run-check.sh NEW_EVIDENCE_DIR TIMEOUT_SECONDS SERVER_POR
 
 Reuse `apps/e2e/toolkit-cache.ts` through `bun run test:toolkit:replay`, `apps/e2e/preflight.ts`, and the existing Playwright config and fixtures. The helper supervises these runners and does not replace them. For implementation checks, SQL commands, and delivery gates, read [coverage and delivery criteria](references/coverage.md).
 
+When changing the command supervisor or its fixtures, run `python3 .agents/skills/verify-stremlist/tests/run-check.py`. The committed [helper tests](tests/run-check.py) use Python 3's standard library and the same Linux tools as the helper. Each run keeps its reports under a unique `test-results/verify-stremlist-helper/` directory. It needs no application dependencies or running services.
+
 Keep the feature map current with `/maintain-verification-skill` when user journeys change.

@@ -25,6 +25,12 @@ docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supab
 
 For cache, scraper, and throughput changes, consult `apps/backend/stress/README.md` and use its existing load runner. Load tests are not part of a routine documentation change. `bun run knip` exists for unused-code analysis but is not a CI delivery gate.
 
+## Command supervisor checks
+
+Run `python3 .agents/skills/verify-stremlist/tests/run-check.py` from a fresh checkout. The committed harness and its fixtures need Python 3 and the helper's Linux tools. They start only owned processes and loopback listeners. No Bun installation, Codex skill directory, application stack, or credentials are required.
+
+The suite checks exit codes, timeouts, signals, forced termination, locale preservation, orphaned and detached listeners, occupied ports, invalid arguments, evidence preservation, and local Markdown links. Each invocation writes a unique folder under `test-results/verify-stremlist-helper/`, including `REPORT.md`, `results.json`, and raw process and listener evidence. These outputs stay ignored; the harness stays tracked. A passing expected `BLOCKED` case verifies the helper's verdict, not application teardown.
+
 ## Coverage gaps
 
 - **UI replay has no persistent backend.** It proves browser state and requests. Use integration specs for saved data, atomicity, cache invalidation, and manifests.
