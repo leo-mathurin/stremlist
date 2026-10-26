@@ -95,6 +95,7 @@ export function pageHtml(html: string, path: string): string {
 export function aiPages(backendUrl: string): Plugin {
   const configure = (
     server: Pick<import("vite").ViteDevServer, "middlewares">,
+    built = false,
   ) => {
     server.middlewares.use(async (req, res, next) => {
       const url = new URL(req.url ?? "/", "http://localhost");
@@ -117,13 +118,25 @@ export function aiPages(backendUrl: string): Plugin {
       }
       for (const [key, value] of Object.entries(htmlHeaders(url.pathname)))
         res.setHeader(key, value);
+      if (built) {
+        const page = getMarkdownPage(url.pathname);
+        if (page)
+          req.url =
+            page.path === "/" ? "/index.html" : `${page.path}/index.html`;
+        else if (url.pathname === "/configure")
+          req.url = "/configure/index.html";
+        else if (!url.pathname.split("/").at(-1)?.includes("."))
+          req.url = "/404.html";
+      }
       next();
     });
   };
   return {
     name: "ai-readable-pages",
     configureServer: configure,
-    configurePreviewServer: configure,
+    configurePreviewServer(server) {
+      configure(server, true);
+    },
     transformIndexHtml(html, context) {
       return pageHtml(
         html,

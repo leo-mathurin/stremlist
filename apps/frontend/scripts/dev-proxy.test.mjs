@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer as createHttpServer } from "node:http";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
-import { createServer, loadConfigFromFile } from "vite";
+import { build, createServer, loadConfigFromFile, preview } from "vite";
 
 const keys = [
   "PORTLESS_URL",
@@ -201,4 +204,45 @@ test("public Markdown, negotiation and discovery work through the real Vite serv
     "application/xml; charset=utf-8",
   );
   assert.ok(!(await sitemap.text()).includes(".md"));
+});
+
+test("the production build serves the correct initial head for each page", async (t) => {
+  const outDir = await mkdtemp(join(tmpdir(), "stremlist-ai-build-"));
+  t.after(() => rm(outDir, { recursive: true, force: true }));
+  process.env.VITE_BACKEND_URL = "http://127.0.0.1:4314";
+  await build({
+    mode: "test",
+    logLevel: "silent",
+    build: { outDir, emptyOutDir: true },
+  });
+  const server = await preview({
+    mode: "test",
+    logLevel: "silent",
+    build: { outDir },
+    preview: { host: "127.0.0.1", port: 0, strictPort: true },
+  });
+  t.after(() => new Promise((resolve) => server.httpServer.close(resolve)));
+  const origin = `http://127.0.0.1:${server.httpServer.address().port}`;
+  for (const path of ["/", "/terms", "/changelog"]) {
+    const response = await fetch(`${origin}${path}`);
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.ok(
+      html.includes(`rel="canonical" href="https://stremlist.com${path}"`),
+    );
+    assert.ok(
+      html.includes(
+        `type="text/markdown" href="https://stremlist.com${path === "/" ? "/index.md" : `${path}.md`}"`,
+      ),
+    );
+    assert.match(html, /<meta name="ai-summary" content="[^"]+"/);
+    assert.ok(!html.includes('src="/src/main.tsx"'));
+  }
+  for (const path of ["/configure", "/unknown-route"]) {
+    const response = await fetch(`${origin}${path}`);
+    const html = await response.text();
+    assert.match(response.headers.get("x-robots-tag"), /noindex/);
+    assert.match(html, /name="robots" content="noindex, nofollow"/);
+    assert.ok(!html.includes('type="text/markdown"'));
+  }
 });
