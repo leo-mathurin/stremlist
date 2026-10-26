@@ -1,3 +1,4 @@
+import { SITE } from "../content/site";
 import { Link } from "react-router";
 import NewsletterForm from "./NewsletterForm";
 import { Button } from "@/components/ui/button";
@@ -7,10 +8,10 @@ const NAV_LINKS = [
   { label: "Changelog", to: "/changelog", internal: true },
   {
     label: "Source code",
-    to: "https://github.com/leo-mathurin/stremlist",
+    to: SITE.repository,
     internal: false,
   },
-  { label: "Contact", to: "mailto:me@leomathurin.com", internal: false },
+  { label: "Contact", to: `mailto:${SITE.contact}`, internal: false },
 ];
 
 export default function Footer() {
@@ -70,11 +71,7 @@ export default function Footer() {
             asChild
             className="h-auto p-0 text-sm text-gray-500 hover:text-stremlist"
           >
-            <a
-              href="https://leomathurin.com"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+            <a href={SITE.author} target="_blank" rel="noopener noreferrer">
               Built by Léo Mathurin
             </a>
           </Button>

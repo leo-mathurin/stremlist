@@ -1,6 +1,10 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
   "workspaces": {
+    "apps/frontend": {
+      // Vercel loads the request middleware and the public content function.
+      "entry": ["middleware.ts", "api/**/*.ts"],
+    },
     "apps/backend": {
       // Bun and k6 load these scripts in child processes.
       "entry": ["stress/server.ts", "stress/k6/{actions,board}.js"],
