@@ -19,30 +19,54 @@ import {
 
 export function prefersMarkdown(accept: string | null): boolean {
   if (!accept) return false;
-  const ranges = accept
-    .toLowerCase()
-    .split(",")
+  const ranges = (
+    accept.toLowerCase().match(/(?:[^,"]|"(?:\\.|[^"\\])*")+/g) ?? []
+  )
     .map((range) => {
-      const [type, ...parameters] = range
-        .trim()
-        .split(";")
-        .map((part) => part.trim());
-      const q =
-        parameters.find((part) => part.startsWith("q="))?.slice(2) ?? "1";
+      const [type, ...fields] = (
+        range.match(/(?:[^;"]|"(?:\\.|[^"\\])*")+/g) ?? []
+      ).map((part) => part.trim());
+      const parameters = fields.filter(Boolean).map((field) => {
+        const separator = field.indexOf("=");
+        return {
+          name: field.slice(0, separator).trim(),
+          value: field.slice(separator + 1).trim(),
+        };
+      });
+      const weight =
+        parameters.find((parameter) => parameter.name === "q")?.value ?? "1";
       return {
         type,
-        q: /^(0(\.\d{0,3})?|1(\.0{0,3})?)$/.test(q) ? Number(q) : 0,
+        parameters: parameters.filter((parameter) => parameter.name !== "q"),
+        specificity: type === "*/*" ? 0 : type === "text/*" ? 1 : 2,
+        q: /^(0(\.\d{0,3})?|1(\.0{0,3})?)$/.test(weight) ? Number(weight) : 0,
       };
-    });
-  const quality = (type: string) => {
-    const matches = ranges.filter((range) => range.type === type);
-    return matches.length
-      ? Math.max(...matches.map((range) => range.q))
-      : undefined;
-  };
-  const markdown = quality("text/markdown") ?? 0;
-  const html = quality("text/html") ?? quality("text/*") ?? quality("*/*") ?? 0;
-  return markdown > 0 && markdown > html;
+    })
+    .filter((range) =>
+      range.parameters.every(
+        (parameter) =>
+          parameter.name === "charset" &&
+          parameter.value.replace(/^"|"$/g, "").replace(/\\(.)/g, "$1") ===
+            "utf-8",
+      ),
+    );
+  if (!ranges.some((range) => range.type === "text/markdown")) return false;
+  const quality = (type: string) =>
+    ranges
+      .filter(
+        (range) =>
+          range.type === type ||
+          range.type === "text/*" ||
+          range.type === "*/*",
+      )
+      .sort(
+        (a, b) =>
+          b.specificity - a.specificity ||
+          b.parameters.length - a.parameters.length ||
+          b.q - a.q,
+      )[0]?.q ?? 0;
+  const markdown = quality("text/markdown");
+  return markdown > 0 && markdown > quality("text/html");
 }
 
 function pathname(url: URL): string | null {

@@ -134,32 +134,15 @@ URL: mailto:${SITE.contact}
 }
 
 export function robots(): string {
-  const bots = [
-    "*",
-    "OAI-SearchBot",
-    "ChatGPT-User",
-    "Claude-SearchBot",
-    "Claude-User",
-    "PerplexityBot",
-    "Perplexity-User",
-    "GPTBot",
-    "ClaudeBot",
-    "Google-Extended",
-    "Applebot-Extended",
-    "CCBot",
-    "Bytespider",
-  ];
   return (
     [
       "# Keep in sync with /llms.txt and /ai.txt; generated from the shared site config and Markdown registry.",
-      ...bots.map((bot) =>
-        [
-          `User-agent: ${bot}`,
-          "Allow: /",
-          "Allow: /api/md/",
-          ...PRIVATE_PATHS.map((path) => `Disallow: ${path}`),
-        ].join("\n"),
-      ),
+      [
+        "User-agent: *",
+        "Allow: /",
+        "Allow: /api/md/",
+        ...PRIVATE_PATHS.map((path) => `Disallow: ${path}`),
+      ].join("\n"),
       `Sitemap: ${absoluteUrl("/sitemap.xml")}`,
     ].join("\n\n") + "\n"
   );

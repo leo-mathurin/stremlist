@@ -365,7 +365,7 @@ export default function Home() {
         </p>
       </div>
       <HomeEntry />
-      {userCount !== null && userCount > 0 && (
+      {userCount !== null && (
         <div className="border-t border-white/10 pt-8">
           <LiveCount count={userCount} />
         </div>

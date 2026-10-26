@@ -63,16 +63,16 @@ export default function Terms() {
                 <div key={clause.title}>
                   <h3 className="mb-1 font-bold text-ink">{clause.title}</h3>
                   {clause.blocks.map((block, index) =>
-                    block.kind === "paragraph" ? (
+                    typeof block === "string" ? (
                       <p key={index} className={index > 0 ? "mt-2" : undefined}>
-                        <ContactText text={block.text} />
+                        <ContactText text={block} />
                       </p>
                     ) : (
                       <ul
                         key={index}
                         className="list-disc list-inside mt-2 space-y-1 ml-2"
                       >
-                        {block.items.map((item) => (
+                        {block.map((item) => (
                           <li key={item.label}>
                             <strong>{item.label}</strong> {item.text}
                           </li>

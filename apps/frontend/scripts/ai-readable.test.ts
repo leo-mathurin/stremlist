@@ -42,6 +42,16 @@ const cases: [string | null, boolean][] = [
   ["text/html;q=0,text/markdown;q=0.5,*/*;q=1", true],
   ["text/markdown;q=0.4,text/*;q=0.8", false],
   ["text/markdown;q=0.9,text/markdown;q=0.1,text/html;q=0.5", true],
+  ["text/markdown;charset=utf-8;q=0,text/markdown;q=1,text/html;q=0.5", false],
+  ["text/markdown;charset=iso-8859-1,text/html;q=0.5", false],
+  ['text/markdown;charset="UTF-8";q=0.9,text/html;q=0.5', true],
+  ['text/markdown;profile="a,b",text/html;q=0.5', false],
+  ["text/html;charset=utf-8;q=0,text/html;q=1,text/markdown;q=0.5", true],
+  [
+    "text/markdown; ;charset=utf-8;q=0,text/markdown;q=1,text/html;q=0.5",
+    false,
+  ],
+  ["text/html; ;charset=utf-8;q=0,text/html;q=1,text/markdown;q=0.5", true],
 ];
 
 for (const [accept, expected] of cases) {
@@ -284,30 +294,11 @@ test("public HTTP responses share real content and keep private data out", async
   );
   assert.match(policy, /Use public content for AI model training/);
   const robots = await (await fetchPage("/robots.txt")).text();
-  for (const bot of [
-    "*",
-    "OAI-SearchBot",
-    "ChatGPT-User",
-    "Claude-SearchBot",
-    "Claude-User",
-    "PerplexityBot",
-    "Perplexity-User",
-    "GPTBot",
-    "ClaudeBot",
-    "Google-Extended",
-    "Applebot-Extended",
-    "CCBot",
-    "Bytespider",
-  ]) {
-    const group = robots
-      .split("\n\n")
-      .find((group) => group.startsWith(`User-agent: ${bot}\n`));
-    assert.ok(group, bot);
-    assert.match(group, /Allow: \/\n/);
-    assert.match(group, /Allow: \/api\/md\//);
-    assert.match(group, /Disallow: \/configure/);
-    assert.ok(!/^Disallow: \/$/m.test(group));
-  }
+  assert.deepEqual(robots.match(/^User-agent: .+$/gm), ["User-agent: *"]);
+  assert.match(robots, /Allow: \/\n/);
+  assert.match(robots, /Allow: \/api\/md\//);
+  assert.match(robots, /Disallow: \/configure/);
+  assert.ok(!/^Disallow: \/$/m.test(robots));
   assert.match(robots, /Sitemap: https:\/\/stremlist.com\/sitemap.xml/);
   const unavailable = await handleAiRequest(
     new Request("http://frontend.example/index.md"),
@@ -333,7 +324,7 @@ test("initial HTML has page-specific discovery tags and consistent homepage iden
     assert.equal((html.match(/type="text\/markdown"/g) ?? []).length, 1);
     if (page.path === "/") {
       const json = html.match(
-        /<script type="application\/ld\+json">([\s\S]*?)<\/script>/,
+        /<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/,
       )?.[1];
       assert.ok(json);
       assert.deepEqual(JSON.parse(json), structuredData());

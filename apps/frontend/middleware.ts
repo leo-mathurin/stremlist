@@ -1,4 +1,3 @@
-import { next, rewrite } from "@vercel/functions";
 import { aiRequestPath, htmlHeaders } from "./src/lib/md/http";
 import { getMarkdownPage } from "./src/lib/md/registry";
 
@@ -17,19 +16,19 @@ export default function middleware(request: Request): Response {
     destination.searchParams.set("source", source);
     if (url.searchParams.has("account") || url.searchParams.has("userId"))
       destination.searchParams.set("private", "1");
-    return rewrite(destination);
+    return new Response(null, {
+      headers: { "x-middleware-rewrite": destination.href },
+    });
   }
   const page = getMarkdownPage(url.pathname);
   const headers = htmlHeaders(url.pathname);
   if (url.searchParams.has("account") || url.searchParams.has("userId"))
     headers["X-Robots-Tag"] = "noindex, nofollow";
   if (page)
-    return rewrite(
-      new URL(
-        page.path === "/" ? "/index.html" : `${page.path}/index.html`,
-        request.url,
-      ),
-      { headers },
-    );
-  return next({ headers });
+    headers["x-middleware-rewrite"] = new URL(
+      page.path === "/" ? "/index.html" : `${page.path}/index.html`,
+      request.url,
+    ).href;
+  else headers["x-middleware-next"] = "1";
+  return new Response(null, { headers });
 }

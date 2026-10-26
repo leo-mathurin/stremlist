@@ -1,20 +1,12 @@
 import type { Plugin } from "vite";
-import {
-  SITE,
-  CONFIGURE_SEO,
-  absoluteUrl,
-  structuredData,
-} from "../src/content/site";
+import { SITE } from "../src/content/site";
+import { headTags } from "../src/lib/seo";
 import {
   aiRequestPath,
   handleAiRequest,
   htmlHeaders,
 } from "../src/lib/md/http";
-import {
-  getMarkdownPage,
-  listMarkdownRoutes,
-  markdownPath,
-} from "../src/lib/md/registry";
+import { getMarkdownPage, listMarkdownRoutes } from "../src/lib/md/registry";
 
 function attribute(value: string): string {
   return value
@@ -26,70 +18,27 @@ function attribute(value: string): string {
 
 export function pageHtml(html: string, path: string): string {
   const page = getMarkdownPage(path);
-  const title =
-    page?.seoTitle ??
-    (path === "/configure"
-      ? CONFIGURE_SEO.title
-      : `Page not found - ${SITE.name}`);
-  const description =
-    page?.description ??
-    (path === "/configure"
-      ? CONFIGURE_SEO.description
-      : "The requested Stremlist page could not be found.");
-  const canonical = absoluteUrl(page?.path ?? "/");
-  let result = html
-    .replaceAll("__SITE_TITLE__", attribute(SITE.title))
-    .replaceAll("__SITE_DESCRIPTION__", attribute(SITE.description))
-    .replaceAll("__SITE_URL__", SITE.url)
-    .replaceAll("__SITE_IMAGE__", absoluteUrl(SITE.image))
+  const tags = headTags(path)
+    .filter(
+      (tag) => page || tag.tag !== "link" || tag.attrs.rel !== "canonical",
+    )
+    .map((tag) => {
+      const attrs = Object.entries(tag.attrs)
+        .map(([key, value]) => `${key}="${attribute(value)}"`)
+        .join(" ");
+      const open = `<${tag.tag}${attrs ? ` ${attrs}` : ""} data-page-head="">`;
+      return "content" in tag
+        ? `${open}${tag.tag === "script" ? tag.content : attribute(tag.content)}</${tag.tag}>`
+        : open;
+    })
+    .join("\n    ");
+  return html
     .replaceAll("__SITE_NAME__", attribute(SITE.name))
-    .replace(/<title>[^<]*<\/title>/, `<title>${attribute(title)}</title>`)
     .replace(
-      /<meta\s+name="description"\s+content="[^"]*"\s*\/?\s*>/,
-      `<meta name="description" content="${attribute(description)}" />`,
-    )
-    .replace(
-      /<meta\s+name="robots"\s+content="[^"]*"\s*\/?\s*>/,
-      `<meta name="robots" content="${page ? "index, follow" : "noindex, nofollow"}" />`,
-    )
-    .replace(
-      /<link\s+rel="canonical"\s+href="[^"]*"\s*\/?\s*>/,
-      page ? `<link rel="canonical" href="${canonical}" />` : "",
-    )
-    .replace(
-      /<meta\s+property="((?:og|twitter):(?:title|description|url|image))"\s+content="[^"]*"\s*\/?\s*>/g,
-      (_tag: string, key: string) => {
-        const field = key.split(":")[1];
-        const value =
-          field === "title"
-            ? title
-            : field === "description"
-              ? description
-              : field === "image"
-                ? absoluteUrl(SITE.image)
-                : canonical;
-        return `<meta property="${key}" content="${attribute(value)}" />`;
-      },
-    )
-    .replace(/\s*<meta\s+name="ai-summary"[^>]*>/g, "")
-    .replace(/\s*<link\s+rel="alternate"\s+type="text\/markdown"[^>]*>/g, "")
-    .replace(
-      /\s*<script\s+type="application\/ld\+json"[^>]*>[\s\S]*?<\/script>/g,
+      /<(title|meta|link|script)\b[^>]*\bdata-page-head(?:="")?[^>]*>(?:[\s\S]*?<\/\1>)?/g,
       "",
-    );
-  const tags = page
-    ? [
-        `<meta name="ai-summary" content="${attribute(page.summary)}" />`,
-        `<link rel="alternate" type="text/markdown" href="${absoluteUrl(markdownPath(page.path))}" />`,
-        ...(page.path === "/"
-          ? [
-              `<script type="application/ld+json">${JSON.stringify(structuredData()).replace(/</g, "\\u003c")}</script>`,
-            ]
-          : []),
-      ].join("\n    ")
-    : "";
-  result = result.replace("</head>", `    ${tags}\n  </head>`);
-  return result;
+    )
+    .replace("<!-- page-head -->", `${tags}\n    <!-- page-head -->`);
 }
 
 export function aiPages(backendUrl: string): Plugin {

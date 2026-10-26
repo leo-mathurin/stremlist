@@ -121,6 +121,8 @@ test("public Markdown, negotiation and discovery work through the real Vite serv
       "*/*",
       "text/html",
       "text/markdown;q=0.5,text/html;q=0.9",
+      "text/markdown;charset=utf-8;q=0,text/markdown;q=1,text/html;q=0.5",
+      "text/markdown; ;charset=utf-8;q=0,text/markdown;q=1,text/html;q=0.5",
     ]) {
       const response = await fetch(`${origin}${path}`, {
         headers: accept ? { Accept: accept } : {},

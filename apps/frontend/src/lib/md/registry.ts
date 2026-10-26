@@ -107,13 +107,13 @@ function terms(): string {
       ...section.clauses.flatMap((clause) => [
         heading(3, clause.title),
         ...clause.blocks.map((block) =>
-          block.kind === "paragraph"
-            ? block.text
+          typeof block === "string"
+            ? block
                 .split(SITE.contact)
                 .map(text)
                 .join(link(SITE.contact, `mailto:${SITE.contact}`))
             : list(
-                block.items.map(
+                block.map(
                   (item) => `**${text(item.label)}** ${text(item.text)}`,
                 ),
               ),

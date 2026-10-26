@@ -1,4 +1,3 @@
-import { CONFIGURE_SEO } from "../content/site";
 import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { ACCOUNT_KEY_PATTERN } from "@stremlist/shared/constants";
@@ -96,7 +95,7 @@ function connectionNotice(
 }
 
 export default function Configure() {
-  useSEO(CONFIGURE_SEO);
+  useSEO({ path: "/configure" });
 
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();

@@ -38,9 +38,8 @@ Markdown 404. The registry never loads private lists, Connections or tokens.
 The full-content response uses the same renderers, with a daily public snapshot
 and shared cache headers. Markdown pages cache for one hour. Errors are not cached.
 
-All listed AI search and training crawlers may fetch public content. Every crawler
-group excludes private paths, with an exception for the public `/api/md/`
-endpoints. The AI policy permits training on public content and excludes private
+A single `User-agent: *` group allows all crawlers to fetch public content. It
+excludes private paths, with an exception for the public `/api/md/` endpoints. The AI policy permits training on public content and excludes private
 Account data. Robots rules describe crawler preferences; Account access still
 depends on the existing private Addon URL.
 
