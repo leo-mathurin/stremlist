@@ -1,3 +1,4 @@
+import { aiPages } from "./scripts/ai-pages";
 import path from "path";
 import { execFileSync } from "node:child_process";
 import { defineConfig, loadEnv } from "vite";
@@ -26,8 +27,19 @@ export default defineConfig(({ mode, command }) => {
         : "http://localhost:7001")
     : undefined;
 
+  const publicBackendUrl = useDevProxy
+    ? "/api"
+    : withRelatedProject({
+        projectName: "stremlist-backend",
+        defaultHost: env.VITE_BACKEND_URL ?? "http://localhost:7001",
+      });
+
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      aiPages(backendTarget ?? publicBackendUrl),
+    ],
     server: {
       host: true,
       allowedHosts: ["dev-tower", ".ts.net"],
@@ -59,14 +71,7 @@ export default defineConfig(({ mode, command }) => {
       alias: { "@": path.resolve(__dirname, "./src") },
     },
     define: {
-      "import.meta.env.VITE_BACKEND_URL": JSON.stringify(
-        useDevProxy
-          ? "/api"
-          : withRelatedProject({
-              projectName: "stremlist-backend",
-              defaultHost: env.VITE_BACKEND_URL ?? "http://localhost:7001",
-            }),
-      ),
+      "import.meta.env.VITE_BACKEND_URL": JSON.stringify(publicBackendUrl),
     },
   };
 });

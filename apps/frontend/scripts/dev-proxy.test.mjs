@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer as createHttpServer } from "node:http";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
-import { createServer, loadConfigFromFile } from "vite";
+import { build, createServer, loadConfigFromFile, preview } from "vite";
 
 const keys = [
   "PORTLESS_URL",
@@ -92,5 +95,156 @@ test("explicit API URLs are preserved for the E2E harness and production builds"
       '"http://127.0.0.1:7301"',
     );
     assert.equal(config.server.proxy, undefined);
+  }
+});
+
+test("public Markdown, negotiation and discovery work through the real Vite server", async (t) => {
+  const upstream = createHttpServer((request, response) => {
+    response.setHeader("Content-Type", "application/json");
+    response.end(JSON.stringify({ activeUsers: 1234 }));
+  });
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  t.after(() => new Promise((resolve) => upstream.close(resolve)));
+  process.env.DEV_BACKEND_URL = `http://127.0.0.1:${upstream.address().port}`;
+  const vite = await createServer({
+    mode: "test",
+    logLevel: "silent",
+    server: { host: "127.0.0.1", port: 0, watch: null },
+  });
+  t.after(() => vite.close());
+  await vite.listen();
+  const origin = `http://127.0.0.1:${vite.httpServer.address().port}`;
+  for (const path of ["/", "/terms", "/changelog"]) {
+    for (const accept of [
+      undefined,
+      "*/*",
+      "text/html",
+      "text/markdown;q=0.5,text/html;q=0.9",
+      "text/markdown;charset=utf-8;q=0,text/markdown;q=1,text/html;q=0.5",
+      "text/markdown; ;charset=utf-8;q=0,text/markdown;q=1,text/html;q=0.5",
+    ]) {
+      const response = await fetch(`${origin}${path}`, {
+        headers: accept ? { Accept: accept } : {},
+      });
+      assert.equal(response.status, 200);
+      assert.match(response.headers.get("content-type"), /^text\/html/);
+      assert.match(response.headers.get("link"), /rel="describedby"/);
+      assert.match(response.headers.get("vary"), /Accept/);
+      const html = await response.text();
+      assert.match(html, /<meta name="ai-summary" content="[^"]+"/);
+      assert.ok(
+        html.includes(
+          `href="https://stremlist.com${path === "/" ? "/index.md" : `${path}.md`}"`,
+        ),
+      );
+      assert.ok(!html.includes("__SITE_"));
+    }
+    const mdPath = path === "/" ? "/index.md" : `${path}.md`;
+    const md = await fetch(`${origin}${mdPath}`);
+    assert.equal(md.status, 200);
+    assert.equal(
+      md.headers.get("content-type"),
+      "text/markdown; charset=utf-8",
+    );
+    const body = await md.text();
+    const negotiated = await fetch(`${origin}${path}`, {
+      headers: { Accept: "text/markdown" },
+    });
+    assert.equal(await negotiated.text(), body);
+    const direct = await fetch(`${origin}/api/md${path}`);
+    assert.equal(await direct.text(), body);
+    const head = await fetch(`${origin}${mdPath}`, { method: "HEAD" });
+    assert.equal(
+      head.headers.get("x-markdown-tokens"),
+      md.headers.get("x-markdown-tokens"),
+    );
+    assert.equal(await head.text(), "");
+  }
+  const root = await (await fetch(`${origin}/`)).text();
+  assert.match(root, /application\/ld\+json/);
+  const missing = await fetch(`${origin}/missing.md`);
+  assert.equal(missing.status, 404);
+  assert.match(missing.headers.get("content-type"), /^text\/markdown/);
+  for (const path of [
+    "/configure.md",
+    "/api/md/configure",
+    "/api/md/private/actions/rating/rate/movie/tt1234567",
+  ]) {
+    const response = await fetch(`${origin}${path}`);
+    assert.equal(response.status, 404);
+    assert.match(response.headers.get("content-type"), /^text\/markdown/);
+  }
+  const configure = await fetch(`${origin}/configure`);
+  assert.match(configure.headers.get("x-robots-tag"), /noindex/);
+  const privateHtml = await configure.text();
+  assert.ok(!privateHtml.includes('type="text/markdown"'));
+  assert.ok(privateHtml.includes("Configure - Stremlist"));
+  for (const path of [
+    "/llms.txt",
+    "/llms-full.txt",
+    "/ai.txt",
+    "/robots.txt",
+  ]) {
+    const response = await fetch(`${origin}${path}`);
+    assert.equal(response.status, 200);
+    assert.equal(
+      response.headers.get("content-type"),
+      "text/plain; charset=utf-8",
+    );
+    assert.ok(
+      (await response.text()).includes("Stremlist") || path === "/robots.txt",
+    );
+  }
+  const catalog = await fetch(`${origin}/api/md/_catalog`);
+  assert.equal((await catalog.json()).length, 3);
+  const sitemap = await fetch(`${origin}/sitemap.xml`, {
+    headers: { Accept: "text/markdown" },
+  });
+  assert.equal(
+    sitemap.headers.get("content-type"),
+    "application/xml; charset=utf-8",
+  );
+  assert.ok(!(await sitemap.text()).includes(".md"));
+});
+
+test("the production build serves the correct initial head for each page", async (t) => {
+  const outDir = await mkdtemp(join(tmpdir(), "stremlist-ai-build-"));
+  t.after(() => rm(outDir, { recursive: true, force: true }));
+  process.env.VITE_BACKEND_URL = "http://127.0.0.1:4314";
+  await build({
+    mode: "test",
+    logLevel: "silent",
+    build: { outDir, emptyOutDir: true },
+  });
+  const server = await preview({
+    mode: "test",
+    logLevel: "silent",
+    build: { outDir },
+    preview: { host: "127.0.0.1", port: 0, strictPort: true },
+  });
+  t.after(() => new Promise((resolve) => server.httpServer.close(resolve)));
+  const origin = `http://127.0.0.1:${server.httpServer.address().port}`;
+  for (const path of ["/", "/terms", "/changelog"]) {
+    const response = await fetch(`${origin}${path}`);
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.ok(
+      html.includes(`rel="canonical" href="https://stremlist.com${path}"`),
+    );
+    assert.ok(
+      html.includes(
+        `type="text/markdown" href="https://stremlist.com${path === "/" ? "/index.md" : `${path}.md`}"`,
+      ),
+    );
+    assert.match(html, /<meta name="ai-summary" content="[^"]+"/);
+    assert.ok(!html.includes('src="/src/main.tsx"'));
+  }
+  for (const path of ["/configure", "/unknown-route"]) {
+    const response = await fetch(`${origin}${path}`);
+    const html = await response.text();
+    assert.match(response.headers.get("x-robots-tag"), /noindex/);
+    assert.match(html, /name="robots" content="noindex, nofollow"/);
+    assert.ok(!html.includes('type="text/markdown"'));
   }
 });

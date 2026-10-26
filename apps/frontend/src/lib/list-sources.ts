@@ -1,3 +1,4 @@
+import { SITE } from "../content/site";
 import {
   ACCOUNT_KEY_PATTERN,
   ACCOUNT_KEY_SOURCE,
@@ -11,7 +12,7 @@ import type {
 import { stremioDeepLink } from "./stremio-links";
 
 /** Reorders Stremio addons, so Stremlist can sit just after Cinemeta. */
-export const ADDON_MANAGER_URL = "https://stremio-addon-manager.vercel.app/";
+export const ADDON_MANAGER_URL = SITE.addonManager;
 
 /**
  * Official Provider marks (files in public/providers). Brand rules: show

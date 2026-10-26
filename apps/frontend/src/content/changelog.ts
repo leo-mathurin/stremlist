@@ -1,0 +1,268 @@
+type ChangeType = "enhancement" | "bugfix" | "performance" | "security";
+
+interface Change {
+  type: ChangeType;
+  label: string;
+  text: string;
+}
+
+interface Version {
+  version: string;
+  date: string;
+  changes: Change[];
+}
+
+export const VERSIONS: Version[] = [
+  {
+    version: "v1.10.0",
+    date: "September 15, 2026",
+    changes: [
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Added per-catalog filters for genre, decade, maximum runtime, and minimum IMDb rating. Combine them to narrow down what you want to watch.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Added title search for your catalogs in Stremio, including accent-insensitive matching. Your saved filters also apply to search results.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: 'Added optional "90 min or less", "Top rated", and "Shuffle" catalogs in Stremio. Enable them under "Filters & extra catalogs", save, and reinstall the addon to show the new catalogs.',
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Added filters and sorting options in Stremio's catalog dropdown, including shortest or longest runtime and newest or oldest release date, without changing your saved settings.",
+      },
+      {
+        type: "bugfix",
+        label: "Bugfix",
+        text: "Fixed TV episode selection when Stremlist is listed before other metadata addons. Series details now come from another installed metadata provider, while your series catalogs stay available.",
+      },
+      {
+        type: "bugfix",
+        label: "Reliability",
+        text: "Watchlists and your RPDB key now save together, so a failed save cannot leave only part of your configuration updated. Save failures also show a clear error message.",
+      },
+    ],
+  },
+  {
+    version: "v1.9.0",
+    date: "September 1, 2026",
+    changes: [
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Increased support for IMDb watchlists and lists from 10,000 to 15,000 titles.",
+      },
+      {
+        type: "performance",
+        label: "Performance",
+        text: "Catalogs start preparing in the background after you save your configuration, reducing the wait when you next open them in Stremio.",
+      },
+      {
+        type: "bugfix",
+        label: "Reliability",
+        text: "Improved handling of simultaneous refresh requests and added clearer feedback when configuration loading or catalog refreshes fail.",
+      },
+    ],
+  },
+  {
+    version: "v1.8.0",
+    date: "August 26, 2026",
+    changes: [
+      {
+        type: "performance",
+        label: "Performance",
+        text: "Reworked catalog caching to store large watchlists more efficiently and reuse saved results without fetching IMDb again.",
+      },
+      {
+        type: "bugfix",
+        label: "Reliability",
+        text: "Improved recovery from stale cache entries and made cache replacement and deletion safer when requests overlap.",
+      },
+    ],
+  },
+  {
+    version: "v1.7.0",
+    date: "June 27, 2026",
+    changes: [
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Added built-in IMDb chart catalogs: add Most Popular and Top 250 Movies & TV, the weekend Box Office, and Coming Soon releases as ready-made catalogs, no IMDb account required.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: 'Added a per-catalog "Show" option so each watchlist or list can display movies only, TV shows only, or both.',
+      },
+    ],
+  },
+  {
+    version: "v1.5.0",
+    date: "May 30, 2026",
+    changes: [
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: 'Added a "Refresh now" button on the Configure page to pull your latest IMDb watchlist on demand, with a "Last refreshed" label and a short cooldown between refreshes.',
+      },
+      {
+        type: "performance",
+        label: "Performance",
+        text: "Catalogs are now served cache-first, so a fresh watchlist loads from a single fast lookup with no live IMDb fetch. This makes catalogs noticeably quicker and more resilient.",
+      },
+      {
+        type: "bugfix",
+        label: "Reliability",
+        text: "Private or unavailable watchlists now show a clear informational card explaining why the catalog is empty instead of failing, and metadata is served from cache to stop Stremio from retry-storming during IMDb outages.",
+      },
+    ],
+  },
+  {
+    version: "v1.4.0",
+    date: "March 12, 2026",
+    changes: [
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Added support for IMDb lists (ls-prefixed IDs) alongside watchlists, so you can now add any public IMDb list as a catalog.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Added drag-and-drop reordering for catalogs on the Configure page, making it easy to arrange your catalogs in your preferred order.",
+      },
+    ],
+  },
+  {
+    version: "v1.3.0",
+    date: "February 23, 2026",
+    changes: [
+      {
+        type: "bugfix",
+        label: "Reliability",
+        text: "Fixed recurring backend downtime caused by the previous scraping approach by rebuilding the IMDb scraping flow for better stability.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Added RPDB poster support for improved artwork in catalogs.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Added support for multiple IMDb watchlists in a single setup.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: 'Added a new "Random" sort order.',
+      },
+      {
+        type: "enhancement",
+        label: "Open source",
+        text: "Open-sourced Stremlist to make community contributions and transparency easier.",
+      },
+      {
+        type: "performance",
+        label: "Architecture",
+        text: "Rebuilt deployment around Vercel (frontend + API), replacing the old self-managed Linux VPS setup for simpler operations, easier rollouts, and better uptime.",
+      },
+    ],
+  },
+  {
+    version: "v1.2.1",
+    date: "May 14, 2025",
+    changes: [
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: 'Added "Date Added" sorting options to display watchlist items in the order they were added to IMDb (oldest first or newest first).',
+      },
+      {
+        type: "enhancement",
+        label: "Enhancement",
+        text: 'Changed default sorting to "Date Added (Oldest First)" which preserves the natural order from IMDb.',
+      },
+    ],
+  },
+  {
+    version: "v1.2.0",
+    date: "May 12, 2025",
+    changes: [
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Added comprehensive sorting functionality: users can now sort their watchlists by title (A-Z/Z-A), year (newest/oldest first), or rating (highest/lowest first). Sort options are available both during initial setup and in configuration, with preferences persisted consistently across installations.",
+      },
+    ],
+  },
+  {
+    version: "v1.1.1",
+    date: "March 28, 2024",
+    changes: [
+      {
+        type: "enhancement",
+        label: "Enhancement",
+        text: "Added specific error message for private IMDb watchlists",
+      },
+      {
+        type: "bugfix",
+        label: "Bugfix",
+        text: "Improved error messaging to provide clearer guidance when issues occur",
+      },
+    ],
+  },
+  {
+    version: "v1.1.0",
+    date: "March 26, 2024",
+    changes: [
+      {
+        type: "performance",
+        label: "Performance",
+        text: "Replaced HTML scraping with direct GraphQL API calls to improve reliability and efficiency",
+      },
+      {
+        type: "bugfix",
+        label: "Bugfix",
+        text: "Fixed issue where posters and titles were displayed in French instead of English",
+      },
+      {
+        type: "enhancement",
+        label: "Enhancement",
+        text: "Increased the watchlist item limit from 250 to 10,000 items",
+      },
+    ],
+  },
+  {
+    version: "v1.0.0",
+    date: "March 19, 2024",
+    changes: [
+      {
+        type: "enhancement",
+        label: "Enhancement",
+        text: "Initial release of Stremlist",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Connect IMDb watchlist to Stremio through user ID",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Automatic refresh of watchlist data every 6-12 hours",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Support for movies and TV series from IMDb watchlists",
+      },
+    ],
+  },
+];

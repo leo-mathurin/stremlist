@@ -1,4 +1,12 @@
 import {
+  HOME,
+  STEPS,
+  TROUBLESHOOTING,
+  FEATURES as FEATURES_CONTENT,
+  FIND_PLACES as FIND_PLACES_CONTENT,
+} from "../content/home";
+import { publicUserCount } from "../lib/public-stats";
+import {
   createRef,
   Fragment,
   useEffect,
@@ -38,69 +46,27 @@ import {
 } from "../components/brand";
 import StremioPreview from "../components/StremioPreview";
 import { AnimatedBeam } from "@/components/ui/animated-beam";
-import { api } from "../lib/api";
 import { ADDON_MANAGER_URL } from "../lib/list-sources";
 import { useSEO } from "../hooks/useSEO";
 import { cn } from "@/lib/utils";
 
-const STEPS = [
-  [
-    "Add your Lists",
-    "Paste links to watchlists and lists, or connect your Trakt, Simkl or MDBList account. Mix as many sites as you like.",
-  ],
-  [
-    "Arrange your rows",
-    "Rename, reorder, sort and filter each List. Every List becomes its own catalog.",
-  ],
-  [
-    "Install once",
-    "Save to get your Addon URL and install it in Stremio. Your Lists refresh on their own, about every 30 minutes.",
-  ],
-] as const;
+const FIND_ICONS = { Home: House, Discover: Compass } satisfies Record<
+  (typeof FIND_PLACES_CONTENT)[number][0],
+  LucideIcon
+>;
+const FIND_PLACES: [LucideIcon, string, string][] = FIND_PLACES_CONTENT.map(
+  ([title, body]) => [FIND_ICONS[title], title, body],
+);
 
-const TROUBLESHOOTING = [
-  [
-    "My Lists are empty",
-    "Make sure your lists are public, or connect the account that owns them.",
-  ],
-  [
-    "Stremio still shows my old Lists",
-    "Reinstall Stremlist so Stremio reads the new catalogs.",
-  ],
-  ['Stremio shows "Failed to fetch"', "Restart Stremio, or try Stremio Web."],
-  [
-    "I lost my configure page",
-    "Open it from the Stremlist addon in Stremio, or paste your Addon URL above.",
-  ],
-] as const;
-
-const FIND_PLACES: [LucideIcon, string, string][] = [
-  [House, "Home", "Each List is its own row."],
-  [Compass, "Discover", "Your Lists show as catalog filters."],
-];
-
-const FEATURES: [LucideIcon, string, string][] = [
-  [
-    ArrowDownUp,
-    "Sort and filter",
-    "Sort each List by date added, title, year or rating, and filter it by genre, decade, runtime or rating.",
-  ],
-  [
-    TrendingUp,
-    "IMDb and Trakt charts",
-    "Add Most Popular, Top 250, Box Office or Trakt Trending as ready-made catalogs, no account needed.",
-  ],
-  [
-    BookmarkCheck,
-    "Actions in Stremio",
-    "With a connected account, add a title to your watchlist, mark it as watched or rate it from its page in Stremio.",
-  ],
-  [
-    ImageIcon,
-    "RPDB posters",
-    "Add a Rating Poster Database key to show ratings right on the cover art.",
-  ],
-];
+const FEATURE_ICONS = {
+  "Sort and filter": ArrowDownUp,
+  "IMDb and Trakt charts": TrendingUp,
+  "Actions in Stremio": BookmarkCheck,
+  "RPDB posters": ImageIcon,
+} satisfies Record<(typeof FEATURES_CONTENT)[number][0], LucideIcon>;
+const FEATURES: [LucideIcon, string, string][] = FEATURES_CONTENT.map(
+  ([title, body]) => [FEATURE_ICONS[title], title, body],
+);
 
 /** Beam start times, spread over two seconds so the dashes never sync. */
 const BEAM_DELAYS = [0, 1.2, 0.5, 1.6, 0.9, 0.2, 1.4];
@@ -164,8 +130,8 @@ function ProvidersDiagram() {
     <section aria-labelledby="providers-title" className="space-y-6">
       <SectionHeading
         id="providers-title"
-        title="Many sites, one addon"
-        lead="Paste a link from any of these sites, or connect your Trakt, Simkl or MDBList account."
+        title={HOME.providersTitle}
+        lead={HOME.providersLead}
       />
       <div className="relative overflow-hidden rounded-3xl bg-muted ring-1 ring-black/5">
         <div
@@ -353,21 +319,14 @@ function LiveCount({ count }: { count: number }) {
 }
 
 export default function Home() {
-  useSEO({
-    title: "Stremlist - Your watchlists and lists, all in Stremio",
-    description:
-      "Free Stremio addon that shows your watchlists and lists from IMDb, Trakt, Simkl, MDBList, JustWatch and SensCritique as catalogs in Stremio.",
-    canonical: "https://stremlist.com/",
-  });
+  useSEO({ path: "/" });
   const [searchParams] = useSearchParams();
   const [userCount, setUserCount] = useState<number | null>(null);
 
   useEffect(() => {
-    api.stats
-      .$get()
-      .then((r) => r.json())
-      .then((data) => setUserCount(data.activeUsers))
-      .catch(() => {});
+    void publicUserCount({ backendUrl: import.meta.env.VITE_BACKEND_URL }).then(
+      setUserCount,
+    );
   }, []);
 
   // Old links sent returning users to `/?userId=ur…`; their install lives on
@@ -402,12 +361,11 @@ export default function Home() {
           </span>
         </h1>
         <p className="mt-5 max-w-md text-lg text-pretty text-white/65">
-          Paste a link to any watchlist or list, or connect your account. Each
-          one shows up as its own row in Stremio.
+          {HOME.intro}
         </p>
       </div>
       <HomeEntry />
-      {userCount !== null && userCount > 0 && (
+      {userCount !== null && (
         <div className="border-t border-white/10 pt-8">
           <LiveCount count={userCount} />
         </div>
@@ -423,27 +381,21 @@ export default function Home() {
         <section className="grid gap-4 md:grid-cols-2">
           <div className="rounded-3xl bg-white p-6 ring-1 ring-black/5 sm:p-7">
             <Link2 className="size-6" />
-            <h2 className="mt-4 text-2xl font-bold">Paste a link</h2>
-            <p className="mt-2 text-pretty text-black/60">
-              Any public watchlist or list from a supported site. Stremlist
-              finds the site and the list for you.
-            </p>
+            <h2 className="mt-4 text-2xl font-bold">{HOME.pasteTitle}</h2>
+            <p className="mt-2 text-pretty text-black/60">{HOME.pasteBody}</p>
           </div>
           <div className="rounded-3xl bg-brand p-6 text-black sm:p-7">
             <Plug className="size-6" />
-            <h2 className="mt-4 text-2xl font-bold">Connect an account</h2>
-            <p className="mt-2 text-pretty text-black/65">
-              Add your private lists from Trakt, Simkl or MDBList, and use
-              Actions in Stremio.
-            </p>
+            <h2 className="mt-4 text-2xl font-bold">{HOME.connectTitle}</h2>
+            <p className="mt-2 text-pretty text-black/65">{HOME.connectBody}</p>
           </div>
         </section>
 
         <section aria-labelledby="preview-title" className="space-y-6">
           <SectionHeading
             id="preview-title"
-            title="Every List is a row in Stremio"
-            lead="Stremlist reads each List and shows it in Stremio as its own catalog, next to your other addons."
+            title={HOME.previewTitle}
+            lead={HOME.previewLead}
           />
           <StremioPreview />
         </section>
@@ -451,7 +403,7 @@ export default function Home() {
         <section aria-labelledby="steps-title" className="max-w-xl">
           <SectionHeading
             id="steps-title"
-            title="How it works"
+            title={HOME.stepsTitle}
             className="mb-8"
           />
           <ol className="relative space-y-8 border-l-2 border-dashed border-black/15 pl-8">
@@ -468,7 +420,7 @@ export default function Home() {
         </section>
 
         <section aria-labelledby="features-title" className="space-y-6">
-          <SectionHeading id="features-title" title="Features" />
+          <SectionHeading id="features-title" title={HOME.featuresTitle} />
           <div className="grid gap-4 sm:grid-cols-2">
             {FEATURES.map(([Icon, title, body]) => (
               <div
@@ -488,8 +440,8 @@ export default function Home() {
         <section aria-labelledby="find-title" className="space-y-6">
           <SectionHeading
             id="find-title"
-            title="Where to find your Lists"
-            lead="Once you install Stremlist, your Lists show in two places in Stremio."
+            title={HOME.findTitle}
+            lead={HOME.findLead}
           />
           <div className="grid gap-6 sm:grid-cols-2">
             {FIND_PLACES.map(([Icon, title, body]) => (
@@ -503,7 +455,7 @@ export default function Home() {
             ))}
           </div>
           <p className="text-sm text-pretty text-black/55">
-            New addons show last. To move Stremlist up, use{" "}
+            {HOME.addonManager}{" "}
             <a
               href={ADDON_MANAGER_URL}
               target="_blank"
@@ -522,8 +474,8 @@ export default function Home() {
         >
           <SectionHeading
             id="troubleshooting-title"
-            title="Troubleshooting"
-            lead="Something looks wrong? Find the problem to see the fix."
+            title={HOME.troubleshootingTitle}
+            lead={HOME.troubleshootingLead}
           />
           <div className="border-t border-black/10">
             {TROUBLESHOOTING.map(([problem, fix]) => (
@@ -533,8 +485,7 @@ export default function Home() {
         </section>
 
         <p className="text-sm text-black/50">
-          Stremlist only organizes your lists. It does not host or link to any
-          video. Read the{" "}
+          {HOME.disclaimer}{" "}
           <Link to="/terms" className="underline hover:text-stremlist">
             terms and privacy policy
           </Link>

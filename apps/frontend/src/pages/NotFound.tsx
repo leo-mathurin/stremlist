@@ -4,11 +4,7 @@ import { useSEO } from "../hooks/useSEO";
 import { Button } from "@/components/ui/button";
 
 export default function NotFound() {
-  useSEO({
-    title: "Page not found - Stremlist",
-    description: "The requested Stremlist page could not be found.",
-    robots: "noindex, nofollow",
-  });
+  useSEO({ path: "/404" });
 
   return (
     <div className="max-w-3xl mx-auto my-8 bg-white rounded-lg shadow-md p-8">

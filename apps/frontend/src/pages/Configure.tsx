@@ -95,12 +95,7 @@ function connectionNotice(
 }
 
 export default function Configure() {
-  useSEO({
-    title: "Configure - Stremlist",
-    description:
-      "Choose the watchlists and lists that Stremlist shows in Stremio, from IMDb, Trakt, Simkl, MDBList, JustWatch and SensCritique.",
-    robots: "noindex, nofollow",
-  });
+  useSEO({ path: "/configure" });
 
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
