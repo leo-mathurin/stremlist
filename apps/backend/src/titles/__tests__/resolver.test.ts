@@ -80,17 +80,19 @@ beforeEach(() => {
 });
 
 describe("resolveEntries", () => {
-  it("keeps entries outside a paced Provider's small batches deferred", async () => {
+  it("keeps bulk lookups grouped and paced lookups outside the budget deferred", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
       const slow: ResolverStrategy = {
         name: "paced-film-links",
+        batchSize: 2,
         resolve: vi.fn((batch: SourceEntry[]) => {
           vi.setSystemTime(Date.now() + batch.length * 3000);
           return Promise.resolve(new Map<number, string>());
         }),
       };
-      const paced = { ...adapter([slow]), resolutionBatchSize: 2 };
+      const bulk = strategy("bulk", {});
+      const paced = adapter([bulk, slow]);
       const started = Date.now();
       const result = await resolveEntries(
         paced,
@@ -99,6 +101,8 @@ describe("resolveEntries", () => {
       );
       expect(Date.now() - started).toBe(12_000);
       expect(result.deferred).toBe(46);
+      expect(bulk.resolve).toHaveBeenCalledTimes(1);
+      expect(bulk.resolve.mock.calls[0][0]).toHaveLength(50);
       expect(db.getTable("title_id_map")).toHaveLength(4);
       expect(cacheRow("5")).toBeUndefined();
     } finally {

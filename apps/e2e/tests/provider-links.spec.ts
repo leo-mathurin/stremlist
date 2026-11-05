@@ -48,7 +48,7 @@ test(
   async () => {
     const { api } = backend;
     const links = {
-      trakt: "https://trakt.tv/users/fixture_user/watchlist",
+      trakt: "https://trakt.tv/users/fixture-user/watchlist",
       justwatch: `https://www.justwatch.com/us/lists/${JUSTWATCH_REF}`,
       senscritique:
         "https://www.senscritique.com/fixture-user/collection?action=WISH",
@@ -56,7 +56,7 @@ test(
     expect(await api.resolveLink(links.trakt)).toEqual({
       ok: true,
       provider: "trakt",
-      sourceRef: "users/fixture_user/watchlist",
+      sourceRef: "users/fixture-user/watchlist",
       kind: "watchlist",
       requiresConnection: false,
       suggestedTitle: "fixture-user's watchlist",
@@ -89,7 +89,7 @@ test(
     ).toEqual({ ok: false, reason: "private", provider: "senscritique" });
 
     const created = await api.createAccount([
-      listInput("trakt", "users/fixture_user/watchlist", SPLIT),
+      listInput("trakt", "users/fixture-user/watchlist", SPLIT),
       listInput("justwatch", JUSTWATCH_REF, SPLIT),
       listInput("senscritique", "users/fixture-user/wishes", SPLIT),
     ]);

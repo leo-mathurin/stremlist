@@ -200,37 +200,33 @@ async function fetchSource(
 const filmLinksStrategy: ResolverStrategy = {
   name: "letterboxd-film-links",
   provider: "letterboxd",
+  batchSize: 1,
   async resolve(entries) {
     const found = new Map<number, string>();
     for (const [index, entry] of entries.entries()) {
       const slug = entry.externalIds?.letterboxd?.slug;
       if (!slug || !/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(slug)) continue;
-      try {
-        const $ = load(
-          await readHtml(`https://letterboxd.com/film/${slug}/`, "film"),
-        );
-        const ids = new Set<string>();
-        $('a[data-track-action="IMDb"][href]').each((_, node) => {
-          const href = $(node).attr("href");
-          if (!href) return;
-          try {
-            const url = new URL(href);
-            const match = /^\/title\/(tt\d+)(?:\/maindetails)?\/?$/.exec(
-              url.pathname,
-            );
-            if (["imdb.com", "www.imdb.com"].includes(url.hostname) && match)
-              ids.add(match[1]);
-          } catch {
-            /* Relative links do not identify an IMDb title. */
-          }
-        });
-        if (ids.size === 1) {
-          const imdbId = ids.values().next().value;
-          if (imdbId) found.set(index, imdbId);
+      const $ = load(
+        await readHtml(`https://letterboxd.com/film/${slug}/`, "film"),
+      );
+      const ids = new Set<string>();
+      $('a[data-track-action="IMDb"][href]').each((_, node) => {
+        const href = $(node).attr("href");
+        if (!href) return;
+        try {
+          const url = new URL(href);
+          const match = /^\/title\/(tt\d+)(?:\/maindetails)?\/?$/.exec(
+            url.pathname,
+          );
+          if (["imdb.com", "www.imdb.com"].includes(url.hostname) && match)
+            ids.add(match[1]);
+        } catch {
+          /* Relative links do not identify an IMDb title. */
         }
-      } catch {
-        // Missing IDs remain unresolved and are retried through the shared ID cache.
-        break;
+      });
+      if (ids.size === 1) {
+        const imdbId = ids.values().next().value;
+        if (imdbId) found.set(index, imdbId);
       }
     }
     return found;
@@ -240,7 +236,6 @@ const filmLinksStrategy: ResolverStrategy = {
 export const letterboxdProvider: ProviderAdapter = {
   id: "letterboxd",
   freshnessMs: LETTERBOXD_FRESHNESS_MS,
-  resolutionBatchSize: 2,
   async validateSource(ref) {
     const path = sourcePath(ref);
     const page = await readPage(path, 1);

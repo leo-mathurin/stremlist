@@ -208,6 +208,8 @@ export interface ProviderActions {
 /** Turns entries without an IMDb ID into IMDb IDs. See titles/resolver.ts. */
 export interface ResolverStrategy {
   name: string;
+  /** Smaller batches bound paced lookups without splitting other strategies. */
+  batchSize?: number;
   /**
    * The Provider whose API this strategy calls, if any. The resolver skips
    * the strategy while that Provider's kill switch is on.
@@ -254,8 +256,6 @@ export interface ProviderAdapter {
   resolutionKey?(entry: SourceEntry): ResolutionKey | null;
   /** Ordered ID resolution strategies for this Provider's entries. */
   resolverStrategies?: ResolverStrategy[];
-  /** Smaller batches keep paced per-film lookups within the resolver's soft budget. */
-  resolutionBatchSize?: number;
   actions?: ProviderActions;
   oauth?: OAuthConfig;
   /**

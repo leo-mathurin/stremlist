@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 vi.mock("../../lib/r2", () => import("../../__tests__/helpers/mock-r2"));
+vi.mock(
+  "../../lib/supabase",
+  () => import("../../__tests__/helpers/mock-supabase"),
+);
 import {
   r2Objects,
   r2Puts,
   r2Unreadable,
 } from "../../__tests__/helpers/mock-r2";
+import { db } from "../../__tests__/helpers/mock-supabase";
+import { resolveEntries } from "../../titles/resolver";
 import { letterboxdProvider } from "../letterboxd";
 import { letterboxdSnapshot, withLetterboxdPermit } from "../letterboxd-cache";
 import {
@@ -28,10 +34,13 @@ const gateKey = "providers/letterboxd/http-v1.json";
 function page(ids: number[], next?: string) {
   return `<html><head><title>Alice's list • Letterboxd</title></head><body><h1>Alice's list</h1><ul class="poster-list -grid">${ids.map((id) => `<li data-postered-identifier='{"uid":"film:${id}"}' data-item-slug="film-${id}" data-item-name="Film ${id} (2000)"></li>`).join("")}</ul>${next ? `<a class="next" href="${next}">Next</a>` : ""}</body></html>`;
 }
+let testTime = Date.parse("2026-11-05T18:00:00Z");
 beforeEach(() => {
   vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-11-05T18:00:00Z"));
+  vi.setSystemTime(testTime);
+  testTime += 24 * 60 * 60_000;
   r2Objects.clear();
+  db.reset();
   r2Unreadable.clear();
   r2Puts.before = null;
 });
@@ -42,6 +51,96 @@ afterEach(() => {
 });
 
 describe("Letterboxd public reads", () => {
+  it("resolves 50 slug matches with two bulk Wikidata requests and no film reads", async () => {
+    const entries = Array.from({ length: 50 }, (_, index) => ({
+      externalIds: {
+        letterboxd: { uid: `film:${index + 1}`, slug: `film-${index + 1}` },
+      },
+    }));
+    const send = vi.fn((url: string, options: RequestInit) => {
+      expect(url).toBe("https://query.wikidata.org/sparql");
+      if (typeof options.body !== "string")
+        throw new Error("Expected a SPARQL form body");
+      const query = new URLSearchParams(options.body).get("query") ?? "";
+      return Promise.resolve(
+        Response.json({
+          results: {
+            bindings: entries.flatMap((entry, index) =>
+              query.includes(`"${entry.externalIds.letterboxd.slug}"`)
+                ? [
+                    {
+                      external: { value: entry.externalIds.letterboxd.slug },
+                      imdb: { value: `tt${index + 1}` },
+                    },
+                  ]
+                : [],
+            ),
+          },
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", send);
+    const pending = resolveEntries(letterboxdProvider, entries);
+    await vi.runAllTimersAsync();
+    const result = await pending;
+    expect(result.resolved).toHaveLength(50);
+    expect(result.deferred).toBe(0);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(db.getTable("title_id_map")).toHaveLength(50);
+  });
+
+  it.each([0, 1])(
+    "defers a failed film and unread films without negative cache rows (failure at %i)",
+    async (failedAt) => {
+      const entries = Array.from({ length: 3 }, (_, index) => ({
+        externalIds: {
+          letterboxd: { uid: `film:${index + 1}`, slug: `film-${index + 1}` },
+        },
+      }));
+      let fail = true;
+      const films: string[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((url: string) => {
+          if (url === "https://query.wikidata.org/sparql")
+            return Promise.resolve(
+              Response.json({ results: { bindings: [] } }),
+            );
+          films.push(url);
+          if (fail && films.length === failedAt + 1)
+            return Promise.resolve(
+              new Response("Unavailable", { status: 503 }),
+            );
+          const id = /film-(\d+)/.exec(url)?.[1];
+          if (!id) throw new Error("Unexpected film URL");
+          return Promise.resolve(
+            new Response(
+              `<title>Film • Letterboxd</title><a data-track-action="IMDb" href="https://www.imdb.com/title/tt${id}/">IMDb</a>`,
+            ),
+          );
+        }),
+      );
+      const pending = resolveEntries(letterboxdProvider, entries);
+      await vi.runAllTimersAsync();
+      const result = await pending;
+      expect(result.resolved).toHaveLength(failedAt);
+      expect(result.deferred).toBe(3 - failedAt);
+      expect(db.getTable("title_id_map")).toHaveLength(failedAt);
+      expect(films).toHaveLength(failedAt + 1);
+      expect(
+        db
+          .getTable("title_id_map")
+          .every((row) => typeof row.imdb_id === "string"),
+      ).toBe(true);
+      fail = false;
+      await vi.advanceTimersByTimeAsync(15 * 60_000 + 1);
+      const retry = resolveEntries(letterboxdProvider, entries);
+      await vi.runAllTimersAsync();
+      expect((await retry).resolved).toHaveLength(3);
+      expect(db.getTable("title_id_map")).toHaveLength(3);
+    },
+  );
+
   it("requires explicit document and empty-grid end tags", () => {
     const truncated =
       '<html><head><title>List • Letterboxd</title></head><body><ul class="poster-list -grid">';
