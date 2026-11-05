@@ -77,7 +77,10 @@ export function sourceProblemCopy(
     case "not_found":
       return {
         title: `${label} could not find this ${noun}`,
-        fix: "Check the link. The list may have been deleted.",
+        fix:
+          provider === "letterboxd"
+            ? "Use the full Letterboxd watchlist or list URL and check that it is public."
+            : "Check the link. The list may have been deleted.",
       };
     case "needs_connection":
       return {
@@ -97,10 +100,7 @@ export function sourceProblemCopy(
     case "coming_soon":
       return {
         title: `${label} is coming soon`,
-        fix:
-          provider === "letterboxd"
-            ? "Tip: import it into MDBList, then add the MDBList list."
-            : `Stremlist cannot read ${label} lists yet.`,
+        fix: `Stremlist cannot read ${label} lists yet.`,
       };
     case "unavailable":
       return {

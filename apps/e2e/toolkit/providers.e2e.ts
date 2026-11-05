@@ -26,7 +26,7 @@ import {
 } from "./config-fixture";
 
 // Provider journeys of the configure page: links of every available Provider
-// (Letterboxd links only explain the MDBList import), the kill switch,
+// including public Letterboxd links, the kill switch,
 // Connections and their OAuth round trip,
 // disconnect, Actions settings and the Legacy alias upgrade. The API is
 // intercepted; the tests/provider-*.spec.ts files run the real backend.
@@ -570,31 +570,27 @@ test("a Provider turned off is unavailable to connect, link or add", async ({
   expect(inputs).toEqual([{ input: link, accountKey: accountId }]);
 });
 
-test("a Letterboxd link explains the MDBList import without a lookup", async ({
+test("a public Letterboxd link becomes a List without connecting an account", async ({
   app,
   browser,
   screen,
 }) => {
   await captureConfig(browser);
-  const inputs = await routeResolve(browser, () => null);
+  const link = "https://letterboxd.com/someone/watchlist/";
+  const inputs = await routeResolve(browser, () =>
+    resolved("letterboxd", "users/someone/watchlist", "watchlist", {
+      suggestedTitle: "Someone's watchlist",
+    }),
+  );
   await app.open(`/configure?account=${accountId}`);
   await expect(screen.getByText("Test catalog")).toBeVisible();
-  await screen
-    .getByLabel(PASTE)
-    .fill("https://letterboxd.com/someone/watchlist/");
-  await expect(screen.getByText("Letterboxd: coming soon")).toBeVisible();
-  await expect(screen.getByText("Coming soon")).toBeVisible();
+  await screen.getByLabel(PASTE).fill(link);
+  await expect(screen.getByText("Letterboxd watchlist detected")).toBeVisible();
   await screen.getByRole("button", "Add", { exact: true }).tap();
-  const problem = screen.getByRole("alert");
-  await expect(
-    problem.getByText(
-      "Letterboxd is coming soon. Tip: import it into MDBList, then add the MDBList list.",
-    ),
-  ).toBeVisible();
-  await expect(problem.getByRole("listitem")).toHaveCount(3);
-  await expect(
-    problem.getByRole("link", "Open MDBList external lists"),
-  ).toHaveAttribute("href", "https://mdblist.com/mylists/#external_lists");
-  await expect(screen.getByText(/^1 of 10 lists/)).toBeVisible();
-  expect(inputs).toEqual([]);
+  await expect(screen.getByRole("textbox", "Catalog title").last()).toHaveValue(
+    "Someone's watchlist",
+  );
+  await expect(screen.getByText(/^2 of 10 lists/)).toBeVisible();
+  expect(inputs).toEqual([{ input: link, accountKey: accountId }]);
+  await app.screenshot("Letterboxd public watchlist added");
 });

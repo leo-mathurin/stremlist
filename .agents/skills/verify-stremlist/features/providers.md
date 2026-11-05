@@ -24,4 +24,4 @@ Preconditions: toolkit fixtures advertise available Providers and Connections. I
 
 - Fixtures exercise real adapters but do not log in to real Trakt, Simkl, or MDBList consent screens. Do not claim live OAuth from this pass.
 - Provider Actions can mutate real accounts outside fixtures. Keep the controlled fixture transport for routine verification.
-- Letterboxd links explain the MDBList import path. Direct Letterboxd support is not implemented.
+- Letterboxd reads public watchlists and lists without a Connection. `provider-links.spec.ts` verifies stored configuration, movie/series Catalogs, and a shared upstream read across Accounts. Private lists and Actions remain unsupported.

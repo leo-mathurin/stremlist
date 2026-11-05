@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-08T16:13:43.174Z",
+  "createdAt": "2026-11-05T18:21:48.352Z",
   "payload": {
     "actions": [
       {
@@ -42,7 +42,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Opened the existing Stremlist using the supplied Addon URL. The Configure page is open for account sl_E2eFixtureAccount00001, showing the existing “Test catalog” list and the matching Addon URL.",
+    "summary": "The recorded Open flow has already taken effect: configuration for the existing account is open, and its Addon URL field shows http://127.0.0.1:4314/sl_E2eFixtureAccount00001/manifest.json.",
     "startPath": "/",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
@@ -63,7 +63,7 @@
         "name": "Add"
       },
       {
-        "text": "IMDb, Trakt, MDBList, JustWatch and SensCritique links work."
+        "text": "IMDb, Trakt, MDBList, JustWatch, SensCritique and Letterboxd links work."
       },
       {
         "text": "Paste a link"
@@ -99,13 +99,13 @@
         "text": "2 people use Stremlist"
       },
       {
-        "text": "people use Stremlist"
-      },
-      {
         "role": "heading",
         "name": "Many sites, one addon"
+      },
+      {
+        "text": "Paste a link from any of these sites, or connect your Trakt, Simkl or MDBList account."
       }
     ],
-    "endWaitMs": 12087
+    "endWaitMs": 27306
   }
 }

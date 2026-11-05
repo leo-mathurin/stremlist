@@ -161,10 +161,14 @@ export async function resolveEntries(
   // Chunks let a slow strategy (one search per entry) stop at the time
   // budget; entries not reached keep no cache row and are tried next time.
   let attempted = 0;
-  for (let start = 0; start < capped.length; start += STRATEGY_CHUNK) {
+  const chunkSize = Math.max(
+    1,
+    Math.min(STRATEGY_CHUNK, adapter.resolutionBatchSize ?? STRATEGY_CHUNK),
+  );
+  for (let start = 0; start < capped.length; start += chunkSize) {
     if (start > 0 && Date.now() - startedAt > options.budgetMs) break;
-    attempted = Math.min(start + STRATEGY_CHUNK, capped.length);
-    const batch = capped.slice(start, start + STRATEGY_CHUNK);
+    attempted = Math.min(start + chunkSize, capped.length);
+    const batch = capped.slice(start, start + chunkSize);
     const results = new Map<number, { imdbId: string; strategy: string }>();
     let remaining = batch;
     for (const strategy of adapter.resolverStrategies ?? []) {

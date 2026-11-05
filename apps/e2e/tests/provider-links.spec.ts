@@ -12,8 +12,7 @@ import { startFixtureBackend } from "../helpers/fixture-backend.js";
 // Provider links against the real backend, database and R2 store: the real
 // adapters resolve links and read Source lists, and a separate backend with
 // helpers/provider-fixtures.ts answers every Provider request with
-// deterministic data (dummy client IDs, no real credentials). Letterboxd is
-// out of scope.
+// deterministic data (dummy client IDs, no real credentials), including anonymous Letterboxd pages.
 
 let backend: FixtureBackend;
 
@@ -40,6 +39,7 @@ test.beforeEach(async () => {
   backend.clearRequests();
   // The ID resolver caches SensCritique products across runs.
   await clearResolverCache("senscritique", ["101", "202"]);
+  await clearResolverCache("letterboxd", ["film:101", "film:202"]);
 });
 
 test(
@@ -48,7 +48,7 @@ test(
   async () => {
     const { api } = backend;
     const links = {
-      trakt: "https://trakt.tv/users/fixture-user/watchlist",
+      trakt: "https://trakt.tv/users/fixture_user/watchlist",
       justwatch: `https://www.justwatch.com/us/lists/${JUSTWATCH_REF}`,
       senscritique:
         "https://www.senscritique.com/fixture-user/collection?action=WISH",
@@ -56,7 +56,7 @@ test(
     expect(await api.resolveLink(links.trakt)).toEqual({
       ok: true,
       provider: "trakt",
-      sourceRef: "users/fixture-user/watchlist",
+      sourceRef: "users/fixture_user/watchlist",
       kind: "watchlist",
       requiresConnection: false,
       suggestedTitle: "fixture-user's watchlist",
@@ -89,7 +89,7 @@ test(
     ).toEqual({ ok: false, reason: "private", provider: "senscritique" });
 
     const created = await api.createAccount([
-      listInput("trakt", "users/fixture-user/watchlist", SPLIT),
+      listInput("trakt", "users/fixture_user/watchlist", SPLIT),
       listInput("justwatch", JUSTWATCH_REF, SPLIT),
       listInput("senscritique", "users/fixture-user/wishes", SPLIT),
     ]);
@@ -249,5 +249,42 @@ test(
     expect(
       personal.every((entry) => entry.authorization === "fixture-access-token"),
     ).toBe(true);
+  },
+);
+
+test(
+  "public Letterboxd watchlists persist and share upstream reads between Accounts",
+  { tag: "@local" },
+  async () => {
+    const { api } = backend;
+    const first = await seedAccount();
+    const second = await seedAccount();
+    backend.clearRequests();
+    const input = "https://letterboxd.com/fixture_user/watchlist/";
+    const resolved = await api.resolveLink(input, first);
+    expect(resolved).toMatchObject({
+      ok: true,
+      provider: "letterboxd",
+      sourceRef: "users/fixture_user/watchlist",
+      requiresConnection: false,
+    });
+    for (const account of [first, second]) {
+      const saved = await api.postConfig(account, [
+        listInput("letterboxd", "users/fixture_user/watchlist", {
+          ...SPLIT,
+          catalogTitle: "Letterboxd Watchlist",
+        }),
+      ]);
+      expect(saved.status).toBe(200);
+      const config = await api.getConfig(account);
+      expect(config.body.lists[0]).toMatchObject({
+        provider: "letterboxd",
+        sourceRef: "users/fixture_user/watchlist",
+      });
+      expect(await catalogs(account, config.body.lists[0].id)).toEqual(BOTH);
+    }
+    expect(
+      backend.requests((url) => url.hostname === "letterboxd.com"),
+    ).toHaveLength(1);
   },
 );

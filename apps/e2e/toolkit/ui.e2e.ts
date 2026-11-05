@@ -89,11 +89,11 @@ test("Home detects the Provider of a link and clearing it resets the entry", asy
   await field.fill(addonUrl(accountId));
   await expect(screen.getByText("Addon URL detected")).toBeVisible();
   await field.fill("https://letterboxd.com/someone/watchlist/");
-  await expect(screen.getByText("Letterboxd: coming soon")).toBeVisible();
+  await expect(screen.getByText("Letterboxd watchlist detected")).toBeVisible();
   await field.fill("");
   await expect(screen.getByRole("button", "Build my Stremlist")).toBeVisible();
   // An empty field shows no hint.
-  await expect(screen.getByText("Letterboxd: coming soon")).toBeHidden();
+  await expect(screen.getByText("Letterboxd watchlist detected")).toBeHidden();
   await expect(
     screen.getByText("No supported site recognized yet."),
   ).toBeHidden();

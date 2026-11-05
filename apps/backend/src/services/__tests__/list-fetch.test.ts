@@ -117,6 +117,65 @@ beforeEach(() => {
 });
 
 describe("getListCatalog", () => {
+  it.each(["catalog", "prewarm"] as const)(
+    "manual refresh waits for a pending %s write and then revalidates",
+    async (policy) => {
+      const write = vi.mocked(listCache.writeCachedList);
+      const original = write.getMockImplementation();
+      if (!original) throw new Error("Missing cache implementation");
+      let release: () => void = () => undefined;
+      let started: () => void = () => undefined;
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const writing = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      write.mockImplementationOnce(async (...args) => {
+        started();
+        await blocked;
+        return original(...args);
+      });
+      const fresh = meta("tt0068646");
+      const fetchSource = vi.fn(
+        (_ref: string, ctx: { forceRefresh?: boolean }) =>
+          Promise.resolve({
+            entries: [
+              {
+                imdbId: ctx.forceRefresh ? fresh.id : MOVIE.id,
+                meta: ctx.forceRefresh ? fresh : MOVIE,
+              },
+            ],
+            complete: true,
+          }),
+      );
+      useFakeProvider(fakeAdapter("letterboxd", { fetchSource }));
+      const request = config({
+        provider: "letterboxd",
+        sourceRef: "users/leo/watchlist",
+        policy,
+      });
+      const earlier = readList(request);
+      await writing;
+      const manual = readList({ ...request, policy: "manual" });
+      try {
+        expect(fetchSource).toHaveBeenCalledTimes(1);
+      } finally {
+        release();
+      }
+      await earlier;
+      expect((await manual).metas.map((item) => item.id)).toEqual([fresh.id]);
+      expect(fetchSource).toHaveBeenLastCalledWith("users/leo/watchlist", {
+        connection: null,
+        forceRefresh: true,
+      });
+      const cached = await listCache.getCachedList(LIST_ID, {
+        provider: "letterboxd",
+        sourceRef: "users/leo/watchlist",
+      });
+      expect(cached?.data.metas.map((item) => item.id)).toEqual([fresh.id]);
+    },
+  );
   it("coalesces concurrent cache misses for the same Source list", async () => {
     const releaseFetches: ((data: CatalogData) => void)[] = [];
     scraperMocks.fetchList.mockImplementation(

@@ -93,7 +93,7 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
   },
   letterboxd: {
     label: "Letterboxd",
-    availability: "soon",
+    availability: "available",
     connection: "none",
     actions: [],
     linkExample: "https://letterboxd.com/username/watchlist/",
@@ -427,23 +427,41 @@ function parseSensCritiqueLink(input: string): ParsedSourceLink | null {
 
 function parseLetterboxdLink(input: string): ParsedSourceLink | null {
   const url = toUrl(input);
-  if (!url || !hostIs(url, "letterboxd.com", "boxd.it")) return null;
+  if (
+    !url ||
+    !["letterboxd.com", "www.letterboxd.com"].includes(
+      url.hostname.toLowerCase(),
+    ) ||
+    !["http:", "https:"].includes(url.protocol) ||
+    url.username ||
+    url.password
+  )
+    return null;
   const parts = segments(url);
-  if (parts[0] && parts[1] === "watchlist") {
+  const user = parts[0]?.toLowerCase();
+  if (!user || !/^[a-z0-9_]{1,40}$/.test(user)) return null;
+  if (parts[1] === "watchlist" && parts.length === 2) {
     return {
       provider: "letterboxd",
-      sourceRef: `users/${parts[0].toLowerCase()}/watchlist`,
+      sourceRef: `users/${user}/watchlist`,
       kind: "watchlist",
+      suggestedTitle: `${user}'s watchlist`,
     };
   }
-  if (parts[0] && parts[1] === "list" && parts[2]) {
+  const slug = parts[2]?.toLowerCase();
+  if (
+    parts[1] === "list" &&
+    parts.length === 3 &&
+    slug &&
+    /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(slug)
+  ) {
     return {
       provider: "letterboxd",
-      sourceRef: `users/${parts[0].toLowerCase()}/lists/${parts[2].toLowerCase()}`,
+      sourceRef: `users/${user}/lists/${slug}`,
       kind: "list",
     };
   }
-  return { provider: "letterboxd", sourceRef: url.pathname, kind: "list" };
+  return null;
 }
 
 const LINK_PARSERS: ((input: string) => ParsedSourceLink | null)[] = [
@@ -728,11 +746,20 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
     ],
     letterboxd: [
       {
+        pattern: /^users\/([^/]+)\/lists\/([^/]+)$/,
+        describe: ([, user, slug]) => ({
+          kind: "list",
+          detail: `${user}/${slug}`,
+          url: `https://letterboxd.com/${user}/list/${slug}/`,
+        }),
+      },
+      {
         pattern: /^users\/([^/]+)\/watchlist$/,
         describe: ([, user]) => ({
           kind: "watchlist",
           detail: user,
-          url: null,
+          url: `https://letterboxd.com/${user}/watchlist/`,
+          title: `${user}'s watchlist`,
         }),
       },
     ],

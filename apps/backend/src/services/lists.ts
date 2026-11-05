@@ -153,6 +153,7 @@ interface FreshList {
 
 interface InFlightRefresh {
   promise: Promise<FreshList>;
+  policy: SourceRead["policy"];
   /** Aborted when a newer read replaces this one: it must not write. */
   controller: AbortController;
 }
@@ -347,7 +348,7 @@ async function fetchAndCacheList(
         cacheKey,
         resolveBudgetMs: READ_POLICIES[read.policy].resolveBudgetMs,
       },
-      ctx,
+      read.policy === "manual" ? { ...ctx, forceRefresh: true } : ctx,
     );
   } catch (error) {
     await record({ kind: "failed", problem: sourceProblemReason(error) });
@@ -416,12 +417,20 @@ function refreshList(
   // must not answer for its new Source list.
   const key = `${read.cacheKey}:${read.source.provider}:${read.source.sourceRef}:${read.allowConnection ? "c" : "p"}`;
   const existing = inFlightRefreshes.get(key);
-  if (existing && !supersede) return existing.promise;
+  const revalidate = read.policy === "manual" && existing?.policy !== "manual";
+  if (existing && !supersede && !revalidate) return existing.promise;
   existing?.controller.abort();
 
   const controller = new AbortController();
   const refresh: InFlightRefresh = {
-    promise: fetchAndCacheList(read, controller.signal),
+    // Let any previous write settle before a forced read can publish its result.
+    promise:
+      existing && revalidate
+        ? existing.promise
+            .catch(() => undefined)
+            .then(() => fetchAndCacheList(read, controller.signal))
+        : fetchAndCacheList(read, controller.signal),
+    policy: read.policy,
     controller,
   };
   inFlightRefreshes.set(key, refresh);

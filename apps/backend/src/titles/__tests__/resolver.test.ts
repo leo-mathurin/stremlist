@@ -80,6 +80,31 @@ beforeEach(() => {
 });
 
 describe("resolveEntries", () => {
+  it("keeps entries outside a paced Provider's small batches deferred", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const slow: ResolverStrategy = {
+        name: "paced-film-links",
+        resolve: vi.fn((batch: SourceEntry[]) => {
+          vi.setSystemTime(Date.now() + batch.length * 3000);
+          return Promise.resolve(new Map<number, string>());
+        }),
+      };
+      const paced = { ...adapter([slow]), resolutionBatchSize: 2 };
+      const started = Date.now();
+      const result = await resolveEntries(
+        paced,
+        Array.from({ length: 50 }, (_, index) => tmdb(index + 1)),
+        { budgetMs: 10_000 },
+      );
+      expect(Date.now() - started).toBe(12_000);
+      expect(result.deferred).toBe(46);
+      expect(db.getTable("title_id_map")).toHaveLength(4);
+      expect(cacheRow("5")).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("skips a strategy whose Provider kill switch is on", async () => {
     process.env.DISABLED_PROVIDERS = "justwatch";
     try {
