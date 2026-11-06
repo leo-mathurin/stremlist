@@ -26,7 +26,23 @@ import {
   resetConfigTest,
 } from "./helpers/config-api.js";
 import { seedAccount, seedConnection } from "./helpers/fixtures.js";
+import { r2Objects } from "./helpers/mock-r2.js";
 import { fakeAdapter, useFakeProvider } from "./helpers/mock-registry.js";
+
+const LETTERBOXD_STATE = "providers/letterboxd/http-v1.json";
+function haltLetterboxd() {
+  r2Objects.set(
+    LETTERBOXD_STATE,
+    JSON.stringify({
+      activeId: null,
+      activeUntil: 0,
+      nextAt: 0,
+      pausedUntil: 0,
+      halted: true,
+      failures: 0,
+    }),
+  );
+}
 
 beforeEach(resetConfigTest);
 
@@ -70,6 +86,21 @@ describe("POST /links/resolve", () => {
       provider: "trakt",
     });
     expect(validateSource).not.toHaveBeenCalled();
+  });
+
+  it("says when Letterboxd is unavailable after it refused Stremlist", async () => {
+    useFakeProvider(fakeAdapter("letterboxd"));
+    haltLetterboxd();
+    try {
+      const res = await resolve("https://letterboxd.com/leo/watchlist/");
+      expect(await res.json()).toEqual({
+        ok: false,
+        reason: "disabled",
+        provider: "letterboxd",
+      });
+    } finally {
+      r2Objects.delete(LETTERBOXD_STATE);
+    }
   });
 
   it("never uses a Connection for a Legacy alias", async () => {
@@ -264,5 +295,23 @@ describe("GET /providers", () => {
     expect(byId.get("simkl")?.connectable).toBe(false);
     expect(byId.get("imdb")?.connectable).toBe(false);
     expect(byId.get("justwatch")?.enabled).toBe(false);
+    expect(byId.get("letterboxd")?.enabled).toBe(true);
+  });
+
+  it("reports a halted Letterboxd as unavailable, like the kill switch", async () => {
+    haltLetterboxd();
+    try {
+      const res = await app.request("/providers");
+      const { providers } = (await res.json()) as {
+        providers: { id: ProviderId; enabled: boolean }[];
+      };
+      const byId = new Map(
+        providers.map((provider) => [provider.id, provider]),
+      );
+      expect(byId.get("letterboxd")?.enabled).toBe(false);
+      expect(byId.get("imdb")?.enabled).toBe(true);
+    } finally {
+      r2Objects.delete(LETTERBOXD_STATE);
+    }
   });
 });

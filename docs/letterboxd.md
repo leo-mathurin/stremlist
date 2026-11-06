@@ -30,7 +30,7 @@ A 403, 429, challenge response header or challenge document halts new outbound r
 
 ## Operation
 
-`DISABLED_PROVIDERS=letterboxd` is the existing application kill switch. Apply environment changes through a reviewed deployment. Cached Catalogs remain available through the common fallback.
+`DISABLED_PROVIDERS=letterboxd` is the existing application kill switch. A halt makes Letterboxd unavailable in the same way: the configure page shows it as temporarily unavailable, new Letterboxd links are refused, and Lists keep their last Catalog with a sync note. The instance that flips the shared state to halted also reports to `BETTERSTACK_HEARTBEAT_URL_LETTERBOXD` (`/fail`) at once; `/monitor` probes the Popular this week chart on its schedule. Apply environment changes through a reviewed deployment. Cached Catalogs remain available through the common fallback.
 
 Inspect the HTTP state object after a halt. `activeId` with an expired lease means an unknown result; `failures >= 3` means repeated failures; a halted state with neither means an explicit refusal or challenge. Check the cause before resetting the state. Reset only this HTTP state object, with no requests in flight. Keep page and title-ID caches. The state must remain outside any R2 lifecycle rule that deletes inactive objects while the provider is halted.
 
