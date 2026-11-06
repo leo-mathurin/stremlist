@@ -574,7 +574,7 @@ describe("Letterboxd share links", () => {
     ).toEqual(["film:2", "film:1"]);
   });
 
-  it("two accounts with the same share link share one cached page", async () => {
+  it("gives the same share link one stable reference, caught as a duplicate", async () => {
     const fetch = vi.fn((url: string) => {
       expect(url).toBe(shareUrl);
       return Promise.resolve(new Response(page([1])));
@@ -583,11 +583,67 @@ describe("Letterboxd share links", () => {
     const a = await letterboxdProvider.validateSource(provisional, context);
     const b = await letterboxdProvider.validateSource(provisional, context);
     if (!a.ok || !b.ok) throw new Error("expected ok");
-    // Different ciphertexts (random IV) still resolve to the same page cache.
-    expect(a.ref).not.toBe(b.ref);
+    // Stable encryption: the same share link always yields the same reference,
+    // so the (account, provider, source_ref) uniqueness catches a re-add, and
+    // both reads share one cached page.
+    expect(a.ref).toBe(b.ref);
     await letterboxdProvider.fetchSource(a.ref, context);
     await letterboxdProvider.fetchSource(b.ref, context);
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("never reads a plaintext-token reference directly", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => {
+        throw new Error("no request expected");
+      }),
+    );
+    await expect(
+      letterboxdProvider.fetchSource(provisional, context),
+    ).rejects.toMatchObject({ reason: "not_found" });
+  });
+
+  it("forgets the cached page when a share link is revoked", async () => {
+    const first = vi.fn((url: string) => {
+      expect(url).toBe(shareUrl);
+      return Promise.resolve(new Response(page([1])));
+    });
+    vi.stubGlobal("fetch", first);
+    const validated = await letterboxdProvider.validateSource(
+      provisional,
+      context,
+    );
+    if (!validated.ok) throw new Error("expected ok");
+
+    // Time passes, then the link is revoked: a forced read now gets 404.
+    await vi.advanceTimersByTimeAsync(3001);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(new Response("gone", { status: 404 }))),
+    );
+    const revoked = expect(
+      letterboxdProvider.fetchSource(validated.ref, {
+        ...context,
+        forceRefresh: true,
+      }),
+    ).rejects.toMatchObject({ reason: "not_found" });
+    await vi.runAllTimersAsync();
+    await revoked;
+
+    // The stale snapshot is gone, so an ordinary read re-requests and fails too,
+    // instead of serving the Titles cached before the revocation.
+    await vi.advanceTimersByTimeAsync(3001);
+    const after = vi.fn(() =>
+      Promise.resolve(new Response("gone", { status: 404 })),
+    );
+    vi.stubGlobal("fetch", after);
+    const second = expect(
+      letterboxdProvider.fetchSource(validated.ref, context),
+    ).rejects.toMatchObject({ reason: "not_found" });
+    await vi.runAllTimersAsync();
+    await second;
+    expect(after).toHaveBeenCalled();
   });
 
   it("follows a boxd.it short link to the share page", async () => {

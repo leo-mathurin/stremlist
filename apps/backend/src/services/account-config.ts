@@ -150,6 +150,17 @@ async function normalizeSource(
       throw new ConfigError(`"${source.sourceRef}" is not a valid IMDb list.`);
     }
   }
+  if (source.provider === "letterboxd") {
+    // A Share link or boxd.it reference must be resolved and its token encrypted
+    // through /links/resolve first. Never store a provisional, plaintext-token
+    // reference.
+    if (
+      sourceRef.startsWith("lbxshare/") ||
+      sourceRef.startsWith("lbxshort/")
+    ) {
+      throw new ConfigError("Paste the Letterboxd share link again to add it.");
+    }
+  }
   if (sourceRequiresConnection(source.provider, sourceRef)) {
     if (access.via === "legacy") {
       throw new ConfigError(

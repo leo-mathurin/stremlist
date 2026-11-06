@@ -1,4 +1,9 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  randomBytes,
+} from "node:crypto";
 
 const VERSION = "v1";
 const IV_BYTES = 12;
@@ -22,6 +27,26 @@ function encryptionKey(): Buffer {
  */
 export function encryptSecret(plaintext: string): string {
   const iv = randomBytes(IV_BYTES);
+  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
+  const ciphertext = Buffer.concat([
+    cipher.update(plaintext, "utf8"),
+    cipher.final(),
+  ]);
+  return `${VERSION}:${Buffer.concat([iv, cipher.getAuthTag(), ciphertext]).toString("base64")}`;
+}
+
+/**
+ * Encrypt a value whose ciphertext must be stable, so the same plaintext always
+ * produces the same stored string (for example a Share link token that doubles
+ * as a Source list's identity for duplicate checks). The IV is derived from the
+ * plaintext with HMAC, so equal plaintexts share an IV and distinct ones do not,
+ * which keeps AES-256-GCM safe. Same output shape as `encryptSecret`.
+ */
+export function encryptStable(plaintext: string): string {
+  const iv = createHmac("sha256", encryptionKey())
+    .update(plaintext, "utf8")
+    .digest()
+    .subarray(0, IV_BYTES);
   const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
   const ciphertext = Buffer.concat([
     cipher.update(plaintext, "utf8"),

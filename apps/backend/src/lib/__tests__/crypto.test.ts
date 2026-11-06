@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { decryptSecret, encryptSecret, randomToken } from "../crypto";
+import {
+  decryptSecret,
+  encryptSecret,
+  encryptStable,
+  randomToken,
+} from "../crypto";
 
 const KEY = Buffer.alloc(32, 1).toString("base64");
 const OTHER_KEY = Buffer.alloc(32, 2).toString("base64");
@@ -80,6 +85,32 @@ describe("Connection secret encryption", () => {
     expect(() => encryptSecret("access-token")).toThrow(
       "CONNECTION_ENCRYPTION_KEY must be 32 bytes in base64",
     );
+  });
+});
+
+describe("stable secret encryption", () => {
+  let saved: string | undefined;
+  beforeEach(() => {
+    saved = process.env.CONNECTION_ENCRYPTION_KEY;
+    process.env.CONNECTION_ENCRYPTION_KEY = KEY;
+  });
+  afterEach(() => {
+    if (saved === undefined) delete process.env.CONNECTION_ENCRYPTION_KEY;
+    else process.env.CONNECTION_ENCRYPTION_KEY = saved;
+  });
+
+  it.each(["token", "", "é🔑 unicode", "x".repeat(4096)])(
+    "round-trips %j",
+    (secret) => {
+      expect(decryptSecret(encryptStable(secret))).toBe(secret);
+    },
+  );
+
+  it("gives the same plaintext the same ciphertext, and different plaintexts different ones", () => {
+    expect(encryptStable("same")).toBe(encryptStable("same"));
+    expect(encryptStable("a")).not.toBe(encryptStable("b"));
+    expect(encryptStable("token")).toMatch(/^v1:[A-Za-z0-9+/]+=*$/);
+    expect(encryptStable("token")).not.toContain("token");
   });
 });
 

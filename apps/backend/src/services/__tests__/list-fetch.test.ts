@@ -612,6 +612,38 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
     expect(error).toMatchObject({ reason: "not_found" });
   });
 
+  it("a manual refresh on a revoked Letterboxd list drops the fresh cache so Titles cannot return", async () => {
+    useFakeProvider(
+      fakeAdapter("letterboxd", {
+        fetchSource: () =>
+          Promise.reject(
+            new SourceUnavailableError("not_found", "revoked share link"),
+          ),
+      }),
+    );
+    // The cache is still fresh, so an ordinary read would serve it.
+    cache.seed(LIST_ID, [MOVIE], new Date());
+
+    // Refresh now sees the revocation and must clear the cached Catalog.
+    await expect(
+      readList(
+        config({
+          provider: "letterboxd",
+          sourceRef: "share/v1:ciphertext",
+          policy: "manual",
+        }),
+      ),
+    ).rejects.toMatchObject({ reason: "not_found" });
+    expect(cache.get(LIST_ID)).toBeNull();
+
+    // A later ordinary read no longer has stale Titles to serve.
+    await expect(
+      readList(
+        config({ provider: "letterboxd", sourceRef: "share/v1:ciphertext" }),
+      ),
+    ).rejects.toMatchObject({ reason: "not_found" });
+  });
+
   it("keeps serving the cache of a Letterboxd list on a transient failure", async () => {
     useFakeProvider(
       fakeAdapter("letterboxd", {

@@ -269,6 +269,18 @@ describe("List CRUD via the config API", () => {
       ]);
     });
 
+    it.each(["lbxshare/leo/list/x/share/TOK", "lbxshort/YtpP8$TOK"])(
+      "refuses to save a provisional Letterboxd reference %j with its plaintext token",
+      async (sourceRef) => {
+        const res = await postConfig(OWNER, {
+          lists: [
+            { provider: "letterboxd", sourceRef, sortOption: "added_at-asc" },
+          ],
+        });
+        expect(res.status).toBe(400);
+      },
+    );
+
     it("turns IMDb p. handles into user IDs before saving", async () => {
       const normalize = vi
         .spyOn(scraper, "normalizeImdbUserId")

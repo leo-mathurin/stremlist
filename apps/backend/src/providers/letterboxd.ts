@@ -2,7 +2,7 @@ import { parseSourceLink } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { load } from "cheerio";
 import { createHash } from "node:crypto";
-import { decryptSecret, encryptSecret } from "../lib/crypto";
+import { decryptSecret, encryptStable } from "../lib/crypto";
 import { wikidataStrategy } from "../titles/wikidata";
 import { providerFetch } from "./http";
 import { isProviderEnabled } from "./kill-switch";
@@ -32,15 +32,14 @@ const SHARE_PREFIX = "share/";
 const PROVISIONAL_SHARE_PREFIX = "lbxshare/";
 const SHORT_PREFIX = "lbxshort/";
 
-/** The letterboxd.com path for a stored or provisional Source list reference. */
+/** The letterboxd.com path for a stored Source list reference. */
 function sourcePath(ref: string) {
   // A stored Share link: the token is encrypted; decrypt it to the real path.
+  // Provisional references (lbxshare/, lbxshort/) are never read directly: they
+  // are resolved and encrypted in validateSource before storage, so a plaintext
+  // token can never reach a Catalog read.
   if (ref.startsWith(SHARE_PREFIX)) {
     return `/${decryptSecret(ref.slice(SHARE_PREFIX.length))}/`;
-  }
-  // A Share link that validateSource has not yet encrypted.
-  if (ref.startsWith(PROVISIONAL_SHARE_PREFIX)) {
-    return `/${ref.slice(PROVISIONAL_SHARE_PREFIX.length)}/`;
   }
   const match = SOURCE.exec(ref);
   if (!match)
@@ -113,7 +112,9 @@ async function resolveRef(ref: string): Promise<string> {
     return resolveRef(await resolveShortLink(ref.slice(SHORT_PREFIX.length)));
   }
   if (ref.startsWith(PROVISIONAL_SHARE_PREFIX)) {
-    return `${SHARE_PREFIX}${encryptSecret(ref.slice(PROVISIONAL_SHARE_PREFIX.length))}`;
+    // Stable encryption: the same share link always yields the same stored
+    // reference, so adding it twice is caught as a duplicate.
+    return `${SHARE_PREFIX}${encryptStable(ref.slice(PROVISIONAL_SHARE_PREFIX.length))}`;
   }
   return ref;
 }

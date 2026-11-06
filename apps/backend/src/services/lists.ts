@@ -520,9 +520,19 @@ async function readSourceCatalog(read: SourceRead): Promise<SourceCatalog> {
     // Letterboxd list that is gone, turned private, or whose Share link was
     // revoked (HTTP 404, mapped to not_found).
     const reason = sourceProblemReason(error);
-    const providerDropped =
-      reason === "needs_connection" ||
-      (source.provider === "letterboxd" && reason === "not_found");
+    const revoked = source.provider === "letterboxd" && reason === "not_found";
+    const providerDropped = reason === "needs_connection" || revoked;
+    if (revoked) {
+      // Drop the cached Catalog so its Titles cannot come back on a later read,
+      // even one served from a still-fresh cache. The shared page snapshot is
+      // cleared by the adapter on the same 404.
+      await deleteCachedList(cacheKey).catch((deleteError: unknown) => {
+        console.error(
+          `Clearing the revoked Catalog ${cacheKey} failed:`,
+          deleteError instanceof Error ? deleteError.message : deleteError,
+        );
+      });
+    }
     if (!rules.noCacheFallback && !providerDropped) {
       const cached = await getCachedList(cacheKey, source);
       if (cached && cached.data.metas.length > 0) {

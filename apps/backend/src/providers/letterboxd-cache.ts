@@ -188,10 +188,20 @@ export async function letterboxdSnapshot(
     );
     return snapshot;
   } catch (error) {
+    // A 404 is definitive: the list is gone, turned private, or its Share link
+    // was revoked. Drop the snapshot so its Titles cannot be served again. Any
+    // other failure is transient and keeps the last good snapshot.
+    const gone =
+      error instanceof SourceUnavailableError && error.reason === "not_found";
     try {
       await writeJson(
         key,
-        { ...state.value, leaseId: null, leaseUntil: 0 },
+        {
+          ...state.value,
+          snapshot: gone ? null : state.value.snapshot,
+          leaseId: null,
+          leaseUntil: 0,
+        },
         { etag: state.etag },
       );
     } catch {
