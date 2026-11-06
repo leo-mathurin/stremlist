@@ -539,3 +539,170 @@ describe("shared Letterboxd coordination", () => {
     expect(read).not.toHaveBeenCalled();
   });
 });
+
+describe("Letterboxd share links", () => {
+  const key = Buffer.from("0123456789abcdef0123456789abcdef").toString(
+    "base64",
+  );
+  const shareUrl =
+    "https://letterboxd.com/leom/list/best-of-2026/share/2OS5xaC1fJOBBvGv/";
+  const provisional = "lbxshare/leom/list/best-of-2026/share/2OS5xaC1fJOBBvGv";
+  beforeEach(() => vi.stubEnv("CONNECTION_ENCRYPTION_KEY", key));
+
+  it("encrypts the token on validate and reads the decrypted path on fetch", async () => {
+    const fetch = vi.fn((url: string) => {
+      expect(url).toBe(shareUrl);
+      return Promise.resolve(new Response(page([2, 1])));
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const validated = await letterboxdProvider.validateSource(
+      provisional,
+      context,
+    );
+    expect(validated.ok).toBe(true);
+    if (!validated.ok) throw new Error("expected ok");
+    // The stored reference encrypts the token and never carries it in plaintext.
+    expect(validated.ref.startsWith("share/v1:")).toBe(true);
+    expect(validated.ref).not.toContain("2OS5xaC1fJOBBvGv");
+
+    const result = await letterboxdProvider.fetchSource(validated.ref, context);
+    expect(result.complete).toBe(true);
+    // A shared list keeps page order (no watchlist reversal).
+    expect(
+      result.entries.map((entry) => entry.externalIds?.letterboxd?.uid),
+    ).toEqual(["film:2", "film:1"]);
+  });
+
+  it("gives the same share link one stable reference, caught as a duplicate", async () => {
+    const fetch = vi.fn((url: string) => {
+      expect(url).toBe(shareUrl);
+      return Promise.resolve(new Response(page([1])));
+    });
+    vi.stubGlobal("fetch", fetch);
+    const a = await letterboxdProvider.validateSource(provisional, context);
+    const b = await letterboxdProvider.validateSource(provisional, context);
+    if (!a.ok || !b.ok) throw new Error("expected ok");
+    // Stable encryption: the same share link always yields the same reference,
+    // so the (account, provider, source_ref) uniqueness catches a re-add, and
+    // both reads share one cached page.
+    expect(a.ref).toBe(b.ref);
+    await letterboxdProvider.fetchSource(a.ref, context);
+    await letterboxdProvider.fetchSource(b.ref, context);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("never reads a plaintext-token reference directly", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => {
+        throw new Error("no request expected");
+      }),
+    );
+    await expect(
+      letterboxdProvider.fetchSource(provisional, context),
+    ).rejects.toMatchObject({ reason: "not_found" });
+  });
+
+  it("forgets the cached page when a share link is revoked", async () => {
+    const first = vi.fn((url: string) => {
+      expect(url).toBe(shareUrl);
+      return Promise.resolve(new Response(page([1])));
+    });
+    vi.stubGlobal("fetch", first);
+    const validated = await letterboxdProvider.validateSource(
+      provisional,
+      context,
+    );
+    if (!validated.ok) throw new Error("expected ok");
+
+    // Time passes, then the link is revoked: a forced read now gets 404.
+    await vi.advanceTimersByTimeAsync(3001);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(new Response("gone", { status: 404 }))),
+    );
+    const revoked = expect(
+      letterboxdProvider.fetchSource(validated.ref, {
+        ...context,
+        forceRefresh: true,
+      }),
+    ).rejects.toMatchObject({ reason: "not_found" });
+    await vi.runAllTimersAsync();
+    await revoked;
+
+    // The stale snapshot is gone, so an ordinary read re-requests and fails too,
+    // instead of serving the Titles cached before the revocation.
+    await vi.advanceTimersByTimeAsync(3001);
+    const after = vi.fn(() =>
+      Promise.resolve(new Response("gone", { status: 404 })),
+    );
+    vi.stubGlobal("fetch", after);
+    const second = expect(
+      letterboxdProvider.fetchSource(validated.ref, context),
+    ).rejects.toMatchObject({ reason: "not_found" });
+    await vi.runAllTimersAsync();
+    await second;
+    expect(after).toHaveBeenCalled();
+  });
+
+  it("follows a boxd.it short link to the share page", async () => {
+    const fetch = vi.fn((url: string) => {
+      if (url === "https://boxd.it/YtpP8$2OS5xaC1fJOBBvGv")
+        return Promise.resolve(
+          new Response(null, { status: 302, headers: { location: shareUrl } }),
+        );
+      expect(url).toBe(shareUrl);
+      return Promise.resolve(new Response(page([1])));
+    });
+    vi.stubGlobal("fetch", fetch);
+    const pending = letterboxdProvider.validateSource(
+      "lbxshort/YtpP8$2OS5xaC1fJOBBvGv",
+      context,
+    );
+    await vi.runAllTimersAsync();
+    const validated = await pending;
+    if (!validated.ok) throw new Error("expected ok");
+    expect(validated.ref.startsWith("share/v1:")).toBe(true);
+    const result = await letterboxdProvider.fetchSource(validated.ref, context);
+    expect(result.entries).toHaveLength(1);
+  });
+
+  it("resolves a public boxd.it short link to its canonical list", async () => {
+    const listUrl = "https://letterboxd.com/leom/list/best-of-2026/";
+    const fetch = vi.fn((url: string) => {
+      if (url === "https://boxd.it/YtpP8")
+        return Promise.resolve(
+          new Response(null, { status: 302, headers: { location: listUrl } }),
+        );
+      expect(url).toBe(listUrl);
+      return Promise.resolve(new Response(page([1])));
+    });
+    vi.stubGlobal("fetch", fetch);
+    const pending = letterboxdProvider.validateSource(
+      "lbxshort/YtpP8",
+      context,
+    );
+    await vi.runAllTimersAsync();
+    const validated = await pending;
+    if (!validated.ok) throw new Error("expected ok");
+    expect(validated.ref).toBe("users/leom/lists/best-of-2026");
+  });
+
+  it("rejects a boxd.it link that is not a list", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(null, {
+            status: 302,
+            headers: { location: "https://letterboxd.com/film/harakiri/" },
+          }),
+        ),
+      ),
+    );
+    await expect(
+      letterboxdProvider.validateSource("lbxshort/film1", context),
+    ).rejects.toMatchObject({ reason: "not_found" });
+  });
+});

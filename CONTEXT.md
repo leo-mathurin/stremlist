@@ -28,6 +28,10 @@ _Avoid_: Source, platform, service
 One collection of titles on a Provider, identified by the Provider and a reference that the Provider understands (a watchlist, a custom list, a chart).
 _Avoid_: Remote list, feed
 
+**Share link**:
+A Provider URL that contains a secret token. Whoever has it can read one Source list that is not public, with no Connection. The owner can revoke it on the Provider at any time.
+_Avoid_: Private link, unlisted URL, secret URL
+
 **Watchlist**:
 The kind of Source list that a Provider keeps as a user's default "to watch" list. Only this kind is called a watchlist.
 _Avoid_: Using "watchlist" for any configured List
@@ -45,7 +49,7 @@ One Stremio catalog that a List produces. A List can produce several Catalogs (m
 _Avoid_: Row, shelf
 
 **Refresh**:
-One read of a List's Source list on its Provider, which replaces the cached Catalog when it works. A Stremio request for a stale Catalog, a save and the "Refresh now" button start one. When a refresh fails, Stremio keeps the Titles of the last successful refresh, except for a List that lost its Connection. A Catalog preview is not a refresh.
+One read of a List's Source list on its Provider, which replaces the cached Catalog when it works. A Stremio request for a stale Catalog, a save and the "Refresh now" button start one. When a refresh fails, Stremio keeps the Titles of the last successful refresh, except for a List that lost its Connection or whose Source list the Provider no longer shows (a revoked Share link, a deleted or hidden list): these show no Titles. A Catalog preview is not a refresh.
 _Avoid_: Sync (alone), fetch, update
 
 **Sync status**:

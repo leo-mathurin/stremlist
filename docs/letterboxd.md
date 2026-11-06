@@ -1,8 +1,16 @@
-# Public Letterboxd lists
+# Public and share-link Letterboxd lists
 
-Stremlist reads full public watchlist and list URLs, for example `https://letterboxd.com/member/watchlist/` and `https://letterboxd.com/member/list/list-name/`. A Letterboxd Connection is not required. Private collections, short `boxd.it` links and account Actions are not supported.
+Stremlist reads full public watchlist and list URLs, for example `https://letterboxd.com/member/watchlist/` and `https://letterboxd.com/member/list/list-name/`. A Letterboxd Connection is not required, and no credentials are stored (ADR 0001). Account Actions and lists visible only to the owner or to friends are not supported.
+
+A member can share a non-public list by setting it to "Anyone with share link" on Letterboxd. Stremlist reads that list through its share URL (`https://letterboxd.com/member/list/list-name/share/<token>/`) or its `boxd.it` short link. A public `boxd.it` short link resolves to its canonical list too.
 
 This adapter belongs to the multi-provider branch. It does not deploy that branch or migrate the current production database.
+
+## Share links
+
+The share token is a secret. Stremlist encrypts it with the Connection key (`CONNECTION_ENCRYPTION_KEY`, AES-256-GCM) before it becomes part of the stored Source list reference (`share/v1:…`). The configure page shows only "Shared list", never the token, the slug, or a clickable URL, and logs never print the reference. The page cache keys on a SHA-256 of the decrypted path, so two Accounts with the same share link share one cached page.
+
+A `boxd.it` short link is followed once on the backend (in `validateSource`). A link that resolves to a film or a member, not a list or watchlist, is refused. When a share link is revoked (the list leaves "Anyone with share link" or is deleted), Letterboxd answers HTTP 404; Stremlist then clears the Catalog instead of serving the Titles it cached before, the same as a deleted or hidden public list.
 
 ## Reads and title IDs
 
