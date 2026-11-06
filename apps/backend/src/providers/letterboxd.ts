@@ -282,7 +282,11 @@ async function fetchSource(
   let complete = false;
   for (let page = 1; page <= MAX_PAGES; page++) {
     const result = await readPage(base, page, ctx.forceRefresh);
-    const signature = result.films.map((film) => film.uid).join(",");
+    // A diary repeats a film on each viewing, so two pages can list the same
+    // films; their watch dates still tell the pages apart.
+    const signature = result.films
+      .map((film) => (diary ? `${film.uid}@${film.watchedAt ?? ""}` : film.uid))
+      .join(",");
     if (signature && signatures.has(signature))
       throw new SourceUnavailableError(
         "unavailable",

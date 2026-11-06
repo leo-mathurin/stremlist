@@ -87,8 +87,13 @@ export function parseLetterboxdPage(html: string, diary = false) {
     );
   // A diary has no poster grid: an empty one is a complete document with no
   // diary rows. completeDocument in `valid` keeps a truncated page from passing.
+  // An empty diary must still be a diary: require its closed table, so an
+  // unrelated complete page cannot replace a saved Catalog with nothing.
+  const diaryTable = $("table#diary-table")
+    .toArray()
+    .some((node) => Boolean(node.sourceCodeLocation?.endTag));
   const empty = diary
-    ? films.length === 0 && $("tr.diary-entry-row").length === 0
+    ? films.length === 0 && diaryTable && $("tr.diary-entry-row").length === 0
     : films.length === 0 && emptyGrid;
   const next = $("a.next, a[rel='next']").first().attr("href") ?? null;
   if ($("a.next, a[rel='next']").length > 0 && !next?.trim())

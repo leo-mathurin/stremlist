@@ -745,7 +745,7 @@ describe("Letterboxd diary", () => {
         return `<tr class="diary-entry-row" data-production-uid="film:${id}"><td class="col-daydate"><a href="/alice/diary/films/for/${y}/${m}/${d}/">${d}</a></td><td class="col-production"><div data-postered-identifier='{"uid":"film:${id}"}' data-item-slug="film-${id}" data-item-name="Film ${id} (2000)"></div></td></tr>`;
       })
       .join("");
-    return `<html><head><title>Alice's diary • Letterboxd</title></head><body><h1>Diary</h1><table class="diary-table"><tbody>${rows}</tbody></table>${next ? `<a class="next" href="${next}">Next</a>` : ""}</body></html>`;
+    return `<html><head><title>Alice's diary • Letterboxd</title></head><body><h1>Diary</h1><table id="diary-table" class="diary-table"><tbody>${rows}</tbody></table>${next ? `<a class="next" href="${next}">Next</a>` : ""}</body></html>`;
   }
 
   it("reads /diary/, keeps each Title once with its latest watch date, oldest first", async () => {
@@ -776,6 +776,60 @@ describe("Letterboxd diary", () => {
       "2026-03-05T00:00:00.000Z",
       "2026-05-20T00:00:00.000Z",
     ]);
+  });
+
+  it("reads rewatch pages that list the same films on different dates", async () => {
+    const fetch = vi.fn((url: string) => {
+      if (url === "https://letterboxd.com/alice/diary/")
+        return Promise.resolve(
+          new Response(
+            diaryPage(
+              [
+                { id: 1, date: "2026-05-20" },
+                { id: 2, date: "2026-05-19" },
+              ],
+              "/alice/diary/page/2/",
+            ),
+          ),
+        );
+      expect(url).toBe("https://letterboxd.com/alice/diary/page/2/");
+      return Promise.resolve(
+        new Response(
+          diaryPage([
+            { id: 1, date: "2026-01-10" },
+            { id: 2, date: "2026-01-09" },
+          ]),
+        ),
+      );
+    });
+    vi.stubGlobal("fetch", fetch);
+    const pending = letterboxdProvider.fetchSource(
+      "users/alice/diary",
+      context,
+    );
+    await vi.runAllTimersAsync();
+    const result = await pending;
+    expect(result.complete).toBe(true);
+    expect(result.entries.map((entry) => entry.addedAt)).toEqual([
+      "2026-05-19T00:00:00.000Z",
+      "2026-05-20T00:00:00.000Z",
+    ]);
+  });
+
+  it("refuses an unrelated complete page as an empty diary", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            "<html><head><title>Something • Letterboxd</title></head><body><h1>Something</h1></body></html>",
+          ),
+        ),
+      ),
+    );
+    await expect(
+      letterboxdProvider.fetchSource("users/alice/diary", context),
+    ).rejects.toMatchObject({ reason: "unavailable" });
   });
 
   it("accepts an empty diary", async () => {
