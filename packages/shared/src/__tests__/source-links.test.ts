@@ -4,6 +4,7 @@ import {
   parseSourceLink,
   sourceRequiresConnection,
 } from "../providers";
+import { sourceHasAddedDates } from "../list-merge";
 import { describe, expect, it } from "vitest";
 
 const JUSTWATCH_ID = "tl-us-0f1e2d3c-4b5a-4968-8776-655443322110";
@@ -220,10 +221,39 @@ describe("parseSourceLink: Letterboxd", () => {
   );
 
   it.each([
+    ["https://letterboxd.com/leom/films/", "users/leom/films", "leom's films"],
+    [
+      "https://letterboxd.com/leom/films/rated/4.0-5.0/",
+      "users/leom/films/rated/4.0-5.0",
+      "leom's films rated 4.0-5.0",
+    ],
+    [
+      "https://letterboxd.com/leom/likes/films/",
+      "users/leom/likes/films",
+      "leom's liked films",
+    ],
+  ])("reads the member collection %s", (input, ref, title) => {
+    expect(parseSourceLink(input)).toEqual({
+      ...parsed("letterboxd", ref, "list"),
+      suggestedTitle: title,
+    });
+  });
+
+  it.each([
+    "https://letterboxd.com/leom/diary/",
+    "https://letterboxd.com/leom/films/diary/",
+  ])("reads the diary as a history source: %s", (input) => {
+    expect(parseSourceLink(input)).toEqual({
+      ...parsed("letterboxd", "users/leom/diary", "history"),
+      suggestedTitle: "leom's diary",
+    });
+  });
+
+  it.each([
     "https://boxd.it/",
     "https://boxd.it/a/b",
     "https://letterboxd.com/film/harakiri/",
-    "https://letterboxd.com/leom/films/",
+    "https://letterboxd.com/leom/films/rated/bogus/",
     "https://letterboxd.com/leom%2Fevil/watchlist/",
     "https://letterboxd.com/leom/watchlist/extra/",
     "https://letterboxd.com/leom/list/best/share//",
@@ -296,6 +326,10 @@ describe("describeSourceRef kind", () => {
     "https://www.senscritique.com/liste/films/369869",
     "https://letterboxd.com/leom/watchlist/",
     "https://letterboxd.com/leom/list/best-of-2026/",
+    "https://letterboxd.com/leom/films/",
+    "https://letterboxd.com/leom/films/rated/4.0-5.0/",
+    "https://letterboxd.com/leom/likes/films/",
+    "https://letterboxd.com/leom/diary/",
   ])("gives the kind that the link parser found for %s", (link) => {
     const parsed = parseSourceLink(link);
     expect(parsed).not.toBeNull();
@@ -336,6 +370,32 @@ describe("describeSourceRef", () => {
     });
   });
 
+  it("names a Letterboxd chart after its label", () => {
+    expect(describeSourceRef("letterboxd", "films/popular/this/week")).toEqual({
+      kind: "chart",
+      detail: null,
+      url: "https://letterboxd.com/films/popular/this/week/",
+      title: "Letterboxd Popular this week",
+    });
+  });
+
+  it("describes a Letterboxd diary and films references", () => {
+    expect(describeSourceRef("letterboxd", "users/leom/diary")).toEqual({
+      kind: "history",
+      detail: "leom",
+      url: "https://letterboxd.com/leom/diary/",
+      title: "leom's diary",
+    });
+    expect(
+      describeSourceRef("letterboxd", "users/leom/films/rated/4.0-5.0"),
+    ).toEqual({
+      kind: "list",
+      detail: "leom 4.0-5.0",
+      url: "https://letterboxd.com/leom/films/rated/4.0-5.0/",
+      title: "leom's films rated 4.0-5.0",
+    });
+  });
+
   it("names an IMDb chart after the chart", () => {
     expect(describeSourceRef("imdb", "imdb:top-rated-movies")).toMatchObject({
       kind: "chart",
@@ -349,5 +409,19 @@ describe("describeSourceRef", () => {
       detail: "me/lists/42",
       url: null,
     });
+  });
+});
+
+describe("sourceHasAddedDates: Letterboxd", () => {
+  it("has dates only for the diary", () => {
+    expect(sourceHasAddedDates("letterboxd", "users/leom/diary")).toBe(true);
+    for (const ref of [
+      "users/leom/films",
+      "users/leom/films/rated/4.0-5.0",
+      "users/leom/likes/films",
+      "users/leom/watchlist",
+      "films/popular/this/week",
+    ])
+      expect(sourceHasAddedDates("letterboxd", ref)).toBe(false);
   });
 });

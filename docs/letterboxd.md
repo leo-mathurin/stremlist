@@ -4,6 +4,8 @@ Stremlist reads full public watchlist and list URLs, for example `https://letter
 
 A member can share a non-public list by setting it to "Anyone with share link" on Letterboxd. Stremlist reads that list through its share URL (`https://letterboxd.com/member/list/list-name/share/<token>/`) or its `boxd.it` short link. A public `boxd.it` short link resolves to its canonical list too.
 
+Stremlist also reads a member's other public pages as Source lists: watched films (`/member/films/`, including a rating filter such as `/member/films/rated/4.0-5.0/` as its own Source list), the diary (`/member/diary/`, a history Source list that keeps each Title once with its most recent watch date), and liked films (`/member/likes/films/`). The "Popular this week" and "Popular this month" charts are built-in Source lists that need no link. All of these are public pages; a private profile is not readable.
+
 This adapter belongs to the multi-provider branch. It does not deploy that branch or migrate the current production database.
 
 ## Share links

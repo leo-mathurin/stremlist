@@ -465,6 +465,52 @@ function parseLetterboxdLink(input: string): ParsedSourceLink | null {
       suggestedTitle: `${user}'s watchlist`,
     };
   }
+  // The diary, at /{user}/diary/ or /{user}/films/diary/ (which redirects to it).
+  const diary =
+    (parts[1] === "diary" && parts.length === 2) ||
+    (parts[1] === "films" && parts[2] === "diary" && parts.length === 3);
+  if (diary) {
+    return {
+      provider: "letterboxd",
+      sourceRef: `users/${user}/diary`,
+      kind: "history",
+      suggestedTitle: `${user}'s diary`,
+    };
+  }
+  if (parts[1] === "films") {
+    // Rating-filtered films: /{user}/films/rated/4.0-5.0/ is its own Source list.
+    if (
+      parts[2] === "rated" &&
+      parts[3] &&
+      /^\d(?:\.\d)?(?:-\d(?:\.\d)?)?$/.test(parts[3]) &&
+      parts.length === 4
+    ) {
+      return {
+        provider: "letterboxd",
+        sourceRef: `users/${user}/films/rated/${parts[3]}`,
+        kind: "list",
+        suggestedTitle: `${user}'s films rated ${parts[3]}`,
+      };
+    }
+    // Watched films: /{user}/films/.
+    if (parts.length === 2) {
+      return {
+        provider: "letterboxd",
+        sourceRef: `users/${user}/films`,
+        kind: "list",
+        suggestedTitle: `${user}'s films`,
+      };
+    }
+  }
+  // Liked films: /{user}/likes/films/.
+  if (parts[1] === "likes" && parts[2] === "films" && parts.length === 3) {
+    return {
+      provider: "letterboxd",
+      sourceRef: `users/${user}/likes/films`,
+      kind: "list",
+      suggestedTitle: `${user}'s liked films`,
+    };
+  }
   const slug = parts[2]?.toLowerCase();
   if (
     parts[1] === "list" &&
@@ -632,6 +678,24 @@ export const PUBLIC_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>> = {
       url: "https://trakt.tv/movies/anticipated",
     },
   ],
+  letterboxd: [
+    {
+      ref: "films/popular/this/week",
+      kind: "chart",
+      label: "Popular this week",
+      defaultDisplayMode: "movie",
+      titleType: "movie",
+      url: "https://letterboxd.com/films/popular/this/week/",
+    },
+    {
+      ref: "films/popular/this/month",
+      kind: "chart",
+      label: "Popular this month",
+      defaultDisplayMode: "movie",
+      titleType: "movie",
+      url: "https://letterboxd.com/films/popular/this/month/",
+    },
+  ],
 };
 
 /** Whether a stored Source list of this Provider must read through a Connection. */
@@ -796,6 +860,42 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
           detail: user,
           url: `https://letterboxd.com/${user}/watchlist/`,
           title: `${user}'s watchlist`,
+        }),
+      },
+      {
+        pattern: /^users\/([^/]+)\/diary$/,
+        describe: ([, user]) => ({
+          kind: "history",
+          detail: user,
+          url: `https://letterboxd.com/${user}/diary/`,
+          title: `${user}'s diary`,
+        }),
+      },
+      {
+        pattern: /^users\/([^/]+)\/films\/rated\/([\d.-]+)$/,
+        describe: ([, user, rating]) => ({
+          kind: "list",
+          detail: `${user} ${rating}`,
+          url: `https://letterboxd.com/${user}/films/rated/${rating}/`,
+          title: `${user}'s films rated ${rating}`,
+        }),
+      },
+      {
+        pattern: /^users\/([^/]+)\/films$/,
+        describe: ([, user]) => ({
+          kind: "list",
+          detail: user,
+          url: `https://letterboxd.com/${user}/films/`,
+          title: `${user}'s films`,
+        }),
+      },
+      {
+        pattern: /^users\/([^/]+)\/likes\/films$/,
+        describe: ([, user]) => ({
+          kind: "list",
+          detail: user,
+          url: `https://letterboxd.com/${user}/likes/films/`,
+          title: `${user}'s liked films`,
         }),
       },
     ],

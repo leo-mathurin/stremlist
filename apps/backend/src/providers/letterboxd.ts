@@ -23,6 +23,11 @@ import { SourceUnavailableError } from "./types";
 
 const SOURCE =
   /^users\/([a-z0-9_]{1,40})\/(watchlist|lists\/([a-z0-9]+(?:[-_][a-z0-9]+)*))$/;
+// Public member collections: watched films, rating-filtered films, diary, likes.
+const COLLECTION =
+  /^users\/([a-z0-9_]{1,40})\/(films(?:\/rated\/\d(?:\.\d)?(?:-\d(?:\.\d)?)?)?|diary|likes\/films)$/;
+// Built-in charts (PUBLIC_SOURCES): the reference is the path body.
+const CHART = /^films\/popular\/this\/(?:week|month)$/;
 const MAX_PAGES = 40;
 type PageRead =
   | { ok: true; html: string }
@@ -41,6 +46,9 @@ function sourcePath(ref: string) {
   if (ref.startsWith(SHARE_PREFIX)) {
     return `/${decryptSecret(ref.slice(SHARE_PREFIX.length))}/`;
   }
+  if (CHART.test(ref)) return `/${ref}/`;
+  const collection = COLLECTION.exec(ref);
+  if (collection) return `/${collection[1]}/${collection[2]}/`;
   const match = SOURCE.exec(ref);
   if (!match)
     throw new SourceUnavailableError(
@@ -48,6 +56,22 @@ function sourcePath(ref: string) {
       "Use a full public Letterboxd list or watchlist URL",
     );
   return `/${match[1]}/${match[3] ? `list/${match[3]}/` : "watchlist/"}`;
+}
+
+/** A diary reference carries per-entry watch dates. */
+function isDiaryPath(base: string) {
+  return base.endsWith("/diary/");
+}
+
+/**
+ * The catalog title to suggest. A watchlist and a list (or shared list) are
+ * named by the page itself; a member's films, diary or likes are better named
+ * by the pasted-link suggestion, so leave those to the caller.
+ */
+function suggestTitle(ref: string, pageTitle: string): string | undefined {
+  if (ref.endsWith("/watchlist")) return `${SOURCE.exec(ref)?.[1]}'s watchlist`;
+  if (ref.startsWith(SHARE_PREFIX) || ref.includes("/lists/")) return pageTitle;
+  return undefined;
 }
 
 /** Follow a boxd.it short link once and return the parsed Source reference. */
@@ -123,6 +147,7 @@ async function readHtml(
   url: string,
   kind: "collection" | "film" = "collection",
   nextPageUrl?: string,
+  diary = false,
 ) {
   if (!isProviderEnabled("letterboxd"))
     throw new SourceUnavailableError("disabled", "Letterboxd is turned off");
@@ -179,7 +204,7 @@ async function readHtml(
         await reader.cancel();
       }
       const html = Buffer.concat(chunks).toString("utf8");
-      const parsed = parseLetterboxdPage(html);
+      const parsed = parseLetterboxdPage(html, diary);
       blocked = parsed.blocked;
       const paginationValid =
         !parsed.next || new URL(parsed.next, url).href === nextPageUrl;
@@ -232,7 +257,9 @@ async function readPage(base: string, page: number, forceRefresh = false) {
           `https://letterboxd.com${path}`,
           "collection",
           `https://letterboxd.com${pagePath(base, page + 1)}`,
+          isDiaryPath(base),
         ),
+        isDiaryPath(base),
       );
       return {
         films: parsed.films,
@@ -249,6 +276,7 @@ async function fetchSource(
   ctx: ProviderContext,
 ): Promise<SourceSnapshot> {
   const base = sourcePath(ref);
+  const diary = isDiaryPath(base);
   const films = new Map<string, LetterboxdFilm>();
   const signatures = new Set<string>();
   let complete = false;
@@ -261,14 +289,29 @@ async function fetchSource(
         "Letterboxd repeated a page",
       );
     signatures.add(signature);
-    for (const film of result.films) films.set(film.uid, film);
+    for (const film of result.films) {
+      // A diary lists one row per viewing; keep each Title once, with its most
+      // recent watch date.
+      const previous = films.get(film.uid);
+      if (
+        diary &&
+        previous &&
+        (previous.watchedAt ?? "") >= (film.watchedAt ?? "")
+      )
+        continue;
+      films.set(film.uid, film);
+    }
     if (result.complete) {
       complete = true;
       break;
     }
   }
   const ordered = [...films.values()];
-  if (ref.endsWith("/watchlist")) ordered.reverse();
+  if (diary)
+    ordered.sort((a, b) =>
+      (a.watchedAt ?? "").localeCompare(b.watchedAt ?? ""),
+    );
+  else if (ref.endsWith("/watchlist")) ordered.reverse();
   return {
     complete,
     entries: ordered.map((film) => ({
@@ -276,6 +319,7 @@ async function fetchSource(
       year: film.year,
       sourceUrl: `https://letterboxd.com/film/${film.slug}/`,
       externalIds: { letterboxd: { uid: film.uid, slug: film.slug } },
+      ...(film.watchedAt ? { addedAt: `${film.watchedAt}T00:00:00.000Z` } : {}),
     })),
   };
 }
@@ -325,9 +369,7 @@ export const letterboxdProvider: ProviderAdapter = {
     return {
       ok: true,
       ref: resolved,
-      suggestedTitle: resolved.endsWith("/watchlist")
-        ? `${SOURCE.exec(resolved)?.[1]}'s watchlist`
-        : page.title,
+      suggestedTitle: suggestTitle(resolved, page.title),
       defaultDisplayMode: "split",
     };
   },

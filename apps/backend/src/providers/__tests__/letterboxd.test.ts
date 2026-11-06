@@ -706,3 +706,88 @@ describe("Letterboxd share links", () => {
     ).rejects.toMatchObject({ reason: "not_found" });
   });
 });
+
+describe("Letterboxd member collections and charts", () => {
+  it.each([
+    ["users/alice/films", "https://letterboxd.com/alice/films/"],
+    [
+      "users/alice/films/rated/4.0-5.0",
+      "https://letterboxd.com/alice/films/rated/4.0-5.0/",
+    ],
+    ["users/alice/likes/films", "https://letterboxd.com/alice/likes/films/"],
+    [
+      "films/popular/this/week",
+      "https://letterboxd.com/films/popular/this/week/",
+    ],
+  ])("reads %s from %s in page order", async (sourceRef, url) => {
+    const fetch = vi.fn((requested: string) => {
+      expect(requested).toBe(url);
+      return Promise.resolve(new Response(page([2, 1])));
+    });
+    vi.stubGlobal("fetch", fetch);
+    const result = await letterboxdProvider.fetchSource(sourceRef, context);
+    expect(result.complete).toBe(true);
+    // No reversal: these keep the page order (unlike a watchlist).
+    expect(
+      result.entries.map((entry) => entry.externalIds?.letterboxd?.uid),
+    ).toEqual(["film:2", "film:1"]);
+    expect(result.entries.every((entry) => entry.addedAt === undefined)).toBe(
+      true,
+    );
+  });
+});
+
+describe("Letterboxd diary", () => {
+  function diaryPage(entries: { id: number; date: string }[], next?: string) {
+    const rows = entries
+      .map(({ id, date }) => {
+        const [y, m, d] = date.split("-");
+        return `<tr class="diary-entry-row" data-production-uid="film:${id}"><td class="col-daydate"><a href="/alice/diary/films/for/${y}/${m}/${d}/">${d}</a></td><td class="col-production"><div data-postered-identifier='{"uid":"film:${id}"}' data-item-slug="film-${id}" data-item-name="Film ${id} (2000)"></div></td></tr>`;
+      })
+      .join("");
+    return `<html><head><title>Alice's diary • Letterboxd</title></head><body><h1>Diary</h1><table class="diary-table"><tbody>${rows}</tbody></table>${next ? `<a class="next" href="${next}">Next</a>` : ""}</body></html>`;
+  }
+
+  it("reads /diary/, keeps each Title once with its latest watch date, oldest first", async () => {
+    const fetch = vi.fn((url: string) => {
+      expect(url).toBe("https://letterboxd.com/alice/diary/");
+      return Promise.resolve(
+        new Response(
+          diaryPage([
+            { id: 1, date: "2026-01-10" },
+            { id: 2, date: "2026-03-05" },
+            { id: 1, date: "2026-05-20" }, // a rewatch of film 1
+          ]),
+        ),
+      );
+    });
+    vi.stubGlobal("fetch", fetch);
+    const result = await letterboxdProvider.fetchSource(
+      "users/alice/diary",
+      context,
+    );
+    expect(result.complete).toBe(true);
+    // film 1 appears once, with its most recent date (2026-05-20), so the order
+    // oldest-first is film 2 (03-05) then film 1 (05-20).
+    expect(
+      result.entries.map((entry) => entry.externalIds?.letterboxd?.uid),
+    ).toEqual(["film:2", "film:1"]);
+    expect(result.entries.map((entry) => entry.addedAt)).toEqual([
+      "2026-03-05T00:00:00.000Z",
+      "2026-05-20T00:00:00.000Z",
+    ]);
+  });
+
+  it("accepts an empty diary", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(new Response(diaryPage([])))),
+    );
+    const result = await letterboxdProvider.fetchSource(
+      "users/alice/diary",
+      context,
+    );
+    expect(result.complete).toBe(true);
+    expect(result.entries).toEqual([]);
+  });
+});

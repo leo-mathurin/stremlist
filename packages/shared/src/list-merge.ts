@@ -118,6 +118,9 @@ export function sourceHasAddedDates(
       return SIMKL_DATED.test(ref);
     case "mdblist":
       return ref === "me/watchlist";
+    case "letterboxd":
+      // Only the diary carries per-entry dates (the watch date).
+      return /^users\/[^/]+\/diary$/.test(ref);
     default:
       return false;
   }
