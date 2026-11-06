@@ -250,7 +250,7 @@ describe("List CRUD via the config API", () => {
       },
     );
 
-    it("rejects a Provider that is not available yet", async () => {
+    it("accepts a public Letterboxd Source list", async () => {
       const res = await postConfig(OWNER, {
         lists: [
           {
@@ -260,8 +260,13 @@ describe("List CRUD via the config API", () => {
           },
         ],
       });
-      expect(res.status).toBe(400);
-      expect((await res.json()).error).toBe("Letterboxd is not available yet.");
+      expect(res.status).toBe(200);
+      expect(rpcArgs().p_lists).toEqual([
+        expect.objectContaining({
+          provider: "letterboxd",
+          source_ref: "users/leo/watchlist",
+        }),
+      ]);
     });
 
     it("turns IMDb p. handles into user IDs before saving", async () => {

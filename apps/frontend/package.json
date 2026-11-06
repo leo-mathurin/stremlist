@@ -14,7 +14,7 @@
     "typecheck": "tsc -b --noEmit",
     "dev:app": "vite",
     "dev:tailnet": "portless --tailscale",
-    "test": "node --test scripts/dev-proxy.test.mjs && bun test ./scripts/*.test.ts"
+    "test": "node --test --test-timeout=60000 scripts/dev-proxy.test.mjs && bun test ./scripts/*.test.ts"
   },
   "dependencies": {
     "@dnd-kit/react": "^0.3.2",

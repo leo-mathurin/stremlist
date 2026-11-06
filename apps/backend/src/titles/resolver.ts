@@ -91,6 +91,7 @@ async function writeCache(
     strategy: string | null;
   }[],
 ): Promise<void> {
+  if (rows.length === 0) return;
   // A Source list can hold the same entry twice, and Postgres rejects an
   // upsert that touches one row twice: the whole batch would be lost.
   const unique = new Map<string, (typeof rows)[number]>();
@@ -163,43 +164,61 @@ export async function resolveEntries(
   let attempted = 0;
   for (let start = 0; start < capped.length; start += STRATEGY_CHUNK) {
     if (start > 0 && Date.now() - startedAt > options.budgetMs) break;
-    attempted = Math.min(start + STRATEGY_CHUNK, capped.length);
     const batch = capped.slice(start, start + STRATEGY_CHUNK);
     const results = new Map<number, { imdbId: string; strategy: string }>();
+    const retry = new Set<number>();
     let remaining = batch;
     for (const strategy of adapter.resolverStrategies ?? []) {
       if (remaining.length === 0) break;
       if (strategy.provider && !isProviderEnabled(strategy.provider)) {
         continue;
       }
-      try {
-        const found = await strategy.resolve(
-          remaining.map(({ index }) => entries[index]),
-        );
-        for (const [position, imdbId] of found) {
-          // A strategy may answer a position that is not in the batch.
-          const item = position >= 0 ? remaining.at(position) : undefined;
-          if (item && IMDB_TITLE_ID_PATTERN.test(imdbId)) {
-            results.set(item.index, { imdbId, strategy: strategy.name });
-          }
+      const chunkSize = Math.max(
+        1,
+        Math.min(STRATEGY_CHUNK, strategy.batchSize ?? STRATEGY_CHUNK),
+      );
+      for (let offset = 0; offset < remaining.length; offset += chunkSize) {
+        if (Date.now() - startedAt > options.budgetMs) {
+          for (const { index } of remaining.slice(offset)) retry.add(index);
+          break;
         }
-      } catch (error) {
-        console.error(
-          `ID resolver strategy ${strategy.name} failed:`,
-          error instanceof Error ? error.message : error,
-        );
+        const chunk = remaining.slice(offset, offset + chunkSize);
+        try {
+          const found = await strategy.resolve(
+            chunk.map(({ index }) => entries[index]),
+          );
+          for (const [position, imdbId] of found) {
+            // A strategy may answer a position that is not in the batch.
+            const item = position >= 0 ? chunk.at(position) : undefined;
+            if (item && IMDB_TITLE_ID_PATTERN.test(imdbId)) {
+              results.set(item.index, { imdbId, strategy: strategy.name });
+            }
+          }
+        } catch (error) {
+          console.error(
+            `ID resolver strategy ${strategy.name} failed:`,
+            error instanceof Error ? error.message : error,
+          );
+          for (const { index } of remaining.slice(offset)) retry.add(index);
+          break;
+        }
       }
       remaining = remaining.filter(({ index }) => !results.has(index));
     }
 
     for (const [index, { imdbId }] of results) imdbIds[index] = imdbId;
+    const completed = batch.filter(
+      ({ index }) => results.has(index) || !retry.has(index),
+    );
+    attempted += completed.length;
     await writeCache(
-      batch.map(({ index, key }) => ({
+      completed.map(({ index, key }) => ({
         key,
         imdbId: results.get(index)?.imdbId ?? null,
         strategy: results.get(index)?.strategy ?? null,
       })),
     );
+    if (completed.length < batch.length) break;
   }
   const deferred = toResolve.length - attempted;
 

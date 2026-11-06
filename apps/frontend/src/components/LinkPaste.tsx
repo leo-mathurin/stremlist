@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, Loader2, Plug } from "lucide-react";
+import { Loader2, Plug } from "lucide-react";
 import {
   joinProviderLabels,
   LINK_PROVIDERS,
@@ -33,19 +33,11 @@ type LinkProblem = {
   message: string;
   /** "info" for expected states (coming soon), red otherwise. */
   tone?: "info";
-  steps?: string[];
-  link?: { href: string; label: string };
   provider?: ProviderId;
   action?: "connect" | "upgrade";
 };
 
 type LinkProblemReason = SourceProblemReason | "unrecognized";
-
-const LETTERBOXD_STEPS = [
-  "Sign in to MDBList and open My Lists, External tab.",
-  'Paste the Letterboxd list or watchlist link in "List URL", then click Parse.',
-  "Connect MDBList here and add that external list. Free MDBList accounts get 1 external list.",
-];
 
 /** Turn a `/links/resolve` refusal into a message and a next step. */
 function describeLinkProblem(
@@ -63,18 +55,7 @@ function describeLinkProblem(
   const { title, fix } = sourceProblemCopy(provider, reason, noun);
   switch (reason) {
     case "coming_soon":
-      return provider === "letterboxd"
-        ? {
-            provider,
-            tone: "info",
-            message: `${title}. ${fix}`,
-            steps: LETTERBOXD_STEPS,
-            link: {
-              href: "https://mdblist.com/mylists/#external_lists",
-              label: "Open MDBList external lists",
-            },
-          }
-        : { provider, tone: "info", message: `${title}. ${fix}` };
+      return { provider, tone: "info", message: `${title}. ${fix}` };
     case "needs_connection":
       // On this page the fix is a button, not a sentence.
       return access === "legacy"
@@ -272,24 +253,6 @@ export default function LinkPaste({
           )}
         >
           <p>{problem.message}</p>
-          {problem.steps && (
-            <ol className="mt-2 list-decimal space-y-1 pl-5 opacity-85">
-              {problem.steps.map((step) => (
-                <li key={step}>{step}</li>
-              ))}
-            </ol>
-          )}
-          {problem.link && (
-            <a
-              href={problem.link.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 inline-flex items-center gap-1 font-semibold text-brand hover:underline"
-            >
-              {problem.link.label}
-              <ExternalLink className="size-3.5" />
-            </a>
-          )}
           {problem.action === "connect" && problem.provider && (
             <button
               type="button"

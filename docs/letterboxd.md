@@ -1,0 +1,27 @@
+# Public Letterboxd lists
+
+Stremlist reads full public watchlist and list URLs, for example `https://letterboxd.com/member/watchlist/` and `https://letterboxd.com/member/list/list-name/`. A Letterboxd Connection is not required. Private collections, short `boxd.it` links and account Actions are not supported.
+
+This adapter belongs to the multi-provider branch. It does not deploy that branch or migrate the current production database.
+
+## Reads and title IDs
+
+The adapter reads anonymous HTML, with the Stremlist User-Agent and manual redirects. It requires explicit document closing tags and a positively closed empty grid before accepting an empty page. It validates every page and its pagination before recording HTTP success or caching it, follows only the next numbered page of the same collection, deduplicates stable `film:…` IDs and stops at 40 pages. A capped read is incomplete and does not advance detection history. Watchlists use oldest-added order; ranked lists keep their page order.
+
+IMDb resolution first uses exact [Wikidata Letterboxd IDs](https://www.wikidata.org/wiki/Property:P6127), by stable ID and then slug. Missing mappings use the film page's exact IMDb link. No title similarity match is used. Wikidata reads stay grouped in batches of 50; paced film pages are read one at a time. The resolver checks its soft budget between strategy batches. Failed and unattempted lookups stay deferred without a negative cache row. The existing shared `title_id_map` stores the result, so films in several lists do not need another lookup. Entries without an IMDb ID remain unresolved and are retried by the common resolver.
+
+## Shared cache and request coordination
+
+Parsed public pages live in R2 under `providers/letterboxd/pages-v1/`. They are shared between Accounts and remain fresh for six hours. Conditional writes give one worker the page lease. A manual Refresh now waits for an older in-process refresh to settle, then revalidates the pages. It does not join an ordinary cached read or wait for the six-hour expiry. Catalog metadata, stale fallback, sync status and detection history use the existing List pipeline.
+
+The R2 object `providers/letterboxd/http-v1.json` coordinates outbound requests across instances. At most one request is in flight. The next worker waits until three seconds after completion, below the roughly 23.6 requests/minute observed in the lab. A cold request waits at most 15 seconds for capacity and a page waiter at most 10 seconds. Storage failure denies new sends. This is a bounded rollout, not evidence for 50k distinct users at an arbitrary refresh frequency.
+
+A 403, 429, challenge response header or challenge document halts new outbound reads. Network errors, unusable collection HTML and timeouts while reading an HTTP 200 body pause requests for at least 15 minutes and respect Retry-After. Three consecutive failed reads or an expired HTTP reservation halt requests. A failed page never replaces a valid cached page with an empty result.
+
+## Operation
+
+`DISABLED_PROVIDERS=letterboxd` is the existing application kill switch. Apply environment changes through a reviewed deployment. Cached Catalogs remain available through the common fallback.
+
+Inspect the HTTP state object after a halt. `activeId` with an expired lease means an unknown result; `failures >= 3` means repeated failures; a halted state with neither means an explicit refusal or challenge. Check the cause before resetting the state. Reset only this HTTP state object, with no requests in flight. Keep page and title-ID caches. The state must remain outside any R2 lifecycle rule that deletes inactive objects while the provider is halted.
+
+The previous lab recorded 32,197 valid pages over 30h23, with no detected 403/429/challenge. A body timeout stopped that campaign early. It did not complete 72 hours or prove a quota for 50k users. Evidence is in the private [lab report](https://github.com/leo-mathurin/stremlist-letterboxd-lab/blob/main/LIVE.md).

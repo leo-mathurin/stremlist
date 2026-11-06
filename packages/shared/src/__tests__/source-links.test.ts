@@ -180,9 +180,10 @@ describe("parseSourceLink: SensCritique", () => {
 
 describe("parseSourceLink: Letterboxd", () => {
   it("reads a watchlist", () => {
-    expect(parseSourceLink("https://letterboxd.com/LeoM/watchlist/")).toEqual(
-      parsed("letterboxd", "users/leom/watchlist", "watchlist"),
-    );
+    expect(parseSourceLink("https://letterboxd.com/LeoM/watchlist/")).toEqual({
+      ...parsed("letterboxd", "users/leom/watchlist", "watchlist"),
+      suggestedTitle: "leom's watchlist",
+    });
   });
 
   it("reads a list", () => {
@@ -191,10 +192,14 @@ describe("parseSourceLink: Letterboxd", () => {
     ).toEqual(parsed("letterboxd", "users/leom/lists/best-of-2026", "list"));
   });
 
-  it("recognizes short links so the configure page can say coming soon", () => {
-    expect(parseSourceLink("https://boxd.it/abcd")).toMatchObject({
-      provider: "letterboxd",
-    });
+  it.each([
+    "https://boxd.it/abcd",
+    "https://letterboxd.com/film/harakiri/",
+    "https://letterboxd.com/leom/films/",
+    "https://letterboxd.com/leom%2Fevil/watchlist/",
+    "https://letterboxd.com/leom/watchlist/extra/",
+  ])("rejects unsupported routes without a request: %s", (input) => {
+    expect(parseSourceLink(input)).toBeNull();
   });
 });
 

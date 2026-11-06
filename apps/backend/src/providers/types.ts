@@ -12,6 +12,8 @@ import type { StremioMeta } from "@stremlist/shared/stremio.types";
  * Title's IMDb ID when the Provider does not give it (ADR 0002).
  */
 export interface ExternalIds {
+  /** Letterboxd's stable entry identity and public film slug. */
+  letterboxd?: { uid: string; slug: string };
   tmdb?: { id: number; type: "movie" | "series" };
   trakt?: number;
   simkl?: number;
@@ -141,6 +143,8 @@ export interface ConnectionAccess {
 }
 
 export interface ProviderContext {
+  /** A user-requested refresh must revalidate cached public Provider pages. */
+  forceRefresh?: boolean;
   /**
    * The Connection to read through, or null. Null for Accounts without a
    * Connection and for requests that come through a Legacy alias.
@@ -204,6 +208,8 @@ export interface ProviderActions {
 /** Turns entries without an IMDb ID into IMDb IDs. See titles/resolver.ts. */
 export interface ResolverStrategy {
   name: string;
+  /** Smaller batches bound paced lookups without splitting other strategies. */
+  batchSize?: number;
   /**
    * The Provider whose API this strategy calls, if any. The resolver skips
    * the strategy while that Provider's kill switch is on.

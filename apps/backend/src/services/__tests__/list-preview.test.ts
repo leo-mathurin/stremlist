@@ -341,14 +341,6 @@ describe("previewList: problems", () => {
     expect(fetchSource).not.toHaveBeenCalled();
   });
 
-  it("says a Provider is coming soon without reading it", async () => {
-    await expect(
-      previewList(
-        request({ provider: "letterboxd", sourceRef: "leo/watchlist" }),
-      ),
-    ).resolves.toEqual({ ok: false, reason: "coming_soon" });
-  });
-
   it("reports an unexpected failure as unavailable, and reads again next time", async () => {
     const fetchSource = vi
       .fn()

@@ -37,7 +37,7 @@ test("Home shows every Provider, the live count and the help sections", async ({
     await expect(screen.getByRole("heading", heading)).toBeVisible();
   }
 
-  // The Providers diagram: one row per Provider, Letterboxd marked as soon.
+  // The Providers diagram: one row per available Provider.
   const diagram = screen.getByRole("region", "Many sites, one addon");
   await expect(diagram.getByRole("listitem")).toHaveText([
     "IMDb",
@@ -46,7 +46,7 @@ test("Home shows every Provider, the live count and the help sections", async ({
     "MDBList",
     "JustWatch",
     "SensCritique",
-    "Letterboxd Soon",
+    "Letterboxd",
   ]);
 
   // `/stats` answers 2 active Accounts in the fixture.

@@ -251,7 +251,7 @@ test(
 );
 
 test(
-  "a Provider that is coming soon is refused without a read",
+  "an invalid Letterboxd reference is refused without a read",
   { tag: "@local" },
   async () => {
     expect(
@@ -259,7 +259,7 @@ test(
         provider: "letterboxd",
         sourceRef: "someone/list/favorites",
       }),
-    ).toEqual({ ok: false, reason: "coming_soon" });
+    ).toEqual({ ok: false, reason: "not_found" });
   },
 );
 

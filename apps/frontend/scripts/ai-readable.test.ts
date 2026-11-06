@@ -233,7 +233,7 @@ test("public HTTP responses share real content and keep private data out", async
   }
   const home = await (await fetchPage("/index.md")).text();
   assert.match(home, /1,234 people use Stremlist/);
-  assert.match(home, /Letterboxd \| Soon/);
+  assert.match(home, /Letterboxd \| Available/);
   for (const [title, body] of [...FEATURES, ...STEPS, ...TROUBLESHOOTING]) {
     assert.ok(home.includes(title));
     assert.ok(home.includes(body));

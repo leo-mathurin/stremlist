@@ -42,7 +42,8 @@ jobs:
         run: bun ci
 
       - name: Lint, build, and test
-        run: bunx turbo run lint build test
+        timeout-minutes: 10
+        run: bunx turbo run lint build test --log-order=stream
 
       - name: Smoke-test backend bundle
         env:
@@ -61,6 +62,15 @@ jobs:
               throw new Error(`Unexpected manifest response: ${res.status} ${JSON.stringify(body)}`);
             }
           '
+
+      - name: Upload frontend test log
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-log
+          include-hidden-files: true
+          path: apps/frontend/.turbo/turbo-test.log
+          retention-days: 7
 
   e2e:
     name: E2E

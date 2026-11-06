@@ -489,15 +489,6 @@ describe("saving merged Lists", () => {
       error: "Connect your Trakt account first.",
     },
     {
-      name: "a Provider that is not available yet",
-      lists: [
-        listBody(TRAKT_WATCHLIST, [
-          { provider: "letterboxd", sourceRef: "users/leo/watchlist" },
-        ]),
-      ],
-      error: "Letterboxd is not available yet.",
-    },
-    {
       name: "more than 20 Source lists in the Account",
       lists: Array.from({ length: 5 }, (_, list) =>
         listBody(

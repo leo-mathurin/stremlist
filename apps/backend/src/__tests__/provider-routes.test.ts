@@ -38,16 +38,23 @@ describe("POST /links/resolve", () => {
   it.each([
     ["not a link", { reason: "unrecognized" }],
     [
-      "https://letterboxd.com/leo/watchlist/",
-      { reason: "coming_soon", provider: "letterboxd" },
-    ],
-    [
       "https://mdblist.com/lists/leo/top-movies",
       { reason: "needs_connection", provider: "mdblist" },
     ],
   ])("refuses %j with %j", async (input, expected) => {
     const res = await resolve(input);
     expect(await res.json()).toEqual({ ok: false, ...expected });
+  });
+
+  it("resolves a public Letterboxd watchlist without a Connection", async () => {
+    useFakeProvider(fakeAdapter("letterboxd"));
+    const res = await resolve("https://letterboxd.com/leo/watchlist/");
+    expect(await res.json()).toMatchObject({
+      ok: true,
+      provider: "letterboxd",
+      sourceRef: "users/leo/watchlist",
+      requiresConnection: false,
+    });
   });
 
   it("says when a Provider is turned off", async () => {

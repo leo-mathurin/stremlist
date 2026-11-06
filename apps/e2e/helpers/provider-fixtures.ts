@@ -444,12 +444,35 @@ function senscritique({ body }: FixtureRequest): Response {
   });
 }
 
-/** Wikidata maps SensCritique product IDs (P10100) to IMDb IDs. */
+function letterboxd({ request, url }: FixtureRequest): Response {
+  if (
+    request.method !== "GET" ||
+    request.headers.has("cookie") ||
+    request.headers.has("authorization")
+  )
+    throw new Error("Letterboxd reads must be anonymous GETs");
+  if (
+    url.pathname !== "/fixture_user/watchlist/" &&
+    url.pathname !== "/fixture_user/list/weekend/"
+  )
+    return new Response("Not found", { status: 404 });
+  const films = [
+    [101, "The Shawshank Redemption", 1994],
+    [202, "Breaking Bad", 2008],
+  ];
+  return new Response(
+    `<html><head><title>Fixture • Letterboxd</title></head><body><h1>Weekend</h1><ul class="poster-list -grid">${films.map(([id, title, year]) => `<li data-postered-identifier='{"uid":"film:${id}"}' data-item-slug="fixture-${id}" data-item-name="${title} (${year})"></li>`).join("")}</ul></body></html>`,
+  );
+}
+
+/** Exact Wikidata links for the Provider fixture entries. */
 function wikidata({ body }: FixtureRequest): Response {
   const query = form(body).query ?? "";
   const known: Record<string, string> = {
     "101": "tt0111161",
     "202": "tt0903747",
+    "film:101": "tt0111161",
+    "film:202": "tt0903747",
     ...Object.fromEntries(
       PREVIEW_PRODUCTS.flatMap(({ id, imdb }) =>
         imdb ? [[String(id), imdb.id]] : [],
@@ -493,6 +516,7 @@ function imdb({ body }: FixtureRequest): Response {
 installFetchFixture({
   log: process.env.E2E_PROVIDER_LOG,
   hosts: {
+    "letterboxd.com": letterboxd,
     "api.trakt.tv": trakt,
     "auth.trakt.tv": trakt,
     "api.mdblist.com": mdblist,

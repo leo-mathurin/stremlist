@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-08T18:42:17.742Z",
+  "createdAt": "2026-11-05T18:21:29.705Z",
   "payload": {
     "actions": [
       {
@@ -26,8 +26,7 @@
         "summary": "tap button \"Save\"",
         "target": {
           "role": "button",
-          "name": "Save",
-          "text": "Save"
+          "name": "Save"
         }
       }
     ],
@@ -43,7 +42,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "The IMDb profile was already added: the configured account shows an IMDb Watchlist for ur99123456, and the Addon URL is ready with installation choices visible. Stopped here without opening Stremio.",
+    "summary": "The IMDb profile list is already added as “IMDb Watchlist” (ur99123456), and the addon is ready with its Addon URL shown. Stopping here without opening Stremio.",
     "startPath": "/",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
@@ -64,7 +63,7 @@
         "name": "Add"
       },
       {
-        "text": "IMDb, Trakt, MDBList, JustWatch and SensCritique links work."
+        "text": "IMDb, Trakt, MDBList, JustWatch, SensCritique and Letterboxd links work."
       },
       {
         "text": "Paste a link"
@@ -107,6 +106,6 @@
         "text": "Paste a link from any of these sites, or connect your Trakt, Simkl or MDBList account."
       }
     ],
-    "endWaitMs": 28264
+    "endWaitMs": 40859
   }
 }

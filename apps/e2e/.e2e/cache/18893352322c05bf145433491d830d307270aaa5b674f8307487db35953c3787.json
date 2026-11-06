@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-12T14:30:12.149Z",
+  "createdAt": "2026-11-05T18:20:57.100Z",
   "payload": {
     "actions": [
       {
@@ -60,7 +60,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "The IMDb link was added as a list titled “Weekend films,” and the saved catalog is visible with the expected IMDb list ID and titles. The app confirms “Saved! Reinstall Stremlist in Stremio to see your changes.”",
+    "summary": "The provided IMDb URL is now added as a catalog named “Weekend films.” The catalog shows the expected IMDb list identifier ls99123456, and the screen confirms “Saved!”",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
@@ -74,7 +74,7 @@
         "placeholder": "Paste a link to any list"
       },
       {
-        "text": "IMDb, Trakt, MDBList, JustWatch and SensCritique links work."
+        "text": "IMDb, Trakt, MDBList, JustWatch, SensCritique and Letterboxd links work."
       },
       {
         "text": "Reinstall Stremlist in Stremio"
@@ -95,7 +95,7 @@
     "goneAnchors": [
       {
         "role": "alert",
-        "name": "We do not recognize this link. Paste a link to a watchlist or list on IMDb, Trakt, MDBList, JustWatch or SensCritique."
+        "name": "We do not recognize this link. Paste a link to a watchlist or list on IMDb, Trakt, MDBList, JustWatch, SensCritique or Letterboxd."
       },
       {
         "role": "textbox",
@@ -107,7 +107,7 @@
         "text": "No supported site recognized yet."
       },
       {
-        "text": "We do not recognize this link. Paste a link to a watchlist or list on IMDb, Trakt, MDBList, JustWatch or SensCritique."
+        "text": "We do not recognize this link. Paste a link to a watchlist or list on IMDb, Trakt, MDBList, JustWatch, SensCritique or Letterboxd."
       },
       {
         "text": "No Lists yet"
@@ -122,6 +122,6 @@
         "text": "No new titles detected yet."
       }
     ],
-    "endWaitMs": 26629
+    "endWaitMs": 39280
   }
 }
