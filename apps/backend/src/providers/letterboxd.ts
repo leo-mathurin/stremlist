@@ -1,6 +1,8 @@
+import { parseSourceLink } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { load } from "cheerio";
 import { createHash } from "node:crypto";
+import { decryptSecret, encryptSecret } from "../lib/crypto";
 import { wikidataStrategy } from "../titles/wikidata";
 import { providerFetch } from "./http";
 import { isProviderEnabled } from "./kill-switch";
@@ -26,7 +28,20 @@ type PageRead =
   | { ok: true; html: string }
   | { ok: false; reason: SourceProblemReason };
 
+const SHARE_PREFIX = "share/";
+const PROVISIONAL_SHARE_PREFIX = "lbxshare/";
+const SHORT_PREFIX = "lbxshort/";
+
+/** The letterboxd.com path for a stored or provisional Source list reference. */
 function sourcePath(ref: string) {
+  // A stored Share link: the token is encrypted; decrypt it to the real path.
+  if (ref.startsWith(SHARE_PREFIX)) {
+    return `/${decryptSecret(ref.slice(SHARE_PREFIX.length))}/`;
+  }
+  // A Share link that validateSource has not yet encrypted.
+  if (ref.startsWith(PROVISIONAL_SHARE_PREFIX)) {
+    return `/${ref.slice(PROVISIONAL_SHARE_PREFIX.length)}/`;
+  }
   const match = SOURCE.exec(ref);
   if (!match)
     throw new SourceUnavailableError(
@@ -34,6 +49,73 @@ function sourcePath(ref: string) {
       "Use a full public Letterboxd list or watchlist URL",
     );
   return `/${match[1]}/${match[3] ? `list/${match[3]}/` : "watchlist/"}`;
+}
+
+/** Follow a boxd.it short link once and return the parsed Source reference. */
+async function resolveShortLink(code: string): Promise<string> {
+  if (!isProviderEnabled("letterboxd"))
+    throw new SourceUnavailableError("disabled", "Letterboxd is turned off");
+  const read = await withLetterboxdPermit<
+    { ok: true; url: string } | { ok: false; reason: SourceProblemReason }
+  >(async () => {
+    try {
+      const response = await providerFetch(`https://boxd.it/${code}`, {
+        redirect: "manual",
+        timeoutMs: 10_000,
+        retryOn429: false,
+        headers: { Accept: "text/html" },
+      });
+      await response.body?.cancel();
+      const blocked =
+        response.status === 403 ||
+        response.status === 429 ||
+        response.headers.get("cf-mitigated") === "challenge";
+      if (blocked)
+        return {
+          value: { ok: false, reason: "unavailable" },
+          result: "blocked",
+        };
+      const location = response.headers.get("location");
+      if (response.status >= 300 && response.status < 400 && location)
+        return { value: { ok: true, url: location }, result: "ok" };
+      return {
+        value: {
+          ok: false,
+          reason: response.status === 404 ? "not_found" : "unavailable",
+        },
+        result: response.status >= 500 ? "failed" : "ok",
+      };
+    } catch {
+      return { value: { ok: false, reason: "unavailable" }, result: "failed" };
+    }
+  });
+  if (!read.ok)
+    throw new SourceUnavailableError(
+      read.reason,
+      "Letterboxd could not resolve this short link",
+    );
+  const parsed = parseSourceLink(read.url);
+  if (parsed?.provider !== "letterboxd")
+    throw new SourceUnavailableError(
+      "not_found",
+      "This boxd.it link is not a list or watchlist",
+    );
+  return parsed.sourceRef;
+}
+
+/**
+ * Normalize a reference into the one that gets stored and read: resolve a
+ * boxd.it short link, and encrypt a Share link token so it never rests in
+ * plaintext. Public references pass through.
+ */
+async function resolveRef(ref: string): Promise<string> {
+  if (ref.startsWith(SHORT_PREFIX)) {
+    return resolveRef(await resolveShortLink(ref.slice(SHORT_PREFIX.length)));
+  }
+  if (ref.startsWith(PROVISIONAL_SHARE_PREFIX)) {
+    return `${SHARE_PREFIX}${encryptSecret(ref.slice(PROVISIONAL_SHARE_PREFIX.length))}`;
+  }
+  return ref;
 }
 
 async function readHtml(
@@ -237,13 +319,13 @@ export const letterboxdProvider: ProviderAdapter = {
   id: "letterboxd",
   freshnessMs: LETTERBOXD_FRESHNESS_MS,
   async validateSource(ref) {
-    const path = sourcePath(ref);
-    const page = await readPage(path, 1);
+    const resolved = await resolveRef(ref);
+    const page = await readPage(sourcePath(resolved), 1);
     return {
       ok: true,
-      ref,
-      suggestedTitle: ref.endsWith("/watchlist")
-        ? `${SOURCE.exec(ref)?.[1]}'s watchlist`
+      ref: resolved,
+      suggestedTitle: resolved.endsWith("/watchlist")
+        ? `${SOURCE.exec(resolved)?.[1]}'s watchlist`
         : page.title,
       defaultDisplayMode: "split",
     };

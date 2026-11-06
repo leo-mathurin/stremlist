@@ -515,10 +515,15 @@ async function readSourceCatalog(read: SourceRead): Promise<SourceCatalog> {
       message,
     );
 
-    // A List that lost its Connection must not keep serving the private
-    // items it cached while connected.
-    const lostConnection = sourceProblemReason(error) === "needs_connection";
-    if (!rules.noCacheFallback && !lostConnection) {
+    // A Source list the Provider no longer shows must not keep serving the
+    // Titles it cached before: a List that lost its Connection, or a
+    // Letterboxd list that is gone, turned private, or whose Share link was
+    // revoked (HTTP 404, mapped to not_found).
+    const reason = sourceProblemReason(error);
+    const providerDropped =
+      reason === "needs_connection" ||
+      (source.provider === "letterboxd" && reason === "not_found");
+    if (!rules.noCacheFallback && !providerDropped) {
       const cached = await getCachedList(cacheKey, source);
       if (cached && cached.data.metas.length > 0) {
         await markAccountFetched(read.accountId, "last_cache_served_at");

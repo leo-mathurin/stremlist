@@ -46,6 +46,7 @@ import {
 } from "../../__tests__/helpers/mock-registry";
 import { db, resetRpc } from "../../__tests__/helpers/mock-supabase";
 import type { SourceEntry, SourceSnapshot } from "../../providers/types";
+import { SourceUnavailableError } from "../../providers/types";
 import * as listCache from "../list-cache";
 import type { ListRead } from "../lists";
 import {
@@ -590,6 +591,43 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
     ).catch((caught: unknown) => caught);
 
     expect(error).toMatchObject({ reason: "needs_connection" });
+  });
+
+  it("does not serve the cache of a Letterboxd list that the Provider no longer shows", async () => {
+    useFakeProvider(
+      fakeAdapter("letterboxd", {
+        fetchSource: () =>
+          Promise.reject(
+            new SourceUnavailableError("not_found", "revoked share link"),
+          ),
+      }),
+    );
+    // Cached before the Share link was revoked, and stale now.
+    cache.seed(LIST_ID, [MOVIE], new Date(Date.now() - 2 * 60 * 60_000));
+
+    const error = await readList(
+      config({ provider: "letterboxd", sourceRef: "share/v1:ciphertext" }),
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ reason: "not_found" });
+  });
+
+  it("keeps serving the cache of a Letterboxd list on a transient failure", async () => {
+    useFakeProvider(
+      fakeAdapter("letterboxd", {
+        fetchSource: () =>
+          Promise.reject(
+            new SourceUnavailableError("unavailable", "Letterboxd timed out"),
+          ),
+      }),
+    );
+    cache.seed(LIST_ID, [MOVIE], new Date(Date.now() - 2 * 60 * 60_000));
+
+    await expect(
+      readList(
+        config({ provider: "letterboxd", sourceRef: "users/leo/lists/x" }),
+      ),
+    ).resolves.toEqual({ metas: [MOVIE] });
   });
 
   it("reports an honest failure when asked not to fall back on the cache", async () => {

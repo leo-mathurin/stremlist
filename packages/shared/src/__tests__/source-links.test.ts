@@ -192,14 +192,56 @@ describe("parseSourceLink: Letterboxd", () => {
     ).toEqual(parsed("letterboxd", "users/leom/lists/best-of-2026", "list"));
   });
 
+  it("reads a share link, keeping the token case for the backend to encrypt", () => {
+    expect(
+      parseSourceLink(
+        "https://letterboxd.com/leom/list/best-of-2026/share/2OS5xaC1fJOBBvGv/",
+      ),
+    ).toEqual(
+      parsed(
+        "letterboxd",
+        "lbxshare/leom/list/best-of-2026/share/2OS5xaC1fJOBBvGv",
+        "list",
+      ),
+    );
+  });
+
   it.each([
-    "https://boxd.it/abcd",
+    ["https://boxd.it/YtpP8", "lbxshort/YtpP8"],
+    [
+      "https://boxd.it/YtpP8$2OS5xaC1fJOBBvGv",
+      "lbxshort/YtpP8$2OS5xaC1fJOBBvGv",
+    ],
+  ])(
+    "carries a boxd.it short link for the backend to follow: %s",
+    (input, ref) => {
+      expect(parseSourceLink(input)).toEqual(parsed("letterboxd", ref, "list"));
+    },
+  );
+
+  it.each([
+    "https://boxd.it/",
+    "https://boxd.it/a/b",
     "https://letterboxd.com/film/harakiri/",
     "https://letterboxd.com/leom/films/",
     "https://letterboxd.com/leom%2Fevil/watchlist/",
     "https://letterboxd.com/leom/watchlist/extra/",
+    "https://letterboxd.com/leom/list/best/share//",
   ])("rejects unsupported routes without a request: %s", (input) => {
     expect(parseSourceLink(input)).toBeNull();
+  });
+
+  it.each([
+    "share/v1:Zm9vYmFy",
+    "lbxshare/leom/list/best-of-2026/share/2OS5xaC1fJOBBvGv",
+    "lbxshort/YtpP8$2OS5xaC1fJOBBvGv",
+  ])("never reveals a share token in the description: %s", (ref) => {
+    const described = describeSourceRef("letterboxd", ref);
+    expect(described).toEqual({
+      kind: "list",
+      detail: "Shared list",
+      url: null,
+    });
   });
 });
 

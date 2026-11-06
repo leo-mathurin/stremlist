@@ -69,8 +69,9 @@ export async function resolveSourceLink(
     if (error instanceof ConnectionExpiredError) {
       return refuse("needs_connection");
     }
+    // Never log the raw reference: a Share link reference carries a secret token.
     console.error(
-      `Validating ${provider} ${parsed.sourceRef} failed:`,
+      `Validating a ${provider} source failed:`,
       error instanceof Error ? error.message : error,
     );
     return refuse("unavailable");

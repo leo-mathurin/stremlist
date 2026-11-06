@@ -79,7 +79,7 @@ export function sourceProblemCopy(
         title: `${label} could not find this ${noun}`,
         fix:
           provider === "letterboxd"
-            ? "Use the full Letterboxd watchlist or list URL and check that it is public."
+            ? "This list is private or no longer exists. For a private list, set it to Anyone with share link on Letterboxd and paste the share link."
             : "Check the link. The list may have been deleted.",
       };
     case "needs_connection":

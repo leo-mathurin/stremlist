@@ -429,12 +429,29 @@ function parseLetterboxdLink(input: string): ParsedSourceLink | null {
   const url = toUrl(input);
   if (
     !url ||
-    !["letterboxd.com", "www.letterboxd.com"].includes(
-      url.hostname.toLowerCase(),
-    ) ||
     !["http:", "https:"].includes(url.protocol) ||
     url.username ||
     url.password
+  )
+    return null;
+
+  // boxd.it short links (public or share). The backend follows the redirect
+  // in validateSource, so carry the raw code (and its $token, if any) as a
+  // provisional reference. The $token is case-sensitive, so keep it verbatim.
+  if (hostIs(url, "boxd.it")) {
+    const code = url.pathname.replace(/^\/+|\/+$/g, "");
+    if (!/^[A-Za-z0-9]+(?:\$[A-Za-z0-9]+)?$/.test(code)) return null;
+    return {
+      provider: "letterboxd",
+      sourceRef: `lbxshort/${code}`,
+      kind: "list",
+    };
+  }
+
+  if (
+    !["letterboxd.com", "www.letterboxd.com"].includes(
+      url.hostname.toLowerCase(),
+    )
   )
     return null;
   const parts = segments(url);
@@ -451,15 +468,28 @@ function parseLetterboxdLink(input: string): ParsedSourceLink | null {
   const slug = parts[2]?.toLowerCase();
   if (
     parts[1] === "list" &&
-    parts.length === 3 &&
     slug &&
     /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(slug)
   ) {
-    return {
-      provider: "letterboxd",
-      sourceRef: `users/${user}/lists/${slug}`,
-      kind: "list",
-    };
+    // Share link: /{user}/list/{slug}/share/{token}/. The token is the secret
+    // and is case-sensitive, so keep it verbatim; the backend encrypts it
+    // before storage.
+    if (parts[3] === "share" && parts.length === 5) {
+      const token = parts[4];
+      if (!/^[A-Za-z0-9]+$/.test(token)) return null;
+      return {
+        provider: "letterboxd",
+        sourceRef: `lbxshare/${user}/list/${slug}/share/${token}`,
+        kind: "list",
+      };
+    }
+    if (parts.length === 3) {
+      return {
+        provider: "letterboxd",
+        sourceRef: `users/${user}/lists/${slug}`,
+        kind: "list",
+      };
+    }
   }
   return null;
 }
@@ -745,6 +775,12 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
       },
     ],
     letterboxd: [
+      {
+        // A Share link carries a secret token. Never show the token, the slug,
+        // or a clickable URL: only that it is a list shared through a link.
+        pattern: /^(?:share|lbxshare|lbxshort)\//,
+        describe: () => ({ kind: "list", detail: "Shared list", url: null }),
+      },
       {
         pattern: /^users\/([^/]+)\/lists\/([^/]+)$/,
         describe: ([, user, slug]) => ({
