@@ -6,6 +6,11 @@ const letterboxdFilmSchema = z.object({
   slug: z.string().regex(/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/),
   title: z.string().min(1),
   year: z.number().int().min(1870).max(2200).optional(),
+  /** The diary watch date (YYYY-MM-DD), only for diary pages. */
+  watchedAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
 });
 export type LetterboxdFilm = z.infer<typeof letterboxdFilmSchema>;
 export const letterboxdSnapshotSchema = z.object({
@@ -14,7 +19,20 @@ export const letterboxdSnapshotSchema = z.object({
   title: z.string(),
 });
 
-export function parseLetterboxdPage(html: string) {
+/** The diary watch date carried by a diary row's day link, as YYYY-MM-DD. */
+function diaryDate($: ReturnType<typeof load>, card: ReturnType<typeof $>) {
+  const row = card.closest("tr.diary-entry-row");
+  if (row.length === 0) return undefined;
+  for (const node of row.find("a[href*='/for/']").toArray()) {
+    const match = /\/for\/(\d{4})\/(\d{2})\/(\d{2})\/?$/.exec(
+      $(node).attr("href") ?? "",
+    );
+    if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  }
+  return undefined;
+}
+
+export function parseLetterboxdPage(html: string, diary = false) {
   const $ = load(html, { sourceCodeLocationInfo: true });
   const completeDocument = Boolean(
     $("html").get(0)?.sourceCodeLocation?.endTag &&
@@ -51,6 +69,7 @@ export function parseLetterboxdPage(html: string) {
       slug: card.attr("data-item-slug"),
       title: match?.[1] ?? name,
       year: match ? Number(match[2]) : undefined,
+      watchedAt: diary ? diaryDate($, card) : undefined,
     });
     if (!parsed.success) {
       invalid.push("poster");
@@ -66,7 +85,16 @@ export function parseLetterboxdPage(html: string) {
         $(node).children().length === 0 &&
         !$(node).text().trim(),
     );
-  const empty = films.length === 0 && emptyGrid;
+  // A diary has no poster grid: an empty one is a complete document with no
+  // diary rows. completeDocument in `valid` keeps a truncated page from passing.
+  // An empty diary must still be a diary: require its closed table, so an
+  // unrelated complete page cannot replace a saved Catalog with nothing.
+  const diaryTable = $("table#diary-table")
+    .toArray()
+    .some((node) => Boolean(node.sourceCodeLocation?.endTag));
+  const empty = diary
+    ? films.length === 0 && diaryTable && $("tr.diary-entry-row").length === 0
+    : films.length === 0 && emptyGrid;
   const next = $("a.next, a[rel='next']").first().attr("href") ?? null;
   if ($("a.next, a[rel='next']").length > 0 && !next?.trim())
     invalid.push("pagination");
