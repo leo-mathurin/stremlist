@@ -1,5 +1,6 @@
 import type { ProviderId } from "@stremlist/shared/providers";
 import { Hono } from "hono";
+import { isProviderAvailable } from "../../providers/availability";
 import { getProvider } from "../../providers/registry";
 
 /** An environment variable, with an empty value read as unset. */
@@ -53,6 +54,9 @@ async function runProbe(
   heartbeat: string,
 ): Promise<ProbeResult> {
   try {
+    // An unavailable Provider (turned off or halted) is never contacted.
+    if (!(await isProviderAvailable(provider)))
+      throw new Error(`${provider} is unavailable (turned off or halted)`);
     // forceRefresh reads the Provider itself, never a cached page.
     const snapshot = await getProvider(provider).fetchSource(ref, {
       connection: null,

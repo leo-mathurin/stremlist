@@ -133,4 +133,26 @@ describe("GET /monitor", () => {
     expect(beats).toEqual([{ url: LBX_BEAT, method: "GET" }]);
     expect(justwatchRead).not.toHaveBeenCalled();
   });
+
+  it("never contacts a Provider turned off with the kill switch, and reports it", async () => {
+    vi.stubEnv("DISABLED_PROVIDERS", "justwatch");
+    vi.stubEnv(
+      "MONITOR_JUSTWATCH_REF",
+      "tl-us-0f1e2d3c-4b5a-4968-8776-655443322110",
+    );
+    vi.stubEnv(
+      "BETTERSTACK_HEARTBEAT_URL_JUSTWATCH",
+      "https://beat.example/jw",
+    );
+    const justwatchRead = vi.fn();
+    useFakeProvider(fakeAdapter("justwatch", { fetchSource: justwatchRead }));
+
+    const res = await monitor();
+
+    expect(res.status).toBe(502);
+    expect(justwatchRead).not.toHaveBeenCalled();
+    expect(beats).toEqual([
+      { url: "https://beat.example/jw/fail", method: "POST" },
+    ]);
+  });
 });

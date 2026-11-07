@@ -67,6 +67,13 @@ export async function isLetterboxdHalted(): Promise<boolean> {
     return false;
   }
 }
+/**
+ * Refuse a read while Letterboxd is halted, even when its pages are cached, so
+ * a Refresh reports the Provider as unavailable instead of a fresh sync.
+ */
+export async function assertLetterboxdNotHalted() {
+  if (await isLetterboxdHalted()) throw halted();
+}
 export const LETTERBOXD_FRESHNESS_MS = 6 * 60 * 60_000;
 
 async function readState<T>(key: string, schema: z.ZodType<T>, initial: T) {

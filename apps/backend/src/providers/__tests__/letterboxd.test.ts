@@ -388,6 +388,22 @@ describe("Letterboxd public reads", () => {
       expect(stored(gateKey).halted).toBe(true);
     },
   );
+  it("reports a halt even when the list's pages are cached", async () => {
+    const fetch = vi.fn(() => Promise.resolve(new Response(page([1]))));
+    vi.stubGlobal("fetch", fetch);
+    await letterboxdProvider.fetchSource(ref, context);
+    const gate = JSON.parse(r2Objects.get(gateKey) ?? "{}") as object;
+    r2Objects.set(gateKey, JSON.stringify({ ...gate, halted: true }));
+    await expect(
+      letterboxdProvider.fetchSource(ref, context),
+    ).rejects.toMatchObject({ reason: "disabled" });
+    await expect(
+      letterboxdProvider.validateSource(ref, context),
+    ).rejects.toMatchObject({
+      reason: "disabled",
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
   it("keeps a timeout after HTTP 200 temporary and never caches an empty result", async () => {
     vi.stubGlobal(
       "fetch",
