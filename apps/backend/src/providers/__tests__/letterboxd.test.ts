@@ -286,9 +286,10 @@ describe("Letterboxd public reads", () => {
       await expect(
         letterboxdProvider.fetchSource(ref, context),
       ).rejects.toMatchObject({ reason: "unavailable" });
+      // Once halted, Letterboxd is unavailable as a Provider ("disabled").
       await expect(
         letterboxdProvider.fetchSource("users/bob/watchlist", context),
-      ).rejects.toMatchObject({ reason: "unavailable" });
+      ).rejects.toMatchObject({ reason: "disabled" });
       expect(send).toHaveBeenCalledTimes(1);
     },
   );
@@ -379,13 +380,30 @@ describe("Letterboxd public reads", () => {
       await expect(
         letterboxdProvider.fetchSource(ref, context),
       ).rejects.toMatchObject({ reason: "unavailable" });
+      // Once halted, Letterboxd is unavailable as a Provider ("disabled").
       await expect(
         letterboxdProvider.fetchSource("users/bob/watchlist", context),
-      ).rejects.toMatchObject({ reason: "unavailable" });
+      ).rejects.toMatchObject({ reason: "disabled" });
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(stored(gateKey).halted).toBe(true);
     },
   );
+  it("reports a halt even when the list's pages are cached", async () => {
+    const fetch = vi.fn(() => Promise.resolve(new Response(page([1]))));
+    vi.stubGlobal("fetch", fetch);
+    await letterboxdProvider.fetchSource(ref, context);
+    const gate = JSON.parse(r2Objects.get(gateKey) ?? "{}") as object;
+    r2Objects.set(gateKey, JSON.stringify({ ...gate, halted: true }));
+    await expect(
+      letterboxdProvider.fetchSource(ref, context),
+    ).rejects.toMatchObject({ reason: "disabled" });
+    await expect(
+      letterboxdProvider.validateSource(ref, context),
+    ).rejects.toMatchObject({
+      reason: "disabled",
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
   it("keeps a timeout after HTTP 200 temporary and never caches an empty result", async () => {
     vi.stubGlobal(
       "fetch",
@@ -843,5 +861,45 @@ describe("Letterboxd diary", () => {
     );
     expect(result.complete).toBe(true);
     expect(result.entries).toEqual([]);
+  });
+});
+
+describe("Letterboxd halt alert", () => {
+  const heartbeat = "https://uptime.betterstack.com/api/v1/heartbeat/lbx";
+  beforeEach(() =>
+    vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", heartbeat),
+  );
+
+  it("reports the halt to Better Stack once, when the shared state flips", async () => {
+    const pings: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.startsWith(heartbeat)) {
+          pings.push(url);
+          return Promise.resolve(new Response("ok"));
+        }
+        return Promise.resolve(new Response("refused", { status: 403 }));
+      }),
+    );
+    await expect(
+      letterboxdProvider.fetchSource(ref, context),
+    ).rejects.toMatchObject({ reason: "unavailable" });
+    // A later read is refused by the halt itself and does not report again.
+    await expect(
+      letterboxdProvider.fetchSource("users/bob/watchlist", context),
+    ).rejects.toMatchObject({ reason: "disabled" });
+    expect(pings).toEqual([`${heartbeat}/fail`]);
+    expect(stored(gateKey).halted).toBe(true);
+  });
+
+  it("does not report a successful read", async () => {
+    const send = vi.fn((url: string) => {
+      expect(url.startsWith(heartbeat)).toBe(false);
+      return Promise.resolve(new Response(page([1])));
+    });
+    vi.stubGlobal("fetch", send);
+    await letterboxdProvider.fetchSource(ref, context);
+    expect(stored(gateKey).halted).toBe(false);
   });
 });

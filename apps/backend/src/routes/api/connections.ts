@@ -2,7 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { PROVIDER_IDS, PROVIDERS } from "@stremlist/shared/providers";
 import { Hono } from "hono";
 import { backendOrigin } from "../../lib/urls";
-import { isProviderEnabled } from "../../providers/registry";
+import { isProviderAvailable } from "../../providers/availability";
 import { connectionSources } from "../../services/connections";
 import { disconnectProvider } from "../../services/lists";
 import {
@@ -15,13 +15,17 @@ import { connectionParam, requireAccess } from "./access";
 /** Providers and the Connections of an Account. */
 const connections = new Hono()
   // What the configure page needs to know about each Provider right now.
-  .get("/providers", (c) =>
+  // `enabled` is the Provider's Availability: false when the kill switch turns
+  // it off or when it refuses Stremlist's reads (one label for both causes).
+  .get("/providers", async (c) =>
     c.json({
-      providers: PROVIDER_IDS.map((id) => ({
-        id,
-        enabled: isProviderEnabled(id),
-        connectable: isOAuthConfigured(id),
-      })),
+      providers: await Promise.all(
+        PROVIDER_IDS.map(async (id) => ({
+          id,
+          enabled: await isProviderAvailable(id),
+          connectable: isOAuthConfigured(id),
+        })),
+      ),
     }),
   )
 
@@ -32,7 +36,7 @@ const connections = new Hono()
       const { accountId, provider } = c.req.valid("param");
       const access = await requireAccess(c, accountId, { privateOnly: true });
       if (access instanceof Response) return access;
-      if (!isProviderEnabled(provider)) {
+      if (!(await isProviderAvailable(provider))) {
         return c.json(
           { error: `${PROVIDERS[provider].label} is temporarily unavailable.` },
           503,

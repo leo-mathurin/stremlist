@@ -77,6 +77,10 @@ The authorization that links one Account to its user on one Provider, so Stremli
 A Connection needs renewal when its Provider refuses it (revoked access, refused token refresh). The user renews it by connecting the Provider again.
 _Avoid_: Integration, link, login
 
+**Availability**:
+Whether Stremlist currently reads a Provider. A Provider is unavailable when an operator turns it off, or when the Provider refuses Stremlist's reads. While it is unavailable, its Lists keep showing the last successful Catalog and the user cannot add a new Source list from it. The configure page shows one label, "Temporarily unavailable", for both causes; the cause stays in the logs and the alerts.
+_Avoid_: Down, offline, disabled (for the user-facing state)
+
 **Action**:
 A change that a user asks Stremlist to make on a Provider from inside Stremio, such as add to watchlist, remove from watchlist, mark as watched, or rate. Only a Provider with a Connection supports Actions.
 _Avoid_: Write, sync-back

@@ -7,6 +7,7 @@ import { wikidataStrategy } from "../titles/wikidata";
 import { providerFetch } from "./http";
 import { isProviderEnabled } from "./kill-switch";
 import {
+  assertLetterboxdNotHalted,
   LETTERBOXD_FRESHNESS_MS,
   letterboxdSnapshot,
   withLetterboxdPermit,
@@ -275,6 +276,7 @@ async function fetchSource(
   ref: string,
   ctx: ProviderContext,
 ): Promise<SourceSnapshot> {
+  await assertLetterboxdNotHalted();
   const base = sourcePath(ref);
   const diary = isDiaryPath(base);
   const films = new Map<string, LetterboxdFilm>();
@@ -368,6 +370,7 @@ export const letterboxdProvider: ProviderAdapter = {
   id: "letterboxd",
   freshnessMs: LETTERBOXD_FRESHNESS_MS,
   async validateSource(ref) {
+    await assertLetterboxdNotHalted();
     const resolved = await resolveRef(ref);
     const page = await readPage(sourcePath(resolved), 1);
     return {

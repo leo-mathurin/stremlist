@@ -30,6 +30,50 @@ const unavailable = () =>
     "unavailable",
     "Letterboxd is temporarily unavailable",
   );
+/** Letterboxd refused Stremlist: the Provider is unavailable until an operator resets the halt. */
+const halted = () =>
+  new SourceUnavailableError(
+    "disabled",
+    "Letterboxd is temporarily unavailable",
+  );
+
+/**
+ * Tell Better Stack once, when this instance flips the shared state to halted.
+ * Best effort: a missing URL or a failed ping never affects the read.
+ */
+async function notifyHalted(reason: string) {
+  const heartbeat = process.env.BETTERSTACK_HEARTBEAT_URL_LETTERBOXD;
+  if (!heartbeat) return;
+  try {
+    await fetch(`${heartbeat}/fail`, {
+      method: "POST",
+      body: `Letterboxd halted: ${reason}`,
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch (error) {
+    console.error(
+      "Reporting the Letterboxd halt failed:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
+/** Whether Letterboxd reads are halted (shared R2 state). Unreadable state counts as not halted. */
+export async function isLetterboxdHalted(): Promise<boolean> {
+  try {
+    const stored = await readJsonVersion(HTTP_KEY);
+    return stored ? httpStateSchema.parse(stored.value).halted : false;
+  } catch {
+    return false;
+  }
+}
+/**
+ * Refuse a read while Letterboxd is halted, even when its pages are cached, so
+ * a Refresh reports the Provider as unavailable instead of a fresh sync.
+ */
+export async function assertLetterboxdNotHalted() {
+  if (await isLetterboxdHalted()) throw halted();
+}
 export const LETTERBOXD_FRESHNESS_MS = 6 * 60 * 60_000;
 
 async function readState<T>(key: string, schema: z.ZodType<T>, initial: T) {
@@ -61,8 +105,8 @@ export async function withLetterboxdPermit<T>(
       halted: false,
       failures: 0,
     });
-    if (state.value.halted || state.value.pausedUntil > now)
-      throw unavailable();
+    if (state.value.halted) throw halted();
+    if (state.value.pausedUntil > now) throw unavailable();
     if (state.value.activeId && state.value.activeUntil <= now) {
       try {
         await writeJson(
@@ -70,10 +114,13 @@ export async function withLetterboxdPermit<T>(
           { ...state.value, halted: true },
           { etag: state.etag },
         );
+        await notifyHalted(
+          "an HTTP reservation expired with an unknown result",
+        );
       } catch (error) {
         if (!isPreconditionFailed(error)) throw error;
       }
-      throw unavailable();
+      throw halted();
     }
     if (now >= deadline) throw unavailable();
     if (state.value.activeId || state.value.nextAt > now) {
@@ -106,6 +153,8 @@ export async function withLetterboxdPermit<T>(
     });
     if (state.value.activeId !== id) throw unavailable();
     const failures = result === "failed" ? state.value.failures + 1 : 0;
+    const nextHalted =
+      state.value.halted || result === "blocked" || failures >= 3;
     await writeJson(
       HTTP_KEY,
       {
@@ -116,11 +165,18 @@ export async function withLetterboxdPermit<T>(
           result === "failed"
             ? Date.now() + Math.max(15 * 60_000, retryAfterMs)
             : 0,
-        halted: state.value.halted || result === "blocked" || failures >= 3,
+        halted: nextHalted,
         failures,
       },
       { etag: state.etag },
     );
+    // Edge-triggered: only the instance whose write flips the shared flag reports.
+    if (!state.value.halted && nextHalted)
+      await notifyHalted(
+        result === "blocked"
+          ? "Letterboxd refused a request (403, 429 or a challenge)"
+          : "three consecutive reads failed",
+      );
   }
   let result: "ok" | "blocked" | "failed" = "failed";
   let retryAfterMs = 0;
