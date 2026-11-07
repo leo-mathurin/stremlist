@@ -728,15 +728,12 @@ describe("Letterboxd share links", () => {
 describe("Letterboxd member collections and charts", () => {
   it.each([
     ["users/alice/films", "https://letterboxd.com/alice/films/"],
+    // Letterboxd's own form of the range, as in its pagination links.
     [
       "users/alice/films/rated/4.0-5.0",
-      "https://letterboxd.com/alice/films/rated/4.0-5.0/",
+      "https://letterboxd.com/alice/films/rated/4-5/",
     ],
     ["users/alice/likes/films", "https://letterboxd.com/alice/likes/films/"],
-    [
-      "films/popular/this/week",
-      "https://letterboxd.com/films/popular/this/week/",
-    ],
   ])("reads %s from %s in page order", async (sourceRef, url) => {
     const fetch = vi.fn((requested: string) => {
       expect(requested).toBe(url);
@@ -752,6 +749,85 @@ describe("Letterboxd member collections and charts", () => {
     expect(result.entries.every((entry) => entry.addedAt === undefined)).toBe(
       true,
     );
+  });
+});
+
+describe("Letterboxd live page shapes", () => {
+  // The chart page loads its grid with JavaScript from this fragment, which is
+  // not a full document (no <html>, no title).
+  function chartFragment(ids: number[], closedPagination = true) {
+    return `<ul class="poster-list -p70 -grid">${ids.map((id) => `<li class="posteritem"><div data-postered-identifier='{"uid":"film:${id}"}' data-item-slug="film-${id}" data-item-name="Film ${id} (2000)"></div></li>`).join("")}</ul>\n<div class="pagination"><div class="paginate-nextprev"><a class="next" href="/films/popular/this/week/page/2/">Next</a></div>${closedPagination ? "</div>" : ""}`;
+  }
+
+  it("reads a chart's first page from its grid fragment, as a complete list", async () => {
+    const fetch = vi.fn((url: string) => {
+      expect(url).toBe(
+        "https://letterboxd.com/csi/films/films-browser-list/popular/this/week/?esiAllowFilters=true",
+      );
+      return Promise.resolve(new Response(chartFragment([3, 1, 2])));
+    });
+    vi.stubGlobal("fetch", fetch);
+    const result = await letterboxdProvider.fetchSource(
+      "films/popular/this/week",
+      context,
+    );
+    // Over a million films are ranked: only the first page is read.
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(result.complete).toBe(true);
+    expect(
+      result.entries.map((entry) => entry.externalIds?.letterboxd?.uid),
+    ).toEqual(["film:3", "film:1", "film:2"]);
+  });
+
+  it("refuses a truncated chart fragment", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(new Response(chartFragment([1], false)))),
+    );
+    await expect(
+      letterboxdProvider.fetchSource("films/popular/this/month", context),
+    ).rejects.toMatchObject({ reason: "unavailable" });
+  });
+
+  it("reads an empty watchlist as empty, not as a failed read", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            `<html><head><title>alice's Watchlist • Letterboxd</title></head><body><main id="content"><h1 class="section-heading">alice wants to see 0 films</h1><section class="empty-text body-text -small"><h2 class="ui-block-heading">No films yet</h2></section></main></body></html>`,
+          ),
+        ),
+      ),
+    );
+    const result = await letterboxdProvider.fetchSource(ref, context);
+    expect(result).toEqual({ complete: true, entries: [] });
+    // A valid empty page does not count toward the pause.
+    expect(stored(gateKey)).toMatchObject({ failures: 0, pausedUntil: 0 });
+  });
+
+  it("follows a rating filter's pages in Letterboxd's form of the range", async () => {
+    const fetch = vi.fn((url: string) =>
+      Promise.resolve(
+        new Response(
+          url.endsWith("/page/2/")
+            ? page([2])
+            : page([1], "/alice/films/rated/4-5/page/2/"),
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const pending = letterboxdProvider.fetchSource(
+      "users/alice/films/rated/4.0-5.0",
+      context,
+    );
+    await vi.runAllTimersAsync();
+    const result = await pending;
+    expect(result.complete).toBe(true);
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+      "https://letterboxd.com/alice/films/rated/4-5/",
+      "https://letterboxd.com/alice/films/rated/4-5/page/2/",
+    ]);
   });
 });
 

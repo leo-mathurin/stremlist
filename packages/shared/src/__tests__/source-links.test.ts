@@ -222,10 +222,16 @@ describe("parseSourceLink: Letterboxd", () => {
 
   it.each([
     ["https://letterboxd.com/leom/films/", "users/leom/films", "leom's films"],
+    // Letterboxd's own form drops trailing zeros: 4.0-5.0 is 4-5.
     [
       "https://letterboxd.com/leom/films/rated/4.0-5.0/",
-      "users/leom/films/rated/4.0-5.0",
-      "leom's films rated 4.0-5.0",
+      "users/leom/films/rated/4-5",
+      "leom's films rated 4-5",
+    ],
+    [
+      "https://letterboxd.com/leom/films/rated/4.5-5.0/",
+      "users/leom/films/rated/4.5-5",
+      "leom's films rated 4.5-5",
     ],
     [
       "https://letterboxd.com/leom/likes/films/",

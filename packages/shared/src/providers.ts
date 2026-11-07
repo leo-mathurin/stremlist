@@ -485,11 +485,16 @@ function parseLetterboxdLink(input: string): ParsedSourceLink | null {
       /^\d(?:\.\d)?(?:-\d(?:\.\d)?)?$/.test(parts[3]) &&
       parts.length === 4
     ) {
+      // Letterboxd's own form drops trailing zeros (4.0-5.0 is 4-5).
+      const range = parts[3]
+        .split("-")
+        .map((value) => String(Number(value)))
+        .join("-");
       return {
         provider: "letterboxd",
-        sourceRef: `users/${user}/films/rated/${parts[3]}`,
+        sourceRef: `users/${user}/films/rated/${range}`,
         kind: "list",
-        suggestedTitle: `${user}'s films rated ${parts[3]}`,
+        suggestedTitle: `${user}'s films rated ${range}`,
       };
     }
     // Watched films: /{user}/films/.

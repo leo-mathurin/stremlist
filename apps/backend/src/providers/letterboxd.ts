@@ -38,6 +38,19 @@ const SHARE_PREFIX = "share/";
 const PROVISIONAL_SHARE_PREFIX = "lbxshare/";
 const SHORT_PREFIX = "lbxshort/";
 
+/**
+ * Letterboxd writes a rating range without trailing zeros (4.0-5.0 is 4-5) in
+ * its pagination links, so the page path must use the same form.
+ */
+function canonicalRating(path: string) {
+  return path.replace(/(?<=\/rated\/)[\d.-]+$/, (range) =>
+    range
+      .split("-")
+      .map((value) => String(Number(value)))
+      .join("-"),
+  );
+}
+
 /** The letterboxd.com path for a stored Source list reference. */
 function sourcePath(ref: string) {
   // A stored Share link: the token is encrypted; decrypt it to the real path.
@@ -49,7 +62,7 @@ function sourcePath(ref: string) {
   }
   if (CHART.test(ref)) return `/${ref}/`;
   const collection = COLLECTION.exec(ref);
-  if (collection) return `/${collection[1]}/${collection[2]}/`;
+  if (collection) return `/${collection[1]}/${canonicalRating(collection[2])}/`;
   const match = SOURCE.exec(ref);
   if (!match)
     throw new SourceUnavailableError(
@@ -148,7 +161,7 @@ async function readHtml(
   url: string,
   kind: "collection" | "film" = "collection",
   nextPageUrl?: string,
-  diary = false,
+  page: { diary?: boolean; fragment?: boolean } = {},
 ) {
   if (!isProviderEnabled("letterboxd"))
     throw new SourceUnavailableError("disabled", "Letterboxd is turned off");
@@ -205,7 +218,7 @@ async function readHtml(
         await reader.cancel();
       }
       const html = Buffer.concat(chunks).toString("utf8");
-      const parsed = parseLetterboxdPage(html, diary);
+      const parsed = parseLetterboxdPage(html, page);
       blocked = parsed.blocked;
       const paginationValid =
         !parsed.next || new URL(parsed.next, url).href === nextPageUrl;
@@ -247,20 +260,30 @@ function pagePath(base: string, page: number) {
   return page === 1 ? base : `${base}page/${page}/`;
 }
 
+/** A chart's path: its page loads the grid from a fragment with JavaScript. */
+function isChartPath(base: string) {
+  return CHART.test(base.slice(1, -1));
+}
+
 async function readPage(base: string, page: number, forceRefresh = false) {
   const path = pagePath(base, page);
   const key = `providers/letterboxd/pages-v1/${createHash("sha256").update(path).digest("hex")}.json`;
+  const options = { diary: isDiaryPath(base), fragment: isChartPath(base) };
+  // The fragment links to the chart's own next page, like a full page does.
+  const url = options.fragment
+    ? `https://letterboxd.com/csi/films/films-browser-list${path.slice("/films".length)}?esiAllowFilters=true`
+    : `https://letterboxd.com${path}`;
   return letterboxdSnapshot(
     key,
     async () => {
       const parsed = parseLetterboxdPage(
         await readHtml(
-          `https://letterboxd.com${path}`,
+          url,
           "collection",
           `https://letterboxd.com${pagePath(base, page + 1)}`,
-          isDiaryPath(base),
+          options,
         ),
-        isDiaryPath(base),
+        options,
       );
       return {
         films: parsed.films,
@@ -281,6 +304,9 @@ async function fetchSource(
   const diary = isDiaryPath(base);
   const films = new Map<string, LetterboxdFilm>();
   const signatures = new Set<string>();
+  // A chart ranks every film on Letterboxd (over a million): its Source list
+  // is the first page, the top 72.
+  const chart = isChartPath(base);
   let complete = false;
   for (let page = 1; page <= MAX_PAGES; page++) {
     const result = await readPage(base, page, ctx.forceRefresh);
@@ -307,7 +333,7 @@ async function fetchSource(
         continue;
       films.set(film.uid, film);
     }
-    if (result.complete) {
+    if (result.complete || chart) {
       complete = true;
       break;
     }
