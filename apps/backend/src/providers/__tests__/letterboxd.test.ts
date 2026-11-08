@@ -1057,3 +1057,78 @@ describe("Letterboxd halt alert", () => {
     expect(gate().haltedAt).toBeNull();
   });
 });
+
+describe("Letterboxd request log", () => {
+  const kept = () => db.getTable("letterboxd_requests");
+  const counted = () => db.getTable("letterboxd_request_counts");
+
+  it("keeps a refused request in full, with its Cloudflare headers and body", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response("<html>Sorry, you have been blocked</html>", {
+            status: 403,
+            headers: { "cf-mitigated": "challenge", "cf-ray": "abc-FRA" },
+          }),
+        ),
+      ),
+    );
+    await expect(
+      letterboxdProvider.fetchSource(ref, context),
+    ).rejects.toMatchObject({ reason: "unavailable" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(kept()).toEqual([
+      expect.objectContaining({
+        outcome: "blocked",
+        page_kind: "collection",
+        url: "https://letterboxd.com/alice/watchlist/",
+        status: 403,
+        cf_mitigated: "challenge",
+        cf_ray: "abc-FRA",
+        priority: "interactive",
+        body_excerpt: "<html>Sorry, you have been blocked</html>",
+      }),
+    ]);
+  });
+  it("counts every successful request and keeps 1% of them, without the body", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(new Response(page([1])))),
+    );
+    const random = vi.spyOn(Math, "random").mockReturnValue(0.5);
+    await letterboxdProvider.fetchSource(ref, context);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(counted()).toHaveLength(1);
+    expect(kept()).toHaveLength(0);
+
+    random.mockReturnValue(0.001);
+    await letterboxdProvider.fetchSource("users/bob/watchlist", context);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(kept()).toEqual([
+      expect.objectContaining({
+        outcome: "ok",
+        status: 200,
+        body_excerpt: null,
+      }),
+    ]);
+    expect(kept()[0].bytes).toBeGreaterThan(0);
+  });
+  it("keeps a network error with no status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.reject(new TypeError("fetch failed"))),
+    );
+    await expect(
+      letterboxdProvider.fetchSource(ref, context),
+    ).rejects.toMatchObject({ reason: "unavailable" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(kept()).toEqual([
+      expect.objectContaining({
+        outcome: "failed",
+        status: null,
+        error: expect.stringContaining("fetch failed") as unknown,
+      }),
+    ]);
+  });
+});

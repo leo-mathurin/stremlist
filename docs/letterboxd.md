@@ -42,6 +42,25 @@ At 10 requests/s the gate admits 36,000 pages per hour. `stress/letterboxd-gate.
 
 The rate, not the gate, limits a launch: a burst above 10 pages/s queues.
 
+### Request log
+
+Each Letterboxd request is logged after its read returns, so the log never slows a read (`supabase/migrations/20261108130000_letterboxd_request_log.sql`):
+
+- `letterboxd_requests` keeps every failed request in full and 1% of successful ones, with the same fields: outcome, page kind, URL, status, duration, size, `cf-ray`, `cf-mitigated`, `cf-cache-status`, `Retry-After`, `Server`, the gate's rate, the time the request queued, its priority, whether it was a probe, the Vercel region, and the error. A failed request also keeps the first 2 KB of its body. Comparing failures with the sample shows what differs.
+- `letterboxd_request_minutes` counts every request per minute and outcome, with duration buckets.
+- `letterboxd_request_rates` (one row per minute: failure share, p50 and p95 durations, rate) and `letterboxd_recent_failures` (the latest 200 failures) are ready to query in the Supabase SQL editor.
+
+A `pg_cron` job deletes rows older than 30 days every night, and another deletes `pg_cron`'s own run history after 7 days.
+
+```sql
+-- The last hour, minute by minute.
+SELECT * FROM letterboxd_request_rates WHERE minute > now() - interval '1 hour' ORDER BY minute DESC;
+-- Failures next to the successful sample, by status and Cloudflare verdict.
+SELECT outcome, status, cf_mitigated, count(*), round(avg(duration_ms)) AS avg_ms
+FROM letterboxd_requests WHERE at > now() - interval '1 day'
+GROUP BY 1, 2, 3 ORDER BY 4 DESC;
+```
+
 ## Operation
 
 `DISABLED_PROVIDERS=letterboxd` is the existing application kill switch. A halt makes Letterboxd unavailable in the same way: the configure page shows it as temporarily unavailable, new Letterboxd links are refused, and Lists keep their last Catalog with a sync note. The instance whose report halts the gate also reports to `BETTERSTACK_HEARTBEAT_URL_LETTERBOXD` (`/fail`) at once, and a successful probe pings it again to resolve the incident. A rate kept below half of `LETTERBOXD_MAX_RPS` for 30 minutes also reports a failure: Letterboxd keeps answering 429, so lower `LETTERBOXD_MAX_RPS`. `/monitor` probes Letterboxd's official Top 500 list (`users/official/lists/letterboxds-top-500-films`, five pages) on its schedule and reports the same slow state. Apply environment changes through a reviewed deployment. Cached Catalogs remain available through the common fallback.

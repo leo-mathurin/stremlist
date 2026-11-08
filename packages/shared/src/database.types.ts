@@ -352,6 +352,10 @@ export type Database = {
         Args: { p_gate?: string; p_target: number };
         Returns: Json;
       };
+      letterboxd_record: {
+        Args: { p_keep: boolean; p_request: Json };
+        Returns: undefined;
+      };
       letterboxd_report: {
         Args: {
           p_gate?: string;
