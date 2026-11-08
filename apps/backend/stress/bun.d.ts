@@ -7,4 +7,15 @@ declare const Bun: {
     idleTimeout?: number;
     fetch: (request: Request) => Response | Promise<Response>;
   }): { stop: (force?: boolean) => Promise<void> };
+  /** The part of Bun's Postgres client that stress/letterboxd-gate.ts uses. */
+  SQL: new (
+    url: string,
+    options?: { max?: number },
+  ) => {
+    unsafe<T = Record<string, unknown>[]>(
+      query: string,
+      parameters?: unknown[],
+    ): Promise<T>;
+    close(): Promise<void>;
+  };
 };

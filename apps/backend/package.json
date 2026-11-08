@@ -22,6 +22,7 @@
     "test": "vitest run --exclude '**/*.stress.test.ts'",
     "test:stress": "vitest run src/services/__tests__/imdb-scraper.stress.test.ts",
     "stress:load": "bun stress/run.ts",
+    "stress:letterboxd-gate": "bun stress/letterboxd-gate.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p stress",
     "cleanup:invalid-users": "bun src/scripts/cleanup-invalid-users.ts",
     "dev:app": "bun --watch --env-file=.env src/dev.ts",

@@ -45,6 +45,7 @@ import {
   useFakeProvider,
 } from "../../__tests__/helpers/mock-registry";
 import { db, resetRpc } from "../../__tests__/helpers/mock-supabase";
+import { currentReadPriority } from "../../providers/read-priority";
 import type { SourceEntry, SourceSnapshot } from "../../providers/types";
 import { SourceUnavailableError } from "../../providers/types";
 import * as listCache from "../list-cache";
@@ -254,6 +255,21 @@ describe("getListCatalog", () => {
     expect(cache.get(LIST_ID)?.data.metas.map((item) => item.id)).toEqual([
       "tt0000002",
     ]);
+  });
+
+  it("reads in the background when a stale cache can be served meanwhile", async () => {
+    const priorities: string[] = [];
+    scraperMocks.fetchList.mockImplementation(() => {
+      priorities.push(currentReadPriority());
+      return Promise.resolve({ metas: [meta("tt0000002")] });
+    });
+    // No cache: someone waits for this read.
+    await readList(config());
+    // A stale cache is served if the read is refused, so it never queues.
+    cache.seed(LIST_ID, [MOVIE], new Date(Date.now() - 2 * 60 * 60_000));
+    await readList(config());
+
+    expect(priorities).toEqual(["interactive", "background"]);
   });
 
   it("reads the new Source list of an edited List, even with a fresh cache", async () => {
