@@ -1,0 +1,30 @@
+[
+  {
+    "name": "users_imdb_user_id_key",
+    "reason": "Production only: a UNIQUE constraint and its index on users.imdb_user_id, created by hand. It duplicates the primary key. Drop it with a migration, then remove this entry."
+  },
+  {
+    "name": "idx_users_last_activity_at",
+    "reason": "Production only: an index on users.last_fetched_at, created by hand. Keep it with a migration or drop it, then remove this entry."
+  },
+  {
+    "name": "rls_auto_enable",
+    "reason": "Production only: the Supabase dashboard setting that enables RLS on every new public table (event trigger ensure_rls)."
+  },
+  {
+    "name": "letterboxd_lab_rpc",
+    "reason": "Production only: Letterboxd rate-limit experiment (schema letterboxd_lab_20261026). Drop it when the experiment ends."
+  },
+  {
+    "name": "letterboxd_live_rpc",
+    "reason": "Production only: Letterboxd rate-limit experiment (schema letterboxd_live_20261102). Drop it when the experiment ends."
+  },
+  {
+    "name": "letterboxd_rps_rpc",
+    "reason": "Production only: Letterboxd rate-limit experiment (schema letterboxd_rps_20261108). Drop it when the experiment ends."
+  },
+  {
+    "name": "letterboxd_rps40_rpc",
+    "reason": "Production only: Letterboxd rate-limit experiment (schema letterboxd_rps40_20261108). Drop it when the experiment ends."
+  }
+]

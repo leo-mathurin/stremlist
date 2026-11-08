@@ -32,8 +32,9 @@ populate release dates. Date-added sorting uses IMDb list order. Shuffle stays
 stable within a cache generation so scrolling does not repeat items. Popularity
 is not offered: the tested IMDb meterRanking field reported an entitlement denial.
 
-Apply `supabase/migrations/20260914230000_catalog_settings.sql` before deploying
-this version. The new JSON column defaults to an empty configuration. Older
+These settings are stored in a JSON column
+(`supabase/migrations/20260914230000_catalog_settings.sql`) that defaults to an
+empty configuration. Older
 clients that omit these settings preserve them; sending an empty object clears
 them. Reinstall after enabling/disabling extra catalogs or adding search support;
 changing only saved filters does not require reinstalling.
@@ -135,6 +136,27 @@ pnpm test
 pnpm format
 pnpm format:check
 ```
+
+## Database Migrations
+
+Schema changes are SQL files in `supabase/migrations`. Nothing applies them when
+you run the apps locally. After a pull request merges into `main` and CI passes,
+the `Supabase deploy` workflow applies the pending migrations to the production
+database, then publishes the backend and frontend built from the same commit.
+Vercel does not build `main` by itself any more.
+
+- Add a new file `<YYYYMMDDHHMMSS>_<name>.sql`. Never edit a migration that
+  production already applied.
+- Keep the schema compatible with the backend still in production: add first,
+  remove or rename in a later release.
+- Do not run SQL by hand in the production dashboard, and do not deploy from
+  your machine. A nightly `Supabase drift` workflow reports any difference
+  between production and the migrations.
+- Staging and preview deployments use the production database too.
+
+Read [`docs/production-deploy.md`](docs/production-deploy.md) for the full
+sequence, the secrets, recovery after a failure and how to repair the migration
+history.
 
 ## Using the Addon
 

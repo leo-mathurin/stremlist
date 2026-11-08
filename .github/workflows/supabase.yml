@@ -1,0 +1,43 @@
+name: Supabase drift
+
+# Each night, compares production with a database rebuilt from
+# supabase/migrations on main. It catches SQL run by hand in production,
+# which the deploy workflow cannot see. Read-only. See docs/production-deploy.md.
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: supabase-drift
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: Production drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: supabase-prod
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.118.0
+
+      - name: Rebuild a local database from the migrations
+        run: supabase db start --workdir .
+
+      - name: Compare history and public schema with production
+        run: node .github/scripts/supabase-drift.mjs
+
+      - name: Stop the local database
+        if: always()
+        run: supabase stop --no-backup --workdir .

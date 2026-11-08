@@ -1,0 +1,135 @@
+# Production deploy
+
+A merge into `main` is the only action needed to release. The
+[`Supabase deploy`](../.github/workflows/supabase-deploy.yml) workflow applies
+the database migrations, then publishes the backend and the frontend built
+from the same commit. Nobody deploys from a laptop, and nobody runs SQL by hand
+in the production dashboard.
+
+## Sequence
+
+The workflow starts when `CI` passes on the push to `main`. It does not start
+when `CI` fails, so a red `main` never reaches production.
+
+1. **Release commit.** The commit to release is the merge commit, or the
+   `chore(release): vX.Y.Z [skip ci]` commit that the CI `version-bump` job
+   puts on top of it. That commit changes only the version files, so the tested
+   code is the released code. Any other commit on `main` means a newer merge
+   has overtaken this run: the run stops, and the newer run releases both.
+2. **Plan** (read-only) and **Build**, in parallel:
+   - Plan compares `supabase/migrations` with
+     `supabase_migrations.schema_migrations` in production, through the
+     Management API in a read-only transaction. It lists the migrations to
+     apply in the run summary. It fails when production has a version that has
+     no file in the repo, or a version with a different name. Then it runs
+     `supabase db push --dry-run`.
+   - Build creates a production deployment of `stremlist-backend` and
+     `stremlist-frontend` from the GitHub commit, without custom domains, and
+     waits until both are ready. Production still serves the old deployments.
+3. **Apply.** Checks again that `main` has not moved, plans again, runs
+   `supabase db push --include-all`, then checks that the production history
+   matches the repo.
+4. **Publish.** Calls `/health` (which reads the database) and
+   `/manifest.json` on the new backend deployment, checks again that `main` has
+   not moved, promotes the backend to `api.stremlist.com`, then the frontend to
+   `stremlist.com`. It checks that each domain serves the new deployment.
+
+One release runs at a time (`concurrency: production-deploy`), and a running
+release is never cancelled.
+
+## Why this order
+
+The backend must not run on a schema that does not have its migrations yet.
+Vercel's Git integration builds and publishes `main` on its own, with no wait
+for the database, so `vercel.json` turns it off for `main`
+(`git.deploymentEnabled.main: false`). The workflow creates the deployments
+instead, from the same GitHub commit, and publishes them only after the
+migrations. This is the Wondday approach (ADR-0018 there), with one change: the
+build runs before the migrations, so the old backend serves the new schema for
+seconds (smoke test and promotion), not for the whole build.
+
+That short window still exists. Keep each migration compatible with the
+backend that is in production: add first, and remove or rename in a later
+release when no deployed code uses the old shape (expand, then contract).
+
+`staging` still deploys through the Git integration. Staging and preview
+deployments use the production database (Vercel sets the same `SUPABASE_URL`
+for every environment): a staging deployment that
+needs a migration breaks until `main` releases that migration, and an old
+staging deployment can break after a migration that removes or renames
+something.
+
+## Writing a migration
+
+- Add a new file `supabase/migrations/<YYYYMMDDHHMMSS>_<name>.sql`. Never change
+  a file that production already applied: the change would not run.
+- Check it locally: `supabase start` applies every migration on an empty
+  database, and the CI E2E job does the same on each pull request.
+- A version older than the latest one in production still applies
+  (`--include-all`). The plan marks it; check that its order is correct.
+- `CREATE EXTENSION` and `cron.schedule` work in a migration: the push
+  connects as `postgres`.
+- If a migration fails, the files before it stay applied and nothing is
+  published. Fix forward with a new migration in a new pull request. There is
+  no automatic rollback.
+
+## Secrets
+
+The jobs that use production credentials run in GitHub environments that only
+`main` can use (Settings, Environments, deployment branches: `main`).
+
+| Environment     | Secret                  | Use                                                                        |
+| --------------- | ----------------------- | -------------------------------------------------------------------------- |
+| `supabase-prod` | `SUPABASE_ACCESS_TOKEN` | Management API (read-only plan and drift) and `supabase link`              |
+| `supabase-prod` | `SUPABASE_DB_PASSWORD`  | `supabase db push` through the IPv4 pooler (GitHub runners lack IPv6)      |
+| `vercel-prod`   | `VERCEL_TOKEN`          | Create, promote and check deployments in the `lelemathrin's projects` team |
+
+## When the workflow fails
+
+Open the run summary: each job writes what it did.
+
+- **Obsolete deploy:** a newer merge is on `main`. Nothing to do; its run
+  releases it.
+- **Plan blocked:** the production history has a version the repo does not
+  explain. Repair the history (below), then re-run the workflow.
+- **Apply failed:** read the SQL error, fix forward with a new migration. The
+  old deployments still serve production.
+- **Publish failed:** the migrations are applied and the old deployments still
+  serve production. Fix the cause, then run the workflow again (Actions,
+  `Supabase deploy`, Run workflow on `main`). It builds again and publishes the
+  head of `main`.
+
+## Repairing the migration history
+
+Do this only when a plan is blocked or the nightly drift reports a history
+difference, and only after you compare the production schema with the
+migration. `supabase migration repair` writes only to the history table; it
+never runs the migration SQL.
+
+From a checkout of `main`, with the production password in the environment:
+
+```bash
+supabase link --project-ref igbmxubzxjfdbgmawrtr
+# The schema already has the objects of a migration, but no history row:
+supabase migration repair --status applied <version>
+# A history row has no file in the repo (after you recover its SQL into Git
+# under the same version, or confirm that it was undone):
+supabase migration repair --status reverted <version>
+```
+
+Never mark a migration as applied when production does not have all its
+objects, and never apply a migration by hand: the next deploy applies it.
+
+## Nightly drift
+
+The [`Supabase drift`](../.github/workflows/supabase.yml) workflow runs each
+night. It rebuilds a local database from `supabase/migrations` on `main` and
+compares it with production: migration history, then the columns,
+constraints, indexes, functions, RLS, policies, grants and triggers of the
+`public` schema. It reads production in read-only transactions.
+
+Known differences are in
+[`supabase/drift-allowlist.json`](../supabase/drift-allowlist.json), each with a
+reason. Any other difference fails the run: correct it with a migration, or add
+it to the allowlist with a reason. The generated TypeScript types are not part
+of the check.
