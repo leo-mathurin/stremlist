@@ -14,6 +14,57 @@ interface Version {
 
 export const VERSIONS: Version[] = [
   {
+    version: "v2.0.0",
+    date: "November 9, 2026",
+    changes: [
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Stremlist now reads more than IMDb. Add watchlists and lists from Trakt, Simkl, MDBList, JustWatch, SensCritique and Letterboxd, next to your IMDb watchlist and lists.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Connect your Trakt, Simkl or MDBList account to read your private lists. If a connection expires, the list shows it and you can connect again in one click.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Letterboxd support includes watchlists, lists, watched films, diary, likes, share links and boxd.it short links.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Merge up to 5 lists into one catalog. Titles that appear in more than one list show only once.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: 'Added an optional "New titles" catalog that shows the titles recently added to any of your lists.',
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Preview the catalogs of a list before you save it, including the entries that Stremlist could not match to a title.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Each list now shows when it last synced and why a sync failed. The configure page also tells you when you must reinstall the addon in Stremio after a save.",
+      },
+      {
+        type: "enhancement",
+        label: "Feature",
+        text: "Redesigned the home, configure, changelog and terms pages, with Quick add for popular charts.",
+      },
+      {
+        type: "bugfix",
+        label: "Compatibility",
+        text: "Addons installed with your IMDb user ID keep working. Open your configure page to add the new sources.",
+      },
+    ],
+  },
+  {
     version: "v1.10.0",
     date: "September 15, 2026",
     changes: [
