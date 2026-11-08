@@ -16,6 +16,7 @@ import {
   currentReadQueue,
 } from "../providers/read-priority";
 import type { SourceSnapshot } from "../providers/types";
+import { SourceUnavailableError } from "../providers/types";
 import { getListCatalog } from "../services/lists";
 import { movie, seedAccount, seedList } from "./helpers/fixtures.js";
 import { cache } from "./helpers/mock-list-cache.js";
@@ -184,9 +185,11 @@ describe("a Stremio request for a busy Letterboxd", () => {
       { provider: "letterboxd", sourceRef: REF },
     );
     const priorities: string[] = [];
+    const partial: boolean[] = [];
     let finish: (value: SourceSnapshot) => void = () => undefined;
     letterboxd(() => {
       priorities.push(currentReadPriority());
+      partial.push(currentReadQueue().partial);
       return new Promise<SourceSnapshot>((resolve) => {
         finish = resolve;
       });
@@ -199,12 +202,36 @@ describe("a Stremio request for a busy Letterboxd", () => {
     await vi.waitFor(() => {
       expect(priorities).toEqual(["background"]);
     });
+    // It never replaces the cached Catalog with only its first pages.
+    expect(partial).toEqual([false]);
     finish(snapshot(["tt0000010"]));
     await vi.waitFor(() => {
       expect(cache.get(LIST_ID)?.data.metas.map((meta) => meta.id)).toEqual([
         "tt0000010",
       ]);
     });
+  });
+});
+
+describe("a stale Catalog of a revoked Letterboxd list", () => {
+  it("is dropped when the background read finds the list gone", async () => {
+    cache.seed(
+      LIST_ID,
+      [movie("tt0000009")],
+      new Date(Date.now() - FRESHNESS_MS - 60_000),
+      { provider: "letterboxd", sourceRef: REF },
+    );
+    letterboxd(() =>
+      Promise.reject(new SourceUnavailableError("not_found", "Gone")),
+    );
+
+    expect(ids((await catalog()).body)).toEqual(["tt0000009"]);
+    await vi.waitFor(() => {
+      expect(cache.get(LIST_ID)).toBeNull();
+    });
+    expect(ids((await catalog()).body)).toEqual([
+      "stremlist:unavailable:not_found",
+    ]);
   });
 });
 

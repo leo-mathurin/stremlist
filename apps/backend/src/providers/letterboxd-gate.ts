@@ -15,6 +15,8 @@ import { SourceBusyError, SourceUnavailableError } from "./types";
 const GATE = "production";
 /** After a longer wait, check that no slowdown or halt started meanwhile. */
 const RECHECK_AFTER_MS = 1_000;
+/** A read that waits longer reports its estimate again this often. */
+const REPORT_EVERY_MS = 10_000;
 
 /** LETTERBOXD_MAX_RPS, the target rate in requests per second (default 10). */
 function letterboxdTargetRate(): number {
@@ -229,8 +231,14 @@ export async function withLetterboxdPermit<T>(
       (queue.answerAtMs !== null && slot.wait_ms >= queue.answerAtMs)
     )
       throw new LetterboxdBusyError(waitMs, place);
-    queue.onQueued?.(waitMs);
-    await sleep(Math.min(slot.retry_ms ?? slot.wait_ms, left));
+    // A long sleep (a pause after a 429) reports its estimate again on the
+    // way, so the configure page keeps showing it.
+    const waitingSince = Date.now();
+    const until = waitingSince + Math.min(slot.retry_ms ?? slot.wait_ms, left);
+    for (let rest = until - waitingSince; rest > 0; rest = until - Date.now()) {
+      queue.onQueued?.(waitMs - (Date.now() - waitingSince));
+      await sleep(Math.min(rest, REPORT_EVERY_MS));
+    }
   }
   if (slot.wait_ms > 0) {
     await sleep(slot.wait_ms);

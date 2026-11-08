@@ -792,6 +792,31 @@ describe("the Letterboxd queue", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("reports its estimate again while it waits out a slowdown", async () => {
+    await withLetterboxdPermit(ok);
+    await callRpc("letterboxd_report", {
+      p_target: 10,
+      p_outcome: "rate_limited",
+      p_retry_after_ms: 0,
+      p_probe: false,
+    });
+    const estimates: number[] = [];
+    const waiting = withReadPriority(
+      "interactive",
+      () => withLetterboxdPermit(ok),
+      readQueue({
+        maxWaitMs: 120_000,
+        onQueued: (waitMs) => estimates.push(waitMs),
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(65_000);
+    await waiting;
+    // Every 10 s at least, so the configure page never drops it.
+    expect(estimates.length).toBeGreaterThanOrEqual(6);
+    expect(estimates[0]).toBeGreaterThan(59_000);
+    expect(estimates.at(-1)).toBeLessThan(11_000);
+  });
+
   it("counts a page that another read holds for too long as busy", async () => {
     const held = letterboxdSnapshot("held-page", () => new Promise(() => {}));
     void held;
