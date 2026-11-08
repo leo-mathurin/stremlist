@@ -38,12 +38,14 @@ figures. Only IMDb has realistic fixture data; other Providers are outage cases.
 
 ## Letterboxd gate
 
-`stress/letterboxd-gate.ts` loads the shared Letterboxd gate
-(`public.letterboxd_take` and `public.letterboxd_report`) without the backend.
-Simulated users each add one list at an interactive priority. Each list is 1 to
-100 pages, with the size model of the Letterboxd lab plus 1% of 100-page lists.
-A fake Letterboxd answers each page in 200 ms. Users arrive evenly over the
-arrival window.
+`stress/letterboxd-gate.ts` loads the shared Letterboxd gate and its queue
+(`public.letterboxd_take_turn` and `public.letterboxd_report`) without the
+backend. Simulated users each add one list at an interactive priority. Each
+list is 1 to 100 pages, with the size model of the Letterboxd lab plus 1% of
+100-page lists. The first page asks as a first page and the later pages as
+later pages. Each read keeps its ticket across retries and pages, and asks
+again when the queue says so, like the backend. A fake Letterboxd answers each
+page in 200 ms. Users arrive evenly over the arrival window.
 
 ```sh
 cd apps/backend
@@ -59,6 +61,7 @@ Options: `--users 5000 --arrival-minutes 10 --drain-minutes 20 --rate 10
 away when that schema is dropped). It fails if more than
 `rate + burst` requests start in any second or `10 × rate + burst` in any ten
 seconds, or if a gate call fails. The report also gives gate call latency, the
-time users wait for their first page and their whole list, the share that would
-see the queue state (an estimated wait of 3 s or more), and the share that
+time users wait for their first page and their whole list, how far the first
+estimate of the first page was from its real wait, the share that would see
+the queue state (a first page estimated 3 s or more away), and the share that
 would get the Stremio card (first page after 10 s).

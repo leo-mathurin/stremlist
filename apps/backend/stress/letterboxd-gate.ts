@@ -1,10 +1,14 @@
 /**
- * Stress test of the shared Letterboxd gate (public.letterboxd_take/report).
+ * Stress test of the shared Letterboxd gate and its queue
+ * (public.letterboxd_take_turn/report).
  *
  * Simulates users who each add one Letterboxd list at an interactive
- * priority, against a fake Letterboxd that answers every page in 200 ms. It
- * checks that the gate never admits more than its rate allows and measures
- * the gate's call latency and what users would wait.
+ * priority, against a fake Letterboxd that answers every page in 200 ms. The
+ * first page of each list asks as a first page, the later pages as later
+ * pages, and each read keeps its ticket across retries and pages, like the
+ * backend. It checks that the gate never admits more than its rate allows
+ * and measures the gate's call latency, the time to the first page and the
+ * time to the whole list.
  *
  *   bun stress/letterboxd-gate.ts --target pg   # STRESS_GATE_DATABASE_URL
  *   bun stress/letterboxd-gate.ts --target rest # SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
@@ -34,7 +38,6 @@ const ARRIVAL_MS = Number(values["arrival-minutes"]) * 60_000;
 const DEADLINE_MS = ARRIVAL_MS + Number(values["drain-minutes"]) * 60_000;
 const RATE = Number(values.rate);
 const PAGE_MS = 200;
-const MAX_WAIT_MS = 10_000;
 const RECHECK_AFTER_MS = 1_000;
 const QUEUE_STATE_MS = 3_000;
 const STREMIO_CARD_MS = 10_000;
@@ -42,8 +45,9 @@ const GATE = `stress-${Date.now()}`;
 const FILMS_PER_PAGE = 28;
 
 type Json = Record<string, unknown>;
+type GateCall = "take_turn" | "report" | "gate_status";
 interface Gate {
-  call(name: "take" | "report" | "gate_status", args: Json): Promise<Json>;
+  call(name: GateCall, args: Json): Promise<Json>;
   close(): Promise<void>;
 }
 
@@ -59,10 +63,10 @@ function pgGate(): Gate {
       // placed on the gate's own timeline instead of the client's.
       // Postgres numeric values may arrive as strings.
       const rows: { result: Json; now_ms?: number | string }[] =
-        name === "take"
+        name === "take_turn"
           ? await sql.unsafe(
               `SELECT ${fn}($1, $2, $3, $4) AS result, extract(epoch FROM clock_timestamp()) * 1000 AS now_ms`,
-              [args.p_target, args.p_max_wait_ms, args.p_background, GATE],
+              [args.p_target, args.p_priority, args.p_ticket, GATE],
             )
           : name === "report"
             ? await sql.unsafe(`SELECT ${fn}($1, $2, $3, $4, $5) AS result`, [
@@ -85,6 +89,10 @@ function pgGate(): Gate {
       await sql.unsafe(`DELETE FROM ${schema}.letterboxd_gate WHERE id = $1`, [
         GATE,
       ]);
+      await sql.unsafe(
+        `DELETE FROM ${schema}.letterboxd_waiters WHERE gate = $1`,
+        [GATE],
+      );
       await sql.close();
     },
   };
@@ -120,13 +128,13 @@ function restGate(): Gate {
 }
 
 const gate = values.target === "rest" ? restGate() : pgGate();
-const latencies: Record<string, number[]> = {
-  take: [],
+const latencies: Record<GateCall, number[]> = {
+  take_turn: [],
   report: [],
   gate_status: [],
 };
 const errors: string[] = [];
-async function call(name: "take" | "report" | "gate_status", args: Json) {
+async function call(name: GateCall, args: Json) {
   const started = performance.now();
   try {
     return await gate.call(name, args);
@@ -159,8 +167,11 @@ interface UserResult {
   pages: number;
   firstPageMs: number | null;
   totalMs: number | null;
+  /** The first page waited 3 s or more: the configure page shows the queue. */
   queueState: boolean;
   longestEstimateMs: number;
+  /** How far the first estimate of the first page was from its real wait. */
+  firstEstimateErrorMs: number | null;
 }
 /** When each page was sent, on the client's clock. */
 const sends: number[] = [];
@@ -184,27 +195,35 @@ async function user(index: number): Promise<UserResult> {
     totalMs: null,
     queueState: false,
     longestEstimateMs: 0,
+    firstEstimateErrorMs: null,
   };
+  // The read's place in the queue, kept across retries and pages.
+  let ticket: string | null = null;
+  let firstEstimate: number | null = null;
   for (let page = 0; page < pages; page++) {
     for (;;) {
       if (elapsed() > DEADLINE_MS) return result;
       let slot: Json;
       try {
-        slot = await call("take", {
+        slot = await call("take_turn", {
           p_target: RATE,
-          p_max_wait_ms: MAX_WAIT_MS,
-          p_background: false,
+          p_priority: page === 0 ? "first" : "later",
+          p_ticket: ticket,
         });
       } catch (error) {
         errors.push(String(error));
         await sleep(1000);
         continue;
       }
+      ticket = typeof slot.ticket === "string" ? slot.ticket : null;
       const wait = Number(slot.wait_ms);
       result.longestEstimateMs = Math.max(result.longestEstimateMs, wait);
-      if (wait >= QUEUE_STATE_MS) result.queueState = true;
+      if (page === 0) {
+        firstEstimate ??= elapsed() - began + wait + PAGE_MS;
+        if (wait >= QUEUE_STATE_MS) result.queueState = true;
+      }
       if (slot.status !== "granted") {
-        await sleep(Math.min(wait, MAX_WAIT_MS));
+        await sleep(Number(slot.retry_ms ?? wait));
         continue;
       }
       if (wait > 0) {
@@ -228,7 +247,11 @@ async function user(index: number): Promise<UserResult> {
       );
       break;
     }
-    result.firstPageMs ??= elapsed() - began;
+    if (result.firstPageMs === null) {
+      result.firstPageMs = elapsed() - began;
+      result.firstEstimateErrorMs =
+        firstEstimate === null ? null : result.firstPageMs - firstEstimate;
+    }
   }
   result.totalMs = elapsed() - began;
   return result;
@@ -288,7 +311,7 @@ const report = {
     allowed10s: RATE * 10 + burst,
   },
   rpcMs: {
-    take: summary(latencies.take),
+    take_turn: summary(latencies.take_turn),
     report: summary(latencies.report),
     gate_status: summary(latencies.gate_status),
   },
@@ -300,6 +323,13 @@ const report = {
     ),
   ),
   totalMs: summary(finished.map((item) => item.totalMs ?? 0)),
+  // Real wait of the first page minus its first estimate (positive: later
+  // than estimated).
+  firstEstimateErrorMs: summary(
+    users.flatMap((item) =>
+      item.firstEstimateErrorMs === null ? [] : [item.firstEstimateErrorMs],
+    ),
+  ),
   queueStateShare: users.filter((item) => item.queueState).length / USERS,
   stremioCardShare:
     users.filter(
