@@ -220,8 +220,7 @@ export async function withLetterboxdPermit<T>(
     scheduleBackgroundTask(async () => {
       await report(target, result, retryAfterMs, slot.probe);
       if (details)
-        await recordLetterboxdRequest({
-          ...details,
+        await recordLetterboxdRequest(details, {
           outcome: result,
           durationMs,
           waitMs: slot.wait_ms,

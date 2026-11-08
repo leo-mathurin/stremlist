@@ -113,7 +113,7 @@ async function resolveShortLink(code: string): Promise<string> {
         response.status === 403 ||
         response.headers.get("cf-mitigated") === "challenge";
       if (blocked || response.status === 429 || response.status >= 500)
-        await noteExcerpt(details, response);
+        noteExcerpt(details, response);
       else await response.body?.cancel();
       if (blocked || response.status === 429)
         return {
@@ -212,8 +212,7 @@ async function readHtml(
         response.headers.get("cf-mitigated") === "challenge";
       retryAfterMs = retryAfterOf(response);
       if (blocked || (response.status !== 200 && response.status < 500)) {
-        if (blocked || response.status === 429)
-          await noteExcerpt(details, response);
+        if (blocked || response.status === 429) noteExcerpt(details, response);
         else await response.body?.cancel();
         return {
           value: {
@@ -242,11 +241,12 @@ async function readHtml(
           chunks.push(part.value);
         }
       } finally {
+        // Kept even when the read stops early: the first bytes explain why.
         details.bytes = bytes;
+        details.bodyExcerpt = excerpt(Buffer.concat(chunks).toString("utf8"));
         await reader.cancel();
       }
       const html = Buffer.concat(chunks).toString("utf8");
-      details.bodyExcerpt = excerpt(html);
       const parsed = parseLetterboxdPage(html, page);
       blocked = parsed.blocked;
       const paginationValid =
