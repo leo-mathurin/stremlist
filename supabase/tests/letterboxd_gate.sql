@@ -11,35 +11,32 @@ DECLARE
 BEGIN
   -- A new gate starts at the target rate with one second of tokens.
   FOR i IN 1..10 LOOP
-    r := public.letterboxd_take(10, 10000, false, 'test');
+    r := public.letterboxd_take_turn(10, 'first', NULL, 'test');
     ASSERT r->>'status' = 'granted' AND (r->>'wait_ms')::int = 0, r::text;
   END LOOP;
   -- The bucket is empty: an interactive read reserves the next slot, about
   -- 100 ms away; a background read is told to come back.
-  r := public.letterboxd_take(10, 10000, false, 'test');
+  r := public.letterboxd_take_turn(10, 'first', NULL, 'test');
   ASSERT r->>'status' = 'granted' AND (r->>'wait_ms')::int BETWEEN 50 AND 110, r::text;
-  r := public.letterboxd_take(10, 10000, true, 'test');
+  r := public.letterboxd_take_turn(10, 'background', NULL, 'test');
   ASSERT r->>'status' = 'queued', r::text;
-  -- A wait above the caller's limit reserves nothing.
-  SELECT tokens INTO g.tokens FROM public.letterboxd_gate WHERE id = 'test';
-  r := public.letterboxd_take(10, 1, false, 'test');
-  ASSERT r->>'status' = 'queued' AND (r->>'wait_ms')::int > 1, r::text;
-  ASSERT (SELECT tokens FROM public.letterboxd_gate WHERE id = 'test') >= g.tokens,
-    'A queued answer reserves no slot';
-  -- Reservations queue up: 20 more interactive reads wait about 2 s in total.
+  -- Grants are reserved at most 1 s ahead; past that a read gets a ticket.
   FOR i IN 1..20 LOOP
-    r := public.letterboxd_take(10, 10000, false, 'test');
+    r := public.letterboxd_take_turn(10, 'first', NULL, 'test');
+    EXIT WHEN r->>'status' = 'queued';
+    ASSERT (r->>'wait_ms')::int <= 1000, r::text;
   END LOOP;
-  ASSERT (r->>'wait_ms')::int BETWEEN 2000 AND 2300, r::text;
+  ASSERT r->>'status' = 'queued' AND r->>'ticket' IS NOT NULL, r::text;
+  DELETE FROM public.letterboxd_waiters WHERE gate = 'test';
   DELETE FROM public.letterboxd_gate WHERE id = 'test';
 
   -- A 429 pauses sends for max(Retry-After, 60 s) and halves the rate.
-  PERFORM public.letterboxd_take(10, 10000, false, 'test');
+  PERFORM public.letterboxd_take_turn(10, 'first', NULL, 'test');
   r := public.letterboxd_report(10, 'rate_limited', 0, false, 'test');
   ASSERT NOT (r->>'halted')::boolean, r::text;
   SELECT * INTO g FROM public.letterboxd_gate WHERE id = 'test';
   ASSERT g.rate = 5 AND g.paused_until > clock_timestamp() + interval '59 seconds', g::text;
-  r := public.letterboxd_take(10, 10000, false, 'test');
+  r := public.letterboxd_take_turn(10, 'first', NULL, 'test');
   ASSERT r->>'status' = 'paused' AND (r->>'wait_ms')::int > 59000, r::text;
   r := public.letterboxd_report(10, 'rate_limited', 120000, false, 'test');
   SELECT * INTO g FROM public.letterboxd_gate WHERE id = 'test';
@@ -54,7 +51,7 @@ BEGIN
   r := public.letterboxd_gate_status(10, 'test');
   ASSERT (r->>'rate')::double precision = 3.5, r::text;
   ASSERT (r->>'paused_ms')::int = 0, r::text;
-  r := public.letterboxd_take(10, 10000, false, 'test');
+  r := public.letterboxd_take_turn(10, 'first', NULL, 'test');
   ASSERT r->>'status' = 'granted', r::text;
   -- A lower target (a new deploy) caps the rate at once.
   r := public.letterboxd_gate_status(2, 'test');
@@ -62,7 +59,7 @@ BEGIN
   DELETE FROM public.letterboxd_gate WHERE id = 'test';
 
   -- The rate never goes below 0.33; three slowdowns there within 15 minutes halt.
-  PERFORM public.letterboxd_take(10, 10000, false, 'test');
+  PERFORM public.letterboxd_take_turn(10, 'first', NULL, 'test');
   UPDATE public.letterboxd_gate SET rate = 0.4 WHERE id = 'test';
   -- Halving 0.4 stops at the floor; this slowdown was not at the floor yet.
   r := public.letterboxd_report(10, 'rate_limited', 0, false, 'test');
@@ -75,7 +72,7 @@ BEGIN
   ASSERT NOT (r->>'halted')::boolean, r::text;
   r := public.letterboxd_report(10, 'rate_limited', 0, false, 'test');
   ASSERT (r->>'halted')::boolean AND r->>'halt_reason' = 'rate_limited', r::text;
-  r := public.letterboxd_take(10, 10000, false, 'test');
+  r := public.letterboxd_take_turn(10, 'first', NULL, 'test');
   ASSERT r->>'status' = 'halted', r::text;
   ASSERT (public.letterboxd_gate_status(10, 'test')->>'halted')::boolean;
 
@@ -85,9 +82,9 @@ BEGIN
   UPDATE public.letterboxd_gate
   SET next_probe_at = clock_timestamp() - interval '1 second' WHERE id = 'test';
   ASSERT (public.letterboxd_gate_status(10, 'test')->>'probe_due')::boolean;
-  r := public.letterboxd_take(10, 10000, false, 'test');
+  r := public.letterboxd_take_turn(10, 'first', NULL, 'test');
   ASSERT r->>'status' = 'granted' AND (r->>'probe')::boolean, r::text;
-  r := public.letterboxd_take(10, 10000, false, 'test');
+  r := public.letterboxd_take_turn(10, 'first', NULL, 'test');
   ASSERT r->>'status' = 'halted', 'One probe at a time';
   -- A failed probe keeps the halt and waits 30 more minutes.
   r := public.letterboxd_report(10, 'failed', 0, true, 'test');
@@ -100,7 +97,7 @@ BEGIN
   -- A probe that works resumes sends at the floor rate.
   UPDATE public.letterboxd_gate
   SET next_probe_at = clock_timestamp() - interval '1 second' WHERE id = 'test';
-  r := public.letterboxd_take(10, 10000, false, 'test');
+  r := public.letterboxd_take_turn(10, 'first', NULL, 'test');
   ASSERT (r->>'probe')::boolean, r::text;
   r := public.letterboxd_report(10, 'ok', 0, true, 'test');
   ASSERT (r->>'recovered')::boolean, r::text;
@@ -109,7 +106,7 @@ BEGIN
   DELETE FROM public.letterboxd_gate WHERE id = 'test';
 
   -- A 403 or a challenge halts at once, and reports the edge once.
-  PERFORM public.letterboxd_take(10, 10000, false, 'test');
+  PERFORM public.letterboxd_take_turn(10, 'first', NULL, 'test');
   r := public.letterboxd_report(10, 'blocked', 0, false, 'test');
   ASSERT (r->>'halted')::boolean AND r->>'halt_reason' = 'blocked', r::text;
   r := public.letterboxd_report(10, 'blocked', 0, false, 'test');
@@ -117,7 +114,7 @@ BEGIN
   DELETE FROM public.letterboxd_gate WHERE id = 'test';
 
   -- Failures slow down only above 20% of at least 20 requests in a minute.
-  PERFORM public.letterboxd_take(10, 10000, false, 'test');
+  PERFORM public.letterboxd_take_turn(10, 'first', NULL, 'test');
   FOR i IN 1..22 LOOP
     PERFORM public.letterboxd_report(10, 'ok', 0, false, 'test');
   END LOOP;
@@ -139,7 +136,7 @@ BEGIN
   DELETE FROM public.letterboxd_gate WHERE id = 'test';
 
   -- Failures followed by successes still slow down: 10 of 20 failed.
-  PERFORM public.letterboxd_take(10, 10000, false, 'test');
+  PERFORM public.letterboxd_take_turn(10, 'first', NULL, 'test');
   FOR i IN 1..10 LOOP
     PERFORM public.letterboxd_report(10, 'failed', 0, false, 'test');
   END LOOP;
@@ -153,7 +150,7 @@ BEGIN
   DELETE FROM public.letterboxd_gate WHERE id = 'test';
 
   -- A rate below half the target for 30 minutes alerts once.
-  PERFORM public.letterboxd_take(10, 10000, false, 'test');
+  PERFORM public.letterboxd_take_turn(10, 'first', NULL, 'test');
   UPDATE public.letterboxd_gate
   SET rate = 2,
       rate_changed_at = clock_timestamp(),
@@ -176,7 +173,7 @@ RESET ROLE;
 SET LOCAL ROLE anon;
 DO $$
 BEGIN
-  PERFORM public.letterboxd_take(10, 10000, false, 'test');
+  PERFORM public.letterboxd_take_turn(10, 'first', NULL, 'test');
   RAISE EXCEPTION 'anon must not take Letterboxd slots';
 EXCEPTION WHEN insufficient_privilege THEN
   NULL;
