@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
-import type { Tables } from "@stremlist/shared/database.types";
+import type { Tables } from "@stremlist/shared/database";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const { backgroundMocks, prewarmMocks, rpcMocks, supabaseMocks } =

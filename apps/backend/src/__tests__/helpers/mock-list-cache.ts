@@ -1,4 +1,4 @@
-import type { Tables } from "@stremlist/shared/database.types";
+import type { Tables } from "@stremlist/shared/database";
 import {
   isProviderId,
   sourceRequiresConnection,

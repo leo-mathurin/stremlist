@@ -4,7 +4,7 @@
  */
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { DisplayMode } from "@stremlist/shared/constants";
-import type { Database } from "@stremlist/shared/database.types";
+import type { Database } from "@stremlist/shared/database";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { vi } from "vitest";
 

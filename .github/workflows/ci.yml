@@ -123,6 +123,15 @@ jobs:
       - name: Install dependencies
         run: bun ci
 
+      # Same command as the local workflow, so CI and developers cannot diverge.
+      - name: Check generated Supabase types
+        run: |
+          bun run generate:types
+          if ! git diff --exit-code -- packages/shared/src/database.types.ts; then
+            echo "::error file=packages/shared/src/database.types.ts::Supabase types do not match supabase/migrations. Start local Supabase, run 'bun run generate:types', and commit the result."
+            exit 1
+          fi
+
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:

@@ -31,7 +31,7 @@
     "test": "turbo run test",
     "test:e2e": "turbo run test:e2e",
     "typecheck": "turbo run typecheck",
-    "generate:types": "bunx supabase gen types typescript --project-id igbmxubzxjfdbgmawrtr --schema public > packages/shared/src/database.types.ts",
+    "generate:types": "bun run --cwd packages/shared generate:types",
     "prepare": "husky",
     "dev:tailnet": "turbo run dev:tailnet",
     "test:toolkit": "bun run --cwd apps/e2e test:toolkit",

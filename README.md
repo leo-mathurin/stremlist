@@ -185,13 +185,16 @@ Register `${BACKEND_PUBLIC_URL}/oauth/{trakt|simkl|mdblist}/callback` in each Pr
 
 ## Type Generation
 
-To regenerate shared Supabase types:
+The shared Supabase types come from the migrations in `supabase/migrations`, not from production. After you add or change a migration, start local Supabase (it applies every migration) and regenerate the types:
 
 ```bash
+supabase start
 bun run generate:types
 ```
 
-This updates `packages/shared/src/database.types.ts`.
+This writes `packages/shared/src/database.types.ts` and formats it with Prettier. Do not edit that file by hand. The E2E job in CI runs the same command on a fresh local stack and fails when the committed file is different. CI uses the Supabase CLI version that `.github/workflows/ci.yml` pins. Another CLI version can give a different result.
+
+Code imports the schema from `@stremlist/shared/database`. That module adds what the generator cannot know, for example SQL function arguments that accept `NULL`.
 
 ## R2 setup
 

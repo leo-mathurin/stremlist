@@ -1,4 +1,4 @@
-import type { Tables } from "@stremlist/shared/database.types";
+import type { Tables } from "@stremlist/shared/database";
 import type { ConnectionSource, ProviderId } from "@stremlist/shared/providers";
 import { CONNECTION_SOURCES, isProviderId } from "@stremlist/shared/providers";
 import type { ConnectionSummary } from "@stremlist/shared/stremio.types";

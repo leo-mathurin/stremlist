@@ -1,5 +1,5 @@
 import type { TitleType } from "@stremlist/shared/constants";
-import type { Tables } from "@stremlist/shared/database.types";
+import type { Tables } from "@stremlist/shared/database";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";

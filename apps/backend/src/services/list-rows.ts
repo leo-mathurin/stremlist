@@ -1,4 +1,4 @@
-import type { Tables } from "@stremlist/shared/database.types";
+import type { Tables } from "@stremlist/shared/database";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import { isProviderId } from "@stremlist/shared/providers";
 import type { ConfigList } from "@stremlist/shared/stremio.types";

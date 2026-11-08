@@ -5,7 +5,7 @@ import {
   IMDB_USER_ID_PATTERN,
 } from "@stremlist/shared/constants";
 import type { DisplayMode } from "@stremlist/shared/constants";
-import type { Tables } from "@stremlist/shared/database.types";
+import type { Tables } from "@stremlist/shared/database";
 import { listRequiresConnection } from "@stremlist/shared/list-merge";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";

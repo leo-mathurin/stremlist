@@ -1,7 +1,7 @@
 import { createCipheriv, randomBytes, randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
-import type { Database } from "@stremlist/shared/database.types";
+import type { Database } from "@stremlist/shared/database";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import {

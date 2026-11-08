@@ -1,4 +1,4 @@
-import type { Database } from "@stremlist/shared/database.types";
+import type { Database } from "@stremlist/shared/database";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId, SourceId } from "@stremlist/shared/providers";
 import { sourceRequiresConnection } from "@stremlist/shared/providers";

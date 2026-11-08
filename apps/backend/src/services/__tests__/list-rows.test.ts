@@ -1,4 +1,4 @@
-import type { Tables } from "@stremlist/shared/database.types";
+import type { Tables } from "@stremlist/shared/database";
 import { describe, expect, it } from "vitest";
 import { listRowCacheKeys, mapList } from "../list-rows";
 import { sourceCaches } from "../merged-lists";

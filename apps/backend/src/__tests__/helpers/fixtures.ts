@@ -1,4 +1,4 @@
-import type { Tables } from "@stremlist/shared/database.types";
+import type { Tables } from "@stremlist/shared/database";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { encryptSecret } from "../../lib/crypto";
