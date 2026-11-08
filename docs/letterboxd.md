@@ -34,8 +34,6 @@ The `public.letterboxd_gate` row in Postgres coordinates outbound requests acros
 - A request reserved more than one second ahead checks the gate again before it is sent, so a slowdown that started meanwhile stops it.
 - Storage failure denies new sends.
 
-`letterboxd_take`, the call without a queue, stays for the backend instances that still call it during a deploy. It uses the same bucket, so the rate holds.
-
 ### Waiting users
 
 The configure page shows the queue state when the estimated wait is 3 s or more. It rounds the estimate to seconds under a minute, then to minutes.

@@ -398,15 +398,6 @@ export type Database = {
         };
         Returns: Json;
       };
-      letterboxd_take: {
-        Args: {
-          p_background: boolean;
-          p_gate?: string;
-          p_max_wait_ms: number;
-          p_target: number;
-        };
-        Returns: Json;
-      };
       letterboxd_take_turn: {
         Args: {
           p_gate?: string;
