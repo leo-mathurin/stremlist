@@ -23,8 +23,17 @@ const LOCAL_CONTAINER =
 const SECTIONS = {
   columns: {
     key: (r) => `${r.table_name}.${r.column_name}`,
-    sql: `select table_name, column_name, data_type, column_default, is_nullable
-      from information_schema.columns where table_schema = 'public'`,
+    // format_type keeps modifiers (varchar(10), timestamptz(0)) that
+    // information_schema.columns drops.
+    sql: `select c.relname as table_name, a.attname as column_name,
+        format_type(a.atttypid, a.atttypmod) as type, a.attnotnull as not_null,
+        pg_get_expr(d.adbin, d.adrelid) as default_value, a.attidentity, a.attgenerated
+      from pg_attribute a
+      join pg_class c on c.oid = a.attrelid
+      left join pg_attrdef d on d.adrelid = a.attrelid and d.adnum = a.attnum
+      where c.relnamespace = 'public'::regnamespace
+        and c.relkind in ('r', 'p', 'v', 'm')
+        and a.attnum > 0 and not a.attisdropped`,
   },
   constraints: {
     key: (r) => r.conname,

@@ -69,9 +69,17 @@ something.
   (`--include-all`). The plan marks it; check that its order is correct.
 - `CREATE EXTENSION` and `cron.schedule` work in a migration: the push
   connects as `postgres`.
-- If a migration fails, the files before it stay applied and nothing is
-  published. Fix forward with a new migration in a new pull request. There is
-  no automatic rollback.
+- Each file is applied in one transaction, with its history row. If a file
+  fails, the files before it stay applied, nothing of the failed file stays, and
+  nothing is published. Production has not applied the failed file, so correct
+  that file itself in a new pull request (a new migration after it would not
+  help: the next push runs the failed file first). There is no automatic
+  rollback.
+- `CREATE INDEX CONCURRENTLY`, `VACUUM` and other statements that cannot run in
+  a transaction run on their own, outside that transaction. Avoid them in
+  migrations. If a file with such a statement fails, part of it can stay
+  applied: check the production schema, and make the corrected file safe to run
+  again (`IF NOT EXISTS`, `IF EXISTS`).
 
 ## Secrets
 
@@ -92,10 +100,19 @@ Open the run summary: each job writes what it did.
   releases it.
 - **Plan blocked:** the production history has a version the repo does not
   explain. Repair the history (below), then re-run the workflow.
-- **Apply failed:** read the SQL error, fix forward with a new migration. The
-  old deployments still serve production.
-- **Publish failed:** the migrations are applied and the old deployments still
-  serve production. Fix the cause, then run the workflow again (Actions,
+- **Apply failed:** read the SQL error in the job log, then correct the failed
+  file (see [Writing a migration](#writing-a-migration)). The migrations before
+  it are applied. The old deployments still serve production.
+- **Publish failed:** the migrations are applied. What serves production
+  depends on the step that failed; the run summary lists the steps that passed.
+  - Smoke test of the new backend, or main moved: both old deployments still
+    serve production.
+  - After the backend promotion (domain check, smoke test on
+    `api.stremlist.com`, or frontend promotion): the new backend serves
+    `api.stremlist.com`, and the old or new frontend serves `stremlist.com`.
+
+  Check the current deployments in Vercel (Deployments, filter Production)
+  before you choose. Then fix the cause and run the workflow again (Actions,
   `Supabase deploy`, Run workflow on `main`). It builds again and publishes the
   head of `main`.
 
