@@ -175,12 +175,17 @@ function report(args: RpcArgs): Result {
       slowDown = true;
     } else if (args.p_outcome === "failed") {
       g.windowFailures++;
-      if (g.windowRequests >= 20 && g.windowFailures > 0.2 * g.windowRequests) {
-        slowDown = true;
-        g.windowStartedAt = t;
-        g.windowRequests = 0;
-        g.windowFailures = 0;
-      }
+    }
+    if (
+      !halted &&
+      !slowDown &&
+      g.windowRequests >= 20 &&
+      g.windowFailures > 0.2 * g.windowRequests
+    ) {
+      slowDown = true;
+      g.windowStartedAt = t;
+      g.windowRequests = 0;
+      g.windowFailures = 0;
     }
     if (slowDown) {
       if (g.rate <= floorRate + 1e-9) {

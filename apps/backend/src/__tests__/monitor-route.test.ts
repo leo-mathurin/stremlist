@@ -21,7 +21,10 @@ import {
   useFakeProvider,
 } from "./helpers/mock-registry.js";
 import { callRpc } from "./helpers/mock-supabase.js";
-import { letterboxdGate } from "./helpers/supabase/letterboxd-gate-rpcs.js";
+import {
+  haltLetterboxdGate,
+  letterboxdGate,
+} from "./helpers/supabase/letterboxd-gate-rpcs.js";
 
 const IMDB_BEAT = "https://beat.example/imdb";
 const LBX_BEAT = "https://beat.example/letterboxd";
@@ -162,6 +165,23 @@ describe("GET /monitor", () => {
     expect(res.status).toBe(502);
     expect(letterboxdRead).not.toHaveBeenCalled();
     expect(beats).toEqual([{ url: `${LBX_BEAT}/fail`, method: "POST" }]);
+  });
+
+  it("probes a halted Letterboxd once its recovery probe is due", async () => {
+    vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
+    const letterboxdRead = vi.fn(() =>
+      Promise.resolve({ complete: true, entries: [] }),
+    );
+    useFakeProvider(fakeAdapter("letterboxd", { fetchSource: letterboxdRead }));
+    haltLetterboxdGate();
+    expect((await monitor()).status).toBe(502);
+    expect(letterboxdRead).not.toHaveBeenCalled();
+
+    Object.assign(letterboxdGate() ?? {}, { nextProbeAt: Date.now() - 1 });
+    beats = [];
+    expect((await monitor()).status).toBe(200);
+    expect(letterboxdRead).toHaveBeenCalledTimes(1);
+    expect(beats).toEqual([{ url: LBX_BEAT, method: "GET" }]);
   });
 
   it("never contacts a Provider turned off with the kill switch, and reports it", async () => {

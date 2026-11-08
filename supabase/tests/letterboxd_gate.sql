@@ -138,6 +138,20 @@ BEGIN
   ASSERT g.rate = 5 AND g.paused_until > clock_timestamp(), g::text;
   DELETE FROM public.letterboxd_gate WHERE id = 'test';
 
+  -- Failures followed by successes still slow down: 10 of 20 failed.
+  PERFORM public.letterboxd_take(10, 10000, false, 'test');
+  FOR i IN 1..10 LOOP
+    PERFORM public.letterboxd_report(10, 'failed', 0, false, 'test');
+  END LOOP;
+  FOR i IN 1..9 LOOP
+    PERFORM public.letterboxd_report(10, 'ok', 0, false, 'test');
+  END LOOP;
+  ASSERT (SELECT rate FROM public.letterboxd_gate WHERE id = 'test') = 10;
+  PERFORM public.letterboxd_report(10, 'ok', 0, false, 'test');
+  ASSERT (SELECT rate FROM public.letterboxd_gate WHERE id = 'test') = 5,
+    'The 20th report, a success, sees 50% failures';
+  DELETE FROM public.letterboxd_gate WHERE id = 'test';
+
   -- A rate below half the target for 30 minutes alerts once.
   PERFORM public.letterboxd_take(10, 10000, false, 'test');
   UPDATE public.letterboxd_gate

@@ -121,13 +121,21 @@ export async function isLetterboxdHalted(): Promise<boolean> {
  * probe that tells whether Letterboxd accepts Stremlist again.
  */
 export async function assertLetterboxdNotHalted() {
-  let status: LetterboxdGateStatus;
+  if (await letterboxdRefusesReads()) throw halted();
+}
+
+/**
+ * Whether the halt refuses a read now: halted, and the next probe is not due
+ * yet. An unreadable gate refuses nothing here; the request itself fails
+ * closed at the gate.
+ */
+export async function letterboxdRefusesReads(): Promise<boolean> {
   try {
-    status = await letterboxdGateStatus();
+    const status = await letterboxdGateStatus();
+    return status.halted && !status.probe_due;
   } catch {
-    return;
+    return false;
   }
-  if (status.halted && !status.probe_due) throw halted();
 }
 
 async function report(

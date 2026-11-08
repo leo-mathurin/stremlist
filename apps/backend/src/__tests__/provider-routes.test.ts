@@ -28,7 +28,10 @@ import {
 import { seedAccount, seedConnection } from "./helpers/fixtures.js";
 import { fakeAdapter, useFakeProvider } from "./helpers/mock-registry.js";
 import { db } from "./helpers/mock-supabase.js";
-import { haltLetterboxdGate } from "./helpers/supabase/letterboxd-gate-rpcs.js";
+import {
+  haltLetterboxdGate,
+  letterboxdGate,
+} from "./helpers/supabase/letterboxd-gate-rpcs.js";
 
 function haltLetterboxd() {
   haltLetterboxdGate();
@@ -76,6 +79,19 @@ describe("POST /links/resolve", () => {
       provider: "trakt",
     });
     expect(validateSource).not.toHaveBeenCalled();
+  });
+
+  it("lets a link check through to send Letterboxd's due recovery probe", async () => {
+    const validateSource = vi.fn(() =>
+      Promise.resolve({ ok: true as const, ref: "users/leo/watchlist" }),
+    );
+    useFakeProvider(fakeAdapter("letterboxd", { validateSource }));
+    haltLetterboxd();
+    const gate = letterboxdGate();
+    if (gate) gate.nextProbeAt = Date.now() - 1;
+    const res = await resolve("https://letterboxd.com/leo/watchlist/");
+    expect(await res.json()).toMatchObject({ ok: true });
+    expect(validateSource).toHaveBeenCalledTimes(1);
   });
 
   it("says when Letterboxd is unavailable after it refused Stremlist", async () => {

@@ -55,7 +55,8 @@ SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… bun run stress:letterboxd-gate --
 
 Options: `--users 5000 --arrival-minutes 10 --drain-minutes 20 --rate 10
 --schema public --out report.json`. The run uses its own gate row
-(`stress-<time>`) and deletes it at the end. It fails if more than
+(`stress-<time>`) and deletes it at the end (with `--schema`, the row goes
+away when that schema is dropped). It fails if more than
 `rate + burst` requests start in any second or `10 × rate + burst` in any ten
 seconds, or if a gate call fails. The report also gives gate call latency, the
 time users wait for their first page and their whole list, the share that would

@@ -108,10 +108,13 @@ function restGate(): Gate {
       return data as Json;
     },
     async close() {
-      await client.rpc(`${prefix}gate_status`, {
-        p_target: RATE,
-        p_gate: GATE,
-      });
+      // A copy of the gate in another schema goes away with that schema.
+      if (values.schema !== "public") return;
+      const { error } = (await client
+        .from("letterboxd_gate")
+        .delete()
+        .eq("id", GATE)) as { error: { message: string } | null };
+      if (error) throw new Error(`Deleting ${GATE}: ${error.message}`);
     },
   };
 }

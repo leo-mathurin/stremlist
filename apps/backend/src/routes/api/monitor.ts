@@ -1,7 +1,7 @@
 import type { ProviderId } from "@stremlist/shared/providers";
 import { Hono } from "hono";
 import {
-  isProviderAvailable,
+  mayReadProvider,
   providerDegradation,
 } from "../../providers/availability";
 import { getProvider } from "../../providers/registry";
@@ -59,8 +59,9 @@ async function runProbe(
   heartbeat: string,
 ): Promise<ProbeResult> {
   try {
-    // An unavailable Provider (turned off or halted) is never contacted.
-    if (!(await isProviderAvailable(provider)))
+    // An unavailable Provider (turned off, or halted with no probe due) is
+    // never contacted.
+    if (!(await mayReadProvider(provider)))
       throw new Error(`${provider} is unavailable (turned off or halted)`);
     const degraded = await providerDegradation(provider);
     if (degraded) throw new Error(degraded);

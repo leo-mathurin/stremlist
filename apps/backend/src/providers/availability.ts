@@ -1,6 +1,10 @@
 import type { ProviderId } from "@stremlist/shared/providers";
 import { isProviderEnabled } from "./kill-switch";
-import { isLetterboxdHalted, letterboxdGateStatus } from "./letterboxd-gate";
+import {
+  isLetterboxdHalted,
+  letterboxdGateStatus,
+  letterboxdRefusesReads,
+} from "./letterboxd-gate";
 
 /**
  * Whether Stremlist currently reads this Provider (its Availability). A
@@ -11,6 +15,17 @@ import { isLetterboxdHalted, letterboxdGateStatus } from "./letterboxd-gate";
 export async function isProviderAvailable(id: ProviderId): Promise<boolean> {
   if (!isProviderEnabled(id)) return false;
   if (id === "letterboxd") return !(await isLetterboxdHalted());
+  return true;
+}
+
+/**
+ * Whether a read may go to the Provider now. Unlike Availability, a halted
+ * Letterboxd may be read when its next probe is due: that read sends the
+ * probe that can end the halt. The monitor and link checks use this.
+ */
+export async function mayReadProvider(id: ProviderId): Promise<boolean> {
+  if (!isProviderEnabled(id)) return false;
+  if (id === "letterboxd") return !(await letterboxdRefusesReads());
   return true;
 }
 

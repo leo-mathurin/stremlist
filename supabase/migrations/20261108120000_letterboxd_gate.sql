@@ -260,12 +260,15 @@ BEGIN
       slow_down := true;
     ELSIF p_outcome = 'failed' THEN
       g.window_failures := g.window_failures + 1;
-      IF g.window_requests >= 20 AND g.window_failures > 0.2 * g.window_requests THEN
-        slow_down := true;
-        g.window_started_at := t;
-        g.window_requests := 0;
-        g.window_failures := 0;
-      END IF;
+    END IF;
+    -- Checked on every report: failures followed by successes still count.
+    IF NOT newly_halted AND NOT slow_down
+      AND g.window_requests >= 20
+      AND g.window_failures > 0.2 * g.window_requests THEN
+      slow_down := true;
+      g.window_started_at := t;
+      g.window_requests := 0;
+      g.window_failures := 0;
     END IF;
 
     IF slow_down THEN
