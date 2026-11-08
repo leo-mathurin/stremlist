@@ -376,15 +376,6 @@ describe("describeSourceRef", () => {
     });
   });
 
-  it("names a Letterboxd chart after its label", () => {
-    expect(describeSourceRef("letterboxd", "films/popular/this/week")).toEqual({
-      kind: "chart",
-      detail: null,
-      url: "https://letterboxd.com/films/popular/this/week/",
-      title: "Letterboxd Popular this week",
-    });
-  });
-
   it("describes a Letterboxd diary and films references", () => {
     expect(describeSourceRef("letterboxd", "users/leom/diary")).toEqual({
       kind: "history",
@@ -426,7 +417,6 @@ describe("sourceHasAddedDates: Letterboxd", () => {
       "users/leom/films/rated/4.0-5.0",
       "users/leom/likes/films",
       "users/leom/watchlist",
-      "films/popular/this/week",
     ])
       expect(sourceHasAddedDates("letterboxd", ref)).toBe(false);
   });

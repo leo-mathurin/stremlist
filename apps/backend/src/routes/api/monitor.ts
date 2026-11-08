@@ -32,7 +32,9 @@ const PROBES: {
   },
   {
     provider: "letterboxd",
-    ref: () => env("MONITOR_LETTERBOXD_REF") ?? "films/popular/this/week",
+    ref: () =>
+      env("MONITOR_LETTERBOXD_REF") ??
+      "users/official/lists/letterboxds-top-500-films",
     heartbeat: () => env("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD"),
   },
   {

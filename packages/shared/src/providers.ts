@@ -683,24 +683,6 @@ export const PUBLIC_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>> = {
       url: "https://trakt.tv/movies/anticipated",
     },
   ],
-  letterboxd: [
-    {
-      ref: "films/popular/this/week",
-      kind: "chart",
-      label: "Popular this week",
-      defaultDisplayMode: "movie",
-      titleType: "movie",
-      url: "https://letterboxd.com/films/popular/this/week/",
-    },
-    {
-      ref: "films/popular/this/month",
-      kind: "chart",
-      label: "Popular this month",
-      defaultDisplayMode: "movie",
-      titleType: "movie",
-      url: "https://letterboxd.com/films/popular/this/month/",
-    },
-  ],
 };
 
 /** Whether a stored Source list of this Provider must read through a Connection. */

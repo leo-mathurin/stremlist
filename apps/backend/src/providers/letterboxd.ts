@@ -29,8 +29,6 @@ const SOURCE =
 // Public member collections: watched films, rating-filtered films, diary, likes.
 const COLLECTION =
   /^users\/([a-z0-9_]{1,40})\/(films(?:\/rated\/\d(?:\.\d)?(?:-\d(?:\.\d)?)?)?|diary|likes\/films)$/;
-// Built-in charts (PUBLIC_SOURCES): the reference is the path body.
-const CHART = /^films\/popular\/this\/(?:week|month)$/;
 const MAX_PAGES = 100;
 type PageRead =
   | { ok: true; html: string }
@@ -62,7 +60,6 @@ function sourcePath(ref: string) {
   if (ref.startsWith(SHARE_PREFIX)) {
     return `/${decryptSecret(ref.slice(SHARE_PREFIX.length))}/`;
   }
-  if (CHART.test(ref)) return `/${ref}/`;
   const collection = COLLECTION.exec(ref);
   if (collection) return `/${collection[1]}/${canonicalRating(collection[2])}/`;
   const match = SOURCE.exec(ref);
@@ -171,7 +168,7 @@ async function readHtml(
   url: string,
   kind: "collection" | "film" = "collection",
   nextPageUrl?: string,
-  page: { diary?: boolean; fragment?: boolean } = {},
+  page: { diary?: boolean } = {},
 ) {
   if (!isProviderEnabled("letterboxd"))
     throw new SourceUnavailableError("disabled", "Letterboxd is turned off");
@@ -262,19 +259,11 @@ function pagePath(base: string, page: number) {
   return page === 1 ? base : `${base}page/${page}/`;
 }
 
-/** A chart's path: its page loads the grid from a fragment with JavaScript. */
-function isChartPath(base: string) {
-  return CHART.test(base.slice(1, -1));
-}
-
 async function readPage(base: string, page: number, forceRefresh = false) {
   const path = pagePath(base, page);
   const key = `providers/letterboxd/pages-v1/${createHash("sha256").update(path).digest("hex")}.json`;
-  const options = { diary: isDiaryPath(base), fragment: isChartPath(base) };
-  // The fragment links to the chart's own next page, like a full page does.
-  const url = options.fragment
-    ? `https://letterboxd.com/csi/films/films-browser-list${path.slice("/films".length)}?esiAllowFilters=true`
-    : `https://letterboxd.com${path}`;
+  const options = { diary: isDiaryPath(base) };
+  const url = `https://letterboxd.com${path}`;
   return letterboxdSnapshot(
     key,
     async () => {
@@ -306,9 +295,6 @@ async function fetchSource(
   const diary = isDiaryPath(base);
   const films = new Map<string, LetterboxdFilm>();
   const signatures = new Set<string>();
-  // A chart ranks every film on Letterboxd (over a million): its Source list
-  // is the first page, the top 72.
-  const chart = isChartPath(base);
   let complete = false;
   for (let page = 1; page <= MAX_PAGES; page++) {
     const result = await readPage(base, page, ctx.forceRefresh);
@@ -335,7 +321,7 @@ async function fetchSource(
         continue;
       films.set(film.uid, film);
     }
-    if (result.complete || chart) {
+    if (result.complete) {
       complete = true;
       break;
     }

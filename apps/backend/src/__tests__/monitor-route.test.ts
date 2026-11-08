@@ -104,11 +104,14 @@ describe("GET /monitor", () => {
       connection: null,
       forceRefresh: true,
     });
-    // The Letterboxd probe defaults to the Popular this week chart.
-    expect(letterboxdRead).toHaveBeenCalledWith("films/popular/this/week", {
-      connection: null,
-      forceRefresh: true,
-    });
+    // The Letterboxd probe defaults to Letterboxd's official Top 500 list.
+    expect(letterboxdRead).toHaveBeenCalledWith(
+      "users/official/lists/letterboxds-top-500-films",
+      {
+        connection: null,
+        forceRefresh: true,
+      },
+    );
     expect(beats).toEqual(
       expect.arrayContaining([
         { url: IMDB_BEAT, method: "GET" },
@@ -137,7 +140,10 @@ describe("GET /monitor", () => {
   });
 
   it("reports Letterboxd when 429 responses kept its rate below half for 30 minutes", async () => {
-    vi.stubEnv("MONITOR_LETTERBOXD_REF", "films/popular/this/week");
+    vi.stubEnv(
+      "MONITOR_LETTERBOXD_REF",
+      "users/official/lists/letterboxds-top-500-films",
+    );
     vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
     const letterboxdRead = vi.fn();
     useFakeProvider(fakeAdapter("letterboxd", { fetchSource: letterboxdRead }));

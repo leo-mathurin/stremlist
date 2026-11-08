@@ -828,40 +828,13 @@ describe("Letterboxd member collections and charts", () => {
 });
 
 describe("Letterboxd live page shapes", () => {
-  // The chart page loads its grid with JavaScript from this fragment, which is
-  // not a full document (no <html>, no title).
-  function chartFragment(ids: number[], closedPagination = true) {
-    return `<ul class="poster-list -p70 -grid">${ids.map((id) => `<li class="posteritem"><div data-postered-identifier='{"uid":"film:${id}"}' data-item-slug="film-${id}" data-item-name="Film ${id} (2000)"></div></li>`).join("")}</ul>\n<div class="pagination"><div class="paginate-nextprev"><a class="next" href="/films/popular/this/week/page/2/">Next</a></div>${closedPagination ? "</div>" : ""}`;
-  }
-
-  it("reads a chart's first page from its grid fragment, as a complete list", async () => {
-    const fetch = vi.fn((url: string) => {
-      expect(url).toBe(
-        "https://letterboxd.com/csi/films/films-browser-list/popular/this/week/?esiAllowFilters=true",
-      );
-      return Promise.resolve(new Response(chartFragment([3, 1, 2])));
-    });
+  it("never reads the popular charts, which robots.txt disallows", async () => {
+    const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
-    const result = await letterboxdProvider.fetchSource(
-      "films/popular/this/week",
-      context,
-    );
-    // Over a million films are ranked: only the first page is read.
-    expect(fetch).toHaveBeenCalledTimes(1);
-    expect(result.complete).toBe(true);
-    expect(
-      result.entries.map((entry) => entry.externalIds?.letterboxd?.uid),
-    ).toEqual(["film:3", "film:1", "film:2"]);
-  });
-
-  it("refuses a truncated chart fragment", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => Promise.resolve(new Response(chartFragment([1], false)))),
-    );
     await expect(
-      letterboxdProvider.fetchSource("films/popular/this/month", context),
-    ).rejects.toMatchObject({ reason: "unavailable" });
+      letterboxdProvider.fetchSource("films/popular/this/week", context),
+    ).rejects.toMatchObject({ reason: "not_found" });
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("reads an empty watchlist as empty, not as a failed read", async () => {
