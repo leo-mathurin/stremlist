@@ -57,8 +57,9 @@ version; the Supabase cache tables are still intact.
 
 ## 3. Reclaim Supabase storage
 
-After production has been stable for at least one full cache TTL, apply
-`supabase/migrations/20260826000000_drop_cache_tables_after_r2.sql`. The drop
+After production has been stable for at least one full cache TTL, apply the
+migration `20260826000000_drop_cache_tables_after_r2` (done in production; it is
+now part of `supabase/migrations/20260916000000_production_baseline.sql`). The drop
 is a normal migration so a fresh database replay matches
 `packages/shared/src/database.types.ts`. The tables are dropped, not merely
 emptied, so their relation storage is released immediately.

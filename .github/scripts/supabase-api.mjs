@@ -1,5 +1,5 @@
 // Read-only access to the production Supabase project through the
-// Management API, shared by the deploy and drift scripts.
+// Management API, shared by the deploy scripts.
 import { appendFileSync, readdirSync } from "node:fs";
 
 export const PROJECT_REF = "igbmxubzxjfdbgmawrtr";

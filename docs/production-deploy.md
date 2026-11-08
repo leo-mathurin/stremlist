@@ -2,7 +2,7 @@
 
 A merge into `main` is the only action needed to release. The
 [`Supabase deploy`](../.github/workflows/supabase-deploy.yml) workflow applies
-the database migrations, then publishes the backend and the frontend built
+the database migrations and `supabase/config.toml`, then publishes the backend and the frontend built
 from the same commit. Nobody deploys from a laptop, and nobody runs SQL by hand
 in the production dashboard.
 
@@ -22,13 +22,13 @@ when `CI` fails, so a red `main` never reaches production.
      Management API in a read-only transaction. It lists the migrations to
      apply in the run summary. It fails when production has a version that has
      no file in the repo, or a version with a different name. Then it runs
-     `supabase db push --dry-run`.
+     `supabase db push --dry-run` and `supabase config diff`.
    - Build creates a production deployment of `stremlist-backend` and
      `stremlist-frontend` from the GitHub commit, without custom domains, and
      waits until both are ready. Production still serves the old deployments.
 3. **Apply.** Checks again that `main` has not moved, plans again, runs
-   `supabase db push --include-all`, then checks that the production history
-   matches the repo.
+   `supabase db push --include-all`, checks that the production history
+   matches the repo, then runs `supabase config push`.
 4. **Publish.** Calls `/health` (which reads the database) and
    `/manifest.json` on the new backend deployment, checks again that `main` has
    not moved, promotes the backend to `api.stremlist.com`, then the frontend to
@@ -81,6 +81,34 @@ something.
   applied: check the production schema, and make the corrected file safe to run
   again (`IF NOT EXISTS`, `IF EXISTS`).
 
+## Migration history
+
+`supabase/migrations` starts with `20260916000000_production_baseline.sql`, a
+dump of the production `public` schema on 2026-11-08. It replaced the 12
+earlier migrations, some of which had been applied by hand. The production
+history was repaired to match: the 12 old versions are marked reverted, and the
+baseline is marked applied, so the deploy never runs it in production. Locally
+and in CI, it builds the same schema as production from an empty database.
+
+The baseline leaves out the Letterboxd rate experiments (schemas
+`letterboxd_*_2026*` and functions `public.letterboxd_*_rpc`): they were created
+by hand, hold only experiment data, and stay in production until dropped.
+
+## Configuration
+
+`supabase/config.toml` holds the local settings, and its `[remotes.production]`
+block holds the values that differ in production. `supabase config push` merges
+that block when it targets the production project. To see what a change would
+push, without writing anything:
+
+```bash
+supabase config diff --project-ref igbmxubzxjfdbgmawrtr
+```
+
+Change production settings in `config.toml`, not in the dashboard. Settings
+that `config push` cannot write (the CLI lists them as notes) stay in the
+dashboard.
+
 ## Secrets
 
 The jobs that use production credentials run in GitHub environments that only
@@ -88,7 +116,7 @@ The jobs that use production credentials run in GitHub environments that only
 
 | Environment     | Secret                  | Use                                                                        |
 | --------------- | ----------------------- | -------------------------------------------------------------------------- |
-| `supabase-prod` | `SUPABASE_ACCESS_TOKEN` | Management API (read-only plan and drift) and `supabase link`              |
+| `supabase-prod` | `SUPABASE_ACCESS_TOKEN` | Management API (read-only plan), `supabase link` and `config push`         |
 | `supabase-prod` | `SUPABASE_DB_PASSWORD`  | `supabase db push` through the IPv4 pooler (GitHub runners lack IPv6)      |
 | `vercel-prod`   | `VERCEL_TOKEN`          | Create, promote and check deployments in the `lelemathrin's projects` team |
 
@@ -118,9 +146,8 @@ Open the run summary: each job writes what it did.
 
 ## Repairing the migration history
 
-Do this only when a plan is blocked or the nightly drift reports a history
-difference, and only after you compare the production schema with the
-migration. `supabase migration repair` writes only to the history table; it
+Do this only when a plan is blocked, and only after you compare the
+production schema with the migration. `supabase migration repair` writes only to the history table; it
 never runs the migration SQL.
 
 From a checkout of `main`, with the production password in the environment:
@@ -136,17 +163,3 @@ supabase migration repair --status reverted <version>
 
 Never mark a migration as applied when production does not have all its
 objects, and never apply a migration by hand: the next deploy applies it.
-
-## Nightly drift
-
-The [`Supabase drift`](../.github/workflows/supabase.yml) workflow runs each
-night. It rebuilds a local database from `supabase/migrations` on `main` and
-compares it with production: migration history, then the columns,
-constraints, indexes, functions, RLS, policies, grants and triggers of the
-`public` schema. It reads production in read-only transactions.
-
-Known differences are in
-[`supabase/drift-allowlist.json`](../supabase/drift-allowlist.json), each with a
-reason. Any other difference fails the run: correct it with a migration, or add
-it to the allowlist with a reason. The generated TypeScript types are not part
-of the check.

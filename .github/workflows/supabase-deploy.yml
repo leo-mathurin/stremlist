@@ -1,7 +1,8 @@
 name: Supabase deploy
 
 # Releases main to production after CI passes on the merge commit:
-# migrations first, then the backend and frontend built from the same commit.
+# migrations and supabase/config.toml first, then the backend and frontend
+# built from the same commit.
 # Vercel's Git integration no longer builds main (vercel.json), so this
 # workflow is the only path to production. See docs/production-deploy.md.
 on:
@@ -49,7 +50,7 @@ jobs:
         run: node .github/scripts/release-sha.mjs resolve "$TESTED_SHA"
 
   plan:
-    name: Plan migrations (read-only)
+    name: Plan migrations and config (read-only)
     needs: release
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -77,6 +78,10 @@ jobs:
       - name: Dry run of db push
         run: supabase db push --linked --include-all --skip-vault --dry-run --workdir .
 
+      # Read-only. Applies [remotes.production] from supabase/config.toml.
+      - name: Configuration changes to push
+        run: supabase config diff --project-ref "$SUPABASE_PROJECT_REF" --workdir .
+
   build:
     name: Build on Vercel (no domains)
     needs: release
@@ -99,7 +104,7 @@ jobs:
         run: node .github/scripts/vercel-release.mjs build "$RELEASE_SHA"
 
   apply:
-    name: Apply migrations
+    name: Apply migrations and config
     needs: [release, plan, build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -131,6 +136,9 @@ jobs:
 
       - name: Check the production history
         run: node .github/scripts/supabase-migrations.mjs verify
+
+      - name: Push supabase/config.toml
+        run: supabase config push --project-ref "$SUPABASE_PROJECT_REF" --yes --workdir .
 
   publish:
     name: Publish on Vercel
