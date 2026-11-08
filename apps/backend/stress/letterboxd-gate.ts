@@ -55,14 +55,15 @@ function pgGate(): Gate {
   return {
     async call(name, args) {
       const fn = `${schema}.letterboxd_${name}`;
-      const rows: { result: Json }[] =
+      // The take also returns the database clock, so a granted slot can be
+      // placed on the gate's own timeline instead of the client's.
+      // Postgres numeric values may arrive as strings.
+      const rows: { result: Json; now_ms?: number | string }[] =
         name === "take"
-          ? await sql.unsafe(`SELECT ${fn}($1, $2, $3, $4) AS result`, [
-              args.p_target,
-              args.p_max_wait_ms,
-              args.p_background,
-              GATE,
-            ])
+          ? await sql.unsafe(
+              `SELECT ${fn}($1, $2, $3, $4) AS result, extract(epoch FROM clock_timestamp()) * 1000 AS now_ms`,
+              [args.p_target, args.p_max_wait_ms, args.p_background, GATE],
+            )
           : name === "report"
             ? await sql.unsafe(`SELECT ${fn}($1, $2, $3, $4, $5) AS result`, [
                 args.p_target,
@@ -75,7 +76,10 @@ function pgGate(): Gate {
                 args.p_target,
                 GATE,
               ]);
-      return rows[0].result;
+      const [row] = rows;
+      return row.now_ms === undefined
+        ? row.result
+        : { ...row.result, db_now_ms: Number(row.now_ms) };
     },
     async close() {
       await sql.unsafe(`DELETE FROM ${schema}.letterboxd_gate WHERE id = $1`, [
@@ -155,7 +159,14 @@ interface UserResult {
   queueState: boolean;
   longestEstimateMs: number;
 }
+/** When each page was sent, on the client's clock. */
 const sends: number[] = [];
+/**
+ * When the gate scheduled each sent page: the database clock plus the wait it
+ * gave (pg target only). Client timers fire late under load, so this is the
+ * timeline that shows what the gate admitted.
+ */
+const slots: number[] = [];
 const reports: Promise<unknown>[] = [];
 const start = performance.now();
 const elapsed = () => performance.now() - start;
@@ -201,6 +212,8 @@ async function user(index: number): Promise<UserResult> {
         }
       }
       sends.push(elapsed());
+      if (slot.db_now_ms !== undefined)
+        slots.push(Number(slot.db_now_ms) + wait);
       await sleep(PAGE_MS);
       reports.push(
         call("report", {
@@ -264,9 +277,11 @@ const report = {
   pagesDemanded: users.reduce((sum, item) => sum + item.pages, 0),
   pagesSent: sends.length,
   admission: {
-    max1s: maxInWindow(sends, 1000),
+    timeline: slots.length > 0 ? "gate (database clock)" : "client",
+    max1s: maxInWindow(slots.length > 0 ? slots : sends, 1000),
     allowed1s: RATE + burst,
-    max10s: maxInWindow(sends, 10_000),
+    max10s: maxInWindow(slots.length > 0 ? slots : sends, 10_000),
+    clientMax10s: maxInWindow(sends, 10_000),
     allowed10s: RATE * 10 + burst,
   },
   rpcMs: {

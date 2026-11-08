@@ -33,6 +33,15 @@ The `public.letterboxd_gate` row in Postgres coordinates outbound requests acros
 
 A 429, or more than 20% failed reads over a minute (at least 20 reads), pauses sends for max(Retry-After, 60 s) and halves the rate, never below 0.33 request/s. The rate then climbs by 0.5 request/s per minute. Network errors, unusable collection HTML and timeouts while reading an HTTP 200 body are failed reads. Three slowdowns at the floor rate within 15 minutes, a 403, a challenge response header or a challenge document halt new outbound reads. A halted gate lets one probe request through every 30 minutes; a probe that succeeds resumes reads at the floor rate. A failed page never replaces a valid cached page with an empty result.
 
+### Capacity
+
+At 10 requests/s the gate admits 36,000 pages per hour. `stress/letterboxd-gate.ts` (November 2026, fake Letterboxd at 200 ms per page, 28 films per page):
+
+- 1,000 users adding one list each over 9 minutes (about 10 pages/s, through PostgREST on the production project): every list read, first page p95 0.9 s, whole list p95 9 s, no queue state. Gate calls took 0.7 ms on average in Postgres and 58 ms p95 seen from the client.
+- 5,000 users over 10 minutes (about 46 pages/s, local Postgres): the gate held 10 requests/s, but the first page took 4 minutes at the median and 13 minutes at p95, and 11% of lists were not finished after 30 minutes.
+
+The rate, not the gate, limits a launch: a burst above 10 pages/s queues.
+
 ## Operation
 
 `DISABLED_PROVIDERS=letterboxd` is the existing application kill switch. A halt makes Letterboxd unavailable in the same way: the configure page shows it as temporarily unavailable, new Letterboxd links are refused, and Lists keep their last Catalog with a sync note. The instance whose report halts the gate also reports to `BETTERSTACK_HEARTBEAT_URL_LETTERBOXD` (`/fail`) at once, and a successful probe pings it again to resolve the incident. A rate kept below half of `LETTERBOXD_MAX_RPS` for 30 minutes also reports a failure: Letterboxd keeps answering 429, so lower `LETTERBOXD_MAX_RPS`. `/monitor` probes Letterboxd's official Top 500 list (`users/official/lists/letterboxds-top-500-films`, five pages) on its schedule and reports the same slow state. Apply environment changes through a reviewed deployment. Cached Catalogs remain available through the common fallback.
