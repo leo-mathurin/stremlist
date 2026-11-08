@@ -95,7 +95,6 @@ function buildChartTitlesQuery(chartType: string): string {
   return `
     query ChartTitles($first: Int!, $after: String) {
       chartTitles(chart: { chartType: ${chartType} }, first: $first, after: $after) {
-        total
         pageInfo { hasNextPage endCursor }
         edges {
           node { ${TITLE_FRAGMENT} }
@@ -202,7 +201,6 @@ interface GraphQLResponse {
       titleListItemSearch?: TitleListItemSearch;
     } | null;
     chartTitles?: {
-      total?: number;
       pageInfo?: PageInfo;
       edges?: { node: TitleNode }[];
     } | null;
