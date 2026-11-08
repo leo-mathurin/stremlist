@@ -32,8 +32,24 @@ function diaryDate($: ReturnType<typeof load>, card: ReturnType<typeof $>) {
   return undefined;
 }
 
-export function parseLetterboxdPage(html: string, diary = false) {
+/**
+ * Parse one Letterboxd collection page. `diary` reads diary rows and their
+ * watch dates. `fragment` reads a chart's grid fragment (`/csi/…`): the chart
+ * page itself loads its grid with JavaScript, so the fragment is not a full
+ * document and has no title.
+ */
+export function parseLetterboxdPage(
+  html: string,
+  { diary = false, fragment = false } = {},
+) {
   const $ = load(html, { sourceCodeLocationInfo: true });
+  const closed = (selector: string) =>
+    $(selector)
+      .toArray()
+      .some((node) => {
+        const location = node.sourceCodeLocation;
+        return Boolean(location && "endTag" in location && location.endTag);
+      });
   const completeDocument = Boolean(
     $("html").get(0)?.sourceCodeLocation?.endTag &&
     $("body").get(0)?.sourceCodeLocation?.endTag,
@@ -89,12 +105,13 @@ export function parseLetterboxdPage(html: string, diary = false) {
   // diary rows. completeDocument in `valid` keeps a truncated page from passing.
   // An empty diary must still be a diary: require its closed table, so an
   // unrelated complete page cannot replace a saved Catalog with nothing.
-  const diaryTable = $("table#diary-table")
-    .toArray()
-    .some((node) => Boolean(node.sourceCodeLocation?.endTag));
+  // An empty watchlist or list has no grid at all, only its closed "No films
+  // yet" block inside the page content.
   const empty = diary
-    ? films.length === 0 && diaryTable && $("tr.diary-entry-row").length === 0
-    : films.length === 0 && emptyGrid;
+    ? films.length === 0 &&
+      closed("table#diary-table") &&
+      $("tr.diary-entry-row").length === 0
+    : films.length === 0 && (emptyGrid || closed("main section.empty-text"));
   const next = $("a.next, a[rel='next']").first().attr("href") ?? null;
   if ($("a.next, a[rel='next']").length > 0 && !next?.trim())
     invalid.push("pagination");
@@ -104,10 +121,16 @@ export function parseLetterboxdPage(html: string, diary = false) {
     blocked,
     valid:
       !blocked &&
-      completeDocument &&
       invalid.length === 0 &&
-      /Letterboxd/i.test(title) &&
-      (films.length > 0 || empty),
+      (fragment
+        ? // The pagination block follows the grid, so both closed means the
+          // whole fragment arrived. A chart is never empty.
+          closed("ul.poster-list.-grid") &&
+          closed("div.pagination") &&
+          films.length > 0
+        : completeDocument &&
+          /Letterboxd/i.test(title) &&
+          (films.length > 0 || empty)),
     title: $("h1").first().text().trim() || title.replace(/\s*[•|].*$/, ""),
   };
 }
