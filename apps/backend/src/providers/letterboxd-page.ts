@@ -34,14 +34,9 @@ function diaryDate($: ReturnType<typeof load>, card: ReturnType<typeof $>) {
 
 /**
  * Parse one Letterboxd collection page. `diary` reads diary rows and their
- * watch dates. `fragment` reads a chart's grid fragment (`/csi/…`): the chart
- * page itself loads its grid with JavaScript, so the fragment is not a full
- * document and has no title.
+ * watch dates.
  */
-export function parseLetterboxdPage(
-  html: string,
-  { diary = false, fragment = false } = {},
-) {
+export function parseLetterboxdPage(html: string, { diary = false } = {}) {
   const $ = load(html, { sourceCodeLocationInfo: true });
   const closed = (selector: string) =>
     $(selector)
@@ -122,15 +117,9 @@ export function parseLetterboxdPage(
     valid:
       !blocked &&
       invalid.length === 0 &&
-      (fragment
-        ? // The pagination block follows the grid, so both closed means the
-          // whole fragment arrived. A chart is never empty.
-          closed("ul.poster-list.-grid") &&
-          closed("div.pagination") &&
-          films.length > 0
-        : completeDocument &&
-          /Letterboxd/i.test(title) &&
-          (films.length > 0 || empty)),
+      completeDocument &&
+      /Letterboxd/i.test(title) &&
+      (films.length > 0 || empty),
     title: $("h1").first().text().trim() || title.replace(/\s*[•|].*$/, ""),
   };
 }

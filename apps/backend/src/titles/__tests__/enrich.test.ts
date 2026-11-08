@@ -7,6 +7,11 @@ const scraperMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../services/imdb-scraper", () => scraperMocks);
+// The Provider registry reaches the Letterboxd gate, which uses Supabase.
+vi.mock(
+  "../../lib/supabase",
+  () => import("../../__tests__/helpers/mock-supabase"),
+);
 
 import { enrichTitles } from "../enrich";
 

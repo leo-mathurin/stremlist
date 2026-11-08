@@ -1,6 +1,9 @@
 import type { ProviderId } from "@stremlist/shared/providers";
 import { Hono } from "hono";
-import { isProviderAvailable } from "../../providers/availability";
+import {
+  mayReadProvider,
+  providerDegradation,
+} from "../../providers/availability";
 import { getProvider } from "../../providers/registry";
 
 /** An environment variable, with an empty value read as unset. */
@@ -29,7 +32,9 @@ const PROBES: {
   },
   {
     provider: "letterboxd",
-    ref: () => env("MONITOR_LETTERBOXD_REF") ?? "films/popular/this/week",
+    ref: () =>
+      env("MONITOR_LETTERBOXD_REF") ??
+      "users/official/lists/letterboxds-top-500-films",
     heartbeat: () => env("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD"),
   },
   {
@@ -54,9 +59,12 @@ async function runProbe(
   heartbeat: string,
 ): Promise<ProbeResult> {
   try {
-    // An unavailable Provider (turned off or halted) is never contacted.
-    if (!(await isProviderAvailable(provider)))
+    // An unavailable Provider (turned off, or halted with no probe due) is
+    // never contacted.
+    if (!(await mayReadProvider(provider)))
       throw new Error(`${provider} is unavailable (turned off or halted)`);
+    const degraded = await providerDegradation(provider);
+    if (degraded) throw new Error(degraded);
     // forceRefresh reads the Provider itself, never a cached page.
     const snapshot = await getProvider(provider).fetchSource(ref, {
       connection: null,

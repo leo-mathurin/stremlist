@@ -19,6 +19,7 @@
         "MONITOR_LETTERBOXD_REF",
         "MONITOR_JUSTWATCH_REF",
         "MONITOR_SENSCRITIQUE_REF",
+        "LETTERBOXD_MAX_RPS",
         "CRON_SECRET"
       ]
     },

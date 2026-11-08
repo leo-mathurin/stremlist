@@ -26,22 +26,15 @@ import {
   resetConfigTest,
 } from "./helpers/config-api.js";
 import { seedAccount, seedConnection } from "./helpers/fixtures.js";
-import { r2Objects } from "./helpers/mock-r2.js";
 import { fakeAdapter, useFakeProvider } from "./helpers/mock-registry.js";
+import { db } from "./helpers/mock-supabase.js";
+import {
+  haltLetterboxdGate,
+  letterboxdGate,
+} from "./helpers/supabase/letterboxd-gate-rpcs.js";
 
-const LETTERBOXD_STATE = "providers/letterboxd/http-v1.json";
 function haltLetterboxd() {
-  r2Objects.set(
-    LETTERBOXD_STATE,
-    JSON.stringify({
-      activeId: null,
-      activeUntil: 0,
-      nextAt: 0,
-      pausedUntil: 0,
-      halted: true,
-      failures: 0,
-    }),
-  );
+  haltLetterboxdGate();
 }
 
 beforeEach(resetConfigTest);
@@ -88,6 +81,19 @@ describe("POST /links/resolve", () => {
     expect(validateSource).not.toHaveBeenCalled();
   });
 
+  it("lets a link check through to send Letterboxd's due recovery probe", async () => {
+    const validateSource = vi.fn(() =>
+      Promise.resolve({ ok: true as const, ref: "users/leo/watchlist" }),
+    );
+    useFakeProvider(fakeAdapter("letterboxd", { validateSource }));
+    haltLetterboxd();
+    const gate = letterboxdGate();
+    if (gate) gate.nextProbeAt = Date.now() - 1;
+    const res = await resolve("https://letterboxd.com/leo/watchlist/");
+    expect(await res.json()).toMatchObject({ ok: true });
+    expect(validateSource).toHaveBeenCalledTimes(1);
+  });
+
   it("says when Letterboxd is unavailable after it refused Stremlist", async () => {
     useFakeProvider(fakeAdapter("letterboxd"));
     haltLetterboxd();
@@ -99,7 +105,7 @@ describe("POST /links/resolve", () => {
         provider: "letterboxd",
       });
     } finally {
-      r2Objects.delete(LETTERBOXD_STATE);
+      db.reset();
     }
   });
 
@@ -311,7 +317,7 @@ describe("GET /providers", () => {
       expect(byId.get("letterboxd")?.enabled).toBe(false);
       expect(byId.get("imdb")?.enabled).toBe(true);
     } finally {
-      r2Objects.delete(LETTERBOXD_STATE);
+      db.reset();
     }
   });
 });

@@ -8,6 +8,7 @@
  */
 import { accountRpcs } from "./supabase/account-rpcs";
 import { connectionRpcs } from "./supabase/connection-rpcs";
+import { letterboxdGateRpcs } from "./supabase/letterboxd-gate-rpcs";
 import { MockQueryBuilder } from "./supabase/query-builder";
 import type { RpcArgs, RpcHandler } from "./supabase/rpc";
 import { rpcError } from "./supabase/rpc";
@@ -21,6 +22,7 @@ export { db };
 const defaultRpcHandlers: Partial<Record<string, RpcHandler>> = {
   ...accountRpcs,
   ...connectionRpcs,
+  ...letterboxdGateRpcs,
   ...sourceListRpcs,
 };
 

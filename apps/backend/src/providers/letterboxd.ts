@@ -7,11 +7,13 @@ import { wikidataStrategy } from "../titles/wikidata";
 import { providerFetch } from "./http";
 import { isProviderEnabled } from "./kill-switch";
 import {
-  assertLetterboxdNotHalted,
   LETTERBOXD_FRESHNESS_MS,
   letterboxdSnapshot,
-  withLetterboxdPermit,
 } from "./letterboxd-cache";
+import {
+  assertLetterboxdNotHalted,
+  withLetterboxdPermit,
+} from "./letterboxd-gate";
 import { parseLetterboxdPage } from "./letterboxd-page";
 import type { LetterboxdFilm } from "./letterboxd-page";
 import type {
@@ -27,9 +29,7 @@ const SOURCE =
 // Public member collections: watched films, rating-filtered films, diary, likes.
 const COLLECTION =
   /^users\/([a-z0-9_]{1,40})\/(films(?:\/rated\/\d(?:\.\d)?(?:-\d(?:\.\d)?)?)?|diary|likes\/films)$/;
-// Built-in charts (PUBLIC_SOURCES): the reference is the path body.
-const CHART = /^films\/popular\/this\/(?:week|month)$/;
-const MAX_PAGES = 40;
+const MAX_PAGES = 100;
 type PageRead =
   | { ok: true; html: string }
   | { ok: false; reason: SourceProblemReason };
@@ -60,7 +60,6 @@ function sourcePath(ref: string) {
   if (ref.startsWith(SHARE_PREFIX)) {
     return `/${decryptSecret(ref.slice(SHARE_PREFIX.length))}/`;
   }
-  if (CHART.test(ref)) return `/${ref}/`;
   const collection = COLLECTION.exec(ref);
   if (collection) return `/${collection[1]}/${canonicalRating(collection[2])}/`;
   const match = SOURCE.exec(ref);
@@ -105,12 +104,12 @@ async function resolveShortLink(code: string): Promise<string> {
       await response.body?.cancel();
       const blocked =
         response.status === 403 ||
-        response.status === 429 ||
         response.headers.get("cf-mitigated") === "challenge";
-      if (blocked)
+      if (blocked || response.status === 429)
         return {
           value: { ok: false, reason: "unavailable" },
-          result: "blocked",
+          result: blocked ? "blocked" : "rate_limited",
+          retryAfterMs: retryAfterOf(response),
         };
       const location = response.headers.get("location");
       if (response.status >= 300 && response.status < 400 && location)
@@ -157,11 +156,19 @@ async function resolveRef(ref: string): Promise<string> {
   return ref;
 }
 
+/** Retry-After in milliseconds, from seconds or an HTTP date; 0 when absent. */
+function retryAfterOf(response: Response): number {
+  const retryAfter = response.headers.get("retry-after");
+  if (retryAfter && /^\d+$/.test(retryAfter))
+    return Math.min(Number(retryAfter) * 1000, 24 * 60 * 60_000);
+  return Math.max(0, Date.parse(retryAfter ?? "") - Date.now()) || 0;
+}
+
 async function readHtml(
   url: string,
   kind: "collection" | "film" = "collection",
   nextPageUrl?: string,
-  page: { diary?: boolean; fragment?: boolean } = {},
+  page: { diary?: boolean } = {},
 ) {
   if (!isProviderEnabled("letterboxd"))
     throw new SourceUnavailableError("disabled", "Letterboxd is turned off");
@@ -177,16 +184,8 @@ async function readHtml(
       });
       blocked =
         response.status === 403 ||
-        response.status === 429 ||
         response.headers.get("cf-mitigated") === "challenge";
-      const retryAfter = response.headers.get("retry-after");
-      retryAfterMs =
-        retryAfter && /^\d+$/.test(retryAfter)
-          ? Math.min(
-              Number(retryAfter) * 1000,
-              Number.MAX_SAFE_INTEGER - Date.now(),
-            )
-          : Math.max(0, Date.parse(retryAfter ?? "") - Date.now()) || 0;
+      retryAfterMs = retryAfterOf(response);
       if (blocked || (response.status !== 200 && response.status < 500)) {
         await response.body?.cancel();
         return {
@@ -196,8 +195,8 @@ async function readHtml(
           },
           result: blocked
             ? "blocked"
-            : response.status >= 500
-              ? "failed"
+            : response.status === 429
+              ? "rate_limited"
               : "ok",
           retryAfterMs,
         };
@@ -260,19 +259,11 @@ function pagePath(base: string, page: number) {
   return page === 1 ? base : `${base}page/${page}/`;
 }
 
-/** A chart's path: its page loads the grid from a fragment with JavaScript. */
-function isChartPath(base: string) {
-  return CHART.test(base.slice(1, -1));
-}
-
 async function readPage(base: string, page: number, forceRefresh = false) {
   const path = pagePath(base, page);
   const key = `providers/letterboxd/pages-v1/${createHash("sha256").update(path).digest("hex")}.json`;
-  const options = { diary: isDiaryPath(base), fragment: isChartPath(base) };
-  // The fragment links to the chart's own next page, like a full page does.
-  const url = options.fragment
-    ? `https://letterboxd.com/csi/films/films-browser-list${path.slice("/films".length)}?esiAllowFilters=true`
-    : `https://letterboxd.com${path}`;
+  const options = { diary: isDiaryPath(base) };
+  const url = `https://letterboxd.com${path}`;
   return letterboxdSnapshot(
     key,
     async () => {
@@ -304,9 +295,6 @@ async function fetchSource(
   const diary = isDiaryPath(base);
   const films = new Map<string, LetterboxdFilm>();
   const signatures = new Set<string>();
-  // A chart ranks every film on Letterboxd (over a million): its Source list
-  // is the first page, the top 72.
-  const chart = isChartPath(base);
   let complete = false;
   for (let page = 1; page <= MAX_PAGES; page++) {
     const result = await readPage(base, page, ctx.forceRefresh);
@@ -333,7 +321,7 @@ async function fetchSource(
         continue;
       films.set(film.uid, film);
     }
-    if (result.complete || chart) {
+    if (result.complete) {
       complete = true;
       break;
     }

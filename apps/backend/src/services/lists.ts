@@ -3,6 +3,8 @@ import type { ProviderId, SourceId } from "@stremlist/shared/providers";
 import { sourceRequiresConnection } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
+import type { ReadPriority } from "../providers/read-priority";
+import { withReadPriority } from "../providers/read-priority";
 import { getProvider, isProviderEnabled } from "../providers/registry";
 import type {
   ProviderAdapter,
@@ -143,6 +145,8 @@ interface SourceRead extends Omit<ListRead, "sort" | "rpdbApiKey"> {
   source: SourceId;
   listId: string;
   cacheKey: string;
+  /** Interactive unless a cached Catalog can be served meanwhile. */
+  priority?: ReadPriority;
 }
 
 interface FreshList {
@@ -341,14 +345,16 @@ async function fetchAndCacheList(
       read.allowConnection ? read.accountId : null,
     );
     connection = ctx.connection;
-    built = await buildCatalog(
-      adapter,
-      {
-        ...source,
-        cacheKey,
-        resolveBudgetMs: READ_POLICIES[read.policy].resolveBudgetMs,
-      },
-      read.policy === "manual" ? { ...ctx, forceRefresh: true } : ctx,
+    built = await withReadPriority(read.priority ?? "interactive", () =>
+      buildCatalog(
+        adapter,
+        {
+          ...source,
+          cacheKey,
+          resolveBudgetMs: READ_POLICIES[read.policy].resolveBudgetMs,
+        },
+        read.policy === "manual" ? { ...ctx, forceRefresh: true } : ctx,
+      ),
     );
   } catch (error) {
     await record({ kind: "failed", problem: sourceProblemReason(error) });
@@ -488,8 +494,11 @@ async function readSourceCatalog(read: SourceRead): Promise<SourceCatalog> {
   const rules = READ_POLICIES[read.policy];
   const adapter = getProvider(source.provider);
   const freshnessMs = freshnessOf(adapter, source.sourceRef);
+  // A stale Catalog that can still be served makes the read a background one.
+  let servable = false;
   if (!rules.forceFresh) {
     const cached = await getCachedList(cacheKey, source);
+    servable = !rules.noCacheFallback && (cached?.data.metas.length ?? 0) > 0;
     // An empty cache is not a hit: it cannot be told apart from "the list
     // became private", which must surface its reason.
     if (
@@ -502,7 +511,10 @@ async function readSourceCatalog(read: SourceRead): Promise<SourceCatalog> {
   }
 
   try {
-    const fresh = await refreshList(read);
+    const fresh = await refreshList({
+      ...read,
+      priority: servable ? "background" : "interactive",
+    });
     return {
       data: fresh.data,
       generation: fresh.generation ?? contentGeneration(cacheKey, fresh.data),

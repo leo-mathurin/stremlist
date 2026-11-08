@@ -8,15 +8,6 @@ import {
 import { letterboxdSnapshotSchema } from "./letterboxd-page";
 import { SourceUnavailableError } from "./types";
 
-const HTTP_KEY = "providers/letterboxd/http-v1.json";
-const httpStateSchema = z.object({
-  activeId: z.string().nullable(),
-  activeUntil: z.number(),
-  nextAt: z.number(),
-  pausedUntil: z.number(),
-  halted: z.boolean(),
-  failures: z.number().int().nonnegative(),
-});
 const cacheSchema = z.object({
   fetchedAt: z.number(),
   leaseId: z.string().nullable(),
@@ -30,50 +21,7 @@ const unavailable = () =>
     "unavailable",
     "Letterboxd is temporarily unavailable",
   );
-/** Letterboxd refused Stremlist: the Provider is unavailable until an operator resets the halt. */
-const halted = () =>
-  new SourceUnavailableError(
-    "disabled",
-    "Letterboxd is temporarily unavailable",
-  );
 
-/**
- * Tell Better Stack once, when this instance flips the shared state to halted.
- * Best effort: a missing URL or a failed ping never affects the read.
- */
-async function notifyHalted(reason: string) {
-  const heartbeat = process.env.BETTERSTACK_HEARTBEAT_URL_LETTERBOXD;
-  if (!heartbeat) return;
-  try {
-    await fetch(`${heartbeat}/fail`, {
-      method: "POST",
-      body: `Letterboxd halted: ${reason}`,
-      signal: AbortSignal.timeout(5000),
-    });
-  } catch (error) {
-    console.error(
-      "Reporting the Letterboxd halt failed:",
-      error instanceof Error ? error.message : error,
-    );
-  }
-}
-
-/** Whether Letterboxd reads are halted (shared R2 state). Unreadable state counts as not halted. */
-export async function isLetterboxdHalted(): Promise<boolean> {
-  try {
-    const stored = await readJsonVersion(HTTP_KEY);
-    return stored ? httpStateSchema.parse(stored.value).halted : false;
-  } catch {
-    return false;
-  }
-}
-/**
- * Refuse a read while Letterboxd is halted, even when its pages are cached, so
- * a Refresh reports the Provider as unavailable instead of a fresh sync.
- */
-export async function assertLetterboxdNotHalted() {
-  if (await isLetterboxdHalted()) throw halted();
-}
 export const LETTERBOXD_FRESHNESS_MS = 6 * 60 * 60_000;
 
 async function readState<T>(key: string, schema: z.ZodType<T>, initial: T) {
@@ -83,111 +31,6 @@ async function readState<T>(key: string, schema: z.ZodType<T>, initial: T) {
     value: stored ? schema.parse(stored.value) : initial,
     etag: stored?.etag ?? null,
   };
-}
-
-/** R2 conditional writes coordinate every Vercel instance; failure denies new sends. */
-export async function withLetterboxdPermit<T>(
-  read: () => Promise<{
-    value: T;
-    result: "ok" | "blocked" | "failed";
-    retryAfterMs?: number;
-  }>,
-): Promise<T> {
-  const id = randomUUID();
-  const deadline = Date.now() + 15_000;
-  for (;;) {
-    const now = Date.now();
-    const state = await readState(HTTP_KEY, httpStateSchema, {
-      activeId: null,
-      activeUntil: 0,
-      nextAt: 0,
-      pausedUntil: 0,
-      halted: false,
-      failures: 0,
-    });
-    if (state.value.halted) throw halted();
-    if (state.value.pausedUntil > now) throw unavailable();
-    if (state.value.activeId && state.value.activeUntil <= now) {
-      try {
-        await writeJson(
-          HTTP_KEY,
-          { ...state.value, halted: true },
-          { etag: state.etag },
-        );
-        await notifyHalted(
-          "an HTTP reservation expired with an unknown result",
-        );
-      } catch (error) {
-        if (!isPreconditionFailed(error)) throw error;
-      }
-      throw halted();
-    }
-    if (now >= deadline) throw unavailable();
-    if (state.value.activeId || state.value.nextAt > now) {
-      await sleep(Math.min(500, Math.max(100, state.value.nextAt - now)));
-      continue;
-    }
-    try {
-      await writeJson(
-        HTTP_KEY,
-        { ...state.value, activeId: id, activeUntil: now + 45_000 },
-        { etag: state.etag },
-      );
-      if (Date.now() >= now + 45_000) throw unavailable();
-      break;
-    } catch (error) {
-      if (!isPreconditionFailed(error)) throw error;
-    }
-  }
-  async function finish(
-    result: "ok" | "blocked" | "failed",
-    retryAfterMs: number,
-  ) {
-    const state = await readState(HTTP_KEY, httpStateSchema, {
-      activeId: null,
-      activeUntil: 0,
-      nextAt: 0,
-      pausedUntil: 0,
-      halted: true,
-      failures: 0,
-    });
-    if (state.value.activeId !== id) throw unavailable();
-    const failures = result === "failed" ? state.value.failures + 1 : 0;
-    const nextHalted =
-      state.value.halted || result === "blocked" || failures >= 3;
-    await writeJson(
-      HTTP_KEY,
-      {
-        activeId: null,
-        activeUntil: 0,
-        nextAt: Date.now() + 3000,
-        pausedUntil:
-          result === "failed"
-            ? Date.now() + Math.max(15 * 60_000, retryAfterMs)
-            : 0,
-        halted: nextHalted,
-        failures,
-      },
-      { etag: state.etag },
-    );
-    // Edge-triggered: only the instance whose write flips the shared flag reports.
-    if (!state.value.halted && nextHalted)
-      await notifyHalted(
-        result === "blocked"
-          ? "Letterboxd refused a request (403, 429 or a challenge)"
-          : "three consecutive reads failed",
-      );
-  }
-  let result: "ok" | "blocked" | "failed" = "failed";
-  let retryAfterMs = 0;
-  try {
-    const response = await read();
-    result = response.result;
-    retryAfterMs = response.retryAfterMs ?? 0;
-    return response.value;
-  } finally {
-    await finish(result, retryAfterMs);
-  }
 }
 
 /** Anonymous snapshots can be shared by Accounts. The lease prevents duplicate pagination. */

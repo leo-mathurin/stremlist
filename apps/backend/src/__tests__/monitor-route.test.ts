@@ -20,6 +20,11 @@ import {
   resetProviders,
   useFakeProvider,
 } from "./helpers/mock-registry.js";
+import { callRpc } from "./helpers/mock-supabase.js";
+import {
+  haltLetterboxdGate,
+  letterboxdGate,
+} from "./helpers/supabase/letterboxd-gate-rpcs.js";
 
 const IMDB_BEAT = "https://beat.example/imdb";
 const LBX_BEAT = "https://beat.example/letterboxd";
@@ -102,11 +107,14 @@ describe("GET /monitor", () => {
       connection: null,
       forceRefresh: true,
     });
-    // The Letterboxd probe defaults to the Popular this week chart.
-    expect(letterboxdRead).toHaveBeenCalledWith("films/popular/this/week", {
-      connection: null,
-      forceRefresh: true,
-    });
+    // The Letterboxd probe defaults to Letterboxd's official Top 500 list.
+    expect(letterboxdRead).toHaveBeenCalledWith(
+      "users/official/lists/letterboxds-top-500-films",
+      {
+        connection: null,
+        forceRefresh: true,
+      },
+    );
     expect(beats).toEqual(
       expect.arrayContaining([
         { url: IMDB_BEAT, method: "GET" },
@@ -132,6 +140,48 @@ describe("GET /monitor", () => {
     expect(res.status).toBe(200);
     expect(beats).toEqual([{ url: LBX_BEAT, method: "GET" }]);
     expect(justwatchRead).not.toHaveBeenCalled();
+  });
+
+  it("reports Letterboxd when 429 responses kept its rate below half for 30 minutes", async () => {
+    vi.stubEnv(
+      "MONITOR_LETTERBOXD_REF",
+      "users/official/lists/letterboxds-top-500-films",
+    );
+    vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
+    const letterboxdRead = vi.fn();
+    useFakeProvider(fakeAdapter("letterboxd", { fetchSource: letterboxdRead }));
+    await callRpc("letterboxd_take", {
+      p_target: 10,
+      p_max_wait_ms: 10_000,
+      p_background: false,
+    });
+    Object.assign(letterboxdGate() ?? {}, {
+      rate: 2,
+      slowSince: Date.now() - 31 * 60_000,
+    });
+
+    const res = await monitor();
+
+    expect(res.status).toBe(502);
+    expect(letterboxdRead).not.toHaveBeenCalled();
+    expect(beats).toEqual([{ url: `${LBX_BEAT}/fail`, method: "POST" }]);
+  });
+
+  it("probes a halted Letterboxd once its recovery probe is due", async () => {
+    vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
+    const letterboxdRead = vi.fn(() =>
+      Promise.resolve({ complete: true, entries: [] }),
+    );
+    useFakeProvider(fakeAdapter("letterboxd", { fetchSource: letterboxdRead }));
+    haltLetterboxdGate();
+    expect((await monitor()).status).toBe(502);
+    expect(letterboxdRead).not.toHaveBeenCalled();
+
+    Object.assign(letterboxdGate() ?? {}, { nextProbeAt: Date.now() - 1 });
+    beats = [];
+    expect((await monitor()).status).toBe(200);
+    expect(letterboxdRead).toHaveBeenCalledTimes(1);
+    expect(beats).toEqual([{ url: LBX_BEAT, method: "GET" }]);
   });
 
   it("never contacts a Provider turned off with the kill switch, and reports it", async () => {

@@ -3,7 +3,7 @@ import {
   parseSourceLink,
   sourceRequiresConnection,
 } from "@stremlist/shared/providers";
-import { isProviderAvailable } from "../providers/availability";
+import { mayReadProvider } from "../providers/availability";
 import { getProvider } from "../providers/registry";
 import {
   ConnectionExpiredError,
@@ -37,7 +37,7 @@ export async function resolveSourceLink(
   if (PROVIDERS[provider].availability !== "available") {
     return refuse("coming_soon");
   }
-  if (!(await isProviderAvailable(provider))) return refuse("disabled");
+  if (!(await mayReadProvider(provider))) return refuse("disabled");
 
   const connection =
     access?.via === "private"

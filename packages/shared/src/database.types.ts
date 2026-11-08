@@ -348,6 +348,29 @@ export type Database = {
         };
         Returns: number;
       };
+      letterboxd_gate_status: {
+        Args: { p_gate?: string; p_target: number };
+        Returns: Json;
+      };
+      letterboxd_report: {
+        Args: {
+          p_gate?: string;
+          p_outcome: string;
+          p_probe: boolean;
+          p_retry_after_ms: number;
+          p_target: number;
+        };
+        Returns: Json;
+      };
+      letterboxd_take: {
+        Args: {
+          p_background: boolean;
+          p_gate?: string;
+          p_max_wait_ms: number;
+          p_target: number;
+        };
+        Returns: Json;
+      };
       record_list_refresh: {
         Args: {
           p_failure_reason: string | null;
