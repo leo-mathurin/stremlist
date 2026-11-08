@@ -33,6 +33,7 @@ import { catalogSettingsSchema } from "./catalog-settings";
 import { listConnections } from "./connections";
 import { getNewTitlesSummary } from "./detections";
 import { normalizeImdbUserId } from "./imdb-scraper";
+import { getListReadQueue } from "./read-queue";
 import { getListSyncStatuses } from "./sync-status";
 
 export const providerParam = z.enum(PROVIDER_IDS);
@@ -277,11 +278,12 @@ export async function syncSnapshot(
   access: AccountAccess,
   lists: ConfigList[],
 ): Promise<AccountSyncSnapshot> {
-  const [statuses, connections] = await Promise.all([
+  const [statuses, connections, readQueue] = await Promise.all([
     getListSyncStatuses(lists),
     access.via === "private" ? listConnections(access.account.id) : [],
+    getListReadQueue(lists.map((list) => list.id)),
   ]);
-  return { ...statuses, connections };
+  return { ...statuses, connections, readQueue };
 }
 
 /**

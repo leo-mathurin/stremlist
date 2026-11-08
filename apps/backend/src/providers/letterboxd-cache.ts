@@ -5,7 +5,9 @@ import {
   writeJson,
   isPreconditionFailed,
 } from "../lib/r2-json";
+import { LetterboxdBusyError } from "./letterboxd-gate";
 import { letterboxdSnapshotSchema } from "./letterboxd-page";
+import { currentReadPriority, currentReadQueue } from "./read-priority";
 import { SourceUnavailableError } from "./types";
 
 const cacheSchema = z.object({
@@ -33,7 +35,14 @@ async function readState<T>(key: string, schema: z.ZodType<T>, initial: T) {
   };
 }
 
-/** Anonymous snapshots can be shared by Accounts. The lease prevents duplicate pagination. */
+/** Wait at least this long for a page that another read holds. */
+const LEASE_WAIT_MS = 10_000;
+
+/**
+ * Anonymous snapshots can be shared by Accounts. The lease prevents duplicate
+ * pagination. A read waits for a page that another read holds, as long as
+ * its own queue deadline allows (at least 10 s), then counts as busy.
+ */
 export async function letterboxdSnapshot(
   key: string,
   read: () => Promise<z.infer<typeof letterboxdSnapshotSchema>>,
@@ -41,7 +50,10 @@ export async function letterboxdSnapshot(
 ) {
   const requestedAt = Date.now();
   const id = randomUUID();
-  const deadline = Date.now() + 10_000;
+  const deadline = Math.max(
+    requestedAt + LEASE_WAIT_MS,
+    currentReadPriority() === "interactive" ? currentReadQueue().deadline : 0,
+  );
   let state: Awaited<ReturnType<typeof load>>;
   async function load() {
     return readState(key, cacheSchema, {
@@ -61,8 +73,8 @@ export async function letterboxdSnapshot(
       return state.value.snapshot;
     if (state.value.leaseUntil > Date.now()) {
       if (state.value.snapshot && !forceRefresh) return state.value.snapshot;
-      if (Date.now() >= deadline) throw unavailable();
-      await sleep(500);
+      if (Date.now() >= deadline) throw new LetterboxdBusyError(LEASE_WAIT_MS);
+      await sleep(Date.now() - requestedAt < LEASE_WAIT_MS ? 500 : 2000);
       continue;
     }
     try {

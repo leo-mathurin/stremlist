@@ -17,6 +17,8 @@ export const letterboxdSnapshotSchema = z.object({
   films: z.array(letterboxdFilmSchema).max(4000),
   complete: z.boolean(),
   title: z.string(),
+  /** The number of pages that the pagination shows, when it shows one. */
+  pages: z.number().int().positive().optional(),
 });
 
 /** The diary watch date carried by a diary row's day link, as YYYY-MM-DD. */
@@ -110,9 +112,19 @@ export function parseLetterboxdPage(html: string, { diary = false } = {}) {
   const next = $("a.next, a[rel='next']").first().attr("href") ?? null;
   if ($("a.next, a[rel='next']").length > 0 && !next?.trim())
     invalid.push("pagination");
+  // The highest page number in the pagination, for the queue estimate only.
+  const pages = Math.max(
+    0,
+    ...$(".paginate-pages a[href]")
+      .toArray()
+      .map((node) =>
+        Number(/\/page\/(\d+)\/?$/.exec($(node).attr("href") ?? "")?.[1] ?? 0),
+      ),
+  );
   return {
     films,
     next,
+    pages: pages > 0 ? pages : null,
     blocked,
     valid:
       !blocked &&

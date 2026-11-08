@@ -124,6 +124,38 @@ export type Database = {
           },
         ];
       };
+      list_read_queue: {
+        Row: {
+          list_id: string;
+          provider: string;
+          ready_at: string;
+          source_ref: string;
+          updated_at: string;
+        };
+        Insert: {
+          list_id: string;
+          provider: string;
+          ready_at: string;
+          source_ref: string;
+          updated_at?: string;
+        };
+        Update: {
+          list_id?: string;
+          provider?: string;
+          ready_at?: string;
+          source_ref?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "list_read_queue_list_id_fkey";
+            columns: ["list_id"];
+            isOneToOne: false;
+            referencedRelation: "lists";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       list_sync_status: {
         Row: {
           failing_since: string | null;
@@ -372,6 +404,15 @@ export type Database = {
           p_gate?: string;
           p_max_wait_ms: number;
           p_target: number;
+        };
+        Returns: Json;
+      };
+      letterboxd_take_turn: {
+        Args: {
+          p_gate?: string;
+          p_priority: string;
+          p_target: number;
+          p_ticket?: string | null;
         };
         Returns: Json;
       };

@@ -3,17 +3,16 @@ import { scheduleBackgroundTask } from "../lib/background";
 import { supabase } from "../lib/supabase";
 import type { LetterboxdRequestDetails } from "./letterboxd-request-log";
 import { recordLetterboxdRequest } from "./letterboxd-request-log";
-import { currentReadPriority } from "./read-priority";
-import { SourceUnavailableError } from "./types";
+import { currentReadPriority, currentReadQueue } from "./read-priority";
+import { SourceBusyError, SourceUnavailableError } from "./types";
 
 /**
- * The shared Letterboxd gate: a token bucket in Postgres
- * (supabase/migrations/20261108120000_letterboxd_gate.sql) that every backend
- * instance asks before each Letterboxd request. The rules live in SQL.
+ * The shared Letterboxd gate: a token bucket in Postgres with a fair queue in
+ * front of it (supabase/migrations/20261108120000_letterboxd_gate.sql and
+ * 20261108140000_letterboxd_queue.sql) that every backend instance asks
+ * before each Letterboxd request. The rules live in SQL.
  */
 const GATE = "production";
-/** Longest an interactive read waits for its slot. */
-const MAX_WAIT_MS = 10_000;
 /** After a longer wait, check that no slowdown or halt started meanwhile. */
 const RECHECK_AFTER_MS = 1_000;
 
@@ -28,22 +27,25 @@ export type LetterboxdOutcome = "ok" | "rate_limited" | "blocked" | "failed";
 
 /**
  * Letterboxd is busy: the read would wait longer than its caller allows, or a
- * slowdown after a 429 is in progress. `waitMs` estimates when to try again.
+ * slowdown after a 429 is in progress. `waitMs` estimates when the rest of
+ * the read is sent; `ticket` keeps its place in the queue.
  */
-export class LetterboxdBusyError extends SourceUnavailableError {
-  readonly waitMs: number;
-
-  constructor(waitMs: number) {
-    super("unavailable", "Letterboxd is busy");
+export class LetterboxdBusyError extends SourceBusyError {
+  constructor(
+    waitMs: number,
+    place: { retryMs?: number | null; ticket?: string | null } = {},
+  ) {
+    super(waitMs, place, "Letterboxd is busy");
     this.name = "LetterboxdBusyError";
-    this.waitMs = waitMs;
   }
 }
 
 const takeSchema = z.object({
   status: z.enum(["granted", "queued", "paused", "halted"]),
   wait_ms: z.number(),
+  retry_ms: z.number().optional(),
   probe: z.boolean(),
+  ticket: z.string().nullable(),
 });
 const reportSchema = z.object({
   halted: z.boolean(),
@@ -171,10 +173,23 @@ async function report(
     );
 }
 
+/** How a request takes its turn in the queue. */
+export interface PermitOptions {
+  /**
+   * The first page of a read: it goes before the later pages of other
+   * reads, so every List shows something soon.
+   */
+  first?: boolean;
+  /** Estimated time for the rest of the read after this request. */
+  restMs?: number;
+}
+
 /**
- * Send one Letterboxd request through the shared gate. The request waits for
- * its slot (interactive reads, up to 10 s) or is refused when none is free
- * now (background reads). Its outcome is recorded after it returns.
+ * Send one Letterboxd request through the shared gate. An interactive read
+ * waits its turn in the queue, within the deadline of its read (10 s for a
+ * read without a queue policy), and keeps its place across requests. A
+ * background read only takes a free slot. Its outcome is recorded after it
+ * returns.
  */
 export async function withLetterboxdPermit<T>(
   read: () => Promise<{
@@ -184,19 +199,39 @@ export async function withLetterboxdPermit<T>(
     /** What the request saw, for the request log. */
     details?: LetterboxdRequestDetails;
   }>,
+  { first = false, restMs = 0 }: PermitOptions = {},
 ): Promise<T> {
   const priority = currentReadPriority();
+  const queue = currentReadQueue();
   const target = letterboxdTargetRate();
-  const { data, error } = await supabase.rpc("letterboxd_take", {
-    p_target: target,
-    p_max_wait_ms: MAX_WAIT_MS,
-    p_background: priority === "background",
-    p_gate: GATE,
-  });
-  if (error) throw unreadable();
-  const slot = takeSchema.parse(data);
-  if (slot.status === "halted") throw halted();
-  if (slot.status !== "granted") throw new LetterboxdBusyError(slot.wait_ms);
+  const lane =
+    priority === "background" ? "background" : first ? "first" : "later";
+  const askedAt = Date.now();
+  let slot: z.infer<typeof takeSchema>;
+  for (;;) {
+    const { data, error } = await supabase.rpc("letterboxd_take_turn", {
+      p_target: target,
+      p_priority: lane,
+      p_ticket: queue.ticket,
+      p_gate: GATE,
+    });
+    if (error) throw unreadable();
+    slot = takeSchema.parse(data);
+    if (lane !== "background") queue.ticket = slot.ticket;
+    if (slot.status === "halted") throw halted();
+    if (slot.status === "granted") break;
+    const waitMs = slot.wait_ms + restMs;
+    const place = { retryMs: slot.retry_ms ?? null, ticket: queue.ticket };
+    if (lane === "background") throw new LetterboxdBusyError(waitMs, place);
+    const left = queue.deadline - Date.now();
+    if (
+      slot.wait_ms > left ||
+      (queue.answerAtMs !== null && slot.wait_ms >= queue.answerAtMs)
+    )
+      throw new LetterboxdBusyError(waitMs, place);
+    queue.onQueued?.(waitMs);
+    await sleep(Math.min(slot.retry_ms ?? slot.wait_ms, left));
+  }
   if (slot.wait_ms > 0) {
     await sleep(slot.wait_ms);
     if (slot.wait_ms > RECHECK_AFTER_MS) {
@@ -205,6 +240,7 @@ export async function withLetterboxdPermit<T>(
       if (status.paused_ms > 0) throw new LetterboxdBusyError(status.paused_ms);
     }
   }
+  const waitMs = Date.now() - askedAt;
   let result: LetterboxdOutcome = "failed";
   let retryAfterMs = 0;
   let details: LetterboxdRequestDetails | undefined;
@@ -223,7 +259,7 @@ export async function withLetterboxdPermit<T>(
         await recordLetterboxdRequest(details, {
           outcome: result,
           durationMs,
-          waitMs: slot.wait_ms,
+          waitMs,
           priority,
           probe: slot.probe,
         });

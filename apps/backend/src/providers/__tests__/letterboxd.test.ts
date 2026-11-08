@@ -15,7 +15,10 @@ import {
   db,
   rpcHandlers,
 } from "../../__tests__/helpers/mock-supabase";
-import { letterboxdGate } from "../../__tests__/helpers/supabase/letterboxd-gate-rpcs";
+import {
+  letterboxdGate,
+  letterboxdWaiters,
+} from "../../__tests__/helpers/supabase/letterboxd-gate-rpcs";
 import { resolveEntries } from "../../titles/resolver";
 import { letterboxdProvider } from "../letterboxd";
 import { letterboxdSnapshot } from "../letterboxd-cache";
@@ -24,7 +27,7 @@ import {
   letterboxdSnapshotSchema,
   parseLetterboxdPage,
 } from "../letterboxd-page";
-import { withReadPriority } from "../read-priority";
+import { readQueue, withReadPriority } from "../read-priority";
 
 const context = { connection: null };
 const ref = "users/alice/watchlist";
@@ -599,7 +602,7 @@ describe("shared Letterboxd coordination", () => {
     });
   });
   it("fails closed when the gate cannot be read", async () => {
-    rpcHandlers.set("letterboxd_take", () => ({
+    rpcHandlers.set("letterboxd_take_turn", () => ({
       data: null,
       error: { message: "connection refused" },
     }));
@@ -630,6 +633,175 @@ describe("shared Letterboxd coordination", () => {
       ),
     ).rejects.toThrow("offline");
     expect(stored("shared-page").snapshot?.title).toBe("Empty");
+  });
+});
+
+describe("the Letterboxd queue", () => {
+  const ok = () => Promise.resolve({ value: true, result: "ok" as const });
+  /** Take every slot of the next second, so new requests wait in the queue. */
+  async function fillGate() {
+    for (let index = 0; index < 20; index++)
+      await callRpc("letterboxd_take_turn", {
+        p_target: 10,
+        p_priority: "later",
+      });
+  }
+
+  it("sends the first page of a new read before the later pages of earlier reads", async () => {
+    await fillGate();
+    const sent: string[] = [];
+    const send = (name: string) => () => {
+      sent.push(name);
+      return ok();
+    };
+    const later = Array.from({ length: 20 }, (_, index) =>
+      withLetterboxdPermit(send(`later ${index}`)),
+    );
+    await vi.advanceTimersByTimeAsync(10);
+    const first = withLetterboxdPermit(send("first"), { first: true });
+    const pending = Promise.all([...later, first]);
+    await vi.runAllTimersAsync();
+    await pending;
+    // Grants are reserved at most 1 s ahead: only the later pages granted
+    // before the first page asked go before it.
+    expect(sent.indexOf("first")).toBeLessThanOrEqual(2);
+    expect(sent.filter((name) => name !== "first")).toEqual(
+      later.map((_, index) => `later ${index}`),
+    );
+  });
+
+  it("keeps the place of a read that waits, across its pages, before newer reads", async () => {
+    await fillGate();
+    const sent: string[] = [];
+    const queue = readQueue({ maxWaitMs: 60_000 });
+    // An older read waits for its second page, then asks for its third.
+    const older = withReadPriority(
+      "interactive",
+      async () => {
+        await withLetterboxdPermit(() => {
+          sent.push("older 2");
+          return ok();
+        });
+        await withLetterboxdPermit(() => {
+          sent.push("older 3");
+          return ok();
+        });
+      },
+      queue,
+    );
+    await vi.advanceTimersByTimeAsync(10);
+    const newer = Array.from({ length: 30 }, (_, index) =>
+      withLetterboxdPermit(() => {
+        sent.push(`newer ${index}`);
+        return ok();
+      }),
+    );
+    const pending = Promise.all([older, ...newer]);
+    await vi.runAllTimersAsync();
+    await pending;
+    expect(sent.indexOf("older 2")).toBe(0);
+    // Its next page keeps the older place: only the newer reads granted in
+    // the second before it asked (10 slots) go first, not all 30.
+    expect(sent.indexOf("older 3")).toBeLessThanOrEqual(12);
+    expect(queue.ticket).not.toBeNull();
+  });
+
+  it("answers at once with the estimate and a ticket when the wait is 3 s or more", async () => {
+    // 50 reads already wait: about 6 s.
+    await fillGate();
+    const waiting = Array.from({ length: 50 }, () => withLetterboxdPermit(ok));
+    await vi.advanceTimersByTimeAsync(10);
+    const read = vi.fn(ok);
+    const queue = readQueue({ maxWaitMs: 10_000, answerAtMs: 3_000 });
+    const busy = withReadPriority(
+      "interactive",
+      () => withLetterboxdPermit(read, { first: false, restMs: 2_000 }),
+      queue,
+    );
+    await expect(busy).rejects.toBeInstanceOf(LetterboxdBusyError);
+    const error = (await busy.catch(
+      (caught: unknown) => caught,
+    )) as LetterboxdBusyError;
+    expect(error.waitMs).toBeGreaterThanOrEqual(6_000 + 2_000);
+    expect(error.ticket).toEqual(expect.any(String));
+    expect(error.retryMs).toBeGreaterThan(0);
+    expect(queue.ticket).toBe(error.ticket);
+    expect(letterboxdWaiters().some((w) => w.id === error.ticket)).toBe(true);
+    expect(read).not.toHaveBeenCalled();
+    const pending = Promise.all(waiting);
+    await vi.runAllTimersAsync();
+    await pending;
+  });
+
+  it("serves the pages read so far when a later page waits too long, and the next read resumes from them", async () => {
+    const urls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        urls.push(url);
+        if (url.endsWith("/page/2/")) return new Response(page([3]));
+        // Other reads take the next seconds while the first page loads.
+        for (let index = 0; index < 60; index++)
+          await callRpc("letterboxd_take_turn", {
+            p_target: 10,
+            p_priority: "later",
+          });
+        return new Response(page([1, 2], "/alice/list/big/page/2/"));
+      }),
+    );
+    const first = withReadPriority(
+      "interactive",
+      () => letterboxdProvider.fetchSource("users/alice/lists/big", context),
+      readQueue({ maxWaitMs: 2_000, partial: true }),
+    );
+    await vi.runAllTimersAsync();
+    expect(await first).toMatchObject({ complete: false, interrupted: true });
+    expect((await first).entries).toHaveLength(2);
+    expect(urls).toEqual(["https://letterboxd.com/alice/list/big/"]);
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    const next = letterboxdProvider.fetchSource(
+      "users/alice/lists/big",
+      context,
+    );
+    await vi.runAllTimersAsync();
+    const result = await next;
+    expect(result.complete).toBe(true);
+    expect(result.interrupted).toBeUndefined();
+    expect(result.entries).toHaveLength(3);
+    // The first page came from the cache.
+    expect(urls.slice(1)).toEqual([
+      "https://letterboxd.com/alice/list/big/page/2/",
+    ]);
+  });
+
+  it("does not serve a read whose first page waits too long", async () => {
+    await fillGate();
+    for (let index = 0; index < 60; index++)
+      await callRpc("letterboxd_take_turn", {
+        p_target: 10,
+        p_priority: "first",
+      });
+    vi.stubGlobal("fetch", vi.fn());
+    const read = withReadPriority(
+      "interactive",
+      () => letterboxdProvider.fetchSource(ref, context),
+      readQueue({ maxWaitMs: 2_000, partial: true }),
+    );
+    await expect(read).rejects.toBeInstanceOf(LetterboxdBusyError);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("counts a page that another read holds for too long as busy", async () => {
+    const held = letterboxdSnapshot("held-page", () => new Promise(() => {}));
+    void held;
+    await vi.advanceTimersByTimeAsync(10);
+    const waiting = letterboxdSnapshot("held-page", () =>
+      Promise.resolve({ films: [], complete: true, title: "Empty" }),
+    );
+    const outcome = waiting.catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(await outcome).toBeInstanceOf(LetterboxdBusyError);
   });
 });
 

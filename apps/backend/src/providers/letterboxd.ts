@@ -12,8 +12,10 @@ import {
 } from "./letterboxd-cache";
 import {
   assertLetterboxdNotHalted,
+  LetterboxdBusyError,
   withLetterboxdPermit,
 } from "./letterboxd-gate";
+import type { PermitOptions } from "./letterboxd-gate";
 import { parseLetterboxdPage } from "./letterboxd-page";
 import type { LetterboxdFilm } from "./letterboxd-page";
 import {
@@ -22,6 +24,7 @@ import {
   noteResponse,
   requestDetails,
 } from "./letterboxd-request-log";
+import { currentReadQueue } from "./read-priority";
 import type {
   ProviderAdapter,
   ProviderContext,
@@ -36,6 +39,8 @@ const SOURCE =
 const COLLECTION =
   /^users\/([a-z0-9_]{1,40})\/(films(?:\/rated\/\d(?:\.\d)?(?:-\d(?:\.\d)?)?)?|diary|likes\/films)$/;
 const MAX_PAGES = 100;
+/** About how long one more page of a read takes, for the queue estimate. */
+const PAGE_ESTIMATE_MS = 400;
 type PageRead =
   | { ok: true; html: string }
   | { ok: false; reason: SourceProblemReason };
@@ -99,49 +104,52 @@ async function resolveShortLink(code: string): Promise<string> {
     throw new SourceUnavailableError("disabled", "Letterboxd is turned off");
   const read = await withLetterboxdPermit<
     { ok: true; url: string } | { ok: false; reason: SourceProblemReason }
-  >(async () => {
-    const details = requestDetails("short_link", `https://boxd.it/${code}`);
-    try {
-      const response = await providerFetch(details.url, {
-        redirect: "manual",
-        timeoutMs: 10_000,
-        retryOn429: false,
-        headers: { Accept: "text/html" },
-      });
-      noteResponse(details, response);
-      const blocked =
-        response.status === 403 ||
-        response.headers.get("cf-mitigated") === "challenge";
-      if (blocked || response.status === 429 || response.status >= 500)
-        noteExcerpt(details, response);
-      else await response.body?.cancel();
-      if (blocked || response.status === 429)
+  >(
+    async () => {
+      const details = requestDetails("short_link", `https://boxd.it/${code}`);
+      try {
+        const response = await providerFetch(details.url, {
+          redirect: "manual",
+          timeoutMs: 10_000,
+          retryOn429: false,
+          headers: { Accept: "text/html" },
+        });
+        noteResponse(details, response);
+        const blocked =
+          response.status === 403 ||
+          response.headers.get("cf-mitigated") === "challenge";
+        if (blocked || response.status === 429 || response.status >= 500)
+          noteExcerpt(details, response);
+        else await response.body?.cancel();
+        if (blocked || response.status === 429)
+          return {
+            value: { ok: false, reason: "unavailable" },
+            result: blocked ? "blocked" : "rate_limited",
+            retryAfterMs: retryAfterOf(response),
+            details,
+          };
+        const location = response.headers.get("location");
+        if (response.status >= 300 && response.status < 400 && location)
+          return { value: { ok: true, url: location }, result: "ok", details };
         return {
-          value: { ok: false, reason: "unavailable" },
-          result: blocked ? "blocked" : "rate_limited",
-          retryAfterMs: retryAfterOf(response),
+          value: {
+            ok: false,
+            reason: response.status === 404 ? "not_found" : "unavailable",
+          },
+          result: response.status >= 500 ? "failed" : "ok",
           details,
         };
-      const location = response.headers.get("location");
-      if (response.status >= 300 && response.status < 400 && location)
-        return { value: { ok: true, url: location }, result: "ok", details };
-      return {
-        value: {
-          ok: false,
-          reason: response.status === 404 ? "not_found" : "unavailable",
-        },
-        result: response.status >= 500 ? "failed" : "ok",
-        details,
-      };
-    } catch (error) {
-      details.error = errorText(error);
-      return {
-        value: { ok: false, reason: "unavailable" },
-        result: "failed",
-        details,
-      };
-    }
-  });
+      } catch (error) {
+        details.error = errorText(error);
+        return {
+          value: { ok: false, reason: "unavailable" },
+          result: "failed",
+          details,
+        };
+      }
+    },
+    { first: true },
+  );
   if (!read.ok)
     throw new SourceUnavailableError(
       read.reason,
@@ -192,6 +200,7 @@ async function readHtml(
   kind: "collection" | "film" = "collection",
   nextPageUrl?: string,
   page: { diary?: boolean } = {},
+  permit: PermitOptions = {},
 ) {
   if (!isProviderEnabled("letterboxd"))
     throw new SourceUnavailableError("disabled", "Letterboxd is turned off");
@@ -280,7 +289,7 @@ async function readHtml(
         details,
       };
     }
-  });
+  }, permit);
   if (!read.ok)
     throw new SourceUnavailableError(
       read.reason,
@@ -293,7 +302,16 @@ function pagePath(base: string, page: number) {
   return page === 1 ? base : `${base}page/${page}/`;
 }
 
-async function readPage(base: string, page: number, forceRefresh = false) {
+/**
+ * One page of a Source list, from the shared cache or Letterboxd. `restMs`
+ * estimates the rest of the read after this page.
+ */
+async function readPage(
+  base: string,
+  page: number,
+  forceRefresh = false,
+  restMs = 0,
+) {
   const path = pagePath(base, page);
   const key = `providers/letterboxd/pages-v1/${createHash("sha256").update(path).digest("hex")}.json`;
   const options = { diary: isDiaryPath(base) };
@@ -307,6 +325,7 @@ async function readPage(base: string, page: number, forceRefresh = false) {
           "collection",
           `https://letterboxd.com${pagePath(base, page + 1)}`,
           options,
+          { first: page === 1, restMs },
         ),
         options,
       );
@@ -314,6 +333,7 @@ async function readPage(base: string, page: number, forceRefresh = false) {
         films: parsed.films,
         complete: parsed.next === null,
         title: parsed.title,
+        ...(parsed.pages ? { pages: parsed.pages } : {}),
       };
     },
     forceRefresh,
@@ -330,8 +350,34 @@ async function fetchSource(
   const films = new Map<string, LetterboxdFilm>();
   const signatures = new Set<string>();
   let complete = false;
+  let interrupted = false;
+  // Known from the pagination after the first page, for the queue estimate.
+  let pages: number | null = null;
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const result = await readPage(base, page, ctx.forceRefresh);
+    const rest =
+      pages === null ? 0 : Math.max(0, Math.min(pages, MAX_PAGES) - page);
+    let result: Awaited<ReturnType<typeof readPage>>;
+    try {
+      result = await readPage(
+        base,
+        page,
+        ctx.forceRefresh,
+        rest * PAGE_ESTIMATE_MS,
+      );
+    } catch (error) {
+      // The queue is long: keep the pages read so far when the caller can
+      // serve them. The next read resumes from the cached pages.
+      if (
+        page > 1 &&
+        error instanceof LetterboxdBusyError &&
+        currentReadQueue().partial
+      ) {
+        interrupted = true;
+        break;
+      }
+      throw error;
+    }
+    pages ??= result.pages ?? null;
     // A diary repeats a film on each viewing, so two pages can list the same
     // films; their watch dates still tell the pages apart.
     const signature = result.films
@@ -368,6 +414,7 @@ async function fetchSource(
   else if (ref.endsWith("/watchlist")) ordered.reverse();
   return {
     complete,
+    ...(interrupted ? { interrupted } : {}),
     entries: ordered.map((film) => ({
       title: film.title,
       year: film.year,
@@ -417,6 +464,7 @@ const filmLinksStrategy: ResolverStrategy = {
 export const letterboxdProvider: ProviderAdapter = {
   id: "letterboxd",
   freshnessMs: LETTERBOXD_FRESHNESS_MS,
+  queuedReads: true,
   async validateSource(ref) {
     await assertLetterboxdNotHalted();
     const resolved = await resolveRef(ref);

@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import type { InferResponseType } from "hono/client";
 import { toast } from "sonner";
 import { Loader2, Plug } from "lucide-react";
 import {
@@ -17,9 +18,12 @@ import type {
   SourceNoun,
   SourceProblemReason,
 } from "@stremlist/shared/source-problems";
+import { useNow } from "@/hooks/useNow";
 import type { AccountAccess } from "@/lib/account-config";
 import { api } from "@/lib/api";
 import { detectedLinkHint, PASTE_LINK_PROMPT } from "@/lib/list-sources";
+import { queueLabel, queueWait, retryDelay } from "@/lib/provider-queue";
+import type { QueueWait } from "@/lib/provider-queue";
 import { cn } from "@/lib/utils";
 
 export interface ResolvedLink {
@@ -38,6 +42,8 @@ type LinkProblem = {
 };
 
 type LinkProblemReason = SourceProblemReason | "unrecognized";
+
+type ResolveAnswer = InferResponseType<typeof api.links.resolve.$post>;
 
 /** Turn a `/links/resolve` refusal into a message and a next step. */
 function describeLinkProblem(
@@ -111,7 +117,16 @@ export default function LinkPaste({
   const [value, setValue] = useState(initialValue ?? "");
   const [resolving, setResolving] = useState(false);
   const [problem, setProblem] = useState<LinkProblem | null>(null);
+  // Set while the check waits in the Provider's queue (Letterboxd).
+  const [queue, setQueue] = useState<QueueWait | null>(null);
   const autoSubmitted = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const detected = parseSourceLink(value);
   const detectedProvider = detected?.provider ?? null;
@@ -147,11 +162,26 @@ export default function LinkPaste({
 
     setResolving(true);
     try {
-      const res = await api.links.resolve.$post({
-        json: { input: trimmed, accountKey: accountKey ?? undefined },
-      });
-      if (!res.ok) throw new Error("resolve failed");
-      const body = await res.json();
+      let ticket: string | undefined;
+      let wait: QueueWait | null = null;
+      let body: ResolveAnswer;
+      // A queued answer keeps the place in the queue: ask again with its
+      // ticket when the queue says so.
+      for (;;) {
+        const res = await api.links.resolve.$post({
+          json: { input: trimmed, accountKey: accountKey ?? undefined, ticket },
+        });
+        if (!res.ok) throw new Error("resolve failed");
+        body = await res.json();
+        if (body.ok || body.reason !== "queued") break;
+        wait = queueWait(body, Date.now(), wait);
+        setQueue(wait);
+        ticket = body.ticket ?? undefined;
+        const delay = retryDelay(body.retryMs);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        if (!mounted.current) return;
+      }
+      setQueue(null);
       if (!body.ok) {
         setProblem(
           describeLinkProblem(
@@ -174,6 +204,7 @@ export default function LinkPaste({
     } catch {
       toast.error("Could not check this link. Please try again in a moment.");
     } finally {
+      setQueue(null);
       setResolving(false);
     }
   };
@@ -225,10 +256,14 @@ export default function LinkPaste({
         <button
           type="submit"
           disabled={disabled || resolving || !value.trim()}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-black transition-[opacity,scale] duration-150 active:scale-[0.97] disabled:opacity-30"
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-black transition-[opacity,scale] duration-150 active:scale-[0.97]",
+            // A check in progress stays readable: it can show the queue state.
+            resolving ? "disabled:opacity-80" : "disabled:opacity-30",
+          )}
         >
           {resolving && <Loader2 className="size-4 animate-spin" />}
-          {resolving ? "Checking" : "Add"}
+          {resolving ? <CheckingLabel queue={queue} /> : "Add"}
         </button>
       </form>
       <p
@@ -275,5 +310,13 @@ export default function LinkPaste({
         </div>
       )}
     </div>
+  );
+}
+
+/** "Checking", or the queue state while the check waits its turn. */
+function CheckingLabel({ queue }: { queue: QueueWait | null }) {
+  const now = useNow();
+  return (
+    <span className="tabular-nums">{queueLabel(queue, now) ?? "Checking"}</span>
   );
 }

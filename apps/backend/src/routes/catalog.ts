@@ -1,4 +1,5 @@
 import type { TitleType } from "@stremlist/shared/constants";
+import { queuedCatalogCopy } from "@stremlist/shared/provider-queue";
 import {
   sourceProblemCopy,
   storedSourceNoun,
@@ -35,6 +36,24 @@ function buildUnavailableMeta(
     type,
     name: `⚠️ ${title}`,
     description: fix,
+    poster: null,
+    posterShape: "poster",
+    genres: [],
+  };
+}
+
+// The card of a List that the Provider's queue holds back: the read goes on
+// in the background and the List shows in a few minutes.
+function buildQueuedMeta(
+  error: ListUnavailableError,
+  type: TitleType,
+): StremioMeta {
+  const { title, description } = queuedCatalogCopy(error.provider);
+  return {
+    id: `stremlist:queued:${error.provider}`,
+    type,
+    name: title,
+    description,
     poster: null,
     posterShape: "poster",
     genres: [],
@@ -158,16 +177,26 @@ async function serveCatalog(c: Context) {
     // return 200 with an informational card so Stremio shows the user *why* the
     // catalog is empty instead of a 500 it would retry-storm — that retry storm
     // on private watchlists was the dominant prod error flood.
-    if (err instanceof ListUnavailableError && err.reason !== "unavailable") {
+    // A List that waits in the Provider's queue (a busy Letterboxd, or a
+    // slowdown after a 429) shows soon: say so instead of a 500.
+    if (
+      err instanceof ListUnavailableError &&
+      (err.queued || err.reason !== "unavailable")
+    ) {
       console.warn(
-        `Catalog unavailable for ${accountKey} (${err.reason}): ${requestedType}/${catalogId}`,
+        `Catalog unavailable for ${accountKey} (${err.queued ? "queued" : err.reason}): ${requestedType}/${catalogId}`,
       );
       // Informational cards explain empty catalogs, but aren't search matches.
       if (catalogExtra(c).has("search")) {
         return c.json({ metas: [] });
       }
+      const type = requestedType as TitleType;
       return c.json({
-        metas: [buildUnavailableMeta(err, requestedType as TitleType)],
+        metas: [
+          err.queued
+            ? buildQueuedMeta(err, type)
+            : buildUnavailableMeta(err, type),
+        ],
       });
     }
 

@@ -71,6 +71,7 @@ const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
     failure_reason: null,
     failing_since: null,
   }),
+  list_read_queue: () => ({ updated_at: now() }),
   oauth_states: () => ({ created_at: now() }),
   title_id_map: () => ({
     imdb_id: null,
@@ -85,6 +86,7 @@ export const UNIQUE_KEYS: Partial<Record<string, string[][]>> = {
   lists: [["id"], ["account_id", "provider", "source_ref"]],
   connections: [["account_id", "provider"]],
   list_sync_status: [["list_id", "provider", "source_ref"]],
+  list_read_queue: [["list_id", "provider", "source_ref"]],
   oauth_states: [["state"]],
   title_id_map: [["namespace", "external_id"]],
 };

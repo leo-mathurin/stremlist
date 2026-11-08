@@ -16,6 +16,8 @@ vi.mock("../lib/r2", async () => {
 vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 
 import app from "../index.js";
+import { LetterboxdBusyError } from "../providers/letterboxd-gate";
+import { currentReadQueue } from "../providers/read-priority";
 import { resetPreviewReadings } from "../services/list-preview";
 import {
   movie,
@@ -97,6 +99,46 @@ describe("POST /lists/preview", () => {
         }) as unknown,
       }),
     );
+  });
+
+  it("answers with the queue state while a Source list waits for Letterboxd, then previews with the same ticket", async () => {
+    const ticket = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
+    const tickets: (string | null)[] = [];
+    const fetchSource = vi.fn(() => {
+      tickets.push(currentReadQueue().ticket);
+      return tickets.length === 1
+        ? Promise.reject(
+            new LetterboxdBusyError(40_000, { retryMs: 15_000, ticket }),
+          )
+        : Promise.resolve({
+            entries: [
+              { imdbId: TITLE.id, type: "movie" as const, meta: TITLE },
+            ],
+            complete: true,
+          });
+    });
+    useFakeProvider(fakeAdapter("letterboxd", { fetchSource }));
+    const trakt = traktReader();
+    const list = {
+      provider: "letterboxd",
+      sourceRef: "users/alice/watchlist",
+      mergedSources: [{ provider: "trakt", sourceRef: "users/a/watchlist" }],
+    };
+
+    const queued = await preview(list);
+    expect(await queued.json()).toEqual({
+      ok: false,
+      reason: "queued",
+      provider: "letterboxd",
+      waitMs: 40_000,
+      retryMs: 15_000,
+      ticket,
+    });
+    const ready = await preview({ ...list, ticket });
+    expect(await ready.json()).toMatchObject({ ok: true, titleCount: 1 });
+    expect(tickets).toEqual([null, ticket]);
+    // The Source list that was read is not read again.
+    expect(trakt).toHaveBeenCalledTimes(1);
   });
 
   it("refuses more than five Source lists, like a save", async () => {

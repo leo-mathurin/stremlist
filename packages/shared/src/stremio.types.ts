@@ -71,6 +71,12 @@ export interface AccountSyncSnapshot {
   /** Sync status of each Source list of each List. */
   syncStatus: ListSyncStatuses;
   connections: ConnectionSummary[];
+  /**
+   * The Lists whose read waits in a Provider's queue (Letterboxd), by List
+   * ID: the Provider, and when the read should end (ISO date). Lists that do
+   * not wait are left out. Absent in an answer of an older backend.
+   */
+  readQueue?: Record<string, { provider: ProviderId; readyAt: string }>;
 }
 
 export interface AccountConfigResponse extends AccountSyncSnapshot {

@@ -130,6 +130,7 @@ describe("prewarmLists", () => {
           rpdbApiKey: null,
           allowConnection: true,
           policy: "prewarm",
+          queueDeadline: expect.any(Number) as unknown,
         },
       );
     }

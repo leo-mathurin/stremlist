@@ -3,8 +3,13 @@ import type { ProviderId, SourceId } from "@stremlist/shared/providers";
 import { sourceRequiresConnection } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
-import type { ReadPriority } from "../providers/read-priority";
-import { withReadPriority } from "../providers/read-priority";
+import { scheduleBackgroundTask } from "../lib/background";
+import type {
+  QueuePolicy,
+  ReadPriority,
+  ReadQueue,
+} from "../providers/read-priority";
+import { readQueue, withReadPriority } from "../providers/read-priority";
 import { getProvider, isProviderEnabled } from "../providers/registry";
 import type {
   ProviderAdapter,
@@ -14,6 +19,7 @@ import type {
 } from "../providers/types";
 import {
   ConnectionExpiredError,
+  SourceBusyError,
   SourceUnavailableError,
 } from "../providers/types";
 import { enrichTitles } from "../titles/enrich";
@@ -46,6 +52,7 @@ import {
   toStremioMeta,
   withLinkBack,
 } from "./merged-lists";
+import { listReadQueueMark } from "./read-queue";
 import type { RefreshOutcome } from "./sync-status";
 import { recordRefreshOutcome } from "./sync-status";
 
@@ -54,6 +61,14 @@ import { recordRefreshOutcome } from "./sync-status";
  * instead of after the Provider's usual freshness.
  */
 const RESUME_RESOLUTION_MS = 2 * 60_000;
+/**
+ * A Stremio request waits at most this long for a Catalog that it does not
+ * have from a queued Provider (Letterboxd). The read goes on in the
+ * background.
+ */
+const CATALOG_WAIT_MS = 10_000;
+/** How long the background read after a Stremio request may wait its turn. */
+const CONTINUATION_WAIT_MS = 200_000;
 
 /**
  * Thrown when a List cannot be served at all: the Provider read failed and no
@@ -64,13 +79,24 @@ export class ListUnavailableError extends Error {
   readonly reason: SourceProblemReason;
   readonly provider: ProviderId;
   readonly sourceRef: string;
+  /**
+   * The Provider's request queue is long and the read goes on in the
+   * background: the List shows soon.
+   */
+  readonly queued: boolean;
 
-  constructor(source: SourceId, reason: SourceProblemReason, message: string) {
+  constructor(
+    source: SourceId,
+    reason: SourceProblemReason,
+    message: string,
+    { queued = false } = {},
+  ) {
     super(message);
     this.name = "ListUnavailableError";
     this.reason = reason;
     this.provider = source.provider;
     this.sourceRef = source.sourceRef;
+    this.queued = queued;
   }
 }
 
@@ -92,6 +118,8 @@ interface ReadRules {
   marksAccount: boolean;
   /** Time the ID resolver may spend on entries without an IMDb ID. */
   resolveBudgetMs: number;
+  /** How an interactive read waits in a Provider queue (Letterboxd). */
+  queue: QueuePolicy;
 }
 
 const READ_POLICIES: Record<ReadPolicy, ReadRules> = {
@@ -101,6 +129,8 @@ const READ_POLICIES: Record<ReadPolicy, ReadRules> = {
     noCacheFallback: false,
     marksAccount: true,
     resolveBudgetMs: DEFAULT_RESOLVE_BUDGET_MS,
+    // Leaves time for ID resolution within the 10 s that Stremio waits.
+    queue: { maxWaitMs: 8_000, partial: true },
   },
   // A background read after a save or a new Connection: it can resolve more
   // of a big cold list. Kept short because a catalog request for the same
@@ -110,6 +140,7 @@ const READ_POLICIES: Record<ReadPolicy, ReadRules> = {
     noCacheFallback: false,
     marksAccount: false,
     resolveBudgetMs: 25_000,
+    queue: { maxWaitMs: 120_000, partial: true },
   },
   // The "Refresh now" button. The route marks the Account itself, once.
   manual: {
@@ -117,6 +148,7 @@ const READ_POLICIES: Record<ReadPolicy, ReadRules> = {
     noCacheFallback: true,
     marksAccount: false,
     resolveBudgetMs: DEFAULT_RESOLVE_BUDGET_MS,
+    queue: { maxWaitMs: 10_000 },
   },
 };
 
@@ -131,6 +163,8 @@ export interface ListRead {
    */
   allowConnection: boolean;
   policy: ReadPolicy;
+  /** No read waits in a Provider queue past this time (epoch ms). */
+  queueDeadline?: number;
 }
 
 /** The List fields that a read needs. */
@@ -147,12 +181,18 @@ interface SourceRead extends Omit<ListRead, "sort" | "rpdbApiKey"> {
   cacheKey: string;
   /** Interactive unless a cached Catalog can be served meanwhile. */
   priority?: ReadPriority;
+  /** Overrides of the policy's queue rules, such as a kept ticket. */
+  queue?: Partial<QueuePolicy>;
 }
 
 interface FreshList {
   data: SourceCatalogData;
   cachedAt: Date;
   generation: string | null;
+  /** The read stopped early in the Provider's queue: it must go on soon. */
+  interrupted: boolean;
+  /** The read's place in the Provider's queue, for the read that goes on. */
+  ticket: string | null;
 }
 
 interface InFlightRefresh {
@@ -311,12 +351,49 @@ function freshnessOf(adapter: ProviderAdapter, sourceRef: string): number {
   return adapter.freshnessFor?.(sourceRef) ?? adapter.freshnessMs;
 }
 
+/**
+ * Read a Source list and cache its Catalog. An interactive read waits in
+ * the Provider's queue by the rules of its policy.
+ */
 async function fetchAndCacheList(
   read: SourceRead,
   signal: AbortSignal,
 ): Promise<FreshList> {
+  const rules = READ_POLICIES[read.policy];
+  // A background read after a save shows its queue estimate on the
+  // configure page.
+  const mark =
+    read.policy === "prewarm"
+      ? listReadQueueMark({ ...read.source, listId: read.listId })
+      : null;
+  const policy = { ...rules.queue, ...read.queue };
+  const queue = readQueue({
+    ...policy,
+    maxWaitMs: Math.min(
+      policy.maxWaitMs,
+      Math.max(0, (read.queueDeadline ?? Infinity) - Date.now()),
+    ),
+    onQueued: mark
+      ? (waitMs) => {
+          mark.queued(waitMs);
+        }
+      : undefined,
+  });
+  try {
+    return await readAndCacheList(read, signal, queue);
+  } finally {
+    await mark?.done();
+  }
+}
+
+async function readAndCacheList(
+  read: SourceRead,
+  signal: AbortSignal,
+  queue: ReadQueue,
+): Promise<FreshList> {
   const { source, cacheKey } = read;
   const adapter = getProvider(source.provider);
+  const rules = READ_POLICIES[read.policy];
   let connection: OwnedConnectionAccess | null = null;
   // A read that a newer one replaced leaves no trace.
   const record = async (outcome: RefreshOutcome) => {
@@ -345,19 +422,24 @@ async function fetchAndCacheList(
       read.allowConnection ? read.accountId : null,
     );
     connection = ctx.connection;
-    built = await withReadPriority(read.priority ?? "interactive", () =>
-      buildCatalog(
-        adapter,
-        {
-          ...source,
-          cacheKey,
-          resolveBudgetMs: READ_POLICIES[read.policy].resolveBudgetMs,
-        },
-        read.policy === "manual" ? { ...ctx, forceRefresh: true } : ctx,
-      ),
+    built = await withReadPriority(
+      read.priority ?? "interactive",
+      () =>
+        buildCatalog(
+          adapter,
+          {
+            ...source,
+            cacheKey,
+            resolveBudgetMs: rules.resolveBudgetMs,
+          },
+          read.policy === "manual" ? { ...ctx, forceRefresh: true } : ctx,
+        ),
+      queue,
     );
   } catch (error) {
-    await record({ kind: "failed", problem: sourceProblemReason(error) });
+    // A read that waits its turn has not failed: the List keeps its status.
+    if (!(error instanceof SourceBusyError))
+      await record({ kind: "failed", problem: sourceProblemReason(error) });
     throw error;
   }
 
@@ -366,10 +448,13 @@ async function fetchAndCacheList(
   }
   const { data, deferred } = built;
   const cachedAt = new Date();
-  if (signal.aborted) return { data, cachedAt, generation: null };
-  // Back-date the cache so the next request resumes resolution soon.
+  const interrupted = built.snapshot.interrupted === true;
+  const resume = { interrupted, ticket: queue.ticket };
+  if (signal.aborted) return { data, cachedAt, generation: null, ...resume };
+  // Back-date the cache so the next request resumes resolution, or a read
+  // that stopped in the Provider's queue, soon.
   const storedAt =
-    deferred > 0
+    deferred > 0 || interrupted
       ? new Date(
           cachedAt.getTime() -
             Math.max(
@@ -405,7 +490,7 @@ async function fetchAndCacheList(
       { startedAt, connectionUser: connection?.username ?? null },
     );
   }
-  return { data, cachedAt, generation };
+  return { data, cachedAt, generation, ...resume };
 }
 
 /**
@@ -418,13 +503,13 @@ async function fetchAndCacheList(
 function refreshList(
   read: SourceRead,
   { supersede = false } = {},
-): Promise<FreshList> {
+): InFlightRefresh {
   // The source is part of the key: a read started before an edit of the List
   // must not answer for its new Source list.
   const key = `${read.cacheKey}:${read.source.provider}:${read.source.sourceRef}:${read.allowConnection ? "c" : "p"}`;
   const existing = inFlightRefreshes.get(key);
   const revalidate = read.policy === "manual" && existing?.policy !== "manual";
-  if (existing && !supersede && !revalidate) return existing.promise;
+  if (existing && !supersede && !revalidate) return existing;
   existing?.controller.abort();
 
   const controller = new AbortController();
@@ -444,7 +529,55 @@ function refreshList(
     if (inFlightRefreshes.get(key) === refresh) inFlightRefreshes.delete(key);
   };
   void refresh.promise.then(clear, clear);
-  return refresh.promise;
+  return refresh;
+}
+
+/**
+ * After a Stremio read that stopped in the Provider's queue, go on in the
+ * background with the same place in the queue, so the List is complete in a
+ * few minutes. Only a Stremio read goes on; a read that joined one does not
+ * start another.
+ */
+function continueInBackground(read: SourceRead, refresh: InFlightRefresh) {
+  if (refresh.policy !== "catalog") return;
+  scheduleBackgroundTask(async () => {
+    const stopped = await refresh.promise.then(
+      (fresh) => (fresh.interrupted ? { ticket: fresh.ticket } : null),
+      (error: unknown) =>
+        error instanceof SourceBusyError ? { ticket: error.ticket } : null,
+    );
+    if (!stopped) return;
+    try {
+      await refreshList({
+        ...read,
+        policy: "prewarm",
+        priority: "interactive",
+        queue: { maxWaitMs: CONTINUATION_WAIT_MS, ticket: stopped.ticket },
+      }).promise;
+    } catch (error) {
+      console.warn(
+        `The background read of list ${read.cacheKey} (${read.source.provider}) stopped:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  });
+}
+
+/** A Stremio request stops waiting for a read after `ms`. */
+async function within<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new SourceBusyError(ms, {}, "The read goes on"));
+        }, ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function contentGeneration(listId: string, data: SourceCatalogData): string {
@@ -494,6 +627,8 @@ async function readSourceCatalog(read: SourceRead): Promise<SourceCatalog> {
   const rules = READ_POLICIES[read.policy];
   const adapter = getProvider(source.provider);
   const freshnessMs = freshnessOf(adapter, source.sourceRef);
+  // A Stremio request for a Provider that queues its reads waits less.
+  const queued = adapter.queuedReads === true && read.policy === "catalog";
   // A stale Catalog that can still be served makes the read a background one.
   let servable = false;
   if (!rules.forceFresh) {
@@ -508,13 +643,33 @@ async function readSourceCatalog(read: SourceRead): Promise<SourceCatalog> {
     ) {
       return { data: cached.data, generation: cached.generation, readAt: null };
     }
+    // Serve the stale Catalog at once and read in the background.
+    if (cached && servable && queued) {
+      const refresh = refreshList({ ...read, priority: "background" });
+      scheduleBackgroundTask(() =>
+        refresh.promise.catch((error: unknown) => {
+          // A busy Provider refuses background reads: the next request tries again.
+          if (error instanceof SourceBusyError) return;
+          console.warn(
+            `Refreshing list ${cacheKey} (${source.provider}) in the background failed:`,
+            error instanceof Error ? error.message : error,
+          );
+        }),
+      );
+      await markAccountFetched(read.accountId, "last_cache_served_at");
+      return { data: cached.data, generation: cached.generation, readAt: null };
+    }
   }
 
   try {
-    const fresh = await refreshList({
+    const refresh = refreshList({
       ...read,
       priority: servable ? "background" : "interactive",
     });
+    if (queued) continueInBackground(read, refresh);
+    const fresh = await (queued
+      ? within(refresh.promise, CATALOG_WAIT_MS)
+      : refresh.promise);
     return {
       data: fresh.data,
       generation: fresh.generation ?? contentGeneration(cacheKey, fresh.data),
@@ -522,7 +677,8 @@ async function readSourceCatalog(read: SourceRead): Promise<SourceCatalog> {
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(
+    // Waiting in a Provider's queue is expected, not an error.
+    (error instanceof SourceBusyError ? console.warn : console.error)(
       `Reading list ${cacheKey} (${source.provider}) failed, trying cache:`,
       message,
     );
@@ -561,6 +717,7 @@ async function readSourceCatalog(read: SourceRead): Promise<SourceCatalog> {
       source,
       sourceProblemReason(error),
       `Failed to read list ${cacheKey} and no cache available: ${message}`,
+      { queued: error instanceof SourceBusyError },
     );
   }
 }
@@ -587,6 +744,7 @@ export async function getListCatalog(
         listId: list.id,
         source: { provider: source.provider, sourceRef: source.sourceRef },
         cacheKey,
+        queueDeadline: read.queueDeadline,
       }),
     ),
   );
@@ -729,7 +887,7 @@ export async function rereadConnectionLists(
             policy: "prewarm",
           },
           { supersede: true },
-        );
+        ).promise;
       } catch (error) {
         console.error(
           `Failed to refresh list ${cacheKey} after connecting ${provider}:`,

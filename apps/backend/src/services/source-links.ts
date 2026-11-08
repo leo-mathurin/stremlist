@@ -1,16 +1,39 @@
+import { QUEUE_STATE_MIN_MS } from "@stremlist/shared/provider-queue";
+import type { QueuedAnswer } from "@stremlist/shared/provider-queue";
 import {
   PROVIDERS,
   parseSourceLink,
   sourceRequiresConnection,
 } from "@stremlist/shared/providers";
+import type { ProviderId } from "@stremlist/shared/providers";
 import { mayReadProvider } from "../providers/availability";
+import { readQueue, withReadPriority } from "../providers/read-priority";
 import { getProvider } from "../providers/registry";
 import {
   ConnectionExpiredError,
+  SourceBusyError,
   SourceUnavailableError,
 } from "../providers/types";
 import type { AccountAccess } from "./accounts";
 import { getConnectionAccess } from "./connections";
+
+/** A check waits this long at most in the Provider's queue. */
+const CHECK_WAIT_MS = 10_000;
+
+/** The answer of a read that waits its turn in the Provider's queue. */
+export function queuedAnswer(
+  error: SourceBusyError,
+  provider: ProviderId,
+): QueuedAnswer {
+  return {
+    ok: false,
+    reason: "queued",
+    provider,
+    waitMs: error.waitMs,
+    retryMs: error.retryMs ?? Math.min(error.waitMs, 5_000),
+    ticket: error.ticket,
+  };
+}
 
 /**
  * Detect the Provider behind a pasted link and check that its Source list
@@ -18,11 +41,13 @@ import { getConnectionAccess } from "./connections";
  * list that only a Connection can read needs one. Only a private Addon URL
  * reads through a Connection (ADR 0001); without `access`, only public
  * Source lists resolve. Expected refusals come back as a reason, never as an
- * error.
+ * error. When the Provider's queue is long (3 s or more), the answer is the
+ * queue state: ask again with its `ticket` to keep the place.
  */
 export async function resolveSourceLink(
   input: string,
   access: AccountAccess | null,
+  ticket: string | null = null,
 ) {
   const parsed = parseSourceLink(input);
   if (!parsed) {
@@ -50,9 +75,15 @@ export async function resolveSourceLink(
   if (requiresConnection && !connection) return refuse("needs_connection");
 
   try {
-    const result = await getProvider(provider).validateSource(
-      parsed.sourceRef,
-      { connection },
+    const result = await withReadPriority(
+      "interactive",
+      () =>
+        getProvider(provider).validateSource(parsed.sourceRef, { connection }),
+      readQueue({
+        maxWaitMs: CHECK_WAIT_MS,
+        answerAtMs: QUEUE_STATE_MIN_MS,
+        ticket,
+      }),
     );
     if (!result.ok) return refuse(result.reason);
     return {
@@ -65,6 +96,7 @@ export async function resolveSourceLink(
       defaultDisplayMode: result.defaultDisplayMode ?? null,
     };
   } catch (error) {
+    if (error instanceof SourceBusyError) return queuedAnswer(error, provider);
     // Expected failures of the Source list: private, missing, refused.
     if (error instanceof SourceUnavailableError) return refuse(error.reason);
     if (error instanceof ConnectionExpiredError) {

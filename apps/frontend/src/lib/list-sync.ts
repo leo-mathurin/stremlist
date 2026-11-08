@@ -1,4 +1,4 @@
-import type { SourceId } from "@stremlist/shared/providers";
+import type { ProviderId, SourceId } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import type { ListSyncStatus } from "@stremlist/shared/sync-status";
 
@@ -25,9 +25,14 @@ interface MergedSourcePart {
 export type ListSyncState =
   /**
    * Not read yet, or (`reconnected`) failed for want of a Connection that the
-   * Account has again: the next read decides.
+   * Account has again: the next read decides. `queue` is set while the read
+   * waits in its Provider's queue (Letterboxd).
    */
-  | { kind: "waiting"; reconnected: boolean }
+  | {
+      kind: "waiting";
+      reconnected: boolean;
+      queue?: { provider: ProviderId; readyAt: string };
+    }
   /** `titleCount` is null when unknown, such as for a merged List. */
   | { kind: "synced"; at: string; titleCount: number | null }
   /**
