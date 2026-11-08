@@ -16,6 +16,12 @@ import {
 } from "./letterboxd-gate";
 import { parseLetterboxdPage } from "./letterboxd-page";
 import type { LetterboxdFilm } from "./letterboxd-page";
+import {
+  excerpt,
+  noteExcerpt,
+  noteResponse,
+  requestDetails,
+} from "./letterboxd-request-log";
 import type {
   ProviderAdapter,
   ProviderContext,
@@ -94,35 +100,46 @@ async function resolveShortLink(code: string): Promise<string> {
   const read = await withLetterboxdPermit<
     { ok: true; url: string } | { ok: false; reason: SourceProblemReason }
   >(async () => {
+    const details = requestDetails("short_link", `https://boxd.it/${code}`);
     try {
-      const response = await providerFetch(`https://boxd.it/${code}`, {
+      const response = await providerFetch(details.url, {
         redirect: "manual",
         timeoutMs: 10_000,
         retryOn429: false,
         headers: { Accept: "text/html" },
       });
-      await response.body?.cancel();
+      noteResponse(details, response);
       const blocked =
         response.status === 403 ||
         response.headers.get("cf-mitigated") === "challenge";
+      if (blocked || response.status === 429 || response.status >= 500)
+        noteExcerpt(details, response);
+      else await response.body?.cancel();
       if (blocked || response.status === 429)
         return {
           value: { ok: false, reason: "unavailable" },
           result: blocked ? "blocked" : "rate_limited",
           retryAfterMs: retryAfterOf(response),
+          details,
         };
       const location = response.headers.get("location");
       if (response.status >= 300 && response.status < 400 && location)
-        return { value: { ok: true, url: location }, result: "ok" };
+        return { value: { ok: true, url: location }, result: "ok", details };
       return {
         value: {
           ok: false,
           reason: response.status === 404 ? "not_found" : "unavailable",
         },
         result: response.status >= 500 ? "failed" : "ok",
+        details,
       };
-    } catch {
-      return { value: { ok: false, reason: "unavailable" }, result: "failed" };
+    } catch (error) {
+      details.error = errorText(error);
+      return {
+        value: { ok: false, reason: "unavailable" },
+        result: "failed",
+        details,
+      };
     }
   });
   if (!read.ok)
@@ -156,6 +173,12 @@ async function resolveRef(ref: string): Promise<string> {
   return ref;
 }
 
+function errorText(error: unknown): string {
+  return error instanceof Error
+    ? `${error.name}: ${error.message}`
+    : String(error);
+}
+
 /** Retry-After in milliseconds, from seconds or an HTTP date; 0 when absent. */
 function retryAfterOf(response: Response): number {
   const retryAfter = response.headers.get("retry-after");
@@ -175,6 +198,7 @@ async function readHtml(
   const read = await withLetterboxdPermit<PageRead>(async () => {
     let blocked = false;
     let retryAfterMs = 0;
+    const details = requestDetails(kind, url);
     try {
       const response = await providerFetch(url, {
         redirect: "manual",
@@ -182,12 +206,14 @@ async function readHtml(
         retryOn429: false,
         headers: { Accept: "text/html" },
       });
+      noteResponse(details, response);
       blocked =
         response.status === 403 ||
         response.headers.get("cf-mitigated") === "challenge";
       retryAfterMs = retryAfterOf(response);
       if (blocked || (response.status !== 200 && response.status < 500)) {
-        await response.body?.cancel();
+        if (blocked || response.status === 429) noteExcerpt(details, response);
+        else await response.body?.cancel();
         return {
           value: {
             ok: false,
@@ -199,6 +225,7 @@ async function readHtml(
               ? "rate_limited"
               : "ok",
           retryAfterMs,
+          details,
         };
       }
       const reader = response.body?.getReader();
@@ -214,6 +241,9 @@ async function readHtml(
           chunks.push(part.value);
         }
       } finally {
+        // Kept even when the read stops early: the first bytes explain why.
+        details.bytes = bytes;
+        details.bodyExcerpt = excerpt(Buffer.concat(chunks).toString("utf8"));
         await reader.cancel();
       }
       const html = Buffer.concat(chunks).toString("utf8");
@@ -230,6 +260,7 @@ async function readHtml(
           value: { ok: false, reason: "unavailable" },
           result: "failed",
           retryAfterMs,
+          details,
         };
       }
       return {
@@ -237,13 +268,16 @@ async function readHtml(
           ? { ok: false, reason: "unavailable" }
           : { ok: true, html },
         result: blocked ? "blocked" : "ok",
+        details,
       };
-    } catch {
+    } catch (error) {
+      details.error = errorText(error);
       // A body timeout after HTTP 200 is still a failed read, never valid empty content.
       return {
         value: { ok: false, reason: "unavailable" },
         result: blocked ? "blocked" : "failed",
         retryAfterMs,
+        details,
       };
     }
   });

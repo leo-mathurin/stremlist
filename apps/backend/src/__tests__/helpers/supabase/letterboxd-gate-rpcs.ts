@@ -257,10 +257,23 @@ function status(args: RpcArgs): Result {
   });
 }
 
+/** Same rules as public.letterboxd_record: count every request, keep some. */
+function record(args: RpcArgs): Result {
+  const request = args.p_request as Row;
+  db.getTable("letterboxd_request_counts").push({ ...request });
+  if (args.p_keep === true)
+    db.getTable("letterboxd_requests").push({
+      ...request,
+      body_excerpt: request.outcome === "ok" ? null : request.body_excerpt,
+    });
+  return ok(null);
+}
+
 export const letterboxdGateRpcs: Record<string, RpcHandler> = {
   letterboxd_take: take,
   letterboxd_report: report,
   letterboxd_gate_status: status,
+  letterboxd_record: record,
 };
 
 /** Halt a gate as if Letterboxd had refused a request. */

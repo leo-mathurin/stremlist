@@ -106,6 +106,9 @@ jobs:
       - name: Test the shared Letterboxd gate
         run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/letterboxd_gate.sql
 
+      - name: Test the Letterboxd request log
+        run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/letterboxd_request_log.sql
+
       - name: Start local R2-compatible store
         run: |
           docker run --rm -d --name stremlist-e2e-r2 \

@@ -642,6 +642,30 @@ describe("Letterboxd share links", () => {
   const provisional = "lbxshare/leom/list/best-of-2026/share/2OS5xaC1fJOBBvGv";
   beforeEach(() => vi.stubEnv("CONNECTION_ENCRYPTION_KEY", key));
 
+  it("never logs a share token in plaintext", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            '<html><link rel="canonical" href="/leom/list/best-of-2026/share/2OS5xaC1fJOBBvGv/">',
+            { status: 403 },
+          ),
+        ),
+      ),
+    );
+    await expect(
+      letterboxdProvider.validateSource(provisional, context),
+    ).rejects.toMatchObject({ reason: "unavailable" });
+    await vi.advanceTimersByTimeAsync(0);
+    const [row] = db.getTable("letterboxd_requests");
+    expect(row.url).toBe(
+      "https://letterboxd.com/leom/list/best-of-2026/share/[redacted]/",
+    );
+    expect(row.body_excerpt).toContain("/share/[redacted]/");
+    expect(JSON.stringify(row)).not.toContain("2OS5xaC1fJOBBvGv");
+  });
+
   it("encrypts the token on validate and reads the decrypted path on fetch", async () => {
     const fetch = vi.fn((url: string) => {
       expect(url).toBe(shareUrl);
@@ -1055,5 +1079,142 @@ describe("Letterboxd halt alert", () => {
     await letterboxdProvider.fetchSource(ref, context);
     await vi.advanceTimersByTimeAsync(0);
     expect(gate().haltedAt).toBeNull();
+  });
+});
+
+describe("Letterboxd request log", () => {
+  const kept = () => db.getTable("letterboxd_requests");
+  const counted = () => db.getTable("letterboxd_request_counts");
+
+  it("keeps a refused request in full, with its Cloudflare headers and body", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response("<html>Sorry, you have been blocked</html>", {
+            status: 403,
+            headers: { "cf-mitigated": "challenge", "cf-ray": "abc-FRA" },
+          }),
+        ),
+      ),
+    );
+    await expect(
+      letterboxdProvider.fetchSource(ref, context),
+    ).rejects.toMatchObject({ reason: "unavailable" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(kept()).toEqual([
+      expect.objectContaining({
+        outcome: "blocked",
+        page_kind: "collection",
+        url: "https://letterboxd.com/alice/watchlist/",
+        status: 403,
+        cf_mitigated: "challenge",
+        cf_ray: "abc-FRA",
+        priority: "interactive",
+        body_excerpt: "<html>Sorry, you have been blocked</html>",
+      }),
+    ]);
+  });
+  it("counts every successful request and keeps 1% of them, without the body", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(new Response(page([1])))),
+    );
+    const random = vi.spyOn(Math, "random").mockReturnValue(0.5);
+    await letterboxdProvider.fetchSource(ref, context);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(counted()).toHaveLength(1);
+    expect(kept()).toHaveLength(0);
+
+    random.mockReturnValue(0.001);
+    await letterboxdProvider.fetchSource("users/bob/watchlist", context);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(kept()).toEqual([
+      expect.objectContaining({
+        outcome: "ok",
+        status: 200,
+        body_excerpt: null,
+      }),
+    ]);
+    expect(kept()[0].bytes).toBeGreaterThan(0);
+  });
+  it("reports a refusal to the gate at once, even when its body stalls", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode("<html>Blocked"));
+              },
+            }),
+            { status: 403 },
+          ),
+        ),
+      ),
+    );
+    await expect(
+      letterboxdProvider.fetchSource(ref, context),
+    ).rejects.toMatchObject({ reason: "unavailable" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(gate().haltReason).toBe("blocked");
+    expect(kept()).toHaveLength(0);
+    // The log waits 3 s for the body, then keeps what arrived.
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(kept()).toEqual([
+      expect.objectContaining({
+        outcome: "blocked",
+        body_excerpt: "<html>Blocked",
+      }),
+    ]);
+  });
+  it("keeps the first bytes of a body that breaks while it is read", async () => {
+    let sent = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            new ReadableStream({
+              // The first read gets bytes, the next one breaks.
+              pull(controller) {
+                if (sent) controller.error(new Error("connection reset"));
+                else
+                  controller.enqueue(new TextEncoder().encode("<html><head>"));
+                sent = true;
+              },
+            }),
+          ),
+        ),
+      ),
+    );
+    await expect(
+      letterboxdProvider.fetchSource(ref, context),
+    ).rejects.toMatchObject({ reason: "unavailable" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(kept()).toEqual([
+      expect.objectContaining({
+        outcome: "failed",
+        body_excerpt: "<html><head>",
+      }),
+    ]);
+  });
+  it("keeps a network error with no status", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.reject(new TypeError("fetch failed"))),
+    );
+    await expect(
+      letterboxdProvider.fetchSource(ref, context),
+    ).rejects.toMatchObject({ reason: "unavailable" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(kept()).toEqual([
+      expect.objectContaining({
+        outcome: "failed",
+        status: null,
+        error: expect.stringContaining("fetch failed") as unknown,
+      }),
+    ]);
   });
 });

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { scheduleBackgroundTask } from "../lib/background";
 import { supabase } from "../lib/supabase";
+import type { LetterboxdRequestDetails } from "./letterboxd-request-log";
+import { recordLetterboxdRequest } from "./letterboxd-request-log";
 import { currentReadPriority } from "./read-priority";
 import { SourceUnavailableError } from "./types";
 
@@ -179,13 +181,16 @@ export async function withLetterboxdPermit<T>(
     value: T;
     result: LetterboxdOutcome;
     retryAfterMs?: number;
+    /** What the request saw, for the request log. */
+    details?: LetterboxdRequestDetails;
   }>,
 ): Promise<T> {
+  const priority = currentReadPriority();
   const target = letterboxdTargetRate();
   const { data, error } = await supabase.rpc("letterboxd_take", {
     p_target: target,
     p_max_wait_ms: MAX_WAIT_MS,
-    p_background: currentReadPriority() === "background",
+    p_background: priority === "background",
     p_gate: GATE,
   });
   if (error) throw unreadable();
@@ -202,14 +207,26 @@ export async function withLetterboxdPermit<T>(
   }
   let result: LetterboxdOutcome = "failed";
   let retryAfterMs = 0;
+  let details: LetterboxdRequestDetails | undefined;
+  const sentAt = performance.now();
   try {
     const response = await read();
     result = response.result;
     retryAfterMs = response.retryAfterMs ?? 0;
+    details = response.details;
     return response.value;
   } finally {
-    scheduleBackgroundTask(() =>
-      report(target, result, retryAfterMs, slot.probe),
-    );
+    const durationMs = performance.now() - sentAt;
+    scheduleBackgroundTask(async () => {
+      await report(target, result, retryAfterMs, slot.probe);
+      if (details)
+        await recordLetterboxdRequest(details, {
+          outcome: result,
+          durationMs,
+          waitMs: slot.wait_ms,
+          priority,
+          probe: slot.probe,
+        });
+    });
   }
 }
