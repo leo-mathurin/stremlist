@@ -53,6 +53,9 @@ test("Portless proxies API paths and keeps Stremio configure redirects on the fr
     mode: "test",
     logLevel: "silent",
     server: { host: "127.0.0.1", port: 0, watch: null },
+    // These tests read middleware output, not modules. A dependency scan
+    // still running at close makes vite.close() hang on a cold cache.
+    optimizeDeps: { noDiscovery: true, include: [] },
   });
   t.after(() => vite.close());
   await vite.listen();
@@ -111,6 +114,9 @@ test("public Markdown, negotiation and discovery work through the real Vite serv
     mode: "test",
     logLevel: "silent",
     server: { host: "127.0.0.1", port: 0, watch: null },
+    // These tests read middleware output, not modules. A dependency scan
+    // still running at close makes vite.close() hang on a cold cache.
+    optimizeDeps: { noDiscovery: true, include: [] },
   });
   t.after(() => vite.close());
   await vite.listen();
