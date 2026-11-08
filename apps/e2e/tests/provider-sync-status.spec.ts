@@ -153,6 +153,7 @@ test(
     expect(await syncStatus(accountId)).toEqual({
       syncStatus: { [listId]: [null] },
       connections: [NEEDS_RENEWAL],
+      readQueue: {},
     });
   },
 );
@@ -190,6 +191,7 @@ test(
         ],
       },
       connections: [NEEDS_RENEWAL],
+      readQueue: {},
     });
 
     const { callback } = await backend.authorize(accountId, "trakt");
@@ -295,6 +297,7 @@ test(
         ],
       },
       connections: [NEEDS_RENEWAL],
+      readQueue: {},
     });
 
     // A new authorization reads the private Source list again.
