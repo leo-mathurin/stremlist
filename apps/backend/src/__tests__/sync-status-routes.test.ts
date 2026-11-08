@@ -127,6 +127,7 @@ describe("sync status on the configure page", () => {
         ],
       },
       connections: [],
+      readQueue: {},
     });
   });
 

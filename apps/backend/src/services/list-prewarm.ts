@@ -7,6 +7,11 @@ import { getAccountLists } from "./accounts";
 import { getListCatalog } from "./lists";
 
 const PREWARM_CONCURRENCY = 2;
+/**
+ * How long the Lists of one prewarm may wait in Provider queues in total
+ * (Letterboxd), within the 300 s that a function may run.
+ */
+const PREWARM_QUEUE_MS = 200_000;
 const leaseSeconds = Number(process.env.PREWARM_LEASE_SECONDS);
 const PREWARM_LEASE_SECONDS =
   Number.isFinite(leaseSeconds) && leaseSeconds > 0 ? leaseSeconds : 600;
@@ -51,6 +56,7 @@ async function runPrewarmBatch(
   allowConnection: boolean,
 ): Promise<void> {
   const startedAt = performance.now();
+  const queueDeadline = Date.now() + PREWARM_QUEUE_MS;
   let prewarmed = 0;
 
   await mapWithConcurrency(lists, PREWARM_CONCURRENCY, async (list) => {
@@ -63,6 +69,7 @@ async function runPrewarmBatch(
         rpdbApiKey: null,
         allowConnection,
         policy: "prewarm",
+        queueDeadline,
       });
       prewarmed += 1;
     } catch (error) {

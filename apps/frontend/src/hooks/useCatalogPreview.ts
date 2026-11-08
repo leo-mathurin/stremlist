@@ -15,6 +15,8 @@ import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
 import { api } from "@/lib/api";
 import { previewConnectionKey } from "@/lib/connections";
 import type { ListFormRow } from "@/lib/list-form";
+import { queueWait, retryDelay } from "@/lib/provider-queue";
+import type { QueueWait } from "@/lib/provider-queue";
 
 /**
  * The Account's Connections, for the parts of the configure page that read
@@ -26,6 +28,8 @@ type PreviewBody = InferRequestType<typeof api.lists.preview.$post>["json"];
 
 type CatalogPreviewState =
   | { status: "loading" }
+  /** A Source list waits in its Provider's queue (Letterboxd). */
+  | { status: "queued"; wait: QueueWait }
   | { status: "ready"; preview: CatalogPreview; updating: boolean }
   | {
       status: "problem";
@@ -100,31 +104,41 @@ export function useCatalogPreview({
         ? { ...current, updating: true }
         : { status: "loading" },
     );
-    const timer = setTimeout(
-      () => {
-        api.lists.preview
-          .$post({ json: body })
-          .then(async (res) => {
-            if (!res.ok) throw new Error("preview failed");
-            const preview = await res.json();
-            if (cancelled) return;
-            shownSource.current = source;
-            setState(
-              preview.ok
-                ? { status: "ready", preview, updating: false }
-                : {
-                    status: "problem",
-                    reason: preview.reason,
-                    source: preview.source,
-                  },
+    let wait: QueueWait | null = null;
+    // A queued answer keeps the place in the queue: ask again with its
+    // ticket when the queue says so.
+    const ask = (ticket?: string) => {
+      api.lists.preview
+        .$post({ json: { ...body, ticket } })
+        .then(async (res) => {
+          if (!res.ok) throw new Error("preview failed");
+          const preview = await res.json();
+          if (cancelled) return;
+          if (!preview.ok && preview.reason === "queued") {
+            wait = queueWait(preview, Date.now(), wait);
+            setState({ status: "queued", wait });
+            timer = setTimeout(
+              () => ask(preview.ticket ?? undefined),
+              retryDelay(preview.retryMs),
             );
-          })
-          .catch(() => {
-            if (!cancelled) setState({ status: "error" });
-          });
-      },
-      sameSource ? SETTINGS_DEBOUNCE_MS : 0,
-    );
+            return;
+          }
+          shownSource.current = source;
+          setState(
+            preview.ok
+              ? { status: "ready", preview, updating: false }
+              : {
+                  status: "problem",
+                  reason: preview.reason,
+                  source: preview.source,
+                },
+          );
+        })
+        .catch(() => {
+          if (!cancelled) setState({ status: "error" });
+        });
+    };
+    let timer = setTimeout(() => ask(), sameSource ? SETTINGS_DEBOUNCE_MS : 0);
     return () => {
       cancelled = true;
       clearTimeout(timer);

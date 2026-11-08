@@ -210,6 +210,8 @@ export interface PreviewRequest {
   sortOption: string;
   displayMode: DisplayMode;
   catalogSettings?: CatalogSettings;
+  /** The place in a Provider's queue from a queued answer. */
+  ticket?: string;
 }
 
 /**

@@ -1,7 +1,8 @@
 /**
  * In-memory versions of the Letterboxd gate RPCs
- * (supabase/migrations/20261108120000_letterboxd_gate.sql). Same rules; the
- * SQL itself is tested by supabase/tests/letterboxd_gate.sql.
+ * (supabase/migrations/20261108120000_letterboxd_gate.sql and
+ * 20261108140000_letterboxd_queue.sql). Same rules; the SQL itself is tested
+ * by supabase/tests/letterboxd_gate.sql and letterboxd_queue.sql.
  */
 import type { RpcArgs, RpcHandler } from "./rpc";
 import type { Result, Row } from "./store";
@@ -92,11 +93,58 @@ const gateOf = (args: RpcArgs) =>
   typeof args.p_gate === "string" ? args.p_gate : "production";
 const ok = (data: unknown): Result => ({ data, error: null }) as Result;
 
-function take(args: RpcArgs): Result {
+interface Waiter {
+  id: string;
+  gate: string;
+  seq: number;
+  lane: 0 | 1;
+  waiting: boolean;
+  dueAt: number;
+  expiresAt: number;
+}
+
+/** The queue of a gate, kept in the in-memory tables so db.reset() clears it. */
+export function letterboxdWaiters(gate = "production"): Waiter[] {
+  return (db.getTable("letterboxd_waiters") as unknown as Waiter[]).filter(
+    (waiter) => waiter.gate === gate,
+  );
+}
+
+let waiterSeq = 0;
+/** A grant is reserved at most this far ahead. */
+const HORIZON_MS = 1000;
+/** A waiter later than this stops holding the turn of the others. */
+const LATE_MS = 5000;
+/** A ticket is forgotten this long after its waiter was due. */
+const GRACE_MS = 30_000;
+
+function takeTurn(args: RpcArgs): Result {
   const t = Date.now();
   const target = targetOf(args);
-  const g = lock(gateOf(args), target, t);
+  const gate = gateOf(args);
+  const priority = String(args.p_priority);
+  if (!["first", "later", "background"].includes(priority))
+    return { data: null, error: { message: "Unknown Letterboxd priority" } };
+  const g = lock(gate, target, t);
   settle(g, t, target);
+  db.delete(
+    "letterboxd_waiters",
+    (row) => row.gate === gate && (row as unknown as Waiter).expiresAt <= t,
+  );
+  const waiters = letterboxdWaiters(gate);
+  const w =
+    priority === "background" || typeof args.p_ticket !== "string"
+      ? undefined
+      : waiters.find((waiter) => waiter.id === args.p_ticket);
+  const lane = priority === "first" ? 0 : 1;
+  const goesFirst = (other: Waiter) =>
+    other.waiting &&
+    other !== w &&
+    (other.lane < lane || (other.lane === lane && (!w || other.seq < w.seq)));
+  const due = (other: Waiter) =>
+    other.dueAt <= t + HORIZON_MS && other.dueAt > t - LATE_MS;
+  let result: { status: string; wait_ms: number; probe: boolean };
+  let retryMs: number | null = null;
   if (g.haltedAt !== null) {
     if (
       g.nextProbeAt !== null &&
@@ -105,25 +153,74 @@ function take(args: RpcArgs): Result {
     ) {
       g.probeUntil = t + MINUTE;
       g.nextProbeAt = t + 30 * MINUTE;
-      return ok({ status: "granted", wait_ms: 0, probe: true });
+      result = { status: "granted", wait_ms: 0, probe: true };
+    } else {
+      result = { status: "halted", wait_ms: 0, probe: false };
     }
-    return ok({ status: "halted", wait_ms: 0, probe: false });
+  } else if (g.pausedUntil > t) {
+    const waitMs = Math.ceil(g.pausedUntil - t);
+    retryMs = waitMs;
+    result = { status: "paused", wait_ms: waitMs, probe: false };
+  } else if (priority === "background") {
+    if (
+      g.tokens >= 1 &&
+      !waiters.some((other) => other.waiting && due(other))
+    ) {
+      g.tokens -= 1;
+      result = { status: "granted", wait_ms: 0, probe: false };
+    } else {
+      const queued = waiters.filter((other) => other.waiting).length;
+      result = {
+        status: "queued",
+        wait_ms: Math.ceil(
+          (Math.max(queued + 1 - g.tokens, 1) / g.rate) * 1000,
+        ),
+        probe: false,
+      };
+    }
+  } else {
+    const ahead = waiters.filter((other) => goesFirst(other) && due(other));
+    if (ahead.length < Math.floor(g.tokens + (g.rate * HORIZON_MS) / 1000)) {
+      const waitMs = Math.max(0, Math.ceil(((1 - g.tokens) / g.rate) * 1000));
+      g.tokens -= 1;
+      if (w)
+        Object.assign(w, { waiting: false, dueAt: t, expiresAt: t + MINUTE });
+      result = { status: "granted", wait_ms: waitMs, probe: false };
+    } else {
+      const queued = waiters.filter(goesFirst).length;
+      const waitMs = Math.ceil(
+        (Math.max(queued + 1 - g.tokens, 1) / g.rate) * 1000,
+      );
+      retryMs = Math.min(Math.max(waitMs - HORIZON_MS, 250), 15_000);
+      result = { status: "queued", wait_ms: waitMs, probe: false };
+    }
   }
-  if (g.pausedUntil > t)
-    return ok({
-      status: "paused",
-      wait_ms: Math.ceil(g.pausedUntil - t),
-      probe: false,
-    });
-  if (g.tokens >= 1) {
-    g.tokens -= 1;
-    return ok({ status: "granted", wait_ms: 0, probe: false });
+  let ticket = w?.id ?? null;
+  if (retryMs !== null && priority !== "background") {
+    const dueAt = t + retryMs;
+    if (w) {
+      Object.assign(w, {
+        lane,
+        waiting: true,
+        dueAt,
+        expiresAt: dueAt + GRACE_MS,
+      });
+    } else {
+      ticket = crypto.randomUUID();
+      const waiter: Waiter = {
+        id: ticket,
+        gate,
+        seq: ++waiterSeq,
+        lane,
+        waiting: true,
+        dueAt,
+        expiresAt: dueAt + GRACE_MS,
+      };
+      db.getTable("letterboxd_waiters").push(waiter as unknown as Row);
+    }
+    return ok({ ...result, retry_ms: retryMs, ticket });
   }
-  const waitMs = Math.ceil(((1 - g.tokens) / g.rate) * 1000);
-  if (args.p_background === true || waitMs > Number(args.p_max_wait_ms))
-    return ok({ status: "queued", wait_ms: waitMs, probe: false });
-  g.tokens -= 1;
-  return ok({ status: "granted", wait_ms: waitMs, probe: false });
+  return ok({ ...result, ticket });
 }
 
 function report(args: RpcArgs): Result {
@@ -270,7 +367,7 @@ function record(args: RpcArgs): Result {
 }
 
 export const letterboxdGateRpcs: Record<string, RpcHandler> = {
-  letterboxd_take: take,
+  letterboxd_take_turn: takeTurn,
   letterboxd_report: report,
   letterboxd_gate_status: status,
   letterboxd_record: record,

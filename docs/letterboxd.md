@@ -24,23 +24,45 @@ IMDb resolution first uses exact [Wikidata Letterboxd IDs](https://www.wikidata.
 
 Parsed public pages live in R2 under `providers/letterboxd/pages-v1/`. They are shared between Accounts and remain fresh for six hours. Conditional writes give one worker the page lease. A manual Refresh now waits for an older in-process refresh to settle, then revalidates the pages. It does not join an ordinary cached read or wait for the six-hour expiry. Catalog metadata, stale fallback, sync status and detection history use the existing List pipeline.
 
-The `public.letterboxd_gate` row in Postgres coordinates outbound requests across instances (`supabase/migrations/20261108120000_letterboxd_gate.sql`). R2 allows one write per second per object, which capped the previous R2 gate near 0.5 request/s. The gate is a token bucket:
+The `public.letterboxd_gate` row in Postgres coordinates outbound requests across instances (`supabase/migrations/20261108120000_letterboxd_gate.sql`). R2 allows one write per second per object, which capped the previous R2 gate near 0.5 request/s. The gate is a token bucket with a fair queue in front of it (`public.letterboxd_take_turn`, `supabase/migrations/20261108140000_letterboxd_queue.sql`):
 
-- It refills at the target rate, `LETTERBOXD_MAX_RPS` (default 10 requests/s), and holds one second of tokens. Requests run in parallel.
-- An interactive read (a new List, a Catalog with no cache to serve, a Refresh, a link check) reserves the next slot and waits for it, up to 10 seconds. A background read (a Catalog with a stale cache that is served if the read is refused) only takes a free token and never queues ahead of someone waiting. A refused read raises `LetterboxdBusyError` with the estimated wait.
+- It refills at the target rate, `LETTERBOXD_MAX_RPS` (default 10 requests/s; production uses 40), and holds one second of tokens. Requests run in parallel.
+- There are three priorities. The first page of an interactive read goes first, then the later pages of interactive reads, then background reads. An interactive read is a new List, a link check, a preview, a Catalog with no cache to serve, or a Refresh. A background read refreshes a stale Catalog that Stremio already gets.
+- A grant is reserved at most one second ahead. So the first page of a new List never waits behind more than one second of later pages, even when big lists fill the queue.
+- A read that must wait gets a ticket: its place in the queue. The read keeps the ticket across retries and across its pages, so a waiting user does not go behind the reads that arrived after them. The queue tells the read when to ask again. A waiter that is due holds its turn against the waiters behind it. A waiter more than 5 s late stops holding the turn of the others, so a closed tab does not block the queue. Its ticket is forgotten 30 s after it was due.
+- Each answer estimates when the read will be sent. A read that cannot wait that long raises `LetterboxdBusyError` with the estimate and the ticket. A background read only takes a free token when no waiter is due, and never waits.
 - A request reserved more than one second ahead checks the gate again before it is sent, so a slowdown that started meanwhile stops it.
 - Storage failure denies new sends.
+
+`letterboxd_take`, the call without a queue, stays for the backend instances that still call it during a deploy. It uses the same bucket, so the rate holds.
+
+### Waiting users
+
+The configure page shows the queue state when the estimated wait is 3 s or more. It rounds the estimate to seconds under a minute, then to minutes.
+
+- A link check waits for its first page in the request when the wait is under 3 s. Otherwise it answers at once with the estimate and the ticket, and the Add button shows "In the Letterboxd queue · about 12 s". The page asks again with the ticket when the queue says so.
+- A preview does the same, with at most 10 s of waiting in each request. Its pages stay cached, so the next request goes on from the last page read. The preview shows "Letterboxd is busy right now. Your list is in the queue, about 40 s left." with a bar that fills with the time.
+- After a save, the background read waits up to 200 s for the Lists of the save. It writes its estimate to `list_read_queue`, and the sync line of a List that waits for its first refresh shows "In the Letterboxd queue · about 2 min".
+
+A Stremio Catalog request waits at most 10 s:
+
+- With a cached Catalog, even a stale one, Stremio gets it at once and the read goes on in the background.
+- Without a cache, the request reads for up to 8 s. When a later page would wait longer, the Catalog is served from the pages read so far, like a capped read: it is incomplete and does not count for detection history. Its cache is back-dated, so the next request reads again within 2 minutes and goes on from the cached pages. A background read with the same ticket goes on at once and waits up to 200 s to complete the List.
+- When no page is ready after 10 s, or Letterboxd is slowed down after a 429, Stremio gets the card "Your Letterboxd list is on its way" ("Letterboxd is busy right now. Stremlist is reading your list and it will show here in a few minutes.") instead of a server error, and the read goes on in the background.
+
+A read that waits its turn is not a failed refresh: the sync status keeps its last outcome.
 
 A 429, or more than 20% failed reads over a minute (at least 20 reads), pauses sends for max(Retry-After, 60 s) and halves the rate, never below 0.33 request/s. The rate then climbs by 0.5 request/s per minute. Network errors, unusable collection HTML and timeouts while reading an HTTP 200 body are failed reads. Three slowdowns at the floor rate within 15 minutes, a 403, a challenge response header or a challenge document halt new outbound reads. A halted gate lets one probe request through every 30 minutes; a probe that succeeds resumes reads at the floor rate. A failed page never replaces a valid cached page with an empty result.
 
 ### Capacity
 
-At 10 requests/s the gate admits 36,000 pages per hour. `stress/letterboxd-gate.ts` (November 2026, fake Letterboxd at 200 ms per page, 28 films per page):
+At 40 requests/s the gate admits 144,000 pages per hour. `stress/letterboxd-gate.ts` (November 2026, fake Letterboxd at 200 ms per page, 28 films per page):
 
-- 1,000 users adding one list each over 9 minutes (about 10 pages/s, through PostgREST on the production project): every list read, first page p95 0.9 s, whole list p95 9 s, no queue state. Gate calls took 0.7 ms on average in Postgres and 58 ms p95 seen from the client.
-- 5,000 users over 10 minutes (about 46 pages/s, local Postgres): the gate held 10 requests/s, but the first page took 4 minutes at the median and 13 minutes at p95, and 11% of lists were not finished after 30 minutes.
+- 1,000 users adding one list each over 9 minutes, at 10 requests/s (about 10 pages/s, through PostgREST on the production project, before the queue): every list read, first page p95 0.9 s, whole list p95 9 s, no queue state. Gate calls took 0.7 ms on average in Postgres and 58 ms p95 seen from the client.
+- 5,000 users over 10 minutes (27,450 pages, about 46 pages/s, local Postgres), at 10 requests/s before the queue: the gate held its rate, but the first page took 4 minutes at the median and 13 minutes at p95, and 11% of lists were not finished after 30 minutes.
+- The same 5,000 users at 40 requests/s with the queue: every list finished. The first page took 1.2 s at the median, 1.4 s at p95 and 2.8 s at most, so no user saw the queue state or the Stremio card. The whole list took 21 s at the median, 78 s at p95 and 3 minutes at most. The gate admitted at most 52 requests in one second (80 allowed) and 439 in ten seconds (440 allowed). Gate calls took 4 ms at the median and 15 ms at p95 seen from the client, for 108,000 calls. The first estimate of a first page was within 0.5 s of its real wait.
 
-The rate, not the gate, limits a launch: a burst above 10 pages/s queues.
+Demand above the rate now waits on the later pages of big lists, not on the first page of each list.
 
 ### Request log
 

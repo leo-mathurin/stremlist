@@ -5,6 +5,8 @@ import { PROVIDER_IDS } from "@stremlist/shared/providers";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import app from "../index.js";
+import { LetterboxdBusyError } from "../providers/letterboxd-gate";
+import { currentReadQueue } from "../providers/read-priority";
 import { SourceUnavailableError } from "../providers/types";
 
 const { backgroundMocks, prewarmMocks, supabaseMocks } = await vi.hoisted(
@@ -92,6 +94,41 @@ describe("POST /links/resolve", () => {
     const res = await resolve("https://letterboxd.com/leo/watchlist/");
     expect(await res.json()).toMatchObject({ ok: true });
     expect(validateSource).toHaveBeenCalledTimes(1);
+  });
+
+  it("answers with the Letterboxd queue state, then keeps the place with its ticket", async () => {
+    const ticket = "0f4ef1b5-0a8c-4a4e-9f1e-3b2c1d0e9a87";
+    const seen: { ticket: string | null; answerAtMs: number | null }[] = [];
+    const validateSource = vi.fn(() => {
+      const queue = currentReadQueue();
+      seen.push({ ticket: queue.ticket, answerAtMs: queue.answerAtMs });
+      return seen.length === 1
+        ? Promise.reject(
+            new LetterboxdBusyError(12_000, { retryMs: 11_000, ticket }),
+          )
+        : Promise.resolve({ ok: true as const, ref: "users/leo/watchlist" });
+    });
+    useFakeProvider(fakeAdapter("letterboxd", { validateSource }));
+
+    const queued = await resolve("https://letterboxd.com/leo/watchlist/");
+    expect(await queued.json()).toEqual({
+      ok: false,
+      reason: "queued",
+      provider: "letterboxd",
+      waitMs: 12_000,
+      retryMs: 11_000,
+      ticket,
+    });
+    const again = await postJson("/links/resolve", {
+      input: "https://letterboxd.com/leo/watchlist/",
+      ticket,
+    });
+    expect(await again.json()).toMatchObject({ ok: true });
+    // The check answers at once from a 3 s wait, and the ticket comes back.
+    expect(seen).toEqual([
+      { ticket: null, answerAtMs: 3_000 },
+      { ticket, answerAtMs: 3_000 },
+    ]);
   });
 
   it("says when Letterboxd is unavailable after it refused Stremlist", async () => {

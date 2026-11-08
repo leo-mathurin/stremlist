@@ -75,6 +75,12 @@ export interface SourceSnapshot {
    * synchronization, so it never counts for detection (ADR 0007).
    */
   complete: boolean;
+  /**
+   * True when the read stopped because the Provider's request queue was
+   * long (Letterboxd), not at a cap: the next read comes soon and resumes
+   * from the pages read so far.
+   */
+  interrupted?: boolean;
 }
 
 /** The items of a paginated read, and whether it reached the last page. */
@@ -105,6 +111,34 @@ export class SourceUnavailableError extends Error {
     super(message);
     this.name = "SourceUnavailableError";
     this.reason = reason;
+  }
+}
+
+/**
+ * The Provider's shared request queue is long (Letterboxd): the read waits
+ * its turn. The Source list is fine, so this is no failed refresh.
+ */
+export class SourceBusyError extends SourceUnavailableError {
+  /** Estimated time until the rest of the read is sent. */
+  readonly waitMs: number;
+  /** When to ask again with `ticket`, or null to ask at any time. */
+  readonly retryMs: number | null;
+  /** The read's place in the queue, kept when it asks again. */
+  readonly ticket: string | null;
+
+  constructor(
+    waitMs: number,
+    {
+      retryMs = null,
+      ticket = null,
+    }: { retryMs?: number | null; ticket?: string | null } = {},
+    message = "The Provider is busy",
+  ) {
+    super("unavailable", message);
+    this.name = "SourceBusyError";
+    this.waitMs = waitMs;
+    this.retryMs = retryMs;
+    this.ticket = ticket;
   }
 }
 
@@ -245,6 +279,12 @@ export interface ProviderAdapter {
    * public chart read on a shared app quota). Defaults to `freshnessMs`.
    */
   freshnessFor?(ref: string): number;
+  /**
+   * Reads wait in a shared request queue (Letterboxd). A Stremio request
+   * then serves a stale Catalog at once and reads in the background, and
+   * waits at most 10 s for a Catalog it does not have.
+   */
+  queuedReads?: boolean;
   /**
    * Check (and normalize) a Source list reference before it is saved. Throws
    * SourceUnavailableError or ConnectionExpiredError like `fetchSource`.

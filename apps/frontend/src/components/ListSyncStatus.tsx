@@ -5,8 +5,10 @@ import {
   sourceProblemCopy,
   storedSourceNoun,
 } from "@stremlist/shared/source-problems";
+import { useNow } from "@/hooks/useNow";
 import { attentionTone, syncLineTone } from "@/lib/list-sync";
 import type { ListSyncState } from "@/lib/list-sync";
+import { queueLabel } from "@/lib/provider-queue";
 import { cn } from "@/lib/utils";
 import RelativeTime from "./RelativeTime";
 
@@ -31,6 +33,22 @@ function Time({ iso }: { iso: string }) {
   );
 }
 
+/** The queue state of a waiting List, while its wait is 3 s or more. */
+function QueueText({
+  queue,
+  otherwise,
+}: {
+  queue: NonNullable<Extract<ListSyncState, { kind: "waiting" }>["queue"]>;
+  otherwise: string;
+}) {
+  const now = useNow();
+  const readyAt = Date.parse(queue.readyAt);
+  return (
+    queueLabel({ provider: queue.provider, since: readyAt, readyAt }, now) ??
+    otherwise
+  );
+}
+
 /**
  * One short line under a List's name: when it last refreshed, or what is
  * wrong. `saved` is false for a row that is not saved yet.
@@ -51,9 +69,14 @@ export function ListSyncLine({
     text = "Not saved yet";
   } else if (sync.kind === "waiting") {
     pulse = true;
-    text = sync.reconnected
+    const waiting = sync.reconnected
       ? "Checking the new Connection"
       : "Not refreshed yet";
+    text = sync.queue ? (
+      <QueueText queue={sync.queue} otherwise={waiting} />
+    ) : (
+      waiting
+    );
   } else if (sync.kind === "synced") {
     const count = titles(sync.titleCount);
     text = (

@@ -11,6 +11,7 @@
     "./list-merge": "./src/list-merge.ts",
     "./manifest-catalogs": "./src/manifest-catalogs.ts",
     "./poster": "./src/poster.ts",
+    "./provider-queue": "./src/provider-queue.ts",
     "./providers": "./src/providers.ts",
     "./source-problems": "./src/source-problems.ts",
     "./stremio.types": "./src/stremio.types.ts",

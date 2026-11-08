@@ -150,10 +150,9 @@ describe("GET /monitor", () => {
     vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
     const letterboxdRead = vi.fn();
     useFakeProvider(fakeAdapter("letterboxd", { fetchSource: letterboxdRead }));
-    await callRpc("letterboxd_take", {
+    await callRpc("letterboxd_take_turn", {
       p_target: 10,
-      p_max_wait_ms: 10_000,
-      p_background: false,
+      p_priority: "first",
     });
     Object.assign(letterboxdGate() ?? {}, {
       rate: 2,

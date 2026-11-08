@@ -18,13 +18,15 @@ const lists = new Hono()
       z.object({
         input: z.string().trim().min(1).max(500),
         accountKey: z.string().regex(ACCOUNT_KEY_PATTERN).optional(),
+        // The place in the Provider's queue from a queued answer.
+        ticket: z.string().uuid().optional(),
       }),
     ),
     async (c) => {
-      const { input, accountKey } = c.req.valid("json");
+      const { input, accountKey, ticket } = c.req.valid("json");
       // An unknown key resolves public Source lists only.
       const access = accountKey ? await resolveAccountKey(accountKey) : null;
-      return c.json(await resolveSourceLink(input, access));
+      return c.json(await resolveSourceLink(input, access, ticket ?? null));
     },
   )
 
@@ -43,10 +45,14 @@ const lists = new Hono()
           displayMode: true,
           catalogSettings: true,
         })
-        .extend({ accountKey: accountKeyParam.shape.accountKey.optional() }),
+        .extend({
+          accountKey: accountKeyParam.shape.accountKey.optional(),
+          // The place in the Provider's queue from a queued answer.
+          ticket: z.string().uuid().optional(),
+        }),
     ),
     async (c) => {
-      const { accountKey, ...list } = c.req.valid("json");
+      const { accountKey, ticket, ...list } = c.req.valid("json");
       // Like `/links/resolve`, an unknown key previews public lists only. A
       // Legacy alias can be guessed: it never reads through a Connection.
       const access = accountKey ? await resolveAccountKey(accountKey) : null;
@@ -55,6 +61,7 @@ const lists = new Hono()
           ...list,
           connectionAccountId:
             access?.via === "private" ? access.account.id : null,
+          ticket: ticket ?? null,
         }),
       );
     },

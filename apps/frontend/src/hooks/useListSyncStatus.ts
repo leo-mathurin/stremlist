@@ -3,6 +3,7 @@ import { listSources, listSourcesKey } from "@stremlist/shared/list-merge";
 import { sourceRequiresConnection } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type {
+  AccountSyncSnapshot,
   ConfigList,
   ConnectionSummary,
 } from "@stremlist/shared/stremio.types";
@@ -31,8 +32,11 @@ type SavedList = Pick<
 interface SyncAnswer {
   syncStatus: ListSyncStatuses;
   connections: ConnectionSummary[];
+  readQueue?: ReadQueue;
   lists: SavedList[];
 }
+
+type ReadQueue = NonNullable<AccountSyncSnapshot["readQueue"]>;
 
 function sourcesOf(lists: SavedList[]): Record<string, string> {
   return Object.fromEntries(
@@ -53,6 +57,8 @@ export function useListSyncStatus(
 ) {
   const [connections, setConnections] = useState<ConnectionSummary[]>([]);
   const [syncStatus, setSyncStatus] = useState<ListSyncStatuses>({});
+  // The Lists whose read waits in a Provider's queue.
+  const [readQueue, setReadQueue] = useState<ReadQueue>({});
   // The saved Source lists by List ID. A row whose Source lists differ (a
   // changed chart, a merge) is not saved yet, so it has no status to wait
   // for.
@@ -66,6 +72,7 @@ export function useListSyncStatus(
     epoch.current += 1;
     setConnections(answer.connections);
     setSyncStatus(answer.syncStatus);
+    setReadQueue(answer.readQueue ?? {});
     setSavedSources(sourcesOf(answer.lists));
   }, []);
 
@@ -96,7 +103,7 @@ export function useListSyncStatus(
     // statuses. Right after a save, the statuses can still be about the
     // Source lists from before it.
     const statuses = row.id && isSaved(row) ? syncStatus[row.id] : undefined;
-    return mergedListSyncState(
+    const state = mergedListSyncState(
       listSources(row).map((source, index) => {
         const connection = connections.find(
           (c) => c.provider === source.provider,
@@ -116,12 +123,17 @@ export function useListSyncStatus(
         };
       }),
     );
+    const queue = row.id && isSaved(row) ? readQueue[row.id] : undefined;
+    return state.kind === "waiting" && queue ? { ...state, queue } : state;
   };
 
-  const waitingKey = lists
-    .filter((row) => isSaved(row) && syncStateOf(row)?.kind === "waiting")
-    .map((row) => row.id)
-    .join(",");
+  const waiting = lists.filter(
+    (row) => isSaved(row) && syncStateOf(row)?.kind === "waiting",
+  );
+  const waitingKey = waiting.map((row) => row.id).join(",");
+  // A List in a Provider's queue can wait longer than two minutes: polls do
+  // not count while one waits there.
+  const queued = waiting.some((row) => row.id && readQueue[row.id]);
   useEffect(() => {
     if (!accountKey || !waitingKey) return;
     let cancelled = false;
@@ -130,7 +142,7 @@ export function useListSyncStatus(
       // A hidden tab does not ask (and does not use up the polls); it asks
       // again as soon as it is visible.
       if (document.hidden || polls >= SYNC_POLL_LIMIT) return;
-      polls += 1;
+      if (!queued) polls += 1;
       const started = epoch.current;
       api[":accountKey"]["sync-status"]
         .$get({ param: { accountKey } })
@@ -140,6 +152,7 @@ export function useListSyncStatus(
           if (cancelled || started !== epoch.current) return;
           if (!("syncStatus" in body)) return;
           setSyncStatus(body.syncStatus);
+          setReadQueue(body.readQueue ?? {});
           setConnections((current) =>
             JSON.stringify(current) === JSON.stringify(body.connections)
               ? current
@@ -157,7 +170,7 @@ export function useListSyncStatus(
       clearInterval(id);
       document.removeEventListener("visibilitychange", poll);
     };
-  }, [accountKey, waitingKey]);
+  }, [accountKey, waitingKey, queued]);
 
   return {
     connections,

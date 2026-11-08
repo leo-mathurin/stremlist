@@ -1,6 +1,7 @@
 import type { TitleType } from "./constants";
 import type { ListCatalog } from "./manifest-catalogs";
 import type { SourceId } from "./providers";
+import type { QueuedAnswer } from "./provider-queue";
 import type { SourceProblemReason } from "./source-problems";
 
 /** One Title of a Catalog preview: only what a poster tile needs. */
@@ -68,4 +69,11 @@ interface CatalogPreviewProblem {
   source?: SourceId;
 }
 
-export type CatalogPreviewResponse = CatalogPreview | CatalogPreviewProblem;
+/**
+ * A Source list of the List waits in its Provider's queue: ask again after
+ * `retryMs` with the ticket.
+ */
+export type CatalogPreviewResponse =
+  | CatalogPreview
+  | CatalogPreviewProblem
+  | QueuedAnswer;

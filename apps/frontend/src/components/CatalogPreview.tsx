@@ -23,7 +23,10 @@ import {
 } from "@stremlist/shared/source-problems";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { useCatalogPreview } from "@/hooks/useCatalogPreview";
+import { useNow } from "@/hooks/useNow";
 import type { ListFormRow } from "@/lib/list-form";
+import { previewQueueMessage, queueProgress } from "@/lib/provider-queue";
+import type { QueueWait } from "@/lib/provider-queue";
 import { cn } from "@/lib/utils";
 
 /** Unresolved entries shown before "Show all". */
@@ -97,6 +100,8 @@ export default function CatalogPreview({
 
       {state.status === "loading" ? (
         <PreviewLoading list={list} />
+      ) : state.status === "queued" ? (
+        <PreviewQueued wait={state.wait} />
       ) : state.status === "problem" ? (
         <PreviewMessage
           tone={state.reason === "unavailable" ? "error" : "info"}
@@ -148,14 +153,50 @@ function PreviewLoading({ list }: { list: ListFormRow }) {
           ? `Reading the Source lists on ${on}. Big lists can take a few seconds.`
           : `Reading the list on ${on}. A big list can take a few seconds.`}
       </p>
-      <div className="flex gap-3 overflow-hidden" aria-hidden="true">
-        {Array.from({ length: 8 }, (_, index) => (
-          <div key={index} className="w-[4.5rem] shrink-0 sm:w-20">
-            <div className="aspect-[2/3] animate-pulse rounded-xl bg-black/5 motion-reduce:animate-none" />
-            <div className="mt-1.5 h-2.5 w-4/5 animate-pulse rounded bg-black/5 motion-reduce:animate-none" />
-          </div>
-        ))}
+      <PosterPlaceholders />
+    </div>
+  );
+}
+
+function PosterPlaceholders() {
+  return (
+    <div className="flex gap-3 overflow-hidden" aria-hidden="true">
+      {Array.from({ length: 8 }, (_, index) => (
+        <div key={index} className="w-[4.5rem] shrink-0 sm:w-20">
+          <div className="aspect-[2/3] animate-pulse rounded-xl bg-black/5 motion-reduce:animate-none" />
+          <div className="mt-1.5 h-2.5 w-4/5 animate-pulse rounded bg-black/5 motion-reduce:animate-none" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The List waits in its Provider's queue: the time left, and a bar that
+ * fills with the time instead of the spinner.
+ */
+function PreviewQueued({ wait }: { wait: QueueWait }) {
+  const now = useNow();
+  const progress = Math.round(queueProgress(wait, now) * 100);
+  return (
+    <div className="space-y-2" role="status">
+      <p className="text-xs text-pretty text-black/50 tabular-nums">
+        {previewQueueMessage(wait, now)}
+      </p>
+      <div
+        role="progressbar"
+        aria-label="Place in the queue"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={progress}
+        className="h-1.5 overflow-hidden rounded-full bg-black/5"
+      >
+        <div
+          className="h-full origin-left rounded-full bg-brand transition-transform duration-1000 ease-linear motion-reduce:transition-none"
+          style={{ transform: `scaleX(${progress / 100})` }}
+        />
       </div>
+      <PosterPlaceholders />
     </div>
   );
 }

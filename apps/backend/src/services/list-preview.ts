@@ -10,18 +10,22 @@ import type { DisplayMode } from "@stremlist/shared/constants";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import { listSources, sourceKey } from "@stremlist/shared/list-merge";
 import { listCatalogs } from "@stremlist/shared/manifest-catalogs";
+import { QUEUE_STATE_MIN_MS } from "@stremlist/shared/provider-queue";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDERS } from "@stremlist/shared/providers";
 import { createHash } from "node:crypto";
 import { LruCache } from "../lib/lru";
+import type { ReadQueue } from "../providers/read-priority";
+import { readQueue, withReadPriority } from "../providers/read-priority";
 import { getProvider, isProviderEnabled } from "../providers/registry";
 import type { ConnectionAccess, SourceEntry } from "../providers/types";
-import { SourceUnavailableError } from "../providers/types";
+import { SourceBusyError, SourceUnavailableError } from "../providers/types";
 import { filterCatalog, resolveCatalogSelection } from "./catalog-filters";
 import { sortCatalog } from "./catalog-sort";
 import type { BuiltCatalog } from "./lists";
 import { buildCatalog, providerContext, sourceProblemReason } from "./lists";
 import { mergeListCatalogs } from "./merged-lists";
+import { queuedAnswer } from "./source-links";
 
 /**
  * How long one read of a Source list serves previews. Changing the sort or
@@ -42,6 +46,8 @@ const MAX_READINGS_WEIGHT = 16 * 1024 * 1024;
 const TITLES_PER_CATALOG = 12;
 /** Most Unresolved entries that a preview lists. */
 const UNRESOLVED_LIMIT = 50;
+/** A preview request waits this long at most in a Provider's queue. */
+const PREVIEW_WAIT_MS = 10_000;
 
 export interface PreviewRequest {
   provider: ProviderId;
@@ -57,6 +63,8 @@ export interface PreviewRequest {
   /** Absent: split, like a List saved without one. */
   displayMode?: DisplayMode;
   catalogSettings?: CatalogSettings;
+  /** The place in a Provider's queue from a queued answer. */
+  ticket?: string | null;
 }
 
 interface Reading {
@@ -108,6 +116,7 @@ async function connectionScope(connection: ConnectionAccess): Promise<string> {
  */
 async function readSource(
   request: ListSource & { connectionAccountId: string | null },
+  queue: ReadQueue,
 ): Promise<BuiltCatalog> {
   if (PROVIDERS[request.provider].availability !== "available") {
     throw new SourceUnavailableError(
@@ -130,7 +139,11 @@ async function readSource(
   const cached = readings.get(key);
   if (cached) return cached.built;
 
-  const built = buildCatalog(getProvider(request.provider), request, ctx);
+  const built = withReadPriority(
+    "interactive",
+    () => buildCatalog(getProvider(request.provider), request, ctx),
+    queue,
+  );
   const reading: Reading = { built, expiresAt: Date.now() + READING_TTL_MS };
   readings.set(key, reading, { ttlMs: READING_TTL_MS });
   built.then(
@@ -263,20 +276,46 @@ function presentPreview(
  * request would, but write no Catalog cache. Expected problems (private list,
  * missing Connection, Provider turned off) come back as a reason. A merged
  * List leaves out the Source lists that cannot be read, as its Catalog does,
- * and fails only when none can be read.
+ * and fails only when none can be read. When a Provider's queue is long (3 s
+ * or more), the answer is the queue state: ask again with its ticket to keep
+ * the place. The pages read so far stay cached, so the next request goes on
+ * from there.
  */
 export async function previewList(
   request: PreviewRequest,
 ): Promise<CatalogPreviewResponse> {
   const sources = listSources(request);
+  // One place in the queue for all the Source lists of the preview.
+  const queue = readQueue({
+    maxWaitMs: PREVIEW_WAIT_MS,
+    answerAtMs: QUEUE_STATE_MIN_MS,
+    ticket: request.ticket ?? null,
+  });
   const results = await Promise.allSettled(
     sources.map((source) =>
-      readSource({
-        ...source,
-        connectionAccountId: request.connectionAccountId,
-      }),
+      readSource(
+        {
+          ...source,
+          connectionAccountId: request.connectionAccountId,
+        },
+        queue,
+      ),
     ),
   );
+  const busy = results.flatMap((result, index) =>
+    result.status === "rejected" && result.reason instanceof SourceBusyError
+      ? [{ error: result.reason, provider: sources[index].provider }]
+      : [],
+  );
+  if (busy.length > 0) {
+    const longest = busy.reduce((a, b) =>
+      b.error.waitMs > a.error.waitMs ? b : a,
+    );
+    return {
+      ...queuedAnswer(longest.error, longest.provider),
+      ticket: longest.error.ticket ?? queue.ticket,
+    };
+  }
   const read: BuiltCatalog[] = [];
   const problems: PreviewSourceProblem[] = [];
   results.forEach((result, index) => {
