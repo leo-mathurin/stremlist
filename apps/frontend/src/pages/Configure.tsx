@@ -183,8 +183,9 @@ export default function Configure() {
     card.focus({ preventScroll: true });
   }, [justCreated]);
 
-  // A List added out of view (on a phone, it is below the Providers panel)
-  // says so, and can show the new row.
+  // A new List is the first row. When that row is out of view (on a phone,
+  // the lists are below the Providers panel; from Quick add, they are above
+  // it), a toast says so and can show the row.
   const { lastAdded } = config;
   useEffect(() => {
     if (!lastAdded) return;
@@ -198,7 +199,9 @@ export default function Configure() {
           onClick: () =>
             listRowElement(lastAdded.localId)?.scrollIntoView({
               behavior: scrollBehavior(),
-              block: "center",
+              // The new row opens its preview and can be taller than the
+              // screen: show its top.
+              block: "start",
             }),
         },
       });
@@ -494,6 +497,7 @@ export default function Configure() {
                             key={list.localId}
                             list={list}
                             index={index}
+                            justAdded={list.localId === lastAdded?.localId}
                             accountKey={accountId ?? accountKey}
                             rpdbApiKey={config.rpdbApiKey}
                             onFieldChange={config.setListField}

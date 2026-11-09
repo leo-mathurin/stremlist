@@ -165,27 +165,28 @@ test("pasted links of every available Provider become Lists of a new setup", asy
   await saveButton(screen, SAVE_NEW).tap();
   await expect(browser).toHaveURL(`/configure?account=${accountId}`);
   expect(inputs.map((entry) => entry.input)).toEqual(Object.values(links));
+  // Each new List goes first: the last link pasted is the first row.
   expect(created[0].lists).toMatchObject([
+    { provider: "imdb", sourceRef: "ls99123456", position: 0 },
     {
-      provider: "trakt",
-      sourceRef: "users/someone/watchlist",
-      catalogTitle: "someone's watchlist",
-      position: 0,
+      provider: "senscritique",
+      sourceRef: "users/someone/wishes",
+      catalogTitle: "someone's wishlist",
+      position: 1,
     },
     {
       provider: "justwatch",
       sourceRef: "tl-us-11111111-2222-4333-8444-555555555555",
       catalogTitle: "Weekend picks",
       displayMode: "movie",
-      position: 1,
-    },
-    {
-      provider: "senscritique",
-      sourceRef: "users/someone/wishes",
-      catalogTitle: "someone's wishlist",
       position: 2,
     },
-    { provider: "imdb", sourceRef: "ls99123456", position: 3 },
+    {
+      provider: "trakt",
+      sourceRef: "users/someone/watchlist",
+      catalogTitle: "someone's watchlist",
+      position: 3,
+    },
   ]);
 });
 
@@ -203,13 +204,13 @@ test(
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(screen.getByRole("button", "Trending")).toBeDisabled();
     expect(submissions.at(-1)?.lists).toMatchObject([
-      { provider: "imdb", sourceRef: imdbUser },
       {
         provider: "trakt",
         sourceRef: "trending",
         catalogTitle: "Trakt Trending",
-        position: 1,
+        position: 0,
       },
+      { provider: "imdb", sourceRef: imdbUser, position: 1 },
     ]);
   },
 );
@@ -337,14 +338,14 @@ test(
     await expect(screen.getByRole("button", "Plan to watch")).toBeDisabled();
     expect(submissions).toHaveLength(1);
     expect(submissions[0].lists).toMatchObject([
-      { provider: "imdb", sourceRef: imdbUser, position: 0 },
       {
         provider: "simkl",
         sourceRef: "me/plantowatch",
         catalogTitle: "Simkl Plan to watch",
         displayMode: "split",
-        position: 1,
+        position: 0,
       },
+      { provider: "imdb", sourceRef: imdbUser, position: 1 },
     ]);
   },
 );
@@ -586,9 +587,9 @@ test("a public Letterboxd link becomes a List without connecting an account", as
   await screen.getByLabel(PASTE).fill(link);
   await expect(screen.getByText("Letterboxd watchlist detected")).toBeVisible();
   await screen.getByRole("button", "Add", { exact: true }).tap();
-  await expect(screen.getByRole("textbox", "Catalog title").last()).toHaveValue(
-    "Someone's watchlist",
-  );
+  await expect(
+    screen.getByRole("textbox", "Catalog title").first(),
+  ).toHaveValue("Someone's watchlist");
   await expect(screen.getByText(/^2 of 10 lists/)).toBeVisible();
   expect(inputs).toEqual([{ input: link, accountKey: accountId }]);
   await app.screenshot("Letterboxd public watchlist added");

@@ -97,17 +97,18 @@ test(
     await page.getByRole("button", { name: "Add an IMDb chart" }).click();
     await page.getByRole("menuitem", { name: /^Top 250 Movies/ }).click();
     await saveConfigure(page);
-    const before = (await getConfig(accountId)).body.lists[1];
+    // The new List goes first.
+    const before = (await getConfig(accountId)).body.lists[0];
     await openSettings(page, "Top 250 Movies");
     await page.getByRole("combobox", { name: "Built-in chart" }).click();
     await page
       .getByRole("option", { name: "Top 250 TV Shows", exact: true })
       .click();
     await expect(
-      page.getByRole("link", { name: "Open on IMDb" }).nth(1),
+      page.getByRole("link", { name: "Open on IMDb" }).first(),
     ).toHaveAttribute("href", "https://www.imdb.com/chart/toptv/");
     await saveConfigure(page);
-    const saved = (await getConfig(accountId)).body.lists[1];
+    const saved = (await getConfig(accountId)).body.lists[0];
     expect(saved).toMatchObject({
       id: before.id,
       sourceRef: "imdb:top-rated-tv",

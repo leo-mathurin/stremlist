@@ -55,6 +55,15 @@ function inViewport(browser: Browser, selector: string, text: string) {
   );
 }
 
+/** The titles of the List rows, top to bottom. */
+function rowTitles(browser: Browser) {
+  return browser.evaluate(() =>
+    [...document.querySelectorAll("[data-list-row]")].map(
+      (row) => row.querySelector("p")?.textContent?.trim() ?? "",
+    ),
+  );
+}
+
 test("unsaved changes ask before the page reloads, and a save clears them", async ({
   app,
   browser,
@@ -159,6 +168,45 @@ test("on a phone, an added list says so and the install step comes into view aft
     .poll(() => inViewport(browser, "h3", "Your Stremlist is ready"))
     .toBe(true);
   expect(created).toHaveLength(1);
+});
+
+test("a new list goes first: in view on a wide screen, and a toast can show it on a phone", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const listLink = "https://www.imdb.com/list/ls99123456/";
+  await captureConfig(browser);
+  await routeResolve(browser, (input) =>
+    input === listLink ? resolved("imdb", "ls99123456", "list") : null,
+  );
+  await app.open(`/configure?account=${accountId}`);
+  await expect(screen.getByText("Test catalog")).toBeVisible();
+  await screen.getByLabel(PASTE).fill(listLink);
+  await screen.getByRole("button", "Add", { exact: true }).tap();
+  await expect(screen.getByText("IMDb · List · ls99123456")).toBeVisible();
+  expect(await rowTitles(browser)).toEqual(["IMDb List", "Test catalog"]);
+  // The new row shows at the top of the lists: no toast is needed.
+  expect(await inViewport(browser, "p", "IMDb List")).toBe(true);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  await expect(screen.getByText("Added IMDb List")).toBeHidden();
+
+  // On a phone, Quick add is below the lists: the new first row is above
+  // the screen, so a toast says so and shows it.
+  await browser.setViewport(PHONE);
+  await screen.getByRole("button", "Add an IMDb chart").tap();
+  await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
+  await expect(screen.getByText("Added Top 250 Movies")).toBeVisible();
+  expect(await inViewport(browser, "p", "Top 250 Movies")).toBe(false);
+  await screen.getByRole("button", "Show", { exact: true }).tap();
+  await expect
+    .poll(() => inViewport(browser, "p", "Top 250 Movies"))
+    .toBe(true);
+  expect(await rowTitles(browser)).toEqual([
+    "Top 250 Movies",
+    "IMDb List",
+    "Test catalog",
+  ]);
 });
 
 test("a list whose Provider was never connected offers Connect, and an expired one Connect again", async ({

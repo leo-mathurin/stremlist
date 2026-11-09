@@ -58,9 +58,10 @@ test("a canonical duplicate is refused and the link stays for repair", async ({
     accountId,
     accountId,
   ]);
+  // The new List goes first.
   expect(submissions[0].lists.map((list) => list.sourceRef)).toEqual([
-    imdbUser,
     "ls99887766",
+    imdbUser,
   ]);
 });
 

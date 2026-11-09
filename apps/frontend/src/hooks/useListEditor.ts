@@ -26,18 +26,20 @@ export function useListEditor() {
     );
 
   /**
-   * Add a List. Returns an error message when it cannot be added, so the
-   * caller can show it next to the control that asked.
+   * Add a List as the first row, so the user sees it right away; it also
+   * becomes the first catalog row in Stremio. Returns an error message when
+   * it cannot be added, so the caller can show it next to the control that
+   * asked.
    */
   const addList = (partial: Parameters<typeof createListRow>[0]) => {
-    const problem = accountListsProblem([...lists, partial]);
+    const problem = accountListsProblem([partial, ...lists]);
     if (problem) {
       return problem.reason === "duplicate_source"
         ? "This list is already in your Stremlist."
         : problem.message;
     }
     const row = createListRow(partial);
-    setLists((rows) => [...rows, row]);
+    setLists((rows) => [row, ...rows]);
     setLastAdded(row);
     return null;
   };

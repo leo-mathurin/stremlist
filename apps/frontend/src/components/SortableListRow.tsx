@@ -70,9 +70,12 @@ export default function SortableListRow({
   saved,
   onConnect,
   merge,
+  justAdded = false,
 }: {
   list: ListFormRow;
   index: number;
+  /** Added by the user a moment ago: the row eases in at the top. */
+  justAdded?: boolean;
   /** Providers whose Connection the List reads through and the Account lacks. */
   missingProviders: ProviderId[];
   /** Merging other Lists into this one; absent where Lists cannot change. */
@@ -101,6 +104,8 @@ export default function SortableListRow({
     index,
   });
   const [open, setOpen] = useState(false);
+  // Ease in once: a drag must not play it again.
+  const [entering, setEntering] = useState(justAdded);
   // A List added in this visit opens its preview, so the user sees what it
   // adds to Stremio before saving.
   const [previewOpen, setPreviewOpen] = useState(!list.id);
@@ -129,8 +134,14 @@ export default function SortableListRow({
     <div
       ref={ref}
       data-list-row={list.localId}
+      onAnimationEnd={(event) => {
+        if (event.target === event.currentTarget) setEntering(false);
+      }}
       className={cn(
         "scroll-mt-5 rounded-3xl bg-white ring-1 ring-black/5 transition-shadow",
+        // Opacity and a short slide down; only the fade with reduced motion.
+        entering &&
+          "animate-in duration-200 ease-out-quint fade-in motion-safe:slide-in-from-top-2",
         attentionTone(sync) === "warn" && "ring-amber-300",
         attentionTone(sync) === "bad" && "ring-red-200",
         isDragSource && "opacity-60 shadow-lg ring-2 ring-brand/50",

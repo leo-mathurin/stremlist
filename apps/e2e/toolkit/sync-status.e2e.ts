@@ -206,7 +206,8 @@ test("a List added and saved waits for its first refresh, then shows it", async 
   screen,
 }) => {
   const submissions = await captureConfig(browser);
-  const saved = "00000000-0000-4000-8000-000000000101";
+  // The new List is first, so the save gives it the first new ID.
+  const saved = "00000000-0000-4000-8000-000000000100";
   await routeSyncStatus(browser, () => ({
     syncStatus: {
       ...configuration.syncStatus,
@@ -227,8 +228,8 @@ test("a List added and saved waits for its first refresh, then shows it", async 
   await expect(screen.getByText("Not saved yet", { exact: true })).toBeHidden();
   expect(submissions).toHaveLength(1);
   expect(submissions[0].lists).toMatchObject([
-    { id: row.id, sourceRef: row.sourceRef },
-    { sourceRef: "imdb:top-rated-movies" },
+    { sourceRef: "imdb:top-rated-movies", position: 0 },
+    { id: row.id, sourceRef: row.sourceRef, position: 1 },
   ]);
 });
 
