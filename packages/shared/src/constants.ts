@@ -99,8 +99,18 @@ export const IMDB_WATCHLIST_SOURCE_ID_PATTERN = new RegExp(
   `^(${IMDB_UR_ID_SOURCE}|${IMDB_LS_ID_SOURCE}|${IMDB_P_HANDLE_SOURCE})$`,
 );
 
-/** An Addon URL key: a generated Account ID or a Legacy alias (`ur…`). */
-export const ACCOUNT_KEY_SOURCE = `${ACCOUNT_ID_SOURCE}|${IMDB_UR_ID_SOURCE}`;
+/**
+ * A Legacy alias: the key of a v1 install, kept as `legacy_imdb_user_id`.
+ * v1 served any key until 2026-09-01, then `ur` + 4 or more digits and `p.`
+ * handles. The installs that still exist use an IMDb user ID (some short, some
+ * with letters), a `p.` handle or an IMDb list ID. Other stored keys cannot
+ * be a URL path segment that any install uses, so they stay unreachable.
+ */
+const LEGACY_ALIAS_SOURCE = String.raw`ur[0-9A-Za-z]+|${IMDB_P_HANDLE_SOURCE}|${IMDB_LS_ID_SOURCE}`;
+export const LEGACY_ALIAS_PATTERN = new RegExp(`^(?:${LEGACY_ALIAS_SOURCE})$`);
+
+/** An Addon URL key: a generated Account ID or a Legacy alias. */
+export const ACCOUNT_KEY_SOURCE = `${ACCOUNT_ID_SOURCE}|${LEGACY_ALIAS_SOURCE}`;
 export const ACCOUNT_KEY_PATTERN = new RegExp(`^(?:${ACCOUNT_KEY_SOURCE})$`);
 
 export const FACEBOOK_EXTERNAL_HIT_USER_AGENT = "facebookexternalhit/1.1";

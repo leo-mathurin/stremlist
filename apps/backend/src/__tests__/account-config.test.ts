@@ -63,7 +63,8 @@ describe("List CRUD via the config API", () => {
     it.each([
       ["an unknown Legacy alias", "ur99999999", 404],
       ["an unknown Account ID", "sl_0000000000000000000000", 404],
-      ["a key that is not an Addon URL key", "ls123456789", 400],
+      ["a key that is not an Addon URL key", "YOUR_IMDB_ID", 400],
+      ["an unknown list ID Legacy alias", "ls123456789", 404],
     ])("refuses %s", async (_, key, status) => {
       expect((await getConfig(key)).status).toBe(status);
     });
