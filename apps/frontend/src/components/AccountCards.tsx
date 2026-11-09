@@ -1,16 +1,6 @@
-import { useState } from "react";
-import {
-  ArrowRight,
-  Download,
-  KeyRound,
-  Loader2,
-  RefreshCw,
-  ShieldCheck,
-} from "lucide-react";
-import { joinProviderLabels } from "@stremlist/shared/providers";
+import { Download, KeyRound, RefreshCw } from "lucide-react";
 import AddonInstallActions from "./AddonInstallActions";
 import { buildAddonUrls } from "@/lib/list-sources";
-import { CONNECTABLE_PROVIDERS } from "@/lib/provider-groups";
 import type { ReinstallState } from "@/lib/reinstall";
 import { cn } from "@/lib/utils";
 
@@ -51,7 +41,7 @@ export function AddonUrlCard({
         : "Install or reinstall in Stremio";
   const body =
     variant === "created"
-      ? "Install it in Stremio once. Your Lists then stay up to date on their own."
+      ? "Install it in Stremio once. Your lists then stay up to date on their own."
       : reinstallHint
         ? "Stremio reads the catalogs and Actions only when you install an addon. Open your Addon URL in Stremio and choose Uninstall, then open it again and choose Install."
         : "Use these links anytime to open or reinstall your Addon URL in Stremio.";
@@ -162,82 +152,6 @@ export function ReinstallNotice({
           Reinstall
         </a>
       </div>
-    </section>
-  );
-}
-
-/**
- * For installs that still use a Legacy alias: explain why a private Addon URL
- * helps, create it, then show the reinstall steps.
- */
-export function LegacyUpgradeCard({
-  onUpgrade,
-  onOpen,
-}: {
-  onUpgrade: () => Promise<string | null>;
-  onOpen: (accountId: string) => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [newId, setNewId] = useState<string | null>(null);
-
-  const upgrade = async () => {
-    setBusy(true);
-    const id = await onUpgrade();
-    setBusy(false);
-    if (id) setNewId(id);
-  };
-
-  if (newId) {
-    return (
-      <section
-        id="upgrade"
-        className="space-y-4 rounded-3xl bg-white p-5 ring-2 ring-brand"
-      >
-        <div>
-          <h3 className="text-lg font-bold">Your private Addon URL is ready</h3>
-          <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-black/65">
-            <li>Install the new Addon URL in Stremio.</li>
-            <li>Remove the old Stremlist from your Stremio addons.</li>
-            <li>From now on, configure Stremlist from the new install.</li>
-          </ol>
-        </div>
-        <KeepUrlWarning />
-        <AddonInstallActions accountKey={newId} />
-        <button
-          type="button"
-          onClick={() => onOpen(newId)}
-          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-ink px-5 text-sm font-bold text-cloud transition-[scale] active:scale-[0.98]"
-        >
-          Go to the new configure page
-          <ArrowRight className="size-4" />
-        </button>
-      </section>
-    );
-  }
-
-  return (
-    <section
-      id="upgrade"
-      className="space-y-3 rounded-3xl bg-ink p-5 text-cloud"
-    >
-      <div className="flex items-start gap-3">
-        <ShieldCheck className="mt-0.5 size-5 shrink-0 text-brand" />
-        <div>
-          <h3 className="text-lg font-bold">Upgrade to a private URL</h3>
-          <p className="mt-1 text-sm text-pretty text-white/65">
-            {`This install uses your IMDb user ID, which anyone can guess. A private Addon URL is a secret that only you have, so Stremlist can connect ${joinProviderLabels(CONNECTABLE_PROVIDERS)} and show Actions in Stremio. Your Lists come with it. You reinstall once.`}
-          </p>
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={upgrade}
-        disabled={busy}
-        className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-brand px-5 text-sm font-bold text-black transition-[opacity,scale] active:scale-[0.98] disabled:opacity-60"
-      >
-        {busy && <Loader2 className="size-4 animate-spin" />}
-        Create my private URL
-      </button>
     </section>
   );
 }

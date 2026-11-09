@@ -519,8 +519,8 @@ test(
       ),
     ).toBeVisible();
     await agent.act(
-      "Upgrade this install to a private Addon URL, then open the new configure page.",
-      { maxModelCalls: 6 },
+      "Upgrade this install to a private Addon URL, confirm with Done that it is installed, then open the new configure page.",
+      { maxModelCalls: 8 },
     );
     await expect(browser).toHaveURL(`/configure?account=${newId}`);
     await expect(

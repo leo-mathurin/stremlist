@@ -185,11 +185,10 @@ test("the upgrade keeps unsaved edits and locks the old page", async ({
   await app.open(`/configure?account=${imdbUser}`);
   await screen.getByRole("button", "Settings for Test catalog").tap();
   await screen.getByLabel("Catalog title").fill("Edited before the upgrade");
-  await screen.getByRole("button", "Create my private URL").tap();
+  await screen.getByRole("button", /^Get a private Addon URL/).tap();
+  await screen.getByRole("button", "Create my private Addon URL").tap();
 
-  await expect(
-    screen.getByRole("heading", "Your private Addon URL is ready"),
-  ).toBeVisible();
+  await expect(screen.getByText("Install your new URL:")).toBeVisible();
   // The private copy is made from what the page shows, edits included.
   expect(upgrades).toEqual([]);
   expect(created).toHaveLength(1);

@@ -62,8 +62,9 @@ export default function HomeEntry() {
     return detectedLinkHint(detected);
   })();
 
-  const openAccount = (key: string) =>
-    navigate(`/configure?account=${encodeURIComponent(key)}`);
+  /** `state.entry` tells the configure page that Home found this install. */
+  const openAccount = (key: string, state?: { entry: "home" }) =>
+    navigate(`/configure?account=${encodeURIComponent(key)}`, { state });
 
   const start = async () => {
     const trimmed = link.trim();
@@ -172,7 +173,7 @@ export default function HomeEntry() {
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => openAccount(found)}
+                onClick={() => openAccount(found, { entry: "home" })}
                 className="rounded-full bg-brand px-5 py-2.5 text-sm font-bold text-black transition-[background-color,scale] duration-150 hover:bg-brand-dark active:scale-[0.97]"
               >
                 Open my Stremlist

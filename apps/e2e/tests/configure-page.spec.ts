@@ -308,9 +308,15 @@ test(
         page.getByText(`IMDb · Watchlist · ${PUBLIC_USER}`),
       ).toBeVisible();
     }
-    // The Legacy alias install offers its private Addon URL upgrade.
+    // The Legacy alias install says what is new, with the private Addon URL
+    // upgrade.
     await expect(
-      page.getByRole("heading", { name: "Upgrade to a private URL" }),
+      page.getByRole("heading", {
+        name: "Stremlist 2.0 is here. Your install still works.",
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /^Get a private Addon URL/ }),
     ).toBeVisible();
   },
 );

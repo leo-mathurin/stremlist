@@ -153,10 +153,9 @@ test("a Legacy alias install that just upgraded cannot change the setting", asyn
   await captureConfig(browser, legacyConfiguration, imdbUser);
   await routeCreateAccount(browser);
   await app.open(`/configure?account=${imdbUser}`);
-  await screen.getByRole("button", "Create my private URL").tap();
-  await expect(
-    screen.getByRole("heading", "Your private Addon URL is ready"),
-  ).toBeVisible();
+  await screen.getByRole("button", /^Get a private Addon URL/).tap();
+  await screen.getByRole("button", "Create my private Addon URL").tap();
+  await expect(screen.getByText("Install your new URL:")).toBeVisible();
   await expect(screen.getByRole("checkbox", TOGGLE)).toBeDisabled();
   await expect(screen.getByText(MOVED_HINT).first()).toBeVisible();
 });
