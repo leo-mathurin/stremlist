@@ -48,7 +48,10 @@ export default function App() {
           },
         }}
       />
-      <Analytics />
+      {/* The fragment can hold a one-time OAuth answer: never send it. */}
+      <Analytics
+        beforeSend={(event) => ({ ...event, url: event.url.split("#")[0] })}
+      />
     </BrowserRouter>
   );
 }
