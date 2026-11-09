@@ -102,6 +102,36 @@ export async function listConnections(
 }
 
 /**
+ * The Provider user and authorization of each Connection, for state that
+ * belongs to one authorization (Action membership). Server side only.
+ */
+export async function listConnectionAuthorizations(
+  accountId: string,
+): Promise<
+  { provider: ProviderId; username: string | null; authorization: string }[]
+> {
+  const { data, error } = await supabase
+    .from("connections")
+    .select("provider, provider_username, authorization_version")
+    .eq("account_id", accountId);
+  if (error) {
+    console.error(`Failed to list connections of ${accountId}:`, error.message);
+    return [];
+  }
+  return data.flatMap((row) =>
+    isProviderId(row.provider)
+      ? [
+          {
+            provider: row.provider,
+            username: row.provider_username,
+            authorization: row.authorization_version,
+          },
+        ]
+      : [],
+  );
+}
+
+/**
  * Save a new authorization, encrypted. It replaces a refused one, and in the
  * same transaction the detection history of Connection-only Source lists
  * that belonged to another Provider user is forgotten (ADR 0007).

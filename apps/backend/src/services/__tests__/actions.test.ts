@@ -416,6 +416,30 @@ describe("buildActionStreams", () => {
     expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledOnce();
   });
 
+  it("ignores a refresh of the previous authorization, also without a username", async () => {
+    // A refresh with the old tokens finishes after a reconnect to another
+    // Provider user. Neither user has a username, so only the authorization
+    // tells the two memberships apart.
+    const row = seedAccount({
+      actions_enabled: true,
+      action_providers: ["trakt"],
+    });
+    seedConnection(row.id, "trakt", { username: null });
+    useActionProvider("trakt", {
+      getMembership: () => {
+        db.delete("connections", (c) => c.account_id === row.id);
+        seedConnection(row.id, "trakt", { username: null });
+        return Promise.resolve(membership({ watchlist: [MOVIE] }));
+      },
+    });
+    const account = await accountOf(row.id);
+
+    await open(account);
+    await runScheduled();
+
+    expect((await open(account))[0].title).toBe("🔖 Add to Trakt watchlist");
+  });
+
   it("does not refresh fresh membership", async () => {
     await open(await setup({ trakt: membership() }));
 

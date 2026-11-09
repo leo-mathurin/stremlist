@@ -48,7 +48,9 @@ export const EMPTY_MEMBERSHIP: Membership = {
 const storedMembershipSchema = z.object({
   fetchedAt: z.string(),
   revision: z.string().optional(),
-  username: z.string().nullable(),
+  /** The authorization that read it. Older snapshots have only `username`. */
+  authorization: z.string().optional(),
+  username: z.string().nullable().optional(),
   membership: z.object({
     watchlist: z.array(z.string()),
     watched: z.array(z.string()),
@@ -88,11 +90,31 @@ function rememberMembership(
   memoryMembership.set(key, stored, { weight: membershipWeight(stored) });
 }
 
+/** Identifies one authorization of a Connection. */
+interface MembershipOwner {
+  username: string | null;
+  authorization: string;
+}
+
+/**
+ * Whether a snapshot belongs to this authorization. A reconnect, even to a
+ * Provider user without a username, gets a new authorization.
+ */
+function ownedBy(
+  stored: StoredMembership | null | undefined,
+  owner: MembershipOwner,
+): stored is StoredMembership {
+  if (!stored) return false;
+  return stored.authorization === undefined
+    ? stored.username === owner.username
+    : stored.authorization === owner.authorization;
+}
+
 /** A recent local snapshot for display only; mutations always read R2. */
 export async function readMembership(
   accountId: string,
   provider: ProviderId,
-  username: string | null,
+  owner: MembershipOwner,
 ): Promise<StoredMembership | null> {
   const key = membershipKey(accountId, provider);
   let stored = memoryMembership.get(key);
@@ -110,7 +132,7 @@ export async function readMembership(
       }
     }
   }
-  return stored?.username === username ? stored : null;
+  return ownedBy(stored, owner) ? stored : null;
 }
 
 /** Missing and existing snapshots both have an explicit write precondition. */
@@ -133,15 +155,15 @@ export async function applyMembershipAction(
   try {
     for (let attempt = 0; attempt < 8; attempt++) {
       const version = await membershipVersion(key);
-      const previous =
-        version.stored?.username === connection.username
-          ? version.stored
-          : null;
+      const previous = ownedBy(version.stored, connection)
+        ? version.stored
+        : null;
       const stored: StoredMembership = {
         // An Action changes one entry, not the age of the complete snapshot.
         fetchedAt: previous?.fetchedAt ?? new Date(0).toISOString(),
         // Even an idempotent Action invalidates an older full Provider read.
         revision: randomUUID(),
+        authorization: connection.authorization,
         username: connection.username,
         membership: applyToMembership(
           previous?.membership ?? EMPTY_MEMBERSHIP,
@@ -210,6 +232,7 @@ export function scheduleMembershipRefresh(
       const membership = await actions.getMembership(connection);
       const stored: StoredMembership = {
         fetchedAt: new Date().toISOString(),
+        authorization: connection.authorization,
         username: connection.username,
         membership,
       };

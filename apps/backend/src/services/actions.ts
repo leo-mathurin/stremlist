@@ -19,7 +19,10 @@ import {
   readMembership,
   scheduleMembershipRefresh,
 } from "./action-membership";
-import { getConnectionAccess, listConnections } from "./connections";
+import {
+  getConnectionAccess,
+  listConnectionAuthorizations,
+} from "./connections";
 import { markCachedListStale } from "./list-cache";
 import { sourceCaches } from "./merged-lists";
 
@@ -57,20 +60,24 @@ function forgetConnectionMemory(accountId: string, provider: ProviderId): void {
  * The Connections that receive Actions for this Account, in the user's
  * order, with the connected Provider user.
  */
-async function actionConnections(
-  account: Account,
-): Promise<{ provider: ProviderId; username: string | null }[]> {
+async function actionConnections(account: Account): Promise<
+  {
+    provider: ProviderId;
+    owner: { username: string | null; authorization: string };
+  }[]
+> {
   if (!account.actionsEnabled) return [];
   const connected = new Map(
-    (await listConnections(account.id)).map((c) => [c.provider, c.username]),
+    (await listConnectionAuthorizations(account.id)).map(
+      ({ provider, ...owner }) => [provider, owner],
+    ),
   );
-  return account.actionProviders.flatMap((provider) =>
-    connected.has(provider) &&
-    isProviderEnabled(provider) &&
-    getProvider(provider).actions
-      ? [{ provider, username: connected.get(provider) ?? null }]
-      : [],
-  );
+  return account.actionProviders.flatMap((provider) => {
+    const owner = connected.get(provider);
+    return owner && isProviderEnabled(provider) && getProvider(provider).actions
+      ? [{ provider, owner }]
+      : [];
+  });
 }
 
 /** The Providers that receive Actions for this Account, in the user's order. */
@@ -177,8 +184,8 @@ export async function buildActionStreams(
   if (connections.length === 0) return [];
 
   const memberships = await Promise.all(
-    connections.map(async ({ provider, username }) => {
-      const stored = await readMembership(account.id, provider, username);
+    connections.map(async ({ provider, owner }) => {
+      const stored = await readMembership(account.id, provider, owner);
       if (
         !stored ||
         Date.now() - new Date(stored.fetchedAt).getTime() > MEMBERSHIP_FRESH_MS
@@ -378,8 +385,8 @@ export async function currentRatings(
     ({ provider }) => supportsAction(provider, "rating"),
   );
   return Promise.all(
-    connections.map(async ({ provider, username }) => {
-      const stored = await readMembership(account.id, provider, username);
+    connections.map(async ({ provider, owner }) => {
+      const stored = await readMembership(account.id, provider, owner);
       return { provider, rating: stored?.membership.ratings[imdbId] ?? null };
     }),
   );
