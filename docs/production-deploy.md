@@ -6,6 +6,74 @@ the database migrations and `supabase/config.toml`, then publishes the backend a
 from the same commit. Nobody deploys from a laptop, and nobody runs SQL by hand
 in the production dashboard.
 
+## Release v2.0.0
+
+PR #74 contains PR #73 (this workflow and the baseline). Merge #74 only. If
+#73 is merged first, #74 still merges with no new merge from `main`.
+
+Before you merge, in Vercel, `stremlist-backend`, Production environment.
+The deployment reads these values when the workflow builds it:
+
+- [ ] `CONNECTION_ENCRYPTION_KEY`: 32 random bytes in base64
+      (`openssl rand -base64 32`). Required: Connections fail without it.
+      Never change it later: it decrypts the stored tokens.
+- [ ] `TRAKT_CLIENT_ID` (`TRAKT_CLIENT_SECRET` only for a Trakt app created
+      before 2026-10-01), `SIMKL_CLIENT_ID`, `SIMKL_CLIENT_SECRET`,
+      `MDBLIST_CLIENT_ID`, `MDBLIST_CLIENT_SECRET`.
+- [ ] Callback URL `https://api.stremlist.com/oauth/<provider>/callback` is
+      registered in the Trakt, Simkl and MDBList apps (`<provider>` is
+      `trakt`, `simkl` or `mdblist`).
+- [ ] `BACKEND_PUBLIC_URL=https://api.stremlist.com`.
+- [ ] `TMDB_READ_ACCESS_TOKEN` (or `TMDB_API_KEY`).
+- [ ] `LETTERBOXD_MAX_RPS=40` (the default is 10).
+- [ ] `BETTERSTACK_HEARTBEAT_URL_LETTERBOXD`, `_JUSTWATCH`, `_SENSCRITIQUE`,
+      and `MONITOR_JUSTWATCH_REF`, `MONITOR_SENSCRITIQUE_REF` (a probe with no
+      reference or no heartbeat does not run).
+
+Then:
+
+1. Merge #74. CI puts the `v2.0.0` commit on `main`, then `Supabase deploy`
+   releases it. The plan lists 11 migrations and `pg_cron: available`.
+2. When the run is green: `https://api.stremlist.com/health` returns
+   `"database":"up"`, and an existing `ur…` install still shows its catalogs.
+3. In Better Stack, unpause the Letterboxd, JustWatch and SensCritique
+   heartbeats.
+4. Merge `main` into `staging`, so that staging runs v2.
+5. Later, when no v1 deployment uses the database, drop the v1 shape (see
+   [After v2.0.0](#after-v200)).
+
+### v1 keeps working during the release
+
+`20261006120000_accounts_providers_connections.sql` renames `users` to
+`accounts` and `user_watchlists` to `lists`. The same file creates views named
+`users` and `user_watchlists` and the three v1 RPCs (`replace_user_config`,
+`request_watchlist_prewarm`, `finish_watchlist_prewarm`) on the new tables. The
+v1 backend, and old staging and preview deployments, keep reading and writing
+until v2 is promoted. `supabase/tests/v1_compatibility.sql` runs the v1
+queries on the new schema, and the CI upgrade test migrates v1 data with
+non-`ur` Legacy IDs.
+
+| Failure point                                   | Result                                                                                     |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Plan: production cannot install `pg_cron`       | Nothing changes. The run stops before `db push`.                                           |
+| `20261006110000_enable_pg_cron`                 | Nothing changes. pg_cron is installed first, before any table change.                      |
+| `20261006120000_accounts_providers_connections` | The file rolls back. Production keeps the v1 schema.                                       |
+| A later migration, or `config push`             | The rename and the v1 views stay. v1 keeps serving. Correct the failed file and run again. |
+| Publish, before the backend promotion           | v1 keeps serving on the new schema through the views. Run the workflow again.              |
+| Publish, after the backend promotion            | v2 serves `api.stremlist.com`. See [When the workflow fails](#when-the-workflow-fails).    |
+
+Previews of v2 branches that are built before the release fail: the
+`accounts` table does not exist in production yet.
+
+### After v2.0.0
+
+[`supabase/contract/drop_v1_compatibility.sql`](../supabase/contract/drop_v1_compatibility.sql)
+drops the v1 views and RPCs. It is not in `supabase/migrations`, so no deploy
+applies it. CI applies it in a rolled-back transaction to prove that it still
+runs. When v2 serves production and staging, and no one uses an older
+preview, move it to `supabase/migrations/<YYYYMMDDHHMMSS>_drop_v1_compatibility.sql`
+in a new PR. Its header lists the other files to delete.
+
 ## Sequence
 
 The workflow starts when `CI` passes on the push to `main`. It does not start
@@ -68,7 +136,9 @@ something.
 - A version older than the latest one in production still applies
   (`--include-all`). The plan marks it; check that its order is correct.
 - `CREATE EXTENSION` and `cron.schedule` work in a migration: the push
-  connects as `postgres`.
+  connects as `postgres`. The plan blocks the release when production cannot
+  install an extension that a pending migration creates. Create an extension
+  in its own file, before the migrations that change existing tables.
 - Each file is applied in one transaction, with its history row. If a file
   fails, the files before it stay applied, nothing of the failed file stays, and
   nothing is published. Production has not applied the failed file, so correct
