@@ -253,18 +253,20 @@ test("List edits reject duplicates, save values and report refresh failures", as
   await screen.getByLabel(PASTE).fill(listLink);
   await screen.getByRole("button", "Add", { exact: true }).tap();
   await expect(screen.getByText("IMDb · List · ls99123456")).toBeVisible();
+  // A new List goes first, so it shows right away and becomes the first
+  // catalog row in Stremio.
   await screen.getByRole("button", "Settings for IMDb List").tap();
-  await screen.getByLabel("Catalog title").nth(1).fill("My movies");
+  await screen.getByLabel("Catalog title").first().fill("My movies");
   await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(submissions[0].lists).toMatchObject([
-    { provider: "imdb", sourceRef: imdbUser, position: 0 },
     {
       provider: "imdb",
       sourceRef: "ls99123456",
       catalogTitle: "My movies",
-      position: 1,
+      position: 0,
     },
+    { provider: "imdb", sourceRef: imdbUser, position: 1 },
   ]);
   // The second save changes nothing. Stremio still needs the reinstall.
   await saveButton(screen).tap();
@@ -601,7 +603,7 @@ test("edits made while saving remain available for the next save", async ({
   await screen.getByLabel(/^RPDB API key/).fill("e2e-synthetic-rpdb");
   release();
   await expect(screen.getByText(SAVED_WITH_CHANGES)).toBeVisible();
-  await expect(screen.getByLabel("Catalog title").first()).toHaveValue(
+  await expect(screen.getByLabel("Catalog title").last()).toHaveValue(
     "New unsaved title",
   );
   await expect(screen.getByRole("button", /^Remove /)).toHaveCount(2);
@@ -612,9 +614,10 @@ test("edits made while saving remain available for the next save", async ({
   });
   expect(submissions[1]).toMatchObject({
     rpdbApiKey: "e2e-synthetic-rpdb",
+    // The List added during the save goes first.
     lists: [
-      { sourceRef: imdbUser, catalogTitle: "New unsaved title", position: 0 },
-      { sourceRef: "ls99123456", position: 1 },
+      { sourceRef: "ls99123456", position: 0 },
+      { sourceRef: imdbUser, catalogTitle: "New unsaved title", position: 1 },
     ],
   });
 });

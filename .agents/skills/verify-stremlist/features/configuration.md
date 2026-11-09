@@ -24,5 +24,6 @@ Preconditions: use the toolkit's seeded Lists. Integration specs create their ow
 ## Gotchas
 
 - A toolkit captured POST proves the payload, not database persistence.
+- A new List goes first, from a link or Quick add. After Save it is the first Catalog in Stremio, so expect it at position 0 and the older Lists after it.
 - Limits differ for Lists and Source lists. Keep the assertions for 10 Lists, 20 Source lists per Account, and five sources per Merged List.
 - Integration tests share one database and use one worker. Running two suites concurrently invalidates save and cleanup proofs.

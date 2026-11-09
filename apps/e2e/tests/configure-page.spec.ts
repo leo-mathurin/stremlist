@@ -149,9 +149,10 @@ test(
 
     await saveConfigure(page);
     const { body } = await getConfig(accountId);
+    // The new List goes first.
     expect(body.lists.map((list) => list.sourceRef)).toEqual([
-      PUBLIC_USER,
       PUBLIC_LIST,
+      PUBLIC_USER,
     ]);
   },
 );
@@ -191,7 +192,8 @@ test("adds a built-in chart List", { tag: "@local" }, async ({ page }) => {
 
   await saveConfigure(page);
   const { body } = await getConfig(accountId);
-  expect(body.lists[1]).toMatchObject({
+  // The new List goes first.
+  expect(body.lists[0]).toMatchObject({
     provider: "imdb",
     sourceRef: "imdb:top-rated-movies",
     catalogTitle: "Top 250 Movies",
