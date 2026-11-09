@@ -9,7 +9,6 @@ import {
   saveConfigure,
 } from "../helpers/configure.js";
 import {
-  getAccountRow,
   getConnectionRow,
   getOAuthStates,
   resetDb,
@@ -56,10 +55,13 @@ test(
     const start = async () => {
       const response = await api.startConnection(accountId, "trakt");
       expect(response.status).toBe(200);
-      return new URL(response.body.authorizeUrl);
+      return {
+        authorize: new URL(response.body.authorizeUrl),
+        browserKey: response.body.browserKey,
+      };
     };
 
-    const authorize = await start();
+    const { authorize, browserKey } = await start();
     expect(`${authorize.origin}${authorize.pathname}`).toBe(
       "https://auth.trakt.tv/oauth/authorize",
     );
@@ -73,13 +75,33 @@ test(
     });
     expect(await getOAuthStates(state)).toEqual([{ provider: "trakt" }]);
 
-    const returnWithCode = () =>
-      api.oauthCallback("trakt", { code: "fixture-code", state });
-    const callback = await returnWithCode();
+    // The callback only hands the answer to the page, in the fragment.
+    const callback = await api.oauthCallback("trakt", {
+      code: "fixture-code",
+      state,
+    });
     expect(callback.status).toBe(302);
     expect(callback.location).toBe(
-      `${FRONTEND_URL}/configure?account=${accountId}&connected=trakt`,
+      `${FRONTEND_URL}/configure#oauth=trakt&state=${state}&code=fixture-code`,
     );
+    expect(await getConnectionRow(accountId, "trakt")).toBeNull();
+    // Another browser, with no key or its own, links nothing (login CSRF).
+    const foreign = await api.completeConnection("trakt", {
+      state,
+      code: "fixture-code",
+      browserKey: "another-browser-key",
+    });
+    expect(foreign.status).toBe(400);
+    expect(await getConnectionRow(accountId, "trakt")).toBeNull();
+    const complete = () =>
+      api.completeConnection("trakt", {
+        state,
+        code: "fixture-code",
+        browserKey,
+      });
+    const completed = await complete();
+    expect(completed.status).toBe(200);
+    expect(completed.body).toEqual({ ok: true, accountId, created: false });
     // PKCE: the token request proves the verifier behind the challenge.
     const [exchange] = backend.requests(
       (url) => url.host === "auth.trakt.tv" && url.pathname === "/oauth/token",
@@ -108,17 +130,15 @@ test(
     ]);
 
     // A state works once; a refusal and a broken request say why.
-    const replay = await returnWithCode();
-    expect(replay.location).toBe(
-      `${FRONTEND_URL}/configure?connection_error=expired&provider=trakt`,
-    );
-    const second = (await start()).searchParams.get("state")!;
+    const replay = await complete();
+    expect(replay).toMatchObject({ status: 400, body: { reason: "expired" } });
+    const second = (await start()).authorize.searchParams.get("state")!;
     const denied = await api.oauthCallback("trakt", {
       error: "access_denied",
       state: second,
     });
     expect(denied.location).toBe(
-      `${FRONTEND_URL}/configure?account=${accountId}&connection_error=denied&provider=trakt`,
+      `${FRONTEND_URL}/configure#oauth=trakt&state=${second}&oauth_error=denied`,
     );
     const invalid = await api.oauthCallback("trakt");
     expect(invalid.location).toBe(
@@ -308,15 +328,16 @@ test(
         "Trakt lists need your private Addon URL. Upgrade this install first.",
     });
 
-    // The upgrade copies the Lists to a private Account, not the Connection.
+    // The upgrade copies what the legacy page shows to a private Account:
+    // not the List that needs the Connection, and not the Connection.
     const upgraded = await api.upgrade(alias);
     expect(upgraded.status).toBe(200);
-    const copy = upgraded.body.accountId as string;
+    const copy = upgraded.body.accountId!;
     expect(
       (await api.getConfig(copy)).body.lists.map((row) => row.sourceRef),
-    ).toEqual(["users/fixture-user/watchlist", "me/watchlist"]);
+    ).toEqual(["users/fixture-user/watchlist"]);
     expect(await getConnectionRow(copy, "trakt")).toBeNull();
-    expect((await getAccountRow(accountId))?.moved_at).not.toBeNull();
+    // Nothing locks the legacy install: its `ur…` ID is public.
     expect(
       (
         await api.postConfig(alias, [
@@ -325,7 +346,63 @@ test(
           }),
         ])
       ).status,
-    ).toBe(409);
+    ).toBe(200);
+  },
+);
+
+test(
+  "a v1 legacy install keeps serving Stremio after its upgrade, and the private URL serves the same Lists",
+  { tag: "@local" },
+  async () => {
+    const { api } = backend;
+    const alias = LEGACY_CONNECTION_USER;
+    const legacyId = await seedAccount({ legacyImdbUserId: alias });
+    const legacyList = await seedList(legacyId, {
+      provider: "trakt",
+      sourceRef: "users/fixture-user/watchlist",
+      catalogTitle: "Public",
+      position: 0,
+    });
+    const shape = (manifest: { catalogs: { type: string; name: string }[] }) =>
+      manifest.catalogs.map(({ type, name }) => ({ type, name }));
+    const before = await api.getManifest(alias);
+    const titles = await api.listCatalogNames(alias, legacyList, "movie");
+    expect(titles).toEqual(["The Shawshank Redemption"]);
+
+    // Anyone who knows the public `ur…` ID can make this copy.
+    const upgraded = await api.upgrade(alias);
+    expect(upgraded.status).toBe(200);
+    const copy = upgraded.body.accountId!;
+    expect(copy).toMatch(/^sl_/);
+
+    // The old install in Stremio keeps serving the same manifest and Titles.
+    expect(await api.getManifest(alias)).toEqual(before);
+    expect(await api.listCatalogNames(alias, legacyList, "movie")).toEqual(
+      titles,
+    );
+    // The private Addon URL serves the same Lists, with their own IDs.
+    const privateManifest = await api.getManifest(copy);
+    expect(shape(privateManifest)).toEqual(shape(before));
+    const [privateList] = (await api.getConfig(copy)).body.lists;
+    expect(privateList.id).not.toBe(legacyList);
+    expect(await api.listCatalogNames(copy, privateList.id, "movie")).toEqual(
+      titles,
+    );
+
+    // The legacy install is not frozen: its own page still saves.
+    const saved = await api.postConfig(alias, [
+      listInput("trakt", "users/fixture-user/watchlist", {
+        id: legacyList,
+        catalogTitle: "Renamed",
+        displayMode: "split",
+      }),
+    ]);
+    expect(saved.status).toBe(200);
+    expect(
+      (await api.getManifest(alias)).catalogs.map((catalog) => catalog.name),
+    ).toContain("Renamed");
+    // The private copy is a separate Account.
+    expect(shape(await api.getManifest(copy))).toEqual(shape(before));
   },
 );
 
@@ -343,10 +420,11 @@ test(
         "fixture-mdblist-client",
       ],
     ] as const) {
-      const { authorizeUrl: authorize, callback } = await backend.authorize(
-        accountId,
-        provider,
-      );
+      const {
+        authorizeUrl: authorize,
+        callback,
+        completion,
+      } = await backend.authorize(accountId, provider);
       expect(`${authorize.origin}${authorize.pathname}`).toBe(authorizeUrl);
       expect(Object.fromEntries(authorize.searchParams)).toMatchObject({
         response_type: "code",
@@ -354,9 +432,10 @@ test(
         redirect_uri: `${backend.url}/oauth/${provider}/callback`,
       });
       expect(callback.status).toBe(302);
-      expect(callback.location).toBe(
-        `${FRONTEND_URL}/configure?account=${accountId}&connected=${provider}`,
+      expect(callback.location).toMatch(
+        `${FRONTEND_URL}/configure#oauth=${provider}&state=`,
       );
+      expect(completion).toEqual({ status: 200, accountId });
       const row = await getConnectionRow(accountId, provider);
       expect(row).toMatchObject({
         provider_username: "fixture-user",

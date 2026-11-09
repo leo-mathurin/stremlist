@@ -7,9 +7,24 @@ the `ADR 0001`–`ADR 0008` references in source comments.
 
 Generated `sl_…` Account IDs make the Addon URL the sole credential without
 coupling identity to a Provider. Guessable `ur…` Legacy aliases read public Lists
-only. Upgrading copies configuration to a new private Account; the old install
-keeps working but its configure page becomes read-only and never reveals the
-private Addon URL. Account writes and the copy are transactional.
+only. Anyone who knows a `ur…` ID can do what its configure page does, so
+nothing done through the alias may lock, take over or deny service to the
+legacy install. Upgrading creates a new private Account from the setup that the
+legacy configure page shows, unsaved edits included, exactly like a first save.
+The legacy Account is not changed or marked: the old install keeps serving and
+stays editable, and its page never reveals the private Addon URL. Only the tab
+that made the copy stops editing the old install, because the user moves to the
+new one. A stranger who makes a copy gets only what the legacy page already
+shows. Account writes are transactional.
+
+OAuth authorizations belong to the browser that started them. The start
+answers a random browser key, which the configure page keeps in session
+storage; the backend stores only its hash. The registered callback completes
+nothing: it hands the Provider's answer to the configure page in the URL
+fragment, and the page completes it with its key. A consent link that someone
+sends to another person therefore links nothing (OAuth login CSRF). A new
+setup starts an authorization without an Account and gets its Account, with
+the setup it had, only when the connection succeeds.
 
 ## ADR 0002: IMDb Title IDs
 
@@ -87,7 +102,10 @@ use encrypted OAuth Connections for private Sources and Actions. Refresh leases
 serialize rotating tokens, and refreshes retain the original redirect URI.
 Saved private Catalog caches belong to a stable authorization version: token
 refresh preserves it, while reconnect or disconnect invalidates cached data
-from the old grant.
+from the old grant. Adapter state kept between reads, such as the Simkl
+library and list snapshots, is bound to the same version
+(`ConnectionAccess.authorization`), never to the Provider username, which can
+be missing.
 `DISABLED_PROVIDERS` blocks all outbound access to those Providers, including ID
 lookups and Actions, while Lists continue serving their last cached Catalog.
 

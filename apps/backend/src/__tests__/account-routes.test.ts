@@ -141,13 +141,53 @@ describe("List CRUD via the config API", () => {
   });
 });
 
-describe("POST /:accountKey/upgrade", () => {
-  it("copies a legacy install into a new private Account", async () => {
+describe("a caller who knows only the Legacy alias", () => {
+  it("cannot freeze the legacy install", async () => {
+    seedWatchlist({ id: UUID_1, catalogTitle: "Mine" });
+
+    // A stranger reads the public `ur…` ID and makes a private copy of
+    // what the legacy page shows, the old way and the new way.
+    await app.request(`/${OWNER}/upgrade`, { method: "POST" });
+    const shown = await (await getConfig(OWNER)).json();
+    expect((await postJson("/accounts", { lists: shown.lists })).status).toBe(
+      200,
+    );
+
+    const save = await postJson(`/${OWNER}/config`, {
+      lists: [
+        {
+          id: UUID_1,
+          provider: "imdb",
+          sourceRef: OWNER,
+          catalogTitle: "Still mine",
+          sortOption: "added_at-desc",
+        },
+      ],
+    });
+    expect(save.status).toBe(200);
+    const legacy = await (await getConfig(OWNER)).json();
+    expect(
+      legacy.lists.map((list: { catalogTitle: string }) => list.catalogTitle),
+    ).toEqual(["Still mine"]);
+    expect(legacy).not.toHaveProperty("movedAt", expect.any(String));
+  });
+});
+
+describe("upgrading a legacy install", () => {
+  it("creates a new private Account from the setup the legacy page shows", async () => {
     db.getTable("accounts")[0].rpdb_api_key = "rpdb";
     seedWatchlist({ id: UUID_1, catalogTitle: "Mine" });
     seedWatchlist({ id: UUID_2, sourceRef: "ls123456789", position: 1 });
+    const legacy = await (await getConfig(OWNER)).json();
 
-    const res = await app.request(`/${OWNER}/upgrade`, { method: "POST" });
+    // The page sends what it shows, its unsaved edits included.
+    const res = await postJson("/accounts", {
+      rpdbApiKey: legacy.rpdbApiKey,
+      lists: legacy.lists.map(
+        (list: { catalogTitle: string }, index: number) =>
+          index === 1 ? { ...list, catalogTitle: "Edited" } : list,
+      ),
+    });
 
     expect(res.status).toBe(200);
     const { accountId } = await res.json();
@@ -163,17 +203,19 @@ describe("POST /:accountKey/upgrade", () => {
       ]),
     ).toEqual([
       [OWNER, "Mine"],
-      ["ls123456789", ""],
+      ["ls123456789", "Edited"],
     ]);
     // New List IDs: the copy has its own Catalogs.
     expect(copy.lists.map((list: { id: string }) => list.id)).not.toContain(
       UUID_1,
     );
 
-    // The old install keeps working and knows it moved.
-    const legacy = await (await getConfig(OWNER)).json();
-    expect(legacy.lists).toHaveLength(2);
-    expect(typeof legacy.movedAt).toBe("string");
+    // The old install is unchanged and stays editable.
+    const after = await (await getConfig(OWNER)).json();
+    expect(
+      after.lists.map((list: { catalogTitle: string }) => list.catalogTitle),
+    ).toEqual(["Mine", ""]);
+    expect(after).not.toHaveProperty("movedAt");
 
     await runScheduledTasks();
     expect(prewarmMocks.prewarmLists).toHaveBeenCalledWith(
@@ -183,12 +225,9 @@ describe("POST /:accountKey/upgrade", () => {
     );
   });
 
-  it.each([
-    ["a private Addon URL", () => seedAccount().id, 400],
-    ["an unknown Legacy alias", () => "ur99999999", 404],
-  ])("refuses %s", async (_, key, status) => {
-    const res = await app.request(`/${key()}/upgrade`, { method: "POST" });
-    expect(res.status).toBe(status);
+  it("has no route that changes the legacy install through its alias alone", async () => {
+    const res = await app.request(`/${OWNER}/upgrade`, { method: "POST" });
+    expect(res.status).toBe(404);
   });
 });
 

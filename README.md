@@ -30,7 +30,9 @@ Cloudflare R2 stores catalog generations, Connection state and detection history
 3. Keep the URL: it is the only credential for your configuration.
 
 Legacy `ur…` installs still serve public Lists. Upgrade on the configure page
-and reinstall to connect a Provider or use Actions.
+and reinstall to connect a Provider or use Actions. The upgrade makes a new
+private install from your current setup; the old install keeps working until
+you remove it.
 
 ## Getting Started
 

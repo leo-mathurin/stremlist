@@ -33,9 +33,10 @@ export interface FixtureBackend {
   requests: (match?: (url: URL) => boolean) => LoggedRequest[];
   clearRequests: () => void;
   /**
-   * Connect `provider` the way a user does: start the authorization, then
-   * come back to the OAuth callback with the fixture code (the fixtures
-   * exchange `fixture-code` for the token `fresh-access`).
+   * Connect `provider` the way a user does: start the authorization, come
+   * back to the OAuth callback with the fixture code (the fixtures exchange
+   * `fixture-code` for the token `fresh-access`), then complete it with the
+   * browser key of the start, as the configure page does.
    */
   authorize: (
     accountKey: string,
@@ -43,6 +44,7 @@ export interface FixtureBackend {
   ) => Promise<{
     authorizeUrl: URL;
     callback: { status: number; location: string | null };
+    completion: { status: number; accountId?: string };
   }>;
   stop: () => Promise<void>;
 }
@@ -102,11 +104,24 @@ export async function startFixtureBackend(
         throw new Error(`Connect ${provider} answered ${start.status}`);
       }
       const authorizeUrl = new URL(start.body.authorizeUrl);
+      const state = authorizeUrl.searchParams.get("state") ?? "";
       const callback = await api.oauthCallback(provider, {
         code: "fixture-code",
-        state: authorizeUrl.searchParams.get("state") ?? "",
+        state,
       });
-      return { authorizeUrl, callback };
+      const completed = await api.completeConnection(provider, {
+        state,
+        code: "fixture-code",
+        browserKey: start.body.browserKey,
+      });
+      return {
+        authorizeUrl,
+        callback,
+        completion: {
+          status: completed.status,
+          accountId: completed.body.accountId,
+        },
+      };
     },
     async stop() {
       try {

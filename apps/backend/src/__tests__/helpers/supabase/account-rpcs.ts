@@ -131,41 +131,11 @@ function createAccountWithConfig(args: RpcArgs): Result {
   return { data: [{ account_id: account.id, lists }], error: null };
 }
 
-/** Same rules as public.copy_legacy_account. */
-function copyLegacyAccount(args: RpcArgs): Result {
-  const legacy = db
-    .getTable("accounts")
-    .find((row) => row.id === args.p_legacy_id && row.legacy_imdb_user_id);
-  if (!legacy) return rpcError("Legacy account not found");
-  const copy = db.insert("accounts", {
-    is_active: true,
-    rpdb_api_key: legacy.rpdb_api_key,
-    new_titles_catalog: legacy.new_titles_catalog,
-  });
-  listsOf(legacy.id as string).forEach((list, position) => {
-    db.insert("lists", {
-      account_id: copy.id,
-      provider: list.provider,
-      source_ref: list.source_ref,
-      catalog_title: list.catalog_title,
-      sort_option: list.sort_option,
-      display_mode: list.display_mode,
-      position,
-      catalog_settings: list.catalog_settings,
-      merged_sources: list.merged_sources,
-      source_label: list.source_label,
-    });
-  });
-  legacy.moved_at = now();
-  return { data: { ...copy }, error: null };
-}
-
 function findAccount(args: RpcArgs): Row | undefined {
   return db.getTable("accounts").find((row) => row.id === args.p_account_id);
 }
 
 export const accountRpcs: Partial<Record<string, RpcHandler>> = {
-  copy_legacy_account: copyLegacyAccount,
   create_account_with_config: createAccountWithConfig,
   replace_account_config: replaceAccountConfig,
 

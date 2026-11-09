@@ -171,11 +171,9 @@ export function ReinstallNotice({
  * helps, create it, then show the reinstall steps.
  */
 export function LegacyUpgradeCard({
-  movedAt,
   onUpgrade,
   onOpen,
 }: {
-  movedAt: string | null;
   onUpgrade: () => Promise<string | null>;
   onOpen: (accountId: string) => void;
 }) {
@@ -225,15 +223,9 @@ export function LegacyUpgradeCard({
       <div className="flex items-start gap-3">
         <ShieldCheck className="mt-0.5 size-5 shrink-0 text-brand" />
         <div>
-          <h3 className="text-lg font-bold">
-            {movedAt
-              ? "This install has a private URL now"
-              : "Upgrade to a private URL"}
-          </h3>
+          <h3 className="text-lg font-bold">Upgrade to a private URL</h3>
           <p className="mt-1 text-sm text-pretty text-white/65">
-            {movedAt
-              ? "A private Addon URL was already created from this install, so changes here are not saved. Use the configure page of your new install. Lost it? Create a new private URL."
-              : `This install uses your IMDb user ID, which anyone can guess. A private Addon URL is a secret that only you have, so Stremlist can connect ${joinProviderLabels(CONNECTABLE_PROVIDERS)} and show Actions in Stremio. Your Lists come with it. You reinstall once.`}
+            {`This install uses your IMDb user ID, which anyone can guess. A private Addon URL is a secret that only you have, so Stremlist can connect ${joinProviderLabels(CONNECTABLE_PROVIDERS)} and show Actions in Stremio. Your Lists come with it. You reinstall once.`}
           </p>
         </div>
       </div>
@@ -244,7 +236,7 @@ export function LegacyUpgradeCard({
         className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-brand px-5 text-sm font-bold text-black transition-[opacity,scale] active:scale-[0.98] disabled:opacity-60"
       >
         {busy && <Loader2 className="size-4 animate-spin" />}
-        {movedAt ? "Create a new private URL" : "Create my private URL"}
+        Create my private URL
       </button>
     </section>
   );

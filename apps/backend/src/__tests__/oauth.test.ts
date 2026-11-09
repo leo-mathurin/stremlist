@@ -81,8 +81,10 @@ function stateRow() {
   return row;
 }
 
+const BROWSER_KEY = "browser-key-1";
+
 function seedState(
-  accountId: string,
+  accountId: string | null,
   overrides: { state?: string; expiresAt?: Date; provider?: string } = {},
 ) {
   db.insert("oauth_states", {
@@ -90,6 +92,9 @@ function seedState(
     account_id: accountId,
     provider: overrides.provider ?? "trakt",
     code_verifier: "verifier-xyz",
+    browser_key_hash: createHash("sha256")
+      .update(BROWSER_KEY)
+      .digest("base64url"),
     expires_at: (
       overrides.expiresAt ?? new Date(Date.now() + 10 * 60_000)
     ).toISOString(),
@@ -102,11 +107,29 @@ function callback(query: Record<string, string>, provider = "trakt") {
   );
 }
 
+/** The configure page completes with the key that its start answered. */
+function complete(body: Record<string, unknown> = {}, provider = "trakt") {
+  return app.request(`/connections/${provider}/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      state: "state-abc",
+      code: "code-1",
+      browserKey: BROWSER_KEY,
+      ...body,
+    }),
+  });
+}
+
 function redirectParams(response: Response) {
   const location = response.headers.get("Location");
   if (!location) throw new Error("not a redirect");
   const url = new URL(location);
-  return { path: url.pathname, params: Object.fromEntries(url.searchParams) };
+  return {
+    path: url.pathname,
+    params: Object.fromEntries(url.searchParams),
+    fragment: Object.fromEntries(new URLSearchParams(url.hash.slice(1))),
+  };
 }
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -135,13 +158,12 @@ describe("startAuthorization", () => {
   it("builds a PKCE authorize URL and remembers the verifier under the state", async () => {
     useOAuthProvider();
 
-    const url = new URL(
-      await startAuthorization(
-        accountId,
-        "trakt",
-        "https://api.stremlist.test",
-      ),
+    const { authorizeUrl, browserKey } = await startAuthorization(
+      accountId,
+      "trakt",
+      "https://api.stremlist.test",
     );
+    const url = new URL(authorizeUrl);
 
     expect(`${url.origin}${url.pathname}`).toBe(AUTHORIZE_URL);
     const params = Object.fromEntries(url.searchParams);
@@ -161,6 +183,12 @@ describe("startAuthorization", () => {
     expect(row.code_verifier).toMatch(/^[A-Za-z0-9_-]{43,128}$/);
     // The verifier itself never leaves the server.
     expect(url.toString()).not.toContain(row.code_verifier as string);
+    // Only the browser keeps its key; the server keeps a hash.
+    expect(browserKey).toMatch(/^[A-Za-z0-9_-]{43,}$/);
+    expect(url.toString()).not.toContain(browserKey);
+    expect(row.browser_key_hash).toBe(
+      createHash("sha256").update(browserKey).digest("base64url"),
+    );
     const ttl = Date.parse(row.expires_at as string) - Date.now();
     expect(ttl).toBeGreaterThan(14 * 60_000);
     expect(ttl).toBeLessThanOrEqual(15 * 60_000);
@@ -175,6 +203,7 @@ describe("startAuthorization", () => {
     const [first, second] = db.getTable("oauth_states");
     expect(first.state).not.toBe(second.state);
     expect(first.code_verifier).not.toBe(second.code_verifier);
+    expect(first.browser_key_hash).not.toBe(second.browser_key_hash);
   });
 
   it("refuses a Provider without a client ID", async () => {
@@ -216,9 +245,27 @@ describe("POST /:accountId/connections/:provider/start", () => {
     });
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: boolean; authorizeUrl: string };
+    const body = (await res.json()) as {
+      ok: boolean;
+      authorizeUrl: string;
+      browserKey: string;
+    };
     expect(body.ok).toBe(true);
     expect(body.authorizeUrl.startsWith(AUTHORIZE_URL)).toBe(true);
+    expect(body.browserKey).toEqual(expect.any(String));
+  });
+
+  it("starts a new setup without creating an Account", async () => {
+    useOAuthProvider();
+    const accounts = db.getTable("accounts").length;
+
+    const res = await app.request("/connections/trakt/start", {
+      method: "POST",
+    });
+
+    expect(res.status).toBe(200);
+    expect(stateRow()).toMatchObject({ account_id: null, provider: "trakt" });
+    expect(db.getTable("accounts")).toHaveLength(accounts);
   });
 
   it("refuses an Account that has a Legacy alias", async () => {
@@ -292,7 +339,112 @@ describe("GET /:accountId/connections/:provider/sources", () => {
   });
 });
 
+describe("OAuth login CSRF", () => {
+  async function attackerStart() {
+    // The attacker starts a connect on their own Account and sends the
+    // Provider consent link to a victim.
+    const start = await app.request(`/${accountId}/connections/trakt/start`, {
+      method: "POST",
+    });
+    const { authorizeUrl, browserKey } = (await start.json()) as {
+      authorizeUrl: string;
+      browserKey: string;
+    };
+    fetchMock.mockResolvedValue(Response.json({ access_token: "victim" }));
+    fetchUsername.mockResolvedValue("victim");
+    return {
+      state: new URL(authorizeUrl).searchParams.get("state") ?? "",
+      browserKey,
+    };
+  }
+
+  it("links nothing when the consent link is opened in another browser", async () => {
+    useOAuthProvider();
+    const { state } = await attackerStart();
+
+    // The victim approves: the Provider sends the victim's browser, which
+    // never started this connect, back with a code.
+    const res = await callback({ code: "victim-code", state });
+    for (const task of background.tasks.splice(0)) await task();
+
+    expect(redirectParams(res).params.connected).toBeUndefined();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(db.getTable("connections")).toEqual([]);
+  });
+
+  it("refuses a completion with the key of another browser", async () => {
+    useOAuthProvider();
+    const { state } = await attackerStart();
+
+    // The victim's page has no key for this authorization, or its own.
+    const res = await complete({
+      state,
+      code: "victim-code",
+      browserKey: "victim-browser-key",
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ reason: "expired" });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(db.getTable("connections")).toEqual([]);
+    // A wrong key does not consume the authorization.
+    expect(db.getTable("oauth_states")).toHaveLength(1);
+  });
+
+  it("still completes in the browser that started it", async () => {
+    useOAuthProvider();
+    const { state, browserKey } = await attackerStart();
+
+    const res = await complete({ state, browserKey });
+
+    expect(res.status).toBe(200);
+    expect(db.getTable("connections")).toHaveLength(1);
+  });
+});
+
 describe("GET /oauth/:provider/callback", () => {
+  it("hands the code to the configure page in the fragment, unused", async () => {
+    useOAuthProvider();
+    seedState(accountId);
+
+    const res = await callback({ code: "code-1", state: "state-abc" });
+
+    expect(res.status).toBe(302);
+    expect(redirectParams(res)).toEqual({
+      path: "/configure",
+      params: {},
+      fragment: { oauth: "trakt", state: "state-abc", code: "code-1" },
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(db.getTable("oauth_states")).toHaveLength(1);
+  });
+
+  it.each([
+    ["access_denied", "denied"],
+    ["server_error", "failed"],
+  ])("hands an error %s to the configure page as %s", async (error, reason) => {
+    const res = await callback({ error, state: "state-abc" });
+
+    expect(redirectParams(res).fragment).toEqual({
+      oauth: "trakt",
+      state: "state-abc",
+      oauth_error: reason,
+    });
+  });
+
+  it.each([
+    [{ code: "code-1" }, "trakt"],
+    [{ code: "code-1", state: "state-abc" }, "netflix"],
+  ])("rejects an invalid request %j for %s", async (query, provider) => {
+    const res = await callback(query, provider);
+
+    expect(redirectParams(res).params).toEqual({
+      connection_error: "invalid_request",
+    });
+  });
+});
+
+describe("POST /connections/:provider/complete", () => {
   it.each(["leo", "another-user"])(
     "keeps durable history on renewal, applying it only to its owner (%s)",
     async (username) => {
@@ -330,8 +482,8 @@ describe("GET /oauth/:provider/callback", () => {
       fetchMock.mockResolvedValue(Response.json({ access_token: "renewed" }));
       fetchUsername.mockResolvedValue(username);
 
-      const response = await callback({ code: "code-1", state: "state-abc" });
-      expect(redirectParams(response).params.connected).toBe("trakt");
+      const response = await complete();
+      expect(await response.json()).toMatchObject({ ok: true, accountId });
       for (const task of background.tasks.splice(0)) await task();
 
       expect([...r2Objects.keys()]).toEqual([key]);
@@ -350,7 +502,7 @@ describe("GET /oauth/:provider/callback", () => {
     },
   );
 
-  it("exchanges the code, stores the encrypted Connection and returns to the configure page", async () => {
+  it("exchanges the code and stores the encrypted Connection", async () => {
     useOAuthProvider();
     seedState(accountId);
     fetchMock.mockResolvedValue(
@@ -363,13 +515,10 @@ describe("GET /oauth/:provider/callback", () => {
     );
     fetchUsername.mockResolvedValue("leo");
 
-    const res = await callback({ code: "code-1", state: "state-abc" });
+    const res = await complete();
 
-    expect(res.status).toBe(302);
-    expect(redirectParams(res)).toEqual({
-      path: "/configure",
-      params: { account: accountId, connected: "trakt" },
-    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, accountId, created: false });
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, init] = fetchMock.mock.calls[0];
@@ -412,9 +561,9 @@ describe("GET /oauth/:provider/callback", () => {
     fetchMock.mockResolvedValue(Response.json({ access_token: "access-1" }));
     fetchUsername.mockRejectedValue(new Error("rate limited"));
 
-    const res = await callback({ code: "code-1", state: "state-abc" });
+    const res = await complete();
 
-    expect(redirectParams(res).params.connected).toBe("trakt");
+    expect(res.status).toBe(200);
     expect(db.getTable("connections")[0]).toMatchObject({
       provider_username: null,
       refresh_token: null,
@@ -422,43 +571,85 @@ describe("GET /oauth/:provider/callback", () => {
     });
   });
 
-  it("reports an expired authorization and deletes it", async () => {
+  it("creates the Account of a new setup only when the connection succeeds", async () => {
     useOAuthProvider();
-    seedState(accountId, { expiresAt: new Date(Date.now() - 1000) });
+    seedState(null);
+    fetchMock.mockResolvedValue(Response.json({ access_token: "access-1" }));
+    fetchUsername.mockResolvedValue("leo");
+    const before = db.getTable("accounts").length;
 
-    const res = await callback({ code: "code-1", state: "state-abc" });
+    const res = await complete({
+      setup: {
+        rpdbApiKey: "rpdb",
+        lists: [
+          {
+            // An ID from another Account does not apply to a new one.
+            id: "11111111-1111-4111-8111-111111111111",
+            provider: "imdb",
+            sourceRef: "ls123456789",
+            catalogTitle: "Kept",
+            sortOption: "added_at-desc",
+          },
+        ],
+        newTitles: { enabled: true },
+      },
+    });
 
-    expect(redirectParams(res).params).toEqual({
-      connection_error: "expired",
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { accountId: string; created: boolean };
+    expect(body.created).toBe(true);
+    expect(body.accountId).toMatch(/^sl_[0-9A-Za-z]{22}$/);
+    expect(db.getTable("accounts")).toHaveLength(before + 1);
+    expect(
+      db.getTable("accounts").find((row) => row.id === body.accountId),
+    ).toMatchObject({ rpdb_api_key: "rpdb", new_titles_catalog: true });
+    expect(
+      db
+        .getTable("lists")
+        .filter((row) => row.account_id === body.accountId)
+        .map((row) => row.catalog_title),
+    ).toEqual(["Kept"]);
+    expect(db.getTable("connections")[0]).toMatchObject({
+      account_id: body.accountId,
       provider: "trakt",
     });
+  });
+
+  it.each([
+    [
+      "an expired authorization",
+      { expiresAt: new Date(Date.now() - 1000) },
+      {},
+    ],
+    ["an unknown state", {}, { state: "forged" }],
+    ["a state of another Provider", { provider: "simkl" }, {}],
+  ])("creates nothing for %s", async (_, stateOverrides, body) => {
+    useOAuthProvider();
+    seedState(null, stateOverrides);
+    const before = db.getTable("accounts").length;
+
+    const res = await complete(body);
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ reason: "expired" });
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(db.getTable("oauth_states")).toEqual([]);
     expect(db.getTable("connections")).toEqual([]);
+    expect(db.getTable("accounts")).toHaveLength(before);
   });
 
-  it("reports an unknown state without naming an Account", async () => {
+  it("creates no Account when the token exchange fails", async () => {
     useOAuthProvider();
-    seedState(accountId);
+    seedState(null);
+    fetchMock.mockResolvedValue(
+      Response.json({ error: "invalid_grant" }, { status: 400 }),
+    );
+    const before = db.getTable("accounts").length;
 
-    const res = await callback({ code: "code-1", state: "forged" });
+    const res = await complete();
 
-    expect(redirectParams(res).params).toEqual({
-      connection_error: "expired",
-      provider: "trakt",
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
-    // A forged state does not consume the real one.
-    expect(db.getTable("oauth_states")).toHaveLength(1);
-  });
-
-  it("does not accept a state issued for another Provider", async () => {
-    useOAuthProvider();
-    seedState(accountId, { provider: "simkl" });
-
-    const res = await callback({ code: "code-1", state: "state-abc" });
-
-    expect(redirectParams(res).params.connection_error).toBe("expired");
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({ reason: "failed" });
+    expect(db.getTable("accounts")).toHaveLength(before);
     expect(db.getTable("connections")).toEqual([]);
   });
 
@@ -467,30 +658,12 @@ describe("GET /oauth/:provider/callback", () => {
     seedState(accountId);
     process.env.DISABLED_PROVIDERS = "trakt";
 
-    const res = await callback({ code: "code-1", state: "state-abc" });
+    const res = await complete();
 
-    expect(redirectParams(res).params).toEqual({
-      account: accountId,
-      connection_error: "unavailable",
-      provider: "trakt",
-    });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ reason: "unavailable" });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(db.getTable("connections")).toEqual([]);
-  });
-
-  it("reports a denied authorization and consumes the state", async () => {
-    useOAuthProvider();
-    seedState(accountId);
-
-    const res = await callback({ error: "access_denied", state: "state-abc" });
-
-    expect(redirectParams(res).params).toEqual({
-      account: accountId,
-      connection_error: "denied",
-      provider: "trakt",
-    });
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(db.getTable("oauth_states")).toEqual([]);
   });
 
   it("reports a failed token exchange", async () => {
@@ -500,24 +673,9 @@ describe("GET /oauth/:provider/callback", () => {
       Response.json({ error: "invalid_grant" }, { status: 400 }),
     );
 
-    const res = await callback({ code: "code-1", state: "state-abc" });
+    const res = await complete();
 
-    expect(redirectParams(res).params).toEqual({
-      account: accountId,
-      connection_error: "failed",
-      provider: "trakt",
-    });
+    expect(res.status).toBe(502);
     expect(db.getTable("connections")).toEqual([]);
-  });
-
-  it.each([
-    [{ code: "code-1" }, "trakt"],
-    [{ code: "code-1", state: "state-abc" }, "netflix"],
-  ])("rejects an invalid request %j for %s", async (query, provider) => {
-    const res = await callback(query, provider);
-
-    expect(redirectParams(res).params).toEqual({
-      connection_error: "invalid_request",
-    });
   });
 });

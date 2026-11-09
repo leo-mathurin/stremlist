@@ -241,16 +241,6 @@ export async function getConnectionRow(accountId: string, provider: string) {
   return data;
 }
 
-export async function getAccountRow(accountId: string) {
-  const { data, error } = await db
-    .from("accounts")
-    .select("*")
-    .eq("id", accountId)
-    .maybeSingle();
-  if (error) throw error;
-  return data;
-}
-
 export async function getAccountByLegacyAlias(imdbUserId: string) {
   const { data, error } = await db
     .from("accounts")

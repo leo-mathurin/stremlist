@@ -15,11 +15,13 @@ vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 import app from "../index.js";
 import { SourceUnavailableError } from "../providers/types";
 import {
+  completeOAuthBody,
   movie,
   seedAccount,
   seedConnection,
   seedLegacyAccount,
   seedList,
+  seedOAuthState,
 } from "./helpers/fixtures.js";
 import {
   fakeAdapter,
@@ -228,13 +230,7 @@ describe("after a new Connection", () => {
     );
     const imdbRead = vi.fn();
     useFakeProvider(fakeAdapter("imdb", { fetchSource: imdbRead }));
-    db.insert("oauth_states", {
-      state: "state-abc",
-      account_id: account.id,
-      provider: "trakt",
-      code_verifier: "verifier-xyz",
-      expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
-    });
+    seedOAuthState(account.id);
     vi.stubGlobal(
       "fetch",
       vi.fn(() =>
@@ -245,10 +241,11 @@ describe("after a new Connection", () => {
     );
 
     const res = await app.request(
-      "/oauth/trakt/callback?code=code-1&state=state-abc",
+      "/connections/trakt/complete",
+      completeOAuthBody(),
     );
 
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(200);
     await vi.waitFor(() => {
       expect(
         db.getTable("list_sync_status").find((row) => row.list_id === list.id),

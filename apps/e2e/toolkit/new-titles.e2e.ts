@@ -145,17 +145,18 @@ test("a new setup sends the setting with its first save", async ({
   ]);
 });
 
-test("a Legacy alias install that moved cannot change the setting", async ({
+test("a Legacy alias install that just upgraded cannot change the setting", async ({
   app,
   screen,
   browser,
 }) => {
-  await captureConfig(
-    browser,
-    { ...legacyConfiguration, movedAt: "2026-10-01T00:00:00.000Z" },
-    imdbUser,
-  );
+  await captureConfig(browser, legacyConfiguration, imdbUser);
+  await routeCreateAccount(browser);
   await app.open(`/configure?account=${imdbUser}`);
+  await screen.getByRole("button", "Create my private URL").tap();
+  await expect(
+    screen.getByRole("heading", "Your private Addon URL is ready"),
+  ).toBeVisible();
   await expect(screen.getByRole("checkbox", TOGGLE)).toBeDisabled();
   await expect(screen.getByText(MOVED_HINT).first()).toBeVisible();
 });

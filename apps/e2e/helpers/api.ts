@@ -258,12 +258,23 @@ export function apiAt(baseUrl: string) {
       return (await response.json()) as Record<string, unknown>;
     },
 
-    /** Give a Legacy alias install a private Addon URL. */
+    /**
+     * Give a Legacy alias install a private Addon URL the way its configure
+     * page does: a new Account from the setup that the page shows. Nothing
+     * of the legacy install changes.
+     */
     async upgrade(
       accountKey: string,
-    ): Promise<ApiResponse<Record<string, unknown>>> {
+    ): Promise<ApiResponse<{ accountId?: string; error?: string }>> {
+      const { body: shown } = await getConfig(accountKey);
       return answer(
-        await client[":accountKey"].upgrade.$post({ param: { accountKey } }),
+        await client.accounts.$post({
+          json: {
+            rpdbApiKey: shown.rpdbApiKey ?? undefined,
+            lists: shown.lists,
+            newTitles: { enabled: shown.newTitles.enabled },
+          },
+        }),
       );
     },
 
@@ -301,14 +312,41 @@ export function apiAt(baseUrl: string) {
       return send(`/${accountKey}/connections/${provider}/sources`);
     },
 
-    /** Start an OAuth authorization, as the Connect button does. */
+    /**
+     * Start an OAuth authorization, as the Connect button does: for an
+     * Account, or for a new setup when `accountKey` is null. The browser key
+     * stays with the browser that completes the authorization.
+     */
     async startConnection(
-      accountKey: string,
+      accountKey: string | null,
       provider: ProviderId,
-    ): Promise<ApiResponse<{ authorizeUrl: string }>> {
-      return send(`/${accountKey}/connections/${provider}/start`, {
-        method: "POST",
-      });
+    ): Promise<ApiResponse<{ authorizeUrl: string; browserKey: string }>> {
+      return send(
+        accountKey
+          ? `/${accountKey}/connections/${provider}/start`
+          : `/connections/${provider}/start`,
+        { method: "POST" },
+      );
+    },
+
+    /** What the configure page sends after the Provider's consent page. */
+    async completeConnection(
+      provider: ProviderId,
+      json: {
+        state: string;
+        code: string;
+        browserKey: string;
+        setup?: { lists: ConfigListInput[] };
+      },
+    ): Promise<
+      ApiResponse<{
+        ok?: true;
+        accountId?: string;
+        created?: boolean;
+        reason?: string;
+      }>
+    > {
+      return send(`/connections/${provider}/complete`, { json });
     },
 
     async disconnect(

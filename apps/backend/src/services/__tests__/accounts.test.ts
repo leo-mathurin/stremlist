@@ -15,7 +15,6 @@ import {
 import { cache } from "../../__tests__/helpers/mock-list-cache";
 import { db, resetRpc } from "../../__tests__/helpers/mock-supabase";
 import {
-  createPrivateCopy,
   ensureLegacyAccount,
   getAccountLists,
   resolveAccountKey,
@@ -122,68 +121,5 @@ describe("ensureLegacyAccount", () => {
     expect(
       (await getAccountLists(account.id)).map((list) => list.sourceRef),
     ).toEqual(["ls123456789"]);
-  });
-});
-
-describe("createPrivateCopy", () => {
-  async function copyLegacyAccount() {
-    const legacy = await resolveAccountKey(IMDB_USER);
-    if (!legacy) throw new Error("legacy Account missing");
-    return createPrivateCopy(legacy.account);
-  }
-
-  it("copies Lists and settings into a new private Account and marks the legacy one moved", async () => {
-    const legacy = seedLegacyAccount(IMDB_USER, { rpdb_api_key: "rpdb" });
-    const kept = seedList(legacy.id, {
-      source_ref: IMDB_USER,
-      catalog_title: "Mine",
-      sort_option: "rating-desc",
-      display_mode: "movie",
-      catalog_settings: { minRating: 7, presets: ["short"] },
-      position: 0,
-    });
-    seedList(legacy.id, { source_ref: "imdb:top-rated-tv", position: 1 });
-    cache.seed(kept.id, []);
-    const copy = await copyLegacyAccount();
-
-    expect(copy.id).not.toBe(legacy.id);
-    expect(copy.legacyImdbUserId).toBeNull();
-    expect(copy.rpdbApiKey).toBe("rpdb");
-    await expect(resolveAccountKey(copy.id)).resolves.toMatchObject({
-      via: "private",
-    });
-
-    const copied = await getAccountLists(copy.id);
-    expect(copied).toEqual([
-      expect.objectContaining({
-        provider: "imdb",
-        sourceRef: IMDB_USER,
-        catalogTitle: "Mine",
-        sortOption: "rating-desc",
-        displayMode: "movie",
-        position: 0,
-        catalogSettings: { minRating: 7, presets: ["short"] },
-      }),
-      expect.objectContaining({ sourceRef: "imdb:top-rated-tv", position: 1 }),
-    ]);
-    expect(copied.map((list) => list.id)).not.toContain(kept.id);
-
-    // The legacy Account and its Lists stay, so the old install keeps working.
-    const after = await resolveAccountKey(IMDB_USER);
-    expect(after?.account.movedAt).toEqual(expect.any(String));
-    expect(await getAccountLists(legacy.id)).toHaveLength(2);
-    expect(cache.get(kept.id)).not.toBeNull();
-  });
-
-  it("does not copy Action settings: a copy starts without Connections", async () => {
-    const legacy = seedLegacyAccount(IMDB_USER, {
-      actions_enabled: true,
-      action_providers: ["trakt"],
-    });
-    seedList(legacy.id, { source_ref: IMDB_USER });
-    const copy = await copyLegacyAccount();
-
-    expect(copy.actionsEnabled).toBe(false);
-    expect(copy.actionProviders).toEqual([]);
   });
 });

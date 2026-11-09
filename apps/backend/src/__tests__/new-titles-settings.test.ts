@@ -18,11 +18,12 @@ import app from "../index.js";
 import { saveConnection } from "../services/connections";
 import { disconnectProvider } from "../services/lists";
 import {
+  completeOAuthBody,
   LIST_IDS,
   movie,
   seedConnection,
-  seedLegacyAccount,
   seedList,
+  seedOAuthState,
 } from "./helpers/fixtures.js";
 import { fakeAdapter, useFakeProvider } from "./helpers/mock-registry.js";
 import { db } from "./helpers/mock-supabase.js";
@@ -72,17 +73,6 @@ describe("settings", () => {
       body: JSON.stringify({ lists: [LIST] }),
     });
 
-    expect((await summary()).enabled).toBe(true);
-  });
-
-  it("keeps the setting when a Legacy alias install gets its private copy", async () => {
-    const legacy = seedLegacyAccount("ur7654321", { new_titles_catalog: true });
-    seedList(legacy.id, { id: LIST_IDS[0], source_ref: "ur7654321" });
-
-    const res = await app.request("/ur7654321/upgrade", { method: "POST" });
-    setAccountId(((await res.json()) as { accountId: string }).accountId);
-
-    expect(res.status).toBe(200);
     expect((await summary()).enabled).toBe(true);
   });
 
@@ -170,13 +160,7 @@ describe("Connection cleanup", () => {
         },
       }),
     );
-    db.insert("oauth_states", {
-      state: "state-abc",
-      account_id: accountId,
-      provider: "trakt",
-      code_verifier: "verifier-xyz",
-      expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
-    });
+    seedOAuthState(accountId);
     vi.stubGlobal(
       "fetch",
       vi.fn(() =>
@@ -187,10 +171,11 @@ describe("Connection cleanup", () => {
     );
 
     const res = await app.request(
-      "/oauth/trakt/callback?code=code-1&state=state-abc",
+      "/connections/trakt/complete",
+      completeOAuthBody(),
     );
 
-    expect(res.status).toBe(302);
+    expect(res.status).toBe(200);
     // The new user's first read is a Baseline, not a list of new titles.
     await vi.waitFor(() => {
       expect(syncRows()).toMatchObject([

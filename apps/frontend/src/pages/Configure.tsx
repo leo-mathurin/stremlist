@@ -35,13 +35,12 @@ import { useSEO } from "../hooks/useSEO";
 import { useAccountConfiguration } from "../hooks/useAccountConfiguration";
 import { ConnectionsContext } from "../hooks/useCatalogPreview";
 import { accountEditPolicy } from "../lib/account-config";
+import { NEW_ACCOUNT_STORAGE } from "../lib/connections";
 import { sourceKeys } from "../lib/list-form";
 import { attentionTone } from "../lib/list-sync";
 import { describeSource, PASTE_LINK_PROMPT } from "../lib/list-sources";
 import { cn } from "@/lib/utils";
 
-/** The Account created in this tab, so its Addon URL warning stays visible. */
-const NEW_ACCOUNT_STORAGE = "stremlist:new-account";
 /** A link that waited for a Connection, added again after the OAuth return. */
 const PENDING_LINK_STORAGE = "stremlist:pending-link";
 
@@ -85,6 +84,8 @@ function connectionNotice(
     expired: `The connection to ${label} took too long. Please try again.`,
     unavailable: `${label} is temporarily unavailable. Please try again later.`,
     invalid_request: "The connection could not be completed. Please try again.",
+    other_browser:
+      "This connection was not started in this browser, so nothing was connected. Start it again from your configure page.",
   };
   return {
     type: "error",
@@ -158,7 +159,7 @@ export default function Configure() {
   const full = lists.length >= MAX_LISTS;
   const ready = status === "ready" && (!rawKey || keyIsValid);
   const justCreated = !!accountId && createdId === accountId;
-  const policy = accountEditPolicy(access, config.movedAt);
+  const policy = accountEditPolicy(access, config.upgradedTo);
   const rows = lists.map((list) => config.rowModel(list));
   const attention = rows.filter((row) => attentionTone(row.sync)).length;
   const affectedLists: Partial<Record<ProviderId, number>> = {};
@@ -406,7 +407,6 @@ export default function Configure() {
 
             {access === "legacy" && (
               <LegacyUpgradeCard
-                movedAt={config.movedAt}
                 onUpgrade={config.upgrade}
                 onOpen={(id) => openCreated(id, false)}
               />

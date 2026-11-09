@@ -23,7 +23,6 @@ import {
 import {
   MergedSourcesChangedError,
   createAccountWithConfig,
-  createPrivateCopy,
   getAccountLists,
   getVisibleLists,
   markAccountFetched,
@@ -66,7 +65,7 @@ async function normalizeOrReject(
   }
 }
 
-/** Accounts: creation, configuration, refresh and upgrade. */
+/** Accounts: creation (and the legacy upgrade), configuration, refresh. */
 const accounts = new Hono()
   .get("/stats", async (c) => {
     const { count, error } = await supabase
@@ -83,12 +82,17 @@ const accounts = new Hono()
   })
 
   // Create an Account with its first Lists. Returns the private Account ID.
+  // A Legacy alias install upgrades this way too (ADR 0001): its configure
+  // page sends the setup it shows, and the legacy install stays as it is.
   .post(
     "/accounts",
     zValidator("json", createBody, firstIssueAsError),
     async (c) => {
       const { rpdbApiKey, lists, newTitles } = c.req.valid("json");
-      const normalized = await normalizeOrReject(c, lists, {
+      // A new Account has no saved Lists: IDs of another Account's Lists,
+      // such as those of a legacy install, do not apply.
+      const fresh = lists.map((list) => ({ ...list, id: undefined }));
+      const normalized = await normalizeOrReject(c, fresh, {
         via: "private",
         connected: new Set(),
         saved: [],
@@ -133,7 +137,6 @@ const accounts = new Hono()
       const body: AccountConfigResponse = {
         access: access.via,
         accountId: access.via === "private" ? account.id : null,
-        movedAt: account.movedAt,
         rpdbApiKey: account.rpdbApiKey,
         lists,
         ...sync,
@@ -169,16 +172,6 @@ const accounts = new Hono()
       const { rpdbApiKey, lists, actions, newTitles } = c.req.valid("json");
       const access = await requireAccess(c, c.req.valid("param").accountKey);
       if (access instanceof Response) return access;
-      if (access.via === "legacy" && access.account.movedAt) {
-        return c.json(
-          {
-            error:
-              "This install has a private Addon URL now. Open the configure page from your new install.",
-            moved: true,
-          },
-          409,
-        );
-      }
       if (access.via === "legacy" && actions?.enabled) {
         return c.json(
           {
@@ -317,37 +310,6 @@ const accounts = new Hono()
         newTitles: summary,
         cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
       });
-    },
-  )
-
-  // Give a Legacy alias install a private Addon URL (a copy, see ADR 0001).
-  .post(
-    "/:accountKey/upgrade",
-    zValidator("param", accountKeyParam),
-    async (c) => {
-      const { accountKey } = c.req.valid("param");
-      const access = await requireAccess(c, accountKey);
-      if (access instanceof Response) return access;
-      if (access.via !== "legacy") {
-        return c.json(
-          { error: "This install already has a private URL." },
-          400,
-        );
-      }
-      try {
-        const account = await createPrivateCopy(access.account);
-        const lists = await getAccountLists(account.id);
-        scheduleBackgroundTask(() => prewarmLists(account.id, lists, true));
-        return c.json({ ok: true as const, accountId: account.id });
-      } catch (error) {
-        console.error(`Failed to upgrade ${accountKey}:`, error);
-        return c.json(
-          {
-            error: "Failed to create your private URL. Please try again later.",
-          },
-          500,
-        );
-      }
     },
   );
 

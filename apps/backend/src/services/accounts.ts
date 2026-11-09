@@ -22,7 +22,6 @@ type ListRow = Tables<"lists">;
 export interface Account {
   id: string;
   legacyImdbUserId: string | null;
-  movedAt: string | null;
   rpdbApiKey: string | null;
   actionsEnabled: boolean;
   actionProviders: ProviderId[];
@@ -79,7 +78,6 @@ function mapAccount(row: AccountRow): Account {
   return {
     id: row.id,
     legacyImdbUserId: row.legacy_imdb_user_id,
-    movedAt: row.moved_at,
     rpdbApiKey: row.rpdb_api_key,
     actionsEnabled: row.actions_enabled,
     actionProviders: row.action_providers.filter(isProviderId),
@@ -303,19 +301,17 @@ export async function replaceAccountConfig(
 }
 
 /**
- * Give a Legacy alias install a private Addon URL: a new Account with a copy
- * of its Lists and settings, and the Legacy alias marked as moved, in one
- * transaction (ADR 0001). The legacy Account keeps its Lists, so the old
- * install keeps serving its public Lists. A copy, not a move: someone who
- * guesses the `ur…` ID only gets their own copy. The detection history
- * stays with the legacy Account: the copy starts with its own Baseline.
+ * Delete an Account with everything that cascades from it. Only for an
+ * Account that was just created and has no cached Catalogs yet.
  */
-export async function createPrivateCopy(legacy: Account): Promise<Account> {
-  const { data, error } = await supabase.rpc("copy_legacy_account", {
-    p_legacy_id: legacy.id,
-  });
-  if (error) throw error;
-  return mapAccount(data);
+export async function deleteAccount(accountId: string): Promise<void> {
+  const { error } = await supabase
+    .from("accounts")
+    .delete()
+    .eq("id", accountId);
+  if (error) {
+    console.error(`Failed to delete account ${accountId}:`, error.message);
+  }
 }
 
 /**

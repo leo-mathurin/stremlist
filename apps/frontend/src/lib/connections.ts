@@ -1,7 +1,9 @@
 import { connectionProviders, listSources } from "@stremlist/shared/list-merge";
 import type { MergeableList } from "@stremlist/shared/list-merge";
+import { isProviderId } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
+import type { AccountForm } from "./account-config";
 import type { ListSyncState } from "./list-sync";
 
 /** Providers of a List whose Connection the Account does not have. */
@@ -53,4 +55,122 @@ export function previewConnectionKey(
     })
     .filter(Boolean)
     .join(",");
+}
+
+/** The Account created in this tab, so its Addon URL warning stays visible. */
+export const NEW_ACCOUNT_STORAGE = "stremlist:new-account";
+
+/** Unsaved edits, kept across the OAuth round trip of Connect. */
+const CONNECT_DRAFT_STORAGE = "stremlist:connect-draft";
+/** The connect that this browser started, kept until the Provider answers. */
+const CONNECT_START_STORAGE = "stremlist:connect-start";
+
+/**
+ * Keep the edits of an Account, or of a new setup (`accountId` null), while
+ * the browser is on the Provider's consent page.
+ */
+export function keepDraft(accountId: string | null, form: AccountForm): void {
+  try {
+    sessionStorage.setItem(
+      CONNECT_DRAFT_STORAGE,
+      JSON.stringify({ accountId, form }),
+    );
+  } catch {
+    // Storage is off: the edits are lost, as before.
+  }
+}
+
+export function dropDraft(): void {
+  try {
+    sessionStorage.removeItem(CONNECT_DRAFT_STORAGE);
+  } catch {
+    // Nothing was kept.
+  }
+}
+
+/** The kept edits of this Account or new setup, without taking them. */
+export function readDraft(accountId: string | null): AccountForm | null {
+  try {
+    const raw = sessionStorage.getItem(CONNECT_DRAFT_STORAGE);
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as {
+      accountId?: unknown;
+      form?: AccountForm;
+    };
+    return draft.accountId === accountId && Array.isArray(draft.form?.lists)
+      ? draft.form
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The kept edits of this Account or new setup, once: taking forgets them. */
+export function takeDraft(accountId: string | null): AccountForm | null {
+  const draft = readDraft(accountId);
+  dropDraft();
+  return draft;
+}
+
+/**
+ * A connect that this browser started. Only this browser has `browserKey`:
+ * the backend completes the authorization only with it, so a consent link
+ * that another person opens links nothing.
+ */
+export interface ConnectStart {
+  provider: ProviderId;
+  /** The Account to connect, or null for a new setup. */
+  accountId: string | null;
+  browserKey: string;
+}
+
+export function rememberConnectStart(start: ConnectStart): void {
+  try {
+    sessionStorage.setItem(CONNECT_START_STORAGE, JSON.stringify(start));
+  } catch {
+    // Storage is off: the return reports that this browser did not start it.
+  }
+}
+
+/** The connect this browser started, once: taking it forgets it. */
+export function takeConnectStart(): ConnectStart | null {
+  try {
+    const raw = sessionStorage.getItem(CONNECT_START_STORAGE);
+    sessionStorage.removeItem(CONNECT_START_STORAGE);
+    if (!raw) return null;
+    const start = JSON.parse(raw) as Partial<ConnectStart>;
+    return typeof start.provider === "string" &&
+      isProviderId(start.provider) &&
+      typeof start.browserKey === "string" &&
+      (start.accountId === null || typeof start.accountId === "string")
+      ? {
+          provider: start.provider,
+          accountId: start.accountId,
+          browserKey: start.browserKey,
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The Provider's answer, as the backend callback puts it in the fragment. */
+export interface ConnectAnswer {
+  provider: ProviderId;
+  state: string;
+  code: string | null;
+  error: string | null;
+}
+
+export function parseConnectAnswer(hash: string): ConnectAnswer | null {
+  const params = new URLSearchParams(hash.replace(/^#/, ""));
+  const provider = params.get("oauth");
+  const state = params.get("state");
+  if (!provider || !isProviderId(provider) || !state) return null;
+  return {
+    provider,
+    state,
+    code: params.get("code"),
+    error: params.get("oauth_error"),
+  };
 }

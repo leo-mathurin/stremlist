@@ -2,7 +2,7 @@ import type { TitleType } from "@stremlist/shared/constants";
 import type { Tables } from "@stremlist/shared/database";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
-import type { StremioMeta } from "@stremlist/shared/stremio.types";
+import type { ConfigList, StremioMeta } from "@stremlist/shared/stremio.types";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/supabase", async () => {
@@ -40,7 +40,7 @@ import {
 } from "./helpers/mock-registry.js";
 import { callRpc, db, resetRpc, supabase } from "./helpers/mock-supabase.js";
 
-const [LIST_1, LIST_2] = LIST_IDS;
+const [LIST_1] = LIST_IDS;
 const TRAKT_WATCHLIST: ListSource = {
   provider: "trakt",
   sourceRef: "users/sean/watchlist",
@@ -546,14 +546,17 @@ describe("saving merged Lists", () => {
   it("copies merged Source lists into a private copy", async () => {
     accountId = seedLegacyAccount("ur12345678").id;
     seedMergedList();
-    seedList(accountId, {
-      id: LIST_2,
-      provider: "justwatch",
-      source_ref: JUSTWATCH_LIST.sourceRef,
-      position: 1,
-    });
+    const legacy = (await (await app.request("/ur12345678/config")).json()) as {
+      lists: ConfigList[];
+    };
 
-    const res = await app.request("/ur12345678/upgrade", { method: "POST" });
+    // The legacy configure page sends the setup it shows, with its List IDs.
+    const res = await app.request("/accounts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lists: legacy.lists }),
+    });
+    expect(res.status).toBe(200);
     const { accountId: copyId } = (await res.json()) as { accountId: string };
 
     const copy = db
@@ -561,7 +564,7 @@ describe("saving merged Lists", () => {
       .filter((row) => row.account_id === copyId);
     expect(copy.map((row) => row.merged_sources)).toEqual([
       [{ provider: "trakt", source_ref: TRAKT_LIST.sourceRef }],
-      [],
     ]);
+    expect(copy.map((row) => row.id)).not.toContain(LIST_1);
   });
 });
