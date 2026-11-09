@@ -30,6 +30,7 @@ function buildUnavailableMeta(
     error.provider,
     error.reason,
     storedSourceNoun(error.provider, error.sourceRef),
+    error.sourceRef,
   );
   return {
     id: `stremlist:unavailable:${error.reason}`,

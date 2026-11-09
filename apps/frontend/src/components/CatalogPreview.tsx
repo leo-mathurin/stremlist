@@ -137,6 +137,7 @@ function problemMessage(source: SourceId, reason: SourceProblemReason): string {
     source.provider,
     reason,
     storedSourceNoun(source.provider, source.sourceRef),
+    source.sourceRef,
   );
   return `${title}. ${fix}`;
 }

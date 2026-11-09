@@ -1,3 +1,7 @@
+import {
+  SOURCE_LINK_MAX_LENGTH,
+  SOURCE_REF_MAX_LENGTH,
+} from "@stremlist/shared/constants";
 import { QUEUE_STATE_MIN_MS } from "@stremlist/shared/provider-queue";
 import type { QueuedAnswer } from "@stremlist/shared/provider-queue";
 import {
@@ -42,13 +46,18 @@ export function queuedAnswer(
  * reads through a Connection (ADR 0001); without `access`, only public
  * Source lists resolve. Expected refusals come back as a reason, never as an
  * error. When the Provider's queue is long (3 s or more), the answer is the
- * queue state: ask again with its `ticket` to keep the place.
+ * queue state: ask again with its `ticket` to keep the place. A link longer
+ * than the stored reference allows is refused before any read ("too_long"),
+ * so every link that passes the check can be previewed and saved.
  */
 export async function resolveSourceLink(
   input: string,
   access: AccountAccess | null,
   ticket: string | null = null,
 ) {
+  if (input.trim().length > SOURCE_LINK_MAX_LENGTH) {
+    return { ok: false as const, reason: "too_long" as const };
+  }
   const parsed = parseSourceLink(input);
   if (!parsed) {
     return { ok: false as const, reason: "unrecognized" as const };
@@ -86,6 +95,10 @@ export async function resolveSourceLink(
       }),
     );
     if (!result.ok) return refuse(result.reason);
+    // Only a redirect (a boxd.it link) can make a reference this long.
+    if (result.ref.length > SOURCE_REF_MAX_LENGTH) {
+      return { ok: false as const, reason: "too_long" as const };
+    }
     return {
       ok: true as const,
       provider,

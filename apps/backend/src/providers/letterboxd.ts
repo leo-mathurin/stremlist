@@ -13,6 +13,7 @@ import {
 import {
   assertLetterboxdNotHalted,
   LetterboxdBusyError,
+  letterboxdRateLimited,
   withLetterboxdPermit,
 } from "./letterboxd-gate";
 import type { PermitOptions } from "./letterboxd-gate";
@@ -43,11 +44,55 @@ const MAX_PAGES = 100;
 const PAGE_ESTIMATE_MS = 400;
 type PageRead =
   | { ok: true; html: string }
-  | { ok: false; reason: SourceProblemReason };
+  | {
+      ok: false;
+      reason: SourceProblemReason;
+      /** HTTP 429: the Retry-After, in ms (0 when absent). */
+      rateLimitedMs?: number;
+      /** A redirect: where Letterboxd sends the read instead. */
+      movedTo?: string;
+    };
 
 const SHARE_PREFIX = "share/";
 const PROVISIONAL_SHARE_PREFIX = "lbxshare/";
 const SHORT_PREFIX = "lbxshort/";
+
+/**
+ * Letterboxd moved a Source list to a new address (HTTP 301): its member or
+ * the list was renamed. `ref` is the parsed reference of the new address,
+ * not yet resolved. Where nothing follows it, it is a temporary failure.
+ */
+class LetterboxdMovedError extends SourceUnavailableError {
+  constructor(readonly ref: string) {
+    super("unavailable", "Letterboxd moved this list");
+    this.name = "LetterboxdMovedError";
+  }
+}
+
+/**
+ * The Source list behind a redirect from the first page of a Source list, or
+ * null when it is not the same kind of Source list at another address. Pages
+ * after the first, film pages and boxd.it links are never followed.
+ */
+function movedRef(from: string, location: string): string | null {
+  let href: string;
+  try {
+    href = new URL(location, from).href;
+  } catch {
+    return null;
+  }
+  const before = parseSourceLink(from);
+  const after = parseSourceLink(href);
+  if (
+    before?.provider !== "letterboxd" ||
+    after?.provider !== "letterboxd" ||
+    after.kind !== before.kind ||
+    after.sourceRef === before.sourceRef ||
+    after.sourceRef.startsWith(SHORT_PREFIX)
+  )
+    return null;
+  return after.sourceRef;
+}
 
 /**
  * Letterboxd writes a rating range without trailing zeros (4.0-5.0 is 4-5) in
@@ -103,7 +148,8 @@ async function resolveShortLink(code: string): Promise<string> {
   if (!isProviderEnabled("letterboxd"))
     throw new SourceUnavailableError("disabled", "Letterboxd is turned off");
   const read = await withLetterboxdPermit<
-    { ok: true; url: string } | { ok: false; reason: SourceProblemReason }
+    | { ok: true; url: string }
+    | { ok: false; reason: SourceProblemReason; rateLimitedMs?: number }
   >(
     async () => {
       const details = requestDetails("short_link", `https://boxd.it/${code}`);
@@ -123,7 +169,11 @@ async function resolveShortLink(code: string): Promise<string> {
         else await response.body?.cancel();
         if (blocked || response.status === 429)
           return {
-            value: { ok: false, reason: "unavailable" },
+            value: {
+              ok: false,
+              reason: "unavailable",
+              ...(blocked ? {} : { rateLimitedMs: retryAfterOf(response) }),
+            },
             result: blocked ? "blocked" : "rate_limited",
             retryAfterMs: retryAfterOf(response),
             details,
@@ -150,11 +200,14 @@ async function resolveShortLink(code: string): Promise<string> {
     },
     { first: true },
   );
-  if (!read.ok)
+  if (!read.ok) {
+    if (read.rateLimitedMs !== undefined)
+      throw letterboxdRateLimited(read.rateLimitedMs);
     throw new SourceUnavailableError(
       read.reason,
       "Letterboxd could not resolve this short link",
     );
+  }
   const parsed = parseSourceLink(read.url);
   if (parsed?.provider !== "letterboxd")
     throw new SourceUnavailableError(
@@ -223,10 +276,22 @@ async function readHtml(
       if (blocked || (response.status !== 200 && response.status < 500)) {
         if (blocked || response.status === 429) noteExcerpt(details, response);
         else await response.body?.cancel();
+        const location = response.headers.get("location");
+        const moved =
+          kind === "collection" &&
+          response.status >= 300 &&
+          response.status < 400 &&
+          location
+            ? movedRef(url, location)
+            : null;
         return {
           value: {
             ok: false,
             reason: response.status === 404 ? "not_found" : "unavailable",
+            ...(!blocked && response.status === 429
+              ? { rateLimitedMs: retryAfterMs }
+              : {}),
+            ...(moved ? { movedTo: moved } : {}),
           },
           result: blocked
             ? "blocked"
@@ -290,11 +355,15 @@ async function readHtml(
       };
     }
   }, permit);
-  if (!read.ok)
+  if (!read.ok) {
+    if (read.rateLimitedMs !== undefined)
+      throw letterboxdRateLimited(read.rateLimitedMs);
+    if (read.movedTo) throw new LetterboxdMovedError(read.movedTo);
     throw new SourceUnavailableError(
       read.reason,
       "Letterboxd could not read this public list",
     );
+  }
   return read.html;
 }
 
@@ -340,12 +409,29 @@ async function readPage(
   );
 }
 
+/**
+ * The first page of a Source list. When its member or the list was renamed
+ * (HTTP 301), it follows the new address once and returns its reference.
+ */
+async function readFirstPage(ref: string, forceRefresh = false) {
+  try {
+    return { ref, page: await readPage(sourcePath(ref), 1, forceRefresh) };
+  } catch (error) {
+    if (!(error instanceof LetterboxdMovedError)) throw error;
+    const moved = await resolveRef(error.ref);
+    return {
+      ref: moved,
+      page: await readPage(sourcePath(moved), 1, forceRefresh),
+    };
+  }
+}
+
 async function fetchSource(
   ref: string,
   ctx: ProviderContext,
 ): Promise<SourceSnapshot> {
   await assertLetterboxdNotHalted();
-  const base = sourcePath(ref);
+  let base = sourcePath(ref);
   const diary = isDiaryPath(base);
   const films = new Map<string, LetterboxdFilm>();
   const signatures = new Set<string>();
@@ -358,12 +444,18 @@ async function fetchSource(
       pages === null ? 0 : Math.max(0, Math.min(pages, MAX_PAGES) - page);
     let result: Awaited<ReturnType<typeof readPage>>;
     try {
-      result = await readPage(
-        base,
-        page,
-        ctx.forceRefresh,
-        rest * PAGE_ESTIMATE_MS,
-      );
+      if (page === 1) {
+        // A renamed member or list keeps its Catalog: read the new address.
+        const first = await readFirstPage(ref, ctx.forceRefresh);
+        base = sourcePath(first.ref);
+        result = first.page;
+      } else
+        result = await readPage(
+          base,
+          page,
+          ctx.forceRefresh,
+          rest * PAGE_ESTIMATE_MS,
+        );
     } catch (error) {
       // The queue is long: keep the pages read so far when the caller can
       // serve them. The next read resumes from the cached pages.
@@ -467,8 +559,8 @@ export const letterboxdProvider: ProviderAdapter = {
   queuedReads: true,
   async validateSource(ref) {
     await assertLetterboxdNotHalted();
-    const resolved = await resolveRef(ref);
-    const page = await readPage(sourcePath(resolved), 1);
+    // A renamed member or list is stored at its new address.
+    const { ref: resolved, page } = await readFirstPage(await resolveRef(ref));
     return {
       ok: true,
       ref: resolved,

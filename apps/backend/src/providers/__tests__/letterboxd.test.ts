@@ -414,9 +414,10 @@ describe("Letterboxd public reads", () => {
       ),
     );
     vi.stubGlobal("fetch", fetch);
-    await expect(
-      letterboxdProvider.fetchSource(ref, context),
-    ).rejects.toMatchObject({ reason: "unavailable" });
+    // The read itself waits out the pause, like the reads after it.
+    const limited = letterboxdProvider.fetchSource(ref, context);
+    await expect(limited).rejects.toBeInstanceOf(LetterboxdBusyError);
+    await expect(limited).rejects.toMatchObject({ waitMs: 120_000 });
     await vi.advanceTimersByTimeAsync(0);
     expect(gate()).toMatchObject({ rate: 5, haltedAt: null });
     expect(gate().pausedUntil).toBe(Date.now() + 120_000);

@@ -2,6 +2,7 @@ import {
   DISPLAY_MODE_OPTIONS,
   IMDB_WATCHLIST_SOURCE_ID_PATTERN,
   SORT_OPTIONS,
+  SOURCE_REF_MAX_LENGTH,
 } from "@stremlist/shared/constants";
 import type { TitleType } from "@stremlist/shared/constants";
 import { isChartId } from "@stremlist/shared/imdb-charts";
@@ -51,7 +52,7 @@ const displayModeValues = DISPLAY_MODE_OPTIONS.map((o) => o.value) as [
 export const listBody = z.object({
   id: z.string().uuid().optional(),
   provider: providerParam,
-  sourceRef: z.string().trim().min(1).max(300),
+  sourceRef: z.string().trim().min(1).max(SOURCE_REF_MAX_LENGTH),
   catalogTitle: z
     .string()
     .trim()
@@ -66,7 +67,7 @@ export const listBody = z.object({
     .array(
       z.object({
         provider: providerParam,
-        sourceRef: z.string().trim().min(1).max(300),
+        sourceRef: z.string().trim().min(1).max(SOURCE_REF_MAX_LENGTH),
         label: z.string().trim().max(60).optional(),
       }),
     )

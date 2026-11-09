@@ -42,6 +42,19 @@ export class LetterboxdBusyError extends SourceBusyError {
   }
 }
 
+/** The shortest pause after a 429, as the gate sets it: max(Retry-After, 60 s). */
+const RATE_LIMIT_PAUSE_MS = 60_000;
+
+/**
+ * Letterboxd answered 429: the gate pauses every send, so the read waits for
+ * the end of the pause, in its place in the queue.
+ */
+export function letterboxdRateLimited(retryAfterMs: number) {
+  return new LetterboxdBusyError(Math.max(retryAfterMs, RATE_LIMIT_PAUSE_MS), {
+    ticket: currentReadQueue().ticket,
+  });
+}
+
 const takeSchema = z.object({
   status: z.enum(["granted", "queued", "paused", "halted"]),
   wait_ms: z.number(),
