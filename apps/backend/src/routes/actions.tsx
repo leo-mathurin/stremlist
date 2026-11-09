@@ -111,6 +111,18 @@ function OutcomePage({
 }) {
   const ok = outcomes.filter((o) => o.ok).map((o) => o.provider);
   const failed = outcomes.filter((o) => !o.ok).map((o) => o.provider);
+  if (outcomes.length === 0) {
+    return (
+      <Page title="Nothing to do">
+        <h1>No connected account can do this</h1>
+        <p>
+          Turn on Actions for a connected account on the Stremlist configure
+          page, then try again from Stremio.
+        </p>
+        <p class="hint">You can close this tab and go back to Stremio.</p>
+      </Page>
+    );
+  }
   const title = ok.length > 0 ? "Done" : "Something went wrong";
   return (
     <Page title={title}>
@@ -194,19 +206,32 @@ actions.get("/:accountId/actions/:kind/:op/:type/:id", async (c) => {
   return c.html(<OutcomePage done={done} outcomes={outcomes} />);
 });
 
-async function renderRating(c: Context) {
+/**
+ * The rating form. `retry` is a refused submission: the form shows what the
+ * user chose and why it was not sent.
+ */
+async function renderRating(
+  c: Context,
+  retry?: { rating: number | null; providers: ProviderId[]; error: string },
+) {
   const request = await actionRequest(c);
   if (!request) return notFound(c);
   const { target, account } = request;
 
   const ratings = await currentRatings(account, target.imdbId);
   if (ratings.length === 0) return notFound(c);
-  const current = ratings.find((r) => r.rating !== null)?.rating ?? null;
+  const saved = ratings.find((r) => r.rating !== null)?.rating ?? null;
+  const current = retry ? retry.rating : saved;
   const name = await titleName(target.imdbId, target.type);
 
   return c.html(
     <Page title="Rate">
       <h1>{name ? `Rate ${name}` : `Rate this ${target.type}`}</h1>
+      {retry && (
+        <p class="err" role="alert">
+          {retry.error}
+        </p>
+      )}
       <form method="post">
         <div class="stars" role="radiogroup" aria-label="Rating from 1 to 10">
           {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
@@ -231,7 +256,7 @@ async function renderRating(c: Context) {
                   type="checkbox"
                   name="providers"
                   value={provider}
-                  checked
+                  checked={!retry || retry.providers.includes(provider)}
                 />{" "}
                 {PROVIDERS[provider].label}
               </span>
@@ -245,7 +270,7 @@ async function renderRating(c: Context) {
           <button class="primary" type="submit">
             Save rating
           </button>
-          {current !== null && (
+          {saved !== null && (
             <button
               class="secondary"
               type="submit"
@@ -279,6 +304,13 @@ actions.post("/:accountId/actions/rating/rate/:type/:id", async (c) => {
   const providers = supporting(await actionProviders(account), "rating").filter(
     (provider) => chosen.includes(provider),
   );
+  if (providers.length === 0) {
+    return renderRating(c, {
+      rating,
+      providers,
+      error: "Choose at least one account to send the rating to.",
+    });
+  }
 
   const outcomes = await performAction(
     account,

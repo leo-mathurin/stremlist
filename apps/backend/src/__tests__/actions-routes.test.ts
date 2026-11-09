@@ -259,6 +259,20 @@ describe("Action pages", () => {
     expect(html).toContain("It did not work on Trakt.");
   });
 
+  it("says what to do when no connected account can do the Action", async () => {
+    const account = seedActionAccount({ enabled: false });
+
+    const res = await app.request(
+      `/${account.id}/actions/watchlist/add/movie/${MOVIE}`,
+    );
+
+    const html = await res.text();
+    expect(html).not.toContain("Something went wrong");
+    expect(html).toContain("No connected account can do this");
+    expect(html).toContain("Stremlist configure page");
+    expect(perform).not.toHaveBeenCalled();
+  });
+
   it.each([
     `watchlist/toggle/movie/${MOVIE}`,
     `watchlist/add/channel/${MOVIE}`,
@@ -351,6 +365,26 @@ describe("Action pages", () => {
         { kind: "rating", rating: 8 },
         { imdbId: MOVIE, type: "movie" },
       );
+    });
+
+    it("asks again for an account when none is ticked, and keeps the rating", async () => {
+      useActionProvider("simkl");
+      const account = seedActionAccount({ providers: ["trakt", "simkl"] });
+
+      const res = await postForm(
+        `/${account.id}/actions/rating/rate/movie/${MOVIE}`,
+        [["rating", "8"]],
+      );
+
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).not.toContain("Something went wrong");
+      expect(html).toContain("Rate The Title");
+      expect(html).toContain("Choose at least one account");
+      expect(html).toMatch(/value="8"[^>]*checked/);
+      // The form shows the choice the user sent: nothing ticked.
+      expect(html).not.toMatch(/value="trakt"[^>]*checked/);
+      expect(perform).not.toHaveBeenCalled();
     });
 
     it("removes the rating", async () => {
