@@ -41,13 +41,49 @@ interface SourceProblemCopy {
 }
 
 /**
+ * Why Letterboxd cannot find a Source list (HTTP 404), by the kind of its
+ * reference: a member page (watchlist, diary, films) has a wrong username,
+ * a list can also be private, and a share link can be turned off.
+ */
+function letterboxdNotFound(ref: string): SourceProblemCopy {
+  if (/^(?:share|lbxshare)\//.test(ref))
+    return {
+      title: "This Letterboxd share link no longer works",
+      fix: "Its owner turned off sharing or deleted the list. Ask them for a new share link.",
+    };
+  const member =
+    /^users\/[^/]+\/(watchlist|diary|films|likes\/films)(?:\/|$)/.exec(
+      ref,
+    )?.[1];
+  if (member)
+    return {
+      title: `Letterboxd could not find ${
+        member === "watchlist"
+          ? "this watchlist"
+          : member === "diary"
+            ? "this diary"
+            : "these films"
+      }`,
+      fix: "Check the username in the link.",
+    };
+  return {
+    title: "Letterboxd could not find this list",
+    fix: ref.startsWith("lbxshort/")
+      ? "Check the link."
+      : "Check the link. For a private list, set it to Anyone with share link on Letterboxd and paste the share link.",
+  };
+}
+
+/**
  * The one wording of each problem, shared by the catalog card in Stremio and
- * the configure page.
+ * the configure page. With the Source list's reference, the copy can fit its
+ * kind (a Letterboxd watchlist, diary or share link).
  */
 export function sourceProblemCopy(
   provider: ProviderId,
   reason: SourceProblemReason,
   noun: SourceNoun,
+  sourceRef?: string,
 ): SourceProblemCopy {
   const label = PROVIDERS[provider].label;
   switch (reason) {
@@ -75,12 +111,10 @@ export function sourceProblemCopy(
           };
       }
     case "not_found":
+      if (provider === "letterboxd") return letterboxdNotFound(sourceRef ?? "");
       return {
         title: `${label} could not find this ${noun}`,
-        fix:
-          provider === "letterboxd"
-            ? "This list is private or no longer exists. For a private list, set it to Anyone with share link on Letterboxd and paste the share link."
-            : "Check the link. The list may have been deleted.",
+        fix: "Check the link. The list may have been deleted.",
       };
     case "needs_connection":
       return {

@@ -1,5 +1,8 @@
 import { zValidator } from "@hono/zod-validator";
-import { ACCOUNT_KEY_PATTERN } from "@stremlist/shared/constants";
+import {
+  ACCOUNT_KEY_PATTERN,
+  SOURCE_LINK_MAX_LENGTH,
+} from "@stremlist/shared/constants";
 import { Hono } from "hono";
 import { z } from "zod";
 import { listBody } from "../../services/account-config";
@@ -16,7 +19,12 @@ const lists = new Hono()
     zValidator(
       "json",
       z.object({
-        input: z.string().trim().min(1).max(500),
+        // A longer link is refused in the answer ("too_long"), not here.
+        input: z
+          .string()
+          .trim()
+          .min(1)
+          .max(SOURCE_LINK_MAX_LENGTH * 4),
         accountKey: z.string().regex(ACCOUNT_KEY_PATTERN).optional(),
         // The place in the Provider's queue from a queued answer.
         ticket: z.string().uuid().optional(),

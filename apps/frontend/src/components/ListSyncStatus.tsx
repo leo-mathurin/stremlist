@@ -170,6 +170,7 @@ export function ListSyncNotice({
       provider,
       sync.problem,
       storedSourceNoun(provider, sourceRef),
+      sourceRef,
     );
     const fix =
       sync.problem === "needs_connection"

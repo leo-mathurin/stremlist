@@ -113,6 +113,16 @@ export const LEGACY_ALIAS_PATTERN = new RegExp(`^(?:${LEGACY_ALIAS_SOURCE})$`);
 export const ACCOUNT_KEY_SOURCE = `${ACCOUNT_ID_SOURCE}|${LEGACY_ALIAS_SOURCE}`;
 export const ACCOUNT_KEY_PATTERN = new RegExp(`^(?:${ACCOUNT_KEY_SOURCE})$`);
 
+/** The longest pasted link that the link check reads. */
+export const SOURCE_LINK_MAX_LENGTH = 500;
+
+/**
+ * The longest stored Source list reference. Every link that the link check
+ * accepts fits: the longest is a Letterboxd share link, whose encrypted
+ * reference is at most about 700 characters for a 500-character link.
+ */
+export const SOURCE_REF_MAX_LENGTH = 1000;
+
 export const FACEBOOK_EXTERNAL_HIT_USER_AGENT = "facebookexternalhit/1.1";
 
 export const BASE_MANIFEST: StremioManifest = {

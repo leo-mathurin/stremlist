@@ -9,6 +9,7 @@ import {
   parseSourceLink,
 } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
+import { SOURCE_LINK_MAX_LENGTH } from "@stremlist/shared/constants";
 import type { DisplayMode } from "@stremlist/shared/constants";
 import {
   sourceNoun,
@@ -58,7 +59,7 @@ function addonUrlProblem(key: string, accountKey: string | null): LinkProblem {
       };
 }
 
-type LinkProblemReason = SourceProblemReason | "unrecognized";
+type LinkProblemReason = SourceProblemReason | "unrecognized" | "too_long";
 
 type ResolveAnswer = InferResponseType<typeof api.links.resolve.$post>;
 
@@ -67,15 +68,25 @@ function describeLinkProblem(
   reason: LinkProblemReason,
   provider: ProviderId | undefined,
   access: AccountAccess,
-  noun: SourceNoun,
+  source: { noun: SourceNoun; sourceRef?: string },
 ): LinkProblem {
+  if (reason === "too_long") {
+    return {
+      message: `This link is too long. Paste a link of at most ${SOURCE_LINK_MAX_LENGTH} characters.`,
+    };
+  }
   if (reason === "unrecognized" || !provider) {
     return {
       message: `We do not recognize this link. ${PASTE_LINK_PROMPT} on ${joinProviderLabels(LINK_PROVIDERS, "or")}.`,
     };
   }
   const label = PROVIDERS[provider].label;
-  const { title, fix } = sourceProblemCopy(provider, reason, noun);
+  const { title, fix } = sourceProblemCopy(
+    provider,
+    reason,
+    source.noun,
+    source.sourceRef,
+  );
   switch (reason) {
     case "coming_soon":
       return { provider, tone: "info", message: `${title}. ${fix}` };
@@ -158,6 +169,12 @@ export default function LinkPaste({
     setProblem(null);
 
     // Answer the obvious cases without a round trip.
+    if (trimmed.length > SOURCE_LINK_MAX_LENGTH) {
+      setProblem(
+        describeLinkProblem("too_long", undefined, access, { noun: "list" }),
+      );
+      return;
+    }
     const parsed = parseSourceLink(trimmed);
     const pastedAccount = parsed ? null : extractAccountKey(trimmed);
     if (pastedAccount) {
@@ -166,18 +183,19 @@ export default function LinkPaste({
     }
     if (!parsed) {
       setProblem(
-        describeLinkProblem("unrecognized", undefined, access, "list"),
+        describeLinkProblem("unrecognized", undefined, access, {
+          noun: "list",
+        }),
       );
       return;
     }
+    const source = {
+      noun: sourceNoun(parsed.kind),
+      sourceRef: parsed.sourceRef,
+    };
     if (PROVIDERS[parsed.provider].availability !== "available") {
       setProblem(
-        describeLinkProblem(
-          "coming_soon",
-          parsed.provider,
-          access,
-          sourceNoun(parsed.kind),
-        ),
+        describeLinkProblem("coming_soon", parsed.provider, access, source),
       );
       return;
     }
@@ -210,7 +228,7 @@ export default function LinkPaste({
             body.reason,
             "provider" in body ? body.provider : undefined,
             access,
-            sourceNoun(parsed.kind),
+            source,
           ),
         );
         return;
