@@ -268,10 +268,8 @@ test("List edits reject duplicates, save values and report refresh failures", as
     },
     { provider: "imdb", sourceRef: imdbUser, position: 1 },
   ]);
-  // The second save changes nothing. Stremio still needs the reinstall.
-  await saveButton(screen).tap();
-  await expect.poll(() => submissions.length).toBe(2);
-  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  // Nothing changed since: Save is off.
+  await expect(saveButton(screen)).toBeDisabled();
   await screen.getByRole("button", "Remove My movies").tap();
   await expect(screen.getByText("1 of 10 lists")).toBeVisible();
   // An Account keeps at least one List: without one, Save is off.
@@ -284,7 +282,7 @@ test("List edits reject duplicates, save values and report refresh failures", as
       "Refreshed 0 of 1 lists. The others failed to update: each list shows why.",
     ),
   ).toBeVisible();
-  expect(submissions).toHaveLength(2);
+  expect(submissions).toHaveLength(1);
 });
 
 for (const result of ["success", "server-error", "offline"] as const) {
@@ -631,6 +629,7 @@ for (const edit of ["remove", "reorder"] as const) {
     const { submissions, release } = await gatedSaves(browser, twoLists);
     await browser.setViewport({ width: 1280, height: 1800 });
     await app.open(`/configure?account=${accountId}`);
+    await screen.getByLabel(/^RPDB API key/).fill("e2e-synthetic-rpdb");
     await saveButton(screen).tap();
     await expect(saveButton(screen, "Saving")).toBeVisible();
     if (edit === "remove") {
@@ -687,6 +686,13 @@ test("an old ?userId link opens the Legacy alias install with a fresh form", asy
       "Actions need a private Addon URL. Upgrade this install first.",
     ),
   ).toBeVisible();
+  // Not locked: Save is off only while nothing changed.
+  await expect(saveButton(screen)).toHaveAttribute(
+    "title",
+    "No changes to save",
+  );
+  await screen.getByRole("button", "Settings for Test catalog").tap();
+  await screen.getByLabel("Catalog title").fill("Edited");
   await expect(saveButton(screen)).toBeEnabled();
 });
 

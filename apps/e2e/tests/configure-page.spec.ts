@@ -244,6 +244,8 @@ test("removes a List", { tag: "@local" }, async ({ page }) => {
   await page.getByRole("button", { name: "Add an IMDb chart" }).click();
   await page.getByRole("menuitem", { name: /^Box Office \(Weekend\)/ }).click();
   await expect(page.getByText("2 of 10 lists")).toBeVisible();
+  await saveConfigure(page);
+  expect((await getConfig(accountId)).body.lists).toHaveLength(2);
 
   await page
     .getByRole("button", { name: "Remove Box Office (Weekend)" })
@@ -253,6 +255,30 @@ test("removes a List", { tag: "@local" }, async ({ page }) => {
   await saveConfigure(page);
   expect((await getConfig(accountId)).body.lists).toHaveLength(1);
 });
+
+test(
+  "adding and removing an unsaved List leaves nothing to save",
+  { tag: "@local" },
+  async ({ page }) => {
+    const { accountId } = await seedWatchlist();
+    await openConfigure(page, accountId, TITLE);
+    await expect(saveButton(page)).toBeDisabled();
+    await page.getByRole("button", { name: "Add an IMDb chart" }).click();
+    await page
+      .getByRole("menuitem", { name: /^Box Office \(Weekend\)/ })
+      .click();
+    await expect(saveButton(page)).toBeEnabled();
+    await page
+      .getByRole("button", { name: "Remove Box Office (Weekend)" })
+      .click();
+    await expect(saveButton(page)).toBeDisabled();
+    await expect(saveButton(page)).toHaveAttribute(
+      "title",
+      "No changes to save",
+    );
+    expect((await getConfig(accountId)).body.lists).toHaveLength(1);
+  },
+);
 
 test(
   "manual refresh hits the backend and starts the cooldown",
@@ -365,9 +391,11 @@ test(
     ).toHaveAttribute("href", addonsDeepLink(addonManifestUrl(accountId)));
 
     // The reminder stays until the user reinstalls, also after a reload and
-    // after a save that changes nothing.
+    // after a save that keeps the catalogs. With no edits, Save is off.
     await page.reload();
     await expect(reminder).toBeVisible();
+    await expect(saveButton(page)).toBeDisabled();
+    await page.locator("#rpdb-api-key").fill("e2e-rpdb-key-2");
     await saveConfigure(page, { message: SAVED_REINSTALL });
     await expect(reminder).toBeVisible();
 
@@ -379,6 +407,7 @@ test(
     await page.reload();
     await expect(page.getByText("Renamed watchlist")).toBeVisible();
     await expect(reminder).toHaveCount(0);
+    await page.locator("#rpdb-api-key").fill("e2e-rpdb-key");
     await saveConfigure(page, { message: SAVED });
     const { body } = await getConfig(accountId);
     expect(body.rpdbApiKey).toBe("e2e-rpdb-key");

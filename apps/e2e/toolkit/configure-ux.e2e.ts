@@ -2,6 +2,7 @@ import { test } from "@e2e-dev/web";
 import type { Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
 import {
+  SAVED_REINSTALL,
   SAVE_NEW,
   accountId,
   backend,
@@ -104,6 +105,50 @@ test("unsaved changes ask before the page reloads, and a save clears them", asyn
     ),
   ).toBe(true);
   expect(dialogs).toEqual([]);
+});
+
+test("Save is off while there is nothing to save", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const saves = await captureConfig(browser);
+  await app.open(`/configure?account=${accountId}`);
+  await expect(screen.getByText("Test catalog")).toBeVisible();
+  const save = saveButton(screen);
+  await expect(save).toBeDisabled();
+  await expect(save).toHaveAttribute("title", "No changes to save");
+
+  await screen.getByRole("button", "Settings for Test catalog").tap();
+  const title = screen.getByLabel("Catalog title");
+  await title.fill("Renamed");
+  await expect(save).toBeEnabled();
+  // The saved title again: nothing to save.
+  await title.fill("Test catalog");
+  await expect(save).toBeDisabled();
+
+  await title.fill("Renamed");
+  await save.tap();
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  await expect(save).toBeDisabled();
+  expect(saves).toHaveLength(1);
+});
+
+test("Save is off on a v1 install without changes, and on for a new setup", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await captureConfig(browser, legacyConfiguration, imdbUser);
+  await app.open(`/configure?account=${imdbUser}`);
+  await expect(screen.getByText("Test catalog")).toBeVisible();
+  await expect(saveButton(screen)).toBeDisabled();
+
+  await app.open("/configure");
+  await expect(saveButton(screen, SAVE_NEW)).toBeDisabled();
+  await screen.getByRole("button", "Add an IMDb chart").tap();
+  await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
+  await expect(saveButton(screen, SAVE_NEW)).toBeEnabled();
 });
 
 test("leaving the configure page with unsaved changes asks first", async ({

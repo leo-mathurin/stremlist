@@ -635,10 +635,18 @@ export function useAccountConfiguration(
     };
   };
 
+  /** The form has changes that a save would send. */
+  const dirty =
+    savedForm !== null && hasUnsavedChanges(savedForm, form, access);
+
   return {
     ...editor,
-    /** The form has changes that a save would send. */
-    dirty: savedForm !== null && hasUnsavedChanges(savedForm, form, access),
+    dirty,
+    /**
+     * A save has work to do: the form has changes, or the page asks to
+     * save, then reinstall (a disconnect turned Actions off without an edit).
+     */
+    saveNeeded: dirty || reinstall === "after-save",
     rpdbApiKey,
     setRpdbApiKey,
     access,

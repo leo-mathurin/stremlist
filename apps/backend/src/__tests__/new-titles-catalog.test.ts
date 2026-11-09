@@ -425,7 +425,14 @@ describe("manifest", () => {
     const res = await app.request(`/${accountId}/manifest.json`);
     const { catalogs } = (await res.json()) as StremioManifest;
     const lists = [
-      { id: LIST_IDS[0], catalogTitle: "Merged", displayMode: "series" },
+      {
+        id: LIST_IDS[0],
+        provider: "imdb",
+        sourceRef: "ur1",
+        mergedSources: [{ provider: "imdb", sourceRef: "ls1" }],
+        catalogTitle: "Merged",
+        displayMode: "series",
+      },
     ] as const;
 
     expect(catalogs.map(({ name, type }) => ({ name, type }))).toEqual(

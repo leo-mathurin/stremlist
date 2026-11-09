@@ -44,6 +44,7 @@ for (const editFilter of [false, true]) {
     await openFilters(screen, browser);
     const genre = screen.getByLabel("Genre", { exact: true });
     await expect(genre).toBeDisabled();
+    await screen.getByLabel(/^RPDB API key/).fill("e2e-synthetic-rpdb");
     await saveButton(screen).tap();
     await expect(saveButton(screen, "Saving")).toBeVisible();
     await screen.getByRole("button", "Refresh now").tap();
@@ -58,13 +59,16 @@ for (const editFilter of [false, true]) {
     await expect(
       screen.getByText(editFilter ? SAVED_WITH_CHANGES : SAVED),
     ).toBeVisible();
+    expect(submissions[0].lists[0].catalogSettings).toEqual({});
+    if (!editFilter) {
+      // The refresh left nothing to save.
+      await expect(saveButton(screen)).toBeDisabled();
+      expect(submissions).toHaveLength(1);
+      return;
+    }
     await saveButton(screen).tap();
     await expect(screen.getByText(SAVED)).toBeVisible();
     expect(submissions).toHaveLength(2);
-    expect(submissions[0].lists[0].catalogSettings).toEqual({});
-    expect(submissions[1].lists[0].catalogSettings).toEqual(
-      editFilter ? { genre: "Drama" } : {},
-    );
-    if (!editFilter) expect(submissions[1]).toEqual(submissions[0]);
+    expect(submissions[1].lists[0].catalogSettings).toEqual({ genre: "Drama" });
   });
 }

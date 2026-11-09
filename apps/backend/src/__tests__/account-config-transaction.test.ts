@@ -100,7 +100,7 @@ describe("List CRUD via the config API", () => {
           {
             provider: "imdb",
             source_ref: OTHER_IMDB,
-            catalog_title: "2",
+            catalog_title: "",
             sort_option: "year-desc",
             display_mode: "split",
             position: 1,
@@ -160,7 +160,7 @@ describe("List CRUD via the config API", () => {
           id: UUID_1,
           provider: "imdb",
           source_ref: OWNER,
-          catalog_title: "1",
+          catalog_title: "",
           sort_option: "title-asc",
           display_mode: "split",
           position: 0,
@@ -171,7 +171,7 @@ describe("List CRUD via the config API", () => {
           id: UUID_2,
           provider: "imdb",
           source_ref: OTHER_IMDB,
-          catalog_title: "2",
+          catalog_title: "",
           sort_option: "title-desc",
           display_mode: "split",
           position: 1,
@@ -287,7 +287,7 @@ describe("List CRUD via the config API", () => {
       const rows = db.getTable("lists");
       expect(rows.map((row) => [row.source_ref, row.catalog_title])).toEqual([
         [OWNER, "New"],
-        ["ls123456789", "2"],
+        ["ls123456789", ""],
       ]);
       expect(cache.get(UUID_2)).toBeNull();
     });

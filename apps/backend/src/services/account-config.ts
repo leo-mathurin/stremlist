@@ -239,13 +239,9 @@ export async function normalizeLists(
       id: list.id,
       provider: first.provider,
       sourceRef: first.sourceRef,
-      // Default titles are positions, and none for a single List.
-      catalogTitle:
-        list.catalogTitle && list.catalogTitle.length > 0
-          ? list.catalogTitle
-          : lists.length <= 1
-            ? ""
-            : String(index + 1),
+      // An untitled List stays untitled: the manifest names it after its
+      // Source list (`listTitle`), so its name never depends on its position.
+      catalogTitle: list.catalogTitle ?? "",
       sortOption: list.sortOption,
       displayMode: list.displayMode ?? "split",
       position: index,

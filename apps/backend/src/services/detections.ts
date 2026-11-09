@@ -260,8 +260,8 @@ function toDetections(
 /** The List's name as the user sees it, for the detection line. */
 function listName({ list, source }: Detection): string {
   const title = list.catalogTitle.trim();
-  // Default titles are positions ("1", "2"), which say nothing on their own:
-  // name the Source list that detected the Title instead.
+  // v1 saved positions ("1", "2") as default titles, which say nothing on
+  // their own: name the Source list that detected the Title instead.
   if (title && !/^\d+$/u.test(title)) return title;
   return `your ${PROVIDERS[source.provider].label} ${storedSourceNoun(source.provider, source.sourceRef)}`;
 }

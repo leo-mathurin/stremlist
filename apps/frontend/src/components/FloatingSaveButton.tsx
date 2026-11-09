@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 /** The look of the configure page Save buttons. */
 export const SAVE_BUTTON_CLASS =
-  "inline-flex shrink-0 items-center justify-center gap-2 bg-brand font-bold text-black hover:bg-brand-dark active:scale-[0.97] disabled:opacity-40 motion-reduce:active:scale-100";
+  "inline-flex shrink-0 items-center justify-center gap-2 bg-brand font-bold text-black enabled:hover:bg-brand-dark enabled:active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:active:scale-100";
 
 /**
  * The Save button at the end of the configure page. It floats as a pill at
@@ -14,12 +14,15 @@ export const SAVE_BUTTON_CLASS =
 export default function FloatingSaveButton({
   show,
   disabled,
+  hint,
   saving,
   onSave,
   children,
 }: {
   show: boolean;
   disabled: boolean;
+  /** Why the button is off, such as "No changes to save". */
+  hint?: string;
   saving: boolean;
   onSave: () => void;
   /** The label, the same as the header Save button. */
@@ -72,6 +75,7 @@ export default function FloatingSaveButton({
         type="button"
         onClick={onSave}
         disabled={disabled}
+        title={hint}
         aria-busy={saving}
         style={{ "--pill": `${labelWidth + 64}px` } as CSSProperties}
         className={cn(

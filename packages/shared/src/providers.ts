@@ -134,6 +134,18 @@ export type SourceKind =
   | "collection"
   | "status";
 
+/** How the configure page and default titles name each kind. */
+export const SOURCE_KIND_LABELS: Record<SourceKind, string> = {
+  watchlist: "Watchlist",
+  list: "List",
+  chart: "Chart",
+  recommendations: "Recommendations",
+  up_next: "Up Next",
+  history: "History",
+  collection: "Collection",
+  status: "Status",
+};
+
 /**
  * The identity of a Source list, as Lists, statuses and previews name it:
  * its Provider and the reference that the Provider understands.
@@ -915,4 +927,14 @@ export function describeSourceRef(
     if (match) return form.describe(match);
   }
   return { kind: "list", detail: ref, url: null };
+}
+
+/**
+ * The name of a Source list when its List has no title of its own, such as
+ * "IMDb Watchlist", "Simkl Plan to watch" or "Top 250 Movies". The configure
+ * page shows it and the manifest names the Catalogs with it.
+ */
+export function sourceTitle(provider: ProviderId, ref: string): string {
+  const { kind, title } = describeSourceRef(provider, ref);
+  return title ?? `${PROVIDERS[provider].label} ${SOURCE_KIND_LABELS[kind]}`;
 }

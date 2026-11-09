@@ -65,8 +65,8 @@ export function useListEditor() {
       const reordered = [...items];
       const [removed] = reordered.splice(initialIndex, 1);
       reordered.splice(index, 0, removed);
-      // Numbered default titles follow the position, so drop them and let
-      // the backend number the Lists again.
+      // Numbered default titles (v1 saved positions) follow the position,
+      // so drop them: an untitled List is named after its Source list.
       return allDefaultTitles
         ? reordered.map((list) => ({ ...list, catalogTitle: "" }))
         : reordered;

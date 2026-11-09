@@ -118,19 +118,84 @@ describe("manifest catalog generation", () => {
     expect(parseCatalogId(`${catalogs[0].id}--unknown`)).toBeNull();
   });
 
-  it("uses base Stremlist title when catalog title is empty", () => {
+  it("names a single untitled IMDb watchlist Stremlist, like v1", () => {
     expect(catalogsWithoutExtra([list({ catalogTitle: "" })])).toEqual(
       both(FIRST, "Stremlist"),
     );
   });
 
-  it("defaults unnamed Lists to numeric titles when multiple exist", () => {
+  it("names untitled Lists after their Source list, never their position", () => {
     expect(
       catalogsWithoutExtra([
         list({ catalogTitle: "" }),
         second({ catalogTitle: "", sortOption: "title-asc" }),
       ]),
-    ).toEqual([...both(FIRST, "Stremlist 1"), ...both(SECOND, "Stremlist 2")]);
+    ).toEqual([
+      ...both(FIRST, "Stremlist IMDb Watchlist"),
+      ...both(SECOND, "Stremlist IMDb Watchlist"),
+    ]);
+  });
+
+  it("keeps the names of untitled Lists when Lists are added before them", () => {
+    const imdb = list({ catalogTitle: "" });
+    const before = buildManifestCatalogs([
+      second({
+        catalogTitle: "",
+        provider: "simkl",
+        sourceRef: "me/plantowatch",
+      }),
+      imdb,
+    ]);
+    const after = buildManifestCatalogs([
+      list({
+        id: "0f0e8a51-2d1c-4a39-9f43-2c1d3b0b8d11",
+        catalogTitle: "",
+        provider: "mdblist",
+        sourceRef: "me/watchlist",
+      }),
+      second({
+        catalogTitle: "",
+        provider: "simkl",
+        sourceRef: "me/plantowatch",
+      }),
+      { ...imdb, position: 2 },
+    ]);
+    const names = (catalogs: typeof before) =>
+      catalogs.map((catalog) => `${catalog.id} ${catalog.name}`);
+    expect(names(before)).toEqual([
+      `wl-${SECOND}-movie Stremlist Simkl Plan to watch`,
+      `wl-${SECOND}-series Stremlist Simkl Plan to watch`,
+      `wl-${FIRST}-movie Stremlist IMDb Watchlist`,
+      `wl-${FIRST}-series Stremlist IMDb Watchlist`,
+    ]);
+    expect(names(after).slice(2)).toEqual(names(before));
+  });
+
+  it("names a single untitled List of v2 after its Source list", () => {
+    expect(
+      catalogsWithoutExtra([
+        list({ catalogTitle: "", sourceRef: "ls012345678" }),
+      ]).map((catalog) => catalog.name),
+    ).toEqual(["Stremlist IMDb List", "Stremlist IMDb List"]);
+    expect(
+      catalogsWithoutExtra([
+        list({ catalogTitle: "", sourceRef: "imdb:top-rated-movies" }),
+      ]).map((catalog) => catalog.name),
+    ).toContain("Stremlist Top 250 Movies");
+  });
+
+  it("lets a user title win over the Source list name", () => {
+    expect(
+      catalogsWithoutExtra([
+        list({ catalogTitle: " Picks " }),
+        second({ catalogTitle: "" }),
+      ]).map((catalog) => catalog.name),
+    ).toEqual([
+      "Stremlist Picks",
+      "Stremlist Picks",
+      "Stremlist IMDb Watchlist",
+      "Stremlist IMDb Watchlist",
+    ]);
   });
 
   it.each([
