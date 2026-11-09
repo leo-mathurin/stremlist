@@ -5,7 +5,7 @@ A visitor builds a new install from a Provider link or returns to an existing Ac
 ## Sub-features
 
 - `onboarding.new` detects a Provider, validates the link, and creates a private Account on Save.
-- `onboarding.return` opens an Addon URL or an old `?userId` link without creating a replacement Account.
+- `onboarding.return` opens an Addon URL or an old `?userId` link without creating a replacement Account. An IMDb ID, watchlist link or `p.` handle pasted on Home opens the v1 install that answers to it. Every v1 key form (`ur…`, `p.…`, `ls…`) serves the addon API (`tests/legacy-installs.spec.ts`).
 - `onboarding.errors` preserves invalid input and offers recovery from a failed configuration lookup.
 - `onboarding.public` navigates Home, Terms, Changelog, and unknown routes. Newsletter UI validates, submits, and retries.
 
