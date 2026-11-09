@@ -4,7 +4,7 @@ import { buildAddonUrls } from "@/lib/list-sources";
 import { cn } from "@/lib/utils";
 
 const edgeBlurClassName =
-  "pointer-events-none absolute inset-y-0 w-10 opacity-0 backdrop-blur-[2px] transition-opacity duration-200 ease-out-quint";
+  "pointer-events-none absolute inset-y-0 w-6 opacity-0 backdrop-blur-[1px] transition-opacity duration-200 ease-out-quint";
 
 const swapClassName =
   "transition-[opacity,scale,filter] duration-200 ease-out-quint";

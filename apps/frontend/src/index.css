@@ -104,10 +104,10 @@
       --edge-fade-end 200ms var(--ease-out-quint);
   }
   .edge-fade[data-overflow-start] {
-    --edge-fade-start: 2.5rem;
+    --edge-fade-start: 1.5rem;
   }
   .edge-fade[data-overflow-end] {
-    --edge-fade-end: 2.5rem;
+    --edge-fade-end: 1.5rem;
   }
 }
 
