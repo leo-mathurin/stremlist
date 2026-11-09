@@ -138,7 +138,7 @@ test.describe("manifest", () => {
         const response = await request.get(
           `${BACKEND_URL}/${key}/manifest.json`,
         );
-        expect(response.status()).toBe(400);
+        expect(response.status()).toBe(404);
         await expect(response.json()).resolves.toMatchObject({
           behaviorHints: { configurable: true, configurationRequired: true },
         });
