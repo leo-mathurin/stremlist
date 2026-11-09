@@ -5,6 +5,7 @@ import type {
   CatalogPreviewRow,
 } from "@stremlist/shared/catalog-preview";
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
+import { LEGACY_ALIAS_PATTERN } from "@stremlist/shared/constants";
 import type { DisplayMode } from "@stremlist/shared/constants";
 import { expect } from "e2e";
 import type { Screen } from "e2e";
@@ -281,6 +282,16 @@ export async function baseRoutes(
           syncStatus: configuration.syncStatus,
           connections: [],
         }),
+      });
+    // Home asks whether a pasted IMDb ID has a v1 install: by default none.
+    else if (
+      route.request.method === "GET" &&
+      /^\/[^/]+\/config$/.test(pathname) &&
+      LEGACY_ALIAS_PATTERN.test(decodeURIComponent(pathname.split("/")[1]))
+    )
+      await route.fulfill({
+        status: 404,
+        json: { error: "Addon not found. Install it first." },
       });
     else if (pathname === "/lists/preview" && route.request.method === "POST")
       await route.fulfill({

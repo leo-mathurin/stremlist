@@ -135,7 +135,8 @@ test(
       `https://web.stremio.com/#/addons?addon=${encodeURIComponent(addonUrl(accountId))}`,
     );
     await expect(browser).toHaveURL(`/configure?account=${accountId}`);
-    expect(inputs).toEqual([{ input: profile }]);
+    // Home checks the canonical ID for a v1 install, then Configure adds it.
+    expect(inputs).toEqual([{ input: profile }, { input: profile }]);
     expect(created).toHaveLength(1);
     expect(created[0].lists).toMatchObject([
       { provider: "imdb", sourceRef: imdbUser, position: 0 },
@@ -679,4 +680,42 @@ test("an old ?userId link opens the Legacy alias install with a fresh form", asy
     ),
   ).toBeVisible();
   await expect(saveButton(screen)).toBeEnabled();
+});
+
+test("an Addon URL in the add list field is not read as a list", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await captureConfig(browser);
+  const inputs = await routeResolve(browser, () => null);
+  await app.open(`/configure?account=${accountId}`);
+  await expect(screen.getByText("Test catalog")).toBeVisible();
+  const field = screen.getByLabel(PASTE);
+  const add = screen.getByRole("button", "Add", { exact: true });
+
+  await field.fill(addonUrl(imdbUser));
+  await expect(
+    screen.getByText("Stremlist Addon URL detected. This is not a list."),
+  ).toBeVisible();
+  await add.tap();
+  await expect(
+    screen.getByText(
+      "This is the Addon URL of a different Stremlist. It is not a list. Paste a link to a watchlist or list.",
+    ),
+  ).toBeVisible();
+  await expect(screen.getByRole("link", "Open that Stremlist")).toHaveAttribute(
+    "href",
+    `/configure?account=${imdbUser}`,
+  );
+
+  await field.fill(addonUrl(accountId));
+  await add.tap();
+  await expect(
+    screen.getByText(
+      "This is the Addon URL of this Stremlist. It is not a list. Paste a link to a watchlist or list.",
+    ),
+  ).toBeVisible();
+  await expect(screen.getByRole("link", "Open that Stremlist")).toHaveCount(0);
+  expect(inputs).toEqual([]);
 });

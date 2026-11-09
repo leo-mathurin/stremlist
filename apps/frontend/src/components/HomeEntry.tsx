@@ -1,7 +1,10 @@
 import { useId, useState } from "react";
 import { useNavigate } from "react-router";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { parseSourceLink } from "@stremlist/shared/providers";
+import { api } from "@/lib/api";
+import { findLegacyInstall } from "@/lib/legacy-install";
+import type { LegacyInstallLookup } from "@/lib/legacy-install";
 import {
   detectedLinkHint,
   extractAccountKey,
@@ -9,9 +12,32 @@ import {
 } from "@/lib/list-sources";
 import { cn } from "@/lib/utils";
 
+const legacyInstallLookup: LegacyInstallLookup = {
+  // The same answer as the public configure page of that key.
+  async exists(alias) {
+    const res = await api[":accountKey"].config.$get({
+      param: { accountKey: alias },
+    });
+    if (res.status === 404) return false;
+    if (!res.ok) throw new Error(`Install check failed: ${res.status}`);
+    return true;
+  },
+  async canonicalRef(input) {
+    try {
+      const res = await api.links.resolve.$post({ json: { input } });
+      if (!res.ok) return null;
+      const body = await res.json();
+      return body.ok ? body.sourceRef : null;
+    } catch {
+      return null;
+    }
+  },
+};
+
 /**
  * The Home entry: paste a list link to start a new Stremlist on Configure,
- * or paste an Addon URL to open an existing one.
+ * or paste an Addon URL to open an existing one. An IMDb ID that a v1 install
+ * answers to opens that install instead of a second one.
  */
 export default function HomeEntry() {
   const navigate = useNavigate();
@@ -21,6 +47,8 @@ export default function HomeEntry() {
   const [addonUrl, setAddonUrl] = useState("");
   const [showExisting, setShowExisting] = useState(false);
   const [addonError, setAddonError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
 
   const detected = parseSourceLink(link);
   const pastedAccount = extractAccountKey(link);
@@ -31,11 +59,39 @@ export default function HomeEntry() {
     return detectedLinkHint(detected);
   })();
 
-  const start = () => {
+  const openAccount = (key: string) =>
+    navigate(`/configure?account=${encodeURIComponent(key)}`);
+
+  const start = async () => {
     const trimmed = link.trim();
+    if (checking) return;
     if (pastedAccount && !detected) {
-      navigate(`/configure?account=${encodeURIComponent(pastedAccount)}`);
+      openAccount(pastedAccount);
       return;
+    }
+    if (detected) {
+      setChecking(true);
+      setStartError(null);
+      let install: string | null;
+      try {
+        install = await findLegacyInstall(
+          trimmed,
+          detected,
+          legacyInstallLookup,
+        );
+      } catch {
+        // Not knowing is not "no install": a new setup could duplicate it.
+        setStartError(
+          "Could not check for your existing Stremlist. Please try again.",
+        );
+        return;
+      } finally {
+        setChecking(false);
+      }
+      if (install) {
+        openAccount(install);
+        return;
+      }
     }
     navigate("/configure", trimmed ? { state: { link: trimmed } } : undefined);
   };
@@ -56,7 +112,7 @@ export default function HomeEntry() {
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          start();
+          void start();
         }}
       >
         <label htmlFor={linkId} className="sr-only">
@@ -68,7 +124,10 @@ export default function HomeEntry() {
             <input
               id={linkId}
               value={link}
-              onChange={(event) => setLink(event.target.value)}
+              onChange={(event) => {
+                setLink(event.target.value);
+                setStartError(null);
+              }}
               placeholder={PASTE_LINK_PROMPT}
               autoComplete="off"
               spellCheck={false}
@@ -76,22 +135,33 @@ export default function HomeEntry() {
             />
             <button
               type="submit"
+              aria-busy={checking}
               className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-brand px-6 py-3 font-bold text-black transition-[background-color,scale] duration-150 hover:bg-brand-dark active:scale-[0.97]"
             >
               {link.trim() ? "Add this list" : "Build my Stremlist"}
-              <ArrowRight className="size-4" />
+              {checking ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ArrowRight className="size-4" />
+              )}
             </button>
           </div>
         </div>
-        <p
-          aria-live="polite"
-          className={cn(
-            "mt-2 px-5.5 text-xs empty:mt-0",
-            detected || pastedAccount ? "text-brand" : "text-white/45",
-          )}
-        >
-          {hint}
-        </p>
+        {startError ? (
+          <p role="alert" className="mt-2 px-5.5 text-xs text-red-300">
+            {startError}
+          </p>
+        ) : (
+          <p
+            aria-live="polite"
+            className={cn(
+              "mt-2 px-5.5 text-xs empty:mt-0",
+              detected || pastedAccount ? "text-brand" : "text-white/45",
+            )}
+          >
+            {hint}
+          </p>
+        )}
       </form>
 
       {showExisting ? (
