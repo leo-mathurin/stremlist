@@ -334,6 +334,9 @@ export async function getConnectionAccess(
     get username() {
       return current.username;
     },
+    get authorization() {
+      return current.authorizationVersion;
+    },
     get identity() {
       return {
         accountId,

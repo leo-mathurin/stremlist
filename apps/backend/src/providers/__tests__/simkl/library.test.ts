@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { simklProvider } from "../../simkl";
-import { activities, SHOWS } from "./fixtures";
+import { connection as oauthConnection } from "../oauth-harness";
+import { activities, ANIME, MOVIES, SHOWS } from "./fixtures";
 import {
   ageLibrary,
   apiCalls,
@@ -162,9 +163,85 @@ describe("simkl activities gating", () => {
     await simklProvider.fetchSource("me/plantowatch", ctx());
     clearCalls();
     await simklProvider.fetchSource("me/plantowatch", {
-      connection: { ...connection, username: "someone-else" },
+      // Another Simkl user is always another authorization.
+      connection: {
+        ...connection,
+        username: "someone-else",
+        authorization: "authorization-2",
+      },
     });
     expect(apiCalls()).toContain("GET /sync/all-items/shows");
+  });
+});
+
+describe("simkl reconnect", () => {
+  /** The same Account connected to Simkl with another authorization. */
+  function authorization(id: string, token: string) {
+    return {
+      ...oauthConnection("simkl", "acc-1", [token]),
+      username: null,
+      authorization: id,
+    };
+  }
+
+  it("reads the full library again after a reconnect without usernames", async () => {
+    await simklProvider.fetchSource("me/plantowatch", {
+      connection: authorization("auth-1", "old_token"),
+    });
+    clearCalls();
+    routes["GET /sync/all-items/shows"] = () => ({ shows: [] });
+    routes["GET /sync/all-items/movies"] = () => ({ movies: [] });
+    routes["GET /sync/all-items/anime"] = () => ({ anime: [] });
+
+    const snapshot = await simklProvider.fetchSource("me/plantowatch", {
+      connection: authorization("auth-2", "new_token"),
+    });
+
+    expect(apiCalls()).toContain("GET /sync/all-items/shows");
+    expect(snapshot.entries).toEqual([]);
+  });
+
+  it("never serves the previous authorization's library during a reconnect", async () => {
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const library = (token: string | null, rows: unknown) =>
+      token === "Bearer old_token"
+        ? rows
+        : { shows: [], movies: [], anime: [] };
+    routes["GET /sync/activities"] = async (call) => {
+      if (call.headers.get("Authorization") === "Bearer old_token") await held;
+      return activities({ all: "2026-10-01T10:00:00Z" });
+    };
+    for (const kind of ["shows", "movies", "anime"] as const) {
+      const rows = { shows: SHOWS, movies: MOVIES, anime: ANIME }[kind];
+      routes[`GET /sync/all-items/${kind}`] = (call) =>
+        library(call.headers.get("Authorization"), rows);
+    }
+
+    // A sync of the old authorization is still running when the user
+    // reconnects to another Simkl account.
+    const old = simklProvider.fetchSource("me/plantowatch", {
+      connection: authorization("auth-1", "old_token"),
+    });
+    await vi.waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    const current = authorization("auth-2", "new_token");
+    const reading = simklProvider.fetchSource("me/plantowatch", {
+      connection: current,
+    });
+    release();
+    await old;
+    const fresh = await reading;
+    // The old sync ended last; the next read inside the gate.
+    const next = await simklProvider.fetchSource("me/plantowatch", {
+      connection: current,
+    });
+
+    expect(fresh.entries).toEqual([]);
+    expect(next.entries).toEqual([]);
   });
 });
 

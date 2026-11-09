@@ -70,6 +70,7 @@ function connection(username: string | null = "leo"): ConnectionAccess {
     accountId: "sl_testaccount0000000000",
     provider: "mdblist",
     username,
+    authorization: "authorization-1",
     getAccessToken: () => Promise.resolve("user-token"),
     reportRefused: () => Promise.resolve(),
     reportWorking: () => Promise.resolve(),

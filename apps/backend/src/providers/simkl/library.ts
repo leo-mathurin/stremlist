@@ -112,8 +112,11 @@ export interface LibraryItem extends SimklTitle {
 
 export interface LibrarySnapshot {
   version: number;
-  /** The Simkl user the snapshot belongs to: a reconnect may change it. */
-  username: string | null;
+  /**
+   * The authorization that read the snapshot (`ConnectionAccess`). A
+   * reconnect, maybe to another Simkl user, never uses it.
+   */
+  authorization: string;
   /** The whole /sync/activities response read before the snapshot's data. */
   activities: SimklActivities;
   /** When activities were last checked; 0 forces a check on the next read. */
@@ -319,12 +322,13 @@ function usableSnapshot(
   connection: ConnectionAccess,
 ): LibrarySnapshot | null {
   return snapshot?.version === STATE_VERSION &&
-    snapshot.username === connection.username
+    snapshot.authorization === connection.authorization
     ? snapshot
     : null;
 }
 
-const inFlightSyncs = new Map<string, Promise<LibrarySnapshot>>();
+/** Syncs in flight by Account, then by authorization. */
+const inFlightSyncs = new Map<string, Map<string, Promise<LibrarySnapshot>>>();
 
 /** Test hook: forget the syncs in flight. */
 export function clearInFlightSyncs(): void {
@@ -345,13 +349,21 @@ export function forgetInFlightSync(accountId: string): void {
 export function syncLibrary(
   connection: ConnectionAccess,
 ): Promise<LibrarySnapshot> {
-  const key = connection.accountId;
-  const existing = inFlightSyncs.get(key);
+  const { accountId, authorization } = connection;
+  // A read after a reconnect never joins a sync of the previous tokens.
+  const syncs =
+    inFlightSyncs.get(accountId) ?? new Map<string, Promise<LibrarySnapshot>>();
+  const existing = syncs.get(authorization);
   if (existing) return existing;
   const sync = runSync(connection);
-  inFlightSyncs.set(key, sync);
+  syncs.set(authorization, sync);
+  inFlightSyncs.set(accountId, syncs);
   const clear = () => {
-    if (inFlightSyncs.get(key) === sync) inFlightSyncs.delete(key);
+    if (syncs.get(authorization) !== sync) return;
+    syncs.delete(authorization);
+    if (syncs.size === 0 && inFlightSyncs.get(accountId) === syncs) {
+      inFlightSyncs.delete(accountId);
+    }
   };
   void sync.then(clear, clear);
   return sync;
@@ -384,7 +396,7 @@ async function runSync(connection: ConnectionAccess): Promise<LibrarySnapshot> {
 
   const snapshot: LibrarySnapshot = {
     version: STATE_VERSION,
-    username: connection.username,
+    authorization: connection.authorization,
     activities,
     checkedAt: Date.now(),
     items,
@@ -393,12 +405,15 @@ async function runSync(connection: ConnectionAccess): Promise<LibrarySnapshot> {
   return snapshot;
 }
 
-/** The library items of one Title, from the last snapshot. */
+/** The library items of one Title, from the last snapshot of `connection`. */
 export async function knownItems(
-  accountId: string,
+  connection: ConnectionAccess,
   imdbId: string,
 ): Promise<LibraryItem[]> {
-  const snapshot = await readState<LibrarySnapshot>(libraryKey(accountId));
+  const snapshot = usableSnapshot(
+    await readState<LibrarySnapshot>(libraryKey(connection.accountId)),
+    connection,
+  );
   return snapshot?.items.filter((item) => item.imdb === imdbId) ?? [];
 }
 

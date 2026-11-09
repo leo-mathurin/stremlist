@@ -166,6 +166,12 @@ export interface ConnectionAccess {
   accountId: string;
   provider: ProviderId;
   username: string | null;
+  /**
+   * Identifies the authorization behind this access. A reconnect gives a
+   * new one, even to the same Provider user; a token refresh keeps it.
+   * State kept between reads belongs to one authorization.
+   */
+  authorization: string;
   getAccessToken(): Promise<string>;
   /**
    * The Provider refused the tokens that this access gave: the configure

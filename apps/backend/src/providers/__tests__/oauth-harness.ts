@@ -68,6 +68,7 @@ export function connection(
     accountId,
     provider,
     username: "leo" as string | null,
+    authorization: "authorization-1",
     getAccessToken: vi.fn(() =>
       Promise.resolve(tokens[Math.min(index++, tokens.length - 1)]),
     ),

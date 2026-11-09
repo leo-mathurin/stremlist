@@ -1,8 +1,11 @@
 import { LruCache } from "../../lib/lru";
 import { connectionPrefix, readJson, writeJson } from "../../lib/r2-json";
 
-/** Version of the snapshots below; another version is read again. */
-export const STATE_VERSION = 1;
+/**
+ * Version of the snapshots below; another version is read again. Version 2
+ * binds a snapshot to its authorization instead of the Simkl username.
+ */
+export const STATE_VERSION = 2;
 
 export function libraryKey(accountId: string): string {
   return `${connectionPrefix(accountId, "simkl")}library.json`;
