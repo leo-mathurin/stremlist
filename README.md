@@ -145,6 +145,29 @@ CI authenticates with OpenID Connect instead of a stored token. It needs:
 Without the variable, on pull requests from forks, or if the token exchange
 fails, CI runs with only a local cache.
 
+## Database Migrations
+
+Schema changes are SQL files in `supabase/migrations`. Nothing applies them when
+you run the apps locally. After a pull request merges into `main` and CI passes,
+the `Supabase deploy` workflow applies the pending migrations and
+`supabase/config.toml` to the production project, then publishes the backend
+and frontend built from the same commit. Vercel does not build `main` by itself any more.
+
+- Add a new file `<YYYYMMDDHHMMSS>_<name>.sql`. Never edit a migration that
+  production already applied.
+- Keep the schema compatible with the backend still in production: add first,
+  remove or rename in a later release.
+- Do not run SQL or change settings by hand in the production dashboard, and do
+  not deploy from your machine. Production settings live in the
+  `[remotes.production]` block of `supabase/config.toml`.
+- The first migration, `20260916000000_production_baseline.sql`, is a dump of
+  the production schema. It replaced the earlier migrations.
+- Staging and preview deployments use the production database too.
+
+Read [`docs/production-deploy.md`](docs/production-deploy.md) for the full
+sequence, the secrets, recovery after a failure and how to repair the migration
+history.
+
 ## Backend Environment Variables
 
 Set backend env vars in `apps/backend/.env`.
