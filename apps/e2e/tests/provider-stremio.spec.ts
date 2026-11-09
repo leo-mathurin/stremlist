@@ -238,10 +238,18 @@ test(
       ] as const) {
         await page.goto(discoverUrl(manifestUrl, type, ids[type]));
         // A hash change keeps the previous Catalog on screen for a moment.
+        // Discover also links the selected Title's details ("Show"), so
+        // only the fixture Titles count.
         await expect
-          .poll(() => discoverItemTitles(page), {
-            message: `${lists[index].provider} ${lists[index].sourceRef} ${type}`,
-          })
+          .poll(
+            async () =>
+              (await discoverItemTitles(page)).filter((name) =>
+                [MOVIE.name, SERIES.name].includes(name),
+              ),
+            {
+              message: `${lists[index].provider} ${lists[index].sourceRef} ${type}`,
+            },
+          )
           .toEqual([title.name]);
       }
     }
