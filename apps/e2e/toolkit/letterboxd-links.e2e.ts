@@ -57,7 +57,7 @@ for (const { kind, link, message } of missing) {
     await screen.getByRole("button", "Add", { exact: true }).tap();
     await expect(screen.getByText(message)).toBeVisible();
     expect(inputs).toEqual([{ input: link }]);
-    await expect(screen.getByText("No Lists yet")).toBeVisible();
+    await expect(screen.getByText("No lists yet")).toBeVisible();
     await expect(saveButton(screen, SAVE_NEW)).toBeDisabled();
   });
 }

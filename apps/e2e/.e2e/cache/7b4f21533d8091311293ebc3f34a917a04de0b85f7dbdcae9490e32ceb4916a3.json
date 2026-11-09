@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-12T14:30:46.362Z",
+  "createdAt": "2026-11-09T14:24:12.167Z",
   "payload": {
     "actions": [
       {
@@ -13,10 +13,10 @@
       },
       {
         "name": "tap",
-        "summary": "tap button \"Merge another List into this one\"",
+        "summary": "tap button \"Merge another list into this one\"",
         "target": {
           "role": "button",
-          "name": "Merge another List into this one"
+          "name": "Merge another list into this one"
         }
       },
       {
@@ -48,7 +48,7 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Verified the saved state: IMDb Watchlist contains both source lists (IMDb Watchlist and Favourite films), shows “2 of 5,” and the page confirms “Saved! Reinstall Stremlist in Stremio to see your changes.”",
+    "summary": "Merged Favourite films into IMDb Watchlist; the catalog shows 2 lists merged with both IMDb Watchlist and Favourite films listed. Saved successfully; confirmation says “Saved! Reinstall Stremlist in Stremio to see your changes.”",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
@@ -111,6 +111,6 @@
         "text": "4 of 10 lists. Drag the handle to reorder."
       }
     ],
-    "endWaitMs": 40344
+    "endWaitMs": 14271
   }
 }

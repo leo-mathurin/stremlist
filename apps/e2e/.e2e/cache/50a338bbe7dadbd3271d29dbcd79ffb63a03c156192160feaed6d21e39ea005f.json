@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T15:01:15.845Z",
+  "createdAt": "2026-11-09T14:24:49.220Z",
   "payload": {
     "actions": [
       {
@@ -34,13 +34,13 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Trakt is disconnected. The page shows the Trakt Watchlist as “Not connected,” and a confirmation toast says “Trakt is disconnected. Lists read through Trakt stop showing in Stremio until you connect it again.”",
+    "summary": "The current screen confirms Trakt is disconnected: the provider offers Connect, the Trakt Watchlist shows Not connected, and a toast states “Trakt is disconnected. Lists read through Trakt stop showing in Stremio until you connect it again.”",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Trakt is not connected, so this List does not show in Stremio. Connect again for Trakt Watchlist"
+        "name": "Trakt is not connected, so this list does not show in Stremio. Connect Trakt for Trakt Watchlist"
       },
       {
         "text": "Paste a link, or connect"
@@ -53,7 +53,7 @@
         "text": "A free Trakt account can connect only one app. If Stremio's own Trakt sync uses it, paste public Trakt links instead."
       },
       {
-        "text": "1 List needs attention"
+        "text": "1 list needs attention"
       },
       {
         "text": "These changes need a reinstall."
@@ -62,7 +62,7 @@
         "text": "Not connected"
       },
       {
-        "text": "Trakt is not connected, so this List does not show in Stremio."
+        "text": "Trakt is not connected, so this list does not show in Stremio."
       }
     ],
     "goneAnchors": [
@@ -76,25 +76,27 @@
         "text": "Not refreshed yet"
       },
       {
-        "text": "Your Trakt (@someone)"
+        "text": "Accounts, in the order Stremio shows them"
+      },
+      {
+        "role": "checkbox",
+        "name": "Trakt watchlist, watched, rating",
+        "states": [
+          "checked"
+        ]
+      },
+      {
+        "text": "watchlist, watched, rating"
       },
       {
         "role": "button",
-        "name": "Watchlist"
+        "name": "Move Trakt up"
       },
       {
         "role": "button",
-        "name": "Recommendations"
-      },
-      {
-        "role": "button",
-        "name": "Up Next"
-      },
-      {
-        "role": "button",
-        "name": "History"
+        "name": "Move Trakt down"
       }
     ],
-    "endWaitMs": 26480
+    "endWaitMs": 39439
   }
 }
