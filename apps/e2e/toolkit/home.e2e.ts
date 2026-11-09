@@ -272,6 +272,10 @@ test("a returning v1 user who pastes their IMDb ID opens their install", async (
     await app.open("/");
     await screen.getByLabel(HOME_FIELD).fill(link);
     await screen.getByRole("button", "Add this list").tap();
+    // Someone else's install can answer to a pasted ID: ask first.
+    await expect(screen.getByText("Is this your Stremlist?")).toBeVisible();
+    await expect(browser).toHaveURL("/");
+    await screen.getByRole("button", "Open my Stremlist").tap();
     await expect(browser).toHaveURL(`/configure?account=${imdbUser}`);
     await expect(
       screen.getByText(`Installed with IMDb user ID ${imdbUser}`),
@@ -294,11 +298,29 @@ test("a p. handle opens the v1 install of its canonical IMDb ID", async ({
   await app.open("/");
   await screen.getByLabel(HOME_FIELD).fill(profile);
   await screen.getByRole("button", "Add this list").tap();
+  await screen.getByRole("button", "Open my Stremlist").tap();
   await expect(browser).toHaveURL(`/configure?account=${imdbUser}`);
   await expect(
     screen.getByText(`Installed with IMDb user ID ${imdbUser}`),
   ).toBeVisible();
   expect(inputs).toEqual([{ input: profile }]);
+});
+
+test("a pasted IMDb ID with a v1 install can still start a new setup", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await captureConfig(browser, legacyConfiguration, imdbUser);
+  await routeResolve(browser, () => resolved("imdb", imdbUser, "watchlist"));
+  await app.open("/");
+  await screen.getByLabel(HOME_FIELD).fill(imdbUser);
+  await screen.getByRole("button", "Add this list").tap();
+  await screen.getByRole("button", "Start a new one").tap();
+  await expect(browser).toHaveURL("/configure");
+  await expect(
+    screen.getByText(`IMDb · Watchlist · ${imdbUser}`),
+  ).toBeVisible();
 });
 
 test("an IMDb ID with no v1 install starts a new setup with it", async ({

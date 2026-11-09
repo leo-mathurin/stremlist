@@ -138,6 +138,7 @@ for (const [label, key, link] of [
       await page.goto(FRONTEND_URL);
       await page.getByLabel("Paste a link to a watchlist or list").fill(link);
       await page.getByRole("button", { name: "Add this list" }).click();
+      await page.getByRole("button", { name: "Open my Stremlist" }).click();
 
       await expect(page).toHaveURL(configureUrl(key));
       await expect(

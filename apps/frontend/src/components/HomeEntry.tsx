@@ -36,8 +36,9 @@ const legacyInstallLookup: LegacyInstallLookup = {
 
 /**
  * The Home entry: paste a list link to start a new Stremlist on Configure,
- * or paste an Addon URL to open an existing one. An IMDb ID that a v1 install
- * answers to opens that install instead of a second one.
+ * or paste an Addon URL to open an existing one. When a v1 install answers to
+ * a pasted IMDb user ID, Home asks whether it is the user's before it opens
+ * it: the ID can be someone else's.
  */
 export default function HomeEntry() {
   const navigate = useNavigate();
@@ -49,6 +50,8 @@ export default function HomeEntry() {
   const [addonError, setAddonError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  /** A v1 install that answers to the pasted link, until the user chooses. */
+  const [found, setFound] = useState<string | null>(null);
 
   const detected = parseSourceLink(link);
   const pastedAccount = extractAccountKey(link);
@@ -89,10 +92,15 @@ export default function HomeEntry() {
         setChecking(false);
       }
       if (install) {
-        openAccount(install);
+        setFound(install);
         return;
       }
     }
+    startNew();
+  };
+
+  const startNew = () => {
+    const trimmed = link.trim();
     navigate("/configure", trimmed ? { state: { link: trimmed } } : undefined);
   };
 
@@ -127,6 +135,7 @@ export default function HomeEntry() {
               onChange={(event) => {
                 setLink(event.target.value);
                 setStartError(null);
+                setFound(null);
               }}
               placeholder={PASTE_LINK_PROMPT}
               autoComplete="off"
@@ -147,7 +156,37 @@ export default function HomeEntry() {
             </button>
           </div>
         </div>
-        {startError ? (
+        {found ? (
+          <div
+            role="group"
+            aria-labelledby={`${linkId}-found`}
+            className="mt-3 rounded-3xl bg-white/10 p-4"
+          >
+            <p id={`${linkId}-found`} className="font-semibold text-cloud">
+              Is this your Stremlist?
+            </p>
+            <p className="mt-1 text-sm text-white/60">
+              A Stremlist made before version 2 uses this IMDb ID. Open it if it
+              is yours. Otherwise, start a new one.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => openAccount(found)}
+                className="rounded-full bg-brand px-5 py-2.5 text-sm font-bold text-black transition-[background-color,scale] duration-150 hover:bg-brand-dark active:scale-[0.97]"
+              >
+                Open my Stremlist
+              </button>
+              <button
+                type="button"
+                onClick={startNew}
+                className="rounded-full border border-white/25 px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-white/10"
+              >
+                Start a new one
+              </button>
+            </div>
+          </div>
+        ) : startError ? (
           <p role="alert" className="mt-2 px-5.5 text-xs text-red-300">
             {startError}
           </p>

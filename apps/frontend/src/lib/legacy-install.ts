@@ -16,7 +16,8 @@ export interface LegacyInstallLookup {
  * by the IMDb ID that the user pasted, so a returning user who pastes it again
  * means that install, not a new one. v1 stored a `p.` handle as pasted or as
  * its canonical `ur…` ID, so a handle checks both. Null when the link is not
- * an IMDb ID that an install answers to.
+ * an IMDb user ID that an install answers to. Anyone can paste anyone's ID,
+ * so the caller asks before it opens the install.
  */
 export async function findLegacyInstall(
   input: string,
@@ -25,7 +26,8 @@ export async function findLegacyInstall(
 ): Promise<string | null> {
   if (parsed?.provider !== "imdb") return null;
   const alias = parsed.sourceRef;
-  if (!LEGACY_ALIAS_PATTERN.test(alias)) return null;
+  // A public list is shared: its install is not the person's who pastes it.
+  if (alias.startsWith("ls") || !LEGACY_ALIAS_PATTERN.test(alias)) return null;
   if (await lookup.exists(alias)) return alias;
   if (!alias.startsWith("p.")) return null;
   const canonical = await lookup.canonicalRef(input);

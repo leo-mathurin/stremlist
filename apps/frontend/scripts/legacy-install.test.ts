@@ -41,12 +41,14 @@ test("a pasted IMDb user ID or watchlist link opens its v1 install", async () =>
   }
 });
 
-test("a pasted list ID opens the v1 install keyed by it", async () => {
-  const { lookup } = lookupOver(["ls123456789"]);
+test("a pasted list ID never looks for a v1 install", async () => {
+  // A public list is shared: its v1 install is not the person's who pastes it.
+  const { lookup, checked } = lookupOver(["ls123456789"]);
   assert.equal(
     await find("https://www.imdb.com/list/ls123456789/", lookup),
-    "ls123456789",
+    null,
   );
+  assert.deepEqual(checked, []);
 });
 
 test("a p. handle opens the install keyed by the handle", async () => {
