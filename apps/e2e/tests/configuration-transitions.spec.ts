@@ -9,7 +9,7 @@ import {
   postConfig,
 } from "../helpers/api.js";
 import { CATALOG_TITLES, seedCatalog } from "../helpers/catalog-fixture.js";
-import { resetDb, seedList } from "../helpers/db.js";
+import { resetDb, seedAccount, seedList } from "../helpers/db.js";
 import { seedCachedCatalog } from "../helpers/r2.js";
 import { CATALOG_FIXTURE_USER } from "../helpers/test-data.js";
 import {
@@ -39,6 +39,13 @@ async function saveLists(accountId: string, lists: ConfigListInput[]) {
 }
 async function manifestCatalogIds(accountId: string) {
   return (await getManifest(accountId)).catalogs.map((catalog) => catalog.id);
+}
+/** The ID and name of each manifest Catalog, in order. */
+async function manifestCatalogNames(accountId: string) {
+  return (await getManifest(accountId)).catalogs.map((catalog) => [
+    catalog.id,
+    catalog.name,
+  ]);
 }
 /** The "Provider · kind · detail" line of each List row, in order. */
 function rowSources(page: Page) {
@@ -225,7 +232,55 @@ test(
 );
 
 test(
-  "default catalog numbering follows a saved reorder after reload",
+  "an untitled List keeps its Stremio name when Lists are added before it",
+  { tag: "@local" },
+  async ({ page }) => {
+    // A v1 install: one IMDb watchlist without a title.
+    const accountId = await seedAccount();
+    const id = await seedList(accountId, {
+      sourceRef: CATALOG_FIXTURE_USER,
+      catalogTitle: "",
+      position: 0,
+    });
+    await seedCachedCatalog(id, CATALOG_TITLES);
+    // Like v1, its Catalog is "Stremlist".
+    expect(await manifestCatalogNames(accountId)).toEqual([
+      [`wl-${id}-movie`, "Stremlist"],
+    ]);
+    await openConfigure(page, accountId, "IMDb Watchlist");
+
+    // New Lists go first. The watchlist gets the name that the page shows,
+    // never its position.
+    for (const chart of ["Top 250 Movies", "Most Popular Movies"]) {
+      await page.getByRole("button", { name: "Add an IMDb chart" }).click();
+      await page
+        .getByRole("menuitem", { name: new RegExp(`^${chart}`) })
+        .click();
+      await saveConfigure(page);
+      const names = await manifestCatalogNames(accountId);
+      expect(names.at(-1)).toEqual([
+        `wl-${id}-movie`,
+        "Stremlist IMDb Watchlist",
+      ]);
+      expect(names.map(([, name]) => name)).not.toContainEqual(
+        expect.stringMatching(/^Stremlist \d+$/),
+      );
+    }
+    const lists = (await getConfig(accountId)).body.lists;
+    expect(lists.map((list) => [list.id === id, list.catalogTitle])).toEqual([
+      [false, "Most Popular Movies"],
+      [false, "Top 250 Movies"],
+      [true, ""],
+    ]);
+    await page.reload();
+    await expect(
+      page.getByText("IMDb Watchlist", { exact: true }),
+    ).toBeVisible();
+  },
+);
+
+test(
+  "numbered v1 titles give way to Source list names after a saved reorder",
   { tag: "@local" },
   async ({ page }) => {
     const { accountId, id } = await seedCatalog();
@@ -235,6 +290,7 @@ test(
       position: 1,
     });
     await seedCachedCatalog(second, [CATALOG_TITLES[5]]);
+    // v1 saved the positions of untitled Lists as their titles.
     await saveLists(accountId, [
       listInput("imdb", CATALOG_FIXTURE_USER, {
         id,
@@ -246,6 +302,10 @@ test(
         catalogTitle: "2",
         displayMode: "movie",
       }),
+    ]);
+    expect(await manifestCatalogNames(accountId)).toEqual([
+      [`wl-${id}-movie`, "Stremlist 1"],
+      [`wl-${second}-movie`, "Stremlist 2"],
     ]);
     await page.setViewportSize({ width: 1280, height: 1800 });
     await openConfigure(page, accountId, "1");
@@ -270,23 +330,27 @@ test(
       "IMDb · List · ls99123456",
       `IMDb · Watchlist · ${CATALOG_FIXTURE_USER}`,
     ];
-    // Numbered default titles follow the position, so the page drops them.
+    // Numbered titles follow the position, so the page drops them: the
+    // Lists take the names of their Source lists.
     await expect(rowSources(page)).toHaveText(reordered);
     await expect(page.getByText("1", { exact: true })).toHaveCount(0);
     await saveConfigure(page);
     expect((await getConfig(accountId)).body.lists).toMatchObject([
-      { id: second, position: 0, catalogTitle: "1" },
-      { id, position: 1, catalogTitle: "2" },
+      { id: second, position: 0, catalogTitle: "" },
+      { id, position: 1, catalogTitle: "" },
+    ]);
+    expect(await manifestCatalogNames(accountId)).toEqual([
+      [`wl-${second}-movie`, "Stremlist IMDb List"],
+      [`wl-${id}-movie`, "Stremlist IMDb Watchlist"],
     ]);
     await page.reload();
     await expect(rowSources(page)).toHaveText(reordered);
     await expect(
-      page.getByRole("button", { name: "Drag to reorder 1", exact: true }),
+      page.getByRole("button", {
+        name: "Drag to reorder IMDb List",
+        exact: true,
+      }),
     ).toBeVisible();
-    expect(await manifestCatalogIds(accountId)).toEqual([
-      `wl-${second}-movie`,
-      `wl-${id}-movie`,
-    ]);
   },
 );
 

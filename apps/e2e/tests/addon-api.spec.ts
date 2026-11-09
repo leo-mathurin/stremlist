@@ -79,7 +79,8 @@ test.describe("manifest", () => {
       ]);
       for (const catalogRef of manifest.catalogs) {
         expect(catalogRef.id).toMatch(CATALOG_ID_PATTERN);
-        expect(catalogRef.name).toContain("Stremlist");
+        // The name v1 gave it: the only List, an untitled IMDb watchlist.
+        expect(catalogRef.name).toBe("Stremlist");
       }
       // The meta resource must stay declared — Stremio clients rely on it.
       const metaResource = manifest.resources.find(

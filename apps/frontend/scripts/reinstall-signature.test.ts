@@ -122,17 +122,26 @@ test("sort, Source list labels and title spaces keep the signature", () => {
   );
 });
 
-test("an empty title has the name the backend gives it", () => {
+test("an empty title has the name of the first Source list", () => {
   const second = (catalogTitle: string) =>
     list([SECOND], {
       id: "00000000-0000-4000-8000-000000000002",
       localId: "row-2",
       catalogTitle,
     });
-  // The backend saves an empty title as the List's position (1-based).
   assert.equal(
     signature([list([FIRST]), second("")]),
+    signature([list([FIRST]), second("IMDb List")]),
+  );
+  // Never the position: a List added before it keeps its name.
+  assert.notEqual(
+    signature([list([FIRST]), second("")]),
     signature([list([FIRST]), second("2")]),
+  );
+  // An untitled List that now reads another Source list has another name.
+  assert.notEqual(
+    signature([list([FIRST]), second("")]),
+    signature([list([FIRST]), { ...second(""), ...WESTERN }]),
   );
 });
 

@@ -1,11 +1,12 @@
 import { SITE } from "../content/site";
 import { ACCOUNT_KEY_PATTERN } from "@stremlist/shared/constants";
-import { PROVIDERS, describeSourceRef } from "@stremlist/shared/providers";
-import type {
-  ParsedSourceLink,
-  ProviderId,
-  SourceKind,
+import {
+  PROVIDERS,
+  SOURCE_KIND_LABELS,
+  describeSourceRef,
+  sourceTitle,
 } from "@stremlist/shared/providers";
+import type { ParsedSourceLink, ProviderId } from "@stremlist/shared/providers";
 import { stremioDeepLink } from "./stremio-links";
 
 /** Reorders Stremio addons, so Stremlist can sit just after Cinemeta. */
@@ -33,22 +34,11 @@ export const PROVIDER_LOGOS: Record<
 /** The prompt of every link field. */
 export const PASTE_LINK_PROMPT = "Paste a link to a watchlist or list";
 
-const KIND_LABELS: Record<SourceKind, string> = {
-  watchlist: "Watchlist",
-  list: "List",
-  chart: "Chart",
-  recommendations: "Recommendations",
-  up_next: "Up Next",
-  history: "History",
-  collection: "Collection",
-  status: "Status",
-};
-
 /** The live hint under a link field, such as "Trakt watchlist detected". */
 export function detectedLinkHint(parsed: ParsedSourceLink): string {
   const info = PROVIDERS[parsed.provider];
   if (info.availability !== "available") return `${info.label}: coming soon`;
-  return `${info.label} ${KIND_LABELS[parsed.kind].toLowerCase()} detected`;
+  return `${info.label} ${SOURCE_KIND_LABELS[parsed.kind].toLowerCase()} detected`;
 }
 
 interface SourceDescription {
@@ -69,13 +59,12 @@ export function describeSource(
   provider: ProviderId,
   ref: string,
 ): SourceDescription {
-  const { kind, detail, url, title } = describeSourceRef(provider, ref);
+  const { kind, detail, url } = describeSourceRef(provider, ref);
   return {
-    kindLabel: KIND_LABELS[kind],
+    kindLabel: SOURCE_KIND_LABELS[kind],
     detail,
     url,
-    suggestedTitle:
-      title ?? `${PROVIDERS[provider].label} ${KIND_LABELS[kind]}`,
+    suggestedTitle: sourceTitle(provider, ref),
   };
 }
 

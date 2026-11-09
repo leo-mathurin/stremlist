@@ -59,7 +59,8 @@ function listGenres(row: SignatureRow, known: KnownSourceGenres): string[] {
  * as the backend manifest), "New titles" ones included when `newTitles` is
  * on. The signature is those Catalogs, so it changes
  * exactly when they change. Every Source list of a List counts through the
- * genres it brings; the sort, the posters and the Source list labels do not.
+ * genres it brings, and the first one also through the name of an untitled
+ * List; the sort, the posters and the Source list labels do not.
  * Without genres by Source list (`known` is null: no answer gave them), genre
  * options are left out: the page cannot tell which genres a change takes
  * away.
@@ -74,6 +75,9 @@ export function getListReinstallSignature(
       rows.map((row) => ({
         id: row.id ?? row.localId,
         catalogTitle: row.catalogTitle,
+        provider: row.provider,
+        sourceRef: row.sourceRef,
+        mergedSources: row.mergedSources,
         displayMode: row.displayMode,
         catalogSettings: known
           ? row.catalogSettings

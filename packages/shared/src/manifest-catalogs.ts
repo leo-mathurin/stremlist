@@ -1,6 +1,9 @@
 import { CATALOG_PRESETS } from "./catalog-settings";
 import type { CatalogPreset, CatalogSettings } from "./catalog-settings";
 import type { DisplayMode, TitleType } from "./constants";
+import type { MergeableList } from "./list-merge";
+import { isMergedList } from "./list-merge";
+import { describeSourceRef, sourceTitle } from "./providers";
 
 /**
  * The Catalogs that Lists add to the addon manifest. Stremio reads them only
@@ -36,10 +39,22 @@ export function listCatalogs(list: {
   );
 }
 
+/** A List as far as its title cares: its own title, then its Source lists. */
+type TitledList = MergeableList & { catalogTitle: string };
+
+/**
+ * The title of a List: the one the user gave it, or else the name of its
+ * first Source list. The configure page shows it and the manifest names the
+ * List's Catalogs with it, so both agree. It never depends on the position
+ * of the List, so adding or moving Lists renames no other List.
+ */
+export function listTitle(list: TitledList): string {
+  return list.catalogTitle.trim() || sourceTitle(list.provider, list.sourceRef);
+}
+
 /** A List as far as its manifest Catalogs care. */
-interface ManifestList {
+interface ManifestList extends TitledList {
   id: string;
-  catalogTitle: string;
   displayMode?: DisplayMode;
   catalogSettings?: CatalogSettings;
   /** Genres of the Titles that its Catalogs show (see `availableGenres`). */
@@ -59,17 +74,27 @@ interface ManifestCatalogEntry extends ListCatalog {
   genres: string[];
 }
 
-function catalogName(listTitle: string, index: number, total: number) {
-  const title = listTitle.trim();
-  // An empty title is the position of the List, like the backend saves it.
-  const effective = title || (total <= 1 ? "" : String(index + 1));
-  return effective ? `Stremlist ${effective}` : "Stremlist";
+/**
+ * A v1 install: one IMDb watchlist without a title, the only setup that v1
+ * saved without a title. v1 named its Catalogs "Stremlist", and they keep
+ * that name while the List is alone.
+ */
+function isV1Setup(lists: TitledList[]): boolean {
+  if (lists.length !== 1) return false;
+  const [list] = lists;
+  return (
+    !list.catalogTitle.trim() &&
+    !isMergedList(list) &&
+    list.provider === "imdb" &&
+    describeSourceRef(list.provider, list.sourceRef).kind === "watchlist"
+  );
 }
 
 /** The manifest Catalogs of the Lists, in order (see addonCatalogEntries). */
 function manifestCatalogEntries(lists: ManifestList[]): ManifestCatalogEntry[] {
-  return lists.flatMap((list, index) => {
-    const name = catalogName(list.catalogTitle, index, lists.length);
+  const v1 = isV1Setup(lists);
+  return lists.flatMap((list) => {
+    const name = v1 ? "Stremlist" : `Stremlist ${listTitle(list)}`;
     const genres = [
       ...new Set([
         ...(list.availableGenres ?? []),

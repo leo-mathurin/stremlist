@@ -6,9 +6,9 @@ import type { DisplayMode } from "@stremlist/shared/constants";
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import { listSources, sourceKey } from "@stremlist/shared/list-merge";
+import { listTitle } from "@stremlist/shared/manifest-catalogs";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type { ConfigList } from "@stremlist/shared/stremio.types";
-import { describeSource } from "./list-sources";
 
 /** The backend accepts catalog titles up to this length. */
 export const MAX_CATALOG_TITLE_LENGTH = 60;
@@ -73,12 +73,12 @@ export function listPayload(rows: ListFormRow[]) {
   }));
 }
 
-/** The title that a row shows: its own, or the one its Source list suggests. */
+/**
+ * The title that a row shows: its own, or the name of its Source list. The
+ * manifest names the List's Catalogs in Stremio with the same title.
+ */
 export function rowTitle(row: ListFormRow): string {
-  return (
-    row.catalogTitle.trim() ||
-    describeSource(row.provider, row.sourceRef).suggestedTitle
-  );
+  return listTitle(row);
 }
 
 /**

@@ -74,7 +74,7 @@ describe("List CRUD via the config API", () => {
       expect(
         data.lists.map((list: { sourceRef: string }) => list.sourceRef),
       ).toEqual([OWNER, "imdb:top-rated-movies"]);
-      expect(data.lists[1].catalogTitle).toBe("2");
+      expect(data.lists[1].catalogTitle).toBe("");
 
       const created = db
         .getTable("accounts")
