@@ -62,9 +62,10 @@ export default function App() {
           },
         }}
       />
-      {/* The fragment can hold a one-time OAuth answer: never send it. */}
+      {/* Send the page only: the query holds the private Account ID and the
+          fragment a one-time OAuth answer. */}
       <Analytics
-        beforeSend={(event) => ({ ...event, url: event.url.split("#")[0] })}
+        beforeSend={(event) => ({ ...event, url: event.url.split(/[?#]/)[0] })}
       />
     </>
   );
