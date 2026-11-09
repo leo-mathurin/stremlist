@@ -1,4 +1,9 @@
-import { BrowserRouter, Routes, Route } from "react-router";
+import {
+  createBrowserRouter,
+  createRoutesFromElements,
+  Route,
+  RouterProvider,
+} from "react-router";
 import { Analytics } from "@vercel/analytics/react";
 import { Toaster } from "sonner";
 import { CircleCheck, CircleX, Info, TriangleAlert } from "lucide-react";
@@ -8,16 +13,24 @@ import Changelog from "./pages/Changelog";
 import Configure from "./pages/Configure";
 import NotFound from "./pages/NotFound";
 
+// A data router, so the configure page can hold a navigation while it has
+// unsaved changes (`useBlocker`).
+const router = createBrowserRouter(
+  createRoutesFromElements(
+    <>
+      <Route path="/" element={<Home />} />
+      <Route path="/terms" element={<Terms />} />
+      <Route path="/changelog" element={<Changelog />} />
+      <Route path="/configure" element={<Configure />} />
+      <Route path="*" element={<NotFound />} />
+    </>,
+  ),
+);
+
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/terms" element={<Terms />} />
-        <Route path="/changelog" element={<Changelog />} />
-        <Route path="/configure" element={<Configure />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+    <>
+      <RouterProvider router={router} />
       <Toaster
         position="bottom-left"
         closeButton
@@ -36,6 +49,6 @@ export default function App() {
         }}
       />
       <Analytics />
-    </BrowserRouter>
+    </>
   );
 }

@@ -128,8 +128,9 @@ export default function SortableListRow({
   return (
     <div
       ref={ref}
+      data-list-row={list.localId}
       className={cn(
-        "rounded-3xl bg-white ring-1 ring-black/5 transition-shadow",
+        "scroll-mt-5 rounded-3xl bg-white ring-1 ring-black/5 transition-shadow",
         attentionTone(sync) === "warn" && "ring-amber-300",
         attentionTone(sync) === "bad" && "ring-red-200",
         isDragSource && "opacity-60 shadow-lg ring-2 ring-brand/50",
@@ -148,7 +149,7 @@ export default function SortableListRow({
           {merged ? (
             <span
               className="relative flex shrink-0 items-center"
-              title={`${sources.length} Source lists`}
+              title={`${sources.length} lists merged`}
             >
               {providers.slice(0, 3).map((provider, position) => (
                 <ProviderMark
@@ -171,7 +172,7 @@ export default function SortableListRow({
             <p className="mt-0.5 flex min-w-0 items-center gap-1 text-xs text-black/50">
               <span className="truncate tabular-nums">
                 {merged ? (
-                  `${sources.length} Source lists · ${providerLabels}`
+                  `${sources.length} lists · ${providerLabels}`
                 ) : (
                   <>
                     {PROVIDERS[list.provider].label} · {source.kindLabel}
@@ -280,7 +281,7 @@ export default function SortableListRow({
           <div className="-mt-2 flex gap-3 px-3 pb-3 sm:-mt-3 sm:gap-4 sm:px-4 sm:pb-4">
             <span aria-hidden="true" className="-ml-1 w-6 shrink-0" />
             <span aria-hidden="true" className="w-8 shrink-0" />
-            <ListSyncLine sync={sync} saved={saved} />
+            <ListSyncLine provider={list.provider} sync={sync} saved={saved} />
           </div>
           <ListSyncNotice
             title={title}

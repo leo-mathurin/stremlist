@@ -40,7 +40,7 @@ const TOGGLE = "Show newly detected titles";
 const MOVED_HINT =
   "This install has a private URL now. Make changes from the configure page of your new install.";
 const NONE_YET_ONE_WAITING =
-  "No new titles detected yet. Stremlist could not read 1 List in full yet, so it cannot compare it.";
+  "No new titles detected yet. Stremlist could not read 1 list in full yet, so it cannot compare it.";
 const ONE_WAITING = { detected: 0, latestDetectedAt: null, waitingLists: 1 };
 
 function withNewTitles(
@@ -92,7 +92,7 @@ test("the summary says what was detected and which Lists still wait", async ({
   await expect(screen.getByRole("checkbox", TOGGLE)).toBeChecked();
   await expect(
     screen.getByText(
-      "3 new titles detected, the latest 2 days ago. Stremlist could not read 1 List in full yet, so it cannot compare it.",
+      "3 new titles detected, the latest 2 days ago. Stremlist could not read 1 list in full yet, so it cannot compare it.",
     ),
   ).toBeVisible();
   await expect(

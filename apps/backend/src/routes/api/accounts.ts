@@ -226,7 +226,7 @@ const accounts = new Hono()
           return c.json(
             {
               error:
-                "Your Lists changed in another window. Reload the page and try again.",
+                "Your lists changed in another window. Reload the page and try again.",
             },
             409,
           );

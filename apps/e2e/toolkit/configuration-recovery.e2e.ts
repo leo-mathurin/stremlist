@@ -149,7 +149,7 @@ test(
     await expect(
       screen.getByText(/^We do not recognize this link\./),
     ).toBeVisible();
-    await expect(screen.getByText("No Lists yet")).toBeVisible();
+    await expect(screen.getByText("No lists yet")).toBeVisible();
     await expect(saveButton(screen)).toBeDisabled();
     expect(inputs).toHaveLength(0);
     await agent.act(

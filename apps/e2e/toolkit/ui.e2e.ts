@@ -172,7 +172,7 @@ for (const state of ["private", "unknown", "offline"] as const) {
             : "Could not check this link. Please try again in a moment.",
       ),
     ).toBeVisible();
-    await expect(screen.getByText("No Lists yet")).toBeVisible();
+    await expect(screen.getByText("No lists yet")).toBeVisible();
     await expect(saveButton(screen, SAVE_NEW)).toBeDisabled();
     await expect(
       screen.getByRole("link", "Open Stremio Web"),
@@ -274,12 +274,12 @@ test("List edits reject duplicates, save values and report refresh failures", as
   await expect(screen.getByText("1 of 10 lists")).toBeVisible();
   // An Account keeps at least one List: without one, Save is off.
   await screen.getByRole("button", "Remove Test catalog").tap();
-  await expect(screen.getByText("No Lists yet")).toBeVisible();
+  await expect(screen.getByText("No lists yet")).toBeVisible();
   await expect(saveButton(screen)).toBeDisabled();
   await screen.getByRole("button", "Refresh now").tap();
   await expect(
     screen.getByText(
-      "Refreshed 0 of 1 lists. The others failed to update: each List shows why.",
+      "Refreshed 0 of 1 lists. The others failed to update: each list shows why.",
     ),
   ).toBeVisible();
   expect(submissions).toHaveLength(2);
@@ -669,7 +669,9 @@ test("an old ?userId link opens the Legacy alias install with a fresh form", asy
   await captureConfig(browser, legacyConfiguration, imdbUser);
   await app.open(`/?userId=${imdbUser}`);
   await expect(browser).toHaveURL(`/configure?account=${imdbUser}`);
-  await expect(screen.getByText(`IMDb install ${imdbUser}`)).toBeVisible();
+  await expect(
+    screen.getByText(`Installed with IMDb user ID ${imdbUser}`),
+  ).toBeVisible();
   await expect(screen.getByText("Test catalog")).toBeVisible();
   await expect(
     screen.getByRole("heading", "Upgrade to a private URL"),

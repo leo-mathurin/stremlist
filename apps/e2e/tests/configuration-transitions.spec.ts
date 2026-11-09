@@ -218,7 +218,7 @@ test(
     await expect(page.getByText("Release QA", { exact: true })).toHaveCount(0);
     // An Account keeps at least one List: without one, Save is off.
     await page.getByRole("button", { name: "Remove Keep me" }).click();
-    await expect(page.getByText("No Lists yet")).toBeVisible();
+    await expect(page.getByText("No lists yet")).toBeVisible();
     await expect(saveButton(page)).toBeDisabled();
   },
 );

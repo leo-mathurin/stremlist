@@ -14,7 +14,7 @@ function plural(count: number, one: string, other: string): string {
 function summaryText(summary: NewTitlesSummary, now: number): string {
   const waiting =
     summary.waitingLists > 0
-      ? ` Stremlist could not read ${plural(summary.waitingLists, "List", "Lists")} in full yet, so it cannot compare ${summary.waitingLists === 1 ? "it" : "them"}.`
+      ? ` Stremlist could not read ${plural(summary.waitingLists, "list", "lists")} in full yet, so it cannot compare ${summary.waitingLists === 1 ? "it" : "them"}.`
       : "";
   if (summary.detected === 0) {
     return `No new titles detected yet.${waiting}`;
@@ -67,8 +67,8 @@ export default function NewTitlesSettings({
             className="mt-0.5 text-sm text-pretty text-black/55"
           >
             Adds a “New titles” catalog to Stremio with the titles that appear
-            in your Lists, newest first and each title once. Titles that were
-            already there when Stremlist first read a List do not count as new.
+            in your lists, newest first and each title once. Titles that were
+            already there when Stremlist first read a list do not count as new.
           </p>
         </div>
       </div>

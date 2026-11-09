@@ -85,7 +85,7 @@ function describeLinkProblem(
         ? {
             provider,
             action: "upgrade",
-            message: `${title}. Connections need a private Addon URL, so upgrade this install first.`,
+            message: `${title}. To connect an account, you need a private Addon URL. Upgrade this install first.`,
           }
         : {
             provider,

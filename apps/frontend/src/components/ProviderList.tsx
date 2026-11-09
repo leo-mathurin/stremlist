@@ -13,7 +13,7 @@ function subtitle(
   provider: ProviderId,
   connection: ConnectionSummary | undefined,
 ): string {
-  if (connection?.needsRenewalSince) return "Needs renewal";
+  if (connection?.needsRenewalSince) return "Connection expired";
   if (connection) {
     return connection.username ? `@${connection.username}` : "Connected";
   }
@@ -104,8 +104,7 @@ export default function ProviderList({
                   className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1 text-xs font-bold text-black transition-[background-color,scale] duration-150 hover:bg-brand-dark active:scale-[0.96] disabled:opacity-40"
                 >
                   {busy && <Loader2 className="size-3.5 animate-spin" />}
-                  <span className="sm:hidden">Reconnect</span>
-                  <span className="hidden sm:inline">Connect again</span>
+                  Connect again
                 </button>
               )}
               <button
@@ -228,7 +227,7 @@ export default function ProviderList({
                     Disconnect {info.label}?
                   </strong>{" "}
                   {affected > 0
-                    ? `${affected === 1 ? "1 List is" : `${affected} Lists are`} read through this account. ${affected === 1 ? "It stops" : "They stop"} showing in Stremio until you connect ${info.label} again.`
+                    ? `${affected === 1 ? "1 list is" : `${affected} lists are`} read through this account. ${affected === 1 ? "It stops" : "They stop"} showing in Stremio until you connect ${info.label} again.`
                     : `Lists read through this account stop showing in Stremio until you connect ${info.label} again.`}{" "}
                   {info.actions.length > 0 &&
                     `Actions on ${info.label} stop too.`}

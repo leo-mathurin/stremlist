@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { ACCOUNT_KEY_PATTERN } from "@stremlist/shared/constants";
 import { MAX_LISTS, connectionProviders } from "@stremlist/shared/list-merge";
@@ -21,6 +21,7 @@ import {
   LegacyUpgradeCard,
   ReinstallNotice,
 } from "../components/AccountCards";
+import LeaveDialog from "../components/LeaveDialog";
 import LinkPaste from "../components/LinkPaste";
 import NewTitlesSettings from "../components/NewTitlesSettings";
 import type { ResolvedLink } from "../components/LinkPaste";
@@ -33,9 +34,10 @@ import { usePendingIndicator } from "../hooks/usePendingIndicator";
 import { useNow } from "../hooks/useNow";
 import { useSEO } from "../hooks/useSEO";
 import { useAccountConfiguration } from "../hooks/useAccountConfiguration";
+import { useLeaveGuard } from "../hooks/useLeaveGuard";
 import { ConnectionsContext } from "../hooks/useCatalogPreview";
 import { accountEditPolicy } from "../lib/account-config";
-import { sourceKeys } from "../lib/list-form";
+import { rowTitle, sourceKeys } from "../lib/list-form";
 import { attentionTone } from "../lib/list-sync";
 import { describeSource, PASTE_LINK_PROMPT } from "../lib/list-sources";
 import { cn } from "@/lib/utils";
@@ -142,8 +144,11 @@ export default function Configure() {
   const [createdId, setCreatedId] = useState(() =>
     readStorage(NEW_ACCOUNT_STORAGE),
   );
+  /** Set when an Account is created here, until its install step is shown. */
+  const revealInstall = useRef(false);
   /** Open an Account created in this tab; a new setup replaces its entry. */
   const openCreated = (id: string, replace = true) => {
+    revealInstall.current = true;
     writeStorage(NEW_ACCOUNT_STORAGE, id);
     setCreatedId(id);
     navigate(`/configure?account=${encodeURIComponent(id)}`, { replace });
@@ -161,6 +166,45 @@ export default function Configure() {
   const policy = accountEditPolicy(access, config.movedAt);
   const rows = lists.map((list) => config.rowModel(list));
   const attention = rows.filter((row) => attentionTone(row.sync)).length;
+  // Leaving for a Provider keeps the edits (a draft), so Connect is not held.
+  const leaveBlocker = useLeaveGuard(
+    config.dirty && config.connecting === null,
+  );
+
+  // After the first save, bring the install step into view: on a phone it
+  // is far above the Save button that the user pressed.
+  const installCard = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const card = installCard.current;
+    if (!justCreated || !revealInstall.current || !card) return;
+    revealInstall.current = false;
+    card.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
+    card.focus({ preventScroll: true });
+  }, [justCreated]);
+
+  // A List added out of view (on a phone, it is below the Providers panel)
+  // says so, and can show the new row.
+  const { lastAdded } = config;
+  useEffect(() => {
+    if (!lastAdded) return;
+    const frame = requestAnimationFrame(() => {
+      const element = listRowElement(lastAdded.localId);
+      if (!element || isInView(element)) return;
+      toast.success(`Added ${rowTitle(lastAdded)}`, {
+        id: "list-add",
+        action: {
+          label: "Show",
+          onClick: () =>
+            listRowElement(lastAdded.localId)?.scrollIntoView({
+              behavior: scrollBehavior(),
+              block: "center",
+            }),
+        },
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [lastAdded]);
+
   const affectedLists: Partial<Record<ProviderId, number>> = {};
   for (const list of lists) {
     for (const provider of connectionProviders(list)) {
@@ -221,12 +265,6 @@ export default function Configure() {
         <p className="mt-1 text-white/60">
           Paste a link, or connect an account.
         </p>
-        {access === "legacy" && accountKey && (
-          <p className="mt-2 text-xs text-white/45">
-            IMDb install{" "}
-            <span className="font-mono text-white/70">{accountKey}</span>
-          </p>
-        )}
       </div>
 
       {ready && (
@@ -261,13 +299,13 @@ export default function Configure() {
           />
           {policy.connectHint === "save-first" && (
             <p className="text-xs text-pretty text-white/45">
-              Connecting an account saves your setup first, because a Connection
-              belongs to your private Addon URL.
+              Connecting an account saves your setup first, because the
+              connection belongs to your private Addon URL.
             </p>
           )}
           {policy.connectHint === "upgrade" && (
             <p className="text-xs text-pretty text-white/45">
-              Connections need a private Addon URL.{" "}
+              To connect an account, you need a private Addon URL.{" "}
               <button
                 type="button"
                 onClick={scrollToUpgrade}
@@ -288,10 +326,16 @@ export default function Configure() {
         <div className="space-y-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <h2 className="text-3xl font-bold tracking-tight">Your Lists</h2>
+              <h2 className="text-3xl font-bold tracking-tight">Your lists</h2>
               <p className="text-black/55">
-                Each List becomes a catalog row in Stremio, in this order.
+                Each list becomes a catalog row in Stremio, in this order.
               </p>
+              {access === "legacy" && accountKey && (
+                <p className="mt-1 text-xs text-black/45">
+                  Installed with IMDb user ID{" "}
+                  <span className="font-mono text-black/70">{accountKey}</span>
+                </p>
+              )}
             </div>
             {ready && !policy.editLock && (
               <button
@@ -334,8 +378,8 @@ export default function Configure() {
                       {" · "}
                       <span className="font-semibold text-amber-700">
                         {attention === 1
-                          ? "1 List needs attention"
-                          : `${attention} Lists need attention`}
+                          ? "1 list needs attention"
+                          : `${attention} lists need attention`}
                       </span>
                     </>
                   )}
@@ -401,7 +445,13 @@ export default function Configure() {
         ) : (
           <>
             {justCreated && accountId && (
-              <AddonUrlCard accountKey={accountId} variant="created" />
+              <div
+                ref={installCard}
+                tabIndex={-1}
+                className="scroll-mt-5 rounded-3xl outline-none"
+              >
+                <AddonUrlCard accountKey={accountId} variant="created" />
+              </div>
             )}
 
             {access === "legacy" && (
@@ -415,7 +465,7 @@ export default function Configure() {
             <section className="space-y-3">
               {lists.length === 0 ? (
                 <div className="rounded-3xl border-2 border-dashed border-black/10 p-6 text-center">
-                  <p className="font-bold">No Lists yet</p>
+                  <p className="font-bold">No lists yet</p>
                   <p className="mx-auto mt-1 max-w-sm text-sm text-pretty text-black/55">
                     {PASTE_LINK_PROMPT} in the Providers panel, or pick one
                     below.
@@ -609,8 +659,26 @@ export default function Configure() {
           </>
         )}
       </div>
+      <LeaveDialog blocker={leaveBlocker} />
     </SplitLayout>
   );
+}
+
+/** Smooth scrolling, unless the user prefers reduced motion. */
+function scrollBehavior(): ScrollBehavior {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ? "auto"
+    : "smooth";
+}
+
+function listRowElement(localId: string): HTMLElement | null {
+  return document.querySelector(`[data-list-row="${CSS.escape(localId)}"]`);
+}
+
+/** Whether the top of `element` shows in the viewport. */
+function isInView(element: HTMLElement): boolean {
+  const rect = element.getBoundingClientRect();
+  return rect.top >= 0 && rect.top + 48 <= window.innerHeight;
 }
 
 /** "Refresh now", with a live countdown while it waits for the cooldown. */

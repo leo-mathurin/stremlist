@@ -42,16 +42,17 @@ import {
 // tests/merged-lists.spec.ts covers storage and the served Catalog.
 
 const PASTE = "Paste a link to a watchlist or list";
-const MERGE = "Merge another List into this one";
+const MERGE = "Merge another list into this one";
 // Closed settings panels stay in the DOM, so every List has a merge menu
 // button; the first one is always the first List's.
 const NO_DATES =
-  "Date added sorting is off: Top 250 Movies does not give the date when each Title was added.";
+  "Date added sorting is off: Top 250 Movies does not give the date when each title was added.";
 const ONE_TYPE = 'Top 250 Movies has only movies, so "TV shows only" is off.';
-const SOURCE_LIMIT = "You can have at most 20 Source lists in all your Lists.";
+const SOURCE_LIMIT =
+  "You can have at most 20 lists in total, merged lists included.";
 const NEEDS_REINSTALL = "These changes need a reinstall.";
 const CHANGED_ELSEWHERE =
-  "Your Lists changed in another window. Reload the page and try again.";
+  "Your lists changed in another window. Reload the page and try again.";
 
 const watchlist = {
   ...row,
@@ -148,7 +149,7 @@ test(
       { maxModelCalls: 8 },
     );
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
-    await expect(screen.getByText("2 Source lists · IMDb")).toBeVisible();
+    await expect(screen.getByText("2 lists · IMDb")).toBeVisible();
     await expect(screen.getByText(/^3 of 10 lists/)).toBeVisible();
     expect(submissions).toHaveLength(1);
     expect(sources(submissions[0])).toEqual([
@@ -179,7 +180,7 @@ test("merging a chart turns off Date added and TV shows only, with the reasons",
   await merge.press("Enter");
   await expect(screen.getByRole("menuitem", "Top 250 Movies")).toBeVisible();
   await browser.keyboard.press("Enter");
-  await expect(screen.getByText("2 Source lists · IMDb")).toBeVisible();
+  await expect(screen.getByText("2 lists · IMDb")).toBeVisible();
   await expect(screen.getByRole("button", MERGE).first()).toBeFocused();
 
   await expect(screen.getByText(NO_DATES)).toBeVisible();
@@ -241,19 +242,19 @@ test("a Source list moves to its own List or leaves the merged List", async ({
     withLists([merged, { ...trending, position: 1 }]),
   );
   await app.open(`/configure?account=${accountId}`);
-  await expect(screen.getByText("3 Source lists · IMDb, Trakt")).toBeVisible();
+  await expect(screen.getByText("3 lists · IMDb, Trakt")).toBeVisible();
   await openSettings(screen, "IMDb Watchlist");
   await expect(screen.getByText("3 of 5")).toBeVisible();
 
   await screen
-    .getByRole("button", "Move Favourite films to its own List")
+    .getByRole("button", "Move Favourite films to its own list")
     .tap();
   // The new List comes just below, with the title it had before the merge.
   await expect(
     screen.getByRole("button", "Settings for Favourite films"),
   ).toBeVisible();
   await expect(screen.getByRole("button", MERGE).first()).toBeFocused();
-  await screen.getByRole("button", "Remove Sean picks from this List").tap();
+  await screen.getByRole("button", "Remove Sean picks from this list").tap();
   await expect(screen.getByText("1 of 5").first()).toBeVisible();
   await expect(screen.getByText(/^IMDb · Watchlist/).first()).toBeVisible();
 
@@ -301,7 +302,7 @@ test("a List merges at most five Source lists", async ({
   await screen.getByRole("menuitem", "Trakt Trending").tap();
   await expect(screen.getByText("5 of 5")).toBeVisible();
   await expect(
-    screen.getByRole("button", "At most 5 Source lists"),
+    screen.getByRole("button", "At most 5 lists in one catalog"),
   ).toBeDisabled();
 });
 
@@ -319,7 +320,7 @@ test("a Source list that is in a merged List cannot be added again", async ({
     resolved("imdb", "ls99123456", "list"),
   );
   await app.open(`/configure?account=${accountId}`);
-  await expect(screen.getByText("2 Source lists · IMDb")).toBeVisible();
+  await expect(screen.getByText("2 lists · IMDb")).toBeVisible();
   await screen.getByLabel(PASTE).fill("https://www.imdb.com/list/ls99123456/");
   await screen.getByRole("button", "Add", { exact: true }).tap();
   await expect(
@@ -345,10 +346,10 @@ test("a merged Source list keeps its name when it moves to the first place", asy
   await app.open(`/configure?account=${accountId}`);
   await openSettings(screen, "IMDb Watchlist");
   await screen
-    .getByRole("button", "Remove IMDb Watchlist from this List")
+    .getByRole("button", "Remove IMDb Watchlist from this list")
     .tap();
   await expect(
-    screen.getByRole("button", "Move Family picks to its own List"),
+    screen.getByRole("button", "Move Family picks to its own list"),
   ).toBeVisible();
   // Same Catalog ID, name and type: Stremio needs no reinstall.
   await expect(screen.getByText(NEEDS_REINSTALL, { exact: true })).toBeHidden();
@@ -364,7 +365,7 @@ test("a merged Source list keeps its name when it moves to the first place", asy
   ]);
 
   // The first Source list moves to its own List with its own name.
-  await screen.getByRole("button", "Move Family picks to its own List").tap();
+  await screen.getByRole("button", "Move Family picks to its own list").tap();
   await expect(
     screen.getByRole("button", "Settings for Family picks"),
   ).toBeVisible();
@@ -381,8 +382,10 @@ test("merging the last other List moves focus to the Source lists", async ({
   await screen.getByRole("button", MERGE).first().press("Enter");
   await expect(screen.getByRole("menuitem", "Favourite films")).toBeVisible();
   await browser.keyboard.press("Enter");
-  await expect(screen.getByText("2 Source lists · IMDb")).toBeVisible();
-  await expect(screen.getByText("Source lists", { exact: true })).toBeFocused();
+  await expect(screen.getByText("2 lists · IMDb")).toBeVisible();
+  await expect(
+    screen.getByText("Lists in this catalog", { exact: true }),
+  ).toBeFocused();
 });
 
 test("an Account with 20 Source lists refuses one more, from Quick add or a link", async ({
@@ -459,7 +462,7 @@ test("a Source list cannot move to its own List when the Account has 10 Lists", 
   await openSettings(screen, "IMDb Watchlist");
   const move = screen.getByRole(
     "button",
-    "Move Favourite films to its own List",
+    "Move Favourite films to its own list",
   );
   await expect(move).toBeDisabled();
   await expect(move).toHaveAttribute(
@@ -468,7 +471,7 @@ test("a Source list cannot move to its own List when the Account has 10 Lists", 
   );
   // Removing a Source list stays possible.
   await expect(
-    screen.getByRole("button", "Remove Favourite films from this List"),
+    screen.getByRole("button", "Remove Favourite films from this list"),
   ).toBeEnabled();
 
   // With room for one more List, the Source list can move.
@@ -508,16 +511,16 @@ test("a movie chart and a TV chart in one List show both, with the reasons", asy
   await openSettings(screen, "Top 250 Movies");
   await screen.getByRole("button", MERGE).first().tap();
   await screen.getByRole("menuitem", "Top 250 TV Shows").tap();
-  await expect(screen.getByText("2 Source lists · IMDb")).toBeVisible();
+  await expect(screen.getByText("2 lists · IMDb")).toBeVisible();
 
   await expect(
     screen.getByText(
-      "Top 250 Movies has only movies and Top 250 TV Shows has only TV shows, so this List shows both.",
+      "Top 250 Movies has only movies and Top 250 TV Shows has only TV shows, so this list shows both.",
     ),
   ).toBeVisible();
   await expect(
     screen.getByText(
-      "Date added sorting is off: Top 250 Movies and Top 250 TV Shows do not give the date when each Title was added.",
+      "Date added sorting is off: Top 250 Movies and Top 250 TV Shows do not give the date when each title was added.",
     ),
   ).toBeVisible();
   // "Movies only" falls back to both Title types; neither single type is left.
@@ -563,13 +566,13 @@ test("a merged Source list without its Connection says so and offers to connect"
   await captureConfig(browser, withLists([merged]));
   await app.open(`/configure?account=${accountId}`);
   const notInCatalog = screen.getByText(
-    "Trakt is not connected, so its Source list does not show in this catalog.",
+    "Trakt is not connected, so one of its lists does not show in this catalog.",
   );
   const notConnected = screen.getByText("Not connected", { exact: true });
-  await expect(screen.getByText("2 Source lists · IMDb, Trakt")).toBeVisible();
+  await expect(screen.getByText("2 lists · IMDb, Trakt")).toBeVisible();
   await expect(notInCatalog).toBeVisible();
   await expect(
-    screen.getByRole("button", "Connect again for IMDb Watchlist"),
+    screen.getByRole("button", "Connect Trakt for IMDb Watchlist"),
   ).toBeVisible();
   // The List's sync line, and the badge of the Trakt Source list only (the
   // closed settings stay in the page).
@@ -579,7 +582,7 @@ test("a merged Source list without its Connection says so and offers to connect"
 
   // Without the Trakt Source list, the List needs no Connection.
   await screen
-    .getByRole("button", "Remove My Trakt picks from this List")
+    .getByRole("button", "Remove My Trakt picks from this list")
     .tap();
   await expect(notInCatalog).toBeHidden();
   await expect(notConnected).toHaveCount(0);
@@ -613,7 +616,7 @@ test("a save refused because the Lists changed in another window keeps the merge
   await screen.getByRole("menuitem", "Favourite films").tap();
   await saveButton(screen).tap();
   await expect(screen.getByText(CHANGED_ELSEWHERE)).toBeVisible();
-  await expect(screen.getByText("2 Source lists · IMDb")).toBeVisible();
+  await expect(screen.getByText("2 lists · IMDb")).toBeVisible();
 
   await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
@@ -669,7 +672,7 @@ test("a merged List previews all its Source lists and names the one it cannot re
   // Without the private Source list, the preview reads the other one only.
   await openSettings(screen, "IMDb Watchlist");
   await screen
-    .getByRole("button", "Remove Favourite films from this List")
+    .getByRole("button", "Remove Favourite films from this list")
     .tap();
   await expect(privateSource).toBeHidden();
   expect(requests).toHaveLength(2);
@@ -708,12 +711,12 @@ test("a merged List shows the problem of one Source list and connects its Provid
   await app.open(`/configure?account=${accountId}`);
 
   await expect(
-    screen.getByText("Connection needs to be renewed", { exact: true }),
+    screen.getByText("Trakt connection expired", { exact: true }),
   ).toBeVisible();
   // The IMDb Source list still shows: only the Trakt one is left out.
   await expect(
     screen.getByText(
-      "Trakt refused the Stremlist Connection, so its Source list does not show in this catalog. Connect Trakt again to renew it.",
+      "Your Trakt connection expired, so one of its lists does not show in this catalog. Connect Trakt again to fix it.",
       { exact: true },
     ),
   ).toBeVisible();
@@ -778,14 +781,14 @@ test("removing a merged Source list asks for a reinstall only when it takes genr
 
   // The other Source lists have Drama too: Stremio's genre options stay.
   await screen
-    .getByRole("button", "Remove Favourite films from this List")
+    .getByRole("button", "Remove Favourite films from this list")
     .tap();
   const reinstall = screen.getByText(NEEDS_REINSTALL, { exact: true });
   await expect(screen.getByText("2 of 5")).toBeVisible();
   await expect(reinstall).toBeHidden();
 
   // Only Westerns has Western: Stremio offers it until a reinstall.
-  await screen.getByRole("button", "Remove Westerns from this List").tap();
+  await screen.getByRole("button", "Remove Westerns from this list").tap();
   await expect(screen.getByText("1 of 5")).toBeVisible();
   await expect(reinstall).toBeVisible();
   await saveButton(screen).tap();

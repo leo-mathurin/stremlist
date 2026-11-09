@@ -295,7 +295,7 @@ test(
       ).toBeVisible();
     }
     await expect(
-      page.getByRole("heading", { name: /^Unresolved entries/ }),
+      page.getByRole("heading", { name: /^Titles not found/ }),
     ).toBeVisible();
     await expect(page.getByText("Film introuvable")).toBeVisible();
     await expect(page.getByText("Série introuvable")).toBeVisible();

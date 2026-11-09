@@ -68,6 +68,15 @@ function toastError(err: unknown, options?: { id: string }) {
   );
 }
 
+/** What a new setup starts with: a form with this content has nothing to lose. */
+const EMPTY_FORM: AccountForm = {
+  lists: [],
+  rpdbApiKey: "",
+  actionsEnabled: false,
+  actions: { order: [], selected: [] },
+  newTitlesEnabled: false,
+};
+
 /** Unsaved edits of an Account, kept across the OAuth round trip of Connect. */
 const CONNECT_DRAFT_STORAGE = "stremlist:connect-draft";
 
@@ -106,6 +115,24 @@ function takeDraft(accountId: string): AccountForm | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * The saved form, with its Actions fitted to the Providers that can have
+ * Actions now, as the page fits the edited form.
+ */
+function reconcileSavedActions(
+  saved: AccountForm,
+  capable: ProviderId[],
+): AccountForm {
+  return {
+    ...saved,
+    actions: reconcileActionProviders(
+      saved.actions.order,
+      saved.actions.selected,
+      capable,
+    ),
+  };
 }
 
 /**
@@ -187,6 +214,11 @@ export function useAccountConfiguration(
     actions,
     newTitlesEnabled,
   };
+  /**
+   * The form as the server last stored it, or null until it is known. The
+   * page has unsaved changes when the form differs from it.
+   */
+  const [savedForm, setSavedForm] = useState<AccountForm | null>(null);
   const currentForm = useRef(form);
   // Save responses must see edits committed while the request was in flight.
   useLayoutEffect(() => {
@@ -208,6 +240,7 @@ export function useAccountConfiguration(
       setActions((current) =>
         reconcileActionProviders(current.order, current.selected, capable),
       );
+      setSavedForm((saved) => saved && reconcileSavedActions(saved, capable));
     },
     [applySync],
   );
@@ -216,6 +249,7 @@ export function useAccountConfiguration(
     resetBaseline();
     if (!accountKey) {
       setAccess("new");
+      setSavedForm(EMPTY_FORM);
       setStatus("ready");
       return;
     }
@@ -224,7 +258,10 @@ export function useAccountConfiguration(
     const justCreated =
       created.current?.accountId === accountKey ? created.current : null;
     // A new Account keeps its form on screen: only the server state loads.
-    if (!justCreated) setStatus("loading");
+    if (!justCreated) {
+      setStatus("loading");
+      setSavedForm(null);
+    }
     fetchConfig(accountKey)
       .then((data) => {
         if (cancelled) return;
@@ -248,7 +285,7 @@ export function useAccountConfiguration(
           data.actions.providers,
           capable,
         );
-        const savedForm: AccountForm = {
+        const storedForm: AccountForm = {
           lists: rows,
           rpdbApiKey: data.rpdbApiKey ?? "",
           actionsEnabled: data.actions.enabled,
@@ -258,7 +295,7 @@ export function useAccountConfiguration(
         // Back from Connect: the edits the user had not saved yet.
         const draft = data.accountId ? takeDraft(data.accountId) : null;
         const restored =
-          draft && hasUnsavedChanges(savedForm, draft, data.access)
+          draft && hasUnsavedChanges(storedForm, draft, data.access)
             ? {
                 ...draft,
                 actions: reconcileActionProviders(
@@ -268,7 +305,8 @@ export function useAccountConfiguration(
                 ),
               }
             : null;
-        const shown = restored ?? savedForm;
+        const shown = restored ?? storedForm;
+        setSavedForm(storedForm);
         setLists(shown.lists);
         setAccess(data.access);
         setAccountId(data.accountId);
@@ -394,6 +432,7 @@ export function useAccountConfiguration(
       if (!accountKey) {
         const body = await createAccount();
         const savedRows = adoptStoredLists(submitted.lists, body.lists);
+        setSavedForm({ ...submitted, lists: savedRows });
         created.current = {
           accountId: body.accountId,
           setup: {
@@ -424,6 +463,7 @@ export function useAccountConfiguration(
 
       const unsaved = hasUnsavedChanges(submitted, currentForm.current, access);
       const savedRows = adoptStoredLists(submitted.lists, body.lists);
+      setSavedForm({ ...submitted, lists: savedRows });
       const { needsReinstall } = baseline.onSaved(accountKey, body.lists, {
         rows: savedRows,
         newTitles: submitted.newTitlesEnabled,
@@ -503,7 +543,7 @@ export function useAccountConfiguration(
       // so only report when some Lists failed. Each failed List says why.
       if (body.failed > 0) {
         toast.error(
-          `Refreshed ${body.refreshed} of ${body.total} lists. The others failed to update: each List shows why.`,
+          `Refreshed ${body.refreshed} of ${body.total} lists. The others failed to update: each list shows why.`,
         );
       }
     } catch (err) {
@@ -588,6 +628,7 @@ export function useAccountConfiguration(
       setActions((current) =>
         reconcileActionProviders(current.order, current.selected, capable),
       );
+      setSavedForm((saved) => saved && reconcileSavedActions(saved, capable));
       toast.info(
         `${label} is disconnected. Lists read through ${label} stop showing in Stremio until you connect it again.`,
       );
@@ -618,6 +659,8 @@ export function useAccountConfiguration(
 
   return {
     ...editor,
+    /** The form has changes that a save would send. */
+    dirty: savedForm !== null && hasUnsavedChanges(savedForm, form, access),
     rpdbApiKey,
     setRpdbApiKey,
     access,

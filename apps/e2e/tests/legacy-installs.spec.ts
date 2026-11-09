@@ -140,7 +140,9 @@ for (const [label, key, link] of [
       await page.getByRole("button", { name: "Add this list" }).click();
 
       await expect(page).toHaveURL(configureUrl(key));
-      await expect(page.getByText(`IMDb install ${key}`)).toBeVisible();
+      await expect(
+        page.getByText(`Installed with IMDb user ID ${key}`),
+      ).toBeVisible();
       await expect(page.getByText("Legacy QA", { exact: true })).toBeVisible();
       expect(creates).toBe(0);
       // The install is unchanged and no other Account answers to the key.

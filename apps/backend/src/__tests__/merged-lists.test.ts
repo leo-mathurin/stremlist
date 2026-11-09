@@ -388,7 +388,7 @@ describe("saving merged Lists", () => {
 
     expect(res.status).toBe(409);
     expect(((await res.json()) as { error: string }).error).toBe(
-      "Your Lists changed in another window. Reload the page and try again.",
+      "Your lists changed in another window. Reload the page and try again.",
     );
     const [row] = db.getTable("lists");
     expect(row.merged_sources).toEqual(concurrent);
@@ -455,7 +455,7 @@ describe("saving merged Lists", () => {
           })),
         ),
       ],
-      error: "A List can merge at most 5 Source lists.",
+      error: "A catalog can merge at most 5 lists.",
     },
     {
       name: "a display mode without a single-type Source list",
@@ -467,7 +467,7 @@ describe("saving merged Lists", () => {
         ),
       ],
       error:
-        "Top 250 TV Shows has only TV shows, so this List cannot show only movies.",
+        "Top 250 TV Shows has only TV shows, so this list cannot show only movies.",
     },
     {
       name: "a date sort with a Source list without dates",
@@ -477,7 +477,7 @@ describe("saving merged Lists", () => {
         }),
       ],
       error:
-        "The JustWatch list does not give the date when each Title was added, so this List cannot sort by date added.",
+        "The JustWatch list does not give the date when each title was added, so this list cannot sort by date added.",
     },
     {
       name: "a Connection Source list without a Connection",
@@ -499,7 +499,7 @@ describe("saving merged Lists", () => {
           })),
         ),
       ),
-      error: "You can have at most 20 Source lists in all your Lists.",
+      error: "You can have at most 20 lists in total, merged lists included.",
     },
   ])("refuses $name", async ({ lists, error }) => {
     const res = await postConfig(lists);
