@@ -236,7 +236,7 @@ test(
       ],
       [
         [{ ...FIRST, sortOption: "added_at-desc", mergedSources: [top250] }],
-        "Top 250 Movies does not give the date when each Title was added, so this List cannot sort by date added.",
+        "Top 250 Movies does not give the date when each title was added, so this list cannot sort by date added.",
       ],
       [
         [
@@ -247,7 +247,7 @@ test(
             mergedSources: [top250],
           },
         ],
-        "Top 250 Movies has only movies, so this List cannot show only TV shows.",
+        "Top 250 Movies has only movies, so this list cannot show only TV shows.",
       ],
       [
         [
@@ -259,7 +259,7 @@ test(
             ),
           },
         ],
-        "A List can merge at most 5 Source lists.",
+        "A catalog can merge at most 5 lists.",
       ],
       [
         // Four full Lists and one more: 21 Source lists in the Account.
@@ -275,7 +275,7 @@ test(
           })),
           { ...SECOND, sortOption: "title-asc" },
         ],
-        "You can have at most 20 Source lists in all your Lists.",
+        "You can have at most 20 lists in total, merged lists included.",
       ],
     ];
     for (const [lists, error] of cases) {
@@ -376,11 +376,11 @@ test(
     await page.goto(configureUrl(accountId));
     await page.getByRole("button", { name: "Settings for Release QA" }).click();
     await page
-      .getByRole("button", { name: "Merge another List into this one" })
+      .getByRole("button", { name: "Merge another list into this one" })
       .first()
       .click();
     await page.getByRole("menuitem", { name: "Second QA" }).click();
-    await expect(page.getByText("2 Source lists · IMDb")).toBeVisible();
+    await expect(page.getByText("2 lists · IMDb")).toBeVisible();
 
     await saveConfigure(page);
 
@@ -403,10 +403,10 @@ test(
     expect(await catalogIds(accountId)).toEqual([`wl-${firstId}-movie`]);
 
     await page.reload();
-    await expect(page.getByText("2 Source lists · IMDb")).toBeVisible();
+    await expect(page.getByText("2 lists · IMDb")).toBeVisible();
     await page.getByRole("button", { name: "Settings for Release QA" }).click();
     await expect(
-      page.getByRole("button", { name: "Move Second QA to its own List" }),
+      page.getByRole("button", { name: "Move Second QA to its own list" }),
     ).toBeVisible();
     await expect(page.getByText("2 of 5")).toBeVisible();
   },
@@ -538,7 +538,7 @@ async function removeSource(page: Page, accountId: string, name: string) {
   await page.goto(configureUrl(accountId));
   await page.getByRole("button", { name: "Settings for Merged QA" }).click();
   await page
-    .getByRole("button", { name: `Remove ${name} from this List` })
+    .getByRole("button", { name: `Remove ${name} from this list` })
     .click();
   await expect(page.getByText("2 of 5")).toBeVisible();
 }
@@ -615,7 +615,7 @@ test(
       .getByRole("button", { name: "Settings for Watchlist QA" })
       .click();
     await page
-      .getByRole("button", { name: "Merge another List into this one" })
+      .getByRole("button", { name: "Merge another list into this one" })
       .first()
       .click();
     await page.getByRole("menuitem", { name: "Other QA" }).click();

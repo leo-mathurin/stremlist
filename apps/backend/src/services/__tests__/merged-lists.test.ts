@@ -95,7 +95,7 @@ describe("account List rules", () => {
     expect(accountListsProblem(lists.slice(0, 4))).toBeNull();
     expect(accountListsProblem(lists)).toEqual({
       reason: "too_many_sources",
-      message: `You can have at most ${MAX_SOURCES_PER_ACCOUNT} Source lists in all your Lists.`,
+      message: `You can have at most ${MAX_SOURCES_PER_ACCOUNT} lists in total, merged lists included.`,
     });
   });
 });
@@ -119,7 +119,7 @@ describe("merge rules", () => {
     }));
     expect(listMergeProblem(merged(WATCHLIST, others.slice(0, -1)))).toBeNull();
     expect(listMergeProblem(merged(WATCHLIST, others))).toBe(
-      `A List can merge at most ${MAX_SOURCES_PER_LIST} Source lists.`,
+      `A catalog can merge at most ${MAX_SOURCES_PER_LIST} lists.`,
     );
   });
 
@@ -146,12 +146,12 @@ describe("merge rules", () => {
         merged(WATCHLIST, [TOP_MOVIES], { displayMode: "series" }),
       ),
     ).toBe(
-      "Top 250 Movies has only movies, so this List cannot show only TV shows.",
+      "Top 250 Movies has only movies, so this list cannot show only TV shows.",
     );
     expect(
       listMergeProblem(merged(TOP_MOVIES, [TOP_TV], { displayMode: "movie" })),
     ).toBe(
-      "Top 250 Movies has only movies and Top 250 TV Shows has only TV shows, so this List must show movies and TV shows.",
+      "Top 250 Movies has only movies and Top 250 TV Shows has only TV shows, so this list must show movies and TV shows.",
     );
     expect(
       listMergeProblem(
@@ -189,7 +189,7 @@ describe("merge rules", () => {
         ),
       ),
     ).toBe(
-      "Top 250 Movies and Trakt Popular do not give the date when each Title was added, so this List cannot sort by date added.",
+      "Top 250 Movies and Trakt Popular do not give the date when each title was added, so this list cannot sort by date added.",
     );
     expect(
       listMergeProblem(
@@ -198,7 +198,7 @@ describe("merge rules", () => {
         }),
       ),
     ).toBe(
-      "The JustWatch list does not give the date when each Title was added, so this List cannot sort by date added.",
+      "The JustWatch list does not give the date when each title was added, so this list cannot sort by date added.",
     );
   });
 

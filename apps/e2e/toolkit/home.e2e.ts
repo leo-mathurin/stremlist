@@ -243,7 +243,7 @@ test("the Home field starts an empty setup or opens a pasted Addon URL", async (
   await app.open("/");
   await screen.getByRole("button", "Build my Stremlist").tap();
   await expect(browser).toHaveURL("/configure");
-  await expect(screen.getByText("No Lists yet")).toBeVisible();
+  await expect(screen.getByText("No lists yet")).toBeVisible();
   await expect(saveButton(screen, SAVE_NEW)).toBeDisabled();
 
   await app.open("/");
@@ -273,7 +273,9 @@ test("a returning v1 user who pastes their IMDb ID opens their install", async (
     await screen.getByLabel(HOME_FIELD).fill(link);
     await screen.getByRole("button", "Add this list").tap();
     await expect(browser).toHaveURL(`/configure?account=${imdbUser}`);
-    await expect(screen.getByText(`IMDb install ${imdbUser}`)).toBeVisible();
+    await expect(
+      screen.getByText(`Installed with IMDb user ID ${imdbUser}`),
+    ).toBeVisible();
     await expect(screen.getByText("Test catalog")).toBeVisible();
   }
   expect(created).toEqual([]);
@@ -293,7 +295,9 @@ test("a p. handle opens the v1 install of its canonical IMDb ID", async ({
   await screen.getByLabel(HOME_FIELD).fill(profile);
   await screen.getByRole("button", "Add this list").tap();
   await expect(browser).toHaveURL(`/configure?account=${imdbUser}`);
-  await expect(screen.getByText(`IMDb install ${imdbUser}`)).toBeVisible();
+  await expect(
+    screen.getByText(`Installed with IMDb user ID ${imdbUser}`),
+  ).toBeVisible();
   expect(inputs).toEqual([{ input: profile }]);
 });
 

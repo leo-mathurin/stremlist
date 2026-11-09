@@ -74,7 +74,7 @@ test("a pasted List opens its preview at once, a saved List only on request", as
     ),
   ).toBeVisible();
   await expect(
-    screen.getByRole("heading", /^Unresolved entries/),
+    screen.getByRole("heading", /^Titles not found/),
   ).not.toBeVisible();
   expect(requests).toEqual([
     { ...IMDB_REQUEST, accountKey: accountId, sourceRef: "ls99887766" },
@@ -145,12 +145,10 @@ test("Unresolved entries are listed, with the ones not checked yet", async ({
   );
   await app.open(`/configure?account=${accountId}`);
   await screen.getByRole("button", "Preview Test catalog").tap();
-  await expect(
-    screen.getByRole("heading", /^Unresolved entries/),
-  ).toBeVisible();
+  await expect(screen.getByRole("heading", /^Titles not found/)).toBeVisible();
   await expect(
     screen.getByText(
-      "Stremlist did not find an IMDb ID for these entries yet, so Stremio does not show them. Stremlist tries again on later refreshes. 2 entries are not checked yet.",
+      "Stremlist could not match these titles with IMDb yet, so Stremio does not show them. Stremlist tries again at each refresh. 2 titles are not checked yet.",
     ),
   ).toBeVisible();
   await expect(screen.getByText("Unmatched entry 5")).toBeVisible();
@@ -416,17 +414,17 @@ test("one Unresolved entry and Titles without details are explained", async ({
   await app.open(`/configure?account=${accountId}`);
   await screen.getByRole("button", "Preview Test catalog").tap();
   await expect(
-    screen.getByRole("heading", /^Unresolved entries\s*1$/),
+    screen.getByRole("heading", /^Titles not found\s*1$/),
   ).toBeVisible();
   await expect(
     screen.getByText(
-      "Stremlist did not find an IMDb ID for this entry yet, so Stremio does not show it. Stremlist tries again on later refreshes.",
+      "Stremlist could not match this title with IMDb yet, so Stremio does not show it. Stremlist tries again at each refresh.",
     ),
   ).toBeVisible();
-  await expect(screen.getByText("Entry without a title")).toBeVisible();
+  await expect(screen.getByText("Title without a name")).toBeVisible();
   await expect(screen.getByText("TV show", { exact: true })).toBeVisible();
   await expect(
-    screen.getByRole("link", "Open Entry without a title"),
+    screen.getByRole("link", "Open Title without a name"),
   ).not.toBeVisible();
   await expect(screen.getByRole("button", /^Show all/)).not.toBeVisible();
   await expect(

@@ -321,7 +321,7 @@ test(
     await page.goto(configureUrl(accountId));
     await expect(
       page.getByText(
-        "No new titles detected yet. Stremlist could not read 1 List in full yet, so it cannot compare it.",
+        "No new titles detected yet. Stremlist could not read 1 list in full yet, so it cannot compare it.",
       ),
     ).toBeVisible();
 
@@ -713,7 +713,7 @@ test(
     });
     await expect(toggle).not.toBeChecked();
     await expect(toggle).toHaveAccessibleDescription(
-      /^Adds a “New titles” catalog to Stremio with the titles that appear in your Lists/,
+      /^Adds a “New titles” catalog to Stremio with the titles that appear in your lists/,
     );
     await expect(
       page.getByText("2 new titles detected, the latest 2 days ago."),

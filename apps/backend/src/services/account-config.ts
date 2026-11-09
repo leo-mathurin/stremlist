@@ -73,7 +73,7 @@ export const listBody = z.object({
     )
     .max(
       MAX_SOURCES_PER_LIST - 1,
-      `A List can merge at most ${MAX_SOURCES_PER_LIST} Source lists.`,
+      `A catalog can merge at most ${MAX_SOURCES_PER_LIST} lists.`,
     )
     .optional(),
 });

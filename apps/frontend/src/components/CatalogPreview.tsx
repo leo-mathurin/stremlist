@@ -151,7 +151,7 @@ function PreviewLoading({ list }: { list: ListFormRow }) {
       <p className="flex items-center gap-2 text-xs text-black/50">
         <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
         {isMergedList(list)
-          ? `Reading the Source lists on ${on}. Big lists can take a few seconds.`
+          ? `Reading the merged lists on ${on}. Big lists can take a few seconds.`
           : `Reading the list on ${on}. A big list can take a few seconds.`}
       </p>
       <PosterPlaceholders />
@@ -457,18 +457,18 @@ function UnresolvedEntries({
     <section className="space-y-2 rounded-2xl bg-amber-50 px-4 py-3 ring-1 ring-amber-200">
       <div>
         <h4 className="flex items-baseline gap-2 text-sm font-bold text-amber-950">
-          Unresolved entries
+          Titles not found
           <span className="text-xs font-semibold text-amber-900/70 tabular-nums">
             {unresolved.count.toLocaleString("en")}
           </span>
         </h4>
         <p className="mt-0.5 text-xs text-pretty text-amber-900/80">
-          Stremlist did not find an IMDb ID for{" "}
-          {unresolved.count === 1 ? "this entry" : "these entries"} yet, so
-          Stremio does not show {unresolved.count === 1 ? "it" : "them"}.
-          Stremlist tries again on later refreshes.
+          Stremlist could not match{" "}
+          {unresolved.count === 1 ? "this title" : "these titles"} with IMDb
+          yet, so Stremio does not show {unresolved.count === 1 ? "it" : "them"}
+          . Stremlist tries again at each refresh.
           {unresolved.notCheckedYet > 0 &&
-            ` ${count(unresolved.notCheckedYet, "entry is", "entries are")} not checked yet.`}
+            ` ${count(unresolved.notCheckedYet, "title is", "titles are")} not checked yet.`}
         </p>
       </div>
       <ul id={listId} className="divide-y divide-amber-200/70">
@@ -502,7 +502,7 @@ function UnresolvedEntries({
 }
 
 function UnresolvedRow({ entry }: { entry: PreviewUnresolvedEntry }) {
-  const name = entry.title ?? "Entry without a title";
+  const name = entry.title ?? "Title without a name";
   const details = [
     entry.year,
     entry.type ? (entry.type === "movie" ? "Movie" : "TV show") : null,

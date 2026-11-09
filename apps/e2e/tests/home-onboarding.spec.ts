@@ -75,7 +75,9 @@ test(
     // Old links sent returning users to /?userId=ur…
     await page.goto(`${FRONTEND_URL}/?userId=${PUBLIC_USER}`);
     await expect(page).toHaveURL(configureUrl(PUBLIC_USER));
-    await expect(page.getByText(`IMDb install ${PUBLIC_USER}`)).toBeVisible();
+    await expect(
+      page.getByText(`Installed with IMDb user ID ${PUBLIC_USER}`),
+    ).toBeVisible();
     await expect(
       page.getByText(`IMDb · Watchlist · ${PUBLIC_USER}`),
     ).toBeVisible();
@@ -92,7 +94,7 @@ test(
         "IMDb could not find this watchlist. Check the link. The list may have been deleted.",
       ),
     ).toBeVisible();
-    await expect(page.getByText("No Lists yet")).toBeVisible();
+    await expect(page.getByText("No lists yet")).toBeVisible();
     await expect(saveButton(page, SAVE_NEW)).toBeDisabled();
   },
 );
@@ -118,7 +120,7 @@ test(
     await expect(
       page.getByText("We do not recognize this link.", { exact: false }),
     ).toBeVisible();
-    await expect(page.getByText("No Lists yet")).toBeVisible();
+    await expect(page.getByText("No lists yet")).toBeVisible();
     expect(resolves).toBe(0);
   },
 );

@@ -73,7 +73,7 @@ export default function MergedSources({
   const room = MAX_SOURCES_PER_LIST - sources.length;
   const undated = sourcesWithoutDates(list);
   const showHint = singleTypeReason(list, {
-    both: "this List shows both",
+    both: "this list shows both",
     movie: '"TV shows only" is off',
     series: '"Movies only" is off',
   });
@@ -86,7 +86,7 @@ export default function MergedSources({
           tabIndex={-1}
           className="text-xs font-semibold text-black/60 outline-none"
         >
-          Source lists
+          Lists in this catalog
         </p>
         <p className="text-xs text-black/45 tabular-nums">
           {sources.length} of {MAX_SOURCES_PER_LIST}
@@ -148,10 +148,10 @@ export default function MergedSources({
                     )
                   }
                   disabled={!controls.canSplit}
-                  aria-label={`Move ${name} to its own List`}
+                  aria-label={`Move ${name} to its own list`}
                   title={
                     controls.canSplit
-                      ? "Move to its own List"
+                      ? "Move to its own list"
                       : "You have the maximum number of lists"
                   }
                   className={cn(ICON_BUTTON, "hover:bg-black/5 hover:text-ink")}
@@ -165,8 +165,8 @@ export default function MergedSources({
                       controls.onRemoveSource(list.localId, index),
                     )
                   }
-                  aria-label={`Remove ${name} from this List`}
-                  title="Remove from this List"
+                  aria-label={`Remove ${name} from this list`}
+                  title="Remove from this list"
                   className={cn(
                     ICON_BUTTON,
                     "hover:bg-red-50 hover:text-red-600",
@@ -191,8 +191,8 @@ export default function MergedSources({
               <Merge className="size-4" />
               <span className="truncate">
                 {room <= 0
-                  ? `At most ${MAX_SOURCES_PER_LIST} Source lists`
-                  : "Merge another List into this one"}
+                  ? `At most ${MAX_SOURCES_PER_LIST} lists in one catalog`
+                  : "Merge another list into this one"}
               </span>
               <ChevronDown className="ml-auto size-4 text-black/50 sm:ml-0" />
             </DropdownMenuTrigger>
@@ -219,7 +219,7 @@ export default function MergedSources({
                     <span className="truncate">{rowTitle(other)}</span>
                     {count > 1 && (
                       <span className="ml-auto text-xs text-black/45 tabular-nums">
-                        {count} Source lists
+                        {count} lists
                       </span>
                     )}
                   </DropdownMenuItem>
@@ -235,8 +235,8 @@ export default function MergedSources({
           )}
         >
           {controls.others.length === 0 &&
-            "Add another List, then merge it here to show both in one catalog. "}
-          Titles that are in more than one Source list show once.
+            "Add another list, then merge it here to show both in one catalog. "}
+          Titles that are in more than one of these lists show once.
         </p>
       </div>
 
@@ -246,7 +246,7 @@ export default function MergedSources({
             <li>
               Date added sorting is off:{" "}
               {sourcesWithVerb(undated, "does", "do")} not give the date when
-              each Title was added.
+              each title was added.
             </li>
           )}
           {showHint && <li>{showHint}</li>}

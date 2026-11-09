@@ -11,6 +11,8 @@ import { mergeRows, removeRowSource, splitRowSource } from "../lib/merged-rows";
 /** The List rows of the configure page, their edits and what is wrong. */
 export function useListEditor() {
   const [lists, setLists] = useState<ListFormRow[]>([]);
+  /** The row that the user added last in this visit, for feedback. */
+  const [lastAdded, setLastAdded] = useState<ListFormRow | null>(null);
 
   const setListField = <K extends keyof ListFormRow>(
     localId: string,
@@ -34,7 +36,9 @@ export function useListEditor() {
         ? "This list is already in your Stremlist."
         : problem.message;
     }
-    setLists((rows) => [...rows, createListRow(partial)]);
+    const row = createListRow(partial);
+    setLists((rows) => [...rows, row]);
+    setLastAdded(row);
     return null;
   };
 
@@ -79,6 +83,7 @@ export function useListEditor() {
   return {
     lists,
     setLists,
+    lastAdded,
     setListField,
     addList,
     addChartList,

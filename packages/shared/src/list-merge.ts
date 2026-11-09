@@ -261,7 +261,7 @@ export function accountListsProblem(
   if (keys.length > MAX_SOURCES_PER_ACCOUNT) {
     return {
       reason: "too_many_sources",
-      message: `You can have at most ${MAX_SOURCES_PER_ACCOUNT} Source lists in all your Lists.`,
+      message: `You can have at most ${MAX_SOURCES_PER_ACCOUNT} lists in total, merged lists included.`,
     };
   }
   return null;
@@ -278,22 +278,22 @@ export function listMergeProblem(
 ): string | null {
   const sources = listSources(list);
   if (sources.length > MAX_SOURCES_PER_LIST) {
-    return `A List can merge at most ${MAX_SOURCES_PER_LIST} Source lists.`;
+    return `A catalog can merge at most ${MAX_SOURCES_PER_LIST} lists.`;
   }
   if (new Set(sources.map(sourceKey)).size !== sources.length) {
     return "Each list can only be added once.";
   }
   if (!allowedDisplayModes(list).includes(list.displayMode)) {
     return singleTypeReason(list, {
-      both: "this List must show movies and TV shows",
-      movie: "this List cannot show only TV shows",
-      series: "this List cannot show only movies",
+      both: "this list must show movies and TV shows",
+      movie: "this list cannot show only TV shows",
+      series: "this list cannot show only movies",
     });
   }
 
   if (!isSortAllowed(list, list.sortOption)) {
     const undated = sourcesWithoutDates(list);
-    return `${capitalize(sourcesWithVerb(undated, "does", "do"))} not give the date when each Title was added, so this List cannot sort by date added.`;
+    return `${capitalize(sourcesWithVerb(undated, "does", "do"))} not give the date when each title was added, so this list cannot sort by date added.`;
   }
   return null;
 }

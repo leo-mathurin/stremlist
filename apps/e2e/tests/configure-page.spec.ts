@@ -164,7 +164,7 @@ test(
     const { body } = await createAccount([]);
     const accountId = body.accountId!;
     await page.goto(configureUrl(accountId));
-    await expect(page.getByText("No Lists yet")).toBeVisible();
+    await expect(page.getByText("No lists yet")).toBeVisible();
     await page.getByRole("button", { name: "Add an IMDb chart" }).click();
     await page
       .getByRole("menuitem", { name: /^Box Office \(Weekend\)/ })

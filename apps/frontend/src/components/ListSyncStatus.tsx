@@ -54,9 +54,12 @@ function QueueText({
  * wrong. `saved` is false for a row that is not saved yet.
  */
 export function ListSyncLine({
+  provider: listProvider,
   sync,
   saved,
 }: {
+  /** The List's first Source list's Provider. */
+  provider: ProviderId;
   sync: ListSyncState;
   saved: boolean;
 }) {
@@ -64,13 +67,14 @@ export function ListSyncLine({
   let text: ReactNode;
   let pulse = false;
   if (sync.kind === "connection") {
-    text = sync.renew ? "Connection needs to be renewed" : "Not connected";
+    const label = PROVIDERS[sync.source?.provider ?? listProvider].label;
+    text = sync.renew ? `${label} connection expired` : "Not connected";
   } else if (!saved) {
     text = "Not saved yet";
   } else if (sync.kind === "waiting") {
     pulse = true;
     const waiting = sync.reconnected
-      ? "Checking the new Connection"
+      ? "Checking the new connection"
       : "Not refreshed yet";
     text = sync.queue ? (
       <QueueText queue={sync.queue} otherwise={waiting} />
@@ -92,7 +96,7 @@ export function ListSyncLine({
       </>
     );
   } else if (sync.othersShown) {
-    text = "One Source list does not show";
+    text = "One merged list does not show";
   } else {
     text = "Not showing in Stremio";
   }
@@ -143,24 +147,24 @@ export function ListSyncNotice({
   if (sync.kind === "connection") {
     const subject = sync.source
       ? {
-          noun: "its Source list",
+          noun: "one of its lists",
           lastRefresh: "the last refresh",
-          hidden: "its Source list does not show in this catalog",
+          hidden: "one of its lists does not show in this catalog",
         }
       : {
-          noun: "this List",
+          noun: "this list",
           lastRefresh: "its last refresh",
-          hidden: "this List does not show in Stremio",
+          hidden: "this list does not show in Stremio",
         };
     body = sync.renew ? (
       <>
         <strong className="font-semibold">
-          {label} refused the Stremlist Connection
+          Your {label} connection expired
         </strong>
         {sync.stillShown
           ? `. Stremio still shows ${subject.noun} from ${subject.lastRefresh}, but not after the next one.`
           : `, so ${subject.hidden}.`}{" "}
-        Connect {label} again to renew it.
+        Connect {label} again to fix it.
       </>
     ) : (
       `${label} is not connected, so ${subject.hidden}.`
@@ -188,7 +192,7 @@ export function ListSyncNotice({
           ) : (
             <>
               {sync.othersShown &&
-                "Stremio shows the titles of the other Source lists. "}
+                "Stremio shows the titles of its other lists. "}
               This problem started <Time iso={sync.since} />.
             </>
           )}
@@ -212,13 +216,19 @@ export function ListSyncNotice({
     >
       <p className="min-w-0 flex-1 text-pretty tabular-nums">{body}</p>
       {sync.kind === "connection" && onConnect && (
+        // "Connect again" only for a connection that existed and expired;
+        // a Provider that is not connected gets a plain "Connect".
         <button
           type="button"
           onClick={onConnect}
-          aria-label={`Connect again for ${title}`}
+          aria-label={
+            sync.renew
+              ? `Connect again for ${title}`
+              : `Connect ${label} for ${title}`
+          }
           className="inline-flex h-8 shrink-0 items-center rounded-full bg-brand px-3 text-xs font-bold text-black transition-[background-color,scale] duration-150 hover:bg-brand-dark active:scale-[0.96]"
         >
-          Connect again
+          {sync.renew ? "Connect again" : `Connect ${label}`}
         </button>
       )}
     </div>

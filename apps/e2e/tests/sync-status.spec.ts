@@ -89,7 +89,7 @@ test(
     await openConfigure(page, accountId, "Horror nights");
     await expectText(page, "Refresh failed · titles from 1 hour ago");
     await expectText(page, notice);
-    await expectText(page, "1 List needs attention");
+    await expectText(page, "1 list needs attention");
 
     await page.reload();
     await expectText(page, notice);
@@ -141,9 +141,9 @@ test(
 
     await openConfigure(page, accountId, "Trakt Watchlist");
     const renew =
-      "Trakt refused the Stremlist Connection, so this List does not show in Stremio. Connect Trakt again to renew it.";
-    await expectText(page, "Needs renewal");
-    await expectText(page, "Connection needs to be renewed");
+      "Your Trakt connection expired, so this list does not show in Stremio. Connect Trakt again to fix it.";
+    await expectText(page, "Connection expired");
+    await expectText(page, "Trakt connection expired");
     await expectText(page, renew);
     await expectText(
       page,
@@ -157,7 +157,7 @@ test(
 
     await page.reload();
     await expectText(page, renew);
-    await expectText(page, "Needs renewal");
+    await expectText(page, "Connection expired");
   },
 );
 

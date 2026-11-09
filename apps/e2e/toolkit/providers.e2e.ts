@@ -412,7 +412,7 @@ test(
     const confirm = screen.getByRole("group", "Disconnect Trakt?");
     await expect(
       confirm.getByText(
-        "1 List is read through this account. It stops showing in Stremio until you connect Trakt again. Actions on Trakt stop too.",
+        "1 list is read through this account. It stops showing in Stremio until you connect Trakt again. Actions on Trakt stop too.",
         { exact: false },
       ),
     ).toBeVisible();
@@ -428,7 +428,7 @@ test(
     expect(deletes).toEqual(["DELETE"]);
     await expect(
       screen.getByText(
-        "Trakt is not connected, so this List does not show in Stremio.",
+        "Trakt is not connected, so this list does not show in Stremio.",
       ),
     ).toBeVisible();
     await expect(
@@ -441,7 +441,7 @@ test(
       providers: [],
     });
     await screen
-      .getByRole("button", "Connect again for Trakt Watchlist", { exact: true })
+      .getByRole("button", "Connect Trakt for Trakt Watchlist", { exact: true })
       .tap();
     await expect(
       screen.getByText(

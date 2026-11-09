@@ -183,7 +183,7 @@ test("each List shows its last refresh or why it failed, and a new List is polle
     "IMDb did not answer. Please try again in a moment. Stremio shows the titles from the last refresh, 3 hours ago.",
     "Not showing in Stremio",
     "IMDb could not find this watchlist. Check the link. The list may have been deleted. This problem started 2 days ago.",
-    "2 Lists need attention",
+    "2 lists need attention",
     // The List without a status waits, and the page asks again until it has one.
     "Not refreshed yet",
   ]);
@@ -270,10 +270,10 @@ test("a manual refresh shows the new status of each List", async ({
   await screen.getByRole("button", "Refresh now").tap();
 
   await expectTexts(screen, [
-    "Refreshed 0 of 1 lists. The others failed to update: each List shows why.",
+    "Refreshed 0 of 1 lists. The others failed to update: each list shows why.",
     "This IMDb watchlist is private. Make your watchlist public in your IMDb account settings. Stremio shows the titles from the last refresh, 10 minutes ago.",
     "Refresh failed · titles from 10 minutes ago",
-    "1 List needs attention",
+    "1 list needs attention",
   ]);
   expect(refreshes).toBe(1);
 });
@@ -302,9 +302,9 @@ test(
     await app.open(`/configure?account=${accountId}`);
 
     await expectTexts(screen, [
-      "Needs renewal",
-      "Connection needs to be renewed",
-      "Trakt refused the Stremlist Connection, so this List does not show in Stremio. Connect Trakt again to renew it.",
+      "Connection expired",
+      "Trakt connection expired",
+      "Your Trakt connection expired, so this list does not show in Stremio. Connect Trakt again to fix it.",
     ]);
     // One in the Providers panel, one in the List's notice.
     await expect(
@@ -341,12 +341,12 @@ test("a List whose Provider is not connected offers to connect it", async ({
 
   await expectTexts(screen, [
     "Not connected",
-    "Trakt is not connected, so this List does not show in Stremio.",
-    "1 List needs attention",
+    "Trakt is not connected, so this list does not show in Stremio.",
+    "1 list needs attention",
   ]);
 
   await screen
-    .getByRole("button", "Connect again for Trakt Watchlist", { exact: true })
+    .getByRole("button", "Connect Trakt for Trakt Watchlist", { exact: true })
     .tap();
 
   await browser.waitForURL(`${backend}/authorize-fixture`);
@@ -390,7 +390,7 @@ test("a Connection that works again clears the renewal state after a poll", asyn
   await routeConnectionSources(browser);
   await app.open(`/configure?account=${accountId}`);
 
-  await expectTexts(screen, ["Checking the new Connection"]);
+  await expectTexts(screen, ["Checking the new connection"]);
   await expect(
     screen.getByText("Updated just now · 30 titles", { exact: true }),
   ).toBeVisible({ timeout: 15_000 });
@@ -418,9 +418,9 @@ test("a refused Connection noticed elsewhere does not claim its cached List is g
   await app.open(`/configure?account=${accountId}`);
 
   await expectTexts(screen, [
-    "Trakt refused the Stremlist Connection. Stremio still shows this List from its last refresh, but not after the next one. Connect Trakt again to renew it.",
-    "Connection needs to be renewed",
-    "1 List needs attention",
+    "Your Trakt connection expired. Stremio still shows this list from its last refresh, but not after the next one. Connect Trakt again to fix it.",
+    "Trakt connection expired",
+    "1 list needs attention",
   ]);
 });
 
@@ -493,14 +493,12 @@ test("each failure reason says what to do, next to Lists that refresh fine", asy
   await expect(
     screen.getByText("Not showing in Stremio", { exact: true }),
   ).toHaveCount(2);
-  await expectTexts(screen, ["3 Lists need attention"]);
-  // A public List does not offer to renew a Connection.
-  await expect(screen.getByRole("button", /^Connect again for /)).toHaveCount(
-    0,
-  );
+  await expectTexts(screen, ["3 lists need attention"]);
+  // A public List does not offer to connect a Provider.
+  await expect(screen.getByRole("button", /^Connect .* for /)).toHaveCount(0);
 });
 
-test("each List that needs a Connection names its own Connect again button", async ({
+test("each List that needs a Connection names its own Connect button", async ({
   app,
   browser,
   screen,
@@ -517,17 +515,17 @@ test("each List that needs a Connection names its own Connect again button", asy
   await app.open(`/configure?account=${accountId}`);
 
   await expect(
-    screen.getByRole("button", "Connect again for Trakt Watchlist", {
+    screen.getByRole("button", "Connect Trakt for Trakt Watchlist", {
       exact: true,
     }),
   ).toBeVisible();
   await expect(screen.getByText("Not connected", { exact: true })).toHaveCount(
     2,
   );
-  await expectTexts(screen, ["2 Lists need attention"]);
+  await expectTexts(screen, ["2 lists need attention"]);
 
   await screen
-    .getByRole("button", "Connect again for Trakt History", { exact: true })
+    .getByRole("button", "Connect Trakt for Trakt History", { exact: true })
     .tap();
 
   await browser.waitForURL(`${backend}/authorize-fixture`);
@@ -678,7 +676,7 @@ test("an open preview is read again when a refresh finds its Connection refused"
   await expect(screen.getByText("The Godfather")).toBeVisible();
 
   await expect(
-    screen.getByText("Connection needs to be renewed", { exact: true }),
+    screen.getByText("Trakt connection expired", { exact: true }),
   ).toBeVisible({ timeout: 15_000 });
   // The preview does not keep Titles that the refused Connection cannot read.
   await expectTexts(screen, [
