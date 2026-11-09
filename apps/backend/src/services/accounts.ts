@@ -2,7 +2,7 @@ import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import {
   ACCOUNT_ID_PATTERN,
   DEFAULT_SORT_OPTION,
-  IMDB_USER_ID_PATTERN,
+  LEGACY_ALIAS_PATTERN,
 } from "@stremlist/shared/constants";
 import type { DisplayMode } from "@stremlist/shared/constants";
 import type { Tables } from "@stremlist/shared/database";
@@ -33,7 +33,7 @@ export interface Account {
 
 /**
  * How a request reached the Account. "legacy" requests come through a Legacy
- * alias (`ur…`), which anyone can guess, so they never read through a
+ * alias (the key of a v1 install, such as `ur…`), which anyone can guess, so they never read through a
  * Connection and never see the Account ID (ADR 0001).
  */
 export interface AccountAccess {
@@ -98,7 +98,7 @@ export async function resolveAccountKey(
 ): Promise<AccountAccess | null> {
   const via = ACCOUNT_ID_PATTERN.test(key)
     ? "private"
-    : IMDB_USER_ID_PATTERN.test(key)
+    : LEGACY_ALIAS_PATTERN.test(key)
       ? "legacy"
       : null;
   if (!via) return null;
@@ -114,9 +114,10 @@ export async function resolveAccountKey(
 }
 
 /**
- * Old installs pointed Stremio at `/ur…/manifest.json` directly. Keep that
- * working: the first manifest request creates a legacy Account whose only
- * List is the IMDb watchlist of that user.
+ * Old installs pointed Stremio at `/ur…/manifest.json` (or `/p.…/`) directly.
+ * Keep that working: the first manifest request creates a legacy Account
+ * whose only List is the IMDb watchlist of that user. The caller checks that
+ * the key is an IMDb user ID or a `p.` handle.
  */
 export async function ensureLegacyAccount(
   imdbUserId: string,

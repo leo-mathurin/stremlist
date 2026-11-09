@@ -6,6 +6,10 @@ import {
   baseRoutes,
   captureConfig,
   imdbUser,
+  legacyConfiguration,
+  resolved,
+  routeCreateAccount,
+  routeResolve,
   saveButton,
   SAVE_NEW,
 } from "./config-fixture";
@@ -251,3 +255,104 @@ test("the Home field starts an empty setup or opens a pasted Addon URL", async (
   await expect(browser).toHaveURL(`/configure?account=${accountId}`);
   await expect(screen.getByText("Test catalog")).toBeVisible();
 });
+
+const HOME_FIELD = "Paste a link to a watchlist or list";
+
+test("a returning v1 user who pastes their IMDb ID opens their install", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await captureConfig(browser, legacyConfiguration, imdbUser);
+  const created = await routeCreateAccount(browser);
+  for (const link of [
+    imdbUser,
+    `https://www.imdb.com/user/${imdbUser}/watchlist`,
+  ]) {
+    await app.open("/");
+    await screen.getByLabel(HOME_FIELD).fill(link);
+    await screen.getByRole("button", "Add this list").tap();
+    await expect(browser).toHaveURL(`/configure?account=${imdbUser}`);
+    await expect(screen.getByText(`IMDb install ${imdbUser}`)).toBeVisible();
+    await expect(screen.getByText("Test catalog")).toBeVisible();
+  }
+  expect(created).toEqual([]);
+});
+
+test("a p. handle opens the v1 install of its canonical IMDb ID", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await captureConfig(browser, legacyConfiguration, imdbUser);
+  const profile = "https://www.imdb.com/user/p.example/";
+  const inputs = await routeResolve(browser, (input) =>
+    input === profile ? resolved("imdb", imdbUser, "watchlist") : null,
+  );
+  await app.open("/");
+  await screen.getByLabel(HOME_FIELD).fill(profile);
+  await screen.getByRole("button", "Add this list").tap();
+  await expect(browser).toHaveURL(`/configure?account=${imdbUser}`);
+  await expect(screen.getByText(`IMDb install ${imdbUser}`)).toBeVisible();
+  expect(inputs).toEqual([{ input: profile }]);
+});
+
+test("an IMDb ID with no v1 install starts a new setup with it", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await baseRoutes(browser);
+  let checks = 0;
+  await browser.route(`${backend}/${imdbUser}/config`, async (route) => {
+    checks++;
+    await route.fulfill({ status: 404, json: { error: "Addon not found." } });
+  });
+  await routeResolve(browser, () => resolved("imdb", imdbUser, "watchlist"));
+  await app.open("/");
+  await screen.getByLabel(HOME_FIELD).fill(imdbUser);
+  await screen.getByRole("button", "Add this list").tap();
+  await expect(browser).toHaveURL("/configure");
+  await expect(
+    screen.getByText(`IMDb · Watchlist · ${imdbUser}`),
+  ).toBeVisible();
+  expect(checks).toBe(1);
+});
+
+test("a failed install check keeps the link on Home", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await baseRoutes(browser);
+  await browser.route(`${backend}/${imdbUser}/config`, (route) =>
+    route.fulfill({ status: 500, json: { error: "down" } }),
+  );
+  await app.open("/");
+  const field = screen.getByLabel(HOME_FIELD);
+  await field.fill(imdbUser);
+  await screen.getByRole("button", "Add this list").tap();
+  await expect(screen.getByRole("alert")).toHaveText(
+    "Could not check for your existing Stremlist. Please try again.",
+  );
+  await expect(browser).toHaveURL("/");
+  await expect(field).toHaveValue(imdbUser);
+});
+
+for (const key of ["p.example", "ls123456789"]) {
+  test(`a v1 Addon URL keyed by ${key} opens its install`, async ({
+    app,
+    browser,
+    screen,
+  }) => {
+    await captureConfig(browser, legacyConfiguration, key);
+    await app.open("/");
+    await screen
+      .getByLabel(HOME_FIELD)
+      .fill(`stremio://127.0.0.1:4314/${key}/manifest.json`);
+    await expect(screen.getByText("Addon URL detected")).toBeVisible();
+    await screen.getByRole("button", "Add this list").tap();
+    await expect(browser).toHaveURL(`/configure?account=${key}`);
+    await expect(screen.getByText("Test catalog")).toBeVisible();
+  });
+}

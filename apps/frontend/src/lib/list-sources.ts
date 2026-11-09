@@ -1,8 +1,5 @@
 import { SITE } from "../content/site";
-import {
-  ACCOUNT_KEY_PATTERN,
-  ACCOUNT_KEY_SOURCE,
-} from "@stremlist/shared/constants";
+import { ACCOUNT_KEY_PATTERN } from "@stremlist/shared/constants";
 import { PROVIDERS, describeSourceRef } from "@stremlist/shared/providers";
 import type {
   ParsedSourceLink,
@@ -82,28 +79,55 @@ export function describeSource(
   };
 }
 
-const ADDON_KEY_IN_TEXT = new RegExp(
-  String.raw`(?:^|[/\s])(${ACCOUNT_KEY_SOURCE})(?=/manifest\.json|/configure|$|\s)`,
-);
+/** A key in the URL as an Addon URL holds it (`/<key>/manifest.json`). */
+function keyInPath(url: URL): string | null {
+  const segments = url.pathname.split("/");
+  for (let index = 1; index < segments.length; index++) {
+    const key = segments[index - 1];
+    if (
+      ["manifest.json", "configure"].includes(segments[index]) &&
+      ACCOUNT_KEY_PATTERN.test(key)
+    ) {
+      return key;
+    }
+  }
+  return null;
+}
+
+function toUrl(input: string): URL | null {
+  try {
+    return new URL(
+      /^[a-z]+:\/\//i.test(input)
+        ? input.replace(/^stremio:\/\//i, "https://")
+        : `https://${input}`,
+    );
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Find the Account key in a pasted Addon URL (https or stremio://), a
- * configure URL, or a bare key. Returns null for anything else.
+ * configure URL, a Stremio Web install link, or a bare key. Returns null for
+ * anything else, such as an IMDb profile page: a key is only read from where
+ * a Stremlist URL puts it.
  */
 export function extractAccountKey(input: string): string | null {
   const trimmed = input.trim();
   if (ACCOUNT_KEY_PATTERN.test(trimmed)) return trimmed;
-  try {
-    const url = new URL(trimmed.replace(/^stremio:\/\//, "https://"));
-    const account =
-      url.searchParams.get("account") ?? url.searchParams.get("userId");
-    if (account && ACCOUNT_KEY_PATTERN.test(account)) {
-      return account;
-    }
-  } catch {
-    // Not a URL: fall back to the pattern search below.
+  const url = toUrl(trimmed);
+  if (!url || !trimmed.includes("/")) return null;
+  const param =
+    url.searchParams.get("account") ?? url.searchParams.get("userId");
+  if (param && ACCOUNT_KEY_PATTERN.test(param)) return param;
+  // Stremio Web: `#/addons?addon=<Addon URL>`.
+  const hashQuery = url.hash.split("?")[1];
+  const addon = hashQuery && new URLSearchParams(hashQuery).get("addon");
+  if (addon) {
+    const inner = toUrl(addon);
+    if (inner) return keyInPath(inner);
   }
-  return ADDON_KEY_IN_TEXT.exec(trimmed)?.[1] ?? null;
+  return keyInPath(url);
 }
 
 /**
