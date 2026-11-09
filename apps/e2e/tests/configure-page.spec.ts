@@ -365,9 +365,11 @@ test(
     ).toHaveAttribute("href", addonsDeepLink(addonManifestUrl(accountId)));
 
     // The reminder stays until the user reinstalls, also after a reload and
-    // after a save that changes nothing.
+    // after a save that keeps the catalogs. With no edits, Save is off.
     await page.reload();
     await expect(reminder).toBeVisible();
+    await expect(saveButton(page)).toBeDisabled();
+    await page.locator("#rpdb-api-key").fill("e2e-rpdb-key-2");
     await saveConfigure(page, { message: SAVED_REINSTALL });
     await expect(reminder).toBeVisible();
 
@@ -379,6 +381,7 @@ test(
     await page.reload();
     await expect(page.getByText("Renamed watchlist")).toBeVisible();
     await expect(reminder).toHaveCount(0);
+    await page.locator("#rpdb-api-key").fill("e2e-rpdb-key");
     await saveConfigure(page, { message: SAVED });
     const { body } = await getConfig(accountId);
     expect(body.rpdbApiKey).toBe("e2e-rpdb-key");

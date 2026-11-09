@@ -207,8 +207,11 @@ test("a normalized handle becomes the saved source and the next save stays clean
   await saveButton(screen).tap();
   await expect(screen.getByText("IMDb · Watchlist · ur99887766")).toBeVisible();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
-  // Nothing changed since, so the next save sends the stored handle. Stremio
-  // still needs the reinstall, so the message stays.
+  // The stored handle leaves nothing to save.
+  await expect(saveButton(screen)).toBeDisabled();
+  // The next save sends the stored handle. Stremio still needs the
+  // reinstall, so the message stays.
+  await screen.getByLabel("Catalog title").fill("Handle catalog 2");
   await saveButton(screen).tap();
   await expect.poll(() => requests).toBe(2);
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();

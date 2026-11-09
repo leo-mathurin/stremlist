@@ -102,7 +102,7 @@ test("the summary says what was detected and which Lists still wait", async ({
   ).toBeVisible();
 });
 
-test("an unreadable history hides the summary, and an unchanged save needs no reinstall", async ({
+test("an unreadable history hides the summary, and a save that keeps the catalogs needs no reinstall", async ({
   app,
   screen,
   browser,
@@ -112,6 +112,8 @@ test("an unreadable history hides the summary, and an unchanged save needs no re
   await expect(screen.getByRole("checkbox", TOGGLE)).toBeChecked();
   await expect(screen.getByText(/new titles? detected/)).toHaveCount(0);
 
+  // An RPDB key changes the posters, not the Catalogs that Stremio reads.
+  await screen.getByLabel(/^RPDB API key/).fill("e2e-synthetic-rpdb");
   await saveButton(screen).tap();
   await expect(screen.getByText(SAVED)).toBeVisible();
   expect(submissions[0].newTitles).toEqual({ enabled: true });
@@ -168,6 +170,7 @@ test("changing the setting while a save runs keeps it as an unsaved change", asy
   const { submissions, release } = await gatedSaves(browser, configuration);
 
   await app.open(`/configure?account=${accountId}`);
+  await screen.getByLabel(/^RPDB API key/).fill("e2e-synthetic-rpdb");
   await saveButton(screen).tap();
   await expect(saveButton(screen, "Saving")).toBeVisible();
   await screen.getByRole("checkbox", TOGGLE).tap();
@@ -356,10 +359,9 @@ test("the reinstall notice follows the New titles setting before a save", async 
   await screen.getByRole("checkbox", TOGGLE).tap();
   await expect(notice).toBeVisible();
 
-  // Back to what Stremio has: nothing to reinstall.
+  // Back to what Stremio has: nothing to reinstall, and nothing to save.
   await screen.getByRole("checkbox", TOGGLE).tap();
   await expect(notice).toBeHidden();
-  await saveButton(screen).tap();
-  await expect(screen.getByText(SAVED)).toBeVisible();
+  await expect(saveButton(screen)).toBeDisabled();
   await expect(screen.getByRole("button", "I did it")).toHaveCount(0);
 });

@@ -252,8 +252,13 @@ export default function Configure() {
   const canSave = !policy.editLock && lists.length > 0;
   const showSaveBar = ready && canSave && !!headerSave && !headerSaveVisible;
   // `handleSave` ignores clicks while a save runs, so the button stays
-  // enabled: dimming it for a fast save would flash.
-  const saveDisabled = !canSave || !!config.validationError;
+  // enabled: dimming it for a fast save would flash. With nothing to save
+  // (no edits since the last save or load), it is off. A new setup, a
+  // restored draft and edits made during a save all differ from the saved
+  // form, so they keep it on.
+  const nothingToSave = !config.saveNeeded;
+  const saveDisabled = !canSave || !!config.validationError || nothingToSave;
+  const saveHint = canSave && nothingToSave ? "No changes to save" : undefined;
   const showSaving = usePendingIndicator(config.saving);
   const saveLabel = (
     <>
@@ -367,6 +372,7 @@ export default function Configure() {
                 type="button"
                 onClick={config.handleSave}
                 disabled={saveDisabled}
+                title={saveHint}
                 className={cn(
                   SAVE_BUTTON_CLASS,
                   "h-10 rounded-full px-5 text-sm transition-[background-color,opacity,scale] duration-150 ease-out",
@@ -710,6 +716,7 @@ export default function Configure() {
             <FloatingSaveButton
               show={showSaveBar}
               disabled={saveDisabled}
+              hint={saveHint}
               saving={config.saving}
               onSave={config.handleSave}
             >
