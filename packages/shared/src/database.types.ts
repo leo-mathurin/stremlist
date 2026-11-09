@@ -345,6 +345,13 @@ export type Database = {
             referencedRelation: "lists";
             referencedColumns: ["id"];
           },
+          {
+            foreignKeyName: "list_read_queue_list_id_fkey";
+            columns: ["list_id"];
+            isOneToOne: false;
+            referencedRelation: "user_watchlists";
+            referencedColumns: ["id"];
+          },
         ];
       };
       list_sync_status: {
@@ -384,6 +391,13 @@ export type Database = {
             columns: ["list_id"];
             isOneToOne: false;
             referencedRelation: "lists";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "list_sync_status_list_id_fkey";
+            columns: ["list_id"];
+            isOneToOne: false;
+            referencedRelation: "user_watchlists";
             referencedColumns: ["id"];
           },
         ];
@@ -549,6 +563,69 @@ export type Database = {
         };
         Relationships: [];
       };
+      user_watchlists: {
+        Row: {
+          catalog_settings: Json | null;
+          catalog_title: string | null;
+          created_at: string | null;
+          display_mode: string | null;
+          id: string | null;
+          imdb_user_id: string | null;
+          owner_user_id: string | null;
+          position: number | null;
+          sort_option: string | null;
+          updated_at: string | null;
+        };
+        Insert: {
+          catalog_settings?: Json | null;
+          catalog_title?: string | null;
+          created_at?: string | null;
+          display_mode?: string | null;
+          id?: string | null;
+          imdb_user_id?: string | null;
+          owner_user_id?: string | null;
+          position?: number | null;
+          sort_option?: string | null;
+          updated_at?: string | null;
+        };
+        Relationships: [];
+      };
+      users: {
+        Row: {
+          created_at: string | null;
+          imdb_user_id: string | null;
+          is_active: boolean | null;
+          last_cache_served_at: string | null;
+          last_fetched_at: string | null;
+          prewarm_lease_token: string | null;
+          prewarm_locked_until: string | null;
+          prewarm_request_generation: number | null;
+          rpdb_api_key: string | null;
+        };
+        Insert: {
+          created_at?: string | null;
+          imdb_user_id?: string | null;
+          is_active?: boolean | null;
+          last_cache_served_at?: string | null;
+          last_fetched_at?: string | null;
+          prewarm_lease_token?: string | null;
+          prewarm_locked_until?: string | null;
+          prewarm_request_generation?: number | null;
+          rpdb_api_key?: string | null;
+        };
+        Update: {
+          created_at?: string | null;
+          imdb_user_id?: string | null;
+          is_active?: boolean | null;
+          last_cache_served_at?: string | null;
+          last_fetched_at?: string | null;
+          prewarm_lease_token?: string | null;
+          prewarm_locked_until?: string | null;
+          prewarm_request_generation?: number | null;
+          rpdb_api_key?: string | null;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
       claim_connection_refresh: {
@@ -611,6 +688,15 @@ export type Database = {
           p_completed_generation: number;
           p_lease_seconds: number;
           p_lease_token: string;
+        };
+        Returns: number;
+      };
+      finish_watchlist_prewarm: {
+        Args: {
+          p_completed_generation: number;
+          p_lease_seconds: number;
+          p_lease_token: string;
+          p_owner_user_id: string;
         };
         Returns: number;
       };
@@ -741,11 +827,30 @@ export type Database = {
           previous_lists: Json;
         }[];
       };
+      replace_user_config: {
+        Args: {
+          p_owner_user_id: string;
+          p_rpdb_api_key: string;
+          p_watchlists: Json;
+        };
+        Returns: {
+          deleted_ids: string[];
+          watchlists: Json;
+        }[];
+      };
       request_list_prewarm: {
         Args: {
           p_account_id: string;
           p_lease_seconds: number;
           p_lease_token: string;
+        };
+        Returns: number;
+      };
+      request_watchlist_prewarm: {
+        Args: {
+          p_lease_seconds: number;
+          p_lease_token: string;
+          p_owner_user_id: string;
         };
         Returns: number;
       };

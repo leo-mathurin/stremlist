@@ -10,8 +10,8 @@
 --   `oauth_states` (PKCE verifiers while an authorization is in progress) and
 --   `title_id_map` (the ID resolver cache: provider IDs to IMDb IDs).
 --
--- Deploy this migration together with the matching backend: the old backend
--- reads `users` and `user_watchlists`.
+-- The v1 backend still reads `users` and `user_watchlists` until v2 is
+-- promoted: the views at the end of this file keep that shape.
 
 SET statement_timeout = 0;
 
@@ -297,4 +297,240 @@ TO service_role;
 REVOKE ALL ON FUNCTION public.finish_list_prewarm(text, integer, uuid, bigint)
 FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.finish_list_prewarm(text, integer, uuid, bigint)
+TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- v1 compatibility (expand, then contract)
+-- ---------------------------------------------------------------------------
+--
+-- The v1 backend keeps serving production between `supabase db push` and the
+-- promotion of the v2 backend, and older staging and preview deployments use
+-- the same database. These views and functions give that backend the shape it
+-- reads and writes: the `users` and `user_watchlists` tables and the three
+-- `*_user_*`/`*_watchlist_*` RPCs. They are in this file so that the rename
+-- and the compatibility layer are committed together: no moment exists where
+-- v1 finds neither.
+--
+-- v1 sees only Legacy Accounts and their IMDb Lists. It never sees or deletes
+-- the Lists of other Providers.
+--
+-- supabase/contract/drop_v1_compatibility.sql drops all of this. Apply it in a
+-- later release, when no v1 deployment uses the database.
+
+CREATE VIEW public.users WITH (security_invoker = true) AS
+SELECT
+  a.legacy_imdb_user_id AS imdb_user_id,
+  a.is_active,
+  a.last_fetched_at,
+  a.created_at,
+  a.last_cache_served_at,
+  a.rpdb_api_key,
+  a.prewarm_locked_until,
+  a.prewarm_lease_token,
+  a.prewarm_request_generation
+FROM public.accounts a
+WHERE a.legacy_imdb_user_id IS NOT NULL;
+
+COMMENT ON VIEW public.users IS
+  'v1 compatibility: Legacy Accounts in the v1 shape. Dropped by supabase/contract/drop_v1_compatibility.sql.';
+
+CREATE VIEW public.user_watchlists WITH (security_invoker = true) AS
+SELECT
+  l.id,
+  a.legacy_imdb_user_id AS owner_user_id,
+  l.source_ref AS imdb_user_id,
+  l.catalog_title,
+  l.sort_option,
+  l.position,
+  l.created_at,
+  l.updated_at,
+  l.display_mode,
+  l.catalog_settings
+FROM public.lists l
+JOIN public.accounts a ON a.id = l.account_id
+WHERE a.legacy_imdb_user_id IS NOT NULL
+  AND l.provider = 'imdb';
+
+COMMENT ON VIEW public.user_watchlists IS
+  'v1 compatibility: IMDb Lists of Legacy Accounts in the v1 shape. Dropped by supabase/contract/drop_v1_compatibility.sql.';
+
+-- v1 inserts the default List of a new user here (seedDefaultWatchlist).
+CREATE FUNCTION public.v1_user_watchlists_insert()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  v_account_id text;
+BEGIN
+  SELECT a.id INTO v_account_id FROM public.accounts a
+  WHERE a.legacy_imdb_user_id = NEW.owner_user_id;
+  IF NOT FOUND THEN
+    RAISE foreign_key_violation USING
+      MESSAGE = 'User not found: ' || coalesce(NEW.owner_user_id, 'NULL');
+  END IF;
+
+  INSERT INTO public.lists AS l (
+    id, account_id, provider, source_ref, catalog_title, sort_option,
+    display_mode, position, catalog_settings
+  ) VALUES (
+    coalesce(NEW.id, gen_random_uuid()), v_account_id, 'imdb',
+    NEW.imdb_user_id, NEW.catalog_title,
+    coalesce(NEW.sort_option, 'added_at-asc'),
+    coalesce(NEW.display_mode, 'split'), coalesce(NEW.position, 0),
+    coalesce(NEW.catalog_settings, '{}'::jsonb)
+  )
+  RETURNING l.id, l.sort_option, l.position, l.created_at, l.updated_at,
+    l.display_mode, l.catalog_settings
+  INTO NEW.id, NEW.sort_option, NEW.position, NEW.created_at, NEW.updated_at,
+    NEW.display_mode, NEW.catalog_settings;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER v1_user_watchlists_insert
+INSTEAD OF INSERT ON public.user_watchlists
+FOR EACH ROW EXECUTE FUNCTION public.v1_user_watchlists_insert();
+
+REVOKE ALL ON public.users, public.user_watchlists FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.users TO service_role;
+GRANT SELECT, INSERT ON public.user_watchlists TO service_role;
+REVOKE ALL ON FUNCTION public.v1_user_watchlists_insert()
+FROM PUBLIC, anon, authenticated;
+
+-- The v1 RPCs, on the v2 tables. Same signatures and results as before.
+CREATE FUNCTION public.replace_user_config(
+  p_owner_user_id text,
+  p_rpdb_api_key text,
+  p_watchlists jsonb
+)
+RETURNS TABLE (deleted_ids uuid[], watchlists jsonb)
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+DECLARE
+  item jsonb;
+  v_account_id text;
+BEGIN
+  -- Serialize replacements, like replace_account_config.
+  SELECT a.id INTO v_account_id FROM public.accounts a
+  WHERE a.legacy_imdb_user_id = p_owner_user_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'User not found';
+  END IF;
+
+  IF jsonb_typeof(p_watchlists) IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'Watchlists must be an array';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements(p_watchlists) AS entries(value)
+    WHERE value ? 'id' AND NOT EXISTS (
+      SELECT 1 FROM public.lists l
+      WHERE l.id = (value->>'id')::uuid
+        AND l.account_id = v_account_id
+        AND l.provider = 'imdb'
+    )
+  ) THEN
+    RAISE EXCEPTION 'Watchlist does not belong to this user';
+  END IF;
+
+  IF EXISTS (
+    SELECT value->>'id' FROM jsonb_array_elements(p_watchlists) AS entries(value)
+    WHERE value ? 'id' GROUP BY value->>'id' HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'Duplicate watchlist ID';
+  END IF;
+
+  WITH removed AS (
+    DELETE FROM public.lists l
+    WHERE l.account_id = v_account_id
+      AND l.provider = 'imdb'
+      AND NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements(p_watchlists) AS entries(value)
+        WHERE (value->>'id')::uuid = l.id
+      )
+    RETURNING l.id
+  )
+  SELECT coalesce(array_agg(id), '{}'::uuid[]) INTO deleted_ids FROM removed;
+
+  FOR item IN SELECT value FROM jsonb_array_elements(p_watchlists)
+  LOOP
+    INSERT INTO public.lists AS l (
+      id, account_id, provider, source_ref, catalog_title, sort_option,
+      display_mode, position, catalog_settings
+    ) VALUES (
+      coalesce((item->>'id')::uuid, gen_random_uuid()),
+      v_account_id, 'imdb', item->>'imdb_user_id', item->>'catalog_title',
+      item->>'sort_option', item->>'display_mode',
+      (item->>'position')::integer, coalesce(item->'catalog_settings', '{}'::jsonb)
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      source_ref = EXCLUDED.source_ref,
+      catalog_title = EXCLUDED.catalog_title,
+      sort_option = EXCLUDED.sort_option,
+      display_mode = EXCLUDED.display_mode,
+      position = EXCLUDED.position,
+      catalog_settings = CASE WHEN item ? 'catalog_settings'
+        THEN EXCLUDED.catalog_settings ELSE l.catalog_settings END,
+      updated_at = now()
+    WHERE l.account_id = v_account_id AND l.provider = 'imdb';
+  END LOOP;
+
+  UPDATE public.accounts SET rpdb_api_key = p_rpdb_api_key
+  WHERE id = v_account_id;
+
+  SELECT coalesce(jsonb_agg(to_jsonb(uw) ORDER BY uw.position, uw.created_at), '[]'::jsonb)
+  INTO watchlists FROM public.user_watchlists uw
+  WHERE uw.owner_user_id = p_owner_user_id;
+  RETURN NEXT;
+END;
+$$;
+
+CREATE FUNCTION public.request_watchlist_prewarm(
+  p_owner_user_id text,
+  p_lease_seconds integer,
+  p_lease_token uuid
+)
+RETURNS bigint
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  SELECT public.request_list_prewarm(a.id, p_lease_seconds, p_lease_token)
+  FROM public.accounts a
+  WHERE a.legacy_imdb_user_id = p_owner_user_id;
+$$;
+
+CREATE FUNCTION public.finish_watchlist_prewarm(
+  p_owner_user_id text,
+  p_lease_seconds integer,
+  p_lease_token uuid,
+  p_completed_generation bigint
+)
+RETURNS bigint
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  SELECT public.finish_list_prewarm(
+    a.id, p_lease_seconds, p_lease_token, p_completed_generation
+  )
+  FROM public.accounts a
+  WHERE a.legacy_imdb_user_id = p_owner_user_id;
+$$;
+
+REVOKE ALL ON FUNCTION public.replace_user_config(text, text, jsonb)
+FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.replace_user_config(text, text, jsonb)
+TO service_role;
+REVOKE ALL ON FUNCTION public.request_watchlist_prewarm(text, integer, uuid)
+FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.request_watchlist_prewarm(text, integer, uuid)
+TO service_role;
+REVOKE ALL ON FUNCTION public.finish_watchlist_prewarm(text, integer, uuid, bigint)
+FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.finish_watchlist_prewarm(text, integer, uuid, bigint)
 TO service_role;

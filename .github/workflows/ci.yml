@@ -97,6 +97,25 @@ jobs:
       - name: Start local Supabase (db + REST only)
         run: supabase start -x gotrue,realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta
 
+      # Production runs the baseline with v1 data. Seed v1 data on the
+      # baseline, apply the v2 migrations on top, and check that the data
+      # survived and that the v1 backend still reads it. Ends with every
+      # migration applied, like a fresh start.
+      - name: Test the v1 to v2 upgrade with v1 data
+        run: |
+          supabase db reset --local --version 20260916000000
+          docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/v1_upgrade_seed.sql
+          supabase migration up --local
+          docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/v1_upgrade_check.sql
+
+      - name: Test the v1 compatibility views and RPCs
+        run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/v1_compatibility.sql
+
+      - name: Test the v1 compatibility drop (rolled back)
+        run: |
+          docker cp supabase/contract/drop_v1_compatibility.sql supabase_db_stremlist:/tmp/
+          docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/drop_v1_compatibility.sql
+
       - name: Test atomic configuration replacement
         run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/replace_account_config.sql
 
