@@ -300,8 +300,8 @@ export default function Configure() {
           />
           {policy.connectHint === "save-first" && (
             <p className="text-xs text-pretty text-white/45">
-              Connecting an account saves your setup first, because the
-              connection belongs to your private Addon URL.
+              When an account connects, Stremlist saves your setup with it and
+              gives you a private Addon URL.
             </p>
           )}
           {policy.connectHint === "upgrade" && (

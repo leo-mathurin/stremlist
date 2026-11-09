@@ -264,7 +264,7 @@ test("a link that needs a Connection saves the setup, connects, then adds the li
   await screen.getByRole("button", "Add", { exact: true }).tap();
   await expect(
     screen.getByText(
-      "This list needs your MDBList account. Connect MDBList to add it. Stremlist saves your setup first to create your private Addon URL.",
+      "This list needs your MDBList account. Connect MDBList to add it. When it connects, Stremlist saves your setup and gives you a private Addon URL.",
     ),
   ).toBeVisible();
   await screen.getByRole("button", "Connect MDBList").tap();

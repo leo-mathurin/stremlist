@@ -103,7 +103,7 @@ function describeLinkProblem(
             action: "connect",
             message:
               access === "new"
-                ? `${title}. Connect ${label} to add it. Stremlist saves your setup first to create your private Addon URL.`
+                ? `${title}. Connect ${label} to add it. When it connects, Stremlist saves your setup and gives you a private Addon URL.`
                 : `${title}. Connect ${label} to add it.`,
           };
     default:

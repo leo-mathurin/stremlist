@@ -99,7 +99,7 @@ export const LEGAL_SECTIONS: LegalSection[] = [
             },
             {
               label: "Server logs:",
-              text: "error logs at Vercel can contain an Account ID or, when a newsletter signup fails, an email address. Vercel keeps these logs for a limited time.",
+              text: "request and error logs at Vercel can contain an Account ID, because it is part of each Addon URL that Stremio calls. When a newsletter signup fails, an error log can contain the email address. Vercel keeps these logs for a limited time.",
             },
           ],
           "Your Addon URL gives access to your Stremlist: anyone who has it can view and change your lists, so keep it private. We do not store passwords.",
@@ -108,7 +108,7 @@ export const LEGAL_SECTIONS: LegalSection[] = [
       {
         title: "4. Cookies and Analytics",
         blocks: [
-          "The Stremlist website does not set cookies. It uses Vercel Web Analytics to count page visits, which does not use cookies. Your browser keeps a few items for this site: your unsaved changes while you connect a Provider, and the state of your last install, so we can tell you when to reinstall. They stay in your browser.",
+          "The Stremlist website does not set cookies. It uses Vercel Web Analytics to count page visits, which does not use cookies. Analytics gets the page address without its query or fragment, so it never gets your Account ID. Your browser keeps a few items for this site: a one-time key and your Account ID while you connect a Provider, your unsaved changes and a pasted link during that time, the ID of an Account you just created, and the state of your last install, so we can tell you when to reinstall. They stay in your browser.",
         ],
       },
       {
