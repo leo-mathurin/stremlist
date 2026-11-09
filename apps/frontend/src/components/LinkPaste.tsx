@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import type { Ref } from "react";
 import type { InferResponseType } from "hono/client";
 import { toast } from "sonner";
 import { Loader2, Plug } from "lucide-react";
@@ -126,6 +127,7 @@ export default function LinkPaste({
   onResolved,
   onConnect,
   onUpgrade,
+  inputRef,
 }: {
   accountKey: string | null;
   access: AccountAccess;
@@ -140,6 +142,8 @@ export default function LinkPaste({
   onResolved: (link: ResolvedLink) => string | null;
   onConnect: (provider: ProviderId, pendingLink: string) => void;
   onUpgrade: () => void;
+  /** The paste field, so another control can focus it. */
+  inputRef?: Ref<HTMLInputElement>;
 }) {
   const inputId = useId();
   const [value, setValue] = useState(initialValue ?? "");
@@ -284,6 +288,7 @@ export default function LinkPaste({
         )}
       >
         <input
+          ref={inputRef}
           id={inputId}
           value={value}
           onChange={(event) => {

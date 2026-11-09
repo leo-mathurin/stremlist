@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { useLocation } from "react-router";
 import { VERSIONS } from "../content/changelog";
 import DocPanel from "../components/DocPanel";
 import Footer from "../components/Footer";
@@ -22,6 +24,11 @@ function versionId(version: string) {
 
 export default function Changelog() {
   useSEO({ path: "/changelog" });
+  // A link from another page of the app opens a version ("#v2-0-0").
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (hash) document.getElementById(hash.slice(1))?.scrollIntoView();
+  }, [hash]);
 
   return (
     <SplitLayout

@@ -16,12 +16,9 @@ import ActionsSettings from "../components/ActionsSettings";
 import FloatingSaveButton, {
   SAVE_BUTTON_CLASS,
 } from "../components/FloatingSaveButton";
-import {
-  AddonUrlCard,
-  LegacyUpgradeCard,
-  ReinstallNotice,
-} from "../components/AccountCards";
+import { AddonUrlCard, ReinstallNotice } from "../components/AccountCards";
 import LeaveDialog from "../components/LeaveDialog";
+import LegacyChecklist, { WhatsNewButton } from "../components/LegacyChecklist";
 import LinkPaste from "../components/LinkPaste";
 import NewTitlesSettings from "../components/NewTitlesSettings";
 import type { ResolvedLink } from "../components/LinkPaste";
@@ -34,6 +31,7 @@ import { usePendingIndicator } from "../hooks/usePendingIndicator";
 import { useNow } from "../hooks/useNow";
 import { useSEO } from "../hooks/useSEO";
 import { useAccountConfiguration } from "../hooks/useAccountConfiguration";
+import { useChecklistHidden } from "../hooks/useChecklistHidden";
 import { useLeaveGuard } from "../hooks/useLeaveGuard";
 import { ConnectionsContext } from "../hooks/useCatalogPreview";
 import { accountEditPolicy } from "../lib/account-config";
@@ -114,6 +112,10 @@ export default function Configure() {
     writeStorage(PENDING_LINK_STORAGE, null);
     return searchParams.get("connected") ? stored : null;
   });
+  /** Home found this v1 install for the user ("Open my Stremlist"). */
+  const [fromHome] = useState(
+    () => (location.state as { entry?: unknown } | null)?.entry === "home",
+  );
   // The link from Home is consumed once; drop it so a reload does not add
   // it again.
   useEffect(() => {
@@ -147,12 +149,16 @@ export default function Configure() {
   );
   /** Set when an Account is created here, until its install step is shown. */
   const revealInstall = useRef(false);
-  /** Open an Account created in this tab; a new setup replaces its entry. */
-  const openCreated = (id: string, replace = true) => {
+  /** Show the install step of an Account created in this tab. */
+  const rememberCreated = (id: string) => {
     revealInstall.current = true;
     writeStorage(NEW_ACCOUNT_STORAGE, id);
     setCreatedId(id);
-    navigate(`/configure?account=${encodeURIComponent(id)}`, { replace });
+  };
+  /** Open an Account created by the first save; it replaces the entry. */
+  const openCreated = (id: string) => {
+    rememberCreated(id);
+    navigate(`/configure?account=${encodeURIComponent(id)}`, { replace: true });
   };
 
   const config = useAccountConfiguration(accountKey, {
@@ -253,10 +259,23 @@ export default function Configure() {
     </>
   );
 
-  const scrollToUpgrade = () =>
-    document
-      .getElementById("upgrade")
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  // The Stremlist 2.0 card of a v1 install, with the private URL upgrade.
+  const legacyKey = access === "legacy" ? accountKey : null;
+  const legacy = !!legacyKey;
+  const [checklistHidden, setChecklistHidden] = useChecklistHidden(legacyKey);
+  const [upgradeRequest, setUpgradeRequest] = useState(0);
+  const [upgradeConfirmed, setUpgradeConfirmed] = useState(false);
+  const scrollToUpgrade = () => {
+    setChecklistHidden(false);
+    setUpgradeRequest((count) => count + 1);
+  };
+  const pasteInput = useRef<HTMLInputElement>(null);
+  const focusPaste = () => {
+    const input = pasteInput.current;
+    if (!input) return;
+    input.scrollIntoView({ behavior: scrollBehavior(), block: "center" });
+    input.focus({ preventScroll: true });
+  };
 
   const panel = (
     <div className="space-y-8">
@@ -284,6 +303,7 @@ export default function Configure() {
             onResolved={addResolved}
             onConnect={connectFor}
             onUpgrade={scrollToUpgrade}
+            inputRef={pasteInput}
           />
           <ProviderList
             access={access}
@@ -354,8 +374,16 @@ export default function Configure() {
             )}
           </div>
           {accountKey && ready && (
-            <div className="flex flex-wrap items-center gap-3">
-              <p className="flex items-center gap-2 text-sm text-black/55">
+            // On a v1 install, one line as tall as its buttons, so "What's
+            // new" can come and go without moving the page. Phones then show
+            // the time and the refresh icon only.
+            <div
+              className={cn(
+                "flex min-h-9 items-center gap-3",
+                !legacy && "flex-wrap",
+              )}
+            >
+              <p className="flex min-w-0 items-center gap-2 text-sm text-black/55">
                 <span
                   className={cn(
                     "size-2 shrink-0 rounded-full",
@@ -369,8 +397,10 @@ export default function Configure() {
                   )}
                   aria-hidden="true"
                 />
-                <span className="tabular-nums">
-                  Refreshed{" "}
+                <span className={cn("tabular-nums", legacy && "truncate")}>
+                  <span className={cn(legacy && "sr-only sm:not-sr-only")}>
+                    Refreshed{" "}
+                  </span>
                   <span className="font-semibold text-ink">
                     <RelativeTime iso={config.lastFetchedAt} />
                   </span>
@@ -387,10 +417,14 @@ export default function Configure() {
                 </span>
               </p>
               <RefreshButton
+                compact={legacy}
                 refreshing={config.refreshing}
                 nextRefreshAt={config.nextRefreshAt}
                 onRefresh={config.handleRefresh}
               />
+              {legacy && checklistHidden && (
+                <WhatsNewButton onClick={() => setChecklistHidden(false)} />
+              )}
             </div>
           )}
         </div>
@@ -455,10 +489,31 @@ export default function Configure() {
               </div>
             )}
 
-            {access === "legacy" && (
-              <LegacyUpgradeCard
+            {legacyKey && !checklistHidden && (
+              <LegacyChecklist
+                legacyKey={legacyKey}
+                fromHome={fromHome}
+                imdbLists={
+                  lists.filter((list) => list.provider === "imdb").length
+                }
+                otherProviderAdded={lists.some((list) =>
+                  [list, ...list.mergedSources].some(
+                    (source) => source.provider !== "imdb",
+                  ),
+                )}
+                unsaved={config.dirty}
+                locked={!!policy.editLock}
+                upgradedTo={config.upgradedTo}
+                upgradeConfirmed={upgradeConfirmed}
                 onUpgrade={config.upgrade}
-                onOpen={(id) => openCreated(id, false)}
+                onConfirmUpgrade={() => setUpgradeConfirmed(true)}
+                onOpenNew={rememberCreated}
+                onPasteLink={focusPaste}
+                onHide={() => {
+                  setChecklistHidden(true);
+                  setUpgradeRequest(0);
+                }}
+                upgradeRequest={upgradeRequest}
               />
             )}
 
@@ -683,10 +738,13 @@ function isInView(element: HTMLElement): boolean {
 
 /** "Refresh now", with a live countdown while it waits for the cooldown. */
 function RefreshButton({
+  compact,
   refreshing,
   nextRefreshAt,
   onRefresh,
 }: {
+  /** Below `sm`, show the icon only. */
+  compact: boolean;
   refreshing: boolean;
   nextRefreshAt: number;
   onRefresh: () => void;
@@ -701,14 +759,22 @@ function RefreshButton({
       type="button"
       onClick={onRefresh}
       disabled={refreshing || onCooldown}
-      className="inline-flex h-9 items-center gap-2 rounded-full bg-white px-4 text-sm font-semibold tabular-nums ring-1 ring-black/10 transition-colors hover:bg-cloud disabled:opacity-50"
+      className={cn(
+        "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-full bg-white text-sm font-semibold whitespace-nowrap tabular-nums ring-1 ring-black/10 transition-colors hover:bg-cloud disabled:opacity-50",
+        compact ? "w-9 sm:w-auto sm:px-4" : "px-4",
+      )}
     >
-      <RefreshCw className={cn("size-4", refreshing && "animate-spin")} />
-      {refreshing
-        ? "Refreshing"
-        : onCooldown
-          ? `Refresh in ${cooldownRemaining}s`
-          : "Refresh now"}
+      <RefreshCw
+        aria-hidden="true"
+        className={cn("size-4", refreshing && "animate-spin")}
+      />
+      <span className={cn(compact && "sr-only sm:not-sr-only")}>
+        {refreshing
+          ? "Refreshing"
+          : onCooldown
+            ? `Refresh in ${cooldownRemaining}s`
+            : "Refresh now"}
+      </span>
     </button>
   );
 }

@@ -171,3 +171,51 @@
     bottom: calc(1.25rem + env(safe-area-inset-bottom));
   }
 }
+
+/* Motion of the Stremlist 2.0 card of a v1 install (LegacyChecklist). It
+   enters with a strong ease-out, under 300ms, and moves only transform and
+   opacity. Reduced motion keeps the fades and drops the movement. */
+@keyframes checklist-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes checklist-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes checklist-check {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+@layer components {
+  .checklist-rise {
+    animation: checklist-rise 260ms var(--ease-out-quint) both;
+  }
+  .checklist-fade-in {
+    animation: checklist-fade-in 200ms ease-out both;
+  }
+  .checklist-check {
+    animation: checklist-check 200ms var(--ease-out-quint) both;
+  }
+  /* A short stagger for the steps. Set --i on each child. */
+  .checklist-stagger > * {
+    animation: checklist-rise 240ms var(--ease-out-quint) both;
+    animation-delay: calc(var(--i, 0) * 45ms);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .checklist-rise,
+    .checklist-check,
+    .checklist-stagger > * {
+      animation-name: checklist-fade-in;
+    }
+  }
+}

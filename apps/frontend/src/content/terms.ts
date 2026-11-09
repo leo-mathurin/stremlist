@@ -108,7 +108,7 @@ export const LEGAL_SECTIONS: LegalSection[] = [
       {
         title: "4. Cookies and Analytics",
         blocks: [
-          "The Stremlist website does not set cookies. It uses Vercel Web Analytics to count page visits, which does not use cookies. Analytics gets the page address without its query or fragment, so it never gets your Account ID. Your browser keeps a few items for this site: a one-time key and your Account ID while you connect a Provider, your unsaved changes and a pasted link during that time, the ID of an Account you just created, and the state of your last install, so we can tell you when to reinstall. They stay in your browser.",
+          "The Stremlist website does not set cookies. It uses Vercel Web Analytics to count page visits, which does not use cookies. Analytics gets the page address without its query or fragment, so it never gets your Account ID. Your browser keeps a few items for this site: a one-time key and your Account ID while you connect a Provider, your unsaved changes and a pasted link during that time, the ID of an Account you just created, the state of your last install (so we can tell you when to reinstall), and whether you closed the Stremlist 2.0 card of a v1 install. They stay in your browser.",
         ],
       },
       {
