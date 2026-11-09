@@ -206,10 +206,10 @@ describe("other manifests", () => {
     expect(db.getTable("accounts")).toEqual([]);
   });
 
-  it("refuses a key that is not an Addon URL key", async () => {
-    const res = await app.request("/ls123456789/manifest.json");
+  it("does not find a key that is not an Addon URL key", async () => {
+    const res = await app.request("/YOUR_IMDB_ID/manifest.json");
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(404);
     expect(db.getTable("accounts")).toEqual([]);
   });
 });

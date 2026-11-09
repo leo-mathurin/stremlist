@@ -21,7 +21,11 @@ import type {
 import { useNow } from "@/hooks/useNow";
 import type { AccountAccess } from "@/lib/account-config";
 import { api } from "@/lib/api";
-import { detectedLinkHint, PASTE_LINK_PROMPT } from "@/lib/list-sources";
+import {
+  detectedLinkHint,
+  extractAccountKey,
+  PASTE_LINK_PROMPT,
+} from "@/lib/list-sources";
 import { queueLabel, queueWait, retryDelay } from "@/lib/provider-queue";
 import type { QueueWait } from "@/lib/provider-queue";
 import { cn } from "@/lib/utils";
@@ -39,7 +43,20 @@ type LinkProblem = {
   tone?: "info";
   provider?: ProviderId;
   action?: "connect" | "upgrade";
+  /** The Account key of another install, to open its configure page. */
+  openAccount?: string;
 };
+
+/** The answer to a pasted Addon URL: it is an install, not a list. */
+function addonUrlProblem(key: string, accountKey: string | null): LinkProblem {
+  const fix = `It is not a list. ${PASTE_LINK_PROMPT}.`;
+  return key === accountKey
+    ? { message: `This is the Addon URL of this Stremlist. ${fix}` }
+    : {
+        message: `This is the Addon URL of a different Stremlist. ${fix}`,
+        openAccount: key,
+      };
+}
 
 type LinkProblemReason = SourceProblemReason | "unrecognized";
 
@@ -142,6 +159,11 @@ export default function LinkPaste({
 
     // Answer the obvious cases without a round trip.
     const parsed = parseSourceLink(trimmed);
+    const pastedAccount = parsed ? null : extractAccountKey(trimmed);
+    if (pastedAccount) {
+      setProblem(addonUrlProblem(pastedAccount, accountKey));
+      return;
+    }
     if (!parsed) {
       setProblem(
         describeLinkProblem("unrecognized", undefined, access, "list"),
@@ -221,6 +243,9 @@ export default function LinkPaste({
 
   const hint = (() => {
     if (!value.trim()) return null;
+    if (!detected && extractAccountKey(value)) {
+      return "Stremlist Addon URL detected. This is not a list.";
+    }
     if (!detected) return "No supported site recognized yet.";
     return detectedLinkHint(detected);
   })();
@@ -297,6 +322,14 @@ export default function LinkPaste({
               <Plug className="size-3.5" />
               Connect {PROVIDERS[problem.provider].label}
             </button>
+          )}
+          {problem.openAccount && (
+            <a
+              href={`/configure?account=${encodeURIComponent(problem.openAccount)}`}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-xs font-bold text-cloud"
+            >
+              Open that Stremlist
+            </a>
           )}
           {problem.action === "upgrade" && (
             <button
