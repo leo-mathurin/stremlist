@@ -18,7 +18,10 @@ export const DISCOVERY_PATHS = [
 
 export function sitemap(): string {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${listMarkdownRoutes()
-    .map((page) => `  <url><loc>${absoluteUrl(page.path)}</loc></url>`)
+    .map(
+      (page) =>
+        `  <url><loc>${absoluteUrl(page.path)}</loc><lastmod>${page.updated}</lastmod></url>`,
+    )
     .join("\n")}\n</urlset>\n`;
 }
 

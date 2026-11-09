@@ -145,7 +145,7 @@ const pages: readonly MarkdownPage[] = [
     seoTitle: SITE.title,
     description: SITE.description,
     summary: `${SITE.description} Paste public list links or connect a Trakt, Simkl or MDBList account to create catalogs in Stremio.`,
-    updated: "2026-10-10",
+    updated: "2026-11-09",
     section: "Core pages",
     render: home,
   },
