@@ -25,6 +25,7 @@ export function table(headers: readonly string[], rows: string[][]): string {
   );
 }
 
+/** "November 9, 2026" as "2026-11-09", whatever the local time zone. */
 export function date(value: string): string {
-  return new Date(value).toISOString().slice(0, 10);
+  return new Date(`${value} UTC`).toISOString().slice(0, 10);
 }

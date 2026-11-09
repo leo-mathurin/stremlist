@@ -1,4 +1,4 @@
-import { SITE } from "./site";
+import { PROVIDER_NAMES, SITE } from "./site";
 
 type LegalBlock = string | { label: string; text: string }[];
 interface LegalSection {
@@ -6,7 +6,7 @@ interface LegalSection {
   label: string;
   clauses: { title: string; blocks: LegalBlock[] }[];
 }
-export const LEGAL_UPDATED = "2026-10-06";
+export const LEGAL_UPDATED = "2026-11-09";
 export const LEGAL_SECTIONS: LegalSection[] = [
   {
     id: "terms",
@@ -15,7 +15,7 @@ export const LEGAL_SECTIONS: LegalSection[] = [
       {
         title: "1. Introduction",
         blocks: [
-          'Welcome to Stremlist ("Service"), a personal project that shows watchlists and lists kept on other services (IMDb, Trakt, Simkl, MDBList, JustWatch and SensCritique, the "Providers") as catalogs in Stremio. By accessing or using the Service, you agree to be bound by these Terms and Conditions.',
+          `Welcome to Stremlist ("Service"), a personal project that shows watchlists and lists kept on other services (${PROVIDER_NAMES}, the "Providers") as catalogs in Stremio. By accessing or using the Service, you agree to be bound by these Terms and Conditions.`,
         ],
       },
       {
@@ -63,74 +63,115 @@ export const LEGAL_SECTIONS: LegalSection[] = [
       {
         title: "1. Information Collection",
         blocks: [
-          "Stremlist collects only what it needs to run the Service: the lists that you add (their Provider and link or ID), your settings, and for each Provider account that you connect, its username and access tokens. We do not ask for names or passwords. Your email address is stored only if you subscribe to the newsletter.",
+          "Stremlist collects only what it needs to run the Service: the lists that you add (their Provider and link or ID), your settings, and for each Provider account that you connect, its username and access tokens. We do not ask for your name, email address or passwords to use the Service. Your email address is stored only if you subscribe to the newsletter.",
         ],
       },
       {
         title: "2. Use of Information",
         blocks: [
-          "Your lists and access tokens are used only to read your lists from the Providers, convert them for Stremio, and perform the Actions that you ask for. They are not used for any other purpose and are not shared with any third parties.",
+          "Your lists and access tokens are used only to read your lists from the Providers, convert them for Stremio, and perform the Actions that you ask for. We do not sell your data or use it for ads. We send data only to the services in section 6, and only what each one needs to do its part.",
         ],
       },
       {
-        title: "3. Data Storage with Supabase",
+        title: "3. Data Storage",
         blocks: [
-          "Stremlist stores data with Supabase (a cloud database built on PostgreSQL) and Cloudflare R2 (cloud storage). We store the following:",
+          "Stremlist stores data with Supabase (a PostgreSQL database) and Cloudflare R2 (file storage). We store the following:",
           [
             {
               label: "Account records:",
-              text: "a random Account ID (the secret part of your Addon URL), the IMDb user ID of installs made before Account IDs existed, creation date, last activity and refresh times, your lists and their settings (titles, sort, filters), your RPDB key if you add one, and your Actions settings.",
+              text: "a random Account ID (the secret part of your Addon URL), the IMDb user ID of installs made before Account IDs existed, creation date, last activity and refresh times, your lists and their settings (titles, sort, filters), your RPDB key if you add one, and your Actions and New titles settings.",
             },
             {
               label: "Connections:",
-              text: "the username and OAuth access tokens of each Provider account that you connect. Tokens are encrypted before they are stored. Disconnecting a Provider deletes them.",
+              text: "the username and OAuth tokens of each Provider account that you connect. Tokens are encrypted with AES-256-GCM before they are stored. When you disconnect a Provider, we ask it to cancel the tokens, then delete them and the data of the private lists that it gave access to.",
             },
             {
               label: "List cache:",
-              text: 'a cached copy of your lists (titles, IDs, metadata). It is refreshed periodically (roughly every 30 minutes) and whenever you use "Refresh now", and it keeps your catalogs available if a Provider is temporarily down. Each refresh overwrites the previous copy rather than keeping a history.',
+              text: 'a cached copy of your lists (titles, IDs, metadata). It refreshes about every 30 minutes and when you use "Refresh now", and it keeps your catalogs available if a Provider is down. Each refresh makes a new copy. Old copies are deleted automatically after about 30 days.',
+            },
+            {
+              label: "New titles history:",
+              text: "for each list, the titles that Stremlist has seen and the dates when they were added to or removed from the list. This history makes the New titles catalog work, and Stremlist keeps it even when that catalog is off. A removed title is forgotten 180 days after it left the list. The history of a list that Stremlist no longer reads is deleted after about 30 days.",
+            },
+            {
+              label: "Letterboxd request log:",
+              text: "when Stremlist reads a Letterboxd page, it can log the request to find problems: the page address, the response status and timing, and for a failed request the start of the response. All failed requests are logged, and about 1 in 100 successful ones. A page address can contain a Letterboxd username. Share link codes are hidden. The log has no Account ID or IP address, and each entry is deleted after 30 days.",
+            },
+            {
+              label: "Server logs:",
+              text: "error logs at Vercel can contain an Account ID or, when a newsletter signup fails, an email address. Vercel keeps these logs for a limited time.",
             },
           ],
-          "Your Addon URL gives access to your Stremlist: anyone who has it can view and change your lists, so keep it private. We do not store passwords, or any data beyond what is needed to provide the Service.",
+          "Your Addon URL gives access to your Stremlist: anyone who has it can view and change your lists, so keep it private. We do not store passwords.",
         ],
       },
       {
-        title: "4. Cookies and Tracking",
+        title: "4. Cookies and Analytics",
         blocks: [
-          "The Stremlist website does not use cookies or any tracking technologies to collect user information.",
+          "The Stremlist website does not set cookies. It uses Vercel Web Analytics to count page visits, which does not use cookies. Your browser keeps a few items for this site: your unsaved changes while you connect a Provider, and the state of your last install, so we can tell you when to reinstall. They stay in your browser.",
         ],
       },
       {
         title: "5. Email Communications",
         blocks: [
-          "Stremlist sends emails only to newsletter subscribers, about new features and service announcements. You can unsubscribe at any time from any newsletter email.",
+          "Stremlist sends emails only to newsletter subscribers, about new features and service announcements. Your email address is kept by Resend, our email service. You can unsubscribe at any time from any newsletter email.",
         ],
       },
       {
         title: "6. Third-Party Services",
         blocks: [
-          "Stremlist interacts with the Providers to read your lists and, when you ask for it, to perform Actions. We do not control and are not responsible for the privacy practices of the Providers. We encourage you to review their privacy policies.",
+          "These services receive data to run Stremlist:",
+          [
+            {
+              label: "Hosting and storage:",
+              text: "Vercel hosts the website and the addon and counts page visits. Supabase and Cloudflare R2 store the data in section 3.",
+            },
+            {
+              label: "Providers:",
+              text: `${PROVIDER_NAMES} receive the links, usernames or tokens that Stremlist needs to read your lists, and the Actions that you ask for.`,
+            },
+            {
+              label: "Title data:",
+              text: "TMDB, Wikidata, JustWatch and Cinemeta (from Stremio) receive title IDs only, to match titles and fill in missing details.",
+            },
+            {
+              label: "Email:",
+              text: "Resend receives your email address if you subscribe to the newsletter.",
+            },
+            {
+              label: "Posters:",
+              text: "if you add an RPDB key, Stremio and the configure page send your key and title IDs to RPDB to load poster images. The configure page preview also loads posters from Stremio's image service.",
+            },
+          ],
+          "We do not control and are not responsible for the privacy practices of these services. We encourage you to review their privacy policies.",
         ],
       },
       {
-        title: "7. Data Security",
+        title: "7. Your Choices",
+        blocks: [
+          `You can remove lists and disconnect Providers at any time on the configure page. To delete your Account and all its data, email us at ${SITE.contact}.`,
+        ],
+      },
+      {
+        title: "8. Data Security",
         blocks: [
           "While we implement reasonable security measures, no method of transmission over the Internet is 100% secure. We cannot guarantee absolute security of your information.",
         ],
       },
       {
-        title: "8. Children's Privacy",
+        title: "9. Children's Privacy",
         blocks: [
           "The Service is not directed to children under 13. We do not knowingly collect personal information from children under 13.",
         ],
       },
       {
-        title: "9. Changes to This Privacy Policy",
+        title: "10. Changes to This Privacy Policy",
         blocks: [
           "We may update our Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page.",
         ],
       },
       {
-        title: "10. Contact Us",
+        title: "11. Contact Us",
         blocks: [
           `If you have any questions about this Privacy Policy, please contact us at ${SITE.contact}.`,
         ],
