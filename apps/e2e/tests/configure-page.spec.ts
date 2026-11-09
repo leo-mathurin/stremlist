@@ -244,6 +244,8 @@ test("removes a List", { tag: "@local" }, async ({ page }) => {
   await page.getByRole("button", { name: "Add an IMDb chart" }).click();
   await page.getByRole("menuitem", { name: /^Box Office \(Weekend\)/ }).click();
   await expect(page.getByText("2 of 10 lists")).toBeVisible();
+  await saveConfigure(page);
+  expect((await getConfig(accountId)).body.lists).toHaveLength(2);
 
   await page
     .getByRole("button", { name: "Remove Box Office (Weekend)" })
@@ -253,6 +255,30 @@ test("removes a List", { tag: "@local" }, async ({ page }) => {
   await saveConfigure(page);
   expect((await getConfig(accountId)).body.lists).toHaveLength(1);
 });
+
+test(
+  "adding and removing an unsaved List leaves nothing to save",
+  { tag: "@local" },
+  async ({ page }) => {
+    const { accountId } = await seedWatchlist();
+    await openConfigure(page, accountId, TITLE);
+    await expect(saveButton(page)).toBeDisabled();
+    await page.getByRole("button", { name: "Add an IMDb chart" }).click();
+    await page
+      .getByRole("menuitem", { name: /^Box Office \(Weekend\)/ })
+      .click();
+    await expect(saveButton(page)).toBeEnabled();
+    await page
+      .getByRole("button", { name: "Remove Box Office (Weekend)" })
+      .click();
+    await expect(saveButton(page)).toBeDisabled();
+    await expect(saveButton(page)).toHaveAttribute(
+      "title",
+      "No changes to save",
+    );
+    expect((await getConfig(accountId)).body.lists).toHaveLength(1);
+  },
+);
 
 test(
   "manual refresh hits the backend and starts the cooldown",
