@@ -400,7 +400,7 @@ test(
     expect(saved.status).toBe(200);
     expect(
       (await api.getManifest(alias)).catalogs.map((catalog) => catalog.name),
-    ).toContain("Renamed");
+    ).toEqual(["Stremlist Renamed", "Stremlist Renamed"]);
     // The private copy is a separate Account.
     expect(shape(await api.getManifest(copy))).toEqual(shape(before));
   },
@@ -627,6 +627,8 @@ test(
       DISABLED_PROVIDERS: "trakt",
     });
     try {
+      // The page completes the authorization on the backend that is off.
+      await routePageTo(page, off.url);
       await comeBack(off.url);
       await expect(page).toHaveURL(configureUrl(accountId));
       await expect(
