@@ -674,7 +674,10 @@ test("an old ?userId link opens the Legacy alias install with a fresh form", asy
   ).toBeVisible();
   await expect(screen.getByText("Test catalog")).toBeVisible();
   await expect(
-    screen.getByRole("heading", "Upgrade to a private URL"),
+    screen.getByRole(
+      "heading",
+      "Stremlist 2.0 is here. Your install still works.",
+    ),
   ).toBeVisible();
   await expect(
     screen.getByText(

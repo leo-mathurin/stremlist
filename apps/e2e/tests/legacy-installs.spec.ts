@@ -145,6 +145,11 @@ for (const [label, key, link] of [
         page.getByText(`Installed with IMDb user ID ${key}`),
       ).toBeVisible();
       await expect(page.getByText("Legacy QA", { exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("heading", {
+          name: "Found your install. It still works.",
+        }),
+      ).toBeVisible();
       expect(creates).toBe(0);
       // The install is unchanged and no other Account answers to the key.
       expect((await getAccountByLegacyAlias(key))?.id).toBe(accountId);
