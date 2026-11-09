@@ -41,6 +41,9 @@ jobs:
       - name: Install dependencies
         run: bun ci
 
+      - name: Test the deploy scripts
+        run: node --test ".github/scripts/*.test.mjs"
+
       - name: Lint, build, and test
         timeout-minutes: 10
         run: bunx turbo run lint build test --log-order=stream

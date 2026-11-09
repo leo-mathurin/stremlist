@@ -1,6 +1,6 @@
 // Read-only access to the production Supabase project through the
 // Management API, shared by the deploy scripts.
-import { appendFileSync, readdirSync } from "node:fs";
+import { appendFileSync, readdirSync, readFileSync } from "node:fs";
 
 const PROJECT_REF = "igbmxubzxjfdbgmawrtr";
 
@@ -42,6 +42,33 @@ export function localMigrations(dir = "supabase/migrations") {
       return { version: match[1], name: match[2] };
     })
     .sort((a, b) => a.version.localeCompare(b.version));
+}
+
+// Extensions that a migration creates. `db push --dry-run` does not run the
+// SQL, so without this check an extension that production cannot install
+// would only fail in the middle of the push.
+export function createdExtensions(sql) {
+  const code = sql.replace(/--.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  const names = new Set();
+  for (const match of code.matchAll(
+    /\bcreate\s+extension\s+(?:if\s+not\s+exists\s+)?"?([a-z0-9_]+)"?/gi,
+  )) {
+    names.add(match[1].toLowerCase());
+  }
+  return [...names].sort();
+}
+
+export function migrationSql({ version, name }, dir = "supabase/migrations") {
+  return readFileSync(`${dir}/${version}_${name}.sql`, "utf8");
+}
+
+// Names come from createdExtensions, so they are [a-z0-9_] only.
+export async function availableExtensions(names) {
+  if (names.length === 0) return [];
+  const list = names.map((name) => `'${name}'`).join(", ");
+  return readOnlyQuery(
+    `select name, default_version, installed_version from pg_available_extensions where name in (${list}) order by name`,
+  );
 }
 
 export async function remoteMigrations() {
