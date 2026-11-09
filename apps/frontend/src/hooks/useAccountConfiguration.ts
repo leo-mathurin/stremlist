@@ -26,7 +26,14 @@ import type {
   ActionProviders,
 } from "../lib/account-config";
 import { api } from "../lib/api";
-import { connectProviderOf, missingConnections } from "../lib/connections";
+import {
+  connectProviderOf,
+  dropDraft,
+  keepDraft,
+  missingConnections,
+  rememberConnectStart,
+  takeDraft,
+} from "../lib/connections";
 import { rowsFromLists } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { buildAddonUrls } from "../lib/list-sources";
@@ -68,46 +75,6 @@ function toastError(err: unknown, options?: { id: string }) {
   );
 }
 
-/** Unsaved edits of an Account, kept across the OAuth round trip of Connect. */
-const CONNECT_DRAFT_STORAGE = "stremlist:connect-draft";
-
-function keepDraft(accountId: string, form: AccountForm): void {
-  try {
-    sessionStorage.setItem(
-      CONNECT_DRAFT_STORAGE,
-      JSON.stringify({ accountId, form }),
-    );
-  } catch {
-    // Storage is off: the edits are lost, as before.
-  }
-}
-
-function dropDraft(): void {
-  try {
-    sessionStorage.removeItem(CONNECT_DRAFT_STORAGE);
-  } catch {
-    // Nothing was kept.
-  }
-}
-
-/** The kept edits of this Account, once: taking them forgets them. */
-function takeDraft(accountId: string): AccountForm | null {
-  try {
-    const raw = sessionStorage.getItem(CONNECT_DRAFT_STORAGE);
-    if (!raw) return null;
-    dropDraft();
-    const draft = JSON.parse(raw) as {
-      accountId?: unknown;
-      form?: AccountForm;
-    };
-    return draft.accountId === accountId && Array.isArray(draft.form?.lists)
-      ? draft.form
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * The configuration of an Account, "notFound", or null when it cannot be
  * read (an answer without Lists included).
@@ -138,7 +105,11 @@ export function useAccountConfiguration(
     accountKey ? "private" : "new",
   );
   const [accountId, setAccountId] = useState<string | null>(null);
-  const [movedAt, setMovedAt] = useState<string | null>(null);
+  /**
+   * The private Account that this page just made from a Legacy alias
+   * install. The old page then stops editing: the user leaves that install.
+   */
+  const [upgradedTo, setUpgradedTo] = useState<string | null>(null);
   const {
     connections,
     syncStateOf,
@@ -216,6 +187,13 @@ export function useAccountConfiguration(
     resetBaseline();
     if (!accountKey) {
       setAccess("new");
+      // Back from a connect that did not complete: the setup it took along.
+      const draft = takeDraft(null);
+      if (draft) {
+        setLists(draft.lists);
+        setRpdbApiKey(draft.rpdbApiKey);
+        setNewTitlesEnabled(draft.newTitlesEnabled);
+      }
       setStatus("ready");
       return;
     }
@@ -235,7 +213,6 @@ export function useAccountConfiguration(
         }
         if (!data) throw new Error("Failed to load configuration");
         if (justCreated) {
-          setMovedAt(data.movedAt);
           applyServerState(data);
           onBaselineLoaded(accountKey, data.lists, justCreated.setup);
           return;
@@ -272,7 +249,6 @@ export function useAccountConfiguration(
         setLists(shown.lists);
         setAccess(data.access);
         setAccountId(data.accountId);
-        setMovedAt(data.movedAt);
         setRpdbApiKey(shown.rpdbApiKey);
         setActionsEnabled(shown.actionsEnabled);
         setActions(shown.actions);
@@ -513,20 +489,18 @@ export function useAccountConfiguration(
     }
   };
 
-  /** Give a Legacy alias install a private Addon URL. Returns the new ID. */
+  /**
+   * Give a Legacy alias install a private Addon URL: a new Account with the
+   * setup that this page shows, unsaved edits included. The legacy install
+   * stays as it is, because its `ur…` ID is public (ADR 0001). Returns the
+   * new ID.
+   */
   const upgrade = async (): Promise<string | null> => {
     if (!accountKey || access !== "legacy") return null;
     try {
-      const res = await api[":accountKey"].upgrade.$post({
-        param: { accountKey },
-      });
-      const body = await res.json();
-      if (!res.ok || !("accountId" in body)) {
-        throw new Error(
-          errorMessage(body, "Failed to create your private URL."),
-        );
-      }
-      return body.accountId;
+      const { accountId: id } = await createAccount();
+      setUpgradedTo(id);
+      return id;
     } catch (err) {
       toastError(err);
       return null;
@@ -534,8 +508,9 @@ export function useAccountConfiguration(
   };
 
   /**
-   * Start the OAuth flow of a Provider. A new setup is saved first, because a
-   * Connection belongs to an Account.
+   * Start the OAuth flow of a Provider. A Connection belongs to an Account:
+   * a new setup gets its Account only when the connection succeeds, with the
+   * setup kept here, so a cancelled connect leaves nothing behind.
    */
   const connect = async (provider: ProviderId) => {
     const label = PROVIDERS[provider].label;
@@ -546,24 +521,27 @@ export function useAccountConfiguration(
       return;
     }
     setConnecting(provider);
-    let id = accountId;
     try {
-      if (id) {
-        // Leaving for the Provider reloads the page: keep the unsaved edits.
-        keepDraft(id, form);
-      } else {
-        id = (await createAccount()).accountId;
-        onAccountCreated(id);
-      }
-      const res = await api[":accountId"].connections[":provider"].start.$post({
-        param: { accountId: id, provider },
-      });
+      // Leaving for the Provider reloads the page: keep the unsaved edits.
+      keepDraft(accountId, form);
+      const res = accountId
+        ? await api[":accountId"].connections[":provider"].start.$post({
+            param: { accountId, provider },
+          })
+        : await api.connections[":provider"].start.$post({
+            param: { provider },
+          });
       const body = await res.json();
       if (!res.ok || !("authorizeUrl" in body)) {
         throw new Error(
           errorMessage(body, `Could not connect ${label}. Please try again.`),
         );
       }
+      rememberConnectStart({
+        provider,
+        accountId,
+        browserKey: body.browserKey,
+      });
       window.location.assign(body.authorizeUrl);
     } catch (err) {
       dropDraft();
@@ -622,7 +600,7 @@ export function useAccountConfiguration(
     setRpdbApiKey,
     access,
     accountId,
-    movedAt,
+    upgradedTo,
     connections,
     connectionSources,
     providerStatus,

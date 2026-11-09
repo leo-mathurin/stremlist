@@ -146,7 +146,6 @@ describe("List CRUD via the config API", () => {
       expect(data).toMatchObject({
         access: "private",
         accountId: account.id,
-        movedAt: null,
         actions: { enabled: true, providers: ["trakt"] },
         connections: [{ provider: "trakt", username: "leo" }],
       });
@@ -344,18 +343,6 @@ describe("List CRUD via the config API", () => {
         "IMDb is temporarily unavailable. Please try again later.",
       );
       expect(normalize).not.toHaveBeenCalled();
-    });
-
-    it("tells a moved legacy install to use its private Addon URL (409)", async () => {
-      db.getTable("accounts")[0].moved_at = new Date().toISOString();
-
-      const res = await postConfig(OWNER, {
-        lists: [{ sourceRef: OWNER, sortOption: "added_at-asc" }],
-      });
-
-      expect(res.status).toBe(409);
-      expect(await res.json()).toMatchObject({ moved: true });
-      expect(rpcMocks.rpc).not.toHaveBeenCalled();
     });
 
     it("does not let a Legacy alias turn Actions on", async () => {

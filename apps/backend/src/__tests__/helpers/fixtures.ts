@@ -1,6 +1,7 @@
 import type { Tables } from "@stremlist/shared/database";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
+import { createHash } from "node:crypto";
 import { encryptSecret } from "../../lib/crypto";
 import { db } from "./mock-supabase";
 
@@ -70,6 +71,36 @@ export function seedConnection(
         ? new Date(Date.now() + 24 * 60 * 60_000).toISOString()
         : (seed.expiresAt?.toISOString() ?? null),
   }) as Tables<"connections">;
+}
+
+/** The browser key of `seedOAuthState`, as the start gave it. */
+const TEST_BROWSER_KEY = "browser-key-1";
+
+/** A pending authorization that the test browser started. */
+export function seedOAuthState(
+  accountId: string | null,
+  provider = "trakt",
+  state = "state-abc",
+) {
+  return db.insert("oauth_states", {
+    state,
+    account_id: accountId,
+    provider,
+    code_verifier: "verifier-xyz",
+    browser_key_hash: createHash("sha256")
+      .update(TEST_BROWSER_KEY)
+      .digest("base64url"),
+    expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+  });
+}
+
+/** The configure page completing that authorization with `code`. */
+export function completeOAuthBody(code = "code-1", state = "state-abc") {
+  return {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ state, code, browserKey: TEST_BROWSER_KEY }),
+  };
 }
 
 export function movie(

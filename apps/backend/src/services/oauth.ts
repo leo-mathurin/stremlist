@@ -44,25 +44,37 @@ function pkceChallenge(verifier: string): string {
   return createHash("sha256").update(verifier).digest("base64url");
 }
 
+function hashBrowserKey(browserKey: string): string {
+  return createHash("sha256").update(browserKey).digest("base64url");
+}
+
 /**
  * Start an authorization: remember the PKCE verifier under a random state and
- * return the Provider's authorize URL.
+ * return the Provider's authorize URL. `accountId` is null for a new setup:
+ * its Account is created only when the connection succeeds.
+ *
+ * The browser that starts the authorization keeps `browserKey` and must send
+ * it to complete the authorization. Only its hash is stored. A consent link
+ * that someone opens in another browser therefore links nothing (OAuth login
+ * CSRF).
  */
 export async function startAuthorization(
-  accountId: string,
+  accountId: string | null,
   provider: ProviderId,
   /** The public origin of this backend (`backendOrigin`). */
   origin: string,
-): Promise<string> {
+): Promise<{ authorizeUrl: string; browserKey: string }> {
   const config = getOAuthConfig(provider);
   const state = randomToken();
   const verifier = randomToken(48);
+  const browserKey = randomToken();
 
   const { error } = await supabase.from("oauth_states").insert({
     state,
     account_id: accountId,
     provider,
     code_verifier: verifier,
+    browser_key_hash: hashBrowserKey(browserKey),
     expires_at: new Date(Date.now() + STATE_TTL_MS).toISOString(),
   });
   if (error) throw error;
@@ -76,19 +88,24 @@ export async function startAuthorization(
   url.searchParams.set("code_challenge_method", "S256");
   if (config.scopes?.length)
     url.searchParams.set("scope", config.scopes.join(" "));
-  return url.toString();
+  return { authorizeUrl: url.toString(), browserKey };
 }
 
-/** Look up and delete a pending authorization. One use only. */
+/**
+ * Look up and delete a pending authorization, only for the browser that
+ * started it (`browserKey`). One use only. Another key leaves it pending.
+ */
 export async function consumeState(
   provider: ProviderId,
   state: string,
-): Promise<{ accountId: string; codeVerifier: string } | null> {
+  browserKey: string,
+): Promise<{ accountId: string | null; codeVerifier: string } | null> {
   const { data, error } = await supabase
     .from("oauth_states")
     .delete()
     .eq("state", state)
     .eq("provider", provider)
+    .eq("browser_key_hash", hashBrowserKey(browserKey))
     .select("*")
     .maybeSingle();
   if (error || !data) return null;

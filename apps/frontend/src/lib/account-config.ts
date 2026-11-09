@@ -12,8 +12,9 @@ export type AccountAccess = "new" | AddonAccess;
 interface AccountEditPolicy {
   /**
    * Why the Lists and settings cannot change here, if they cannot: a Legacy
-   * alias install that already got a private copy. The backend refuses its
-   * changes (409), so the page only offers to make a new private URL.
+   * alias install that this page just copied to a private Addon URL. The
+   * user moves to the new install, so this page stops saving into the old
+   * one. Nothing locks the legacy install itself: its `ur…` ID is public.
    */
   editLock?: string;
   /** Why Actions cannot be turned on here, if they cannot. */
@@ -32,9 +33,10 @@ interface AccountEditPolicy {
 
 export function accountEditPolicy(
   access: AccountAccess,
-  movedAt: string | null,
+  /** The private Account that this page just made from a legacy install. */
+  upgradedTo: string | null,
 ): AccountEditPolicy {
-  const moved = access === "legacy" && !!movedAt;
+  const moved = access === "legacy" && !!upgradedTo;
   const editLock = moved
     ? "This install has a private URL now. Make changes from the configure page of your new install."
     : undefined;

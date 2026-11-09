@@ -98,10 +98,7 @@ async function buildWrite(
       // known episodes, fall back to removing the show, as Simkl's own
       // "Remove from list" does.
       const seasons = new Set<number>();
-      for (const known of await knownItems(
-        connection.accountId,
-        target.imdbId,
-      )) {
+      for (const known of await knownItems(connection, target.imdbId)) {
         for (const episode of known.episodes ?? [])
           seasons.add(Number(episode.split(":")[0]));
       }

@@ -163,7 +163,6 @@ export function connected(
 export const configuration = {
   access: "private",
   accountId,
-  movedAt: null,
   rpdbApiKey: null,
   lists: [row],
   syncStatus: { [row.id]: [syncedStatus(row.sourceRef)] },
@@ -503,7 +502,11 @@ export async function routeConnectStart(browser: Browser) {
     async (route) => {
       starts.push(route.request.method);
       await route.fulfill({
-        json: { ok: true, authorizeUrl: `${backend}/authorize-fixture` },
+        json: {
+          ok: true,
+          authorizeUrl: `${backend}/authorize-fixture`,
+          browserKey: "fixture-browser-key",
+        },
       });
     },
   );

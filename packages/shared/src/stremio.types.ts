@@ -83,8 +83,6 @@ export interface AccountConfigResponse extends AccountSyncSnapshot {
   access: AddonAccess;
   /** The Account ID; only returned for private access. */
   accountId: string | null;
-  /** Legacy alias accounts: when a private copy was made from this install. */
-  movedAt: string | null;
   rpdbApiKey: string | null;
   lists: ConfigList[];
   actions: { enabled: boolean; providers: ProviderId[] };

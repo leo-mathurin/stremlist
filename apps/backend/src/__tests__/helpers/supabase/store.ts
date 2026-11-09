@@ -32,7 +32,6 @@ const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
     last_fetched_at: now(),
     last_cache_served_at: null,
     legacy_imdb_user_id: null,
-    moved_at: null,
     rpdb_api_key: null,
     actions_enabled: false,
     action_providers: [],

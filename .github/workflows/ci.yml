@@ -125,6 +125,9 @@ jobs:
       - name: Test atomic Account and Connection writes
         run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/account_writes.sql
 
+      - name: Test OAuth browser keys and the open legacy upgrade
+        run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/oauth_and_upgrade.sql
+
       - name: Test the shared Letterboxd gate
         run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/letterboxd_gate.sql
 

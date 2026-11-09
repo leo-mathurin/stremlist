@@ -194,8 +194,12 @@ test(
       readQueue: {},
     });
 
-    const { callback } = await backend.authorize(accountId, "trakt");
+    const { callback, completion } = await backend.authorize(
+      accountId,
+      "trakt",
+    );
     expect(callback.status).toBe(302);
+    expect(completion.status).toBe(200);
     expect(await renewalMark(accountId)).toBeNull();
 
     // The callback reads the List again in the background, with the new token.
@@ -301,8 +305,12 @@ test(
     });
 
     // A new authorization reads the private Source list again.
-    const { callback } = await backend.authorize(accountId, "trakt");
+    const { callback, completion } = await backend.authorize(
+      accountId,
+      "trakt",
+    );
     expect(callback.status).toBe(302);
+    expect(completion.status).toBe(200);
     await expect
       .poll(async () => (await syncStatus(accountId)).syncStatus[listId][1], {
         timeout: 15_000,

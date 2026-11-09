@@ -23,6 +23,7 @@ import {
   fitConfigurePage,
   routeConfig,
   routeConnectionSources,
+  parseBody,
 } from "./config-fixture";
 
 // Provider journeys of the configure page: links of every available Provider
@@ -43,28 +44,46 @@ const traktList = {
 
 /**
  * Start the `provider` Connection on `authorizeUrl`, whose OAuth page sends
- * the browser straight back to the configure page with `query`, as the
- * Provider does after the user answers. Returns the start request methods
- * and the authorize page URLs.
+ * the browser straight back the way the backend callback does, with the
+ * Provider's `answer` in the fragment (`code=…` or `oauth_error=…`). The page
+ * then completes the connect with its browser key; `onComplete` runs then.
+ * `key` is the Account that connects, or null for a new setup. Returns the
+ * start request methods, the authorize page URLs and the completions.
  */
 async function routeOAuth(
   browser: Browser,
   provider: string,
   authorizeUrl: string,
-  query: string,
-  onStart = () => {},
+  answer: string,
+  onComplete = () => {},
+  key: string | null = accountId,
 ) {
   const starts: string[] = [];
   const authorized: string[] = [];
+  const completions: Record<string, unknown>[] = [];
   await browser.route(
-    `${backend}/${accountId}/connections/${provider}/start`,
+    key
+      ? `${backend}/${key}/connections/${provider}/start`
+      : `${backend}/connections/${provider}/start`,
     async (route) => {
       starts.push(route.request.method);
-      onStart();
-      await route.fulfill({ json: { ok: true, authorizeUrl } });
+      await route.fulfill({
+        json: { ok: true, authorizeUrl, browserKey: "fixture-browser-key" },
+      });
     },
   );
-  const back = `http://127.0.0.1:4311/configure?account=${accountId}&${query}`;
+  await browser.route(
+    `${backend}/connections/${provider}/complete`,
+    async (route) => {
+      const body = parseBody<Record<string, unknown>>(route);
+      completions.push(body);
+      onComplete();
+      await route.fulfill({
+        json: { ok: true, accountId, created: key === null },
+      });
+    },
+  );
+  const back = `http://127.0.0.1:4311/configure#oauth=${provider}&state=fixture-state&${answer}`;
   await browser.route(
     `${new URL(authorizeUrl).origin}/oauth/**`,
     async (route) => {
@@ -75,7 +94,7 @@ async function routeOAuth(
       });
     },
   );
-  return { starts, authorized };
+  return { starts, authorized, completions };
 }
 
 test("pasted links of every available Provider become Lists of a new setup", async ({
@@ -212,11 +231,13 @@ test("a link that needs a Connection saves the setup, connects, then adds the li
         : { ok: false, reason: "needs_connection", provider: "mdblist" },
   );
   const created = await routeCreateAccount(browser);
-  const { starts, authorized } = await routeOAuth(
+  const { starts, authorized, completions } = await routeOAuth(
     browser,
     "mdblist",
     "https://mdblist.com/oauth/authorize?client_id=fixture&state=fixture-state",
-    "connected=mdblist",
+    "code=fixture-code",
+    () => {},
+    null,
   );
   await routeConfig(browser, {
     ...configuration,
@@ -256,8 +277,15 @@ test("a link that needs a Connection saves the setup, connects, then adds the li
   await expect(screen.getByText("@someone")).toBeVisible();
   await expect(screen.getByText("Your MDBList (@someone)")).toBeVisible();
   await expect(screen.getByRole("button", "Horror nights")).toBeVisible();
-  expect(created).toEqual([
-    { rpdbApiKey: "", lists: [], newTitles: { enabled: false } },
+  // The Account is created only once the connection succeeds, with the setup.
+  expect(created).toEqual([]);
+  expect(completions).toEqual([
+    {
+      state: "fixture-state",
+      code: "fixture-code",
+      browserKey: "fixture-browser-key",
+      setup: { rpdbApiKey: "", lists: [], newTitles: { enabled: false } },
+    },
   ]);
   expect(starts).toEqual(["POST"]);
   expect(authorized).toHaveLength(1);
@@ -279,7 +307,7 @@ test(
       browser,
       "simkl",
       "https://simkl.com/oauth/authorize?client_id=fixture&state=fixture-state",
-      "connected=simkl",
+      "code=fixture-code",
       () => {
         // The user agrees on Simkl: the page that opens next is connected.
         state.config = { ...configuration, connections: [connected("simkl")] };
@@ -376,7 +404,7 @@ test(
       browser,
       "trakt",
       "https://auth.trakt.tv/oauth/authorize?state=again",
-      "connection_error=denied&provider=trakt",
+      "oauth_error=denied",
     );
     await app.open(`/configure?account=${accountId}`);
     await expect(screen.getByText("@someone")).toBeVisible();
@@ -465,9 +493,12 @@ test(
     await captureConfig(browser, legacyConfiguration, imdbUser);
     const newId = "sl_E2eFixtureAccount00003";
     const upgrades: string[] = [];
-    await browser.route(`${backend}/${imdbUser}/upgrade`, async (route) => {
+    // The private copy is a new Account made from what the page shows.
+    await browser.route(`${backend}/accounts`, async (route) => {
       upgrades.push(route.request.method);
-      await route.fulfill({ json: { ok: true, accountId: newId } });
+      await route.fulfill({
+        json: toJson({ ok: true, accountId: newId, lists: [row] }),
+      });
     });
     await browser.route(`${backend}/${newId}/config`, (route) =>
       route.fulfill({ json: toJson({ ...configuration, accountId: newId }) }),
@@ -500,38 +531,6 @@ test(
     expect(upgrades).toEqual(["POST"]);
   },
 );
-
-test("a Legacy alias install that moved to a private URL cannot be changed", async ({
-  app,
-  browser,
-  screen,
-}) => {
-  await captureConfig(
-    browser,
-    { ...legacyConfiguration, movedAt: "2026-10-01T00:00:00.000Z" },
-    imdbUser,
-  );
-  await app.open(`/configure?account=${imdbUser}`);
-  await expect(
-    screen.getByRole("heading", "This install has a private URL now"),
-  ).toBeVisible();
-  await expect(
-    screen
-      .getByText(
-        "This install has a private URL now. Make changes from the configure page of your new install.",
-      )
-      .first(),
-  ).toBeVisible();
-  // Only the hidden floating Save button stays in the page, and it is off.
-  await expect(screen.getByRole("button", "Save", { exact: true })).toHaveCount(
-    1,
-  );
-  await expect(saveButton(screen)).toBeDisabled();
-  await expect(screen.getByLabel(PASTE)).toBeDisabled();
-  await expect(
-    screen.getByRole("button", "Create a new private URL"),
-  ).toBeEnabled();
-});
 
 test("a Provider turned off is unavailable to connect, link or add", async ({
   app,

@@ -38,7 +38,8 @@ interface RawListPage {
 
 interface ListSnapshot {
   version: number;
-  username: string | null;
+  /** The authorization that read the list (`ConnectionAccess`). */
+  authorization: string;
   /** custom_lists.lists.all from /sync/activities when the list was read. */
   gate: string;
   listType?: string;
@@ -128,7 +129,7 @@ export async function fetchCustomList(
   if (
     gate &&
     previous?.version === STATE_VERSION &&
-    previous.username === connection.username &&
+    previous.authorization === connection.authorization &&
     previous.gate === gate &&
     ((previous.listType !== "auto" && !previous.premiumOnly) ||
       Date.now() - previous.fetchedAt < AUTO_LIST_MAX_AGE_MS)
@@ -139,12 +140,15 @@ export async function fetchCustomList(
 
   const token = await connection.getAccessToken();
   const save = (
-    snapshot: Omit<ListSnapshot, "version" | "username" | "gate" | "fetchedAt">,
+    snapshot: Omit<
+      ListSnapshot,
+      "version" | "authorization" | "gate" | "fetchedAt"
+    >,
   ) =>
     gate
       ? writeState(key, {
           version: STATE_VERSION,
-          username: connection.username,
+          authorization: connection.authorization,
           gate,
           fetchedAt: Date.now(),
           ...snapshot,

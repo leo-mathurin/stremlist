@@ -19,7 +19,6 @@ export type Database = {
           last_cache_served_at: string | null;
           last_fetched_at: string;
           legacy_imdb_user_id: string | null;
-          moved_at: string | null;
           new_titles_catalog: boolean;
           prewarm_lease_token: string | null;
           prewarm_locked_until: string;
@@ -35,7 +34,6 @@ export type Database = {
           last_cache_served_at?: string | null;
           last_fetched_at?: string;
           legacy_imdb_user_id?: string | null;
-          moved_at?: string | null;
           new_titles_catalog?: boolean;
           prewarm_lease_token?: string | null;
           prewarm_locked_until?: string;
@@ -51,7 +49,6 @@ export type Database = {
           last_cache_served_at?: string | null;
           last_fetched_at?: string;
           legacy_imdb_user_id?: string | null;
-          moved_at?: string | null;
           new_titles_catalog?: boolean;
           prewarm_lease_token?: string | null;
           prewarm_locked_until?: string;
@@ -460,7 +457,8 @@ export type Database = {
       };
       oauth_states: {
         Row: {
-          account_id: string;
+          account_id: string | null;
+          browser_key_hash: string;
           code_verifier: string;
           created_at: string;
           expires_at: string;
@@ -468,7 +466,8 @@ export type Database = {
           state: string;
         };
         Insert: {
-          account_id: string;
+          account_id?: string | null;
+          browser_key_hash: string;
           code_verifier: string;
           created_at?: string;
           expires_at: string;
@@ -476,7 +475,8 @@ export type Database = {
           state: string;
         };
         Update: {
-          account_id?: string;
+          account_id?: string | null;
+          browser_key_hash?: string;
           code_verifier?: string;
           created_at?: string;
           expires_at?: string;
@@ -636,31 +636,6 @@ export type Database = {
           p_provider: string;
         };
         Returns: boolean;
-      };
-      copy_legacy_account: {
-        Args: { p_legacy_id: string };
-        Returns: {
-          action_providers: string[];
-          actions_enabled: boolean;
-          created_at: string;
-          id: string;
-          is_active: boolean;
-          last_cache_served_at: string | null;
-          last_fetched_at: string;
-          legacy_imdb_user_id: string | null;
-          moved_at: string | null;
-          new_titles_catalog: boolean;
-          prewarm_lease_token: string | null;
-          prewarm_locked_until: string;
-          prewarm_request_generation: number;
-          rpdb_api_key: string | null;
-        };
-        SetofOptions: {
-          from: "*";
-          to: "accounts";
-          isOneToOne: true;
-          isSetofReturn: false;
-        };
       };
       create_account_with_config: {
         Args: {

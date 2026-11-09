@@ -1,103 +1,30 @@
 import { isProviderId } from "@stremlist/shared/providers";
 import { Hono } from "hono";
-import { scheduleBackgroundTask } from "../lib/background";
-import { backendOrigin, frontendUrl } from "../lib/urls";
-import { getProvider, isProviderEnabled } from "../providers/registry";
-import { resetConnectionCaches } from "../services/actions";
-import { saveConnection } from "../services/connections";
-import { rereadConnectionLists } from "../services/lists";
-import { consumeState, exchangeCode, redirectUri } from "../services/oauth";
+import { frontendUrl } from "../lib/urls";
 
 const oauth = new Hono();
 
 /**
- * The redirect URI registered with every Provider app. Exchanges the code
- * (PKCE), stores the encrypted Connection, then sends the user back to the
- * configure page.
+ * The redirect URI registered with every Provider app. It completes nothing:
+ * it hands the answer to the configure page in the URL fragment, which never
+ * reaches a server or a Referer. The page completes the authorization only
+ * if this browser started it (`POST /connections/:provider/complete` with
+ * its browser key), so a consent link sent to someone else links nothing.
  */
-oauth.get("/oauth/:provider/callback", async (c) => {
+oauth.get("/oauth/:provider/callback", (c) => {
   const provider = c.req.param("provider");
   const { code, state, error } = c.req.query();
-  const back = (accountId: string | null, params: Record<string, string>) => {
-    const url = new URL("/configure", frontendUrl());
-    if (accountId) url.searchParams.set("account", accountId);
-    for (const [key, value] of Object.entries(params)) {
-      url.searchParams.set(key, value);
-    }
-    return c.redirect(url.toString());
-  };
-
+  const url = new URL("/configure", frontendUrl());
   if (!isProviderId(provider) || !state) {
-    return back(null, { connection_error: "invalid_request" });
+    url.searchParams.set("connection_error", "invalid_request");
+    return c.redirect(url.toString());
   }
-  const pending = await consumeState(provider, state);
-  if (!pending) {
-    return back(null, { connection_error: "expired", provider });
-  }
-  if (error || !code) {
-    return back(pending.accountId, {
-      connection_error: error === "access_denied" ? "denied" : "failed",
-      provider,
-    });
-  }
-  // Turned off (kill switch) since the authorization started.
-  if (!isProviderEnabled(provider)) {
-    return back(pending.accountId, {
-      connection_error: "unavailable",
-      provider,
-    });
-  }
-
-  try {
-    const redirect = redirectUri(provider, backendOrigin(c));
-    const tokens = await exchangeCode(
-      provider,
-      code,
-      pending.codeVerifier,
-      redirect,
-    );
-    let username: string | null = null;
-    try {
-      username =
-        (await getProvider(provider).oauth?.fetchUsername?.(
-          tokens.accessToken,
-        )) ?? null;
-    } catch (usernameError) {
-      console.error(
-        `Fetching the ${provider} username failed:`,
-        usernameError instanceof Error ? usernameError.message : usernameError,
-      );
-    }
-    await saveConnection(
-      pending.accountId,
-      provider,
-      tokens,
-      username,
-      redirect,
-    );
-    // What Stremlist stored for the previous authorization (Action
-    // membership, the Provider's own snapshots) may be another Provider
-    // user's. Then Lists that failed without the Connection (or with the
-    // refused one) read through the new one.
-    scheduleBackgroundTask(async () => {
-      try {
-        await resetConnectionCaches(pending.accountId, provider);
-      } catch (forgetError) {
-        console.error(
-          `Forgetting the previous ${provider} connection state failed:`,
-          forgetError instanceof Error ? forgetError.message : forgetError,
-        );
-      }
-      await rereadConnectionLists(pending.accountId, provider);
-    });
-    return back(pending.accountId, { connected: provider });
-  } catch (exchangeError) {
-    console.error(
-      `Completing the ${provider} connection failed:`,
-      exchangeError instanceof Error ? exchangeError.message : exchangeError,
-    );
-    return back(pending.accountId, { connection_error: "failed", provider });
-  }
+  const answer = new URLSearchParams({ oauth: provider, state });
+  if (code && !error) answer.set("code", code);
+  else
+    answer.set("oauth_error", error === "access_denied" ? "denied" : "failed");
+  url.hash = answer.toString();
+  return c.redirect(url.toString());
 });
 
 export default oauth;
