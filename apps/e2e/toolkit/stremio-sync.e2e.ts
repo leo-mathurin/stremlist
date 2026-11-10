@@ -8,6 +8,8 @@ import {
   accountId,
   backend,
   captureConfig,
+  configuration,
+  gatedSaves,
   holdToasts,
   saveButton,
   toJson,
@@ -385,6 +387,33 @@ test("with Stremio linked, a catalog save updates Stremio by itself", async ({
   expect(stremio.calls).not.toContain("link");
 });
 
+test("an edit made during the save still lets Stremio get what was saved", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  await preparePage(browser, { linked: true });
+  const { submissions, release } = await gatedSaves(browser, configuration);
+  const stremio = await routeStremio(browser);
+  await openConfigure(app, screen);
+  await expect(
+    screen.getByText("Stremio updates automatically", { exact: false }),
+  ).toBeVisible();
+
+  await changeCatalogs(screen);
+  stremio.served = servedManifest;
+  await saveButton(screen).tap();
+  await expect(saveButton(screen, "Saving")).toBeVisible();
+  // A sort change while the save runs leaves unsaved edits behind.
+  await screen.getByRole("combobox", "Sort order").tap();
+  await screen.getByRole("option", "IMDb Rating (Highest First)").tap();
+  release();
+
+  await expect(screen.getByText(UPDATED)).toBeVisible();
+  expect(submissions).toHaveLength(1);
+  expect(stremlistEntry(stremio.collection)?.manifest).toEqual(servedManifest);
+});
+
 test("an expired Stremio code can be replaced by a new one", async ({
   app,
   screen,
@@ -525,8 +554,18 @@ test("another Stremio account can be linked when this one has no Stremlist", asy
   ).toBeVisible();
 
   await screen.getByRole("button", "Use another Stremio account").tap();
+  // A code links the account signed in on stremio.com: change it first.
+  await expect(
+    screen.getByText("Connect another Stremio account"),
+  ).toBeVisible();
+  await expect(screen.getByRole("link", "Open stremio.com")).toHaveAttribute(
+    "href",
+    "https://www.stremio.com/acc-settings",
+  );
+  expect(await storedConnection(browser)).toBeNull();
+  expect(stremio.calls).not.toContain("logout");
+  await screen.getByRole("button", "Get a code").tap();
   await expect(screen.getByText(WAITING)).toBeVisible();
-  await expect.poll(() => storedConnection(browser)).toBeNull();
   // The other account has this Stremlist installed.
   stremio.collection = [cinemeta, installed];
   stremio.approved = true;

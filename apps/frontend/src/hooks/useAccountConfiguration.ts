@@ -466,7 +466,6 @@ export function useAccountConfiguration(
         toast.success("Saved! Stremlist is updating Stremio.", {
           id: "configuration-save",
         });
-        void stremio.update();
       } else if (needsReinstall) {
         toast.success(
           "Saved! Reinstall Stremlist in Stremio to see your changes.",
@@ -491,6 +490,8 @@ export function useAccountConfiguration(
           { id: "configuration-save" },
         );
       }
+      // Also with edits made during the save: Stremio gets what was saved.
+      if (needsReinstall && stremio.connection) void stremio.update();
     } catch (err) {
       toastError(err, { id: "configuration-save" });
     } finally {

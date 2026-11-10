@@ -19,7 +19,12 @@ export type StremioLinkState =
   | { kind: "idle" }
   /** Waiting for the member to confirm the code on stremio.com. */
   | { kind: "waiting"; link: string | null }
-  | { kind: "expired" };
+  | { kind: "expired" }
+  /**
+   * Before linking another account: a code links the account signed in on
+   * stremio.com, so the member changes it there first.
+   */
+  | { kind: "switching" };
 
 export type StremioSyncState =
   | { kind: "idle" }
@@ -206,11 +211,13 @@ export function useStremioSync(
     setSync({ kind: "idle" });
   }, [forget]);
 
-  /** The linked account is the wrong one: link another. */
+  /** The linked account is the wrong one: forget it, then link another. */
   const switchAccount = useCallback(() => {
+    linkRun.current++;
     forget();
-    void connect();
-  }, [forget, connect]);
+    setSync({ kind: "idle" });
+    setLink({ kind: "switching" });
+  }, [forget]);
 
   const retry = useCallback(() => update(connection), [update, connection]);
 

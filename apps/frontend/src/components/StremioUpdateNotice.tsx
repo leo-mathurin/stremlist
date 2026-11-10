@@ -353,6 +353,50 @@ function OutdatedCard({
 function LinkCard({ stremio }: { stremio: StremioSync }) {
   const { link } = stremio;
 
+  if (link.kind === "switching") {
+    return (
+      <section
+        role="status"
+        className={cn(
+          "space-y-3 rounded-3xl bg-white p-4 ring-1 ring-black/10 sm:p-5",
+          ENTER,
+        )}
+      >
+        <div>
+          <p className="font-bold">Connect another Stremio account</p>
+          <p className="mt-0.5 text-sm text-pretty text-black/55">
+            Stremio connects the account that is signed in on stremio.com. Sign
+            out there, sign in with the other account, then get a code.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void stremio.connect()}
+            className={DARK_BUTTON}
+          >
+            Get a code
+          </button>
+          <a
+            href="https://www.stremio.com/acc-settings"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={LIGHT_BUTTON}
+          >
+            Open stremio.com
+          </a>
+          <button
+            type="button"
+            onClick={stremio.cancelLink}
+            className={LIGHT_BUTTON}
+          >
+            Cancel
+          </button>
+        </div>
+      </section>
+    );
+  }
+
   if (link.kind === "expired") {
     return (
       <section
