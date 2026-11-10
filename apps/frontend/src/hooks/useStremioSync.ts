@@ -115,22 +115,20 @@ export function useStremioSync(
     async (quiet: boolean) => {
       if (!accountId) return;
       if (!quiet) setSync({ kind: "updating" });
-      let res: Response;
+      let result: "updated" | "unchanged" | "missing";
       try {
-        res = await api[":accountId"].stremio.update.$post({
+        const res = await api[":accountId"].stremio.update.$post({
           param: { accountId },
         });
+        if (!res.ok) {
+          fail(failureOf(res), quiet);
+          return;
+        }
+        ({ result } = (await res.json()) as { result: typeof result });
       } catch {
         fail("unavailable", quiet);
         return;
       }
-      if (!res.ok) {
-        fail(failureOf(res), quiet);
-        return;
-      }
-      const { result } = (await res.json()) as {
-        result: "updated" | "unchanged" | "missing";
-      };
       if (result === "missing") {
         fail("missing", quiet);
         return;

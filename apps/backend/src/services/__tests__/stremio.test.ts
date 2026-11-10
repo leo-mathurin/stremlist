@@ -256,6 +256,13 @@ describe("linking with a Stremio code", () => {
     await assert.rejects(readLinkCode("AB12", down), StremioUnavailableError);
   });
 
+  test("refuses a code that the link token cannot carry", async () => {
+    const odd = answering({
+      result: { code: "AB-12", link: "https://link.stremio.com/AB-12" },
+    });
+    await assert.rejects(createLinkCode(odd), StremioUnavailableError);
+  });
+
   test("refuses a code answer without an https page", async () => {
     const odd = answering({
       result: { code: "AB12", link: "javascript:alert(1)" },

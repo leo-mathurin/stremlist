@@ -103,6 +103,9 @@ export interface LinkCode {
   link: string;
 }
 
+/** The codes that Stremlist's link token can carry (`stremio-link.ts`). */
+const LINK_CODE = /^[A-Za-z0-9]{1,32}$/;
+
 /** Asks Stremio for a code that the member confirms on stremio.com. */
 export async function createLinkCode(
   fetchImpl: Fetch = fetch,
@@ -113,7 +116,11 @@ export async function createLinkCode(
     link?: string;
   }>;
   const { code, link } = answer.result ?? {};
-  if (!response.ok || !code || !link?.startsWith("https://")) {
+  // A code in another format could never be confirmed: report it now.
+  if (!response.ok || !code || !LINK_CODE.test(code)) {
+    throw new StremioUnavailableError();
+  }
+  if (!link?.startsWith("https://")) {
     throw new StremioUnavailableError();
   }
   return { code, link };

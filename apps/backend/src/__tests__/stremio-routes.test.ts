@@ -365,6 +365,23 @@ describe("updating the installed Stremlist", () => {
     expect(db.getTable("stremio_connections")).toHaveLength(0);
   });
 
+  it("disconnects even when an update holds the lease too long", async () => {
+    fakeStremio([cinemeta]);
+    for (const row of db.getTable("stremio_connections")) {
+      row.update_locked_until = "2100-01-01T00:00:00.000Z";
+    }
+    // Each read of the clock moves it 10 s on: the 25 s wait is over soon.
+    const start = Date.now();
+    let calls = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => start + calls++ * 10_000);
+    const res = await app.request(`/${accountId}/stremio`, {
+      method: "DELETE",
+    });
+    vi.restoreAllMocks();
+    expect(res.status).toBe(200);
+    expect(db.getTable("stremio_connections")).toHaveLength(0);
+  });
+
   it("keeps the link when Stremio does not answer", async () => {
     const stremio = fakeStremio([cinemeta, await installed()]);
     stremio.failure = "down";
