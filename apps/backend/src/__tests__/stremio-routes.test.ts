@@ -58,6 +58,10 @@ function fakeStremio(collection: Addon[]) {
     calls: [] as string[],
     /** Runs before each API answer, to change the world meanwhile. */
     meanwhile: () => {},
+    /** While set, the next api.strem.io answer waits for it. */
+    hold: null as Promise<void> | null,
+    /** How many api.strem.io answers waited. */
+    held: 0,
   };
   const respond = (input: string | URL, init?: RequestInit): Response => {
     const url = new URL(String(input));
@@ -97,12 +101,14 @@ function fakeStremio(collection: Addon[]) {
     }
     throw new Error(`Unexpected Stremio call ${method}`);
   };
-  vi.stubGlobal("fetch", (input: string | URL, init?: RequestInit) => {
-    try {
-      return Promise.resolve(respond(input, init));
-    } catch (error) {
-      return Promise.reject(error as Error);
+  vi.stubGlobal("fetch", async (input: string | URL, init?: RequestInit) => {
+    if (stremio.hold && new URL(String(input)).host === "api.strem.io") {
+      const hold = stremio.hold;
+      stremio.hold = null;
+      stremio.held++;
+      await hold;
     }
+    return respond(input, init);
   });
   return stremio;
 }
@@ -124,11 +130,22 @@ async function installed(): Promise<Addon> {
   };
 }
 
+/** Asks for a code, as the configure page does. */
+async function startLink(account = accountId) {
+  const res = await postJson(`/${account}/stremio/link`, {});
+  return (await res.json()) as { link: string; token: string };
+}
+
+function confirmLink(token: string, account = accountId) {
+  return postJson(`/${account}/stremio/link/confirm`, { token });
+}
+
 /** Links the Stremio account through the code page, as a member would. */
 async function seedStremioLink() {
   const stremio = fakeStremio([]);
+  const { token } = await startLink();
   stremio.approved = true;
-  await postJson(`/${accountId}/stremio/link/AB12`, {});
+  await confirmLink(token);
   vi.unstubAllGlobals();
 }
 
@@ -150,18 +167,15 @@ afterEach(() => {
 describe("linking a Stremio account", () => {
   it("keeps the session key encrypted on the server and shows only the email", async () => {
     const stremio = fakeStremio([]);
-    const start = await postJson(`/${accountId}/stremio/link`, {});
-    expect(await start.json()).toEqual({
-      code: "AB12",
-      link: "https://link.stremio.com/AB12",
-    });
+    const start = await startLink();
+    expect(start.link).toBe("https://link.stremio.com/AB12");
 
-    const waiting = await postJson(`/${accountId}/stremio/link/AB12`, {});
+    const waiting = await confirmLink(start.token);
     expect(await waiting.json()).toEqual({ stremio: null });
     expect(db.getTable("stremio_connections")).toHaveLength(0);
 
     stremio.approved = true;
-    const linked = await postJson(`/${accountId}/stremio/link/AB12`, {});
+    const linked = await confirmLink(start.token);
     expect(await linked.json()).toEqual({ stremio: { email: EMAIL } });
 
     const [row] = db.getTable("stremio_connections");
@@ -172,6 +186,34 @@ describe("linking a Stremio account", () => {
     const body = await config.json();
     expect(body.stremio).toEqual({ email: EMAIL });
     expect(JSON.stringify(body)).not.toContain(SESSION);
+  });
+
+  it("links only the Account that asked for the code", async () => {
+    const stremio = fakeStremio([]);
+    const { token } = await startLink();
+    stremio.approved = true;
+    const other = seedAccount().id;
+    const res = await confirmLink(token, other);
+    expect(res.status).toBe(410);
+    expect(db.getTable("stremio_connections")).toHaveLength(0);
+    // A token made up from the code alone is refused too.
+    const forged = await confirmLink(
+      `AB12.${Date.now() + 60_000}.${"A".repeat(43)}`,
+    );
+    expect(forged.status).toBe(410);
+    expect(stremio.calls).toEqual(["create"]);
+  });
+
+  it("stops asking about a code after ten minutes", async () => {
+    const stremio = fakeStremio([]);
+    const { token } = await startLink();
+    stremio.approved = true;
+    const later = Date.now() + 11 * 60_000;
+    vi.spyOn(Date, "now").mockReturnValue(later);
+    const res = await confirmLink(token);
+    vi.restoreAllMocks();
+    expect(res.status).toBe(410);
+    expect(db.getTable("stremio_connections")).toHaveLength(0);
   });
 
   it("is refused through a Legacy alias", async () => {
@@ -232,6 +274,47 @@ describe("updating the installed Stremlist", () => {
     const res = await postJson(`/${accountId}/stremio/install`, {});
     expect(await res.json()).toEqual({ result: "updated" });
     expect(stremio.collection).toEqual([cinemeta, await installed()]);
+  });
+
+  it("runs one update at a time, so the last save reaches Stremio", async () => {
+    const stremio = fakeStremio([cinemeta, await installed()]);
+    let release = () => {};
+    stremio.hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const rename = (catalogTitle: string) =>
+      postConfig(accountId, {
+        lists: [
+          {
+            id: LIST_IDS[0],
+            sourceRef: OWNER,
+            catalogTitle,
+            sortOption: "added_at-asc",
+          },
+        ],
+      });
+
+    await rename("First");
+    const first = update();
+    await vi.waitFor(() => {
+      expect(stremio.held).toBe(1);
+    });
+    // The second update starts while the first waits for Stremio. Without
+    // one update at a time, it would write first, and the first would
+    // undo it.
+    await rename("Second");
+    const second = update();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    release();
+
+    const results = await Promise.all(
+      (await Promise.all([first, second])).map((res) => res.json()),
+    );
+    expect(results).toEqual([{ result: "updated" }, { result: "updated" }]);
+    expect(stremio.collection).toEqual([cinemeta, await installed()]);
+    expect(JSON.stringify(stremio.collection[1].manifest.catalogs)).toContain(
+      "Second",
+    );
   });
 
   it("keeps the link when Stremio does not answer", async () => {

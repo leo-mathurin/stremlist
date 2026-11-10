@@ -27,6 +27,7 @@ import {
 
 const ADDON_URL = `${backend}/${accountId}/manifest.json`;
 const LINK = "https://link.stremio.com/E2E1";
+const TOKEN = `E2E1.4102444800000.${"s".repeat(43)}`;
 const EMAIL = "member@example.com";
 const MANUAL_KEY = "stremlist:stremio-manual";
 
@@ -113,6 +114,10 @@ async function routeStremio(browser: Browser, start: StremioStart = {}) {
     served: start.served ?? installedManifest,
     approved: false,
     failure: null as Failure,
+    /** Stremio gives no code. */
+    noCode: false,
+    /** While set, each update waits for it. */
+    updateGate: null as Promise<void> | null,
     calls: [] as string[],
     submissions,
     get linked() {
@@ -137,9 +142,16 @@ async function routeStremio(browser: Browser, start: StremioStart = {}) {
     const path = new URL(route.request.url).pathname.split("/stremio/")[1];
     if (path === "link") {
       stremio.calls.push("create");
-      return route.fulfill({ json: { code: "E2E1", link: LINK } });
+      if (stremio.noCode) {
+        return route.fulfill({ status: 502, json: { reason: "unavailable" } });
+      }
+      return route.fulfill({ json: { link: LINK, token: TOKEN } });
     }
-    if (path === "link/E2E1") {
+    if (path === "link/confirm") {
+      const { token } = JSON.parse(route.request.postData ?? "{}") as {
+        token?: string;
+      };
+      if (token !== TOKEN) throw new Error(`Unexpected link token ${token}`);
       stremio.calls.push("read");
       if (stremio.approved) setLinked(true);
       return route.fulfill({
@@ -173,6 +185,7 @@ async function routeStremio(browser: Browser, start: StremioStart = {}) {
       return route.fulfill({ json: { result: "updated" } });
     }
     if (path !== "update") throw new Error(`Unexpected Stremio route ${path}`);
+    if (stremio.updateGate) await stremio.updateGate;
     if (at < 0) return route.fulfill({ json: { result: "missing" } });
     const current = stremio.collection[at].manifest;
     if (JSON.stringify(current) === JSON.stringify(stremio.served)) {
@@ -194,26 +207,54 @@ async function routeStremio(browser: Browser, start: StremioStart = {}) {
  * lets the test move the clock forward, and starts with the manual choice
  * remembered when asked.
  */
-async function preparePage(browser: Browser, start: { manual?: boolean } = {}) {
+async function preparePage(
+  browser: Browser,
+  start: { manual?: boolean; blockTabs?: boolean } = {},
+) {
   await holdToasts(browser);
   await browser.addInitScript(
-    ({ manual, manualKey }) => {
+    ({ manual, manualKey, blockTabs }) => {
       const page = window as unknown as {
         e2eTabs: { location: { href: string }; opener: unknown }[];
         e2eClockOffset: number;
+        e2eUpdates: { running: number; most: number };
       };
       page.e2eTabs = [];
       page.e2eClockOffset = 0;
+      // How many Stremio updates this page has waiting at the same time.
+      page.e2eUpdates = { running: 0, most: 0 };
+      const send = window.fetch.bind(window);
+      window.fetch = async (input, init) => {
+        const url =
+          input instanceof Request
+            ? input.url
+            : new URL(input, location.href).href;
+        if (!url.endsWith("/stremio/update")) return send(input, init);
+        const updates = page.e2eUpdates;
+        updates.running++;
+        updates.most = Math.max(updates.most, updates.running);
+        try {
+          return await send(input, init);
+        } finally {
+          updates.running--;
+        }
+      };
       const now = Date.now.bind(Date);
       Date.now = () => now() + page.e2eClockOffset;
       window.open = () => {
+        // An in-app browser can refuse new tabs.
+        if (blockTabs) return null;
         const tab = { location: { href: "" }, opener: window, close() {} };
         page.e2eTabs.push(tab);
         return tab as unknown as Window;
       };
       if (manual) localStorage.setItem(manualKey, "1");
     },
-    { manual: !!start.manual, manualKey: MANUAL_KEY },
+    {
+      manual: !!start.manual,
+      manualKey: MANUAL_KEY,
+      blockTabs: !!start.blockTabs,
+    },
   );
 }
 
@@ -294,10 +335,16 @@ test("a catalog save offers both ways, and linking Stremio updates the install",
   // once Stremio is linked.
   await expect(screen.getByText(UPDATED)).toBeVisible({ timeout: 15_000 });
   await expect(
-    screen.getByText("reload it to see your changes"),
+    screen.getByText(
+      "Reload Stremio Web or restart the app to see your changes",
+    ),
   ).toBeVisible();
   await expect(screen.getByText(SAVED_REINSTALL)).toHaveCount(0);
   await expect(screen.getByText(CHOICE)).toHaveCount(0);
+  // The account menu stays next to the result.
+  await screen.getByRole("button", UPDATED).tap();
+  await expect(screen.getByRole("menuitem", "Disconnect")).toBeVisible();
+  await browser.keyboard.press("Escape");
   // Only the Stremlist entry changed, in place, with the saved catalogs.
   expect(stremio.collection).toEqual([
     cinemeta,
@@ -587,6 +634,108 @@ test("an edit made during the save still lets Stremio get what was saved", async
   await expect(screen.getByText(UPDATED)).toBeVisible();
   // The toast still says that edits are left to save.
   await expect(screen.getByText(SAVED_WITH_CHANGES)).toBeVisible();
+});
+
+test("a save made while Stremio updates becomes one more update", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  await preparePage(browser);
+  const stremio = await routeStremio(browser, { linked: true });
+  await openConfigure(app, screen);
+  await expect(screen.getByText(LINKED)).toBeVisible();
+  expect(stremio.calls).toEqual(["update"]);
+
+  let release = () => {};
+  stremio.updateGate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await changeCatalogs(screen);
+  stremio.served = servedManifest;
+  await saveButton(screen).tap();
+  await expect.poll(() => stremio.calls.length).toBe(2);
+
+  // A second save while the first update waits for Stremio: no second
+  // request at the same time.
+  await screen.getByRole("button", "Settings for Test catalog").tap();
+  await screen.getByLabel("Catalog title").fill("Renamed catalog");
+  const renamed = {
+    ...servedManifest,
+    catalogs: servedManifest.catalogs.map((catalog) =>
+      catalog.id === "watchlist"
+        ? { ...catalog, name: "Renamed catalog" }
+        : catalog,
+    ),
+  };
+  stremio.served = renamed;
+  await saveButton(screen).tap();
+  await expect.poll(() => stremio.submissions.length).toBe(2);
+  // The save ended (nothing left to save) while the first update waits.
+  await expect(saveButton(screen)).toBeDisabled();
+
+  stremio.updateGate = null;
+  release();
+  await expect(screen.getByText(UPDATED)).toBeVisible();
+  // One more update after the first, with the last save.
+  await expect
+    .poll(() => stremio.calls.filter((call) => call === "update").length)
+    .toBe(3);
+  expect(stremlistEntry(stremio.collection)?.manifest).toEqual(renamed);
+  expect(
+    await browser.evaluate(
+      () =>
+        (window as unknown as { e2eUpdates: { most: number } }).e2eUpdates.most,
+    ),
+  ).toBe(1);
+});
+
+test("when Stremio gives no code, the card says so and a new try works", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  await preparePage(browser);
+  const stremio = await routeStremio(browser);
+  await openConfigure(app, screen);
+  await changeCatalogs(screen);
+  stremio.served = servedManifest;
+  await saveButton(screen).tap();
+
+  stremio.noCode = true;
+  await screen.getByRole("button", "Update it for me").tap();
+  await expect(screen.getByText("Stremio did not give a code")).toBeVisible();
+  await expect(
+    screen.getByText("Saved, but Stremio did not get the update"),
+  ).toHaveCount(0);
+
+  stremio.noCode = false;
+  await screen.getByRole("button", "Try again").tap();
+  await expect(screen.getByText(WAITING)).toBeVisible();
+  stremio.approved = true;
+  await expect(screen.getByText(UPDATED)).toBeVisible({ timeout: 15_000 });
+});
+
+test("a browser that blocks the Stremio tab still offers the Stremio page", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  await preparePage(browser, { blockTabs: true });
+  const stremio = await routeStremio(browser);
+  await openConfigure(app, screen);
+  await changeCatalogs(screen);
+  stremio.served = servedManifest;
+  await saveButton(screen).tap();
+
+  await screen.getByRole("button", "Update it for me").tap();
+  await expect(screen.getByText("Confirm in Stremio")).toBeVisible();
+  await expect(screen.getByRole("link", "Open Stremio")).toHaveAttribute(
+    "href",
+    LINK,
+  );
+  stremio.approved = true;
+  await expect(screen.getByText(UPDATED)).toBeVisible({ timeout: 15_000 });
 });
 
 test("an expired Stremio code can be replaced by a new one", async ({

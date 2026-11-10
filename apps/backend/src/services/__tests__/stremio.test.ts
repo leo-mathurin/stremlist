@@ -186,6 +186,27 @@ describe("updating the installed Stremlist", () => {
     );
     assert.deepEqual(state.collection, [stremlist("Old")]);
   });
+
+  test("counts an accepted write when only the check gets no answer", async () => {
+    const { state, fetchImpl } = fakeStremio([cinemeta, stremlist("Old")]);
+    let reads = 0;
+    const checkDown = ((input: string | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/addonCollectionGet") && ++reads === 2) {
+        return Promise.resolve(new Response("busy", { status: 503 }));
+      }
+      return fetchImpl(input, init);
+    }) as typeof fetch;
+    assert.equal(
+      await updateInstalledStremlist(
+        KEY,
+        ADDON_URL,
+        manifest("Renamed"),
+        checkDown,
+      ),
+      "updated",
+    );
+    assert.deepEqual(state.collection, [cinemeta, stremlist("Renamed")]);
+  });
 });
 
 describe("installing Stremlist again", () => {
@@ -225,6 +246,14 @@ describe("linking with a Stremio code", () => {
       result: { success: true, authKey: KEY },
     });
     assert.equal(await readLinkCode("AB12", approved), KEY);
+  });
+
+  test("tells an outage of the code page apart from a pending code", async () => {
+    const down = (() =>
+      Promise.resolve(
+        Response.json({ error: { message: "busy" } }, { status: 503 }),
+      )) as typeof fetch;
+    await assert.rejects(readLinkCode("AB12", down), StremioUnavailableError);
   });
 
   test("refuses a code answer without an https page", async () => {

@@ -8,7 +8,7 @@ An Account edits the Lists that become its Stremio Catalogs and keeps those sett
 - `configuration.merge` merges Source lists, deduplicates Titles, moves sources out, and enforces Account limits.
 - `configuration.save` preserves edits during pending or failed saves and detects changes from another window.
 - `configuration.reinstall` asks for a reinstall when the installed manifest changes.
-- `configuration.stremio-update` offers to link a Stremio account instead, then updates the installed Stremlist on each catalog save. It covers the code page, expiry, outages, a signed-out session, a removed install, another account, disconnecting, the repair on page load, and a Legacy alias install, which only reinstalls by hand.
+- `configuration.stremio-update` offers to link a Stremio account instead, then updates the installed Stremlist on each catalog save. It covers the code page, expiry, a code that Stremio does not give, a browser that blocks the Stremio tab, outages, a save during an update (one update at a time), a signed-out session, a removed install, another account, disconnecting, the repair on page load, and a Legacy alias install, which only reinstalls by hand.
 
 ## How to get to it (user POV)
 
@@ -19,7 +19,7 @@ Open `/configure` for a new setup or `/configure?account=...` for an existing Ac
 Preconditions: use the toolkit's seeded Lists. Integration specs create their own Accounts and cache objects.
 
 - Run `bun run test:toolkit:replay`. `toolkit/ui.e2e.ts`, `save-refresh.e2e.ts`, `configuration-recovery.e2e.ts`, and `merged-lists.e2e.ts` check visible edits and exact submitted values. Use the first exact `Save` button, as the floating button has the same name.
-- `toolkit/stremio-sync.e2e.ts` answers the backend's `/:accountId/stremio/*` routes over a Stremio account in memory and asserts the written addon collection: only the Stremlist entry changes, in place. The backend keeps the key (ADR 0002): `src/__tests__/stremio-routes.test.ts` covers its encryption, the forgotten signed-out key and the real collection edits, and `src/services/__tests__/stremio.test.ts` covers the Stremio client.
+- `toolkit/stremio-sync.e2e.ts` answers the backend's `/:accountId/stremio/*` routes over a Stremio account in memory and asserts the written addon collection: only the Stremlist entry changes, in place. The backend keeps the key (ADR 0002): `src/__tests__/stremio-routes.test.ts` covers its encryption, the link token bound to the Account, the update lease, the forgotten signed-out key and the real collection edits, and `src/services/__tests__/stremio.test.ts` covers the Stremio client.
 - Run `CI=1 bun run --filter @stremlist/e2e test:e2e --project=local tests/merged-lists.spec.ts --grep 'merging two Lists on the configure page saves and survives a reload' --trace on`. Require the merge, saved Source lists, and the same structure after reload.
 - For the full affected backend behavior, run `CI=1 bun run --filter @stremlist/e2e test:e2e --project=local tests/merged-lists.spec.ts tests/configure-page.spec.ts tests/configuration-transitions.spec.ts tests/catalog-features.spec.ts --trace on`. Require stored values, deduplicated Catalog Titles, and invalid merges leaving saved data intact.
 

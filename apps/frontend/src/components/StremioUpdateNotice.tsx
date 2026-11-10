@@ -148,50 +148,62 @@ export function StremioStatus({ stremio }: { stremio: StremioSync }) {
           <Loader2 className="size-3.5 shrink-0 animate-spin" />
           Updating Stremio…
         </p>
-      ) : sync.kind === "updated" ? (
-        <p
-          key="updated"
+      ) : (
+        // The menu stays after an update, to disconnect or check the account.
+        <div
+          key={sync.kind}
           className={cn("flex flex-wrap items-center gap-x-1.5", ENTER)}
         >
-          <Check
-            className="size-3.5 shrink-0 text-emerald-600"
-            strokeWidth={3}
-          />
-          <span className="font-semibold text-ink">Stremio updated</span>
-          <span aria-hidden="true">·</span>
-          <span>reload it to see your changes</span>
-        </p>
-      ) : (
-        <DropdownMenu>
-          <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 outline-none transition-colors duration-150 hover:bg-black/5 hover:text-ink focus-visible:ring-[3px] focus-visible:ring-brand/50 data-[state=open]:bg-black/5 data-[state=open]:text-ink">
-            <MonitorPlay className="size-3.5 shrink-0" />
-            Updates Stremio on save
-            <ChevronDown className="size-3.5 shrink-0" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-64 p-1.5">
-            <div className="px-2 py-1.5 text-sm">
-              <p className="font-bold text-ink">Stremio updates on save</p>
-              <p className="text-pretty text-black/55">
-                {connection.email ? (
-                  <>
-                    Connected as{" "}
-                    <span className="text-ink">
-                      {maskEmail(connection.email)}
-                    </span>
-                  </>
-                ) : (
-                  "Your catalog changes reach Stremio when you save."
-                )}
-              </p>
-            </div>
-            <DropdownMenuItem
-              onSelect={() => void stremio.disconnect()}
-              className="font-semibold"
-            >
-              Disconnect
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+          <DropdownMenu>
+            <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 outline-none transition-colors duration-150 hover:bg-black/5 hover:text-ink focus-visible:ring-[3px] focus-visible:ring-brand/50 data-[state=open]:bg-black/5 data-[state=open]:text-ink pointer-coarse:min-h-11">
+              {sync.kind === "updated" ? (
+                <>
+                  <Check
+                    className="size-3.5 shrink-0 text-emerald-600"
+                    strokeWidth={3}
+                  />
+                  <span className="font-semibold text-ink">
+                    Stremio updated
+                  </span>
+                </>
+              ) : (
+                <>
+                  <MonitorPlay className="size-3.5 shrink-0" />
+                  Updates Stremio on save
+                </>
+              )}
+              <ChevronDown className="size-3.5 shrink-0" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64 p-1.5">
+              <div className="px-2 py-1.5 text-sm">
+                <p className="font-bold text-ink">Stremio updates on save</p>
+                <p className="text-pretty text-black/55">
+                  {connection.email ? (
+                    <>
+                      Connected as{" "}
+                      <span className="text-ink">
+                        {maskEmail(connection.email)}
+                      </span>
+                    </>
+                  ) : (
+                    "Your catalog changes reach Stremio when you save."
+                  )}
+                </p>
+              </div>
+              <DropdownMenuItem
+                onSelect={() => void stremio.disconnect()}
+                className="font-semibold"
+              >
+                Disconnect
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {sync.kind === "updated" && (
+            <span>
+              Reload Stremio Web or restart the app to see your changes
+            </span>
+          )}
+        </div>
       )}
     </div>
   );
@@ -440,6 +452,42 @@ function LinkCard({ stremio }: { stremio: StremioSync }) {
     );
   }
 
+  if (link.kind === "failed") {
+    return (
+      <section
+        role="alert"
+        className={cn(
+          "space-y-3 rounded-3xl bg-white p-4 ring-1 ring-black/10 sm:p-5",
+          ENTER,
+        )}
+      >
+        <div>
+          <p className="font-bold">Stremio did not give a code</p>
+          <p className="mt-0.5 text-sm text-pretty text-black/55">
+            Stremio did not answer. Nothing changed in your Stremio account. Try
+            again in a moment.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void stremio.connect()}
+            className={DARK_BUTTON}
+          >
+            Try again
+          </button>
+          <button
+            type="button"
+            onClick={stremio.cancelLink}
+            className={LIGHT_BUTTON}
+          >
+            Cancel
+          </button>
+        </div>
+      </section>
+    );
+  }
+
   if (link.kind === "expired") {
     return (
       <section
@@ -492,12 +540,14 @@ function LinkCard({ stremio }: { stremio: StremioSync }) {
             className="size-4 shrink-0 animate-spin text-black/40"
             aria-hidden="true"
           />
-          Confirm in the Stremio tab
+          {link.opened ? "Confirm in the Stremio tab" : "Confirm in Stremio"}
         </p>
         <p className="text-sm text-pretty text-black/55">
-          Sign in to Stremio in the tab we opened. If you are already signed in
-          there, Stremlist connects at once. You never type your Stremio
-          password on Stremlist.
+          {link.opened
+            ? "Sign in to Stremio in the tab we opened."
+            : "Open Stremio and sign in."}{" "}
+          If you are already signed in there, Stremlist connects at once. You
+          never type your Stremio password on Stremlist.
         </p>
       </div>
       <div className="flex gap-2">
@@ -506,9 +556,9 @@ function LinkCard({ stremio }: { stremio: StremioSync }) {
             href={link.link}
             target="_blank"
             rel="noopener noreferrer"
-            className={LIGHT_BUTTON}
+            className={link.opened ? LIGHT_BUTTON : DARK_BUTTON}
           >
-            Open Stremio again
+            {link.opened ? "Open Stremio again" : "Open Stremio"}
           </a>
         )}
         <button

@@ -97,4 +97,35 @@ export const connectionRpcs: Partial<Record<string, RpcHandler>> = {
     row.refresh_lease_token = null;
     return { data: true, error: null };
   },
+
+  claim_stremio_update(args) {
+    const row = findStremioLink(args);
+    if (!row) return { data: "none", error: null };
+    if (String(row.update_locked_until) > now()) {
+      return { data: "busy", error: null };
+    }
+    row.update_locked_until = secondsFromNow(
+      args.p_lease_seconds as number,
+      1,
+      120,
+    );
+    row.update_lease_token = args.p_lease_token;
+    return { data: "claimed", error: null };
+  },
+
+  release_stremio_update(args) {
+    const row = findStremioLink(args);
+    if (!row || row.update_lease_token !== args.p_lease_token) {
+      return { data: false, error: null };
+    }
+    row.update_locked_until = EPOCH;
+    row.update_lease_token = null;
+    return { data: true, error: null };
+  },
 };
+
+function findStremioLink(args: RpcArgs): Row | undefined {
+  return db
+    .getTable("stremio_connections")
+    .find((row) => row.account_id === args.p_account_id);
+}

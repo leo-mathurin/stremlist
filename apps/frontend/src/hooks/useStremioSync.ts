@@ -5,9 +5,14 @@ import { api } from "@/lib/api";
 
 export type StremioLinkState =
   | { kind: "idle" }
-  /** Waiting for the member to confirm the code on stremio.com. */
-  | { kind: "waiting"; link: string | null }
+  /**
+   * Waiting for the member to confirm the code on stremio.com. `opened`:
+   * the Stremio tab opened. In-app browsers can refuse it.
+   */
+  | { kind: "waiting"; link: string | null; opened: boolean }
   | { kind: "expired" }
+  /** Stremio gave no code. */
+  | { kind: "failed" }
   /**
    * Before linking another account: a code links the account signed in on
    * stremio.com, so the member changes it there first.
@@ -45,8 +50,23 @@ function writeManual(value: boolean) {
   }
 }
 
+/**
+ * Waits `ms`, or less when the member comes back to this tab: a phone
+ * pauses background tabs, and the code may be confirmed by then.
+ */
 const wait = (ms: number) =>
-  new Promise<void>((resolve) => setTimeout(resolve, ms));
+  new Promise<void>((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      resolve();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") done();
+    };
+    const timer = setTimeout(done, ms);
+    document.addEventListener("visibilitychange", onVisible);
+  });
 
 /** Why a Stremio request failed, from the backend's answer. */
 function failureOf(res: Response): Exclude<StremioFailure, "missing"> {
@@ -90,12 +110,9 @@ export function useStremioSync(
     );
   }, []);
 
-  /**
-   * Gives Stremio the saved catalogs. A quiet check (on load) stays silent
-   * when nothing changed or Stremio does not answer.
-   */
-  const update = useCallback(
-    async (quiet = false) => {
+  /** One update request. See `update`. */
+  const requestUpdate = useCallback(
+    async (quiet: boolean) => {
       if (!accountId) return;
       if (!quiet) setSync({ kind: "updating" });
       let res: Response;
@@ -125,6 +142,40 @@ export function useStremioSync(
     [accountId, fail],
   );
 
+  const running = useRef<Promise<void> | null>(null);
+  /** The update asked for while one runs: quiet only if every ask was. */
+  const queued = useRef<boolean | null>(null);
+
+  /**
+   * Gives Stremio the saved catalogs. A quiet check (on load) stays silent
+   * when nothing changed or Stremio does not answer. One update runs at a
+   * time; asks made meanwhile become one more update after it, which the
+   * backend builds from the last save.
+   */
+  const update = useCallback(
+    (quiet = false): Promise<void> => {
+      if (!accountId) return Promise.resolve();
+      if (running.current) {
+        if (!quiet) setSync({ kind: "updating" });
+        queued.current = (queued.current ?? true) && quiet;
+        return running.current;
+      }
+      const run = (async () => {
+        let next: boolean | null = quiet;
+        while (next !== null) {
+          queued.current = null;
+          await requestUpdate(next);
+          next = queued.current;
+        }
+      })().finally(() => {
+        running.current = null;
+      });
+      running.current = run;
+      return run;
+    },
+    [accountId, requestUpdate],
+  );
+
   /**
    * Links a Stremio account. Opens the Stremio tab at once, inside the click,
    * so a popup blocker lets it through, then points it at the code page.
@@ -133,29 +184,27 @@ export function useStremioSync(
     if (!accountId) return;
     const run = ++linkRun.current;
     const tab = window.open("", "_blank");
-    setLink({ kind: "waiting", link: null });
+    setLink({ kind: "waiting", link: null, opened: tab !== null });
     setSync({ kind: "idle" });
-    let code: { code: string; link: string } | null = null;
+    let code: { link: string; token: string } | null = null;
     try {
       const res = await api[":accountId"].stremio.link.$post({
         param: { accountId },
       });
-      if (res.ok) code = (await res.json()) as { code: string; link: string };
+      if (res.ok) code = (await res.json()) as { link: string; token: string };
     } catch {
       // Handled below, as a refused code.
     }
     if (!code || run !== linkRun.current) {
       tab?.close();
-      if (run !== linkRun.current) return;
-      setLink({ kind: "idle" });
-      setSync({ kind: "failed", reason: "unavailable" });
+      if (run === linkRun.current) setLink({ kind: "failed" });
       return;
     }
     if (tab) {
       tab.opener = null;
       tab.location.href = code.link;
     }
-    setLink({ kind: "waiting", link: code.link });
+    setLink({ kind: "waiting", link: code.link, opened: tab !== null });
 
     const deadline = Date.now() + LINK_TIMEOUT_MS;
     while (Date.now() < deadline) {
@@ -163,9 +212,12 @@ export function useStremioSync(
       if (run !== linkRun.current) return;
       let linked: StremioLink | null = null;
       try {
-        const res = await api[":accountId"].stremio.link[":code"].$post({
-          param: { accountId, code: code.code },
+        const res = await api[":accountId"].stremio.link.confirm.$post({
+          param: { accountId },
+          json: { token: code.token },
         });
+        // The token is too old: no answer can link it any more.
+        if (res.status === 410) break;
         if (res.ok) {
           ({ stremio: linked } = (await res.json()) as {
             stremio: StremioLink | null;

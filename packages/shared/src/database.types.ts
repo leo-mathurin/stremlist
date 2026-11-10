@@ -499,6 +499,8 @@ export type Database = {
           auth_key: string;
           created_at: string;
           email: string | null;
+          update_lease_token: string | null;
+          update_locked_until: string;
           updated_at: string;
         };
         Insert: {
@@ -506,6 +508,8 @@ export type Database = {
           auth_key: string;
           created_at?: string;
           email?: string | null;
+          update_lease_token?: string | null;
+          update_locked_until?: string;
           updated_at?: string;
         };
         Update: {
@@ -513,6 +517,8 @@ export type Database = {
           auth_key?: string;
           created_at?: string;
           email?: string | null;
+          update_lease_token?: string | null;
+          update_locked_until?: string;
           updated_at?: string;
         };
         Relationships: [
@@ -669,6 +675,14 @@ export type Database = {
         };
         Returns: boolean;
       };
+      claim_stremio_update: {
+        Args: {
+          p_account_id: string;
+          p_lease_seconds: number;
+          p_lease_token: string;
+        };
+        Returns: string;
+      };
       create_account_with_config: {
         Args: {
           p_lists: Json;
@@ -818,6 +832,10 @@ export type Database = {
           p_lease_token: string;
           p_provider: string;
         };
+        Returns: boolean;
+      };
+      release_stremio_update: {
+        Args: { p_account_id: string; p_lease_token: string };
         Returns: boolean;
       };
       replace_account_config: {

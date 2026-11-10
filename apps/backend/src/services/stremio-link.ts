@@ -1,5 +1,12 @@
 import type { StremioLink } from "@stremlist/shared/stremio.types";
-import { decryptSecret, encryptSecret } from "../lib/crypto";
+import { randomUUID } from "node:crypto";
+import {
+  EncryptionKeyError,
+  decryptSecret,
+  encryptSecret,
+  hasValidSignature,
+  signValue,
+} from "../lib/crypto";
 import { supabase } from "../lib/supabase";
 import type { AccountAccess } from "./accounts";
 import { buildAccountManifest } from "./addon-manifest";
@@ -7,6 +14,7 @@ import type { UpdateResult } from "./stremio";
 import {
   StremioSessionError,
   StremioUnavailableError,
+  createLinkCode,
   getStremioEmail,
   installStremlist,
   readLinkCode,
@@ -55,7 +63,9 @@ async function readKey(
   if (!data) throw new StremioNotLinkedError();
   try {
     return { authKey: decryptSecret(data.auth_key), sealed: data.auth_key };
-  } catch {
+  } catch (error) {
+    // A server without its encryption key must not forget every link.
+    if (error instanceof EncryptionKeyError) throw error;
     // A key sealed with a retired encryption key: link again.
     await forgetStremioLink(accountId, data.auth_key);
     throw new StremioSessionError();
@@ -79,15 +89,59 @@ export async function forgetStremioLink(
   if (error) throw error;
 }
 
+const LINK_TOKEN_PURPOSE = "stremio-link";
+/** How long the page may ask about one code. */
+const LINK_TOKEN_TTL_MS = 10 * 60_000;
+
+/** The code was not issued to this Account, or is too old. */
+export class StremioLinkTokenError extends Error {
+  constructor() {
+    super("This Stremio code is not valid for this Account.");
+    this.name = "StremioLinkTokenError";
+  }
+}
+
 /**
- * Links the Stremio account that confirmed `code`, or answers null while
- * the member has not confirmed it. A new link replaces the previous one.
+ * A code for the member to confirm on Stremio's page, and a token that only
+ * this Account can use to ask about it. The code itself never goes in a URL
+ * of Stremlist, so request logs do not keep it.
  */
-export async function linkWithCode(
+export async function startStremioLink(
   accountId: string,
-  code: string,
+): Promise<{ link: string; token: string }> {
+  const { code, link } = await createLinkCode();
+  const expiresAt = Date.now() + LINK_TOKEN_TTL_MS;
+  const payload = `${code}.${expiresAt}`;
+  const signature = signValue(LINK_TOKEN_PURPOSE, `${accountId}.${payload}`);
+  return { link, token: `${payload}.${signature}` };
+}
+
+function codeOf(accountId: string, token: string): string {
+  const [code, expiresAt, signature, ...rest] = token.split(".");
+  if (rest.length > 0 || !code || !expiresAt || !signature) {
+    throw new StremioLinkTokenError();
+  }
+  const valid = hasValidSignature(
+    LINK_TOKEN_PURPOSE,
+    `${accountId}.${code}.${expiresAt}`,
+    signature,
+  );
+  if (!valid || Number(expiresAt) < Date.now()) {
+    throw new StremioLinkTokenError();
+  }
+  return code;
+}
+
+/**
+ * Links the Stremio account that confirmed the code of `token`, or answers
+ * null while the member has not confirmed it. A new link replaces the
+ * previous one.
+ */
+export async function linkWithToken(
+  accountId: string,
+  token: string,
 ): Promise<StremioLink | null> {
-  const authKey = await readLinkCode(code);
+  const authKey = await readLinkCode(codeOf(accountId, token));
   if (!authKey) return null;
   const email = await getStremioEmail(authKey).catch(() => null);
   const { error } = await supabase.from("stremio_connections").upsert(
@@ -103,25 +157,76 @@ export async function linkWithCode(
   return { email };
 }
 
-/** Runs `write` with the stored key; a signed-out key is forgotten. */
-async function withKey<T>(
+/** Longer than one update: three Stremio calls of up to 10 s each. */
+const UPDATE_LEASE_SECONDS = 45;
+/** How long a request waits for the update before it. */
+const UPDATE_WAIT_MS = 25_000;
+const UPDATE_RETRY_MS = 250;
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Runs `write` while no other update of this Account runs, on any server.
+ * Each update reads the collection and then writes it, so two at once could
+ * leave Stremio with the older save.
+ */
+async function withUpdateLease<T>(
   accountId: string,
-  write: (authKey: string) => Promise<T>,
+  write: () => Promise<T>,
 ): Promise<T> {
-  const { authKey, sealed } = await readKey(accountId);
-  try {
-    return await write(authKey);
-  } catch (error) {
-    if (error instanceof StremioSessionError) {
-      await forgetStremioLink(accountId, sealed);
+  const token = randomUUID();
+  const deadline = Date.now() + UPDATE_WAIT_MS;
+  for (;;) {
+    const { data, error } = await supabase.rpc("claim_stremio_update", {
+      p_account_id: accountId,
+      p_lease_seconds: UPDATE_LEASE_SECONDS,
+      p_lease_token: token,
+    });
+    if (error) throw new StremioUnavailableError("Cannot lock the update.");
+    if (data === "none") throw new StremioNotLinkedError();
+    if (data === "claimed") break;
+    if (Date.now() >= deadline) {
+      throw new StremioUnavailableError("Another update is still running.");
     }
-    throw error;
+    await sleep(UPDATE_RETRY_MS);
+  }
+  try {
+    return await write();
+  } finally {
+    const { error } = await supabase.rpc("release_stremio_update", {
+      p_account_id: accountId,
+      p_lease_token: token,
+    });
+    // The lease ends on its own.
+    if (error) console.error("Failed to release the Stremio update:", error);
   }
 }
 
 /**
+ * Runs `write` with the stored key, one update at a time; a signed-out key
+ * is forgotten.
+ */
+async function withKey<T>(
+  accountId: string,
+  write: (authKey: string) => Promise<T>,
+): Promise<T> {
+  return withUpdateLease(accountId, async () => {
+    const { authKey, sealed } = await readKey(accountId);
+    try {
+      return await write(authKey);
+    } catch (error) {
+      if (error instanceof StremioSessionError) {
+        await forgetStremioLink(accountId, sealed);
+      }
+      throw error;
+    }
+  });
+}
+
+/**
  * Gives the installed Stremlist the manifest of the last save. The manifest
- * is built when the update runs, so a later save is never undone by an
+ * is built inside the update lease, so a later save is never undone by an
  * earlier update.
  */
 export async function updateStremio(

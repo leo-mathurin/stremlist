@@ -74,6 +74,8 @@ const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
   oauth_states: () => ({ created_at: now() }),
   stremio_connections: () => ({
     email: null,
+    update_locked_until: EPOCH,
+    update_lease_token: null,
     created_at: now(),
     updated_at: now(),
   }),

@@ -3,20 +3,33 @@ import {
   createDecipheriv,
   createHmac,
   randomBytes,
+  timingSafeEqual,
 } from "node:crypto";
 
 const VERSION = "v1";
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
 
+/** The server has no usable CONNECTION_ENCRYPTION_KEY: a setup error. */
+export class EncryptionKeyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EncryptionKeyError";
+  }
+}
+
 function encryptionKey(): Buffer {
   const encoded = process.env.CONNECTION_ENCRYPTION_KEY;
   if (!encoded) {
-    throw new Error("Missing CONNECTION_ENCRYPTION_KEY environment variable");
+    throw new EncryptionKeyError(
+      "Missing CONNECTION_ENCRYPTION_KEY environment variable",
+    );
   }
   const key = Buffer.from(encoded, "base64");
   if (key.length !== 32) {
-    throw new Error("CONNECTION_ENCRYPTION_KEY must be 32 bytes in base64");
+    throw new EncryptionKeyError(
+      "CONNECTION_ENCRYPTION_KEY must be 32 bytes in base64",
+    );
   }
   return key;
 }
@@ -71,6 +84,26 @@ export function decryptSecret(stored: string): string {
     decipher.update(raw.subarray(IV_BYTES + TAG_BYTES)),
     decipher.final(),
   ]).toString("utf8");
+}
+
+/**
+ * A URL-safe HMAC of `value`, for tokens that the backend hands out and
+ * checks later. `purpose` keeps the tokens of one use invalid for another.
+ */
+export function signValue(purpose: string, value: string): string {
+  return createHmac("sha256", encryptionKey())
+    .update(`${purpose}\n${value}`, "utf8")
+    .digest("base64url");
+}
+
+export function hasValidSignature(
+  purpose: string,
+  value: string,
+  signature: string,
+): boolean {
+  const expected = Buffer.from(signValue(purpose, value));
+  const given = Buffer.from(signature);
+  return expected.length === given.length && timingSafeEqual(expected, given);
 }
 
 /** URL-safe random string, for OAuth `state` and PKCE verifiers. */

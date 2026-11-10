@@ -7,13 +7,14 @@ import { backendOrigin } from "../../lib/urls";
 import {
   StremioSessionError,
   StremioUnavailableError,
-  createLinkCode,
 } from "../../services/stremio";
 import {
+  StremioLinkTokenError,
   StremioNotLinkedError,
   forgetStremioLink,
   installInStremio,
-  linkWithCode,
+  linkWithToken,
+  startStremioLink,
   updateStremio,
 } from "../../services/stremio-link";
 import { requireAccess } from "./access";
@@ -21,8 +22,8 @@ import { requireAccess } from "./access";
 const accountParam = z.object({
   accountId: z.string().regex(ACCOUNT_ID_PATTERN),
 });
-const codeParam = accountParam.extend({
-  code: z.string().regex(/^[A-Za-z0-9]{1,32}$/),
+const linkBody = z.object({
+  token: z.string().regex(/^[A-Za-z0-9]{1,32}\.\d{1,16}\.[A-Za-z0-9_-]{43}$/),
 });
 
 /** Why a Stremio request failed, as the configure page names it. */
@@ -60,26 +61,31 @@ const stremio = new Hono()
       const access = await requireAccess(c, accountId, { privateOnly: true });
       if (access instanceof Response) return access;
       try {
-        const { code, link } = await createLinkCode();
-        return c.json({ code, link });
+        return c.json(await startStremioLink(accountId));
       } catch (error) {
         return failure(c, error);
       }
     },
   )
 
-  // Asked every few seconds while the member confirms the code.
+  // Asked every few seconds while the member confirms the code. The token
+  // stays in the body: request logs keep URLs.
   .post(
-    "/:accountId/stremio/link/:code",
-    zValidator("param", codeParam),
+    "/:accountId/stremio/link/confirm",
+    zValidator("param", accountParam),
+    zValidator("json", linkBody),
     async (c) => {
-      const { accountId, code } = c.req.valid("param");
+      const { accountId } = c.req.valid("param");
+      const { token } = c.req.valid("json");
       const access = await requireAccess(c, accountId, { privateOnly: true });
       if (access instanceof Response) return access;
       try {
-        const link = await linkWithCode(accountId, code);
+        const link = await linkWithToken(accountId, token);
         return c.json({ stremio: link });
       } catch (error) {
+        if (error instanceof StremioLinkTokenError) {
+          return c.json({ reason: "expired" as const }, 410);
+        }
         return failure(c, error);
       }
     },

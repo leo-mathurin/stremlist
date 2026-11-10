@@ -132,6 +132,8 @@ export async function readLinkCode(
     fetchImpl,
     `${LINK_API}/read?type=Read&code=${encodeURIComponent(code)}`,
   );
+  // A pending code is an answer with an error, not an HTTP error.
+  if (!response.ok) throw new StremioUnavailableError();
   const answer = (await readJson(response)) as ApiAnswer<{ authKey?: string }>;
   const authKey = answer.result?.authKey;
   return typeof authKey === "string" && authKey ? authKey : null;
@@ -222,7 +224,10 @@ export type UpdateResult =
 
 /**
  * Gives the installed Stremlist `manifest`, built from the last save. Reads
- * the collection just before the write and checks it after.
+ * the collection just before the write and checks it after. The caller runs
+ * one update at a time per Account (`stremio-link.ts`). Another Stremio app
+ * that writes the collection between the read and the write can still lose
+ * its change: Stremio has no conditional write (ADR 0002).
  */
 export async function updateInstalledStremlist(
   authKey: string,
@@ -244,7 +249,14 @@ export async function updateInstalledStremlist(
   );
   await setCollection(authKey, next, fetchImpl);
 
-  const written = await getCollection(authKey, fetchImpl);
+  // Stremio accepted the write. A check that gets no answer does not undo it.
+  const written = await getCollection(authKey, fetchImpl).catch(
+    (error: unknown) => {
+      if (error instanceof StremioUnavailableError) return null;
+      throw error;
+    },
+  );
+  if (!written) return "updated";
   const entry = written.find((addon) => isThisStremlist(addon, addonUrl));
   if (!entry || !sameJson(entry.manifest, manifest)) {
     throw new StremioUnavailableError("Stremio did not keep the update.");

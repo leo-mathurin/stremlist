@@ -2,9 +2,9 @@
 
 Stremio reads an addon's catalogs and resources only at install time. A save that changes them asked the member to reinstall Stremlist: open the Addon URL, Uninstall, open it again, Install. Stremlist now offers a second way, free and optional: link a Stremio account once, and each such save updates the installed Stremlist in the member's Stremio addon collection. The reinstall stays available in every state.
 
-The member links the account with Stremio's own code page, the one Stremio uses to sign in a TV (`link.stremio.com`). The backend asks Stremio for the code, and the configure page opens the code page and asks the backend every 2 seconds whether the member confirmed it. Once confirmed, the backend reads the Stremio session key, encrypts it with `CONNECTION_ENCRYPTION_KEY` (AES-256-GCM, as for OAuth tokens) and stores it in `stremio_connections`, one row per Account. The configure page only ever sees the account's email.
+The member links the account with Stremio's own code page, the one Stremio uses to sign in a TV (`link.stremio.com`). The backend asks Stremio for the code and gives the configure page the code page and a token: the code and an expiry, signed with an HMAC bound to the Account. The configure page opens the code page and sends the token to the backend every 2 seconds, in the request body, to ask whether the member confirmed it. Another Account cannot use the token, it expires after 10 minutes, and the code never appears in a Stremlist URL or request log. Once confirmed, the backend reads the Stremio session key, encrypts it with `CONNECTION_ENCRYPTION_KEY` (AES-256-GCM, as for OAuth tokens) and stores it in `stremio_connections`, one row per Account. The configure page only ever sees the account's email.
 
-After a save that changes the manifest, the configure page asks the backend to update Stremio. The backend builds the Account's manifest from the database, reads the collection (`api.strem.io`), replaces the manifest of the one entry whose Addon URL matches this Account, writes the collection, and reads it again to check the write. Private Account IDs only: a Legacy alias install keeps the manual reinstall.
+After a save that changes the manifest, the configure page asks the backend to update Stremio. One update runs at a time per Account: the page waits for its update to end before it sends the next, and the backend takes a lease on the `stremio_connections` row (`claim_stremio_update`), as for OAuth token refreshes. Inside the lease, the backend builds the Account's manifest from the database, reads the collection (`api.strem.io`), replaces the manifest of the one entry whose Addon URL matches this Account, writes the collection, and reads it again to check the write. Private Account IDs only: a Legacy alias install keeps the manual reinstall.
 
 ## Considered options
 
@@ -18,6 +18,9 @@ After a save that changes the manifest, the configure page asks the backend to u
 - A Stremio app left open keeps its own copy of the collection and writes all of it back on its next addon change, which can restore the older Stremlist manifest. With a linked account, the configure page asks for an update once per load; the backend writes only when the manifests differ.
 - Stremio apps read the collection when they start: the member reloads Stremio Web or restarts the app to see the update.
 - A Stremlist removed in Stremio is reported, never added back without the member's request.
+- Stremio has no conditional write. If another Stremio app changes the collection between Stremlist's read and write (under 2 s), that change is lost. Stremio's own apps write the collection the same way. The lease prevents this between Stremlist's own updates only.
+- Stremio publishes no rate limit for `api.strem.io`, and every call leaves from Vercel's `fra1` addresses. Each update makes 1 to 3 calls, each code confirmation 1. A limit per Account and per address on these routes is a follow-up if Stremio starts to refuse calls.
+- A missing or invalid `CONNECTION_ENCRYPTION_KEY` fails the request and keeps the links. Only a key that does not decrypt with the current encryption key is forgotten.
 - Deleting the Account deletes the link (`ON DELETE CASCADE`).
 
 ## Evidence
@@ -30,3 +33,4 @@ A controlled test on the owner's account on 2026-11-10, with a backup and a rest
 - Stremio Web did not show the change in an open tab for 2 minutes. After a reload, it showed it within 7 s, on the board and in its local profile.
 - A Stremio Web tab opened before an update wrote its older Stremlist manifest back when the member removed another addon in it.
 - An invalid key answers `{"error":{"code":1,"message":"Session does not exist"}}`.
+- Safari on the iOS 27.2 simulator (2026-11-10) loaded the code page in the tab that the click opened, with the address set 1.5 s later. The configure page kept asking every 2 to 3 s while it was in the background.
