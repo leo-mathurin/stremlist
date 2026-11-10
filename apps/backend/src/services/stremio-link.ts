@@ -262,7 +262,8 @@ export async function installInStremio(
 /**
  * Disconnects Stremio. Waits for a running update, so its write cannot
  * land after the member links Stremio again. An update that holds the lease
- * too long (a stopped server) does not keep the member from disconnecting.
+ * past the wait (a stopped server, or a very slow Stremio) does not keep the
+ * member from disconnecting.
  */
 export async function disconnectStremio(accountId: string): Promise<void> {
   try {

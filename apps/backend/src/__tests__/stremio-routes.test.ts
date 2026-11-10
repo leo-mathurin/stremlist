@@ -327,7 +327,7 @@ describe("updating the installed Stremlist", () => {
     await vi.waitFor(() => {
       expect(stremio.held).toBe(1);
     });
-    // This request reads the Account now, then waits for the first update.
+    // This request waits for the first update.
     const second = update();
     await new Promise((resolve) => setTimeout(resolve, 100));
     for (const row of db.getTable("accounts")) {
