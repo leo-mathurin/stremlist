@@ -9,6 +9,7 @@ import {
   backend,
   captureConfig,
   configuration,
+  dragSecondAboveFirst,
   gatedSaves,
   holdToasts,
   saveButton,
@@ -31,7 +32,9 @@ const TOGGLE = "Show newly detected titles";
 const NEEDS_REINSTALL = "These changes need a reinstall.";
 const CHOICE = "Update Stremio with your changes";
 const UPDATING_SAVE = "Saved! Stremlist is updating Stremio.";
-const UPDATED = "Stremio updated.";
+const UPDATED = "Stremio updated";
+const SAVED_BY_HAND =
+  "Saved! Reinstall Stremlist in Stremio to see your changes.";
 const WAITING = "Confirm in the Stremio tab";
 
 interface Addon {
@@ -259,6 +262,8 @@ test("a catalog save offers both ways, and linking Stremio updates the install",
   stremio.approved = true;
   await expect(screen.getByText(UPDATED)).toBeVisible({ timeout: 15_000 });
   await expect(screen.getByText(CHOICE)).toHaveCount(0);
+  // The save toast pointed at the choice; it goes once Stremio is linked.
+  await expect(screen.getByText(SAVED_REINSTALL)).toHaveCount(0);
   // Only the Stremlist entry changed, in place, with the saved catalogs.
   expect(stremio.collection).toEqual([
     cinemeta,
@@ -291,6 +296,7 @@ test("reinstalling by hand stays available and can become the default", async ({
   screen,
   browser,
 }) => {
+  await holdToasts(browser);
   await preparePage(browser);
   await captureConfig(browser);
   const stremio = await routeStremio(browser);
@@ -310,9 +316,11 @@ test("reinstalling by hand stays available and can become the default", async ({
   await screen.getByRole("button", "I did it").tap();
   await expect(screen.getByText(CHOICE)).toHaveCount(0);
 
-  // The next catalog change opens on the manual steps at once.
+  // The next catalog change opens on the manual steps at once, and the
+  // save toast links to the reinstall.
   await changeCatalogs(screen);
   await saveButton(screen).tap();
+  await expect(screen.getByText(SAVED_BY_HAND)).toBeVisible();
   await expect(screen.getByRole("button", "I did it")).toBeVisible();
   await expect(
     screen.getByRole("button", "Update it for me instead"),
@@ -386,6 +394,88 @@ test("with Stremio linked, a catalog save updates Stremio by itself", async ({
   ]);
   expect(stremio.calls).not.toContain("link");
 });
+
+const second = {
+  ...configuration.lists[0],
+  id: "00000000-0000-4000-8000-000000000002",
+  sourceRef: "ls99123456",
+  catalogTitle: "Second catalog",
+  position: 1,
+};
+
+// Every edit that changes what Stremio reads at install time.
+const CATALOG_EDITS: {
+  name: string;
+  edit: (screen: Screen, browser: Browser) => Promise<void>;
+}[] = [
+  {
+    name: "renaming a List",
+    edit: async (screen) => {
+      await screen.getByRole("button", "Settings for Test catalog").tap();
+      // Each List has a Settings panel: Test catalog is the first.
+      await screen.getByLabel("Catalog title").first().fill("Renamed catalog");
+    },
+  },
+  {
+    name: "moving a List",
+    edit: (_, browser) => dragSecondAboveFirst(browser),
+  },
+  {
+    name: "adding a List",
+    edit: async (screen) => {
+      await screen.getByRole("button", "Add an IMDb chart").tap();
+      await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
+    },
+  },
+  {
+    name: "removing a List",
+    edit: async (screen) => {
+      await screen.getByRole("button", "Remove Second catalog").tap();
+    },
+  },
+  {
+    name: "showing movies only",
+    edit: async (screen) => {
+      await screen.getByRole("button", "Settings for Test catalog").tap();
+      await screen.getByRole("combobox", "Show", { exact: true }).first().tap();
+      await screen.getByRole("option", "Movies only").tap();
+    },
+  },
+];
+
+for (const { name, edit } of CATALOG_EDITS) {
+  test(`with Stremio linked, ${name} updates Stremio on save`, async ({
+    app,
+    screen,
+    browser,
+  }) => {
+    await browser.setViewport({ width: 1280, height: 1800 });
+    await preparePage(browser, { linked: true });
+    await captureConfig(browser, {
+      ...configuration,
+      lists: [configuration.lists[0], second],
+    });
+    const stremio = await routeStremio(browser);
+    await openConfigure(app, screen);
+    await expect(
+      screen.getByText("Stremio updates automatically"),
+    ).toBeVisible();
+
+    await edit(screen, browser);
+    await expect(
+      screen.getByText("Stremio will update when you save."),
+    ).toBeVisible();
+    stremio.served = servedManifest;
+    await saveButton(screen).tap();
+    await expect(screen.getByText(UPDATED)).toBeVisible();
+    expect(stremlistEntry(stremio.collection)?.manifest).toEqual(
+      servedManifest,
+    );
+    expect(
+      stremio.calls.filter((c) => c === "addonCollectionSet"),
+    ).toHaveLength(1);
+  });
+}
 
 test("an edit made during the save still lets Stremio get what was saved", async ({
   app,

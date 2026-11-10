@@ -32,7 +32,7 @@ export const imdbUser = "ur99123456";
 
 export const SAVED = "Saved! Your catalogs will refresh with the new settings.";
 export const SAVED_REINSTALL =
-  "Saved! Reinstall Stremlist in Stremio to see your changes.";
+  "Saved! Choose how Stremio gets your changes.";
 export const SAVED_WITH_CHANGES =
   "Saved the submitted settings. You have unsaved changes: save again to apply them.";
 

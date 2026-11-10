@@ -15,6 +15,7 @@ import {
   saveConfigure,
   SAVED,
   SAVED_REINSTALL,
+  SAVED_REINSTALL_BY_HAND,
 } from "../helpers/configure.js";
 
 // The /configure page against the real backend: List management, options,
@@ -426,7 +427,7 @@ test(
 );
 
 test(
-  "the Reinstall action of the save toast opens Stremio Web and keeps the reminder",
+  "for a member who reinstalls by hand, the Reinstall action of the save toast opens Stremio Web and keeps the reminder",
   { tag: "@local" },
   async ({ page, context }) => {
     // Stremio Web is not under test here: answer it with an empty page.
@@ -436,15 +437,19 @@ test(
         body: "<title>Stremio</title>",
       }),
     );
+    // "Always reinstall myself": the toast then links to the reinstall.
+    await page.addInitScript(() =>
+      localStorage.setItem("stremlist:stremio-manual", "1"),
+    );
     const { accountId } = await seedWatchlist();
     await openConfigure(page, accountId, TITLE);
     await page.getByRole("button", { name: "Add an IMDb chart" }).click();
     await page.getByRole("menuitem", { name: /^Top 250 Movies/ }).click();
-    await saveConfigure(page);
+    await saveConfigure(page, { message: SAVED_REINSTALL_BY_HAND });
 
     const toast = page
       .getByRole("listitem")
-      .filter({ hasText: SAVED_REINSTALL });
+      .filter({ hasText: SAVED_REINSTALL_BY_HAND });
     const reminder = page
       .getByRole("status")
       .filter({ hasText: "Update Stremio with your changes" });
@@ -458,9 +463,6 @@ test(
     // Stremio only offers Uninstall for an installed addon, so the user
     // needs the link a second time: the reminder stays until "I did it".
     await expect(reminder).toBeVisible();
-    await reminder
-      .getByRole("button", { name: "I'll reinstall myself" })
-      .click();
     await expect(reminder).toContainText(
       "Select Reinstall again, then choose Install.",
     );

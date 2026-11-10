@@ -8,8 +8,13 @@ export const SAVE_NEW = "Save";
 /** The save message when Stremio needs no reinstall. */
 export const SAVED = "Saved! Your catalogs will refresh with the new settings.";
 
-/** The save message when the saved changes need a reinstall in Stremio. */
-export const SAVED_REINSTALL =
+/**
+ * The save message when Stremio must read the saved changes: the reminder
+ * then offers a Stremio update or a reinstall.
+ */
+export const SAVED_REINSTALL = "Saved! Choose how Stremio gets your changes.";
+/** The same save for a member who chose "Always reinstall myself". */
+export const SAVED_REINSTALL_BY_HAND =
   "Saved! Reinstall Stremlist in Stremio to see your changes.";
 
 /**

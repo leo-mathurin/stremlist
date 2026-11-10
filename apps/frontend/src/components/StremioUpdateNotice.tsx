@@ -1,5 +1,12 @@
 import { useId, useState } from "react";
-import { Download, Loader2, RefreshCw, Zap } from "lucide-react";
+import {
+  Check,
+  Download,
+  Loader2,
+  MonitorPlay,
+  RefreshCw,
+  Zap,
+} from "lucide-react";
 import type { StremioSync } from "@/hooks/useStremioSync";
 import { reinstallLinkProps } from "@/lib/list-sources";
 import type { ReinstallState } from "@/lib/reinstall";
@@ -61,7 +68,7 @@ export function StremioUpdateNotice({
   if (stremio.connection) {
     return (
       <div className="space-y-3">
-        <StatusLine stremio={stremio} />
+        <StatusCard stremio={stremio} />
         {state === "after-save" && (
           <p className={cn("text-sm text-black/55", ENTER)}>
             Stremio will update when you save.
@@ -112,50 +119,71 @@ export function StremioUpdateNotice({
   return null;
 }
 
-function StatusLine({ stremio }: { stremio: StremioSync }) {
+/**
+ * The linked account and the last update, in a card of its own: the line
+ * above it tells when the lists refreshed, which is another thing.
+ */
+function StatusCard({ stremio }: { stremio: StremioSync }) {
   const { connection, sync } = stremio;
   if (!connection) return null;
-  const busy = sync.kind === "updating";
+  const state =
+    sync.kind === "updating"
+      ? {
+          icon: <Loader2 className="size-4 animate-spin" />,
+          tone: "bg-amber-50 text-amber-600",
+          title: "Updating Stremio",
+          body: <>Sending your new catalogs.</>,
+        }
+      : sync.kind === "updated"
+        ? {
+            icon: <Check className="size-4" strokeWidth={2.5} />,
+            tone: "bg-emerald-50 text-emerald-600",
+            title: "Stremio updated",
+            body: <>Reload Stremio, or restart the app, to see them.</>,
+          }
+        : {
+            icon: <MonitorPlay className="size-4" />,
+            tone: "bg-black/5 text-black/60",
+            title: "Stremio updates automatically",
+            body: connection.email ? (
+              <>
+                Connected as{" "}
+                <span className="text-ink">{maskEmail(connection.email)}</span>
+              </>
+            ) : (
+              <>Your catalog changes reach Stremio when you save.</>
+            ),
+          };
+
   return (
-    <p
+    <section
       aria-live="polite"
-      className="flex min-h-9 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-black/55"
+      className="flex items-center gap-3 rounded-2xl bg-white px-4 py-3 ring-1 ring-black/5"
     >
       <span
+        key={state.title}
         aria-hidden="true"
         className={cn(
-          "size-2 shrink-0 rounded-full",
-          busy ? "bg-amber-400 motion-safe:animate-pulse" : "bg-emerald-500",
+          "flex size-9 shrink-0 items-center justify-center rounded-full transition-[opacity,scale] duration-150 ease-out starting:scale-90 starting:opacity-0",
+          state.tone,
         )}
-      />
-      {busy ? (
-        <span className="font-semibold text-ink">Updating Stremio</span>
-      ) : sync.kind === "updated" ? (
-        <span>
-          <span className="font-semibold text-ink">Stremio updated.</span>{" "}
-          Reload Stremio to see your new catalogs.
-        </span>
-      ) : (
-        <span>
-          Stremio updates automatically
-          {connection.email && (
-            <>
-              {" · "}
-              <span className="text-ink">{maskEmail(connection.email)}</span>
-            </>
-          )}
-        </span>
-      )}
-      {!busy && (
+      >
+        {state.icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-bold">{state.title}</p>
+        <p className="text-sm text-pretty text-black/55">{state.body}</p>
+      </div>
+      {sync.kind !== "updating" && (
         <button
           type="button"
           onClick={stremio.disconnect}
-          className="font-semibold text-black/45 underline-offset-2 hover:text-ink hover:underline"
+          className="shrink-0 text-sm font-semibold text-black/45 underline-offset-2 hover:text-ink hover:underline"
         >
           Disconnect
         </button>
       )}
-    </p>
+    </section>
   );
 }
 

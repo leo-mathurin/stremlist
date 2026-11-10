@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { buildAddonUrls } from "@/lib/list-sources";
 import {
   StremioSessionError,
@@ -191,6 +192,8 @@ export function useStremioSync(
         setConnection(linked);
         setManualPreferredState(false);
         setLink({ kind: "idle" });
+        // The save toast still says how to update Stremio by hand.
+        toast.dismiss("configuration-save");
         await update(linked);
         return;
       }

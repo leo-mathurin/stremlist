@@ -466,6 +466,11 @@ export function useAccountConfiguration(
         toast.success("Saved! Stremlist is updating Stremio.", {
           id: "configuration-save",
         });
+      } else if (needsReinstall && !stremio.manualPreferred) {
+        // The reminder on the page offers both ways to update Stremio.
+        toast.success("Saved! Choose how Stremio gets your changes.", {
+          id: "configuration-save",
+        });
       } else if (needsReinstall) {
         toast.success(
           "Saved! Reinstall Stremlist in Stremio to see your changes.",
