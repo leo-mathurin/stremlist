@@ -2,40 +2,42 @@ import { test } from "@e2e-dev/web";
 import type { Browser, WebRoute } from "@e2e-dev/web";
 import { expect } from "e2e";
 import type { Screen } from "e2e";
+import type { AccountConfigResponse } from "@stremlist/shared/stremio.types";
 import {
   SAVED,
   SAVED_REINSTALL,
+  SAVED_WITH_CHANGES,
   accountId,
   backend,
-  captureConfig,
+  baseRoutes,
   configuration,
   dragSecondAboveFirst,
-  gatedSaves,
   holdToasts,
+  imdbUser,
+  legacyConfiguration,
+  routeConfig,
   saveButton,
-  toJson,
 } from "./config-fixture";
 
 // Updating the installed Stremlist through a linked Stremio account, and the
-// manual reinstall that stays available. Stremio's code page and API are
-// answered here, in the browser, as they are called from the browser in
-// production; lib/stremio-sync is unit-tested against the same answers.
+// manual reinstall that stays available. The backend keeps the Stremio key
+// and talks to Stremio (ADR 0002): its Stremio routes are answered here by a
+// Stremio account in memory. The backend tests cover the encryption and the
+// real collection edits against the same answers.
 
 const ADDON_URL = `${backend}/${accountId}/manifest.json`;
 const LINK = "https://link.stremio.com/E2E1";
-const SESSION = "e2e-stremio-session";
 const EMAIL = "member@example.com";
-const CONNECTION_KEY = "stremlist:stremio-connection";
 const MANUAL_KEY = "stremlist:stremio-manual";
 
 const TOGGLE = "Show newly detected titles";
 const NEEDS_REINSTALL = "These changes need a reinstall.";
 const CHOICE = "Update Stremio with your changes";
-const UPDATING_SAVE = "Saved! Stremlist is updating Stremio.";
 const UPDATED = "Stremio updated";
 const SAVED_BY_HAND =
   "Saved! Reinstall Stremlist in Stremio to see your changes.";
 const WAITING = "Confirm in the Stremio tab";
+const LINKED = "Stremio updates automatically";
 
 interface Addon {
   transportUrl: string;
@@ -57,7 +59,7 @@ const installedManifest = {
   name: "Stremlist",
   catalogs: [{ id: "watchlist", type: "movie", name: "Test catalog" }],
 };
-/** What the Addon URL serves after the save: one more catalog. */
+/** The manifest of the save: one more catalog. */
 const servedManifest = {
   ...installedManifest,
   catalogs: [
@@ -73,89 +75,128 @@ const installed: Addon = {
 
 type Failure = "down" | "signed-out" | null;
 
+interface StremioStart {
+  /** The member's Stremio addons. */
+  collection?: Addon[];
+  /** The manifest that the backend builds from the last save. */
+  served?: Addon["manifest"];
+  linked?: boolean;
+  /** The configuration that the page loads. */
+  config?: AccountConfigResponse;
+  /** Holds every save until it resolves. */
+  gate?: Promise<void>;
+}
+
 /**
- * A Stremio account in memory: its addon collection, the code page, and the
- * Addon URL's manifest, which the test switches when it saves. The test approves the code and breaks Stremio at
- * will; every API call is recorded by method.
+ * The backend's Stremio routes over a Stremio account in memory, and the
+ * configuration, whose linked account follows the link. The test approves
+ * the code, switches the manifest when it saves and breaks Stremio at will.
+ * Every Stremio request is recorded: `create`, `read`, `update`, `install`,
+ * `disconnect`, and `addonCollectionSet` for each write.
  */
-async function routeStremio(
-  browser: Browser,
-  collection: Addon[] = [cinemeta, installed, torrentio],
-  served: Addon["manifest"] = installedManifest,
-) {
+async function routeStremio(browser: Browser, start: StremioStart = {}) {
+  await baseRoutes(browser);
+  const { state, submissions } = await routeConfig(
+    browser,
+    {
+      ...(start.config ?? configuration),
+      stremio: start.linked ? { email: EMAIL } : null,
+    },
+    accountId,
+    { gate: start.gate },
+  );
   const stremio = {
-    collection: structuredClone(collection),
-    /** What the Addon URL serves: the backend's manifest of the last save. */
-    served,
+    collection: structuredClone(
+      start.collection ?? [cinemeta, installed, torrentio],
+    ),
+    served: start.served ?? installedManifest,
     approved: false,
     failure: null as Failure,
     calls: [] as string[],
+    submissions,
+    get linked() {
+      return state.config.stremio !== null;
+    },
   };
-  await browser.route(ADDON_URL, async (route) => {
-    await route.fulfill({ json: toJson(stremio.served) });
-  });
-  await browser.route("https://link.stremio.com/**", async (route) => {
-    const { pathname } = new URL(route.request.url);
-    stremio.calls.push(pathname);
-    if (pathname.endsWith("/create")) {
-      await route.fulfill({
-        json: { result: { success: true, code: "E2E1", link: LINK } },
-      });
-    } else if (stremio.approved) {
-      await route.fulfill({
-        json: { result: { success: true, authKey: SESSION } },
-      });
-    } else {
-      await route.fulfill({
-        json: { error: { code: 101, message: "Invalid or expired token" } },
-      });
-    }
-  });
-  await browser.route("https://api.strem.io/api/**", async (route) => {
-    const method = new URL(route.request.url).pathname.split("/").at(-1)!;
-    stremio.calls.push(method);
-    if (stremio.failure === "down") return route.abort();
-    const body = JSON.parse(route.request.postData ?? "{}") as {
-      authKey?: string;
-      addons?: Addon[];
+  const setLinked = (linked: boolean) => {
+    state.config = {
+      ...state.config,
+      stremio: linked ? { email: EMAIL } : null,
     };
-    if (stremio.failure === "signed-out" || body.authKey !== SESSION) {
+  };
+  const index = () =>
+    stremio.collection.findIndex((addon) => addon.transportUrl === ADDON_URL);
+
+  await browser.route(`${backend}/${accountId}/stremio`, async (route) => {
+    stremio.calls.push("disconnect");
+    setLinked(false);
+    await route.fulfill({ json: { ok: true } });
+  });
+  await browser.route(`${backend}/${accountId}/stremio/**`, async (route) => {
+    const path = new URL(route.request.url).pathname.split("/stremio/")[1];
+    if (path === "link") {
+      stremio.calls.push("create");
+      return route.fulfill({ json: { code: "E2E1", link: LINK } });
+    }
+    if (path === "link/E2E1") {
+      stremio.calls.push("read");
+      if (stremio.approved) setLinked(true);
       return route.fulfill({
-        json: { error: { code: 1, message: "Session does not exist" } },
+        json: { stremio: stremio.approved ? { email: EMAIL } : null },
       });
     }
-    await answer(route, method, body.addons);
+    stremio.calls.push(path);
+    if (stremio.failure === "down") {
+      return route.fulfill({ status: 502, json: { reason: "unavailable" } });
+    }
+    if (stremio.failure === "signed-out" || !stremio.linked) {
+      setLinked(false);
+      return route.fulfill({ status: 409, json: { reason: "signed-out" } });
+    }
+    await answer(route, path);
   });
 
-  async function answer(route: WebRoute, method: string, addons?: Addon[]) {
-    if (method === "getUser") {
-      await route.fulfill({ json: { result: { email: EMAIL } } });
-    } else if (method === "addonCollectionGet") {
-      await route.fulfill({
-        json: toJson({ result: { addons: stremio.collection } }),
-      });
-    } else if (method === "addonCollectionSet") {
-      stremio.collection = structuredClone(addons ?? []);
-      await route.fulfill({ json: { result: { success: true } } });
-    } else {
-      throw new Error(`Unexpected Stremio API call: ${method}`);
+  async function answer(route: WebRoute, path: string) {
+    const at = index();
+    const write = (collection: Addon[]) => {
+      stremio.calls.push("addonCollectionSet");
+      stremio.collection = collection;
+    };
+    if (path === "install") {
+      if (at < 0) {
+        write([
+          ...stremio.collection,
+          { transportUrl: ADDON_URL, manifest: stremio.served, flags: {} },
+        ]);
+      }
+      return route.fulfill({ json: { result: "updated" } });
     }
+    if (path !== "update") throw new Error(`Unexpected Stremio route ${path}`);
+    if (at < 0) return route.fulfill({ json: { result: "missing" } });
+    const current = stremio.collection[at].manifest;
+    if (JSON.stringify(current) === JSON.stringify(stremio.served)) {
+      return route.fulfill({ json: { result: "unchanged" } });
+    }
+    write(
+      stremio.collection.map((addon, position) =>
+        position === at ? { ...addon, manifest: stremio.served } : addon,
+      ),
+    );
+    await route.fulfill({ json: { result: "updated" } });
   }
 
   return stremio;
 }
 
 /**
- * Records the Stremio tab instead of opening it, lets the test move the
- * clock forward, and starts with a linked account or a remembered manual
- * choice when asked.
+ * Keeps toasts on screen, records the Stremio tab instead of opening it,
+ * lets the test move the clock forward, and starts with the manual choice
+ * remembered when asked.
  */
-async function preparePage(
-  browser: Browser,
-  start: { linked?: boolean; manual?: boolean } = {},
-) {
+async function preparePage(browser: Browser, start: { manual?: boolean } = {}) {
+  await holdToasts(browser);
   await browser.addInitScript(
-    ({ linked, manual, connectionKey, manualKey, session, email }) => {
+    ({ manual, manualKey }) => {
       const page = window as unknown as {
         e2eTabs: { location: { href: string }; opener: unknown }[];
         e2eClockOffset: number;
@@ -169,22 +210,16 @@ async function preparePage(
         page.e2eTabs.push(tab);
         return tab as unknown as Window;
       };
-      if (linked) {
-        localStorage.setItem(
-          connectionKey,
-          JSON.stringify({ authKey: session, email }),
-        );
-      }
       if (manual) localStorage.setItem(manualKey, "1");
     },
-    {
-      linked: !!start.linked,
-      manual: !!start.manual,
-      connectionKey: CONNECTION_KEY,
-      manualKey: MANUAL_KEY,
-      session: SESSION,
-      email: EMAIL,
-    },
+    { manual: !!start.manual, manualKey: MANUAL_KEY },
+  );
+}
+
+/** Everything this browser stored: never a Stremio key. */
+function browserStorage(browser: Browser) {
+  return browser.evaluate(() =>
+    JSON.stringify({ ...localStorage, ...sessionStorage }),
   );
 }
 
@@ -204,10 +239,6 @@ function stremioTab(browser: Browser) {
     ).e2eTabs;
     return tabs.at(-1)?.location.href ?? null;
   });
-}
-
-function storedConnection(browser: Browser) {
-  return browser.evaluate((key) => localStorage.getItem(key), CONNECTION_KEY);
 }
 
 /** Turns on the New titles catalog: two more catalogs in the manifest. */
@@ -232,9 +263,7 @@ test("a catalog save offers both ways, and linking Stremio updates the install",
   screen,
   browser,
 }) => {
-  await holdToasts(browser);
   await preparePage(browser);
-  await captureConfig(browser);
   const stremio = await routeStremio(browser);
   await openConfigure(app, screen);
 
@@ -260,35 +289,56 @@ test("a catalog save offers both ways, and linking Stremio updates the install",
   );
 
   stremio.approved = true;
+  // The result is a toast, which replaces the save toast.
   await expect(screen.getByText(UPDATED)).toBeVisible({ timeout: 15_000 });
-  await expect(screen.getByText(CHOICE)).toHaveCount(0);
-  // The save toast pointed at the choice; it goes once Stremio is linked.
+  await expect(
+    screen.getByText(
+      "Reload Stremio, or restart the app, to see your changes.",
+    ),
+  ).toBeVisible();
   await expect(screen.getByText(SAVED_REINSTALL)).toHaveCount(0);
+  await expect(screen.getByText(CHOICE)).toHaveCount(0);
+  await expect(screen.getByText(LINKED)).toBeVisible();
   // Only the Stremlist entry changed, in place, with the saved catalogs.
   expect(stremio.collection).toEqual([
     cinemeta,
     { ...installed, manifest: servedManifest },
     torrentio,
   ]);
-  expect(JSON.parse((await storedConnection(browser)) ?? "{}")).toEqual({
-    authKey: SESSION,
-    email: EMAIL,
-  });
+  // The link lives on the server, not in this browser.
+  expect(stremio.linked).toBe(true);
+  expect(await browserStorage(browser)).not.toContain("stremio-connection");
 
   // The link survives a reload; Stremio already has the setup, so the check
-  // on load writes nothing.
+  // on load writes nothing and says nothing.
   const writes = stremio.calls.filter((c) => c === "addonCollectionSet");
   await browser.reload();
-  await expect(
-    screen.getByText("Stremio updates automatically", { exact: false }),
-  ).toBeVisible();
+  await expect(screen.getByText(LINKED)).toBeVisible();
   await expect(screen.getByText("me•••@example.com")).toBeVisible();
   await expect
-    .poll(() => stremio.calls.filter((c) => c === "addonCollectionGet").length)
-    .toBeGreaterThan(2);
+    .poll(() => stremio.calls.filter((c) => c === "update").length)
+    .toBe(2);
   expect(stremio.calls.filter((c) => c === "addonCollectionSet")).toEqual(
     writes,
   );
+  await expect(screen.getByText(UPDATED)).toHaveCount(0);
+});
+
+test("a Stremio app that wrote an older copy back is repaired when the page opens", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  await preparePage(browser);
+  const stremio = await routeStremio(browser, {
+    linked: true,
+    served: servedManifest,
+  });
+  await openConfigure(app, screen);
+
+  await expect(screen.getByText(UPDATED)).toBeVisible();
+  expect(stremlistEntry(stremio.collection)?.manifest).toEqual(servedManifest);
+  expect(stremio.calls).toEqual(["update", "addonCollectionSet"]);
 });
 
 test("reinstalling by hand stays available and can become the default", async ({
@@ -296,9 +346,7 @@ test("reinstalling by hand stays available and can become the default", async ({
   screen,
   browser,
 }) => {
-  await holdToasts(browser);
   await preparePage(browser);
-  await captureConfig(browser);
   const stremio = await routeStremio(browser);
   await openConfigure(app, screen);
 
@@ -345,23 +393,48 @@ test("reinstalling by hand stays available and can become the default", async ({
   expect(stremio.calls).toEqual([]);
 });
 
+test("a Legacy alias install can only reinstall by hand", async ({
+  app,
+  screen,
+  browser,
+}) => {
+  await preparePage(browser);
+  const stremio = await routeStremio(browser, {
+    config: legacyConfiguration,
+  });
+  await routeConfig(browser, legacyConfiguration, imdbUser);
+  await app.open(`/configure?account=${imdbUser}`);
+  await expect(screen.getByRole("checkbox", TOGGLE)).toBeVisible();
+
+  await changeCatalogs(screen);
+  await expect(
+    screen.getByText("After you save, reinstall Stremlist.", { exact: false }),
+  ).toBeVisible();
+  await saveButton(screen).tap();
+  await expect(screen.getByText(SAVED_BY_HAND)).toBeVisible();
+  await expect(
+    screen.getByText("Select Reinstall again, then choose Install."),
+  ).toBeVisible();
+  await expect(screen.getByRole("button", "Update it for me")).toHaveCount(0);
+  await expect(
+    screen.getByRole("button", "Update it for me instead"),
+  ).toHaveCount(0);
+  expect(stremio.calls).toEqual([]);
+});
+
 test("a sort change asks for no Stremio update", async ({
   app,
   screen,
   browser,
 }) => {
-  await holdToasts(browser);
-  await preparePage(browser, { linked: true });
-  await captureConfig(browser);
-  const stremio = await routeStremio(
-    browser,
-    [cinemeta, { ...installed, manifest: servedManifest }],
-    servedManifest,
-  );
+  await preparePage(browser);
+  const stremio = await routeStremio(browser, {
+    linked: true,
+    collection: [cinemeta, { ...installed, manifest: servedManifest }],
+    served: servedManifest,
+  });
   await openConfigure(app, screen);
-  await expect(
-    screen.getByText("Stremio updates automatically", { exact: false }),
-  ).toBeVisible();
+  await expect(screen.getByText(LINKED)).toBeVisible();
 
   await screen.getByRole("combobox", "Sort order").tap();
   await screen.getByRole("option", "IMDb Rating (Highest First)").tap();
@@ -371,7 +444,7 @@ test("a sort change asks for no Stremio update", async ({
   await saveButton(screen).tap();
   await expect(screen.getByText(SAVED)).toBeVisible();
   await expect(screen.getByText(CHOICE)).toHaveCount(0);
-  expect(stremio.calls).not.toContain("addonCollectionSet");
+  expect(stremio.calls).toEqual(["update"]);
 });
 
 test("with Stremio linked, a catalog save updates Stremio by itself", async ({
@@ -379,10 +452,8 @@ test("with Stremio linked, a catalog save updates Stremio by itself", async ({
   screen,
   browser,
 }) => {
-  await holdToasts(browser);
-  await preparePage(browser, { linked: true });
-  await captureConfig(browser);
-  const stremio = await routeStremio(browser);
+  await preparePage(browser);
+  const stremio = await routeStremio(browser, { linked: true });
   await openConfigure(app, screen);
 
   await changeCatalogs(screen);
@@ -391,19 +462,19 @@ test("with Stremio linked, a catalog save updates Stremio by itself", async ({
   ).toBeVisible();
   await expect(screen.getByText(NEEDS_REINSTALL)).toHaveCount(0);
   // The check on load found Stremio up to date and wrote nothing.
-  expect(stremio.calls).not.toContain("addonCollectionSet");
+  expect(stremio.calls).toEqual(["update"]);
   stremio.served = servedManifest;
   await saveButton(screen).tap();
-  await expect(screen.getByText(UPDATING_SAVE)).toBeVisible();
   await expect(screen.getByText(UPDATED)).toBeVisible();
   await expect(screen.getByText(CHOICE)).toHaveCount(0);
+  await expect(screen.getByText(LINKED)).toBeVisible();
   expect(stremlistEntry(stremio.collection)?.manifest).toEqual(servedManifest);
   expect(stremio.collection.map((addon) => addon.manifest.id)).toEqual([
     "com.linvo.cinemeta",
     `com.stremlist.${accountId}`,
     "com.stremio.torrentio.addon",
   ]);
-  expect(stremio.calls).not.toContain("link");
+  expect(stremio.calls).not.toContain("create");
 });
 
 const second = {
@@ -461,16 +532,13 @@ for (const { name, edit } of CATALOG_EDITS) {
     browser,
   }) => {
     await browser.setViewport({ width: 1280, height: 1800 });
-    await preparePage(browser, { linked: true });
-    await captureConfig(browser, {
-      ...configuration,
-      lists: [configuration.lists[0], second],
+    await preparePage(browser);
+    const stremio = await routeStremio(browser, {
+      linked: true,
+      config: { ...configuration, lists: [configuration.lists[0], second] },
     });
-    const stremio = await routeStremio(browser);
     await openConfigure(app, screen);
-    await expect(
-      screen.getByText("Stremio updates automatically"),
-    ).toBeVisible();
+    await expect(screen.getByText(LINKED)).toBeVisible();
 
     await edit(screen, browser);
     await expect(
@@ -493,13 +561,14 @@ test("an edit made during the save still lets Stremio get what was saved", async
   screen,
   browser,
 }) => {
-  await preparePage(browser, { linked: true });
-  const { submissions, release } = await gatedSaves(browser, configuration);
-  const stremio = await routeStremio(browser);
+  await preparePage(browser);
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const stremio = await routeStremio(browser, { linked: true, gate });
   await openConfigure(app, screen);
-  await expect(
-    screen.getByText("Stremio updates automatically", { exact: false }),
-  ).toBeVisible();
+  await expect(screen.getByText(LINKED)).toBeVisible();
 
   await changeCatalogs(screen);
   stremio.served = servedManifest;
@@ -510,9 +579,14 @@ test("an edit made during the save still lets Stremio get what was saved", async
   await screen.getByRole("option", "IMDb Rating (Highest First)").tap();
   release();
 
-  await expect(screen.getByText(UPDATED)).toBeVisible();
-  expect(submissions).toHaveLength(1);
-  expect(stremlistEntry(stremio.collection)?.manifest).toEqual(servedManifest);
+  await expect(screen.getByText(SAVED_WITH_CHANGES)).toBeVisible();
+  await expect
+    .poll(() => stremlistEntry(stremio.collection)?.manifest)
+    .toEqual(servedManifest);
+  expect(stremio.submissions).toHaveLength(1);
+  // The toast keeps saying that edits are left to save.
+  await expect(screen.getByText(SAVED_WITH_CHANGES)).toBeVisible();
+  await expect(screen.getByText(UPDATED)).toHaveCount(0);
 });
 
 test("an expired Stremio code can be replaced by a new one", async ({
@@ -521,7 +595,6 @@ test("an expired Stremio code can be replaced by a new one", async ({
   browser,
 }) => {
   await preparePage(browser);
-  await captureConfig(browser);
   const stremio = await routeStremio(browser);
   await openConfigure(app, screen);
   await changeCatalogs(screen);
@@ -535,7 +608,7 @@ test("an expired Stremio code can be replaced by a new one", async ({
   await expect(screen.getByText("The Stremio code expired")).toBeVisible({
     timeout: 10_000,
   });
-  expect(await storedConnection(browser)).toBeNull();
+  expect(stremio.linked).toBe(false);
   expect(stremio.calls).not.toContain("addonCollectionSet");
 
   await setClock(browser, 0);
@@ -551,13 +624,10 @@ test("when Stremio does not answer, the save stays and the update can be retried
   screen,
   browser,
 }) => {
-  await preparePage(browser, { linked: true });
-  const submissions = await captureConfig(browser);
-  const stremio = await routeStremio(browser);
+  await preparePage(browser);
+  const stremio = await routeStremio(browser, { linked: true });
   await openConfigure(app, screen);
-  await expect(
-    screen.getByText("Stremio updates automatically", { exact: false }),
-  ).toBeVisible();
+  await expect(screen.getByText(LINKED)).toBeVisible();
   stremio.failure = "down";
 
   await changeCatalogs(screen);
@@ -566,12 +636,14 @@ test("when Stremio does not answer, the save stays and the update can be retried
   await expect(
     screen.getByText("Saved, but Stremio did not get the update"),
   ).toBeVisible();
-  expect(submissions).toHaveLength(1);
+  // The card says it; the loading toast goes.
+  await expect(screen.getByText("Saved! Updating Stremio…")).toHaveCount(0);
+  expect(stremio.submissions).toHaveLength(1);
   expect(stremlistEntry(stremio.collection)?.manifest).toEqual(
     installedManifest,
   );
   // An outage keeps the link.
-  expect(await storedConnection(browser)).not.toBeNull();
+  expect(stremio.linked).toBe(true);
 
   stremio.failure = null;
   await screen.getByRole("button", "Try again").tap();
@@ -584,21 +656,19 @@ test("a signed-out Stremio session asks to connect again", async ({
   screen,
   browser,
 }) => {
-  await preparePage(browser, { linked: true });
-  await captureConfig(browser);
-  const stremio = await routeStremio(browser);
+  await preparePage(browser);
+  const stremio = await routeStremio(browser, { linked: true });
   await openConfigure(app, screen);
-  await expect(
-    screen.getByText("Stremio updates automatically", { exact: false }),
-  ).toBeVisible();
+  await expect(screen.getByText(LINKED)).toBeVisible();
   stremio.failure = "signed-out";
 
   await changeCatalogs(screen);
   stremio.served = servedManifest;
   await saveButton(screen).tap();
   await expect(screen.getByText("Stremio signed Stremlist out")).toBeVisible();
-  // The dead key is forgotten at once.
-  await expect.poll(() => storedConnection(browser)).toBeNull();
+  // The backend forgot the dead key.
+  expect(stremio.linked).toBe(false);
+  await expect(screen.getByText(LINKED)).toHaveCount(0);
 
   stremio.failure = null;
   await screen.getByRole("button", "Connect Stremio again").tap();
@@ -613,13 +683,12 @@ test("a Stremlist removed in Stremio comes back only when asked", async ({
   screen,
   browser,
 }) => {
-  await preparePage(browser, { linked: true });
-  await captureConfig(browser);
-  const stremio = await routeStremio(
-    browser,
-    [cinemeta, torrentio],
-    servedManifest,
-  );
+  await preparePage(browser);
+  const stremio = await routeStremio(browser, {
+    linked: true,
+    collection: [cinemeta, torrentio],
+    served: servedManifest,
+  });
   await openConfigure(app, screen);
 
   // The check on load already finds it missing, and adds nothing.
@@ -646,9 +715,12 @@ test("another Stremio account can be linked when this one has no Stremlist", asy
   screen,
   browser,
 }) => {
-  await preparePage(browser, { linked: true });
-  await captureConfig(browser);
-  const stremio = await routeStremio(browser, [cinemeta], servedManifest);
+  await preparePage(browser);
+  const stremio = await routeStremio(browser, {
+    linked: true,
+    collection: [cinemeta],
+    served: servedManifest,
+  });
   await openConfigure(app, screen);
   await expect(
     screen.getByText("Stremlist is not in this Stremio account"),
@@ -663,8 +735,7 @@ test("another Stremio account can be linked when this one has no Stremlist", asy
     "href",
     "https://www.stremio.com/acc-settings",
   );
-  expect(await storedConnection(browser)).toBeNull();
-  expect(stremio.calls).not.toContain("logout");
+  expect(stremio.linked).toBe(false);
   await screen.getByRole("button", "Get a code").tap();
   await expect(screen.getByText(WAITING)).toBeVisible();
   // The other account has this Stremlist installed.
@@ -679,21 +750,17 @@ test("disconnecting forgets the key and brings back the manual choice", async ({
   screen,
   browser,
 }) => {
-  await preparePage(browser, { linked: true });
-  await captureConfig(browser);
-  const stremio = await routeStremio(
-    browser,
-    [cinemeta, { ...installed, manifest: servedManifest }],
-    servedManifest,
-  );
+  await preparePage(browser);
+  const stremio = await routeStremio(browser, {
+    linked: true,
+    collection: [cinemeta, { ...installed, manifest: servedManifest }],
+    served: servedManifest,
+  });
   await openConfigure(app, screen);
   await screen.getByRole("button", "Disconnect").tap();
-  await expect(
-    screen.getByText("Stremio updates automatically", { exact: false }),
-  ).toHaveCount(0);
-  expect(await storedConnection(browser)).toBeNull();
-  // A Stremio logout would also sign the member out of stremio.com.
-  expect(stremio.calls).not.toContain("logout");
+  await expect(screen.getByText(LINKED)).toHaveCount(0);
+  expect(stremio.calls).toContain("disconnect");
+  expect(stremio.linked).toBe(false);
 
   await changeCatalogs(screen);
   await expect(screen.getByText(NEEDS_REINSTALL)).toBeVisible();

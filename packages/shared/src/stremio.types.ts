@@ -53,6 +53,15 @@ export interface ConnectionSummary {
  */
 export type AddonAccess = "private" | "legacy";
 
+/**
+ * The Stremio account linked to an Account, which a save updates without a
+ * reinstall. Its session key stays on the server.
+ */
+export interface StremioLink {
+  /** The Stremio account's email, when Stremio gave it. */
+  email: string | null;
+}
+
 /** The state of the "New titles" catalog of an Account (ADR 0007). */
 export interface NewTitlesSummary {
   /** Detected Titles that the Lists still contain, one per Title. */
@@ -93,6 +102,8 @@ export interface AccountConfigResponse extends AccountSyncSnapshot {
   };
   lastFetchedAt: string;
   cooldownSeconds: number;
+  /** The linked Stremio account; always null for a Legacy alias. */
+  stremio: StremioLink | null;
 }
 
 export interface ConfigListInput {

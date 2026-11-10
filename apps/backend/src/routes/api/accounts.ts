@@ -32,6 +32,7 @@ import { withAvailableGenres } from "../../services/catalog-genres";
 import { getNewTitlesSummary } from "../../services/detections";
 import { prewarmLists } from "../../services/list-prewarm";
 import { getListCatalog } from "../../services/lists";
+import { getStremioLink } from "../../services/stremio-link";
 import { accountKeyParam, requireAccess } from "./access";
 
 const REFRESH_COOLDOWN_MS =
@@ -130,10 +131,12 @@ const accounts = new Hono()
       const access = await requireAccess(c, c.req.valid("param").accountKey);
       if (access instanceof Response) return access;
       const { account } = access;
-      const { lists, sync, summary } = await configSnapshot(
-        access,
-        await getVisibleLists(access),
-      );
+      const [{ lists, sync, summary }, stremio] = await Promise.all([
+        getVisibleLists(access).then((visible) =>
+          configSnapshot(access, visible),
+        ),
+        access.via === "private" ? getStremioLink(account.id) : null,
+      ]);
       const body: AccountConfigResponse = {
         access: access.via,
         accountId: access.via === "private" ? account.id : null,
@@ -147,6 +150,7 @@ const accounts = new Hono()
         newTitles: { enabled: account.newTitlesCatalog, summary },
         lastFetchedAt: account.lastFetchedAt,
         cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
+        stremio,
       };
       return c.json(body);
     },

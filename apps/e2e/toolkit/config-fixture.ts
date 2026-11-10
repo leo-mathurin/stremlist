@@ -31,8 +31,7 @@ export const secondAccountId = "sl_E2eFixtureAccount00002";
 export const imdbUser = "ur99123456";
 
 export const SAVED = "Saved! Your catalogs will refresh with the new settings.";
-export const SAVED_REINSTALL =
-  "Saved! Choose how Stremio gets your changes.";
+export const SAVED_REINSTALL = "Saved! Choose how Stremio gets your changes.";
 export const SAVED_WITH_CHANGES =
   "Saved the submitted settings. You have unsaved changes: save again to apply them.";
 
@@ -174,6 +173,7 @@ export const configuration = {
   },
   lastFetchedAt: "2020-01-01T00:00:00.000Z",
   cooldownSeconds: 2,
+  stremio: null,
 } satisfies AccountConfigResponse;
 
 /** The same Account seen through its Legacy alias (ADR 0001). */

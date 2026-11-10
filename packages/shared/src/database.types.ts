@@ -493,6 +493,38 @@ export type Database = {
           },
         ];
       };
+      stremio_connections: {
+        Row: {
+          account_id: string;
+          auth_key: string;
+          created_at: string;
+          email: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          account_id: string;
+          auth_key: string;
+          created_at?: string;
+          email?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          account_id?: string;
+          auth_key?: string;
+          created_at?: string;
+          email?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "stremio_connections_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: true;
+            referencedRelation: "accounts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       title_id_map: {
         Row: {
           external_id: string;

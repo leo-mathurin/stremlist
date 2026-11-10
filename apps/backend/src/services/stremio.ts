@@ -1,16 +1,12 @@
 /**
- * Updates the Stremlist entry of a member's Stremio addon collection, so a
- * save that changes the catalogs reaches Stremio without a reinstall.
+ * Stremio's code page and API, as Stremlist uses them to update the
+ * installed Stremlist of a linked Stremio account (ADR 0002).
  *
- * The browser talks to Stremio directly: the member links their account with
- * Stremio's own code page (the one Stremio uses for TVs), and the session key
- * stays in this browser. Stremlist's servers never see it. Writes replace the
- * manifest of the one matching entry and keep every other addon and the order.
- *
- * The code hands over the stremio.com session that confirmed it, so the key
- * ends when the member signs out of stremio.com. For the same reason,
- * disconnecting only forgets the key: a Stremio logout would also sign the
- * member out of stremio.com.
+ * The member links their account with Stremio's own code page (the one
+ * Stremio uses for TVs). The code hands over the stremio.com session that
+ * confirmed it, so the key ends when the member signs out of stremio.com.
+ * Writes replace the manifest of the one matching entry and keep every other
+ * addon and the order.
  */
 
 const LINK_API = "https://link.stremio.com/api/v2";
@@ -34,19 +30,24 @@ export class StremioUnavailableError extends Error {
   }
 }
 
-interface StremioManifest {
+/** A manifest as Stremio keeps it in the collection. */
+interface CollectionManifest {
   id: string;
-  name?: string;
-  version?: string;
   [key: string]: unknown;
 }
 
 export interface StremioAddon {
   transportUrl: string;
   transportName?: string;
-  manifest: StremioManifest;
+  manifest: CollectionManifest;
   flags?: Record<string, unknown>;
 }
+
+/** A manifest that Stremlist builds: any object with an ID. */
+type BuiltManifest = object & { id: string };
+
+/** How long one Stremio call may take before it counts as an outage. */
+const TIMEOUT_MS = 10_000;
 
 type Fetch = typeof fetch;
 
@@ -64,7 +65,10 @@ async function send(
   init?: RequestInit,
 ): Promise<Response> {
   try {
-    return await fetchImpl(input, init);
+    return await fetchImpl(input, {
+      ...init,
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
   } catch {
     throw new StremioUnavailableError();
   }
@@ -171,18 +175,6 @@ async function setCollection(
   );
 }
 
-async function fetchManifest(
-  addonUrl: string,
-  fetchImpl: Fetch,
-): Promise<StremioManifest> {
-  const response = await send(fetchImpl, addonUrl, { cache: "no-store" });
-  const manifest = (await readJson(response)) as Partial<StremioManifest>;
-  if (!response.ok || typeof manifest.id !== "string") {
-    throw new StremioUnavailableError("Stremlist did not answer.");
-  }
-  return manifest as StremioManifest;
-}
-
 function pathSegments(url: string): string[] | null {
   try {
     return new URL(url.replace(/^stremio:\/\//, "https://")).pathname
@@ -229,19 +221,18 @@ export type UpdateResult =
   | "missing";
 
 /**
- * Gives the installed Stremlist the manifest that Stremlist serves now, which
- * always reflects the last save. Reads the collection just before the write
- * and checks it after, so an older manifest is never written back.
+ * Gives the installed Stremlist `manifest`, built from the last save. Reads
+ * the collection just before the write and checks it after.
  */
 export async function updateInstalledStremlist(
   authKey: string,
   addonUrl: string,
+  built: BuiltManifest,
   fetchImpl: Fetch = fetch,
 ): Promise<UpdateResult> {
-  const [collection, manifest] = await Promise.all([
-    getCollection(authKey, fetchImpl),
-    fetchManifest(addonUrl, fetchImpl),
-  ]);
+  // Stremio keeps the manifest as the JSON object it was given.
+  const manifest = built as CollectionManifest;
+  const collection = await getCollection(authKey, fetchImpl);
   const index = collection.findIndex((addon) =>
     isThisStremlist(addon, addonUrl),
   );
@@ -268,12 +259,12 @@ export async function updateInstalledStremlist(
 export async function installStremlist(
   authKey: string,
   addonUrl: string,
+  built: BuiltManifest,
   fetchImpl: Fetch = fetch,
 ): Promise<void> {
-  const [collection, manifest] = await Promise.all([
-    getCollection(authKey, fetchImpl),
-    fetchManifest(addonUrl, fetchImpl),
-  ]);
+  // Stremio keeps the manifest as the JSON object it was given.
+  const manifest = built as CollectionManifest;
+  const collection = await getCollection(authKey, fetchImpl);
   if (collection.some((addon) => isThisStremlist(addon, addonUrl))) return;
   await setCollection(
     authKey,

@@ -1,5 +1,5 @@
+import { describe, test } from "vitest";
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
 import {
   StremioSessionError,
   StremioUnavailableError,
@@ -8,8 +8,8 @@ import {
   isThisStremlist,
   readLinkCode,
   updateInstalledStremlist,
-  type StremioAddon,
-} from "../src/lib/stremio-sync.ts";
+} from "../stremio";
+import type { StremioAddon } from "../stremio";
 
 const ADDON_URL = "https://api.stremlist.com/sl_Account0001/manifest.json";
 const KEY = "session-key";
@@ -39,21 +39,20 @@ const stremlist = (catalog: string): StremioAddon => ({
 });
 
 /**
- * A Stremio account and a Stremlist server in memory. `served` is what the
- * Addon URL answers; `answer` overrides the API answer per method.
+ * A Stremio account in memory. `answer` overrides the API answer per
+ * method.
  */
 function fakeStremio(
   collection: StremioAddon[],
-  served = manifest("Renamed"),
   answer: Record<string, () => unknown> = {},
 ) {
   const state = { collection: structuredClone(collection), writes: 0 };
-  const fetchImpl = (async (input: string | URL, init?: RequestInit) => {
+  const respond = (input: string | URL, init?: RequestInit): Response => {
     const url = String(input);
-    if (url === ADDON_URL) return Response.json(served);
     const method = url.split("/api/")[1];
-    if (answer[method]) return Response.json(answer[method]());
-    const body = JSON.parse(String(init?.body)) as {
+    const override = answer[method] as (() => unknown) | undefined;
+    if (override) return Response.json(override());
+    const body = JSON.parse(init?.body as string) as {
       authKey: string;
       addons?: StremioAddon[];
     };
@@ -67,9 +66,15 @@ function fakeStremio(
       return Response.json({ result: { success: true } });
     }
     throw new Error(`unexpected request ${url}`);
-  }) as typeof fetch;
+  };
+  const fetchImpl = ((input: string | URL, init?: RequestInit) =>
+    Promise.resolve(respond(input, init))) as typeof fetch;
   return { state, fetchImpl };
 }
+
+/** A fetch that always gives this JSON answer. */
+const answering = (body: unknown) =>
+  (() => Promise.resolve(Response.json(body))) as typeof fetch;
 
 describe("finding this Stremlist in a collection", () => {
   test("matches the Account path on the same host", () => {
@@ -103,7 +108,12 @@ describe("updating the installed Stremlist", () => {
     const before = [cinemeta, stremlist("Old"), torrentio];
     const { state, fetchImpl } = fakeStremio(before);
     assert.equal(
-      await updateInstalledStremlist(KEY, ADDON_URL, fetchImpl),
+      await updateInstalledStremlist(
+        KEY,
+        ADDON_URL,
+        manifest("Renamed"),
+        fetchImpl,
+      ),
       "updated",
     );
     assert.equal(state.writes, 1);
@@ -117,7 +127,12 @@ describe("updating the installed Stremlist", () => {
   test("writes nothing when Stremio already reads the saved setup", async () => {
     const { state, fetchImpl } = fakeStremio([cinemeta, stremlist("Renamed")]);
     assert.equal(
-      await updateInstalledStremlist(KEY, ADDON_URL, fetchImpl),
+      await updateInstalledStremlist(
+        KEY,
+        ADDON_URL,
+        manifest("Renamed"),
+        fetchImpl,
+      ),
       "unchanged",
     );
     assert.equal(state.writes, 0);
@@ -126,7 +141,12 @@ describe("updating the installed Stremlist", () => {
   test("reports a removed install without adding it back", async () => {
     const { state, fetchImpl } = fakeStremio([cinemeta, torrentio]);
     assert.equal(
-      await updateInstalledStremlist(KEY, ADDON_URL, fetchImpl),
+      await updateInstalledStremlist(
+        KEY,
+        ADDON_URL,
+        manifest("Renamed"),
+        fetchImpl,
+      ),
       "missing",
     );
     assert.equal(state.writes, 0);
@@ -134,30 +154,34 @@ describe("updating the installed Stremlist", () => {
   });
 
   test("tells a signed-out session apart from an outage", async () => {
-    const signedOut = fakeStremio([stremlist("Old")], undefined, {
+    const signedOut = fakeStremio([stremlist("Old")], {
       addonCollectionGet: () => ({
         error: { code: 1, message: "Session does not exist" },
       }),
     });
     await assert.rejects(
-      updateInstalledStremlist(KEY, ADDON_URL, signedOut.fetchImpl),
+      updateInstalledStremlist(
+        KEY,
+        ADDON_URL,
+        manifest("Renamed"),
+        signedOut.fetchImpl,
+      ),
       StremioSessionError,
     );
-    const down = (async () => {
-      throw new TypeError("Failed to fetch");
-    }) as typeof fetch;
+    const down = (() =>
+      Promise.reject(new TypeError("Failed to fetch"))) as typeof fetch;
     await assert.rejects(
-      updateInstalledStremlist(KEY, ADDON_URL, down),
+      updateInstalledStremlist(KEY, ADDON_URL, manifest("Renamed"), down),
       StremioUnavailableError,
     );
   });
 
   test("fails when Stremio does not keep the write", async () => {
-    const { state, fetchImpl } = fakeStremio([stremlist("Old")], undefined, {
+    const { state, fetchImpl } = fakeStremio([stremlist("Old")], {
       addonCollectionSet: () => ({ result: { success: true } }),
     });
     await assert.rejects(
-      updateInstalledStremlist(KEY, ADDON_URL, fetchImpl),
+      updateInstalledStremlist(KEY, ADDON_URL, manifest("Renamed"), fetchImpl),
       StremioUnavailableError,
     );
     assert.deepEqual(state.collection, [stremlist("Old")]);
@@ -167,50 +191,46 @@ describe("updating the installed Stremlist", () => {
 describe("installing Stremlist again", () => {
   test("adds it at the end when it is missing", async () => {
     const { state, fetchImpl } = fakeStremio([cinemeta]);
-    await installStremlist(KEY, ADDON_URL, fetchImpl);
+    await installStremlist(KEY, ADDON_URL, manifest("Renamed"), fetchImpl);
     assert.deepEqual(state.collection, [cinemeta, stremlist("Renamed")]);
   });
 
   test("adds nothing when it is already there", async () => {
     const { state, fetchImpl } = fakeStremio([cinemeta, stremlist("Old")]);
-    await installStremlist(KEY, ADDON_URL, fetchImpl);
+    await installStremlist(KEY, ADDON_URL, manifest("Renamed"), fetchImpl);
     assert.equal(state.writes, 0);
   });
 });
 
 describe("linking with a Stremio code", () => {
   test("reads the code and its page, and waits for the confirmation", async () => {
-    const created = (async () =>
-      Response.json({
-        result: {
-          success: true,
-          code: "AB12",
-          link: "https://link.stremio.com/AB12",
-        },
-      })) as typeof fetch;
+    const created = answering({
+      result: {
+        success: true,
+        code: "AB12",
+        link: "https://link.stremio.com/AB12",
+      },
+    });
     assert.deepEqual(await createLinkCode(created), {
       code: "AB12",
       link: "https://link.stremio.com/AB12",
     });
 
-    const pending = (async () =>
-      Response.json({
-        error: { code: 101, message: "Invalid or expired token" },
-      })) as typeof fetch;
+    const pending = answering({
+      error: { code: 101, message: "Invalid or expired token" },
+    });
     assert.equal(await readLinkCode("AB12", pending), null);
 
-    const approved = (async () =>
-      Response.json({
-        result: { success: true, authKey: KEY },
-      })) as typeof fetch;
+    const approved = answering({
+      result: { success: true, authKey: KEY },
+    });
     assert.equal(await readLinkCode("AB12", approved), KEY);
   });
 
   test("refuses a code answer without an https page", async () => {
-    const odd = (async () =>
-      Response.json({
-        result: { code: "AB12", link: "javascript:alert(1)" },
-      })) as typeof fetch;
+    const odd = answering({
+      result: { code: "AB12", link: "javascript:alert(1)" },
+    });
     await assert.rejects(createLinkCode(odd), StremioUnavailableError);
   });
 });
