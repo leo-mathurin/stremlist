@@ -11,7 +11,7 @@ import {
 import {
   StremioLinkTokenError,
   StremioNotLinkedError,
-  forgetStremioLink,
+  disconnectStremio,
   installInStremio,
   linkWithToken,
   startStremioLink,
@@ -100,7 +100,7 @@ const stremio = new Hono()
       if (access instanceof Response) return access;
       try {
         return c.json({
-          result: await updateStremio(access, addonUrl(c, accountId)),
+          result: await updateStremio(accountId, addonUrl(c, accountId)),
         });
       } catch (error) {
         return failure(c, error);
@@ -118,7 +118,7 @@ const stremio = new Hono()
       const access = await requireAccess(c, accountId, { privateOnly: true });
       if (access instanceof Response) return access;
       try {
-        await installInStremio(access, addonUrl(c, accountId));
+        await installInStremio(accountId, addonUrl(c, accountId));
         return c.json({ result: "updated" as const });
       } catch (error) {
         return failure(c, error);
@@ -134,7 +134,7 @@ const stremio = new Hono()
       const access = await requireAccess(c, accountId, { privateOnly: true });
       if (access instanceof Response) return access;
       try {
-        await forgetStremioLink(accountId);
+        await disconnectStremio(accountId);
         return c.json({ ok: true as const });
       } catch (error) {
         console.error(

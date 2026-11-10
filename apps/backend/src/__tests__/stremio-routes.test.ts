@@ -317,6 +317,54 @@ describe("updating the installed Stremlist", () => {
     );
   });
 
+  it("builds the manifest from the settings saved while it waited", async () => {
+    const stremio = fakeStremio([cinemeta, await installed()]);
+    let release = () => {};
+    stremio.hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const first = update();
+    await vi.waitFor(() => {
+      expect(stremio.held).toBe(1);
+    });
+    // This request reads the Account now, then waits for the first update.
+    const second = update();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    for (const row of db.getTable("accounts")) {
+      if (row.id === accountId) row.new_titles_catalog = true;
+    }
+    release();
+
+    await Promise.all([first, second]);
+    expect(stremio.collection).toEqual([cinemeta, await installed()]);
+    expect(JSON.stringify(stremio.collection[1].manifest.catalogs)).toContain(
+      "New titles",
+    );
+  });
+
+  it("disconnecting waits for a running update", async () => {
+    const stremio = fakeStremio([cinemeta, await installed()]);
+    let release = () => {};
+    stremio.hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const running = update();
+    await vi.waitFor(() => {
+      expect(stremio.held).toBe(1);
+    });
+    const disconnect = app.request(`/${accountId}/stremio`, {
+      method: "DELETE",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    // The update still holds the link: a new link cannot start meanwhile.
+    expect(db.getTable("stremio_connections")).toHaveLength(1);
+    release();
+
+    expect((await disconnect).status).toBe(200);
+    expect((await running).status).toBe(200);
+    expect(db.getTable("stremio_connections")).toHaveLength(0);
+  });
+
   it("keeps the link when Stremio does not answer", async () => {
     const stremio = fakeStremio([cinemeta, await installed()]);
     stremio.failure = "down";

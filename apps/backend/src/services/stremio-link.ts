@@ -8,7 +8,7 @@ import {
   signValue,
 } from "../lib/crypto";
 import { supabase } from "../lib/supabase";
-import type { AccountAccess } from "./accounts";
+import { resolveAccountKey } from "./accounts";
 import { buildAccountManifest } from "./addon-manifest";
 import type { UpdateResult } from "./stremio";
 import {
@@ -76,7 +76,7 @@ async function readKey(
  * Forgets the key. Stremio stays signed in elsewhere (ADR 0002). With
  * `sealed`, only that key: a link made since stays.
  */
-export async function forgetStremioLink(
+async function forgetStremioLink(
   accountId: string,
   sealed?: string,
 ): Promise<void> {
@@ -225,33 +225,49 @@ async function withKey<T>(
 }
 
 /**
- * Gives the installed Stremlist the manifest of the last save. The manifest
- * is built inside the update lease, so a later save is never undone by an
- * earlier update.
+ * The manifest of the last save. Called inside the update lease, with the
+ * Account read again there, so a later save is never undone by an earlier
+ * update.
  */
+async function latestManifest(accountId: string) {
+  const access = await resolveAccountKey(accountId);
+  if (access?.via !== "private") throw new StremioNotLinkedError();
+  return buildAccountManifest(access, accountId);
+}
+
+/** Gives the installed Stremlist the manifest of the last save. */
 export async function updateStremio(
-  access: AccountAccess & { via: "private" },
+  accountId: string,
   addonUrl: string,
 ): Promise<UpdateResult> {
-  return withKey(access.account.id, async (authKey) =>
+  return withKey(accountId, async (authKey) =>
     updateInstalledStremlist(
       authKey,
       addonUrl,
-      await buildAccountManifest(access, access.account.id),
+      await latestManifest(accountId),
     ),
   );
 }
 
 /** Adds Stremlist back to the linked account, on the member's request. */
 export async function installInStremio(
-  access: AccountAccess & { via: "private" },
+  accountId: string,
   addonUrl: string,
 ): Promise<void> {
-  await withKey(access.account.id, async (authKey) =>
-    installStremlist(
-      authKey,
-      addonUrl,
-      await buildAccountManifest(access, access.account.id),
-    ),
+  await withKey(accountId, async (authKey) =>
+    installStremlist(authKey, addonUrl, await latestManifest(accountId)),
   );
+}
+
+/**
+ * Disconnects Stremio. Waits for a running update, so its write cannot
+ * land after the member links Stremio again.
+ */
+export async function disconnectStremio(accountId: string): Promise<void> {
+  try {
+    await withUpdateLease(accountId, () => forgetStremioLink(accountId));
+  } catch (error) {
+    // Nothing to disconnect.
+    if (!(error instanceof StremioNotLinkedError)) throw error;
+  }
 }
