@@ -33,6 +33,7 @@ const MANUAL_KEY = "stremlist:stremio-manual";
 const TOGGLE = "Show newly detected titles";
 const NEEDS_REINSTALL = "These changes need a reinstall.";
 const CHOICE = "Update Stremio with your changes";
+const UPDATING_SAVE = "Saved! Stremlist is updating Stremio.";
 const UPDATED = "Stremio updated";
 const SAVED_BY_HAND =
   "Saved! Reinstall Stremlist in Stremio to see your changes.";
@@ -289,16 +290,14 @@ test("a catalog save offers both ways, and linking Stremio updates the install",
   );
 
   stremio.approved = true;
-  // The result is a toast, which replaces the save toast.
+  // The card shows the result. The save toast pointed at the choice; it goes
+  // once Stremio is linked.
   await expect(screen.getByText(UPDATED)).toBeVisible({ timeout: 15_000 });
   await expect(
-    screen.getByText(
-      "Reload Stremio, or restart the app, to see your changes.",
-    ),
+    screen.getByText("Reload Stremio, or restart the app, to see them."),
   ).toBeVisible();
   await expect(screen.getByText(SAVED_REINSTALL)).toHaveCount(0);
   await expect(screen.getByText(CHOICE)).toHaveCount(0);
-  await expect(screen.getByText(LINKED)).toBeVisible();
   // Only the Stremlist entry changed, in place, with the saved catalogs.
   expect(stremio.collection).toEqual([
     cinemeta,
@@ -465,9 +464,9 @@ test("with Stremio linked, a catalog save updates Stremio by itself", async ({
   expect(stremio.calls).toEqual(["update"]);
   stremio.served = servedManifest;
   await saveButton(screen).tap();
+  await expect(screen.getByText(UPDATING_SAVE)).toBeVisible();
   await expect(screen.getByText(UPDATED)).toBeVisible();
   await expect(screen.getByText(CHOICE)).toHaveCount(0);
-  await expect(screen.getByText(LINKED)).toBeVisible();
   expect(stremlistEntry(stremio.collection)?.manifest).toEqual(servedManifest);
   expect(stremio.collection.map((addon) => addon.manifest.id)).toEqual([
     "com.linvo.cinemeta",
@@ -584,9 +583,9 @@ test("an edit made during the save still lets Stremio get what was saved", async
     .poll(() => stremlistEntry(stremio.collection)?.manifest)
     .toEqual(servedManifest);
   expect(stremio.submissions).toHaveLength(1);
-  // The toast keeps saying that edits are left to save.
+  await expect(screen.getByText(UPDATED)).toBeVisible();
+  // The toast still says that edits are left to save.
   await expect(screen.getByText(SAVED_WITH_CHANGES)).toBeVisible();
-  await expect(screen.getByText(UPDATED)).toHaveCount(0);
 });
 
 test("an expired Stremio code can be replaced by a new one", async ({
@@ -636,8 +635,6 @@ test("when Stremio does not answer, the save stays and the update can be retried
   await expect(
     screen.getByText("Saved, but Stremio did not get the update"),
   ).toBeVisible();
-  // The card says it; the loading toast goes.
-  await expect(screen.getByText("Saved! Updating Stremio…")).toHaveCount(0);
   expect(stremio.submissions).toHaveLength(1);
   expect(stremlistEntry(stremio.collection)?.manifest).toEqual(
     installedManifest,

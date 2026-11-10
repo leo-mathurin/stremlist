@@ -20,10 +20,9 @@ type StremioFailure = "unavailable" | "signed-out" | "missing";
 export type StremioSyncState =
   | { kind: "idle" }
   | { kind: "updating" }
+  | { kind: "updated" }
   | { kind: "failed"; reason: StremioFailure };
 
-/** The save toast, which the Stremio update replaces. */
-const SAVE_TOAST = "configuration-save";
 const MANUAL_KEY = "stremlist:stremio-manual";
 /** How long the member has to confirm a code before it counts as expired. */
 const LINK_TIMEOUT_MS = 5 * 60_000;
@@ -54,22 +53,6 @@ function failureOf(res: Response): Exclude<StremioFailure, "missing"> {
   return res.status === 409 ? "signed-out" : "unavailable";
 }
 
-function showUpdated() {
-  toast.success("Stremio updated", {
-    id: SAVE_TOAST,
-    description: "Reload Stremio, or restart the app, to see your changes.",
-    action: null,
-  });
-}
-
-/**
- * How an update was asked for. `save` and `request` report the result in the
- * save toast. `behind` runs after a save whose toast says that edits are
- * left to save, and keeps that toast. A `check` (on load) stays silent
- * unless it had to write.
- */
-type UpdateMode = "save" | "behind" | "request" | "check";
-
 /**
  * The optional link to the member's Stremio account that lets a save update
  * the installed Stremlist without a reinstall. The backend keeps the Stremio
@@ -97,55 +80,47 @@ export function useStremioSync(
     onUpToDateRef.current = onUpToDate;
   });
 
-  const fail = useCallback((reason: StremioFailure, mode: UpdateMode) => {
+  const fail = useCallback((reason: StremioFailure, quiet: boolean) => {
     if (reason === "signed-out") setConnection(null);
-    // The card below says what happened and what to do.
-    if (mode === "save" || mode === "request") toast.dismiss(SAVE_TOAST);
     // An outage during the check on load is not worth a card.
     setSync(
-      mode === "check" && reason === "unavailable"
+      quiet && reason === "unavailable"
         ? { kind: "idle" }
         : { kind: "failed", reason },
     );
   }, []);
 
-  /** Gives Stremio the saved catalogs. */
+  /**
+   * Gives Stremio the saved catalogs. A quiet check (on load) stays silent
+   * when nothing changed or Stremio does not answer.
+   */
   const update = useCallback(
-    async (mode: UpdateMode) => {
+    async (quiet = false) => {
       if (!accountId) return;
-      if (mode !== "check") setSync({ kind: "updating" });
-      if (mode === "request") {
-        toast.loading("Updating Stremio…", { id: SAVE_TOAST, action: null });
-      }
+      if (!quiet) setSync({ kind: "updating" });
       let res: Response;
       try {
         res = await api[":accountId"].stremio.update.$post({
           param: { accountId },
         });
       } catch {
-        fail("unavailable", mode);
+        fail("unavailable", quiet);
         return;
       }
       if (!res.ok) {
-        fail(failureOf(res), mode);
+        fail(failureOf(res), quiet);
         return;
       }
       const { result } = (await res.json()) as {
         result: "updated" | "unchanged" | "missing";
       };
       if (result === "missing") {
-        fail("missing", mode);
+        fail("missing", quiet);
         return;
       }
       onUpToDateRef.current();
-      setSync({ kind: "idle" });
-      if (
-        mode === "save" ||
-        mode === "request" ||
-        (mode === "check" && result === "updated")
-      ) {
-        showUpdated();
-      }
+      if (!quiet || result === "updated") setSync({ kind: "updated" });
+      else setSync({ kind: "idle" });
     },
     [accountId, fail],
   );
@@ -205,7 +180,9 @@ export function useStremioSync(
         setConnection(linked);
         setManualPreferredState(false);
         setLink({ kind: "idle" });
-        await update("request");
+        // The save toast still says how to update Stremio by hand.
+        toast.dismiss("configuration-save");
+        await update();
         return;
       }
     }
@@ -249,28 +226,26 @@ export function useStremioSync(
     if (await forget()) setLink({ kind: "switching" });
   }, [forget]);
 
-  const retry = useCallback(() => update("request"), [update]);
+  const retry = useCallback(() => update(), [update]);
 
   /** The member asked to add Stremlist back to the linked account. */
   const installAgain = useCallback(async () => {
     if (!accountId) return;
     setSync({ kind: "updating" });
-    toast.loading("Updating Stremio…", { id: SAVE_TOAST, action: null });
     try {
       const res = await api[":accountId"].stremio.install.$post({
         param: { accountId },
       });
       if (!res.ok) {
-        fail(failureOf(res), "request");
+        fail(failureOf(res), false);
         return;
       }
     } catch {
-      fail("unavailable", "request");
+      fail("unavailable", false);
       return;
     }
     onUpToDateRef.current();
-    setSync({ kind: "idle" });
-    showUpdated();
+    setSync({ kind: "updated" });
   }, [accountId, fail]);
 
   /** The member reinstalled by hand: the last failure no longer applies. */
@@ -287,7 +262,7 @@ export function useStremioSync(
   useEffect(() => {
     if (!accountId || !loaded || checked.current === accountId) return;
     checked.current = accountId;
-    void update("check");
+    void update(true);
   }, [accountId, loaded, update]);
 
   // Stop asking for a code once the page goes away.
@@ -310,11 +285,8 @@ export function useStremioSync(
     cancelLink,
     disconnect,
     switchAccount,
-    /**
-     * Updates Stremio after a save. With `announce`, the result replaces the
-     * save toast, which is already loading.
-     */
-    update: (announce = true) => update(announce ? "save" : "behind"),
+    /** Updates Stremio after a save. */
+    update: () => update(),
     retry,
     installAgain,
     clearStatus,

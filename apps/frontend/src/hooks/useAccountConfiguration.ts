@@ -464,8 +464,7 @@ export function useAccountConfiguration(
         );
       } else if (needsReinstall && stremio.connection) {
         // Sonner keeps the action of a toast with the same ID: clear it.
-        // The update replaces this toast with its result.
-        toast.loading("Saved! Updating Stremio…", {
+        toast.success("Saved! Stremlist is updating Stremio.", {
           id: "configuration-save",
           action: null,
         });
@@ -503,9 +502,8 @@ export function useAccountConfiguration(
           { id: "configuration-save" },
         );
       }
-      // Also with edits made during the save: Stremio gets what was saved,
-      // and the toast keeps saying that edits are left to save.
-      if (needsReinstall && stremio.connection) void stremio.update(!unsaved);
+      // Also with edits made during the save: Stremio gets what was saved.
+      if (needsReinstall && stremio.connection) void stremio.update();
     } catch (err) {
       toastError(err, { id: "configuration-save" });
     } finally {

@@ -1,5 +1,12 @@
 import { useId, useState } from "react";
-import { Download, Loader2, MonitorPlay, RefreshCw, Zap } from "lucide-react";
+import {
+  Check,
+  Download,
+  Loader2,
+  MonitorPlay,
+  RefreshCw,
+  Zap,
+} from "lucide-react";
 import type { StremioSync } from "@/hooks/useStremioSync";
 import { reinstallLinkProps } from "@/lib/list-sources";
 import type { ReinstallState } from "@/lib/reinstall";
@@ -114,41 +121,69 @@ export function StremioUpdateNotice({
 }
 
 /**
- * The linked account, in a card of its own: the line above it tells when the
- * lists refreshed, which is another thing. Update results are toasts.
+ * The linked account and the last update, in a card of its own: the line
+ * above it tells when the lists refreshed, which is another thing.
  */
 function StatusCard({ stremio }: { stremio: StremioSync }) {
   const { connection, sync } = stremio;
   if (!connection) return null;
+  const state =
+    sync.kind === "updating"
+      ? {
+          icon: <Loader2 className="size-4 animate-spin" />,
+          tone: "bg-amber-50 text-amber-600",
+          title: "Updating Stremio",
+          body: <>Sending your new catalogs.</>,
+        }
+      : sync.kind === "updated"
+        ? {
+            icon: <Check className="size-4" strokeWidth={2.5} />,
+            tone: "bg-emerald-50 text-emerald-600",
+            title: "Stremio updated",
+            body: <>Reload Stremio, or restart the app, to see them.</>,
+          }
+        : {
+            icon: <MonitorPlay className="size-4" />,
+            tone: "bg-black/5 text-black/60",
+            title: "Stremio updates automatically",
+            body: connection.email ? (
+              <>
+                Connected as{" "}
+                <span className="text-ink">{maskEmail(connection.email)}</span>
+              </>
+            ) : (
+              <>Your catalog changes reach Stremio when you save.</>
+            ),
+          };
+
   return (
-    <section className="flex items-center gap-3 rounded-2xl bg-white px-4 py-3 ring-1 ring-black/5">
+    <section
+      aria-live="polite"
+      className="flex items-center gap-3 rounded-2xl bg-white px-4 py-3 ring-1 ring-black/5"
+    >
       <span
+        key={state.title}
         aria-hidden="true"
-        className="flex size-9 shrink-0 items-center justify-center rounded-full bg-black/5 text-black/60"
+        className={cn(
+          "flex size-9 shrink-0 items-center justify-center rounded-full transition-[opacity,scale] duration-150 ease-out starting:scale-90 starting:opacity-0",
+          state.tone,
+        )}
       >
-        <MonitorPlay className="size-4" />
+        {state.icon}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-bold">Stremio updates automatically</p>
-        <p className="text-sm text-pretty text-black/55">
-          {connection.email ? (
-            <>
-              Connected as{" "}
-              <span className="text-ink">{maskEmail(connection.email)}</span>
-            </>
-          ) : (
-            <>Your catalog changes reach Stremio when you save.</>
-          )}
-        </p>
+        <p className="text-sm font-bold">{state.title}</p>
+        <p className="text-sm text-pretty text-black/55">{state.body}</p>
       </div>
-      <button
-        type="button"
-        disabled={sync.kind === "updating"}
-        onClick={() => void stremio.disconnect()}
-        className="shrink-0 text-sm font-semibold text-black/45 underline-offset-2 hover:text-ink hover:underline disabled:pointer-events-none disabled:opacity-40"
-      >
-        Disconnect
-      </button>
+      {sync.kind !== "updating" && (
+        <button
+          type="button"
+          onClick={() => void stremio.disconnect()}
+          className="shrink-0 text-sm font-semibold text-black/45 underline-offset-2 hover:text-ink hover:underline"
+        >
+          Disconnect
+        </button>
+      )}
     </section>
   );
 }
