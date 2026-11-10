@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-12T14:37:21.596Z",
+  "createdAt": "2026-11-10T14:16:45.983Z",
   "payload": {
     "actions": [
       {
@@ -56,36 +56,34 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Preview showed TV shows had 0 titles and instructed setting Show to Movies only. Changed Test catalog to Movies only and saved; confirmation says “Saved! Reinstall Stremlist in Stremio to see your changes.”",
+    "summary": "Opened Test catalog preview, followed its instruction to set Show to Movies only, and saved. The empty TV shows catalog is removed from the preview; the app confirms the changes were saved and says to reinstall Stremlist in Stremio to see them.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. Select Reinstall, then choose Uninstall in Stremio. Select Reinstall again, then choose Install. I did it Reinstall"
+        "name": "Update Stremio with your changes"
       },
       {
-        "text": "Reinstall Stremlist in Stremio"
+        "text": "Update Stremio with your changes"
       },
       {
-        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
+        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until it gets the update."
       },
       {
-        "text": "Reinstall"
+        "text": "Update it for me"
       },
       {
-        "text": "Uninstall"
+        "text": "Recommended"
       },
       {
-        "text": "Install"
+        "text": "Connect your Stremio account once. Your next saves update Stremio on their own."
       },
       {
-        "role": "button",
-        "name": "I did it"
+        "text": "I'll reinstall myself"
       },
       {
-        "role": "link",
-        "name": "Reinstall"
+        "text": "No account needed. Two steps in Stremio after each change."
       }
     ],
     "goneAnchors": [
@@ -108,6 +106,6 @@
         "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
       }
     ],
-    "endWaitMs": 12004
+    "endWaitMs": 15421
   }
 }

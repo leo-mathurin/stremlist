@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-12T14:31:39.086Z",
+  "createdAt": "2026-11-10T14:14:38.773Z",
   "payload": {
     "actions": [
       {
@@ -32,36 +32,34 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Confirmed the Trakt Trending chart is present in Your Lists, and the Saved! confirmation toast is visible. The requested chart was added and the configuration was saved.",
+    "summary": "Verified the chart was added: “Trakt Trending” appears in Your lists. The Save action committed successfully; the screen shows “Saved! Reinstall Stremlist in Stremio to see your changes.”",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. Select Reinstall, then choose Uninstall in Stremio. Select Reinstall again, then choose Install. I did it Reinstall"
+        "name": "Update Stremio with your changes"
       },
       {
-        "text": "Reinstall Stremlist in Stremio"
+        "text": "Update Stremio with your changes"
       },
       {
-        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
+        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until it gets the update."
       },
       {
-        "text": "Reinstall"
+        "text": "Update it for me"
       },
       {
-        "text": "Uninstall"
+        "text": "Recommended"
       },
       {
-        "text": "Install"
+        "text": "Connect your Stremio account once. Your next saves update Stremio on their own."
       },
       {
-        "role": "button",
-        "name": "I did it"
+        "text": "I'll reinstall myself"
       },
       {
-        "role": "link",
-        "name": "Reinstall"
+        "text": "No account needed. Two steps in Stremio after each change."
       }
     ],
     "goneAnchors": [
@@ -79,6 +77,6 @@
         "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
       }
     ],
-    "endWaitMs": 26925
+    "endWaitMs": 39611
   }
 }

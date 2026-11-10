@@ -44,6 +44,7 @@ import { useListSyncStatus } from "./useListSyncStatus";
 import { useProviderStatus } from "./useProviderStatus";
 import { useReinstallBaseline } from "./useReinstallBaseline";
 import type { InstallSetup } from "./useReinstallBaseline";
+import { useStremioSync } from "./useStremioSync";
 
 /** The Lists that a save stored, in the order it got them. */
 type StoredLists = Pick<
@@ -169,6 +170,9 @@ export function useAccountConfiguration(
     : 0;
   const baseline = useReinstallBaseline(accountKey);
   const { reset: resetBaseline, onLoaded: onBaselineLoaded } = baseline;
+  // Optional: a linked Stremio account turns the reinstall into an update.
+  const stremio = useStremioSync(accountKey, baseline.markReinstalled);
+  const { check: checkStremio } = stremio;
   /**
    * The Account that the first save just created, with what it stored. The
    * page already shows that setup, so loading the Account must not replace
@@ -336,6 +340,12 @@ export function useAccountConfiguration(
           actionsLive,
         });
 
+  // With a linked Stremio account, check the installed addon once the saved
+  // setup is known: a Stremio app left open may have written an older copy.
+  useEffect(() => {
+    if (status === "ready" && access !== "new") checkStremio();
+  }, [status, access, checkStremio]);
+
   /**
    * Create the Account from the current setup. Returns its ID. It may have no
    * Lists yet when it is created to connect a Provider.
@@ -452,6 +462,11 @@ export function useAccountConfiguration(
           "Saved the submitted settings. You have unsaved changes: save again to apply them.",
           { id: "configuration-save" },
         );
+      } else if (needsReinstall && stremio.connection) {
+        toast.success("Saved! Stremlist is updating Stremio.", {
+          id: "configuration-save",
+        });
+        void stremio.update();
       } else if (needsReinstall) {
         toast.success(
           "Saved! Reinstall Stremlist in Stremio to see your changes.",
@@ -696,6 +711,7 @@ export function useAccountConfiguration(
     nextRefreshAt,
     reinstall,
     markReinstalled: baseline.markReinstalled,
+    stremio,
     handleSave,
     handleRefresh,
     upgrade,

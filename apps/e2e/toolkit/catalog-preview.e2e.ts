@@ -489,7 +489,9 @@ test(
     // Removing a Catalog changes what Stremio read at install time.
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     // The reminder stays until the user says they reinstalled.
-    await expect(screen.getByRole("button", "I did it")).toBeVisible();
+    await expect(
+      screen.getByText("Update Stremio with your changes"),
+    ).toBeVisible();
     expect(submissions.at(-1)?.lists[0]).toMatchObject({
       sourceRef: imdbUser,
       displayMode: "movie",

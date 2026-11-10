@@ -8,6 +8,7 @@ An Account edits the Lists that become its Stremio Catalogs and keeps those sett
 - `configuration.merge` merges Source lists, deduplicates Titles, moves sources out, and enforces Account limits.
 - `configuration.save` preserves edits during pending or failed saves and detects changes from another window.
 - `configuration.reinstall` asks for a reinstall when the installed manifest changes.
+- `configuration.stremio-update` offers to link a Stremio account instead, then updates the installed Stremlist on each catalog save. It covers the code page, expiry, outages, a signed-out session, a removed install, another account, and disconnecting.
 
 ## How to get to it (user POV)
 
@@ -18,6 +19,7 @@ Open `/configure` for a new setup or `/configure?account=...` for an existing Ac
 Preconditions: use the toolkit's seeded Lists. Integration specs create their own Accounts and cache objects.
 
 - Run `bun run test:toolkit:replay`. `toolkit/ui.e2e.ts`, `save-refresh.e2e.ts`, `configuration-recovery.e2e.ts`, and `merged-lists.e2e.ts` check visible edits and exact submitted values. Use the first exact `Save` button, as the floating button has the same name.
+- `toolkit/stremio-sync.e2e.ts` answers Stremio's code page and API inside the browser context and asserts the written addon collection: only the Stremlist entry changes, in place. `bun test ./scripts/stremio-sync.test.ts` in `apps/frontend` covers the same rules in `lib/stremio-sync.ts`.
 - Run `CI=1 bun run --filter @stremlist/e2e test:e2e --project=local tests/merged-lists.spec.ts --grep 'merging two Lists on the configure page saves and survives a reload' --trace on`. Require the merge, saved Source lists, and the same structure after reload.
 - For the full affected backend behavior, run `CI=1 bun run --filter @stremlist/e2e test:e2e --project=local tests/merged-lists.spec.ts tests/configure-page.spec.ts tests/configuration-transitions.spec.ts tests/catalog-features.spec.ts --trace on`. Require stored values, deduplicated Catalog Titles, and invalid merges leaving saved data intact.
 
@@ -27,3 +29,5 @@ Preconditions: use the toolkit's seeded Lists. Integration specs create their ow
 - A new List goes first, from a link or Quick add. After Save it is the first Catalog in Stremio, so expect it at position 0 and the older Lists after it.
 - Limits differ for Lists and Source lists. Keep the assertions for 10 Lists, 20 Source lists per Account, and five sources per Merged List.
 - Integration tests share one database and use one worker. Running two suites concurrently invalidates save and cleanup proofs.
+- Never point `configuration.stremio-update` at a real Stremio account from a test. The linked key is the stremio.com session that confirmed the code: a Stremio logout with it signs that browser out of stremio.com. A real check needs the owner's consent, a backup of the addon collection, and a restore.
+- The manual steps sit behind `I'll reinstall myself`. Open it before looking for `Reinstall` or `I did it`.

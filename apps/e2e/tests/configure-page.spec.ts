@@ -356,7 +356,7 @@ test(
     const beforeSave = page.getByText("These changes need a reinstall.");
     const reminder = page
       .getByRole("status")
-      .filter({ hasText: "Reinstall Stremlist in Stremio" });
+      .filter({ hasText: "Update Stremio with your changes" });
 
     // Sort order and posters apply without a reinstall: no hint, no reminder.
     await page.getByRole("combobox", { name: "Sort order" }).click();
@@ -385,6 +385,10 @@ test(
         name: "Reinstall in Stremio to see your changes",
       }),
     ).toBeVisible();
+    // The manual steps are one choice; linking Stremio is the other.
+    await reminder
+      .getByRole("button", { name: "I'll reinstall myself" })
+      .click();
     // A local Addon URL has no `stremio://` link, so Reinstall opens Stremio Web.
     await expect(
       reminder.getByRole("link", { name: "Reinstall" }),
@@ -399,6 +403,9 @@ test(
     await saveConfigure(page, { message: SAVED_REINSTALL });
     await expect(reminder).toBeVisible();
 
+    await reminder
+      .getByRole("button", { name: "I'll reinstall myself" })
+      .click();
     await reminder.getByRole("button", { name: "I did it" }).click();
     await expect(reminder).toHaveCount(0);
     await expect(
@@ -440,7 +447,7 @@ test(
       .filter({ hasText: SAVED_REINSTALL });
     const reminder = page
       .getByRole("status")
-      .filter({ hasText: "Reinstall Stremlist in Stremio" });
+      .filter({ hasText: "Update Stremio with your changes" });
     await expect(reminder).toBeVisible();
     const popup = context.waitForEvent("page");
     await toast.getByRole("button", { name: "Reinstall" }).click();
@@ -451,6 +458,9 @@ test(
     // Stremio only offers Uninstall for an installed addon, so the user
     // needs the link a second time: the reminder stays until "I did it".
     await expect(reminder).toBeVisible();
+    await reminder
+      .getByRole("button", { name: "I'll reinstall myself" })
+      .click();
     await expect(reminder).toContainText(
       "Select Reinstall again, then choose Install.",
     );
