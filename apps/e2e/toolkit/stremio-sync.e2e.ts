@@ -331,6 +331,17 @@ test("reinstalling by hand stays available and can become the default", async ({
   expect(
     await browser.evaluate((key) => localStorage.getItem(key), MANUAL_KEY),
   ).toBe("1");
+
+  // Back to the choice: the next save toast has no Reinstall action, even
+  // while the previous toast, which had one, is still on screen.
+  await screen.getByRole("checkbox", "Always reinstall myself").tap();
+  await screen.getByRole("button", "Settings for Test catalog").tap();
+  await screen.getByLabel("Catalog title").fill("Renamed catalog");
+  await saveButton(screen).tap();
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  await expect(
+    screen.getByRole("button", "Reinstall", { exact: true }),
+  ).toHaveCount(0);
   expect(stremio.calls).toEqual([]);
 });
 

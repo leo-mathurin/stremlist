@@ -463,13 +463,16 @@ export function useAccountConfiguration(
           { id: "configuration-save" },
         );
       } else if (needsReinstall && stremio.connection) {
+        // Sonner keeps the action of a toast with the same ID: clear it.
         toast.success("Saved! Stremlist is updating Stremio.", {
           id: "configuration-save",
+          action: null,
         });
       } else if (needsReinstall && !stremio.manualPreferred) {
         // The reminder on the page offers both ways to update Stremio.
         toast.success("Saved! Choose how Stremio gets your changes.", {
           id: "configuration-save",
+          action: null,
         });
       } else if (needsReinstall) {
         toast.success(
