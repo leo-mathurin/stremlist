@@ -627,7 +627,9 @@ test("a saved List whose chart changes is not saved yet, and is polled only afte
     screen.getByText("Updated just now · 250 titles", { exact: true }),
   ).toBeVisible({ timeout: 15_000 });
   // The new status does not end the reminder: only the user can.
-  await expect(screen.getByRole("button", "I did it")).toBeVisible();
+  await expect(
+    screen.getByText("Update Stremio with your changes"),
+  ).toBeVisible();
   expect(submissions.at(-1)?.lists[1]).toMatchObject({
     id: ids.chart,
     sourceRef: "imdb:top-rated-tv",

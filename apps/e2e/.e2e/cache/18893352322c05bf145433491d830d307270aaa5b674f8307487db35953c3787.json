@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-11-05T18:20:57.100Z",
+  "createdAt": "2026-11-10T14:12:56.971Z",
   "payload": {
     "actions": [
       {
@@ -60,13 +60,13 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "The provided IMDb URL is now added as a catalog named “Weekend films.” The catalog shows the expected IMDb list identifier ls99123456, and the screen confirms “Saved!”",
+    "summary": "The link is now present as an IMDb list (ls99123456), named “Weekend films.” The saved catalog is confirmed by the “Saved! Reinstall Stremlist in Stremio to see your changes.” message.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. Select Reinstall, then choose Uninstall in Stremio. Select Reinstall again, then choose Install. I did it Reinstall"
+        "name": "Update Stremio with your changes"
       },
       {
         "role": "textbox",
@@ -77,19 +77,19 @@
         "text": "IMDb, Trakt, MDBList, JustWatch, SensCritique and Letterboxd links work."
       },
       {
-        "text": "Reinstall Stremlist in Stremio"
+        "text": "Update Stremio with your changes"
       },
       {
-        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
+        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until it gets the update."
       },
       {
-        "text": "Reinstall"
+        "text": "Update it for me"
       },
       {
-        "text": "Uninstall"
+        "text": "Recommended"
       },
       {
-        "text": "Install"
+        "text": "Connect your Stremio account once. Your next saves update Stremio on their own."
       }
     ],
     "goneAnchors": [
@@ -110,7 +110,7 @@
         "text": "We do not recognize this link. Paste a link to a watchlist or list on IMDb, Trakt, MDBList, JustWatch, SensCritique or Letterboxd."
       },
       {
-        "text": "No Lists yet"
+        "text": "No lists yet"
       },
       {
         "text": "Paste a link to a watchlist or list in the Providers panel, or pick one below."
@@ -122,6 +122,6 @@
         "text": "No new titles detected yet."
       }
     ],
-    "endWaitMs": 39280
+    "endWaitMs": 67279
   }
 }

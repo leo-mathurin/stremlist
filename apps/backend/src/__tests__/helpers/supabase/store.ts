@@ -72,6 +72,13 @@ const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
   }),
   list_read_queue: () => ({ updated_at: now() }),
   oauth_states: () => ({ created_at: now() }),
+  stremio_connections: () => ({
+    email: null,
+    update_locked_until: EPOCH,
+    update_lease_token: null,
+    created_at: now(),
+    updated_at: now(),
+  }),
   title_id_map: () => ({
     imdb_id: null,
     strategy: null,
@@ -87,6 +94,7 @@ export const UNIQUE_KEYS: Partial<Record<string, string[][]>> = {
   list_sync_status: [["list_id", "provider", "source_ref"]],
   list_read_queue: [["list_id", "provider", "source_ref"]],
   oauth_states: [["state"]],
+  stremio_connections: [["account_id"]],
   title_id_map: [["namespace", "external_id"]],
 };
 

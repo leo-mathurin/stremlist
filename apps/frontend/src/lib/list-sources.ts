@@ -132,3 +132,11 @@ export function buildAddonUrls(accountKey: string) {
   const stremioUrl = stremioDeepLink(addonUrl);
   return { addonUrl, webUrl, stremioUrl };
 }
+
+/** Opens the app, or Stremio Web when the Addon URL has no deep link. */
+export function reinstallLinkProps(accountKey: string) {
+  const { stremioUrl, webUrl } = buildAddonUrls(accountKey);
+  return stremioUrl
+    ? { href: stremioUrl }
+    : { href: webUrl, target: "_blank", rel: "noopener noreferrer" };
+}

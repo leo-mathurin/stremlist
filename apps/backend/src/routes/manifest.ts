@@ -1,21 +1,12 @@
 import {
   ACCOUNT_KEY_PATTERN,
-  APP_DESCRIPTION,
   BASE_MANIFEST,
   IMDB_USER_ID_PATTERN,
 } from "@stremlist/shared/constants";
 import type { StremioManifest } from "@stremlist/shared/stremio.types";
 import { Hono } from "hono";
-import { createHash } from "node:crypto";
-import type { AccountAccess } from "../services/accounts";
-import {
-  ensureLegacyAccount,
-  getVisibleLists,
-  resolveAccountKey,
-} from "../services/accounts";
-import { actionProviders } from "../services/actions";
-import { withAvailableGenres } from "../services/catalog-genres";
-import { buildManifestCatalogs } from "../services/stremio-catalogs";
+import { ensureLegacyAccount, resolveAccountKey } from "../services/accounts";
+import { buildAccountManifest } from "../services/addon-manifest";
 
 const manifest = new Hono();
 
@@ -24,16 +15,6 @@ function configurationRequired(): StremioManifest {
     ...structuredClone(BASE_MANIFEST),
     behaviorHints: { configurable: true, configurationRequired: true },
   };
-}
-
-/**
- * The manifest ID must stay stable per install, but it must not leak the
- * Account ID (the secret). Legacy installs keep their historic ID.
- */
-function manifestId(access: AccountAccess, key: string): string {
-  if (access.via === "legacy") return `com.stremlist.${key}`;
-  const digest = createHash("sha256").update(key).digest("hex").slice(0, 16);
-  return `com.stremlist.${digest}`;
 }
 
 // Base manifest: requires configuration.
@@ -56,38 +37,7 @@ manifest.get("/:accountKey/manifest.json", async (c) => {
     }
     if (!access) return c.json(configurationRequired());
 
-    const { account } = access;
-    const lists = await getVisibleLists(access);
-    const resources = [...BASE_MANIFEST.resources];
-    if (
-      access.via === "private" &&
-      (await actionProviders(account)).length > 0
-    ) {
-      resources.push({
-        name: "stream",
-        types: ["movie", "series"],
-        idPrefixes: ["tt"],
-      });
-    }
-
-    const userManifest: StremioManifest = {
-      ...structuredClone(BASE_MANIFEST),
-      id: manifestId(access, key),
-      description: `${APP_DESCRIPTION}. Changelog: https://stremlist.com/changelog`,
-      resources,
-      catalogs: buildManifestCatalogs(await withAvailableGenres(lists), {
-        newTitles: account.newTitlesCatalog,
-      }),
-      config: [
-        {
-          key: "rpdbApiKey",
-          type: "password",
-          title: "RPDB API Key (Optional)",
-          default: account.rpdbApiKey ?? "",
-        },
-      ],
-    };
-    return c.json(userManifest);
+    return c.json(await buildAccountManifest(access, key));
   } catch (error) {
     console.error(
       `Error serving manifest for ${key}:`,

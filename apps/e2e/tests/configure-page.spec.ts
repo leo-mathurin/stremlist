@@ -15,6 +15,7 @@ import {
   saveConfigure,
   SAVED,
   SAVED_REINSTALL,
+  SAVED_REINSTALL_BY_HAND,
 } from "../helpers/configure.js";
 
 // The /configure page against the real backend: List management, options,
@@ -356,7 +357,7 @@ test(
     const beforeSave = page.getByText("These changes need a reinstall.");
     const reminder = page
       .getByRole("status")
-      .filter({ hasText: "Reinstall Stremlist in Stremio" });
+      .filter({ hasText: "Update Stremio with your changes" });
 
     // Sort order and posters apply without a reinstall: no hint, no reminder.
     await page.getByRole("combobox", { name: "Sort order" }).click();
@@ -385,6 +386,10 @@ test(
         name: "Reinstall in Stremio to see your changes",
       }),
     ).toBeVisible();
+    // The manual steps are one choice; linking Stremio is the other.
+    await reminder
+      .getByRole("button", { name: "I'll reinstall myself" })
+      .click();
     // A local Addon URL has no `stremio://` link, so Reinstall opens Stremio Web.
     await expect(
       reminder.getByRole("link", { name: "Reinstall" }),
@@ -399,6 +404,9 @@ test(
     await saveConfigure(page, { message: SAVED_REINSTALL });
     await expect(reminder).toBeVisible();
 
+    await reminder
+      .getByRole("button", { name: "I'll reinstall myself" })
+      .click();
     await reminder.getByRole("button", { name: "I did it" }).click();
     await expect(reminder).toHaveCount(0);
     await expect(
@@ -419,7 +427,7 @@ test(
 );
 
 test(
-  "the Reinstall action of the save toast opens Stremio Web and keeps the reminder",
+  "for a member who reinstalls by hand, the Reinstall action of the save toast opens Stremio Web and keeps the reminder",
   { tag: "@local" },
   async ({ page, context }) => {
     // Stremio Web is not under test here: answer it with an empty page.
@@ -429,18 +437,22 @@ test(
         body: "<title>Stremio</title>",
       }),
     );
+    // "Always reinstall myself": the toast then links to the reinstall.
+    await page.addInitScript(() =>
+      localStorage.setItem("stremlist:stremio-manual", "1"),
+    );
     const { accountId } = await seedWatchlist();
     await openConfigure(page, accountId, TITLE);
     await page.getByRole("button", { name: "Add an IMDb chart" }).click();
     await page.getByRole("menuitem", { name: /^Top 250 Movies/ }).click();
-    await saveConfigure(page);
+    await saveConfigure(page, { message: SAVED_REINSTALL_BY_HAND });
 
     const toast = page
       .getByRole("listitem")
-      .filter({ hasText: SAVED_REINSTALL });
+      .filter({ hasText: SAVED_REINSTALL_BY_HAND });
     const reminder = page
       .getByRole("status")
-      .filter({ hasText: "Reinstall Stremlist in Stremio" });
+      .filter({ hasText: "Update Stremio with your changes" });
     await expect(reminder).toBeVisible();
     const popup = context.waitForEvent("page");
     await toast.getByRole("button", { name: "Reinstall" }).click();

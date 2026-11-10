@@ -14,6 +14,7 @@ import type {
   ConfigList,
   ConnectionSummary,
   NewTitlesSummary,
+  StremioLink,
 } from "@stremlist/shared/stremio.types";
 import {
   configBody,
@@ -44,6 +45,7 @@ import { useListSyncStatus } from "./useListSyncStatus";
 import { useProviderStatus } from "./useProviderStatus";
 import { useReinstallBaseline } from "./useReinstallBaseline";
 import type { InstallSetup } from "./useReinstallBaseline";
+import { useStremioSync } from "./useStremioSync";
 
 /** The Lists that a save stored, in the order it got them. */
 type StoredLists = Pick<
@@ -169,6 +171,13 @@ export function useAccountConfiguration(
     : 0;
   const baseline = useReinstallBaseline(accountKey);
   const { reset: resetBaseline, onLoaded: onBaselineLoaded } = baseline;
+  // Optional: a linked Stremio account turns the reinstall into an update.
+  const [loadedStremio, setLoadedStremio] = useState<StremioLink | null>(null);
+  const stremio = useStremioSync(
+    access === "private" ? accountId : null,
+    loadedStremio,
+    baseline.markReinstalled,
+  );
   /**
    * The Account that the first save just created, with what it stored. The
    * page already shows that setup, so loading the Account must not replace
@@ -287,6 +296,7 @@ export function useAccountConfiguration(
         setLists(shown.lists);
         setAccess(data.access);
         setAccountId(data.accountId);
+        setLoadedStremio(data.stremio);
         setRpdbApiKey(shown.rpdbApiKey);
         setActionsEnabled(shown.actionsEnabled);
         setActions(shown.actions);
@@ -452,6 +462,22 @@ export function useAccountConfiguration(
           "Saved the submitted settings. You have unsaved changes: save again to apply them.",
           { id: "configuration-save" },
         );
+      } else if (needsReinstall && stremio.connection) {
+        // Sonner keeps the action of a toast with the same ID: clear it.
+        toast.success("Saved! Stremlist is updating Stremio.", {
+          id: "configuration-save",
+          action: null,
+        });
+      } else if (
+        needsReinstall &&
+        stremio.available &&
+        !stremio.manualPreferred
+      ) {
+        // The reminder on the page offers both ways to update Stremio.
+        toast.success("Saved! Choose how Stremio gets your changes.", {
+          id: "configuration-save",
+          action: null,
+        });
       } else if (needsReinstall) {
         toast.success(
           "Saved! Reinstall Stremlist in Stremio to see your changes.",
@@ -476,6 +502,8 @@ export function useAccountConfiguration(
           { id: "configuration-save" },
         );
       }
+      // Also with edits made during the save: Stremio gets what was saved.
+      if (needsReinstall && stremio.connection) void stremio.update();
     } catch (err) {
       toastError(err, { id: "configuration-save" });
     } finally {
@@ -696,6 +724,7 @@ export function useAccountConfiguration(
     nextRefreshAt,
     reinstall,
     markReinstalled: baseline.markReinstalled,
+    stremio,
     handleSave,
     handleRefresh,
     upgrade,

@@ -493,6 +493,44 @@ export type Database = {
           },
         ];
       };
+      stremio_connections: {
+        Row: {
+          account_id: string;
+          auth_key: string;
+          created_at: string;
+          email: string | null;
+          update_lease_token: string | null;
+          update_locked_until: string;
+          updated_at: string;
+        };
+        Insert: {
+          account_id: string;
+          auth_key: string;
+          created_at?: string;
+          email?: string | null;
+          update_lease_token?: string | null;
+          update_locked_until?: string;
+          updated_at?: string;
+        };
+        Update: {
+          account_id?: string;
+          auth_key?: string;
+          created_at?: string;
+          email?: string | null;
+          update_lease_token?: string | null;
+          update_locked_until?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "stremio_connections_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: true;
+            referencedRelation: "accounts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       title_id_map: {
         Row: {
           external_id: string;
@@ -636,6 +674,14 @@ export type Database = {
           p_provider: string;
         };
         Returns: boolean;
+      };
+      claim_stremio_update: {
+        Args: {
+          p_account_id: string;
+          p_lease_seconds: number;
+          p_lease_token: string;
+        };
+        Returns: string;
       };
       create_account_with_config: {
         Args: {
@@ -786,6 +832,10 @@ export type Database = {
           p_lease_token: string;
           p_provider: string;
         };
+        Returns: boolean;
+      };
+      release_stremio_update: {
+        Args: { p_account_id: string; p_lease_token: string };
         Returns: boolean;
       };
       replace_account_config: {

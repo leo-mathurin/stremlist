@@ -16,7 +16,11 @@ import ActionsSettings from "../components/ActionsSettings";
 import FloatingSaveButton, {
   SAVE_BUTTON_CLASS,
 } from "../components/FloatingSaveButton";
-import { AddonUrlCard, ReinstallNotice } from "../components/AccountCards";
+import { AddonUrlCard } from "../components/AccountCards";
+import {
+  StremioStatus,
+  StremioUpdateNotice,
+} from "../components/StremioUpdateNotice";
 import LeaveDialog from "../components/LeaveDialog";
 import LegacyChecklist, { WhatsNewButton } from "../components/LegacyChecklist";
 import LinkPaste from "../components/LinkPaste";
@@ -434,20 +438,19 @@ export default function Configure() {
               {legacy && checklistHidden && (
                 <WhatsNewButton onClick={() => setChecklistHidden(false)} />
               )}
+              {!policy.editLock && <StremioStatus stremio={config.stremio} />}
             </div>
           )}
         </div>
 
-        {ready &&
-          accountKey &&
-          !policy.editLock &&
-          config.reinstall !== "none" && (
-            <ReinstallNotice
-              accountKey={accountKey}
-              state={config.reinstall}
-              onReinstalled={config.markReinstalled}
-            />
-          )}
+        {ready && accountKey && !policy.editLock && (
+          <StremioUpdateNotice
+            accountKey={accountKey}
+            state={config.reinstall}
+            stremio={config.stremio}
+            onReinstalled={config.markReinstalled}
+          />
+        )}
 
         {(rawKey && !keyIsValid) || status === "notFound" ? (
           <div

@@ -733,6 +733,7 @@ test(
     );
 
     // The reminder survives the reload until the user reinstalls.
+    await page.getByRole("button", { name: "I'll reinstall myself" }).click();
     await page.getByRole("button", { name: "I did it" }).click();
     await expect(page.getByRole("button", { name: "I did it" })).toHaveCount(0);
 

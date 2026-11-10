@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-11-09T14:24:12.167Z",
+  "createdAt": "2026-11-10T14:13:19.708Z",
   "payload": {
     "actions": [
       {
@@ -48,36 +48,34 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Merged Favourite films into IMDb Watchlist; the catalog shows 2 lists merged with both IMDb Watchlist and Favourite films listed. Saved successfully; confirmation says “Saved! Reinstall Stremlist in Stremio to see your changes.”",
+    "summary": "The settings show IMDb Watchlist and Favourite films together in the same catalog (2 lists), and the Save confirmation toast says the changes were saved.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
-        "name": "Reinstall Stremlist in Stremio Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon. Select Reinstall, then choose Uninstall in Stremio. Select Reinstall again, then choose Install. I did it Reinstall"
+        "name": "Update Stremio with your changes"
       },
       {
-        "text": "Reinstall Stremlist in Stremio"
+        "text": "Update Stremio with your changes"
       },
       {
-        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until you reinstall the addon."
+        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until it gets the update."
       },
       {
-        "text": "Reinstall"
+        "text": "Update it for me"
       },
       {
-        "text": "Uninstall"
+        "text": "Recommended"
       },
       {
-        "text": "Install"
+        "text": "Connect your Stremio account once. Your next saves update Stremio on their own."
       },
       {
-        "role": "button",
-        "name": "I did it"
+        "text": "I'll reinstall myself"
       },
       {
-        "role": "link",
-        "name": "Reinstall"
+        "text": "No account needed. Two steps in Stremio after each change."
       }
     ],
     "goneAnchors": [
@@ -111,6 +109,6 @@
         "text": "4 of 10 lists. Drag the handle to reorder."
       }
     ],
-    "endWaitMs": 14271
+    "endWaitMs": 28907
   }
 }
