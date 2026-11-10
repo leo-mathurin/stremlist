@@ -38,7 +38,7 @@ const UPDATED = "Stremio updated";
 const SAVED_BY_HAND =
   "Saved! Reinstall Stremlist in Stremio to see your changes.";
 const WAITING = "Confirm in the Stremio tab";
-const LINKED = "Stremio updates automatically";
+const LINKED = "Updates Stremio on save";
 
 interface Addon {
   transportUrl: string;
@@ -294,7 +294,7 @@ test("a catalog save offers both ways, and linking Stremio updates the install",
   // once Stremio is linked.
   await expect(screen.getByText(UPDATED)).toBeVisible({ timeout: 15_000 });
   await expect(
-    screen.getByText("Reload Stremio, or restart the app, to see them."),
+    screen.getByText("reload it to see your changes"),
   ).toBeVisible();
   await expect(screen.getByText(SAVED_REINSTALL)).toHaveCount(0);
   await expect(screen.getByText(CHOICE)).toHaveCount(0);
@@ -312,8 +312,9 @@ test("a catalog save offers both ways, and linking Stremio updates the install",
   // on load writes nothing and says nothing.
   const writes = stremio.calls.filter((c) => c === "addonCollectionSet");
   await browser.reload();
-  await expect(screen.getByText(LINKED)).toBeVisible();
+  await screen.getByRole("button", LINKED).tap();
   await expect(screen.getByText("me•••@example.com")).toBeVisible();
+  await browser.keyboard.press("Escape");
   await expect
     .poll(() => stremio.calls.filter((c) => c === "update").length)
     .toBe(2);
@@ -754,7 +755,8 @@ test("disconnecting forgets the key and brings back the manual choice", async ({
     served: servedManifest,
   });
   await openConfigure(app, screen);
-  await screen.getByRole("button", "Disconnect").tap();
+  await screen.getByRole("button", LINKED).tap();
+  await screen.getByRole("menuitem", "Disconnect").tap();
   await expect(screen.getByText(LINKED)).toHaveCount(0);
   expect(stremio.calls).toContain("disconnect");
   expect(stremio.linked).toBe(false);

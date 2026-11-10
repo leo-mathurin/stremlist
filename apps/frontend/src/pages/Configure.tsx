@@ -17,7 +17,10 @@ import FloatingSaveButton, {
   SAVE_BUTTON_CLASS,
 } from "../components/FloatingSaveButton";
 import { AddonUrlCard } from "../components/AccountCards";
-import { StremioUpdateNotice } from "../components/StremioUpdateNotice";
+import {
+  StremioStatus,
+  StremioUpdateNotice,
+} from "../components/StremioUpdateNotice";
 import LeaveDialog from "../components/LeaveDialog";
 import LegacyChecklist, { WhatsNewButton } from "../components/LegacyChecklist";
 import LinkPaste from "../components/LinkPaste";
@@ -435,6 +438,7 @@ export default function Configure() {
               {legacy && checklistHidden && (
                 <WhatsNewButton onClick={() => setChecklistHidden(false)} />
               )}
+              {!policy.editLock && <StremioStatus stremio={config.stremio} />}
             </div>
           )}
         </div>

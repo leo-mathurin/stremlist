@@ -1,12 +1,19 @@
 import { useId, useState } from "react";
 import {
   Check,
+  ChevronDown,
   Download,
   Loader2,
   MonitorPlay,
   RefreshCw,
   Zap,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { StremioSync } from "@/hooks/useStremioSync";
 import { reinstallLinkProps } from "@/lib/list-sources";
 import type { ReinstallState } from "@/lib/reinstall";
@@ -65,24 +72,25 @@ export function StremioUpdateNotice({
     );
   }
 
+  // The linked account itself is in the "Refreshed" line (StremioStatus).
   if (stremio.connection) {
-    return (
-      <div className="space-y-3">
-        <StatusCard stremio={stremio} />
-        {state === "after-save" && (
-          <p className={cn("text-sm text-black/55", ENTER)}>
-            Stremio will update when you save.
-          </p>
-        )}
-        {state === "required" && stremio.sync.kind === "idle" && (
-          <OutdatedCard
-            accountKey={accountKey}
-            stremio={stremio}
-            onReinstalled={reinstalled}
-          />
-        )}
-      </div>
-    );
+    if (state === "after-save") {
+      return (
+        <p className={cn("text-sm text-black/55", ENTER)}>
+          Stremio will update when you save.
+        </p>
+      );
+    }
+    if (state === "required" && stremio.sync.kind === "idle") {
+      return (
+        <OutdatedCard
+          accountKey={accountKey}
+          stremio={stremio}
+          onReinstalled={reinstalled}
+        />
+      );
+    }
+    return null;
   }
 
   if (state === "required") {
@@ -121,70 +129,71 @@ export function StremioUpdateNotice({
 }
 
 /**
- * The linked account and the last update, in a card of its own: the line
- * above it tells when the lists refreshed, which is another thing.
+ * The linked account and the last update, at the end of the "Refreshed"
+ * line. Failures are cards of their own, under that line.
  */
-function StatusCard({ stremio }: { stremio: StremioSync }) {
+export function StremioStatus({ stremio }: { stremio: StremioSync }) {
   const { connection, sync } = stremio;
-  if (!connection) return null;
-  const state =
-    sync.kind === "updating"
-      ? {
-          icon: <Loader2 className="size-4 animate-spin" />,
-          tone: "bg-amber-50 text-amber-600",
-          title: "Updating Stremio",
-          body: <>Sending your new catalogs.</>,
-        }
-      : sync.kind === "updated"
-        ? {
-            icon: <Check className="size-4" strokeWidth={2.5} />,
-            tone: "bg-emerald-50 text-emerald-600",
-            title: "Stremio updated",
-            body: <>Reload Stremio, or restart the app, to see them.</>,
-          }
-        : {
-            icon: <MonitorPlay className="size-4" />,
-            tone: "bg-black/5 text-black/60",
-            title: "Stremio updates automatically",
-            body: connection.email ? (
-              <>
-                Connected as{" "}
-                <span className="text-ink">{maskEmail(connection.email)}</span>
-              </>
-            ) : (
-              <>Your catalog changes reach Stremio when you save.</>
-            ),
-          };
-
+  if (!connection || sync.kind === "failed") return null;
   return (
-    <section
-      aria-live="polite"
-      className="flex items-center gap-3 rounded-2xl bg-white px-4 py-3 ring-1 ring-black/5"
-    >
-      <span
-        key={state.title}
-        aria-hidden="true"
-        className={cn(
-          "flex size-9 shrink-0 items-center justify-center rounded-full transition-[opacity,scale] duration-150 ease-out starting:scale-90 starting:opacity-0",
-          state.tone,
-        )}
-      >
-        {state.icon}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-bold">{state.title}</p>
-        <p className="text-sm text-pretty text-black/55">{state.body}</p>
-      </div>
-      {sync.kind !== "updating" && (
-        <button
-          type="button"
-          onClick={() => void stremio.disconnect()}
-          className="shrink-0 text-sm font-semibold text-black/45 underline-offset-2 hover:text-ink hover:underline"
+    <div aria-live="polite" className="ml-auto min-w-0 text-sm text-black/55">
+      {sync.kind === "updating" ? (
+        <p
+          key="updating"
+          className={cn(
+            "flex items-center gap-1.5 font-semibold text-amber-700",
+            ENTER,
+          )}
         >
-          Disconnect
-        </button>
+          <Loader2 className="size-3.5 shrink-0 animate-spin" />
+          Updating Stremio…
+        </p>
+      ) : sync.kind === "updated" ? (
+        <p
+          key="updated"
+          className={cn("flex flex-wrap items-center gap-x-1.5", ENTER)}
+        >
+          <Check
+            className="size-3.5 shrink-0 text-emerald-600"
+            strokeWidth={3}
+          />
+          <span className="font-semibold text-ink">Stremio updated</span>
+          <span aria-hidden="true">·</span>
+          <span>reload it to see your changes</span>
+        </p>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 outline-none transition-colors duration-150 hover:bg-black/5 hover:text-ink focus-visible:ring-[3px] focus-visible:ring-brand/50 data-[state=open]:bg-black/5 data-[state=open]:text-ink">
+            <MonitorPlay className="size-3.5 shrink-0" />
+            Updates Stremio on save
+            <ChevronDown className="size-3.5 shrink-0" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64 p-1.5">
+            <div className="px-2 py-1.5 text-sm">
+              <p className="font-bold text-ink">Stremio updates on save</p>
+              <p className="text-pretty text-black/55">
+                {connection.email ? (
+                  <>
+                    Connected as{" "}
+                    <span className="text-ink">
+                      {maskEmail(connection.email)}
+                    </span>
+                  </>
+                ) : (
+                  "Your catalog changes reach Stremio when you save."
+                )}
+              </p>
+            </div>
+            <DropdownMenuItem
+              onSelect={() => void stremio.disconnect()}
+              className="font-semibold"
+            >
+              Disconnect
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
-    </section>
+    </div>
   );
 }
 
