@@ -1,0 +1,160 @@
+name: Supabase deploy
+
+# Releases main to production after CI passes on the merge commit:
+# migrations and supabase/config.toml first, then the backend and frontend
+# built from the same commit.
+# Vercel's Git integration no longer builds main (vercel.json), so this
+# workflow is the only path to production. See docs/production-deploy.md.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  # Retry after a failure. It releases the current head of main only.
+  workflow_dispatch:
+
+# One release at a time, never cancelled half-way through a db push. A newer
+# merge waits, and an overtaken run stops at its first main check.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  SUPABASE_CLI_VERSION: 2.118.0
+  SUPABASE_PROJECT_REF: igbmxubzxjfdbgmawrtr
+
+jobs:
+  release:
+    name: Release commit
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref_name == 'main') ||
+      (github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.release.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve the commit to release
+        id: release
+        env:
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: node .github/scripts/release-sha.mjs resolve "$TESTED_SHA"
+
+  plan:
+    name: Plan migrations and config (read-only)
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: supabase-prod
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.sha }}
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Compare supabase/migrations with the production history
+        run: node .github/scripts/supabase-migrations.mjs plan
+
+      # GitHub runners have no IPv6 and the database host has no IPv4
+      # address: link stores the IPv4 pooler URL that db push then uses.
+      - name: Link the production project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --workdir .
+
+      - name: Dry run of db push
+        run: supabase db push --linked --include-all --skip-vault --dry-run --workdir .
+
+      # Read-only. Applies [remotes.production] from supabase/config.toml.
+      - name: Configuration changes to push
+        run: supabase config diff --project-ref "$SUPABASE_PROJECT_REF" --workdir .
+
+  build:
+    name: Build on Vercel (no domains)
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: vercel-prod
+    outputs:
+      backend: ${{ steps.build.outputs.backend }}
+      frontend: ${{ steps.build.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.sha }}
+
+      - name: Build backend and frontend from the release commit
+        id: build
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          RELEASE_SHA: ${{ needs.release.outputs.sha }}
+        run: node .github/scripts/vercel-release.mjs build "$RELEASE_SHA"
+
+  apply:
+    name: Apply migrations and config
+    needs: [release, plan, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: supabase-prod
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      RELEASE_SHA: ${{ needs.release.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.sha }}
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      - name: Refuse an overtaken release
+        run: node .github/scripts/release-sha.mjs assert "$RELEASE_SHA"
+
+      - name: Plan again
+        run: node .github/scripts/supabase-migrations.mjs plan
+
+      - name: Link the production project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --workdir .
+
+      - name: Apply pending migrations
+        run: supabase db push --linked --include-all --skip-vault --yes --workdir .
+
+      - name: Check the production history
+        run: node .github/scripts/supabase-migrations.mjs verify
+
+      - name: Push supabase/config.toml
+        run: supabase config push --project-ref "$SUPABASE_PROJECT_REF" --yes --workdir .
+
+  publish:
+    name: Publish on Vercel
+    needs: [release, build, apply]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: vercel-prod
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.sha }}
+
+      - name: Smoke-test, then promote backend and frontend
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          RELEASE_SHA: ${{ needs.release.outputs.sha }}
+          BACKEND_ID: ${{ needs.build.outputs.backend }}
+          FRONTEND_ID: ${{ needs.build.outputs.frontend }}
+        run: node .github/scripts/vercel-release.mjs publish "$RELEASE_SHA" "$BACKEND_ID" "$FRONTEND_ID"

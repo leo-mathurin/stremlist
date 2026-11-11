@@ -177,7 +177,8 @@ enable_manual_linking = false
 minimum_password_length = 6
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values
 # are: `letters_digits`, `lower_upper_letters_digits`, `lower_upper_letters_digits_symbols`
-password_requirements = ""
+# Not declared: production has no value, and "" would be pushed on every deploy.
+# password_requirements = ""
 
 # Configure passkey sign-ins.
 # [auth.passkey]
@@ -406,3 +407,30 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# Production project. `supabase config push --project-ref igbmxubzxjfdbgmawrtr`
+# (run by the Supabase deploy workflow) merges this block over the settings
+# above. Only the values that differ from local development are listed.
+# Check with: supabase config diff --project-ref igbmxubzxjfdbgmawrtr
+# One difference is expected, and config push cannot write it:
+# auth.sms.twilio.enabled (production keeps phone sign-in off but reports
+# Twilio as its SMS provider).
+[remotes.production]
+project_id = "igbmxubzxjfdbgmawrtr"
+
+[remotes.production.db.pooler]
+default_pool_size = 15
+max_client_conn = 200
+
+[remotes.production.auth]
+site_url = "http://localhost:3000"
+additional_redirect_urls = []
+
+[remotes.production.auth.email]
+enable_confirmations = true
+max_frequency = "1m0s"
+otp_length = 8
+
+[remotes.production.auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
