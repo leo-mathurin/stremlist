@@ -705,14 +705,28 @@ export default function Configure() {
                 stremioTrakt={watch.status?.stremioTrakt ?? false}
                 loadFailed={watch.failed}
                 busy={watch.busy}
-                starting={watch.starting}
                 notice={watch.notice}
                 locked={policy.watchLock}
                 onToggle={(provider, enabled) =>
                   void watch.toggle(provider, enabled)
                 }
                 onRetry={() => void watch.retry()}
-                onLinkStremio={() => void config.stremio.connect()}
+                onLinkStremio={() => {
+                  watch.clearNotice();
+                  void config.stremio.connect();
+                  // The code and its progress show at the top of the page.
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                onInstallAgain={() => {
+                  watch.clearNotice();
+                  void config.stremio.installAgain();
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                onUpdateStremio={() => {
+                  watch.clearNotice();
+                  void config.stremio.retry();
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
               />
 
               <NewTitlesSettings

@@ -1,30 +1,56 @@
-import type { WatchProviderId } from "@stremlist/shared/watch-tracking";
-import type { WatchTrackingStatus } from "@stremlist/shared/watch-tracking";
+import type {
+  WatchProviderId,
+  WatchTrackingStatus,
+} from "@stremlist/shared/watch-tracking";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 
-/** What the last change of a Destination left to say, if anything. */
+/** What the last change left the installed Stremlist with, if it matters. */
 export type WatchChangeNotice =
-  /** The installed Stremlist is not in the linked Stremio account. */
+  /** The linked Stremio account has no Stremlist installed. */
   | "missing"
-  /** Stremio did not take the new manifest: the sweep still works. */
-  | "stremio-unavailable"
+  /** Stremio did not answer the update. */
+  | "unavailable"
+  /** Stremio signed Stremlist out: link it again. */
+  | "signed-out"
   | null;
 
+/** The account being changed, while its request runs. */
+export interface WatchChange {
+  provider: WatchProviderId;
+  /** It turns automatic marks on: the library is read first. */
+  starting: boolean;
+}
+
+const TOAST = { id: "watch-tracking" } as const;
+
+/** What a refused change tells the member. */
+function refusal(reason: string | undefined): string {
+  switch (reason) {
+    case "stremio-not-linked":
+    case "signed-out":
+      return "Link your Stremio account again to mark titles as watched automatically.";
+    case "not-connected":
+      return "Connect this account again to mark titles as watched on it.";
+    case "unavailable":
+      return "Stremlist could not read your Stremio library. Try again in a moment.";
+    default:
+      return "Stremlist could not save this change. Try again.";
+  }
+}
+
 /**
- * Watch tracking of an Account (ADR 0003). A change applies at once, without
- * the Save button: turning a Destination on reads the Watched baseline and
- * updates the installed Stremlist. `refreshKey` changes when a Connection or
- * the Stremio link changes, so the list follows them.
+ * Automatic watched marks of an Account (ADR 0003). A change applies at
+ * once, without the Save button: turning the first account on reads the
+ * Watched baseline and updates the installed Stremlist. `refreshKey`
+ * changes when a Connection or the Stremio link changes, so the list
+ * follows them; coming back to the tab reads it again too.
  */
 export function useWatchTracking(accountId: string | null, refreshKey: string) {
   const [status, setStatus] = useState<WatchTrackingStatus | null>(null);
   const [failed, setFailed] = useState(false);
-  /** The Destination being changed, while its request runs. */
-  const [busy, setBusy] = useState<WatchProviderId | null>(null);
-  /** The change being made turns Watch tracking on: it reads the library. */
-  const [starting, setStarting] = useState(false);
+  const [busy, setBusy] = useState<WatchChange | null>(null);
   const [notice, setNotice] = useState<WatchChangeNotice>(null);
   const run = useRef(0);
   const changing = useRef(false);
@@ -56,6 +82,15 @@ export function useWatchTracking(accountId: string | null, refreshKey: string) {
     void load();
   }, [load, refreshKey]);
 
+  // A tab left open shows fresh counts and last titles when it comes back.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [load]);
+
   const toggle = useCallback(
     async (provider: WatchProviderId, enabled: boolean) => {
       if (!accountId || !status || busy) return;
@@ -66,8 +101,10 @@ export function useWatchTracking(accountId: string | null, refreshKey: string) {
       // A refresh in flight is older than this change: its answer is dropped.
       run.current++;
       changing.current = true;
-      setStarting(enabled && !status.destinations.some((d) => d.enabled));
-      setBusy(provider);
+      setBusy({
+        provider,
+        starting: enabled && !status.destinations.some((d) => d.enabled),
+      });
       setNotice(null);
       // The checkbox follows the click at once; a failure puts it back.
       setStatus({
@@ -84,33 +121,27 @@ export function useWatchTracking(accountId: string | null, refreshKey: string) {
         if (res.ok) {
           const body = await res.json();
           setStatus(body.status);
-          if (body.stremio === "missing") setNotice("missing");
-          else if (
-            body.stremio === "unavailable" ||
-            body.stremio === "signed-out"
-          ) {
-            setNotice("stremio-unavailable");
+          if (body.status.destinations.some((d) => d.enabled)) {
+            setNotice(
+              body.stremio === "updated" || body.stremio === "unchanged"
+                ? null
+                : body.stremio,
+            );
           }
           return;
         }
         setStatus(previous);
+        // A refused change may still have saved part of it: read it back.
+        reloadAfterChange.current = true;
         const reason =
           res.status === 409 || res.status === 400 || res.status === 502
             ? ((await res.json()) as { reason?: string }).reason
             : undefined;
-        toast.error(
-          reason === "stremio-not-linked" || reason === "signed-out"
-            ? "Link your Stremio account again to use Watch tracking."
-            : reason === "not-connected"
-              ? "Connect this account again to use it for Watch tracking."
-              : "Stremlist could not read your Stremio library. Try again in a moment.",
-          { id: "watch-tracking" },
-        );
+        toast.error(refusal(reason), TOAST);
       } catch {
         setStatus(previous);
-        toast.error("Stremlist could not save this change. Try again.", {
-          id: "watch-tracking",
-        });
+        reloadAfterChange.current = true;
+        toast.error(refusal(undefined), TOAST);
       } finally {
         changing.current = false;
         setBusy(null);
@@ -123,5 +154,7 @@ export function useWatchTracking(accountId: string | null, refreshKey: string) {
     [accountId, busy, load, status],
   );
 
-  return { status, failed, busy, starting, notice, toggle, retry: load };
+  const clearNotice = useCallback(() => setNotice(null), []);
+
+  return { status, failed, busy, notice, toggle, retry: load, clearNotice };
 }

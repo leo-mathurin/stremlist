@@ -6,76 +6,72 @@ import type {
   WatchProviderId,
 } from "@stremlist/shared/watch-tracking";
 import { WATCH_PROVIDERS } from "@stremlist/shared/watch-tracking";
-import type { WatchChangeNotice } from "@/hooks/useWatchTracking";
+import type { WatchChange, WatchChangeNotice } from "@/hooks/useWatchTracking";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BRAND_CHECKBOX } from "./ActionsSettings";
 import { ProviderMark } from "./brand";
 import RelativeTime from "./RelativeTime";
-
-/** A status line fades in when it changes, from just below. */
-const ENTER =
-  "transition-[opacity,translate] duration-200 ease-[var(--ease-out-quint)] starting:translate-y-1 starting:opacity-0 motion-reduce:starting:translate-y-0";
+import { ENTER } from "./StremioUpdateNotice";
 
 const ALL_PROVIDERS = joinProviderLabels([...WATCH_PROVIDERS], "or");
+
+const LINK_BUTTON = "font-semibold text-stremlist hover:underline";
 
 function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
 
-/** What a Destination shows under its name. */
-function DestinationLine({
-  destination,
-  busy,
-  first,
-}: {
-  destination: WatchDestinationStatus;
-  busy: boolean;
-  /** This change turns Watch tracking on: it reads the library first. */
-  first: boolean;
-}) {
+type LineIcon = "busy" | "pause" | "alert" | "wait";
+
+/** What an account shows under its name. */
+function statusLine(
+  destination: WatchDestinationStatus,
+  change: WatchChange | null,
+): { key: string; icon?: LineIcon; text: React.ReactNode } {
   const label = PROVIDERS[destination.provider].label;
   const { lastTitle } = destination;
-  let line: {
-    key: string;
-    icon?: "busy" | "pause" | "alert" | "wait";
-    text: React.ReactNode;
-  };
-
-  if (busy) {
-    line = {
+  if (change?.provider === destination.provider) {
+    return {
       key: "busy",
       icon: "busy",
-      text: first ? "Reading what you watched in Stremio…" : "Saving…",
+      text: change.starting
+        ? "Reading what you watched in Stremio…"
+        : "Saving…",
     };
-  } else if (!destination.enabled) {
-    line = { key: "off", text: "Off" };
-  } else if (destination.paused) {
-    line = {
+  }
+  if (!destination.enabled) return { key: "off", text: "Off" };
+  if (destination.paused) {
+    return {
       key: "paused",
       icon: "pause",
       text: "Paused while Stremio's own Trakt is connected",
     };
-  } else if (destination.lastError === "needs_renewal") {
-    line = {
-      key: "renew",
-      icon: "alert",
-      text: `Connect ${label} again to send the titles waiting`,
-    };
-  } else if (destination.lastError === "gave_up") {
-    line = {
-      key: "gave-up",
-      icon: "alert",
-      text: `${label} refused some titles for 3 days. They were not sent.`,
-    };
-  } else if (destination.lastError === "not_found") {
-    line = {
-      key: "not-found",
-      icon: "alert",
-      text: `${label} does not know the last title`,
-    };
-  } else if (destination.pending > 0) {
-    line = {
+  }
+  switch (destination.lastError) {
+    case "needs_renewal":
+      return {
+        key: "renew",
+        icon: "alert",
+        text: `Connect ${label} again to send the titles waiting`,
+      };
+    case "gave_up":
+      return {
+        key: "gave-up",
+        icon: "alert",
+        text: `${label} refused some titles for 3 days. They were not sent.`,
+      };
+    case "not_found":
+      return {
+        key: "not-found",
+        icon: "alert",
+        text: `${label} could not find the last title`,
+      };
+    case null:
+      break;
+  }
+  if (destination.pending > 0) {
+    return {
       key: "pending",
       icon: "wait",
       text:
@@ -83,47 +79,29 @@ function DestinationLine({
           ? "1 title on its way"
           : `${destination.pending} titles on their way`,
     };
-  } else if (destination.lastSuccessAt && lastTitle) {
-    line = {
+  }
+  if (destination.lastSuccessAt && lastTitle) {
+    const episode =
+      lastTitle.season !== undefined && lastTitle.episode !== undefined
+        ? `S${pad(lastTitle.season)}E${pad(lastTitle.episode)}, `
+        : "";
+    return {
       key: "last",
       text: (
         <>
-          Last marked{" "}
-          {lastTitle.season !== undefined && lastTitle.episode !== undefined
-            ? `S${pad(lastTitle.season)}E${pad(lastTitle.episode)} `
-            : ""}
+          Last marked: {episode}
           <RelativeTime iso={destination.lastSuccessAt} />
         </>
       ),
     };
-  } else {
-    line = { key: "on", text: "On. Titles you finish from now on go here." };
   }
-
-  return (
-    <span
-      key={line.key}
-      className={cn(
-        "flex items-center gap-1 text-xs",
-        line.icon === "alert" ? "text-red-700" : "text-black/50",
-        line.icon === "pause" && "text-amber-700",
-        ENTER,
-      )}
-    >
-      {line.icon === "busy" && (
-        <Loader2 className="size-3 shrink-0 animate-spin" />
-      )}
-      {line.icon === "pause" && <PauseCircle className="size-3 shrink-0" />}
-      {line.icon === "alert" && <AlertCircle className="size-3 shrink-0" />}
-      {line.icon === "wait" && <Clock className="size-3 shrink-0" />}
-      <span className="min-w-0 truncate">{line.text}</span>
-    </span>
-  );
+  return { key: "on", text: "On. Titles you finish from now on are marked." };
 }
 
 /**
- * Watch tracking (ADR 0003): Stremlist marks what Stremio marks as watched
- * on the accounts the member picks. Changes apply at once, not on Save.
+ * Automatic watched marks (ADR 0003): Stremlist marks what Stremio marks as
+ * watched on the accounts the member picks. Changes apply at once, not on
+ * Save.
  */
 export default function WatchTrackingSettings({
   destinations,
@@ -131,27 +109,28 @@ export default function WatchTrackingSettings({
   stremioTrakt,
   loadFailed,
   busy,
-  starting,
   notice,
   locked,
   onToggle,
   onRetry,
   onLinkStremio,
+  onInstallAgain,
+  onUpdateStremio,
 }: {
   /** Null while the first answer is on its way. */
   destinations: WatchDestinationStatus[] | null;
   stremioLinked: boolean;
   stremioTrakt: boolean;
   loadFailed: boolean;
-  busy: WatchProviderId | null;
-  /** The running change turns Watch tracking on. */
-  starting: boolean;
+  busy: WatchChange | null;
   notice: WatchChangeNotice;
-  /** Why Watch tracking cannot be used here, if it cannot. */
+  /** Why this cannot be used here, if it cannot. */
   locked?: string;
   onToggle: (provider: WatchProviderId, enabled: boolean) => void;
   onRetry: () => void;
   onLinkStremio: () => void;
+  onInstallAgain: () => void;
+  onUpdateStremio: () => void;
 }) {
   const id = useId();
   const anyOn = destinations?.some((d) => d.enabled) ?? false;
@@ -163,11 +142,7 @@ export default function WatchTrackingSettings({
     body = (
       <Note>
         Stremlist could not load this setting.{" "}
-        <button
-          type="button"
-          onClick={onRetry}
-          className="font-semibold text-stremlist hover:underline"
-        >
+        <button type="button" onClick={onRetry} className={LINK_BUTTON}>
           Try again
         </button>
       </Note>
@@ -183,11 +158,7 @@ export default function WatchTrackingSettings({
       <Note>
         Link your Stremio account first: it is how Stremlist sees what you
         watch.{" "}
-        <button
-          type="button"
-          onClick={onLinkStremio}
-          className="font-semibold text-stremlist hover:underline"
-        >
+        <button type="button" onClick={onLinkStremio} className={LINK_BUTTON}>
           Link Stremio
         </button>
       </Note>
@@ -198,39 +169,70 @@ export default function WatchTrackingSettings({
     body = (
       <ul className="space-y-1.5">
         {destinations.map((destination) => {
-          const checkboxId = `${id}-${destination.provider}`;
-          const isBusy = busy === destination.provider;
+          const rowId = `${id}-${destination.provider}`;
+          const isBusy = busy?.provider === destination.provider;
+          const line = statusLine(destination, busy);
           return (
             <li
               key={destination.provider}
-              className="flex items-center gap-3 rounded-2xl bg-black/[0.03] px-3 py-2"
+              aria-busy={isBusy}
+              className="flex items-start gap-3 rounded-2xl bg-black/[0.03] px-3 py-2"
             >
               <Checkbox
-                id={checkboxId}
+                id={rowId}
+                aria-labelledby={`${rowId}-name`}
+                aria-describedby={`${rowId}-line`}
                 checked={destination.enabled}
-                disabled={busy !== null || loadFailed}
+                // The row being saved keeps focus; the hook ignores clicks
+                // until its answer comes.
+                disabled={(busy !== null && !isBusy) || loadFailed}
                 onCheckedChange={(next) =>
                   onToggle(destination.provider, next === true)
                 }
-                className={BRAND_CHECKBOX}
+                className={cn("mt-2", BRAND_CHECKBOX)}
               />
               <ProviderMark
                 provider={destination.provider}
                 active={destination.enabled && !destination.paused}
-                className="size-7"
+                className="size-7 shrink-0"
               />
               <label
-                htmlFor={checkboxId}
+                htmlFor={rowId}
                 className="min-w-0 flex-1 cursor-pointer leading-tight"
               >
-                <span className="block text-sm font-semibold">
+                <span
+                  id={`${rowId}-name`}
+                  className="block text-sm font-semibold"
+                >
                   {PROVIDERS[destination.provider].label}
                 </span>
-                <DestinationLine
-                  destination={destination}
-                  busy={isBusy}
-                  first={starting}
-                />
+                <span
+                  id={`${rowId}-line`}
+                  key={line.key}
+                  className={cn(
+                    "mt-0.5 flex items-start gap-1 text-xs text-pretty",
+                    line.icon === "alert"
+                      ? "text-red-700"
+                      : line.icon === "pause"
+                        ? "text-amber-700"
+                        : "text-black/50",
+                    ENTER,
+                  )}
+                >
+                  {line.icon === "busy" && (
+                    <Loader2 className="mt-px size-3 shrink-0 animate-spin" />
+                  )}
+                  {line.icon === "pause" && (
+                    <PauseCircle className="mt-px size-3 shrink-0" />
+                  )}
+                  {line.icon === "alert" && (
+                    <AlertCircle className="mt-px size-3 shrink-0" />
+                  )}
+                  {line.icon === "wait" && (
+                    <Clock className="mt-px size-3 shrink-0" />
+                  )}
+                  <span>{line.text}</span>
+                </span>
               </label>
             </li>
           );
@@ -239,6 +241,7 @@ export default function WatchTrackingSettings({
     );
   }
 
+  const tracking = anyOn && !locked;
   return (
     <section
       aria-labelledby={`${id}-title`}
@@ -250,47 +253,74 @@ export default function WatchTrackingSettings({
       <p className="mt-0.5 mb-3 text-sm text-pretty text-black/55">
         When Stremio marks a movie or an episode as watched, Stremlist marks it
         on the accounts you choose, usually within 5 minutes. What you watched
-        before you turn this on is not sent.
+        before you turn this on is not sent. Changes here apply at once, without
+        Save.
       </p>
 
       {body}
 
-      {loadFailed && destinations && !locked && (
-        <Note className={cn("mt-3", ENTER)}>
-          Stremlist could not check this setting again, so it may be out of
-          date.{" "}
-          <button
-            type="button"
-            onClick={onRetry}
-            className="font-semibold text-stremlist hover:underline"
-          >
-            Try again
-          </button>
-        </Note>
-      )}
-
-      {notice === "missing" && (
-        <Note className={cn("mt-3", ENTER)}>
-          Stremlist is not installed in your linked Stremio account, so titles
-          are found only every 6 hours. Install it again with your Addon URL
-          below.
-        </Note>
-      )}
-      {notice === "stremio-unavailable" && (
-        <Note className={cn("mt-3", ENTER)}>
-          Stremio did not take the update yet. Titles are found every 6 hours
-          until your next save updates Stremio.
-        </Note>
-      )}
-      {stremioTrakt &&
-        destinations?.some((d) => d.provider === "trakt" && d.enabled) && (
+      {/* One stable region, so screen readers hear each notice. */}
+      <div role="status" className="empty:hidden">
+        {loadFailed && destinations && !locked && (
           <Note className={cn("mt-3", ENTER)}>
-            Stremio's own Trakt connection already marks what you finish, so
-            Stremlist leaves Trakt to it. It misses what you close before the
-            end: disconnect it in Stremio's settings to let Stremlist do it.
+            Stremlist could not check this setting again, so it may be out of
+            date.{" "}
+            <button type="button" onClick={onRetry} className={LINK_BUTTON}>
+              Try again
+            </button>
           </Note>
         )}
-      {anyOn && (
+        {tracking && notice === "missing" && (
+          <Note className={cn("mt-3", ENTER)}>
+            Stremlist is not installed in your linked Stremio account, so titles
+            are found only every 6 hours.{" "}
+            <button
+              type="button"
+              onClick={onInstallAgain}
+              className={LINK_BUTTON}
+            >
+              Install it again
+            </button>
+          </Note>
+        )}
+        {tracking && notice === "unavailable" && (
+          <Note className={cn("mt-3", ENTER)}>
+            Stremio did not take the update, so titles are found only every 6
+            hours for now.{" "}
+            <button
+              type="button"
+              onClick={onUpdateStremio}
+              className={LINK_BUTTON}
+            >
+              Try again
+            </button>
+          </Note>
+        )}
+        {tracking && notice === "signed-out" && (
+          <Note className={cn("mt-3", ENTER)}>
+            Stremio signed Stremlist out, so nothing can be marked until you
+            link it again.{" "}
+            <button
+              type="button"
+              onClick={onLinkStremio}
+              className={LINK_BUTTON}
+            >
+              Link Stremio
+            </button>
+          </Note>
+        )}
+        {tracking &&
+          stremioTrakt &&
+          destinations?.some((d) => d.provider === "trakt" && d.enabled) && (
+            <Note className={cn("mt-3", ENTER)}>
+              Stremio's own Trakt connection already marks what you finish, so
+              Stremlist leaves Trakt to it. It misses what you close before the
+              end: disconnect Trakt in Stremio's settings to let Stremlist do
+              it.
+            </Note>
+          )}
+      </div>
+      {tracking && (
         <p className="mt-3 text-xs text-pretty text-black/45">
           Works with every Stremio app. A play that the app could not save, for
           example when it was force-closed, is not seen.

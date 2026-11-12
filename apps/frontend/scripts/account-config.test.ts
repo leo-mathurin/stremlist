@@ -62,7 +62,7 @@ describe("accountEditPolicy", () => {
       actionsLock:
         "Actions need a private Addon URL. Upgrade this install first.",
       watchLock:
-        "Watch tracking needs a private Addon URL. Upgrade this install first.",
+        "Automatic watched marks need a private Addon URL. Upgrade this install first.",
       upgradeToConnect: true,
       connectHint: "upgrade",
     });

@@ -16,6 +16,7 @@ import type { FixtureBackend } from "../helpers/fixture-backend.js";
 import { startFixtureBackend } from "../helpers/fixture-backend.js";
 import { configureUrl } from "../helpers/configure.js";
 import { routePageTo } from "../helpers/page-backend.js";
+import { BACKEND_URL } from "../env.js";
 import type { FakeStremio } from "../helpers/watch-fixtures.js";
 
 // Watch tracking (ADR 0003) from the request that Stremio sends before a play
@@ -401,7 +402,7 @@ test(
 
     await trakt.click();
     await expect(
-      section.getByText("On. Titles you finish from now on go here."),
+      section.getByText("On. Titles you finish from now on are marked."),
     ).toBeVisible();
     await expect(trakt).toBeChecked();
     expect((await getWatchRows(accountId)).tracking?.baseline_at).toBeTruthy();
@@ -447,5 +448,34 @@ test(
       section.getByRole("button", { name: "Link Stremio" }),
     ).toBeVisible();
     await expect(section.getByRole("checkbox")).toHaveCount(0);
+  },
+);
+
+test(
+  "a refused change puts the checkbox back and says why",
+  { tag: "@local" },
+  async ({ page }) => {
+    const accountId = await seedAccount();
+    await seedConnection(accountId, "trakt");
+    await seedStremioLink(accountId, AUTH_KEY);
+    await routePageTo(page, backend.url);
+    // Stremio does not answer the library read (simulated).
+    await page.route(`${BACKEND_URL}/*/watch-tracking`, async (route) => {
+      if (route.request().method() !== "PUT") return route.fallback();
+      await route.fulfill({ status: 502, json: { reason: "unavailable" } });
+    });
+    await page.goto(configureUrl(accountId));
+    const section = page.getByRole("region", {
+      name: "Mark as watched automatically",
+    });
+    const trakt = section.getByRole("checkbox", { name: "Trakt" });
+    await trakt.click();
+    await expect(
+      page.getByText("Stremlist could not read your Stremio library."),
+    ).toBeVisible();
+    await expect(trakt).not.toBeChecked();
+    // The state was read back: nothing was turned on.
+    await expect(section.getByText("Off")).toBeVisible();
+    expect((await getWatchRows(accountId)).tracking).toBeNull();
   },
 );
