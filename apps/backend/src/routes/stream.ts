@@ -1,14 +1,17 @@
 import { Hono } from "hono";
+import { scheduleBackgroundTask } from "../lib/background";
 import { backendOrigin } from "../lib/urls";
 import { resolveAccountKey } from "../services/accounts";
 import { buildActionStreams, parseStreamId } from "../services/actions";
+import { onStreamRequest } from "../services/watch/trigger";
 
 const stream = new Hono();
 
 /**
- * Action entries for a Title (ADR 0003). Only private Addon URLs with Actions
- * turned on get entries; every entry opens a Stremlist page (externalUrl), so
- * the Stremio player never loads.
+ * Action entries for a Title. Only private Addon URLs with Actions turned on
+ * get entries; every entry opens a Stremlist page (externalUrl), so the
+ * Stremio player never loads. Stremio asks for streams before every play, so
+ * the request also starts the Watch tracking reads of the title (ADR 0003).
  */
 stream.get("/:accountKey/stream/:type/:id.json", async (c) => {
   // Labels reflect membership, which changes after each Action.
@@ -27,8 +30,9 @@ stream.get("/:accountKey/stream/:type/:id.json", async (c) => {
   try {
     const access = await resolveAccountKey(c.req.param("accountKey"));
     if (access?.via !== "private") return c.json(empty);
-    const origin = backendOrigin(c);
     const accountId = access.account.id;
+    scheduleBackgroundTask(() => onStreamRequest(accountId, type, id));
+    const origin = backendOrigin(c);
     const streams = await buildActionStreams(
       access.account,
       target,

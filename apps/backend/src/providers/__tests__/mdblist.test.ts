@@ -441,6 +441,21 @@ describe("mdblistProvider.actions", () => {
       movieBody,
     ],
     [
+      "dates a watched movie with the time Stremio gives",
+      { kind: "watched", add: true, watchedAt: "2026-11-12T10:00:00.000Z" },
+      movie,
+      synced,
+      "/sync/watched",
+      {
+        movies: [
+          {
+            ids: { imdb: "tt0111161" },
+            watched_at: "2026-11-12T10:00:00.000Z",
+          },
+        ],
+      },
+    ],
+    [
       "rates the series, not the episode",
       { kind: "rating", rating: 9 },
       episode(2, 3),

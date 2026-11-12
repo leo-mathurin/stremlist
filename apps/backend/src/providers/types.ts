@@ -147,6 +147,14 @@ export class SourceBusyError extends SourceUnavailableError {
  * the user must connect the Provider again. Adapters let it through; the
  * services and routes read it as a "needs_connection" Source list.
  */
+/** The Provider does not know the Title of an Action. */
+export class UnknownTitleError extends Error {
+  constructor(provider: ProviderId, imdbId: string) {
+    super(`${provider} does not know ${imdbId}`);
+    this.name = "UnknownTitleError";
+  }
+}
+
 export class ConnectionExpiredError extends Error {
   readonly provider: ProviderId;
 
@@ -219,7 +227,11 @@ export function toRating(value: unknown): Rating | null {
 
 export type ActionIntent =
   | { kind: "watchlist"; add: boolean }
-  | { kind: "watched"; add: boolean }
+  /**
+   * `watchedAt` (ISO time) dates the play on the Provider; without it the
+   * Provider uses the time of the write.
+   */
+  | { kind: "watched"; add: boolean; watchedAt?: string }
   /** Null removes the rating. */
   | { kind: "rating"; rating: Rating | null };
 
@@ -228,6 +240,18 @@ export interface ActionTarget {
   type: "movie" | "series";
   /** For series: the episode, when the Action is about one episode. */
   episode?: { season: number; episode: number };
+  /**
+   * For series, instead of `episode`: several episodes in one write, as
+   * Watch tracking sends a series marked at once. Watched writes only.
+   */
+  episodes?: { season: number; episode: number }[];
+}
+
+/** The episodes that an Action names, if any. */
+export function targetEpisodes(
+  target: ActionTarget,
+): { season: number; episode: number }[] {
+  return target.episodes ?? (target.episode ? [target.episode] : []);
 }
 
 export interface ProviderActions {

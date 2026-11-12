@@ -18,6 +18,10 @@ _Avoid_: Manifest URL, install link
 An IMDb user ID (`ur…`) that still resolves to an Account because Stremio installs made before Accounts existed use it in their Addon URL.
 _Avoid_: Old user ID
 
+**Stremio link**:
+The authorization that lets Stremlist act on the Stremio account of an Account: update its installed Stremlist and read what Stremio marks as watched. An Account has at most one.
+_Avoid_: Stremio connection (a Connection is for a Provider), Stremio login
+
 ### Lists
 
 **Provider**:
@@ -106,3 +110,17 @@ _Avoid_: Addition, added date
 **New titles**:
 The Catalog of an Account that shows the Titles of its detected entries across all its Lists and every Source list of each, each Title once with its earliest Detection, newest first.
 _Avoid_: Recently added, feed
+
+### Watch tracking
+
+**Watch tracking**:
+Stremlist marks a Title, or an episode of a series, as watched on the Destinations of an Account when Stremio's own watched status for it changes to watched. Stremio's status is the only reference; a change back to not watched removes nothing on a Provider. It needs a Stremio link.
+_Avoid_: Scrobbling, sync-back, auto-watched
+
+**Destination**:
+A Connection that the user chose for Watch tracking. A failure on one Destination does not stop the others.
+_Avoid_: Target
+
+**Watched baseline**:
+What Stremio shows as watched when Watch tracking starts for an Account, at the first activation or after a stop. It is never sent to a Destination.
+_Avoid_: Baseline (alone, which is a Detection term), initial import

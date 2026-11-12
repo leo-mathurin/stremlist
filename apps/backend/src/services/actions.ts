@@ -1,7 +1,10 @@
 import { IMDB_TITLE_ID_PATTERN } from "@stremlist/shared/constants";
 import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
 import { joinProviderLabels, PROVIDERS } from "@stremlist/shared/providers";
-import type { StremioStream } from "@stremlist/shared/stremio.types";
+import type {
+  ConfigList,
+  StremioStream,
+} from "@stremlist/shared/stremio.types";
 import { connectionPrefix, deletePrefix } from "../lib/r2-json";
 import {
   getProvider,
@@ -19,6 +22,7 @@ import {
   readMembership,
   scheduleMembershipRefresh,
 } from "./action-membership";
+import type { OwnedConnectionAccess } from "./connections";
 import {
   getConnectionAccess,
   listConnectionAuthorizations,
@@ -319,6 +323,41 @@ export interface ActionOutcome {
 }
 
 /**
+ * Run an Action through one Connection, then update the cached membership
+ * and mark stale the Catalogs of `lists` whose Source lists it changed. The
+ * Provider's error is thrown; a cache update that fails is only logged.
+ */
+export async function performOnConnection(
+  connection: OwnedConnectionAccess,
+  intent: ActionIntent,
+  target: ActionTarget,
+  lists: ConfigList[],
+): Promise<void> {
+  const { provider } = connection;
+  const actions = getProvider(provider).actions;
+  if (!actions) throw new Error(`${provider} has no Actions`);
+  await actions.perform(connection, intent, target);
+  try {
+    const affected = new Set(actions.affectedSources(intent));
+    await Promise.all([
+      applyMembershipAction(connection, intent, target),
+      ...lists
+        .flatMap(sourceCaches)
+        .filter(
+          ({ source }) =>
+            source.provider === provider && affected.has(source.sourceRef),
+        )
+        .map(({ cacheKey }) => markCachedListStale(cacheKey)),
+    ]);
+  } catch (error) {
+    console.error(
+      `Updating caches after an action on ${provider} failed:`,
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
+/**
  * Run an Action on each selected Provider. Afterwards the cached membership is
  * updated and the Catalogs whose Source lists changed are marked stale.
  */
@@ -344,32 +383,13 @@ export async function performAction(
       const connection = await getConnectionAccess(account.id, provider);
       if (!connection) return { provider, ok: false, error: "not_connected" };
       try {
-        await actions.perform(connection, intent, target);
+        await performOnConnection(connection, intent, target, lists);
       } catch (error) {
         console.error(
           `Action ${intent.kind} on ${provider} failed for ${account.id}:`,
           error instanceof Error ? error.message : error,
         );
         return { provider, ok: false, error: "provider_error" };
-      }
-
-      try {
-        const affected = new Set(actions.affectedSources(intent));
-        await Promise.all([
-          applyMembershipAction(connection, intent, target),
-          ...lists
-            .flatMap(sourceCaches)
-            .filter(
-              ({ source }) =>
-                source.provider === provider && affected.has(source.sourceRef),
-            )
-            .map(({ cacheKey }) => markCachedListStale(cacheKey)),
-        ]);
-      } catch (error) {
-        console.error(
-          `Updating caches after an action on ${provider} failed:`,
-          error instanceof Error ? error.message : error,
-        );
       }
       return { provider, ok: true };
     }),

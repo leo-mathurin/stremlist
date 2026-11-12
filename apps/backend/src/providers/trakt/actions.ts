@@ -1,4 +1,10 @@
-import { bucketOf, countNotFound, episodeItem, syncIds } from "../sync-payload";
+import {
+  bucketOf,
+  countNotFound,
+  episodeItem,
+  syncIds,
+  watchedAtOf,
+} from "../sync-payload";
 import type {
   ActionIntent,
   ActionTarget,
@@ -6,6 +12,7 @@ import type {
   Membership,
   ProviderActions,
 } from "../types";
+import { targetEpisodes, UnknownTitleError } from "../types";
 import { traktGetAll, traktGetJson, traktPost } from "./api";
 import type { TraktItem } from "./entries";
 import { imdbIdOf } from "./entries";
@@ -110,14 +117,16 @@ function syncBody(
       };
     case "watched": {
       const path = intent.add ? "/sync/history" : "/sync/history/remove";
-      if (target.type === "series" && target.episode) {
+      const at = watchedAtOf(intent);
+      const episodes = targetEpisodes(target);
+      if (target.type === "series" && episodes.length > 0) {
         return {
           path,
-          body: { shows: [episodeItem(target, target.episode)] },
+          body: { shows: [episodeItem(target, episodes, at.watched_at)] },
         };
       }
       // A show alone marks (or unmarks) every episode.
-      return { path, body: { [key]: [{ ids }] } };
+      return { path, body: { [key]: [{ ids, ...at }] } };
     }
     case "rating":
       return intent.rating === null
@@ -137,8 +146,52 @@ async function perform(
   const { path, body } = syncBody(intent, target);
   const result = await traktPost<unknown>(path, connection, body);
   if (countNotFound(result, ["movies", "shows", "episodes"]) > 0) {
-    throw new Error(`Trakt does not know ${target.imdbId}`);
+    throw new UnknownTitleError("trakt", target.imdbId);
   }
+}
+
+interface HistoryRow {
+  watched_at?: string;
+  movie?: { ids?: { imdb?: string | null } };
+  show?: { ids?: { imdb?: string | null } };
+  episode?: { season?: number; number?: number };
+}
+
+/**
+ * What of `target` Trakt's history has at `watchedAt` (within a minute):
+ * "movie" for the movie, "season:episode" for each episode. Watch tracking
+ * asks before it sends a play again after a write whose answer never came:
+ * Trakt adds a play for every write.
+ */
+export async function traktPlays(
+  connection: ConnectionAccess,
+  target: ActionTarget,
+  watchedAt: string,
+): Promise<Set<string>> {
+  const at = Date.parse(watchedAt);
+  const kind = target.type === "movie" ? "movies" : "episodes";
+  // A whole series marked at once shares one time: read every page.
+  const { items: rows } = await traktGetAll<HistoryRow>(
+    `/sync/history/${kind}`,
+    connection,
+    {
+      query: {
+        start_at: new Date(at - 60_000).toISOString(),
+        end_at: new Date(at + 60_000).toISOString(),
+      },
+      maxItems: 5000,
+    },
+  );
+  return new Set(
+    rows.flatMap((row) => {
+      if (target.type === "movie") {
+        return row.movie?.ids?.imdb === target.imdbId ? ["movie"] : [];
+      }
+      return row.show?.ids?.imdb === target.imdbId && row.episode
+        ? [`${row.episode.season}:${row.episode.number}`]
+        : [];
+    }),
+  );
 }
 
 export const traktActions: ProviderActions = {

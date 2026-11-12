@@ -17,6 +17,7 @@ import type {
   ConnectionAccess,
   Membership,
 } from "../providers/types";
+import { targetEpisodes } from "../providers/types";
 import { getConnectionAccess } from "./connections";
 
 /** Membership older than this is refreshed in the background. */
@@ -270,12 +271,15 @@ function applyToMembership(
   if (intent.kind === "watchlist") {
     next.watchlist = toggle(next.watchlist, target.imdbId, intent.add);
   } else if (intent.kind === "watched") {
-    if (target.episode) {
-      next.watchedEpisodes = toggle(
-        next.watchedEpisodes,
-        `${target.imdbId}:${target.episode.season}:${target.episode.episode}`,
-        intent.add,
-      );
+    const episodes = targetEpisodes(target);
+    if (episodes.length > 0) {
+      for (const { season, episode } of episodes) {
+        next.watchedEpisodes = toggle(
+          next.watchedEpisodes,
+          `${target.imdbId}:${season}:${episode}`,
+          intent.add,
+        );
+      }
       if (intent.add) next.watched = toggle(next.watched, target.imdbId, true);
     } else {
       next.watched = toggle(next.watched, target.imdbId, intent.add);

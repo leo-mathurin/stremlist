@@ -10,6 +10,7 @@ import manifest from "./routes/manifest";
 import meta from "./routes/meta";
 import oauth from "./routes/oauth";
 import stream from "./routes/stream";
+import watch from "./routes/watch";
 
 const app = new Hono();
 
@@ -26,6 +27,7 @@ app.use(
 );
 
 app.route("", api);
+app.route("", watch);
 app.route("", manifest);
 app.route("", catalog);
 app.route("", meta);

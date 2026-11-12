@@ -6,6 +6,7 @@ import { getVisibleLists } from "./accounts";
 import { actionProviders } from "./actions";
 import { withAvailableGenres } from "./catalog-genres";
 import { buildManifestCatalogs } from "./stremio-catalogs";
+import { isTrackedNow } from "./watch/tracking";
 
 /**
  * The manifest ID must stay stable per install, but it must not leak the
@@ -19,8 +20,10 @@ function manifestId(access: AccountAccess, key: string): string {
 
 /**
  * The manifest that Stremio installs for an Account: its catalogs from the
- * last save, and the `stream` resource when Actions are on. `key` is the
- * Addon URL key that Stremio uses (the Account ID or a Legacy alias).
+ * last save, and the `stream` resource when Actions or Watch tracking are
+ * on. Watch tracking also asks Stremio Web for its `player` and `library`
+ * events (ADR 0003). `key` is the Addon URL key that Stremio uses (the
+ * Account ID or a Legacy alias).
  */
 export async function buildAccountManifest(
   access: AccountAccess,
@@ -29,12 +32,19 @@ export async function buildAccountManifest(
   const { account } = access;
   const lists = await getVisibleLists(access);
   const resources = [...BASE_MANIFEST.resources];
-  if (access.via === "private" && (await actionProviders(account)).length > 0) {
-    resources.push({
-      name: "stream",
-      types: ["movie", "series"],
-      idPrefixes: ["tt"],
-    });
+  if (access.via === "private") {
+    const [actions, tracked] = await Promise.all([
+      actionProviders(account),
+      isTrackedNow(account.id),
+    ]);
+    const titles = { types: ["movie", "series"], idPrefixes: ["tt"] };
+    if (actions.length > 0 || tracked) {
+      resources.push({ name: "stream", ...titles });
+    }
+    if (tracked) {
+      resources.push({ name: "player", ...titles });
+      resources.push({ name: "library", ...titles });
+    }
   }
 
   return {

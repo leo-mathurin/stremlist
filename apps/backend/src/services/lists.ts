@@ -55,6 +55,8 @@ import {
 import { listReadQueueMark } from "./read-queue";
 import type { RefreshOutcome } from "./sync-status";
 import { recordRefreshOutcome } from "./sync-status";
+import { deleteState } from "./watch/state";
+import { isTrackedNow } from "./watch/tracking";
 
 /**
  * When the ID resolver left entries untried, the next read comes this soon
@@ -872,6 +874,11 @@ export async function disconnectProvider(
   const cleanup = await Promise.allSettled([
     ...sources.map(({ cacheKey }) => deleteCachedList(cacheKey)),
     forgetConnectionObjects(accountId, provider),
+    // Its last Destination gone, the Account is not tracked any more: its
+    // watch state (what it watched) is not kept.
+    isTrackedNow(accountId).then((tracked) =>
+      tracked ? undefined : deleteState(accountId),
+    ),
   ]);
   for (const outcome of cleanup) {
     if (outcome.status === "rejected") {

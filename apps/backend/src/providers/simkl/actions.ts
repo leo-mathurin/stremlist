@@ -1,4 +1,10 @@
-import { bucketOf, countNotFound, episodeItem, syncIds } from "../sync-payload";
+import {
+  bucketOf,
+  countNotFound,
+  episodeItem,
+  syncIds,
+  watchedAtOf,
+} from "../sync-payload";
 import type {
   ActionIntent,
   ActionTarget,
@@ -6,6 +12,7 @@ import type {
   Membership,
   ProviderActions,
 } from "../types";
+import { targetEpisodes, UnknownTitleError } from "../types";
 import { simklRequest } from "./api";
 import { LIBRARY_REFS, titleType } from "./entries";
 import type { LibraryItem } from "./library";
@@ -79,11 +86,12 @@ async function buildWrite(
 
   if (intent.kind === "watched") {
     const path = intent.add ? "/sync/history" : "/sync/history/remove";
-    if (series && target.episode) {
+    const episodes = targetEpisodes(target);
+    if (series && episodes.length > 0) {
       return {
         path,
         item: {
-          ...episodeItem(target, target.episode),
+          ...episodeItem(target, episodes, watchedAtOf(intent).watched_at),
           // Stremio uses IMDb seasons; this maps them onto Simkl's anime
           // entries and is a no-op for other shows.
           use_tvdb_anime_seasons: true,
@@ -91,7 +99,12 @@ async function buildWrite(
       };
     }
     if (intent.add) {
-      return { path, item: series ? { ...item, status: "completed" } : item };
+      return {
+        path,
+        item: series
+          ? { ...item, status: "completed" }
+          : { ...item, ...watchedAtOf(intent) },
+      };
     }
     if (series) {
       // Unmark the watched seasons and keep the show in the library. Without
@@ -137,7 +150,7 @@ async function perform(
     body: { [bucketOf(target)]: [write.item] },
   });
   if (countNotFound(result) > 0)
-    throw new Error(`Simkl does not know ${target.imdbId}`);
+    throw new UnknownTitleError("simkl", target.imdbId);
   await markLibraryChanged(connection.accountId);
 }
 

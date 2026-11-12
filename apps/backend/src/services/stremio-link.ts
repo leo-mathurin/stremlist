@@ -1,5 +1,6 @@
 import type { StremioLink } from "@stremlist/shared/stremio.types";
 import { randomUUID } from "node:crypto";
+import { scheduleBackgroundTask } from "../lib/background";
 import {
   EncryptionKeyError,
   decryptSecret,
@@ -20,6 +21,7 @@ import {
   readLinkCode,
   updateInstalledStremlist,
 } from "./stremio";
+import { invalidateWatchBaseline, retakeWatchBaseline } from "./watch/tracking";
 
 /**
  * The Stremio account linked to an Account (ADR 0002). The session key is
@@ -144,6 +146,15 @@ export async function linkWithToken(
   const authKey = await readLinkCode(codeOf(accountId, token));
   if (!authKey) return null;
   const email = await getStremioEmail(authKey).catch(() => null);
+  // Before the new key is visible to the cron: nothing is compared with the
+  // other account's library. A sweep takes the baseline if this run stops.
+  const tracked = await invalidateWatchBaseline(accountId).catch(
+    (error: unknown) => {
+      throw new StremioUnavailableError(
+        error instanceof Error ? error.message : "Cannot reset Watch tracking.",
+      );
+    },
+  );
   const { error } = await supabase.from("stremio_connections").upsert(
     {
       account_id: accountId,
@@ -154,6 +165,7 @@ export async function linkWithToken(
     { onConflict: "account_id" },
   );
   if (error) throw new StremioUnavailableError("Cannot save the Stremio link.");
+  if (tracked) scheduleBackgroundTask(() => retakeWatchBaseline(accountId));
   return { email };
 }
 

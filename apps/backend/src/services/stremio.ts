@@ -159,6 +159,82 @@ export async function getStremioEmail(
   return typeof user.email === "string" ? user.email : null;
 }
 
+/**
+ * Whether Stremio's own Trakt integration is connected on this account: its
+ * user record then holds a Trakt token. Watch tracking writes nothing to
+ * Trakt meanwhile, so a play is never written twice (ADR 0003).
+ */
+export async function hasStremioTrakt(
+  authKey: string,
+  fetchImpl: Fetch = fetch,
+): Promise<boolean> {
+  const user = await callStremio<{ trakt?: { access_token?: unknown } | null }>(
+    "getUser",
+    { type: "GetUser", authKey },
+    fetchImpl,
+  );
+  return typeof user.trakt?.access_token === "string";
+}
+
+/** A library item, with the fields that Watch tracking reads. */
+export interface LibraryItem {
+  _id: string;
+  type: string;
+  _mtime?: string | number;
+  state?: {
+    timeWatched?: number;
+    duration?: number;
+    timesWatched?: number;
+    video_id?: string;
+    /** `{anchor video}:{anchor length}:{base64 zlib bits}` (series). */
+    watched?: string;
+    lastWatched?: string;
+  };
+}
+
+/** A read: tried once more when the first try gets no answer. */
+async function readStremio<T>(
+  method: string,
+  body: Record<string, unknown>,
+  fetchImpl: Fetch,
+): Promise<T> {
+  try {
+    return await callStremio<T>(method, body, fetchImpl);
+  } catch (error) {
+    if (!(error instanceof StremioUnavailableError)) throw error;
+    return callStremio<T>(method, body, fetchImpl);
+  }
+}
+
+/** These items of the library (at most 100 IDs a call). */
+export async function getLibraryItems(
+  authKey: string,
+  ids: string[],
+  fetchImpl: Fetch = fetch,
+): Promise<LibraryItem[]> {
+  const items = await readStremio<LibraryItem[]>(
+    "datastoreGet",
+    { authKey, collection: "libraryItem", ids, all: false },
+    fetchImpl,
+  );
+  if (!Array.isArray(items)) throw new StremioUnavailableError();
+  return items;
+}
+
+/** Every item of the library as [ID, last change in ms]. */
+export async function getLibraryMeta(
+  authKey: string,
+  fetchImpl: Fetch = fetch,
+): Promise<[string, number][]> {
+  const meta = await readStremio<[string, number][]>(
+    "datastoreMeta",
+    { authKey, collection: "libraryItem" },
+    fetchImpl,
+  );
+  if (!Array.isArray(meta)) throw new StremioUnavailableError();
+  return meta;
+}
+
 async function getCollection(
   authKey: string,
   fetchImpl: Fetch,

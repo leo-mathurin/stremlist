@@ -13,13 +13,41 @@ describe("sync payloads", () => {
 
   it("name one episode of a show", () => {
     expect(
-      episodeItem(
-        { imdbId: "tt0903747", type: "series" },
+      episodeItem({ imdbId: "tt0903747", type: "series" }, [
         { season: 2, episode: 5 },
-      ),
+      ]),
     ).toEqual({
       ids: { imdb: "tt0903747" },
       seasons: [{ number: 2, episodes: [{ number: 5 }] }],
+    });
+  });
+
+  it("name several episodes of a show, season by season", () => {
+    expect(
+      episodeItem(
+        { imdbId: "tt0903747", type: "series" },
+        [
+          { season: 1, episode: 7 },
+          { season: 2, episode: 1 },
+          { season: 1, episode: 6 },
+        ],
+        "2026-11-12T10:00:00.000Z",
+      ),
+    ).toEqual({
+      ids: { imdb: "tt0903747" },
+      seasons: [
+        {
+          number: 1,
+          episodes: [
+            { number: 7, watched_at: "2026-11-12T10:00:00.000Z" },
+            { number: 6, watched_at: "2026-11-12T10:00:00.000Z" },
+          ],
+        },
+        {
+          number: 2,
+          episodes: [{ number: 1, watched_at: "2026-11-12T10:00:00.000Z" }],
+        },
+      ],
     });
   });
 

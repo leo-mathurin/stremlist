@@ -13,7 +13,13 @@ import {
 } from "./http";
 import { oauthClient, revokeToken } from "./oauth-app";
 import { readPages } from "./paging";
-import { bucketOf, countNotFound, episodeItem, syncIds } from "./sync-payload";
+import {
+  bucketOf,
+  countNotFound,
+  episodeItem,
+  syncIds,
+  watchedAtOf,
+} from "./sync-payload";
 import type {
   ActionIntent,
   ActionTarget,
@@ -26,7 +32,11 @@ import type {
   SourceSnapshot,
   SourceValidation,
 } from "./types";
-import { SourceUnavailableError } from "./types";
+import {
+  SourceUnavailableError,
+  targetEpisodes,
+  UnknownTitleError,
+} from "./types";
 
 const API = "https://api.mdblist.com";
 const PAGE_SIZE = 1000;
@@ -335,11 +345,16 @@ function watchlistOrder(items: MdblistItem[]): MdblistItem[] {
   return oldestFirst;
 }
 
-function watchedPayload(target: ActionTarget): Record<string, unknown[]> {
-  if (target.type === "series" && target.episode) {
-    return { shows: [episodeItem(target, target.episode)] };
+function watchedPayload(
+  intent: ActionIntent,
+  target: ActionTarget,
+): Record<string, unknown[]> {
+  const at = watchedAtOf(intent);
+  const episodes = targetEpisodes(target);
+  if (target.type === "series" && episodes.length > 0) {
+    return { shows: [episodeItem(target, episodes, at.watched_at)] };
   }
-  return { [bucketOf(target)]: [{ ids: syncIds(target) }] };
+  return { [bucketOf(target)]: [{ ids: syncIds(target), ...at }] };
 }
 
 async function perform(
@@ -360,7 +375,7 @@ async function perform(
     mustExist = intent.add;
   } else if (intent.kind === "watched") {
     path = intent.add ? "/sync/watched" : "/sync/watched/remove";
-    body = watchedPayload(target);
+    body = watchedPayload(intent, target);
     mustExist = intent.add;
   } else if (intent.rating === null) {
     path = "/sync/ratings/remove";
@@ -377,7 +392,7 @@ async function perform(
     body,
   });
   if (mustExist && countNotFound(data) > 0) {
-    throw new Error(`MDBList does not know ${target.imdbId}`);
+    throw new UnknownTitleError("mdblist", target.imdbId);
   }
 }
 
