@@ -48,7 +48,7 @@ function refusal(reason: string | undefined): string {
 export function useWatchTracking(
   accountId: string | null,
   refreshKey: string,
-  /** Stremio refused the stored key: let the Stremio card find it out. */
+  /** Stremio refused or forgot the key: let the Stremio card find it out. */
   onSignedOut: () => void,
 ) {
   const [status, setStatus] = useState<WatchTrackingStatus | null>(null);
@@ -124,6 +124,8 @@ export function useWatchTracking(
         if (res.ok) {
           const body = await res.json();
           setStatus(body.status);
+          // The update found the sign-out: the Stremio card shows it too.
+          if (body.stremio === "signed-out") onSignedOut();
           if (body.status.destinations.some((d) => d.enabled)) {
             // A sign-out also forgets the link: the card asks for a new one.
             setNotice(
@@ -142,7 +144,9 @@ export function useWatchTracking(
             ? ((await res.json()) as { reason?: string }).reason
             : undefined;
         toast.error(refusal(reason), TOAST);
-        if (reason === "signed-out") onSignedOut();
+        if (reason === "signed-out" || reason === "stremio-not-linked") {
+          onSignedOut();
+        }
       } catch {
         setStatus(previous);
         reloadAfterChange.current = true;
