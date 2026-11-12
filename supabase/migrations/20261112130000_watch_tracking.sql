@@ -497,7 +497,10 @@ SET search_path = ''
 AS $$
   UPDATE public.watch_writes
   SET locked_until = '-infinity', lease_token = NULL,
-    due_at = greatest(due_at, now() + make_interval(secs => p_delay_seconds))
+    -- Without a delay a write keeps its place in line.
+    due_at = CASE WHEN p_delay_seconds > 0
+      THEN greatest(due_at, now() + make_interval(secs => p_delay_seconds))
+      ELSE due_at END
   WHERE id = ANY (p_ids) AND lease_token = p_lease_token;
 $$;
 

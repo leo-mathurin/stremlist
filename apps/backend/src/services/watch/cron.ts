@@ -26,6 +26,8 @@ import {
 /** Reads stop taking new batches after this, so the run ends in time. */
 const READ_BUDGET_MS = 35_000;
 const RUN_BUDGET_MS = 50_000;
+/** Writes stop here, so the sweep always gets the rest of the run. */
+const WRITE_BUDGET_MS = 40_000;
 
 export interface CronReport {
   ok: boolean;
@@ -90,7 +92,7 @@ export async function runWatchCron(): Promise<CronReport> {
         processReads(started + READ_BUDGET_MS),
       );
       report.writes = await step("writes", () =>
-        processWrites(started + RUN_BUDGET_MS),
+        processWrites(started + WRITE_BUDGET_MS),
       );
       report.sweep = await step("sweep", () =>
         processSweep(started + RUN_BUDGET_MS),

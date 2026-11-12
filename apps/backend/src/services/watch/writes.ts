@@ -42,7 +42,7 @@ const SIMKL_FAST_RATE = 3;
 export const SIMKL_BACKLOG_ALERT_SECONDS = 10 * 60;
 const SIMKL_SLOW_AFTER_429_SECONDS = 3600;
 
-interface ClaimedWrite {
+export interface ClaimedWrite {
   id: number;
   account_id: string;
   provider: string;
@@ -120,7 +120,7 @@ function groupSends(writes: ClaimedWrite[]): ClaimedWrite[][] {
  * by minutes), so one bulk mark never holds back everyone else's writes. A
  * Provider turned off (kill switch) gets nothing: its rows wait 15 minutes.
  */
-function capPerDestination(sends: ClaimedWrite[][]): {
+export function capPerDestination(sends: ClaimedWrite[][]): {
   kept: ClaimedWrite[][];
   later: Map<number, number[]>;
 } {
