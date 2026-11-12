@@ -7,5 +7,7 @@
     { "source": "/configure", "destination": "/configure/index.html" },
     { "source": "/(.*)", "destination": "/404.html" }
   ],
-  "git": { "deploymentEnabled": { "main": false } }
+  "git": {
+    "deploymentEnabled": { "main": false, "spike/watch-tracking-load": false }
+  }
 }

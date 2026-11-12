@@ -10,7 +10,10 @@
  */
 
 const LINK_API = "https://link.stremio.com/api/v2";
-const STREMIO_API = "https://api.strem.io/api";
+// SPIKE: STREMIO_API_URL points the load test at a mock. Unset in production.
+export const STREMIO_API =
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- SPIKE
+  process.env.STREMIO_API_URL?.trim() || "https://api.strem.io/api";
 /** Stremio's answer for a session that was signed out or does not exist. */
 const SESSION_GONE = 1;
 

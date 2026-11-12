@@ -8,7 +8,10 @@ import {
 import { oauthClient } from "../oauth-app";
 import { SourceUnavailableError } from "../types";
 
-export const SIMKL_API = "https://api.simkl.com";
+// SPIKE: SIMKL_API_URL points the load test at a mock. Unset in production.
+export const SIMKL_API =
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- SPIKE
+  process.env.SIMKL_API_URL?.trim() || "https://api.simkl.com";
 const APP_NAME = "stremlist";
 
 // With AUTH V2, Simkl allows 10 GET and 1 POST per second for each user and
@@ -40,26 +43,21 @@ export async function simklRequest<T>(
   }
   const method = options.method ?? "GET";
   try {
-    const { data } = await providerFetchJson<T>(
-      new URL(path, SIMKL_API).toString(),
-      {
-        method,
-        // Every Simkl call carries the app's client ID, name and version.
-        query: {
-          ...options.params,
-          client_id: id,
-          "app-name": APP_NAME,
-          "app-version": ADDON_VERSION,
-        },
-        headers: { Accept: "application/json", "simkl-api-key": id },
-        bearer: options.token,
-        json: options.body,
-        limiter: simklLimiters(options.token)[
-          method === "GET" ? "get" : "post"
-        ],
-        retryOn429: method === "GET",
+    const { data } = await providerFetchJson<T>(`${SIMKL_API}${path}`, {
+      method,
+      // Every Simkl call carries the app's client ID, name and version.
+      query: {
+        ...options.params,
+        client_id: id,
+        "app-name": APP_NAME,
+        "app-version": ADDON_VERSION,
       },
-    );
+      headers: { Accept: "application/json", "simkl-api-key": id },
+      bearer: options.token,
+      json: options.body,
+      limiter: simklLimiters(options.token)[method === "GET" ? "get" : "post"],
+      retryOn429: method === "GET",
+    });
     return data;
   } catch (error) {
     if (error instanceof HttpError && error.status === 401) {

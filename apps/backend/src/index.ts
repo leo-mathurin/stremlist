@@ -9,6 +9,7 @@ import catalog from "./routes/catalog";
 import manifest from "./routes/manifest";
 import meta from "./routes/meta";
 import oauth from "./routes/oauth";
+import spike from "./routes/spike";
 import stream from "./routes/stream";
 
 const app = new Hono();
@@ -25,6 +26,8 @@ app.use(
   }),
 );
 
+// SPIKE: load-test routes first, before the /:accountKey patterns.
+app.route("", spike);
 app.route("", api);
 app.route("", manifest);
 app.route("", catalog);

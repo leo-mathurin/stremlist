@@ -28,7 +28,9 @@ import type {
 } from "./types";
 import { SourceUnavailableError } from "./types";
 
-const API = "https://api.mdblist.com";
+// SPIKE: MDBLIST_API_URL points the load test at a mock. Unset in production.
+// eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- SPIKE
+const API = process.env.MDBLIST_API_URL?.trim() || "https://api.mdblist.com";
 const PAGE_SIZE = 1000;
 // A safety stop for a broken cursor. MDBList lists hold at most 10,000 items
 // on the free tier, and supporter tiers stay well below this.

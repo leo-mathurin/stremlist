@@ -9,8 +9,13 @@ import { oauthClient } from "../oauth-app";
 import type { ConnectionAccess, PagedRead } from "../types";
 import { ConnectionExpiredError, SourceUnavailableError } from "../types";
 
-export const TRAKT_API = "https://api.trakt.tv";
-export const TRAKT_AUTH = "https://auth.trakt.tv";
+// SPIKE: TRAKT_API_URL points the load test at a mock. Unset in production.
+export const TRAKT_API =
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- SPIKE
+  process.env.TRAKT_API_URL?.trim() || "https://api.trakt.tv";
+export const TRAKT_AUTH =
+  // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- SPIKE
+  process.env.TRAKT_AUTH_URL?.trim() || "https://auth.trakt.tv";
 
 /** Largest page size that Trakt accepts on most paginated endpoints. */
 const TRAKT_PAGE_SIZE = 250;

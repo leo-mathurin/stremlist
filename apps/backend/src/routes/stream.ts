@@ -1,7 +1,9 @@
 import { Hono } from "hono";
+import { scheduleBackgroundTask } from "../lib/background";
 import { backendOrigin } from "../lib/urls";
 import { resolveAccountKey } from "../services/accounts";
 import { buildActionStreams, parseStreamId } from "../services/actions";
+import { startCycle, watchContext } from "../services/watch/run";
 
 const stream = new Hono();
 
@@ -27,6 +29,23 @@ stream.get("/:accountKey/stream/:type/:id.json", async (c) => {
   try {
     const access = await resolveAccountKey(c.req.param("accountKey"));
     if (access?.via !== "private") return c.json(empty);
+    // SPIKE (ADR 0003): a tracked Account gets an empty list, and the title
+    // is read at once in the background.
+    const tracking = await watchContext(access.account.id).catch(() => null);
+    if (tracking) {
+      const accountId = access.account.id;
+      scheduleBackgroundTask(async () => {
+        try {
+          await startCycle(accountId, tracking.auth_key, type, id);
+        } catch (error) {
+          console.error(
+            "Watch tracking start failed:",
+            error instanceof Error ? error.message : error,
+          );
+        }
+      });
+      return c.json(empty);
+    }
     const origin = backendOrigin(c);
     const accountId = access.account.id;
     const streams = await buildActionStreams(
