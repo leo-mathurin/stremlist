@@ -37,7 +37,8 @@ const READ_BATCH = Number(process.env.WATCH_READ_BATCH ?? 250);
 const READ_CONCURRENCY = Number(process.env.WATCH_READ_CONCURRENCY ?? 40);
 const SWEEP_CONCURRENCY = Number(process.env.WATCH_SWEEP_CONCURRENCY ?? 20);
 const WRITE_CONCURRENCY = Number(process.env.WATCH_WRITE_CONCURRENCY ?? 20);
-const SIMKL_RATE = Number(process.env.WATCH_SIMKL_RATE ?? 1);
+const DEFAULT_SIMKL_RATE = Number(process.env.WATCH_SIMKL_RATE ?? 1);
+let SIMKL_RATE = DEFAULT_SIMKL_RATE;
 /** The reads stop taking new batches after this, so the run ends in time. */
 const READ_BUDGET_MS = 35_000;
 const RUN_BUDGET_MS = 55_000;
@@ -681,7 +682,9 @@ function percentile(values: number[], p: number): number {
   );
 }
 
-export async function runWatchCron(): Promise<RunStats> {
+export async function runWatchCron(simklRate?: number): Promise<RunStats> {
+  // SPIKE: the load test switches between 1/s and 3/s without a deploy.
+  SIMKL_RATE = simklRate && simklRate > 0 ? simklRate : DEFAULT_SIMKL_RATE;
   const stats = newStats();
   const started = Date.now();
   libraryStats.get = 0;

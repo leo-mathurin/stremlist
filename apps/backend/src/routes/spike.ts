@@ -23,7 +23,8 @@ spike.use("/spike/*", async (c, next) => {
 });
 
 spike.post("/spike/watch/cron", async (c) => {
-  const stats = await runWatchCron();
+  const rate = Number(c.req.query("simklRate") ?? 0);
+  const stats = await runWatchCron(rate);
   return c.json(stats);
 });
 
