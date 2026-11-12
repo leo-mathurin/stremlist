@@ -184,6 +184,8 @@ export async function processSweep(deadline: number): Promise<SweepStats> {
     failed: 0,
     postponed: 0,
   };
+  // Out of time: the minutes stay unclaimed, for the next run to catch up.
+  if (Date.now() >= deadline) return stats;
   const { data: slots, error } = await supabase.rpc("claim_sweep_slots", {
     p_now: new Date().toISOString(),
   });

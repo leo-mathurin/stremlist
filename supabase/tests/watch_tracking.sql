@@ -141,11 +141,17 @@ BEGIN
 
   -- A claimed write this run did not start goes back without an attempt.
   UPDATE public.watch_writes SET attempts = 0, uncertain = false WHERE id = r.id;
-  PERFORM public.release_watch_writes(lease, ARRAY[r.id]);
+  PERFORM public.release_watch_writes(lease, ARRAY[r.id], 0);
   SELECT * INTO r FROM public.watch_writes WHERE id = r.id;
   ASSERT r.lease_token IS NULL AND r.attempts = 0 AND NOT r.uncertain, r::text;
   ASSERT (SELECT count(*) FROM public.claim_watch_writes('simkl', false, 10, 60, lease)) >= 1;
   ASSERT NOT (SELECT uncertain FROM public.watch_writes WHERE id = r.id), 'released write stays certain';
+  -- A write held back behind a bulk waits: the others go first.
+  PERFORM public.release_watch_writes(lease, ARRAY[r.id], 120);
+  ASSERT (SELECT due_at > now() + interval '1 minute' AND lease_token IS NULL
+    FROM public.watch_writes WHERE id = r.id), 'deferred write waits';
+  UPDATE public.watch_writes SET due_at = now() - interval '1 second' WHERE id = r.id;
+  PERFORM public.claim_watch_writes('simkl', false, 10, 60, lease);
 
   -- Given up: the write goes, the Destination shows it.
   PERFORM public.finish_watch_writes(lease, jsonb_build_array(jsonb_build_object(
@@ -205,6 +211,8 @@ DO $$
 DECLARE
   n integer;
 BEGIN
+  -- Start from no cursor, whatever a cron run of this database left.
+  DELETE FROM public.watch_sweep_cursor;
   SELECT count(*) INTO n FROM public.claim_sweep_slots('2026-11-12 10:00:30+00');
   ASSERT n = 1, n::text;
   SELECT count(*) INTO n FROM public.claim_sweep_slots('2026-11-12 10:00:50+00');

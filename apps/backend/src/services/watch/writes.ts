@@ -80,8 +80,7 @@ function watchedAt(write: ClaimedWrite): string {
   return new Date(write.watched_at).toISOString();
 }
 
-const isEpisode = (write: ClaimedWrite) =>
-  write.season > 0 || write.episode > 0;
+const isEpisode = (write: ClaimedWrite) => write.item_type === "series";
 const episodeKey = (write: ClaimedWrite) => `${write.season}:${write.episode}`;
 
 /**
@@ -115,23 +114,35 @@ function groupSends(writes: ClaimedWrite[]): ClaimedWrite[][] {
   return sends;
 }
 
-/** The sends of one claim, at most SENDS_PER_DESTINATION per Destination. */
+/**
+ * The sends of one claim, at most SENDS_PER_DESTINATION per Destination.
+ * The others wait a minute per SENDS_PER_DESTINATION before them (`later`,
+ * by minutes), so one bulk mark never holds back everyone else's writes. A
+ * Provider turned off (kill switch) gets nothing: its rows wait 15 minutes.
+ */
 function capPerDestination(sends: ClaimedWrite[][]): {
   kept: ClaimedWrite[][];
-  later: number[];
+  later: Map<number, number[]>;
 } {
   const count = new Map<string, number>();
   const kept: ClaimedWrite[][] = [];
-  const later: number[] = [];
+  const later = new Map<number, number[]>();
+  const wait = (minutes: number, group: ClaimedWrite[]) =>
+    later.set(minutes, [
+      ...(later.get(minutes) ?? []),
+      ...group.map((w) => w.id),
+    ]);
   for (const group of sends) {
-    const key = `${group[0].account_id}|${group[0].provider}`;
-    const n = count.get(key) ?? 0;
-    if (n < SENDS_PER_DESTINATION) {
-      kept.push(group);
-      count.set(key, n + 1);
-    } else {
-      later.push(...group.map((w) => w.id));
+    const provider = group[0].provider;
+    if (isProviderId(provider) && !isProviderEnabled(provider)) {
+      wait(15, group);
+      continue;
     }
+    const key = `${group[0].account_id}|${provider}`;
+    const n = count.get(key) ?? 0;
+    count.set(key, n + 1);
+    if (n < SENDS_PER_DESTINATION) kept.push(group);
+    else wait(Math.floor(n / SENDS_PER_DESTINATION), group);
   }
   return { kept, later };
 }
@@ -204,6 +215,8 @@ async function send(
   if (!isProviderId(first.provider)) return finished(writes);
   const provider: ProviderId = first.provider;
   let rows = writes;
+  /** Set once a request may have reached the Provider. */
+  let requested = false;
   try {
     // A Provider turned off (kill switch) gets no request: try again later.
     if (!isProviderEnabled(provider)) {
@@ -223,6 +236,7 @@ async function send(
     let pending = rows;
     if (provider === "trakt" && rows.some((w) => w.uncertain)) {
       // The last attempt may have reached Trakt, which adds a play per write.
+      requested = true;
       const played = await traktPlays(
         connection,
         targetOf(rows),
@@ -233,6 +247,7 @@ async function send(
       );
     }
     if (pending.length > 0) {
+      requested = true;
       await performOnConnection(
         connection,
         { kind: "watched", add: true, watchedAt: watchedAt(first) },
@@ -266,8 +281,9 @@ async function send(
         done: false,
         next_due_at: next === null ? null : new Date(next).toISOString(),
         error: code,
-        // Still uncertain when the history check itself failed.
-        uncertain: write.uncertain || isUncertain(error),
+        // Still uncertain when the history check itself failed; a failure
+        // before any request leaves it as it was.
+        uncertain: write.uncertain || (requested && isUncertain(error)),
       };
     });
   }
@@ -303,14 +319,29 @@ async function finishWrites(
   if (error) throw error;
 }
 
-/** Gives back claimed rows that this run did not start: no attempt counted. */
-async function releaseWrites(lease: string, ids: number[]): Promise<void> {
+/**
+ * Gives back claimed rows that this run did not start, no attempt counted,
+ * due again in `delayMinutes`.
+ */
+async function releaseWrites(
+  lease: string,
+  ids: number[],
+  delayMinutes = 0,
+): Promise<void> {
   if (ids.length === 0) return;
   const { error } = await supabase.rpc("release_watch_writes", {
     p_lease_token: lease,
     p_ids: ids,
+    p_delay_seconds: delayMinutes * 60,
   });
   if (error) throw error;
+}
+
+async function releaseLater(
+  lease: string,
+  later: Map<number, number[]>,
+): Promise<void> {
+  for (const [minutes, ids] of later) await releaseWrites(lease, ids, minutes);
 }
 
 /**
@@ -373,7 +404,7 @@ export async function processWrites(deadline: number): Promise<WriteStats> {
     // Groups wait for a free slot (and a Provider's own pace per user): one
     // not started by the deadline goes back, so none outlives its lease.
     const { kept, later } = capPerDestination(groupSends(writes));
-    await releaseWrites(lease, later);
+    await releaseLater(lease, later);
     const unsent = await sendAll(
       kept,
       lease,
@@ -381,7 +412,7 @@ export async function processWrites(deadline: number): Promise<WriteStats> {
       stats,
       (_group, _index, go) => go(),
     );
-    if (unsent > 0 || later.length > 0 || writes.length < OTHERS_BATCH) break;
+    if (unsent > 0 || writes.length < OTHERS_BATCH) break;
   }
   return stats;
 }
@@ -428,15 +459,16 @@ export async function processSimklWrites(
     const writes = await claimWrites(
       "simkl",
       false,
-      gate.granted * EPISODES_PER_SEND,
+      Math.min(gate.granted * EPISODES_PER_SEND, 1000),
       lease,
     );
     const { kept: groups, later } = capPerDestination(groupSends(writes));
     const sendable = groups.slice(0, gate.granted);
-    await releaseWrites(lease, [
-      ...later,
-      ...groups.slice(gate.granted).flatMap((g) => g.map((w) => w.id)),
-    ]);
+    await releaseLater(lease, later);
+    await releaseWrites(
+      lease,
+      groups.slice(gate.granted).flatMap((g) => g.map((w) => w.id)),
+    );
     unused -= sendable.length;
     const skipped = await sendAll(
       sendable,

@@ -1159,7 +1159,11 @@ export type Database = {
         Returns: boolean;
       };
       release_watch_writes: {
-        Args: { p_ids: number[]; p_lease_token: string };
+        Args: {
+          p_delay_seconds?: number;
+          p_ids: number[];
+          p_lease_token: string;
+        };
         Returns: undefined;
       };
       replace_account_config: {
