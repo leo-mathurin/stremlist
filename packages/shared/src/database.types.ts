@@ -568,7 +568,6 @@ export type Database = {
           last_title: Json | null;
           provider: string;
         };
-        ComputedFields: never;
         Insert: {
           account_id: string;
           enabled_at?: string;
@@ -624,7 +623,6 @@ export type Database = {
           start_state: NonNullable<Json>;
           video_id: string;
         };
-        ComputedFields: never;
         Insert: {
           account_id: string;
           cycle_started_at: string;
@@ -679,7 +677,6 @@ export type Database = {
           next_slot_at: string;
           slow_until: string;
         };
-        ComputedFields: never;
         Insert: {
           id: string;
           next_slot_at?: string;
@@ -697,7 +694,6 @@ export type Database = {
           id: string;
           last_slot_at: string;
         };
-        ComputedFields: never;
         Insert: {
           id: string;
           last_slot_at: string;
@@ -716,7 +712,6 @@ export type Database = {
           stremio_trakt: boolean;
           sweep_slot: number;
         };
-        ComputedFields: never;
         Insert: {
           account_id: string;
           baseline_at?: string | null;
@@ -760,7 +755,6 @@ export type Database = {
           uncertain: boolean;
           watched_at: string;
         };
-        ComputedFields: never;
         Insert: {
           account_id: string;
           attempts?: number;
@@ -1162,6 +1156,10 @@ export type Database = {
       release_stremio_update: {
         Args: { p_account_id: string; p_lease_token: string };
         Returns: boolean;
+      };
+      release_watch_writes: {
+        Args: { p_ids: number[]; p_lease_token: string };
+        Returns: undefined;
       };
       replace_account_config: {
         Args: {

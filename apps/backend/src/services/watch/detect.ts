@@ -153,6 +153,20 @@ async function queueWrites(
   if (error) throw error;
 }
 
+/** Whether any write of `titles` is in the queue. */
+async function anyQueued(
+  accountId: string,
+  titles: WatchedTitle[],
+): Promise<boolean> {
+  const { count, error } = await supabase
+    .from("watch_writes")
+    .select("id", { count: "exact", head: true })
+    .eq("account_id", accountId)
+    .in("imdb_id", [...new Set(titles.map((t) => t.imdbId))]);
+  if (error) throw error;
+  return (count ?? 0) > 0;
+}
+
 /**
  * Takes `titles` out of the state again after their writes failed to queue,
  * and moves the sweep back to `checkedAt` so it reads their items again.
@@ -209,10 +223,14 @@ export async function recordItems(
       try {
         await queueWrites(accountId, destinations, titles);
       } catch (error) {
-        // Not queued: let a later read find these titles again.
-        await forgetTitles(accountId, titles, version.state.checkedAt).catch(
-          () => undefined,
-        );
+        // Not queued: let a later read find these titles again. An answer
+        // lost after the insert committed must keep them, or they would be
+        // sent twice.
+        if (!(await anyQueued(accountId, titles).catch(() => true))) {
+          await forgetTitles(accountId, titles, version.state.checkedAt).catch(
+            () => undefined,
+          );
+        }
         throw error;
       }
       return titles;

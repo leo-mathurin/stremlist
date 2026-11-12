@@ -132,6 +132,14 @@ BEGIN
   PERFORM public.claim_watch_writes('simkl', false, 10, 60, lease);
   ASSERT (SELECT uncertain FROM public.watch_writes WHERE id = r.id), 'abandoned lease';
 
+  -- A claimed write this run did not start goes back without an attempt.
+  UPDATE public.watch_writes SET attempts = 0, uncertain = false WHERE id = r.id;
+  PERFORM public.release_watch_writes(lease, ARRAY[r.id]);
+  SELECT * INTO r FROM public.watch_writes WHERE id = r.id;
+  ASSERT r.lease_token IS NULL AND r.attempts = 0 AND NOT r.uncertain, r::text;
+  ASSERT (SELECT count(*) FROM public.claim_watch_writes('simkl', false, 10, 60, lease)) >= 1;
+  ASSERT NOT (SELECT uncertain FROM public.watch_writes WHERE id = r.id), 'released write stays certain';
+
   -- Given up: the write goes, the Destination shows it.
   PERFORM public.finish_watch_writes(lease, jsonb_build_array(jsonb_build_object(
     'id', r.id, 'done', false, 'next_due_at', NULL, 'error', 'provider_error')));

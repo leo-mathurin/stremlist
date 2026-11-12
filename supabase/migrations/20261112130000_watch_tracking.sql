@@ -474,6 +474,18 @@ BEGIN
 END;
 $$;
 
+-- Give back claimed writes that this run did not start: no attempt counted.
+CREATE FUNCTION public.release_watch_writes(p_lease_token uuid, p_ids bigint[])
+RETURNS void
+LANGUAGE sql
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  UPDATE public.watch_writes
+  SET locked_until = '-infinity', lease_token = NULL
+  WHERE id = ANY (p_ids) AND lease_token = p_lease_token;
+$$;
+
 -- The age of the oldest Simkl write that is due, in seconds (0 when none).
 CREATE FUNCTION public.watch_simkl_backlog()
 RETURNS double precision
@@ -607,6 +619,7 @@ REVOKE ALL ON FUNCTION
   public.queue_watch_writes(jsonb),
   public.claim_watch_writes(text, boolean, integer, integer, uuid),
   public.finish_watch_writes(uuid, jsonb),
+  public.release_watch_writes(uuid, bigint[]),
   public.watch_simkl_backlog(),
   public.take_simkl_slots(integer, double precision, double precision),
   public.return_simkl_slots(integer, double precision, integer),
@@ -623,6 +636,7 @@ GRANT EXECUTE ON FUNCTION
   public.queue_watch_writes(jsonb),
   public.claim_watch_writes(text, boolean, integer, integer, uuid),
   public.finish_watch_writes(uuid, jsonb),
+  public.release_watch_writes(uuid, bigint[]),
   public.watch_simkl_backlog(),
   public.take_simkl_slots(integer, double precision, double precision),
   public.return_simkl_slots(integer, double precision, integer),

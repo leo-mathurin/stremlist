@@ -46,6 +46,16 @@ async function heartbeat(report: CronReport): Promise<void> {
   if (!url) return;
   const backlog = report.simklBacklogSeconds ?? 0;
   const problems = [...report.errors];
+  // Items fail one by one without failing the run: alert when most do.
+  const { reads, writes, simkl } = report;
+  if (reads && reads.failed >= 10 && reads.failed > reads.read) {
+    problems.push(`${reads.failed} of ${reads.claimed} Stremio reads failed`);
+  }
+  const sent = (writes?.sent ?? 0) + (simkl?.sent ?? 0);
+  const failed = (writes?.failed ?? 0) + (simkl?.failed ?? 0);
+  if (failed >= 5 && failed > sent) {
+    problems.push(`${failed} Destination writes failed, ${sent} sent`);
+  }
   if (backlog > SIMKL_BACKLOG_ALERT_SECONDS) {
     problems.push(
       `The oldest Simkl write waits ${Math.round(backlog / 60)} min`,

@@ -115,8 +115,9 @@ async function sendWrite(
   const target = targetOf(write);
   try {
     const connection = await getConnectionAccess(write.account_id, provider);
-    // The Connection is gone: the database dropped the Destination with it.
-    if (!connection) return done();
+    // The write was still claimed just before: a deleted Connection would
+    // have deleted it, so this is a failed read. Try again later.
+    if (!connection) throw new Error(`Cannot read the ${provider} Connection`);
     if (write.uncertain && provider === "trakt") {
       // The last attempt may have reached Trakt, which adds a play per write.
       if (await traktHasPlay(connection, target, watchedAt(write))) {
@@ -197,17 +198,35 @@ export async function processWrites(deadline: number): Promise<WriteStats> {
   while (Date.now() < deadline) {
     const writes = await claimWrites("simkl", true, OTHERS_BATCH, lease);
     if (writes.length === 0) break;
-    // Writes wait for a free slot: each is checked again just before it goes.
+    // Writes wait for a free slot (and a Provider's own pace per user): one
+    // not started by the deadline goes back for the next run, so no write
+    // outlives its lease. Each is checked again just before it goes.
+    const unsent: number[] = [];
     const results = await mapWithConcurrency(
       writes,
       CONCURRENCY,
-      async (write) =>
-        (await stillClaimed(write.id, lease)) ? sendWrite(write, stats) : null,
+      async (write) => {
+        if (Date.now() >= deadline) {
+          unsent.push(write.id);
+          return null;
+        }
+        return (await stillClaimed(write.id, lease))
+          ? sendWrite(write, stats)
+          : null;
+      },
     );
     await finishWrites(
       lease,
       results.filter((result) => result !== null),
     );
+    if (unsent.length > 0) {
+      const { error } = await supabase.rpc("release_watch_writes", {
+        p_lease_token: lease,
+        p_ids: unsent,
+      });
+      if (error) throw error;
+      break;
+    }
     if (writes.length < OTHERS_BATCH) break;
   }
   return stats;

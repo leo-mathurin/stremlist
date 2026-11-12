@@ -169,7 +169,11 @@ export async function traktGetAll<T>(
   for (let page = 1; ; page++) {
     const response = await traktGet(path, connection, {
       ...options,
-      query: { page: String(page), limit: String(TRAKT_PAGE_SIZE) },
+      query: {
+        ...options.query,
+        page: String(page),
+        limit: String(TRAKT_PAGE_SIZE),
+      },
     });
     if (response.status === 204) break;
     const data = (await response.json()) as T[];

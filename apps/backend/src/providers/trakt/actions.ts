@@ -170,18 +170,19 @@ export async function traktHasPlay(
 ): Promise<boolean> {
   const at = Date.parse(watchedAt);
   const kind = target.type === "movie" ? "movies" : "episodes";
-  const rows = await traktGetJson<HistoryRow[]>(
+  // A whole series marked at once shares one time: read every page.
+  const { items: rows } = await traktGetAll<HistoryRow>(
     `/sync/history/${kind}`,
     connection,
     {
       query: {
         start_at: new Date(at - 60_000).toISOString(),
         end_at: new Date(at + 60_000).toISOString(),
-        limit: "100",
       },
+      maxItems: 5000,
     },
   );
-  return (rows ?? []).some((row) =>
+  return rows.some((row) =>
     target.type === "movie"
       ? row.movie?.ids?.imdb === target.imdbId
       : row.show?.ids?.imdb === target.imdbId &&
