@@ -1,6 +1,12 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
+import {
+  meterBegin,
+  meterCount,
+  meterEnd,
+  meterHeader,
+} from "./lib/spike-meter";
 import { supabase } from "./lib/supabase";
 import { frontendUrl } from "./lib/urls";
 import actions from "./routes/actions";
@@ -15,6 +21,17 @@ import stream from "./routes/stream";
 const app = new Hono();
 
 app.use("*", cors({ origin: "*" }));
+// SPIKE: meter CPU and busy time per instance for the load test.
+app.use("*", async (c, next) => {
+  meterBegin();
+  meterCount();
+  try {
+    await next();
+  } finally {
+    meterEnd();
+    c.res.headers.set("x-spike-meter", meterHeader());
+  }
+});
 // OAuth callbacks carry one-time codes in the query string: keep them out of logs.
 app.use(
   "*",
