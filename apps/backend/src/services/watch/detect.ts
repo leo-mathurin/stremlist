@@ -114,10 +114,13 @@ export async function diffItems(
       knownEpisodes(item._id, stored),
       watchedEpisodes(item._id, field),
     ]);
-    // Cinemeta has no episode list for it: keep the field, send nothing.
+    // Cinemeta has no episode list for it: send nothing. A list of
+    // episodes already sent stays, so none of them is sent again later.
     if (now === UNLISTED) {
-      next.series[item._id] = field;
-      changed = true;
+      if (!Array.isArray(stored)) {
+        next.series[item._id] = field;
+        changed = true;
+      }
       continue;
     }
     // Cinemeta cannot place the field now: the next sweep compares it again.
@@ -172,18 +175,31 @@ async function queueWrites(
   if (error) throw error;
 }
 
-/** Whether any write of `titles` is in the queue. */
-async function anyQueued(
+/**
+ * Whether the insert of these writes committed: every one of them, for each
+ * Destination, is in the queue. A failed insert leaves some out.
+ */
+async function allQueued(
   accountId: string,
+  destinations: readonly ProviderId[],
   titles: WatchedTitle[],
 ): Promise<boolean> {
-  const { count, error } = await supabase
+  const { data, error } = await supabase
     .from("watch_writes")
-    .select("id", { count: "exact", head: true })
+    .select("provider, imdb_id, season, episode")
     .eq("account_id", accountId)
     .in("imdb_id", [...new Set(titles.map((t) => t.imdbId))]);
   if (error) throw error;
-  return (count ?? 0) > 0;
+  const queued = new Set(
+    data.map((w) => `${w.provider}|${w.imdb_id}|${w.season}|${w.episode}`),
+  );
+  return titles.every((t) =>
+    destinations.every((provider) =>
+      queued.has(
+        `${provider}|${t.imdbId}|${t.episode?.season ?? 0}|${t.episode?.episode ?? 0}`,
+      ),
+    ),
+  );
 }
 
 /**
@@ -245,7 +261,12 @@ export async function recordItems(
         // Not queued: let a later read find these titles again. An answer
         // lost after the insert committed must keep them, or they would be
         // sent twice.
-        if (!(await anyQueued(accountId, titles).catch(() => true))) {
+        const committed = await allQueued(
+          accountId,
+          destinations,
+          titles,
+        ).catch(() => true);
+        if (!committed) {
           await forgetTitles(accountId, titles, version.state.checkedAt).catch(
             () => undefined,
           );

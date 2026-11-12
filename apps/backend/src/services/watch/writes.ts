@@ -31,6 +31,11 @@ const OTHERS_BATCH = 300;
 const LEASE_SECONDS = 90;
 /** Most episodes in one /sync request. */
 const EPISODES_PER_SEND = 100;
+/**
+ * Most requests to one Destination in one claim. Providers pace each user
+ * (about one write a second), so more would wait past the claim's lease.
+ */
+const SENDS_PER_DESTINATION = 20;
 const SIMKL_SLOW_RATE = 1;
 const SIMKL_FAST_RATE = 3;
 /** The oldest waiting Simkl write that switches to the fast rate. */
@@ -108,6 +113,27 @@ function groupSends(writes: ClaimedWrite[]): ClaimedWrite[][] {
     groups.set(key, chunks);
   }
   return sends;
+}
+
+/** The sends of one claim, at most SENDS_PER_DESTINATION per Destination. */
+function capPerDestination(sends: ClaimedWrite[][]): {
+  kept: ClaimedWrite[][];
+  later: number[];
+} {
+  const count = new Map<string, number>();
+  const kept: ClaimedWrite[][] = [];
+  const later: number[] = [];
+  for (const group of sends) {
+    const key = `${group[0].account_id}|${group[0].provider}`;
+    const n = count.get(key) ?? 0;
+    if (n < SENDS_PER_DESTINATION) {
+      kept.push(group);
+      count.set(key, n + 1);
+    } else {
+      later.push(...group.map((w) => w.id));
+    }
+  }
+  return { kept, later };
 }
 
 function targetOf(writes: ClaimedWrite[]): ActionTarget {
@@ -346,14 +372,16 @@ export async function processWrites(deadline: number): Promise<WriteStats> {
     if (writes.length === 0) break;
     // Groups wait for a free slot (and a Provider's own pace per user): one
     // not started by the deadline goes back, so none outlives its lease.
+    const { kept, later } = capPerDestination(groupSends(writes));
+    await releaseWrites(lease, later);
     const unsent = await sendAll(
-      groupSends(writes),
+      kept,
       lease,
       deadline,
       stats,
       (_group, _index, go) => go(),
     );
-    if (unsent > 0 || writes.length < OTHERS_BATCH) break;
+    if (unsent > 0 || later.length > 0 || writes.length < OTHERS_BATCH) break;
   }
   return stats;
 }
@@ -403,12 +431,12 @@ export async function processSimklWrites(
       gate.granted * EPISODES_PER_SEND,
       lease,
     );
-    const groups = groupSends(writes);
+    const { kept: groups, later } = capPerDestination(groupSends(writes));
     const sendable = groups.slice(0, gate.granted);
-    await releaseWrites(
-      lease,
-      groups.slice(gate.granted).flatMap((g) => g.map((w) => w.id)),
-    );
+    await releaseWrites(lease, [
+      ...later,
+      ...groups.slice(gate.granted).flatMap((g) => g.map((w) => w.id)),
+    ]);
     unused -= sendable.length;
     const skipped = await sendAll(
       sendable,

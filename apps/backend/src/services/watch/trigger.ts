@@ -132,7 +132,7 @@ export async function onLibraryWatchedEvent(
     await readLibraryItems(decryptSecret(context.authKey), [itemId])
   ).at(0);
   if (!item) return;
-  const { data, error } = await supabase.rpc("watch_active_destinations", {
+  const { data, error } = await supabase.rpc("watch_destination_list", {
     p_account_id: accountId,
   });
   if (error) throw error;

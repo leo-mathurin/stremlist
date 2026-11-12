@@ -957,6 +957,7 @@ export type Database = {
           phase: string;
           reads: number;
           start_state: Json;
+          stremio_trakt: boolean;
           video_id: string;
         }[];
       };
@@ -1227,16 +1228,16 @@ export type Database = {
           rate: number;
         }[];
       };
-      watch_active_destinations: {
-        Args: { p_account_id: string };
-        Returns: string[];
-      };
       watch_context: {
         Args: { p_account_id: string };
         Returns: {
           auth_key: string;
           baseline_at: string;
         }[];
+      };
+      watch_destination_list: {
+        Args: { p_account_id: string };
+        Returns: string[];
       };
       watch_read_soon: {
         Args: { p_account_id: string; p_item_id: string };

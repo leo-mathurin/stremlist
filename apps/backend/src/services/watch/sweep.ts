@@ -95,23 +95,30 @@ export async function takeBaseline(
 }
 
 /**
- * The Destinations that get a title now, after a fresh look at whether
- * Stremio's own Trakt is connected: the flag is otherwise read only by the
- * sweep, so a member who connected it hours ago would get two Trakt plays.
+ * The Destinations that get a title now, from every configured one and a
+ * fresh look at whether Stremio's own Trakt is connected: the stored flag
+ * (`cached`, unknown when undefined) is otherwise read only by the sweep, so
+ * Trakt would get two plays for hours after Stremio's Trakt was connected,
+ * and nothing for hours after it was disconnected.
  */
 export async function destinationsNow(
   accountId: string,
   authKey: string,
   destinations: ProviderId[],
+  cached?: boolean,
 ): Promise<ProviderId[]> {
   if (!destinations.includes("trakt")) return destinations;
-  if (!(await readStremioTrakt(authKey))) return destinations;
-  const { error } = await supabase
-    .from("watch_tracking")
-    .update({ stremio_trakt: true })
-    .eq("account_id", accountId);
-  if (error) throw error;
-  return destinations.filter((provider) => provider !== "trakt");
+  const connected = await readStremioTrakt(authKey);
+  if (connected !== cached) {
+    const { error } = await supabase
+      .from("watch_tracking")
+      .update({ stremio_trakt: connected })
+      .eq("account_id", accountId);
+    if (error) throw error;
+  }
+  return connected
+    ? destinations.filter((provider) => provider !== "trakt")
+    : destinations;
 }
 
 async function sweepAccount(

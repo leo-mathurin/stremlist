@@ -164,6 +164,23 @@ describe("new watched titles", () => {
     expect(withItems(empty, [kitsu])).toBe(false);
   });
 
+  it("keeps the episodes already sent when Cinemeta stops listing a series", async () => {
+    const sent = { ...empty, series: { tt7777777: ["1:1", "1:2"] } };
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockImplementationOnce(() =>
+      Promise.resolve(new Response("Not found", { status: 404 })),
+    );
+    const unlisted = {
+      ...series([1]),
+      _id: "tt7777777",
+      state: { watched: "tt7777777:1:1:1:eJxjBAAAAgAC" },
+    };
+    expect(await diffItems(sent, [unlisted])).toEqual({
+      titles: [],
+      next: false,
+    });
+  });
+
   it("saves the baseline only when something changed", () => {
     expect(withItems(empty, [movie(0)])).toBe(false);
     const state = withItems(empty, [movie(1)], 50) as WatchState;

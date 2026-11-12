@@ -165,9 +165,9 @@ CREATE TABLE public.watch_sweep_cursor (
 );
 ALTER TABLE public.watch_sweep_cursor ENABLE ROW LEVEL SECURITY;
 
--- The Destinations that get writes now: every one but Trakt while Stremio's
--- own Trakt integration is connected.
-CREATE FUNCTION public.watch_active_destinations(p_account_id text)
+-- Every Destination of an Account. Whether Trakt gets a title also depends
+-- on Stremio's own Trakt, which the backend reads fresh before a send.
+CREATE FUNCTION public.watch_destination_list(p_account_id text)
 RETURNS text[]
 LANGUAGE sql
 STABLE
@@ -176,9 +176,7 @@ SET search_path = ''
 AS $$
   SELECT coalesce(array_agg(d.provider ORDER BY d.provider), '{}')
   FROM public.watch_destinations d
-  JOIN public.watch_tracking t ON t.account_id = d.account_id
-  WHERE d.account_id = p_account_id
-    AND NOT (d.provider = 'trakt' AND t.stremio_trakt);
+  WHERE d.account_id = p_account_id;
 $$;
 
 -- What a /stream request or a player event of a tracked Account needs: the
@@ -276,7 +274,8 @@ RETURNS TABLE (
   cycle_started_at timestamptz, expected_flip_at timestamptz,
   expected_end_at timestamptz, start_state jsonb, last_time_watched bigint,
   last_moved_at timestamptz, reads integer, failures integer,
-  auth_key text, baseline_at timestamptz, destinations text[]
+  auth_key text, baseline_at timestamptz, stremio_trakt boolean,
+  destinations text[]
 )
 LANGUAGE sql
 SECURITY INVOKER
@@ -300,8 +299,8 @@ AS $$
   SELECT c.account_id, c.item_id, c.item_type, c.video_id, c.due_at,
     c.generation, c.phase, c.cycle_started_at, c.expected_flip_at,
     c.expected_end_at, c.start_state, c.last_time_watched, c.last_moved_at,
-    c.reads, c.failures, s.auth_key, t.baseline_at,
-    public.watch_active_destinations(c.account_id)
+    c.reads, c.failures, s.auth_key, t.baseline_at, t.stremio_trakt,
+    public.watch_destination_list(c.account_id)
   FROM claimed c
   JOIN public.watch_tracking t ON t.account_id = c.account_id
   LEFT JOIN public.stremio_connections s ON s.account_id = c.account_id;
@@ -603,7 +602,7 @@ SECURITY INVOKER
 SET search_path = ''
 AS $$
   SELECT t.account_id, s.auth_key, t.baseline_at, t.stremio_trakt,
-    public.watch_active_destinations(t.account_id)
+    public.watch_destination_list(t.account_id)
   FROM public.watch_tracking t
   JOIN public.stremio_connections s ON s.account_id = t.account_id
   WHERE t.sweep_slot = ANY (p_slots);
@@ -621,7 +620,7 @@ TO service_role;
 REVOKE ALL ON FUNCTION
   public.watch_tracking_drop_empty(),
   public.watch_writes_drop_on_new_user(),
-  public.watch_active_destinations(text),
+  public.watch_destination_list(text),
   public.watch_context(text),
   public.watch_restart(text, text, text, text, timestamptz, text, jsonb, bigint, timestamptz, timestamptz),
   public.watch_read_soon(text, text),
@@ -638,7 +637,7 @@ REVOKE ALL ON FUNCTION
   public.watch_sweep_accounts(smallint[])
 FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION
-  public.watch_active_destinations(text),
+  public.watch_destination_list(text),
   public.watch_context(text),
   public.watch_restart(text, text, text, text, timestamptz, text, jsonb, bigint, timestamptz, timestamptz),
   public.watch_read_soon(text, text),

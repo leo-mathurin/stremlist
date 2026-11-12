@@ -24,13 +24,12 @@ DECLARE
   r record;
   n integer;
 BEGIN
-  -- Stremio's own Trakt turns the Trakt Destination off, not the others.
-  ASSERT (SELECT public.watch_active_destinations('sl_watchtrackingtest000000'))
-    = ARRAY['simkl', 'trakt'];
+  -- Every Destination, Trakt included: the backend decides with a fresh
+  -- read of Stremio's own Trakt.
   UPDATE public.watch_tracking SET stremio_trakt = true
   WHERE account_id = 'sl_watchtrackingtest000000';
-  ASSERT (SELECT public.watch_active_destinations('sl_watchtrackingtest000000'))
-    = ARRAY['simkl'];
+  ASSERT (SELECT public.watch_destination_list('sl_watchtrackingtest000000'))
+    = ARRAY['simkl', 'trakt'];
   UPDATE public.watch_tracking SET stremio_trakt = false
   WHERE account_id = 'sl_watchtrackingtest000000';
 

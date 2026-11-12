@@ -39,6 +39,7 @@ interface ClaimedRead {
   failures: number;
   auth_key: string | null;
   baseline_at: string | null;
+  stremio_trakt: boolean;
   destinations: string[] | null;
 }
 
@@ -106,6 +107,7 @@ async function readOne(claimed: ClaimedRead, stats: ReadStats): Promise<Plan> {
           claimed.account_id,
           authKey,
           destinationsOf(claimed),
+          claimed.stremio_trakt,
         ),
         [item],
         { link: linkOf(claimed.auth_key) },
