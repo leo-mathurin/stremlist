@@ -157,7 +157,7 @@ export default function WatchTrackingSettings({
     body = (
       <Note>
         {anyOn
-          ? "Stremio signed Stremlist out, so nothing is marked until you link it again."
+          ? "Stremio is not linked any more, so nothing is marked until you link it again."
           : "Link your Stremio account first: it is how Stremlist sees what you watch."}{" "}
         <button type="button" onClick={onLinkStremio} className={LINK_BUTTON}>
           Link Stremio
