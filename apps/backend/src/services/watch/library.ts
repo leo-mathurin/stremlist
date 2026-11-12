@@ -29,24 +29,40 @@ export const libraryStats = {
   get: 0,
   meta: 0,
   failed: 0,
+  retries: 0,
   latencies: [] as number[],
   metaBytes: 0,
   cinemeta: 0,
 };
 
+async function attempt(
+  method: string,
+  body: object,
+  via?: string,
+): Promise<Response> {
+  return fetch(`${STREMIO_API}/${method}`, {
+    method: "POST",
+    // SPIKE: tells the mock which reads come from the sweep.
+    headers: {
+      "content-type": "application/json",
+      ...(via ? { "x-spike-via": via } : {}),
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+}
+
 async function call<T>(method: string, body: object, via?: string): Promise<T> {
   const started = performance.now();
   try {
-    const response = await fetch(`${STREMIO_API}/${method}`, {
-      method: "POST",
-      // SPIKE: tells the mock which reads come from the sweep.
-      headers: {
-        "content-type": "application/json",
-        ...(via ? { "x-spike-via": via } : {}),
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
+    let response: Response;
+    try {
+      response = await attempt(method, body, via);
+    } catch {
+      // A pooled connection that the other side closed: try once more.
+      libraryStats.retries += 1;
+      response = await attempt(method, body, via);
+    }
     const text = await response.text();
     if (method === "datastoreMeta") libraryStats.metaBytes += text.length;
     if (!response.ok) throw new LibraryReadError(`HTTP ${response.status}`);

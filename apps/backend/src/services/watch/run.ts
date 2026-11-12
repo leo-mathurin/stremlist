@@ -86,6 +86,7 @@ function newStats() {
       get: 0,
       meta: 0,
       failed: 0,
+      retries: 0,
       p50: 0,
       p95: 0,
       metaBytes: 0,
@@ -686,6 +687,7 @@ export async function runWatchCron(): Promise<RunStats> {
   libraryStats.get = 0;
   libraryStats.meta = 0;
   libraryStats.failed = 0;
+  libraryStats.retries = 0;
   libraryStats.latencies = [];
   libraryStats.metaBytes = 0;
   libraryStats.cinemeta = 0;
@@ -706,6 +708,7 @@ export async function runWatchCron(): Promise<RunStats> {
     get: libraryStats.get,
     meta: libraryStats.meta,
     failed: libraryStats.failed,
+    retries: libraryStats.retries,
     p50: percentile(libraryStats.latencies, 0.5),
     p95: percentile(libraryStats.latencies, 0.95),
     metaBytes: libraryStats.metaBytes,
