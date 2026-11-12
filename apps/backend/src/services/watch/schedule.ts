@@ -85,7 +85,9 @@ export function planAfterRead(
 
   const playing =
     !!item && state.video_id === row.videoId && (state.duration ?? 0) > 0;
-  if (playing && moved) {
+  // The first read that sees the play sets the expectation even when
+  // timeWatched is still 0 (a web client pushes only every 180 s).
+  if (playing && (moved || input.phase === "warmup")) {
     // The cloud got timeWatched at _mtime; assume playback at real speed.
     // On the /stream read itself the play (re)starts now.
     const at = input.reads === 0 ? now : mtimeOf(item) || now;
