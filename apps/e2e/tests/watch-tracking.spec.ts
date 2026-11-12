@@ -259,27 +259,23 @@ test(
     await makeSweepDue(accountId);
     const run = await runCron();
     expect(run.sweep).toMatchObject({ accounts: 1, detected: 2 });
-    // Writes go out side by side: compare them in episode order.
-    const episodeOf = (body: unknown) =>
-      JSON.stringify(body).match(/"number":(\d+),"watched_at"/)?.[1];
-    const sent = watchedWrites("api.trakt.tv").sort((a, b) =>
-      String(episodeOf(a)).localeCompare(String(episodeOf(b))),
-    );
-    expect(sent).toEqual(
-      [2, 3].map((episode) => ({
-        shows: [
-          {
-            ids: { imdb: SHOW },
-            seasons: [
-              {
-                number: 1,
-                episodes: [{ number: episode, watched_at: LAST_WATCHED }],
-              },
-            ],
-          },
-        ],
-      })),
-    );
+    // The sweep runs after the writes: what it finds goes at the next run.
+    await runCron();
+    // The episodes of one series, marked together, go in one request.
+    const [sent, ...more] = watchedWrites("api.trakt.tv") as {
+      shows: { seasons: { episodes: { number: number }[] }[] }[];
+    }[];
+    expect(more).toEqual([]);
+    expect(sent.shows).toHaveLength(1);
+    expect(sent.shows[0]).toMatchObject({ ids: { imdb: SHOW } });
+    expect(
+      sent.shows[0].seasons[0].episodes
+        .map((e) => e)
+        .sort((a, b) => a.number - b.number),
+    ).toEqual([
+      { number: 2, watched_at: LAST_WATCHED },
+      { number: 3, watched_at: LAST_WATCHED },
+    ]);
 
     // Stremio's own Trakt connected: Trakt is paused, nothing more is sent.
     writeStremio({ ...readStremio(), trakt: true });

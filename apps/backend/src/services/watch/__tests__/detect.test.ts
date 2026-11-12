@@ -155,6 +155,15 @@ describe("new watched titles", () => {
     expect((next as WatchState).checkedAt).toBe(39);
   });
 
+  it("ignores titles from other addons' catalogs", async () => {
+    const kitsu = { ...movie(1), _id: "kitsu:7442" };
+    expect(await diffItems(empty, [kitsu])).toEqual({
+      titles: [],
+      next: false,
+    });
+    expect(withItems(empty, [kitsu])).toBe(false);
+  });
+
   it("saves the baseline only when something changed", () => {
     expect(withItems(empty, [movie(0)])).toBe(false);
     const state = withItems(empty, [movie(1)], 50) as WatchState;

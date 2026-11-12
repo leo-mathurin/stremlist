@@ -3,8 +3,9 @@
  * run side by side, each with its own time budget, so Simkl's pacing never
  * delays the reads:
  *
- * - the due reads, then the sweep minutes, then the Trakt and MDBList
- *   writes;
+ * - the due reads, then the Trakt and MDBList writes, then the sweep
+ *   minutes in what is left of the run (the sweep is the safety net: the
+ *   writes do not wait for it);
  * - the Simkl writes, through the global limiter.
  *
  * The run reports to a Better Stack heartbeat, which also alerts when the
@@ -88,9 +89,11 @@ export async function runWatchCron(): Promise<CronReport> {
       report.reads = await step("reads", () =>
         processReads(started + READ_BUDGET_MS),
       );
-      report.sweep = await step("sweep", processSweep);
       report.writes = await step("writes", () =>
         processWrites(started + RUN_BUDGET_MS),
+      );
+      report.sweep = await step("sweep", () =>
+        processSweep(started + RUN_BUDGET_MS),
       );
     })(),
     (async () => {

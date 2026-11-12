@@ -71,6 +71,14 @@ BEGIN
   SELECT * INTO r FROM public.watch_reads WHERE item_id = 'tt0000001';
   ASSERT r.phase = 'flip' AND r.reads = 3 AND r.due_at > now(), r::text;
 
+  -- A pause long before the play can turn watched moves nothing.
+  UPDATE public.watch_reads SET expected_flip_at = now() + interval '1 hour', due_at = now() + interval '1 hour'
+  WHERE item_id = 'tt0000001';
+  ASSERT NOT (SELECT public.watch_read_soon('sl_watchtrackingtest000000', 'tt0000001'));
+  UPDATE public.watch_reads SET expected_flip_at = now() + interval '2 minutes'
+  WHERE item_id = 'tt0000001';
+  ASSERT (SELECT public.watch_read_soon('sl_watchtrackingtest000000', 'tt0000001'));
+
   -- An Account that stopped tracking gets no new read.
   PERFORM public.watch_restart('sl_watchtrackingother00000', 'tt0000003', 'movie',
     'tt0000003', now(), 'warmup', '{}', NULL, NULL, NULL);

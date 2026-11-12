@@ -240,6 +240,18 @@ export interface ActionTarget {
   type: "movie" | "series";
   /** For series: the episode, when the Action is about one episode. */
   episode?: { season: number; episode: number };
+  /**
+   * For series, instead of `episode`: several episodes in one write, as
+   * Watch tracking sends a series marked at once. Watched writes only.
+   */
+  episodes?: { season: number; episode: number }[];
+}
+
+/** The episodes that an Action names, if any. */
+export function targetEpisodes(
+  target: ActionTarget,
+): { season: number; episode: number }[] {
+  return target.episodes ?? (target.episode ? [target.episode] : []);
 }
 
 export interface ProviderActions {

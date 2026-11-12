@@ -5,11 +5,18 @@
  * conditional write lets one run claim a title, so the trigger, the events
  * and the sweep never send it twice.
  */
+import { IMDB_TITLE_ID_PATTERN } from "@stremlist/shared/constants";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { supabase } from "../../lib/supabase";
 import type { LibraryItem } from "../stremio";
 import type { WatchedTitle } from "./library";
-import { episodeTitles, mtimeOf, newMovie, watchedEpisodes } from "./library";
+import {
+  episodeTitles,
+  mtimeOf,
+  newMovie,
+  UNLISTED,
+  watchedEpisodes,
+} from "./library";
 import type { WatchState } from "./state";
 import { readState, writeState } from "./state";
 
@@ -37,6 +44,7 @@ export function withItems(
     next.checkedAt = Math.max(checkedAt, state.checkedAt);
   }
   for (const item of items) {
+    if (!isTitle(item)) continue;
     if (item.type === "movie" && (item.state?.timesWatched ?? 0) > 0) {
       if (!next.movies.includes(item._id)) {
         next.movies.push(item._id);
@@ -63,8 +71,12 @@ async function knownEpisodes(
   stored: string | string[] | undefined,
 ): Promise<Set<string> | null> {
   if (Array.isArray(stored)) return new Set(stored);
-  return watchedEpisodes(imdbId, stored);
+  const known = await watchedEpisodes(imdbId, stored);
+  return known instanceof Set ? known : null;
 }
+
+/** Only IMDb titles can go to a Destination (other addons' IDs cannot). */
+const isTitle = (item: LibraryItem) => IMDB_TITLE_ID_PATTERN.test(item._id);
 
 /**
  * The titles of `items` that `state` does not have, and the state with
@@ -85,6 +97,7 @@ export async function diffItems(
   /** The oldest change of an item to compare again at the next sweep. */
   let retryFrom = Number.POSITIVE_INFINITY;
   for (const item of items) {
+    if (!isTitle(item)) continue;
     if (item.type === "movie") {
       const movie = newMovie(item, next.movies.includes(item._id));
       if (movie.length > 0) {
@@ -101,6 +114,12 @@ export async function diffItems(
       knownEpisodes(item._id, stored),
       watchedEpisodes(item._id, field),
     ]);
+    // Cinemeta has no episode list for it: keep the field, send nothing.
+    if (now === UNLISTED) {
+      next.series[item._id] = field;
+      changed = true;
+      continue;
+    }
     // Cinemeta cannot place the field now: the next sweep compares it again.
     if (!now) {
       retryFrom = Math.min(retryFrom, mtimeOf(item));

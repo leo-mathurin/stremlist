@@ -124,7 +124,9 @@ CREATE INDEX watch_writes_due ON public.watch_writes (provider, due_at);
 ALTER TABLE public.watch_writes ENABLE ROW LEVEL SECURITY;
 
 -- A Connection now linked to another Provider user: its waiting writes
--- belonged to the previous one, so they are dropped, never transferred.
+-- belonged to the previous one, so they are dropped, never transferred. A
+-- new authorization without a username (its read failed) cannot prove it is
+-- the same user, so it drops them too.
 CREATE FUNCTION public.watch_writes_drop_on_new_user()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -140,7 +142,10 @@ $$;
 CREATE TRIGGER connections_watch_new_user
 AFTER UPDATE OF provider_username ON public.connections
 FOR EACH ROW
-WHEN (OLD.provider_username IS DISTINCT FROM NEW.provider_username)
+WHEN (
+  NEW.provider_username IS NULL
+  OR OLD.provider_username IS DISTINCT FROM NEW.provider_username
+)
 EXECUTE FUNCTION public.watch_writes_drop_on_new_user();
 
 -- The global Simkl limiter: slots spaced 1/rate apart (a virtual clock).
@@ -237,7 +242,10 @@ AS $$
     generation = w.generation + 1;
 $$;
 
--- A Stremio Web `pause` or `stop` event: read the item at the next run.
+-- A Stremio Web `pause` or `stop` event: read the item at the next run,
+-- unless it cannot be watched yet (more than 10 minutes before the
+-- threshold).
+
 CREATE FUNCTION public.watch_read_soon(p_account_id text, p_item_id text)
 RETURNS boolean
 LANGUAGE sql
@@ -248,6 +256,8 @@ AS $$
     UPDATE public.watch_reads
     SET due_at = least(due_at, now())
     WHERE account_id = p_account_id AND item_id = p_item_id
+      AND (expected_flip_at IS NULL
+        OR expected_flip_at <= now() + interval '10 minutes')
     RETURNING 1
   )
   SELECT EXISTS (SELECT 1 FROM moved);
@@ -486,7 +496,8 @@ AS $$
   WHERE id = ANY (p_ids) AND lease_token = p_lease_token;
 $$;
 
--- The age of the oldest Simkl write that is due, in seconds (0 when none).
+-- The age of the oldest Simkl write never tried yet, in seconds (0 when
+-- none). Retries wait on purpose and do not count.
 CREATE FUNCTION public.watch_simkl_backlog()
 RETURNS double precision
 LANGUAGE sql
@@ -496,7 +507,7 @@ SET search_path = ''
 AS $$
   SELECT coalesce(extract(epoch FROM now() - min(w.detected_at)), 0)::double precision
   FROM public.watch_writes w
-  WHERE w.provider = 'simkl' AND w.due_at <= now();
+  WHERE w.provider = 'simkl' AND w.due_at <= now() AND w.attempts = 0;
 $$;
 
 -- Reserve up to p_want Simkl slots in the next p_window_seconds at p_rate a
@@ -584,14 +595,14 @@ $$;
 CREATE FUNCTION public.watch_sweep_accounts(p_slots smallint[])
 RETURNS TABLE (
   account_id text, auth_key text, baseline_at timestamptz,
-  destinations text[]
+  stremio_trakt boolean, destinations text[]
 )
 LANGUAGE sql
 STABLE
 SECURITY INVOKER
 SET search_path = ''
 AS $$
-  SELECT t.account_id, s.auth_key, t.baseline_at,
+  SELECT t.account_id, s.auth_key, t.baseline_at, t.stremio_trakt,
     public.watch_active_destinations(t.account_id)
   FROM public.watch_tracking t
   JOIN public.stremio_connections s ON s.account_id = t.account_id

@@ -26,6 +26,8 @@ async function seriesVideos(
     `${CINEMETA}/meta/series/${encodeURIComponent(imdbId)}.json`,
     { limiter: cinemetaLimiter },
   );
+  // Cinemeta does not know the series: it has no episode list to compare.
+  if (response.status === 404) return [];
   if (!response.ok) throw new Error(`Cinemeta answered ${response.status}`);
   const body = (await response.json()) as {
     meta?: { videos?: Partial<SeriesVideo>[] } | null;
@@ -45,16 +47,19 @@ async function seriesVideos(
   return videos;
 }
 
+/** Cinemeta has no episode list for the series: nothing can be compared. */
+export const UNLISTED = "unlisted";
+
 /**
  * The episodes that a `watched` field marks, as "season:episode". A field
  * whose anchor episode is not in the cached list reads Cinemeta again: a
  * list cached before a new episode came out cannot place it. Null when
- * Cinemeta still cannot place it.
+ * Cinemeta still cannot place it; UNLISTED when Cinemeta has no list.
  */
 export async function watchedEpisodes(
   imdbId: string,
   field: string | undefined,
-): Promise<Set<string> | null> {
+): Promise<Set<string> | null | typeof UNLISTED> {
   if (!field) return new Set();
   const decode = (videos: SeriesVideo[]) => {
     const ids = watchedVideos(field, videos);
@@ -68,7 +73,9 @@ export async function watchedEpisodes(
       ),
     };
   };
-  let result = decode(await seriesVideos(imdbId));
+  const videos = await seriesVideos(imdbId);
+  if (videos.length === 0) return UNLISTED;
+  let result = decode(videos);
   if (!result.anchored) result = decode(await seriesVideos(imdbId, true));
   return result.anchored ? result.keys : null;
 }
@@ -135,5 +142,5 @@ export async function isEpisodeWatched(
   if (!item?.state?.watched) return false;
   const [, season, episode] = videoId.split(":");
   const watched = await watchedEpisodes(item._id, item.state.watched);
-  return watched?.has(`${season}:${episode}`) ?? false;
+  return watched instanceof Set && watched.has(`${season}:${episode}`);
 }

@@ -6,7 +6,6 @@
  * - a Stremio Web `pause` or `stop` player event: read it at the next run;
  * - a Stremio Web `library` event for a manual mark: read it at once.
  */
-import type { ProviderId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
 import { decryptSecret } from "../../lib/crypto";
 import { LruCache } from "../../lib/lru";
@@ -16,6 +15,7 @@ import { isEpisodeWatched, movieWatched } from "./library";
 import { readLibraryItems } from "./pace";
 import { newCycle, planAfterRead } from "./schedule";
 import { linkOf } from "./state";
+import { destinationsNow } from "./sweep";
 
 interface WatchContext {
   authKey: string;
@@ -136,7 +136,11 @@ export async function onLibraryWatchedEvent(
     p_account_id: accountId,
   });
   if (error) throw error;
-  const destinations: ProviderId[] = data.filter(isProviderId);
+  const destinations = await destinationsNow(
+    accountId,
+    decryptSecret(context.authKey),
+    data.filter(isProviderId),
+  );
   await recordItems(accountId, destinations, [item], {
     link: linkOf(context.authKey),
   });

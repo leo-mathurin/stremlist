@@ -14,6 +14,7 @@ import { readLibraryItems } from "./pace";
 import type { Phase, Plan, ReadRow, StartState } from "./schedule";
 import { planAfterFailure, planAfterRead } from "./schedule";
 import { linkOf } from "./state";
+import { destinationsNow } from "./sweep";
 
 const BATCH = 200;
 const CONCURRENCY = 20;
@@ -101,7 +102,11 @@ async function readOne(claimed: ClaimedRead, stats: ReadStats): Promise<Plan> {
     if (claimed.baseline_at && changedSinceStart(row, item)) {
       const titles = await recordItems(
         claimed.account_id,
-        destinationsOf(claimed),
+        await destinationsNow(
+          claimed.account_id,
+          authKey,
+          destinationsOf(claimed),
+        ),
         [item],
         { link: linkOf(claimed.auth_key) },
       );

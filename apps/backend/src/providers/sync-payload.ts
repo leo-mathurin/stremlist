@@ -13,25 +13,24 @@ export function bucketOf(target: ActionTarget): "movies" | "shows" {
   return target.type === "movie" ? "movies" : "shows";
 }
 
-/** A show item that names one of its episodes, dated by `watchedAt`. */
+/** A show item that names some of its episodes, dated by `watchedAt`. */
 export function episodeItem(
   target: ActionTarget,
-  episode: { season: number; episode: number },
+  episodes: { season: number; episode: number }[],
   watchedAt?: string,
 ) {
+  const seasons = [...new Set(episodes.map((e) => e.season))];
   return {
     ids: syncIds(target),
-    seasons: [
-      {
-        number: episode.season,
-        episodes: [
-          {
-            number: episode.episode,
-            ...(watchedAt ? { watched_at: watchedAt } : {}),
-          },
-        ],
-      },
-    ],
+    seasons: seasons.map((season) => ({
+      number: season,
+      episodes: episodes
+        .filter((e) => e.season === season)
+        .map((e) => ({
+          number: e.episode,
+          ...(watchedAt ? { watched_at: watchedAt } : {}),
+        })),
+    })),
   };
 }
 

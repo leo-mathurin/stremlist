@@ -32,7 +32,11 @@ import type {
   SourceSnapshot,
   SourceValidation,
 } from "./types";
-import { SourceUnavailableError, UnknownTitleError } from "./types";
+import {
+  SourceUnavailableError,
+  targetEpisodes,
+  UnknownTitleError,
+} from "./types";
 
 const API = "https://api.mdblist.com";
 const PAGE_SIZE = 1000;
@@ -346,8 +350,9 @@ function watchedPayload(
   target: ActionTarget,
 ): Record<string, unknown[]> {
   const at = watchedAtOf(intent);
-  if (target.type === "series" && target.episode) {
-    return { shows: [episodeItem(target, target.episode, at.watched_at)] };
+  const episodes = targetEpisodes(target);
+  if (target.type === "series" && episodes.length > 0) {
+    return { shows: [episodeItem(target, episodes, at.watched_at)] };
   }
   return { [bucketOf(target)]: [{ ids: syncIds(target), ...at }] };
 }

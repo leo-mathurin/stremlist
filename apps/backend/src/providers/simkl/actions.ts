@@ -12,7 +12,7 @@ import type {
   Membership,
   ProviderActions,
 } from "../types";
-import { UnknownTitleError } from "../types";
+import { targetEpisodes, UnknownTitleError } from "../types";
 import { simklRequest } from "./api";
 import { LIBRARY_REFS, titleType } from "./entries";
 import type { LibraryItem } from "./library";
@@ -86,15 +86,12 @@ async function buildWrite(
 
   if (intent.kind === "watched") {
     const path = intent.add ? "/sync/history" : "/sync/history/remove";
-    if (series && target.episode) {
+    const episodes = targetEpisodes(target);
+    if (series && episodes.length > 0) {
       return {
         path,
         item: {
-          ...episodeItem(
-            target,
-            target.episode,
-            watchedAtOf(intent).watched_at,
-          ),
+          ...episodeItem(target, episodes, watchedAtOf(intent).watched_at),
           // Stremio uses IMDb seasons; this maps them onto Simkl's anime
           // entries and is a no-op for other shows.
           use_tvdb_anime_seasons: true,

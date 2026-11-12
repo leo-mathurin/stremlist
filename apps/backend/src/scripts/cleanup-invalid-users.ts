@@ -173,6 +173,7 @@ async function deleteUsers(userIds: string[]): Promise<void> {
       ...accounts.flatMap(({ id }) => [
         deletePrefix(accountHistoryPrefix(id)),
         deletePrefix(`connections/${id}/`),
+        deletePrefix(`watch/${id}/`),
       ]),
     ]);
     const cacheDeleteFailure = cacheDeletes.find(

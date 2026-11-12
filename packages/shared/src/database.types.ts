@@ -1268,6 +1268,7 @@ export type Database = {
           auth_key: string;
           baseline_at: string;
           destinations: string[];
+          stremio_trakt: boolean;
         }[];
       };
     };

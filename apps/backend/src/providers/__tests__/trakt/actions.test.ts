@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { traktProvider } from "../../trakt";
-import { traktHasPlay } from "../../trakt/actions";
+import { traktPlays } from "../../trakt/actions";
 import type { ProviderActions } from "../../types";
 import {
   clerks,
@@ -240,20 +240,23 @@ describe("Trakt actions", () => {
       episode: { season: 2, episode: 5 },
     };
     clearCalls();
-    expect(await traktHasPlay(connection(), episode, at)).toBe(true);
+    expect(await traktPlays(connection(), episode, at)).toEqual(
+      new Set(["2:5"]),
+    );
     expect(calls[0].url.searchParams.get("start_at")).toBe(
       "2026-11-12T09:59:00.000Z",
     );
     expect(calls[0].url.searchParams.get("end_at")).toBe(
       "2026-11-12T10:01:00.000Z",
     );
+    route("GET /sync/history/movies", []);
     expect(
-      await traktHasPlay(
+      await traktPlays(
         connection(),
-        { ...episode, episode: { season: 2, episode: 6 } },
+        { imdbId: "tt0000001", type: "movie" },
         at,
       ),
-    ).toBe(false);
+    ).toEqual(new Set());
   });
 
   it("rates and removes a rating", async () => {

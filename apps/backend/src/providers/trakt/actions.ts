@@ -12,7 +12,7 @@ import type {
   Membership,
   ProviderActions,
 } from "../types";
-import { UnknownTitleError } from "../types";
+import { targetEpisodes, UnknownTitleError } from "../types";
 import { traktGetAll, traktGetJson, traktPost } from "./api";
 import type { TraktItem } from "./entries";
 import { imdbIdOf } from "./entries";
@@ -118,12 +118,11 @@ function syncBody(
     case "watched": {
       const path = intent.add ? "/sync/history" : "/sync/history/remove";
       const at = watchedAtOf(intent);
-      if (target.type === "series" && target.episode) {
+      const episodes = targetEpisodes(target);
+      if (target.type === "series" && episodes.length > 0) {
         return {
           path,
-          body: {
-            shows: [episodeItem(target, target.episode, at.watched_at)],
-          },
+          body: { shows: [episodeItem(target, episodes, at.watched_at)] },
         };
       }
       // A show alone marks (or unmarks) every episode.
@@ -159,15 +158,16 @@ interface HistoryRow {
 }
 
 /**
- * Whether Trakt's history has a play of `target` at `watchedAt` (within a
- * minute). Watch tracking asks before it sends a play again after a write
- * whose answer never came: Trakt adds a play for every write.
+ * What of `target` Trakt's history has at `watchedAt` (within a minute):
+ * "movie" for the movie, "season:episode" for each episode. Watch tracking
+ * asks before it sends a play again after a write whose answer never came:
+ * Trakt adds a play for every write.
  */
-export async function traktHasPlay(
+export async function traktPlays(
   connection: ConnectionAccess,
   target: ActionTarget,
   watchedAt: string,
-): Promise<boolean> {
+): Promise<Set<string>> {
   const at = Date.parse(watchedAt);
   const kind = target.type === "movie" ? "movies" : "episodes";
   // A whole series marked at once shares one time: read every page.
@@ -182,12 +182,15 @@ export async function traktHasPlay(
       maxItems: 5000,
     },
   );
-  return rows.some((row) =>
-    target.type === "movie"
-      ? row.movie?.ids?.imdb === target.imdbId
-      : row.show?.ids?.imdb === target.imdbId &&
-        row.episode?.season === target.episode?.season &&
-        row.episode?.number === target.episode?.episode,
+  return new Set(
+    rows.flatMap((row) => {
+      if (target.type === "movie") {
+        return row.movie?.ids?.imdb === target.imdbId ? ["movie"] : [];
+      }
+      return row.show?.ids?.imdb === target.imdbId && row.episode
+        ? [`${row.episode.season}:${row.episode.number}`]
+        : [];
+    }),
   );
 }
 

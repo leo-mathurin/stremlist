@@ -24,6 +24,8 @@ export interface SweepStats {
   baselines: number;
   detected: number;
   failed: number;
+  /** Accounts left for their next turn, the run being out of time. */
+  postponed: number;
 }
 
 async function readItems(
@@ -92,11 +94,32 @@ export async function takeBaseline(
   if (error) throw error;
 }
 
+/**
+ * The Destinations that get a title now, after a fresh look at whether
+ * Stremio's own Trakt is connected: the flag is otherwise read only by the
+ * sweep, so a member who connected it hours ago would get two Trakt plays.
+ */
+export async function destinationsNow(
+  accountId: string,
+  authKey: string,
+  destinations: ProviderId[],
+): Promise<ProviderId[]> {
+  if (!destinations.includes("trakt")) return destinations;
+  if (!(await readStremioTrakt(authKey))) return destinations;
+  const { error } = await supabase
+    .from("watch_tracking")
+    .update({ stremio_trakt: true })
+    .eq("account_id", accountId);
+  if (error) throw error;
+  return destinations.filter((provider) => provider !== "trakt");
+}
+
 async function sweepAccount(
   account: {
     account_id: string;
     auth_key: string;
     baseline_at: string | null;
+    stremio_trakt: boolean;
     destinations: ProviderId[];
   },
   stats: SweepStats,
@@ -116,12 +139,13 @@ async function sweepAccount(
     readLibraryMeta(authKey),
     readStremioTrakt(authKey),
   ]);
-  const { error } = await supabase
-    .from("watch_tracking")
-    .update({ stremio_trakt: stremioTrakt })
-    .eq("account_id", account.account_id)
-    .neq("stremio_trakt", stremioTrakt);
-  if (error) throw error;
+  if (stremioTrakt !== account.stremio_trakt) {
+    const { error } = await supabase
+      .from("watch_tracking")
+      .update({ stremio_trakt: stremioTrakt })
+      .eq("account_id", account.account_id);
+    if (error) throw error;
+  }
   // Stremio's Trakt connected since the last sweep: Trakt gets nothing more.
   const destinations = stremioTrakt
     ? account.destinations.filter((provider) => provider !== "trakt")
@@ -140,14 +164,18 @@ async function sweepAccount(
   stats.detected += titles.length;
 }
 
-/** Sweeps the Accounts of the minutes due now, and catches up missed ones. */
-export async function processSweep(): Promise<SweepStats> {
+/**
+ * Sweeps the Accounts of the minutes due now, and catches up missed ones,
+ * until `deadline`: an Account not swept by then waits for its next turn.
+ */
+export async function processSweep(deadline: number): Promise<SweepStats> {
   const stats: SweepStats = {
     slots: 0,
     accounts: 0,
     baselines: 0,
     detected: 0,
     failed: 0,
+    postponed: 0,
   };
   const { data: slots, error } = await supabase.rpc("claim_sweep_slots", {
     p_now: new Date().toISOString(),
@@ -162,12 +190,17 @@ export async function processSweep(): Promise<SweepStats> {
   if (accountsError) throw accountsError;
   stats.accounts = data.length;
   await mapWithConcurrency(data, CONCURRENCY, async (row) => {
+    if (Date.now() >= deadline) {
+      stats.postponed += 1;
+      return;
+    }
     try {
       await sweepAccount(
         {
           account_id: row.account_id,
           auth_key: row.auth_key,
           baseline_at: row.baseline_at as string | null,
+          stremio_trakt: row.stremio_trakt,
           destinations: ((row.destinations as string[] | null) ?? []).filter(
             isProviderId,
           ),
