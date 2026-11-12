@@ -24,6 +24,8 @@ type Version = Awaited<ReturnType<typeof readState>>;
 
 /** Tries before giving up on a state that other runs keep changing. */
 const SAVE_TRIES = 5;
+/** Rows per answer when reading the queue back (PostgREST's page limit). */
+const QUEUE_PAGE = 1000;
 
 /**
  * `state` with what `items` show as watched, as the Watched baseline keeps
@@ -184,15 +186,22 @@ async function allQueued(
   destinations: readonly ProviderId[],
   titles: WatchedTitle[],
 ): Promise<boolean> {
-  const { data, error } = await supabase
-    .from("watch_writes")
-    .select("provider, imdb_id, season, episode")
-    .eq("account_id", accountId)
-    .in("imdb_id", [...new Set(titles.map((t) => t.imdbId))]);
-  if (error) throw error;
-  const queued = new Set(
-    data.map((w) => `${w.provider}|${w.imdb_id}|${w.season}|${w.episode}`),
-  );
+  const queued = new Set<string>();
+  // Every page: a bulk mark can queue more rows than one answer holds.
+  for (let from = 0; ; from += QUEUE_PAGE) {
+    const { data, error } = await supabase
+      .from("watch_writes")
+      .select("provider, imdb_id, season, episode")
+      .eq("account_id", accountId)
+      .in("imdb_id", [...new Set(titles.map((t) => t.imdbId))])
+      .order("id")
+      .range(from, from + QUEUE_PAGE - 1);
+    if (error) throw error;
+    for (const w of data) {
+      queued.add(`${w.provider}|${w.imdb_id}|${w.season}|${w.episode}`);
+    }
+    if (data.length < QUEUE_PAGE) break;
+  }
   return titles.every((t) =>
     destinations.every((provider) =>
       queued.has(
