@@ -4,5 +4,6 @@
   "outputDirectory": "dist",
   "regions": ["fra1"],
   "relatedProjects": ["prj_mfYFWq0aaOF7c8NLhM6AXZddFVz5"],
-  "git": { "deploymentEnabled": { "main": false } }
+  "git": { "deploymentEnabled": { "main": false } },
+  "ignoreCommand": "exit 1"
 }
