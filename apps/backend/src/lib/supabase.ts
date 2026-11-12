@@ -10,7 +10,25 @@ if (!supabaseUrl || !supabaseServiceRoleKey) {
   );
 }
 
+/** SPIKE: bytes and calls to Supabase, for the load test's egress figure. */
+export const supabaseTraffic = { calls: 0, bytes: 0 };
+
 export const supabase = createClient<Database>(
   supabaseUrl,
   supabaseServiceRoleKey,
+  {
+    global: {
+      fetch: async (input, init) => {
+        const response = await fetch(input, init);
+        supabaseTraffic.calls += 1;
+        const body = await response.arrayBuffer();
+        supabaseTraffic.bytes += body.byteLength;
+        return new Response(body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+        });
+      },
+    },
+  },
 );

@@ -4,6 +4,7 @@
  * carries this instance's cumulative CPU time and busy wall time.
  */
 import { randomUUID } from "node:crypto";
+import { supabaseTraffic } from "./supabase";
 
 const id = randomUUID().slice(0, 8);
 const bootAt = Date.now();
@@ -36,5 +37,7 @@ export function meterHeader(): string {
     upMs: Date.now() - bootAt,
     n: requests,
     rssMb: Math.round(process.memoryUsage().rss / 1e6),
+    dbCalls: supabaseTraffic.calls,
+    dbBytes: supabaseTraffic.bytes,
   });
 }
