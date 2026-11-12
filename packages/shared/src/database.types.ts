@@ -558,6 +558,255 @@ export type Database = {
         };
         Relationships: [];
       };
+      watch_destinations: {
+        Row: {
+          account_id: string;
+          enabled_at: string;
+          last_error: string | null;
+          last_error_at: string | null;
+          last_success_at: string | null;
+          last_title: Json | null;
+          provider: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          account_id: string;
+          enabled_at?: string;
+          last_error?: string | null;
+          last_error_at?: string | null;
+          last_success_at?: string | null;
+          last_title?: Json | null;
+          provider: string;
+        };
+        Update: {
+          account_id?: string;
+          enabled_at?: string;
+          last_error?: string | null;
+          last_error_at?: string | null;
+          last_success_at?: string | null;
+          last_title?: Json | null;
+          provider?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "watch_destinations_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "watch_tracking";
+            referencedColumns: ["account_id"];
+          },
+          {
+            foreignKeyName: "watch_destinations_account_id_provider_fkey";
+            columns: ["account_id", "provider"];
+            isOneToOne: true;
+            referencedRelation: "connections";
+            referencedColumns: ["account_id", "provider"];
+          },
+        ];
+      };
+      watch_reads: {
+        Row: {
+          account_id: string;
+          cycle_started_at: string;
+          due_at: string;
+          expected_end_at: string | null;
+          expected_flip_at: string | null;
+          failures: number;
+          generation: number;
+          item_id: string;
+          item_type: string;
+          last_moved_at: string | null;
+          last_time_watched: number | null;
+          lease_token: string | null;
+          locked_until: string;
+          phase: string;
+          reads: number;
+          start_state: NonNullable<Json>;
+          video_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          account_id: string;
+          cycle_started_at: string;
+          due_at: string;
+          expected_end_at?: string | null;
+          expected_flip_at?: string | null;
+          failures?: number;
+          generation?: number;
+          item_id: string;
+          item_type: string;
+          last_moved_at?: string | null;
+          last_time_watched?: number | null;
+          lease_token?: string | null;
+          locked_until?: string;
+          phase: string;
+          reads?: number;
+          start_state?: NonNullable<Json>;
+          video_id: string;
+        };
+        Update: {
+          account_id?: string;
+          cycle_started_at?: string;
+          due_at?: string;
+          expected_end_at?: string | null;
+          expected_flip_at?: string | null;
+          failures?: number;
+          generation?: number;
+          item_id?: string;
+          item_type?: string;
+          last_moved_at?: string | null;
+          last_time_watched?: number | null;
+          lease_token?: string | null;
+          locked_until?: string;
+          phase?: string;
+          reads?: number;
+          start_state?: NonNullable<Json>;
+          video_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "watch_reads_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: false;
+            referencedRelation: "watch_tracking";
+            referencedColumns: ["account_id"];
+          },
+        ];
+      };
+      watch_simkl_gate: {
+        Row: {
+          id: string;
+          next_slot_at: string;
+          slow_until: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          id: string;
+          next_slot_at?: string;
+          slow_until?: string;
+        };
+        Update: {
+          id?: string;
+          next_slot_at?: string;
+          slow_until?: string;
+        };
+        Relationships: [];
+      };
+      watch_sweep_cursor: {
+        Row: {
+          id: string;
+          last_slot_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          id: string;
+          last_slot_at: string;
+        };
+        Update: {
+          id?: string;
+          last_slot_at?: string;
+        };
+        Relationships: [];
+      };
+      watch_tracking: {
+        Row: {
+          account_id: string;
+          baseline_at: string | null;
+          created_at: string;
+          stremio_trakt: boolean;
+          sweep_slot: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          account_id: string;
+          baseline_at?: string | null;
+          created_at?: string;
+          stremio_trakt?: boolean;
+          sweep_slot: number;
+        };
+        Update: {
+          account_id?: string;
+          baseline_at?: string | null;
+          created_at?: string;
+          stremio_trakt?: boolean;
+          sweep_slot?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "watch_tracking_account_id_fkey";
+            columns: ["account_id"];
+            isOneToOne: true;
+            referencedRelation: "accounts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      watch_writes: {
+        Row: {
+          account_id: string;
+          attempts: number;
+          detected_at: string;
+          due_at: string;
+          episode: number;
+          first_failed_at: string | null;
+          id: number;
+          imdb_id: string;
+          item_type: string;
+          last_error: string | null;
+          lease_token: string | null;
+          locked_until: string;
+          provider: string;
+          season: number;
+          uncertain: boolean;
+          watched_at: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          account_id: string;
+          attempts?: number;
+          detected_at?: string;
+          due_at?: string;
+          episode?: number;
+          first_failed_at?: string | null;
+          id?: never;
+          imdb_id: string;
+          item_type: string;
+          last_error?: string | null;
+          lease_token?: string | null;
+          locked_until?: string;
+          provider: string;
+          season?: number;
+          uncertain?: boolean;
+          watched_at: string;
+        };
+        Update: {
+          account_id?: string;
+          attempts?: number;
+          detected_at?: string;
+          due_at?: string;
+          episode?: number;
+          first_failed_at?: string | null;
+          id?: never;
+          imdb_id?: string;
+          item_type?: string;
+          last_error?: string | null;
+          lease_token?: string | null;
+          locked_until?: string;
+          provider?: string;
+          season?: number;
+          uncertain?: boolean;
+          watched_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "watch_writes_account_id_provider_fkey";
+            columns: ["account_id", "provider"];
+            isOneToOne: false;
+            referencedRelation: "watch_destinations";
+            referencedColumns: ["account_id", "provider"];
+          },
+        ];
+      };
     };
     Views: {
       letterboxd_recent_failures: {
@@ -683,6 +932,73 @@ export type Database = {
         };
         Returns: string;
       };
+      claim_sweep_slots: {
+        Args: { p_now: string };
+        Returns: {
+          slot: number;
+          slot_at: string;
+        }[];
+      };
+      claim_watch_reads: {
+        Args: {
+          p_lease_seconds: number;
+          p_lease_token: string;
+          p_limit: number;
+        };
+        Returns: {
+          account_id: string;
+          auth_key: string;
+          baseline_at: string;
+          cycle_started_at: string;
+          destinations: string[];
+          due_at: string;
+          expected_end_at: string;
+          expected_flip_at: string;
+          failures: number;
+          generation: number;
+          item_id: string;
+          item_type: string;
+          last_moved_at: string;
+          last_time_watched: number;
+          phase: string;
+          reads: number;
+          start_state: Json;
+          video_id: string;
+        }[];
+      };
+      claim_watch_writes: {
+        Args: {
+          p_exclude: boolean;
+          p_lease_seconds: number;
+          p_lease_token: string;
+          p_limit: number;
+          p_provider: string;
+        };
+        Returns: {
+          account_id: string;
+          attempts: number;
+          detected_at: string;
+          due_at: string;
+          episode: number;
+          first_failed_at: string | null;
+          id: number;
+          imdb_id: string;
+          item_type: string;
+          last_error: string | null;
+          lease_token: string | null;
+          locked_until: string;
+          provider: string;
+          season: number;
+          uncertain: boolean;
+          watched_at: string;
+        }[];
+        SetofOptions: {
+          from: "*";
+          to: "watch_writes";
+          isOneToOne: false;
+          isSetofReturn: true;
+        };
+      };
       create_account_with_config: {
         Args: {
           p_lists: Json;
@@ -711,6 +1027,14 @@ export type Database = {
           p_lease_token: string;
         };
         Returns: number;
+      };
+      finish_watch_reads: {
+        Args: { p_lease_token: string; p_rows: Json };
+        Returns: number;
+      };
+      finish_watch_writes: {
+        Args: { p_lease_token: string; p_rows: Json };
+        Returns: undefined;
       };
       finish_watchlist_prewarm: {
         Args: {
@@ -816,6 +1140,7 @@ export type Database = {
         };
         Returns: Json;
       };
+      queue_watch_writes: { Args: { p_rows: Json }; Returns: number };
       record_list_refresh: {
         Args: {
           p_failure_reason: string;
@@ -879,6 +1204,10 @@ export type Database = {
         };
         Returns: number;
       };
+      return_simkl_slots: {
+        Args: { p_rate: number; p_slow_seconds: number; p_unused: number };
+        Returns: undefined;
+      };
       save_connection: {
         Args: {
           p_access_token: string;
@@ -891,6 +1220,57 @@ export type Database = {
           p_scope: string;
         };
         Returns: undefined;
+      };
+      take_simkl_slots: {
+        Args: { p_rate: number; p_want: number; p_window_seconds: number };
+        Returns: {
+          first_slot_at: string;
+          granted: number;
+          rate: number;
+        }[];
+      };
+      watch_active_destinations: {
+        Args: { p_account_id: string };
+        Returns: string[];
+      };
+      watch_context: {
+        Args: { p_account_id: string };
+        Returns: {
+          auth_key: string;
+          baseline_at: string;
+        }[];
+      };
+      watch_read_soon: {
+        Args: { p_account_id: string; p_item_id: string };
+        Returns: boolean;
+      };
+      watch_restart: {
+        Args: {
+          p_account_id: string;
+          p_due_at: string;
+          p_expected_end_at?: string;
+          p_expected_flip_at?: string;
+          p_item_id: string;
+          p_item_type: string;
+          p_last_time_watched?: number;
+          p_phase: string;
+          p_start_state: Json;
+          p_video_id: string;
+        };
+        Returns: undefined;
+      };
+      watch_simkl_backlog: {
+        Args: Record<PropertyKey, never>;
+        Returns: number;
+      };
+      watch_sweep_accounts: {
+        Args: { p_slots: number[] };
+        Returns: {
+          account_id: string;
+          auth_key: string;
+          baseline_at: string;
+          destinations: string[];
+        }[];
       };
     };
     Enums: {

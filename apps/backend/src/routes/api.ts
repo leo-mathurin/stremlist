@@ -5,6 +5,7 @@ import lists from "./api/lists";
 import monitor from "./api/monitor";
 import newsletter from "./api/newsletter";
 import stremio from "./api/stremio";
+import watchTracking from "./api/watch-tracking";
 
 /**
  * The JSON API of the configure page. Each part is a chained sub-app, so
@@ -16,7 +17,8 @@ const api = new Hono()
   .route("", connections)
   .route("", newsletter)
   .route("", monitor)
-  .route("", stremio);
+  .route("", stremio)
+  .route("", watchTracking);
 
 export default api;
 export type ApiRoutes = typeof api;

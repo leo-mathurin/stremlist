@@ -1,4 +1,4 @@
-import type { ActionTarget } from "./types";
+import type { ActionIntent, ActionTarget } from "./types";
 
 // The Trakt-style /sync body that Trakt, Simkl and MDBList share for
 // Actions: Titles keyed by IMDb ID, in a "movies" or "shows" bucket.
@@ -13,17 +13,33 @@ export function bucketOf(target: ActionTarget): "movies" | "shows" {
   return target.type === "movie" ? "movies" : "shows";
 }
 
-/** A show item that names one of its episodes. */
+/** A show item that names one of its episodes, dated by `watchedAt`. */
 export function episodeItem(
   target: ActionTarget,
   episode: { season: number; episode: number },
+  watchedAt?: string,
 ) {
   return {
     ids: syncIds(target),
     seasons: [
-      { number: episode.season, episodes: [{ number: episode.episode }] },
+      {
+        number: episode.season,
+        episodes: [
+          {
+            number: episode.episode,
+            ...(watchedAt ? { watched_at: watchedAt } : {}),
+          },
+        ],
+      },
     ],
   };
+}
+
+/** The date of a play, for a /sync write that adds one. */
+export function watchedAtOf(intent: ActionIntent): { watched_at?: string } {
+  return intent.kind === "watched" && intent.add && intent.watchedAt
+    ? { watched_at: intent.watchedAt }
+    : {};
 }
 
 /**

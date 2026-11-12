@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { traktProvider } from "../../trakt";
+import { traktHasPlay } from "../../trakt/actions";
 import type { ProviderActions } from "../../types";
 import {
   clerks,
@@ -194,6 +195,65 @@ describe("Trakt actions", () => {
         },
       ],
     });
+  });
+
+  it("dates a play with the time Stremio gives", async () => {
+    const at = "2026-11-12T10:00:00.000Z";
+    const movie = await performed(
+      { kind: "watched", add: true, watchedAt: at },
+      { imdbId: "tt11128440", type: "movie" },
+    );
+    expect(movie.body).toEqual({
+      movies: [{ ids: { imdb: "tt11128440" }, watched_at: at }],
+    });
+
+    const episode = await performed(
+      { kind: "watched", add: true, watchedAt: at },
+      {
+        imdbId: "tt8111088",
+        type: "series",
+        episode: { season: 2, episode: 5 },
+      },
+    );
+    expect(episode.body).toEqual({
+      shows: [
+        {
+          ids: { imdb: "tt8111088" },
+          seasons: [{ number: 2, episodes: [{ number: 5, watched_at: at }] }],
+        },
+      ],
+    });
+  });
+
+  it("finds a play in the history around its time", async () => {
+    const at = "2026-11-12T10:00:00.000Z";
+    route("GET /sync/history/episodes", [
+      {
+        watched_at: at,
+        show: { ids: { imdb: "tt8111088" } },
+        episode: { season: 2, number: 5 },
+      },
+    ]);
+    const episode = {
+      imdbId: "tt8111088",
+      type: "series" as const,
+      episode: { season: 2, episode: 5 },
+    };
+    clearCalls();
+    expect(await traktHasPlay(connection(), episode, at)).toBe(true);
+    expect(calls[0].url.searchParams.get("start_at")).toBe(
+      "2026-11-12T09:59:00.000Z",
+    );
+    expect(calls[0].url.searchParams.get("end_at")).toBe(
+      "2026-11-12T10:01:00.000Z",
+    );
+    expect(
+      await traktHasPlay(
+        connection(),
+        { ...episode, episode: { season: 2, episode: 6 } },
+        at,
+      ),
+    ).toBe(false);
   });
 
   it("rates and removes a rating", async () => {

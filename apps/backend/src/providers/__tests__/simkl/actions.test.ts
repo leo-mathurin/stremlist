@@ -187,6 +187,37 @@ describe("simkl actions", () => {
     });
   });
 
+  it("dates a watched movie or episode with the time Stremio gives", async () => {
+    acceptWrites();
+    const at = "2026-11-12T10:00:00.000Z";
+    await actions.perform(
+      connection,
+      { kind: "watched", add: true, watchedAt: at },
+      { imdbId: "tt0068646", type: "movie" },
+    );
+    expect(lastPost().body).toEqual({
+      movies: [{ ids: { imdb: "tt0068646" }, watched_at: at }],
+    });
+    await actions.perform(
+      connection,
+      { kind: "watched", add: true, watchedAt: at },
+      {
+        imdbId: "tt2560140",
+        type: "series",
+        episode: { season: 2, episode: 4 },
+      },
+    );
+    expect(lastPost().body).toEqual({
+      shows: [
+        {
+          ids: { imdb: "tt2560140" },
+          use_tvdb_anime_seasons: true,
+          seasons: [{ number: 2, episodes: [{ number: 4, watched_at: at }] }],
+        },
+      ],
+    });
+  });
+
   it("unmarks a show season by season and keeps it in the library", async () => {
     acceptWrites();
     await actions.getMembership(connection);

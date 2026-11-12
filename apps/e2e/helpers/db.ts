@@ -413,3 +413,51 @@ export async function getOAuthStates(state: string) {
   if (error) throw error;
   return data;
 }
+
+/** Link a Stremio account to an Account, with a synthetic session key. */
+export async function seedStremioLink(
+  accountId: string,
+  authKey: string,
+): Promise<void> {
+  const { error } = await db.from("stremio_connections").upsert(
+    {
+      account_id: accountId,
+      auth_key: encryptToken(authKey),
+      email: "member@example.com",
+    },
+    { onConflict: "account_id" },
+  );
+  if (error) throw error;
+}
+
+/** The Watch tracking rows of an Account (ADR 0003). */
+export async function getWatchRows(accountId: string) {
+  const [tracking, reads, writes] = await Promise.all([
+    db.from("watch_tracking").select("*").eq("account_id", accountId),
+    db.from("watch_reads").select("*").eq("account_id", accountId),
+    db.from("watch_writes").select("*").eq("account_id", accountId),
+  ]);
+  for (const result of [tracking, reads, writes]) {
+    if (result.error) throw result.error;
+  }
+  return {
+    tracking: tracking.data?.[0] ?? null,
+    reads: reads.data ?? [],
+    writes: writes.data ?? [],
+  };
+}
+
+/** Make the Account's sweep minute the current one, as if 6 hours passed. */
+export async function makeSweepDue(accountId: string): Promise<void> {
+  const slot = Math.floor(Date.now() / 60_000) % 360;
+  const [tracking, cursor] = await Promise.all([
+    db
+      .from("watch_tracking")
+      .update({ sweep_slot: slot })
+      .eq("account_id", accountId),
+    db.from("watch_sweep_cursor").delete().eq("id", "sweep"),
+  ]);
+  for (const result of [tracking, cursor]) {
+    if (result.error) throw result.error;
+  }
+}
