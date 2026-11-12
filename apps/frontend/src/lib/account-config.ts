@@ -19,6 +19,8 @@ interface AccountEditPolicy {
   editLock?: string;
   /** Why Actions cannot be turned on here, if they cannot. */
   actionsLock?: string;
+  /** Why Watch tracking cannot be turned on here, if it cannot. */
+  watchLock?: string;
   /**
    * Connecting a Provider needs a private Addon URL: a Legacy alias install
    * upgrades first.
@@ -48,6 +50,13 @@ export function accountEditPolicy(
         ? "Actions need a private Addon URL. Upgrade this install first."
         : access === "new"
           ? `Save your setup and connect ${joinProviderLabels(ACTION_PROVIDERS, "or")} to use Actions.`
+          : undefined),
+    watchLock:
+      editLock ??
+      (access === "legacy"
+        ? "Watch tracking needs a private Addon URL. Upgrade this install first."
+        : access === "new"
+          ? "Save your setup first. Then link Stremio and connect an account."
           : undefined),
     upgradeToConnect: access === "legacy",
     connectHint:

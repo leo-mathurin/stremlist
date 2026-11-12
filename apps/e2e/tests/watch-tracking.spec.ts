@@ -14,6 +14,8 @@ import {
 } from "../helpers/db.js";
 import type { FixtureBackend } from "../helpers/fixture-backend.js";
 import { startFixtureBackend } from "../helpers/fixture-backend.js";
+import { configureUrl } from "../helpers/configure.js";
+import { routePageTo } from "../helpers/page-backend.js";
 import type { FakeStremio } from "../helpers/watch-fixtures.js";
 
 // Watch tracking (ADR 0003) from the request that Stremio sends before a play
@@ -362,5 +364,88 @@ test(
     expect(missing).toEqual({ status: 400, body: { reason: "not-connected" } });
     const cron = await call("/watch/cron");
     expect(cron.status).toBe(401);
+  },
+);
+
+test(
+  "the configure page turns Watch tracking on and shows the last title",
+  { tag: "@local" },
+  async ({ page }) => {
+    const accountId = await seedAccount();
+    await seedConnection(accountId, "trakt");
+    await seedConnection(accountId, "simkl");
+    await seedStremioLink(accountId, AUTH_KEY);
+    writeStremio({
+      authKey: AUTH_KEY,
+      trakt: false,
+      library: [movie(MOVIE, 0, "2026-11-01T00:00:00.000Z")],
+      addons: [
+        {
+          transportUrl: `${backend.url}/${accountId}/manifest.json`,
+          manifest: { id: "com.stremlist.test", resources: [] },
+        },
+      ],
+    });
+    await routePageTo(page, backend.url);
+    await page.goto(configureUrl(accountId));
+
+    const section = page.getByRole("region", {
+      name: "Mark as watched automatically",
+    });
+    await expect(section).toBeVisible();
+    const trakt = section.getByRole("checkbox", { name: /Trakt/ });
+    await expect(trakt).not.toBeChecked();
+    await expect(
+      section.getByRole("checkbox", { name: /Simkl/ }),
+    ).not.toBeChecked();
+
+    await trakt.click();
+    await expect(
+      section.getByText("On. Titles you finish from now on go here."),
+    ).toBeVisible();
+    await expect(trakt).toBeChecked();
+    expect((await getWatchRows(accountId)).tracking?.baseline_at).toBeTruthy();
+
+    // A title turns watched and is sent: the page shows it after a reload.
+    writeStremio({
+      ...readStremio(),
+      library: [movie(MOVIE, 1, LAST_WATCHED)],
+    });
+    await call(`/${accountId}/library/movie/${MOVIE}/action=watched.json`);
+    await expect
+      .poll(async () => (await getWatchRows(accountId)).writes.length, {
+        timeout: 10_000,
+      })
+      .toBe(1);
+    await runCron();
+    await page.reload();
+    await expect(section.getByText(/Last marked/)).toBeVisible();
+
+    await section.getByRole("checkbox", { name: /Trakt/ }).click();
+    await expect(section.getByText("Off").first()).toBeVisible();
+    await expect
+      .poll(async () => (await getWatchRows(accountId)).tracking)
+      .toBeNull();
+  },
+);
+
+test(
+  "Watch tracking asks for a Stremio link first",
+  { tag: "@local" },
+  async ({ page }) => {
+    const accountId = await seedAccount();
+    await seedConnection(accountId, "trakt");
+    await routePageTo(page, backend.url);
+    await page.goto(configureUrl(accountId));
+    const section = page.getByRole("region", {
+      name: "Mark as watched automatically",
+    });
+    await expect(
+      section.getByText(/Link your Stremio account first/),
+    ).toBeVisible();
+    await expect(
+      section.getByRole("button", { name: "Link Stremio" }),
+    ).toBeVisible();
+    await expect(section.getByRole("checkbox")).toHaveCount(0);
   },
 );

@@ -28,6 +28,7 @@ import NewTitlesSettings from "../components/NewTitlesSettings";
 import type { ResolvedLink } from "../components/LinkPaste";
 import ProviderList from "../components/ProviderList";
 import QuickAdd from "../components/QuickAdd";
+import WatchTrackingSettings from "../components/WatchTrackingSettings";
 import RelativeTime from "../components/RelativeTime";
 import SortableListRow from "../components/SortableListRow";
 import { SectionHeading, SplitLayout, Wordmark } from "../components/brand";
@@ -37,6 +38,7 @@ import { useSEO } from "../hooks/useSEO";
 import { useAccountConfiguration } from "../hooks/useAccountConfiguration";
 import { useChecklistHidden } from "../hooks/useChecklistHidden";
 import { useLeaveGuard } from "../hooks/useLeaveGuard";
+import { useWatchTracking } from "../hooks/useWatchTracking";
 import { ConnectionsContext } from "../hooks/useCatalogPreview";
 import { accountEditPolicy } from "../lib/account-config";
 import { NEW_ACCOUNT_STORAGE } from "../lib/connections";
@@ -175,6 +177,17 @@ export default function Configure() {
   const ready = status === "ready" && (!rawKey || keyIsValid);
   const justCreated = !!accountId && createdId === accountId;
   const policy = accountEditPolicy(access, config.upgradedTo);
+  // A Connection or the Stremio link changes what Watch tracking can use.
+  const watch = useWatchTracking(
+    access === "private" ? accountId : null,
+    [
+      config.stremio.connection?.email ?? "",
+      String(!!config.stremio.connection),
+      ...config.connections.map(
+        (c) => `${c.provider}:${c.needsRenewalSince ?? ""}`,
+      ),
+    ].join("|"),
+  );
   const rows = lists.map((list) => config.rowModel(list));
   const attention = rows.filter((row) => attentionTone(row.sync)).length;
   // Leaving for a Provider keeps the edits (a draft), so Connect is not held.
@@ -684,6 +697,22 @@ export default function Configure() {
                 onToggle={config.toggleActionProvider}
                 onMove={config.moveActionProvider}
                 locked={policy.actionsLock}
+              />
+
+              <WatchTrackingSettings
+                destinations={watch.status?.destinations ?? null}
+                stremioLinked={watch.status?.stremioLinked ?? false}
+                stremioTrakt={watch.status?.stremioTrakt ?? false}
+                loadFailed={watch.failed}
+                busy={watch.busy}
+                starting={watch.starting}
+                notice={watch.notice}
+                locked={policy.watchLock}
+                onToggle={(provider, enabled) =>
+                  void watch.toggle(provider, enabled)
+                }
+                onRetry={() => void watch.retry()}
+                onLinkStremio={() => void config.stremio.connect()}
               />
 
               <NewTitlesSettings
