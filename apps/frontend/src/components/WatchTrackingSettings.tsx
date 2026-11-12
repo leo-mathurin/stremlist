@@ -156,8 +156,9 @@ export default function WatchTrackingSettings({
   } else if (!stremioLinked) {
     body = (
       <Note>
-        Link your Stremio account first: it is how Stremlist sees what you
-        watch.{" "}
+        {anyOn
+          ? "Stremio signed Stremlist out, so nothing is marked until you link it again."
+          : "Link your Stremio account first: it is how Stremlist sees what you watch."}{" "}
         <button type="button" onClick={onLinkStremio} className={LINK_BUTTON}>
           Link Stremio
         </button>
@@ -260,7 +261,7 @@ export default function WatchTrackingSettings({
       {body}
 
       {/* One stable region, so screen readers hear each notice. */}
-      <div role="status" className="empty:hidden">
+      <div role="status">
         {loadFailed && destinations && !locked && (
           <Note className={cn("mt-3", ENTER)}>
             Stremlist could not check this setting again, so it may be out of
@@ -293,19 +294,6 @@ export default function WatchTrackingSettings({
               className={LINK_BUTTON}
             >
               Try again
-            </button>
-          </Note>
-        )}
-        {tracking && notice === "signed-out" && (
-          <Note className={cn("mt-3", ENTER)}>
-            Stremio signed Stremlist out, so nothing can be marked until you
-            link it again.{" "}
-            <button
-              type="button"
-              onClick={onLinkStremio}
-              className={LINK_BUTTON}
-            >
-              Link Stremio
             </button>
           </Note>
         )}

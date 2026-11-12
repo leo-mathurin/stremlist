@@ -12,8 +12,6 @@ export type WatchChangeNotice =
   | "missing"
   /** Stremio did not answer the update. */
   | "unavailable"
-  /** Stremio signed Stremlist out: link it again. */
-  | "signed-out"
   | null;
 
 /** The account being changed, while its request runs. */
@@ -47,7 +45,12 @@ function refusal(reason: string | undefined): string {
  * changes when a Connection or the Stremio link changes, so the list
  * follows them; coming back to the tab reads it again too.
  */
-export function useWatchTracking(accountId: string | null, refreshKey: string) {
+export function useWatchTracking(
+  accountId: string | null,
+  refreshKey: string,
+  /** Stremio refused the stored key: let the Stremio card find it out. */
+  onSignedOut: () => void,
+) {
   const [status, setStatus] = useState<WatchTrackingStatus | null>(null);
   const [failed, setFailed] = useState(false);
   const [busy, setBusy] = useState<WatchChange | null>(null);
@@ -122,10 +125,11 @@ export function useWatchTracking(accountId: string | null, refreshKey: string) {
           const body = await res.json();
           setStatus(body.status);
           if (body.status.destinations.some((d) => d.enabled)) {
+            // A sign-out also forgets the link: the card asks for a new one.
             setNotice(
-              body.stremio === "updated" || body.stremio === "unchanged"
-                ? null
-                : body.stremio,
+              body.stremio === "missing" || body.stremio === "unavailable"
+                ? body.stremio
+                : null,
             );
           }
           return;
@@ -138,6 +142,7 @@ export function useWatchTracking(accountId: string | null, refreshKey: string) {
             ? ((await res.json()) as { reason?: string }).reason
             : undefined;
         toast.error(refusal(reason), TOAST);
+        if (reason === "signed-out") onSignedOut();
       } catch {
         setStatus(previous);
         reloadAfterChange.current = true;
@@ -151,7 +156,7 @@ export function useWatchTracking(accountId: string | null, refreshKey: string) {
         }
       }
     },
-    [accountId, busy, load, status],
+    [accountId, busy, load, onSignedOut, status],
   );
 
   const clearNotice = useCallback(() => setNotice(null), []);
