@@ -1,4 +1,5 @@
 import { aiPages } from "./scripts/ai-pages";
+import { waitForBackend } from "./scripts/wait-for-backend";
 import path from "path";
 import { execFileSync } from "node:child_process";
 import { defineConfig, loadEnv } from "vite";
@@ -39,6 +40,7 @@ export default defineConfig(({ mode, command }) => {
       react(),
       tailwindcss(),
       aiPages(backendTarget ?? publicBackendUrl),
+      backendTarget ? waitForBackend(backendTarget) : null,
     ],
     server: {
       host: true,
