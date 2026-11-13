@@ -9,9 +9,8 @@ import { join } from "node:path";
 
 const TIMEOUT_MS = 10 * 60_000;
 
-/** The same target as the frontend's /api dev proxy (apps/frontend/vite.config.ts). */
+/** The backend that the backend dev task starts, not a DEV_BACKEND_URL override. */
 function backendUrl() {
-  if (process.env.DEV_BACKEND_URL) return process.env.DEV_BACKEND_URL;
   if (process.env.PORTLESS === "0") return "http://localhost:7001";
   const result = spawnSync("portless", ["get", "api.stremlist"], {
     encoding: "utf8",
