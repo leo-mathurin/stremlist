@@ -14,6 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { RELOAD_HINT } from "@/hooks/useStremioSync";
 import type { StremioSync } from "@/hooks/useStremioSync";
 import { reinstallLinkProps } from "@/lib/list-sources";
 import type { ReinstallState } from "@/lib/reinstall";
@@ -130,13 +131,18 @@ export function StremioUpdateNotice({
 
 /**
  * The linked account and the last update, at the end of the "Refreshed"
- * line. Failures are cards of their own, under that line.
+ * line. On phones it wraps under that line, so it aligns left. The reload
+ * hint is in a toast when the update ends (useStremioSync), and stays in the
+ * menu. Failures are cards of their own, under that line.
  */
 export function StremioStatus({ stremio }: { stremio: StremioSync }) {
   const { connection, sync } = stremio;
   if (!connection || sync.kind === "failed") return null;
   return (
-    <div aria-live="polite" className="ml-auto min-w-0 text-sm text-black/55">
+    <div
+      aria-live="polite"
+      className="-ml-2.5 min-w-0 text-sm text-black/55 sm:ml-auto"
+    >
       {sync.kind === "updating" ? (
         <p
           key="updating"
@@ -150,10 +156,7 @@ export function StremioStatus({ stremio }: { stremio: StremioSync }) {
         </p>
       ) : (
         // The menu stays after an update, to disconnect or check the account.
-        <div
-          key={sync.kind}
-          className={cn("flex flex-wrap items-center gap-x-1.5", ENTER)}
-        >
+        <div key={sync.kind} className={ENTER}>
           <DropdownMenu>
             <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 outline-none transition-colors duration-150 hover:bg-black/5 hover:text-ink focus-visible:ring-[3px] focus-visible:ring-brand/50 data-[state=open]:bg-black/5 data-[state=open]:text-ink pointer-coarse:min-h-11">
               {sync.kind === "updated" ? (
@@ -189,6 +192,11 @@ export function StremioStatus({ stremio }: { stremio: StremioSync }) {
                     "Your catalog changes reach Stremio when you save."
                   )}
                 </p>
+                {sync.kind === "updated" && (
+                  <p className="mt-1.5 text-pretty text-black/55">
+                    {RELOAD_HINT}
+                  </p>
+                )}
               </div>
               <DropdownMenuItem
                 onSelect={() => void stremio.disconnect()}
@@ -198,11 +206,6 @@ export function StremioStatus({ stremio }: { stremio: StremioSync }) {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {sync.kind === "updated" && (
-            <span>
-              Reload Stremio Web or restart the app to see your changes
-            </span>
-          )}
         </div>
       )}
     </div>

@@ -46,7 +46,7 @@ import { useListSyncStatus } from "./useListSyncStatus";
 import { useProviderStatus } from "./useProviderStatus";
 import { useReinstallBaseline } from "./useReinstallBaseline";
 import type { InstallSetup } from "./useReinstallBaseline";
-import { useStremioSync } from "./useStremioSync";
+import { STREMIO_UPDATE_TOAST, useStremioSync } from "./useStremioSync";
 
 /** The Lists that a save stored, in the order it got them. */
 type StoredLists = Pick<
@@ -531,10 +531,10 @@ export function useAccountConfiguration(
         { id: "configuration-save" },
       );
     } else if (needsReinstall && stremio.connection) {
-      // Sonner keeps the action of a toast with the same ID: clear it.
+      // The update result replaces this toast.
+      toast.dismiss("configuration-save");
       toast.success("Saved! Stremlist is updating Stremio.", {
-        id: "configuration-save",
-        action: null,
+        id: STREMIO_UPDATE_TOAST,
       });
     } else if (
       needsReinstall &&

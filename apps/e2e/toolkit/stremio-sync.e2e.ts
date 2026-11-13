@@ -35,8 +35,9 @@ const MANUAL_KEY = "stremlist:stremio-manual";
 const TOGGLE = "Show newly detected titles";
 const NEEDS_REINSTALL = "These changes need a reinstall.";
 const CHOICE = "Update Stremio with your changes";
-const UPDATING_SAVE = "Saved! Stremlist is updating Stremio.";
 const UPDATED = "Stremio updated";
+const RELOAD_HINT =
+  "Reload Stremio Web or restart the app to see your changes.";
 const SAVED_BY_HAND =
   "Saved! Reinstall Stremlist in Stremio to see your changes.";
 const WAITING = "Confirm in the Stremio tab";
@@ -347,19 +348,16 @@ test("a catalog save offers both ways, and linking Stremio updates the install",
   );
 
   stremio.approved = true;
-  // The card shows the result. The save toast pointed at the choice; it goes
-  // once Stremio is linked.
+  // The card shows the result. The save toast pointed at the choice; a toast
+  // that says how to see the update takes its place.
   await expect(screen.getByText(UPDATED)).toBeVisible({ timeout: 15_000 });
-  await expect(
-    screen.getByText(
-      "Reload Stremio Web or restart the app to see your changes",
-    ),
-  ).toBeVisible();
+  await expect(screen.getByText(`${UPDATED}. ${RELOAD_HINT}`)).toBeVisible();
   await expect(screen.getByText(SAVED_REINSTALL)).toHaveCount(0);
   await expect(screen.getByText(CHOICE)).toHaveCount(0);
-  // The account menu stays next to the result.
+  // The account menu stays next to the result, and keeps the hint.
   await screen.getByRole("button", UPDATED).tap();
   await expect(screen.getByRole("menuitem", "Disconnect")).toBeVisible();
+  await expect(screen.getByText(RELOAD_HINT)).toBeVisible();
   await browser.keyboard.press("Escape");
   // Only the Stremlist entry changed, in place, with the saved catalogs.
   expect(stremio.collection).toEqual([
@@ -528,7 +526,8 @@ test("with Stremio linked, a catalog save updates Stremio by itself", async ({
   expect(stremio.calls).toEqual(["update"]);
   stremio.served = servedManifest;
   await saveButton(screen).tap();
-  await expect(screen.getByText(UPDATING_SAVE)).toBeVisible();
+  // The save toast becomes the result, with how to see it.
+  await expect(screen.getByText(`${UPDATED}. ${RELOAD_HINT}`)).toBeVisible();
   await expect(screen.getByText(UPDATED)).toBeVisible();
   await expect(screen.getByText(CHOICE)).toHaveCount(0);
   expect(stremlistEntry(stremio.collection)?.manifest).toEqual(servedManifest);

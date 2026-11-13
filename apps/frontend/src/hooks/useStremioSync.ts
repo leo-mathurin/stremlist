@@ -28,6 +28,16 @@ export type StremioSyncState =
   | { kind: "updated" }
   | { kind: "failed"; reason: StremioFailure };
 
+/** How to see an update. Stremio reads an addon again only when it starts. */
+/**
+ * The toast of a Stremio update. The save toast that starts an update uses
+ * it too, so the result replaces it.
+ */
+export const STREMIO_UPDATE_TOAST = "stremio-update";
+
+export const RELOAD_HINT =
+  "Reload Stremio Web or restart the app to see your changes.";
+
 const MANUAL_KEY = "stremlist:stremio-manual";
 /** How long the member has to confirm a code before it counts as expired. */
 const LINK_TIMEOUT_MS = 5 * 60_000;
@@ -100,7 +110,17 @@ export function useStremioSync(
     onUpToDateRef.current = onUpToDate;
   });
 
+  /** Stremio has the saved setup. */
+  const updated = useCallback(() => {
+    setSync({ kind: "updated" });
+    toast.success(`Stremio updated. ${RELOAD_HINT}`, {
+      id: STREMIO_UPDATE_TOAST,
+    });
+  }, []);
+
   const fail = useCallback((reason: StremioFailure, quiet: boolean) => {
+    // The failure card replaces "Saved! Stremlist is updating Stremio."
+    toast.dismiss(STREMIO_UPDATE_TOAST);
     if (reason === "signed-out") setConnection(null);
     // An outage during the check on load is not worth a card.
     setSync(
@@ -134,10 +154,10 @@ export function useStremioSync(
         return;
       }
       onUpToDateRef.current();
-      if (!quiet || result === "updated") setSync({ kind: "updated" });
+      if (!quiet || result === "updated") updated();
       else setSync({ kind: "idle" });
     },
-    [accountId, fail],
+    [accountId, fail, updated],
   );
 
   const running = useRef<Promise<void> | null>(null);
@@ -297,8 +317,8 @@ export function useStremioSync(
       return;
     }
     onUpToDateRef.current();
-    setSync({ kind: "updated" });
-  }, [accountId, fail]);
+    updated();
+  }, [accountId, fail, updated]);
 
   /** The member reinstalled by hand: the last failure no longer applies. */
   const clearStatus = useCallback(() => setSync({ kind: "idle" }), []);
