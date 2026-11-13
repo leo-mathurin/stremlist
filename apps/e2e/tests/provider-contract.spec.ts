@@ -1,5 +1,13 @@
 import { expect, test } from "@playwright/test";
-import { BACKEND_URL, FRONTEND_URL } from "../env.js";
+import {
+  BACKEND_URL,
+  CONNECTION_ENCRYPTION_KEY,
+  FRONTEND_URL,
+  R2_ACCESS_KEY_ID,
+  R2_BUCKET,
+  R2_ENDPOINT,
+  R2_SECRET_ACCESS_KEY,
+} from "../env.js";
 import type { ProviderBackend } from "../helpers/provider-backend.js";
 import { startProviderBackend } from "../helpers/provider-backend.js";
 
@@ -9,6 +17,12 @@ test.beforeAll(async () => {
   backend = await startProviderBackend("./provider-transport.ts", {
     SUPABASE_URL: "http://127.0.0.1:1",
     SUPABASE_SERVICE_ROLE_KEY: "fixture-only",
+    // The backend refuses to start without these. This spec never reads R2.
+    R2_ENDPOINT,
+    R2_ACCESS_KEY_ID,
+    R2_SECRET_ACCESS_KEY,
+    R2_BUCKET,
+    CONNECTION_ENCRYPTION_KEY,
     RESEND_API_KEY: "re_fixture_only",
     RESEND_AUDIENCE_ID: "fixture-audience",
   });
