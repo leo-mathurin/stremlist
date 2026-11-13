@@ -1,17 +1,25 @@
 import { useEffect, useState } from "react";
-import { PROVIDER_IDS, PROVIDERS } from "@stremlist/shared/providers";
+import { PROVIDERS } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { api } from "../lib/api";
 
 export type ProviderStatus = { enabled: boolean; connectable: boolean };
 
+function defaultStatus(id: ProviderId): ProviderStatus {
+  return { enabled: true, connectable: PROVIDERS[id].connection !== "none" };
+}
+
+/** Lists every Provider by name: a new Provider fails the type check here. */
 function defaultProviderStatus(): Record<ProviderId, ProviderStatus> {
-  return Object.fromEntries(
-    PROVIDER_IDS.map((id) => [
-      id,
-      { enabled: true, connectable: PROVIDERS[id].connection !== "none" },
-    ]),
-  ) as Record<ProviderId, ProviderStatus>;
+  return {
+    imdb: defaultStatus("imdb"),
+    trakt: defaultStatus("trakt"),
+    simkl: defaultStatus("simkl"),
+    mdblist: defaultStatus("mdblist"),
+    justwatch: defaultStatus("justwatch"),
+    senscritique: defaultStatus("senscritique"),
+    letterboxd: defaultStatus("letterboxd"),
+  };
 }
 
 /**

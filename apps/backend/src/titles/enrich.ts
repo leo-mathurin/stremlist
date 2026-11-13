@@ -1,4 +1,5 @@
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
+import { z } from "zod";
 import { mapWithConcurrency } from "../lib/concurrency";
 import { providerFetch, RateLimiter } from "../providers/http";
 import { isProviderEnabled } from "../providers/registry";
@@ -40,22 +41,26 @@ function recall(imdbId: string): EnrichedMeta | null {
   return entry.meta;
 }
 
-interface CinemetaMeta {
-  id?: string;
-  name?: string;
-  type?: string;
-  poster?: string;
-  genres?: string[];
-  genre?: string[];
-  description?: string;
-  imdbRating?: string;
-  releaseInfo?: string;
-  year?: string;
-  runtime?: string;
-  released?: string;
-  director?: string[];
-  cast?: string[];
-}
+const cinemetaMetaSchema = z.object({
+  id: z.string().nullish(),
+  name: z.string().nullish(),
+  type: z.string().nullish(),
+  poster: z.string().nullish(),
+  genres: z.array(z.string()).nullish(),
+  genre: z.array(z.string()).nullish(),
+  description: z.string().nullish(),
+  imdbRating: z.string().nullish(),
+  releaseInfo: z.string().nullish(),
+  year: z.string().nullish(),
+  runtime: z.string().nullish(),
+  released: z.string().nullish(),
+  director: z.array(z.string()).nullish(),
+  cast: z.array(z.string()).nullish(),
+});
+
+const cinemetaResponseSchema = z.object({
+  meta: cinemetaMetaSchema.nullish(),
+});
 
 async function fetchCinemeta(
   imdbId: string,
@@ -70,7 +75,7 @@ async function fetchCinemeta(
       { limiter: cinemetaLimiter },
     );
     if (!response.ok) continue;
-    const { meta } = (await response.json()) as { meta?: CinemetaMeta | null };
+    const { meta } = cinemetaResponseSchema.parse(await response.json());
     if (!meta?.name) continue;
     const released =
       meta.released && !Number.isNaN(Date.parse(meta.released))

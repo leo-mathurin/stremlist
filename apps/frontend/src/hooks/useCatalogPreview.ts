@@ -1,11 +1,4 @@
-import {
-  createContext,
-  use,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { createContext, use, useEffect, useRef, useState } from "react";
 import type { InferRequestType } from "hono/client";
 import type { CatalogPreview } from "@stremlist/shared/catalog-preview";
 import { listSourcesKey } from "@stremlist/shared/list-merge";
@@ -90,10 +83,11 @@ export function useCatalogPreview({
   const connectionKey = previewConnectionKey(list, use(ConnectionsContext));
   const nextBody = previewBody(list, accountKey);
   const bodyKey = JSON.stringify(nextBody);
-  // Keyed by value, so that a new object with the same values asks nothing
+  // Kept by value, so that a new object with the same values asks nothing
   // again.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const body = useMemo(() => nextBody, [bodyKey]);
+  const [shown, setShown] = useState({ key: bodyKey, body: nextBody });
+  if (shown.key !== bodyKey) setShown({ key: bodyKey, body: nextBody });
+  const body = shown.body;
 
   useEffect(() => {
     if (!enabled) return;

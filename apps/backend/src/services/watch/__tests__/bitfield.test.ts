@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { deflateSync } from "node:zlib";
 import type { SeriesVideo } from "../bitfield";
 import { stremioOrder, watchedVideos } from "../bitfield";

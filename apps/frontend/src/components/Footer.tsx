@@ -14,6 +14,9 @@ const NAV_LINKS = [
   { label: "Contact", to: `mailto:${SITE.contact}`, internal: false },
 ];
 
+/** Read once when the app loads: a render must not read the clock. */
+const COPYRIGHT_YEAR = new Date().getFullYear();
+
 export default function Footer() {
   return (
     <footer className="mt-8 border-t border-black/10 pt-6">
@@ -88,10 +91,9 @@ export default function Footer() {
         </div>
 
         <p className="text-xs text-gray-400">
-          © {new Date().getFullYear()} Stremlist. Not affiliated with Stremio,
-          IMDb or any other list service. Logos are trademarks of their owners.
-          IMDb and all related logos are trademarks of IMDb.com, Inc. or its
-          affiliates.
+          © {COPYRIGHT_YEAR} Stremlist. Not affiliated with Stremio, IMDb or any
+          other list service. Logos are trademarks of their owners. IMDb and all
+          related logos are trademarks of IMDb.com, Inc. or its affiliates.
         </p>
       </div>
     </footer>

@@ -23,6 +23,7 @@ import {
   legacyConfiguration,
   MINUTE,
   parseBody,
+  isConfigInput,
   providerStatus,
   routeCreateAccount,
   row,
@@ -280,7 +281,7 @@ test("a save and a disconnect show the summary of what is left", async ({
       await route.fulfill({ json: toJson(current) });
       return;
     }
-    const submitted = parseBody<AccountConfigInput>(route);
+    const submitted = parseBody(route, isConfigInput);
     submissions.push(submitted);
     const lists = savedLists(submitted);
     current = { ...current, lists };

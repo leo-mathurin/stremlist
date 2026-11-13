@@ -1,3 +1,5 @@
+import { z } from "zod";
+import type { SyncWrite } from "../sync-payload";
 import {
   bucketOf,
   countNotFound,
@@ -13,20 +15,29 @@ import type {
   ProviderActions,
 } from "../types";
 import { targetEpisodes, UnknownTitleError } from "../types";
-import { traktGetAll, traktGetJson, traktPost } from "./api";
+import { traktGetAll, traktGetParsed, traktPost } from "./api";
 import type { TraktItem } from "./entries";
-import { imdbIdOf } from "./entries";
+import { imdbIdOf, traktItemSchema } from "./entries";
 
 /** Membership is bigger than one Source list for heavy users. */
 const MAX_MEMBERSHIP_ITEMS = 20_000;
 
-interface WatchedShow extends TraktItem {
-  seasons?: { number: number; episodes?: { number: number }[] | null }[] | null;
-}
+const watchedShowSchema = traktItemSchema.extend({
+  seasons: z
+    .array(
+      z.object({
+        number: z.number(),
+        episodes: z.array(z.object({ number: z.number() })).nullish(),
+      }),
+    )
+    .nullish(),
+});
+type WatchedShow = z.infer<typeof watchedShowSchema>;
 
-interface RatedItem extends TraktItem {
-  rating?: number | null;
-}
+const ratedItemSchema = traktItemSchema.extend({
+  rating: z.number().nullish(),
+});
+type RatedItem = z.infer<typeof ratedItemSchema>;
 
 function watchlistIds(items: TraktItem[]): string[] {
   const ids = new Set<string>();
@@ -71,8 +82,8 @@ function parseWatched(
   return { watched: [...watched], watchedEpisodes };
 }
 
-function parseRatings(rows: RatedItem[]): Record<string, number> {
-  const ratings: Record<string, number> = {};
+function parseRatings(rows: RatedItem[]): Membership["ratings"] {
+  const ratings: Membership["ratings"] = {};
   for (const row of rows) {
     const media = row.type === "show" ? row.show : (row.movie ?? row.show);
     const imdbId = imdbIdOf(media);
@@ -84,16 +95,30 @@ function parseRatings(rows: RatedItem[]): Record<string, number> {
 async function getMembership(
   connection: ConnectionAccess,
 ): Promise<Membership> {
-  const all = async <T>(path: string) =>
-    (await traktGetAll<T>(path, connection, { maxItems: MAX_MEMBERSHIP_ITEMS }))
-      .items;
+  const all = async <T>(
+    path: string,
+    schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  ) =>
+    (
+      await traktGetAll(path, schema, connection, {
+        maxItems: MAX_MEMBERSHIP_ITEMS,
+      })
+    ).items;
   const [watchlist, watchedMovies, watchedShows, movieRatings, showRatings] =
     await Promise.all([
-      all<TraktItem>("/users/me/watchlist"),
-      traktGetJson<TraktItem[]>("/sync/watched/movies", connection),
-      traktGetJson<WatchedShow[]>("/sync/watched/shows", connection),
-      all<RatedItem>("/sync/ratings/movies"),
-      all<RatedItem>("/sync/ratings/shows"),
+      all("/users/me/watchlist", traktItemSchema),
+      traktGetParsed(
+        "/sync/watched/movies",
+        z.array(traktItemSchema),
+        connection,
+      ),
+      traktGetParsed(
+        "/sync/watched/shows",
+        z.array(watchedShowSchema),
+        connection,
+      ),
+      all("/sync/ratings/movies", ratedItemSchema),
+      all("/sync/ratings/shows", ratedItemSchema),
     ]);
   return {
     watchlist: watchlistIds(watchlist),
@@ -103,10 +128,7 @@ async function getMembership(
 }
 
 /** The /sync body for one Title, keyed by IMDb ID. */
-function syncBody(
-  intent: ActionIntent,
-  target: ActionTarget,
-): { path: string; body: Record<string, unknown[]> } {
+function syncBody(intent: ActionIntent, target: ActionTarget): SyncWrite {
   const ids = syncIds(target);
   const key = bucketOf(target);
   switch (intent.kind) {
@@ -144,18 +166,24 @@ async function perform(
   target: ActionTarget,
 ): Promise<void> {
   const { path, body } = syncBody(intent, target);
-  const result = await traktPost<unknown>(path, connection, body);
+  const result = await traktPost(path, connection, body);
   if (countNotFound(result, ["movies", "shows", "episodes"]) > 0) {
     throw new UnknownTitleError("trakt", target.imdbId);
   }
 }
 
-interface HistoryRow {
-  watched_at?: string;
-  movie?: { ids?: { imdb?: string | null } };
-  show?: { ids?: { imdb?: string | null } };
-  episode?: { season?: number; number?: number };
-}
+const historyMediaSchema = z.object({
+  ids: z.object({ imdb: z.string().nullish() }).optional(),
+});
+
+const historyRowSchema = z.object({
+  watched_at: z.string().optional(),
+  movie: historyMediaSchema.optional(),
+  show: historyMediaSchema.optional(),
+  episode: z
+    .object({ season: z.number().optional(), number: z.number().optional() })
+    .optional(),
+});
 
 /**
  * What of `target` Trakt's history has at `watchedAt` (within a minute):
@@ -171,8 +199,9 @@ export async function traktPlays(
   const at = Date.parse(watchedAt);
   const kind = target.type === "movie" ? "movies" : "episodes";
   // A whole series marked at once shares one time: read every page.
-  const { items: rows } = await traktGetAll<HistoryRow>(
+  const { items: rows } = await traktGetAll(
     `/sync/history/${kind}`,
+    historyRowSchema,
     connection,
     {
       query: {

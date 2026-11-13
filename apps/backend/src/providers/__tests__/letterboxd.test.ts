@@ -1,10 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import { z } from "zod";
-vi.mock("../../lib/r2", () => import("../../__tests__/helpers/mock-r2"));
-vi.mock(
-  "../../lib/supabase",
-  () => import("../../__tests__/helpers/mock-supabase"),
-);
 import {
   r2Objects,
   r2Puts,
@@ -28,6 +30,11 @@ import {
   parseLetterboxdPage,
 } from "../letterboxd-page";
 import { readQueue, withReadPriority } from "../read-priority";
+vi.mock("../../lib/r2", () => import("../../__tests__/helpers/mock-r2"));
+vi.mock(
+  "../../lib/supabase",
+  () => import("../../__tests__/helpers/mock-supabase"),
+);
 
 const context = { connection: null };
 const ref = "users/alice/watchlist";
@@ -202,11 +209,13 @@ describe("Letterboxd public reads", () => {
     vi.stubGlobal("fetch", send);
     // Each read waits for its slot once the burst is spent.
     async function failedRead(count: number) {
-      const read = expect(
-        letterboxdProvider.fetchSource(`users/u${count}/watchlist`, context),
-      ).rejects.toMatchObject({ reason: "unavailable" });
+      const read = letterboxdProvider.fetchSource(
+        `users/u${count}/watchlist`,
+        context,
+      );
+      read.catch(() => {});
       await vi.advanceTimersByTimeAsync(200);
-      await read;
+      await expect(read).rejects.toMatchObject({ reason: "unavailable" });
     }
     for (let count = 1; count <= 19; count++) {
       await failedRead(count);
@@ -720,9 +729,10 @@ describe("the Letterboxd queue", () => {
       queue,
     );
     await expect(busy).rejects.toBeInstanceOf(LetterboxdBusyError);
-    const error = (await busy.catch(
-      (caught: unknown) => caught,
-    )) as LetterboxdBusyError;
+    const error = await busy.catch((caught: unknown) => caught);
+    if (!(error instanceof LetterboxdBusyError)) {
+      throw new Error("Expected a LetterboxdBusyError");
+    }
     expect(error.waitMs).toBeGreaterThanOrEqual(6_000 + 2_000);
     expect(error.ticket).toEqual(expect.any(String));
     expect(error.retryMs).toBeGreaterThan(0);
@@ -937,14 +947,13 @@ describe("Letterboxd share links", () => {
       "fetch",
       vi.fn(() => Promise.resolve(new Response("gone", { status: 404 }))),
     );
-    const revoked = expect(
-      letterboxdProvider.fetchSource(validated.ref, {
-        ...context,
-        forceRefresh: true,
-      }),
-    ).rejects.toMatchObject({ reason: "not_found" });
+    const revoked = letterboxdProvider.fetchSource(validated.ref, {
+      ...context,
+      forceRefresh: true,
+    });
+    revoked.catch(() => {});
     await vi.runAllTimersAsync();
-    await revoked;
+    await expect(revoked).rejects.toMatchObject({ reason: "not_found" });
 
     // The stale snapshot is gone, so an ordinary read re-requests and fails too,
     // instead of serving the Titles cached before the revocation.
@@ -953,11 +962,10 @@ describe("Letterboxd share links", () => {
       Promise.resolve(new Response("gone", { status: 404 })),
     );
     vi.stubGlobal("fetch", after);
-    const second = expect(
-      letterboxdProvider.fetchSource(validated.ref, context),
-    ).rejects.toMatchObject({ reason: "not_found" });
+    const second = letterboxdProvider.fetchSource(validated.ref, context);
+    second.catch(() => {});
     await vi.runAllTimersAsync();
-    await second;
+    await expect(second).rejects.toMatchObject({ reason: "not_found" });
     expect(after).toHaveBeenCalled();
   });
 

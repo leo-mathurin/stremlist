@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { addonManifestUrl, FRONTEND_URL } from "../env.js";
-import { ok } from "../helpers/api.js";
+import { hasAccountId, ok } from "../helpers/api.js";
 import { configureUrl, saveButton, SAVE_NEW } from "../helpers/configure.js";
 import { resetDb } from "../helpers/db.js";
 import type { FixtureBackend } from "../helpers/fixture-backend.js";
 import { startFixtureBackend } from "../helpers/fixture-backend.js";
+import { parsed } from "../helpers/json.js";
 import { routePageTo } from "../helpers/page-backend.js";
 import { addonsDeepLink } from "../helpers/stremio.js";
 
@@ -71,7 +72,11 @@ test(
     await save.tap();
     const response = await created;
     expect(response.status()).toBe(200);
-    const { accountId } = (await response.json()) as { accountId: string };
+    const { accountId } = parsed(
+      await response.json(),
+      hasAccountId,
+      "the save answer",
+    );
     await expect(page).toHaveURL(configureUrl(accountId));
 
     // Install: the Addon URL and the Stremio Web link fit on the phone.

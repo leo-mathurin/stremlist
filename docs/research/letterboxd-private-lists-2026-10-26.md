@@ -18,10 +18,10 @@ pour des dizaines de milliers d'utilisateurs.
 
 ## Listes créées
 
-| Liste | LID observé | Contenu final |
-| --- | --- | --- |
-| [Stremlist test prive 20261026](https://letterboxd.com/lelemathrin/list/stremlist-test-prive-20261026/) | `YdCpg` | Captain Fantastic (2016), puis American History X (1998) |
-| [Stremlist test prive vide 20261026](https://letterboxd.com/lelemathrin/list/stremlist-test-prive-vide-20261026/) | `YdCxa` | Aucun film |
+| Liste                                                                                                             | LID observé | Contenu final                                            |
+| ----------------------------------------------------------------------------------------------------------------- | ----------- | -------------------------------------------------------- |
+| [Stremlist test prive 20261026](https://letterboxd.com/lelemathrin/list/stremlist-test-prive-20261026/)           | `YdCpg`     | Captain Fantastic (2016), puis American History X (1998) |
+| [Stremlist test prive vide 20261026](https://letterboxd.com/lelemathrin/list/stremlist-test-prive-vide-20261026/) | `YdCxa`     | Aucun film                                               |
 
 Les LID proviennent de l'en-tête `x-letterboxd-identifier` des réponses
 authentifiées aux pages des listes. L'ordre des deux films est conservé dans
@@ -30,14 +30,14 @@ et `film:51977` / `2bdo`, dans l'espace de noms Letterboxd.
 
 ## Vérifications réalisées
 
-| Parcours | Liste de deux films | Liste vide |
-| --- | --- | --- |
-| Création web, visibilité avant sauvegarde | You (private list) | You (private list) |
-| Relecture de la page avec la session du propriétaire | HTTP 200, deux cartes et marqueur privé | HTTP 200, zéro carte et marqueur privé |
-| Annuaire web connecté | Liste et lien présents | Liste et lien présents |
-| Android après redémarrage de l'application | Écran Private list, deux titres attendus | Écran Private list, aucun titre de film |
-| Annuaire Android | Deux films, icône de politique de partage | No films, icône de politique de partage |
-| GET Bun sans session vers l'URL exacte | HTTP 404, aucune carte ni titre de test | HTTP 404, aucune carte ni titre de test |
+| Parcours                                             | Liste de deux films                       | Liste vide                              |
+| ---------------------------------------------------- | ----------------------------------------- | --------------------------------------- |
+| Création web, visibilité avant sauvegarde            | You (private list)                        | You (private list)                      |
+| Relecture de la page avec la session du propriétaire | HTTP 200, deux cartes et marqueur privé   | HTTP 200, zéro carte et marqueur privé  |
+| Annuaire web connecté                                | Liste et lien présents                    | Liste et lien présents                  |
+| Android après redémarrage de l'application           | Écran Private list, deux titres attendus  | Écran Private list, aucun titre de film |
+| Annuaire Android                                     | Deux films, icône de politique de partage | No films, icône de politique de partage |
+| GET Bun sans session vers l'URL exacte               | HTTP 404, aucune carte ni titre de test   | HTTP 404, aucune carte ni titre de test |
 
 L'annuaire `https://letterboxd.com/lelemathrin/lists/` renvoie HTTP 200 sans
 session, mais ne contient aucune des deux listes de test. Les réponses
@@ -108,13 +108,13 @@ Les originaux des observations Android sont sur le Mac et leur copie locale
 est dans `phone/`. Les identifiants de connexion ne figurent pas dans ces
 rapports ; les données brutes ne sont pas destinées à un PR.
 
-| Preuve REA | Evidence ID |
-| --- | --- |
+| Preuve REA                                            | Evidence ID                                                           |
+| ----------------------------------------------------- | --------------------------------------------------------------------- |
 | Page privée de deux films dans le navigateur connecté | `ev_9e1ce85d72ea3d347557a97b32e0e02a050cd9b14f23818e63321f3f9ae6b546` |
-| Page privée vide dans le navigateur connecté | `ev_3622eaef178a6d1fc4d6287c690f84ba49345c5a00cc58566b67959127111a47` |
-| Annuaire des deux listes sur le téléphone | `ev_d7884b42ee0b61aa3f188517442ded7df5224aafe2d9871a6612af5bb934b4ba` |
-| Liste privée de deux films sur le téléphone | `ev_9b7cb7faeebaea03459212ff446a237f7112abe4080a4d9be4d7a96ef079a222` |
-| Liste privée vide sur le téléphone | `ev_bc263bc5891cbb42f32c69d5bdbb4f865b560e828071a6e55bd0e49d96e6d852` |
+| Page privée vide dans le navigateur connecté          | `ev_3622eaef178a6d1fc4d6287c690f84ba49345c5a00cc58566b67959127111a47` |
+| Annuaire des deux listes sur le téléphone             | `ev_d7884b42ee0b61aa3f188517442ded7df5224aafe2d9871a6612af5bb934b4ba` |
+| Liste privée de deux films sur le téléphone           | `ev_9b7cb7faeebaea03459212ff446a237f7112abe4080a4d9be4d7a96ef079a222` |
+| Liste privée vide sur le téléphone                    | `ev_bc263bc5891cbb42f32c69d5bdbb4f865b560e828071a6e55bd0e49d96e6d852` |
 
 `authenticated-results.json` conserve les statuts, LID et cartes obtenus par
 les lectures du navigateur. `anonymous-results.json` et les trois fichiers

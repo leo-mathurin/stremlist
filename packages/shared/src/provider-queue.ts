@@ -33,14 +33,16 @@ export interface QueuedAnswer {
   ticket: string | null;
 }
 
+export interface QueuedCatalogCopy {
+  title: string;
+  description: string;
+}
+
 /**
  * The Stremio card of a List that is not read yet because the Provider is
  * busy: the read goes on in the background.
  */
-export function queuedCatalogCopy(provider: ProviderId): {
-  title: string;
-  description: string;
-} {
+export function queuedCatalogCopy(provider: ProviderId): QueuedCatalogCopy {
   const label = PROVIDERS[provider].label;
   return {
     title: `Your ${label} list is on its way`,

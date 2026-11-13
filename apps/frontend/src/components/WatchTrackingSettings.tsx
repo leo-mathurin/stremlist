@@ -24,11 +24,17 @@ function pad(value: number): string {
 
 type LineIcon = "busy" | "pause" | "alert" | "wait";
 
+interface StatusLine {
+  key: string;
+  icon?: LineIcon;
+  text: React.ReactNode;
+}
+
 /** What an account shows under its name. */
 function statusLine(
   destination: WatchDestinationStatus,
   change: WatchChange | null,
-): { key: string; icon?: LineIcon; text: React.ReactNode } {
+): StatusLine {
   const label = PROVIDERS[destination.provider].label;
   const { lastTitle } = destination;
   if (change?.provider === destination.provider) {

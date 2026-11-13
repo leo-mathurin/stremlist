@@ -1,5 +1,3 @@
-import type { ProviderId } from "./providers";
-
 /**
  * Watch tracking (ADR 0003): the Providers that can be a Destination, in the
  * order the configure page shows them.
@@ -8,9 +6,7 @@ export const WATCH_PROVIDERS = ["trakt", "simkl", "mdblist"] as const;
 
 export type WatchProviderId = (typeof WATCH_PROVIDERS)[number];
 
-export function isWatchProvider(
-  provider: ProviderId | string,
-): provider is WatchProviderId {
+export function isWatchProvider(provider: string): provider is WatchProviderId {
   return (WATCH_PROVIDERS as readonly string[]).includes(provider);
 }
 

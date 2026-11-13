@@ -29,7 +29,12 @@ interface MarkdownPage {
   render: (context: RenderContext) => string;
 }
 
-export const SKIPPED_HTML_ROUTES: Readonly<Record<string, string>> = {
+/** HTML routes without a Markdown page, each with the reason. */
+export interface SkippedHtmlRoutes {
+  readonly [path: string]: string;
+}
+
+export const SKIPPED_HTML_ROUTES: SkippedHtmlRoutes = {
   "/configure": "Noindex configuration page with private Account data.",
   "*": "Noindex error page for unknown routes.",
 };

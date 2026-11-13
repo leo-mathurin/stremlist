@@ -15,15 +15,11 @@
     "dev": "portless",
     "dev:local": "bun scripts/dev-local.mjs",
     "build": "bun build.ts",
-    "lint": "eslint .",
-    "format": "prettier . --write",
-    "format:check": "prettier . --check",
     "start": "bun dist/index.js",
-    "test": "vitest run --exclude '**/*.stress.test.ts'",
-    "test:stress": "vitest run src/services/__tests__/imdb-scraper.stress.test.ts",
+    "test": "vp test run --exclude '**/*.stress.test.ts'",
+    "test:stress": "vp test run src/services/__tests__/imdb-scraper.stress.test.ts",
     "stress:load": "bun stress/run.ts",
     "stress:letterboxd-gate": "bun stress/letterboxd-gate.ts",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p stress",
     "cleanup:invalid-users": "bun src/scripts/cleanup-invalid-users.ts",
     "dev:app": "bun --watch --env-file=.env src/dev.ts",
     "dev:tailnet": "portless"
@@ -43,15 +39,11 @@
   },
   "devDependencies": {
     "@hono/node-server": "^1.19.9",
-    "@stremlist/eslint-config": "workspace:*",
     "@types/node": "^20.11.17",
     "dotenv": "^17.3.1",
     "esbuild": "^0.25.0",
-    "eslint": "^9.39.2",
-    "eslint-config-prettier": "^10.1.8",
-    "prettier": "^3.8.1",
-    "typescript": "^5.8.3",
-    "vitest": "^4.0.18"
+    "typescript": "7.0.2",
+    "vite-plus": "catalog:"
   },
   "portless": {
     "name": "api.stremlist",

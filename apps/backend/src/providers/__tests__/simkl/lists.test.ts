@@ -1,4 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import { simklProvider } from "../../simkl";
 import { SourceUnavailableError } from "../../types";
 import { activities } from "./fixtures";
@@ -26,12 +33,12 @@ afterEach(restoreStubs);
 
 describe("simkl custom lists", () => {
   it("reports premium_only from a 200 body and remembers it", async () => {
-    routes["GET /lists/123"] = () => ({
+    routes.set("GET /lists/123", () => ({
       error: "premium_only",
       message:
         "Custom list items are available to Simkl PRO and VIP members only.",
       item: { title: "Upgrade to Simkl PRO/VIP to unlock this list" },
-    });
+    }));
 
     const error: unknown = await simklProvider
       .fetchSource("me/lists/123", ctx())
@@ -51,7 +58,7 @@ describe("simkl custom lists", () => {
   });
 
   it("reads a PRO list in the owner's order, once per activity change", async () => {
-    routes["GET /lists/456"] = (call) => {
+    routes.set("GET /lists/456", (call) => {
       expect(call.url.searchParams.get("limit")).toBe("500");
       return {
         id: 456,
@@ -77,7 +84,7 @@ describe("simkl custom lists", () => {
           },
         ],
       };
-    };
+    });
 
     const { entries, complete } = await simklProvider.fetchSource(
       "me/lists/456",
@@ -110,17 +117,18 @@ describe("simkl custom lists", () => {
 
     ageLibrary();
     clearCalls();
-    routes["GET /sync/activities"] = () =>
+    routes.set("GET /sync/activities", () =>
       activities({
         all: "2026-10-04T00:00:00Z",
         lists: "2026-10-04T00:00:00Z",
-      });
+      }),
+    );
     await simklProvider.fetchSource("me/lists/456", ctx());
     expect(apiCalls()).toEqual(["GET /sync/activities", "GET /lists/456"]);
   });
 
   it("marks a list cut by the page cap as incomplete, also from its snapshot", async () => {
-    routes["GET /lists/321"] = (call) => ({
+    routes.set("GET /lists/321", (call) => ({
       id: 321,
       name: "Everything",
       type: "regular",
@@ -136,7 +144,7 @@ describe("simkl custom lists", () => {
           },
         },
       ],
-    });
+    }));
 
     const first = await simklProvider.fetchSource("me/lists/321", ctx());
     expect(first.entries).toHaveLength(20);
@@ -151,12 +159,12 @@ describe("simkl custom lists", () => {
   });
 
   it("validates a list with its name and media type", async () => {
-    routes["GET /lists/789"] = () => ({
+    routes.set("GET /lists/789", () => ({
       id: 789,
       name: "Weekend shows",
       media_type: "tv",
       items: [],
-    });
+    }));
     await expect(
       simklProvider.validateSource("me/lists/789", ctx()),
     ).resolves.toEqual({
@@ -165,7 +173,7 @@ describe("simkl custom lists", () => {
       suggestedTitle: "Weekend shows",
       defaultDisplayMode: "series",
     });
-    routes["GET /lists/790"] = () => json({ error: "private_list" }, 403);
+    routes.set("GET /lists/790", () => json({ error: "private_list" }, 403));
     await expect(
       simklProvider.validateSource("me/lists/790", ctx()),
     ).rejects.toMatchObject({ reason: "private" });

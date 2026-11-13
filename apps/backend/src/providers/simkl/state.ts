@@ -1,5 +1,10 @@
 import { LruCache } from "../../lib/lru";
-import { connectionPrefix, readJson, writeJson } from "../../lib/r2-json";
+import type { z } from "zod";
+import {
+  connectionPrefix,
+  readJsonVersion,
+  writeJson,
+} from "../../lib/r2-json";
 
 /**
  * Version of the snapshots below; another version is read again. Version 2
@@ -28,13 +33,23 @@ const memoryState = new LruCache<string, unknown>({
   ttlMs: 30 * 60_000,
 });
 
-/** Per-Connection state in R2, next to the Action membership. */
-export async function readState<T>(key: string): Promise<T | null> {
+/**
+ * Per-Connection state in R2, next to the Action membership. State that does
+ * not match `schema` (an older version) is null: it is read again.
+ */
+export async function readState<T>(
+  key: string,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+): Promise<T | null> {
+  let stored: unknown;
   try {
-    return await readJson<T>(key);
+    stored = (await readJsonVersion(key))?.value;
   } catch {
-    return (memoryState.get(key) as T | undefined) ?? null;
+    stored = memoryState.get(key);
   }
+  if (stored == null) return null;
+  const parsed = schema.safeParse(stored);
+  return parsed.success ? parsed.data : null;
 }
 
 export async function writeState(key: string, value: unknown): Promise<void> {

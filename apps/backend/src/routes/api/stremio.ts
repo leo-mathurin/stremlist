@@ -29,18 +29,22 @@ const linkBody = z.object({
 /** Why a Stremio request failed, as the configure page names it. */
 type StremioFailure = "signed-out" | "unavailable";
 
+function failureBody(reason: StremioFailure) {
+  return { reason };
+}
+
 function failure(c: Context, error: unknown) {
   // Not linked any more: the key was forgotten, as for a signed-out one.
   if (
     error instanceof StremioSessionError ||
     error instanceof StremioNotLinkedError
   ) {
-    return c.json({ reason: "signed-out" as StremioFailure }, 409);
+    return c.json(failureBody("signed-out"), 409);
   }
   if (!(error instanceof StremioUnavailableError)) {
     console.error("Stremio update failed:", error);
   }
-  return c.json({ reason: "unavailable" as StremioFailure }, 502);
+  return c.json(failureBody("unavailable"), 502);
 }
 
 function addonUrl(c: Context, accountId: string) {

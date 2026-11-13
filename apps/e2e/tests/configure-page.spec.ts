@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { addonManifestUrl, FRONTEND_URL } from "../env.js";
 import { bootstrapLegacy, createAccount, getConfig } from "../helpers/api.js";
 import { resetDb, seedImdbAccount } from "../helpers/db.js";
+import { present } from "../helpers/json.js";
 import { addonsDeepLink } from "../helpers/stremio.js";
 import {
   PUBLIC_LIST,
@@ -164,7 +165,7 @@ test(
   async ({ page }) => {
     // Simkl and MDBList users create the Account first, to connect.
     const { body } = await createAccount([]);
-    const accountId = body.accountId!;
+    const accountId = present(body.accountId, "the new Account ID");
     await page.goto(configureUrl(accountId));
     await expect(page.getByText("No lists yet")).toBeVisible();
     await page.getByRole("button", { name: "Add an IMDb chart" }).click();

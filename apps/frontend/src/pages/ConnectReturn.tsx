@@ -79,8 +79,9 @@ export default function ConnectReturn({ answer }: { answer: ConnectAnswer }) {
   const finishing = useRef<Promise<string> | null>(null);
   useEffect(() => {
     let cancelled = false;
-    finishing.current ??= finishConnect(answer);
-    void finishing.current.then((target) => {
+    const finished = finishing.current ?? finishConnect(answer);
+    finishing.current = finished;
+    void finished.then((target) => {
       if (!cancelled) void navigate(target, { replace: true });
     });
     return () => {

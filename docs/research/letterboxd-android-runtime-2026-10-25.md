@@ -33,12 +33,12 @@ REA `pull-adb-package` a récupéré l'APK principal et les trois APK de
 configuration installés. Les quatre empreintes ont été revérifiées après
 transfert du Mac vers la tour.
 
-| Fichier | Taille en octets | SHA-256 |
-| --- | ---: | --- |
-| `base.apk` | 154190863 | `7cc023baebc4a22582ff7720907d20790919f6897cc65522a4e8e0a7c594b89b` |
-| `split_config.arm64_v8a.apk` | 19440820 | `2be3ba44eac16201a2b93a620e379e567fdaf80f44125b62f1b385dd131e5754` |
-| `split_config.en.apk` | 172242 | `969dea1344d253544fe3c463edd3c5d7892b90e1f76511d619dd6247eae56bb5` |
-| `split_config.xxhdpi.apk` | 5876265 | `1304f8b3aa7a4409977c9b57ff3fabb3757f2b8dcb5b6643f02266307184d837` |
+| Fichier                      | Taille en octets | SHA-256                                                            |
+| ---------------------------- | ---------------: | ------------------------------------------------------------------ |
+| `base.apk`                   |        154190863 | `7cc023baebc4a22582ff7720907d20790919f6897cc65522a4e8e0a7c594b89b` |
+| `split_config.arm64_v8a.apk` |         19440820 | `2be3ba44eac16201a2b93a620e379e567fdaf80f44125b62f1b385dd131e5754` |
+| `split_config.en.apk`        |           172242 | `969dea1344d253544fe3c463edd3c5d7892b90e1f76511d619dd6247eae56bb5` |
+| `split_config.xxhdpi.apk`    |          5876265 | `1304f8b3aa7a4409977c9b57ff3fabb3757f2b8dcb5b6643f02266307184d837` |
 
 Une vérification supplémentaire, réalisée avec `apksigner` et non avec REA,
 valide la signature APK v3 du fichier principal. Le certificat déclare
@@ -129,27 +129,27 @@ Les fichiers sont dans
 `~/.local/share/rea/investigations/letterboxd-20261025/` sur la tour, avec des
 originaux sur le Mac. Les copies des sorties Mac sont préfixées `mac-`.
 
-| Observation REA | Evidence ID |
-| --- | --- |
-| Téléphone physique | `ev_2765554f21124b46e21f6864261b69625c12b8a4d28f8da63962447d069fee85` |
-| Propriétés Android | `ev_37288395f4bb136ec94f83637104aa37d98c0da8b41cb2cfd5787b13efd66a45` |
-| Paquet installé | `ev_0a3ed0dd5b3da10d0e471f889f1331b2ec3b3d0a0ee15dc0b06f3f937bda6cb5` |
-| Ensemble des APK récupérés | `ev_1c913b044afc05b0bbc0963c16b1a3cb6acbd1b2888b5828f11e6aaa358eb953` |
-| Capture de la watchlist | `ev_55b89021109e7f07c75a79c3dc0a91783aa0f50e7c64f19c5e17b6386d6697be` |
-| Capture de l'onglet Lists vide | `ev_1c9b18abd04a6efcd95ce9b75f1d2d8cca956873111c6effd9c3419f2376fed5` |
-| Logcat du processus | `ev_676efd21aef16483c9a8db3e3d8ef5c44f4c0f6b99867770597ba0d3283d1db2` |
-| Redémarrage avant capture, arrêt | `ev_8d64f2148f3dce84109a4c914d328c87a64297f03c43c6e384aae865ade44d26` |
-| Redémarrage avant capture, lancement | `ev_e9e2da7a545e1722c8a834c4ea7f6d14cae901a50281f4d365dce1074f9ea418` |
+| Observation REA                          | Evidence ID                                                           |
+| ---------------------------------------- | --------------------------------------------------------------------- |
+| Téléphone physique                       | `ev_2765554f21124b46e21f6864261b69625c12b8a4d28f8da63962447d069fee85` |
+| Propriétés Android                       | `ev_37288395f4bb136ec94f83637104aa37d98c0da8b41cb2cfd5787b13efd66a45` |
+| Paquet installé                          | `ev_0a3ed0dd5b3da10d0e471f889f1331b2ec3b3d0a0ee15dc0b06f3f937bda6cb5` |
+| Ensemble des APK récupérés               | `ev_1c913b044afc05b0bbc0963c16b1a3cb6acbd1b2888b5828f11e6aaa358eb953` |
+| Capture de la watchlist                  | `ev_55b89021109e7f07c75a79c3dc0a91783aa0f50e7c64f19c5e17b6386d6697be` |
+| Capture de l'onglet Lists vide           | `ev_1c9b18abd04a6efcd95ce9b75f1d2d8cca956873111c6effd9c3419f2376fed5` |
+| Logcat du processus                      | `ev_676efd21aef16483c9a8db3e3d8ef5c44f4c0f6b99867770597ba0d3283d1db2` |
+| Redémarrage avant capture, arrêt         | `ev_8d64f2148f3dce84109a4c914d328c87a64297f03c43c6e384aae865ade44d26` |
+| Redémarrage avant capture, lancement     | `ev_e9e2da7a545e1722c8a834c4ea7f6d14cae901a50281f4d365dce1074f9ea418` |
 | Même watchlist dans le navigateur public | `ev_5aa538aac3deb787074bede07dd102d60bb4f026d12c68c73ec3b29750db89aa` |
 
 Les fichiers suivants sont des observations ADB ou du relais Python, et non
 des sorties REA :
 
-| Fichier | SHA-256 |
-| --- | --- |
-| `mac-ui-settings.xml` | `e45285496a13bbf9d2d42d8bacaf7f482982871ec847477defc5b69e1f282786` |
-| `mac-ui-watchlist.xml` | `10ec770ea7a4c4e9b9ebd111dae13a5f9fe108233325bec8e44f1c22a7161278` |
-| `mac-ui-lists.xml` | `f3b31598a7e2422eb75c9626ea0b555b26686c429ae58b1f25c67700cb4f103d` |
+| Fichier                         | SHA-256                                                            |
+| ------------------------------- | ------------------------------------------------------------------ |
+| `mac-ui-settings.xml`           | `e45285496a13bbf9d2d42d8bacaf7f482982871ec847477defc5b69e1f282786` |
+| `mac-ui-watchlist.xml`          | `10ec770ea7a4c4e9b9ebd111dae13a5f9fe108233325bec8e44f1c22a7161278` |
+| `mac-ui-lists.xml`              | `f3b31598a7e2422eb75c9626ea0b555b26686c429ae58b1f25c67700cb4f103d` |
 | `mac-https-relay-metadata.json` | `e00a428c743b0f21349ce8a5822a2498402dfd54f4626d79ed13bcb74a7b2f70` |
 
 ## Commandes REA principales

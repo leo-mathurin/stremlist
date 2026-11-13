@@ -1,19 +1,14 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 
 import app from "../index.js";
 import { SourceUnavailableError } from "../providers/types";
-
-const { backgroundMocks, prewarmMocks, supabaseMocks } = await vi.hoisted(
-  () => import("./helpers/config-api-mocks.js"),
-);
-vi.mock("../lib/background", () => backgroundMocks);
-vi.mock("../services/list-prewarm", () => prewarmMocks);
-vi.mock("../lib/supabase", () => supabaseMocks);
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
-vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
-
 import { resetConfigTest } from "./helpers/config-api.js";
 import {
   fakeAdapter,
@@ -25,6 +20,17 @@ import {
   haltLetterboxdGate,
   letterboxdGate,
 } from "./helpers/supabase/letterboxd-gate-rpcs.js";
+
+const { backgroundMocks, prewarmMocks, supabaseMocks } = await vi.hoisted(
+  () => import("./helpers/config-api-mocks.js"),
+);
+vi.mock("../lib/background", () => backgroundMocks);
+vi.mock("../services/list-prewarm", () => prewarmMocks);
+vi.mock("../lib/supabase", () => supabaseMocks);
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
+vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
+vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
 
 const IMDB_BEAT = "https://beat.example/imdb";
 const LBX_BEAT = "https://beat.example/letterboxd";

@@ -1,11 +1,5 @@
 import type { StremioManifest } from "@stremlist/shared/stremio.types";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
-
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import app from "../index.js";
 import {
   LIST_IDS,
@@ -22,6 +16,12 @@ import {
   useFakeProvider,
 } from "./helpers/mock-registry.js";
 import { db, resetRpc } from "./helpers/mock-supabase.js";
+import { readJson, stremioManifest } from "./helpers/json.js";
+
+vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
+vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 
 const IMDB_USER = "ur12345678";
 const META_RESOURCE = { name: "meta", types: ["movie"], idPrefixes: ["tt"] };
@@ -34,7 +34,7 @@ const STREAM_RESOURCE = {
 async function manifest(key: string): Promise<StremioManifest> {
   const res = await app.request(`/${key}/manifest.json`);
   expect(res.status).toBe(200);
-  return (await res.json()) as StremioManifest;
+  return readJson(res, stremioManifest);
 }
 
 function catalogIds(value: StremioManifest): string[] {

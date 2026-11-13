@@ -10,6 +10,7 @@ import {
 import type { ProviderId } from "@stremlist/shared/providers";
 import { Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { z } from "zod";
 import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import ActionsSettings from "../components/ActionsSettings";
@@ -85,21 +86,31 @@ function connectionNotice(
     providerParam && isProviderId(providerParam)
       ? PROVIDERS[providerParam].label
       : "the account";
-  const messages: Record<string, string> = {
-    denied: `You cancelled the connection to ${label}. Nothing changed.`,
-    expired: `The connection to ${label} took too long. Please try again.`,
-    unavailable: `${label} is temporarily unavailable. Please try again later.`,
-    invalid_request: "The connection could not be completed. Please try again.",
-    other_browser:
+  const messages = new Map([
+    ["denied", `You cancelled the connection to ${label}. Nothing changed.`],
+    ["expired", `The connection to ${label} took too long. Please try again.`],
+    [
+      "unavailable",
+      `${label} is temporarily unavailable. Please try again later.`,
+    ],
+    [
+      "invalid_request",
+      "The connection could not be completed. Please try again.",
+    ],
+    [
+      "other_browser",
       "This connection was not started in this browser, so nothing was connected. Start it again from your configure page.",
-  };
+    ],
+  ]);
   return {
     type: "error",
-    message: Object.hasOwn(messages, error)
-      ? messages[error]
-      : `Could not connect ${label}. Please try again.`,
+    message:
+      messages.get(error) ?? `Could not connect ${label}. Please try again.`,
   };
 }
+
+/** What Home passes in the navigation state. Other values are ignored. */
+const homeState = z.object({ link: z.unknown(), entry: z.unknown() }).partial();
 
 export default function Configure() {
   useSEO({ path: "/configure" });
@@ -112,7 +123,7 @@ export default function Configure() {
   const accountKey = keyIsValid ? rawKey : null;
 
   const [pendingLink, setPendingLink] = useState<string | null>(() => {
-    const homeLink = (location.state as { link?: unknown } | null)?.link;
+    const homeLink = homeState.safeParse(location.state).data?.link;
     if (typeof homeLink === "string") return homeLink;
     const stored = readStorage(PENDING_LINK_STORAGE);
     writeStorage(PENDING_LINK_STORAGE, null);
@@ -120,13 +131,13 @@ export default function Configure() {
   });
   /** Home found this v1 install for the user ("Open my Stremlist"). */
   const [fromHome] = useState(
-    () => (location.state as { entry?: unknown } | null)?.entry === "home",
+    () => homeState.safeParse(location.state).data?.entry === "home",
   );
   // The link from Home is consumed once; drop it so a reload does not add
   // it again.
   useEffect(() => {
     if (location.state) {
-      navigate(
+      void navigate(
         { pathname: location.pathname, search: location.search },
         { replace: true, state: null },
       );
@@ -164,7 +175,9 @@ export default function Configure() {
   /** Open an Account created by the first save; it replaces the entry. */
   const openCreated = (id: string) => {
     rememberCreated(id);
-    navigate(`/configure?account=${encodeURIComponent(id)}`, { replace: true });
+    void navigate(`/configure?account=${encodeURIComponent(id)}`, {
+      replace: true,
+    });
   };
 
   const config = useAccountConfiguration(accountKey, {
@@ -189,7 +202,7 @@ export default function Configure() {
         (c) => `${c.provider}:${c.needsRenewalSince ?? ""}`,
       ),
     ].join("|"),
-    config.stremio.retry,
+    () => void config.stremio.retry(),
   );
   const rows = lists.map((list) => config.rowModel(list));
   const attention = rows.filter((row) => attentionTone(row.sync)).length;
@@ -356,7 +369,7 @@ export default function Configure() {
             onConnect={(provider) =>
               policy.upgradeToConnect ? scrollToUpgrade() : connectFor(provider)
             }
-            onDisconnect={config.disconnect}
+            onDisconnect={(provider) => void config.disconnect(provider)}
           />
           {policy.connectHint === "save-first" && (
             <p className="text-xs text-pretty text-white/45">
@@ -402,7 +415,7 @@ export default function Configure() {
               <button
                 ref={setHeaderSave}
                 type="button"
-                onClick={config.handleSave}
+                onClick={() => void config.handleSave()}
                 disabled={saveDisabled}
                 title={saveHint}
                 className={cn(
@@ -461,7 +474,7 @@ export default function Configure() {
                 compact={legacy}
                 refreshing={config.refreshing}
                 nextRefreshAt={config.nextRefreshAt}
-                onRefresh={config.handleRefresh}
+                onRefresh={() => void config.handleRefresh()}
               />
               {legacy && checklistHidden && (
                 <WhatsNewButton onClick={() => setChecklistHidden(false)} />
@@ -766,7 +779,7 @@ export default function Configure() {
               disabled={saveDisabled}
               hint={saveHint}
               saving={config.saving}
-              onSave={config.handleSave}
+              onSave={() => void config.handleSave()}
             >
               {saveLabel}
             </FloatingSaveButton>

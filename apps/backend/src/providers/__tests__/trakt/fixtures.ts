@@ -53,12 +53,25 @@ export const noImdbShow = {
   },
 };
 
+/** A movie or show as Trakt embeds it in a list item. */
+export interface TraktMedia {
+  title: string;
+  year?: number;
+  ids: {
+    trakt: number;
+    slug?: string;
+    imdb?: string | null;
+    tmdb?: number;
+    tvdb?: number | null;
+  };
+}
+
 export function listed(
   type: "movie" | "show" | "season" | "episode",
-  media: object,
+  media: TraktMedia,
   listedAt: string,
   rank: number,
-): object {
+) {
   const base = { rank, id: rank * 10, listed_at: listedAt, notes: null, type };
   if (type === "movie") return { ...base, movie: media };
   if (type === "show") return { ...base, show: media };

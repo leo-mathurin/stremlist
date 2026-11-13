@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { FRONTEND_URL } from "../env.js";
 import type { Api } from "../helpers/api.js";
-import { listInput, ok } from "../helpers/api.js";
+import { hasAccountId, listInput, ok } from "../helpers/api.js";
 import { configureUrl, saveButton, SAVE_NEW } from "../helpers/configure.js";
 import {
   clearResolverCache,
@@ -12,6 +12,7 @@ import {
 } from "../helpers/db.js";
 import type { FixtureBackend } from "../helpers/fixture-backend.js";
 import { startFixtureBackend } from "../helpers/fixture-backend.js";
+import { parsed } from "../helpers/json.js";
 import { routePageTo } from "../helpers/page-backend.js";
 import {
   discoverItemTitles,
@@ -50,6 +51,11 @@ test.beforeEach(async () => {
   await clearResolverCache("letterboxd", ["film:101", "film:202"]);
 });
 
+/** The order of `sort()` without a compare function: by UTF-16 code units. */
+function byCodeUnits(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /**
  * Read one List as Stremio does. The manifest declares a movie and a series
  * Catalog for it; each Catalog serves the fixture Title of its type.
@@ -65,7 +71,11 @@ async function expectListInStremio(
   const own = manifest.catalogs.filter((catalog) =>
     catalog.id.startsWith(`wl-${listId}-`),
   );
-  expect(own.map((catalog) => [catalog.type, catalog.id]).sort()).toEqual([
+  expect(
+    own
+      .map((catalog) => [catalog.type, catalog.id])
+      .sort((a, b) => byCodeUnits(a.join(), b.join())),
+  ).toEqual([
     ["movie", `wl-${listId}-movie`],
     ["series", `wl-${listId}-series`],
   ]);
@@ -200,7 +210,11 @@ for (const [provider, link, sourceRef] of HOME_LINKS) {
       await save.click();
       const response = await created;
       expect(response.status()).toBe(200);
-      const { accountId } = (await response.json()) as { accountId: string };
+      const { accountId } = parsed(
+        await response.json(),
+        hasAccountId,
+        "the save answer",
+      );
       await expect(page).toHaveURL(configureUrl(accountId));
 
       const { lists } = ok(await backend.api.getConfig(accountId));

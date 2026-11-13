@@ -1,19 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("../lib/supabase", async () => {
-  return await import("./helpers/mock-supabase.js");
-});
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-vi.mock("../lib/r2", async () => {
-  return await import("./helpers/mock-r2.js");
-});
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
-
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import app from "../index.js";
 import { saveConnection } from "../services/connections";
 import { disconnectProvider } from "../services/lists";
@@ -40,6 +32,21 @@ import {
   summary,
   syncRows,
 } from "./helpers/new-titles.js";
+import { accountIdBody, readJson } from "./helpers/json.js";
+
+vi.mock("../lib/supabase", async () => {
+  return await import("./helpers/mock-supabase.js");
+});
+vi.mock("../services/list-cache", async () => {
+  return await import("./helpers/mock-list-cache.js");
+});
+vi.mock("../providers/registry", async () => {
+  return await import("./helpers/mock-registry.js");
+});
+vi.mock("../lib/r2", async () => {
+  return await import("./helpers/mock-r2.js");
+});
+vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 
 beforeEach(resetNewTitlesTest);
 afterEach(restoreNewTitlesTest);
@@ -82,7 +89,7 @@ describe("settings", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ lists: [LIST], newTitles: { enabled: true } }),
     });
-    setAccountId(((await res.json()) as { accountId: string }).accountId);
+    setAccountId((await readJson(res, accountIdBody)).accountId);
 
     expect((await summary()).enabled).toBe(true);
   });

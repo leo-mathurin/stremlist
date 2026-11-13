@@ -5,10 +5,11 @@
  * by supabase/tests/letterboxd_gate.sql and letterboxd_queue.sql.
  */
 import type { RpcArgs, RpcHandler } from "./rpc";
-import type { Result, Row } from "./store";
+import { rowOf } from "./rpc";
+import type { Result } from "./store";
 import { db } from "./store";
 
-interface Gate {
+export interface Gate {
   id: string;
   rate: number;
   tokens: number;
@@ -28,11 +29,9 @@ interface Gate {
   slowAlerted: boolean;
 }
 
-/** A gate by ID, kept in the in-memory tables so db.reset() clears it. */
+/** A gate by ID, kept in the in-memory DB so db.reset() clears it. */
 export function letterboxdGate(id = "production"): Gate | undefined {
-  return db.getTable("letterboxd_gate").find((row) => row.id === id) as
-    | Gate
-    | undefined;
+  return db.letterboxdGates.find((gate) => gate.id === id);
 }
 
 const MINUTE = 60_000;
@@ -83,7 +82,7 @@ function lock(id: string, target: number, t: number): Gate {
       slowSince: null,
       slowAlerted: false,
     };
-    db.getTable("letterboxd_gate").push(g as unknown as Row);
+    db.letterboxdGates.push(g);
   }
   return g;
 }
@@ -91,9 +90,9 @@ function lock(id: string, target: number, t: number): Gate {
 const targetOf = (args: RpcArgs) => Math.max(Number(args.p_target), 0.01);
 const gateOf = (args: RpcArgs) =>
   typeof args.p_gate === "string" ? args.p_gate : "production";
-const ok = (data: unknown): Result => ({ data, error: null }) as Result;
+const ok = (data: unknown): Result => ({ data, error: null });
 
-interface Waiter {
+export interface Waiter {
   id: string;
   gate: string;
   seq: number;
@@ -103,11 +102,16 @@ interface Waiter {
   expiresAt: number;
 }
 
-/** The queue of a gate, kept in the in-memory tables so db.reset() clears it. */
+/** The queue of a gate, kept in the in-memory DB so db.reset() clears it. */
 export function letterboxdWaiters(gate = "production"): Waiter[] {
-  return (db.getTable("letterboxd_waiters") as unknown as Waiter[]).filter(
-    (waiter) => waiter.gate === gate,
-  );
+  return db.letterboxdWaiters.filter((waiter) => waiter.gate === gate);
+}
+
+/** The answer of letterboxd_take_turn, before its ticket. */
+interface Turn {
+  status: string;
+  wait_ms: number;
+  probe: boolean;
 }
 
 let waiterSeq = 0;
@@ -127,9 +131,8 @@ function takeTurn(args: RpcArgs): Result {
     return { data: null, error: { message: "Unknown Letterboxd priority" } };
   const g = lock(gate, target, t);
   settle(g, t, target);
-  db.delete(
-    "letterboxd_waiters",
-    (row) => row.gate === gate && (row as unknown as Waiter).expiresAt <= t,
+  db.letterboxdWaiters = db.letterboxdWaiters.filter(
+    (waiter) => !(waiter.gate === gate && waiter.expiresAt <= t),
   );
   const waiters = letterboxdWaiters(gate);
   const w =
@@ -143,7 +146,7 @@ function takeTurn(args: RpcArgs): Result {
     (other.lane < lane || (other.lane === lane && (!w || other.seq < w.seq)));
   const due = (other: Waiter) =>
     other.dueAt <= t + HORIZON_MS && other.dueAt > t - LATE_MS;
-  let result: { status: string; wait_ms: number; probe: boolean };
+  let result: Turn;
   let retryMs: number | null = null;
   if (g.haltedAt !== null) {
     if (
@@ -216,7 +219,7 @@ function takeTurn(args: RpcArgs): Result {
         dueAt,
         expiresAt: dueAt + GRACE_MS,
       };
-      db.getTable("letterboxd_waiters").push(waiter as unknown as Row);
+      db.letterboxdWaiters.push(waiter);
     }
     return ok({ ...result, retry_ms: retryMs, ticket });
   }
@@ -356,7 +359,7 @@ function status(args: RpcArgs): Result {
 
 /** Same rules as public.letterboxd_record: count every request, keep some. */
 function record(args: RpcArgs): Result {
-  const request = args.p_request as Row;
+  const request = rowOf(args.p_request, "p_request");
   db.getTable("letterboxd_request_counts").push({ ...request });
   if (args.p_keep === true)
     db.getTable("letterboxd_requests").push({
@@ -366,12 +369,12 @@ function record(args: RpcArgs): Result {
   return ok(null);
 }
 
-export const letterboxdGateRpcs: Record<string, RpcHandler> = {
+export const letterboxdGateRpcs = {
   letterboxd_take_turn: takeTurn,
   letterboxd_report: report,
   letterboxd_gate_status: status,
   letterboxd_record: record,
-};
+} satisfies Record<string, RpcHandler>;
 
 /** Halt a gate as if Letterboxd had refused a request. */
 export function haltLetterboxdGate(id = "production"): void {

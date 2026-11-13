@@ -27,8 +27,12 @@ export const r2Unreadable = new Set<string>();
  * Writes seen, and a hook that runs just before each write is checked, so a
  * test can play another instance that writes in between.
  */
-export const r2Puts: { count: number; before: ((key: string) => void) | null } =
-  { count: 0, before: null };
+interface R2Puts {
+  count: number;
+  before: ((key: string) => void) | null;
+}
+
+export const r2Puts: R2Puts = { count: 0, before: null };
 
 /** The ETag of a stored body, like a store that hashes its content. */
 function etagOf(body: string): string {
@@ -60,7 +64,12 @@ function send(command: unknown): Promise<unknown> {
     ) {
       return preconditionFailed();
     }
-    r2Objects.set(Key, Buffer.from(Body as Uint8Array).toString("utf8"));
+    if (typeof Body === "string") r2Objects.set(Key, Body);
+    else if (Body instanceof Uint8Array) {
+      r2Objects.set(Key, Buffer.from(Body).toString("utf8"));
+    } else {
+      return Promise.reject(new Error("R2 test command needs a text body"));
+    }
     return Promise.resolve({});
   }
   if (command instanceof GetObjectCommand) {

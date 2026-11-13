@@ -1,4 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import { traktProvider } from "../../trakt";
 import type { OAuthConfig } from "../../types";
 import { ConnectionExpiredError, SourceUnavailableError } from "../../types";
@@ -6,7 +13,6 @@ import { clerks, listed } from "./fixtures";
 import {
   calls,
   connection,
-  expectReason,
   fetchEntries,
   json,
   required,
@@ -14,6 +20,7 @@ import {
   restoreTraktTest,
   route,
   status,
+  unavailableReason,
 } from "./harness";
 
 vi.mock("../../http", async (importOriginal) => {
@@ -27,17 +34,23 @@ afterEach(restoreTraktTest);
 describe("Trakt read errors", () => {
   it("a 401 on a public read means the Source list is private", async () => {
     route("GET /users/hidden/watchlist", status(401));
-    await expectReason(fetchEntries("users/hidden/watchlist"), "private");
+    expect(
+      await unavailableReason(fetchEntries("users/hidden/watchlist")),
+    ).toBe("private");
   });
 
   it("maps 404 to not_found", async () => {
     route("GET /users/sean/lists/gone/items", status(404));
-    await expectReason(fetchEntries("users/sean/lists/gone"), "not_found");
+    expect(await unavailableReason(fetchEntries("users/sean/lists/gone"))).toBe(
+      "not_found",
+    );
   });
 
   it.each([420, 426])("maps %i to premium_only", async (code) => {
     route("GET /lists/42/items", status(code));
-    await expectReason(fetchEntries("lists/42"), "premium_only");
+    expect(await unavailableReason(fetchEntries("lists/42"))).toBe(
+      "premium_only",
+    );
   });
 
   it("other errors stay server errors", async () => {
@@ -47,8 +60,12 @@ describe("Trakt read errors", () => {
   });
 
   it("personal Source lists need a Connection", async () => {
-    await expectReason(fetchEntries("me/watchlist"), "needs_connection");
-    await expectReason(fetchEntries("me/up-next"), "needs_connection");
+    expect(await unavailableReason(fetchEntries("me/watchlist"))).toBe(
+      "needs_connection",
+    );
+    expect(await unavailableReason(fetchEntries("me/up-next"))).toBe(
+      "needs_connection",
+    );
     expect(calls).toHaveLength(0);
   });
 
@@ -65,10 +82,9 @@ describe("Trakt read errors", () => {
 
   it("a token that keeps being refused means needs_connection", async () => {
     route("GET /users/me/watchlist", status(401));
-    await expectReason(
-      fetchEntries("me/watchlist", connection()),
-      "needs_connection",
-    );
+    expect(
+      await unavailableReason(fetchEntries("me/watchlist", connection())),
+    ).toBe("needs_connection");
   });
 
   it("lets an expired Connection through, for the caller to ask for renewal", async () => {
@@ -134,7 +150,9 @@ describe("Trakt read errors", () => {
     const conn = connection();
     conn.getAccessToken.mockRejectedValue(new ConnectionExpiredError("trakt"));
 
-    await expectReason(fetchEntries("users/hidden/watchlist", conn), "private");
+    expect(
+      await unavailableReason(fetchEntries("users/hidden/watchlist", conn)),
+    ).toBe("private");
   });
 
   it("reports a refused token when a public read works without it", async () => {
@@ -154,20 +172,25 @@ describe("Trakt read errors", () => {
     const reportRefused = vi.fn(() => Promise.resolve());
     const conn = Object.assign(connection(), { reportRefused });
 
-    await expectReason(fetchEntries("users/hidden/watchlist", conn), "private");
+    expect(
+      await unavailableReason(fetchEntries("users/hidden/watchlist", conn)),
+    ).toBe("private");
     expect(reportRefused).not.toHaveBeenCalled();
   });
 
   it("a private user stays private with a Connection", async () => {
     route("GET /users/hidden/watchlist", status(401));
-    await expectReason(
-      fetchEntries("users/hidden/watchlist", connection()),
-      "private",
-    );
+    expect(
+      await unavailableReason(
+        fetchEntries("users/hidden/watchlist", connection()),
+      ),
+    ).toBe("private");
   });
 
   it("an unknown ref is not_found", async () => {
-    await expectReason(fetchEntries("users/x/favorites"), "not_found");
+    expect(await unavailableReason(fetchEntries("users/x/favorites"))).toBe(
+      "not_found",
+    );
   });
 });
 

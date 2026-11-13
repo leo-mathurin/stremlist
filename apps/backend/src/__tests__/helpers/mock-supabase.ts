@@ -19,12 +19,14 @@ import { db } from "./supabase/store";
 // The in-memory tables, shared by the mock and the tests.
 export { db };
 
-const defaultRpcHandlers: Partial<Record<string, RpcHandler>> = {
-  ...accountRpcs,
-  ...connectionRpcs,
-  ...letterboxdGateRpcs,
-  ...sourceListRpcs,
-};
+const defaultRpcHandlers = new Map<string, RpcHandler>(
+  Object.entries({
+    ...accountRpcs,
+    ...connectionRpcs,
+    ...letterboxdGateRpcs,
+    ...sourceListRpcs,
+  }),
+);
 
 /** Per-test overrides; cleared by `resetRpc()`. */
 export const rpcHandlers = new Map<string, RpcHandler>();
@@ -34,7 +36,7 @@ export function resetRpc(): void {
 }
 
 export function callRpc(name: string, args: RpcArgs = {}): Promise<Result> {
-  const handler = rpcHandlers.get(name) ?? defaultRpcHandlers[name];
+  const handler = rpcHandlers.get(name) ?? defaultRpcHandlers.get(name);
   if (!handler) {
     return Promise.resolve(rpcError(`mock-supabase: unknown RPC ${name}`));
   }

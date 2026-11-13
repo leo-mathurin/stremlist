@@ -56,13 +56,14 @@ export interface ClaimedWrite {
   uncertain: boolean;
 }
 
-interface WriteResult {
+// A type alias, not an interface, so that it is assignable to the RPC's Json.
+type WriteResult = {
   id: number;
   done: boolean;
   next_due_at: string | null;
   error: string | null;
   uncertain: boolean;
-}
+};
 
 export interface WriteStats {
   sent: number;
@@ -114,16 +115,19 @@ function groupSends(writes: ClaimedWrite[]): ClaimedWrite[][] {
   return sends;
 }
 
+interface CappedSends {
+  kept: ClaimedWrite[][];
+  /** Write IDs by the minutes they wait. */
+  later: Map<number, number[]>;
+}
+
 /**
  * The sends of one claim, at most SENDS_PER_DESTINATION per Destination.
  * The others wait a minute per SENDS_PER_DESTINATION before them (`later`,
  * by minutes), so one bulk mark never holds back everyone else's writes. A
  * Provider turned off (kill switch) gets nothing: its rows wait 15 minutes.
  */
-export function capPerDestination(sends: ClaimedWrite[][]): {
-  kept: ClaimedWrite[][];
-  later: Map<number, number[]>;
-} {
+export function capPerDestination(sends: ClaimedWrite[][]): CappedSends {
   const count = new Map<string, number>();
   const kept: ClaimedWrite[][] = [];
   const later = new Map<number, number[]>();
@@ -304,7 +308,7 @@ async function claimWrites(
     p_lease_token: lease,
   });
   if (error) throw error;
-  return data as unknown as ClaimedWrite[];
+  return data;
 }
 
 async function finishWrites(
@@ -314,7 +318,7 @@ async function finishWrites(
   if (results.length === 0) return;
   const { error } = await supabase.rpc("finish_watch_writes", {
     p_lease_token: lease,
-    p_rows: results as never,
+    p_rows: results,
   });
   if (error) throw error;
 }

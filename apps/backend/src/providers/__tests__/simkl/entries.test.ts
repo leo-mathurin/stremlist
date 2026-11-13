@@ -1,4 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import { simklProvider } from "../../simkl";
 import { simklItemUrl } from "../../simkl/entries";
 import { calls, ctx, resetSimklTest, restoreStubs } from "./harness";

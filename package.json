@@ -24,31 +24,38 @@
     "dev:local": "turbo run dev:local",
     "dev:backend": "turbo run dev --filter=@stremlist/backend",
     "dev:frontend": "turbo run dev --filter=@stremlist/frontend",
+    "dev:tailnet": "turbo run dev:tailnet",
     "build": "turbo run build",
-    "lint": "turbo run lint",
-    "format": "turbo run format",
-    "format:check": "turbo run format:check",
     "test": "turbo run test",
     "test:e2e": "turbo run test:e2e",
-    "typecheck": "turbo run typecheck",
-    "generate:types": "bun run --cwd packages/shared generate:types",
-    "prepare": "husky",
-    "dev:tailnet": "turbo run dev:tailnet",
+    "test:tooling": "node --test \".github/scripts/*.test.mjs\" \"tools/oxlint/anti-slop/rules/*.test.ts\"",
     "test:toolkit": "bun run --cwd apps/e2e test:toolkit",
     "test:toolkit:record": "bun run --cwd apps/e2e test:toolkit:record",
     "test:toolkit:replay": "bun run --cwd apps/e2e test:toolkit:replay",
-    "knip": "knip"
+    "lint": "turbo run lint:repo",
+    "typecheck": "turbo run typecheck:repo",
+    "lint:repo": "vp check",
+    "typecheck:repo": "bun check",
+    "fix": "vp check --fix",
+    "format": "vp fmt",
+    "format:check": "vp fmt --check",
+    "knip": "knip",
+    "generate:types": "bun run --cwd packages/shared generate:types",
+    "prepare": "vp config --no-agent"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.11.0"
   },
-  "packageManager": "bun@1.4.0",
+  "packageManager": "bun@1.4.4",
   "devDependencies": {
-    "husky": "^9.1.7",
+    "@types/node": "^24.10.13",
+    "eslint-plugin-react-hooks": "7.1.1",
     "knip": "6.41.0",
-    "lint-staged": "^16.2.7",
     "portless": "0.15.6",
-    "turbo": "^2.11.7"
+    "turbo": "^2.11.7",
+    "typescript": "7.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
   },
   "workspaces": [
     "apps/*",
@@ -57,5 +64,12 @@
   "trustedDependencies": [
     "esbuild",
     "unrs-resolver"
-  ]
+  ],
+  "catalog": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.6.0",
+    "vite-plus": "1.6.0"
+  },
+  "overrides": {
+    "vite": "catalog:"
+  }
 }

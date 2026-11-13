@@ -1,18 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { Tables } from "@stremlist/shared/database";
-import { describe, it, expect, beforeEach, vi } from "vitest";
-
-const { backgroundMocks, prewarmMocks, rpcMocks, supabaseMocks } =
-  await vi.hoisted(() => import("./helpers/config-api-mocks.js"));
-vi.mock("../lib/background", () => backgroundMocks);
-vi.mock("../services/list-prewarm", () => prewarmMocks);
-vi.mock("../lib/supabase", () => supabaseMocks);
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
-vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
-
+import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
 import {
   legacyAccountId,
   OTHER_IMDB,
@@ -28,6 +17,16 @@ import {
 import { seedAccount } from "./helpers/fixtures.js";
 import { cache } from "./helpers/mock-list-cache.js";
 import { db } from "./helpers/mock-supabase.js";
+
+const { backgroundMocks, prewarmMocks, rpcMocks, supabaseMocks } =
+  await vi.hoisted(() => import("./helpers/config-api-mocks.js"));
+vi.mock("../lib/background", () => backgroundMocks);
+vi.mock("../services/list-prewarm", () => prewarmMocks);
+vi.mock("../lib/supabase", () => supabaseMocks);
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
+vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
+vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
 
 beforeEach(resetConfigTest);
 
@@ -131,7 +130,7 @@ describe("List CRUD via the config API", () => {
           availableGenres: [],
           sourceGenres: [null],
         })),
-        newTitles: expect.objectContaining({ detected: 0 }),
+        newTitles: expect.objectContaining({ detected: 0 }) as unknown,
       });
       expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledOnce();
       await runScheduledTasks();

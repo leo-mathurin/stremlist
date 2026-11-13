@@ -1,5 +1,16 @@
 import type { InMemoryDB, Result, Row } from "./store";
-import { UNIQUE_KEYS, uniqueError, withoutUndefined } from "./store";
+import { uniqueError, uniqueKeys, withoutUndefined } from "./store";
+
+/** The order of two column values, like PostgreSQL for numbers and text. */
+function compareValues(a: unknown, b: unknown): number {
+  if (
+    (typeof a === "number" && typeof b === "number") ||
+    (typeof a === "string" && typeof b === "string")
+  ) {
+    return a < b ? -1 : a > b ? 1 : 0;
+  }
+  return 0;
+}
 
 /**
  * The chained PostgREST query patterns used throughout the backend (select,
@@ -17,7 +28,10 @@ export class MockQueryBuilder {
   private isMaybeSingle = false;
   private selectCols: string | null = null;
   private wantReturn = false;
-  private payload: unknown = null;
+  /** The rows to insert or upsert. */
+  private rows: Row[] = [];
+  /** The columns to update. */
+  private changes: Row = {};
   private conflictCol: string | null = null;
   private countMode: string | null = null;
   private headOnly = false;
@@ -40,22 +54,22 @@ export class MockQueryBuilder {
     return this;
   }
 
-  insert(data: unknown) {
+  insert(data: Row | Row[]) {
     this.op = "insert";
-    this.payload = data;
+    this.rows = Array.isArray(data) ? data : [data];
     return this;
   }
 
-  upsert(data: unknown, opts?: { onConflict?: string }) {
+  upsert(data: Row | Row[], opts?: { onConflict?: string }) {
     this.op = "upsert";
-    this.payload = data;
+    this.rows = Array.isArray(data) ? data : [data];
     this.conflictCol = opts?.onConflict ?? "id";
     return this;
   }
 
-  update(data: unknown) {
+  update(data: Row) {
     this.op = "update";
-    this.payload = data;
+    this.changes = data;
     return this;
   }
 
@@ -166,9 +180,7 @@ export class MockQueryBuilder {
         if (this.orderBys.length > 0) {
           rows.sort((a, b) => {
             for (const [col, opts] of this.orderBys) {
-              const av = a[col] as number;
-              const bv = b[col] as number;
-              const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+              const cmp = compareValues(a[col], b[col]);
               if (cmp !== 0) return opts.ascending ? cmp : -cmp;
             }
             return 0;
@@ -181,10 +193,7 @@ export class MockQueryBuilder {
       }
 
       case "insert": {
-        const items = (
-          Array.isArray(this.payload) ? this.payload : [this.payload]
-        ) as Row[];
-        const rows = items.map((item) =>
+        const rows = this.rows.map((item) =>
           this.db.withDefaults(this.tableName, item),
         );
         for (const [index, row] of rows.entries()) {
@@ -193,7 +202,7 @@ export class MockQueryBuilder {
             (rows
               .slice(0, index)
               .some((earlier) =>
-                (UNIQUE_KEYS[this.tableName] ?? []).some((columns) =>
+                uniqueKeys(this.tableName).some((columns) =>
                   columns.every(
                     (column) =>
                       row[column] != null && earlier[column] === row[column],
@@ -209,9 +218,7 @@ export class MockQueryBuilder {
       }
 
       case "upsert": {
-        const items = (
-          Array.isArray(this.payload) ? this.payload : [this.payload]
-        ) as Row[];
+        const items = this.rows;
         // onConflict may be a composite key ("namespace,external_id"): match
         // on every part, otherwise a composite upsert always collides with
         // the first row.
@@ -268,7 +275,7 @@ export class MockQueryBuilder {
           if (this.matchesFilters(table[i])) {
             table[i] = {
               ...table[i],
-              ...withoutUndefined(this.payload as Row),
+              ...withoutUndefined(this.changes),
             };
             updated.push({ ...table[i] });
           }

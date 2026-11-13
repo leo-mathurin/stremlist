@@ -1,7 +1,11 @@
 import { expect, test } from "@playwright/test";
-import type { StremioManifest } from "@stremlist/shared/stremio.types";
 import { BACKEND_URL, FRONTEND_URL } from "../env.js";
-import { getConfig } from "../helpers/api.js";
+import {
+  getConfig,
+  isCatalog,
+  isManifest,
+  isMetaAnswer,
+} from "../helpers/api.js";
 import { CATALOG_TITLES } from "../helpers/catalog-fixture.js";
 import { configureUrl } from "../helpers/configure.js";
 import {
@@ -11,6 +15,7 @@ import {
   seedAccount,
   seedList,
 } from "../helpers/db.js";
+import { parsed } from "../helpers/json.js";
 import { seedCachedCatalog } from "../helpers/r2.js";
 
 // v1 installs keep their Addon URL key (the Legacy alias). Production holds
@@ -58,7 +63,11 @@ for (const [label, key] of LEGACY_KEYS) {
 
       const manifestResponse = await request.get(`${base}/manifest.json`);
       expect(manifestResponse.status()).toBe(200);
-      const manifest = (await manifestResponse.json()) as StremioManifest;
+      const manifest = parsed(
+        await manifestResponse.json(),
+        isManifest,
+        "manifest",
+      );
       expect(manifest.id).toBe(`com.stremlist.${key}`);
       expect(manifest.behaviorHints.configurationRequired).toBe(false);
       expect(manifest.catalogs.map((catalog) => catalog.id)).toEqual([
@@ -70,13 +79,13 @@ for (const [label, key] of LEGACY_KEYS) {
         `${base}/catalog/movie/wl-${listId}-movie.json`,
       );
       expect(catalog.status()).toBe(200);
-      const { metas } = (await catalog.json()) as { metas: { id: string }[] };
+      const { metas } = parsed(await catalog.json(), isCatalog, "catalog");
       expect(metas.map((meta) => meta.id).sort()).toEqual(
         [...MOVIE_IDS].sort(),
       );
 
       const meta = await request.get(`${base}/meta/movie/${MOVIE_IDS[0]}.json`);
-      expect(((await meta.json()) as { meta: { id: string } }).meta.id).toBe(
+      expect(parsed(await meta.json(), isMetaAnswer, "meta").meta?.id).toBe(
         MOVIE_IDS[0],
       );
 

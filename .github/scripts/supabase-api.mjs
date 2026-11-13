@@ -47,6 +47,12 @@ export function localMigrations(dir = "supabase/migrations") {
 // Extensions that a migration creates. `db push --dry-run` does not run the
 // SQL, so without this check an extension that production cannot install
 // would only fail in the middle of the push.
+// The order of a sort() without a compare function: by UTF-16 code unit.
+export function compareCodeUnits(a, b) {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
+}
+
 export function createdExtensions(sql) {
   const code = sql.replace(/--.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
   const names = new Set();
@@ -55,7 +61,7 @@ export function createdExtensions(sql) {
   )) {
     names.add(match[1].toLowerCase());
   }
-  return [...names].sort();
+  return [...names].sort(compareCodeUnits);
 }
 
 export function migrationSql({ version, name }, dir = "supabase/migrations") {

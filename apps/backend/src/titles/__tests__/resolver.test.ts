@@ -1,13 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("../../lib/supabase", async () => {
-  return await import("../../__tests__/helpers/mock-supabase");
-});
-
+import type { Mock } from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeAdapter } from "../../__tests__/helpers/mock-registry";
 import { db } from "../../__tests__/helpers/mock-supabase";
 import type { ResolverStrategy, SourceEntry } from "../../providers/types";
 import { resolveEntries } from "../resolver";
+
+vi.mock("../../lib/supabase", async () => {
+  return await import("../../__tests__/helpers/mock-supabase");
+});
 
 const DAY = 24 * 60 * 60_000;
 
@@ -19,10 +19,10 @@ function tmdb(id: number): SourceEntry {
 function strategy(
   name: string,
   known: Record<number, string>,
-): ResolverStrategy & { resolve: ReturnType<typeof vi.fn> } {
+): ResolverStrategy & { resolve: Mock<ResolverStrategy["resolve"]> } {
   return {
     name,
-    resolve: vi.fn((entries: SourceEntry[]) =>
+    resolve: vi.fn<ResolverStrategy["resolve"]>((entries) =>
       Promise.resolve(
         new Map(
           entries.flatMap((entry, index): [number, string][] => {
@@ -265,7 +265,9 @@ describe("resolveEntries", () => {
     });
     const row = cacheRow("7");
     expect(row).toMatchObject({ imdb_id: null, strategy: null });
-    const wait = Date.parse(row?.retry_after as string) - Date.now();
+    const retryAfter = row?.retry_after;
+    if (typeof retryAfter !== "string") throw new Error("no retry time");
+    const wait = Date.parse(retryAfter) - Date.now();
     expect(wait).toBeGreaterThan(DAY - 60_000);
     expect(wait).toBeLessThanOrEqual(DAY);
   });
@@ -308,7 +310,7 @@ describe("resolveEntries", () => {
 
     // Chunks of 50, so a slow strategy can stop at the time budget.
     const sent = () =>
-      first.resolve.mock.calls.map((call) => (call[0] as SourceEntry[]).length);
+      first.resolve.mock.calls.map(([entries]) => entries.length);
     expect(sent()).toEqual([50, 50, 50, 50, 50, 50]);
     expect(firstRun.resolved).toHaveLength(300);
     expect(firstRun.unresolvedEntries).toHaveLength(50);

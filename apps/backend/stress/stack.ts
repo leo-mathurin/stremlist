@@ -9,6 +9,7 @@ import {
   ListObjectsV2Command,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { z } from "zod";
 import { execFile, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -202,14 +203,19 @@ function s3Client(stack: Stack): S3Client {
   });
 }
 
+const awsErrorSchema = z.object({
+  $metadata: z.object({ httpStatusCode: z.number().optional() }).optional(),
+});
+
 async function bucketExists(s3: S3Client): Promise<boolean> {
   try {
     await s3.send(new HeadBucketCommand({ Bucket: STRESS_BUCKET }));
     return true;
   } catch (error) {
-    const status = (error as { $metadata?: { httpStatusCode?: number } } | null)
-      ?.$metadata?.httpStatusCode;
-    if (status === 404) return false;
+    const parsed = awsErrorSchema.safeParse(error);
+    if (parsed.success && parsed.data.$metadata?.httpStatusCode === 404) {
+      return false;
+    }
     throw error;
   }
 }

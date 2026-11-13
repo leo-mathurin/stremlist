@@ -3,6 +3,7 @@ import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId, SourceId } from "@stremlist/shared/providers";
 import { sourceRequiresConnection } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
+import { SOURCE_PROBLEM_REASONS } from "@stremlist/shared/source-problems";
 import type {
   AccountSyncSnapshot,
   ConfigList,
@@ -75,14 +76,23 @@ export async function recordRefreshOutcome(
   }
 }
 
-function toStatus(row: StatusRow): ListSyncStatus {
+/** A failure reason that this version does not know reads as "unavailable". */
+function problemOf(reason: string | null): SourceProblemReason | null {
+  if (reason === null) return null;
+  return (
+    SOURCE_PROBLEM_REASONS.find((known) => known === reason) ?? "unavailable"
+  );
+}
+
+/** The row of a Source list of `provider`. */
+function toStatus(row: StatusRow, provider: ProviderId): ListSyncStatus {
   return {
-    provider: row.provider as ProviderId,
+    provider,
     sourceRef: row.source_ref,
     lastAttemptAt: row.last_attempt_at,
     lastSuccessAt: row.last_success_at,
     titleCount: row.title_count,
-    problem: row.failure_reason as SourceProblemReason | null,
+    problem: problemOf(row.failure_reason),
     failingSince: row.failing_since,
   };
 }
@@ -132,7 +142,7 @@ async function sourceStatusesOf(
           candidate.provider === source.provider &&
           candidate.source_ref === source.sourceRef,
       );
-      const status = row ? toStatus(row) : null;
+      const status = row ? toStatus(row, source.provider) : null;
       const changedSource =
         caches.length === 1 && rows.some((candidate) => candidate !== row);
       return changedSource

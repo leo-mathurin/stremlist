@@ -1,5 +1,12 @@
 import type { ConfigList } from "@stremlist/shared/stremio.types";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { movie as meta } from "../../__tests__/helpers/fixtures";
+import { cache } from "../../__tests__/helpers/mock-list-cache";
+import { filterCatalog, resolveCatalogSelection } from "../catalog-filters";
+import { withAvailableGenres } from "../catalog-genres";
+import { catalogSettingsSchema } from "../catalog-settings";
+import { sourceCaches } from "../merged-lists";
+import { buildManifestCatalogs } from "../stremio-catalogs";
 
 vi.mock(
   "../../lib/supabase",
@@ -9,14 +16,6 @@ vi.mock(
   "../list-cache",
   async () => import("../../__tests__/helpers/mock-list-cache"),
 );
-
-import { movie as meta } from "../../__tests__/helpers/fixtures";
-import { cache } from "../../__tests__/helpers/mock-list-cache";
-import { filterCatalog, resolveCatalogSelection } from "../catalog-filters";
-import { withAvailableGenres } from "../catalog-genres";
-import { catalogSettingsSchema } from "../catalog-settings";
-import { sourceCaches } from "../merged-lists";
-import { buildManifestCatalogs } from "../stremio-catalogs";
 
 const list: ConfigList = {
   id: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",

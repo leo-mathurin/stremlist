@@ -9,10 +9,15 @@ import type {
   KnownSourceGenres,
   SignatureRow,
 } from "../src/lib/reinstall-signature.ts";
+import { z } from "zod";
 
 // The signature must change exactly when the manifest that Stremio reads at
 // install time changes (apps/backend/src/routes/manifest.ts): the Catalog
 // IDs, names, types and genre options of each List, in order.
+
+const signatureEntries = z.array(
+  z.object({ newTitles: z.literal(true).optional(), type: z.string() }),
+);
 
 const FIRST: ListSource = { provider: "imdb", sourceRef: "ur1000001" };
 const SECOND: ListSource = { provider: "imdb", sourceRef: "ls1000002" };
@@ -234,12 +239,8 @@ test("the New titles Catalogs follow the types that the Lists show", () => {
     displayMode: "series",
   });
   const entries = (rows: SignatureRow[]) =>
-    (
-      JSON.parse(getListReinstallSignature(rows, genres, withNewTitles)) as {
-        newTitles?: true;
-        type: string;
-      }[]
-    )
+    signatureEntries
+      .parse(JSON.parse(getListReinstallSignature(rows, genres, withNewTitles)))
       .filter((entry) => entry.newTitles)
       .map((entry) => entry.type);
   assert.deepEqual(entries([movies]), ["movie"]);

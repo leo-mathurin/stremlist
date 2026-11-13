@@ -4,6 +4,7 @@
 // use the real fetch; every other host without a handler is refused, so no
 // request ever reaches a real Provider.
 import { appendFileSync } from "node:fs";
+import { type Guard, isRecord, isString, parsed } from "./json.js";
 
 /** One intercepted request: its URL and its body, read once. */
 export interface FixtureRequest {
@@ -17,8 +18,8 @@ type FixtureHandler = (input: FixtureRequest) => Response | Promise<Response>;
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
+/** The fields or JSON of a request with a body (`text` is not empty). */
 function parseBody(text: string, contentType: string | null): unknown {
-  if (!text) return null;
   if (contentType?.includes("application/x-www-form-urlencoded")) {
     return Object.fromEntries(new URLSearchParams(text));
   }
@@ -50,7 +51,9 @@ export function installFetchFixture(options: {
       const url = new URL(request.url);
       if (LOOPBACK.has(url.hostname)) return realFetch(input, init);
       const text = request.method === "GET" ? "" : await request.text();
-      const body = parseBody(text, request.headers.get("content-type"));
+      const body = text
+        ? parseBody(text, request.headers.get("content-type"))
+        : null;
       if (options.log) {
         appendFileSync(
           options.log,
@@ -73,22 +76,20 @@ export function installFetchFixture(options: {
   });
 }
 
-/** The operation name and variables of a GraphQL request body. */
-export function graphql<Variables = Record<string, unknown>>(
-  body: unknown,
-): { operation: string; query: string; variables: Variables } {
-  const {
-    query = "",
-    operationName,
-    variables,
-  } = (body ?? {}) as {
-    query?: string;
-    operationName?: string;
-    variables?: Variables;
-  };
+/**
+ * The operation name and variables of a GraphQL request body. `is` checks
+ * the variables; absent variables are `{}`.
+ */
+export function graphql<Variables>(body: unknown, is: Guard<Variables>) {
+  const field = (key: string) => (isRecord(body) ? body[key] : undefined);
+  const query = field("query");
+  const operationName = field("operationName");
+  const text = isString(query) ? query : "";
   return {
-    operation: operationName ?? /query (\w+)/.exec(query)?.[1] ?? "",
-    query,
-    variables: variables ?? ({} as Variables),
+    operation: isString(operationName)
+      ? operationName
+      : (/query (\w+)/.exec(text)?.[1] ?? ""),
+    query: text,
+    variables: parsed(field("variables") ?? {}, is, "GraphQL variables"),
   };
 }

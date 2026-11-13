@@ -1,15 +1,17 @@
-import { describe, test } from "vitest";
+import { describe, test } from "vite-plus/test";
 import assert from "node:assert/strict";
 import {
   StremioSessionError,
   StremioUnavailableError,
   createLinkCode,
+  getLibraryItems,
   installStremlist,
   isThisStremlist,
   readLinkCode,
   updateInstalledStremlist,
 } from "../stremio";
 import type { StremioAddon } from "../stremio";
+import { z } from "zod";
 
 const ADDON_URL = "https://api.stremlist.com/sl_Account0001/manifest.json";
 const KEY = "session-key";
@@ -38,6 +40,24 @@ const stremlist = (catalog: string): StremioAddon => ({
   flags: {},
 });
 
+const stremioAddon = z
+  .object({
+    transportUrl: z.string(),
+    transportName: z.string().optional(),
+    manifest: z.object({ id: z.string() }).passthrough(),
+    flags: z.record(z.unknown()).optional(),
+  })
+  .passthrough();
+
+const stremioRequest = z.object({
+  authKey: z.string(),
+  addons: z.array(stremioAddon).optional(),
+});
+
+function urlOf(input: string | URL | Request): string {
+  return input instanceof Request ? input.url : String(input);
+}
+
 /**
  * A Stremio account in memory. `answer` overrides the API answer per
  * method.
@@ -47,15 +67,18 @@ function fakeStremio(
   answer: Record<string, () => unknown> = {},
 ) {
   const state = { collection: structuredClone(collection), writes: 0 };
-  const respond = (input: string | URL, init?: RequestInit): Response => {
-    const url = String(input);
+  const respond = (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Response => {
+    const url = urlOf(input);
     const method = url.split("/api/")[1];
     const override = answer[method] as (() => unknown) | undefined;
     if (override) return Response.json(override());
-    const body = JSON.parse(init?.body as string) as {
-      authKey: string;
-      addons?: StremioAddon[];
-    };
+    if (typeof init?.body !== "string") {
+      throw new Error(`no JSON body for ${url}`);
+    }
+    const body = stremioRequest.parse(JSON.parse(init.body));
     assert.equal(body.authKey, KEY);
     if (method === "addonCollectionGet") {
       return Response.json({ result: { addons: state.collection } });
@@ -67,8 +90,8 @@ function fakeStremio(
     }
     throw new Error(`unexpected request ${url}`);
   };
-  const fetchImpl = ((input: string | URL, init?: RequestInit) =>
-    Promise.resolve(respond(input, init))) as typeof fetch;
+  const fetchImpl: typeof fetch = (input, init) =>
+    Promise.resolve(respond(input, init));
   return { state, fetchImpl };
 }
 
@@ -190,12 +213,12 @@ describe("updating the installed Stremlist", () => {
   test("counts an accepted write when only the check gets no answer", async () => {
     const { state, fetchImpl } = fakeStremio([cinemeta, stremlist("Old")]);
     let reads = 0;
-    const checkDown = ((input: string | URL, init?: RequestInit) => {
-      if (String(input).endsWith("/addonCollectionGet") && ++reads === 2) {
+    const checkDown: typeof fetch = (input, init) => {
+      if (urlOf(input).endsWith("/addonCollectionGet") && ++reads === 2) {
         return Promise.resolve(new Response("busy", { status: 503 }));
       }
       return fetchImpl(input, init);
-    }) as typeof fetch;
+    };
     assert.equal(
       await updateInstalledStremlist(
         KEY,
@@ -220,6 +243,38 @@ describe("installing Stremlist again", () => {
     const { state, fetchImpl } = fakeStremio([cinemeta, stremlist("Old")]);
     await installStremlist(KEY, ADDON_URL, manifest("Renamed"), fetchImpl);
     assert.equal(state.writes, 0);
+  });
+});
+
+describe("reading library items", () => {
+  test("reads null or odd state fields as absent", async () => {
+    // Stremio sends `null` for a Title that was added but never played.
+    const library = answering({
+      result: [
+        {
+          _id: "tt0111161",
+          type: "movie",
+          _mtime: null,
+          state: { video_id: null, watched: null, lastWatched: null },
+        },
+        { _id: "tt0944947", type: "series", state: { timeWatched: "12" } },
+        { _id: "tt0068646", type: "movie", state: null },
+      ],
+    });
+    assert.deepEqual(await getLibraryItems(KEY, ["tt0111161"], library), [
+      {
+        _id: "tt0111161",
+        type: "movie",
+        _mtime: undefined,
+        state: {
+          video_id: undefined,
+          watched: undefined,
+          lastWatched: undefined,
+        },
+      },
+      { _id: "tt0944947", type: "series", state: { timeWatched: undefined } },
+      { _id: "tt0068646", type: "movie", state: undefined },
+    ]);
   });
 });
 

@@ -120,12 +120,18 @@ From repository root:
 
 ```bash
 bun run build
-bun run typecheck
-bun run lint
+bun run typecheck   # bun check, TypeScript 7, every project in tsconfig.json
+bun run lint        # vp check: Oxfmt and type-aware Oxlint
 bun run test
-bun run format
-bun run format:check
+bun run fix         # vp check --fix
+bun run knip
 ```
+
+Lint and format rules live in the root [`vite.config.ts`](vite.config.ts) ([Vite+](https://viteplus.dev/guide/lint)). It enables the
+[React Compiler rules](https://react.dev/reference/eslint-plugin-react-hooks) for the frontend and a vendored copy of
+[anti-slop](tools/oxlint/anti-slop/UPSTREAM.md). Do not add disable comments: fix the code, or change the policy in
+`vite.config.ts` with a reason. The frontend builds with the React Compiler, and the build fails if it is not active.
+The pre-commit hook in `.vite-hooks/pre-commit` runs `vp staged` on staged files. `bun install` enables it through `vp config`.
 
 ### Remote cache
 
@@ -223,7 +229,7 @@ supabase start
 bun run generate:types
 ```
 
-This writes `packages/shared/src/database.types.ts` and formats it with Prettier. Do not edit that file by hand. The E2E job in CI runs the same command on a fresh local stack and fails when the committed file is different. CI uses the Supabase CLI version that `.github/workflows/ci.yml` pins. Another CLI version can give a different result.
+This writes `packages/shared/src/database.types.ts` and formats it with Oxfmt. Do not edit that file by hand. The E2E job in CI runs the same command on a fresh local stack and fails when the committed file is different. CI uses the Supabase CLI version that `.github/workflows/ci.yml` pins. Another CLI version can give a different result.
 
 Code imports the schema from `@stremlist/shared/database`. That module adds what the generator cannot know, for example SQL function arguments that accept `NULL`.
 

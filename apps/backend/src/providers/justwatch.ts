@@ -1,4 +1,5 @@
 import { asImdbId } from "@stremlist/shared/constants";
+import { z } from "zod";
 import {
   justwatchQuery,
   justwatchRecheckStrategy,
@@ -67,34 +68,57 @@ const LIST_QUERY = `
   }
 `;
 
-interface JustwatchTitleNode {
-  id: string;
-  objectType?: string | null;
-  content?: {
-    title?: string | null;
-    originalReleaseYear?: number | null;
-    externalIds?: { imdbId?: string | null; tmdbId?: string | null } | null;
-  } | null;
-}
+const justwatchTitleNodeSchema = z.object({
+  id: z.string(),
+  objectType: z.string().nullish(),
+  content: z
+    .object({
+      title: z.string().nullish(),
+      originalReleaseYear: z.number().nullish(),
+      externalIds: z
+        .object({
+          imdbId: z.string().nullish(),
+          tmdbId: z.string().nullish(),
+        })
+        .nullish(),
+    })
+    .nullish(),
+});
+type JustwatchTitleNode = z.infer<typeof justwatchTitleNodeSchema>;
 
-interface JustwatchList {
-  __typename?: string;
-  name?: string | null;
-  content?: { name?: string | null } | null;
-  titles?: {
-    pageInfo?: { hasNextPage?: boolean; endCursor?: string | null };
-    edges?: ({ node?: JustwatchTitleNode | null } | null)[];
-  } | null;
-}
+const justwatchListSchema = z.object({
+  __typename: z.string().optional(),
+  name: z.string().nullish(),
+  content: z.object({ name: z.string().nullish() }).nullish(),
+  titles: z
+    .object({
+      pageInfo: z
+        .object({
+          hasNextPage: z.boolean().optional(),
+          endCursor: z.string().nullish(),
+        })
+        .optional(),
+      edges: z
+        .array(
+          z.object({ node: justwatchTitleNodeSchema.nullish() }).nullable(),
+        )
+        .optional(),
+    })
+    .nullish(),
+});
+type JustwatchList = z.infer<typeof justwatchListSchema>;
+
+const listPageSchema = z.object({ node: justwatchListSchema.nullish() });
 
 async function fetchListPage(
   id: string,
   first: number,
   after: string | null,
 ): Promise<JustwatchList> {
-  const json = await justwatchQuery<{ node?: JustwatchList | null }>(
+  const json = await justwatchQuery(
     LIST_QUERY,
     { id, country: COUNTRY, language: LANGUAGE, first, after },
+    listPageSchema,
   );
   const node = json.data?.node;
   if (node?.__typename === "GenericTitleList" && node.titles) return node;

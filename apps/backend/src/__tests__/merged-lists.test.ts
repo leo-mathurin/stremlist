@@ -2,24 +2,7 @@ import type { TitleType } from "@stremlist/shared/constants";
 import type { Tables } from "@stremlist/shared/database";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
-import type { ConfigList, StremioMeta } from "@stremlist/shared/stremio.types";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("../lib/supabase", async () => {
-  return await import("./helpers/mock-supabase.js");
-});
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-vi.mock("../lib/r2", async () => {
-  return await import("./helpers/mock-r2.js");
-});
-vi.mock("../lib/background", () => ({ scheduleBackgroundTask: vi.fn() }));
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
-
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import app from "../index.js";
 import type { SourceEntry } from "../providers/types";
 import { SourceUnavailableError } from "../providers/types";
@@ -39,6 +22,31 @@ import {
   useFakeProvider,
 } from "./helpers/mock-registry.js";
 import { callRpc, db, resetRpc, supabase } from "./helpers/mock-supabase.js";
+import {
+  accountIdBody,
+  configBody,
+  errorBody,
+  metaBody,
+  metasBody,
+  mustString,
+  readJson,
+  stremioManifest,
+} from "./helpers/json.js";
+
+vi.mock("../lib/supabase", async () => {
+  return await import("./helpers/mock-supabase.js");
+});
+vi.mock("../services/list-cache", async () => {
+  return await import("./helpers/mock-list-cache.js");
+});
+vi.mock("../providers/registry", async () => {
+  return await import("./helpers/mock-registry.js");
+});
+vi.mock("../lib/r2", async () => {
+  return await import("./helpers/mock-r2.js");
+});
+vi.mock("../lib/background", () => ({ scheduleBackgroundTask: vi.fn() }));
+vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 
 const [LIST_1] = LIST_IDS;
 const TRAKT_WATCHLIST: ListSource = {
@@ -120,7 +128,7 @@ async function catalog(
   );
   return {
     status: res.status,
-    body: (await res.json()) as { metas: StremioMeta[] },
+    body: await readJson(res, metasBody),
   };
 }
 
@@ -258,18 +266,18 @@ describe("merged Catalog", () => {
     expect(body.metas).toEqual([]);
 
     const manifest = await app.request("/ur12345678/manifest.json");
-    const json = (await manifest.json()) as { catalogs: unknown[] };
+    const json = await readJson(manifest, stremioManifest);
     expect(json.catalogs).toEqual([]);
   });
 
   it("finds a Title of a merged List for the meta route, from the cache only", async () => {
     const [, second] = seedMergedList();
     cache.seed(second, [
-      { ...movie("tt9"), addedAt: "2020-01-01T00:00:00.000Z" } as StremioMeta,
+      { ...movie("tt9"), addedAt: "2020-01-01T00:00:00.000Z" },
     ]);
 
     const res = await app.request(`/${accountId}/meta/movie/tt9.json`);
-    const json = (await res.json()) as { meta: StremioMeta | null };
+    const json = await readJson(res, metaBody);
 
     expect(json.meta?.id).toBe("tt9");
     expect(json.meta && "addedAt" in json.meta).toBe(false);
@@ -288,7 +296,7 @@ describe("merged Catalog", () => {
     ]);
 
     const res = await app.request(`/${accountId}/meta/movie/tt9.json`);
-    const json = (await res.json()) as { meta: StremioMeta | null };
+    const json = await readJson(res, metaBody);
 
     expect(json.meta?.description).toBe(
       "A plot.\n\nMore on Simkl: https://simkl.com/movies/9/x",
@@ -304,9 +312,7 @@ describe("merged Catalog", () => {
     seedMergedList();
 
     const res = await app.request(`/${accountId}/refresh`, { method: "POST" });
-    const json = (await res.json()) as { refreshed: number; failed: number };
-
-    expect(json).toMatchObject({ refreshed: 0, failed: 1 });
+    expect(await res.json()).toMatchObject({ refreshed: 0, failed: 1 });
   });
 
   it("drops the cache of a Connection Source list on disconnect", async () => {
@@ -335,9 +341,7 @@ describe("saving merged Lists", () => {
     expect(res.status).toBe(200);
 
     const config = await app.request(`/${accountId}/config`);
-    const json = (await config.json()) as {
-      lists: { mergedSources?: ListSource[] }[];
-    };
+    const json = await readJson(config, configBody);
     // The label names a Source list on the configure page only.
     expect(json.lists[0].mergedSources).toEqual([
       TRAKT_LIST,
@@ -387,7 +391,7 @@ describe("saving merged Lists", () => {
     ]);
 
     expect(res.status).toBe(409);
-    expect(((await res.json()) as { error: string }).error).toBe(
+    expect((await readJson(res, errorBody)).error).toBe(
       "Your lists changed in another window. Reload the page and try again.",
     );
     const [row] = db.getTable("lists");
@@ -405,14 +409,12 @@ describe("saving merged Lists", () => {
     expect(db.getTable("lists")[0].source_label).toBe("Family picks");
 
     const config = await app.request(`/${accountId}/config`);
-    const json = (await config.json()) as {
-      lists: { sourceLabel?: string }[];
-    };
+    const json = await readJson(config, configBody);
     expect(json.lists[0].sourceLabel).toBe("Family picks");
 
     // A client that omits the label keeps it while the first Source list
     // stays the same.
-    const listId = db.getTable("lists")[0].id as string;
+    const listId = mustString(db.getTable("lists")[0].id, "the List ID");
     const kept = await postConfig([
       { ...listBody(JUSTWATCH_LIST, [TRAKT_LIST]), id: listId },
     ]);
@@ -505,7 +507,7 @@ describe("saving merged Lists", () => {
     const res = await postConfig(lists);
 
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { error: string }).error).toBe(error);
+    expect((await readJson(res, errorBody)).error).toBe(error);
     expect(db.getTable("lists")).toEqual([]);
   });
 
@@ -538,7 +540,7 @@ describe("saving merged Lists", () => {
     );
 
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { error: string }).error).toBe(
+    expect((await readJson(res, errorBody)).error).toBe(
       "Trakt lists need your private Addon URL. Upgrade this install first.",
     );
   });
@@ -546,9 +548,10 @@ describe("saving merged Lists", () => {
   it("copies merged Source lists into a private copy", async () => {
     accountId = seedLegacyAccount("ur12345678").id;
     seedMergedList();
-    const legacy = (await (await app.request("/ur12345678/config")).json()) as {
-      lists: ConfigList[];
-    };
+    const legacy = await readJson(
+      await app.request("/ur12345678/config"),
+      configBody,
+    );
 
     // The legacy configure page sends the setup it shows, with its List IDs.
     const res = await app.request("/accounts", {
@@ -557,7 +560,7 @@ describe("saving merged Lists", () => {
       body: JSON.stringify({ lists: legacy.lists }),
     });
     expect(res.status).toBe(200);
-    const { accountId: copyId } = (await res.json()) as { accountId: string };
+    const { accountId: copyId } = await readJson(res, accountIdBody);
 
     const copy = db
       .getTable("lists")

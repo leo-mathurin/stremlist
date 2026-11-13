@@ -15,24 +15,24 @@ The run stopped before its end: the test agent failed at 03:49 UTC during the Si
 
 ## Results
 
-| | 20k | 40k | 100k (Simkl 1/s) |
-| --- | --- | --- | --- |
-| Writes measured | 1,381 | 2,793 | 5,906 |
-| Latency p50 / p95 / max (s), all | 116 / 190 / 1,287 | 108 / 218 / 1,453 | 113 / 1,168 / 1,500 |
-| Latency p50 / p95 / max (s), Trakt and MDBList | about 120 / 177 / 390 | see note | 88-90 / 179 / 343 |
-| Latency p50 / p95 / max (s), Simkl | about 117 / 180 / 397 | see note | 951 / 1,332 / 1,500 |
-| Writes over 5 min | 58 | 104 | 1,410 (Simkl backlog) |
-| Coverage (written / expected) | 1,135 / 1,142 | 2,270 / 2,279 | 4,968 / 5,821 (misses are the Simkl backlog) |
-| Duplicate writes | 0 | 0 | 0 |
-| Cron run p50 / p95 (s) | 14.7 / 22.5 | 33 / 51.5 | 51.3 / 53.1 |
-| Of which reads p95 / sweep p95 / writes p95 (s) | 2.6 / 1.8 / 19.1 | 7.8 / 2.7 / 47.3 | 14.3 / 5.8 / 46.7 |
-| Reads claimed per run p50 / max | 102 / 155 | 205 / 382 | 611 / 1,132 |
-| Due-read lag, oldest unclaimed (s) | 47 | 47 | 47 |
-| Simkl backlog max / oldest | 23 / 16 s | 57 / 75 s | 1,456 / 21.7 min |
-| Postgres connections | 25 | 25 | 25 |
-| Supabase CPU busy | 1.2% (sweep only) | 3.3% | low (the exact figure is lost) |
-| Database size | 35 MB | 58 MB | 126 MB |
-| R2 state objects (p50 / p95 / max size) | 20,000, 90 MB | 40,000, 181 MB | 100,000, 455 MB (3 KB / 13 KB / 42 KB) |
+|                                                 | 20k                   | 40k               | 100k (Simkl 1/s)                             |
+| ----------------------------------------------- | --------------------- | ----------------- | -------------------------------------------- |
+| Writes measured                                 | 1,381                 | 2,793             | 5,906                                        |
+| Latency p50 / p95 / max (s), all                | 116 / 190 / 1,287     | 108 / 218 / 1,453 | 113 / 1,168 / 1,500                          |
+| Latency p50 / p95 / max (s), Trakt and MDBList  | about 120 / 177 / 390 | see note          | 88-90 / 179 / 343                            |
+| Latency p50 / p95 / max (s), Simkl              | about 117 / 180 / 397 | see note          | 951 / 1,332 / 1,500                          |
+| Writes over 5 min                               | 58                    | 104               | 1,410 (Simkl backlog)                        |
+| Coverage (written / expected)                   | 1,135 / 1,142         | 2,270 / 2,279     | 4,968 / 5,821 (misses are the Simkl backlog) |
+| Duplicate writes                                | 0                     | 0                 | 0                                            |
+| Cron run p50 / p95 (s)                          | 14.7 / 22.5           | 33 / 51.5         | 51.3 / 53.1                                  |
+| Of which reads p95 / sweep p95 / writes p95 (s) | 2.6 / 1.8 / 19.1      | 7.8 / 2.7 / 47.3  | 14.3 / 5.8 / 46.7                            |
+| Reads claimed per run p50 / max                 | 102 / 155             | 205 / 382         | 611 / 1,132                                  |
+| Due-read lag, oldest unclaimed (s)              | 47                    | 47                | 47                                           |
+| Simkl backlog max / oldest                      | 23 / 16 s             | 57 / 75 s         | 1,456 / 21.7 min                             |
+| Postgres connections                            | 25                    | 25                | 25                                           |
+| Supabase CPU busy                               | 1.2% (sweep only)     | 3.3%              | low (the exact figure is lost)               |
+| Database size                                   | 35 MB                 | 58 MB             | 126 MB                                       |
+| R2 state objects (p50 / p95 / max size)         | 20,000, 90 MB         | 40,000, 181 MB    | 100,000, 455 MB (3 KB / 13 KB / 42 KB)       |
 
 Notes:
 
@@ -43,15 +43,15 @@ Notes:
 
 ### Reads per play (planner replay)
 
-| Play | Plays | Stremio reads per play |
-| --- | --- | --- |
-| Movie, watched | 6,819 | 3.84 |
-| Episode, watched | 4,463 | 3.81 |
-| Movie, watched after a resume | 1,719 | 6.74 |
-| Episode, watched after a resume | 1,164 | 9.65 |
-| Movie, abandoned | 3,497 | 9.23 |
-| Episode, abandoned | 2,338 | 8.45 |
-| All | | 5.9 |
+| Play                            | Plays | Stremio reads per play |
+| ------------------------------- | ----- | ---------------------- |
+| Movie, watched                  | 6,819 | 3.84                   |
+| Episode, watched                | 4,463 | 3.81                   |
+| Movie, watched after a resume   | 1,719 | 6.74                   |
+| Episode, watched after a resume | 1,164 | 9.65                   |
+| Movie, abandoned                | 3,497 | 9.23                   |
+| Episode, abandoned              | 2,338 | 8.45                   |
+| All                             |       | 5.9                    |
 
 Abandoned plays cost the most, because the rule waits 10 minutes without progress before it slows down. Latency of the planner alone (perfect network): p50 97 s, p95 145 s.
 
@@ -71,15 +71,15 @@ Abandoned plays cost the most, because the rule waits 10 minutes without progres
 
 Measured Vercel use per run, extrapolated to a month with the workload model.
 
-| | 20k | 40k |
-| --- | --- | --- |
-| Vercel Active CPU | 4 h, 0.57 $ | 9.4 h, 1.33 $ |
-| Vercel Provisioned Memory | 128 GB-h, 1.47 $ | 287 GB-h, 3.28 $ |
-| Vercel invocations | 352k, 0.21 $ | 664k, 0.40 $ |
-| **Vercel total** | **2.25 $/month** | **5.01 $/month** |
-| R2 (Class A / Class B / storage) | 526k / 3.0M / 0.09 GB: 0 $ after the free tier | 1.35M / 6.0M / 0.18 GB: 1.55 $ |
-| Supabase database size | 35 MB | 58 MB |
-| Supabase egress (projected, see below) | 8.9 GB/month | 16.2 GB/month |
+|                                        | 20k                                            | 40k                            |
+| -------------------------------------- | ---------------------------------------------- | ------------------------------ |
+| Vercel Active CPU                      | 4 h, 0.57 $                                    | 9.4 h, 1.33 $                  |
+| Vercel Provisioned Memory              | 128 GB-h, 1.47 $                               | 287 GB-h, 3.28 $               |
+| Vercel invocations                     | 352k, 0.21 $                                   | 664k, 0.40 $                   |
+| **Vercel total**                       | **2.25 $/month**                               | **5.01 $/month**               |
+| R2 (Class A / Class B / storage)       | 526k / 3.0M / 0.09 GB: 0 $ after the free tier | 1.35M / 6.0M / 0.18 GB: 1.55 $ |
+| Supabase database size                 | 35 MB                                          | 58 MB                          |
+| Supabase egress (projected, see below) | 8.9 GB/month                                   | 16.2 GB/month                  |
 
 The 100k cost extrapolation was not done. Memory is the largest Vercel share: the cron instance waits on the network for most of its run. At 100k it runs for most of each minute, so expect roughly 2.5 times the 40k figure.
 

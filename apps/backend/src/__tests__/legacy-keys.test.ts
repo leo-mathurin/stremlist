@@ -1,19 +1,21 @@
-import type {
-  StremioManifest,
-  StremioMeta,
-} from "@stremlist/shared/stremio.types";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
-
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import app from "../index.js";
 import { movie, seedLegacyAccount, seedList } from "./helpers/fixtures.js";
 import { cache } from "./helpers/mock-list-cache.js";
 import { resetProviders } from "./helpers/mock-registry.js";
 import { db, resetRpc, supabase } from "./helpers/mock-supabase.js";
+import {
+  configBody,
+  metaBody,
+  metasBody,
+  readJson,
+  stremioManifest,
+} from "./helpers/json.js";
+
+vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
+vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 
 // Every Addon URL key that a v1 install can have. v1 served any key until
 // 2026-09-01, then `ur` + 4 or more digits and `p.` handles. Production
@@ -66,7 +68,7 @@ describe.each(LEGACY_KEYS)("a v1 install keyed by %s", (_label, key) => {
     const res = await app.request(path("/manifest.json"));
 
     expect(res.status).toBe(200);
-    const value = (await res.json()) as StremioManifest;
+    const value = await readJson(res, stremioManifest);
     expect(value.id).toBe(`com.stremlist.${key}`);
     expect(value.behaviorHints.configurationRequired).toBe(false);
     expect(value.catalogs.map((catalog) => catalog.id)).toEqual([
@@ -83,7 +85,7 @@ describe.each(LEGACY_KEYS)("a v1 install keyed by %s", (_label, key) => {
     );
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { metas: StremioMeta[] };
+    const body = await readJson(res, metasBody);
     expect(body.metas.map((meta) => meta.id)).toEqual([SHAWSHANK.id]);
   });
 
@@ -93,7 +95,7 @@ describe.each(LEGACY_KEYS)("a v1 install keyed by %s", (_label, key) => {
     const res = await app.request(path(`/meta/movie/${SHAWSHANK.id}.json`));
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { meta: StremioMeta | null };
+    const body = await readJson(res, metaBody);
     expect(body.meta?.id).toBe(SHAWSHANK.id);
   });
 
@@ -121,11 +123,7 @@ describe.each(LEGACY_KEYS)("a v1 install keyed by %s", (_label, key) => {
     const res = await app.request(path("/config"));
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      access: string;
-      accountId: string | null;
-      lists: { sourceRef: string }[];
-    };
+    const body = await readJson(res, configBody);
     expect(body).toMatchObject({ access: "legacy", accountId: null });
     expect(body.lists.map((list) => list.sourceRef)).toEqual([key]);
   });
@@ -156,7 +154,7 @@ describe("the first manifest request of an install that never saved", () => {
       const res = await app.request(`/${key}/manifest.json`);
 
       expect(res.status).toBe(200);
-      const value = (await res.json()) as StremioManifest;
+      const value = await readJson(res, stremioManifest);
       expect(value.behaviorHints.configurationRequired).toBe(true);
       expect(db.getTable("accounts")).toEqual([]);
     },
@@ -174,7 +172,7 @@ describe.each(JUNK_KEYS)("the junk key %j", (key) => {
     const res = await app.request(path("/manifest.json"));
 
     expect(res.status).toBe(404);
-    const value = (await res.json()) as StremioManifest;
+    const value = await readJson(res, stremioManifest);
     expect(value.behaviorHints.configurationRequired).toBe(true);
     expect(from).not.toHaveBeenCalled();
     expect(db.getTable("accounts")).toHaveLength(1);

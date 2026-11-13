@@ -17,7 +17,8 @@ import { startFixtureBackend } from "../helpers/fixture-backend.js";
 import { configureUrl } from "../helpers/configure.js";
 import { routePageTo } from "../helpers/page-backend.js";
 import { BACKEND_URL } from "../env.js";
-import type { FakeStremio } from "../helpers/watch-fixtures.js";
+import { type FakeStremio, isFakeStremio } from "../helpers/fake-stremio.js";
+import { isRecord, optional, parseJson, parsed } from "../helpers/json.js";
 
 // Watch tracking (ADR 0003) from the request that Stremio sends before a play
 // to the write on Trakt and Simkl. The real backend, database and R2 store
@@ -41,7 +42,70 @@ function writeStremio(state: FakeStremio): void {
 }
 
 function readStremio(): FakeStremio {
-  return JSON.parse(readFileSync(stremioFile, "utf8")) as FakeStremio;
+  return parseJson(readFileSync(stremioFile, "utf8"), isFakeStremio, "Stremio");
+}
+
+/** The names of the resources of an installed manifest. */
+function resourceNames(manifest: unknown): unknown[] {
+  if (!isRecord(manifest) || !Array.isArray(manifest.resources)) return [];
+  return manifest.resources.map((resource: unknown) =>
+    isRecord(resource) ? resource.name : undefined,
+  );
+}
+
+function isWatchStatus(value: unknown): value is WatchTrackingStatus {
+  return (
+    isRecord(value) &&
+    typeof value.stremioLinked === "boolean" &&
+    Array.isArray(value.destinations) &&
+    value.destinations.every(isRecord)
+  );
+}
+
+/** The answer of `PUT /:accountId/watch-tracking`. */
+function isWatchUpdate(
+  value: unknown,
+): value is { status: WatchTrackingStatus; stremio: unknown } {
+  return isRecord(value) && isWatchStatus(value.status) && "stremio" in value;
+}
+
+/** A record whose `keys` are numbers. */
+const counts = (keys: string[]) => (value: unknown) =>
+  isRecord(value) && keys.every((key) => typeof value[key] === "number");
+
+function isCronReport(value: unknown): value is {
+  reads?: { detected: number };
+  sweep?: { accounts: number; detected: number };
+  writes?: { sent: number };
+  simkl?: { sent: number };
+} {
+  return (
+    isRecord(value) &&
+    optional(value.reads, counts(["detected"])) &&
+    optional(value.sweep, counts(["accounts", "detected"])) &&
+    optional(value.writes, counts(["sent"])) &&
+    optional(value.simkl, counts(["sent"]))
+  );
+}
+
+/** Every item of `value` is a record that `is` accepts. */
+const everyRecord = (
+  value: unknown,
+  is: (item: Record<string, unknown>) => boolean,
+) => Array.isArray(value) && value.every((item) => isRecord(item) && is(item));
+
+/** A Trakt watched write of episodes. */
+function isShowsWrite(value: unknown): value is {
+  shows: { seasons: { episodes: { number: number }[] }[] }[];
+} {
+  return (
+    isRecord(value) &&
+    everyRecord(value.shows, (show) =>
+      everyRecord(show.seasons, (season) =>
+        everyRecord(season.episodes, counts(["number"])),
+      ),
+    )
+  );
 }
 
 /** Stremio's `watched` field with these episodes of season 1 watched. */
@@ -84,12 +148,13 @@ async function call(
   path: string,
   init: RequestInit & { json?: unknown } = {},
 ): Promise<{ status: number; body: unknown }> {
+  const headers = new Headers(init.headers);
+  if (init.json !== undefined && !headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
   const response = await fetch(`${backend.url}${path}`, {
     ...init,
-    headers: {
-      ...(init.json !== undefined && { "content-type": "application/json" }),
-      ...init.headers,
-    },
+    headers,
     body: init.json === undefined ? init.body : JSON.stringify(init.json),
   });
   const text = await response.text();
@@ -101,12 +166,7 @@ async function runCron() {
     headers: { authorization: `Bearer ${CRON_SECRET}` },
   });
   expect(run.status).toBe(200);
-  return run.body as {
-    reads?: { detected: number };
-    sweep?: { accounts: number; detected: number };
-    writes?: { sent: number };
-    simkl?: { sent: number };
-  };
+  return parsed(run.body, isCronReport, "cron report");
 }
 
 /** The watched writes the backend sent to a Provider host. */
@@ -163,19 +223,17 @@ test(
       json: { destinations: ["trakt", "simkl"] },
     });
     expect(on.status).toBe(200);
-    const { status, stremio } = on.body as {
-      status: WatchTrackingStatus;
-      stremio: string;
-    };
+    const { status, stremio } = parsed(
+      on.body,
+      isWatchUpdate,
+      "watch tracking update",
+    );
     expect(stremio).toBe("updated");
     expect(status.destinations.map((d) => [d.provider, d.enabled])).toEqual([
       ["trakt", true],
       ["simkl", true],
     ]);
-    const installed = readStremio().addons[0].manifest as {
-      resources: { name: string }[];
-    };
-    expect(installed.resources.map((r) => r.name)).toEqual(
+    expect(resourceNames(readStremio().addons[0].manifest)).toEqual(
       expect.arrayContaining(["stream", "player", "library"]),
     );
     expect((await getWatchRows(accountId)).tracking?.baseline_at).toBeTruthy();
@@ -225,7 +283,8 @@ test(
     expect(watchedWrites("api.trakt.tv")).toHaveLength(1);
 
     const after = await call(`/${accountId}/watch-tracking`);
-    const trakt = (after.body as WatchTrackingStatus).destinations[0];
+    const trakt = parsed(after.body, isWatchStatus, "watch tracking status")
+      .destinations[0];
     expect(trakt).toMatchObject({
       provider: "trakt",
       lastTitle: { imdbId: MOVIE, type: "movie" },
@@ -265,9 +324,9 @@ test(
     // The sweep runs after the writes: what it finds goes at the next run.
     await runCron();
     // The episodes of one series, marked together, go in one request.
-    const [sent, ...more] = watchedWrites("api.trakt.tv") as {
-      shows: { seasons: { episodes: { number: number }[] }[] }[];
-    }[];
+    const [sent, ...more] = watchedWrites("api.trakt.tv").map((write) =>
+      parsed(write, isShowsWrite, "Trakt watched write"),
+    );
     expect(more).toEqual([]);
     expect(sent.shows).toHaveLength(1);
     expect(sent.shows[0]).toMatchObject({ ids: { imdb: SHOW } });
@@ -287,7 +346,8 @@ test(
       json: { destinations: ["trakt"] },
     });
     expect(
-      (paused.body as { status: WatchTrackingStatus }).status.destinations[0],
+      parsed(paused.body, isWatchUpdate, "watch tracking update").status
+        .destinations[0],
     ).toMatchObject({ enabled: true, paused: true });
 
     const off = await call(`/${accountId}/watch-tracking`, {

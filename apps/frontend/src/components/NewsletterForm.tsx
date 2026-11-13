@@ -52,7 +52,10 @@ export default function NewsletterForm() {
         Get notified about new features and service announcements.
       </p>
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
+        <form
+          onSubmit={(event) => void form.handleSubmit(onSubmit)(event)}
+          noValidate
+        >
           <div className="flex gap-2 max-w-md mx-auto">
             <FormField
               control={form.control}

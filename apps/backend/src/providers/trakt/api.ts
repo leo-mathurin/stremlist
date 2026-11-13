@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   ensureOk,
   limitersPerUser,
@@ -40,7 +41,7 @@ export function nonEmpty(value: string | null | undefined): string | null {
 }
 
 /** Headers of every Trakt API call; the token goes in `bearer`. */
-export function traktHeaders(): Record<string, string> {
+export function traktHeaders() {
   const clientId = traktClient.clientId();
   if (!clientId) {
     throw new SourceUnavailableError("disabled", "Trakt is not configured");
@@ -138,15 +139,29 @@ async function traktGet(
 }
 
 /** GET and parse JSON. A 204 (Trakt's answer for some missing records) is null. */
-export async function traktGetJson<T>(
+export async function traktGetJson(
   path: string,
   connection: ConnectionAccess | null,
   options: TraktReadOptions = {},
-): Promise<T | null> {
+): Promise<unknown> {
   const response = await traktGet(path, connection, options);
   if (response.status === 204) return null;
-  const text = await response.text();
-  return text ? (JSON.parse(text) as T) : null;
+  return parseJsonText(await response.text());
+}
+
+/** traktGetJson() parsed with `schema`. */
+export async function traktGetParsed<T>(
+  path: string,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  connection: ConnectionAccess | null,
+  options: TraktReadOptions = {},
+): Promise<T | null> {
+  return schema.nullable().parse(await traktGetJson(path, connection, options));
+}
+
+/** The parsed body, or null when it is empty. */
+function parseJsonText(text: string): unknown {
+  return text ? JSON.parse(text) : null;
 }
 
 interface PaginateOptions extends TraktReadOptions {
@@ -162,6 +177,7 @@ interface PaginateOptions extends TraktReadOptions {
  */
 export async function traktGetAll<T>(
   path: string,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
   connection: ConnectionAccess | null,
   options: PaginateOptions,
 ): Promise<PagedRead<T>> {
@@ -176,9 +192,9 @@ export async function traktGetAll<T>(
       },
     });
     if (response.status === 204) break;
-    const data = (await response.json()) as T[];
+    const data: unknown = await response.json();
     if (!Array.isArray(data) || data.length === 0) break;
-    items.push(...data);
+    items.push(...z.array(schema).parse(data));
     const pageCount = Number(response.headers.get("X-Pagination-Page-Count"));
     const lastPage = !Number.isFinite(pageCount) || page >= pageCount;
     if (items.length >= options.maxItems) {
@@ -206,11 +222,11 @@ export function toSourceError(error: unknown): unknown {
  * POST a change through the Connection (1 write per second per user). Throws HttpError
  * on non-2xx (420: account limit reached, 426: Trakt VIP only).
  */
-export async function traktPost<T>(
+export async function traktPost(
   path: string,
   connection: ConnectionAccess,
   body: unknown,
-): Promise<T | null> {
+): Promise<unknown> {
   const token = await connection.getAccessToken();
   const url = `${TRAKT_API}${path}`;
   const response = await ensureOk(
@@ -223,6 +239,5 @@ export async function traktPost<T>(
     }),
     url,
   );
-  const text = await response.text();
-  return text ? (JSON.parse(text) as T) : null;
+  return parseJsonText(await response.text());
 }

@@ -3,8 +3,9 @@
  * `await vi.hoisted(() => import(…))` for their `vi.mock` factories, so this
  * module must not import the app.
  */
-import type { Mock } from "vitest";
-import { vi } from "vitest";
+import { vi } from "vite-plus/test";
+import type { scheduleBackgroundTask } from "../../lib/background";
+import type { prewarmLists } from "../../services/list-prewarm";
 import { supabase } from "./mock-supabase.js";
 
 interface RpcResult {
@@ -21,10 +22,8 @@ export const rpcMocks = {
 
 export const supabaseMocks = { supabase: { ...supabase, rpc: rpcMocks.rpc } };
 
-export const backgroundMocks: { scheduleBackgroundTask: Mock } = {
-  scheduleBackgroundTask: vi.fn(),
+export const backgroundMocks = {
+  scheduleBackgroundTask: vi.fn<typeof scheduleBackgroundTask>(),
 };
 
-export const prewarmMocks: { prewarmLists: Mock } = {
-  prewarmLists: vi.fn(),
-};
+export const prewarmMocks = { prewarmLists: vi.fn<typeof prewarmLists>() };

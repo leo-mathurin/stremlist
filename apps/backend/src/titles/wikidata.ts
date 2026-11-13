@@ -1,4 +1,5 @@
 import { IMDB_TITLE_ID_PATTERN } from "@stremlist/shared/constants";
+import { z } from "zod";
 import { providerFetchJson, RateLimiter } from "../providers/http";
 import type { ResolverStrategy, SourceEntry } from "../providers/types";
 
@@ -12,11 +13,15 @@ const wikidataLimiter = new RateLimiter(2, 1000);
 
 const PROPERTY_PATTERN = /^P\d+$/;
 
-interface SparqlResponse {
-  results?: {
-    bindings?: Record<string, { value?: string } | undefined>[];
-  };
-}
+const sparqlResponseSchema = z.object({
+  results: z
+    .object({
+      bindings: z
+        .array(z.record(z.object({ value: z.string().optional() }).optional()))
+        .optional(),
+    })
+    .optional(),
+});
 
 /**
  * Map external IDs of one Wikidata property (for example P10100, SensCritique
@@ -43,19 +48,17 @@ export async function wikidataImdbIds(
   ?item wdt:${property} ?external ;
         wdt:${IMDB_PROPERTY} ?imdb .
 }`;
-    const { data: json } = await providerFetchJson<SparqlResponse>(
-      WIKIDATA_SPARQL,
-      {
-        method: "POST",
-        headers: {
-          Accept: "application/sparql-results+json",
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({ query }).toString(),
-        limiter: wikidataLimiter,
-        timeoutMs: 30_000,
+    const { data } = await providerFetchJson(WIKIDATA_SPARQL, {
+      method: "POST",
+      headers: {
+        Accept: "application/sparql-results+json",
+        "Content-Type": "application/x-www-form-urlencoded",
       },
-    );
+      body: new URLSearchParams({ query }).toString(),
+      limiter: wikidataLimiter,
+      timeoutMs: 30_000,
+    });
+    const json = sparqlResponseSchema.parse(data);
     for (const binding of json.results?.bindings ?? []) {
       const external = binding.external?.value;
       const imdbId = binding.imdb?.value;

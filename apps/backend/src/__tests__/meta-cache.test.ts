@@ -1,15 +1,8 @@
-import type {
-  StremioManifest,
-  StremioMeta,
-} from "@stremlist/shared/stremio.types";
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
+import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
+import { z } from "zod";
 
 import app from "../index.js";
-
-vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
-
 import * as listsSvc from "../services/lists";
 import {
   movie,
@@ -20,6 +13,14 @@ import {
 } from "./helpers/fixtures.js";
 import { cache } from "./helpers/mock-list-cache.js";
 import { db, resetRpc } from "./helpers/mock-supabase.js";
+import { readJson, stremioManifest } from "./helpers/json.js";
+
+vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
+
+/** A meta answer, kept whole: series metas carry more fields. */
+const anyMetaBody = z.object({ meta: z.record(z.unknown()).nullable() });
 
 const OWNER = "ur88409068";
 const UUID_1 = "11111111-1111-4111-8111-111111111111";
@@ -52,7 +53,7 @@ function seedWatchlist(metas?: StremioMeta[], cachedAt?: Date) {
 async function meta(key = OWNER, path = "movie/tt0111161") {
   const res = await app.request(`/${key}/meta/${path}.json`);
   expect(res.status).toBe(200);
-  return (await res.json()) as { meta: Record<string, unknown> | null };
+  return readJson(res, anyMetaBody);
 }
 
 beforeEach(() => {
@@ -81,7 +82,7 @@ describe("meta route serves from cache only", () => {
       seedWatchlist();
 
       const res = await app.request(path);
-      const manifest = (await res.json()) as StremioManifest;
+      const manifest = await readJson(res, stremioManifest);
 
       expect(res.status).toBe(200);
       expect(manifest.resources).toEqual([

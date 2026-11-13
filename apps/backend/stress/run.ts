@@ -12,15 +12,17 @@ import {
 } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { parseArgs } from "node:util";
+import { z } from "zod";
 import { encryptSecret } from "../src/lib/crypto";
 import {
   evaluate,
   formatScenario,
   formatStorage,
   readSummary,
+  serverStatsSchema,
   totals,
 } from "./report";
-import type { Check, Peaks, ScenarioResult, ServerStats } from "./report";
+import type { Check, Peaks, ScenarioResult } from "./report";
 import {
   backendDir,
   bucketUsage,
@@ -210,12 +212,16 @@ async function startServer(
   throw new Error(`The stress server did not start. See ${log}`);
 }
 
-async function serverCall<T>(options: Options, path: string): Promise<T> {
+async function serverCall<T>(
+  options: Options,
+  path: string,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+): Promise<T> {
   const response = await fetch(
     `http://127.0.0.1:${String(options.port)}/__stress/${path}`,
   );
   if (!response.ok) throw new Error(`Stress server ${path} failed`);
-  return (await response.json()) as T;
+  return schema.parse(await response.json());
 }
 
 /** DB connections and container CPU, sampled until stop() is called. */
@@ -268,14 +274,13 @@ function startSampler(stack: Stack) {
 async function runK6(
   name: ScenarioName,
   script: string,
-  env: Record<string, string>,
+  env: ReadonlyMap<string, string>,
 ): Promise<string> {
   const summary = `${outDir}summary-${name}.json`;
   const log = `${outDir}k6-${name}.log`;
   const fd = openSync(log, "a");
   const args = ["run", "--no-color", "-e", `SUMMARY=${summary}`];
-  for (const [key, value] of Object.entries(env))
-    args.push("-e", `${key}=${value}`);
+  for (const [key, value] of env) args.push("-e", `${key}=${value}`);
   args.push(`${stressDir}k6/${script}`);
   const child = spawn(process.env.K6 ?? "k6", args, {
     stdio: ["ignore", fd, fd],
@@ -306,10 +311,9 @@ async function seedTrakt(
       refresh: encryptSecret("stress-refresh"),
     },
   );
-  const setup = JSON.parse(output) as {
-    accounts: string[] | null;
-    trakt: unknown;
-  };
+  const setup = z
+    .object({ accounts: z.array(z.string()).nullish(), trakt: z.unknown() })
+    .parse(JSON.parse(output));
   if (!setup.accounts?.length || !setup.trakt) {
     throw new Error("No private stress Account to connect to Trakt.");
   }
@@ -327,41 +331,47 @@ async function runScenario(
   await startServer(stack, options, name === "stale");
   let traktAccounts: number | undefined;
   let script = "board.js";
-  const env: Record<string, string> = {
-    BASE: `http://127.0.0.1:${String(options.port)}`,
-    TARGETS: targets,
-  };
+  const env = new Map([
+    ["BASE", `http://127.0.0.1:${String(options.port)}`],
+    ["TARGETS", targets],
+  ]);
   if (name === "cold") {
-    Object.assign(env, { MODE: "cold", VUS: String(options.vus) });
+    env.set("MODE", "cold").set("VUS", String(options.vus));
   } else if (name === "warm") {
     const third = Math.max(1, Math.round(options.warmRate / 3));
-    env.MODE = "warm";
-    env.STAGES = JSON.stringify([
-      { target: third, duration: "20s" },
-      { target: third, duration: `${String(options.hold)}s` },
-      { target: Math.round(options.warmRate), duration: "30s" },
-      {
-        target: Math.round(options.warmRate),
-        duration: `${String(options.hold)}s`,
-      },
-    ]);
+    env.set("MODE", "warm");
+    env.set(
+      "STAGES",
+      JSON.stringify([
+        { target: third, duration: "20s" },
+        { target: third, duration: `${String(options.hold)}s` },
+        { target: Math.round(options.warmRate), duration: "30s" },
+        {
+          target: Math.round(options.warmRate),
+          duration: `${String(options.hold)}s`,
+        },
+      ]),
+    );
   } else if (name === "stale") {
     // Long enough for list caches to expire and refresh more than once.
     const target = Math.max(1, Math.round(options.staleRate));
     const hold = Math.round(Math.max(90, options.hold * 2.5));
-    env.MODE = "warm";
-    env.STAGES = JSON.stringify([
-      { target, duration: "20s" },
-      { target, duration: `${String(hold)}s` },
-    ]);
+    env.set("MODE", "warm");
+    env.set(
+      "STAGES",
+      JSON.stringify([
+        { target, duration: "20s" },
+        { target, duration: `${String(hold)}s` },
+      ]),
+    );
   } else {
     const seeded = await seedTrakt(stack);
     traktAccounts = seeded.accounts;
     script = "actions.js";
-    env.ACTIONS = seeded.file;
+    env.set("ACTIONS", seeded.file);
   }
 
-  await serverCall(options, "reset");
+  await serverCall(options, "reset", z.unknown());
   const sampler = startSampler(stack);
   const started = Date.now();
   process.stdout.write(`${SCENARIOS[name]}… `);
@@ -372,9 +382,11 @@ async function runScenario(
     await sampler.stop();
   }
   console.log(`done in ${String(Math.round((Date.now() - started) / 1000))} s`);
-  const serverStats = await serverCall<ServerStats>(options, "stats").catch(
-    () => null,
-  );
+  const serverStats = await serverCall(
+    options,
+    "stats",
+    serverStatsSchema,
+  ).catch(() => null);
   const result: ScenarioResult = {
     name,
     title: SCENARIOS[name].split(":")[0] ?? name,
@@ -454,7 +466,6 @@ async function main(): Promise<number> {
       console.log(`\n${signal}: stopping and cleaning up…`);
       server?.child.kill("SIGTERM");
       // Exit now: the main flow may still wait on a long seed or query.
-      // eslint-disable-next-line n/no-process-exit
       void doCleanup().finally(() => process.exit(130));
     });
   }

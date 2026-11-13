@@ -134,7 +134,7 @@ export default function AddonInstallActions({
           </div>
           <button
             type="button"
-            onClick={handleCopy}
+            onClick={() => void handleCopy()}
             aria-label={copied ? "Addon URL copied" : "Copy Addon URL"}
             className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-white px-3 text-xs font-bold text-ink shadow-xs transition-[background-color,scale] duration-150 hover:bg-cloud active:scale-[0.97]"
           >

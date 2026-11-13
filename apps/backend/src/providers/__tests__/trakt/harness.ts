@@ -1,20 +1,19 @@
 /**
  * The fetch mock and helpers that every Trakt adapter test file shares.
  */
-import { vi } from "vitest";
+import { vi } from "vite-plus/test";
 import { traktProvider } from "../../trakt";
 import type { ConnectionAccess, SourceEntry } from "../../types";
 import {
-  calls as recordedCalls,
+  clearCalls as clearRecordedCalls,
   connection as oauthConnection,
   json as oauthJson,
   stubFetch,
 } from "../oauth-harness";
 export {
-  clearCalls,
-  expectReason,
   required,
   restoreStubs as restoreTraktTest,
+  unavailableReason,
 } from "../oauth-harness";
 
 export interface Call {
@@ -26,17 +25,28 @@ export interface Call {
 
 type Handler = (call: Call) => Response;
 
+/** A JSON response body, as a route answers it. */
+type JsonBody = unknown[] | Record<string, unknown>;
+
 let routes: { match: string; handler: Handler }[] = [];
-export const calls = recordedCalls as unknown as Call[];
+
+/** The fetch calls so far, with their JSON bodies decoded. */
+export const calls: Call[] = [];
+
+/** Forget the calls so far, to check only the ones that follow. */
+export function clearCalls(): void {
+  calls.length = 0;
+  clearRecordedCalls();
+}
 
 /** Route on "METHOD /path" (query ignored). Later routes win. */
 export function route(
   match: string,
-  handler: Handler | Response | object,
+  handler: Handler | Response | JsonBody,
 ): void {
   const fn: Handler =
     typeof handler === "function"
-      ? (handler as Handler)
+      ? handler
       : handler instanceof Response
         ? () => handler.clone()
         : () => json(handler);
@@ -75,7 +85,9 @@ export function resetTraktTest(): void {
   routes = [];
   vi.stubEnv("TRAKT_CLIENT_ID", "client-123");
   vi.stubEnv("TRAKT_CLIENT_SECRET", "");
+  calls.length = 0;
   stubFetch((recorded) => {
+    // Trakt assertions inspect the decoded JSON body.
     const call: Call = {
       ...recorded,
       body:
@@ -83,8 +95,7 @@ export function resetTraktTest(): void {
           ? undefined
           : (JSON.parse(recorded.body) as unknown),
     };
-    // Trakt assertions inspect the decoded JSON body.
-    Object.assign(recorded, { body: call.body });
+    calls.push(call);
     const found = routes.find(
       ({ match }) => match === `${call.method} ${call.url.pathname}`,
     );

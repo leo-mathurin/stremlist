@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { addonManifestUrl, FRONTEND_URL } from "../env.js";
-import { bootstrapLegacy, getConfig } from "../helpers/api.js";
+import { bootstrapLegacy, getConfig, hasAccountId } from "../helpers/api.js";
 import { resetDb } from "../helpers/db.js";
+import { parsed } from "../helpers/json.js";
 import {
   PUBLIC_USER,
   PUBLIC_USER_2,
@@ -41,9 +42,11 @@ test(
       res.url().endsWith("/accounts"),
     );
     await saveButton(page, SAVE_NEW).click();
-    const { accountId } = (await (await created).json()) as {
-      accountId: string;
-    };
+    const { accountId } = parsed(
+      await (await created).json(),
+      hasAccountId,
+      "the save answer",
+    );
     expect(accountId).toMatch(/^sl_[0-9A-Za-z]{22}$/);
     await expect(page).toHaveURL(configureUrl(accountId));
     await expect(

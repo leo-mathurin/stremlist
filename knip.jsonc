@@ -1,6 +1,14 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+  // Vendored Oxlint plugin: kept identical to upstream, helpers included.
+  "ignore": ["tools/oxlint/anti-slop/**"],
   "workspaces": {
+    ".": {
+      // `bun check` is a Bun command, not a binary.
+      "ignoreBinaries": ["check"],
+      // Bun needs the Vite+ core alias as a direct dependency for peer resolution.
+      "ignoreDependencies": ["vite"],
+    },
     "apps/frontend": {
       // Vercel loads the request middleware and the public content function.
       "entry": ["middleware.ts", "api/**/*.ts"],
@@ -25,6 +33,7 @@
         "toolkit/**/*.e2e.ts",
         "helpers/provider-fixtures.ts",
         "helpers/provider-transport.ts",
+        "helpers/watch-fixtures.ts",
       ],
       // Keeps the frontend build in Turbo's dependency graph for browser tests.
       "ignoreDependencies": ["@stremlist/frontend"],

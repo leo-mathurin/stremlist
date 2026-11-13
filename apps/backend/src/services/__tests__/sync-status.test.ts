@@ -1,19 +1,14 @@
 import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type { CatalogData } from "@stremlist/shared/stremio.types";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("../../lib/supabase", async () => {
-  return await import("../../__tests__/helpers/mock-supabase");
-});
-vi.mock("../list-cache", async () => {
-  const cache = await import("../../__tests__/helpers/mock-list-cache");
-  return { ...cache, writeCachedList: vi.fn(cache.writeCachedList) };
-});
-vi.mock("../../providers/registry", async () => {
-  return await import("../../__tests__/helpers/mock-registry");
-});
-
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import {
   movie,
   seedAccount,
@@ -32,6 +27,8 @@ import {
   rpcHandlers,
   supabase,
 } from "../../__tests__/helpers/mock-supabase";
+import { MockQueryBuilder } from "../../__tests__/helpers/supabase/query-builder";
+import type { ProviderAdapter } from "../../providers/types";
 import {
   ConnectionExpiredError,
   SourceUnavailableError,
@@ -47,6 +44,17 @@ import {
 } from "../lists";
 import { sourceCaches } from "../merged-lists";
 import { getListSyncStatuses } from "../sync-status";
+
+vi.mock("../../lib/supabase", async () => {
+  return await import("../../__tests__/helpers/mock-supabase");
+});
+vi.mock("../list-cache", async () => {
+  const cache = await import("../../__tests__/helpers/mock-list-cache");
+  return { ...cache, writeCachedList: vi.fn(cache.writeCachedList) };
+});
+vi.mock("../../providers/registry", async () => {
+  return await import("../../__tests__/helpers/mock-registry");
+});
 
 const HOUR = 60 * 60_000;
 const WATCHLIST_READ = { sourceRef: "me/watchlist" } as const;
@@ -86,22 +94,23 @@ function tryRead(overrides: Partial<TestRead> = {}) {
   return read(overrides).catch(() => undefined);
 }
 
-function useSource(
-  fetchSource: ReturnType<typeof vi.fn>,
-  id: ProviderId = "trakt",
-) {
-  useFakeProvider(
-    fakeAdapter(id, { freshnessMs: 0, fetchSource: fetchSource as never }),
-  );
+type FetchSource = ProviderAdapter["fetchSource"];
+
+function useSource(fetchSource: FetchSource, id: ProviderId = "trakt") {
+  useFakeProvider(fakeAdapter(id, { freshnessMs: 0, fetchSource }));
 }
 
 function entries(...ids: string[]) {
-  return { entries: ids.map((id) => ({ imdbId: id, meta: movie(id) })) };
+  return {
+    entries: ids.map((id) => ({ imdbId: id, meta: movie(id) })),
+    complete: false,
+  };
 }
 
 const serving = (...ids: string[]) =>
-  vi.fn(() => Promise.resolve(entries(...ids)));
-const failing = (error: Error) => vi.fn(() => Promise.reject(error));
+  vi.fn<FetchSource>(() => Promise.resolve(entries(...ids)));
+const failing = (error: Error) =>
+  vi.fn<FetchSource>(() => Promise.reject(error));
 
 /** A second Trakt List, read through the Connection. */
 function seedWatchlist(): string {
@@ -151,11 +160,13 @@ describe("recording refreshes", () => {
 
     await read();
 
+    // A matcher, not a string: `toEqual` checks that the field is one.
+    const anyTime: unknown = expect.any(String);
     expect(await statusOf()).toEqual({
       provider: "trakt",
       sourceRef: "users/leo/lists/horror",
-      lastAttemptAt: expect.any(String) as string,
-      lastSuccessAt: expect.any(String) as string,
+      lastAttemptAt: anyTime,
+      lastSuccessAt: anyTime,
       titleCount: 2,
       problem: null,
       failingSince: null,
@@ -165,7 +176,7 @@ describe("recording refreshes", () => {
   it("keeps the last success when a refresh fails and the cache still serves", async () => {
     useSource(
       vi
-        .fn()
+        .fn<FetchSource>()
         .mockResolvedValueOnce(entries("tt0000001"))
         .mockRejectedValue(new Error("socket hang up")),
     );
@@ -192,7 +203,7 @@ describe("recording refreshes", () => {
   it("keeps the start of a failure run and ends it on the next success", async () => {
     useSource(
       vi
-        .fn()
+        .fn<FetchSource>()
         .mockRejectedValueOnce(new SourceUnavailableError("private", "private"))
         .mockRejectedValueOnce(new SourceUnavailableError("not_found", "gone"))
         .mockResolvedValue(entries()),
@@ -226,7 +237,7 @@ describe("recording refreshes", () => {
   });
 
   it("records a turned-off Provider without reading it", async () => {
-    const fetchSource = vi.fn();
+    const fetchSource = vi.fn<FetchSource>();
     useSource(fetchSource);
     process.env.DISABLED_PROVIDERS = "trakt";
 
@@ -313,11 +324,16 @@ describe("Lists without a recorded status", () => {
   it("still use the cache when the recorded statuses cannot be read", async () => {
     cache.seed(listId, [movie("tt0000001")]);
     const lists = await getAccountLists(accountId);
-    vi.spyOn(supabase, "from").mockReturnValueOnce({
-      select: () => ({
-        in: () => Promise.resolve({ data: null, error: { message: "down" } }),
-      }),
-    } as never);
+    vi.spyOn(supabase, "from").mockImplementationOnce((table) => {
+      const query = new MockQueryBuilder(db, table);
+      vi.spyOn(query, "then").mockImplementation((onfulfilled, onrejected) =>
+        Promise.resolve({ data: null, error: { message: "down" } }).then(
+          onfulfilled,
+          onrejected,
+        ),
+      );
+      return query;
+    });
 
     expect((await getListSyncStatuses(lists)).syncStatus[listId]).toEqual([
       expect.objectContaining({ problem: null, titleCount: 1 }),
@@ -374,7 +390,7 @@ describe("the read after a new authorization", () => {
     const watchlistId = seedWatchlist();
     const first = Promise.withResolvers<ReturnType<typeof entries>>();
     const fetchSource = vi
-      .fn()
+      .fn<FetchSource>()
       .mockReturnValueOnce(first.promise)
       .mockResolvedValue(entries("tt0000001"));
     useSource(fetchSource);
@@ -399,7 +415,7 @@ describe("the read after a new authorization", () => {
   it("does not record a late failure of the older read", async () => {
     const first = Promise.withResolvers<never>();
     const fetchSource = vi
-      .fn()
+      .fn<FetchSource>()
       .mockReturnValueOnce(first.promise)
       .mockResolvedValue(entries("tt0000001"));
     useSource(fetchSource);
@@ -464,7 +480,7 @@ describe("Connections that need to be renewed", () => {
   it("clears the mark when a private Source list reads through the Connection again", async () => {
     useSource(
       vi
-        .fn()
+        .fn<FetchSource>()
         .mockRejectedValueOnce(new ConnectionExpiredError("trakt"))
         .mockResolvedValue(entries("tt0000001")),
     );
@@ -495,7 +511,7 @@ describe("Connections that need to be renewed", () => {
   it("keeps the mark when only a public Source list reads fine", async () => {
     useSource(
       vi
-        .fn()
+        .fn<FetchSource>()
         .mockRejectedValueOnce(new ConnectionExpiredError("trakt"))
         .mockResolvedValue(entries("tt0000001")),
     );

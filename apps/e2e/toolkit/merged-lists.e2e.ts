@@ -22,6 +22,7 @@ import {
   holdToasts,
   imdbUser,
   parseBody,
+  isConfigInput,
   previewOf,
   resolved,
   routeResolve,
@@ -602,7 +603,7 @@ test("a save refused because the Lists changed in another window keeps the merge
       });
       return;
     }
-    const submitted = parseBody<AccountConfigInput>(route);
+    const submitted = parseBody(route, isConfigInput);
     submissions.push(submitted);
     await route.fulfill(
       submissions.length === 1

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { HttpError } from "../http";
 import type {
   ConnectionAccess,
@@ -8,13 +9,21 @@ import type {
 } from "../types";
 import { SourceUnavailableError } from "../types";
 import type { TraktReadOptions } from "./api";
-import { nonEmpty, toSourceError, traktGetAll, traktGetJson } from "./api";
-import type { TraktItem, TraktMedia } from "./entries";
+import {
+  nonEmpty,
+  toSourceError,
+  traktGetAll,
+  traktGetJson,
+  traktGetParsed,
+} from "./api";
+import type { TraktItem } from "./entries";
 import {
   interleave,
   itemToEntry,
   mediaToEntry,
   oldestFirst,
+  traktItemSchema,
+  traktMediaSchema,
   uniqueEntries,
   withAddedAt,
 } from "./entries";
@@ -24,7 +33,8 @@ const MAX_SOURCE_ITEMS = 5000;
 /** Charts and recommendations: one page per kind is plenty. */
 const CHART_ITEMS = 100;
 
-type TraktChart = "trending" | "popular" | "anticipated";
+const TRAKT_CHARTS = ["trending", "popular", "anticipated"] as const;
+type TraktChart = (typeof TRAKT_CHARTS)[number];
 
 /**
  * A Trakt Source list reference, parsed. `user: "me"` reads through the
@@ -50,9 +60,8 @@ const SEGMENT = /^[a-z0-9][a-z0-9._-]*$/i;
 
 export function parseTraktRef(ref: string): TraktSource | null {
   const parts = ref.split("/");
-  if (parts.length === 1 && ref in CHARTS) {
-    return { kind: "chart", chart: ref as TraktChart };
-  }
+  const chart = TRAKT_CHARTS.find((name) => name === ref);
+  if (chart) return { kind: "chart", chart };
   if (parts[0] === "me") {
     if (parts.length === 2) {
       switch (parts[1]) {
@@ -157,10 +166,12 @@ async function listedEntries(
   connection: ConnectionAccess | null,
   options: TraktReadOptions,
 ): Promise<SourceSnapshot> {
-  const { items, complete } = await traktGetAll<TraktItem>(path, connection, {
-    ...options,
-    maxItems: MAX_SOURCE_ITEMS,
-  });
+  const { items, complete } = await traktGetAll(
+    path,
+    traktItemSchema,
+    connection,
+    { ...options, maxItems: MAX_SOURCE_ITEMS },
+  );
   return newestRows(items, (item) => item.listed_at, complete);
 }
 
@@ -181,6 +192,9 @@ function newestRows(
   };
 }
 
+const rankedRowSchema = traktItemSchema.merge(traktMediaSchema);
+type RankedRow = z.infer<typeof rankedRowSchema>;
+
 /** Movies and shows interleaved, each in Trakt's rank order. */
 async function rankedEntries(
   source: TraktSource & { kind: "chart" | "recommendations" },
@@ -188,17 +202,18 @@ async function rankedEntries(
   options: TraktReadOptions,
 ): Promise<SourceEntry[]> {
   const read = (kind: "movies" | "shows") =>
-    traktGetJson<(TraktItem & TraktMedia)[]>(
+    traktGetParsed(
       source.kind === "chart"
         ? `/${kind}/${source.chart}?limit=${CHART_ITEMS}`
         : `/recommendations/${kind}?limit=${CHART_ITEMS}`,
+      z.array(rankedRowSchema),
       connection,
       options,
     );
   const [movies, shows] = await Promise.all([read("movies"), read("shows")]);
   // Popular rows and recommendations are the media itself; trending and
   // anticipated rows wrap it.
-  const toEntry = (row: TraktItem & TraktMedia, type: "movie" | "series") =>
+  const toEntry = (row: RankedRow, type: "movie" | "series") =>
     mediaToEntry((type === "movie" ? row.movie : row.show) ?? row, type);
   return interleave(
     (movies ?? []).map((row) => toEntry(row, "movie")),
@@ -212,9 +227,12 @@ async function upNextEntries(
 ): Promise<SourceSnapshot> {
   let read: PagedRead<TraktItem>;
   try {
-    read = await traktGetAll<TraktItem>("/sync/progress/up_next", connection, {
-      maxItems: MAX_SOURCE_ITEMS,
-    });
+    read = await traktGetAll(
+      "/sync/progress/up_next",
+      traktItemSchema,
+      connection,
+      { maxItems: MAX_SOURCE_ITEMS },
+    );
   } catch (error) {
     // Up next is a limited-access endpoint for some apps. Watched progress
     // without completed shows gives the same rows.
@@ -224,8 +242,9 @@ async function upNextEntries(
     ) {
       throw error;
     }
-    read = await traktGetAll<TraktItem>(
+    read = await traktGetAll(
       "/sync/progress/watched?hide_completed=true",
+      traktItemSchema,
       connection,
       { maxItems: MAX_SOURCE_ITEMS },
     );
@@ -244,9 +263,14 @@ async function historyEntries(
   connection: ConnectionAccess | null,
 ): Promise<SourceSnapshot> {
   const [movies, shows] = await Promise.all([
-    traktGetJson<TraktItem[]>("/users/me/watched/movies", connection),
-    traktGetJson<TraktItem[]>(
+    traktGetParsed(
+      "/users/me/watched/movies",
+      z.array(traktItemSchema),
+      connection,
+    ),
+    traktGetParsed(
       "/users/me/watched/shows?extended=noseasons",
+      z.array(traktItemSchema),
       connection,
     ),
   ]);
@@ -260,10 +284,14 @@ async function collectionEntries(
   connection: ConnectionAccess | null,
 ): Promise<SourceSnapshot> {
   const [movies, shows] = await Promise.all([
-    traktGetAll<TraktItem>("/sync/collection/movies", connection, {
+    traktGetAll("/sync/collection/movies", traktItemSchema, connection, {
       maxItems: MAX_SOURCE_ITEMS,
     }),
-    traktGetJson<TraktItem[]>("/sync/collection/shows", connection),
+    traktGetParsed(
+      "/sync/collection/shows",
+      z.array(traktItemSchema),
+      connection,
+    ),
   ]);
   return newestRows(
     [...movies.items, ...(shows ?? [])],
@@ -320,23 +348,23 @@ export async function readSource(
   }
 }
 
-interface TraktListSummary {
-  name?: string | null;
-  ids?: { trakt?: number | null } | null;
-}
+const traktListSummarySchema = z.object({
+  name: z.string().nullish(),
+  ids: z.object({ trakt: z.number().nullish() }).nullish(),
+});
 
-interface TraktUser {
-  username?: string | null;
-  ids?: { slug?: string | null } | null;
-}
+const traktUserSchema = z.object({
+  username: z.string().nullish(),
+  ids: z.object({ slug: z.string().nullish() }).nullish(),
+});
 
-const PERSONAL_TITLES: Record<string, string> = {
+const PERSONAL_TITLES = {
   watchlist: "Trakt Watchlist",
   recommendations: "Trakt Recommendations",
   up_next: "Trakt Up Next",
   history: "Trakt History",
   collection: "Trakt Collection",
-};
+} satisfies Partial<Record<TraktSource["kind"], string>>;
 
 /**
  * Check that a Source list exists and can be read, and normalize its ref.
@@ -365,8 +393,9 @@ export async function validateTraktSource(
         if (source.user === "me") break;
         // A missing user's watchlist answers 200 with no items: check the
         // profile first.
-        const user = await traktGetJson<TraktUser>(
+        const user = await traktGetParsed(
           userPath(source.user),
+          traktUserSchema,
           connection,
           options,
         );
@@ -387,8 +416,9 @@ export async function validateTraktSource(
       case "list":
       case "shared_list": {
         // A missing list answers 204 with no body.
-        const list = await traktGetJson<TraktListSummary>(
+        const list = await traktGetParsed(
           listPath(source),
+          traktListSummarySchema,
           connection,
           options,
         );
@@ -404,6 +434,11 @@ export async function validateTraktSource(
           defaultDisplayMode: displayMode,
         };
       }
+      case "recommendations":
+      case "up_next":
+      case "history":
+      case "collection":
+        break;
     }
     // Personal Source lists: one small read proves the Connection works.
     await traktGetJson("/users/settings", connection);

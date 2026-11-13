@@ -1,8 +1,18 @@
 import type { ConfigList } from "@stremlist/shared/stremio.types";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { z } from "zod";
+import { LIST_IDS } from "../../__tests__/helpers/fixtures";
+import { prewarmLists } from "../list-prewarm";
 
 const listMocks = vi.hoisted(() => ({ getListCatalog: vi.fn() }));
-const supabaseMocks = vi.hoisted(() => ({ rpc: vi.fn() }));
+const supabaseMocks = vi.hoisted(() => ({
+  rpc: vi.fn<
+    (
+      functionName: string,
+      args: unknown,
+    ) => Promise<{ data: unknown; error: unknown }>
+  >(),
+}));
 const accountMocks = vi.hoisted(() => ({ getAccountLists: vi.fn() }));
 
 vi.mock("../lists", () => listMocks);
@@ -11,18 +21,18 @@ vi.mock("../../lib/supabase", () => ({
   supabase: { rpc: supabaseMocks.rpc },
 }));
 
-import { LIST_IDS } from "../../__tests__/helpers/fixtures";
-import { prewarmLists } from "../list-prewarm";
+// Passthrough keeps unknown keys, so `toEqual` still sees all the arguments.
+const requestPrewarmArgs = z
+  .object({
+    p_account_id: z.string(),
+    p_lease_seconds: z.number(),
+    p_lease_token: z.string(),
+  })
+  .passthrough();
 
-interface RequestPrewarmArgs {
-  p_account_id: string;
-  p_lease_seconds: number;
-  p_lease_token: string;
-}
-
-interface FinishPrewarmArgs extends RequestPrewarmArgs {
-  p_completed_generation: number;
-}
+const finishPrewarmArgs = requestPrewarmArgs.extend({
+  p_completed_generation: z.number(),
+});
 
 function mockPrewarmQueue(): void {
   let generation = 0;
@@ -30,7 +40,7 @@ function mockPrewarmQueue(): void {
 
   supabaseMocks.rpc.mockImplementation((functionName, rawArgs) => {
     if (functionName === "request_list_prewarm") {
-      const args = rawArgs as RequestPrewarmArgs;
+      const args = requestPrewarmArgs.parse(rawArgs);
       generation += 1;
       activeLeaseToken ??= args.p_lease_token;
       return Promise.resolve({
@@ -39,7 +49,7 @@ function mockPrewarmQueue(): void {
       });
     }
 
-    const args = rawArgs as FinishPrewarmArgs;
+    const args = finishPrewarmArgs.parse(rawArgs);
     if (activeLeaseToken !== args.p_lease_token) {
       return Promise.resolve({ data: null, error: null });
     }
@@ -87,7 +97,7 @@ function savedList(
 
 const SAVED_LISTS = [savedList(0)];
 
-function expectRequest(args: RequestPrewarmArgs): void {
+function expectRequest(args: unknown): void {
   expect(args).toEqual({
     p_account_id: ACCOUNT_ID,
     p_lease_seconds: 600,
@@ -137,13 +147,11 @@ describe("prewarmLists", () => {
     expect(console.log).toHaveBeenCalledWith(
       expect.stringMatching(/^Prewarmed 2\/2 lists in \d+ms$/),
     );
-    const [[requestFunction, requestArgs], [finishFunction, finishArgs]] =
-      supabaseMocks.rpc.mock.calls as [
-        [string, RequestPrewarmArgs],
-        [string, FinishPrewarmArgs],
-      ];
+    const [[requestFunction, rawRequestArgs], [finishFunction, finishArgs]] =
+      supabaseMocks.rpc.mock.calls;
     expect(requestFunction).toBe("request_list_prewarm");
-    expectRequest(requestArgs);
+    expectRequest(rawRequestArgs);
+    const requestArgs = requestPrewarmArgs.parse(rawRequestArgs);
     expect(finishFunction).toBe("finish_list_prewarm");
     expect(finishArgs).toEqual({
       ...requestArgs,
@@ -231,10 +239,7 @@ describe("prewarmLists", () => {
 
     await prewarmLists(ACCOUNT_ID, SAVED_LISTS, true);
 
-    const [functionName, args] = supabaseMocks.rpc.mock.calls[0] as [
-      string,
-      RequestPrewarmArgs,
-    ];
+    const [functionName, args] = supabaseMocks.rpc.mock.calls[0];
     expect(functionName).toBe("request_list_prewarm");
     expectRequest(args);
     expect(listMocks.getListCatalog).not.toHaveBeenCalled();

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { bucketOf, countNotFound, episodeItem, syncIds } from "../sync-payload";
 import { toRating } from "../types";
 

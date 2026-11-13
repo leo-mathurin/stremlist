@@ -11,13 +11,13 @@ import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
 import type { AddonAccess, ConfigList } from "@stremlist/shared/stremio.types";
+import { z } from "zod";
 import { supabase } from "../lib/supabase";
 import { deleteCachedList } from "./list-cache";
-import { mapList, toStoredSources } from "./list-rows";
+import { listRowSchema, mapList, toStoredSources } from "./list-rows";
 import { unusedSourceCaches } from "./merged-lists";
 
 type AccountRow = Tables<"accounts">;
-type ListRow = Tables<"lists">;
 
 export interface Account {
   id: string;
@@ -224,7 +224,9 @@ function toStoredLists(lists: ListInput[]) {
 }
 
 function mapLists(rows: unknown): ConfigList[] {
-  return (rows as ListRow[])
+  return z
+    .array(listRowSchema)
+    .parse(rows)
     .map(mapList)
     .filter((list): list is ConfigList => !!list);
 }

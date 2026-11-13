@@ -13,7 +13,9 @@ import {
   routeCreateAccount,
   routeResolve,
   saveButton,
+  parseBody,
 } from "./config-fixture";
+import { isRecord } from "../helpers/json";
 
 // The security rules of Connect and of the Legacy alias upgrade, from the
 // configure page. The API is intercepted: tests/provider-*.spec.ts and
@@ -101,9 +103,7 @@ test("a new setup gets its Account with the Connection, and keeps its Lists", as
   await browser.route(
     `${backend}/connections/simkl/complete`,
     async (route) => {
-      completions.push(
-        JSON.parse(route.request.postData ?? "{}") as Record<string, unknown>,
-      );
+      completions.push(parseBody(route, isRecord));
       await route.fulfill({ json: { ok: true, accountId, created: true } });
     },
   );

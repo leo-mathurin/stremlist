@@ -1,4 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import { simklProvider } from "../../simkl";
 import {
   apiCalls,
@@ -28,12 +35,12 @@ describe("simkl actions", () => {
   const actions = simklProvider.actions;
   if (!actions) throw new Error("Simkl must support Actions");
 
-  function lastPost(): { path: string; body: unknown; headers: Headers } {
+  function lastPost() {
     const post = calls.filter((call) => call.method === "POST").at(-1);
     if (!post) throw new Error("no POST");
     return {
       path: post.url.pathname,
-      body: JSON.parse(post.body ?? "null"),
+      body: JSON.parse(post.body ?? "null") as unknown,
       headers: post.headers,
     };
   }
@@ -46,8 +53,9 @@ describe("simkl actions", () => {
       "/sync/ratings",
       "/sync/ratings/remove",
     ]) {
-      routes[`POST ${path}`] = () =>
-        json({ added: {}, not_found: { movies: [], shows: [] } }, 201);
+      routes.set(`POST ${path}`, () =>
+        json({ added: {}, not_found: { movies: [], shows: [] } }, 201),
+      );
     }
   }
 
@@ -129,7 +137,7 @@ describe("simkl actions", () => {
 
   it("refuses to remove a title when the library cannot be read", async () => {
     acceptWrites();
-    routes["GET /sync/activities"] = () => json({ error: "down" }, 503);
+    routes.set("GET /sync/activities", () => json({ error: "down" }, 503));
 
     await expect(
       actions.perform(
@@ -263,14 +271,15 @@ describe("simkl actions", () => {
   });
 
   it("fails when Simkl does not know the title", async () => {
-    routes["POST /sync/history"] = () =>
+    routes.set("POST /sync/history", () =>
       json(
         {
           added: { movies: 0 },
           not_found: { movies: [{ ids: { imdb: "tt9999999" } }], shows: [] },
         },
         201,
-      );
+      ),
+    );
     await expect(
       actions.perform(
         connection,

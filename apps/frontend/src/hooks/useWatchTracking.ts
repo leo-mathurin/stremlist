@@ -2,6 +2,7 @@ import type {
   WatchProviderId,
   WatchTrackingStatus,
 } from "@stremlist/shared/watch-tracking";
+import type { InferResponseType } from "hono/client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -23,8 +24,15 @@ export interface WatchChange {
 
 const TOAST = { id: "watch-tracking" } as const;
 
+const watchTrackingApi = api[":accountId"]["watch-tracking"];
+
+type ChangeAnswer = InferResponseType<typeof watchTrackingApi.$put>;
+
+/** Why the backend refused a change, when it says. */
+type RefusalReason = Extract<ChangeAnswer, { reason: string }>["reason"];
+
 /** What a refused change tells the member. */
-function refusal(reason: string | undefined): string {
+function refusal(reason: RefusalReason | undefined): string {
   switch (reason) {
     case "stremio-not-linked":
     case "signed-out":
@@ -33,8 +41,47 @@ function refusal(reason: string | undefined): string {
       return "Connect this account again to mark titles as watched on it.";
     case "unavailable":
       return "Stremlist could not read your Stremio library. Try again in a moment.";
-    default:
+    case undefined:
       return "Stremlist could not save this change. Try again.";
+  }
+  // A reason from a newer backend than this page.
+  return "Stremlist could not save this change. Try again.";
+}
+
+/** The Watch tracking status of an Account, or null when it cannot be read. */
+async function readStatus(accountId: string) {
+  try {
+    const res = await watchTrackingApi.$get({ param: { accountId } });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Sends a change. A refusal comes with its reason when the backend gives
+ * one; `reason` is undefined when Stremlist did not answer.
+ */
+async function sendChange(
+  accountId: string,
+  destinations: WatchProviderId[],
+): Promise<
+  | { saved: Extract<ChangeAnswer, { status: unknown }> }
+  | { saved: null; reason: RefusalReason | undefined }
+> {
+  try {
+    const res = await watchTrackingApi.$put({
+      param: { accountId },
+      json: { destinations },
+    });
+    if (res.ok) return { saved: await res.json() };
+    if (res.status !== 409 && res.status !== 400 && res.status !== 502) {
+      return { saved: null, reason: undefined };
+    }
+    const body = await res.json();
+    return { saved: null, reason: "reason" in body ? body.reason : undefined };
+  } catch {
+    return { saved: null, reason: undefined };
   }
 }
 
@@ -60,25 +107,18 @@ export function useWatchTracking(
   /** A refresh asked for during a change, done once the change settles. */
   const reloadAfterChange = useRef(false);
 
-  const load = useCallback(async () => {
-    if (!accountId) return;
+  const load = useCallback((): Promise<void> => {
+    if (!accountId) return Promise.resolve();
     if (changing.current) {
       reloadAfterChange.current = true;
-      return;
+      return Promise.resolve();
     }
     const current = ++run.current;
-    try {
-      const res = await api[":accountId"]["watch-tracking"].$get({
-        param: { accountId },
-      });
-      if (!res.ok) throw new Error(String(res.status));
-      const body = await res.json();
+    return readStatus(accountId).then((body) => {
       if (current !== run.current) return;
-      setStatus(body);
-      setFailed(false);
-    } catch {
-      if (current === run.current) setFailed(true);
-    }
+      if (body) setStatus(body);
+      setFailed(!body);
+    });
   }, [accountId]);
 
   useEffect(() => {
@@ -116,48 +156,37 @@ export function useWatchTracking(
           d.provider === provider ? { ...d, enabled } : d,
         ),
       });
-      try {
-        const res = await api[":accountId"]["watch-tracking"].$put({
-          param: { accountId },
-          json: { destinations },
-        });
-        if (res.ok) {
-          const body = await res.json();
-          setStatus(body.status);
-          // The update found the sign-out: the Stremio card shows it too.
-          if (body.stremio === "signed-out") onSignedOut();
-          if (body.status.destinations.some((d) => d.enabled)) {
-            // A sign-out also forgets the link: the card asks for a new one.
-            setNotice(
-              body.stremio === "missing" || body.stremio === "unavailable"
-                ? body.stremio
-                : null,
-            );
-          }
-          return;
+      const answer = await sendChange(accountId, destinations);
+      const body = answer.saved;
+      if (body) {
+        setStatus(body.status);
+        // The update found the sign-out: the Stremio card shows it too.
+        if (body.stremio === "signed-out") onSignedOut();
+        if (body.status.destinations.some((d) => d.enabled)) {
+          // A sign-out also forgets the link: the card asks for a new one.
+          setNotice(
+            body.stremio === "missing" || body.stremio === "unavailable"
+              ? body.stremio
+              : null,
+          );
         }
+      } else {
         setStatus(previous);
         // A refused change may still have saved part of it: read it back.
         reloadAfterChange.current = true;
-        const reason =
-          res.status === 409 || res.status === 400 || res.status === 502
-            ? ((await res.json()) as { reason?: string }).reason
-            : undefined;
-        toast.error(refusal(reason), TOAST);
-        if (reason === "signed-out" || reason === "stremio-not-linked") {
+        toast.error(refusal(answer.reason), TOAST);
+        if (
+          answer.reason === "signed-out" ||
+          answer.reason === "stremio-not-linked"
+        ) {
           onSignedOut();
         }
-      } catch {
-        setStatus(previous);
-        reloadAfterChange.current = true;
-        toast.error(refusal(undefined), TOAST);
-      } finally {
-        changing.current = false;
-        setBusy(null);
-        if (reloadAfterChange.current) {
-          reloadAfterChange.current = false;
-          void load();
-        }
+      }
+      changing.current = false;
+      setBusy(null);
+      if (reloadAfterChange.current) {
+        reloadAfterChange.current = false;
+        void load();
       }
     },
     [accountId, busy, load, onSignedOut, status],

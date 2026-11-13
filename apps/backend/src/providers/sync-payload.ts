@@ -1,10 +1,24 @@
+import { z } from "zod";
 import type { ActionIntent, ActionTarget } from "./types";
 
 // The Trakt-style /sync body that Trakt, Simkl and MDBList share for
 // Actions: Titles keyed by IMDb ID, in a "movies" or "shows" bucket.
 
 /** The IDs object that names a Title. */
-export function syncIds(target: ActionTarget): { imdb: string } {
+export interface SyncIds {
+  imdb: string;
+}
+
+/** A /sync body: items by bucket ("movies" or "shows"). */
+export type SyncBody = Record<string, unknown[]>;
+
+/** A /sync write: the endpoint and its body. */
+export interface SyncWrite {
+  path: string;
+  body: SyncBody;
+}
+
+export function syncIds(target: ActionTarget): SyncIds {
   return { imdb: target.imdbId };
 }
 
@@ -41,6 +55,10 @@ export function watchedAtOf(intent: ActionIntent): { watched_at?: string } {
     : {};
 }
 
+const notFoundSchema = z.object({
+  not_found: z.union([z.record(z.unknown()), z.array(z.unknown())]),
+});
+
 /**
  * How many items of a /sync answer the Provider did not know: the sum of
  * the `not_found` counts (numbers, or arrays of items) under `keys`, or under
@@ -50,11 +68,11 @@ export function countNotFound(
   result: unknown,
   keys?: readonly string[],
 ): number {
-  const notFound = (result as { not_found?: unknown } | null)?.not_found;
-  if (!notFound || typeof notFound !== "object") return 0;
-  const byKey = notFound as Record<string, unknown>;
-  return (keys ?? Object.keys(byKey)).reduce((sum, key) => {
-    const value = byKey[key];
+  const parsed = notFoundSchema.safeParse(result);
+  if (!parsed.success) return 0;
+  const byKey = new Map(Object.entries(parsed.data.not_found));
+  return (keys ?? [...byKey.keys()]).reduce((sum, key) => {
+    const value = byKey.get(key);
     if (typeof value === "number") return sum + value;
     if (Array.isArray(value)) return sum + value.length;
     return sum;

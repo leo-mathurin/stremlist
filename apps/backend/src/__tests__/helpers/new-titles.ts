@@ -3,17 +3,16 @@
  * between synchronizations, and requests that read the New titles catalog.
  */
 import type { TitleType } from "@stremlist/shared/constants";
-import type {
-  AccountConfigResponse,
-  StremioMeta,
-} from "@stremlist/shared/stremio.types";
-import { expect, vi } from "vitest";
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
+import { expect, vi } from "vite-plus/test";
+import { z } from "zod";
 
 import app from "../../index.js";
 import type { SourceEntry, SourceSnapshot } from "../../providers/types";
 import type { SourceHistory } from "../../services/title-history";
 import { historyKey } from "../../services/title-history";
 import { LIST_IDS, movie, seedAccount, seedList } from "./fixtures.js";
+import { configBody, metasBody, parseJson, readJson } from "./json.js";
 import { cache } from "./mock-list-cache.js";
 import { r2Objects, r2Unreadable } from "./mock-r2.js";
 import {
@@ -22,6 +21,24 @@ import {
   useFakeProvider,
 } from "./mock-registry.js";
 import { db, resetRpc } from "./mock-supabase.js";
+
+/** A stored history, as services/title-history.ts writes it. */
+const sourceHistory = z.object({
+  version: z.literal(1),
+  source: z.string(),
+  baselineAt: z.string(),
+  lastSyncAt: z.string(),
+  connection: z
+    .object({ user: z.string().nullable(), connectedAt: z.string() })
+    .nullable(),
+  entries: z.record(
+    z.tuple([
+      z.string().nullable(),
+      z.string().nullable(),
+      z.string().nullable(),
+    ]),
+  ),
+}) satisfies z.ZodType<SourceHistory>;
 
 const START = new Date("2026-10-01T12:00:00.000Z");
 /** More than the fake adapters' 30-minute freshness. */
@@ -88,7 +105,7 @@ export async function newTitles(
     `/${key}/catalog/${type}/new-titles-${type}.json`,
   );
   expect(res.status).toBe(200);
-  return ((await res.json()) as { metas: StremioMeta[] }).metas;
+  return (await readJson(res, metasBody)).metas;
 }
 
 export function ids(metas: StremioMeta[]): string[] {
@@ -103,7 +120,7 @@ function storedHistories() {
     )
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([key, body]) => {
-      const history = JSON.parse(body) as SourceHistory;
+      const history = parseJson(body, sourceHistory);
       const [provider, ...ref] = history.source.split(":");
       return {
         account_id: key.split("/")[1],
@@ -150,7 +167,7 @@ export function detectionRows() {
 export async function summary() {
   const res = await app.request(`/${accountId}/config`);
   expect(res.status).toBe(200);
-  return ((await res.json()) as AccountConfigResponse).newTitles;
+  return (await readJson(res, configBody)).newTitles;
 }
 
 /**

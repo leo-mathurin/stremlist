@@ -8,6 +8,7 @@
 //     Run after `supabase db push`: fails unless the history matches the repo.
 import {
   availableExtensions,
+  compareCodeUnits,
   compareMigrations,
   createdExtensions,
   localMigrations,
@@ -47,7 +48,7 @@ if (mode === "plan") {
   }));
   const wanted = [
     ...new Set(extensionsByMigration.flatMap((m) => m.extensions)),
-  ].sort();
+  ].sort(compareCodeUnits);
   const available = new Map(
     (await availableExtensions(wanted)).map((e) => [e.name, e]),
   );

@@ -121,7 +121,7 @@ export async function readMembership(
   let stored = memoryMembership.get(key);
   if (stored === undefined) {
     try {
-      stored = await readJson<StoredMembership>(key);
+      stored = await readJson(key, storedMembershipSchema);
       rememberMembership(key, stored);
     } catch {
       // R2 is unreachable: use this instance's copy, and do not ask R2

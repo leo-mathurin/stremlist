@@ -1,4 +1,5 @@
 import { CONNECTION_SOURCES } from "@stremlist/shared/providers";
+import { z } from "zod";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
 import { revokeToken } from "./oauth-app";
 import { simklActions } from "./simkl/actions";
@@ -26,6 +27,10 @@ import type { ProviderAdapter, SourceValidation } from "./types";
 import { SourceUnavailableError } from "./types";
 
 const LIST_REF = /^me\/lists\/(\d+)$/;
+
+const simklSettingsSchema = z.object({
+  user: z.object({ name: z.string().nullish() }).nullish(),
+});
 
 /** Test hook: forget the in-memory fallback state. */
 export function resetSimklState(): void {
@@ -66,7 +71,7 @@ export const simklProvider: ProviderAdapter = {
     return {
       ok: true,
       ref,
-      suggestedTitle: page.name,
+      suggestedTitle: page.name ?? undefined,
       defaultDisplayMode: page.media_type === "movies" ? "movie" : "series",
     };
   },
@@ -129,10 +134,9 @@ export const simklProvider: ProviderAdapter = {
       ),
 
     async fetchUsername(token) {
-      const data = await simklRequest<{ user?: { name?: string } }>(
-        "/users/settings",
-        { token },
-      );
+      const data = await simklRequest("/users/settings", simklSettingsSchema, {
+        token,
+      });
       const name = data.user?.name?.trim();
       if (!name) return null;
       return name;

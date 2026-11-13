@@ -20,6 +20,7 @@ import {
   imdbUser,
   legacyConfiguration,
   parseBody,
+  isPreviewRequest,
   previewOf,
   row,
   saveButton,
@@ -651,7 +652,7 @@ test("an open preview is read again when a refresh finds its Connection refused"
   const previews: PreviewRequest[] = [];
   let refused = false;
   await browser.route(`${backend}/lists/preview`, async (route) => {
-    const request = parseBody<PreviewRequest>(route);
+    const request = parseBody(route, isPreviewRequest);
     previews.push(request);
     await route.fulfill({
       json: toJson(

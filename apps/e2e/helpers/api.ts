@@ -15,6 +15,7 @@ import type {
 import type { ProviderId } from "@stremlist/shared/providers";
 import { hcWithType } from "@stremlist/backend/client";
 import { BACKEND_URL } from "../env.js";
+import { type Guard, isRecord, isString, optional, parsed } from "./json.js";
 
 // Thin typed wrappers over the backend HTTP API. Tests use these both to
 // arrange state (through real code paths) and to assert the addon protocol
@@ -92,12 +93,142 @@ export function ok<T>(response: ApiResponse<T>): T {
   return response.body;
 }
 
+/** An answer of a backend route that the shapes below do not detail. */
+type AnyBody = Record<string, unknown>;
+
+/**
+ * An error answer: `{ error }`, `{ reason }`, or the validator's issues. The
+ * readers below pass it on with the type of the success answer, so a test
+ * reads it through `status` and `toEqual` only.
+ */
+function isErrorBody(value: unknown): value is AnyBody {
+  return isRecord(value) && ("error" in value || "reason" in value);
+}
+
+export function isManifest(value: unknown): value is StremioManifest {
+  return (
+    isRecord(value) &&
+    isString(value.id) &&
+    Array.isArray(value.resources) &&
+    Array.isArray(value.catalogs)
+  );
+}
+
+function isConfig(value: unknown): value is AccountConfigResponse {
+  return (
+    isErrorBody(value) ||
+    (isRecord(value) && Array.isArray(value.lists) && isRecord(value.newTitles))
+  );
+}
+
+function isSyncSnapshot(value: unknown): value is AccountSyncSnapshot {
+  return (
+    isErrorBody(value) ||
+    (isRecord(value) &&
+      isRecord(value.syncStatus) &&
+      Array.isArray(value.connections))
+  );
+}
+
+function isAccountAnswer(
+  value: unknown,
+): value is { accountId?: string; lists?: ConfigList[]; error?: string } {
+  return (
+    isRecord(value) &&
+    optional(value.accountId, isString) &&
+    optional(value.lists, Array.isArray) &&
+    optional(value.error, isString)
+  );
+}
+
+export function isCatalog(value: unknown): value is { metas: CatalogMeta[] } {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.metas) &&
+    value.metas.every((meta) => isRecord(meta) && isString(meta.id))
+  );
+}
+
+export function isMetaAnswer(
+  value: unknown,
+): value is { meta: CatalogMeta | null } {
+  return isRecord(value) && (value.meta === null || isRecord(value.meta));
+}
+
+function isStreams(
+  value: unknown,
+): value is { streams: StremioStream[]; cacheMaxAge?: number } {
+  return isRecord(value) && Array.isArray(value.streams);
+}
+
+function isProviders(
+  value: unknown,
+): value is { providers: { id: ProviderId; enabled: boolean }[] } {
+  return isRecord(value) && Array.isArray(value.providers);
+}
+
+/** A preview, a Problem of its Source list, or a queued read. */
+function isPreview(value: unknown): value is CatalogPreviewResponse {
+  return isRecord(value);
+}
+
+function isSources(
+  value: unknown,
+): value is { sources: { ref: string; label: string }[] } {
+  return (
+    isErrorBody(value) || (isRecord(value) && Array.isArray(value.sources))
+  );
+}
+
+function isStart(
+  value: unknown,
+): value is { authorizeUrl: string; browserKey: string } {
+  return (
+    isErrorBody(value) ||
+    (isRecord(value) &&
+      isString(value.authorizeUrl) &&
+      isString(value.browserKey))
+  );
+}
+
+function isCompletion(value: unknown): value is {
+  ok?: true;
+  accountId?: string;
+  created?: boolean;
+  reason?: string;
+} {
+  return (
+    isRecord(value) &&
+    optional(value.ok, (ok) => ok === true) &&
+    optional(value.accountId, isString) &&
+    optional(value.reason, isString)
+  );
+}
+
+/** A save that created an Account (`POST /accounts`). */
+export function hasAccountId(value: unknown): value is { accountId: string } {
+  return isRecord(value) && isString(value.accountId);
+}
+
+/** The answer of `POST /:accountKey/refresh` that a test expects. */
+export function isRefreshResult(value: unknown): value is RefreshResult {
+  return (
+    isRecord(value) &&
+    typeof value.refreshed === "number" &&
+    typeof value.failed === "number" &&
+    "newTitles" in value
+  );
+}
+
 /** The status and JSON body of a typed client answer. */
-async function answer<T>(response: {
-  status: number;
-  json(): Promise<unknown>;
-}): Promise<ApiResponse<T>> {
-  return { status: response.status, body: (await response.json()) as T };
+async function answer<T>(
+  response: { status: number; json(): Promise<unknown> },
+  is: Guard<T>,
+): Promise<ApiResponse<T>> {
+  return {
+    status: response.status,
+    body: parsed(await response.json(), is, `body (${response.status})`),
+  };
 }
 
 /** The readers and writers of the backend at `baseUrl`. */
@@ -107,6 +238,7 @@ export function apiAt(baseUrl: string) {
   /** A request that does not follow redirects; an empty body is null. */
   async function send<T>(
     path: string,
+    is: Guard<T>,
     init: { method?: string; json?: unknown } = {},
   ): Promise<ApiResponse<T>> {
     const response = await fetch(`${baseUrl}${path}`, {
@@ -119,12 +251,16 @@ export function apiAt(baseUrl: string) {
     const text = await response.text();
     return {
       status: response.status,
-      body: (text ? JSON.parse(text) : null) as T,
+      body: parsed(
+        text ? JSON.parse(text) : null,
+        is,
+        `body of ${path} (${response.status})`,
+      ),
     };
   }
 
   async function getManifest(accountKey: string): Promise<StremioManifest> {
-    return (await send<StremioManifest>(`/${accountKey}/manifest.json`)).body;
+    return (await send(`/${accountKey}/manifest.json`, isManifest)).body;
   }
 
   async function getConfig(
@@ -132,6 +268,7 @@ export function apiAt(baseUrl: string) {
   ): Promise<ApiResponse<AccountConfigResponse>> {
     return answer(
       await client[":accountKey"].config.$get({ param: { accountKey } }),
+      isConfig,
     );
   }
 
@@ -148,15 +285,16 @@ export function apiAt(baseUrl: string) {
       ...(extra.skip ? [`skip=${extra.skip}`] : []),
     ];
     const suffix = segments.length > 0 ? `/${segments.join("&")}` : "";
-    const { status, body } = await send<{ metas: CatalogMeta[] }>(
+    const { status, body } = await send(
       `/${accountKey}/catalog/${type}/${catalogId}${suffix}.json`,
+      isCatalog,
     );
     return { status, metas: body.metas };
   }
 
   return {
     async getBaseManifest(): Promise<StremioManifest> {
-      return (await send<StremioManifest>("/manifest.json")).body;
+      return (await send("/manifest.json", isManifest)).body;
     },
 
     getManifest,
@@ -170,19 +308,21 @@ export function apiAt(baseUrl: string) {
         await client[":accountKey"]["sync-status"].$get({
           param: { accountKey },
         }),
+        isSyncSnapshot,
       );
     },
 
-    async postConfig<T = Record<string, unknown>>(
+    async postConfig(
       accountKey: string,
       lists: ConfigListInput[],
       options: ConfigOptions = {},
-    ): Promise<ApiResponse<T>> {
+    ): Promise<ApiResponse<AnyBody>> {
       return answer(
         await client[":accountKey"].config.$post({
           param: { accountKey },
           json: { lists, ...options },
         }),
+        isRecord,
       );
     },
 
@@ -195,6 +335,7 @@ export function apiAt(baseUrl: string) {
     > {
       return answer(
         await client.accounts.$post({ json: { lists, rpdbApiKey } }),
+        isAccountAnswer,
       );
     },
 
@@ -222,8 +363,9 @@ export function apiAt(baseUrl: string) {
       type: string,
       id: string,
     ): Promise<{ status: number; meta: CatalogMeta | null }> {
-      const { status, body } = await send<{ meta: CatalogMeta | null }>(
+      const { status, body } = await send(
         `/${accountKey}/meta/${type}/${id}.json`,
+        isMetaAnswer,
       );
       return { status, meta: body.meta };
     },
@@ -236,14 +378,13 @@ export function apiAt(baseUrl: string) {
     ): Promise<
       ApiResponse<{ streams: StremioStream[]; cacheMaxAge?: number }>
     > {
-      return send(`/${accountKey}/stream/${type}/${id}.json`);
+      return send(`/${accountKey}/stream/${type}/${id}.json`, isStreams);
     },
 
-    async refresh<T = Record<string, unknown>>(
-      accountKey: string,
-    ): Promise<ApiResponse<T>> {
+    async refresh(accountKey: string): Promise<ApiResponse<AnyBody>> {
       return answer(
         await client[":accountKey"].refresh.$post({ param: { accountKey } }),
+        isRecord,
       );
     },
 
@@ -255,7 +396,7 @@ export function apiAt(baseUrl: string) {
       const response = await client.links.resolve.$post({
         json: { input, accountKey },
       });
-      return (await response.json()) as Record<string, unknown>;
+      return await response.json();
     },
 
     /**
@@ -275,6 +416,7 @@ export function apiAt(baseUrl: string) {
             newTitles: { enabled: shown.newTitles.enabled },
           },
         }),
+        isAccountAnswer,
       );
     },
 
@@ -295,13 +437,13 @@ export function apiAt(baseUrl: string) {
     async getProviders(): Promise<
       ApiResponse<{ providers: { id: ProviderId; enabled: boolean }[] }>
     > {
-      return send("/providers");
+      return send("/providers", isProviders);
     },
 
     async previewList(
       input: PreviewInput,
     ): Promise<ApiResponse<CatalogPreviewResponse>> {
-      return send("/lists/preview", { json: input });
+      return send("/lists/preview", isPreview, { json: input });
     },
 
     /** The Source lists that a Connection offers (Quick add). */
@@ -309,7 +451,7 @@ export function apiAt(baseUrl: string) {
       accountKey: string,
       provider: ProviderId,
     ): Promise<ApiResponse<{ sources: { ref: string; label: string }[] }>> {
-      return send(`/${accountKey}/connections/${provider}/sources`);
+      return send(`/${accountKey}/connections/${provider}/sources`, isSources);
     },
 
     /**
@@ -325,6 +467,7 @@ export function apiAt(baseUrl: string) {
         accountKey
           ? `/${accountKey}/connections/${provider}/start`
           : `/connections/${provider}/start`,
+        isStart,
         { method: "POST" },
       );
     },
@@ -346,14 +489,16 @@ export function apiAt(baseUrl: string) {
         reason?: string;
       }>
     > {
-      return send(`/connections/${provider}/complete`, { json });
+      return send(`/connections/${provider}/complete`, isCompletion, {
+        json,
+      });
     },
 
     async disconnect(
       accountKey: string,
       provider: ProviderId,
-    ): Promise<ApiResponse<Record<string, unknown>>> {
-      return send(`/${accountKey}/connections/${provider}`, {
+    ): Promise<ApiResponse<AnyBody>> {
+      return send(`/${accountKey}/connections/${provider}`, isRecord, {
         method: "DELETE",
       });
     },
@@ -385,16 +530,21 @@ export type Api = ReturnType<typeof apiAt>;
 /** The Playwright backend (BACKEND_URL). */
 export const api = apiAt(BACKEND_URL);
 
-export const {
-  getBaseManifest,
-  getManifest,
-  getConfig,
-  getSyncStatus,
-  postConfig,
-  createAccount,
-  getCatalog,
-  getMeta,
-  refresh,
-  resolveLink,
-  bootstrapLegacy,
-} = api;
+export const getBaseManifest = () => api.getBaseManifest();
+export const getManifest = (accountKey: string) => api.getManifest(accountKey);
+export const getConfig = (accountKey: string) => api.getConfig(accountKey);
+export const getSyncStatus = (accountKey: string) =>
+  api.getSyncStatus(accountKey);
+export const postConfig = (...args: Parameters<Api["postConfig"]>) =>
+  api.postConfig(...args);
+export const createAccount = (...args: Parameters<Api["createAccount"]>) =>
+  api.createAccount(...args);
+export const getCatalog = (...args: Parameters<Api["getCatalog"]>) =>
+  api.getCatalog(...args);
+export const getMeta = (...args: Parameters<Api["getMeta"]>) =>
+  api.getMeta(...args);
+export const refresh = (accountKey: string) => api.refresh(accountKey);
+export const resolveLink = (...args: Parameters<Api["resolveLink"]>) =>
+  api.resolveLink(...args);
+export const bootstrapLegacy = (imdbUserId: string) =>
+  api.bootstrapLegacy(imdbUserId);

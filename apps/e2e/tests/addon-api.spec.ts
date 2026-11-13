@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import type { ConfigListInput } from "@stremlist/shared/stremio.types";
+import type {
+  ConfigListInput,
+  StremioResource,
+} from "@stremlist/shared/stremio.types";
 import { FRONTEND_URL, BACKEND_URL } from "../env.js";
 import {
   asInput,
@@ -23,6 +26,7 @@ import {
   resetDb,
   seedImdbAccount,
 } from "../helpers/db.js";
+import { field, isNumber, parsed, present } from "../helpers/json.js";
 import {
   countCacheObjects,
   getCacheManifest,
@@ -84,17 +88,16 @@ test.describe("manifest", () => {
       }
       // The meta resource must stay declared — Stremio clients rely on it.
       const metaResource = manifest.resources.find(
-        (r) =>
-          typeof r === "object" &&
-          r !== null &&
-          (r as { name?: string }).name === "meta",
-      ) as { idPrefixes?: string[] } | undefined;
+        (r): r is StremioResource => typeof r === "object" && r.name === "meta",
+      );
       expect(metaResource?.idPrefixes).toEqual(["tt"]);
 
       // The install got a legacy Account with one IMDb watchlist List.
       const account = await getAccountByLegacyAlias(PUBLIC_USER);
       expect(account).not.toBeNull();
-      expect(await getListRows(account!.id)).toMatchObject([
+      expect(
+        await getListRows(present(account, "the legacy Account").id),
+      ).toMatchObject([
         { provider: "imdb", source_ref: PUBLIC_USER, position: 0 },
       ]);
       const config = await getConfig(PUBLIC_USER);
@@ -372,7 +375,10 @@ test.describe("catalogs", () => {
       await getCatalog(accountId, "movie", `wl-${removed}-movie`);
       expect(await countCacheObjects(removed)).toBe(2);
 
-      const updated = await postConfig(accountId, asInput([kept!]));
+      const updated = await postConfig(
+        accountId,
+        asInput([present(kept, "the kept List")]),
+      );
       expect(updated.status).toBe(200);
       expect(await getCacheObjectKeys(removed)).toEqual([
         `watchlists/${removed}/manifest.json`,
@@ -526,7 +532,7 @@ test.describe("config API", () => {
         "e2e-rpdb",
       );
       expect(created.status).toBe(200);
-      const accountId = created.body.accountId!;
+      const accountId = present(created.body.accountId, "the new Account ID");
       expect(accountId).toMatch(/^sl_[0-9A-Za-z]{22}$/);
       const { body } = await getConfig(accountId);
       expect(body).toMatchObject({
@@ -580,13 +586,13 @@ test.describe("misc endpoints", () => {
   test("health, stats, and configure redirect", { tag: "@local" }, async () => {
     const health = await fetch(`${BACKEND_URL}/health`);
     expect(health.status).toBe(200);
-    expect(((await health.json()) as { database: string }).database).toBe("up");
+    expect(field(await health.json(), "database")).toBe("up");
 
     const { accountId } = await seedImdbAccount();
     await bootstrapLegacy(PUBLIC_USER);
     const stats = await fetch(`${BACKEND_URL}/stats`);
     expect(
-      ((await stats.json()) as { activeUsers: number }).activeUsers,
+      parsed(field(await stats.json(), "activeUsers"), isNumber, "activeUsers"),
     ).toBeGreaterThanOrEqual(2);
 
     for (const key of [accountId, PUBLIC_USER]) {

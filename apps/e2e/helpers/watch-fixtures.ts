@@ -7,14 +7,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import type { FixtureRequest } from "./fetch-fixture.js";
 import { bearer, installFetchFixture } from "./fetch-fixture.js";
-
-export interface FakeStremio {
-  authKey: string;
-  /** Stremio's own Trakt integration is connected. */
-  trakt: boolean;
-  library: Record<string, unknown>[];
-  addons: Record<string, unknown>[];
-}
+import { isFakeStremio } from "./fake-stremio.js";
+import { parseJson } from "./json.js";
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
 
@@ -25,7 +19,11 @@ function stremioFile(): string {
 }
 
 function stremio({ url, body }: FixtureRequest): Response {
-  const state = JSON.parse(readFileSync(stremioFile(), "utf8")) as FakeStremio;
+  const state = parseJson(
+    readFileSync(stremioFile(), "utf8"),
+    isFakeStremio,
+    "fake Stremio",
+  );
   const request = (body ?? {}) as {
     authKey?: string;
     ids?: string[];

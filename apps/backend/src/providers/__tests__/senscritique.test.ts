@@ -1,17 +1,13 @@
 import { parseSourceLink } from "@stremlist/shared/providers";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-// No waiting between mocked requests.
-vi.mock("../http", async (importOriginal) => {
-  const actual = await importOriginal<typeof HttpModule>();
-  class InstantLimiter {
-    acquire(): Promise<void> {
-      return Promise.resolve();
-    }
-  }
-  return { ...actual, RateLimiter: InstantLimiter };
-});
-
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
+import { z } from "zod";
 import { justwatchPathStrategy } from "../../titles/justwatch-lookup";
 import {
   candidateMatches,
@@ -29,13 +25,29 @@ import {
 import type { SourceEntry } from "../types";
 import { SourceUnavailableError } from "../types";
 
+// No waiting between mocked requests.
+vi.mock("../http", async (importOriginal) => {
+  const actual = await importOriginal<typeof HttpModule>();
+  class InstantLimiter {
+    acquire(): Promise<void> {
+      return Promise.resolve();
+    }
+  }
+  return { ...actual, RateLimiter: InstantLimiter };
+});
+
 const ctx = { connection: null };
+
+const graphQLRequest = z.object({
+  query: z.string(),
+  variables: z.record(z.unknown()),
+});
 
 interface RecordedRequest {
   url: string;
   body: string;
   /** Parsed GraphQL request, for SensCritique calls. */
-  json: { query: string; variables: Record<string, unknown> };
+  json: z.infer<typeof graphQLRequest>;
 }
 
 let requests: RecordedRequest[] = [];
@@ -51,7 +63,7 @@ beforeEach(() => {
         url,
         body,
         json: url.startsWith("https://apollo.senscritique.com")
-          ? (JSON.parse(body) as RecordedRequest["json"])
+          ? graphQLRequest.parse(JSON.parse(body))
           : { query: "", variables: {} },
       };
       requests.push(request);
@@ -115,8 +127,14 @@ function listPage(products: SensCritiqueProduct[], total: number) {
   };
 }
 
+const pageVariablesSchema = z.object({
+  universe: z.string().optional(),
+  offset: z.number(),
+  limit: z.number(),
+});
+
 function pageVariables({ json }: RecordedRequest) {
-  return json.variables as { universe: string; offset: number; limit: number };
+  return pageVariablesSchema.parse(json.variables);
 }
 
 describe("SensCritique fetchSource", () => {
@@ -377,9 +395,9 @@ describe("JustWatch path strategy", () => {
   it("resolves entries that carry a JustWatch path", async () => {
     handler = ({ url, body }) => {
       expect(url).toBe("https://apis.justwatch.com/graphql");
-      const { variables } = JSON.parse(body) as {
-        variables: { path: string };
-      };
+      const { variables } = z
+        .object({ variables: z.object({ path: z.string() }) })
+        .parse(JSON.parse(body));
       return {
         data: {
           urlV2:

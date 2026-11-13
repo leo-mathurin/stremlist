@@ -47,11 +47,17 @@ test("public descriptions name every available Provider", async () => {
     "utf8",
   );
   const keywords = /name="keywords"\s+content="([^"]+)"/.exec(indexHtml)?.[1];
-  const places: Record<string, string> = {
+  const places = {
     "site description": SITE.description,
     "configure description": CONFIGURE_SEO.description,
     "index.html keywords": keywords ?? "",
-    "terms introduction": LEGAL_SECTIONS[0].clauses[0].blocks.join(" "),
+    "terms introduction": LEGAL_SECTIONS[0].clauses[0].blocks
+      .map((block) =>
+        typeof block === "string"
+          ? block
+          : block.map(({ label, text }) => `${label} ${text}`).join(" "),
+      )
+      .join(" "),
     "llms.txt": llms(),
     "index.md": renderMarkdownPage(page("/"), { userCount: null }),
     "ai.txt": aiPolicy(),

@@ -43,29 +43,37 @@ export const DEFAULT_SORT_OPTIONS: SortOptions = {
   order: "asc",
 };
 
-const VALID_SORT_FIELDS: SortField[] = [
+const VALID_SORT_FIELDS: readonly SortField[] = [
   "title",
   "year",
   "rating",
   "added_at",
   "random",
 ];
-const VALID_SORT_ORDERS: SortOrder[] = ["asc", "desc"];
+const VALID_SORT_ORDERS: readonly SortOrder[] = ["asc", "desc"];
+
+function isSortField(value: string | undefined): value is SortField {
+  return VALID_SORT_FIELDS.some((field) => field === value);
+}
+
+function isSortOrder(value: string | undefined): value is SortOrder {
+  return VALID_SORT_ORDERS.some((order) => order === value);
+}
 
 export function parseSortOption(
   sortOption: string | null | undefined,
 ): SortOptions {
   if (!sortOption) return DEFAULT_SORT_OPTIONS;
 
-  const [by, order] = sortOption.split("-") as [string, string];
-  if (!by || !VALID_SORT_FIELDS.includes(by as SortField)) {
+  const [by, order] = sortOption.split("-");
+  if (!isSortField(by)) {
     return DEFAULT_SORT_OPTIONS;
   }
-  if (!order || !VALID_SORT_ORDERS.includes(order as SortOrder)) {
-    return { by: by as SortField, order: "asc" };
+  if (!isSortOrder(order)) {
+    return { by, order: "asc" };
   }
 
-  return { by: by as SortField, order: order as SortOrder };
+  return { by, order };
 }
 
 /**

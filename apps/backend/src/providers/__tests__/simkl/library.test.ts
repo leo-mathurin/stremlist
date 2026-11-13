@@ -1,4 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import { simklProvider } from "../../simkl";
 import { connection as oauthConnection } from "../oauth-harness";
 import { activities, ANIME, MOVIES, SHOWS } from "./fixtures";
@@ -62,12 +69,13 @@ describe("simkl activities gating", () => {
     await simklProvider.fetchSource("me/plantowatch", ctx());
     ageLibrary();
     clearCalls();
-    routes["GET /sync/activities"] = () =>
+    routes.set("GET /sync/activities", () =>
       activities({
         all: "2026-10-02T08:00:00Z",
         movies: { plantowatch: "2026-10-02T08:00:00Z" },
-      });
-    routes["GET /sync/all-items"] = () => ({
+      }),
+    );
+    routes.set("GET /sync/all-items", () => ({
       movies: [
         {
           added_to_watchlist_at: "2026-10-02T08:00:00Z",
@@ -79,7 +87,7 @@ describe("simkl activities gating", () => {
           },
         },
       ],
-    });
+    }));
 
     const snapshot = await simklProvider.fetchSource("me/plantowatch", ctx());
     expect(apiCalls()).toEqual([
@@ -95,15 +103,16 @@ describe("simkl activities gating", () => {
     await simklProvider.fetchSource("me/plantowatch", ctx());
     ageLibrary();
     clearCalls();
-    routes["GET /sync/activities"] = () =>
+    routes.set("GET /sync/activities", () =>
       activities({
         all: "2026-10-03T08:00:00Z",
         movies: {
           removed_from_list: "2026-10-03T08:00:00Z",
           rated_at: "2026-10-03T08:00:00Z",
         },
-      });
-    routes["GET /sync/all-items"] = (call) => {
+      }),
+    );
+    routes.set("GET /sync/all-items", (call) => {
       expect(call.url.searchParams.get("extended")).toBe("simkl_ids_only");
       // Pulp Fiction (54130) is gone.
       return {
@@ -115,8 +124,8 @@ describe("simkl activities gating", () => {
         })),
         movies: [53434, 999].map((simkl) => ({ movie: { ids: { simkl } } })),
       };
-    };
-    routes["GET /sync/ratings"] = () => ({
+    });
+    routes.set("GET /sync/ratings", () => ({
       movies: [
         {
           status: "completed",
@@ -124,7 +133,7 @@ describe("simkl activities gating", () => {
           movie: { title: "The Godfather", ids: { simkl: 53434 } },
         },
       ],
-    });
+    }));
 
     const snapshot = await simklProvider.fetchSource("me/plantowatch", ctx());
     expect(apiCalls()).toEqual([
@@ -141,7 +150,7 @@ describe("simkl activities gating", () => {
 
   it("falls back to lighter reads when Simkl answers max_items", async () => {
     let attempts = 0;
-    routes["GET /sync/all-items/shows"] = (call) => {
+    routes.set("GET /sync/all-items/shows", (call) => {
       attempts += 1;
       if (call.url.searchParams.get("include_all_episodes") === "yes") {
         return json(
@@ -153,7 +162,7 @@ describe("simkl activities gating", () => {
         "original",
       );
       return SHOWS;
-    };
+    });
     const snapshot = await simklProvider.fetchSource("me/plantowatch", ctx());
     expect(attempts).toBe(2);
     expect(snapshot.entries).toHaveLength(4);
@@ -189,9 +198,9 @@ describe("simkl reconnect", () => {
       connection: authorization("auth-1", "old_token"),
     });
     clearCalls();
-    routes["GET /sync/all-items/shows"] = () => ({ shows: [] });
-    routes["GET /sync/all-items/movies"] = () => ({ movies: [] });
-    routes["GET /sync/all-items/anime"] = () => ({ anime: [] });
+    routes.set("GET /sync/all-items/shows", () => ({ shows: [] }));
+    routes.set("GET /sync/all-items/movies", () => ({ movies: [] }));
+    routes.set("GET /sync/all-items/anime", () => ({ anime: [] }));
 
     const snapshot = await simklProvider.fetchSource("me/plantowatch", {
       connection: authorization("auth-2", "new_token"),
@@ -210,14 +219,15 @@ describe("simkl reconnect", () => {
       token === "Bearer old_token"
         ? rows
         : { shows: [], movies: [], anime: [] };
-    routes["GET /sync/activities"] = async (call) => {
+    routes.set("GET /sync/activities", async (call) => {
       if (call.headers.get("Authorization") === "Bearer old_token") await held;
       return activities({ all: "2026-10-01T10:00:00Z" });
-    };
+    });
     for (const kind of ["shows", "movies", "anime"] as const) {
       const rows = { shows: SHOWS, movies: MOVIES, anime: ANIME }[kind];
-      routes[`GET /sync/all-items/${kind}`] = (call) =>
-        library(call.headers.get("Authorization"), rows);
+      routes.set(`GET /sync/all-items/${kind}`, (call) =>
+        library(call.headers.get("Authorization"), rows),
+      );
     }
 
     // A sync of the old authorization is still running when the user

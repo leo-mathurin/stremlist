@@ -18,6 +18,7 @@ import {
   routeConfig,
   saveButton,
 } from "./config-fixture";
+import { isRecord } from "../helpers/json";
 
 // Updating the installed Stremlist through a linked Stremio account, and the
 // manual reinstall that stays available. The backend keeps the Stremio key
@@ -148,10 +149,11 @@ async function routeStremio(browser: Browser, start: StremioStart = {}) {
       return route.fulfill({ json: { link: LINK, token: TOKEN } });
     }
     if (path === "link/confirm") {
-      const { token } = JSON.parse(route.request.postData ?? "{}") as {
-        token?: string;
-      };
-      if (token !== TOKEN) throw new Error(`Unexpected link token ${token}`);
+      const body: unknown = JSON.parse(route.request.postData ?? "{}");
+      const token = isRecord(body) ? body.token : undefined;
+      if (token !== TOKEN) {
+        throw new Error(`Unexpected link token ${JSON.stringify(token)}`);
+      }
       stremio.calls.push("read");
       if (stremio.approved) setLinked(true);
       return route.fulfill({
@@ -202,6 +204,17 @@ async function routeStremio(browser: Browser, start: StremioStart = {}) {
   return stremio;
 }
 
+declare global {
+  interface Window {
+    // Set by the init script of preparePage before the app runs.
+    /** The tabs that `window.open` gave the app. */
+    e2eTabs: { location: { href: string }; opener: unknown }[];
+    /** How far the page clock runs ahead of real time (setClock). */
+    e2eClockOffset: number;
+    e2eUpdates: { running: number; most: number };
+  }
+}
+
 /**
  * Keeps toasts on screen, records the Stremio tab instead of opening it,
  * lets the test move the clock forward, and starts with the manual choice
@@ -214,11 +227,7 @@ async function preparePage(
   await holdToasts(browser);
   await browser.addInitScript(
     ({ manual, manualKey, blockTabs }) => {
-      const page = window as unknown as {
-        e2eTabs: { location: { href: string }; opener: unknown }[];
-        e2eClockOffset: number;
-        e2eUpdates: { running: number; most: number };
-      };
+      const page = window;
       page.e2eTabs = [];
       page.e2eClockOffset = 0;
       // How many Stremio updates this page has waiting at the same time.
@@ -241,13 +250,16 @@ async function preparePage(
       };
       const now = Date.now.bind(Date);
       Date.now = () => now() + page.e2eClockOffset;
-      window.open = () => {
-        // An in-app browser can refuse new tabs.
-        if (blockTabs) return null;
-        const tab = { location: { href: "" }, opener: window, close() {} };
-        page.e2eTabs.push(tab);
-        return tab as unknown as Window;
-      };
+      // The fake tab is no Window, so it replaces `open` without its type.
+      Object.defineProperty(window, "open", {
+        value: () => {
+          // An in-app browser can refuse new tabs.
+          if (blockTabs) return null;
+          const tab = { location: { href: "" }, opener: window, close() {} };
+          page.e2eTabs.push(tab);
+          return tab;
+        },
+      });
       if (manual) localStorage.setItem(manualKey, "1");
     },
     {
@@ -260,15 +272,22 @@ async function preparePage(
 
 /** Everything this browser stored: never a Stremio key. */
 function browserStorage(browser: Browser) {
-  return browser.evaluate(() =>
-    JSON.stringify({ ...localStorage, ...sessionStorage }),
-  );
+  return browser.evaluate(() => {
+    const stored = new Map<string, string | null>();
+    for (const storage of [localStorage, sessionStorage]) {
+      for (let index = 0; index < storage.length; index++) {
+        const key = storage.key(index);
+        if (key !== null) stored.set(key, storage.getItem(key));
+      }
+    }
+    return JSON.stringify(Object.fromEntries(stored));
+  });
 }
 
 /** Moves the page clock `ms` ahead of real time (0 to undo). */
 function setClock(browser: Browser, ms: number) {
   return browser.evaluate((offset) => {
-    (window as unknown as { e2eClockOffset: number }).e2eClockOffset = offset;
+    window.e2eClockOffset = offset;
     return offset;
   }, ms);
 }
@@ -276,10 +295,7 @@ function setClock(browser: Browser, ms: number) {
 /** The address the Stremio tab was sent to, or null. */
 function stremioTab(browser: Browser) {
   return browser.evaluate(() => {
-    const tabs = (
-      window as unknown as { e2eTabs: { location: { href: string } }[] }
-    ).e2eTabs;
-    return tabs.at(-1)?.location.href ?? null;
+    return window.e2eTabs.at(-1)?.location.href ?? null;
   });
 }
 
@@ -682,12 +698,7 @@ test("a save made while Stremio updates becomes one more update", async ({
     .poll(() => stremio.calls.filter((call) => call === "update").length)
     .toBe(3);
   expect(stremlistEntry(stremio.collection)?.manifest).toEqual(renamed);
-  expect(
-    await browser.evaluate(
-      () =>
-        (window as unknown as { e2eUpdates: { most: number } }).e2eUpdates.most,
-    ),
-  ).toBe(1);
+  expect(await browser.evaluate(() => window.e2eUpdates.most)).toBe(1);
 });
 
 test("when Stremio gives no code, the card says so and a new try works", async ({

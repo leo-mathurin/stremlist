@@ -2,6 +2,7 @@
  * What Watch tracking reads from a library item (ADR 0003): when it turned
  * watched, which episodes are watched, and the episode list of a series.
  */
+import { z } from "zod";
 import { LruCache } from "../../lib/lru";
 import { providerFetch, RateLimiter } from "../../providers/http";
 import type { LibraryItem } from "../stremio";
@@ -13,6 +14,23 @@ const cinemetaLimiter = new RateLimiter(20, 1000);
 const videoLists = new LruCache<string, SeriesVideo[]>({
   maxEntries: 2000,
   ttlMs: 6 * 3600_000,
+});
+
+const cinemetaMetaSchema = z.object({
+  meta: z
+    .object({
+      videos: z
+        .array(
+          z.object({
+            id: z.unknown(),
+            season: z.unknown(),
+            episode: z.unknown(),
+            released: z.unknown(),
+          }),
+        )
+        .optional(),
+    })
+    .nullish(),
 });
 
 /** The episodes of a series in Stremio's order, from Cinemeta. */
@@ -29,9 +47,7 @@ async function seriesVideos(
   // Cinemeta does not know the series: it has no episode list to compare.
   if (response.status === 404) return [];
   if (!response.ok) throw new Error(`Cinemeta answered ${response.status}`);
-  const body = (await response.json()) as {
-    meta?: { videos?: Partial<SeriesVideo>[] } | null;
-  };
+  const body = cinemetaMetaSchema.parse(await response.json());
   const videos = stremioOrder(
     (body.meta?.videos ?? []).flatMap(({ id, season, episode, released }) =>
       typeof id === "string" &&
@@ -39,7 +55,14 @@ async function seriesVideos(
       typeof episode === "number" &&
       Number.isInteger(season) &&
       Number.isInteger(episode)
-        ? [{ id, season, episode, released }]
+        ? [
+            {
+              id,
+              season,
+              episode,
+              released: typeof released === "string" ? released : undefined,
+            },
+          ]
         : [],
     ),
   );

@@ -5,6 +5,7 @@ import {
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import type { ProviderId } from "@stremlist/shared/providers";
+import type { z } from "zod";
 import { getR2Bucket, getR2Client } from "./r2";
 
 function isR2Error(error: unknown, name: string, status: number): boolean {
@@ -61,9 +62,16 @@ export async function readJsonVersion(
   }
 }
 
-/** A JSON object, or null when it does not exist. Other errors throw. */
-export async function readJson<T>(key: string): Promise<T | null> {
-  return ((await readJsonVersion(key))?.value ?? null) as T | null;
+/**
+ * A JSON object parsed with `schema`, or null when it does not exist. Other
+ * errors throw.
+ */
+export async function readJson<T>(
+  key: string,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+): Promise<T | null> {
+  const value = (await readJsonVersion(key))?.value;
+  return value == null ? null : schema.parse(value);
 }
 
 /**

@@ -18,6 +18,7 @@ import type {
   ConnectionSummary,
 } from "@stremlist/shared/stremio.types";
 import type { ListSyncStatus } from "@stremlist/shared/sync-status";
+import { type Guard, isRecord, isString, parseJson } from "../helpers/json";
 
 // Intercepted API of the configure page. These fixtures record requests and
 // prove UI state; real storage and manifest behavior is covered by the
@@ -302,7 +303,7 @@ export async function baseRoutes(
       });
     else if (pathname === "/lists/preview" && route.request.method === "POST")
       await route.fulfill({
-        json: toJson(previewOf(parseBody<PreviewRequest>(route))),
+        json: toJson(previewOf(parseBody(route, isPreviewRequest))),
       });
     else
       throw new Error(
@@ -328,14 +329,51 @@ export function savedLists(
 
 type Json = NonNullable<Parameters<WebRoute["fulfill"]>[0]["json"]>;
 
-/** Typed fixtures as a route body (interfaces are not JSON-typed). */
-export function toJson(value: object): Json {
-  return JSON.parse(JSON.stringify(value)) as Json;
+function isJsonValue(value: unknown): value is Json | null {
+  if (value === null) return true;
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  if (isRecord(value)) return Object.values(value).every(isJsonValue);
+  return ["string", "number", "boolean"].includes(typeof value);
 }
 
-export function parseBody<T>(route: WebRoute): T {
-  return JSON.parse(route.request.postData ?? "{}") as T;
+/** Typed fixtures as a route body (interfaces are not JSON-typed). */
+export function toJson<T>(value: T): Json {
+  const json: unknown = JSON.parse(JSON.stringify(value));
+  if (json === null || !isJsonValue(json)) {
+    throw new Error(`Not a JSON route body: ${JSON.stringify(value)}`);
+  }
+  return json;
 }
+
+/** The JSON body that the app sent, as checked by `is`. */
+export function parseBody<T>(route: WebRoute, is: Guard<T>): T {
+  return parseJson(route.request.postData ?? "{}", is, "request body");
+}
+
+export function isConfigInput(value: unknown): value is AccountConfigInput {
+  return isRecord(value) && Array.isArray(value.lists);
+}
+
+export function isPreviewRequest(value: unknown): value is PreviewRequest {
+  return (
+    isRecord(value) && isString(value.provider) && isString(value.sourceRef)
+  );
+}
+
+/** The body of `POST /links/resolve`. */
+export function isResolveRequest(
+  value: unknown,
+): value is { input: string; accountKey?: string; ticket?: string } {
+  return isRecord(value) && isString(value.input);
+}
+
+/**
+ * A configuration that the fixture serves. It can hold a value that the
+ * answer type does not allow: `lastFetchedAt: null`.
+ */
+export type ServedConfig = Omit<AccountConfigResponse, "lastFetchedAt"> & {
+  lastFetchedAt: string | null;
+};
 
 /**
  * Serve one Account's configuration and record every save. Saves succeed
@@ -345,7 +383,7 @@ export function parseBody<T>(route: WebRoute): T {
  */
 export async function routeConfig(
   browser: Browser,
-  initial: AccountConfigResponse = configuration,
+  initial: ServedConfig = configuration,
   key = accountId,
   options: { gate?: Promise<void>; genres?: string[] } = {},
 ) {
@@ -355,7 +393,7 @@ export async function routeConfig(
     if (route.request.method === "GET") {
       await route.fulfill({ json: toJson(state.config) });
     } else {
-      const submitted = parseBody<AccountConfigInput>(route);
+      const submitted = parseBody(route, isConfigInput);
       submissions.push(submitted);
       if (options.gate) await options.gate;
       await route.fulfill({
@@ -389,7 +427,7 @@ export async function captureConfig(
 export async function routeCreateAccount(browser: Browser) {
   const created: AccountConfigInput[] = [];
   await browser.route(`${backend}/accounts`, async (route) => {
-    const body = parseBody<AccountConfigInput>(route);
+    const body = parseBody(route, isConfigInput);
     created.push(body);
     await route.fulfill({
       json: toJson({ ok: true, accountId, lists: savedLists(body) }),
@@ -404,7 +442,7 @@ export async function routeCreateAccount(browser: Browser) {
  */
 export async function gatedSaves(
   browser: Browser,
-  initial: object,
+  config: ServedConfig,
   genres?: string[],
 ) {
   await baseRoutes(browser);
@@ -412,8 +450,6 @@ export async function gatedSaves(
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
-  // `initial` may hold values the type does not allow (`lastFetchedAt: null`).
-  const config = initial as AccountConfigResponse;
   const { submissions } = await routeConfig(browser, config, accountId, {
     gate,
     genres,
@@ -449,7 +485,7 @@ export async function routeResolve(
 ) {
   const inputs: { input: string; accountKey?: string }[] = [];
   await browser.route(`${backend}/links/resolve`, async (route) => {
-    const body = parseBody<{ input: string; accountKey?: string }>(route);
+    const body = parseBody(route, isResolveRequest);
     inputs.push(body);
     const json = answer(body.input, body.accountKey);
     if (json === null) await route.abort();
@@ -471,7 +507,7 @@ export async function routePreview(
 ) {
   const requests: PreviewRequest[] = [];
   await browser.route(`${backend}/lists/preview`, async (route) => {
-    const request = parseBody<PreviewRequest>(route);
+    const request = parseBody(route, isPreviewRequest);
     requests.push(request);
     const json = answer(request, requests.length - 1);
     if (json === null) await route.abort();

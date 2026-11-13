@@ -8,6 +8,7 @@
 // JSON line to E2E_PROVIDER_LOG, so tests can check what the backend sent.
 import type { FixtureRequest } from "./fetch-fixture.js";
 import { bearer, graphql, installFetchFixture } from "./fetch-fixture.js";
+import { isNumber, isRecord, isString, optional, present } from "./json.js";
 import {
   PREVIEW_PRIVATE_LIST,
   PREVIEW_PRODUCTS,
@@ -19,29 +20,29 @@ const VALID_TOKENS = new Set(["fixture-access-token", "fresh-access"]);
 
 const SHAWSHANK = { title: "The Shawshank Redemption", year: 1994 };
 const BREAKING_BAD = { title: "Breaking Bad", year: 2008 };
-const IMDB_TITLES: Record<
-  string,
-  { text: string; type: string; year: number; rating?: number }
-> = {
-  tt0111161: { text: SHAWSHANK.title, type: "Movie", year: SHAWSHANK.year },
-  tt0903747: {
-    text: BREAKING_BAD.title,
-    type: "TV Series",
-    year: BREAKING_BAD.year,
-  },
-  ...Object.fromEntries(
-    PREVIEW_PRODUCTS.flatMap(({ imdb, year }) =>
-      imdb
-        ? [
-            [
-              imdb.id,
-              { text: imdb.title, type: "Movie", year, rating: imdb.rating },
-            ],
-          ]
-        : [],
-    ),
+interface ImdbTitle {
+  text: string;
+  type: string;
+  year: number;
+  rating?: number;
+}
+const IMDB_TITLES = new Map<string, ImdbTitle>([
+  ["tt0111161", { text: SHAWSHANK.title, type: "Movie", year: SHAWSHANK.year }],
+  [
+    "tt0903747",
+    { text: BREAKING_BAD.title, type: "TV Series", year: BREAKING_BAD.year },
+  ],
+  ...PREVIEW_PRODUCTS.flatMap(({ imdb, year }): [string, ImdbTitle][] =>
+    imdb
+      ? [
+          [
+            imdb.id,
+            { text: imdb.title, type: "Movie", year, rating: imdb.rating },
+          ],
+        ]
+      : [],
   ),
-};
+]);
 
 const traktMovie = { ...SHAWSHANK, ids: { trakt: 1, imdb: "tt0111161" } };
 const traktShow = { ...BREAKING_BAD, ids: { trakt: 2, imdb: "tt0903747" } };
@@ -62,16 +63,25 @@ const json = (body: unknown, status = 200, headers: HeadersInit = {}) =>
  * body): every Title of `known` is written, the others are not found.
  */
 function syncWrite(body: unknown, known: readonly string[]): Response {
-  const notFound: Record<string, unknown[]> = { movies: [], shows: [] };
-  for (const bucket of ["movies", "shows"] as const) {
-    const items = (body as Record<string, { ids?: { imdb?: string } }[]>)[
-      bucket
-    ];
-    notFound[bucket] = (items ?? []).filter(
-      (item) => !known.includes(item.ids?.imdb ?? ""),
-    );
-  }
-  return json({ added: { movies: 1, shows: 0 }, not_found: notFound }, 201);
+  const notFound = (bucket: "movies" | "shows") => {
+    const items = isRecord(body) ? body[bucket] : undefined;
+    const list: unknown[] = Array.isArray(items) ? items : [];
+    return list.filter((item) => !known.includes(imdbIdOf(item)));
+  };
+  return json(
+    {
+      added: { movies: 1, shows: 0 },
+      not_found: { movies: notFound("movies"), shows: notFound("shows") },
+    },
+    201,
+  );
+}
+
+/** The IMDb ID of an item of a /sync body, or "". */
+function imdbIdOf(item: unknown): string {
+  return isRecord(item) && isRecord(item.ids) && isString(item.ids.imdb)
+    ? item.ids.imdb
+    : "";
 }
 
 /** Titles the Simkl and MDBList fixtures know (MDBList: no Godfather). */
@@ -79,7 +89,13 @@ const SIMKL_KNOWN = ["tt0111161", "tt0903747", "tt0068646"];
 const MDBLIST_KNOWN = ["tt0111161", "tt0903747"];
 
 /** The fields of a form-encoded request (token exchanges, SPARQL). */
-const form = (body: unknown) => (body ?? {}) as Record<string, string>;
+function form(body: unknown) {
+  return Object.fromEntries(
+    Object.entries(isRecord(body) ? body : {}).filter(
+      (field): field is [string, string] => isString(field[1]),
+    ),
+  );
+}
 
 /** 401 unless the request carries a token that the fixtures issued. */
 function requireToken(request: Request): Response | null {
@@ -295,7 +311,11 @@ function simkl({ request, url, body }: FixtureRequest): Response {
 }
 
 function justwatch({ body }: FixtureRequest): Response {
-  const { operation, variables } = graphql<{ id?: string }>(body);
+  const { operation, variables } = graphql(
+    body,
+    (value): value is { id?: string } =>
+      isRecord(value) && optional(value.id, isString),
+  );
   if (operation !== "StremlistJustwatchList") {
     throw new Error(`Unexpected JustWatch operation ${operation}`);
   }
@@ -345,8 +365,9 @@ function justwatch({ body }: FixtureRequest): Response {
 }
 
 /** A user list of the Catalog preview tests (preview-fixture.ts). */
-function senscritiqueList(variables: { id: number; offset?: number }) {
-  const { id, offset = 0 } = variables;
+function senscritiqueList(variables: { id?: number; offset?: number }) {
+  const { offset = 0 } = variables;
+  const id = present(variables.id, "the ID of the SensCritique list");
   if (id === PREVIEW_PRIVATE_LIST) {
     return json({ data: { userList: { id, isPrivate: true } } });
   }
@@ -385,13 +406,23 @@ function senscritiqueList(variables: { id: number; offset?: number }) {
   });
 }
 
+function isSensCritiqueVariables(value: unknown): value is {
+  id?: number;
+  offset?: number;
+  username?: string;
+  universe?: string;
+} {
+  return (
+    isRecord(value) &&
+    optional(value.id, isNumber) &&
+    optional(value.offset, isNumber) &&
+    optional(value.username, isString) &&
+    optional(value.universe, isString)
+  );
+}
+
 function senscritique({ body }: FixtureRequest): Response {
-  const { operation, variables } = graphql<{
-    id: number;
-    offset?: number;
-    username?: string;
-    universe?: string;
-  }>(body);
+  const { operation, variables } = graphql(body, isSensCritiqueVariables);
   if (operation === "StremlistList") return senscritiqueList(variables);
   if (variables.username === "private-user") {
     return json({
@@ -468,7 +499,7 @@ function letterboxd({ request, url }: FixtureRequest): Response {
 /** Exact Wikidata links for the Provider fixture entries. */
 function wikidata({ body }: FixtureRequest): Response {
   const query = form(body).query ?? "";
-  const known: Record<string, string> = {
+  const known = {
     "101": "tt0111161",
     "202": "tt0903747",
     "film:101": "tt0111161",
@@ -489,14 +520,18 @@ function wikidata({ body }: FixtureRequest): Response {
 }
 
 function imdb({ body }: FixtureRequest): Response {
-  const { operation, variables } = graphql<{ ids: string[] }>(body);
+  const { operation, variables } = graphql(
+    body,
+    (value): value is { ids: string[] } =>
+      isRecord(value) && Array.isArray(value.ids) && value.ids.every(isString),
+  );
   if (operation !== "TitlesById") {
     throw new Error(`Unexpected IMDb operation ${operation}`);
   }
   return json({
     data: {
       titles: variables.ids.map((id) => {
-        const title = IMDB_TITLES[id];
+        const title = IMDB_TITLES.get(id);
         return title
           ? {
               id,

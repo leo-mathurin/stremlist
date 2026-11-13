@@ -1,5 +1,6 @@
 import { ADDON_VERSION } from "@stremlist/shared/constants";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
+import { z } from "zod";
 import { LruCache } from "../lib/lru";
 import type { ConnectionAccess } from "./types";
 import { SourceUnavailableError } from "./types";
@@ -205,20 +206,38 @@ export function sourceErrorFromHttp(
     : error;
 }
 
-/** providerFetch() that parses JSON and throws HttpError on non-2xx. */
-// The caller names the response shape; the body is not validated.
-// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters
-export async function providerFetchJson<T>(
+/**
+ * providerFetch() that parses JSON and throws HttpError on non-2xx. The
+ * caller parses `data` into the shape it expects.
+ */
+export async function providerFetchJson(
   url: string,
   options: ProviderFetchOptions = {},
-): Promise<{ data: T; response: Response }> {
+): Promise<{ data: unknown; response: Response }> {
   const response = await ensureOk(await providerFetch(url, options), url);
-  return { data: (await response.json()) as T, response };
+  const data: unknown = await response.json();
+  return { data, response };
 }
 
 export interface GraphQLResponse<T> {
   data?: T | null;
   errors?: { message: string; extensions?: { code?: string } }[];
+}
+
+function graphqlResponseSchema<T>(
+  data: z.ZodType<T, z.ZodTypeDef, unknown>,
+): z.ZodType<GraphQLResponse<T>, z.ZodTypeDef, unknown> {
+  return z.object({
+    data: data.nullish(),
+    errors: z
+      .array(
+        z.object({
+          message: z.string(),
+          extensions: z.object({ code: z.string().optional() }).optional(),
+        }),
+      )
+      .optional(),
+  });
 }
 
 /**
@@ -230,15 +249,16 @@ export async function graphqlRequest<T>(
   url: string,
   query: string,
   variables: Record<string, unknown>,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
   options: ProviderFetchOptions = {},
 ): Promise<GraphQLResponse<T>> {
   const headers = new Headers(options.headers);
   headers.set("Accept", "application/json");
-  const { data } = await providerFetchJson<GraphQLResponse<T>>(url, {
+  const { data } = await providerFetchJson(url, {
     ...options,
     method: "POST",
     headers,
     json: { query, variables },
   });
-  return data;
+  return graphqlResponseSchema(schema).parse(data);
 }

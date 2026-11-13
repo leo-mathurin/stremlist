@@ -1,4 +1,5 @@
 import { asImdbId } from "@stremlist/shared/constants";
+import { z } from "zod";
 import { mapWithConcurrency } from "../lib/concurrency";
 import type { GraphQLResponse } from "../providers/http";
 import { graphqlRequest, RateLimiter } from "../providers/http";
@@ -17,11 +18,43 @@ const justwatchLimiter = new RateLimiter(5, 1000);
 export function justwatchQuery<T>(
   query: string,
   variables: Record<string, unknown>,
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
 ): Promise<GraphQLResponse<T>> {
-  return graphqlRequest<T>(JUSTWATCH_GRAPHQL, query, variables, {
+  return graphqlRequest(JUSTWATCH_GRAPHQL, query, variables, schema, {
     limiter: justwatchLimiter,
   });
 }
+
+const externalImdbIdSchema = z.object({ imdbId: z.string().nullish() });
+
+const imdbByPathSchema = z.object({
+  urlV2: z
+    .object({
+      node: z
+        .object({
+          content: z
+            .object({ externalIds: externalImdbIdSchema.optional() })
+            .optional(),
+        })
+        .optional(),
+    })
+    .nullish(),
+});
+
+const imdbByNodeIdsSchema = z.object({
+  nodes: z
+    .array(
+      z
+        .object({
+          id: z.string().optional(),
+          content: z
+            .object({ externalIds: externalImdbIdSchema.nullish() })
+            .nullish(),
+        })
+        .nullable(),
+    )
+    .optional(),
+});
 
 const IMDB_BY_PATH = `
   query StremlistTitleByPath($path: String!) {
@@ -40,11 +73,7 @@ const IMDB_BY_PATH = `
  * or null when JustWatch has none.
  */
 async function justwatchImdbIdByPath(path: string): Promise<string | null> {
-  const json = await justwatchQuery<{
-    urlV2?: {
-      node?: { content?: { externalIds?: { imdbId?: string | null } } };
-    } | null;
-  }>(IMDB_BY_PATH, { path });
+  const json = await justwatchQuery(IMDB_BY_PATH, { path }, imdbByPathSchema);
   return asImdbId(json.data?.urlV2?.node?.content?.externalIds?.imdbId) ?? null;
 }
 
@@ -75,14 +104,11 @@ async function justwatchImdbIdsByNodeIds(
   const found = new Map<string, string>();
   const unique = [...new Set(ids)];
   for (let start = 0; start < unique.length; start += NODE_IDS_PER_REQUEST) {
-    const json = await justwatchQuery<{
-      nodes?: ({
-        id?: string;
-        content?: { externalIds?: { imdbId?: string | null } | null } | null;
-      } | null)[];
-    }>(IMDB_BY_NODE_IDS, {
-      ids: unique.slice(start, start + NODE_IDS_PER_REQUEST),
-    });
+    const json = await justwatchQuery(
+      IMDB_BY_NODE_IDS,
+      { ids: unique.slice(start, start + NODE_IDS_PER_REQUEST) },
+      imdbByNodeIdsSchema,
+    );
     for (const node of json.data?.nodes ?? []) {
       const imdbId = asImdbId(node?.content?.externalIds?.imdbId);
       if (node?.id && imdbId) {

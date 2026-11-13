@@ -6,13 +6,9 @@
   "scripts": {
     "dev": "portless",
     "dev:local": "portless",
-    "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "format": "prettier . --write",
-    "format:check": "prettier . --check",
-    "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit",
-    "dev:app": "vite",
+    "build": "vp build",
+    "preview": "vp preview",
+    "dev:app": "vp dev",
     "dev:tailnet": "portless --tailscale",
     "test": "node --test --test-timeout=60000 scripts/dev-proxy.test.mjs && bun test ./scripts/*.test.ts"
   },
@@ -45,17 +41,14 @@
   },
   "devDependencies": {
     "@stremlist/backend": "workspace:*",
-    "@stremlist/eslint-config": "workspace:*",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vercel/related-projects": "^1.0.0",
-    "@vitejs/plugin-react": "^5.1.1",
-    "eslint": "^9.39.1",
-    "eslint-config-prettier": "^10.1.8",
-    "prettier": "^3.8.1",
-    "typescript": "~5.9.3",
-    "vite": "^7.3.1"
+    "@vitejs/plugin-react": "6.3.0",
+    "oxc-transform-react": "0.156.0",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
   },
   "portless": {
     "name": "stremlist",

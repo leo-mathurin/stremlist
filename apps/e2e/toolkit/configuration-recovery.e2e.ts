@@ -1,6 +1,5 @@
 import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
-import type { AccountConfigInput } from "@stremlist/shared/stremio.types";
 import {
   SAVED,
   SAVED_REINSTALL,
@@ -12,6 +11,7 @@ import {
   captureConfig,
   imdbUser,
   parseBody,
+  isConfigInput,
   resolved,
   routeCreateAccount,
   routeResolve,
@@ -185,7 +185,7 @@ test("a normalized handle becomes the saved source and the next save stays clean
       });
     else {
       requests++;
-      const payload = parseBody<AccountConfigInput>(route);
+      const payload = parseBody(route, isConfigInput);
       expect(payload.lists[0].sourceRef).toBe(
         requests === 1 ? "p.fixture" : "ur99887766",
       );
@@ -233,7 +233,7 @@ test("network save failure preserves values for a retry", async ({
       await route.fulfill({
         json: toJson({
           ok: true,
-          lists: savedLists(parseBody<AccountConfigInput>(route)),
+          lists: savedLists(parseBody(route, isConfigInput)),
         }),
       });
   });

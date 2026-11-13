@@ -6,6 +6,7 @@
 import { readFileSync } from "node:fs";
 import type { FixtureRequest } from "./fetch-fixture.js";
 import { graphql, installFetchFixture } from "./fetch-fixture.js";
+import { isRecord, isString, optional, parseJson } from "./json.js";
 
 /** The Source lists that the test writes to E2E_SOURCE_FIXTURE_FILE. */
 export interface SourceFixture {
@@ -30,11 +31,41 @@ export interface SourceFixture {
   >;
 }
 
-const fixtureFile = process.env.E2E_SOURCE_FIXTURE_FILE;
-if (!fixtureFile) throw new Error("E2E_SOURCE_FIXTURE_FILE is not set");
+function fixturePath(): string {
+  const file = process.env.E2E_SOURCE_FIXTURE_FILE;
+  if (!file) throw new Error("E2E_SOURCE_FIXTURE_FILE is not set");
+  return file;
+}
+const fixtureFile = fixturePath();
+
+function isSourceFixture(value: unknown): value is SourceFixture {
+  return (
+    isRecord(value) &&
+    isRecord(value.imdb) &&
+    isRecord(value.trakt) &&
+    isRecord(value.titles)
+  );
+}
 
 function fixture(): SourceFixture {
-  return JSON.parse(readFileSync(fixtureFile!, "utf8")) as SourceFixture;
+  return parseJson(
+    readFileSync(fixtureFile, "utf8"),
+    isSourceFixture,
+    "Source list fixture",
+  );
+}
+
+function isImdbVariables(value: unknown): value is {
+  urConst?: string;
+  after?: string | null;
+  ids?: string[];
+} {
+  return (
+    isRecord(value) &&
+    optional(value.urConst, isString) &&
+    optional(value.after, (after) => after === null || isString(after)) &&
+    optional(value.ids, (ids) => Array.isArray(ids) && ids.every(isString))
+  );
 }
 
 function titleNode(id: string, state: SourceFixture) {
@@ -55,11 +86,7 @@ function titleNode(id: string, state: SourceFixture) {
 }
 
 function imdb({ body }: FixtureRequest): Response {
-  const { operation, variables } = graphql<{
-    urConst?: string;
-    after?: string | null;
-    ids?: string[];
-  }>(body);
+  const { operation, variables } = graphql(body, isImdbVariables);
   const state = fixture();
   if (operation === "WatchListPage") {
     const list = state.imdb[String(variables.urConst)];

@@ -9,6 +9,7 @@ import {
 } from "../helpers/db.js";
 import type { FixtureBackend } from "../helpers/fixture-backend.js";
 import { startFixtureBackend } from "../helpers/fixture-backend.js";
+import { present } from "../helpers/json.js";
 import { LEGACY_ACTIONS_USER } from "../helpers/test-data.js";
 
 // Actions from Stremio and the Provider kill switch against the real
@@ -63,7 +64,7 @@ test(
       `${backend.url}/${accountId}/actions/watchlist/add/movie/tt0111161`,
     );
 
-    await page.goto(add!.externalUrl!);
+    await page.goto(present(add?.externalUrl, "the Add link"));
     await expect(
       page.getByRole("heading", {
         name: "✓ The Shawshank Redemption is in your watchlist on Trakt",
@@ -131,7 +132,7 @@ test(
       title: "✅ S01E02 watched on Trakt\nSelect to mark as unwatched",
       externalUrl: action("watched/remove/series/tt0903747%3A1%3A2"),
     });
-    await page.goto(watched!.externalUrl!);
+    await page.goto(present(watched?.externalUrl, "the Watched link"));
     await expectHeading(
       "✓ Breaking Bad S01E02 is marked as unwatched on Trakt",
     );
@@ -149,7 +150,7 @@ test(
       title: "🔖 In your Trakt watchlist\nSelect to remove",
       externalUrl: action("watchlist/remove/movie/tt0111161"),
     });
-    await page.goto(inWatchlist.externalUrl!);
+    await page.goto(present(inWatchlist.externalUrl, "the Watchlist link"));
     await expectHeading(
       "✓ The Shawshank Redemption is out of your watchlist on Trakt",
     );
@@ -162,7 +163,7 @@ test(
       title: "⭐ Rate on Trakt",
       externalUrl: action("rating/rate/movie/tt0111161"),
     });
-    await page.goto(rate!.externalUrl!);
+    await page.goto(present(rate?.externalUrl, "the Rate link"));
     await expectHeading("Rate The Shawshank Redemption");
     await expect(page.getByRole("radio")).toHaveCount(10);
     await expect(page.getByRole("checkbox", { name: "Trakt" })).toBeChecked();
@@ -179,7 +180,7 @@ test(
     expect((await entries("movie", "tt0111161")).at(-1)?.title).toBe(
       "⭐ Rated 8/10, change\nTrakt",
     );
-    await page.goto(rate!.externalUrl!);
+    await page.goto(present(rate?.externalUrl, "the Rate link"));
     await expect(page.getByText("Now 8/10")).toBeVisible();
     await expect(page.getByRole("radio", { name: "8" })).toBeChecked();
     await page.getByRole("button", { name: "Remove rating" }).click();

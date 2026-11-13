@@ -1,24 +1,12 @@
 import { addonCatalogEntries } from "@stremlist/shared/manifest-catalogs";
-import type {
-  StremioManifest,
-  StremioMeta,
-} from "@stremlist/shared/stremio.types";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("../lib/supabase", async () => {
-  return await import("./helpers/mock-supabase.js");
-});
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-vi.mock("../lib/r2", async () => {
-  return await import("./helpers/mock-r2.js");
-});
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
-
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import app from "../index.js";
 import { SourceUnavailableError } from "../providers/types";
 import { resetPreviewReadings } from "../services/list-preview";
@@ -52,6 +40,21 @@ import {
   sync,
   syncRows,
 } from "./helpers/new-titles.js";
+import { metasBody, readJson, stremioManifest } from "./helpers/json.js";
+
+vi.mock("../lib/supabase", async () => {
+  return await import("./helpers/mock-supabase.js");
+});
+vi.mock("../services/list-cache", async () => {
+  return await import("./helpers/mock-list-cache.js");
+});
+vi.mock("../providers/registry", async () => {
+  return await import("./helpers/mock-registry.js");
+});
+vi.mock("../lib/r2", async () => {
+  return await import("./helpers/mock-r2.js");
+});
+vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 
 beforeEach(resetNewTitlesTest);
 afterEach(restoreNewTitlesTest);
@@ -139,9 +142,7 @@ describe("New titles catalog", () => {
     const res = await app.request(
       `/${accountId}/catalog/movie/new-titles-movie/skip=1.json`,
     );
-    expect(ids(((await res.json()) as { metas: StremioMeta[] }).metas)).toEqual(
-      ["tt0000003"],
-    );
+    expect(ids((await readJson(res, metasBody)).metas)).toEqual(["tt0000003"]);
   });
 
   it("is empty when the Account has not turned it on", async () => {
@@ -396,7 +397,7 @@ describe("merged Lists", () => {
 describe("manifest", () => {
   async function catalogIds(key: string): Promise<string[]> {
     const res = await app.request(`/${key}/manifest.json`);
-    return ((await res.json()) as StremioManifest).catalogs.map((c) => c.id);
+    return (await readJson(res, stremioManifest)).catalogs.map((c) => c.id);
   }
 
   it("offers the New titles catalogs first, for the types the Lists show", async () => {
@@ -423,7 +424,7 @@ describe("manifest", () => {
       merged_sources: [{ provider: "imdb", source_ref: "ls1" }],
     });
     const res = await app.request(`/${accountId}/manifest.json`);
-    const { catalogs } = (await res.json()) as StremioManifest;
+    const { catalogs } = await readJson(res, stremioManifest);
     const lists = [
       {
         id: LIST_IDS[0],

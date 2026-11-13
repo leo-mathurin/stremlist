@@ -27,6 +27,20 @@ export default function LeaveDialog({ blocker }: { blocker: Blocker }) {
     if (blocker.state === "blocked") blocker.reset();
   };
 
+  // A click on the backdrop lands on the dialog element itself. It is a
+  // pointer shortcut only: Escape and "Keep editing" do the same.
+  useEffect(() => {
+    const element = dialog.current;
+    if (!element) return;
+    const onClick = (event: MouseEvent) => {
+      if (event.target === element && blocker.state === "blocked") {
+        blocker.reset();
+      }
+    };
+    element.addEventListener("click", onClick);
+    return () => element.removeEventListener("click", onClick);
+  }, [blocker]);
+
   return (
     <dialog
       ref={dialog}
@@ -34,10 +48,6 @@ export default function LeaveDialog({ blocker }: { blocker: Blocker }) {
       onCancel={(event) => {
         event.preventDefault();
         stay();
-      }}
-      onClick={(event) => {
-        // A click on the backdrop lands on the dialog element itself.
-        if (event.target === event.currentTarget) stay();
       }}
       className={
         "m-auto w-[calc(100%-2rem)] max-w-sm rounded-3xl bg-white p-6 font-rounded text-ink shadow-xl ring-1 ring-black/5 " +
