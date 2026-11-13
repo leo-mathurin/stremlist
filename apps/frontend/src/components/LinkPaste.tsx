@@ -39,7 +39,7 @@ export interface ResolvedLink {
   defaultDisplayMode: DisplayMode | null;
 }
 
-type LinkProblem = {
+export type LinkProblem = {
   message: string;
   /** "info" for expected states (coming soon), red otherwise. */
   tone?: "info";
@@ -47,6 +47,7 @@ type LinkProblem = {
   action?: "connect" | "upgrade";
   /** The Account key of another install, to open its configure page. */
   openAccount?: string;
+  showList?: () => void;
 };
 
 /** The answer to a pasted Addon URL: it is an install, not a list. */
@@ -181,8 +182,8 @@ export default function LinkPaste({
   /** Called once the initial link was submitted, so it is not added twice. */
   onInitialValueUsed: () => void;
   onDetect: (provider: ProviderId | null) => void;
-  /** Add the List. Returns an error message when it cannot be added. */
-  onResolved: (link: ResolvedLink) => string | null;
+  /** Add the List, or return feedback to show beside the field. */
+  onResolved: (link: ResolvedLink) => LinkProblem | null;
   onConnect: (provider: ProviderId, pendingLink: string) => void;
   onUpgrade: () => void;
   /** The paste field, so another control can focus it. */
@@ -272,13 +273,13 @@ export default function LinkPaste({
       );
       return;
     }
-    const error = onResolved({
+    const resolvedProblem = onResolved({
       provider: body.provider,
       sourceRef: body.sourceRef,
       suggestedTitle: body.suggestedTitle,
       defaultDisplayMode: body.defaultDisplayMode,
     });
-    if (error) setProblem({ message: error });
+    if (resolvedProblem) setProblem(resolvedProblem);
     else setValue("");
   };
 
@@ -360,7 +361,7 @@ export default function LinkPaste({
       </p>
       {problem && (
         <div
-          role="alert"
+          role={problem.tone === "info" ? "status" : "alert"}
           className={cn(
             "mt-2 rounded-2xl px-4 py-3 text-sm ring-1",
             problem.tone === "info"
@@ -369,6 +370,15 @@ export default function LinkPaste({
           )}
         >
           <p>{problem.message}</p>
+          {problem.showList && (
+            <button
+              type="button"
+              onClick={problem.showList}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-xs font-bold text-cloud"
+            >
+              Show
+            </button>
+          )}
           {connectProvider && (
             <button
               type="button"

@@ -27,11 +27,12 @@ import {
 
 const PASTE = "Paste a link to a watchlist or list";
 
-test("a canonical duplicate is refused and the link stays for repair", async ({
+test("a canonical duplicate offers to show the existing list and keeps the link", async ({
   app,
   browser,
   screen,
 }) => {
+  await browser.setViewport({ width: 390, height: 844 });
   const submissions = await captureConfig(browser);
   // The backend turns the p. handle into the ur… ID of the existing List.
   const inputs = await routeResolve(browser, (input) =>
@@ -48,6 +49,31 @@ test("a canonical duplicate is refused and the link stays for repair", async ({
   ).toBeVisible();
   await expect(field).toHaveValue("https://www.imdb.com/user/p.sameaccount/");
   await expect(screen.getByText("1 of 10 lists")).toBeVisible();
+  await expect(
+    screen
+      .getByRole("status")
+      .filter({ hasText: "This list is already in your Stremlist." }),
+  ).toHaveText("This list is already in your Stremlist. Show");
+  await expect(screen.getByRole("alert")).toHaveCount(0);
+  expect(
+    await browser.evaluate(
+      () =>
+        // A missing row reads as NaN, which fails every comparison.
+        (document.querySelector("[data-list-row]")?.getBoundingClientRect()
+          .top ?? Number.NaN) > window.innerHeight,
+    ),
+  ).toBe(true);
+  await screen.getByRole("button", "Show", { exact: true }).tap();
+  await expect
+    .poll(() =>
+      browser.evaluate(() => {
+        const top =
+          document.querySelector("[data-list-row]")?.getBoundingClientRect()
+            .top ?? Number.NaN;
+        return top >= 0 && top < 100;
+      }),
+    )
+    .toBe(true);
   await field.fill("https://www.imdb.com/list/ls99887766/");
   await screen.getByRole("button", "Add", { exact: true }).tap();
   await expect(screen.getByText("IMDb · List · ls99887766")).toBeVisible();

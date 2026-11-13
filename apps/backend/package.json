@@ -14,6 +14,7 @@
   "scripts": {
     "dev": "portless",
     "dev:local": "bun scripts/dev-local.mjs",
+    "dev:ready": "bun scripts/wait-for-ready.mjs",
     "build": "vp pack && tsc --emitDeclarationOnly",
     "start": "bun dist/index.js",
     "test": "vp test run --exclude '**/*.stress.test.ts'",
