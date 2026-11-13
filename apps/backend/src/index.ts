@@ -1,3 +1,5 @@
+// First import: stops the start when a required variable is missing.
+import "./lib/env";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
