@@ -174,6 +174,11 @@ history.
 
 Set backend env vars in `apps/backend/.env`.
 
+The backend does not start when `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+`CONNECTION_ENCRYPTION_KEY` or an R2 variable is missing. The error names
+the missing variables. `R2_ENDPOINT` replaces `R2_ACCOUNT_ID` for a local
+S3-compatible store.
+
 | Variable                               | Required | Description                                                                                                                                                                                                                                                                                                                                  | Default                 |
 | -------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
 | `PORT`                                 | No       | Backend HTTP port                                                                                                                                                                                                                                                                                                                            | `7001`                  |
