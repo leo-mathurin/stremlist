@@ -38,6 +38,7 @@ describe("accountEditPolicy", () => {
     assert.deepEqual(accountEditPolicy("private", null), {
       editLock: undefined,
       actionsLock: undefined,
+      watchLock: undefined,
       upgradeToConnect: false,
       connectHint: null,
     });
@@ -48,6 +49,8 @@ describe("accountEditPolicy", () => {
       editLock: undefined,
       actionsLock:
         "Save your setup and connect Trakt, Simkl or MDBList to use Actions.",
+      watchLock:
+        "Save your setup first. Then link Stremio and connect an account.",
       upgradeToConnect: false,
       connectHint: "save-first",
     });
@@ -58,6 +61,8 @@ describe("accountEditPolicy", () => {
       editLock: undefined,
       actionsLock:
         "Actions need a private Addon URL. Upgrade this install first.",
+      watchLock:
+        "Automatic watched marks need a private Addon URL. Upgrade this install first.",
       upgradeToConnect: true,
       connectHint: "upgrade",
     });
@@ -67,6 +72,7 @@ describe("accountEditPolicy", () => {
     assert.deepEqual(accountEditPolicy("legacy", "2026-10-01T00:00:00.000Z"), {
       editLock: moved,
       actionsLock: moved,
+      watchLock: moved,
       upgradeToConnect: true,
       connectHint: null,
     });

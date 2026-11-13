@@ -261,7 +261,7 @@ export function previewOf(
 
 /**
  * Register first: answers the requests every page makes (`/providers`,
- * `/stats`, the `/sync-status` poll), and the Catalog preview that an added
+ * `/stats`, the `/sync-status` poll, Watch tracking), and the Catalog preview that an added
  * List opens (with `previewOf`). Fails the test on any other request that a
  * later, more specific route did not take.
  */
@@ -281,6 +281,14 @@ export async function baseRoutes(
           syncStatus: configuration.syncStatus,
           connections: [],
         }),
+      });
+    // Watch tracking (ADR 0003): no Stremio link, so nothing to turn on.
+    else if (
+      route.request.method === "GET" &&
+      pathname.endsWith("/watch-tracking")
+    )
+      await route.fulfill({
+        json: { stremioLinked: false, stremioTrakt: false, destinations: [] },
       });
     // Home asks whether a pasted IMDb ID has a v1 install: by default none.
     else if (

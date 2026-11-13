@@ -28,6 +28,7 @@ import NewTitlesSettings from "../components/NewTitlesSettings";
 import type { ResolvedLink } from "../components/LinkPaste";
 import ProviderList from "../components/ProviderList";
 import QuickAdd from "../components/QuickAdd";
+import WatchTrackingSettings from "../components/WatchTrackingSettings";
 import RelativeTime from "../components/RelativeTime";
 import SortableListRow from "../components/SortableListRow";
 import { SectionHeading, SplitLayout, Wordmark } from "../components/brand";
@@ -37,6 +38,7 @@ import { useSEO } from "../hooks/useSEO";
 import { useAccountConfiguration } from "../hooks/useAccountConfiguration";
 import { useChecklistHidden } from "../hooks/useChecklistHidden";
 import { useLeaveGuard } from "../hooks/useLeaveGuard";
+import { useWatchTracking } from "../hooks/useWatchTracking";
 import { ConnectionsContext } from "../hooks/useCatalogPreview";
 import { accountEditPolicy } from "../lib/account-config";
 import { NEW_ACCOUNT_STORAGE } from "../lib/connections";
@@ -175,6 +177,20 @@ export default function Configure() {
   const ready = status === "ready" && (!rawKey || keyIsValid);
   const justCreated = !!accountId && createdId === accountId;
   const policy = accountEditPolicy(access, config.upgradedTo);
+  // A Connection or the Stremio link changes what Watch tracking can use.
+  const watch = useWatchTracking(
+    access === "private" ? accountId : null,
+    [
+      config.stremio.connection?.email ?? "",
+      String(!!config.stremio.connection),
+      // A link to the same account again changes neither of these.
+      config.stremio.link.kind,
+      ...config.connections.map(
+        (c) => `${c.provider}:${c.needsRenewalSince ?? ""}`,
+      ),
+    ].join("|"),
+    config.stremio.retry,
+  );
   const rows = lists.map((list) => config.rowModel(list));
   const attention = rows.filter((row) => attentionTone(row.sync)).length;
   // Leaving for a Provider keeps the edits (a draft), so Connect is not held.
@@ -185,6 +201,18 @@ export default function Configure() {
   // After the first save, bring the install step into view: on a phone it
   // is far above the Save button that the user pressed.
   const installCard = useRef<HTMLDivElement>(null);
+  // The Stremio card is in the page header: below the Providers panel on a
+  // phone, so "the top" of the document is not where it shows.
+  const stremioHeader = useRef<HTMLDivElement>(null);
+  /** Clears the card's notice, starts a Stremio step, and shows its card. */
+  const stremioStep = (step: () => Promise<unknown>) => {
+    watch.clearNotice();
+    void step();
+    stremioHeader.current?.scrollIntoView({
+      behavior: scrollBehavior(),
+      block: "start",
+    });
+  };
   useEffect(() => {
     const card = installCard.current;
     if (!justCreated || !revealInstall.current || !card) return;
@@ -356,7 +384,7 @@ export default function Configure() {
   return (
     <SplitLayout panel={panel}>
       <div className="mx-auto max-w-3xl space-y-6 p-5 pb-24 sm:p-8 lg:p-12">
-        <div className="space-y-4">
+        <div ref={stremioHeader} className="scroll-mt-4 space-y-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <h2 className="text-3xl font-bold tracking-tight">Your lists</h2>
@@ -684,6 +712,23 @@ export default function Configure() {
                 onToggle={config.toggleActionProvider}
                 onMove={config.moveActionProvider}
                 locked={policy.actionsLock}
+              />
+
+              <WatchTrackingSettings
+                destinations={watch.status?.destinations ?? null}
+                stremioLinked={watch.status?.stremioLinked ?? false}
+                stremioTrakt={watch.status?.stremioTrakt ?? false}
+                loadFailed={watch.failed}
+                busy={watch.busy}
+                notice={watch.notice}
+                locked={policy.watchLock}
+                onToggle={(provider, enabled) =>
+                  void watch.toggle(provider, enabled)
+                }
+                onRetry={() => void watch.retry()}
+                onLinkStremio={() => stremioStep(config.stremio.connect)}
+                onInstallAgain={() => stremioStep(config.stremio.installAgain)}
+                onUpdateStremio={() => stremioStep(config.stremio.retry)}
               />
 
               <NewTitlesSettings

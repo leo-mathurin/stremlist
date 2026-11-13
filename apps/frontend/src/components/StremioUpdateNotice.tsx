@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 
 // A block that appears in the page: a short rise with a strong ease-out.
 // Reduced motion keeps the fade only.
-const ENTER =
+export const ENTER =
   "transition-[opacity,translate] duration-200 ease-[var(--ease-out-quint)] starting:translate-y-1.5 starting:opacity-0 motion-reduce:starting:translate-y-0";
 
 const DARK_BUTTON =
