@@ -25,7 +25,7 @@ import LeaveDialog from "../components/LeaveDialog";
 import LegacyChecklist, { WhatsNewButton } from "../components/LegacyChecklist";
 import LinkPaste from "../components/LinkPaste";
 import NewTitlesSettings from "../components/NewTitlesSettings";
-import type { ResolvedLink } from "../components/LinkPaste";
+import type { LinkProblem, ResolvedLink } from "../components/LinkPaste";
 import ProviderList from "../components/ProviderList";
 import QuickAdd from "../components/QuickAdd";
 import WatchTrackingSettings from "../components/WatchTrackingSettings";
@@ -36,6 +36,7 @@ import { usePendingIndicator } from "../hooks/usePendingIndicator";
 import { useNow } from "../hooks/useNow";
 import { useSEO } from "../hooks/useSEO";
 import { useAccountConfiguration } from "../hooks/useAccountConfiguration";
+import type { AddListProblem } from "../hooks/useListEditor";
 import { useChecklistHidden } from "../hooks/useChecklistHidden";
 import { useLeaveGuard } from "../hooks/useLeaveGuard";
 import { useWatchTracking } from "../hooks/useWatchTracking";
@@ -234,13 +235,7 @@ export default function Configure() {
         id: "list-add",
         action: {
           label: "Show",
-          onClick: () =>
-            listRowElement(lastAdded.localId)?.scrollIntoView({
-              behavior: scrollBehavior(),
-              // The new row opens its preview and can be taller than the
-              // screen: show its top.
-              block: "start",
-            }),
+          onClick: () => showListRow(lastAdded.localId),
         },
       });
     });
@@ -254,15 +249,41 @@ export default function Configure() {
     }
   }
 
-  const addResolved = (link: ResolvedLink): string | null =>
-    config.addList({
-      provider: link.provider,
-      sourceRef: link.sourceRef,
-      catalogTitle:
-        link.suggestedTitle ??
-        describeSource(link.provider, link.sourceRef).suggestedTitle,
-      displayMode: link.defaultDisplayMode ?? undefined,
-    });
+  const describeAddProblem = (
+    problem: AddListProblem | null,
+  ): LinkProblem | null => {
+    if (!problem) return null;
+    return problem.kind === "duplicate"
+      ? {
+          message: "This list is already in your Stremlist.",
+          tone: "info",
+          showList: () => showListRow(problem.localId),
+        }
+      : { message: problem.message };
+  };
+
+  const notifyAddProblem = (problem: AddListProblem | null) => {
+    const notice = describeAddProblem(problem);
+    if (!notice) return;
+    if (notice.showList) {
+      toast(notice.message, {
+        id: "list-add",
+        action: { label: "Show", onClick: notice.showList },
+      });
+    } else toast.error(notice.message, { id: "list-add" });
+  };
+
+  const addResolved = (link: ResolvedLink): LinkProblem | null =>
+    describeAddProblem(
+      config.addList({
+        provider: link.provider,
+        sourceRef: link.sourceRef,
+        catalogTitle:
+          link.suggestedTitle ??
+          describeSource(link.provider, link.sourceRef).suggestedTitle,
+        displayMode: link.defaultDisplayMode ?? undefined,
+      }),
+    );
 
   const connectFor = (provider: ProviderId, link?: string) => {
     writeStorage(PENDING_LINK_STORAGE, link ?? null);
@@ -647,13 +668,13 @@ export default function Configure() {
                       : source.label,
                     displayMode: source.defaultDisplayMode,
                   });
-                  if (error) toast.error(error, { id: "list-add" });
+                  notifyAddProblem(error);
                 }}
                 onAddChart={(chartId) => {
                   // The chart menu is off only when the List limit is
                   // reached; the Source list limit is checked here.
                   const error = config.addChartList(chartId);
-                  if (error) toast.error(error, { id: "list-add" });
+                  notifyAddProblem(error);
                 }}
               />
             </section>
@@ -787,6 +808,13 @@ function scrollBehavior(): ScrollBehavior {
 
 function listRowElement(localId: string): HTMLElement | null {
   return document.querySelector(`[data-list-row="${CSS.escape(localId)}"]`);
+}
+
+function showListRow(localId: string) {
+  listRowElement(localId)?.scrollIntoView({
+    behavior: scrollBehavior(),
+    block: "start",
+  });
 }
 
 /** Whether the top of `element` shows in the viewport. */
