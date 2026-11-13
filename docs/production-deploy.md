@@ -33,7 +33,7 @@ The deployment reads these values when the workflow builds it:
 Then:
 
 1. Merge #74. CI puts the `v2.0.0` commit on `main`, then `Supabase deploy`
-   releases it. The plan lists 11 migrations and `pg_cron: available`.
+   releases it. The plan lists 14 migrations and `pg_cron: available`.
 2. When the run is green: `https://api.stremlist.com/health` returns
    `"database":"up"`, and an existing `ur…` install still shows its catalogs.
 3. In Better Stack, unpause the Letterboxd, JustWatch and SensCritique

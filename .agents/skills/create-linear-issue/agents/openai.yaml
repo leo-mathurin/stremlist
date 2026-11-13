@@ -1,0 +1,5 @@
+interface:
+  display_name: "Create a Linear issue"
+  short_description: "Create clear and verifiable Stremlist issues"
+policy:
+  allow_implicit_invocation: true
