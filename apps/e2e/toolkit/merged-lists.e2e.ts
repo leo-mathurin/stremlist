@@ -311,6 +311,7 @@ test("a Source list that is in a merged List cannot be added again", async ({
   screen,
   browser,
 }) => {
+  await browser.setViewport({ width: 390, height: 844 });
   const merged = {
     ...watchlist,
     mergedSources: [{ provider: "imdb", sourceRef: "ls99123456" }],
@@ -327,6 +328,18 @@ test("a Source list that is in a merged List cannot be added again", async ({
     screen.getByText("This list is already in your Stremlist."),
   ).toBeVisible();
   await expect(screen.getByText(/^1 of 10 lists/)).toBeVisible();
+  await expect(screen.getByRole("alert")).toHaveCount(0);
+  await screen.getByRole("button", "Show", { exact: true }).tap();
+  await expect
+    .poll(() =>
+      browser.evaluate(() => {
+        const top = document
+          .querySelector("[data-list-row]")!
+          .getBoundingClientRect().top;
+        return top >= 0 && top < 100;
+      }),
+    )
+    .toBe(true);
   expect(inputs).toHaveLength(1);
 });
 

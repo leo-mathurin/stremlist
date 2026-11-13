@@ -2,11 +2,17 @@ import { useState } from "react";
 import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
 import {
   accountListsProblem,
+  listSources,
   listMergeProblem,
+  sourceKey,
 } from "@stremlist/shared/list-merge";
 import { createListRow, rowTitle } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { mergeRows, removeRowSource, splitRowSource } from "../lib/merged-rows";
+
+export type AddListProblem =
+  | { kind: "duplicate"; localId: string }
+  | { kind: "error"; message: string };
 
 /** The List rows of the configure page, their edits and what is wrong. */
 export function useListEditor() {
@@ -27,25 +33,28 @@ export function useListEditor() {
 
   /**
    * Add a List as the first row, so the user sees it right away; it also
-   * becomes the first catalog row in Stremio. Returns an error message when
-   * it cannot be added, so the caller can show it next to the control that
-   * asked.
+   * becomes the first catalog row in Stremio. A duplicate identifies the
+   * existing row so the caller can offer to show it.
    */
-  const addList = (partial: Parameters<typeof createListRow>[0]) => {
+  const addList = (
+    partial: Parameters<typeof createListRow>[0],
+  ): AddListProblem | null => {
+    const existing = lists.find((list) =>
+      listSources(list).some(
+        (source) => sourceKey(source) === sourceKey(partial),
+      ),
+    );
+    if (existing) return { kind: "duplicate", localId: existing.localId };
     const problem = accountListsProblem([partial, ...lists]);
-    if (problem) {
-      return problem.reason === "duplicate_source"
-        ? "This list is already in your Stremlist."
-        : problem.message;
-    }
+    if (problem) return { kind: "error", message: problem.message };
     const row = createListRow(partial);
     setLists((rows) => [row, ...rows]);
     setLastAdded(row);
     return null;
   };
 
-  /** Add a built-in IMDb chart. Returns an error message, like `addList`. */
-  const addChartList = (chartId: string): string | null => {
+  /** Add a built-in IMDb chart, with the same feedback as `addList`. */
+  const addChartList = (chartId: string): AddListProblem | null => {
     const entry = CHART_BY_ID.get(chartId);
     if (!entry) return null;
     return addList({
