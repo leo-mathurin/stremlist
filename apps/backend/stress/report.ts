@@ -16,7 +16,10 @@ type Route = (typeof ROUTES)[number];
 
 const k6SummarySchema = z.object({
   metrics: z.record(
-    z.object({ values: z.record(z.number().optional()) }).optional(),
+    z.string(),
+    z
+      .object({ values: z.record(z.string(), z.number().optional()) })
+      .optional(),
   ),
   state: z.object({ testRunDurationMs: z.number().optional() }).optional(),
 });
@@ -34,7 +37,7 @@ interface RouteResult {
 // The report keeps the other stats of the server too.
 export const serverStatsSchema = z
   .object({
-    hosts: z.record(z.number()),
+    hosts: z.record(z.string(), z.number()),
     imdbPages: z.number(),
     imdbItems: z.number(),
     maxInflight: z.number(),
@@ -42,7 +45,7 @@ export const serverStatsSchema = z
     rssMB: z.number(),
     peakRssMB: z.number(),
   })
-  .passthrough();
+  .loose();
 type ServerStats = z.infer<typeof serverStatsSchema>;
 
 export interface Peaks {

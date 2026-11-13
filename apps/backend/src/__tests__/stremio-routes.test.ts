@@ -62,14 +62,12 @@ const addon = z
       .object({
         id: z.string(),
         name: z.string().optional(),
-        catalogs: z
-          .array(z.object({ name: z.string() }).passthrough())
-          .optional(),
+        catalogs: z.array(z.object({ name: z.string() }).loose()).optional(),
       })
-      .passthrough(),
-    flags: z.record(z.unknown()).optional(),
+      .loose(),
+    flags: z.record(z.string(), z.unknown()).optional(),
   })
-  .passthrough() satisfies z.ZodType<Addon>;
+  .loose() satisfies z.ZodType<Addon>;
 
 /** What the Stremio API receives. */
 const apiRequest = z
@@ -78,7 +76,7 @@ const apiRequest = z
     // Kept as sent: Stremlist compares manifests as JSON text.
     addons: z.array(unchanged(addon)).optional(),
   })
-  .passthrough();
+  .loose();
 
 const cinemeta: Addon = {
   transportUrl: "https://v3-cinemeta.strem.io/manifest.json",

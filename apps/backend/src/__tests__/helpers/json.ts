@@ -14,16 +14,13 @@ import { z } from "zod";
 /** The body of `res`, parsed with `schema`. */
 export async function readJson<T>(
   res: Response,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  schema: z.ZodType<T>,
 ): Promise<T> {
   return schema.parse(await res.json());
 }
 
 /** `text` as JSON, parsed with `schema`. */
-export function parseJson<T>(
-  text: string,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
-): T {
+export function parseJson<T>(text: string, schema: z.ZodType<T>): T {
   return schema.parse(JSON.parse(text));
 }
 
@@ -31,9 +28,7 @@ export function parseJson<T>(
  * `schema`, but a parse gives back the value itself instead of a copy, so
  * its key order stays the same (for code that compares JSON text).
  */
-export function unchanged<T>(
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
-): z.ZodType<T, z.ZodTypeDef, unknown> {
+export function unchanged<T>(schema: z.ZodType<T>): z.ZodType<T> {
   return z.custom<T>((value) => schema.safeParse(value).success);
 }
 
@@ -54,16 +49,16 @@ export const jsonObject: z.ZodType<NonNullable<Json>> = z.lazy(() =>
     z.number(),
     z.boolean(),
     z.array(json),
-    z.record(json.optional()),
+    z.record(z.string(), json.optional()),
   ]),
 );
 
 /** Any JSON value, like a jsonb column or argument. */
 export const json: z.ZodType<Json> = z.lazy(() => jsonObject.nullable());
 
-export const errorBody = z.object({ error: z.string() }).passthrough();
+export const errorBody = z.object({ error: z.string() }).loose();
 
-export const accountIdBody = z.object({ accountId: z.string() }).passthrough();
+export const accountIdBody = z.object({ accountId: z.string() }).loose();
 
 const titleType = z.enum(["movie", "series"]);
 
@@ -83,15 +78,11 @@ const stremioMeta = z
     runtime: z.string().optional(),
     released: z.string().optional(),
   })
-  .passthrough() satisfies z.ZodType<StremioMeta>;
+  .loose() satisfies z.ZodType<StremioMeta>;
 
-export const metasBody = z
-  .object({ metas: z.array(stremioMeta) })
-  .passthrough();
+export const metasBody = z.object({ metas: z.array(stremioMeta) }).loose();
 
-export const metaBody = z
-  .object({ meta: stremioMeta.nullable() })
-  .passthrough();
+export const metaBody = z.object({ meta: stremioMeta.nullable() }).loose();
 
 export const stremioManifest = z
   .object({
@@ -108,7 +99,7 @@ export const stremioManifest = z
             types: z.array(z.string()),
             idPrefixes: z.array(z.string()).optional(),
           })
-          .passthrough(),
+          .loose(),
       ]),
     ),
     types: z.array(z.string()),
@@ -127,11 +118,11 @@ export const stremioManifest = z
                   options: z.array(z.string()).optional(),
                   optionsLimit: z.number().optional(),
                 })
-                .passthrough(),
+                .loose(),
             )
             .optional(),
         })
-        .passthrough(),
+        .loose(),
     ),
     logo: z.string(),
     behaviorHints: z
@@ -139,7 +130,7 @@ export const stremioManifest = z
         configurable: z.boolean(),
         configurationRequired: z.boolean(),
       })
-      .passthrough(),
+      .loose(),
     config: z
       .array(
         z
@@ -150,12 +141,12 @@ export const stremioManifest = z
             options: z.array(z.string()).optional(),
             default: z.string().optional(),
           })
-          .passthrough(),
+          .loose(),
       )
       .optional(),
     selfUrl: z.string().optional(),
   })
-  .passthrough() satisfies z.ZodType<StremioManifest>;
+  .loose() satisfies z.ZodType<StremioManifest>;
 
 export const streamsBody = z
   .object({
@@ -172,14 +163,14 @@ export const streamsBody = z
               notWebReady: z.boolean().optional(),
               bingeGroup: z.string().optional(),
             })
-            .passthrough()
+            .loose()
             .optional(),
         })
-        .passthrough() satisfies z.ZodType<StremioStream>,
+        .loose() satisfies z.ZodType<StremioStream>,
     ),
     cacheMaxAge: z.number(),
   })
-  .passthrough();
+  .loose();
 
 const configList = z
   .object({
@@ -190,7 +181,7 @@ const configList = z
     sortOption: z.string(),
     position: z.number(),
   })
-  .passthrough();
+  .loose();
 
 /** The fields of the configuration (AccountConfigResponse) that tests read. */
 export const configBody = z
@@ -202,7 +193,7 @@ export const configBody = z
     connections: z.array(
       z
         .object({ provider: z.string(), username: z.string().nullable() })
-        .passthrough(),
+        .loose(),
     ),
     newTitles: z
       .object({
@@ -213,17 +204,14 @@ export const configBody = z
             latestDetectedAt: z.string().nullable(),
             waitingLists: z.number(),
           })
-          .passthrough()
+          .loose()
           .nullable(),
       })
-      .passthrough(),
+      .loose(),
     lastFetchedAt: z.string(),
-    stremio: z
-      .object({ email: z.string().nullable() })
-      .passthrough()
-      .nullable(),
+    stremio: z.object({ email: z.string().nullable() }).loose().nullable(),
   })
-  .passthrough();
+  .loose();
 
 /** What POST /accounts answers. */
 export const createdAccountBody = z
@@ -232,20 +220,21 @@ export const createdAccountBody = z
     accountId: z.string(),
     lists: z.array(configList),
   })
-  .passthrough();
+  .loose();
 
 /** The sync status of an Account's Lists (AccountSyncSnapshot). */
 export const syncSnapshotBody = z
   .object({
-    syncStatus: z.record(z.array(z.unknown())),
+    syncStatus: z.record(z.string(), z.array(z.unknown())),
     connections: z.array(z.unknown()),
     readQueue: z
       .record(
-        z.object({ provider: z.string(), readyAt: z.string() }).passthrough(),
+        z.string(),
+        z.object({ provider: z.string(), readyAt: z.string() }).loose(),
       )
       .optional(),
   })
-  .passthrough();
+  .loose();
 
 /** What POST /:accountKey/refresh answers. */
 export const refreshBody = z
@@ -256,4 +245,4 @@ export const refreshBody = z
     total: z.number(),
     throttled: z.boolean().optional(),
   })
-  .passthrough();
+  .loose();

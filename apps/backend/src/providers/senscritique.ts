@@ -169,7 +169,7 @@ const listDataSchema = z.object({
 async function senscritiqueQuery<T>(
   query: string,
   variables: Record<string, unknown>,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  schema: z.ZodType<T>,
 ): Promise<T> {
   const json = await graphqlRequest(
     SENSCRITIQUE_GRAPHQL,

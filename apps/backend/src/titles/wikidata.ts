@@ -17,7 +17,12 @@ const sparqlResponseSchema = z.object({
   results: z
     .object({
       bindings: z
-        .array(z.record(z.object({ value: z.string().optional() }).optional()))
+        .array(
+          z.record(
+            z.string(),
+            z.object({ value: z.string().optional() }).optional(),
+          ),
+        )
         .optional(),
     })
     .optional(),

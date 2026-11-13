@@ -11,6 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { z } from "zod";
 import { encryptSecret } from "../src/lib/crypto";
@@ -37,6 +38,8 @@ import {
   StackError,
 } from "./stack";
 import type { Stack } from "./stack";
+
+const serverScript = fileURLToPath(new URL("server.ts", import.meta.url));
 
 const SCENARIOS = {
   cold: "Cold storm: each Account opens its board once, empty caches",
@@ -195,7 +198,7 @@ async function startServer(
     MOCK_PER_ITEM_MS: String(options.itemLatency),
     ...(stale ? { CACHE_TTL_MINUTES: "1", MOCK_DRIFT: "1" } : {}),
   };
-  const child = spawn("bun", ["--no-env-file", "stress/server.ts"], {
+  const child = spawn("bun", ["--no-env-file", serverScript], {
     cwd: backendDir,
     env,
     stdio: ["ignore", fd, fd],
@@ -215,7 +218,7 @@ async function startServer(
 async function serverCall<T>(
   options: Options,
   path: string,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  schema: z.ZodType<T>,
 ): Promise<T> {
   const response = await fetch(
     `http://127.0.0.1:${String(options.port)}/__stress/${path}`,
@@ -312,7 +315,10 @@ async function seedTrakt(
     },
   );
   const setup = z
-    .object({ accounts: z.array(z.string()).nullish(), trakt: z.unknown() })
+    .object({
+      accounts: z.array(z.string()).nullish(),
+      trakt: z.unknown().optional(),
+    })
     .parse(JSON.parse(output));
   if (!setup.accounts?.length || !setup.trakt) {
     throw new Error("No private stress Account to connect to Trakt.");

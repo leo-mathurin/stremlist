@@ -65,7 +65,7 @@ const limitersFor = limitersPerUser(
 
 const mdblistIdsSchema = z.object({
   // Not read: any value is fine.
-  mdblist: z.unknown(),
+  mdblist: z.unknown().optional(),
   imdb: z.string().nullish(),
   tmdb: z.number().nullish(),
 });
@@ -139,7 +139,7 @@ type SyncPage = z.infer<typeof syncPageSchema>;
 const mdblistUserSchema = z.object({ username: z.string().nullish() });
 
 const mdblistErrorSchema = z
-  .object({ error: z.unknown() })
+  .object({ error: z.unknown().optional() })
   .partial()
   .nullable();
 

@@ -43,6 +43,7 @@ const storedHistory = z
   .object({
     lastSyncAt: z.string(),
     entries: z.record(
+      z.string(),
       z.tuple([
         z.string().nullable(),
         z.string().nullable(),
@@ -50,7 +51,7 @@ const storedHistory = z
       ]),
     ),
   })
-  .passthrough();
+  .loose();
 
 function recorded(result: { history: SourceHistory } | null): SourceHistory {
   if (!result) throw new Error("expected a recorded synchronization");

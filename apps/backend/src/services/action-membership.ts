@@ -56,7 +56,7 @@ const storedMembershipSchema = z.object({
     watchlist: z.array(z.string()),
     watched: z.array(z.string()),
     watchedEpisodes: z.array(z.string()),
-    ratings: z.record(z.number()),
+    ratings: z.record(z.string(), z.number()),
   }),
 });
 type StoredMembership = z.infer<typeof storedMembershipSchema>;

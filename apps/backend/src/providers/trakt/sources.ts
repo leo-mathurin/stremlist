@@ -192,7 +192,7 @@ function newestRows(
   };
 }
 
-const rankedRowSchema = traktItemSchema.merge(traktMediaSchema);
+const rankedRowSchema = traktItemSchema.extend(traktMediaSchema.shape);
 type RankedRow = z.infer<typeof rankedRowSchema>;
 
 /** Movies and shows interleaved, each in Trakt's rank order. */

@@ -32,6 +32,7 @@ const sourceHistory = z.object({
     .object({ user: z.string().nullable(), connectedAt: z.string() })
     .nullable(),
   entries: z.record(
+    z.string(),
     z.tuple([
       z.string().nullable(),
       z.string().nullable(),

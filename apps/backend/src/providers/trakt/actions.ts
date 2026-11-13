@@ -95,10 +95,7 @@ function parseRatings(rows: RatedItem[]): Membership["ratings"] {
 async function getMembership(
   connection: ConnectionAccess,
 ): Promise<Membership> {
-  const all = async <T>(
-    path: string,
-    schema: z.ZodType<T, z.ZodTypeDef, unknown>,
-  ) =>
+  const all = async <T>(path: string, schema: z.ZodType<T>) =>
     (
       await traktGetAll(path, schema, connection, {
         maxItems: MAX_MEMBERSHIP_ITEMS,

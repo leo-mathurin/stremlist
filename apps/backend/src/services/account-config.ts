@@ -52,7 +52,7 @@ const displayModeValues = [
 
 /** One List as the configure page submits it. */
 export const listBody = z.object({
-  id: z.string().uuid().optional(),
+  id: z.guid().optional(),
   provider: providerParam,
   sourceRef: z.string().trim().min(1).max(SOURCE_REF_MAX_LENGTH),
   catalogTitle: z

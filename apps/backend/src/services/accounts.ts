@@ -329,7 +329,11 @@ export async function markAccountFetched(
 ): Promise<void> {
   const { error } = await supabase
     .from("accounts")
-    .update({ [field]: at.toISOString() })
+    .update(
+      field === "last_fetched_at"
+        ? { last_fetched_at: at.toISOString() }
+        : { last_cache_served_at: at.toISOString() },
+    )
     .eq("id", accountId);
   if (error) {
     console.error(`Failed to update ${field} of ${accountId}:`, error.message);

@@ -33,7 +33,7 @@ interface RequestOptions {
 
 export async function simklRequest<T>(
   path: string,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  schema: z.ZodType<T>,
   options: RequestOptions,
 ): Promise<T> {
   const id = simklClient.clientId();

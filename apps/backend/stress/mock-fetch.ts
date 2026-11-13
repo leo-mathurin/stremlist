@@ -117,7 +117,7 @@ const json = (body: unknown) =>
 
 const graphQLBodySchema = z.object({
   operationName: z.string().optional(),
-  variables: z.record(z.unknown()).optional(),
+  variables: z.record(z.string(), z.unknown()).optional(),
 });
 type GraphQLBody = z.infer<typeof graphQLBodySchema>;
 

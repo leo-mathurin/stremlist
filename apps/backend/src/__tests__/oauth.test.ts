@@ -89,7 +89,7 @@ const oauthStateRow = z
     code_verifier: z.string(),
     expires_at: z.string(),
   })
-  .passthrough();
+  .loose();
 
 function stateRow() {
   const row = db.getTable("oauth_states").at(0);
@@ -99,7 +99,7 @@ function stateRow() {
 
 const startBody = z
   .object({ ok: z.boolean(), authorizeUrl: z.string(), browserKey: z.string() })
-  .passthrough();
+  .loose();
 
 const BROWSER_KEY = "browser-key-1";
 
@@ -337,7 +337,7 @@ describe("GET /:accountId/connections/:provider/sources", () => {
     const body = await readJson(
       res,
       z.object({
-        sources: z.array(z.object({ ref: z.string() }).passthrough()),
+        sources: z.array(z.object({ ref: z.string() }).loose()),
       }),
     );
 

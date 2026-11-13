@@ -1,0 +1,19 @@
+name: Toolchain
+description: Install the pinned Bun and Node.js, and the Supabase CLI on request.
+inputs:
+  supabase:
+    description: Also install the Supabase CLI.
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - uses: oven-sh/setup-bun@v2
+      with:
+        bun-version-file: package.json
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: .node-version
+    - if: inputs.supabase == 'true'
+      uses: supabase/setup-cli@v1
+      with:
+        version: 2.122.1

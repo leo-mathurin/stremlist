@@ -19,7 +19,7 @@ export function isTmdbConfigured(): boolean {
 /** GET a TMDB v3 endpoint. Returns null on 404; throws HttpError otherwise. */
 export async function tmdbGet<T>(
   path: string,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  schema: z.ZodType<T>,
   params: Record<string, string> = {},
 ): Promise<T | null> {
   const token = process.env.TMDB_READ_ACCESS_TOKEN;

@@ -68,7 +68,7 @@ export async function readJsonVersion(
  */
 export async function readJson<T>(
   key: string,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  schema: z.ZodType<T>,
 ): Promise<T | null> {
   const value = (await readJsonVersion(key))?.value;
   return value == null ? null : schema.parse(value);

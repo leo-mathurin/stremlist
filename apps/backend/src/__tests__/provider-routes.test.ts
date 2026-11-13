@@ -43,7 +43,7 @@ const providersBody = z.object({
         enabled: z.boolean(),
         connectable: z.boolean(),
       })
-      .passthrough(),
+      .loose(),
   ),
 });
 
@@ -165,8 +165,7 @@ describe("POST /links/resolve", () => {
       OWNER,
     );
     expect(
-      (await readJson(res, z.object({ reason: z.string() }).passthrough()))
-        .reason,
+      (await readJson(res, z.object({ reason: z.string() }).loose())).reason,
     ).toBe("needs_connection");
   });
 

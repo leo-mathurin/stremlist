@@ -18,7 +18,7 @@ const justwatchLimiter = new RateLimiter(5, 1000);
 export function justwatchQuery<T>(
   query: string,
   variables: Record<string, unknown>,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  schema: z.ZodType<T>,
 ): Promise<GraphQLResponse<T>> {
   return graphqlRequest(JUSTWATCH_GRAPHQL, query, variables, schema, {
     limiter: justwatchLimiter,

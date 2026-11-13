@@ -42,10 +42,10 @@ const stremioMetaSchema = z.object({
   director: z.array(z.string()).optional(),
   cast: z.array(z.string()).optional(),
   runtime: z.string().optional(),
-  released: z.string().datetime().optional(),
+  released: z.iso.datetime().optional(),
   // When the Title joined the Source list; never served to Stremio.
-  addedAt: z.string().datetime().optional(),
-  enrichedAt: z.string().datetime().optional(),
+  addedAt: z.iso.datetime().optional(),
+  enrichedAt: z.iso.datetime().optional(),
 });
 
 /**
@@ -69,8 +69,8 @@ const catalogObjectSchema = z.object({
 
 const cacheManifestSchema = z.object({
   version: z.literal(CACHE_FORMAT_VERSION),
-  generation: z.string().uuid(),
-  cachedAt: z.string().datetime(),
+  generation: z.guid(),
+  cachedAt: z.iso.datetime(),
   catalogKey: z.string(),
   metaKeys: z.array(z.string()),
   // The Source list the catalog was read from. A List that now points to
@@ -86,7 +86,7 @@ const cacheManifestSchema = z.object({
 const deletedManifestSchema = z.object({
   version: z.literal(CACHE_FORMAT_VERSION),
   deleted: z.literal(true),
-  deletedAt: z.string().datetime(),
+  deletedAt: z.iso.datetime(),
 });
 
 const storedManifestSchema = z.union([

@@ -39,7 +39,7 @@ const memoryState = new LruCache<string, unknown>({
  */
 export async function readState<T>(
   key: string,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  schema: z.ZodType<T>,
 ): Promise<T | null> {
   let stored: unknown;
   try {

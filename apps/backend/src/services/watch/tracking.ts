@@ -35,20 +35,12 @@ const lastTitleSchema = z
     episode: z.number().optional(),
   })
   .nullable()
-  .catch(null) satisfies z.ZodType<
-  WatchedTitleRef | null,
-  z.ZodTypeDef,
-  unknown
->;
+  .catch(null) satisfies z.ZodType<WatchedTitleRef | null>;
 
 const lastErrorSchema = z
   .enum(["not_found", "needs_renewal", "gave_up"])
   .nullable()
-  .catch(null) satisfies z.ZodType<
-  DestinationErrorCode | null,
-  z.ZodTypeDef,
-  unknown
->;
+  .catch(null) satisfies z.ZodType<DestinationErrorCode | null>;
 
 /** Watch tracking needs a Stremio link. */
 export class WatchNeedsStremioError extends Error {

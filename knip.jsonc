@@ -4,10 +4,9 @@
   "ignore": ["tools/oxlint/anti-slop/**"],
   "workspaces": {
     ".": {
-      // `bun check` is a Bun command, not a binary.
-      "ignoreBinaries": ["check"],
-      // Bun needs the Vite+ core alias as a direct dependency for peer resolution.
-      "ignoreDependencies": ["vite"],
+      // Bun needs the Vite+ core alias as a direct dependency for peer
+      // resolution. The commit-msg hook and CI run commitlint.
+      "ignoreDependencies": ["vite", "@commitlint/cli"],
     },
     "apps/frontend": {
       // Vercel loads the request middleware and the public content function.

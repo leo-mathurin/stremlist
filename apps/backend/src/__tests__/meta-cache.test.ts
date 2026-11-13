@@ -20,7 +20,9 @@ vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
 vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 
 /** A meta answer, kept whole: series metas carry more fields. */
-const anyMetaBody = z.object({ meta: z.record(z.unknown()).nullable() });
+const anyMetaBody = z.object({
+  meta: z.record(z.string(), z.unknown()).nullable(),
+});
 
 const OWNER = "ur88409068";
 const UUID_1 = "11111111-1111-4111-8111-111111111111";

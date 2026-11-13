@@ -62,7 +62,7 @@ function addonUrlProblem(key: string, accountKey: string | null): LinkProblem {
 
 type LinkProblemReason = SourceProblemReason | "unrecognized" | "too_long";
 
-type ResolveAnswer = InferResponseType<typeof api.links.resolve.$post>;
+type ResolveAnswer = InferResponseType<typeof api.links.resolve.$post, 200>;
 
 /** An answer that is not a place in the Provider's queue. */
 type SettledAnswer = Exclude<ResolveAnswer, { reason: "queued" }>;

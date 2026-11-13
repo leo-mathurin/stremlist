@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/form";
 
 const schema = z.object({
-  email: z.string().email("Please enter a valid email address."),
+  email: z.email("Please enter a valid email address."),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -34,7 +34,12 @@ export default function NewsletterForm() {
         toast.success(body.message, { id: "newsletter-subscription" });
         form.reset();
       } else {
-        toast.error(body.error, { id: "newsletter-subscription" });
+        // A refused email comes back as a Zod result, not a message.
+        const message =
+          typeof body.error === "string"
+            ? body.error
+            : "Please enter a valid email address.";
+        toast.error(message, { id: "newsletter-subscription" });
       }
     } catch {
       toast.error("Network error. Please try again.", {

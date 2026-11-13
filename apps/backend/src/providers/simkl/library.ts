@@ -24,12 +24,14 @@ export const STATUSES = [
 ] as const;
 export type SimklStatus = (typeof STATUSES)[number];
 
-export const rawIdsSchema = z.record(z.unknown());
+export const rawIdsSchema = z.record(z.string(), z.unknown());
 export type RawIds = z.infer<typeof rawIdsSchema>;
 
 const rawEpisodeSchema = z.object({
-  number: z.unknown(),
-  tvdb: z.object({ season: z.unknown(), episode: z.unknown() }).nullish(),
+  number: z.unknown().optional(),
+  tvdb: z
+    .object({ season: z.unknown().optional(), episode: z.unknown().optional() })
+    .nullish(),
 });
 
 const rawMediaSchema = z.object({
@@ -50,7 +52,7 @@ const rawEntrySchema = z.object({
   seasons: z
     .array(
       z.object({
-        number: z.unknown(),
+        number: z.unknown().optional(),
         episodes: z.array(rawEpisodeSchema).nullish(),
       }),
     )
@@ -65,7 +67,7 @@ const rawLibrarySchema = z.object({
 });
 type RawLibrary = z.infer<typeof rawLibrarySchema>;
 
-const activityBlockSchema = z.record(z.string().nullish());
+const activityBlockSchema = z.record(z.string(), z.string().nullish());
 
 // The whole response is kept in the snapshot, so its other keys stay.
 const simklActivitiesSchema = z
@@ -76,12 +78,12 @@ const simklActivitiesSchema = z
     movies: activityBlockSchema.optional(),
     custom_lists: z
       .object({
-        lists: z.object({ all: z.string().nullish() }).passthrough().optional(),
+        lists: z.object({ all: z.string().nullish() }).loose().optional(),
       })
-      .passthrough()
+      .loose()
       .optional(),
   })
-  .passthrough();
+  .loose();
 type SimklActivities = z.infer<typeof simklActivitiesSchema>;
 
 const ACTIVITY_BLOCKS = ["tv_shows", "anime", "movies"] as const;

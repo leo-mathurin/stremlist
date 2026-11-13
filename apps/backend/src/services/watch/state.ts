@@ -34,7 +34,7 @@ const watchStateSchema = z.object({
    * seen watched ("season:episode"). The list only grows, so an older read
    * or an unmark and remark never sends an episode again.
    */
-  series: z.record(z.union([z.string(), z.array(z.string())])),
+  series: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
 });
 export type WatchState = z.infer<typeof watchStateSchema>;
 

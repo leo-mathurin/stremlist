@@ -216,7 +216,7 @@ describe("R2 watchlist cache", () => {
     await writeCachedList(id, { metas: [MOVIE] });
     const key = `watchlists/${id}/manifest.json`;
     const manifest = z
-      .record(z.unknown())
+      .record(z.string(), z.unknown())
       .parse(JSON.parse(Buffer.from(stored(r2.objects, key)).toString()));
     delete manifest.genres;
     r2.objects.set(key, Buffer.from(JSON.stringify(manifest)));

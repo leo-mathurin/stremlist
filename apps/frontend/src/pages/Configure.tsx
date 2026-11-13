@@ -110,7 +110,9 @@ function connectionNotice(
 }
 
 /** What Home passes in the navigation state. Other values are ignored. */
-const homeState = z.object({ link: z.unknown(), entry: z.unknown() }).partial();
+const homeState = z
+  .object({ link: z.unknown().optional(), entry: z.unknown().optional() })
+  .partial();
 
 export default function Configure() {
   useSEO({ path: "/configure" });

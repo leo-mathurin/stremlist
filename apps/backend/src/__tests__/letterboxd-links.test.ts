@@ -33,7 +33,7 @@ vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
 vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
 
 /** What the link check answers for a link it accepts. */
-const sourceRefBody = z.object({ sourceRef: z.string() }).passthrough();
+const sourceRefBody = z.object({ sourceRef: z.string() }).loose();
 
 const key = Buffer.from("0123456789abcdef0123456789abcdef").toString("base64");
 

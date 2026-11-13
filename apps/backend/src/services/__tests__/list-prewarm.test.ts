@@ -28,7 +28,7 @@ const requestPrewarmArgs = z
     p_lease_seconds: z.number(),
     p_lease_token: z.string(),
   })
-  .passthrough();
+  .loose();
 
 const finishPrewarmArgs = requestPrewarmArgs.extend({
   p_completed_generation: z.number(),

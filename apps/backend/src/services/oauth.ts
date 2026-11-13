@@ -120,7 +120,7 @@ const tokenResponseSchema = z
   .object({
     access_token: z.string().nullish().catch(undefined),
     refresh_token: z.string().nullish().catch(undefined),
-    expires_in: z.unknown(),
+    expires_in: z.unknown().optional(),
     scope: z.string().nullish().catch(undefined),
     error: z.string().nullish().catch(undefined),
   })

@@ -48,11 +48,13 @@
   },
   "packageManager": "bun@1.4.4",
   "devDependencies": {
-    "@types/node": "^24.10.13",
+    "@commitlint/cli": "21.2.4",
+    "@commitlint/config-conventional": "21.2.4",
+    "@types/node": "^24.19.2",
     "eslint-plugin-react-hooks": "7.1.1",
-    "knip": "6.41.0",
+    "knip": "6.45.1",
     "portless": "0.15.6",
-    "turbo": "^2.11.7",
+    "turbo": "^2.11.11",
     "typescript": "7.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"

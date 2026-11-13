@@ -114,7 +114,7 @@ function restGate(): Gate {
         p_gate: GATE,
       })) as { data: unknown; error: { message: string } | null };
       if (error) throw new Error(`${name}: ${error.message}`);
-      return z.record(z.unknown()).parse(data);
+      return z.record(z.string(), z.unknown()).parse(data);
     },
     async close() {
       // A copy of the gate in another schema goes away with that schema.

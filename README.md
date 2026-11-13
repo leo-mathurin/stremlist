@@ -131,7 +131,10 @@ Lint and format rules live in the root [`vite.config.ts`](vite.config.ts) ([Vite
 [React Compiler rules](https://react.dev/reference/eslint-plugin-react-hooks) for the frontend and a vendored copy of
 [anti-slop](tools/oxlint/anti-slop/UPSTREAM.md). Do not add disable comments: fix the code, or change the policy in
 `vite.config.ts` with a reason. The frontend builds with the React Compiler, and the build fails if it is not active.
-The pre-commit hook in `.vite-hooks/pre-commit` runs `vp staged` on staged files. `bun install` enables it through `vp config`.
+The hooks in `.vite-hooks` run when you commit. `bun install` enables them through `vp config`.
+
+- `pre-commit` scans the staged changes with [Gitleaks](https://github.com/gitleaks/gitleaks#installing), which you must install. It then runs `vp staged`, knip, the builds and the tests. `.gitleaks.toml` lists the fake and public keys that Gitleaks must accept.
+- `commit-msg` checks the message with [commitlint](https://commitlint.js.org) and the Conventional Commits rules. The version bump on `main` reads these messages. CI also checks the commits and the title of each pull request.
 
 ### Remote cache
 
@@ -229,7 +232,7 @@ supabase start
 bun run generate:types
 ```
 
-This writes `packages/shared/src/database.types.ts` and formats it with Oxfmt. Do not edit that file by hand. The E2E job in CI runs the same command on a fresh local stack and fails when the committed file is different. CI uses the Supabase CLI version that `.github/workflows/ci.yml` pins. Another CLI version can give a different result.
+This writes `packages/shared/src/database.types.ts` and formats it with Oxfmt. Do not edit that file by hand. The Database job in CI runs the same command on a fresh local stack and fails when the committed file is different. CI uses the Supabase CLI version that `.github/actions/setup/action.yml` pins. Another CLI version can give a different result.
 
 Code imports the schema from `@stremlist/shared/database`. That module adds what the generator cannot know, for example SQL function arguments that accept `NULL`.
 

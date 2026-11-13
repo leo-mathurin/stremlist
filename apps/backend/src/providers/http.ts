@@ -225,8 +225,8 @@ export interface GraphQLResponse<T> {
 }
 
 function graphqlResponseSchema<T>(
-  data: z.ZodType<T, z.ZodTypeDef, unknown>,
-): z.ZodType<GraphQLResponse<T>, z.ZodTypeDef, unknown> {
+  data: z.ZodType<T>,
+): z.ZodType<GraphQLResponse<T>> {
   return z.object({
     data: data.nullish(),
     errors: z
@@ -249,7 +249,7 @@ export async function graphqlRequest<T>(
   url: string,
   query: string,
   variables: Record<string, unknown>,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  schema: z.ZodType<T>,
   options: ProviderFetchOptions = {},
 ): Promise<GraphQLResponse<T>> {
   const headers = new Headers(options.headers);

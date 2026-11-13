@@ -56,7 +56,7 @@ export function watchedAtOf(intent: ActionIntent): { watched_at?: string } {
 }
 
 const notFoundSchema = z.object({
-  not_found: z.union([z.record(z.unknown()), z.array(z.unknown())]),
+  not_found: z.union([z.record(z.string(), z.unknown()), z.array(z.unknown())]),
 });
 
 /**

@@ -36,9 +36,9 @@ export function ctx() {
 const storedLibrarySchema = z
   .object({
     checkedAt: z.number(),
-    items: z.array(z.object({ simkl: z.number() }).passthrough()),
+    items: z.array(z.object({ simkl: z.number() }).loose()),
   })
-  .passthrough();
+  .loose();
 
 export function storedLibrary() {
   return storedLibrarySchema.parse(

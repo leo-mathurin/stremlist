@@ -4,16 +4,17 @@
 
 The commands below reuse the repository's runners. Read installed Turborepo docs before changing task commands or configuration, as required by `AGENTS.md`.
 
-| Check              | Command                                                                                         | What it proves                                                                                                                               |
-| ------------------ | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| CI baseline        | `bunx turbo run lint:repo typecheck:repo build test --force`                                    | Oxfmt and Oxlint (`vp check`), `bun check` types for every project, production builds, backend and shared Vitest, frontend script tests.     |
-| Unused code        | `bun run knip`                                                                                  | No unused files, exports, or dependencies. CI runs it.                                                                                       |
-| UI journeys        | `bun run test:toolkit:replay`                                                                   | Real frontend interactions, exact HTTP payloads, errors, and replayed actions with zero model calls.                                         |
-| Local integration  | `CI=1 bun run --filter @stremlist/e2e test:e2e --project=local --trace on`                      | Real handlers, database, and caches. Provider fixture specs control external transports, but some other local specs trigger real IMDb reads. |
-| Live compatibility | Run the same E2E command separately with `--project=live-smoke` and `--project=live-regression` | Public IMDb behavior and hosted Stremio Web compatibility for tagged tests.                                                                  |
-| Atomic SQL writes  | Commands below                                                                                  | Transaction and concurrency invariants in real Postgres.                                                                                     |
-| Scraper stress     | `bun run --cwd apps/backend test:stress`                                                        | The existing scraper stress cases, excluded from normal backend tests.                                                                       |
-| Formatting         | `bun run format:check`, or `bun run fix` to rewrite                                             | Formatting only. No behavior proof. `bun run lint` also checks it.                                                                           |
+| Check              | Command                                                                                            | What it proves                                                                                                                               |
+| ------------------ | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| CI baseline        | `bunx turbo run lint:repo typecheck:repo build test --force`                                       | Oxfmt and Oxlint (`vp check`), `bun check` types for every project, production builds, backend and shared Vitest, frontend script tests.     |
+| Unused code        | `bun run knip`                                                                                     | No unused files, exports, or dependencies. CI runs it.                                                                                       |
+| Repository hygiene | `gitleaks git --redact --no-banner`, `bun audit --prod`, `bunx commitlint --from <base> --to HEAD` | No secrets in the Git history, no known advisory in production dependencies, Conventional Commits. CI runs all three.                        |
+| UI journeys        | `bun run test:toolkit:replay`                                                                      | Real frontend interactions, exact HTTP payloads, errors, and replayed actions with zero model calls.                                         |
+| Local integration  | `CI=1 bun run --filter @stremlist/e2e test:e2e --project=local --trace on`                         | Real handlers, database, and caches. Provider fixture specs control external transports, but some other local specs trigger real IMDb reads. |
+| Live compatibility | Run the same E2E command separately with `--project=live-smoke` and `--project=live-regression`    | Public IMDb behavior and hosted Stremio Web compatibility for tagged tests.                                                                  |
+| Atomic SQL writes  | Commands below                                                                                     | Transaction and concurrency invariants in real Postgres.                                                                                     |
+| Scraper stress     | `bun run --cwd apps/backend test:stress`                                                           | The existing scraper stress cases, excluded from normal backend tests.                                                                       |
+| Formatting         | `bun run format:check`, or `bun run fix` to rewrite                                                | Formatting only. No behavior proof. `bun run lint` also checks it.                                                                           |
 
 Run SQL checks only inside the disposable stack started for this run.
 
@@ -23,7 +24,7 @@ docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supab
 docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/account_writes.sql
 ```
 
-For cache, scraper, and throughput changes, consult `apps/backend/stress/README.md` and use its existing load runner. Load tests are not part of a routine documentation change. `bun run knip` exists for unused-code analysis but is not a CI delivery gate.
+For cache, scraper, and throughput changes, consult `apps/backend/stress/README.md` and use its existing load runner. Load tests are not part of a routine documentation change. `bun run knip` checks unused code, and CI runs it.
 
 ## Command supervisor checks
 

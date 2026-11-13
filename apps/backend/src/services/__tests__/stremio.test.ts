@@ -44,10 +44,10 @@ const stremioAddon = z
   .object({
     transportUrl: z.string(),
     transportName: z.string().optional(),
-    manifest: z.object({ id: z.string() }).passthrough(),
-    flags: z.record(z.unknown()).optional(),
+    manifest: z.object({ id: z.string() }).loose(),
+    flags: z.record(z.string(), z.unknown()).optional(),
   })
-  .passthrough();
+  .loose();
 
 const stremioRequest = z.object({
   authKey: z.string(),

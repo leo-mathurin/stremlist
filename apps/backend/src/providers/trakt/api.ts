@@ -152,7 +152,7 @@ export async function traktGetJson(
 /** traktGetJson() parsed with `schema`. */
 export async function traktGetParsed<T>(
   path: string,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  schema: z.ZodType<T>,
   connection: ConnectionAccess | null,
   options: TraktReadOptions = {},
 ): Promise<T | null> {
@@ -177,7 +177,7 @@ interface PaginateOptions extends TraktReadOptions {
  */
 export async function traktGetAll<T>(
   path: string,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  schema: z.ZodType<T>,
   connection: ConnectionAccess | null,
   options: PaginateOptions,
 ): Promise<PagedRead<T>> {

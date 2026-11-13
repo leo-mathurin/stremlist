@@ -110,7 +110,7 @@ const graphQLBody = z.object({
       first: z.number().optional(),
       ids: z.array(z.string()).optional(),
     })
-    .passthrough(),
+    .loose(),
 });
 
 type GraphQLBody = z.infer<typeof graphQLBody>;

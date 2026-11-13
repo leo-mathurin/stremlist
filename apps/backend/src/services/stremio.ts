@@ -43,11 +43,11 @@ const stremioAddonSchema = z
   .object({
     transportUrl: z.string(),
     // Not read, only written back: any value Stremio sends stays as it is.
-    transportName: z.unknown(),
-    manifest: z.object({ id: z.string() }).passthrough(),
-    flags: z.unknown(),
+    transportName: z.unknown().optional(),
+    manifest: z.object({ id: z.string() }).loose(),
+    flags: z.unknown().optional(),
   })
-  .passthrough();
+  .loose();
 export type StremioAddon = z.infer<typeof stremioAddonSchema>;
 
 /** A manifest that Stremlist builds: any object with an ID. */
@@ -83,7 +83,7 @@ async function send(
 
 // Fields of an answer that is not an object read as missing.
 const apiAnswerSchema = z
-  .object({ result: z.unknown(), error: z.unknown() })
+  .object({ result: z.unknown().optional(), error: z.unknown().optional() })
   .catch({});
 
 const sessionGoneSchema = z.object({ code: z.literal(SESSION_GONE) });
@@ -93,10 +93,7 @@ async function readAnswer(response: Response) {
 }
 
 /** A `result` of the shape that `schema` expects, else Stremio is down. */
-function parseResult<T>(
-  result: unknown,
-  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
-): T {
+function parseResult<T>(result: unknown, schema: z.ZodType<T>): T {
   const parsed = schema.safeParse(result);
   if (!parsed.success) throw new StremioUnavailableError();
   return parsed.data;
@@ -138,7 +135,7 @@ export async function createLinkCode(
   const response = await send(fetchImpl, `${LINK_API}/create?type=Create`);
   const answer = await readAnswer(response);
   const { code, link } = z
-    .object({ code: z.unknown(), link: z.unknown() })
+    .object({ code: z.unknown().optional(), link: z.unknown().optional() })
     .catch({})
     .parse(answer.result);
   // A code in another format could never be confirmed: report it now.
@@ -168,7 +165,7 @@ export async function readLinkCode(
   if (!response.ok) throw new StremioUnavailableError();
   const answer = await readAnswer(response);
   const { authKey } = z
-    .object({ authKey: z.unknown() })
+    .object({ authKey: z.unknown().optional() })
     .catch({})
     .parse(answer.result);
   return typeof authKey === "string" && authKey ? authKey : null;
@@ -180,7 +177,7 @@ export async function getStremioEmail(
   fetchImpl: Fetch = fetch,
 ): Promise<string | null> {
   const user = z
-    .object({ email: z.unknown() })
+    .object({ email: z.unknown().optional() })
     .catch({})
     .parse(
       await callStremio("getUser", { type: "GetUser", authKey }, fetchImpl),
@@ -198,7 +195,9 @@ export async function hasStremioTrakt(
   fetchImpl: Fetch = fetch,
 ): Promise<boolean> {
   const user = z
-    .object({ trakt: z.object({ access_token: z.unknown() }).nullish() })
+    .object({
+      trakt: z.object({ access_token: z.unknown().optional() }).nullish(),
+    })
     .catch({})
     .parse(
       await callStremio("getUser", { type: "GetUser", authKey }, fetchImpl),
@@ -210,7 +209,7 @@ export async function hasStremioTrakt(
  * A field that Stremio may leave out, send as null, or send with another
  * type: each reads as absent, so one odd item never fails the whole read.
  */
-function lenient<T extends z.ZodTypeAny>(schema: T) {
+function lenient<T extends z.ZodType>(schema: T) {
   return schema.optional().catch(undefined);
 }
 

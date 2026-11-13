@@ -63,8 +63,8 @@ export const listRowSchema = z.object({
   sort_option: z.string(),
   display_mode: z.string(),
   position: z.number(),
-  catalog_settings: z.unknown(),
-  merged_sources: z.unknown(),
+  catalog_settings: z.unknown().optional(),
+  merged_sources: z.unknown().optional(),
   source_label: z.string().nullable(),
 });
 

@@ -27,7 +27,7 @@ const lists = new Hono()
           .max(SOURCE_LINK_MAX_LENGTH * 4),
         accountKey: z.string().regex(ACCOUNT_KEY_PATTERN).optional(),
         // The place in the Provider's queue from a queued answer.
-        ticket: z.string().uuid().optional(),
+        ticket: z.guid().optional(),
       }),
     ),
     async (c) => {
@@ -56,7 +56,7 @@ const lists = new Hono()
         .extend({
           accountKey: accountKeyParam.shape.accountKey.optional(),
           // The place in the Provider's queue from a queued answer.
-          ticket: z.string().uuid().optional(),
+          ticket: z.guid().optional(),
         }),
     ),
     async (c) => {

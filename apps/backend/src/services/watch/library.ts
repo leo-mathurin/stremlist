@@ -22,10 +22,10 @@ const cinemetaMetaSchema = z.object({
       videos: z
         .array(
           z.object({
-            id: z.unknown(),
-            season: z.unknown(),
-            episode: z.unknown(),
-            released: z.unknown(),
+            id: z.unknown().optional(),
+            season: z.unknown().optional(),
+            episode: z.unknown().optional(),
+            released: z.unknown().optional(),
           }),
         )
         .optional(),

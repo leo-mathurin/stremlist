@@ -40,7 +40,7 @@ const ctx = { connection: null };
 
 const graphQLRequest = z.object({
   query: z.string(),
-  variables: z.record(z.unknown()),
+  variables: z.record(z.string(), z.unknown()),
 });
 
 interface RecordedRequest {
