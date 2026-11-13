@@ -14,6 +14,21 @@ export interface CatalogSettings {
   presets?: CatalogPreset[];
 }
 
+/** The settings that filter a Catalog (presets add Catalogs instead). */
+const CATALOG_FILTER_KEYS = [
+  "genre",
+  "decade",
+  "maxRuntime",
+  "minRating",
+] as const satisfies readonly (keyof CatalogSettings)[];
+
+export type CatalogFilterKey = (typeof CATALOG_FILTER_KEYS)[number];
+
+export function countCatalogFilters(settings: CatalogSettings): number {
+  return CATALOG_FILTER_KEYS.filter((key) => settings[key] !== undefined)
+    .length;
+}
+
 const currentDecade = Math.floor(new Date().getFullYear() / 10) * 10;
 export const CATALOG_DECADES = Array.from(
   { length: (currentDecade - 1880) / 10 + 1 },

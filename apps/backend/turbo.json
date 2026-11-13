@@ -11,7 +11,15 @@
       ],
       "passThroughEnv": [
         "BETTERSTACK_HEARTBEAT_URL",
+        "BETTERSTACK_HEARTBEAT_URL_IMDB",
+        "BETTERSTACK_HEARTBEAT_URL_LETTERBOXD",
+        "BETTERSTACK_HEARTBEAT_URL_JUSTWATCH",
+        "BETTERSTACK_HEARTBEAT_URL_SENSCRITIQUE",
         "MONITOR_IMDB_USER_ID",
+        "MONITOR_LETTERBOXD_REF",
+        "MONITOR_JUSTWATCH_REF",
+        "MONITOR_SENSCRITIQUE_REF",
+        "LETTERBOXD_MAX_RPS",
         "CRON_SECRET"
       ]
     },
@@ -24,6 +32,14 @@
       ]
     },
     "dev:tailnet": {
+      "passThroughEnv": [
+        "$TURBO_EXTENDS$",
+        "!PORTLESS_TAILSCALE",
+        "!PORTLESS_FUNNEL",
+        "!PORTLESS_NGROK"
+      ]
+    },
+    "dev:local": {
       "passThroughEnv": [
         "$TURBO_EXTENDS$",
         "!PORTLESS_TAILSCALE",

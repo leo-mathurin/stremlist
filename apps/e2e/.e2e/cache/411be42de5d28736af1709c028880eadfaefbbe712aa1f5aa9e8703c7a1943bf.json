@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-06T19:49:43.339Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Add an IMDb chart\"",
+        "target": {
+          "role": "button",
+          "name": "Add an IMDb chart"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap menuitem \"Top 250 Movies IMDb's highest-rated mov…\" in \"Top 250 Movies\"",
+        "target": {
+          "role": "menuitem",
+          "name": "Top 250 Movies IMDb's highest-rated movies of all time.",
+          "within": "Top 250 Movies"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/ui.e2e.ts::built-in%20charts%20avoid%20duplicates%20and%20enforce%20the%20List%20limit",
+      "targetId": "chromium",
+      "instructionDigest": "f6ab620a7f6b6e4bca5d94642f4d86444500fb4ede942e837485fceb81ac0d4b",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Added the built-in IMDb chart Top 250 Movies. It now appears in Your Lists as an IMDb chart, and the count increased to 2 of 10 lists.",
+    "startPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endAnchors": [
+      {
+        "role": "button",
+        "name": "Drag to reorder Top 250 Movies"
+      },
+      {
+        "text": "Top 250 Movies"
+      },
+      {
+        "text": "IMDb · Chart"
+      },
+      {
+        "role": "button",
+        "name": "Remove Top 250 Movies"
+      },
+      {
+        "text": "2 of 10 lists. Drag the handle to reorder."
+      },
+      {
+        "role": "button",
+        "name": "Settings for Top 250 Movies"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "text": "1 of 10 lists"
+      }
+    ],
+    "endWaitMs": 14688
+  }
+}

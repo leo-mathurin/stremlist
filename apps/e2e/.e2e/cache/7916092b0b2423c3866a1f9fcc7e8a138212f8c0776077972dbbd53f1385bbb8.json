@@ -1,0 +1,116 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-11-10T14:16:04.292Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Settings for Test catalog\"",
+        "target": {
+          "role": "button",
+          "name": "Settings for Test catalog"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Filters & extra catalogs\"",
+        "target": {
+          "role": "button",
+          "name": "Filters & extra catalogs"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap combobox \"Genre\"",
+        "target": {
+          "role": "combobox",
+          "name": "Genre"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap option \"Drama\"",
+        "target": {
+          "role": "option",
+          "name": "Drama"
+        }
+      },
+      {
+        "name": "check",
+        "summary": "check checkbox \"Top rated\"",
+        "target": {
+          "role": "checkbox",
+          "name": "Top rated"
+        },
+        "checked": true
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save\"",
+        "target": {
+          "role": "button",
+          "name": "Save"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/ui.e2e.ts::catalog%20filters%20and%20extra%20presets%20survive%20save%20and%20clear",
+      "targetId": "chromium",
+      "instructionDigest": "415aff2998bf596472d2ec58327d530c9afcb148bb7d6cfb953dd1d28023ccef",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Verified the saved state: Test catalog has Genre set to Drama and Top rated checked. The screen shows “Saved! Reinstall Stremlist in Stremio to see your changes.”",
+    "startPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endAnchors": [
+      {
+        "role": "status",
+        "name": "Update Stremio with your changes"
+      },
+      {
+        "text": "Update Stremio with your changes"
+      },
+      {
+        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until it gets the update."
+      },
+      {
+        "text": "Update it for me"
+      },
+      {
+        "text": "Recommended"
+      },
+      {
+        "text": "Connect your Stremio account once. Your next saves update Stremio on their own."
+      },
+      {
+        "text": "I'll reinstall myself"
+      },
+      {
+        "text": "No account needed. Two steps in Stremio after each change."
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "button",
+        "name": "Settings for Test catalog"
+      },
+      {
+        "text": "No new titles detected yet."
+      },
+      {
+        "role": "heading",
+        "name": "Install or reinstall in Stremio"
+      },
+      {
+        "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
+      }
+    ],
+    "endWaitMs": 44102
+  }
+}

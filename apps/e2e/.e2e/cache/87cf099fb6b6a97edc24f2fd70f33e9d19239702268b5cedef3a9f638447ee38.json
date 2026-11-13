@@ -1,0 +1,119 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-11-09T16:48:07.776Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Upgrade this install\"",
+        "target": {
+          "role": "button",
+          "name": "Upgrade this install"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Create my private Addon URL\" in \"Optional\"",
+        "target": {
+          "role": "button",
+          "name": "Create my private Addon URL",
+          "within": "Optional"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Done\" in \"Optional\"",
+        "target": {
+          "role": "button",
+          "name": "Done",
+          "within": "Optional"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap link \"Open my new configure page\" in \"(completed)\"",
+        "target": {
+          "role": "link",
+          "name": "Open my new configure page",
+          "within": "(completed)"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/providers.e2e.ts::a%20Legacy%20alias%20install%20upgrades%20to%20a%20private%20Addon%20URL",
+      "targetId": "chromium",
+      "instructionDigest": "57848905d1522fe592a721102377feae740a74d11574bcb0f226de012052905b",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Upgraded the install to private URL http://127.0.0.1:4314/sl_E2eFixtureAccount00003/manifest.json, confirmed with Done, and opened the new configure page. The new page is at /configure?account=sl_E2eFixtureAccount00003.",
+    "startPath": "/configure?account=ur99123456",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00003",
+    "endAnchors": [
+      {
+        "role": "heading",
+        "name": "Your Stremlist is ready"
+      },
+      {
+        "text": "Install it in Stremio once. Your lists then stay up to date on their own."
+      },
+      {
+        "text": "Keep this Addon URL secret."
+      },
+      {
+        "text": "Connect Trakt, Simkl or MDBList to use Actions."
+      },
+      {
+        "role": "link",
+        "name": "Stremio Addon Manager"
+      },
+      {
+        "role": "listitem",
+        "name": "Actions are not available on LG and Samsung TVs, because Stremio cannot open web pages there."
+      },
+      {
+        "text": "It is the only key to your Stremlist: anyone who has it can see and change it, so do not share it. To come back here later, open Stremlist's settings in Stremio or paste this URL on the Stremlist home page."
+      },
+      {
+        "role": "listitem",
+        "name": "Stremio lists an addon's entries in your addon order, and new addons go last. To see Actions at the top, move Stremlist just after Cinemeta with Stremio Addon Manager .",
+        "text": "Stremio lists an addon's entries in your addon order, and new addons go last. To see Actions at the top, move Stremlist just after Cinemeta with ."
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "button",
+        "name": "Upgrade this install"
+      },
+      {
+        "text": "ur99123456"
+      },
+      {
+        "role": "heading",
+        "name": "Stremlist 2.0 is here. Your install still works."
+      },
+      {
+        "text": "Your IMDb lists keep syncing. The rest is optional."
+      },
+      {
+        "role": "button",
+        "name": "Hide what's new"
+      },
+      {
+        "text": "(completed)"
+      },
+      {
+        "text": "Add a list from another site"
+      },
+      {
+        "text": "Optional"
+      }
+    ],
+    "endWaitMs": 13886
+  }
+}

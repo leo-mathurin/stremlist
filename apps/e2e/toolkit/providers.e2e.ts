@@ -1,0 +1,597 @@
+import { test, type Browser } from "@e2e-dev/web";
+import { expect } from "e2e";
+import { CONNECTION_SOURCES } from "@stremlist/shared/providers";
+import {
+  SAVED_REINSTALL,
+  accountId,
+  backend,
+  baseRoutes,
+  captureConfig,
+  configuration,
+  connected,
+  imdbUser,
+  legacyConfiguration,
+  providerStatus,
+  resolved,
+  routeCreateAccount,
+  routeResolve,
+  row,
+  toJson,
+  saveButton,
+  SAVE_NEW,
+  holdToasts,
+  fitConfigurePage,
+  routeConfig,
+  routeConnectionSources,
+  parseBody,
+} from "./config-fixture";
+import { isRecord } from "../helpers/json";
+
+// Provider journeys of the configure page: links of every available Provider
+// including public Letterboxd links, the kill switch,
+// Connections and their OAuth round trip,
+// disconnect, Actions settings and the Legacy alias upgrade. The API is
+// intercepted; the tests/provider-*.spec.ts files run the real backend.
+
+const PASTE = "Paste a link to a watchlist or list";
+const traktList = {
+  ...row,
+  id: "00000000-0000-4000-8000-000000000003",
+  provider: "trakt",
+  sourceRef: "me/watchlist",
+  catalogTitle: "Trakt Watchlist",
+  position: 1,
+} as const;
+
+/**
+ * Start the `provider` Connection on `authorizeUrl`, whose OAuth page sends
+ * the browser straight back the way the backend callback does, with the
+ * Provider's `answer` in the fragment (`code=…` or `oauth_error=…`). The page
+ * then completes the connect with its browser key; `onComplete` runs then.
+ * `key` is the Account that connects, or null for a new setup. Returns the
+ * start request methods, the authorize page URLs and the completions.
+ */
+async function routeOAuth(
+  browser: Browser,
+  provider: string,
+  authorizeUrl: string,
+  answer: string,
+  onComplete = () => {},
+  key: string | null = accountId,
+) {
+  const starts: string[] = [];
+  const authorized: string[] = [];
+  const completions: Record<string, unknown>[] = [];
+  await browser.route(
+    key
+      ? `${backend}/${key}/connections/${provider}/start`
+      : `${backend}/connections/${provider}/start`,
+    async (route) => {
+      starts.push(route.request.method);
+      await route.fulfill({
+        json: { ok: true, authorizeUrl, browserKey: "fixture-browser-key" },
+      });
+    },
+  );
+  await browser.route(
+    `${backend}/connections/${provider}/complete`,
+    async (route) => {
+      const body = parseBody(route, isRecord);
+      completions.push(body);
+      onComplete();
+      await route.fulfill({
+        json: { ok: true, accountId, created: key === null },
+      });
+    },
+  );
+  const back = `http://127.0.0.1:4311/configure#oauth=${provider}&state=fixture-state&${answer}`;
+  await browser.route(
+    `${new URL(authorizeUrl).origin}/oauth/**`,
+    async (route) => {
+      authorized.push(route.request.url);
+      await route.fulfill({
+        contentType: "text/html",
+        body: `<!doctype html><title>Authorize</title><script>location.replace(${JSON.stringify(back)})</script>`,
+      });
+    },
+  );
+  return { starts, authorized, completions };
+}
+
+test("pasted links of every available Provider become Lists of a new setup", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await baseRoutes(browser);
+  const links = {
+    trakt: "https://trakt.tv/users/someone/watchlist",
+    justwatch:
+      "https://www.justwatch.com/us/lists/tl-us-11111111-2222-4333-8444-555555555555",
+    senscritique:
+      "https://www.senscritique.com/someone/collection?action=WISH&universe=1",
+    imdb: "https://www.imdb.com/list/ls99123456/",
+  };
+  const inputs = await routeResolve(browser, (input) => {
+    switch (input) {
+      case links.trakt:
+        return resolved("trakt", "users/someone/watchlist", "watchlist", {
+          suggestedTitle: "someone's watchlist",
+        });
+      case links.justwatch:
+        return resolved(
+          "justwatch",
+          "tl-us-11111111-2222-4333-8444-555555555555",
+          "list",
+          { suggestedTitle: "Weekend picks", defaultDisplayMode: "movie" },
+        );
+      case links.senscritique:
+        return resolved("senscritique", "users/someone/wishes", "watchlist", {
+          suggestedTitle: "someone's wishlist",
+        });
+      case links.imdb:
+        return resolved("imdb", "ls99123456", "list");
+      default:
+        return { ok: false, reason: "unrecognized" };
+    }
+  });
+  const created = await routeCreateAccount(browser);
+  await browser.route(`${backend}/${accountId}/config`, (route) =>
+    route.fulfill({ json: toJson(configuration) }),
+  );
+  await app.open("/configure");
+  const field = screen.getByLabel(PASTE);
+  for (const [link, hint, row] of [
+    [links.trakt, "Trakt watchlist detected", "Trakt · Watchlist · someone"],
+    [
+      links.justwatch,
+      "JustWatch list detected",
+      "JustWatch · List · Shared list",
+    ],
+    [
+      links.senscritique,
+      "SensCritique watchlist detected",
+      "SensCritique · Watchlist · someone",
+    ],
+    [links.imdb, "IMDb list detected", "IMDb · List · ls99123456"],
+  ] as const) {
+    await field.fill(link);
+    await expect(screen.getByText(hint)).toBeVisible();
+    await expect(screen.getByText("Link detected")).toBeVisible();
+    await screen.getByRole("button", "Add", { exact: true }).tap();
+    await expect(screen.getByText(row)).toBeVisible();
+    await expect(field).toHaveValue("");
+  }
+  await expect(screen.getByText(/^4 of 10 lists/)).toBeVisible();
+  await saveButton(screen, SAVE_NEW).tap();
+  await expect(browser).toHaveURL(`/configure?account=${accountId}`);
+  expect(inputs.map((entry) => entry.input)).toEqual(Object.values(links));
+  // Each new List goes first: the last link pasted is the first row.
+  expect(created[0].lists).toMatchObject([
+    { provider: "imdb", sourceRef: "ls99123456", position: 0 },
+    {
+      provider: "senscritique",
+      sourceRef: "users/someone/wishes",
+      catalogTitle: "someone's wishlist",
+      position: 1,
+    },
+    {
+      provider: "justwatch",
+      sourceRef: "tl-us-11111111-2222-4333-8444-555555555555",
+      catalogTitle: "Weekend picks",
+      displayMode: "movie",
+      position: 2,
+    },
+    {
+      provider: "trakt",
+      sourceRef: "users/someone/watchlist",
+      catalogTitle: "someone's watchlist",
+      position: 3,
+    },
+  ]);
+});
+
+test(
+  "a Provider chart is added from Quick add",
+  { tags: ["agent"] },
+  async ({ app, agent, browser, screen }) => {
+    await holdToasts(browser);
+    await fitConfigurePage(browser);
+    const submissions = await captureConfig(browser);
+    await app.open(`/configure?account=${accountId}`);
+    await agent.act("Add the Trakt Trending chart to my Lists, then save.", {
+      maxModelCalls: 5,
+    });
+    await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+    await expect(screen.getByRole("button", "Trending")).toBeDisabled();
+    expect(submissions.at(-1)?.lists).toMatchObject([
+      {
+        provider: "trakt",
+        sourceRef: "trending",
+        catalogTitle: "Trakt Trending",
+        position: 0,
+      },
+      { provider: "imdb", sourceRef: imdbUser, position: 1 },
+    ]);
+  },
+);
+
+test("a link that needs a Connection saves the setup, connects, then adds the link", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await baseRoutes(browser);
+  const link = "https://mdblist.com/lists/someone/weekend";
+  const inputs = await routeResolve(browser, (input, accountKey) =>
+    input !== link
+      ? null
+      : accountKey === accountId
+        ? resolved("mdblist", "lists/4242", "list", {
+            suggestedTitle: "Weekend",
+          })
+        : { ok: false, reason: "needs_connection", provider: "mdblist" },
+  );
+  const created = await routeCreateAccount(browser);
+  const { starts, authorized, completions } = await routeOAuth(
+    browser,
+    "mdblist",
+    "https://mdblist.com/oauth/authorize?client_id=fixture&state=fixture-state",
+    "code=fixture-code",
+    () => {},
+    null,
+  );
+  await routeConfig(browser, {
+    ...configuration,
+    lists: [],
+    connections: [connected("mdblist")],
+  });
+  await routeConnectionSources(browser, "mdblist", [
+    {
+      ref: "me/watchlist",
+      kind: "watchlist",
+      label: "Watchlist",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "me/lists/77",
+      kind: "list",
+      label: "Horror nights",
+      defaultDisplayMode: "movie",
+    },
+  ]);
+
+  await app.open("/configure");
+  await screen.getByLabel(PASTE).fill(link);
+  await screen.getByRole("button", "Add", { exact: true }).tap();
+  await expect(
+    screen.getByText(
+      "This list needs your MDBList account. Connect MDBList to add it. When it connects, Stremlist saves your setup and gives you a private Addon URL.",
+    ),
+  ).toBeVisible();
+  await screen.getByRole("button", "Connect MDBList").tap();
+  await expect(
+    screen.getByText("MDBList is connected. You can now add its lists."),
+  ).toBeVisible();
+  await expect(browser).toHaveURL(`/configure?account=${accountId}`);
+  // The link waited during the round trip and is added with the Connection.
+  await expect(screen.getByText("Weekend")).toBeVisible();
+  await expect(screen.getByText("@someone")).toBeVisible();
+  await expect(screen.getByText("Your MDBList (@someone)")).toBeVisible();
+  await expect(screen.getByRole("button", "Horror nights")).toBeVisible();
+  // The Account is created only once the connection succeeds, with the setup.
+  expect(created).toEqual([]);
+  expect(completions).toEqual([
+    {
+      state: "fixture-state",
+      code: "fixture-code",
+      browserKey: "fixture-browser-key",
+      setup: { rpdbApiKey: "", lists: [], newTitles: { enabled: false } },
+    },
+  ]);
+  expect(starts).toEqual(["POST"]);
+  expect(authorized).toHaveLength(1);
+  expect(inputs).toEqual([
+    { input: link },
+    { input: link, accountKey: accountId },
+  ]);
+});
+
+test(
+  "a Provider connected from the Providers panel adds its own lists from Quick add",
+  { tags: ["agent"] },
+  async ({ app, agent, browser, screen }) => {
+    await fitConfigurePage(browser);
+    await holdToasts(browser);
+    await baseRoutes(browser);
+    const { state, submissions } = await routeConfig(browser);
+    const { starts, authorized } = await routeOAuth(
+      browser,
+      "simkl",
+      "https://simkl.com/oauth/authorize?client_id=fixture&state=fixture-state",
+      "code=fixture-code",
+      () => {
+        // The user agrees on Simkl: the page that opens next is connected.
+        state.config = { ...configuration, connections: [connected("simkl")] };
+      },
+    );
+    // Simkl has no public lists: its Source lists come from the Connection.
+    await routeConnectionSources(browser, "simkl", CONNECTION_SOURCES.simkl);
+
+    await app.open(`/configure?account=${accountId}`);
+    await screen
+      .getByRole("listitem")
+      .filter({ hasText: "Simkl" })
+      .getByRole("button", "Connect")
+      .tap();
+    await expect(
+      screen.getByText("Simkl is connected. You can now add its lists."),
+    ).toBeVisible();
+    await expect(browser).toHaveURL(`/configure?account=${accountId}`);
+    await expect(screen.getByText("Your Simkl (@someone)")).toBeVisible();
+    expect(starts).toEqual(["POST"]);
+    expect(authorized).toHaveLength(1);
+
+    await agent.act("Add my Simkl Plan to watch list, then save.", {
+      maxModelCalls: 6,
+    });
+    await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+    await expect(screen.getByRole("button", "Plan to watch")).toBeDisabled();
+    expect(submissions).toHaveLength(1);
+    expect(submissions[0].lists).toMatchObject([
+      {
+        provider: "simkl",
+        sourceRef: "me/plantowatch",
+        catalogTitle: "Simkl Plan to watch",
+        displayMode: "split",
+        position: 0,
+      },
+      { provider: "imdb", sourceRef: imdbUser, position: 1 },
+    ]);
+  },
+);
+
+for (const [error, message] of [
+  ["denied", "You cancelled the connection to Trakt. Nothing changed."],
+  ["expired", "The connection to Trakt took too long. Please try again."],
+  ["failed", "Could not connect Trakt. Please try again."],
+] as const) {
+  test(`an OAuth return with ${error} explains what happened`, async ({
+    app,
+    browser,
+    screen,
+  }) => {
+    await captureConfig(browser);
+    await app.open(
+      `/configure?account=${accountId}&connection_error=${error}&provider=trakt`,
+    );
+    await expect(screen.getByText(message)).toBeVisible();
+    await expect(browser).toHaveURL(`/configure?account=${accountId}`);
+    // The message is a toast with a close button.
+    await screen.getByRole("button", "Close toast").tap();
+    await expect(screen.getByText(message)).not.toBeVisible();
+  });
+}
+
+test(
+  "disconnecting a Provider asks first, then its Lists offer to connect again",
+  { tags: ["agent"] },
+  async ({ app, agent, browser, screen }) => {
+    await holdToasts(browser);
+    await fitConfigurePage(browser);
+    await baseRoutes(
+      browser,
+      providerStatus({
+        simkl: { connectable: false },
+        mdblist: { connectable: false },
+      }),
+    );
+    const { state, submissions } = await routeConfig(browser, {
+      ...configuration,
+      lists: [row, traktList],
+      connections: [connected("trakt")],
+      actions: { enabled: true, providers: ["trakt"] },
+    });
+    await routeConnectionSources(browser);
+    const deletes: string[] = [];
+    await browser.route(
+      `${backend}/${accountId}/connections/trakt`,
+      async (route) => {
+        deletes.push(route.request.method);
+        state.config = { ...state.config, connections: [] };
+        await route.fulfill({ json: { ok: true } });
+      },
+    );
+    const { starts, authorized } = await routeOAuth(
+      browser,
+      "trakt",
+      "https://auth.trakt.tv/oauth/authorize?state=again",
+      "oauth_error=denied",
+    );
+    await app.open(`/configure?account=${accountId}`);
+    await expect(screen.getByText("@someone")).toBeVisible();
+    await screen.getByRole("button", "Connected to Trakt. Disconnect").tap();
+    const confirm = screen.getByRole("group", "Disconnect Trakt?");
+    await expect(
+      confirm.getByText(
+        "1 list is read through this account. It stops showing in Stremio until you connect Trakt again. Actions on Trakt stop too.",
+        { exact: false },
+      ),
+    ).toBeVisible();
+    await confirm.getByRole("button", "Cancel").tap();
+    await expect(confirm).not.toBeVisible();
+    expect(deletes).toEqual([]);
+    await agent.act("Disconnect Trakt and confirm it.", { maxModelCalls: 5 });
+    await expect(
+      screen.getByText(
+        "Trakt is disconnected. Lists read through Trakt stop showing in Stremio until you connect it again.",
+      ),
+    ).toBeVisible();
+    expect(deletes).toEqual(["DELETE"]);
+    await expect(
+      screen.getByText(
+        "Trakt is not connected, so this list does not show in Stremio.",
+      ),
+    ).toBeVisible();
+    await expect(
+      screen.getByText("Connect Trakt, Simkl or MDBList to use Actions."),
+    ).toBeVisible();
+    await saveButton(screen).tap();
+    await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+    expect(submissions.at(-1)?.actions).toEqual({
+      enabled: true,
+      providers: [],
+    });
+    await screen
+      .getByRole("button", "Connect Trakt for Trakt Watchlist", { exact: true })
+      .tap();
+    await expect(
+      screen.getByText(
+        "You cancelled the connection to Trakt. Nothing changed.",
+      ),
+    ).toBeVisible();
+    expect(starts).toEqual(["POST"]);
+    expect(authorized).toHaveLength(1);
+  },
+);
+
+test("Actions settings save the chosen Providers in their order", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await baseRoutes(browser);
+  const { submissions } = await routeConfig(browser, {
+    ...configuration,
+    connections: [connected("trakt"), connected("simkl", null)],
+  });
+  for (const provider of ["trakt", "simkl"] as const) {
+    await routeConnectionSources(browser, provider);
+  }
+  await app.open(`/configure?account=${accountId}`);
+  const toggle = screen.getByRole("checkbox", "Show Actions in Stremio");
+  await expect(toggle).not.toBeChecked();
+  await expect(screen.getByRole("checkbox", /^Trakt/)).toBeDisabled();
+  await toggle.tap();
+  await expect(screen.getByRole("checkbox", /^Trakt/)).toBeChecked();
+  await expect(screen.getByRole("checkbox", /^Simkl/)).toBeChecked();
+  await screen.getByRole("button", "Move Simkl up").tap();
+  await screen.getByRole("checkbox", /^Trakt/).tap();
+  await expect(screen.getByRole("checkbox", /^Trakt/)).not.toBeChecked();
+  await saveButton(screen).tap();
+  // Actions add a stream resource that Stremio reads only at install time.
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  expect(submissions.at(-1)?.actions).toEqual({
+    enabled: true,
+    providers: ["simkl"],
+  });
+});
+
+test(
+  "a Legacy alias install upgrades to a private Addon URL",
+  { tags: ["agent"] },
+  async ({ app, agent, browser, screen }) => {
+    await fitConfigurePage(browser);
+    await captureConfig(browser, legacyConfiguration, imdbUser);
+    const newId = "sl_E2eFixtureAccount00003";
+    const upgrades: string[] = [];
+    // The private copy is a new Account made from what the page shows.
+    await browser.route(`${backend}/accounts`, async (route) => {
+      upgrades.push(route.request.method);
+      await route.fulfill({
+        json: toJson({ ok: true, accountId: newId, lists: [row] }),
+      });
+    });
+    await browser.route(`${backend}/${newId}/config`, (route) =>
+      route.fulfill({ json: toJson({ ...configuration, accountId: newId }) }),
+    );
+    const starts: string[] = [];
+    await browser.route(`${backend}/*/connections/**`, async (route) => {
+      starts.push(route.request.url);
+      await route.fulfill({ status: 404, json: { error: "Addon not found." } });
+    });
+    await app.open(`/configure?account=${imdbUser}`);
+    // Connections need a private Addon URL: Connect only points to the upgrade.
+    await screen.getByRole("button", "Connect").first().tap();
+    expect(starts).toEqual([]);
+    await expect(
+      screen.getByText(
+        "Actions need a private Addon URL. Upgrade this install first.",
+      ),
+    ).toBeVisible();
+    await agent.act(
+      "Upgrade this install to a private Addon URL, confirm with Done that it is installed, then open the new configure page.",
+      { maxModelCalls: 8 },
+    );
+    await expect(browser).toHaveURL(`/configure?account=${newId}`);
+    await expect(
+      screen.getByRole("heading", "Your Stremlist is ready"),
+    ).toBeVisible();
+    await expect(screen.getByLabel("Addon URL", { exact: true })).toHaveValue(
+      `${backend}/${newId}/manifest.json`,
+    );
+    expect(upgrades).toEqual(["POST"]);
+  },
+);
+
+test("a Provider turned off is unavailable to connect, link or add", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  // The kill switch (DISABLED_PROVIDERS) reports Trakt as off.
+  await baseRoutes(browser, providerStatus({ trakt: { enabled: false } }));
+  await browser.route(`${backend}/${accountId}/config`, (route) =>
+    route.fulfill({ json: toJson(configuration) }),
+  );
+  const link = "https://trakt.tv/users/someone/lists/weekend";
+  const inputs = await routeResolve(browser, (input) =>
+    input === link
+      ? { ok: false, reason: "disabled", provider: "trakt" }
+      : null,
+  );
+  await app.open(`/configure?account=${accountId}`);
+  await expect(screen.getByText("Test catalog")).toBeVisible();
+  const off = screen
+    .getByRole("listitem")
+    .filter({ hasText: "Temporarily unavailable" });
+  await expect(off).toHaveCount(1);
+  await expect(off.getByText("Trakt", { exact: true })).toBeVisible();
+  // Simkl and MDBList can still connect; Trakt cannot.
+  await expect(screen.getByRole("button", "Connect")).toHaveCount(2);
+  await expect(screen.getByText("Trakt charts")).toHaveCount(0);
+  await expect(screen.getByRole("button", "Trending")).toHaveCount(0);
+
+  await screen.getByLabel(PASTE).fill(link);
+  await screen.getByRole("button", "Add", { exact: true }).tap();
+  await expect(screen.getByRole("alert")).toHaveText(
+    "Trakt is temporarily unavailable. Please try again later.",
+  );
+  await expect(screen.getByText(/^1 of 10 lists/)).toBeVisible();
+  expect(inputs).toEqual([{ input: link, accountKey: accountId }]);
+});
+
+test("a public Letterboxd link becomes a List without connecting an account", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await captureConfig(browser);
+  const link = "https://letterboxd.com/someone/watchlist/";
+  const inputs = await routeResolve(browser, () =>
+    resolved("letterboxd", "users/someone/watchlist", "watchlist", {
+      suggestedTitle: "Someone's watchlist",
+    }),
+  );
+  await app.open(`/configure?account=${accountId}`);
+  await expect(screen.getByText("Test catalog")).toBeVisible();
+  await screen.getByLabel(PASTE).fill(link);
+  await expect(screen.getByText("Letterboxd watchlist detected")).toBeVisible();
+  await screen.getByRole("button", "Add", { exact: true }).tap();
+  await expect(
+    screen.getByRole("textbox", "Catalog title").first(),
+  ).toHaveValue("Someone's watchlist");
+  await expect(screen.getByText(/^2 of 10 lists/)).toBeVisible();
+  expect(inputs).toEqual([{ input: link, accountKey: accountId }]);
+  await app.screenshot("Letterboxd public watchlist added");
+});

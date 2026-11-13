@@ -3,20 +3,26 @@
   "version": "0.0.1",
   "type": "module",
   "exports": {
+    "./catalog-preview": "./src/catalog-preview.ts",
     "./catalog-settings": "./src/catalog-settings.ts",
     "./constants": "./src/constants.ts",
-    "./database.types": "./src/database.types.ts",
+    "./database": "./src/database.ts",
     "./imdb-charts": "./src/imdb-charts.ts",
-    "./stremio.types": "./src/stremio.types.ts"
+    "./list-merge": "./src/list-merge.ts",
+    "./manifest-catalogs": "./src/manifest-catalogs.ts",
+    "./poster": "./src/poster.ts",
+    "./provider-queue": "./src/provider-queue.ts",
+    "./providers": "./src/providers.ts",
+    "./source-problems": "./src/source-problems.ts",
+    "./stremio.types": "./src/stremio.types.ts",
+    "./sync-status": "./src/sync-status.ts",
+    "./watch-tracking": "./src/watch-tracking.ts"
   },
   "scripts": {
-    "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "generate:types": "supabase gen types typescript --local --schema public > src/database.types.ts && vp fmt src/database.types.ts",
+    "test": "vp test run"
   },
   "devDependencies": {
-    "@stremlist/eslint-config": "workspace:*",
-    "eslint": "^9.39.2",
-    "prettier": "^3.8.1",
-    "typescript": "^5.8.3"
+    "vite-plus": "catalog:"
   }
 }

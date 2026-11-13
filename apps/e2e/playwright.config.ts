@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 import {
   BACKEND_PORT,
   BACKEND_URL,
+  CONNECTION_ENCRYPTION_KEY,
   FRONTEND_PORT,
   FRONTEND_URL,
   R2_ACCESS_KEY_ID,
@@ -61,7 +62,9 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "pnpm exec tsx src/dev.ts",
+      // --no-env-file keeps a local apps/backend/.env (real secrets) out of the
+      // test backend; every variable it needs is set explicitly below.
+      command: "bun --no-env-file src/dev.ts",
       cwd: "../backend",
       url: `${BACKEND_URL}/health`,
       reuseExistingServer: !process.env.CI,
@@ -76,6 +79,7 @@ export default defineConfig({
         R2_ACCESS_KEY_ID,
         R2_SECRET_ACCESS_KEY,
         R2_BUCKET,
+        CONNECTION_ENCRYPTION_KEY,
         // The Resend SDK throws at import time without a key. Newsletter
         // delivery is deliberately out of E2E scope (it would email real
         // people), so a dummy key is enough to boot the app.
@@ -83,7 +87,7 @@ export default defineConfig({
       },
     },
     {
-      command: `pnpm exec vite --port ${FRONTEND_PORT} --strictPort`,
+      command: `bun run dev:app --port ${FRONTEND_PORT} --strictPort`,
       cwd: "../frontend",
       url: FRONTEND_URL,
       reuseExistingServer: !process.env.CI,

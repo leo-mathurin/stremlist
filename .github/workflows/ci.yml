@@ -4,32 +4,55 @@ on:
   workflow_dispatch:
   push:
     branches: [main, staging]
+  # Every base branch, so stacked feature PRs get the same checks.
   pull_request:
-    branches: [main, staging]
+
+permissions:
+  contents: read
+
+# A new push to a pull request cancels its older run. Other events get a
+# unique group: every run on main must finish for the release and the
+# version bump.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
-  ci:
-    name: Lint, Build & Test
+  checks:
+    name: Lint, types, build & test
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # Exchanged for a short-lived Vercel Remote Cache token (no stored secret).
+      id-token: write
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
+      # Fork PRs get no OIDC token, so they fall back to a cold local cache.
+      # Best-effort: a failed token exchange must not block CI or the release.
+      - name: Set up Turborepo Remote Cache
+        if: vars.TURBO_TEAM != '' && github.event.pull_request.head.repo.fork != true
+        continue-on-error: true
+        # Pinned to a commit: this step runs with id-token: write.
+        uses: vercel/setup-turborepo-remote-cache-action@49d7b1b46ba4c9251e1977986bfe18336feabc8f # v1.1.0
         with:
-          version: 10.30.1
+          team: ${{ vars.TURBO_TEAM }}
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
+      - uses: ./.github/actions/setup
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun ci
 
-      - name: Lint, build, and test
-        run: pnpm turbo run lint build test
+      - parallel:
+          # Oxfmt, Oxlint and `bun check` after the backend declarations,
+          # then the builds and unit tests. Turbo runs them in parallel.
+          - name: Lint, type check, build and test
+            run: bunx turbo run lint:repo typecheck:repo build test --log-order=stream
+          - name: Unused files, exports and dependencies
+            run: bun run knip
+          - name: Deploy script and lint rule tests
+            run: bun run test:tooling
 
       - name: Smoke-test backend bundle
         env:
@@ -37,33 +60,166 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: test
           RESEND_API_KEY: re_test
           RESEND_AUDIENCE_ID: test
-        run: node --input-type=module --eval 'await import("./apps/backend/dist/index.js")'
+          R2_ACCOUNT_ID: test
+          R2_ACCESS_KEY_ID: test
+          R2_SECRET_ACCESS_KEY: test
+          R2_BUCKET: test
+          CONNECTION_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+        # Production runs this bundle on Vercel's Bun runtime (apps/backend/vercel.json),
+        # so load it with Bun and serve one request that needs no external service.
+        run: |
+          bun --eval '
+            const { default: app } = await import("./apps/backend/dist/index.js");
+            const res = await app.fetch(new Request("http://localhost/manifest.json"));
+            const body = await res.json();
+            if (res.status !== 200 || body.id !== "com.stremlist") {
+              throw new Error(`Unexpected manifest response: ${res.status} ${JSON.stringify(body)}`);
+            }
+          '
 
-  e2e:
-    name: E2E
+      - name: Upload frontend test log
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-log
+          include-hidden-files: true
+          path: apps/frontend/.turbo/turbo-test.log
+          retention-days: 7
+
+  hygiene:
+    name: Commits, secrets & advisories
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Gitleaks scans the whole history; commitlint reads the PR range.
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup
+
+      - name: Install dependencies
+        run: bun ci
+
+      - name: Install Gitleaks 8.30.1
+        run: |
+          archive="$RUNNER_TEMP/gitleaks_8.30.1_linux_x64.tar.gz"
+          curl --fail --silent --show-error --location \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+            --output "$archive"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $archive" | sha256sum --check
+          mkdir -p "$HOME/.local/bin"
+          tar -xzf "$archive" -C "$HOME/.local/bin" gitleaks
+
+      - parallel:
+          # The squash title becomes the commit on the base branch, and the
+          # version bump reads it. The commit-msg hook lints each commit. CI
+          # does not lint the commit range: the v2 branch has older commits
+          # that were made before the rules, and its history is shared.
+          - name: Conventional Commits
+            if: github.event_name == 'pull_request'
+            env:
+              PR_TITLE: ${{ github.event.pull_request.title }}
+            run: printf '%s\n' "$PR_TITLE" | bunx commitlint
+          - name: Secrets in the Git history
+            run: gitleaks git --redact --no-banner
+          # Only what ships to users. Some dev tools pin vulnerable versions.
+          - name: Advisories in production dependencies
+            run: bun audit --prod
+
+  database:
+    name: Database
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: ./.github/actions/setup
         with:
-          version: 10.30.1
+          supabase: true
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - uses: supabase/setup-cli@v1
-        with:
-          version: 2.98.2
+      - name: Install dependencies
+        id: install
+        background: true
+        run: bun ci
 
       - name: Start local Supabase (db + REST only)
         run: supabase start -x gotrue,realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta
 
-      - name: Test atomic configuration replacement
-        run: docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/replace_user_config.sql
+      # Production runs the baseline with v1 data. Seed v1 data on the
+      # baseline, apply the v2 migrations on top, and check that the data
+      # survived and that the v1 backend still reads it.
+      - name: Test the v1 to v2 upgrade with v1 data
+        run: |
+          supabase db reset --local --version 20260916000000
+          docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/v1_upgrade_seed.sql
+          supabase migration up --local
+          docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/v1_upgrade_check.sql
+
+      - name: Test the RPCs, views and queues
+        run: |
+          docker cp supabase/contract/drop_v1_compatibility.sql supabase_db_stremlist:/tmp/
+          for test in \
+            v1_compatibility \
+            drop_v1_compatibility \
+            replace_account_config \
+            record_list_refresh \
+            account_writes \
+            oauth_and_upgrade \
+            letterboxd_gate \
+            letterboxd_queue \
+            letterboxd_request_log \
+            watch_tracking
+          do
+            echo "::group::$test"
+            docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < "supabase/tests/$test.sql"
+            echo "::endgroup::"
+          done
+
+      - wait: install
+
+      # Same command as the local workflow, so CI and developers cannot diverge.
+      - name: Check generated Supabase types
+        run: |
+          bun run generate:types
+          if ! git diff --exit-code -- packages/shared/src/database.types.ts; then
+            echo "::error file=packages/shared/src/database.types.ts::Supabase types do not match supabase/migrations. Start local Supabase, run 'bun run generate:types', and commit the result."
+            exit 1
+          fi
+
+  e2e:
+    name: E2E (${{ matrix.suite }})
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # One suite failing must not hide the result of the other.
+      fail-fast: false
+      matrix:
+        suite: [playwright, toolkit]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup
+        with:
+          supabase: true
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - name: Install dependencies and Chromium
+        id: install
+        background: true
+        run: |
+          bun ci
+          (cd apps/e2e && bunx playwright install --with-deps chromium)
+          if [ "${{ matrix.suite }}" = toolkit ]; then
+            bun run --cwd apps/e2e e2e-web install chromium --with-deps
+          fi
 
       - name: Start local R2-compatible store
         run: |
@@ -73,23 +229,30 @@ jobs:
             -e RUSTFS_SECRET_KEY=stremlist-e2e-secret \
             rustfs/rustfs:1.0.1 /data
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Start local Supabase (db + REST only)
+        run: supabase start -x gotrue,realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta
 
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - wait: install
 
-      - name: Install Playwright Chromium
-        run: pnpm --filter @stremlist/e2e exec playwright install --with-deps chromium
+      - name: Run tester-army toolkit
+        if: matrix.suite == 'toolkit'
+        run: bun run test:toolkit:replay
 
       - name: Run E2E tests
-        run: pnpm --filter @stremlist/e2e test:e2e
+        if: matrix.suite == 'playwright'
+        run: bun run --filter @stremlist/e2e test:e2e
+
+      - name: Upload toolkit report
+        if: failure() && matrix.suite == 'toolkit'
+        uses: actions/upload-artifact@v4
+        with:
+          name: toolkit-report
+          include-hidden-files: true
+          path: apps/e2e/.e2e
+          retention-days: 7
 
       - name: Upload Playwright report
-        if: failure()
+        if: failure() && matrix.suite == 'playwright'
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
@@ -98,7 +261,7 @@ jobs:
 
   version-bump:
     name: Auto version bump
-    needs: ci
+    needs: checks
     # Only on a real push to main (i.e. after a PR merge), never on PRs.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -116,7 +279,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version-file: .node-version
 
       - name: Compute version bump from Conventional Commits
         id: bump

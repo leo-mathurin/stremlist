@@ -1,59 +1,70 @@
 import { CATALOG_PRESETS } from "@stremlist/shared/catalog-settings";
 import type { CatalogPreset } from "@stremlist/shared/catalog-settings";
+import type { TitleType } from "@stremlist/shared/constants";
 const CATALOG_ID_PREFIX = "wl";
 const CATALOG_ID_SEPARATOR = "-";
 const PREFIX_OFFSET = CATALOG_ID_PREFIX.length + CATALOG_ID_SEPARATOR.length;
-const WATCHLIST_ID_PATTERN =
+const LIST_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export type CatalogContentType = "movie" | "series";
-
 export function buildCatalogId(
-  watchlistId: string,
-  type: CatalogContentType,
+  listId: string,
+  type: TitleType,
   preset?: CatalogPreset,
 ): string {
-  return `${CATALOG_ID_PREFIX}${CATALOG_ID_SEPARATOR}${watchlistId}${CATALOG_ID_SEPARATOR}${type}${preset ? `--${preset}` : ""}`;
+  return `${CATALOG_ID_PREFIX}${CATALOG_ID_SEPARATOR}${listId}${CATALOG_ID_SEPARATOR}${type}${preset ? `--${preset}` : ""}`;
 }
 
-export function parseCatalogId(catalogId: string): {
-  watchlistId: string;
-  type: CatalogContentType;
+interface ListCatalogId {
+  listId: string;
+  type: TitleType;
   preset?: CatalogPreset;
-} | null {
+}
+
+/** A catalog of the manifest: one of a List, or a "New titles" one. */
+type ParsedCatalogId =
+  | ({ kind: "list" } & ListCatalogId)
+  | { kind: "new-titles"; type: TitleType };
+
+function parseListCatalogId(catalogId: string): ListCatalogId | null {
   const separator = catalogId.indexOf("--");
   if (separator !== -1) {
     const preset = CATALOG_PRESETS.find(
       (option) => option.id === catalogId.slice(separator + 2),
     );
-    const base = parseCatalogId(catalogId.slice(0, separator));
+    const base = parseListCatalogId(catalogId.slice(0, separator));
     return preset && base ? { ...base, preset: preset.id } : null;
   }
   if (!catalogId.startsWith(`${CATALOG_ID_PREFIX}${CATALOG_ID_SEPARATOR}`)) {
     return null;
   }
 
-  if (catalogId.endsWith(`${CATALOG_ID_SEPARATOR}movie`)) {
-    const watchlistId = catalogId.slice(
-      PREFIX_OFFSET,
-      -(CATALOG_ID_SEPARATOR.length + "movie".length),
-    );
-    if (!WATCHLIST_ID_PATTERN.test(watchlistId)) {
-      return null;
+  for (const type of ["movie", "series"] as const) {
+    if (catalogId.endsWith(`${CATALOG_ID_SEPARATOR}${type}`)) {
+      const listId = catalogId.slice(
+        PREFIX_OFFSET,
+        -(CATALOG_ID_SEPARATOR.length + type.length),
+      );
+      return LIST_ID_PATTERN.test(listId) ? { listId, type } : null;
     }
-    return { watchlistId, type: "movie" };
   }
-
-  if (catalogId.endsWith(`${CATALOG_ID_SEPARATOR}series`)) {
-    const watchlistId = catalogId.slice(
-      PREFIX_OFFSET,
-      -(CATALOG_ID_SEPARATOR.length + "series".length),
-    );
-    if (!WATCHLIST_ID_PATTERN.test(watchlistId)) {
-      return null;
-    }
-    return { watchlistId, type: "series" };
-  }
-
   return null;
+}
+
+/** The "New titles" catalogs, one per type (ADR 0007). */
+const NEW_TITLES_PREFIX = "new-titles-";
+
+export function buildNewTitlesCatalogId(type: TitleType): string {
+  return `${NEW_TITLES_PREFIX}${type}`;
+}
+
+export function parseCatalogId(catalogId: string): ParsedCatalogId | null {
+  if (catalogId.startsWith(NEW_TITLES_PREFIX)) {
+    const type = catalogId.slice(NEW_TITLES_PREFIX.length);
+    return type === "movie" || type === "series"
+      ? { kind: "new-titles", type }
+      : null;
+  }
+  const list = parseListCatalogId(catalogId);
+  return list && { kind: "list", ...list };
 }
