@@ -113,16 +113,14 @@ jobs:
 
       - parallel:
           # The squash title becomes the commit on the base branch, and the
-          # version bump reads it.
+          # version bump reads it. The commit-msg hook lints each commit. CI
+          # does not lint the commit range: the v2 branch has older commits
+          # that were made before the rules, and its history is shared.
           - name: Conventional Commits
             if: github.event_name == 'pull_request'
             env:
               PR_TITLE: ${{ github.event.pull_request.title }}
-              BASE_SHA: ${{ github.event.pull_request.base.sha }}
-              HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-            run: |
-              printf '%s\n' "$PR_TITLE" | bunx commitlint
-              bunx commitlint --from "$BASE_SHA" --to "$HEAD_SHA"
+            run: printf '%s\n' "$PR_TITLE" | bunx commitlint
           - name: Secrets in the Git history
             run: gitleaks git --redact --no-banner
           # Only what ships to users. Some dev tools pin vulnerable versions.
