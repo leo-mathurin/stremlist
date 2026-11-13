@@ -1,6 +1,5 @@
 import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
-import type { AccountConfigInput } from "@stremlist/shared/stremio.types";
 import {
   SAVED,
   SAVED_REINSTALL,
@@ -12,6 +11,7 @@ import {
   captureConfig,
   imdbUser,
   parseBody,
+  isConfigInput,
   resolved,
   routeCreateAccount,
   routeResolve,
@@ -58,17 +58,18 @@ test("a canonical duplicate offers to show the existing list and keeps the link"
   expect(
     await browser.evaluate(
       () =>
-        document.querySelector("[data-list-row]")!.getBoundingClientRect().top >
-        window.innerHeight,
+        // A missing row reads as NaN, which fails every comparison.
+        (document.querySelector("[data-list-row]")?.getBoundingClientRect()
+          .top ?? Number.NaN) > window.innerHeight,
     ),
   ).toBe(true);
   await screen.getByRole("button", "Show", { exact: true }).tap();
   await expect
     .poll(() =>
       browser.evaluate(() => {
-        const top = document
-          .querySelector("[data-list-row]")!
-          .getBoundingClientRect().top;
+        const top =
+          document.querySelector("[data-list-row]")?.getBoundingClientRect()
+            .top ?? Number.NaN;
         return top >= 0 && top < 100;
       }),
     )
@@ -210,7 +211,7 @@ test("a normalized handle becomes the saved source and the next save stays clean
       });
     else {
       requests++;
-      const payload = parseBody<AccountConfigInput>(route);
+      const payload = parseBody(route, isConfigInput);
       expect(payload.lists[0].sourceRef).toBe(
         requests === 1 ? "p.fixture" : "ur99887766",
       );
@@ -258,7 +259,7 @@ test("network save failure preserves values for a retry", async ({
       await route.fulfill({
         json: toJson({
           ok: true,
-          lists: savedLists(parseBody<AccountConfigInput>(route)),
+          lists: savedLists(parseBody(route, isConfigInput)),
         }),
       });
   });

@@ -1,5 +1,13 @@
 import { parseSourceLink } from "@stremlist/shared/providers";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
+import { z } from "zod";
 import { justwatchRecheckStrategy } from "../../titles/justwatch-lookup";
 import { justwatchProvider } from "../justwatch";
 import { SourceUnavailableError } from "../types";
@@ -95,15 +103,25 @@ const NOT_FOUND = {
   data: { node: null },
 };
 
-interface GraphQLBody {
-  query: string;
-  variables: Record<string, unknown>;
-}
+const graphQLBody = z.object({
+  query: z.string(),
+  variables: z
+    .object({
+      first: z.number().optional(),
+      ids: z.array(z.string()).optional(),
+    })
+    .loose(),
+});
+
+type GraphQLBody = z.infer<typeof graphQLBody>;
 
 let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>;
 
 function parseBody(init: RequestInit | undefined): GraphQLBody {
-  return JSON.parse(init?.body as string) as GraphQLBody;
+  if (typeof init?.body !== "string") {
+    throw new Error("Expected a JSON request body");
+  }
+  return graphQLBody.parse(JSON.parse(init.body));
 }
 
 function requestBodies(): GraphQLBody[] {
@@ -218,7 +236,8 @@ describe("justwatchProvider.fetchSource", () => {
   it("stops at the entry cap", async () => {
     let served = 0;
     fetchMock.mockImplementation((_url, init) => {
-      const first = parseBody(init).variables.first as number;
+      const { first } = parseBody(init).variables;
+      if (first === undefined) throw new Error("Expected a page size");
       const edges = Array.from({ length: first }, (_, index) => ({
         node: { ...TERMINATION_POINT.node, id: `tm${served + index + 1}` },
       }));
@@ -277,7 +296,7 @@ describe("justwatchProvider.fetchSource", () => {
       .fetchSource(CUSTOM_LIST_ID, ctx)
       .catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(SourceUnavailableError);
-    expect((error as SourceUnavailableError).reason).toBe("not_found");
+    expect(error).toHaveProperty("reason", "not_found");
   });
 
   it("rejects a ref that is not a list ID without a request", async () => {
@@ -422,9 +441,9 @@ describe("JustWatch ID resolution", () => {
       })),
     );
 
-    expect(
-      requestBodies().map((body) => (body.variables.ids as string[]).length),
-    ).toEqual([50, 50, 20]);
+    expect(requestBodies().map((body) => body.variables.ids?.length)).toEqual([
+      50, 50, 20,
+    ]);
   });
 
   it("makes no request when no entry has a node ID", async () => {

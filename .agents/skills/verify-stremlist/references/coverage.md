@@ -4,16 +4,17 @@
 
 The commands below reuse the repository's runners. Read installed Turborepo docs before changing task commands or configuration, as required by `AGENTS.md`.
 
-| Check              | Command                                                                                         | What it proves                                                                                                                               |
-| ------------------ | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| CI baseline        | `bunx turbo run lint build test --force`                                                        | ESLint, production builds, backend Vitest, frontend Node and Bun script tests, and shared Vitest tests execute without cached results.       |
-| Workspace types    | `bun run typecheck --force`                                                                     | Backend, stress tools, frontend, shared, and E2E TypeScript checks. CI does not run this separate root task.                                 |
-| UI journeys        | `bun run test:toolkit:replay`                                                                   | Real frontend interactions, exact HTTP payloads, errors, and replayed actions with zero model calls.                                         |
-| Local integration  | `CI=1 bun run --filter @stremlist/e2e test:e2e --project=local --trace on`                      | Real handlers, database, and caches. Provider fixture specs control external transports, but some other local specs trigger real IMDb reads. |
-| Live compatibility | Run the same E2E command separately with `--project=live-smoke` and `--project=live-regression` | Public IMDb behavior and hosted Stremio Web compatibility for tagged tests.                                                                  |
-| Atomic SQL writes  | Commands below                                                                                  | Transaction and concurrency invariants in real Postgres.                                                                                     |
-| Scraper stress     | `bun run --cwd apps/backend test:stress`                                                        | The existing scraper stress cases, excluded from normal backend tests.                                                                       |
-| Formatting         | Use the installed Prettier on changed supported files, or `bun run format:check`                | Formatting only. No behavior proof. Shared has no `format:check` script.                                                                     |
+| Check              | Command                                                                                            | What it proves                                                                                                                               |
+| ------------------ | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| CI baseline        | `bunx turbo run lint:repo typecheck:repo build test --force`                                       | Oxfmt and Oxlint (`vp check`), `bun check` types for every project, production builds, backend and shared Vitest, frontend script tests.     |
+| Unused code        | `bun run knip`                                                                                     | No unused files, exports, or dependencies. CI runs it.                                                                                       |
+| Repository hygiene | `gitleaks git --redact --no-banner`, `bun audit --prod`, `bunx commitlint --from <base> --to HEAD` | No secrets in the Git history, no known advisory in production dependencies, Conventional Commits. CI runs all three.                        |
+| UI journeys        | `bun run test:toolkit:replay`                                                                      | Real frontend interactions, exact HTTP payloads, errors, and replayed actions with zero model calls.                                         |
+| Local integration  | `CI=1 bun run --filter @stremlist/e2e test:e2e --project=local --trace on`                         | Real handlers, database, and caches. Provider fixture specs control external transports, but some other local specs trigger real IMDb reads. |
+| Live compatibility | Run the same E2E command separately with `--project=live-smoke` and `--project=live-regression`    | Public IMDb behavior and hosted Stremio Web compatibility for tagged tests.                                                                  |
+| Atomic SQL writes  | Commands below                                                                                     | Transaction and concurrency invariants in real Postgres.                                                                                     |
+| Scraper stress     | `bun run --cwd apps/backend test:stress`                                                           | The existing scraper stress cases, excluded from normal backend tests.                                                                       |
+| Formatting         | `bun run format:check`, or `bun run fix` to rewrite                                                | Formatting only. No behavior proof. `bun run lint` also checks it.                                                                           |
 
 Run SQL checks only inside the disposable stack started for this run.
 
@@ -23,7 +24,7 @@ docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supab
 docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < supabase/tests/account_writes.sql
 ```
 
-For cache, scraper, and throughput changes, consult `apps/backend/stress/README.md` and use its existing load runner. Load tests are not part of a routine documentation change. `bun run knip` exists for unused-code analysis but is not a CI delivery gate.
+For cache, scraper, and throughput changes, consult `apps/backend/stress/README.md` and use its existing load runner. Load tests are not part of a routine documentation change. `bun run knip` checks unused code, and CI runs it.
 
 ## Command supervisor checks
 
@@ -76,13 +77,13 @@ Levels: **U** unit (Vitest or SQL), **T** toolkit replay, **P** Playwright `@loc
 - **Live dependencies can fail independently of the change.** Record public IMDb and hosted Stremio failures separately. Do not relabel them as passes based on controlled fixtures.
 - **The local project is not fully offline.** Saving a chart in `configure-page.spec.ts` starts real IMDb prewarming on the main backend. The tag alone does not establish transport isolation. Provider fixture specs use explicit intercepted transports.
 - **Inherited environment matters.** The main Playwright backend inherits exported Provider credentials. Clear them and all Supabase and R2 target overrides as described in Launch. Prevent E2E dotenv files from restoring overrides. The resolved-target check prints only service URLs and the test bucket name.
-- **CI scope differs by event.** The E2E job runs on pull requests and workflow dispatch, not normal branch pushes. The lint/build/test job omits the standalone root typecheck and format check. A branch push alone is incomplete release evidence.
+- **CI scope differs by event.** The Database and E2E jobs run on pull requests and workflow dispatch, not normal branch pushes. A branch push alone is incomplete release evidence.
 - **Isolation is fixed.** Toolkit ports, integration ports, the Supabase project ID, and destructive cleanup are shared within a host. Serial workers do not isolate two independent runs.
 - **Process groups do not contain detached runner children.** Both runners detach servers or browsers. The helper gates the selected server ports but cannot prove detached-browser teardown. Require a separate ownership and exit check. Timeout, interruption, or forced termination leaves runner teardown unverified. Playwright spec cleanup does not run through this helper's SIGTERM path. Discard the disposable integration stack after an interrupted run.
 
 ## Delivery criteria
 
-1. Run the CI baseline for code changes. Run workspace typechecks when types or consuming interfaces change. For documentation-only changes, validate the skill, resolve its links, and execute its launch, doctor, one mapped feature, and cleanup once.
+1. Run the CI baseline for code changes. For documentation-only changes, validate the skill, resolve its links, and execute its launch, doctor, one mapped feature, and cleanup once.
 2. Select every affected user entry point from the feature map. Reproduce a reported defect before changing it. Show the user action and the resulting visible state. For a save or Action, include an independent read of the stored result or controlled outbound receipt.
 3. Require the strict toolkit replay for UI behavior changes. Require the relevant Playwright specs for backend, storage, Provider, or addon behavior. Identify which specs use fixture transports and which still read IMDb. A toolkit-only pass cannot close a persistence change.
 4. For database migrations or write changes, start a fresh disposable stack, apply migrations through Supabase startup, run the relevant SQL checks, and verify the real API behavior afterward.

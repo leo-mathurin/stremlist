@@ -19,6 +19,7 @@
  * copy of the gate (the RPCs are then called as <schema>_letterboxd_*).
  */
 import { createClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { writeFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 
@@ -113,7 +114,7 @@ function restGate(): Gate {
         p_gate: GATE,
       })) as { data: unknown; error: { message: string } | null };
       if (error) throw new Error(`${name}: ${error.message}`);
-      return data as Json;
+      return z.record(z.string(), z.unknown()).parse(data);
     },
     async close() {
       // A copy of the gate in another schema goes away with that schema.

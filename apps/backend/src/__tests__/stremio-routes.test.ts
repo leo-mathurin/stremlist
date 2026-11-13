@@ -1,17 +1,12 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const { backgroundMocks, prewarmMocks, supabaseMocks } = await vi.hoisted(
-  () => import("./helpers/config-api-mocks.js"),
-);
-vi.mock("../lib/background", () => backgroundMocks);
-vi.mock("../services/list-prewarm", () => prewarmMocks);
-vi.mock("../lib/supabase", () => supabaseMocks);
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
-vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
-
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
+import { z } from "zod";
 import app from "../index.js";
 import { decryptSecret, encryptSecret } from "../lib/crypto";
 import {
@@ -28,6 +23,25 @@ import {
   useTestEncryptionKey,
 } from "./helpers/fixtures.js";
 import { db } from "./helpers/mock-supabase.js";
+import {
+  configBody,
+  mustString,
+  parseJson,
+  readJson,
+  stremioManifest,
+  unchanged,
+} from "./helpers/json.js";
+
+const { backgroundMocks, prewarmMocks, supabaseMocks } = await vi.hoisted(
+  () => import("./helpers/config-api-mocks.js"),
+);
+vi.mock("../lib/background", () => backgroundMocks);
+vi.mock("../services/list-prewarm", () => prewarmMocks);
+vi.mock("../lib/supabase", () => supabaseMocks);
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
+vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
+vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
 
 const SESSION = "stremio-session-key";
 const EMAIL = "member@example.com";
@@ -39,6 +53,30 @@ interface Addon {
   manifest: { id: string; name?: string; catalogs?: { name: string }[] };
   flags?: object;
 }
+
+const addon = z
+  .object({
+    transportUrl: z.string(),
+    transportName: z.string().optional(),
+    manifest: z
+      .object({
+        id: z.string(),
+        name: z.string().optional(),
+        catalogs: z.array(z.object({ name: z.string() }).loose()).optional(),
+      })
+      .loose(),
+    flags: z.record(z.string(), z.unknown()).optional(),
+  })
+  .loose() satisfies z.ZodType<Addon>;
+
+/** What the Stremio API receives. */
+const apiRequest = z
+  .object({
+    authKey: z.string(),
+    // Kept as sent: Stremlist compares manifests as JSON text.
+    addons: z.array(unchanged(addon)).optional(),
+  })
+  .loose();
 
 const cinemeta: Addon = {
   transportUrl: "https://v3-cinemeta.strem.io/manifest.json",
@@ -81,10 +119,10 @@ function fakeStremio(collection: Addon[]) {
     }
     stremio.meanwhile();
     if (stremio.failure === "down") throw new TypeError("fetch failed");
-    const body = JSON.parse(init?.body as string) as {
-      authKey: string;
-      addons?: Addon[];
-    };
+    const body = parseJson(
+      mustString(init?.body, "the Stremio API request body"),
+      apiRequest,
+    );
     if (stremio.failure === "signed-out" || body.authKey !== SESSION) {
       return Response.json({
         error: { code: 1, message: "Session does not exist" },
@@ -125,7 +163,7 @@ async function installed(): Promise<Addon> {
   return {
     transportUrl: addonUrl(),
     transportName: "http",
-    manifest: (await res.json()) as Addon["manifest"],
+    manifest: await readJson(res, unchanged(stremioManifest)),
     flags: {},
   };
 }
@@ -133,7 +171,7 @@ async function installed(): Promise<Addon> {
 /** Asks for a code, as the configure page does. */
 async function startLink(account = accountId) {
   const res = await postJson(`/${account}/stremio/link`, {});
-  return (await res.json()) as { link: string; token: string };
+  return readJson(res, z.object({ link: z.string(), token: z.string() }));
 }
 
 function confirmLink(token: string, account = accountId) {
@@ -180,10 +218,10 @@ describe("linking a Stremio account", () => {
 
     const [row] = db.getTable("stremio_connections");
     expect(row.auth_key).not.toContain(SESSION);
-    expect(decryptSecret(row.auth_key as string)).toBe(SESSION);
+    expect(decryptSecret(mustString(row.auth_key, "auth_key"))).toBe(SESSION);
 
     const config = await getConfig(accountId);
-    const body = await config.json();
+    const body = await readJson(config, configBody);
     expect(body.stremio).toEqual({ email: EMAIL });
     expect(JSON.stringify(body)).not.toContain(SESSION);
   });
@@ -221,7 +259,7 @@ describe("linking a Stremio account", () => {
     const res = await postJson(`/${OWNER}/stremio/link`, {});
     expect(res.status).toBe(400);
     const config = await getConfig(OWNER);
-    expect((await config.json()).stremio).toBeNull();
+    expect((await readJson(config, configBody)).stremio).toBeNull();
   });
 
   it("replaces the previous link", async () => {
@@ -398,7 +436,9 @@ describe("updating the installed Stremlist", () => {
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({ reason: "signed-out" });
     expect(db.getTable("stremio_connections")).toHaveLength(0);
-    expect((await (await getConfig(accountId)).json()).stremio).toBeNull();
+    expect(
+      (await readJson(await getConfig(accountId), configBody)).stremio,
+    ).toBeNull();
   });
 
   it("keeps a link made while the refused key was in use", async () => {

@@ -121,7 +121,8 @@ export function sourceHasAddedDates(
     case "letterboxd":
       // Only the diary carries per-entry dates (the watch date).
       return /^users\/[^/]+\/diary$/.test(ref);
-    default:
+    case "justwatch":
+    case "senscritique":
       return false;
   }
 }

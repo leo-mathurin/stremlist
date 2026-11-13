@@ -1,12 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vite-plus/test";
+import type { ClaimedWrite } from "../writes";
+import { capPerDestination } from "../writes";
 
 vi.mock("../../../lib/supabase", () => ({ supabase: {} }));
 vi.mock("../../../providers/registry", () => ({
   isProviderEnabled: (provider: string) => provider !== "mdblist",
 }));
-
-import type { ClaimedWrite } from "../writes";
-import { capPerDestination } from "../writes";
 
 let next = 0;
 function write(account: string, provider: string): ClaimedWrite {

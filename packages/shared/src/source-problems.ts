@@ -104,7 +104,10 @@ export function sourceProblemCopy(
             title: "This JustWatch list is not shared",
             fix: "In JustWatch, open the list and choose Share to get its link.",
           };
-        default:
+        case "letterboxd":
+        case "mdblist":
+        case "senscritique":
+        case "simkl":
           return {
             title: `This ${label} ${noun} is private`,
             fix: `Make it public on ${label}.`,

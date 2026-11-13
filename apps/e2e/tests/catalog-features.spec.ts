@@ -7,11 +7,13 @@ import {
   getConfig,
   getManifest,
   getMeta,
+  isCatalog,
   listInput,
   postConfig,
 } from "../helpers/api.js";
 import { CATALOG_TITLES, seedCatalog } from "../helpers/catalog-fixture.js";
 import { resetDb } from "../helpers/db.js";
+import { parsed } from "../helpers/json.js";
 import {
   discoverUrl,
   installAddon,
@@ -46,6 +48,12 @@ async function openFilters(page: Page, accountId: string) {
   await page.goto(configureUrl(accountId));
   await page.getByRole("button", { name: "Settings for Release QA" }).click();
   await page.getByRole("button", { name: /Filters & extra catalogs/ }).click();
+}
+
+/** The order of `sort()` without a compare function: by UTF-16 code units. */
+function byCodeUnits(a: string | null, b: string | null): number {
+  const [x, y] = [String(a), String(b)];
+  return x < y ? -1 : x > y ? 1 : 0;
 }
 
 function cardTitles(page: Page) {
@@ -154,9 +162,11 @@ test(
       const first = await request.get(url);
       const second = await request.get(url);
       expect(first.status()).toBe(200);
-      const body = await first.json();
+      const body: unknown = await first.json();
       expect(await second.json()).toEqual(body);
-      pages.push(body.metas.map((meta: { id: string }) => meta.id));
+      pages.push(
+        parsed(body, isCatalog, "catalog page").metas.map((meta) => meta.id),
+      );
     }
     expect(pages.map((page) => page.length)).toEqual([100, 100, 15, 0]);
     expect(new Set(pages.flat()).size).toBe(215);
@@ -271,10 +281,10 @@ test(
     await page.goto(discoverUrl(manifestUrl, "movie", `${catalogId}--shuffle`));
     expect((await shuffleResponse).status()).toBe(200);
     await expect
-      .poll(async () => (await cardTitles(page)).sort())
+      .poll(async () => (await cardTitles(page)).sort(byCodeUnits))
       .toEqual(ALL_DRAMAS);
     const shuffled = await cardTitles(page);
-    expect([...shuffled].sort()).toEqual(ALL_DRAMAS);
+    expect([...shuffled].sort(byCodeUnits)).toEqual(ALL_DRAMAS);
     await page.reload();
     await expectTitles(page, shuffled.map(String));
   },

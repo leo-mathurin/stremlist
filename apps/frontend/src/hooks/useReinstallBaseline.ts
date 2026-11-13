@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { z } from "zod";
 import type { ConfigList } from "@stremlist/shared/stremio.types";
 import { reinstallState, requiresReinstall } from "../lib/reinstall";
 import type { InstallBaseline, ReinstallState } from "../lib/reinstall";
@@ -24,15 +25,17 @@ function installedStorageKey(accountKey: string) {
   return `stremlist:installed:${accountKey}`;
 }
 
+const storedBaseline = z.object({
+  signature: z.string(),
+  actionsLive: z.boolean(),
+});
+
 function readInstalled(accountKey: string): InstallBaseline | null {
   try {
     const raw = localStorage.getItem(installedStorageKey(accountKey));
     if (!raw) return null;
-    const value = JSON.parse(raw) as Partial<InstallBaseline>;
-    return typeof value.signature === "string" &&
-      typeof value.actionsLive === "boolean"
-      ? { signature: value.signature, actionsLive: value.actionsLive }
-      : null;
+    const value = storedBaseline.safeParse(JSON.parse(raw));
+    return value.success ? value.data : null;
   } catch {
     return null;
   }
@@ -61,10 +64,7 @@ export interface InstallSetup {
   actionsLive: boolean;
 }
 
-function baselineOf(
-  setup: InstallSetup,
-  genres: KnownSourceGenres | null,
-): { signature: string; actionsLive: boolean } {
+function baselineOf(setup: InstallSetup, genres: KnownSourceGenres | null) {
   return {
     signature: getListReinstallSignature(setup.rows, genres, {
       newTitles: setup.newTitles,

@@ -56,7 +56,7 @@ const storedMembershipSchema = z.object({
     watchlist: z.array(z.string()),
     watched: z.array(z.string()),
     watchedEpisodes: z.array(z.string()),
-    ratings: z.record(z.number()),
+    ratings: z.record(z.string(), z.number()),
   }),
 });
 type StoredMembership = z.infer<typeof storedMembershipSchema>;
@@ -121,7 +121,7 @@ export async function readMembership(
   let stored = memoryMembership.get(key);
   if (stored === undefined) {
     try {
-      stored = await readJson<StoredMembership>(key);
+      stored = await readJson(key, storedMembershipSchema);
       rememberMembership(key, stored);
     } catch {
       // R2 is unreachable: use this instance's copy, and do not ask R2

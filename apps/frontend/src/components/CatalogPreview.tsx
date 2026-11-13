@@ -45,7 +45,9 @@ function count(value: number, one: string, other: string): string {
 
 /** The label of the Show option that keeps only `type`. */
 function showOnlyLabel(type: TitleType): string {
-  return DISPLAY_MODE_OPTIONS.find((option) => option.value === type)!.label;
+  const option = DISPLAY_MODE_OPTIONS.find((entry) => entry.value === type);
+  if (!option) throw new Error(`No Show option for ${type}.`);
+  return option.label;
 }
 
 function catalogLabel(row: CatalogPreviewRow): string {

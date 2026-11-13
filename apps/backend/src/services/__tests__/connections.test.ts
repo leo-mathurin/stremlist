@@ -1,18 +1,12 @@
 import type { ProviderId } from "@stremlist/shared/providers";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const oauthMocks = vi.hoisted(() => ({
-  refreshTokens: vi.fn(),
-}));
-
-vi.mock("../../lib/supabase", async () => {
-  return await import("../../__tests__/helpers/mock-supabase");
-});
-vi.mock("../oauth", () => oauthMocks);
-vi.mock("../../providers/registry", async () => {
-  return await import("../../__tests__/helpers/mock-registry");
-});
-
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import {
   seedAccount,
   seedConnection,
@@ -40,6 +34,18 @@ import {
 } from "../connections";
 import type { OAuthTokens } from "../oauth";
 
+const oauthMocks = vi.hoisted(() => ({
+  refreshTokens: vi.fn(),
+}));
+
+vi.mock("../../lib/supabase", async () => {
+  return await import("../../__tests__/helpers/mock-supabase");
+});
+vi.mock("../oauth", () => oauthMocks);
+vi.mock("../../providers/registry", async () => {
+  return await import("../../__tests__/helpers/mock-registry");
+});
+
 const MINUTE = 60_000;
 const inAnHour = () => new Date(Date.now() + 60 * MINUTE);
 const ago = () => new Date(Date.now() - MINUTE);
@@ -53,7 +59,9 @@ function connectionRow() {
 }
 
 function storedToken(column: "access_token" | "refresh_token") {
-  return decryptSecret(connectionRow()[column] as string);
+  const value = connectionRow()[column];
+  if (typeof value !== "string") throw new Error(`no ${column} stored`);
+  return decryptSecret(value);
 }
 
 function tokens(
@@ -166,11 +174,13 @@ describe("listConnections and deleteConnection", () => {
   it("lists Connections without any token", async () => {
     seedConnection(accountId, "trakt", { username: "leo" });
 
+    // A matcher, not a string: `toEqual` checks that the field is one.
+    const anyTime: unknown = expect.any(String);
     expect(await listConnections(accountId)).toEqual([
       {
         provider: "trakt",
         username: "leo",
-        connectedAt: expect.any(String) as string,
+        connectedAt: anyTime,
         needsRenewalSince: null,
       },
     ]);
@@ -398,11 +408,10 @@ describe("getConnectionAccess", () => {
     seedConnection(accountId, "trakt", { expiresAt: ago() });
     leaseTaken();
 
-    const settled = expect(accessToken()).rejects.toBeInstanceOf(
-      ConnectionExpiredError,
-    );
+    const token = accessToken();
+    token.catch(() => {});
     await vi.advanceTimersByTimeAsync(10_000);
-    await settled;
+    await expect(token).rejects.toBeInstanceOf(ConnectionExpiredError);
   });
 
   it.each([

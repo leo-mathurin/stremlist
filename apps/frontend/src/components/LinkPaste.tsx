@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 import type { Ref } from "react";
 import type { InferResponseType } from "hono/client";
 import { toast } from "sonner";
@@ -63,7 +63,10 @@ function addonUrlProblem(key: string, accountKey: string | null): LinkProblem {
 
 type LinkProblemReason = SourceProblemReason | "unrecognized" | "too_long";
 
-type ResolveAnswer = InferResponseType<typeof api.links.resolve.$post>;
+type ResolveAnswer = InferResponseType<typeof api.links.resolve.$post, 200>;
+
+/** An answer that is not a place in the Provider's queue. */
+type SettledAnswer = Exclude<ResolveAnswer, { reason: "queued" }>;
 
 /** Turn a `/links/resolve` refusal into a message and a next step. */
 function describeLinkProblem(
@@ -108,8 +111,48 @@ function describeLinkProblem(
                 ? `${title}. Connect ${label} to add it. When it connects, Stremlist saves your setup and gives you a private Addon URL.`
                 : `${title}. Connect ${label} to add it.`,
           };
-    default:
+    case "private":
+    case "not_found":
+    case "disabled":
+    case "premium_only":
+    case "unavailable":
       return { provider, message: `${title}. ${fix}` };
+  }
+  // A reason from a newer backend than this page.
+  return { provider, message: `${title}. ${fix}` };
+}
+
+/**
+ * Asks `POST /links/resolve` about a link. A queued answer keeps the place
+ * in the queue: it asks again with its ticket when the queue says so, and
+ * tells `onQueue` where it waits. `gone` when the field went away meanwhile,
+ * `failed` when the check got no answer.
+ */
+async function resolveLink(
+  input: string,
+  accountKey: string | null,
+  onQueue: (wait: QueueWait) => void,
+  isMounted: () => boolean,
+): Promise<SettledAnswer | "gone" | "failed"> {
+  let ticket: string | undefined;
+  let wait: QueueWait | null = null;
+  try {
+    for (;;) {
+      const res = await api.links.resolve.$post({
+        json: { input, accountKey: accountKey ?? undefined, ticket },
+      });
+      if (!res.ok) return "failed";
+      const body = await res.json();
+      if (body.ok || body.reason !== "queued") return body;
+      wait = queueWait(body, Date.now(), wait);
+      onQueue(wait);
+      ticket = body.ticket ?? undefined;
+      const delay = retryDelay(body.retryMs);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      if (!isMounted()) return "gone";
+    }
+  } catch {
+    return "failed";
   }
 }
 
@@ -206,63 +249,53 @@ export default function LinkPaste({
     }
 
     setResolving(true);
-    try {
-      let ticket: string | undefined;
-      let wait: QueueWait | null = null;
-      let body: ResolveAnswer;
-      // A queued answer keeps the place in the queue: ask again with its
-      // ticket when the queue says so.
-      for (;;) {
-        const res = await api.links.resolve.$post({
-          json: { input: trimmed, accountKey: accountKey ?? undefined, ticket },
-        });
-        if (!res.ok) throw new Error("resolve failed");
-        body = await res.json();
-        if (body.ok || body.reason !== "queued") break;
-        wait = queueWait(body, Date.now(), wait);
-        setQueue(wait);
-        ticket = body.ticket ?? undefined;
-        const delay = retryDelay(body.retryMs);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        if (!mounted.current) return;
-      }
-      setQueue(null);
-      if (!body.ok) {
-        setProblem(
-          describeLinkProblem(
-            body.reason,
-            "provider" in body ? body.provider : undefined,
-            access,
-            source,
-          ),
-        );
-        return;
-      }
-      const problem = onResolved({
-        provider: body.provider,
-        sourceRef: body.sourceRef,
-        suggestedTitle: body.suggestedTitle,
-        defaultDisplayMode: body.defaultDisplayMode,
-      });
-      if (problem) setProblem(problem);
-      else setValue("");
-    } catch {
+    const body = await resolveLink(
+      trimmed,
+      accountKey,
+      setQueue,
+      () => mounted.current,
+    );
+    if (body === "gone") return;
+    setQueue(null);
+    setResolving(false);
+    if (body === "failed") {
       toast.error("Could not check this link. Please try again in a moment.");
-    } finally {
-      setQueue(null);
-      setResolving(false);
+      return;
     }
+    if (!body.ok) {
+      setProblem(
+        describeLinkProblem(
+          body.reason,
+          "provider" in body ? body.provider : undefined,
+          access,
+          source,
+        ),
+      );
+      return;
+    }
+    const resolvedProblem = onResolved({
+      provider: body.provider,
+      sourceRef: body.sourceRef,
+      suggestedTitle: body.suggestedTitle,
+      defaultDisplayMode: body.defaultDisplayMode,
+    });
+    if (resolvedProblem) setProblem(resolvedProblem);
+    else setValue("");
   };
 
+  const submitInitial = useEffectEvent((link: string) => {
+    onInitialValueUsed();
+    void submit(link);
+  });
   // A link carried over from Home or an OAuth round trip is added at once.
   useEffect(() => {
     if (!initialValue || autoSubmitted.current) return;
     autoSubmitted.current = true;
-    onInitialValueUsed();
-    void submit(initialValue);
-    // Run once for the initial link only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    submitInitial(initialValue);
   }, [initialValue]);
+
+  const connectProvider =
+    problem?.action === "connect" ? problem.provider : undefined;
 
   const hint = (() => {
     if (!value.trim()) return null;
@@ -346,14 +379,14 @@ export default function LinkPaste({
               Show
             </button>
           )}
-          {problem.action === "connect" && problem.provider && (
+          {connectProvider && (
             <button
               type="button"
-              onClick={() => onConnect(problem.provider!, value.trim())}
+              onClick={() => onConnect(connectProvider, value.trim())}
               className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1.5 text-xs font-bold text-black"
             >
               <Plug className="size-3.5" />
-              Connect {PROVIDERS[problem.provider].label}
+              Connect {PROVIDERS[connectProvider].label}
             </button>
           )}
           {problem.openAccount && (

@@ -15,6 +15,7 @@ import {
   isWatchProvider,
   WATCH_PROVIDERS,
 } from "@stremlist/shared/watch-tracking";
+import { z } from "zod";
 import { randomInt } from "node:crypto";
 import { decryptSecret } from "../../lib/crypto";
 import { supabase } from "../../lib/supabase";
@@ -24,6 +25,22 @@ import { readStremioTrakt } from "./pace";
 import { deleteState } from "./state";
 import { takeBaseline } from "./sweep";
 import { forgetWatchContext } from "./trigger";
+
+// The status shows what the database holds; a value of another shape is none.
+const lastTitleSchema = z
+  .object({
+    imdbId: z.string(),
+    type: z.enum(["movie", "series"]),
+    season: z.number().optional(),
+    episode: z.number().optional(),
+  })
+  .nullable()
+  .catch(null) satisfies z.ZodType<WatchedTitleRef | null>;
+
+const lastErrorSchema = z
+  .enum(["not_found", "needs_renewal", "gave_up"])
+  .nullable()
+  .catch(null) satisfies z.ZodType<DestinationErrorCode | null>;
 
 /** Watch tracking needs a Stremio link. */
 export class WatchNeedsStremioError extends Error {
@@ -96,9 +113,9 @@ export async function getWatchTracking(
         provider,
         enabled: row !== undefined,
         paused: row !== undefined && provider === "trakt" && stremioTrakt,
-        lastTitle: (row?.last_title ?? null) as WatchedTitleRef | null,
+        lastTitle: lastTitleSchema.parse(row?.last_title ?? null),
         lastSuccessAt: row?.last_success_at ?? null,
-        lastError: (row?.last_error ?? null) as DestinationErrorCode | null,
+        lastError: lastErrorSchema.parse(row?.last_error ?? null),
         lastErrorAt: row?.last_error_at ?? null,
         pending: (pending.data ?? []).filter((w) => w.provider === provider)
           .length,

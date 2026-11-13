@@ -212,17 +212,14 @@ export interface Membership {
   ratings: Record<string, number>;
 }
 
+const RATINGS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+
 /** A rating from 1 to 10, the scale of every Provider with ratings. */
-export type Rating = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+export type Rating = (typeof RATINGS)[number];
 
 /** The value as a Rating, or null when it is not an integer from 1 to 10. */
 export function toRating(value: unknown): Rating | null {
-  return typeof value === "number" &&
-    Number.isInteger(value) &&
-    value >= 1 &&
-    value <= 10
-    ? (value as Rating)
-    : null;
+  return RATINGS.find((rating) => rating === value) ?? null;
 }
 
 export type ActionIntent =

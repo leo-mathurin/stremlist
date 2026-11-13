@@ -1,5 +1,5 @@
 import type { Tables } from "@stremlist/shared/database";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { listRowCacheKeys, mapList } from "../list-rows";
 import { sourceCaches } from "../merged-lists";
 

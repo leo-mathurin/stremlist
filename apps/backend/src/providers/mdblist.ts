@@ -1,7 +1,7 @@
 import type { DisplayMode } from "@stremlist/shared/constants";
 import { asImdbId } from "@stremlist/shared/constants";
 import type { ConnectionSource } from "@stremlist/shared/providers";
-import type { SourceProblemReason } from "@stremlist/shared/source-problems";
+import { z } from "zod";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
 import {
   HttpError,
@@ -13,6 +13,7 @@ import {
 } from "./http";
 import { oauthClient, revokeToken } from "./oauth-app";
 import { readPages } from "./paging";
+import type { SyncBody } from "./sync-payload";
 import {
   bucketOf,
   countNotFound,
@@ -62,80 +63,120 @@ const limitersFor = limitersPerUser(
   MAX_TRACKED_USERS,
 );
 
-interface MdblistIds {
-  mdblist?: string | null;
-  imdb?: string | null;
-  tmdb?: number | null;
-}
+const mdblistIdsSchema = z.object({
+  // Not read: any value is fine.
+  mdblist: z.unknown().optional(),
+  imdb: z.string().nullish(),
+  tmdb: z.number().nullish(),
+});
+type MdblistIds = z.infer<typeof mdblistIdsSchema>;
 
 /** One item of a list, watchlist or external list (`unified=true`). */
-interface MdblistItem {
+const mdblistItemSchema = z.object({
   /** The TMDB ID for movies and shows. */
-  id?: number | null;
-  mediatype?: string | null;
-  imdb_id?: string | null;
-  ids?: MdblistIds | null;
-  title?: string | null;
-  release_year?: number | null;
-  runtime?: number | null;
-  watchlist_at?: string | null;
-}
+  id: z.number().nullish(),
+  mediatype: z.string().nullish(),
+  imdb_id: z.string().nullish(),
+  ids: mdblistIdsSchema.nullish(),
+  title: z.string().nullish(),
+  release_year: z.number().nullish(),
+  runtime: z.number().nullish(),
+  watchlist_at: z.string().nullish(),
+});
+type MdblistItem = z.infer<typeof mdblistItemSchema>;
 
 /** A list's info, or one of the user's lists. */
-interface MdblistListInfo {
-  id?: number;
-  name?: string;
-  mediatype?: string | null;
-}
+const mdblistListInfoSchema = z.object({
+  id: z.number().optional(),
+  name: z.string().optional(),
+  mediatype: z.string().nullish(),
+});
+type MdblistListInfo = z.infer<typeof mdblistListInfoSchema>;
 
-type ListInfoResponse = MdblistListInfo | MdblistListInfo[] | null;
+/** MDBList answers list info as an object or as a one-item array. */
+const listInfoResponseSchema = z
+  .union([mdblistListInfoSchema, z.array(mdblistListInfoSchema)])
+  .nullable();
 
-interface SyncMedia {
-  ids?: MdblistIds | null;
-}
+const syncMediaSchema = z.object({ ids: mdblistIdsSchema.nullish() });
 
-interface SyncEpisode {
-  season?: number;
-  number?: number;
-  show?: SyncMedia | null;
-}
+const syncEpisodeSchema = z.object({
+  season: z.number().optional(),
+  number: z.number().optional(),
+  show: syncMediaSchema.nullish(),
+});
 
 /** GET /sync/watched and GET /sync/ratings. */
-interface SyncPage {
-  movies?: { movie?: SyncMedia | null; rating?: number | null }[];
-  shows?: { show?: SyncMedia | null; rating?: number | null }[];
-  episodes?: { episode?: SyncEpisode | null }[];
-  pagination?: { has_more?: boolean; next_cursor?: string | null };
-}
+const syncPageSchema = z.object({
+  movies: z
+    .array(
+      z.object({
+        movie: syncMediaSchema.nullish(),
+        rating: z.number().nullish(),
+      }),
+    )
+    .optional(),
+  shows: z
+    .array(
+      z.object({
+        show: syncMediaSchema.nullish(),
+        rating: z.number().nullish(),
+      }),
+    )
+    .optional(),
+  episodes: z
+    .array(z.object({ episode: syncEpisodeSchema.nullish() }))
+    .optional(),
+  pagination: z
+    .object({
+      has_more: z.boolean().optional(),
+      next_cursor: z.string().nullish(),
+    })
+    .optional(),
+});
+type SyncPage = z.infer<typeof syncPageSchema>;
+
+const mdblistUserSchema = z.object({ username: z.string().nullish() });
+
+const mdblistErrorSchema = z
+  .object({ error: z.unknown().optional() })
+  .partial()
+  .nullable();
 
 /**
  * Turn an MDBList error response into the reason a Source list cannot be
  * read. MDBList answers 403 both for a revoked token ("Invalid OAuth token")
  * and for a list that the user may not see.
  */
-function toSourceError(error: unknown): unknown {
-  if (!(error instanceof HttpError)) return error;
+function throwSourceError(error: unknown): never {
+  if (!(error instanceof HttpError)) throw error;
   let message = "";
   try {
-    const parsed = JSON.parse(error.body) as { error?: unknown } | null;
-    message = typeof parsed?.error === "string" ? parsed.error : "";
+    const parsed: unknown = JSON.parse(error.body);
+    const body = mdblistErrorSchema.safeParse(parsed);
+    message =
+      body.success && typeof body.data?.error === "string"
+        ? body.data.error
+        : "";
   } catch {
     message = error.body.slice(0, 200);
   }
   const { status } = error;
   const detail = message || status;
   if (status === 401 || (status === 403 && /token/i.test(message))) {
-    return new SourceUnavailableError(
+    throw new SourceUnavailableError(
       "needs_connection",
       `MDBList refused the Connection: ${detail}`,
     );
   }
-  const reasons: Partial<Record<number, SourceProblemReason>> = {
+  const reasons = {
     403: "private",
     404: "not_found",
-  };
-  if (status < 500 && /private/i.test(message)) reasons[status] = "private";
-  return sourceErrorFromHttp(error, reasons, (reason) =>
+    ...(status < 500 && /private/i.test(message)
+      ? { [status]: "private" }
+      : {}),
+  } as const;
+  throw sourceErrorFromHttp(error, reasons, (reason) =>
     reason === "private"
       ? `This MDBList list is private: ${detail}`
       : `MDBList list not found: ${detail}`,
@@ -155,7 +196,7 @@ async function mdblistRequest(
   const token = await connection.getAccessToken();
   const limiters = limitersFor(connection);
   try {
-    return await providerFetchJson<unknown>(`${API}${path}`, {
+    return await providerFetchJson(`${API}${path}`, {
       method,
       query: options.params,
       headers: { Accept: "application/json" },
@@ -164,7 +205,7 @@ async function mdblistRequest(
       limiter: method === "GET" ? limiters.read : limiters.write,
     });
   } catch (error) {
-    throw toSourceError(error);
+    throwSourceError(error);
   }
 }
 
@@ -180,18 +221,19 @@ function readAllItems(
     maxPages: MAX_PAGES,
     first: null as string | null,
     async page(cursor) {
-      const params: Record<string, string> = {
-        unified: "true",
-        limit: String(PAGE_SIZE),
-      };
-      if (cursor) params.cursor = cursor;
       const { data, response } = await mdblistRequest(connection, path, {
-        params,
+        params: {
+          unified: "true",
+          limit: String(PAGE_SIZE),
+          ...(cursor ? { cursor } : {}),
+        },
       });
       const next = response.headers.get("X-Next-Cursor");
       const hasMore = response.headers.get("X-Has-More") === "true";
       return {
-        items: Array.isArray(data) ? (data as MdblistItem[]) : [],
+        items: Array.isArray(data)
+          ? z.array(mdblistItemSchema).parse(data)
+          : [],
         next: hasMore && next ? next : null,
       };
     },
@@ -207,10 +249,10 @@ async function readAllSync(
     maxPages: MAX_PAGES,
     first: null as string | null,
     async page(cursor) {
-      const params: Record<string, string> = { limit: String(PAGE_SIZE) };
-      if (cursor) params.cursor = cursor;
-      const data = (await mdblistRequest(connection, path, { params }))
-        .data as SyncPage;
+      const { data: page } = await mdblistRequest(connection, path, {
+        params: { limit: String(PAGE_SIZE), ...(cursor ? { cursor } : {}) },
+      });
+      const data = syncPageSchema.parse(page);
       const next = data.pagination?.next_cursor ?? null;
       return {
         items: [data],
@@ -345,10 +387,7 @@ function watchlistOrder(items: MdblistItem[]): MdblistItem[] {
   return oldestFirst;
 }
 
-function watchedPayload(
-  intent: ActionIntent,
-  target: ActionTarget,
-): Record<string, unknown[]> {
+function watchedPayload(intent: ActionIntent, target: ActionTarget): SyncBody {
   const at = watchedAtOf(intent);
   const episodes = targetEpisodes(target);
   if (target.type === "series" && episodes.length > 0) {
@@ -365,7 +404,7 @@ async function perform(
   const ids = syncIds(target);
   const bucket = bucketOf(target);
   let path: string;
-  let body: Record<string, unknown[]>;
+  let body: SyncBody;
   // Removing something that is already gone is not an error.
   let mustExist: boolean;
 
@@ -465,7 +504,7 @@ async function fetchUsername(token: string): Promise<string | null> {
     bearer: token,
   });
   if (!response.ok) return null;
-  const user = (await response.json()) as { username?: string | null };
+  const user = mdblistUserSchema.parse(await response.json());
   if (!user.username) return null;
   return user.username;
 }
@@ -501,7 +540,7 @@ async function validateSource(
         connection,
         `/external/lists/${parsed.id}`,
       );
-      const info = firstInfo(data as ListInfoResponse);
+      const info = firstInfo(listInfoResponseSchema.parse(data));
       if (!info) return { ok: false, reason: "not_found" };
       return {
         ok: true,
@@ -517,7 +556,7 @@ async function validateSource(
           ? `/lists/${parsed.id}`
           : `/lists/${encodeURIComponent(parsed.user)}/${encodeURIComponent(parsed.slug)}`;
       const { data } = await mdblistRequest(connection, path);
-      const info = firstInfo(data as ListInfoResponse);
+      const info = firstInfo(listInfoResponseSchema.parse(data));
       if (!info || typeof info.id !== "number") {
         return { ok: false, reason: "not_found" };
       }
@@ -577,7 +616,7 @@ async function fetchSource(
 }
 
 function asSummaries(data: unknown): MdblistListInfo[] {
-  return Array.isArray(data) ? (data as MdblistListInfo[]) : [];
+  return Array.isArray(data) ? z.array(mdblistListInfoSchema).parse(data) : [];
 }
 
 /**

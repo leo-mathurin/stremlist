@@ -19,16 +19,10 @@
     "./watch-tracking": "./src/watch-tracking.ts"
   },
   "scripts": {
-    "generate:types": "supabase gen types typescript --local --schema public > src/database.types.ts && prettier --write src/database.types.ts",
-    "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "generate:types": "supabase gen types typescript --local --schema public > src/database.types.ts && vp fmt src/database.types.ts",
+    "test": "vp test run"
   },
   "devDependencies": {
-    "@stremlist/eslint-config": "workspace:*",
-    "eslint": "^9.39.2",
-    "prettier": "^3.8.1",
-    "typescript": "^5.8.3",
-    "vitest": "^4.0.18"
+    "vite-plus": "catalog:"
   }
 }

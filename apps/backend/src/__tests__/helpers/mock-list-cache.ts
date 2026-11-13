@@ -1,4 +1,3 @@
-import type { Tables } from "@stremlist/shared/database";
 import {
   isProviderId,
   sourceRequiresConnection,
@@ -10,6 +9,7 @@ import type { SourceMeta, SourceCatalogData } from "../../services/list-cache";
 import { mapList } from "../../services/list-rows";
 import { sourceCaches } from "../../services/merged-lists";
 import { db } from "./mock-supabase";
+import { listRow } from "./rows";
 
 interface Entry {
   data: SourceCatalogData;
@@ -61,7 +61,7 @@ class InMemoryListCache {
     const owner = db
       .getTable("lists")
       .flatMap((row) => {
-        const list = mapList(row as Tables<"lists">);
+        const list = mapList(listRow.parse(row));
         return list
           ? sourceCaches(list).map((cache) => ({
               ...cache,

@@ -1,20 +1,4 @@
-import type { CatalogPreviewResponse } from "@stremlist/shared/catalog-preview";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("../lib/supabase", async () => {
-  return await import("./helpers/mock-supabase.js");
-});
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-vi.mock("../lib/r2", async () => {
-  return await import("./helpers/mock-r2.js");
-});
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
-
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import app from "../index.js";
 import { LetterboxdBusyError } from "../providers/letterboxd-gate";
 import { currentReadQueue } from "../providers/read-priority";
@@ -31,6 +15,20 @@ import {
   useFakeProvider,
 } from "./helpers/mock-registry.js";
 import { db } from "./helpers/mock-supabase.js";
+
+vi.mock("../lib/supabase", async () => {
+  return await import("./helpers/mock-supabase.js");
+});
+vi.mock("../services/list-cache", async () => {
+  return await import("./helpers/mock-list-cache.js");
+});
+vi.mock("../providers/registry", async () => {
+  return await import("./helpers/mock-registry.js");
+});
+vi.mock("../lib/r2", async () => {
+  return await import("./helpers/mock-r2.js");
+});
+vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 
 const TITLE = movie("tt0111161", { name: "The Shawshank Redemption" });
 
@@ -88,9 +86,8 @@ describe("POST /lists/preview", () => {
     });
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as CatalogPreviewResponse;
     // The Title of both Source lists shows once.
-    expect(body).toMatchObject({ ok: true, titleCount: 2 });
+    expect(await res.json()).toMatchObject({ ok: true, titleCount: 2 });
     expect(fetchSource).toHaveBeenCalledWith(
       "me/watchlist",
       expect.objectContaining({
@@ -163,8 +160,7 @@ describe("POST /lists/preview", () => {
     });
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as CatalogPreviewResponse;
-    expect(body).toMatchObject({
+    expect(await res.json()).toMatchObject({
       ok: true,
       titleCount: 1,
       catalogs: [

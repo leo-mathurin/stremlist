@@ -22,8 +22,9 @@ import {
   saveButton,
   syncedStatus,
   toJson,
+  isPreviewRequest,
+  parseBody,
 } from "./config-fixture";
-import type { PreviewRequest } from "./config-fixture";
 
 // Configure page feedback: unsaved changes, phone-width feedback, plain
 // wording and Connect labels. The API is intercepted.
@@ -350,9 +351,7 @@ test("the configure page uses plain words in sentence case", async ({
   await baseRoutes(browser);
   // Last route wins: a preview with Titles that Stremlist cannot show.
   await browser.route(`${backend}/lists/preview`, (route) => {
-    const request = JSON.parse(
-      route.request.postData ?? "{}",
-    ) as PreviewRequest;
+    const request = parseBody(route, isPreviewRequest);
     return route.fulfill({
       json: toJson(
         previewOf(request, {

@@ -14,6 +14,7 @@ import {
   S3Client,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
+import { isRecord, isString, parsed } from "./json.js";
 import {
   R2_ACCESS_KEY_ID,
   R2_BUCKET,
@@ -169,6 +170,15 @@ export interface StoredHistory {
   entries: Record<string, [string | null, string | null, string | null]>;
 }
 
+function isStoredHistory(value: unknown): value is StoredHistory {
+  return (
+    isRecord(value) &&
+    value.version === 1 &&
+    isString(value.source) &&
+    isRecord(value.entries)
+  );
+}
+
 /** Where the backend keeps the history of a Source list. */
 export function historyObjectKey(
   accountId: string,
@@ -207,8 +217,12 @@ export async function readHistoryObjects(
     .flat()
     .filter((key) => key.startsWith("history/") || key.includes("/history/"));
   return Promise.all(
-    keys.map(
-      async (Key) => (await readJson(Key, `history ${Key}`)) as StoredHistory,
+    keys.map(async (Key) =>
+      parsed(
+        await readJson(Key, `history ${Key}`),
+        isStoredHistory,
+        `history ${Key}`,
+      ),
     ),
   );
 }

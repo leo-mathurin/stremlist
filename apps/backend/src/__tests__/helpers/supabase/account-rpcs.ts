@@ -1,15 +1,19 @@
 /** In-memory versions of the Account and List RPCs in supabase/migrations. */
+import { isRecord, mustString } from "../json";
 import type { RpcArgs, RpcHandler } from "./rpc";
-import { rpcError, secondsFromNow } from "./rpc";
+import { numberOf, rpcError, secondsFromNow } from "./rpc";
 import type { Result, Row } from "./store";
 import { EPOCH, db, now, uniqueError } from "./store";
 
 function replaceAccountConfig(args: RpcArgs): Result {
-  const accountId = args.p_account_id as string;
+  const accountId = args.p_account_id;
   const account = db.getTable("accounts").find((row) => row.id === accountId);
-  if (!account) return rpcError("Account not found");
-  if (!Array.isArray(args.p_lists)) return rpcError("Lists must be an array");
-  const items = args.p_lists as Row[];
+  if (typeof accountId !== "string" || !account) {
+    return rpcError("Account not found");
+  }
+  const items = args.p_lists;
+  if (!Array.isArray(items)) return rpcError("Lists must be an array");
+  if (!items.every(isRecord)) return rpcError("Each List must be an object");
 
   const ids = items.flatMap((item) =>
     typeof item.id === "string" ? [item.id] : [],
@@ -38,7 +42,9 @@ function replaceAccountConfig(args: RpcArgs): Result {
 
   const previous = listsOf(accountId);
   const deleted = lists.filter(
-    (row) => row.account_id === accountId && !ids.includes(row.id as string),
+    (row) =>
+      row.account_id === accountId &&
+      !(typeof row.id === "string" && ids.includes(row.id)),
   );
   db.tables.lists = lists.filter((row) => !deleted.includes(row));
 
@@ -106,7 +112,8 @@ function listsOf(accountId: string): Row[] {
     .filter((row) => row.account_id === accountId)
     .sort(
       (a, b) =>
-        (a.position as number) - (b.position as number) ||
+        numberOf(a.position, "lists.position") -
+          numberOf(b.position, "lists.position") ||
         String(a.created_at).localeCompare(String(b.created_at)),
     )
     .map((row) => ({ ...row }));
@@ -115,8 +122,9 @@ function listsOf(accountId: string): Row[] {
 /** Same rules as public.create_account_with_config. */
 function createAccountWithConfig(args: RpcArgs): Result {
   const account = db.insert("accounts", { is_active: true });
+  const accountId = mustString(account.id, "accounts.id");
   const saved = replaceAccountConfig({
-    p_account_id: account.id,
+    p_account_id: accountId,
     p_rpdb_api_key: args.p_rpdb_api_key,
     p_lists: args.p_lists,
     p_actions_enabled: null,
@@ -124,18 +132,20 @@ function createAccountWithConfig(args: RpcArgs): Result {
     p_new_titles_catalog: args.p_new_titles_catalog,
   });
   if (saved.error) {
-    db.delete("accounts", (row) => row.id === account.id);
+    db.delete("accounts", (row) => row.id === accountId);
     return saved;
   }
-  const [{ lists }] = saved.data as { lists: Row[] }[];
-  return { data: [{ account_id: account.id, lists }], error: null };
+  return {
+    data: [{ account_id: accountId, lists: listsOf(accountId) }],
+    error: null,
+  };
 }
 
 function findAccount(args: RpcArgs): Row | undefined {
   return db.getTable("accounts").find((row) => row.id === args.p_account_id);
 }
 
-export const accountRpcs: Partial<Record<string, RpcHandler>> = {
+export const accountRpcs = {
   create_account_with_config: createAccountWithConfig,
   replace_account_config: replaceAccountConfig,
 
@@ -143,11 +153,12 @@ export const accountRpcs: Partial<Record<string, RpcHandler>> = {
     const row = findAccount(args);
     if (!row) return { data: null, error: null };
     row.prewarm_request_generation =
-      (row.prewarm_request_generation as number) + 1;
+      numberOf(row.prewarm_request_generation, "prewarm_request_generation") +
+      1;
     if (String(row.prewarm_locked_until) <= now()) {
       row.prewarm_lease_token = args.p_lease_token;
       row.prewarm_locked_until = secondsFromNow(
-        args.p_lease_seconds as number,
+        numberOf(args.p_lease_seconds, "p_lease_seconds"),
         1,
         3600,
       );
@@ -167,10 +178,14 @@ export const accountRpcs: Partial<Record<string, RpcHandler>> = {
       return { data: null, error: null };
     }
     const pending =
-      (row.prewarm_request_generation as number) >
-      (args.p_completed_generation as number);
+      numberOf(row.prewarm_request_generation, "prewarm_request_generation") >
+      numberOf(args.p_completed_generation, "p_completed_generation");
     row.prewarm_locked_until = pending
-      ? secondsFromNow(args.p_lease_seconds as number, 1, 3600)
+      ? secondsFromNow(
+          numberOf(args.p_lease_seconds, "p_lease_seconds"),
+          1,
+          3600,
+        )
       : EPOCH;
     if (!pending) row.prewarm_lease_token = null;
     return {
@@ -178,4 +193,4 @@ export const accountRpcs: Partial<Record<string, RpcHandler>> = {
       error: null,
     };
   },
-};
+} satisfies Record<string, RpcHandler>;

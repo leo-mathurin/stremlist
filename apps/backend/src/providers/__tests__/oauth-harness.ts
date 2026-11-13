@@ -2,7 +2,7 @@
  * The fetch mock and fakes that the Simkl and Trakt adapter tests share.
  * `vi.mock` factories import this module, so it must not import an adapter.
  */
-import { expect, vi } from "vitest";
+import { expect, vi } from "vite-plus/test";
 import type * as Http from "../http";
 import type { ConnectionAccess } from "../types";
 import { SourceUnavailableError } from "../types";
@@ -82,10 +82,14 @@ export function required<T>(value: T | undefined): T {
   return value;
 }
 
-export async function expectReason(promise: Promise<unknown>, reason: string) {
+/** The reason of the SourceUnavailableError that `promise` rejects with. */
+export async function unavailableReason(
+  promise: Promise<unknown>,
+): Promise<string> {
   const error = await promise.catch((e: unknown) => e);
   expect(error).toBeInstanceOf(SourceUnavailableError);
-  expect((error as SourceUnavailableError).reason).toBe(reason);
+  if (!(error instanceof SourceUnavailableError)) throw error;
+  return error.reason;
 }
 
 /** Limiters that never wait; `limiters` keeps the limits each was built with. */

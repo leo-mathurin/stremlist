@@ -85,7 +85,14 @@ test("Home shows every Provider, the live count and the help sections", async ({
   await expect(screen.getByRole("heading", "Terms and privacy")).toBeVisible();
 });
 
-type StatsReads = { statsStarted?: number; statsRead?: number };
+declare global {
+  interface Window {
+    /** The `/stats` requests that the page started (countStatsReads). */
+    statsStarted?: number;
+    /** The `/stats` answers that the page has read (countStatsReads). */
+    statsRead?: number;
+  }
+}
 
 /**
  * Counts the `/stats` requests that the page starts and the answers that it
@@ -94,7 +101,7 @@ type StatsReads = { statsStarted?: number; statsRead?: number };
  */
 async function countStatsReads(browser: Browser) {
   await browser.addInitScript(() => {
-    const scope = window as unknown as StatsReads;
+    const scope = window;
     const fetch = window.fetch.bind(window);
     window.fetch = async (input, init) => {
       const url = input instanceof Request ? input.url : String(input);
@@ -125,8 +132,7 @@ async function statsRendered(browser: Browser) {
   await expect
     .poll(() =>
       browser.evaluate(() => {
-        const { statsStarted = 0, statsRead = 0 } =
-          window as unknown as StatsReads;
+        const { statsStarted = 0, statsRead = 0 } = window;
         return statsStarted > 0 && statsRead === statsStarted;
       }),
     )

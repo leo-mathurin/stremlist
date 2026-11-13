@@ -1,4 +1,5 @@
 import { IMDB_TITLE_ID_PATTERN } from "@stremlist/shared/constants";
+import { z } from "zod";
 import { mapWithConcurrency } from "../lib/concurrency";
 import type { ResolverStrategy, SourceEntry } from "../providers/types";
 import { isTmdbConfigured, tmdbGet } from "./tmdb";
@@ -10,34 +11,39 @@ const YEAR_TOLERANCE = 1;
 const SERIES_EARLIER_YEARS = 10;
 const RUNTIME_TOLERANCE_MINUTES = 10;
 
-interface TmdbSearchResult {
-  id: number;
-  title?: string;
-  original_title?: string;
-  name?: string;
-  original_name?: string;
-  release_date?: string;
-  first_air_date?: string;
-}
+const tmdbSearchResultSchema = z.object({
+  id: z.number(),
+  title: z.string().optional(),
+  original_title: z.string().optional(),
+  name: z.string().optional(),
+  original_name: z.string().optional(),
+  release_date: z.string().optional(),
+  first_air_date: z.string().optional(),
+});
+type TmdbSearchResult = z.infer<typeof tmdbSearchResultSchema>;
 
-interface TmdbPerson {
-  name: string;
-  original_name?: string;
-  job?: string;
-}
+const tmdbSearchSchema = z.object({
+  results: z.array(tmdbSearchResultSchema).optional(),
+});
 
-interface TmdbMovieDetails {
-  imdb_id?: string | null;
-  runtime?: number | null;
-  credits?: { crew?: TmdbPerson[] };
-}
+const tmdbPersonSchema = z.object({
+  name: z.string(),
+  original_name: z.string().optional(),
+  job: z.string().optional(),
+});
 
-interface TmdbTvDetails {
-  episode_run_time?: number[];
-  last_episode_to_air?: { runtime?: number | null } | null;
-  created_by?: TmdbPerson[];
-  external_ids?: { imdb_id?: string | null };
-}
+const tmdbMovieDetailsSchema = z.object({
+  imdb_id: z.string().nullish(),
+  runtime: z.number().nullish(),
+  credits: z.object({ crew: z.array(tmdbPersonSchema).optional() }).optional(),
+});
+
+const tmdbTvDetailsSchema = z.object({
+  episode_run_time: z.array(z.number()).optional(),
+  last_episode_to_air: z.object({ runtime: z.number().nullish() }).nullish(),
+  created_by: z.array(tmdbPersonSchema).optional(),
+  external_ids: z.object({ imdb_id: z.string().nullish() }).optional(),
+});
 
 /** What TMDB knows about a candidate, reduced to what the match checks. */
 interface Candidate {
@@ -139,7 +145,7 @@ async function loadCandidate(
   type: "movie" | "series",
 ): Promise<Candidate | null> {
   if (type === "movie") {
-    const movie = await tmdbGet<TmdbMovieDetails>(`/movie/${id}`, {
+    const movie = await tmdbGet(`/movie/${id}`, tmdbMovieDetailsSchema, {
       append_to_response: "credits",
     });
     if (!movie) return null;
@@ -151,7 +157,7 @@ async function loadCandidate(
       runtimes: movie.runtime ? [movie.runtime] : [],
     };
   }
-  const show = await tmdbGet<TmdbTvDetails>(`/tv/${id}`, {
+  const show = await tmdbGet(`/tv/${id}`, tmdbTvDetailsSchema, {
     append_to_response: "external_ids",
   });
   if (!show) return null;
@@ -220,15 +226,15 @@ async function searchTmdb(
   query: string,
   year?: number,
 ): Promise<TmdbSearchResult[]> {
-  const params: Record<string, string> = {
-    query,
-    language: "fr-FR",
-    include_adult: "false",
-  };
-  if (year !== undefined) params.year = String(year);
-  const search = await tmdbGet<{ results?: TmdbSearchResult[] }>(
+  const search = await tmdbGet(
     type === "movie" ? "/search/movie" : "/search/tv",
-    params,
+    tmdbSearchSchema,
+    {
+      query,
+      language: "fr-FR",
+      include_adult: "false",
+      ...(year === undefined ? {} : { year: String(year) }),
+    },
   );
   return search?.results ?? [];
 }

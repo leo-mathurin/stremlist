@@ -42,17 +42,17 @@ observe directly.
 
 ## Setup
 
-| Item | Version or value |
-| --- | --- |
-| Stremio Web | App 6.0.7, build `f0222603bb8119d8a63958ad8acfd025de973f2e`, at `web.stremio.com` (the main URL; no beta URL was needed) |
-| Stremio Android TV | 1.10.4, x86_64 APK, versionCode 34194308, from `dl.strem.io/android/v1.10.4-androidTV/` |
-| Stremio Android (mobile) | 2.3.2 x86 APK, static analysis only |
-| Stremio desktop Linux | 4.4.168 `.deb`, static analysis only (not installed) |
-| stremio-core source | `main` after PR #1070 (merged 2026-10-02), read with `gh api` |
-| Android emulator | 37.2.13.0, AVD `wt-androidtv-36`, system image `android-36;android-tv;x86_64` (Android 16, `BT2A.260319.001`), 4 GB RAM, KVM |
-| Browser | Chrome 154.0.8037.92 driven by agent-browser 0.38.1, headed on a private Xvfb display |
-| Harness | Bun 1.4.4, ffmpeg n8.1.3, Tailscale 1.104.5 |
-| APK signature | Both APKs verify with APK Signature Scheme v2; signer `CN=Ivo Georgiev, OU=Engineering, O=Stremio, L=Sofia, C=BG`, certificate SHA-256 `7e6a979c968f771e3fbcf2c2e8718ce61e708d87caf91fc13e2d4c19a8022c6b` |
+| Item                     | Version or value                                                                                                                                                                                          |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stremio Web              | App 6.0.7, build `f0222603bb8119d8a63958ad8acfd025de973f2e`, at `web.stremio.com` (the main URL; no beta URL was needed)                                                                                  |
+| Stremio Android TV       | 1.10.4, x86_64 APK, versionCode 34194308, from `dl.strem.io/android/v1.10.4-androidTV/`                                                                                                                   |
+| Stremio Android (mobile) | 2.3.2 x86 APK, static analysis only                                                                                                                                                                       |
+| Stremio desktop Linux    | 4.4.168 `.deb`, static analysis only (not installed)                                                                                                                                                      |
+| stremio-core source      | `main` after PR #1070 (merged 2026-10-02), read with `gh api`                                                                                                                                             |
+| Android emulator         | 37.2.13.0, AVD `wt-androidtv-36`, system image `android-36;android-tv;x86_64` (Android 16, `BT2A.260319.001`), 4 GB RAM, KVM                                                                              |
+| Browser                  | Chrome 154.0.8037.92 driven by agent-browser 0.38.1, headed on a private Xvfb display                                                                                                                     |
+| Harness                  | Bun 1.4.4, ffmpeg n8.1.3, Tailscale 1.104.5                                                                                                                                                               |
+| APK signature            | Both APKs verify with APK Signature Scheme v2; signer `CN=Ivo Georgiev, OU=Engineering, O=Stremio, L=Sofia, C=BG`, certificate SHA-256 `7e6a979c968f771e3fbcf2c2e8718ce61e708d87caf91fc13e2d4c19a8022c6b` |
 
 Test addon (throwaway, Bun): manifest resources `catalog`, `stream`, `player`
 and `library` (types movie and series, prefix `tt`). Two streams point to a
@@ -119,18 +119,18 @@ Movies: S1 `tt0063350`, S2 `tt0032138`, S3 `tt0017136`, S4 `tt0031381`, S5 and S
 `tt0047478`, S10 `tt0063350` again. Episodes: `tt0944947` (Game of Thrones) and
 `tt0903747` (Breaking Bad). Test video: 150,000 ms.
 
-| Scenario | Events received by the addon (in order) | Native state at the end | Delay from end of action to cloud write |
-| --- | --- | --- | --- |
-| S1 full play | `start` (currentTime 0, duration 0) at the click; `pause` and `stop` 149942/150000 at the end | `timesWatched` 0→1, `flaggedWatched` 1 | 0 s (`_mtime` = time of `stop`, 14:15:44.36) |
-| S2 seek to 95% via the seek bar, close after 2 s | `start` 0/0; `start` 142445/150000 (the seek); `stop` 144746/150000 | not watched, `timeWatched` 20005 | 0 s (write at `stop`) |
-| S3 real playback to 75.5%, close | `start` 0/0; `stop` 113327/150000 | watched, `timeWatched` 113327 | 0 s |
-| S4 real playback to 60.3%, close | `start` 0/0; `stop` 90488/150000 | not watched | 0 s |
-| S5 manual "Mark as watched" (detail page) | `library/movie/tt0047478/action=watched` only | `timesWatched` 0→1, `flaggedWatched` stays 0 | 0 s |
-| S6 manual "Mark as unwatched" | `library/movie/tt0047478/action=unwatched` only | `timesWatched` 1→0 | 0 s |
-| S7 episode 1:1 full play | `start`; `pause`, `stop` 149981/150000 at the end. Binge mode then started 1:2 and 1:3 by itself (`start` currentTime 1) | bit of 1:1 set; 1:2 later set by the 180 s push **before** its `stop` | 0 s for 1:1; for 1:2 the bit was in the cloud 28 s before the `stop` event |
-| S8 manual mark of one episode (1:5) | `library/series/tt0944947/action=watched&videoId=tt0944947:1:5` | bit of 1:5 set | 0 s |
-| S9 "Mark rest as watched" (the web UI's season mark) on 1:1 of Breaking Bad | one request, `videoId=tt0903747:1:1,...,tt0903747:1:7` | bits of 1:1 to 1:7 set; `timesWatched` stays 0 | 0 s |
-| S10 replay of the watched S1 movie to the end | `start` 0/150000; `pause`, `stop` 149978/150000 | no change of watched state: `timesWatched` stays 1, `flaggedWatched` stays 1, only `timeWatched` grows to 300000 | 0 s |
+| Scenario                                                                    | Events received by the addon (in order)                                                                                  | Native state at the end                                                                                          | Delay from end of action to cloud write                                    |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| S1 full play                                                                | `start` (currentTime 0, duration 0) at the click; `pause` and `stop` 149942/150000 at the end                            | `timesWatched` 0→1, `flaggedWatched` 1                                                                           | 0 s (`_mtime` = time of `stop`, 14:15:44.36)                               |
+| S2 seek to 95% via the seek bar, close after 2 s                            | `start` 0/0; `start` 142445/150000 (the seek); `stop` 144746/150000                                                      | not watched, `timeWatched` 20005                                                                                 | 0 s (write at `stop`)                                                      |
+| S3 real playback to 75.5%, close                                            | `start` 0/0; `stop` 113327/150000                                                                                        | watched, `timeWatched` 113327                                                                                    | 0 s                                                                        |
+| S4 real playback to 60.3%, close                                            | `start` 0/0; `stop` 90488/150000                                                                                         | not watched                                                                                                      | 0 s                                                                        |
+| S5 manual "Mark as watched" (detail page)                                   | `library/movie/tt0047478/action=watched` only                                                                            | `timesWatched` 0→1, `flaggedWatched` stays 0                                                                     | 0 s                                                                        |
+| S6 manual "Mark as unwatched"                                               | `library/movie/tt0047478/action=unwatched` only                                                                          | `timesWatched` 1→0                                                                                               | 0 s                                                                        |
+| S7 episode 1:1 full play                                                    | `start`; `pause`, `stop` 149981/150000 at the end. Binge mode then started 1:2 and 1:3 by itself (`start` currentTime 1) | bit of 1:1 set; 1:2 later set by the 180 s push **before** its `stop`                                            | 0 s for 1:1; for 1:2 the bit was in the cloud 28 s before the `stop` event |
+| S8 manual mark of one episode (1:5)                                         | `library/series/tt0944947/action=watched&videoId=tt0944947:1:5`                                                          | bit of 1:5 set                                                                                                   | 0 s                                                                        |
+| S9 "Mark rest as watched" (the web UI's season mark) on 1:1 of Breaking Bad | one request, `videoId=tt0903747:1:1,...,tt0903747:1:7`                                                                   | bits of 1:1 to 1:7 set; `timesWatched` stays 0                                                                   | 0 s                                                                        |
+| S10 replay of the watched S1 movie to the end                               | `start` 0/150000; `pause`, `stop` 149978/150000                                                                          | no change of watched state: `timesWatched` stays 1, `flaggedWatched` stays 1, only `timeWatched` grows to 300000 | 0 s                                                                        |
 
 "0 s" means that the item `_mtime` is within 20 ms of the event time. The client
 sends the event and the cloud write at the same moment. The two requests are
@@ -143,18 +143,18 @@ arrives can race the write (not measured).
 and compare with the last known state. (c): watched if `currentTime/duration >= 0.8`
 on `stop`.
 
-| Scenario | Native (reference) | (a) | (c) |
-| --- | --- | --- | --- |
-| S1 | watched | correct | correct (0.9996) |
-| S2 | not watched | correct | **wrong**: 0.965, false "watched" |
-| S3 | watched | correct | **wrong**: 0.755, missed |
-| S4 | not watched | correct | correct (0.603) |
-| S5 | watched | correct (`library` event) | **wrong**: no `player` event, missed |
-| S6 | unwatched (no Provider change by rule) | correct (no action) | correct (no action) |
-| S7 | episodes watched | correct (bit visible at or before `stop`) | correct (≥ 0.999) |
-| S8 | episode watched | correct | **wrong**: missed |
-| S9 | 7 episodes watched | correct | **wrong**: missed |
-| S10 | no new watch | correct (no transition) | **wrong**: second play sent |
+| Scenario | Native (reference)                     | (a)                                       | (c)                                  |
+| -------- | -------------------------------------- | ----------------------------------------- | ------------------------------------ |
+| S1       | watched                                | correct                                   | correct (0.9996)                     |
+| S2       | not watched                            | correct                                   | **wrong**: 0.965, false "watched"    |
+| S3       | watched                                | correct                                   | **wrong**: 0.755, missed             |
+| S4       | not watched                            | correct                                   | correct (0.603)                      |
+| S5       | watched                                | correct (`library` event)                 | **wrong**: no `player` event, missed |
+| S6       | unwatched (no Provider change by rule) | correct (no action)                       | correct (no action)                  |
+| S7       | episodes watched                       | correct (bit visible at or before `stop`) | correct (≥ 0.999)                    |
+| S8       | episode watched                        | correct                                   | **wrong**: missed                    |
+| S9       | 7 episodes watched                     | correct                                   | **wrong**: missed                    |
+| S10      | no new watch                           | correct (no transition)                   | **wrong**: second play sent          |
 
 ### Episode bitfield
 
@@ -227,12 +227,12 @@ still needed for TV, mobile and desktop.
 
 ## T3: Stremio's native Trakt integration
 
-| Step | `getUser.trakt` | Addon collection |
-| --- | --- | --- |
-| Before | `{}` | 8 addons, no Trakt |
-| Just after "Authenticate" on Trakt | `{created_at, expires_in: 604800, access_token, refresh_token}` | unchanged |
-| After a Stremio Web reload | same | new addon `org.trakt.13517481`, name "Trakt Integration", resources `["catalog"]`, transport `https://www.strem.io/trakt/addon/.../manifest.json`, flags not official, not protected |
-| After "Log out" of Trakt in Stremio settings | `{}` | Trakt addon removed at once (before any reload) |
+| Step                                         | `getUser.trakt`                                                 | Addon collection                                                                                                                                                                     |
+| -------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Before                                       | `{}`                                                            | 8 addons, no Trakt                                                                                                                                                                   |
+| Just after "Authenticate" on Trakt           | `{created_at, expires_in: 604800, access_token, refresh_token}` | unchanged                                                                                                                                                                            |
+| After a Stremio Web reload                   | same                                                            | new addon `org.trakt.13517481`, name "Trakt Integration", resources `["catalog"]`, transport `https://www.strem.io/trakt/addon/.../manifest.json`, flags not official, not protected |
+| After "Log out" of Trakt in Stremio settings | `{}`                                                            | Trakt addon removed at once (before any reload)                                                                                                                                      |
 
 - The Trakt authorization went through `trakt.tv/oauth/consent` with Stremio's
   client ID and redirect `https://www.strem.io/trakt/auth_cb`. A new Trakt
@@ -261,24 +261,24 @@ first 429, repeated 5xx (3 in a step), or p95 above twice the p95 of step 1.
 
 `datastoreMeta` (library of about 10 items), 2 min per step:
 
-| Rate | Sent | p50 ms | p95 ms | Max ms | Codes |
-| ---: | ---: | ---: | ---: | ---: | --- |
-| 1/s | 120 | 32 | 60 | 117 | 200 × 120 |
-| 2/s | 240 | 34 | 58 | 160 | 200 × 240 |
-| 5/s | 600 | 33 | 51 | 111 | 200 × 600 |
-| 10/s | 1200 | 31 | 49 | 521 | 200 × 1200 |
-| 20/s | 2400 | 29 | 49 | 196 | 200 × 2400 |
+| Rate | Sent | p50 ms | p95 ms | Max ms | Codes      |
+| ---: | ---: | -----: | -----: | -----: | ---------- |
+|  1/s |  120 |     32 |     60 |    117 | 200 × 120  |
+|  2/s |  240 |     34 |     58 |    160 | 200 × 240  |
+|  5/s |  600 |     33 |     51 |    111 | 200 × 600  |
+| 10/s | 1200 |     31 |     49 |    521 | 200 × 1200 |
+| 20/s | 2400 |     29 |     49 |    196 | 200 × 2400 |
 
 `datastoreGet` (3 IDs):
 
-| Rate | Sent | p50 ms | p95 ms | Max ms | Codes |
-| ---: | ---: | ---: | ---: | ---: | --- |
-| 1/s | 120 | 40 | 118 | 493 | 200 × 120 |
-| 2/s | 240 | 41 | 101 | 330 | 200 × 240 |
-| 5/s | 600 | 53 | 98 | 452 | 200 × 600 |
-| 10/s | 1059 | 46 | 123 | 1161 | 200 × 1055, **502 × 4** (HTML error page, all within 0.3 s, 105 s into the step), stopped |
-| 10/s (confirmation, 1 min, 31 min later) | 600 | 36 | 60 | 464 | 200 × 600 |
-| 20/s (2 min, after the confirmation) | 2400 | 28 | 44 | 387 | 200 × 2400 |
+|                                     Rate | Sent | p50 ms | p95 ms | Max ms | Codes                                                                                     |
+| ---------------------------------------: | ---: | -----: | -----: | -----: | ----------------------------------------------------------------------------------------- |
+|                                      1/s |  120 |     40 |    118 |    493 | 200 × 120                                                                                 |
+|                                      2/s |  240 |     41 |    101 |    330 | 200 × 240                                                                                 |
+|                                      5/s |  600 |     53 |     98 |    452 | 200 × 600                                                                                 |
+|                                     10/s | 1059 |     46 |    123 |   1161 | 200 × 1055, **502 × 4** (HTML error page, all within 0.3 s, 105 s into the step), stopped |
+| 10/s (confirmation, 1 min, 31 min later) |  600 |     36 |     60 |    464 | 200 × 600                                                                                 |
+|     20/s (2 min, after the confirmation) | 2400 |     28 |     44 |    387 | 200 × 2400                                                                                |
 
 - No rate-limit header (`X-RateLimit-*`, `Retry-After`) appeared. Responses
   come through Cloudflare (`cf-ray` from CDG).
@@ -289,10 +289,10 @@ Library size, second test account, 10 `datastoreMeta` and 5 `datastoreGet` of
 100 IDs per size (bytes are uncompressed JSON; the wire is gzip):
 
 | Items | `datastoreMeta` bytes | Meta p50 / max ms | `datastoreGet` 100 IDs bytes | Get p50 / max ms | `datastoreGet all:true` |
-| ---: | ---: | --- | ---: | --- | --- |
-| 50 | 1,412 | 33 / 45 | 27,252 (50 items) | 34 / 62 | 27 KB, 33 ms |
-| 500 | 14,012 | 41 / 60 | 54,502 | 37 / 54 | 273 KB, 38 ms |
-| 2,000 | 56,012 | 51 / 60 | 54,502 | 32 / 33 | 1.09 MB, 120 ms |
+| ----: | --------------------: | ----------------- | ---------------------------: | ---------------- | ----------------------- |
+|    50 |                 1,412 | 33 / 45           |            27,252 (50 items) | 34 / 62          | 27 KB, 33 ms            |
+|   500 |                14,012 | 41 / 60           |                       54,502 | 37 / 54          | 273 KB, 38 ms           |
+| 2,000 |                56,012 | 51 / 60           |                       54,502 | 32 / 33          | 1.09 MB, 120 ms         |
 
 - `datastoreMeta` costs about 28 bytes per item.
 - `datastorePut` of 100 items: 54 to 108 ms, all accepted.
@@ -308,10 +308,10 @@ integration works with it.
 
 ### R3 Simkl (one user, the test app)
 
-| Step | Sent | p50 ms | p95 ms | Max ms | Codes |
-| --- | ---: | ---: | ---: | ---: | --- |
-| `POST /sync/history` 1/s, 2 min | 120 | 40 | 133 | 745 | 201 × 120 |
-| Brief exceed, 4/s for 2 s | 8 | 51 | 76 | 76 | 201 × 8 |
+| Step                            | Sent | p50 ms | p95 ms | Max ms | Codes     |
+| ------------------------------- | ---: | -----: | -----: | -----: | --------- |
+| `POST /sync/history` 1/s, 2 min |  120 |     40 |    133 |    745 | 201 × 120 |
+| Brief exceed, 4/s for 2 s       |    8 |     51 |     76 |     76 | 201 × 8   |
 
 - Headers: `X-RateLimit-Limit: 500` and `X-RateLimit-Remaining`, which drops
   by 1 for each authenticated request, GET and POST. The first requests had no
@@ -326,11 +326,11 @@ integration works with it.
 
 ### R4 MDBList (API key of the test account)
 
-| Step | Sent | p50 ms | p95 ms | Max ms | Codes |
-| --- | ---: | ---: | ---: | ---: | --- |
-| `POST /sync/watched` 1/s, 30 s | 30 | 56 | 111 | 132 | 200 × 30 |
-| 2/s, 30 s | 60 | 45 | 64 | 69 | 200 × 60 |
-| Burst 5/s, 4 s | 20 | 46 | 58 | 58 | 200 × 20 |
+| Step                           | Sent | p50 ms | p95 ms | Max ms | Codes    |
+| ------------------------------ | ---: | -----: | -----: | -----: | -------- |
+| `POST /sync/watched` 1/s, 30 s |   30 |     56 |    111 |    132 | 200 × 30 |
+| 2/s, 30 s                      |   60 |     45 |     64 |     69 | 200 × 60 |
+| Burst 5/s, 4 s                 |   20 |     46 |     58 |     58 | 200 × 20 |
 
 - Headers: `X-RateLimit-Limit: 1000`, `X-RateLimit-Remaining` (minus 1 per
   POST), `X-RateLimit-Reset: 1794441600` (2026-11-12 00:00 UTC). `/user` gives
@@ -399,14 +399,14 @@ and POST, only on user-token requests, not reset within 59 minutes, no 429 at
 
 ### 6. Inputs for the load simulation
 
-| API | Measured | Limit signals seen | Not measured |
-| --- | --- | --- | --- |
-| `api.strem.io` `datastoreMeta` | p50 29 to 34 ms, p95 49 to 60 ms at 1 to 20/s; 28 bytes per library item; p50 51 ms at 2,000 items | none; no 429 at 20/s from one IP and one account | more than 20/s; many accounts; calls from Vercel `fra1` |
-| `api.strem.io` `datastoreGet` | p50 28 to 53 ms, p95 44 to 123 ms at 1 to 20/s; 100 items about 54 KB; all 2,000 items 1.09 MB in 120 ms | one burst of 4 × 502 at 10/s, not repeated in 3,000 later requests | same |
-| Client push cadence | Web: at stop/close, 180 s timer; Android TV: 90 s, at Back and Home | | real TV and phone hardware |
-| Simkl | p50 40 ms, p95 133 ms at 1 POST/s | `X-RateLimit-Limit: 500`, window over 1 hour | per client_id behavior; 429 shape |
-| MDBList | p50 45 to 56 ms, p95 58 to 111 ms | 1,000 requests per day per user on the free plan, reset 00:00 UTC; each write costs 1 | OAuth-token quota (Stremlist uses OAuth, the test used the API key) |
-| Trakt | nothing | | everything (blocked) |
+| API                            | Measured                                                                                                 | Limit signals seen                                                                    | Not measured                                                        |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `api.strem.io` `datastoreMeta` | p50 29 to 34 ms, p95 49 to 60 ms at 1 to 20/s; 28 bytes per library item; p50 51 ms at 2,000 items       | none; no 429 at 20/s from one IP and one account                                      | more than 20/s; many accounts; calls from Vercel `fra1`             |
+| `api.strem.io` `datastoreGet`  | p50 28 to 53 ms, p95 44 to 123 ms at 1 to 20/s; 100 items about 54 KB; all 2,000 items 1.09 MB in 120 ms | one burst of 4 × 502 at 10/s, not repeated in 3,000 later requests                    | same                                                                |
+| Client push cadence            | Web: at stop/close, 180 s timer; Android TV: 90 s, at Back and Home                                      |                                                                                       | real TV and phone hardware                                          |
+| Simkl                          | p50 40 ms, p95 133 ms at 1 POST/s                                                                        | `X-RateLimit-Limit: 500`, window over 1 hour                                          | per client_id behavior; 429 shape                                   |
+| MDBList                        | p50 45 to 56 ms, p95 58 to 111 ms                                                                        | 1,000 requests per day per user on the free plan, reset 00:00 UTC; each write costs 1 | OAuth-token quota (Stremlist uses OAuth, the test used the API key) |
+| Trakt                          | nothing                                                                                                  |                                                                                       | everything (blocked)                                                |
 
 Example for the simulation (arithmetic, not measured): polling every Account
 every 5 minutes at 20 requests per second covers 6,000 Accounts.

@@ -1,6 +1,6 @@
 /** In-memory versions of the Connection RPCs in supabase/migrations. */
 import type { RpcArgs, RpcHandler } from "./rpc";
-import { rpcError, secondsFromNow } from "./rpc";
+import { numberOf, rpcError, secondsFromNow, stringsOf } from "./rpc";
 import type { Result, Row } from "./store";
 import { EPOCH, db, now } from "./store";
 
@@ -31,8 +31,8 @@ function saveConnection(args: RpcArgs): Result {
 
 /** Same rules as public.delete_connection. */
 function deleteConnection(args: RpcArgs): Result {
-  const listIds = (args.p_list_ids as string[] | null) ?? [];
-  const refs = (args.p_source_refs as string[] | null) ?? [];
+  const listIds = stringsOf(args.p_list_ids, "p_list_ids");
+  const refs = stringsOf(args.p_source_refs, "p_source_refs");
   if (listIds.length !== refs.length) {
     return rpcError("List IDs and Source list refs must have the same length");
   }
@@ -70,7 +70,7 @@ function findConnection(args: RpcArgs): Row | undefined {
     );
 }
 
-export const connectionRpcs: Partial<Record<string, RpcHandler>> = {
+export const connectionRpcs = {
   delete_connection: deleteConnection,
   save_connection: saveConnection,
 
@@ -80,7 +80,7 @@ export const connectionRpcs: Partial<Record<string, RpcHandler>> = {
       return { data: false, error: null };
     }
     row.refresh_locked_until = secondsFromNow(
-      args.p_lease_seconds as number,
+      numberOf(args.p_lease_seconds, "p_lease_seconds"),
       1,
       300,
     );
@@ -105,7 +105,7 @@ export const connectionRpcs: Partial<Record<string, RpcHandler>> = {
       return { data: "busy", error: null };
     }
     row.update_locked_until = secondsFromNow(
-      args.p_lease_seconds as number,
+      numberOf(args.p_lease_seconds, "p_lease_seconds"),
       1,
       120,
     );
@@ -122,7 +122,7 @@ export const connectionRpcs: Partial<Record<string, RpcHandler>> = {
     row.update_lease_token = null;
     return { data: true, error: null };
   },
-};
+} satisfies Record<string, RpcHandler>;
 
 function findStremioLink(args: RpcArgs): Row | undefined {
   return db

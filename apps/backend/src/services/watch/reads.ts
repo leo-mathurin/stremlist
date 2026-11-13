@@ -4,6 +4,7 @@
  */
 import type { ProviderId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
+import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { mapWithConcurrency } from "../../lib/concurrency";
 import { decryptSecret } from "../../lib/crypto";
@@ -11,8 +12,13 @@ import { supabase } from "../../lib/supabase";
 import type { LibraryItem } from "../stremio";
 import { recordItems } from "./detect";
 import { readLibraryItems } from "./pace";
-import type { Phase, Plan, ReadRow, StartState } from "./schedule";
-import { planAfterFailure, planAfterRead } from "./schedule";
+import type { Plan, ReadRow } from "./schedule";
+import {
+  PHASES,
+  planAfterFailure,
+  planAfterRead,
+  startStateSchema,
+} from "./schedule";
 import { linkOf } from "./state";
 import { destinationsNow } from "./sweep";
 
@@ -21,27 +27,28 @@ const CONCURRENCY = 20;
 const LEASE_SECONDS = 120;
 
 /** A claimed read, as `claim_watch_reads` returns it. */
-interface ClaimedRead {
-  account_id: string;
-  item_id: string;
-  item_type: string;
-  video_id: string;
-  due_at: string;
-  generation: number;
-  phase: string;
-  cycle_started_at: string;
-  expected_flip_at: string | null;
-  expected_end_at: string | null;
-  start_state: unknown;
-  last_time_watched: number | null;
-  last_moved_at: string | null;
-  reads: number;
-  failures: number;
-  auth_key: string | null;
-  baseline_at: string | null;
-  stremio_trakt: boolean;
-  destinations: string[] | null;
-}
+const claimedReadSchema = z.object({
+  account_id: z.string(),
+  item_id: z.string(),
+  item_type: z.string(),
+  video_id: z.string(),
+  due_at: z.string(),
+  generation: z.number(),
+  phase: z.enum(PHASES),
+  cycle_started_at: z.string(),
+  expected_flip_at: z.string().nullable(),
+  expected_end_at: z.string().nullable(),
+  start_state: startStateSchema.nullable(),
+  last_time_watched: z.number().nullable(),
+  last_moved_at: z.string().nullable(),
+  reads: z.number(),
+  failures: z.number(),
+  auth_key: z.string().nullable(),
+  baseline_at: z.string().nullable(),
+  stremio_trakt: z.boolean(),
+  destinations: z.array(z.string()).nullable(),
+});
+type ClaimedRead = z.infer<typeof claimedReadSchema>;
 
 export interface ReadStats {
   claimed: number;
@@ -60,11 +67,11 @@ function toRow(claimed: ClaimedRead): ReadRow {
   return {
     itemType: claimed.item_type === "series" ? "series" : "movie",
     videoId: claimed.video_id,
-    phase: claimed.phase as Phase,
+    phase: claimed.phase,
     cycleStartedAt: Date.parse(claimed.cycle_started_at),
     expectedFlipAt: time(claimed.expected_flip_at),
     expectedEndAt: time(claimed.expected_end_at),
-    startState: (claimed.start_state ?? {}) as StartState,
+    startState: claimed.start_state ?? {},
     lastTimeWatched: claimed.last_time_watched,
     lastMovedAt: time(claimed.last_moved_at),
     reads: claimed.reads,
@@ -144,7 +151,7 @@ export async function processReads(deadline: number): Promise<ReadStats> {
       p_lease_token: lease,
     });
     if (error) throw error;
-    const claimed = data as unknown as ClaimedRead[];
+    const claimed = z.array(claimedReadSchema).parse(data);
     if (claimed.length === 0) break;
     stats.claimed += claimed.length;
     const now = Date.now();

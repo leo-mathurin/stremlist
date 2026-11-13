@@ -25,6 +25,7 @@ import {
   routeConnectionSources,
   parseBody,
 } from "./config-fixture";
+import { isRecord } from "../helpers/json";
 
 // Provider journeys of the configure page: links of every available Provider
 // including public Letterboxd links, the kill switch,
@@ -75,7 +76,7 @@ async function routeOAuth(
   await browser.route(
     `${backend}/connections/${provider}/complete`,
     async (route) => {
-      const body = parseBody<Record<string, unknown>>(route);
+      const body = parseBody(route, isRecord);
       completions.push(body);
       onComplete();
       await route.fulfill({

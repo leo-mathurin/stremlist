@@ -1,4 +1,5 @@
 import { asImdbId } from "@stremlist/shared/constants";
+import { z } from "zod";
 import type { ConnectionAccess } from "../types";
 import { isMaxItemsError, simklRequest } from "./api";
 import { libraryKey, readState, STATE_VERSION, writeState } from "./state";
@@ -23,36 +24,67 @@ export const STATUSES = [
 ] as const;
 export type SimklStatus = (typeof STATUSES)[number];
 
-export type RawIds = Record<string, unknown>;
+export const rawIdsSchema = z.record(z.string(), z.unknown());
+export type RawIds = z.infer<typeof rawIdsSchema>;
 
-interface RawEpisode {
-  number?: unknown;
-  tvdb?: { season?: unknown; episode?: unknown } | null;
-}
+const rawEpisodeSchema = z.object({
+  number: z.unknown().optional(),
+  tvdb: z
+    .object({ season: z.unknown().optional(), episode: z.unknown().optional() })
+    .nullish(),
+});
 
-interface RawEntry {
-  added_to_watchlist_at?: string | null;
-  last_watched_at?: string | null;
-  user_rating?: number | null;
-  status?: string;
-  watched_episodes_count?: number;
-  anime_type?: string | null;
-  show?: { title?: string; year?: number | null; ids?: RawIds };
-  movie?: { title?: string; year?: number | null; ids?: RawIds };
-  seasons?: { number?: unknown; episodes?: RawEpisode[] }[];
-}
+const rawMediaSchema = z.object({
+  title: z.string().nullish(),
+  year: z.number().nullish(),
+  ids: rawIdsSchema.nullish(),
+});
 
-type RawLibrary = Partial<Record<SimklKind, RawEntry[]>>;
+const rawEntrySchema = z.object({
+  added_to_watchlist_at: z.string().nullish(),
+  last_watched_at: z.string().nullish(),
+  user_rating: z.number().nullish(),
+  status: z.string().nullish(),
+  watched_episodes_count: z.number().nullish(),
+  anime_type: z.string().nullish(),
+  show: rawMediaSchema.nullish(),
+  movie: rawMediaSchema.nullish(),
+  seasons: z
+    .array(
+      z.object({
+        number: z.unknown().optional(),
+        episodes: z.array(rawEpisodeSchema).nullish(),
+      }),
+    )
+    .nullish(),
+});
+type RawEntry = z.infer<typeof rawEntrySchema>;
 
-type ActivityBlock = Record<string, string | null | undefined>;
+const rawLibrarySchema = z.object({
+  shows: z.array(rawEntrySchema).nullish(),
+  movies: z.array(rawEntrySchema).nullish(),
+  anime: z.array(rawEntrySchema).nullish(),
+});
+type RawLibrary = z.infer<typeof rawLibrarySchema>;
 
-interface SimklActivities {
-  all?: string | null;
-  tv_shows?: ActivityBlock;
-  anime?: ActivityBlock;
-  movies?: ActivityBlock;
-  custom_lists?: { lists?: { all?: string | null } };
-}
+const activityBlockSchema = z.record(z.string(), z.string().nullish());
+
+// The whole response is kept in the snapshot, so its other keys stay.
+const simklActivitiesSchema = z
+  .object({
+    all: z.string().nullish(),
+    tv_shows: activityBlockSchema.optional(),
+    anime: activityBlockSchema.optional(),
+    movies: activityBlockSchema.optional(),
+    custom_lists: z
+      .object({
+        lists: z.object({ all: z.string().nullish() }).loose().optional(),
+      })
+      .loose()
+      .optional(),
+  })
+  .loose();
+type SimklActivities = z.infer<typeof simklActivitiesSchema>;
 
 const ACTIVITY_BLOCKS = ["tv_shows", "anime", "movies"] as const;
 /** Activity keys that do not change which items sit in which status. */
@@ -97,32 +129,42 @@ export interface SimklTitle extends SimklIds {
   animeType?: string;
 }
 
-export interface LibraryItem extends SimklTitle {
-  status: SimklStatus;
-  addedAt?: string;
-  lastWatchedAt?: string;
-  rating?: number;
-  watchedEpisodes: number;
+const libraryItemSchema = z.object({
+  simkl: z.number(),
+  slug: z.string().optional(),
+  imdb: z.string().optional(),
+  tmdb: z.number().optional(),
+  kind: z.enum(KINDS),
+  title: z.string().optional(),
+  year: z.number().optional(),
+  animeType: z.string().optional(),
+  status: z.enum(STATUSES),
+  addedAt: z.string().optional(),
+  lastWatchedAt: z.string().optional(),
+  rating: z.number().optional(),
+  watchedEpisodes: z.number(),
   /**
    * Watched episodes as "season:episode" (TVDB numbering for anime), or
    * undefined when the read did not load episodes.
    */
-  episodes?: string[];
-}
+  episodes: z.array(z.string()).optional(),
+});
+export type LibraryItem = z.infer<typeof libraryItemSchema>;
 
-export interface LibrarySnapshot {
-  version: number;
+const librarySnapshotSchema = z.object({
+  version: z.number(),
   /**
    * The authorization that read the snapshot (`ConnectionAccess`). A
    * reconnect, maybe to another Simkl user, never uses it.
    */
-  authorization: string;
+  authorization: z.string(),
   /** The whole /sync/activities response read before the snapshot's data. */
-  activities: SimklActivities;
+  activities: simklActivitiesSchema,
   /** When activities were last checked; 0 forces a check on the next read. */
-  checkedAt: number;
-  items: LibraryItem[];
-}
+  checkedAt: z.number(),
+  items: z.array(libraryItemSchema),
+});
+export type LibrarySnapshot = z.infer<typeof librarySnapshotSchema>;
 
 function normalizeStatus(value: string | undefined): SimklStatus | null {
   // Older client IDs see "notinteresting" where newer ones see "dropped".
@@ -156,7 +198,7 @@ function parseEntry(
 ): LibraryItem | null {
   const media = entry.movie ?? entry.show;
   const { simkl, ...ids } = parseIds(media?.ids ?? {});
-  const status = normalizeStatus(entry.status);
+  const status = normalizeStatus(entry.status ?? undefined);
   if (!simkl || !status) return null;
   const rating = toInt(entry.user_rating);
   return {
@@ -164,7 +206,7 @@ function parseEntry(
     kind,
     status,
     ...ids,
-    title: media?.title,
+    title: media?.title ?? undefined,
     year: toInt(media?.year),
     animeType: entry.anime_type ?? undefined,
     addedAt: entry.added_to_watchlist_at ?? undefined,
@@ -216,7 +258,7 @@ async function readItems(
   for (let index = 0; ; index++) {
     const variant = READ_VARIANTS[index];
     try {
-      const raw = await simklRequest<RawLibrary>(path, {
+      const raw = await simklRequest(path, rawLibrarySchema, {
         token,
         params: { ...params, ...variant.params },
       });
@@ -281,7 +323,7 @@ async function applyChanges(
       (key) => key === "removed_from_list",
     )
   ) {
-    const raw = await simklRequest<RawLibrary>("/sync/all-items", {
+    const raw = await simklRequest("/sync/all-items", rawLibrarySchema, {
       token,
       params: { extended: "simkl_ids_only" },
     });
@@ -292,7 +334,7 @@ async function applyChanges(
         if (simkl) current.add(simkl);
       }
     }
-    for (const simkl of [...items.keys()]) {
+    for (const simkl of items.keys()) {
       if (!current.has(simkl)) items.delete(simkl);
     }
   }
@@ -301,7 +343,7 @@ async function applyChanges(
   if (
     bucketsMoved(previous.activities, activities, (key) => key === "rated_at")
   ) {
-    const raw = await simklRequest<RawLibrary>("/sync/ratings", {
+    const raw = await simklRequest("/sync/ratings", rawLibrarySchema, {
       token,
       params: { date_from: dateFrom },
     });
@@ -372,7 +414,7 @@ export function syncLibrary(
 async function runSync(connection: ConnectionAccess): Promise<LibrarySnapshot> {
   const key = libraryKey(connection.accountId);
   const previous = usableSnapshot(
-    await readState<LibrarySnapshot>(key),
+    await readState(key, librarySnapshotSchema),
     connection,
   );
   if (previous && Date.now() - previous.checkedAt < SYNC_GATE_MS)
@@ -381,9 +423,11 @@ async function runSync(connection: ConnectionAccess): Promise<LibrarySnapshot> {
   const token = await connection.getAccessToken();
   // Read before the data it anchors, so a change made during the read is
   // newer than the saved timestamp and comes back in the next delta.
-  const activities = await simklRequest<SimklActivities>("/sync/activities", {
-    token,
-  });
+  const activities = await simklRequest(
+    "/sync/activities",
+    simklActivitiesSchema,
+    { token },
+  );
 
   let items: LibraryItem[];
   if (!previous?.activities.all) {
@@ -411,7 +455,7 @@ export async function knownItems(
   imdbId: string,
 ): Promise<LibraryItem[]> {
   const snapshot = usableSnapshot(
-    await readState<LibrarySnapshot>(libraryKey(connection.accountId)),
+    await readState(libraryKey(connection.accountId), librarySnapshotSchema),
     connection,
   );
   return snapshot?.items.filter((item) => item.imdb === imdbId) ?? [];
@@ -420,6 +464,6 @@ export async function knownItems(
 /** After an Action, the next read checks activities instead of the gate. */
 export async function markLibraryChanged(accountId: string): Promise<void> {
   const key = libraryKey(accountId);
-  const snapshot = await readState<LibrarySnapshot>(key);
+  const snapshot = await readState(key, librarySnapshotSchema);
   if (snapshot) await writeState(key, { ...snapshot, checkedAt: 0 });
 }

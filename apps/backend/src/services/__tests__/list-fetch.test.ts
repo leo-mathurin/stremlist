@@ -1,7 +1,36 @@
 import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
+import {
+  seedAccount,
+  seedConnection,
+  seedList,
+} from "../../__tests__/helpers/fixtures";
+import { cache } from "../../__tests__/helpers/mock-list-cache";
+import {
+  fakeAdapter,
+  resetProviders,
+  useFakeProvider,
+} from "../../__tests__/helpers/mock-registry";
+import { db, resetRpc } from "../../__tests__/helpers/mock-supabase";
+import { currentReadPriority } from "../../providers/read-priority";
+import type { SourceEntry, SourceSnapshot } from "../../providers/types";
+import { SourceUnavailableError } from "../../providers/types";
+import * as listCache from "../list-cache";
+import type { ListRead } from "../lists";
+import {
+  getListCatalog,
+  ListUnavailableError,
+  disconnectProvider,
+} from "../lists";
 
 const scraperMocks = vi.hoisted(() => ({
   fetchChart: vi.fn(),
@@ -32,29 +61,6 @@ vi.mock("../list-cache", async () => {
 vi.mock("../../providers/registry", async () => {
   return await import("../../__tests__/helpers/mock-registry");
 });
-
-import {
-  seedAccount,
-  seedConnection,
-  seedList,
-} from "../../__tests__/helpers/fixtures";
-import { cache } from "../../__tests__/helpers/mock-list-cache";
-import {
-  fakeAdapter,
-  resetProviders,
-  useFakeProvider,
-} from "../../__tests__/helpers/mock-registry";
-import { db, resetRpc } from "../../__tests__/helpers/mock-supabase";
-import { currentReadPriority } from "../../providers/read-priority";
-import type { SourceEntry, SourceSnapshot } from "../../providers/types";
-import { SourceUnavailableError } from "../../providers/types";
-import * as listCache from "../list-cache";
-import type { ListRead } from "../lists";
-import {
-  getListCatalog,
-  ListUnavailableError,
-  disconnectProvider,
-} from "../lists";
 
 const LIST_ID = "22222222-2222-4222-8222-222222222222";
 
@@ -722,13 +728,13 @@ it("rejects a read that finishes after its Connection was disconnected", async (
     allowConnection: true,
   });
   const pending = readList(read);
-  const refused = expect(pending).rejects.toMatchObject({
-    reason: "needs_connection",
-  });
+  pending.catch(() => {});
   await began;
   await disconnectProvider(account.id, "trakt");
   finish({ entries: [{ imdbId: MOVIE.id, meta: MOVIE }], complete: true });
-  await refused;
+  await expect(pending).rejects.toMatchObject({
+    reason: "needs_connection",
+  });
   expect(cache.get(LIST_ID)).toBeNull();
   await expect(readList(read)).rejects.toMatchObject({
     reason: "needs_connection",

@@ -11,12 +11,10 @@ import {
 import type { ListSyncState } from "../src/lib/list-sync.ts";
 
 /** Assert only the fields of `expected`, like a partial match. */
-function assertFields(actual: object, expected: Record<string, unknown>) {
+function assertFields(actual: ListSyncState, expected: Partial<ListSyncState>) {
+  const values = new Map<string, unknown>(Object.entries(actual));
   const picked = Object.fromEntries(
-    Object.keys(expected).map((key) => [
-      key,
-      (actual as Record<string, unknown>)[key],
-    ]),
+    Object.keys(expected).map((key) => [key, values.get(key)]),
   );
   assert.deepEqual(picked, expected);
 }

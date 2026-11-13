@@ -35,10 +35,10 @@ export default function BuiltInCatalogPicker({
     if (!open) return;
 
     function handlePointerDown(event: MouseEvent) {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
+      const inside =
+        event.target instanceof Node &&
+        containerRef.current?.contains(event.target);
+      if (containerRef.current && !inside) {
         setOpen(false);
       }
     }

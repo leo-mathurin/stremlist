@@ -8,11 +8,11 @@ import type {
   StremioMeta,
 } from "@stremlist/shared/stremio.types";
 import {
-  type RefreshResult,
   asInput,
   getCatalog,
   getManifest,
   getMeta,
+  isRefreshResult,
   ok,
 } from "../helpers/api.js";
 import { CATALOG_TITLES, seedCatalog } from "../helpers/catalog-fixture.js";
@@ -35,6 +35,7 @@ import {
 } from "../helpers/db.js";
 import type { FixtureBackend } from "../helpers/fixture-backend.js";
 import { startFixtureBackend } from "../helpers/fixture-backend.js";
+import { isRecord, parsed, present } from "../helpers/json.js";
 import { seedCachedCatalog } from "../helpers/r2.js";
 import type { SourceFixture } from "../helpers/source-transport.js";
 import { CATALOG_FIXTURE_USER } from "../helpers/test-data.js";
@@ -140,7 +141,11 @@ function seedDetectionAccount(
 async function refreshAll(accountId: string, state: SourceFixture) {
   writeSources(state);
   await clearRefreshCooldown(accountId);
-  return ok(await backend.api.refresh<RefreshResult>(accountId));
+  return parsed(
+    ok(await backend.api.refresh(accountId)),
+    isRefreshResult,
+    "refresh answer",
+  );
 }
 
 /** The New titles catalog of `type`, read from the isolated backend. */
@@ -166,11 +171,18 @@ const daysAgo = (days: number) =>
 
 /** Save these Lists through the isolated backend, as the configure page does. */
 async function saveLists(accountId: string, lists: ConfigListInput[]) {
-  return ok(
-    await backend.api.postConfig<{ newTitles: NewTitlesSummary | null }>(
-      accountId,
-      lists,
-    ),
+  return parsed(
+    ok(await backend.api.postConfig(accountId, lists)),
+    isSaveAnswer,
+    "save answer",
+  );
+}
+
+function isSaveAnswer(
+  value: unknown,
+): value is { newTitles: NewTitlesSummary | null } {
+  return (
+    isRecord(value) && (value.newTitles === null || isRecord(value.newTitles))
   );
 }
 
@@ -314,7 +326,7 @@ test(
     const served = await backend.api.getCatalog(
       accountId,
       "movie",
-      listCatalog!.id,
+      present(listCatalog, "the catalog of the List").id,
     );
     expect(ids(served.metas).sort()).toEqual([A, B]);
 
@@ -370,10 +382,11 @@ test(
     await refreshAll(accountId, sources([A, B, C], trakt));
     const first = await entryOf(C);
     expect(first?.detected_at).toBeTruthy();
+    const firstDetectedAt = present(first?.detected_at, "the detection of C");
     const detectedC = {
       ...EMPTY_SUMMARY,
       detected: 1,
-      latestDetectedAt: new Date(first!.detected_at!).toISOString(),
+      latestDetectedAt: new Date(firstDetectedAt).toISOString(),
     };
 
     const gone = await refreshAll(accountId, sources([A, B], trakt));
@@ -385,7 +398,7 @@ test(
     expect(back.newTitles).toEqual(detectedC);
     expect(ids(await newTitles(accountId))).toEqual([C]);
     expect(await entryOf(C)).toMatchObject({
-      detected_at: first!.detected_at,
+      detected_at: firstDetectedAt,
       removed_at: null,
     });
 
@@ -482,7 +495,7 @@ test(
     writeSources(sources([A, B], [], {}, alias));
     const upgraded = await backend.api.upgrade(alias);
     expect(upgraded.status).toBe(200);
-    const accountId = upgraded.body.accountId as string;
+    const accountId = present(upgraded.body.accountId, "the copy's Account ID");
     // The upgrade reads the copy's List once: that read is its Baseline.
     await expect.poll(() => getSourceListSyncs(accountId)).toHaveLength(1);
 

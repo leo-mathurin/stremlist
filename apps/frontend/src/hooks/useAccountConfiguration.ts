@@ -32,6 +32,7 @@ import {
   dropDraft,
   keepDraft,
   missingConnections,
+  readDraft,
   rememberConnectStart,
   takeDraft,
 } from "../lib/connections";
@@ -62,7 +63,10 @@ function actionCapableProviders(
   );
 }
 
-function errorMessage(body: object, fallback: string): string {
+function errorMessage<Body extends object>(
+  body: Body,
+  fallback: string,
+): string {
   return "error" in body &&
     typeof body.error === "string" &&
     body.error.length > 0
@@ -116,6 +120,81 @@ async function fetchConfig(
   if (!res.ok) return null;
   const body = await res.json();
   return "lists" in body ? body : null;
+}
+
+/**
+ * Create an Account from `form`. It may have no Lists yet when it is created
+ * to connect a Provider.
+ */
+async function postNewAccount(form: AccountForm) {
+  const res = await api.accounts.$post({ json: configBody(form, "new") });
+  const body = await res.json();
+  if (!res.ok || !("accountId" in body)) {
+    throw new Error(errorMessage(body, "Failed to save your configuration."));
+  }
+  return body;
+}
+
+/** Save `form` to an existing Account. Returns what the save stored. */
+async function postConfig(
+  accountKey: string,
+  form: AccountForm,
+  access: AccountAccess,
+) {
+  const res = await api[":accountKey"].config.$post({
+    param: { accountKey },
+    json: configBody(form, access),
+  });
+  const body = await res.json();
+  if (!res.ok || !("lists" in body)) {
+    throw new Error(errorMessage(body, "Failed to save."));
+  }
+  return body;
+}
+
+/** Ask the backend to read the Lists of an Account again. */
+async function postRefresh(accountKey: string) {
+  const res = await api[":accountKey"].refresh.$post({
+    param: { accountKey },
+  });
+  const body = await res.json();
+  if (!res.ok || !("ok" in body)) {
+    throw new Error(errorMessage(body, "Failed to refresh"));
+  }
+  return body;
+}
+
+/** Start the OAuth flow of a Provider, for an Account or a new setup. */
+async function postConnectStart(
+  accountId: string | null,
+  provider: ProviderId,
+  label: string,
+) {
+  const res = accountId
+    ? await api[":accountId"].connections[":provider"].start.$post({
+        param: { accountId, provider },
+      })
+    : await api.connections[":provider"].start.$post({
+        param: { provider },
+      });
+  const body = await res.json();
+  if (!res.ok || !("authorizeUrl" in body)) {
+    throw new Error(
+      errorMessage(body, `Could not connect ${label}. Please try again.`),
+    );
+  }
+  return body;
+}
+
+async function deleteConnection(
+  accountId: string,
+  provider: ProviderId,
+  label: string,
+): Promise<void> {
+  const res = await api[":accountId"].connections[":provider"].$delete({
+    param: { accountId, provider },
+  });
+  if (!res.ok) throw new Error(`Could not disconnect ${label}.`);
 }
 
 /**
@@ -199,6 +278,38 @@ export function useAccountConfiguration(
    * page has unsaved changes when the form differs from it.
    */
   const [savedForm, setSavedForm] = useState<AccountForm | null>(null);
+  /**
+   * The Account key whose state the page shows. Undefined before the first
+   * render, so that the first render sets up the state too.
+   */
+  const [shownKey, setShownKey] = useState<string | null | undefined>(
+    undefined,
+  );
+  /** The Account that the first save just created, until the key moves on. */
+  const [createdKey, setCreatedKey] = useState<string | null>(null);
+  // Another Account key: what the page shows belongs to the old one. The
+  // Account that the first save created keeps its form on screen: only the
+  // server state loads.
+  if (shownKey !== accountKey) {
+    setShownKey(accountKey);
+    if (!accountKey) {
+      setAccess("new");
+      setSavedForm(EMPTY_FORM);
+      // Back from a connect that did not complete: the setup it took along.
+      // The effect below forgets it once this render commits.
+      const draft = readDraft(null);
+      if (draft) {
+        setLists(draft.lists);
+        setRpdbApiKey(draft.rpdbApiKey);
+        setNewTitlesEnabled(draft.newTitlesEnabled);
+      }
+      setStatus("ready");
+    } else if (accountKey !== createdKey) {
+      setStatus("loading");
+      setSavedForm(null);
+    }
+    if (accountKey !== createdKey) setCreatedKey(null);
+  }
   const currentForm = useRef(form);
   // Save responses must see edits committed while the request was in flight.
   useLayoutEffect(() => {
@@ -228,27 +339,14 @@ export function useAccountConfiguration(
   useEffect(() => {
     resetBaseline();
     if (!accountKey) {
-      setAccess("new");
-      setSavedForm(EMPTY_FORM);
-      // Back from a connect that did not complete: the setup it took along.
-      const draft = takeDraft(null);
-      if (draft) {
-        setLists(draft.lists);
-        setRpdbApiKey(draft.rpdbApiKey);
-        setNewTitlesEnabled(draft.newTitlesEnabled);
-      }
-      setStatus("ready");
+      // The render took the draft of the new setup, if any.
+      dropDraft();
       return;
     }
 
     let cancelled = false;
     const justCreated =
       created.current?.accountId === accountKey ? created.current : null;
-    // A new Account keeps its form on screen: only the server state loads.
-    if (!justCreated) {
-      setStatus("loading");
-      setSavedForm(null);
-    }
     fetchConfig(accountKey)
       .then((data) => {
         if (cancelled) return;
@@ -347,19 +445,6 @@ export function useAccountConfiguration(
         });
 
   /**
-   * Create the Account from the current setup. Returns its ID. It may have no
-   * Lists yet when it is created to connect a Provider.
-   */
-  const createAccount = async () => {
-    const res = await api.accounts.$post({ json: configBody(form, "new") });
-    const body = await res.json();
-    if (!res.ok || !("accountId" in body)) {
-      throw new Error(errorMessage(body, "Failed to save your configuration."));
-    }
-    return body;
-  };
-
-  /**
    * Give the submitted rows the IDs and Source lists that the save stored.
    * Returns the saved rows.
    */
@@ -405,6 +490,90 @@ export function useAccountConfiguration(
     return savedRows;
   };
 
+  const saveNewAccount = async (submitted: AccountForm) => {
+    const body = await postNewAccount(submitted);
+    const savedRows = adoptStoredLists(submitted.lists, body.lists);
+    setSavedForm({ ...submitted, lists: savedRows });
+    created.current = {
+      accountId: body.accountId,
+      setup: {
+        rows: savedRows,
+        newTitles: submitted.newTitlesEnabled,
+        actionsLive: false,
+      },
+    };
+    setCreatedKey(body.accountId);
+    // Show the Account at once; its server state loads in the background.
+    setAccess("private");
+    setAccountId(body.accountId);
+    toast.success("Saved! Install Stremlist in Stremio with your Addon URL.", {
+      id: "configuration-save",
+    });
+    onAccountCreated(body.accountId);
+  };
+
+  const saveAccount = async (accountKey: string, submitted: AccountForm) => {
+    const body = await postConfig(accountKey, submitted, access);
+
+    const unsaved = hasUnsavedChanges(submitted, currentForm.current, access);
+    const savedRows = adoptStoredLists(submitted.lists, body.lists);
+    setSavedForm({ ...submitted, lists: savedRows });
+    const { needsReinstall } = baseline.onSaved(accountKey, body.lists, {
+      rows: savedRows,
+      newTitles: submitted.newTitlesEnabled,
+      actionsLive,
+    });
+    // The saved Lists change what the summary counts.
+    setNewTitlesSummary(body.newTitles);
+    if (unsaved) {
+      toast.success(
+        "Saved the submitted settings. You have unsaved changes: save again to apply them.",
+        { id: "configuration-save" },
+      );
+    } else if (needsReinstall && stremio.connection) {
+      // Sonner keeps the action of a toast with the same ID: clear it.
+      toast.success("Saved! Stremlist is updating Stremio.", {
+        id: "configuration-save",
+        action: null,
+      });
+    } else if (
+      needsReinstall &&
+      stremio.available &&
+      !stremio.manualPreferred
+    ) {
+      // The reminder on the page offers both ways to update Stremio.
+      toast.success("Saved! Choose how Stremio gets your changes.", {
+        id: "configuration-save",
+        action: null,
+      });
+    } else if (needsReinstall) {
+      toast.success(
+        "Saved! Reinstall Stremlist in Stremio to see your changes.",
+        {
+          id: "configuration-save",
+          duration: 10_000,
+          action: {
+            label: "Reinstall",
+            // The reinstall takes the link twice (Uninstall, then
+            // Install), so the reminder stays until "I did it".
+            onClick: () => {
+              const { stremioUrl, webUrl } = buildAddonUrls(accountKey);
+              if (stremioUrl) window.location.assign(stremioUrl);
+              else window.open(webUrl, "_blank", "noopener");
+            },
+          },
+        },
+      );
+    } else {
+      toast.success(
+        "Saved! Your catalogs will refresh with the new settings.",
+        { id: "configuration-save" },
+      );
+    }
+    // Also with edits made during the save: Stremio gets what was saved.
+    if (needsReinstall && stremio.connection) void stremio.update();
+  };
+
   const handleSave = async () => {
     if (editor.validationError || saving) return;
     if (lists.length === 0) {
@@ -413,102 +582,14 @@ export function useAccountConfiguration(
     }
 
     setSaving(true);
+    const submitted = form;
     try {
-      const submitted = form;
-      if (!accountKey) {
-        const body = await createAccount();
-        const savedRows = adoptStoredLists(submitted.lists, body.lists);
-        setSavedForm({ ...submitted, lists: savedRows });
-        created.current = {
-          accountId: body.accountId,
-          setup: {
-            rows: savedRows,
-            newTitles: submitted.newTitlesEnabled,
-            actionsLive: false,
-          },
-        };
-        // Show the Account at once; its server state loads in the background.
-        setAccess("private");
-        setAccountId(body.accountId);
-        toast.success(
-          "Saved! Install Stremlist in Stremio with your Addon URL.",
-          { id: "configuration-save" },
-        );
-        onAccountCreated(body.accountId);
-        return;
-      }
-
-      const res = await api[":accountKey"].config.$post({
-        param: { accountKey },
-        json: configBody(submitted, access),
-      });
-      const body = await res.json();
-      if (!res.ok || !("lists" in body)) {
-        throw new Error(errorMessage(body, "Failed to save."));
-      }
-
-      const unsaved = hasUnsavedChanges(submitted, currentForm.current, access);
-      const savedRows = adoptStoredLists(submitted.lists, body.lists);
-      setSavedForm({ ...submitted, lists: savedRows });
-      const { needsReinstall } = baseline.onSaved(accountKey, body.lists, {
-        rows: savedRows,
-        newTitles: submitted.newTitlesEnabled,
-        actionsLive,
-      });
-      // The saved Lists change what the summary counts.
-      setNewTitlesSummary(body.newTitles);
-      if (unsaved) {
-        toast.success(
-          "Saved the submitted settings. You have unsaved changes: save again to apply them.",
-          { id: "configuration-save" },
-        );
-      } else if (needsReinstall && stremio.connection) {
-        // Sonner keeps the action of a toast with the same ID: clear it.
-        toast.success("Saved! Stremlist is updating Stremio.", {
-          id: "configuration-save",
-          action: null,
-        });
-      } else if (
-        needsReinstall &&
-        stremio.available &&
-        !stremio.manualPreferred
-      ) {
-        // The reminder on the page offers both ways to update Stremio.
-        toast.success("Saved! Choose how Stremio gets your changes.", {
-          id: "configuration-save",
-          action: null,
-        });
-      } else if (needsReinstall) {
-        toast.success(
-          "Saved! Reinstall Stremlist in Stremio to see your changes.",
-          {
-            id: "configuration-save",
-            duration: 10_000,
-            action: {
-              label: "Reinstall",
-              // The reinstall takes the link twice (Uninstall, then
-              // Install), so the reminder stays until "I did it".
-              onClick: () => {
-                const { stremioUrl, webUrl } = buildAddonUrls(accountKey);
-                if (stremioUrl) window.location.assign(stremioUrl);
-                else window.open(webUrl, "_blank", "noopener");
-              },
-            },
-          },
-        );
-      } else {
-        toast.success(
-          "Saved! Your catalogs will refresh with the new settings.",
-          { id: "configuration-save" },
-        );
-      }
-      // Also with edits made during the save: Stremio gets what was saved.
-      if (needsReinstall && stremio.connection) void stremio.update();
+      if (accountKey) await saveAccount(accountKey, submitted);
+      else await saveNewAccount(submitted);
     } catch (err) {
       toastError(err, { id: "configuration-save" });
-    } finally {
-      setSaving(false);
     }
+    setSaving(false);
   };
 
   const handleRefresh = async () => {
@@ -516,13 +597,7 @@ export function useAccountConfiguration(
 
     setRefreshing(true);
     try {
-      const res = await api[":accountKey"].refresh.$post({
-        param: { accountKey },
-      });
-      const body = await res.json();
-      if (!res.ok || !("ok" in body)) {
-        throw new Error(errorMessage(body, "Failed to refresh"));
-      }
+      const body = await postRefresh(accountKey);
       setCooldownSeconds(body.cooldownSeconds);
       setLastFetchedAt(body.lastFetchedAt);
       // A throttled refresh read nothing new.
@@ -552,9 +627,8 @@ export function useAccountConfiguration(
       }
     } catch (err) {
       toastError(err);
-    } finally {
-      setRefreshing(false);
     }
+    setRefreshing(false);
   };
 
   /**
@@ -566,7 +640,7 @@ export function useAccountConfiguration(
   const upgrade = async (): Promise<string | null> => {
     if (!accountKey || access !== "legacy") return null;
     try {
-      const { accountId: id } = await createAccount();
+      const { accountId: id } = await postNewAccount(form);
       setUpgradedTo(id);
       return id;
     } catch (err) {
@@ -589,22 +663,10 @@ export function useAccountConfiguration(
       return;
     }
     setConnecting(provider);
+    // Leaving for the Provider reloads the page: keep the unsaved edits.
+    keepDraft(accountId, form);
     try {
-      // Leaving for the Provider reloads the page: keep the unsaved edits.
-      keepDraft(accountId, form);
-      const res = accountId
-        ? await api[":accountId"].connections[":provider"].start.$post({
-            param: { accountId, provider },
-          })
-        : await api.connections[":provider"].start.$post({
-            param: { provider },
-          });
-      const body = await res.json();
-      if (!res.ok || !("authorizeUrl" in body)) {
-        throw new Error(
-          errorMessage(body, `Could not connect ${label}. Please try again.`),
-        );
-      }
+      const body = await postConnectStart(accountId, provider, label);
       rememberConnectStart({
         provider,
         accountId,
@@ -623,10 +685,7 @@ export function useAccountConfiguration(
     const label = PROVIDERS[provider].label;
     setConnecting(provider);
     try {
-      const res = await api[":accountId"].connections[":provider"].$delete({
-        param: { accountId, provider },
-      });
-      if (!res.ok) throw new Error(`Could not disconnect ${label}.`);
+      await deleteConnection(accountId, provider, label);
       dropConnection(provider);
       const capable = actionCapableProviders(
         connections.filter((connection) => connection.provider !== provider),
@@ -645,9 +704,8 @@ export function useAccountConfiguration(
       if (data && data !== "notFound") applyServerState(data);
     } catch (err) {
       toastError(err);
-    } finally {
-      setConnecting(null);
     }
+    setConnecting(null);
   };
 
   /** What a List row shows about its refreshes and Connections. */
@@ -730,6 +788,10 @@ export function useAccountConfiguration(
     upgrade,
     connect,
     disconnect,
-    retryLoad: () => setLoadAttempt((current) => current + 1),
+    retryLoad: () => {
+      setStatus("loading");
+      setSavedForm(null);
+      setLoadAttempt((current) => current + 1);
+    },
   };
 }

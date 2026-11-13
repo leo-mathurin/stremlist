@@ -2,6 +2,7 @@
 // (Supabase, the R2 container) pass through. Every other external host is
 // counted and answered with a fast 503, so unexpected outbound traffic shows
 // up in the report, and Trakt behaves as if it were down.
+import { z } from "zod";
 
 const realFetch = globalThis.fetch;
 const BASE_LATENCY = Number(process.env.MOCK_BASE_MS ?? 300);
@@ -58,7 +59,7 @@ const GENRES = [
   "Animation",
 ];
 
-function genre(index: number): { genre: { text: string } } {
+function genre(index: number) {
   return { genre: { text: GENRES[index % GENRES.length] ?? "Drama" } };
 }
 
@@ -114,10 +115,11 @@ const json = (body: unknown) =>
     headers: { "content-type": "application/json" },
   });
 
-interface GraphQLBody {
-  operationName?: string;
-  variables?: Record<string, unknown>;
-}
+const graphQLBodySchema = z.object({
+  operationName: z.string().optional(),
+  variables: z.record(z.string(), z.unknown()).optional(),
+});
+type GraphQLBody = z.infer<typeof graphQLBodySchema>;
 
 function stringVar(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -220,7 +222,9 @@ globalThis.fetch = Object.assign(
     stats.maxInflight = Math.max(stats.maxInflight, stats.inflight);
     try {
       if (url.host === "api.graphql.imdb.com") {
-        const body = JSON.parse(await requestBody(input, init)) as GraphQLBody;
+        const body = graphQLBodySchema.parse(
+          JSON.parse(await requestBody(input, init)),
+        );
         return await imdb(body);
       }
       await sleep(50);

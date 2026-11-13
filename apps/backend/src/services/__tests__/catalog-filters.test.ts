@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { movie } from "../../__tests__/helpers/fixtures";
 import { filterCatalog, resolveCatalogSelection } from "../catalog-filters";
 import { sortCatalog } from "../catalog-sort";

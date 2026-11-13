@@ -1,5 +1,6 @@
 // Read k6 JSON summaries and server stats, print the report table and
 // evaluate the pass/fail checks.
+import { z } from "zod";
 import { readFileSync } from "node:fs";
 import type { BucketUsage } from "./stack";
 
@@ -13,13 +14,15 @@ const ROUTES = [
 ] as const;
 type Route = (typeof ROUTES)[number];
 
-interface K6Metric {
-  values: Record<string, number | undefined>;
-}
-interface K6Summary {
-  metrics: Record<string, K6Metric | undefined>;
-  state?: { testRunDurationMs?: number };
-}
+const k6SummarySchema = z.object({
+  metrics: z.record(
+    z.string(),
+    z
+      .object({ values: z.record(z.string(), z.number().optional()) })
+      .optional(),
+  ),
+  state: z.object({ testRunDurationMs: z.number().optional() }).optional(),
+});
 
 interface RouteResult {
   requests: number;
@@ -31,15 +34,19 @@ interface RouteResult {
   max: number;
 }
 
-export interface ServerStats {
-  hosts: Record<string, number>;
-  imdbPages: number;
-  imdbItems: number;
-  maxInflight: number;
-  requests: number;
-  rssMB: number;
-  peakRssMB: number;
-}
+// The report keeps the other stats of the server too.
+export const serverStatsSchema = z
+  .object({
+    hosts: z.record(z.string(), z.number()),
+    imdbPages: z.number(),
+    imdbItems: z.number(),
+    maxInflight: z.number(),
+    requests: z.number(),
+    rssMB: z.number(),
+    peakRssMB: z.number(),
+  })
+  .loose();
+type ServerStats = z.infer<typeof serverStatsSchema>;
 
 export interface Peaks {
   dbConnections: number;
@@ -64,12 +71,13 @@ export interface Check {
   pass: boolean;
 }
 
-export function readSummary(path: string): {
-  durationS: number;
-  routes: ScenarioResult["routes"];
-  unavailableCards: number;
-} {
-  const summary = JSON.parse(readFileSync(path, "utf8")) as K6Summary;
+export type RunSummary = Pick<
+  ScenarioResult,
+  "durationS" | "routes" | "unavailableCards"
+>;
+
+export function readSummary(path: string): RunSummary {
+  const summary = k6SummarySchema.parse(JSON.parse(readFileSync(path, "utf8")));
   const value = (metric: string, key: string) =>
     summary.metrics[metric]?.values[key] ?? 0;
   const routes: ScenarioResult["routes"] = {};
@@ -96,11 +104,9 @@ export function readSummary(path: string): {
   };
 }
 
-export function totals(result: ScenarioResult): {
-  requests: number;
-  ok: number;
-  errors5xx: number;
-} {
+export type Totals = Pick<RouteResult, "requests" | "ok" | "errors5xx">;
+
+export function totals(result: ScenarioResult): Totals {
   const all = Object.values(result.routes);
   return {
     requests: all.reduce((sum, route) => sum + route.requests, 0),

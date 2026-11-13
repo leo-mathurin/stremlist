@@ -1,5 +1,13 @@
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
+import { enrichTitles } from "../enrich";
 
 const scraperMocks = vi.hoisted(() => ({
   fetchTitlesByIds:
@@ -12,8 +20,6 @@ vi.mock(
   "../../lib/supabase",
   () => import("../../__tests__/helpers/mock-supabase"),
 );
-
-import { enrichTitles } from "../enrich";
 
 // enrich.ts keeps an in-memory cache for the whole process: every test uses
 // its own IMDb IDs so one test's lookups never answer another's.

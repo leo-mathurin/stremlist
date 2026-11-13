@@ -1,3 +1,8 @@
+import type { DisplayMode } from "@stremlist/shared/constants";
+import {
+  DEFAULT_DISPLAY_MODE,
+  DISPLAY_MODE_OPTIONS,
+} from "@stremlist/shared/constants";
 import type { Tables } from "@stremlist/shared/database";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import { isProviderId } from "@stremlist/shared/providers";
@@ -41,8 +46,30 @@ function mapMergedSources(value: unknown): ListSource[] {
   );
 }
 
+/** A check constraint allows only the known display modes. */
+function displayModeOf(value: string): DisplayMode {
+  return (
+    DISPLAY_MODE_OPTIONS.find((option) => option.value === value)?.value ??
+    DEFAULT_DISPLAY_MODE
+  );
+}
+
+/** The columns of a `lists` row that `mapList` reads. */
+export const listRowSchema = z.object({
+  id: z.string(),
+  provider: z.string(),
+  source_ref: z.string(),
+  catalog_title: z.string(),
+  sort_option: z.string(),
+  display_mode: z.string(),
+  position: z.number(),
+  catalog_settings: z.unknown().optional(),
+  merged_sources: z.unknown().optional(),
+  source_label: z.string().nullable(),
+});
+
 /** A List row as the app reads it; null for a Provider it does not know. */
-export function mapList(row: ListRow): ConfigList | null {
+export function mapList(row: z.infer<typeof listRowSchema>): ConfigList | null {
   if (!isProviderId(row.provider)) return null;
   const settings = catalogSettingsSchema.safeParse(row.catalog_settings);
   const mergedSources = mapMergedSources(row.merged_sources);
@@ -52,7 +79,7 @@ export function mapList(row: ListRow): ConfigList | null {
     sourceRef: row.source_ref,
     catalogTitle: row.catalog_title,
     sortOption: row.sort_option,
-    displayMode: row.display_mode as ConfigList["displayMode"],
+    displayMode: displayModeOf(row.display_mode),
     position: row.position,
     ...(settings.success && Object.keys(settings.data).length > 0
       ? { catalogSettings: settings.data }

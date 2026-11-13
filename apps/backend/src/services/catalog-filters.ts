@@ -68,7 +68,7 @@ export function resolveCatalogSelection(
     // Runtime/date ties retain the saved or preset order, including seeded shuffle.
     sort:
       sort.by === "runtime" || sort.by === "released"
-        ? { ...sort, then: baseSort }
+        ? { ...sort, tieBreak: baseSort }
         : sort,
     filters: [settings, defaults.filters ?? {}, selected.filters ?? {}],
   };

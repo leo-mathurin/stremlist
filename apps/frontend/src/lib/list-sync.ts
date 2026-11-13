@@ -137,7 +137,7 @@ function isShown(state: ListSyncState): boolean {
       return state.stillShown;
     case "failing":
       return state.olderTitlesFrom !== null;
-    default:
+    case "waiting":
       return false;
   }
 }

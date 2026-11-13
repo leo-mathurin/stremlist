@@ -208,7 +208,7 @@ export async function processSweep(deadline: number): Promise<SweepStats> {
         {
           account_id: row.account_id,
           auth_key: row.auth_key,
-          baseline_at: row.baseline_at as string | null,
+          baseline_at: row.baseline_at,
           stremio_trakt: row.stremio_trakt,
           destinations: ((row.destinations as string[] | null) ?? []).filter(
             isProviderId,

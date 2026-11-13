@@ -22,6 +22,7 @@ import {
   holdToasts,
   imdbUser,
   parseBody,
+  isConfigInput,
   previewOf,
   resolved,
   routeResolve,
@@ -333,9 +334,9 @@ test("a Source list that is in a merged List cannot be added again", async ({
   await expect
     .poll(() =>
       browser.evaluate(() => {
-        const top = document
-          .querySelector("[data-list-row]")!
-          .getBoundingClientRect().top;
+        const top =
+          document.querySelector("[data-list-row]")?.getBoundingClientRect()
+            .top ?? Number.NaN;
         return top >= 0 && top < 100;
       }),
     )
@@ -615,7 +616,7 @@ test("a save refused because the Lists changed in another window keeps the merge
       });
       return;
     }
-    const submitted = parseBody<AccountConfigInput>(route);
+    const submitted = parseBody(route, isConfigInput);
     submissions.push(submitted);
     await route.fulfill(
       submissions.length === 1

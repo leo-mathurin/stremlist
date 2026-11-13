@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link } from "react-router";
 import {
   ArrowRight,
@@ -362,7 +362,7 @@ function Step({
 }) {
   const panelId = useId();
   return (
-    <li style={{ "--i": index } as CSSProperties}>
+    <li style={{ "--i": index }}>
       <div
         className={cn(
           "rounded-2xl transition-colors duration-150",

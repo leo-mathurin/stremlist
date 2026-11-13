@@ -1,22 +1,6 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
 
 import app from "../index.js";
-
-const { backgroundMocks, prewarmMocks, supabaseMocks } = await vi.hoisted(
-  () => import("./helpers/config-api-mocks.js"),
-);
-vi.mock("../lib/background", () => backgroundMocks);
-vi.mock("../services/list-prewarm", () => prewarmMocks);
-vi.mock("../lib/supabase", () => supabaseMocks);
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
-vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
-
 import {
   getConfig,
   legacyAccountId,
@@ -39,6 +23,24 @@ import { cache } from "./helpers/mock-list-cache.js";
 import { r2Objects, r2Undeletable } from "./helpers/mock-r2.js";
 import { fakeAdapter, useFakeProvider } from "./helpers/mock-registry.js";
 import { db } from "./helpers/mock-supabase.js";
+import {
+  accountIdBody,
+  configBody,
+  createdAccountBody,
+  readJson,
+  stremioManifest,
+} from "./helpers/json.js";
+
+const { backgroundMocks, prewarmMocks, supabaseMocks } = await vi.hoisted(
+  () => import("./helpers/config-api-mocks.js"),
+);
+vi.mock("../lib/background", () => backgroundMocks);
+vi.mock("../services/list-prewarm", () => prewarmMocks);
+vi.mock("../lib/supabase", () => supabaseMocks);
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
+vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
+vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
 
 beforeEach(resetConfigTest);
 
@@ -68,7 +70,7 @@ describe("List CRUD via the config API", () => {
       });
 
       expect(res.status).toBe(200);
-      const data = await res.json();
+      const data = await readJson(res, createdAccountBody);
       expect(data.ok).toBe(true);
       expect(data.accountId).toMatch(/^sl_[0-9A-Za-z]{22}$/);
       expect(
@@ -95,7 +97,10 @@ describe("List CRUD via the config API", () => {
       );
 
       // The new Addon URL works right away.
-      const config = await (await getConfig(data.accountId)).json();
+      const config = await readJson(
+        await getConfig(data.accountId),
+        configBody,
+      );
       expect(config.access).toBe("private");
     });
 
@@ -103,14 +108,15 @@ describe("List CRUD via the config API", () => {
       const res = await postJson("/accounts", { lists: [] });
 
       expect(res.status).toBe(200);
-      const data = await res.json();
+      const data = await readJson(res, createdAccountBody);
       expect(data.accountId).toMatch(/^sl_[0-9A-Za-z]{22}$/);
       expect(data.lists).toEqual([]);
 
       // Its Addon URL already works: a manifest without catalogs.
-      const manifest = await (
-        await app.request(`/${data.accountId}/manifest.json`)
-      ).json();
+      const manifest = await readJson(
+        await app.request(`/${data.accountId}/manifest.json`),
+        stremioManifest,
+      );
       expect(manifest.catalogs).toEqual([]);
     });
 
@@ -148,7 +154,7 @@ describe("a caller who knows only the Legacy alias", () => {
     // A stranger reads the public `ur…` ID and makes a private copy of
     // what the legacy page shows, the old way and the new way.
     await app.request(`/${OWNER}/upgrade`, { method: "POST" });
-    const shown = await (await getConfig(OWNER)).json();
+    const shown = await readJson(await getConfig(OWNER), configBody);
     expect((await postJson("/accounts", { lists: shown.lists })).status).toBe(
       200,
     );
@@ -165,7 +171,7 @@ describe("a caller who knows only the Legacy alias", () => {
       ],
     });
     expect(save.status).toBe(200);
-    const legacy = await (await getConfig(OWNER)).json();
+    const legacy = await readJson(await getConfig(OWNER), configBody);
     expect(
       legacy.lists.map((list: { catalogTitle: string }) => list.catalogTitle),
     ).toEqual(["Still mine"]);
@@ -178,23 +184,22 @@ describe("upgrading a legacy install", () => {
     db.getTable("accounts")[0].rpdb_api_key = "rpdb";
     seedWatchlist({ id: UUID_1, catalogTitle: "Mine" });
     seedWatchlist({ id: UUID_2, sourceRef: "ls123456789", position: 1 });
-    const legacy = await (await getConfig(OWNER)).json();
+    const legacy = await readJson(await getConfig(OWNER), configBody);
 
     // The page sends what it shows, its unsaved edits included.
     const res = await postJson("/accounts", {
       rpdbApiKey: legacy.rpdbApiKey,
-      lists: legacy.lists.map(
-        (list: { catalogTitle: string }, index: number) =>
-          index === 1 ? { ...list, catalogTitle: "Edited" } : list,
+      lists: legacy.lists.map((list: { catalogTitle: string }, index: number) =>
+        index === 1 ? { ...list, catalogTitle: "Edited" } : list,
       ),
     });
 
     expect(res.status).toBe(200);
-    const { accountId } = await res.json();
+    const { accountId } = await readJson(res, accountIdBody);
     expect(accountId).toMatch(/^sl_[0-9A-Za-z]{22}$/);
     expect(accountId).not.toBe(legacyAccountId);
 
-    const copy = await (await getConfig(accountId)).json();
+    const copy = await readJson(await getConfig(accountId), configBody);
     expect(copy).toMatchObject({ access: "private", rpdbApiKey: "rpdb" });
     expect(
       copy.lists.map((list: { sourceRef: string; catalogTitle: string }) => [
@@ -211,7 +216,7 @@ describe("upgrading a legacy install", () => {
     );
 
     // The old install is unchanged and stays editable.
-    const after = await (await getConfig(OWNER)).json();
+    const after = await readJson(await getConfig(OWNER), configBody);
     expect(
       after.lists.map((list: { catalogTitle: string }) => list.catalogTitle),
     ).toEqual(["Mine", ""]);

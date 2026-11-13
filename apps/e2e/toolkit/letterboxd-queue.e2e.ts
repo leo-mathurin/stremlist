@@ -8,6 +8,7 @@ import {
   captureConfig,
   configuration,
   parseBody,
+  isResolveRequest,
   previewOf,
   resolved,
   routePreview,
@@ -42,7 +43,7 @@ test("a busy Letterboxd shows the wait on the link check and the preview, then t
   await captureConfig(browser);
   const checks: { input: string; ticket?: string }[] = [];
   await browser.route(`${backend}/links/resolve`, async (route) => {
-    checks.push(parseBody(route));
+    checks.push(parseBody(route, isResolveRequest));
     await route.fulfill({
       json: toJson(
         checks.length < 3

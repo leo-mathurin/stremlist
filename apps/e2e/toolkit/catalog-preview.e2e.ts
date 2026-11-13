@@ -18,6 +18,7 @@ import {
   legacyConfiguration,
   openFilters,
   parseBody,
+  isPreviewRequest,
   previewOf,
   resolved,
   routeResolve,
@@ -328,7 +329,7 @@ test("the preview shows a loading state, then every Catalog with its empty hints
   });
   const requests: PreviewRequest[] = [];
   await browser.route(`${backend}/lists/preview`, async (route) => {
-    const request = parseBody<PreviewRequest>(route);
+    const request = parseBody(route, isPreviewRequest);
     requests.push(request);
     if (requests.length === 1) await firstAnswer;
     // The decade filter leaves no movie; the Top rated Catalog has none.

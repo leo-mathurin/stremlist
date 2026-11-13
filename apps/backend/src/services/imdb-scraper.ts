@@ -2,6 +2,7 @@ import { FACEBOOK_EXTERNAL_HIT_USER_AGENT } from "@stremlist/shared/constants";
 import { CHART_BY_ID, isChartId } from "@stremlist/shared/imdb-charts";
 import type { ChartEntry } from "@stremlist/shared/imdb-charts";
 import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
+import { z } from "zod";
 import type { PagedRead } from "../providers/types";
 
 export { buildPosterUrl } from "@stremlist/shared/poster";
@@ -149,70 +150,120 @@ const VALIDATE_LIST_QUERY = `
   }
 `;
 
-interface ImdbEdge {
+// IMDb answers null for a missing field, so every field accepts null.
+const textSchema = z.object({ text: z.string().nullish() }).nullish();
+
+const titleNodeSchema = z.object({
+  id: z.string(),
+  titleText: textSchema,
+  titleType: textSchema,
+  releaseYear: z.object({ year: z.number().nullish() }).nullish(),
+  releaseDate: z
+    .object({
+      year: z.number().nullish(),
+      month: z.number().nullish(),
+      day: z.number().nullish(),
+    })
+    .nullish(),
+  ratingsSummary: z.object({ aggregateRating: z.number().nullish() }).nullish(),
+  titleGenres: z
+    .object({
+      genres: z.array(z.object({ genre: textSchema })).nullish(),
+    })
+    .nullish(),
+  plot: z
+    .object({
+      plotText: z.object({ plainText: z.string().nullish() }).nullish(),
+    })
+    .nullish(),
+  primaryImage: z.object({ url: z.string().nullish() }).nullish(),
+  runtime: z.object({ seconds: z.number().nullish() }).nullish(),
+  principalCredits: z
+    .array(
+      z.object({
+        category: z.object({ id: z.string().nullish() }).nullish(),
+        credits: z
+          .array(
+            z.object({
+              name: z.object({ nameText: textSchema }).nullish(),
+            }),
+          )
+          .nullish(),
+      }),
+    )
+    .nullish(),
+});
+type TitleNode = z.infer<typeof titleNodeSchema>;
+
+const imdbEdgeSchema = z.object({
   /** Watchlist and list items: when the user added the Title. */
-  node?: { createdDate?: string | null } | null;
-  listItem: {
-    id: string;
-    titleText?: { text: string };
-    titleType?: { text: string };
-    releaseYear?: { year: number };
-    releaseDate?: { year?: number; month?: number; day?: number };
-    ratingsSummary?: { aggregateRating: number };
-    titleGenres?: {
-      genres: { genre?: { text: string } }[];
-    };
-    plot?: { plotText?: { plainText: string } };
-    primaryImage?: { url: string };
-    runtime?: { seconds: number };
-    principalCredits?: {
-      category?: { id: string };
-      credits?: {
-        name?: { nameText?: { text: string } };
-      }[];
-    }[];
-  };
-}
+  node: z.object({ createdDate: z.string().nullish() }).nullish(),
+  listItem: titleNodeSchema,
+});
+type ImdbEdge = z.infer<typeof imdbEdgeSchema>;
 
-interface PageInfo {
-  hasNextPage: boolean;
-  endCursor: string | null;
-}
+const pageInfoSchema = z.object({
+  hasNextPage: z.boolean().nullish(),
+  endCursor: z.string().nullish(),
+});
 
-interface TitleListItemSearch {
-  total: number;
-  pageInfo?: PageInfo;
-  edges?: ImdbEdge[];
-}
+const titleListItemSearchSchema = z.object({
+  total: z.number().nullish(),
+  pageInfo: pageInfoSchema.nullish(),
+  edges: z.array(imdbEdgeSchema).nullish(),
+});
 
-type TitleNode = ImdbEdge["listItem"];
+const imdbListSchema = z.object({
+  id: z.string().nullish(),
+  name: z.object({ originalText: z.string().nullish() }).nullish(),
+  visibility: z.object({ id: z.string().nullish() }).nullish(),
+  titleListItemSearch: titleListItemSearchSchema.nullish(),
+});
 
-interface GraphQLResponse {
-  data?: {
-    predefinedList?: {
-      id: string;
-      visibility?: { id: string };
-      titleListItemSearch?: TitleListItemSearch;
-    } | null;
-    list?: {
-      id: string;
-      name?: { originalText: string };
-      visibility?: { id: string };
-      titleListItemSearch?: TitleListItemSearch;
-    } | null;
-    chartTitles?: {
-      pageInfo?: PageInfo;
-      edges?: { node: TitleNode }[];
-    } | null;
-    topGrossingReleases?: {
-      edges?: { node: { release?: { titles?: TitleNode[] } } }[];
-    } | null;
-    comingSoon?: {
-      edges?: { node: TitleNode }[];
-    } | null;
-  };
-  errors?: { message: string; extensions?: { code?: string } }[];
-}
+const graphqlResponseSchema = z.object({
+  data: z
+    .object({
+      predefinedList: imdbListSchema.nullish(),
+      list: imdbListSchema.nullish(),
+      chartTitles: z
+        .object({
+          pageInfo: pageInfoSchema.nullish(),
+          edges: z.array(z.object({ node: titleNodeSchema })).nullish(),
+        })
+        .nullish(),
+      topGrossingReleases: z
+        .object({
+          edges: z
+            .array(
+              z.object({
+                node: z.object({
+                  release: z
+                    .object({ titles: z.array(titleNodeSchema).nullish() })
+                    .nullish(),
+                }),
+              }),
+            )
+            .nullish(),
+        })
+        .nullish(),
+      comingSoon: z
+        .object({
+          edges: z.array(z.object({ node: titleNodeSchema })).nullish(),
+        })
+        .nullish(),
+      titles: z.array(titleNodeSchema.nullable()).nullish(),
+    })
+    .nullish(),
+  errors: z
+    .array(
+      z.object({
+        message: z.string().nullish(),
+        extensions: z.object({ code: z.string().nullish() }).nullish(),
+      }),
+    )
+    .nullish(),
+});
+type GraphQLResponse = z.infer<typeof graphqlResponseSchema>;
 
 interface ProcessedItem {
   id: string;
@@ -279,7 +330,7 @@ async function queryImdbGraphQL(
     throw new Error(ERROR_NOT_FOUND);
   }
 
-  return (await response.json()) as GraphQLResponse;
+  return graphqlResponseSchema.parse(await response.json());
 }
 
 export type ValidationResult =
@@ -338,10 +389,7 @@ const VALIDATE_QUERY = `
   }
 `;
 
-type ImdbList =
-  | { visibility?: { id: string }; titleListItemSearch?: TitleListItemSearch }
-  | null
-  | undefined;
+type ImdbList = z.infer<typeof imdbListSchema> | null | undefined;
 
 /** Whether a watchlist or list that a validation query returned is public. */
 function validationResult(
@@ -793,9 +841,9 @@ export async function fetchTitlesByIds(
   const result = new Map<string, StremioMeta>();
   for (let start = 0; start < imdbIds.length; start += TITLES_BATCH_SIZE) {
     const ids = imdbIds.slice(start, start + TITLES_BATCH_SIZE);
-    const json = (await queryImdbGraphQL("TitlesById", TITLES_BY_ID_QUERY, {
+    const json = await queryImdbGraphQL("TitlesById", TITLES_BY_ID_QUERY, {
       ids,
-    })) as { data?: { titles?: (TitleNode | null)[] | null } };
+    });
     const nodes = (json.data?.titles ?? []).filter(
       (node): node is TitleNode => !!node?.id && !!node.titleText,
     );

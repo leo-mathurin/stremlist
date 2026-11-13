@@ -15,6 +15,7 @@ import {
 } from "../env.js";
 import type { Api } from "./api.js";
 import { apiAt } from "./api.js";
+import { isRecord, isString, parseJson } from "./json.js";
 import { startProviderBackend } from "./provider-backend.js";
 
 /** One outbound Provider request, as the preload logged it. */
@@ -22,7 +23,17 @@ interface LoggedRequest {
   method: string;
   url: string;
   authorization: string | null;
-  body: Record<string, unknown> | null;
+  /** JSON or form fields, the text when it is neither, null without a body. */
+  body: unknown;
+}
+
+function isLoggedRequest(value: unknown): value is LoggedRequest {
+  return (
+    isRecord(value) &&
+    isString(value.method) &&
+    isString(value.url) &&
+    (value.authorization === null || isString(value.authorization))
+  );
 }
 
 export interface FixtureBackend {
@@ -95,7 +106,7 @@ export async function startFixtureBackend(
       readFileSync(logFile, "utf8")
         .split("\n")
         .filter(Boolean)
-        .map((line) => JSON.parse(line) as LoggedRequest)
+        .map((line) => parseJson(line, isLoggedRequest, "logged request"))
         .filter((entry) => match(new URL(entry.url))),
     clearRequests: () => writeFileSync(logFile, ""),
     async authorize(accountKey, provider) {

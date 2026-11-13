@@ -1,5 +1,12 @@
 import { ADDON_VERSION } from "@stremlist/shared/constants";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import { simklProvider } from "../../simkl";
 import { simklLimiters } from "../../simkl/api";
 import { limiters } from "../oauth-harness";
@@ -51,8 +58,9 @@ describe("simkl requests", () => {
   });
 
   it("treat a rejected token as a lost Connection", async () => {
-    routes["GET /sync/activities"] = () =>
-      json({ error: "user_token_failed" }, 401);
+    routes.set("GET /sync/activities", () =>
+      json({ error: "user_token_failed" }, 401),
+    );
     await expect(
       simklProvider.fetchSource("me/plantowatch", ctx()),
     ).rejects.toMatchObject({ reason: "needs_connection" });
@@ -74,10 +82,10 @@ describe("simkl oauth", () => {
   });
 
   it("reads the username from the user settings", async () => {
-    routes["GET /users/settings"] = () => ({
+    routes.set("GET /users/settings", () => ({
       user: { name: "leo-simkl", joined_at: "2018-01-15T00:00:00Z" },
       account: { id: 12345, timezone: "Europe/Paris", type: "free" },
-    });
+    }));
     await expect(oauth.fetchUsername?.("simkl_at_new")).resolves.toBe(
       "leo-simkl",
     );
@@ -85,7 +93,7 @@ describe("simkl oauth", () => {
   });
 
   it("revokes the grant with the client credentials", async () => {
-    routes["POST /oauth2/revoke"] = () => ({});
+    routes.set("POST /oauth2/revoke", () => ({}));
     await oauth.revoke?.("simkl_at_old");
     const call = calls[0];
     expect(call.headers.get("Content-Type")).toBe(

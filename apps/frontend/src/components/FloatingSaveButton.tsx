@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /** The look of the configure page Save buttons. */
@@ -77,7 +77,7 @@ export default function FloatingSaveButton({
         disabled={disabled}
         title={hint}
         aria-busy={saving}
-        style={{ "--pill": `${labelWidth + 64}px` } as CSSProperties}
+        style={{ "--pill": `${labelWidth + 64}px` }}
         className={cn(
           SAVE_BUTTON_CLASS,
           // Always full width; while floating, the clip shows only a pill at

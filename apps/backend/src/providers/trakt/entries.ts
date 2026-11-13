@@ -1,35 +1,38 @@
 import { asImdbId } from "@stremlist/shared/constants";
+import { z } from "zod";
 import type { SourceEntry } from "../types";
 
 /** The IDs object of a Trakt movie or show. */
-interface TraktIds {
-  trakt?: number | null;
-  slug?: string | null;
-  imdb?: string | null;
-  tmdb?: number | null;
-}
+const traktIdsSchema = z.object({
+  trakt: z.number().nullish(),
+  slug: z.string().nullish(),
+  imdb: z.string().nullish(),
+  tmdb: z.number().nullish(),
+});
 
-export interface TraktMedia {
-  title?: string | null;
-  year?: number | null;
-  ids?: TraktIds | null;
-}
+export const traktMediaSchema = z.object({
+  title: z.string().nullish(),
+  year: z.number().nullish(),
+  ids: traktIdsSchema.nullish(),
+});
+export type TraktMedia = z.infer<typeof traktMediaSchema>;
 
 /**
  * One item of a Trakt response that carries a movie or a show: list and
  * watchlist items (`type` + object), chart rows (`watchers` + object), sync
  * rows (`last_watched_at` + object), up next rows (`show` + `progress`).
  */
-export interface TraktItem {
-  type?: string;
-  movie?: TraktMedia | null;
-  show?: TraktMedia | null;
-  listed_at?: string | null;
-  last_watched_at?: string | null;
-  collected_at?: string | null;
-  last_collected_at?: string | null;
-  progress?: { last_watched_at?: string | null } | null;
-}
+export const traktItemSchema = z.object({
+  type: z.string().optional(),
+  movie: traktMediaSchema.nullish(),
+  show: traktMediaSchema.nullish(),
+  listed_at: z.string().nullish(),
+  last_watched_at: z.string().nullish(),
+  collected_at: z.string().nullish(),
+  last_collected_at: z.string().nullish(),
+  progress: z.object({ last_watched_at: z.string().nullish() }).nullish(),
+});
+export type TraktItem = z.infer<typeof traktItemSchema>;
 
 export function imdbIdOf(media: TraktMedia | null | undefined): string | null {
   return asImdbId(media?.ids?.imdb) ?? null;

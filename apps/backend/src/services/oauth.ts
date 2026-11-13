@@ -1,4 +1,5 @@
 import type { ProviderId } from "@stremlist/shared/providers";
+import { z } from "zod";
 import { createHash } from "node:crypto";
 import { randomToken } from "../lib/crypto";
 import { supabase } from "../lib/supabase";
@@ -113,13 +114,17 @@ export async function consumeState(
   return { accountId: data.account_id, codeVerifier: data.code_verifier };
 }
 
-interface TokenResponse {
-  access_token?: string;
-  refresh_token?: string;
-  expires_in?: number;
-  scope?: string;
-  error?: string;
-}
+// A field of another type reads as missing, and an answer that is not an
+// object as a failed request.
+const tokenResponseSchema = z
+  .object({
+    access_token: z.string().nullish().catch(undefined),
+    refresh_token: z.string().nullish().catch(undefined),
+    expires_in: z.unknown().optional(),
+    scope: z.string().nullish().catch(undefined),
+    error: z.string().nullish().catch(undefined),
+  })
+  .catch({});
 
 async function requestTokens(
   provider: ProviderId,
@@ -142,7 +147,8 @@ async function requestTokens(
     body: body.toString(),
     retryOn429: true,
   });
-  const json = (await response.json().catch(() => ({}))) as TokenResponse;
+  const answer: unknown = await response.json().catch(() => ({}));
+  const json = tokenResponseSchema.parse(answer);
   if (!response.ok || !json.access_token) {
     throw new Error(
       `${provider} token request failed (${response.status}): ${json.error ?? "unknown error"}`,

@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { justwatchPathStrategy } from "../titles/justwatch-lookup";
 import { tmdbSearchMatchStrategy } from "../titles/tmdb-match";
 import { wikidataStrategy } from "../titles/wikidata";
@@ -33,28 +34,29 @@ const WIKIDATA_SENSCRITIQUE_WORK = "P10100";
 const USER_REF = /^users\/([\w.-]+)\/wishes$/;
 const LIST_REF = /^lists\/(\d+)$/;
 
-interface Person {
-  name?: string | null;
-}
+const personSchema = z.object({ name: z.string().nullish() });
 
-export interface SensCritiqueProduct {
-  id: number;
-  title?: string | null;
-  originalTitle?: string | null;
+const senscritiqueProductSchema = z.object({
+  id: z.number(),
+  title: z.string().nullish(),
+  originalTitle: z.string().nullish(),
   /** Often the French release year, not the original one. */
-  yearOfProduction?: number | null;
+  yearOfProduction: z.number().nullish(),
   /** Original release date, sometimes partial ("1966-07-00", "2011"). */
-  dateReleaseOriginal?: string | null;
-  dateRelease?: string | null;
+  dateReleaseOriginal: z.string().nullish(),
+  dateRelease: z.string().nullish(),
   /** Seconds (per episode for series). */
-  duration?: number | null;
-  universe?: number | null;
-  directors?: Person[] | null;
-  creators?: Person[] | null;
-  providers?: { justwatchUrl?: string | null }[] | null;
+  duration: z.number().nullish(),
+  universe: z.number().nullish(),
+  directors: z.array(personSchema).nullish(),
+  creators: z.array(personSchema).nullish(),
+  providers: z
+    .array(z.object({ justwatchUrl: z.string().nullish() }))
+    .nullish(),
   /** The user's row for this product; its ID grows with each new action. */
-  otherUserInfos?: { id?: number | null } | null;
-}
+  otherUserInfos: z.object({ id: z.number().nullish() }).nullish(),
+});
+export type SensCritiqueProduct = z.infer<typeof senscritiqueProductSchema>;
 
 const PRODUCT_FIELDS = `
   id
@@ -116,51 +118,66 @@ const LIST_QUERY = `
   }
 `;
 
-interface UserData {
-  user: {
-    username: string;
-    settings?: { privacyProfile?: boolean | null } | null;
-  } | null;
-}
+const userSchema = z.object({
+  username: z.string(),
+  settings: z.object({ privacyProfile: z.boolean().nullish() }).nullish(),
+});
 
-interface WishesData {
-  user:
-    | (UserData["user"] & {
-        collection?: {
-          total?: number | null;
-          products?: SensCritiqueProduct[] | null;
-        } | null;
-      })
-    | null;
-}
+const userDataSchema = z.object({ user: userSchema.nullish() });
 
-interface ListInfoData {
-  userList: {
-    id: number;
-    label?: string | null;
-    isPrivate?: boolean | null;
-    universe?: number | null;
-  } | null;
-}
+const wishesDataSchema = z.object({
+  user: userSchema
+    .extend({
+      collection: z
+        .object({
+          total: z.number().nullish(),
+          products: z.array(senscritiqueProductSchema).nullish(),
+        })
+        .nullish(),
+    })
+    .nullish(),
+});
 
-interface ListData {
-  userList: {
-    id: number;
-    isPrivate?: boolean | null;
-    productsList?: {
-      total?: number | null;
-      items?: { product?: SensCritiqueProduct | null }[] | null;
-    } | null;
-  } | null;
-}
+const listInfoDataSchema = z.object({
+  userList: z
+    .object({
+      id: z.number().optional(),
+      label: z.string().nullish(),
+      isPrivate: z.boolean().nullish(),
+      universe: z.number().nullish(),
+    })
+    .nullish(),
+});
+
+const listDataSchema = z.object({
+  userList: z
+    .object({
+      id: z.number().optional(),
+      isPrivate: z.boolean().nullish(),
+      productsList: z
+        .object({
+          total: z.number().nullish(),
+          items: z
+            .array(z.object({ product: senscritiqueProductSchema.nullish() }))
+            .nullish(),
+        })
+        .nullish(),
+    })
+    .nullish(),
+});
 
 async function senscritiqueQuery<T>(
   query: string,
   variables: Record<string, unknown>,
+  schema: z.ZodType<T>,
 ): Promise<T> {
-  const json = await graphqlRequest<T>(SENSCRITIQUE_GRAPHQL, query, variables, {
-    limiter: senscritiqueLimiter,
-  });
+  const json = await graphqlRequest(
+    SENSCRITIQUE_GRAPHQL,
+    query,
+    variables,
+    schema,
+    { limiter: senscritiqueLimiter },
+  );
   if (!json.data) {
     throw new Error(
       `SensCritique GraphQL error: ${json.errors?.[0]?.message ?? "no data"}`,
@@ -195,7 +212,9 @@ function yearOf(product: SensCritiqueProduct): number | undefined {
   );
 }
 
-function names(people: Person[] | null | undefined): string[] {
+function names(
+  people: z.infer<typeof personSchema>[] | null | undefined,
+): string[] {
   return (people ?? [])
     .map((person) => person.name?.trim())
     .filter((name): name is string => !!name);
@@ -261,7 +280,9 @@ function mergeByActionId(
   return merged.concat(a.slice(i), b.slice(j));
 }
 
-function isPrivateProfile(user: UserData["user"]): boolean {
+function isPrivateProfile(
+  user: z.infer<typeof userSchema> | null | undefined,
+): boolean {
   return user?.settings?.privacyProfile === true;
 }
 
@@ -284,12 +305,11 @@ function fetchUniverseWishes(
     maxPages: MAX_PAGES,
     first: 0,
     async page(page) {
-      const { user } = await senscritiqueQuery<WishesData>(WISHES_QUERY, {
-        username,
-        universe,
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
-      });
+      const { user } = await senscritiqueQuery(
+        WISHES_QUERY,
+        { username, universe, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+        wishesDataSchema,
+      );
       if (!user) {
         throw new SourceUnavailableError(
           "not_found",
@@ -333,11 +353,11 @@ function fetchListProducts(
     maxPages: MAX_PAGES,
     first: 0,
     async page(page) {
-      const { userList } = await senscritiqueQuery<ListData>(LIST_QUERY, {
-        id,
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
-      });
+      const { userList } = await senscritiqueQuery(
+        LIST_QUERY,
+        { id, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
+        listDataSchema,
+      );
       if (!userList) {
         throw new SourceUnavailableError(
           "not_found",
@@ -380,9 +400,11 @@ export const senscritiqueProvider: ProviderAdapter = {
   async validateSource(ref): Promise<SourceValidation> {
     const user = USER_REF.exec(ref);
     if (user) {
-      const data = await senscritiqueQuery<UserData>(USER_QUERY, {
-        username: user[1],
-      });
+      const data = await senscritiqueQuery(
+        USER_QUERY,
+        { username: user[1] },
+        userDataSchema,
+      );
       if (!data.user) return { ok: false, reason: "not_found" };
       if (isPrivateProfile(data.user)) return { ok: false, reason: "private" };
       const username = data.user.username;
@@ -396,9 +418,10 @@ export const senscritiqueProvider: ProviderAdapter = {
 
     const list = LIST_REF.exec(ref);
     if (list) {
-      const { userList } = await senscritiqueQuery<ListInfoData>(
+      const { userList } = await senscritiqueQuery(
         LIST_INFO_QUERY,
         { id: Number(list[1]) },
+        listInfoDataSchema,
       );
       if (!userList) return { ok: false, reason: "not_found" };
       if (userList.isPrivate) return { ok: false, reason: "private" };

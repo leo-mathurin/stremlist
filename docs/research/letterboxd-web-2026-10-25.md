@@ -85,13 +85,13 @@ L'attribut historique `data-film-id` n'est pas présent dans les pages de collec
 
 ### HTML, JSON de film et JSON d'affiche
 
-| Ressource réelle | Réponse observée | Données utiles | Limite |
-| --- | --- | --- | --- |
-| `/<membre>/watchlist/` | HTTP 200, `text/html` | Appartenance, ordre, liens, identifiants Letterboxd | Pagination et analyse HTML |
-| `/<membre>/list/<slug>/` | HTTP 200, `text/html` | Appartenance, ordre, indices, identifiants Letterboxd | Pas un contrat d'API versionnée |
-| `/film/harakiri/` | HTTP 200, `text/html` | `data-tmdb-id="14537"`, lien IMDb `tt0056058`, lien TMDB `/movie/14537/`, JSON-LD présent | Un film vérifié ; coût supplémentaire si la correspondance manque |
-| `/film/harakiri/json/` | HTTP 200, `text/json` | `id=43015`, `uid=film:43015`, `lid=1NTU`, titre, année, durée, réalisateur, images | Aucun champ IMDb/TMDB dans cette réponse |
-| `/film/harakiri/poster/std/125/?k=fa62dd92` | HTTP 200, `text/json` | Champs `url`, `url2x`, `shouldObfuscate` | Résolution d'affiche, pas contenu de collection ni correspondance IMDb/TMDB |
+| Ressource réelle                            | Réponse observée      | Données utiles                                                                            | Limite                                                                      |
+| ------------------------------------------- | --------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `/<membre>/watchlist/`                      | HTTP 200, `text/html` | Appartenance, ordre, liens, identifiants Letterboxd                                       | Pagination et analyse HTML                                                  |
+| `/<membre>/list/<slug>/`                    | HTTP 200, `text/html` | Appartenance, ordre, indices, identifiants Letterboxd                                     | Pas un contrat d'API versionnée                                             |
+| `/film/harakiri/`                           | HTTP 200, `text/html` | `data-tmdb-id="14537"`, lien IMDb `tt0056058`, lien TMDB `/movie/14537/`, JSON-LD présent | Un film vérifié ; coût supplémentaire si la correspondance manque           |
+| `/film/harakiri/json/`                      | HTTP 200, `text/json` | `id=43015`, `uid=film:43015`, `lid=1NTU`, titre, année, durée, réalisateur, images        | Aucun champ IMDb/TMDB dans cette réponse                                    |
+| `/film/harakiri/poster/std/125/?k=fa62dd92` | HTTP 200, `text/json` | Champs `url`, `url2x`, `shouldObfuscate`                                                  | Résolution d'affiche, pas contenu de collection ni correspondance IMDb/TMDB |
 
 Sources : [fiche de film](https://letterboxd.com/film/harakiri/) et [JSON de film](https://letterboxd.com/film/harakiri/json/), E1 et E3. Le JSON de film contient aussi les noms de champs `csrf`, `filmlistAction` et `watchlistAction`. Aucune valeur CSRF n'a été affichée et aucune action n'a été exécutée. La présence de ces champs ne démontre pas une autorisation d'écriture anonyme.
 
@@ -111,13 +111,13 @@ Inférence : la qualification précise de Stremlist doit être présentée à Le
 
 ### En-têtes réellement relevés
 
-| Réponse sélectionnée | `Cache-Control` | Autres observations |
-| --- | --- | --- |
-| Watchlist, pages 1 et 2 | `no-store` | `Age: 0`, `CF-Cache-Status: DYNAMIC` |
-| Liste Top 500, grille pages 1 et 2, détail page 1 | Absent de ces réponses | `Age` positif, `CF-Cache-Status: DYNAMIC` |
-| Fiche HTML Harakiri | `s-maxage=300` | `Age: 0`, `CF-Cache-Status: DYNAMIC` |
-| JSON Harakiri | `no-store` | `Age: 0`, `CF-Cache-Status: DYNAMIC` |
-| JSON d'affiche Harakiri | `max-age=31536000` | `CF-Cache-Status: HIT`, `Last-Modified` présent |
+| Réponse sélectionnée                              | `Cache-Control`        | Autres observations                             |
+| ------------------------------------------------- | ---------------------- | ----------------------------------------------- |
+| Watchlist, pages 1 et 2                           | `no-store`             | `Age: 0`, `CF-Cache-Status: DYNAMIC`            |
+| Liste Top 500, grille pages 1 et 2, détail page 1 | Absent de ces réponses | `Age` positif, `CF-Cache-Status: DYNAMIC`       |
+| Fiche HTML Harakiri                               | `s-maxage=300`         | `Age: 0`, `CF-Cache-Status: DYNAMIC`            |
+| JSON Harakiri                                     | `no-store`             | `Age: 0`, `CF-Cache-Status: DYNAMIC`            |
+| JSON d'affiche Harakiri                           | `max-age=31536000`     | `CF-Cache-Status: HIT`, `Last-Modified` présent |
 
 E1 à E4 ; en-têtes sélectionnés conservés dans `31-observation-summary.json`. Aucun `ETag` ni `Last-Modified` n'est présent sur les réponses de collections sélectionnées. Une requête conditionnelle n'a pas été testée. Un `Age` positif ne donne pas, seul, la politique ou la fraîcheur de la liste. Le cache long d'une affiche ne s'applique pas à l'appartenance d'une collection. Ces valeurs décrivent ces réponses anonymes à cet instant, pas toutes les variantes authentifiées.
 
@@ -129,12 +129,12 @@ Pour `U` collections distinctes, `S` films, `P` films par page et `R` synchronis
 requêtes de documents par jour = U × ceil(S / P) × R
 ```
 
-| Hypothèse explicite | 10 000 utilisateurs | 50 000 utilisateurs |
-| --- | ---: | ---: |
-| Une liste de 500 films chacun, 100/page, une synchronisation/jour | 50 000/jour | 250 000/jour |
-| Même liste, une synchronisation/heure | 1 200 000/jour | 6 000 000/jour |
-| Une watchlist de 1 355 films chacun, 28/page, une synchronisation/jour | 490 000/jour | 2 450 000/jour |
-| Même watchlist, une synchronisation/heure | 11 760 000/jour | 58 800 000/jour |
+| Hypothèse explicite                                                    | 10 000 utilisateurs | 50 000 utilisateurs |
+| ---------------------------------------------------------------------- | ------------------: | ------------------: |
+| Une liste de 500 films chacun, 100/page, une synchronisation/jour      |         50 000/jour |        250 000/jour |
+| Même liste, une synchronisation/heure                                  |      1 200 000/jour |      6 000 000/jour |
+| Une watchlist de 1 355 films chacun, 28/page, une synchronisation/jour |        490 000/jour |      2 450 000/jour |
+| Même watchlist, une synchronisation/heure                              |     11 760 000/jour |     58 800 000/jour |
 
 La taille de watchlist est celle de l'exemple observé, pas une moyenne d'utilisateurs. Ces calculs supposent que tous les comptes sont actifs et distincts. Ils excluent les reprises, la découverte des listes, la résolution d'identifiants et les ressources du navigateur. Ils ne démontrent pas que Letterboxd accepte ces volumes. Les centaines de requêtes publicitaires et d'images des HAR ne sont pas utilisées comme coût nécessaire d'une synchronisation serveur.
 
@@ -149,17 +149,17 @@ La taille de watchlist est celle de l'exemple observé, pas une moyenne d'utilis
 
 ## Couverture et limites
 
-| Question | État | Limite restante |
-| --- | --- | --- |
-| Lecture de watchlist publique | Partiellement vérifiée | Deux pages d'un compte ; pas de parcours complet |
-| Liste publique et ordre | Partiellement vérifiés | Deux pages en grille, une en détail, un exemple de liste |
-| Annuaire public des listes | Partiellement vérifié | Un membre avec une seule liste ; pagination non testée |
-| Identifiants Letterboxd / IMDb / TMDB | Vérifiés pour Harakiri | Un film ; cas sans IMDb, doublons, séries et variantes non couverts |
-| JSON web accessible sans connexion | Vérifié pour un film et une affiche | Aucun contrat d'API ni endpoint de collection établi |
-| Authentification exigée pour l'export du compte | Formulaire observé | Export réel et données privées non accessibles dans cette session |
-| Parcours authentifié / 2FA | Non vérifié | Session importée déconnectée ; aucune demande déclenchée |
-| Cache HTTP | Observé sur les réponses sélectionnées | Pas de test conditionnel, de variation connectée ou de répétition dans le temps |
-| Charge 10k à 50k | Modèle arithmétique uniquement | Aucun test de charge, quota ou capacité établis |
+| Question                                        | État                                   | Limite restante                                                                 |
+| ----------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------- |
+| Lecture de watchlist publique                   | Partiellement vérifiée                 | Deux pages d'un compte ; pas de parcours complet                                |
+| Liste publique et ordre                         | Partiellement vérifiés                 | Deux pages en grille, une en détail, un exemple de liste                        |
+| Annuaire public des listes                      | Partiellement vérifié                  | Un membre avec une seule liste ; pagination non testée                          |
+| Identifiants Letterboxd / IMDb / TMDB           | Vérifiés pour Harakiri                 | Un film ; cas sans IMDb, doublons, séries et variantes non couverts             |
+| JSON web accessible sans connexion              | Vérifié pour un film et une affiche    | Aucun contrat d'API ni endpoint de collection établi                            |
+| Authentification exigée pour l'export du compte | Formulaire observé                     | Export réel et données privées non accessibles dans cette session               |
+| Parcours authentifié / 2FA                      | Non vérifié                            | Session importée déconnectée ; aucune demande déclenchée                        |
+| Cache HTTP                                      | Observé sur les réponses sélectionnées | Pas de test conditionnel, de variation connectée ou de répétition dans le temps |
+| Charge 10k à 50k                                | Modèle arithmétique uniquement         | Aucun test de charge, quota ou capacité établis                                 |
 
 Une inspection REA de huit secondes lancée pendant la navigation vers le JSON a échoué avec `target_unavailable`, raison `target_changed`. L'erreur est conservée dans `19-film-json-live-inspection.json` ; elle n'a pas été répétée. L'accès au JSON est corroboré par l'observation navigateur et le HAR E3, mais ce résultat n'est pas présenté comme une capture CDP réussie de cette transaction.
 
@@ -173,12 +173,12 @@ Tous les chemins de cette section sont relatifs au dossier privé indiqué plus 
 
 ### Preuves HAR principales
 
-| Référence | Fichier REA | Enregistrements sélectionnés | Evidence ID |
-| --- | --- | --- | --- |
-| E1 | `09-list-har-evidence.json` | 37, 193, 196, 246 sur 454 | `ev_f1ecb42fc894ff81e04b2cae70a01629fdd78b188cc0601cf6c9b7d2612e175f` |
-| E2 | `15-watchlist-har-evidence.json` | 0, 273, 562 sur 854 | `ev_cd1cab7c7214734f5d694e3391f288dbf8cb40325137e5bb98fd67e6096dae45` |
-| E3 | `23-api-film-har-evidence.json` | 0, 165, 480 sur 481 | `ev_289f382a04d1647b60d7a888adbf76e19eec3396b415097046fa6e8768254edc` |
-| E4 | `30-detail-directory-auth-har-evidence.json` | 0, 183, 436 sur 592 | `ev_f76a253aaf8fb86ed4ec12cc292517bc122f4cc5b6a65a0bfa6b8571893c742e` |
+| Référence | Fichier REA                                  | Enregistrements sélectionnés | Evidence ID                                                           |
+| --------- | -------------------------------------------- | ---------------------------- | --------------------------------------------------------------------- |
+| E1        | `09-list-har-evidence.json`                  | 37, 193, 196, 246 sur 454    | `ev_f1ecb42fc894ff81e04b2cae70a01629fdd78b188cc0601cf6c9b7d2612e175f` |
+| E2        | `15-watchlist-har-evidence.json`             | 0, 273, 562 sur 854          | `ev_cd1cab7c7214734f5d694e3391f288dbf8cb40325137e5bb98fd67e6096dae45` |
+| E3        | `23-api-film-har-evidence.json`              | 0, 165, 480 sur 481          | `ev_289f382a04d1647b60d7a888adbf76e19eec3396b415097046fa6e8768254edc` |
+| E4        | `30-detail-directory-auth-har-evidence.json` | 0, 183, 436 sur 592          | `ev_f76a253aaf8fb86ed4ec12cc292517bc122f4cc5b6a65a0bfa6b8571893c742e` |
 
 SHA-256 des captures sources :
 
@@ -195,16 +195,16 @@ b5f2bb4954da98585763ea8d751483815b5284245fd29040f772dd044836bd9a
 
 ### Preuves CDP complémentaires
 
-| Référence | Fichier | Evidence ID |
-| --- | --- | --- |
-| C0, découverte de cible | `01-targets.json` | `ev_7154eb15e393a36ee61f71dabbab310610fe9fba1e47f3c2982153cfdf34ca0d` |
-| C1, accueil déconnecté | `02-home-inspection.json` | `ev_c365715a9e026728ade158703bba748b05f4bee32b1561083690284e5d5ac1a6` |
-| C2, navigation publique | `03-public-list-navigation.json` | `ev_1f060ede22cb6f9ecbd9fac5e61216c68fda89a20a41688b4f80dd2f9e0abb94` |
-| C3, liste | `05-list-page1-inspection.json` | `ev_6395b7d0c542e9f19f0dcec7fb4f0e1b61f58c3751bca31290bbe31a89331f11` |
-| C4, watchlist | `11-watchlist-page1-inspection.json` | `ev_44eb6ffc464d36e8246487b4c75a1a0e9983be6ebb239c45f419d258347d71a9` |
-| C5, accès API | `16-api-access-inspection.json` | `ev_c6efa53f6f04fa729e6b68f6b0d0cc508499b070249bd799613c95e0c44d025b` |
-| C6, fiche de film | `18-film-inspection.json` | `ev_da8ee4378bb25b45195d8df3726863eb1c9c8a7efe6371a92905df88123085f6` |
-| C7, connexion exigée | `27-auth-gate-inspection.json` | `ev_d9578367236c7d2294ede0f2a5e993edb4d2cdf8a0d3359509509bc2190d0529` |
+| Référence               | Fichier                              | Evidence ID                                                           |
+| ----------------------- | ------------------------------------ | --------------------------------------------------------------------- |
+| C0, découverte de cible | `01-targets.json`                    | `ev_7154eb15e393a36ee61f71dabbab310610fe9fba1e47f3c2982153cfdf34ca0d` |
+| C1, accueil déconnecté  | `02-home-inspection.json`            | `ev_c365715a9e026728ade158703bba748b05f4bee32b1561083690284e5d5ac1a6` |
+| C2, navigation publique | `03-public-list-navigation.json`     | `ev_1f060ede22cb6f9ecbd9fac5e61216c68fda89a20a41688b4f80dd2f9e0abb94` |
+| C3, liste               | `05-list-page1-inspection.json`      | `ev_6395b7d0c542e9f19f0dcec7fb4f0e1b61f58c3751bca31290bbe31a89331f11` |
+| C4, watchlist           | `11-watchlist-page1-inspection.json` | `ev_44eb6ffc464d36e8246487b4c75a1a0e9983be6ebb239c45f419d258347d71a9` |
+| C5, accès API           | `16-api-access-inspection.json`      | `ev_c6efa53f6f04fa729e6b68f6b0d0cc508499b070249bd799613c95e0c44d025b` |
+| C6, fiche de film       | `18-film-inspection.json`            | `ev_da8ee4378bb25b45195d8df3726863eb1c9c8a7efe6371a92905df88123085f6` |
+| C7, connexion exigée    | `27-auth-gate-inspection.json`       | `ev_d9578367236c7d2294ede0f2a5e993edb4d2cdf8a0d3359509509bc2190d0529` |
 
 Commandes REA utilisées, avec variables représentant le point CDP et la cible retournés par la session désormais fermée :
 

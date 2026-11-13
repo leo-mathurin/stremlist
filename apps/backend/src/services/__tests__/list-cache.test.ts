@@ -4,17 +4,31 @@ import {
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import { z } from "zod";
+import { seedAccount, seedConnection } from "../../__tests__/helpers/fixtures";
+import { db } from "../../__tests__/helpers/mock-supabase";
+import { encryptSecret } from "../../lib/crypto";
+import { getConnectionAccess, saveConnection } from "../connections";
+import {
+  deleteCachedList,
+  findCachedMeta,
+  getCachedList,
+  getCachedListSummary,
+  writeCachedList,
+} from "../list-cache";
 
 vi.mock(
   "../../lib/supabase",
   () => import("../../__tests__/helpers/mock-supabase"),
 );
-import { seedAccount, seedConnection } from "../../__tests__/helpers/fixtures";
-import { db } from "../../__tests__/helpers/mock-supabase";
-import { encryptSecret } from "../../lib/crypto";
-import { getConnectionAccess, saveConnection } from "../connections";
 
 const r2 = vi.hoisted(() => ({
   objects: new Map<string, Uint8Array>(),
@@ -40,7 +54,7 @@ function stored(objects: Map<string, Uint8Array>, key: string): Uint8Array {
   return body;
 }
 
-function handleCommand(command: unknown): unknown {
+function handleCommand(command: unknown) {
   if (command instanceof PutObjectCommand) {
     const key = requiredKey(command.input.Key);
     let afterConditionalPut: (() => Promise<void>) | null = null;
@@ -107,14 +121,6 @@ vi.mock("../../lib/r2", () => ({
   getR2Client: () => ({ send: r2.send }),
 }));
 
-import {
-  deleteCachedList,
-  findCachedMeta,
-  getCachedList,
-  getCachedListSummary,
-  writeCachedList,
-} from "../list-cache";
-
 const MOVIE: StremioMeta = {
   id: "tt0111161",
   type: "movie",
@@ -146,9 +152,8 @@ function expectOnlyManifestRead(id: string): void {
   expect(r2.send).toHaveBeenCalledTimes(1);
   const command = r2.send.mock.calls[0][0];
   expect(command).toBeInstanceOf(GetObjectCommand);
-  expect((command as GetObjectCommand).input.Key).toBe(
-    `watchlists/${id}/manifest.json`,
-  );
+  if (!(command instanceof GetObjectCommand)) throw new Error("not a read");
+  expect(command.input.Key).toBe(`watchlists/${id}/manifest.json`);
 }
 
 beforeEach(() => {
@@ -211,7 +216,7 @@ describe("R2 watchlist cache", () => {
     await writeCachedList(id, { metas: [MOVIE] });
     const key = `watchlists/${id}/manifest.json`;
     const manifest = z
-      .record(z.unknown())
+      .record(z.string(), z.unknown())
       .parse(JSON.parse(Buffer.from(stored(r2.objects, key)).toString()));
     delete manifest.genres;
     r2.objects.set(key, Buffer.from(JSON.stringify(manifest)));

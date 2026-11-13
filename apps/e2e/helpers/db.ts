@@ -39,12 +39,13 @@ async function ownedAccountIds(): Promise<string[]> {
       .in("legacy_imdb_user_id", [...E2E_USER_IDS]),
     db.from("accounts").select("id").gte("created_at", RUN_STARTED_AT),
   ]);
-  for (const result of [legacy, created]) {
+  const ids = [legacy, created].flatMap((result) => {
     if (result.error) {
       throw new Error(`resetDb account lookup failed: ${result.error.message}`);
     }
-  }
-  return [...new Set([...legacy.data!, ...created.data!].map((row) => row.id))];
+    return result.data.map((row) => row.id);
+  });
+  return [...new Set(ids)];
 }
 
 /** Delete this run's Accounts. Foreign-key cascades remove their data. */
@@ -162,7 +163,7 @@ export async function seedList(
     sort_option: list.sortOption ?? "added_at-asc",
     display_mode: list.displayMode ?? "movie",
     position: list.position,
-    catalog_settings: { ...(list.catalogSettings ?? {}) },
+    catalog_settings: { ...list.catalogSettings },
     merged_sources: (list.mergedSources ?? []).map((source) => ({
       provider: source.provider,
       source_ref: source.sourceRef,

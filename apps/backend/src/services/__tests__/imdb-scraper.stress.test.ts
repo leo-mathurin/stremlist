@@ -8,7 +8,7 @@
  * Not included in the regular `test` task to keep CI fast.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from "vite-plus/test";
 import { fetchWatchlist } from "../imdb-scraper.js";
 
 // ---------------------------------------------------------------------------

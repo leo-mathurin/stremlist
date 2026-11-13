@@ -6,7 +6,7 @@ import { resend } from "../../lib/resend";
 /** The product newsletter (Resend audience). */
 const newsletter = new Hono().post(
   "/newsletter/subscribe",
-  zValidator("json", z.object({ email: z.string().email() })),
+  zValidator("json", z.object({ email: z.email() })),
   async (c) => {
     const { email } = c.req.valid("json");
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import {
   ACCOUNT_KEY_PATTERN,
   IMDB_USER_ID_PATTERN,

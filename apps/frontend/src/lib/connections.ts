@@ -1,5 +1,6 @@
 import { connectionProviders, listSources } from "@stremlist/shared/list-merge";
 import type { MergeableList } from "@stremlist/shared/list-merge";
+import { z } from "zod";
 import { isProviderId } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
@@ -88,16 +89,28 @@ export function dropDraft(): void {
   }
 }
 
+/** A form that `keepDraft` wrote. Its Lists are the part that must hold. */
+function isKeptForm(form: unknown): form is AccountForm {
+  return (
+    typeof form === "object" &&
+    form !== null &&
+    "lists" in form &&
+    Array.isArray(form.lists)
+  );
+}
+
 /** The kept edits of this Account or new setup, without taking them. */
 export function readDraft(accountId: string | null): AccountForm | null {
   try {
     const raw = sessionStorage.getItem(CONNECT_DRAFT_STORAGE);
     if (!raw) return null;
-    const draft = JSON.parse(raw) as {
-      accountId?: unknown;
-      form?: AccountForm;
-    };
-    return draft.accountId === accountId && Array.isArray(draft.form?.lists)
+    const draft: unknown = JSON.parse(raw);
+    return typeof draft === "object" &&
+      draft !== null &&
+      "accountId" in draft &&
+      draft.accountId === accountId &&
+      "form" in draft &&
+      isKeptForm(draft.form)
       ? draft.form
       : null;
   } catch {
@@ -124,6 +137,12 @@ export interface ConnectStart {
   browserKey: string;
 }
 
+const storedConnectStart = z.object({
+  provider: z.string().refine(isProviderId),
+  accountId: z.string().nullable(),
+  browserKey: z.string(),
+});
+
 export function rememberConnectStart(start: ConnectStart): void {
   try {
     sessionStorage.setItem(CONNECT_START_STORAGE, JSON.stringify(start));
@@ -138,17 +157,8 @@ export function takeConnectStart(): ConnectStart | null {
     const raw = sessionStorage.getItem(CONNECT_START_STORAGE);
     sessionStorage.removeItem(CONNECT_START_STORAGE);
     if (!raw) return null;
-    const start = JSON.parse(raw) as Partial<ConnectStart>;
-    return typeof start.provider === "string" &&
-      isProviderId(start.provider) &&
-      typeof start.browserKey === "string" &&
-      (start.accountId === null || typeof start.accountId === "string")
-      ? {
-          provider: start.provider,
-          accountId: start.accountId,
-          browserKey: start.browserKey,
-        }
-      : null;
+    const start = storedConnectStart.safeParse(JSON.parse(raw));
+    return start.success ? start.data : null;
   } catch {
     return null;
   }

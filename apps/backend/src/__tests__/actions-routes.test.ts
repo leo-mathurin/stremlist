@@ -1,6 +1,24 @@
 import type { ProviderId } from "@stremlist/shared/providers";
-import type { StremioStream } from "@stremlist/shared/stremio.types";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
+import app from "../index.js";
+import type { Membership, ProviderActions } from "../providers/types";
+import { seedAccount, seedConnection } from "./helpers/fixtures.js";
+import { r2Objects } from "./helpers/mock-r2.js";
+import {
+  fakeActions,
+  fakeAdapter,
+  resetProviders,
+  useFakeProvider,
+} from "./helpers/mock-registry.js";
+import { db, resetRpc } from "./helpers/mock-supabase.js";
+import { readJson, streamsBody } from "./helpers/json.js";
 
 vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
 vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
@@ -22,25 +40,8 @@ vi.mock("../titles/enrich", () => ({
   ),
 }));
 
-import app from "../index.js";
-import type { Membership, ProviderActions } from "../providers/types";
-import { seedAccount, seedConnection } from "./helpers/fixtures.js";
-import { r2Objects } from "./helpers/mock-r2.js";
-import {
-  fakeActions,
-  fakeAdapter,
-  resetProviders,
-  useFakeProvider,
-} from "./helpers/mock-registry.js";
-import { db, resetRpc } from "./helpers/mock-supabase.js";
-
 const MOVIE = "tt0111161";
 const SERIES = "tt0903747";
-
-interface StreamResponse {
-  streams: StremioStream[];
-  cacheMaxAge: number;
-}
 
 const perform = vi.fn<ProviderActions["perform"]>();
 
@@ -121,7 +122,7 @@ describe("GET /:accountKey/stream/:type/:id.json", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("Cache-Control")).toBe("no-store");
-    const body = (await res.json()) as StreamResponse;
+    const body = await readJson(res, streamsBody);
     expect(body.cacheMaxAge).toBe(0);
     expect(body.streams.map((stream) => stream.externalUrl)).toEqual([
       `http://localhost/${account.id}/actions/watchlist/add/movie/${MOVIE}`,
@@ -142,7 +143,7 @@ describe("GET /:accountKey/stream/:type/:id.json", () => {
       `/${account.id}/stream/series/${SERIES}:2:5.json`,
     );
 
-    const body = (await res.json()) as StreamResponse;
+    const body = await readJson(res, streamsBody);
     expect(body.streams[1]).toMatchObject({
       title: "✅ Mark S02E05 as watched on Trakt",
       externalUrl: `https://api.stremlist.test/${account.id}/actions/watched/add/series/${SERIES}%3A2%3A5`,

@@ -1,25 +1,13 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDER_IDS } from "@stremlist/shared/providers";
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
+import { z } from "zod";
 
 import app from "../index.js";
 import { LetterboxdBusyError } from "../providers/letterboxd-gate";
 import { currentReadQueue } from "../providers/read-priority";
 import { SourceUnavailableError } from "../providers/types";
-
-const { backgroundMocks, prewarmMocks, supabaseMocks } = await vi.hoisted(
-  () => import("./helpers/config-api-mocks.js"),
-);
-vi.mock("../lib/background", () => backgroundMocks);
-vi.mock("../services/list-prewarm", () => prewarmMocks);
-vi.mock("../lib/supabase", () => supabaseMocks);
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
-vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
-
 import * as scraper from "../services/imdb-scraper";
 import {
   legacyAccountId,
@@ -34,6 +22,30 @@ import {
   haltLetterboxdGate,
   letterboxdGate,
 } from "./helpers/supabase/letterboxd-gate-rpcs.js";
+import { readJson } from "./helpers/json.js";
+
+const { backgroundMocks, prewarmMocks, supabaseMocks } = await vi.hoisted(
+  () => import("./helpers/config-api-mocks.js"),
+);
+vi.mock("../lib/background", () => backgroundMocks);
+vi.mock("../services/list-prewarm", () => prewarmMocks);
+vi.mock("../lib/supabase", () => supabaseMocks);
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
+vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
+vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
+
+const providersBody = z.object({
+  providers: z.array(
+    z
+      .object({
+        id: z.string(),
+        enabled: z.boolean(),
+        connectable: z.boolean(),
+      })
+      .loose(),
+  ),
+});
 
 function haltLetterboxd() {
   haltLetterboxdGate();
@@ -152,7 +164,9 @@ describe("POST /links/resolve", () => {
       "https://mdblist.com/lists/leo/top-movies",
       OWNER,
     );
-    expect((await res.json()).reason).toBe("needs_connection");
+    expect(
+      (await readJson(res, z.object({ reason: z.string() }).loose())).reason,
+    ).toBe("needs_connection");
   });
 
   it("asks for a Connection again when the Connection expired", async () => {
@@ -235,7 +249,7 @@ describe("POST /links/resolve", () => {
       connection: expect.objectContaining({
         provider: "mdblist",
         username: "leo",
-      }),
+      }) as unknown,
     });
   });
 
@@ -324,9 +338,7 @@ describe("GET /providers", () => {
     process.env.DISABLED_PROVIDERS = "justwatch";
 
     const res = await app.request("/providers");
-    const { providers } = (await res.json()) as {
-      providers: { id: ProviderId; enabled: boolean; connectable: boolean }[];
-    };
+    const { providers } = await readJson(res, providersBody);
 
     expect(providers.map((provider) => provider.id)).toEqual([...PROVIDER_IDS]);
     const byId = new Map(providers.map((provider) => [provider.id, provider]));
@@ -345,9 +357,7 @@ describe("GET /providers", () => {
     haltLetterboxd();
     try {
       const res = await app.request("/providers");
-      const { providers } = (await res.json()) as {
-        providers: { id: ProviderId; enabled: boolean }[];
-      };
+      const { providers } = await readJson(res, providersBody);
       const byId = new Map(
         providers.map((provider) => [provider.id, provider]),
       );

@@ -1,4 +1,11 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+} from "vite-plus/test";
 import {
   getImdbList,
   getImdbWatchlist,
@@ -6,6 +13,18 @@ import {
   normalizeImdbUserId,
   validateImdbWatchlist,
 } from "../imdb-scraper.js";
+import { z } from "zod";
+
+const pageRequest = z.object({
+  variables: z.object({ first: z.number() }),
+});
+
+function requestBody(init: RequestInit | undefined): string {
+  if (typeof init?.body !== "string") {
+    throw new Error("Expected a JSON request body");
+  }
+  return init.body;
+}
 
 function makeEdge(
   overrides: {
@@ -51,7 +70,7 @@ function makeEdge(
   };
 }
 
-function jsonResponse(body: object) {
+function jsonResponse(body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { "Content-Type": "application/json" },
@@ -62,7 +81,7 @@ function respond(response: Response) {
   vi.mocked(globalThis.fetch).mockResolvedValueOnce(response);
 }
 
-function watchlistResponse(predefinedList: object | null) {
+function watchlistResponse(predefinedList: Record<string, unknown> | null) {
   return jsonResponse({ data: { predefinedList }, extensions: {} });
 }
 
@@ -102,7 +121,9 @@ function profileHtml(userId: string): Response {
  */
 function servePages(
   total: number,
-  pageOf: (titleListItemSearch: object) => Response = (search) =>
+  pageOf: (titleListItemSearch: Record<string, unknown>) => Response = (
+    search,
+  ) =>
     watchlistResponse({
       id: "ls123",
       visibility: { id: "PUBLIC" },
@@ -113,9 +134,8 @@ function servePages(
   const requestedPageSizes: number[] = [];
   let offset = 0;
   vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
-    const requested = (
-      JSON.parse(init?.body as string) as { variables: { first: number } }
-    ).variables.first;
+    const requested = pageRequest.parse(JSON.parse(requestBody(init))).variables
+      .first;
     requestedPageSizes.push(requested);
     const edges = Array.from({ length: requested }, (_, index) =>
       makeEdge({ id: `tt${String(offset + index).padStart(7, "0")}` }),
@@ -224,17 +244,14 @@ describe("getImdbWatchlist (unit)", () => {
 
     await getImdbWatchlist("ur195879360");
 
-    const [url, init] = vi.mocked(globalThis.fetch).mock.calls[0] as [
-      string,
-      RequestInit,
-    ];
+    const [url, init] = vi.mocked(globalThis.fetch).mock.calls[0];
     expect(url).toBe("https://api.graphql.imdb.com/");
-    expect(init.method).toBe("POST");
-    expect(init.headers).toMatchObject({
+    expect(init?.method).toBe("POST");
+    expect(init?.headers).toMatchObject({
       "Content-Type": "application/json",
       "x-imdb-client-name": "imdb-next-desktop",
     });
-    expect(JSON.parse(init.body as string)).toMatchObject({
+    expect(JSON.parse(requestBody(init))).toMatchObject({
       operationName: "WatchListPage",
       variables: { urConst: "ur195879360" },
     });
@@ -423,12 +440,9 @@ describe("normalizeImdbUserId (unit)", () => {
 
     expect(await normalizeImdbUserId("p.colneedham")).toBe("ur1000000");
 
-    const [url, init] = vi.mocked(globalThis.fetch).mock.calls[0] as [
-      string,
-      RequestInit,
-    ];
+    const [url, init] = vi.mocked(globalThis.fetch).mock.calls[0];
     expect(url).toBe("https://www.imdb.com/user/p.colneedham/");
-    expect(init.headers).toMatchObject({
+    expect(init?.headers).toMatchObject({
       "User-Agent": "facebookexternalhit/1.1",
     });
   });

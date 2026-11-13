@@ -38,6 +38,6 @@ function recordListRefresh(args: RpcArgs): Result {
   return { data: true, error: null };
 }
 
-export const sourceListRpcs: Partial<Record<string, RpcHandler>> = {
+export const sourceListRpcs = {
   record_list_refresh: recordListRefresh,
-};
+} satisfies Record<string, RpcHandler>;

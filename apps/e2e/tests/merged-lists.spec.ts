@@ -53,14 +53,15 @@ const NO_CONNECTION: ListSource = {
 };
 const HISTORY: ListSource = { provider: "trakt", sourceRef: "me/history" };
 
+/** The cache keeps the date added next to the meta; Stremio never gets it. */
+type CachedTitle = StremioMeta & { addedAt: string };
+
 /** A cached Title, added on 1 January of `addedIn`. */
 function title(
   id: string,
   addedIn: number,
   overrides: Partial<StremioMeta> = {},
-): StremioMeta {
-  const addedAt = `${addedIn}-01-01T00:00:00.000Z`;
-  // The cache keeps the date added next to the meta; Stremio never gets it.
+): CachedTitle {
   return {
     id,
     name: `QA ${id}`,
@@ -70,14 +71,14 @@ function title(
     genres: ["Drama"],
     description: "Merged List fixture",
     ...overrides,
-    ...{ addedAt },
+    addedAt: `${addedIn}-01-01T00:00:00.000Z`,
   };
 }
 
 /** A private Account with one merged List and its Source lists cached. */
 async function seedMerged(
   sources: ListSource[],
-  caches: (StremioMeta[] | null)[],
+  caches: (CachedTitle[] | null)[],
   overrides: { sortOption?: string; accountId?: string } = {},
 ) {
   const accountId = overrides.accountId ?? (await seedAccount());
@@ -225,8 +226,11 @@ test(
       listIds: [listId],
     } = await seedAccountWithLists([{ ...FIRST, catalogTitle: "Release QA" }]);
     const before = await getListRows(accountId);
-    const top250 = { provider: "imdb", sourceRef: "imdb:top-rated-movies" };
-    const cases: [unknown[], string][] = [
+    const top250: ListSource = {
+      provider: "imdb",
+      sourceRef: "imdb:top-rated-movies",
+    };
+    const cases: [ConfigListInput[], string][] = [
       [
         [
           { ...FIRST, sortOption: "title-asc", mergedSources: [SECOND] },
@@ -279,10 +283,7 @@ test(
       ],
     ];
     for (const [lists, error] of cases) {
-      const response = await postConfig(
-        accountId,
-        lists as Parameters<typeof postConfig>[1],
-      );
+      const response = await postConfig(accountId, lists);
       expect(response).toEqual({ status: 400, body: { error } });
     }
     expect(await getListRows(accountId)).toEqual(before);

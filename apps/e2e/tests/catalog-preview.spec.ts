@@ -22,6 +22,7 @@ import {
   PREVIEW_PRODUCT_IDS,
   PREVIEW_PUBLIC_LIST,
 } from "../helpers/preview-fixture.js";
+import { present } from "../helpers/json.js";
 import { countCacheObjects } from "../helpers/r2.js";
 import { CATALOG_FIXTURE_USER, PUBLIC_LIST } from "../helpers/test-data.js";
 
@@ -144,7 +145,9 @@ test(
       { external_id: "990000104", imdb_id: null, strategy: null },
     ]);
     for (const row of rows.filter((entry) => entry.imdb_id === null)) {
-      expect(Date.parse(row.retry_after!)).toBeGreaterThan(Date.now());
+      expect(
+        Date.parse(present(row.retry_after, "the retry date")),
+      ).toBeGreaterThan(Date.now());
     }
   },
 );

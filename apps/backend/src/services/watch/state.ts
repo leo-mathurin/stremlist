@@ -3,6 +3,7 @@
  * The sweep compares with it, and it stops the trigger and the sweep from
  * sending a title twice. The Watched baseline is its first version.
  */
+import { z } from "zod";
 import { createHash } from "node:crypto";
 import {
   deletePrefix,
@@ -19,22 +20,23 @@ export function linkOf(sealedKey: string): string {
   return createHash("sha256").update(sealedKey).digest("hex").slice(0, 16);
 }
 
-export interface WatchState {
+const watchStateSchema = z.object({
   /** The Stremio link of the Watched baseline (`linkOf`). */
-  link?: string;
+  link: z.string().optional(),
   /** The newest library `_mtime` that the last saved sweep compared. */
-  checkedAt: number;
-  savedAt: number;
+  checkedAt: z.number(),
+  savedAt: z.number(),
   /** Movies with timesWatched > 0. */
-  movies: string[];
+  movies: z.array(z.string()),
   /**
    * Series ID → what is watched: Stremio's `watched` field as the Watched
    * baseline read it, then, once an episode was sent, every episode ever
    * seen watched ("season:episode"). The list only grows, so an older read
    * or an unmark and remark never sends an episode again.
    */
-  series: Record<string, string | string[]>;
-}
+  series: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
+});
+export type WatchState = z.infer<typeof watchStateSchema>;
 
 interface Version {
   state: WatchState | null;
@@ -48,7 +50,8 @@ function stateKey(accountId: string): string {
 export async function readState(accountId: string): Promise<Version> {
   const version = await readJsonVersion(stateKey(accountId));
   return {
-    state: (version?.value as WatchState | undefined) ?? null,
+    state:
+      version?.value == null ? null : watchStateSchema.parse(version.value),
     etag: version?.etag ?? null,
   };
 }

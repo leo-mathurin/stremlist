@@ -1,6 +1,25 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { SOURCE_LINK_MAX_LENGTH } from "@stremlist/shared/constants";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
+import app from "../index.js";
+import { decryptSecret } from "../lib/crypto";
+import { letterboxdProvider } from "../providers/letterboxd";
+import {
+  OWNER,
+  postConfig,
+  postJson,
+  resetConfigTest,
+} from "./helpers/config-api.js";
+import { fakeAdapter, useFakeProvider } from "./helpers/mock-registry.js";
+import { readJson } from "./helpers/json.js";
+import { z } from "zod";
 
 const { backgroundMocks, prewarmMocks, supabaseMocks } = await vi.hoisted(
   () => import("./helpers/config-api-mocks.js"),
@@ -13,16 +32,8 @@ vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
 vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
 vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
 
-import app from "../index.js";
-import { decryptSecret } from "../lib/crypto";
-import { letterboxdProvider } from "../providers/letterboxd";
-import {
-  OWNER,
-  postConfig,
-  postJson,
-  resetConfigTest,
-} from "./helpers/config-api.js";
-import { fakeAdapter, useFakeProvider } from "./helpers/mock-registry.js";
+/** What the link check answers for a link it accepts. */
+const sourceRefBody = z.object({ sourceRef: z.string() }).loose();
 
 const key = Buffer.from("0123456789abcdef0123456789abcdef").toString("base64");
 
@@ -63,9 +74,9 @@ describe("long Letterboxd share links", () => {
       "fetch",
       vi.fn(() => Promise.resolve(new Response(page([1])))),
     );
-    const checked = await (await resolve(link)).json();
+    const checked = await readJson(await resolve(link), sourceRefBody);
     expect(checked).toMatchObject({ ok: true, provider: "letterboxd" });
-    const { sourceRef } = checked as { sourceRef: string };
+    const { sourceRef } = checked;
     expect(sourceRef.startsWith("share/v1:")).toBe(true);
 
     useFakeProvider(fakeAdapter("letterboxd"));
@@ -170,9 +181,9 @@ describe("renamed Letterboxd members", () => {
     const res = await resolve(
       `https://letterboxd.com/oldname/list/top-10/share/${token}/`,
     );
-    const body = await res.json();
+    const body = await readJson(res, sourceRefBody);
     expect(body).toMatchObject({ ok: true, provider: "letterboxd" });
-    const { sourceRef } = body as { sourceRef: string };
+    const { sourceRef } = body;
     expect(sourceRef.startsWith("share/v1:")).toBe(true);
     expect(sourceRef).not.toContain(token);
     expect(decryptSecret(sourceRef.slice("share/".length))).toBe(

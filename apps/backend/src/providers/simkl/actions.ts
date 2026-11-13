@@ -1,3 +1,4 @@
+import { z } from "zod";
 import {
   bucketOf,
   countNotFound,
@@ -60,7 +61,7 @@ async function buildWrite(
   intent: ActionIntent,
   target: ActionTarget,
 ): Promise<WriteRequest | null> {
-  const item: Record<string, unknown> = { ids: syncIds(target) };
+  const item = { ids: syncIds(target) };
   const series = target.type === "series";
 
   if (intent.kind === "watchlist") {
@@ -144,7 +145,7 @@ async function perform(
   if (!write) return;
   const token = await connection.getAccessToken();
   // Anime go under "shows" on every Simkl write endpoint.
-  const result = await simklRequest<unknown>(write.path, {
+  const result = await simklRequest(write.path, z.unknown(), {
     method: "POST",
     token,
     body: { [bucketOf(target)]: [write.item] },

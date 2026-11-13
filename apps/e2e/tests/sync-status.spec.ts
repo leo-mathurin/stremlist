@@ -14,6 +14,7 @@ import {
   seedList,
   seedSyncStatus,
 } from "../helpers/db.js";
+import { present } from "../helpers/json.js";
 import { seedCachedCatalog } from "../helpers/r2.js";
 import { CATALOG_FIXTURE_USER } from "../helpers/test-data.js";
 
@@ -78,10 +79,12 @@ test(
       failure_reason: "disabled",
       title_count: 2,
     });
-    expect(Date.parse(row.last_success_at!)).toBe(lastSuccess.getTime());
-    expect(Date.parse(row.failing_since!)).toBeGreaterThan(
+    expect(Date.parse(present(row.last_success_at, "last success"))).toBe(
       lastSuccess.getTime(),
     );
+    expect(
+      Date.parse(present(row.failing_since, "failing since")),
+    ).toBeGreaterThan(lastSuccess.getTime());
     expect(row.last_attempt_at).toBe(row.failing_since);
 
     const notice =
@@ -244,9 +247,9 @@ test(
       (list) => list.sourceRef === "imdb:top-rated-movies",
     );
     expect(chart).toBeDefined();
-    expect(await getSyncStatusRows(chart!.id)).toMatchObject([
-      { failure_reason: null, title_count: 250 },
-    ]);
+    expect(
+      await getSyncStatusRows(present(chart, "the chart List").id),
+    ).toMatchObject([{ failure_reason: null, title_count: 250 }]);
 
     await page.reload();
     await expect(updated).toBeVisible();

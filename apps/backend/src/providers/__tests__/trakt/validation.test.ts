@@ -1,13 +1,20 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import { traktProvider } from "../../trakt";
 import {
   calls,
   connection,
-  expectReason,
   resetTraktTest,
   restoreTraktTest,
   route,
   status,
+  unavailableReason,
 } from "./harness";
 
 vi.mock("../../http", async (importOriginal) => {
@@ -38,12 +45,13 @@ describe("Trakt validateSource", () => {
   it("checks that a user exists before accepting a watchlist", async () => {
     route("GET /users/ghost", status(404));
     route("GET /users/ghost/watchlist", []);
-    await expectReason(
-      traktProvider.validateSource("users/ghost/watchlist", {
-        connection: null,
-      }),
-      "not_found",
-    );
+    expect(
+      await unavailableReason(
+        traktProvider.validateSource("users/ghost/watchlist", {
+          connection: null,
+        }),
+      ),
+    ).toBe("not_found");
   });
 
   it("names a public watchlist after its user", async () => {
@@ -67,12 +75,13 @@ describe("Trakt validateSource", () => {
 
   it("reports a private watchlist", async () => {
     route("GET /users/hidden", status(401));
-    await expectReason(
-      traktProvider.validateSource("users/hidden/watchlist", {
-        connection: null,
-      }),
-      "private",
-    );
+    expect(
+      await unavailableReason(
+        traktProvider.validateSource("users/hidden/watchlist", {
+          connection: null,
+        }),
+      ),
+    ).toBe("private");
   });
 
   it("treats Trakt's 204 for a missing list as not_found", async () => {
@@ -105,10 +114,11 @@ describe("Trakt validateSource", () => {
   });
 
   it("personal Source lists need a Connection, and up next shows series", async () => {
-    await expectReason(
-      traktProvider.validateSource("me/up-next", { connection: null }),
-      "needs_connection",
-    );
+    expect(
+      await unavailableReason(
+        traktProvider.validateSource("me/up-next", { connection: null }),
+      ),
+    ).toBe("needs_connection");
     route("GET /users/settings", { user: { username: "leo" } });
     await expect(
       traktProvider.validateSource("me/up-next", { connection: connection() }),

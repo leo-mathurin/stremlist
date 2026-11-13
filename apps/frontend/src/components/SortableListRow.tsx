@@ -3,7 +3,6 @@ import {
   SORT_OPTIONS,
   DISPLAY_MODE_OPTIONS,
 } from "@stremlist/shared/constants";
-import type { DisplayMode } from "@stremlist/shared/constants";
 import {
   CHART_BY_ID,
   CHART_REGISTRY,
@@ -384,13 +383,13 @@ export default function SortableListRow({
                   </Label>
                   <Select
                     value={list.displayMode}
-                    onValueChange={(value) =>
-                      onFieldChange(
-                        list.localId,
-                        "displayMode",
-                        value as DisplayMode,
-                      )
-                    }
+                    onValueChange={(value) => {
+                      const mode = DISPLAY_MODE_OPTIONS.find(
+                        (option) => option.value === value,
+                      )?.value;
+                      if (mode)
+                        onFieldChange(list.localId, "displayMode", mode);
+                    }}
                   >
                     <SelectTrigger
                       id={showId}

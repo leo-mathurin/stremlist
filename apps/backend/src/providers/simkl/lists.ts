@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { sourceErrorFromHttp } from "../http";
 import { readPages } from "../paging";
 import type {
@@ -9,8 +10,8 @@ import type {
 import { SourceUnavailableError } from "../types";
 import { simklRequest } from "./api";
 import { toEntry } from "./entries";
-import type { RawIds, SimklKind, SimklTitle } from "./library";
-import { parseIds, syncLibrary, toInt } from "./library";
+import type { SimklKind, SimklTitle } from "./library";
+import { parseIds, rawIdsSchema, syncLibrary, toInt } from "./library";
 import { listKey, readState, STATE_VERSION, writeState } from "./state";
 
 /** Auto lists are rebuilt daily without moving /sync/activities. */
@@ -19,36 +20,57 @@ const LIST_PAGE_LIMIT = 500;
 // Simkl refuses page * limit above 10000.
 const LIST_MAX_PAGES = 20;
 
-interface RawListItem {
-  title?: string;
-  year?: number | null;
-  type?: string;
-  anime_type?: string | null;
-  ids?: RawIds;
-}
+const rawListItemSchema = z.object({
+  title: z.string().nullish(),
+  year: z.number().nullish(),
+  type: z.string().nullish(),
+  anime_type: z.string().nullish(),
+  ids: rawIdsSchema.nullish(),
+});
+type RawListItem = z.infer<typeof rawListItemSchema>;
 
-interface RawListPage {
-  error?: string;
-  name?: string;
-  type?: string;
-  media_type?: string;
-  items?: RawListItem[];
-  pagination?: { total_pages?: number };
-}
+const rawListPageSchema = z.object({
+  error: z.string().nullish(),
+  name: z.string().nullish(),
+  type: z.string().nullish(),
+  media_type: z.string().nullish(),
+  items: z.array(rawListItemSchema).nullish(),
+  pagination: z.object({ total_pages: z.number().nullish() }).nullish(),
+});
+type RawListPage = z.infer<typeof rawListPageSchema>;
 
-interface ListSnapshot {
-  version: number;
+/** The entries that `toEntry` builds. */
+const listEntrySchema = z.object({
+  imdbId: z.string().optional(),
+  externalIds: z
+    .object({
+      simkl: z.number().optional(),
+      tmdb: z
+        .object({ id: z.number(), type: z.enum(["movie", "series"]) })
+        .optional(),
+    })
+    .optional(),
+  type: z.enum(["movie", "series"]).optional(),
+  title: z.string().optional(),
+  year: z.number().optional(),
+  sourceUrl: z.string().optional(),
+  addedAt: z.string().optional(),
+});
+
+const listSnapshotSchema = z.object({
+  version: z.number(),
   /** The authorization that read the list (`ConnectionAccess`). */
-  authorization: string;
+  authorization: z.string(),
   /** custom_lists.lists.all from /sync/activities when the list was read. */
-  gate: string;
-  listType?: string;
-  premiumOnly?: boolean;
-  fetchedAt: number;
-  entries: SourceEntry[];
+  gate: z.string(),
+  listType: z.string().optional(),
+  premiumOnly: z.boolean().optional(),
+  fetchedAt: z.number(),
+  entries: z.array(listEntrySchema),
   /** False when LIST_MAX_PAGES cut the list short. */
-  complete: boolean;
-}
+  complete: z.boolean(),
+});
+type ListSnapshot = z.infer<typeof listSnapshotSchema>;
 
 function premiumOnlyError(): SourceUnavailableError {
   return new SourceUnavailableError(
@@ -66,7 +88,7 @@ export async function readListPage(
 ): Promise<RawListPage> {
   let data: RawListPage;
   try {
-    data = await simklRequest<RawListPage>(`/lists/${listId}`, {
+    data = await simklRequest(`/lists/${listId}`, rawListPageSchema, {
       token,
       params: { limit: String(limit), page: String(page) },
     });
@@ -111,7 +133,7 @@ function parseListItem(item: RawListItem): SimklTitle | null {
     simkl,
     kind: listItemKind(item),
     ...ids,
-    title: item.title,
+    title: item.title ?? undefined,
     year: toInt(item.year),
     animeType: item.anime_type ?? undefined,
   };
@@ -125,7 +147,7 @@ export async function fetchCustomList(
   const library = await syncLibrary(connection);
   const gate = library.activities.custom_lists?.lists?.all ?? null;
   const key = listKey(connection.accountId, listId);
-  const previous = await readState<ListSnapshot>(key);
+  const previous = await readState(key, listSnapshotSchema);
   if (
     gate &&
     previous?.version === STATE_VERSION &&
@@ -163,7 +185,7 @@ export async function fetchCustomList(
       first: 1,
       async page(page) {
         const data = await readListPage(token, listId, page, LIST_PAGE_LIMIT);
-        listType = data.type;
+        listType = data.type ?? undefined;
         return {
           items: (data.items ?? []).flatMap((item) => {
             const title = parseListItem(item);

@@ -5,7 +5,7 @@ import {
   sourceRequiresConnection,
 } from "../providers";
 import { sourceHasAddedDates } from "../list-merge";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 const JUSTWATCH_ID = "tl-us-0f1e2d3c-4b5a-4968-8776-655443322110";
 

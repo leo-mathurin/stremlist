@@ -1,18 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-import { describe, it, expect, beforeEach, vi } from "vitest";
-
-const { backgroundMocks, prewarmMocks, rpcMocks, supabaseMocks } =
-  await vi.hoisted(() => import("./helpers/config-api-mocks.js"));
-vi.mock("../lib/background", () => backgroundMocks);
-vi.mock("../services/list-prewarm", () => prewarmMocks);
-vi.mock("../lib/supabase", () => supabaseMocks);
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
-vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
-
+import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
 import * as scraper from "../services/imdb-scraper";
 import {
   getConfig,
@@ -35,6 +21,17 @@ import {
   useFakeProvider,
 } from "./helpers/mock-registry.js";
 import { db } from "./helpers/mock-supabase.js";
+import { configBody, errorBody, readJson } from "./helpers/json.js";
+
+const { backgroundMocks, prewarmMocks, rpcMocks, supabaseMocks } =
+  await vi.hoisted(() => import("./helpers/config-api-mocks.js"));
+vi.mock("../lib/background", () => backgroundMocks);
+vi.mock("../services/list-prewarm", () => prewarmMocks);
+vi.mock("../lib/supabase", () => supabaseMocks);
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
+vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
+vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
 
 beforeEach(resetConfigTest);
 
@@ -72,7 +69,7 @@ describe("List CRUD via the config API", () => {
     it("returns empty lists when none exist", async () => {
       const res = await getConfig(OWNER);
       expect(res.status).toBe(200);
-      const data = await res.json();
+      const data = await readJson(res, configBody);
       expect(data.lists).toEqual([]);
       expect(data.rpdbApiKey).toBeNull();
       expect(typeof data.lastFetchedAt).toBe("string");
@@ -87,7 +84,7 @@ describe("List CRUD via the config API", () => {
       });
       seedWatchlist({ id: UUID_1, catalogTitle: "Movies" });
 
-      const data = await (await getConfig(OWNER)).json();
+      const data = await readJson(await getConfig(OWNER), configBody);
 
       expect(data.lists).toMatchObject([
         {
@@ -115,7 +112,7 @@ describe("List CRUD via the config API", () => {
       });
       seedConnection(legacyAccountId, "trakt");
 
-      const data = await (await getConfig(OWNER)).json();
+      const data = await readJson(await getConfig(OWNER), configBody);
 
       expect(data.access).toBe("legacy");
       expect(data.accountId).toBeNull();
@@ -141,7 +138,7 @@ describe("List CRUD via the config API", () => {
       });
       seedConnection(account.id, "trakt", { username: "leo" });
 
-      const data = await (await getConfig(account.id)).json();
+      const data = await readJson(await getConfig(account.id), configBody);
 
       expect(data).toMatchObject({
         access: "private",
@@ -181,7 +178,7 @@ describe("List CRUD via the config API", () => {
       });
 
       expect(res.status).toBe(400);
-      const data = await res.json();
+      const data = await readJson(res, errorBody);
       expect(data.error).toBe("Each list can only be added once.");
       expect(rpcMocks.rpc).not.toHaveBeenCalled();
       expect(backgroundMocks.scheduleBackgroundTask).not.toHaveBeenCalled();
@@ -312,7 +309,7 @@ describe("List CRUD via the config API", () => {
       });
 
       expect(res.status).toBe(400);
-      expect((await res.json()).error).toBe(
+      expect((await readJson(res, errorBody)).error).toBe(
         "Each list can only be added once.",
       );
     });
@@ -327,7 +324,7 @@ describe("List CRUD via the config API", () => {
       });
 
       expect(res.status).toBe(400);
-      expect((await res.json()).error).toContain('"p.nobody"');
+      expect((await readJson(res, errorBody)).error).toContain('"p.nobody"');
     });
 
     it("does not ask IMDb to resolve a p. handle while IMDb is turned off", async () => {
@@ -339,7 +336,7 @@ describe("List CRUD via the config API", () => {
       });
 
       expect(res.status).toBe(400);
-      expect((await res.json()).error).toBe(
+      expect((await readJson(res, errorBody)).error).toBe(
         "IMDb is temporarily unavailable. Please try again later.",
       );
       expect(normalize).not.toHaveBeenCalled();
@@ -380,7 +377,9 @@ describe("List CRUD via the config API", () => {
         });
 
         expect(res.status).toBe(400);
-        expect((await res.json()).error).toContain("private Addon URL");
+        expect((await readJson(res, errorBody)).error).toContain(
+          "private Addon URL",
+        );
       },
     );
 
@@ -397,7 +396,7 @@ describe("List CRUD via the config API", () => {
         });
 
         expect(res.status).toBe(400);
-        expect((await res.json()).error).toBe(
+        expect((await readJson(res, errorBody)).error).toBe(
           `Connect your ${label} account first.`,
         );
       },

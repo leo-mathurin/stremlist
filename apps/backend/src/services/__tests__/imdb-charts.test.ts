@@ -1,6 +1,13 @@
 import { IMDB_WATCHLIST_SOURCE_ID_PATTERN } from "@stremlist/shared/constants";
 import { CHART_REGISTRY, isChartId } from "@stremlist/shared/imdb-charts";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+} from "vite-plus/test";
 import { fetchChart, normalizeImdbUserId } from "../imdb-scraper.js";
 
 function titleNode(id: string, title = "Test Title", type = "Movie") {
@@ -18,7 +25,7 @@ function titleNode(id: string, title = "Test Title", type = "Movie") {
   };
 }
 
-function respondWith(data: object) {
+function respondWith(data: Record<string, unknown>) {
   vi.mocked(globalThis.fetch).mockResolvedValueOnce(
     new Response(JSON.stringify({ data }), {
       status: 200,

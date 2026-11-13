@@ -1,6 +1,10 @@
 # Turborepo
 .turbo/
 
+# Vite+ hook dispatcher and Vitest attachments
+.vite-hooks/_/
+.vitest/
+
 # Dependencies
 node_modules/
 .yarn/

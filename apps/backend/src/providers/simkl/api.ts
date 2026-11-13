@@ -1,4 +1,5 @@
 import { ADDON_VERSION } from "@stremlist/shared/constants";
+import type { z } from "zod";
 import {
   HttpError,
   limitersByKey,
@@ -32,6 +33,7 @@ interface RequestOptions {
 
 export async function simklRequest<T>(
   path: string,
+  schema: z.ZodType<T>,
   options: RequestOptions,
 ): Promise<T> {
   const id = simklClient.clientId();
@@ -40,7 +42,7 @@ export async function simklRequest<T>(
   }
   const method = options.method ?? "GET";
   try {
-    const { data } = await providerFetchJson<T>(
+    const { data } = await providerFetchJson(
       new URL(path, SIMKL_API).toString(),
       {
         method,
@@ -60,7 +62,7 @@ export async function simklRequest<T>(
         retryOn429: method === "GET",
       },
     );
-    return data;
+    return schema.parse(data);
   } catch (error) {
     if (error instanceof HttpError && error.status === 401) {
       // Expired or revoked grant: the user has to connect Simkl again.

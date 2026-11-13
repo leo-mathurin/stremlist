@@ -1,26 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import { createHash } from "node:crypto";
-
-const background = vi.hoisted(() => ({
-  tasks: [] as (() => Promise<unknown>)[],
-}));
-vi.mock("../lib/background", () => ({
-  scheduleBackgroundTask: (task: () => Promise<unknown>) =>
-    background.tasks.push(task),
-}));
-vi.mock("../lib/r2", async () => await import("./helpers/mock-r2.js"));
-
-vi.mock("../lib/supabase", async () => {
-  return await import("./helpers/mock-supabase.js");
-});
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
-
 import app from "../index.js";
 import { decryptSecret } from "../lib/crypto";
 import type { OAuthConfig, ProviderAdapter } from "../providers/types";
@@ -49,6 +35,28 @@ import {
   useFakeProvider,
 } from "./helpers/mock-registry.js";
 import { db, resetRpc } from "./helpers/mock-supabase.js";
+import { z } from "zod";
+import { accountIdBody, mustString, readJson } from "./helpers/json.js";
+
+const background = vi.hoisted(() => ({
+  tasks: [] as (() => Promise<unknown>)[],
+}));
+vi.mock("../lib/background", () => ({
+  scheduleBackgroundTask: (task: () => Promise<unknown>) =>
+    background.tasks.push(task),
+}));
+vi.mock("../lib/r2", async () => await import("./helpers/mock-r2.js"));
+
+vi.mock("../lib/supabase", async () => {
+  return await import("./helpers/mock-supabase.js");
+});
+vi.mock("../services/list-cache", async () => {
+  return await import("./helpers/mock-list-cache.js");
+});
+vi.mock("../providers/registry", async () => {
+  return await import("./helpers/mock-registry.js");
+});
+vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 
 const AUTHORIZE_URL = "https://trakt.example/oauth/authorize";
 const TOKEN_URL = "https://api.trakt.example/oauth/token";
@@ -75,11 +83,23 @@ function useOAuthProvider(overrides: Partial<OAuthConfig> = {}) {
   );
 }
 
+const oauthStateRow = z
+  .object({
+    state: z.string(),
+    code_verifier: z.string(),
+    expires_at: z.string(),
+  })
+  .loose();
+
 function stateRow() {
   const row = db.getTable("oauth_states").at(0);
   if (!row) throw new Error("no pending authorization");
-  return row;
+  return oauthStateRow.parse(row);
 }
+
+const startBody = z
+  .object({ ok: z.boolean(), authorizeUrl: z.string(), browserKey: z.string() })
+  .loose();
 
 const BROWSER_KEY = "browser-key-1";
 
@@ -174,7 +194,7 @@ describe("startAuthorization", () => {
       redirect_uri: "https://api.stremlist.test/oauth/trakt/callback",
       state: row.state,
       code_challenge: createHash("sha256")
-        .update(row.code_verifier as string)
+        .update(row.code_verifier)
         .digest("base64url"),
       code_challenge_method: "S256",
       scope: "public private",
@@ -182,14 +202,14 @@ describe("startAuthorization", () => {
     expect(row).toMatchObject({ account_id: accountId, provider: "trakt" });
     expect(row.code_verifier).toMatch(/^[A-Za-z0-9_-]{43,128}$/);
     // The verifier itself never leaves the server.
-    expect(url.toString()).not.toContain(row.code_verifier as string);
+    expect(url.toString()).not.toContain(row.code_verifier);
     // Only the browser keeps its key; the server keeps a hash.
     expect(browserKey).toMatch(/^[A-Za-z0-9_-]{43,}$/);
     expect(url.toString()).not.toContain(browserKey);
     expect(row.browser_key_hash).toBe(
       createHash("sha256").update(browserKey).digest("base64url"),
     );
-    const ttl = Date.parse(row.expires_at as string) - Date.now();
+    const ttl = Date.parse(row.expires_at) - Date.now();
     expect(ttl).toBeGreaterThan(14 * 60_000);
     expect(ttl).toBeLessThanOrEqual(15 * 60_000);
   });
@@ -222,7 +242,7 @@ describe("startAuthorization", () => {
       const res = await app.request(`/${accountId}/connections/trakt/start`, {
         method: "POST",
       });
-      const { authorizeUrl } = (await res.json()) as { authorizeUrl: string };
+      const { authorizeUrl } = await readJson(res, startBody);
 
       expect(new URL(authorizeUrl).searchParams.get("redirect_uri")).toBe(
         "https://api.stremlist.com/oauth/trakt/callback",
@@ -245,11 +265,7 @@ describe("POST /:accountId/connections/:provider/start", () => {
     });
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      ok: boolean;
-      authorizeUrl: string;
-      browserKey: string;
-    };
+    const body = await readJson(res, startBody);
     expect(body.ok).toBe(true);
     expect(body.authorizeUrl.startsWith(AUTHORIZE_URL)).toBe(true);
     expect(body.browserKey).toEqual(expect.any(String));
@@ -318,7 +334,12 @@ describe("GET /:accountId/connections/:provider/sources", () => {
     seedConnection(accountId, "trakt");
 
     const res = await app.request(`/${accountId}/connections/trakt/sources`);
-    const body = (await res.json()) as { sources: { ref: string }[] };
+    const body = await readJson(
+      res,
+      z.object({
+        sources: z.array(z.object({ ref: z.string() }).loose()),
+      }),
+    );
 
     expect(body.sources.map((source) => source.ref)).toContain("me/lists/42");
     expect(listConnectionSources).toHaveBeenCalledOnce();
@@ -346,10 +367,7 @@ describe("OAuth login CSRF", () => {
     const start = await app.request(`/${accountId}/connections/trakt/start`, {
       method: "POST",
     });
-    const { authorizeUrl, browserKey } = (await start.json()) as {
-      authorizeUrl: string;
-      browserKey: string;
-    };
+    const { authorizeUrl, browserKey } = await readJson(start, startBody);
     fetchMock.mockResolvedValue(Response.json({ access_token: "victim" }));
     fetchUsername.mockResolvedValue("victim");
     return {
@@ -525,7 +543,9 @@ describe("POST /connections/:provider/complete", () => {
     expect(url).toBe(TOKEN_URL);
     expect(init?.method).toBe("POST");
     expect(
-      Object.fromEntries(new URLSearchParams(init?.body as string)),
+      Object.fromEntries(
+        new URLSearchParams(mustString(init?.body, "the token request body")),
+      ),
     ).toEqual({
       client_id: "client-123",
       client_secret: "secret-456",
@@ -548,8 +568,12 @@ describe("POST /connections/:provider/complete", () => {
       // Kept for refreshes, which must send the same redirect URI.
       redirect_uri: "http://localhost/oauth/trakt/callback",
     });
-    expect(decryptSecret(row.access_token as string)).toBe("access-1");
-    expect(decryptSecret(row.refresh_token as string)).toBe("refresh-1");
+    expect(decryptSecret(mustString(row.access_token, "access_token"))).toBe(
+      "access-1",
+    );
+    expect(decryptSecret(mustString(row.refresh_token, "refresh_token"))).toBe(
+      "refresh-1",
+    );
     expect(JSON.stringify(row)).not.toContain("access-1");
     // The state is single use.
     expect(db.getTable("oauth_states")).toEqual([]);
@@ -596,7 +620,10 @@ describe("POST /connections/:provider/complete", () => {
     });
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { accountId: string; created: boolean };
+    const body = await readJson(
+      res,
+      accountIdBody.extend({ created: z.boolean() }),
+    );
     expect(body.created).toBe(true);
     expect(body.accountId).toMatch(/^sl_[0-9A-Za-z]{22}$/);
     expect(db.getTable("accounts")).toHaveLength(before + 1);

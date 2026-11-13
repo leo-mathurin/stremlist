@@ -1,4 +1,5 @@
-import type { Plugin } from "vite";
+import type { ServerResponse } from "node:http";
+import type { Plugin, ViteDevServer } from "vite";
 import { SITE } from "../src/content/site";
 import { headTags } from "../src/lib/seo";
 import {
@@ -41,12 +42,23 @@ export function pageHtml(html: string, path: string): string {
     .replace("<!-- page-head -->", `${tags}\n    <!-- page-head -->`);
 }
 
+async function sendAiResponse(
+  request: Request,
+  backendUrl: string,
+  res: ServerResponse,
+): Promise<void> {
+  const response = await handleAiRequest(request, backendUrl);
+  res.statusCode = response.status;
+  response.headers.forEach((value, key) => res.setHeader(key, value));
+  res.end(Buffer.from(await response.arrayBuffer()));
+}
+
 export function aiPages(backendUrl: string): Plugin {
   const configure = (
-    server: Pick<import("vite").ViteDevServer, "middlewares">,
+    server: Pick<ViteDevServer, "middlewares">,
     built = false,
   ) => {
-    server.middlewares.use(async (req, res, next) => {
+    server.middlewares.use((req, res, next) => {
       const url = new URL(req.url ?? "/", "http://localhost");
       const headers = new Headers();
       for (const [key, value] of Object.entries(req.headers)) {
@@ -55,14 +67,7 @@ export function aiPages(backendUrl: string): Plugin {
       }
       const request = new Request(url, { method: req.method, headers });
       if (aiRequestPath(request) !== null) {
-        try {
-          const response = await handleAiRequest(request, backendUrl);
-          res.statusCode = response.status;
-          response.headers.forEach((value, key) => res.setHeader(key, value));
-          res.end(Buffer.from(await response.arrayBuffer()));
-        } catch (error) {
-          next(error);
-        }
+        sendAiResponse(request, backendUrl, res).catch(next);
         return;
       }
       for (const [key, value] of Object.entries(htmlHeaders(url.pathname)))

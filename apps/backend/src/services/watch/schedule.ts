@@ -9,6 +9,7 @@
  * - When `timeWatched` has not moved for 5 minutes, the playback stopped:
  *   read every 30 minutes until the expected end, then stop.
  */
+import { z } from "zod";
 import type { LibraryItem } from "../stremio";
 import { mtimeOf } from "./library";
 
@@ -22,13 +23,15 @@ const AFTER_END_MS = 3 * 60 * MINUTE;
 const DEFAULT_DURATION_MS = { movie: 120 * MINUTE, series: 45 * MINUTE };
 
 /** What was watched when the cycle started. */
-export interface StartState {
-  timesWatched?: number;
+export const startStateSchema = z.object({
+  timesWatched: z.number().optional(),
   /** The series' `watched` field. */
-  bits?: string;
-}
+  bits: z.string().optional(),
+});
+type StartState = z.infer<typeof startStateSchema>;
 
-export type Phase = "warmup" | "wait" | "flip" | "stalled";
+export const PHASES = ["warmup", "wait", "flip", "stalled"] as const;
+type Phase = (typeof PHASES)[number];
 
 export interface ReadRow {
   itemType: "movie" | "series";

@@ -7,6 +7,7 @@ import {
   postConfig,
 } from "../helpers/api.js";
 import { resetDb, seedImdbAccount } from "../helpers/db.js";
+import { present } from "../helpers/json.js";
 import {
   discoverItemTitles,
   discoverUrl,
@@ -91,7 +92,7 @@ test(
       (list) => list.sourceRef === "imdb:box-office",
     );
     expect(chart).toBeDefined();
-    const catalogId = `wl-${chart!.id}-movie`;
+    const catalogId = `wl-${present(chart, "the chart List").id}-movie`;
     const { metas } = await getCatalog(accountId, "movie", catalogId);
     expect(metas.length).toBeGreaterThan(0);
 

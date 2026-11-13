@@ -6,17 +6,28 @@ import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { DisplayMode } from "@stremlist/shared/constants";
 import type { Database } from "@stremlist/shared/database";
 import type { ProviderId } from "@stremlist/shared/providers";
-import { vi } from "vitest";
+import { vi } from "vite-plus/test";
+import { z } from "zod";
 
 import app from "../../index.js";
 import { backgroundMocks, prewarmMocks, rpcMocks } from "./config-api-mocks.js";
 import { LIST_IDS, seedLegacyAccount, seedList } from "./fixtures.js";
 import { cache } from "./mock-list-cache.js";
 import { r2Objects, r2Undeletable } from "./mock-r2.js";
+import { json } from "./json.js";
 import { resetProviders } from "./mock-registry.js";
 import { callRpc, db } from "./mock-supabase.js";
 
 type ReplaceConfig = Database["public"]["Functions"]["replace_account_config"];
+
+const replaceConfigArgs = z.object({
+  p_account_id: z.string(),
+  p_action_providers: z.array(z.string()).nullable(),
+  p_actions_enabled: z.boolean().nullable(),
+  p_lists: json,
+  p_new_titles_catalog: z.boolean().nullable().optional(),
+  p_rpdb_api_key: z.string().nullable(),
+}) satisfies z.ZodType<ReplaceConfig["Args"]>;
 
 // The legacy install of OWNER reaches its Account through the Legacy alias.
 export const OWNER = "ur12345678";
@@ -86,12 +97,12 @@ export function postConfig(accountKey: string, body: ConfigBody) {
 }
 
 export function rpcArgs(call = 0): ReplaceConfig["Args"] {
-  return rpcMocks.rpc.mock.calls[call][1] as ReplaceConfig["Args"];
+  return replaceConfigArgs.parse(rpcMocks.rpc.mock.calls[call][1]);
 }
 
 export async function runScheduledTasks() {
   for (const [task] of backgroundMocks.scheduleBackgroundTask.mock.calls) {
-    await (task as () => Promise<void>)();
+    await task();
   }
 }
 

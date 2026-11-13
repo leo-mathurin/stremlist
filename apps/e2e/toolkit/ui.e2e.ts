@@ -1,6 +1,5 @@
 import { test, type Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
-import type { AccountConfigInput } from "@stremlist/shared/stremio.types";
 import {
   SAVED_REINSTALL,
   SAVED_WITH_CHANGES,
@@ -14,6 +13,7 @@ import {
   imdbUser,
   legacyConfiguration,
   parseBody,
+  isConfigInput,
   resolved,
   routeCreateAccount,
   routeResolve,
@@ -435,7 +435,7 @@ test("save errors preserve changes and allow a successful retry", async ({
   let rejected = true;
   await browser.route(`${backend}/${accountId}/config`, async (route) => {
     if (route.request.method === "POST") {
-      const submitted = parseBody<AccountConfigInput>(route);
+      const submitted = parseBody(route, isConfigInput);
       await route.fulfill({
         status: rejected ? 400 : 200,
         json: rejected

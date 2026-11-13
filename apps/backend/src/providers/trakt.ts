@@ -1,10 +1,11 @@
+import { z } from "zod";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
 import { providerFetch, providerFetchJson } from "./http";
 import { traktActions } from "./trakt/actions";
 import {
   nonEmpty,
   TRAKT_API,
-  traktGetJson,
+  traktGetParsed,
   TRAKT_AUTH,
   traktClient,
   traktHeaders,
@@ -17,6 +18,22 @@ import {
 } from "./trakt/sources";
 import type { ProviderAdapter } from "./types";
 import { SourceUnavailableError } from "./types";
+
+const traktOwnListSchema = z.object({
+  name: z.string().optional(),
+  ids: z
+    .object({ slug: z.string().optional(), trakt: z.number().optional() })
+    .optional(),
+});
+
+const traktSettingsSchema = z.object({
+  user: z
+    .object({
+      username: z.string().nullish(),
+      ids: z.object({ slug: z.string().nullish() }).optional(),
+    })
+    .optional(),
+});
 
 /** Public Source lists share the app's quota of 500 GETs per 5 minutes. */
 const PUBLIC_FRESHNESS_MS = 6 * 60 * 60_000;
@@ -67,9 +84,11 @@ export const traktProvider: ProviderAdapter = {
   // The user's own lists, so the configure page can offer them in one click.
   async listConnectionSources(connection) {
     const lists =
-      (await traktGetJson<
-        { name?: string; ids?: { slug?: string; trakt?: number } }[]
-      >("/users/me/lists", connection)) ?? [];
+      (await traktGetParsed(
+        "/users/me/lists",
+        z.array(traktOwnListSchema),
+        connection,
+      )) ?? [];
     return lists.flatMap((list) => {
       const id = list.ids?.slug ?? list.ids?.trakt;
       return id === undefined
@@ -104,13 +123,12 @@ export const traktProvider: ProviderAdapter = {
       });
     },
     async fetchUsername(accessToken) {
-      const { data } = await providerFetchJson<{
-        user?: { username?: string | null; ids?: { slug?: string | null } };
-      }>(`${TRAKT_API}/users/settings`, {
+      const { data } = await providerFetchJson(`${TRAKT_API}/users/settings`, {
         headers: traktHeaders(),
         bearer: accessToken,
       });
-      return nonEmpty(data.user?.username) ?? nonEmpty(data.user?.ids?.slug);
+      const { user } = traktSettingsSchema.parse(data);
+      return nonEmpty(user?.username) ?? nonEmpty(user?.ids?.slug);
     },
   },
 };

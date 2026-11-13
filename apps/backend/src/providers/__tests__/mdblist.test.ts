@@ -1,5 +1,12 @@
 import { parseSourceLink } from "@stremlist/shared/providers";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import { listMdblistUserSources, mdblistProvider } from "../mdblist";
 import type { ActionIntent, ActionTarget, ConnectionAccess } from "../types";
 import { ConnectionExpiredError, SourceUnavailableError } from "../types";
@@ -82,8 +89,15 @@ function defined<T>(value: T | undefined): T {
   return value;
 }
 
+function textBody(call: Call): string {
+  if (typeof call.init.body !== "string") {
+    throw new Error("Expected a text request body");
+  }
+  return call.init.body;
+}
+
 function bodyOf(call: Call): unknown {
-  return JSON.parse(call.init.body as string);
+  return JSON.parse(textBody(call));
 }
 
 beforeEach(() => {
@@ -323,7 +337,7 @@ describe("mdblistProvider.fetchSource", () => {
       .fetchSource("lists/14", ctx())
       .catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(SourceUnavailableError);
-    expect((error as SourceUnavailableError).reason).toBe(reason);
+    expect(error).toHaveProperty("reason", reason);
   });
 
   it("lets an expired Connection through, for the caller to ask for renewal", async () => {
@@ -503,7 +517,12 @@ describe("mdblistProvider.actions", () => {
   });
 
   it("reads membership from the watchlist, watched and ratings syncs", async () => {
-    const sync = (page: object) =>
+    type SyncPage = Partial<
+      Record<"movies" | "shows" | "seasons" | "episodes", unknown[]> & {
+        pagination: { has_more: boolean; next_cursor?: string };
+      }
+    >;
+    const sync = (page: SyncPage) =>
       Response.json({
         movies: [],
         shows: [],
@@ -649,7 +668,7 @@ describe("mdblistProvider.oauth", () => {
     expect(calls[0].url.toString()).toBe(
       "https://api.mdblist.com/oauth/revoke_token/",
     );
-    const body = new URLSearchParams(calls[0].init.body as string);
+    const body = new URLSearchParams(textBody(calls[0]));
     expect(Object.fromEntries(body)).toEqual({
       token: "token",
       client_id: "client-id",

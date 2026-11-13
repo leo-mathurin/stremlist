@@ -8,6 +8,7 @@ import {
 } from "../helpers/db.js";
 import type { FixtureBackend } from "../helpers/fixture-backend.js";
 import { startFixtureBackend } from "../helpers/fixture-backend.js";
+import { present } from "../helpers/json.js";
 
 // Provider links against the real backend, database and R2 store: the real
 // adapters resolve links and read Source lists, and a separate backend with
@@ -94,7 +95,7 @@ test(
       listInput("senscritique", "users/fixture-user/wishes", SPLIT),
     ]);
     expect(created.status).toBe(200);
-    const accountId = created.body.accountId!;
+    const accountId = present(created.body.accountId, "the new Account ID");
     const { lists } = (await api.getConfig(accountId)).body;
     expect(lists.map((row) => row.provider)).toEqual([
       "trakt",
@@ -179,7 +180,7 @@ test(
       listInput("trakt", "popular", SPLIT),
     ]);
     expect(created.status).toBe(200);
-    const publicId = created.body.accountId!;
+    const publicId = present(created.body.accountId, "the new Account ID");
     for (const row of (await api.getConfig(publicId)).body.lists) {
       expect(await catalogs(publicId, row.id)).toEqual(BOTH);
     }
@@ -235,7 +236,10 @@ test(
     );
     expect(
       new URL(
-        progress.find((entry) => entry.url.includes("/watched"))!.url,
+        present(
+          progress.find((entry) => entry.url.includes("/watched")),
+          "the watched progress read",
+        ).url,
       ).searchParams.get("hide_completed"),
     ).toBe("true");
     const personal = backend.requests(

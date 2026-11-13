@@ -16,6 +16,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
+import { isRecord, isString, parseJson } from "./helpers/json.js";
 
 const root = import.meta.dirname;
 const cacheDir = join(root, ".e2e/cache");
@@ -44,17 +45,61 @@ interface Report {
     results: Result[];
   };
 }
-interface CacheEntry {
-  schemaVersion?: string;
-  payload?: {
-    recordedFor?: {
-      testId?: string;
-      instructionDigest?: string;
-      callIndex?: number;
+/** A trace-1 recording with its test and goal. */
+interface Recording {
+  schemaVersion: "trace-1";
+  payload: {
+    recordedFor: {
+      testId: string;
+      instructionDigest: string;
+      callIndex: number;
     };
-    startPath?: string;
-    endPath?: string;
+    startPath?: unknown;
+    endPath?: unknown;
   };
+}
+
+function isRecording(value: unknown): value is Recording {
+  if (!isRecord(value) || value.schemaVersion !== "trace-1") return false;
+  const { payload } = value;
+  if (!isRecord(payload) || !isRecord(payload.recordedFor)) return false;
+  const { testId, instructionDigest, callIndex } = payload.recordedFor;
+  return (
+    isString(testId) &&
+    testId !== "" &&
+    isString(instructionDigest) &&
+    instructionDigest !== "" &&
+    typeof callIndex === "number"
+  );
+}
+
+function isStep(value: unknown): value is Step {
+  return isRecord(value) && isString(value.label);
+}
+
+function isResult(value: unknown): value is Result {
+  return (
+    isRecord(value) &&
+    isString(value.testId) &&
+    typeof value.selected === "boolean" &&
+    Array.isArray(value.attempts) &&
+    value.attempts.every(
+      (attempt) =>
+        isRecord(attempt) &&
+        Array.isArray(attempt.steps) &&
+        attempt.steps.every(isStep),
+    )
+  );
+}
+
+function isReport(value: unknown): value is Report {
+  return (
+    isRecord(value) &&
+    isRecord(value.run) &&
+    isRecord(value.run.summary) &&
+    Array.isArray(value.run.results) &&
+    value.run.results.every(isResult)
+  );
 }
 
 /** The digest the e2e cache key uses for a goal (normalized template text). */
@@ -67,8 +112,10 @@ const keyOf = (testId: string, digest: string, callIndex: number) =>
   `${testId}\n${digest}\n${String(callIndex)}`;
 
 /** A route of a recording: relative, or on one of the toolkit origins. */
-function onToolkitOrigin(path: string | undefined): boolean {
-  if (!path || path.startsWith("/")) return true;
+function onToolkitOrigin(path: unknown): boolean {
+  if (!path) return true;
+  if (!isString(path)) return false;
+  if (path.startsWith("/")) return true;
   try {
     return ORIGINS.has(new URL(path).origin);
   } catch {
@@ -104,25 +151,20 @@ function check(prune: boolean): boolean {
       continue;
     }
     const text = readFileSync(join(cacheDir, name), "utf8");
-    let entry: CacheEntry;
+    let entry: unknown;
     try {
-      entry = JSON.parse(text) as CacheEntry;
+      entry = JSON.parse(text);
     } catch {
       problems.push(`${where}: not JSON`);
       continue;
     }
-    const recordedFor = entry.payload?.recordedFor;
-    if (
-      entry.schemaVersion !== "trace-1" ||
-      !recordedFor?.testId ||
-      !recordedFor.instructionDigest ||
-      typeof recordedFor.callIndex !== "number"
-    ) {
+    if (!isRecording(entry)) {
       problems.push(`${where}: not a trace-1 recording with its test and goal`);
       continue;
     }
+    const { recordedFor } = entry.payload;
     if (SECRET.test(text)) problems.push(`${where}: holds a credential`);
-    for (const path of [entry.payload?.startPath, entry.payload?.endPath]) {
+    for (const path of [entry.payload.startPath, entry.payload.endPath]) {
       if (!onToolkitOrigin(path)) {
         problems.push(
           `${where}: route ${String(path)} is not on the toolkit app`,
@@ -144,7 +186,11 @@ function check(prune: boolean): boolean {
     problems.push("no .e2e/report.json: run the toolkit first");
     return report(problems, notes);
   }
-  const { run } = JSON.parse(readFileSync(reportPath, "utf8")) as Report;
+  const { run } = parseJson(
+    readFileSync(reportPath, "utf8"),
+    isReport,
+    ".e2e/report.json",
+  );
   const used = new Set<string>();
   const testIds = new Set(run.results.map((result) => result.testId));
   let goals = 0;

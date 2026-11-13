@@ -4,7 +4,6 @@ import {
   SORT_OPTIONS,
   SOURCE_REF_MAX_LENGTH,
 } from "@stremlist/shared/constants";
-import type { TitleType } from "@stremlist/shared/constants";
 import { isChartId } from "@stremlist/shared/imdb-charts";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import {
@@ -39,18 +38,21 @@ import { getListSyncStatuses } from "./sync-status";
 
 export const providerParam = z.enum(PROVIDER_IDS);
 
-const sortOptionValues = SORT_OPTIONS.map((o) => o.value) as [
-  string,
-  ...string[],
+const [firstSortOption, ...otherSortOptions] = SORT_OPTIONS;
+// Typed as strings: clients keep the sort option in a string.
+const sortOptionValues: [string, ...string[]] = [
+  firstSortOption.value,
+  ...otherSortOptions.map((o) => o.value),
 ];
-const displayModeValues = DISPLAY_MODE_OPTIONS.map((o) => o.value) as [
-  "split",
-  ...TitleType[],
-];
+const [firstDisplayMode, ...otherDisplayModes] = DISPLAY_MODE_OPTIONS;
+const displayModeValues = [
+  firstDisplayMode.value,
+  ...otherDisplayModes.map((o) => o.value),
+] as const;
 
 /** One List as the configure page submits it. */
 export const listBody = z.object({
-  id: z.string().uuid().optional(),
+  id: z.guid().optional(),
   provider: providerParam,
   sourceRef: z.string().trim().min(1).max(SOURCE_REF_MAX_LENGTH),
   catalogTitle: z
@@ -185,10 +187,16 @@ async function normalizeSource(
  * not split a merged List or erase its label; the transaction then checks
  * that the kept Source lists did not change since this read (`kept`).
  */
+interface SubmittedSources {
+  sources: ListSource[];
+  /** The saved Source lists were kept: the transaction checks them. */
+  kept: boolean;
+}
+
 function submittedSources(
   list: ListBody,
   saved: ConfigList | undefined,
-): { sources: ListSource[]; kept: boolean } {
+): SubmittedSources {
   const sameFirst =
     saved?.provider === list.provider && saved.sourceRef === list.sourceRef;
   return {

@@ -1,12 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("../../lib/supabase", async () => {
-  return await import("../../__tests__/helpers/mock-supabase");
-});
-vi.mock("../list-cache", async () => {
-  return await import("../../__tests__/helpers/mock-list-cache");
-});
-
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   seedAccount,
   seedLegacyAccount,
@@ -19,6 +11,13 @@ import {
   getAccountLists,
   resolveAccountKey,
 } from "../accounts";
+
+vi.mock("../../lib/supabase", async () => {
+  return await import("../../__tests__/helpers/mock-supabase");
+});
+vi.mock("../list-cache", async () => {
+  return await import("../../__tests__/helpers/mock-list-cache");
+});
 
 const IMDB_USER = "ur12345678";
 

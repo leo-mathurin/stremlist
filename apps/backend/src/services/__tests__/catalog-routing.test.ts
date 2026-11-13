@@ -1,5 +1,5 @@
 import type { ConfigList } from "@stremlist/shared/stremio.types";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { buildCatalogId, parseCatalogId } from "../catalog-id";
 import { buildManifestCatalogs } from "../stremio-catalogs";
 
@@ -207,9 +207,9 @@ describe("manifest catalog generation", () => {
     ],
     ["both catalogs for an unknown displayMode", "bogus", ["movie", "series"]],
   ])("emits %s", (_case, displayMode, types) => {
-    expect(
-      catalogsWithoutExtra([list({ displayMode: displayMode as never })]),
-    ).toEqual(
+    // A stored List can hold a display mode that this build does not know.
+    const stored = Object.assign(list(), { displayMode });
+    expect(catalogsWithoutExtra([stored])).toEqual(
       both(FIRST, "Stremlist Leo Picks").filter((catalog) =>
         types.includes(catalog.type),
       ),

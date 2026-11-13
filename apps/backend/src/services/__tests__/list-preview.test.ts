@@ -1,23 +1,13 @@
 import type { CatalogPreview } from "@stremlist/shared/catalog-preview";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const enrichMocks = vi.hoisted(() => ({
-  enrichTitles: vi.fn(),
-}));
-
-vi.mock("../../lib/supabase", async () => {
-  return await import("../../__tests__/helpers/mock-supabase");
-});
-vi.mock("../list-cache", async () => {
-  const cache = await import("../../__tests__/helpers/mock-list-cache");
-  return { ...cache, writeCachedList: vi.fn(cache.writeCachedList) };
-});
-vi.mock("../../providers/registry", async () => {
-  return await import("../../__tests__/helpers/mock-registry");
-});
-vi.mock("../../titles/enrich", () => enrichMocks);
-
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import {
   movie,
   seedAccount,
@@ -42,6 +32,22 @@ import {
   previewPoster,
   resetPreviewReadings,
 } from "../list-preview";
+
+const enrichMocks = vi.hoisted(() => ({
+  enrichTitles: vi.fn(),
+}));
+
+vi.mock("../../lib/supabase", async () => {
+  return await import("../../__tests__/helpers/mock-supabase");
+});
+vi.mock("../list-cache", async () => {
+  const cache = await import("../../__tests__/helpers/mock-list-cache");
+  return { ...cache, writeCachedList: vi.fn(cache.writeCachedList) };
+});
+vi.mock("../../providers/registry", async () => {
+  return await import("../../__tests__/helpers/mock-registry");
+});
+vi.mock("../../titles/enrich", () => enrichMocks);
 
 const MOVIES = [
   movie("tt0000001", {
@@ -445,13 +451,10 @@ describe("previewList: reads", () => {
   it("reads again after 30 seconds when entries were not checked yet", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     // More entries than one refresh sends through the strategies.
-    const unknown = Array.from(
-      { length: 301 },
-      (_, index): SourceEntry => ({
-        type: "movie",
-        externalIds: { tmdb: { id: index + 1, type: "movie" } },
-      }),
-    );
+    const unknown = Array.from({ length: 301 }, (_, index): SourceEntry => ({
+      type: "movie",
+      externalIds: { tmdb: { id: index + 1, type: "movie" } },
+    }));
     const fetchSource = vi.fn(() =>
       Promise.resolve({ entries: unknown, complete: true }),
     );

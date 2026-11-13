@@ -25,6 +25,7 @@ export type Database = {
           prewarm_request_generation: number;
           rpdb_api_key: string | null;
         };
+        ComputedFields: never;
         Insert: {
           action_providers?: string[];
           actions_enabled?: boolean;
@@ -74,6 +75,7 @@ export type Database = {
           scope: string | null;
           updated_at: string;
         };
+        ComputedFields: never;
         Insert: {
           access_token: string;
           account_id: string;
@@ -137,6 +139,7 @@ export type Database = {
           window_started_at: string;
           letterboxd_gate_store: undefined | null;
         };
+        ComputedFields: "letterboxd_gate_store";
         Insert: {
           floor_slowdowns?: number;
           floor_slowdowns_since?: string | null;
@@ -189,6 +192,7 @@ export type Database = {
           requests: number;
           wait_ms_total: number;
         };
+        ComputedFields: never;
         Insert: {
           duration_buckets: number[];
           duration_ms_max: number;
@@ -236,6 +240,7 @@ export type Database = {
           url: string;
           wait_ms: number;
         };
+        ComputedFields: never;
         Insert: {
           at?: string;
           body_excerpt?: string | null;
@@ -292,6 +297,7 @@ export type Database = {
           seq: number;
           waiting: boolean;
         };
+        ComputedFields: never;
         Insert: {
           due_at: string;
           expires_at: string;
@@ -320,6 +326,7 @@ export type Database = {
           source_ref: string;
           updated_at: string;
         };
+        ComputedFields: never;
         Insert: {
           list_id: string;
           provider: string;
@@ -362,6 +369,7 @@ export type Database = {
           source_ref: string;
           title_count: number | null;
         };
+        ComputedFields: never;
         Insert: {
           failing_since?: string | null;
           failure_reason?: string | null;
@@ -415,6 +423,7 @@ export type Database = {
           source_ref: string;
           updated_at: string;
         };
+        ComputedFields: never;
         Insert: {
           account_id: string;
           catalog_settings?: NonNullable<Json>;
@@ -465,6 +474,7 @@ export type Database = {
           provider: string;
           state: string;
         };
+        ComputedFields: never;
         Insert: {
           account_id?: string | null;
           browser_key_hash: string;
@@ -503,6 +513,7 @@ export type Database = {
           update_locked_until: string;
           updated_at: string;
         };
+        ComputedFields: never;
         Insert: {
           account_id: string;
           auth_key: string;
@@ -540,6 +551,7 @@ export type Database = {
           retry_after: string | null;
           strategy: string | null;
         };
+        ComputedFields: never;
         Insert: {
           external_id: string;
           imdb_id?: string | null;
@@ -568,6 +580,7 @@ export type Database = {
           last_title: Json | null;
           provider: string;
         };
+        ComputedFields: never;
         Insert: {
           account_id: string;
           enabled_at?: string;
@@ -623,6 +636,7 @@ export type Database = {
           start_state: NonNullable<Json>;
           video_id: string;
         };
+        ComputedFields: never;
         Insert: {
           account_id: string;
           cycle_started_at: string;
@@ -677,6 +691,7 @@ export type Database = {
           next_slot_at: string;
           slow_until: string;
         };
+        ComputedFields: never;
         Insert: {
           id: string;
           next_slot_at?: string;
@@ -694,6 +709,7 @@ export type Database = {
           id: string;
           last_slot_at: string;
         };
+        ComputedFields: never;
         Insert: {
           id: string;
           last_slot_at: string;
@@ -712,6 +728,7 @@ export type Database = {
           stremio_trakt: boolean;
           sweep_slot: number;
         };
+        ComputedFields: never;
         Insert: {
           account_id: string;
           baseline_at?: string | null;
@@ -755,6 +772,7 @@ export type Database = {
           uncertain: boolean;
           watched_at: string;
         };
+        ComputedFields: never;
         Insert: {
           account_id: string;
           attempts?: number;
@@ -805,24 +823,25 @@ export type Database = {
     Views: {
       letterboxd_recent_failures: {
         Row: {
-          at: string | null;
+          at: string;
           body_excerpt: string | null;
           cf_cache_status: string | null;
           cf_mitigated: string | null;
           cf_ray: string | null;
-          duration_ms: number | null;
+          duration_ms: number;
           error: string | null;
-          outcome: string | null;
-          page_kind: string | null;
-          priority: string | null;
-          probe: boolean | null;
+          outcome: string;
+          page_kind: string;
+          priority: string;
+          probe: boolean;
           rate: number | null;
           region: string | null;
           retry_after: string | null;
           status: number | null;
-          url: string | null;
-          wait_ms: number | null;
+          url: string;
+          wait_ms: number;
         };
+        ComputedFields: never;
         Relationships: [];
       };
       letterboxd_request_rates: {
@@ -834,7 +853,7 @@ export type Database = {
           failure_share: number | null;
           failures: number | null;
           max_duration_ms: number | null;
-          minute: string | null;
+          minute: string;
           p50_duration_ms_under: number | null;
           p95_duration_ms_under: number | null;
           rate_limited: number | null;
@@ -842,21 +861,23 @@ export type Database = {
           rate_min: number | null;
           requests: number | null;
         };
+        ComputedFields: never;
         Relationships: [];
       };
       user_watchlists: {
         Row: {
-          catalog_settings: Json | null;
-          catalog_title: string | null;
-          created_at: string | null;
-          display_mode: string | null;
-          id: string | null;
-          imdb_user_id: string | null;
+          catalog_settings: NonNullable<Json>;
+          catalog_title: string;
+          created_at: string;
+          display_mode: string;
+          id: string;
+          imdb_user_id: string;
           owner_user_id: string | null;
-          position: number | null;
-          sort_option: string | null;
-          updated_at: string | null;
+          position: number;
+          sort_option: string;
+          updated_at: string;
         };
+        ComputedFields: never;
         Insert: {
           catalog_settings?: Json | null;
           catalog_title?: string | null;
@@ -873,16 +894,17 @@ export type Database = {
       };
       users: {
         Row: {
-          created_at: string | null;
+          created_at: string;
           imdb_user_id: string | null;
-          is_active: boolean | null;
+          is_active: boolean;
           last_cache_served_at: string | null;
-          last_fetched_at: string | null;
+          last_fetched_at: string;
           prewarm_lease_token: string | null;
-          prewarm_locked_until: string | null;
-          prewarm_request_generation: number | null;
+          prewarm_locked_until: string;
+          prewarm_request_generation: number;
           rpdb_api_key: string | null;
         };
+        ComputedFields: never;
         Insert: {
           created_at?: string | null;
           imdb_user_id?: string | null;
@@ -1074,7 +1096,10 @@ export type Database = {
       };
       letterboxd_gate_settle: {
         Args: {
-          g: Database["public"]["Tables"]["letterboxd_gate"]["Row"];
+          g: Omit<
+            Database["public"]["Tables"]["letterboxd_gate"]["Row"],
+            Database["public"]["Tables"]["letterboxd_gate"]["ComputedFields"]
+          >;
           p_target: number;
           t: string;
         };
@@ -1109,7 +1134,12 @@ export type Database = {
         Returns: Json;
       };
       letterboxd_gate_store: {
-        Args: { g: Database["public"]["Tables"]["letterboxd_gate"]["Row"] };
+        Args: {
+          g: Omit<
+            Database["public"]["Tables"]["letterboxd_gate"]["Row"],
+            Database["public"]["Tables"]["letterboxd_gate"]["ComputedFields"]
+          >;
+        };
         Returns: undefined;
       };
       letterboxd_record: {
@@ -1297,12 +1327,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
@@ -1326,11 +1356,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
@@ -1351,11 +1381,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
@@ -1376,11 +1406,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
@@ -1393,11 +1423,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }

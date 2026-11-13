@@ -1,7 +1,8 @@
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { parseSourceLink } from "@stremlist/shared/providers";
+import type { ParsedSourceLink } from "@stremlist/shared/providers";
 import { api } from "@/lib/api";
 import { findLegacyInstall } from "@/lib/legacy-install";
 import type { LegacyInstallLookup } from "@/lib/legacy-install";
@@ -35,6 +36,23 @@ const legacyInstallLookup: LegacyInstallLookup = {
 };
 
 /**
+ * The v1 install that answers to a pasted link, or `failed` when the check
+ * could not tell.
+ */
+async function checkLegacyInstall(
+  input: string,
+  detected: ParsedSourceLink,
+): Promise<{ install: string | null } | "failed"> {
+  try {
+    return {
+      install: await findLegacyInstall(input, detected, legacyInstallLookup),
+    };
+  } catch {
+    return "failed";
+  }
+}
+
+/**
  * The Home entry: paste a list link to start a new Stremlist on Configure,
  * or paste an Addon URL to open an existing one. When a v1 install answers to
  * a pasted IMDb user ID, Home asks whether it is the user's before it opens
@@ -52,6 +70,12 @@ export default function HomeEntry() {
   const [startError, setStartError] = useState<string | null>(null);
   /** A v1 install that answers to the pasted link, until the user chooses. */
   const [found, setFound] = useState<string | null>(null);
+  const addonInput = useRef<HTMLInputElement>(null);
+
+  // The Addon URL field shows after a click on "Open it": it takes focus.
+  useEffect(() => {
+    if (showExisting) addonInput.current?.focus();
+  }, [showExisting]);
 
   const detected = parseSourceLink(link);
   const pastedAccount = extractAccountKey(link);
@@ -63,8 +87,9 @@ export default function HomeEntry() {
   })();
 
   /** `state.entry` tells the configure page that Home found this install. */
-  const openAccount = (key: string, state?: { entry: "home" }) =>
-    navigate(`/configure?account=${encodeURIComponent(key)}`, { state });
+  const openAccount = (key: string, state?: { entry: "home" }) => {
+    void navigate(`/configure?account=${encodeURIComponent(key)}`, { state });
+  };
 
   const start = async () => {
     const trimmed = link.trim();
@@ -76,24 +101,17 @@ export default function HomeEntry() {
     if (detected) {
       setChecking(true);
       setStartError(null);
-      let install: string | null;
-      try {
-        install = await findLegacyInstall(
-          trimmed,
-          detected,
-          legacyInstallLookup,
-        );
-      } catch {
+      const check = await checkLegacyInstall(trimmed, detected);
+      setChecking(false);
+      if (check === "failed") {
         // Not knowing is not "no install": a new setup could duplicate it.
         setStartError(
           "Could not check for your existing Stremlist. Please try again.",
         );
         return;
-      } finally {
-        setChecking(false);
       }
-      if (install) {
-        setFound(install);
+      if (check.install) {
+        setFound(check.install);
         return;
       }
     }
@@ -102,7 +120,10 @@ export default function HomeEntry() {
 
   const startNew = () => {
     const trimmed = link.trim();
-    navigate("/configure", trimmed ? { state: { link: trimmed } } : undefined);
+    void navigate(
+      "/configure",
+      trimmed ? { state: { link: trimmed } } : undefined,
+    );
   };
 
   const openExisting = () => {
@@ -113,7 +134,7 @@ export default function HomeEntry() {
       );
       return;
     }
-    navigate(`/configure?account=${encodeURIComponent(key)}`);
+    void navigate(`/configure?account=${encodeURIComponent(key)}`);
   };
 
   return (
@@ -220,6 +241,7 @@ export default function HomeEntry() {
           </label>
           <div className="flex gap-2">
             <input
+              ref={addonInput}
               id={addonId}
               value={addonUrl}
               onChange={(event) => {
@@ -229,7 +251,6 @@ export default function HomeEntry() {
               placeholder="https://…/manifest.json"
               autoComplete="off"
               spellCheck={false}
-              autoFocus
               className="min-w-0 flex-1 rounded-full bg-white/10 px-4 py-2.5 text-sm text-cloud outline-none ring-1 ring-transparent placeholder:text-white/40 focus:ring-brand/60"
             />
             <button

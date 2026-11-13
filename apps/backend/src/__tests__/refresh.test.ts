@@ -1,10 +1,5 @@
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
-import { describe, it, expect, beforeEach, vi } from "vitest";
-
-vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
-
+import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
 import app from "../index.js";
 import * as scraper from "../services/imdb-scraper";
 import {
@@ -15,6 +10,11 @@ import {
 } from "./helpers/fixtures.js";
 import { cache } from "./helpers/mock-list-cache.js";
 import { db, resetRpc } from "./helpers/mock-supabase.js";
+import { readJson, refreshBody } from "./helpers/json.js";
+
+vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 
 const OWNER = "ur216216210";
 const UUID_1 = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
@@ -40,13 +40,7 @@ function serveWatchlist(metas: StremioMeta[]) {
 async function refresh(key = OWNER) {
   const res = await app.request(`/${key}/refresh`, { method: "POST" });
   expect(res.status).toBe(200);
-  return (await res.json()) as {
-    lastFetchedAt: string;
-    refreshed: number;
-    failed: number;
-    total: number;
-    throttled?: boolean;
-  };
+  return readJson(res, refreshBody);
 }
 
 function cachedIds() {

@@ -1,13 +1,20 @@
 import { Hono } from "hono";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
+import type { waitUntil } from "@vercel/functions";
+import { scheduleBackgroundTask } from "../background";
 
 const vercelMocks = vi.hoisted(() => ({
-  waitUntil: vi.fn(),
+  waitUntil: vi.fn<typeof waitUntil>(),
 }));
 
 vi.mock("@vercel/functions", () => vercelMocks);
-
-import { scheduleBackgroundTask } from "../background";
 
 describe("scheduleBackgroundTask", () => {
   const originalVercel = process.env.VERCEL;
@@ -32,7 +39,7 @@ describe("scheduleBackgroundTask", () => {
     scheduleBackgroundTask(task);
 
     expect(vercelMocks.waitUntil).toHaveBeenCalledOnce();
-    const promise = vercelMocks.waitUntil.mock.calls[0][0] as Promise<unknown>;
+    const [promise] = vercelMocks.waitUntil.mock.calls[0];
     await promise;
     expect(task).toHaveBeenCalledOnce();
   });

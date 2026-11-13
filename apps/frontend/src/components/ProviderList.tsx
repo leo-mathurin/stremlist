@@ -22,7 +22,7 @@ function subtitle(
       return "Paste a link";
     case "optional":
       return "Paste a link, or connect";
-    default:
+    case "required":
       return "Connect to add lists";
   }
 }

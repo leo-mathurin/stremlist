@@ -2,8 +2,12 @@
  * The in-memory tables behind the Supabase mock: column defaults, unique
  * constraints and ON DELETE CASCADE from supabase/migrations.
  */
+import type { Gate, Waiter } from "./letterboxd-gate-rpcs";
 
-export type Row = Record<string, unknown>;
+/** A table row: column name to value. */
+export interface Row {
+  [column: string]: unknown;
+}
 export interface Result {
   data: unknown;
   error: unknown;
@@ -24,79 +28,88 @@ export function now(): string {
 }
 
 /** Column defaults from the migrations, per table. */
-const TABLE_DEFAULTS: Partial<Record<string, () => Row>> = {
-  accounts: () => ({
-    id: generateAccountId(),
-    is_active: true,
-    created_at: now(),
-    last_fetched_at: now(),
-    last_cache_served_at: null,
-    legacy_imdb_user_id: null,
-    rpdb_api_key: null,
-    actions_enabled: false,
-    action_providers: [],
-    new_titles_catalog: false,
-    prewarm_lease_token: null,
-    prewarm_locked_until: EPOCH,
-    prewarm_request_generation: 0,
+const TABLE_DEFAULTS = new Map<string, () => Row>(
+  Object.entries({
+    accounts: () => ({
+      id: generateAccountId(),
+      is_active: true,
+      created_at: now(),
+      last_fetched_at: now(),
+      last_cache_served_at: null,
+      legacy_imdb_user_id: null,
+      rpdb_api_key: null,
+      actions_enabled: false,
+      action_providers: [],
+      new_titles_catalog: false,
+      prewarm_lease_token: null,
+      prewarm_locked_until: EPOCH,
+      prewarm_request_generation: 0,
+    }),
+    lists: () => ({
+      id: crypto.randomUUID(),
+      catalog_title: "",
+      catalog_settings: {},
+      merged_sources: [],
+      source_label: null,
+      display_mode: "split",
+      position: 0,
+      sort_option: "added_at-asc",
+      created_at: now(),
+      updated_at: now(),
+    }),
+    connections: () => ({
+      authorization_version: crypto.randomUUID(),
+      provider_username: null,
+      refresh_token: null,
+      expires_at: null,
+      scope: null,
+      refresh_locked_until: EPOCH,
+      refresh_lease_token: null,
+      needs_renewal_since: null,
+      created_at: now(),
+      updated_at: now(),
+    }),
+    list_sync_status: () => ({
+      last_success_at: null,
+      title_count: null,
+      failure_reason: null,
+      failing_since: null,
+    }),
+    list_read_queue: () => ({ updated_at: now() }),
+    oauth_states: () => ({ created_at: now() }),
+    stremio_connections: () => ({
+      email: null,
+      update_locked_until: EPOCH,
+      update_lease_token: null,
+      created_at: now(),
+      updated_at: now(),
+    }),
+    title_id_map: () => ({
+      imdb_id: null,
+      strategy: null,
+      resolved_at: now(),
+      retry_after: null,
+    }),
   }),
-  lists: () => ({
-    id: crypto.randomUUID(),
-    catalog_title: "",
-    catalog_settings: {},
-    merged_sources: [],
-    source_label: null,
-    display_mode: "split",
-    position: 0,
-    sort_option: "added_at-asc",
-    created_at: now(),
-    updated_at: now(),
-  }),
-  connections: () => ({
-    authorization_version: crypto.randomUUID(),
-    provider_username: null,
-    refresh_token: null,
-    expires_at: null,
-    scope: null,
-    refresh_locked_until: EPOCH,
-    refresh_lease_token: null,
-    needs_renewal_since: null,
-    created_at: now(),
-    updated_at: now(),
-  }),
-  list_sync_status: () => ({
-    last_success_at: null,
-    title_count: null,
-    failure_reason: null,
-    failing_since: null,
-  }),
-  list_read_queue: () => ({ updated_at: now() }),
-  oauth_states: () => ({ created_at: now() }),
-  stremio_connections: () => ({
-    email: null,
-    update_locked_until: EPOCH,
-    update_lease_token: null,
-    created_at: now(),
-    updated_at: now(),
-  }),
-  title_id_map: () => ({
-    imdb_id: null,
-    strategy: null,
-    resolved_at: now(),
-    retry_after: null,
-  }),
-};
+);
 
-export const UNIQUE_KEYS: Partial<Record<string, string[][]>> = {
-  accounts: [["id"], ["legacy_imdb_user_id"]],
-  lists: [["id"], ["account_id", "provider", "source_ref"]],
-  connections: [["account_id", "provider"]],
-  list_sync_status: [["list_id", "provider", "source_ref"]],
-  list_read_queue: [["list_id", "provider", "source_ref"]],
-  oauth_states: [["state"]],
-  stremio_connections: [["account_id"]],
-  title_id_map: [["namespace", "external_id"]],
-};
+const UNIQUE_KEYS = new Map<string, string[][]>(
+  Object.entries({
+    accounts: [["id"], ["legacy_imdb_user_id"]],
+    lists: [["id"], ["account_id", "provider", "source_ref"]],
+    connections: [["account_id", "provider"]],
+    list_sync_status: [["list_id", "provider", "source_ref"]],
+    list_read_queue: [["list_id", "provider", "source_ref"]],
+    oauth_states: [["state"]],
+    stremio_connections: [["account_id"]],
+    title_id_map: [["namespace", "external_id"]],
+  }),
+);
+
+/** The unique constraints of `table`, each as its columns. */
+export function uniqueKeys(table: string): string[][] {
+  return UNIQUE_KEYS.get(table) ?? [];
+}
 
 export function withoutUndefined(row: Row): Row {
   return Object.fromEntries(
@@ -106,6 +119,9 @@ export function withoutUndefined(row: Row): Row {
 
 export class InMemoryDB {
   tables: Record<string, Row[]> = {};
+  /** The Letterboxd gates and their queues, typed, so reset() clears them. */
+  letterboxdGates: Gate[] = [];
+  letterboxdWaiters: Waiter[] = [];
 
   getTable(name: string): Row[] {
     this.tables[name] ??= [];
@@ -114,10 +130,12 @@ export class InMemoryDB {
 
   reset() {
     this.tables = {};
+    this.letterboxdGates = [];
+    this.letterboxdWaiters = [];
   }
 
   withDefaults(table: string, row: Row): Row {
-    const defaults = TABLE_DEFAULTS[table]?.() ?? {
+    const defaults = TABLE_DEFAULTS.get(table)?.() ?? {
       id: crypto.randomUUID(),
       created_at: now(),
       updated_at: now(),
@@ -143,7 +161,7 @@ export class InMemoryDB {
 
   /** The violated constraint, or null. `ignore` is the row being updated. */
   uniqueViolation(table: string, row: Row, ignore?: Row): string | null {
-    for (const columns of UNIQUE_KEYS[table] ?? []) {
+    for (const columns of uniqueKeys(table)) {
       if (columns.some((column) => row[column] == null)) continue;
       const clash = this.getTable(table).some(
         (existing) =>

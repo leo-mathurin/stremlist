@@ -49,6 +49,7 @@ const historySchema = z.object({
    * Baseline), removal date (null: present)].
    */
   entries: z.record(
+    z.string(),
     z.tuple([
       z.string().nullable(),
       z.string().nullable(),

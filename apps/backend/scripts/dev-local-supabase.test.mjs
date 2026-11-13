@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { migrateSmtpConfig, runSupabase } from "./dev-local-supabase.mjs";

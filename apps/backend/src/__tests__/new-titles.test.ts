@@ -1,19 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("../lib/supabase", async () => {
-  return await import("./helpers/mock-supabase.js");
-});
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-vi.mock("../lib/r2", async () => {
-  return await import("./helpers/mock-r2.js");
-});
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
-
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import app from "../index.js";
 import type { SourceEntry } from "../providers/types";
 import { SourceUnavailableError } from "../providers/types";
@@ -43,6 +35,20 @@ import {
   sync,
   syncRows,
 } from "./helpers/new-titles.js";
+
+vi.mock("../lib/supabase", async () => {
+  return await import("./helpers/mock-supabase.js");
+});
+vi.mock("../services/list-cache", async () => {
+  return await import("./helpers/mock-list-cache.js");
+});
+vi.mock("../providers/registry", async () => {
+  return await import("./helpers/mock-registry.js");
+});
+vi.mock("../lib/r2", async () => {
+  return await import("./helpers/mock-r2.js");
+});
+vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 
 beforeEach(resetNewTitlesTest);
 afterEach(restoreNewTitlesTest);

@@ -1,5 +1,5 @@
 import { parseSortOption } from "@stremlist/shared/constants";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 import { movie } from "../../__tests__/helpers/fixtures";
 import { sortCatalog } from "../catalog-sort";
 

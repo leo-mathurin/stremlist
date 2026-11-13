@@ -19,6 +19,7 @@ import {
 import type { FixtureBackend } from "../helpers/fixture-backend.js";
 import { startFixtureBackend } from "../helpers/fixture-backend.js";
 import { getCacheManifest } from "../helpers/r2.js";
+import { isRecord, present } from "../helpers/json.js";
 import { LEGACY_CONNECTION_USER } from "../helpers/test-data.js";
 
 // Connections against the real backend, database and R2 store: OAuth start
@@ -51,7 +52,10 @@ test(
   { tag: "@local" },
   async () => {
     const { api } = backend;
-    const accountId = (await api.createAccount([])).body.accountId!;
+    const accountId = present(
+      (await api.createAccount([])).body.accountId,
+      "the new Account ID",
+    );
     const start = async () => {
       const response = await api.startConnection(accountId, "trakt");
       expect(response.status).toBe(200);
@@ -65,8 +69,11 @@ test(
     expect(`${authorize.origin}${authorize.pathname}`).toBe(
       "https://auth.trakt.tv/oauth/authorize",
     );
-    const state = authorize.searchParams.get("state")!;
-    const challenge = authorize.searchParams.get("code_challenge")!;
+    const state = present(authorize.searchParams.get("state"), "the state");
+    const challenge = present(
+      authorize.searchParams.get("code_challenge"),
+      "the PKCE challenge",
+    );
     expect(Object.fromEntries(authorize.searchParams)).toMatchObject({
       response_type: "code",
       client_id: "fixture-trakt-client",
@@ -114,7 +121,11 @@ test(
     });
     expect(
       createHash("sha256")
-        .update(String(exchange.body?.code_verifier))
+        .update(
+          String(
+            isRecord(exchange.body) ? exchange.body.code_verifier : undefined,
+          ),
+        )
         .digest("base64url"),
     ).toBe(challenge);
     const row = await getConnectionRow(accountId, "trakt");
@@ -132,7 +143,10 @@ test(
     // A state works once; a refusal and a broken request say why.
     const replay = await complete();
     expect(replay).toMatchObject({ status: 400, body: { reason: "expired" } });
-    const second = (await start()).authorize.searchParams.get("state")!;
+    const second = present(
+      (await start()).authorize.searchParams.get("state"),
+      "the second state",
+    );
     const denied = await api.oauthCallback("trakt", {
       error: "access_denied",
       state: second,
@@ -270,7 +284,9 @@ test(
     ]);
     const after = await getConnectionRow(renewed, "trakt");
     expect(after?.access_token).not.toBe(before?.access_token);
-    expect(new Date(after!.expires_at!).getTime()).toBeGreaterThan(Date.now());
+    expect(
+      new Date(present(after?.expires_at, "the renewed expiry")).getTime(),
+    ).toBeGreaterThan(Date.now());
   },
 );
 
@@ -332,7 +348,7 @@ test(
     // not the List that needs the Connection, and not the Connection.
     const upgraded = await api.upgrade(alias);
     expect(upgraded.status).toBe(200);
-    const copy = upgraded.body.accountId!;
+    const copy = present(upgraded.body.accountId, "the copy's Account ID");
     expect(
       (await api.getConfig(copy)).body.lists.map((row) => row.sourceRef),
     ).toEqual(["users/fixture-user/watchlist"]);
@@ -372,7 +388,7 @@ test(
     // Anyone who knows the public `ur…` ID can make this copy.
     const upgraded = await api.upgrade(alias);
     expect(upgraded.status).toBe(200);
-    const copy = upgraded.body.accountId!;
+    const copy = present(upgraded.body.accountId, "the copy's Account ID");
     expect(copy).toMatch(/^sl_/);
 
     // The old install in Stremio keeps serving the same manifest and Titles.
@@ -411,7 +427,10 @@ test(
   { tag: "@local" },
   async () => {
     const { api } = backend;
-    const accountId = (await api.createAccount([])).body.accountId!;
+    const accountId = present(
+      (await api.createAccount([])).body.accountId,
+      "the new Account ID",
+    );
     for (const [provider, authorizeUrl, clientId] of [
       ["simkl", "https://simkl.com/oauth2/authorize", "fixture-simkl-client"],
       [
@@ -451,7 +470,7 @@ test(
     expect(
       backend
         .requests((url) => /\/oauth2?\/token\/?$/.test(url.pathname))
-        .map((entry) => entry.body?.code),
+        .map((entry) => (isRecord(entry.body) ? entry.body.code : undefined)),
     ).toEqual(["fixture-code", "fixture-code"]);
   },
 );
@@ -503,7 +522,12 @@ async function connectFromPage(
     page.getByRole("heading", { name: `${label} authorization fixture` }),
   ).toBeVisible();
   return async (callbackOrigin: string) => {
-    const redirect = new URL(authorizeUrl.searchParams.get("redirect_uri")!);
+    const redirect = new URL(
+      present(
+        authorizeUrl.searchParams.get("redirect_uri"),
+        "the redirect URI",
+      ),
+    );
     const callback = new URL(`${callbackOrigin}${redirect.pathname}`);
     callback.searchParams.set("code", "fixture-code");
     callback.searchParams.set(

@@ -1,6 +1,10 @@
 import { SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL } from "./env.js";
 import { ensureR2Bucket } from "./helpers/r2.js";
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 // This script runs before Playwright starts its web servers, so database
 // failures surface immediately instead of becoming a backend startup timeout.
 try {
@@ -23,7 +27,7 @@ try {
     `E2E Supabase stack is not reachable at ${SUPABASE_URL}.\n` +
       `Start the local stack from the repository root with:\n` +
       `  supabase start -x gotrue,realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta\n` +
-      `Underlying error: ${error instanceof Error ? error.message : String(error)}`,
+      `Underlying error: ${errorMessage(error)}`,
   );
 }
 
@@ -43,6 +47,6 @@ if (r2Error) {
   throw new Error(
     `The E2E R2-compatible store is not reachable.\n` +
       `Start RustFS from the repository root with the command documented in apps/e2e/README.md.\n` +
-      `Underlying error: ${r2Error instanceof Error ? r2Error.message : String(r2Error)}`,
+      `Underlying error: ${errorMessage(r2Error)}`,
   );
 }

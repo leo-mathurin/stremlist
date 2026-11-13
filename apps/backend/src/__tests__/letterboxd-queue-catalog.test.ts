@@ -1,14 +1,12 @@
-import type {
-  StremioMeta,
-  AccountSyncSnapshot,
-} from "@stremlist/shared/stremio.types";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import app from "../index.js";
 import { LetterboxdBusyError } from "../providers/letterboxd-gate";
 import {
@@ -26,6 +24,12 @@ import {
   useFakeProvider,
 } from "./helpers/mock-registry.js";
 import { db, resetRpc } from "./helpers/mock-supabase.js";
+import { metasBody, readJson, syncSnapshotBody } from "./helpers/json.js";
+
+vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
+vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
 
 const LIST_ID = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
 const REF = "users/alice/watchlist";
@@ -58,7 +62,7 @@ async function catalog(suffix = ".json") {
   const res = await app.request(
     `/${accountId}/catalog/movie/wl-${LIST_ID}-movie${suffix}`,
   );
-  return { res, body: (await res.json()) as { metas: StremioMeta[] } };
+  return { res, body: await readJson(res, metasBody) };
 }
 
 const ids = (body: { metas: StremioMeta[] }) =>
@@ -257,9 +261,10 @@ describe("a save that waits for a busy Letterboxd", () => {
 
     const status = async () =>
       (
-        (await (
-          await app.request(`/${accountId}/sync-status`)
-        ).json()) as AccountSyncSnapshot
+        await readJson(
+          await app.request(`/${accountId}/sync-status`),
+          syncSnapshotBody,
+        )
       ).readQueue ?? {};
     await vi.waitFor(async () => {
       expect(Object.keys(await status())).toEqual([LIST_ID]);

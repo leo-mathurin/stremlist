@@ -1,9 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("../../lib/r2", async () => {
-  return await import("../../__tests__/helpers/mock-r2.js");
-});
-
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
+import { z } from "zod";
 import { r2Objects, r2Puts } from "../../__tests__/helpers/mock-r2.js";
 import type { SourceHistory } from "../title-history";
 import {
@@ -15,6 +18,10 @@ import {
   recordHistory,
   REMOVED_ENTRY_RETENTION_MS,
 } from "../title-history";
+
+vi.mock("../../lib/r2", async () => {
+  return await import("../../__tests__/helpers/mock-r2.js");
+});
 
 const SOURCE = { provider: "imdb" as const, sourceRef: "ur1" };
 const PRIVATE = { provider: "trakt" as const, sourceRef: "me/history" };
@@ -31,6 +38,21 @@ function keyed(...ids: string[]) {
 }
 
 /** The history a recorded synchronization gave. */
+// The fields a test rewrites; passthrough keeps the others as stored.
+const storedHistory = z
+  .object({
+    lastSyncAt: z.string(),
+    entries: z.record(
+      z.string(),
+      z.tuple([
+        z.string().nullable(),
+        z.string().nullable(),
+        z.string().nullable(),
+      ]),
+    ),
+  })
+  .loose();
+
 function recorded(result: { history: SourceHistory } | null): SourceHistory {
   if (!result) throw new Error("expected a recorded synchronization");
   return result.history;
@@ -278,7 +300,7 @@ describe("recordHistory", () => {
     r2Puts.before = () => {
       r2Puts.before = null;
       // Another instance records tt2 just before this write.
-      const stored = JSON.parse(r2Objects.get(key) ?? "") as SourceHistory;
+      const stored = storedHistory.parse(JSON.parse(r2Objects.get(key) ?? ""));
       stored.entries["imdb:tt2"] = ["tt2", at(1).toISOString(), null];
       stored.lastSyncAt = at(1).toISOString();
       r2Objects.set(key, JSON.stringify(stored));

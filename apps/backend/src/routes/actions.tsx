@@ -141,9 +141,13 @@ function OutcomePage({
 /** The Title and the private Account of an Action link, or null. */
 async function actionRequest(c: Context) {
   const type = c.req.param("type");
-  if (type !== "movie" && type !== "series") return null;
-  const target = parseStreamId(type, c.req.param("id"));
-  const access = await resolveAccountKey(c.req.param("accountId"));
+  const id = c.req.param("id");
+  const accountId = c.req.param("accountId");
+  if ((type !== "movie" && type !== "series") || !id || !accountId) {
+    return null;
+  }
+  const target = parseStreamId(type, id);
+  const access = await resolveAccountKey(accountId);
   if (!target || access?.via !== "private") return null;
   return { target, account: access.account };
 }

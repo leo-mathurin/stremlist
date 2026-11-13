@@ -4,7 +4,7 @@ import {
   sourceProblemCopy,
   storedSourceNoun,
 } from "../source-problems";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 describe("storedSourceNoun", () => {
   it.each([

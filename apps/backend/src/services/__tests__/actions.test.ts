@@ -1,24 +1,14 @@
 import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-const backgroundMocks = vi.hoisted(() => ({
-  scheduleBackgroundTask: vi.fn(),
-}));
-
-vi.mock("../../lib/supabase", async () => {
-  return await import("../../__tests__/helpers/mock-supabase");
-});
-vi.mock("../../lib/r2", async () => {
-  return await import("../../__tests__/helpers/mock-r2");
-});
-vi.mock("../../lib/background", () => backgroundMocks);
-vi.mock("../list-cache", async () => {
-  return await import("../../__tests__/helpers/mock-list-cache");
-});
-vi.mock("../../providers/registry", async () => {
-  return await import("../../__tests__/helpers/mock-registry");
-});
-
+import { isProviderId } from "@stremlist/shared/providers";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
+import { z } from "zod";
 import {
   movie,
   seedAccount,
@@ -44,6 +34,7 @@ import type {
   Membership,
   ProviderActions,
 } from "../../providers/types";
+import type * as Background from "../../lib/background";
 import type { Account } from "../accounts";
 import { resolveAccountKey } from "../accounts";
 import {
@@ -53,6 +44,24 @@ import {
   parseStreamId,
   performAction,
 } from "../actions";
+
+const backgroundMocks = vi.hoisted(() => ({
+  scheduleBackgroundTask: vi.fn<typeof Background.scheduleBackgroundTask>(),
+}));
+
+vi.mock("../../lib/supabase", async () => {
+  return await import("../../__tests__/helpers/mock-supabase");
+});
+vi.mock("../../lib/r2", async () => {
+  return await import("../../__tests__/helpers/mock-r2");
+});
+vi.mock("../../lib/background", () => backgroundMocks);
+vi.mock("../list-cache", async () => {
+  return await import("../../__tests__/helpers/mock-list-cache");
+});
+vi.mock("../../providers/registry", async () => {
+  return await import("../../__tests__/helpers/mock-registry");
+});
 
 const MOVIE = "tt0111161";
 const SERIES = "tt0903747";
@@ -92,11 +101,21 @@ function seedMembership(
   );
 }
 
-function storedMembership(accountId: string, provider: ProviderId) {
+const storedMembershipSchema = z.object({
+  membership: z.object({
+    watchlist: z.array(z.string()),
+    watched: z.array(z.string()),
+    watchedEpisodes: z.array(z.string()),
+    ratings: z.record(z.string(), z.number()),
+  }),
+});
+
+function storedMembership(
+  accountId: string,
+  provider: ProviderId,
+): Membership | null {
   const raw = r2Objects.get(membershipKey(accountId, provider));
-  return raw
-    ? (JSON.parse(raw) as { membership: Membership }).membership
-    : null;
+  return raw ? storedMembershipSchema.parse(JSON.parse(raw)).membership : null;
 }
 
 const performMocks = new Map<ProviderId, ReturnType<typeof vi.fn>>();
@@ -135,7 +154,7 @@ function setup(
     connectedAs?: string;
   } = {},
 ): Promise<Account> {
-  const ids = options.order ?? (Object.keys(providers) as ProviderId[]);
+  const ids = options.order ?? Object.keys(providers).filter(isProviderId);
   const row = seedAccount({
     actions_enabled: options.enabled ?? true,
     action_providers: ids,
@@ -161,7 +180,7 @@ function staleAccount(
 /** Run every scheduled task, as the background queue would. */
 async function runScheduled(): Promise<void> {
   const tasks = backgroundMocks.scheduleBackgroundTask.mock.calls.map(
-    ([task]) => task as () => Promise<void>,
+    ([task]) => task,
   );
   backgroundMocks.scheduleBackgroundTask.mockClear();
   await Promise.all(tasks.map((task) => task()));

@@ -124,7 +124,7 @@ export function useStremioSync(
           fail(failureOf(res), quiet);
           return;
         }
-        ({ result } = (await res.json()) as { result: typeof result });
+        ({ result } = await res.json());
       } catch {
         fail("unavailable", quiet);
         return;
@@ -189,7 +189,7 @@ export function useStremioSync(
       const res = await api[":accountId"].stremio.link.$post({
         param: { accountId },
       });
-      if (res.ok) code = (await res.json()) as { link: string; token: string };
+      if (res.ok) code = await res.json();
     } catch {
       // Handled below, as a refused code.
     }
@@ -217,9 +217,7 @@ export function useStremioSync(
         // The token is too old: no answer can link it any more.
         if (res.status === 410) break;
         if (res.ok) {
-          ({ stremio: linked } = (await res.json()) as {
-            stremio: StremioLink | null;
-          });
+          ({ stremio: linked } = await res.json());
         }
       } catch {
         // A missed answer is not a refusal: ask again.
@@ -250,12 +248,16 @@ export function useStremioSync(
    */
   const forget = useCallback(async () => {
     if (!accountId) return false;
+    let disconnected = false;
     try {
       const res = await api[":accountId"].stremio.$delete({
         param: { accountId },
       });
-      if (!res.ok) throw new Error("Not disconnected");
+      disconnected = res.ok;
     } catch {
+      // Handled below, as a refused disconnect.
+    }
+    if (!disconnected) {
       toast.error("Could not disconnect Stremio. Please try again.");
       return false;
     }

@@ -43,7 +43,7 @@ const REFRESH_COOLDOWN_MS =
 // Report the first schema problem with the same `{ error }` string as other
 // configuration failures, not as a raw Zod issue object.
 function firstIssueAsError(
-  result: { success: true } | { success: false; error: z.ZodError },
+  result: { success: true } | { success: false; error: z.core.$ZodError },
   c: Context,
 ) {
   if (!result.success) {

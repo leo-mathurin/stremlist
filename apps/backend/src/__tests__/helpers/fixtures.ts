@@ -4,6 +4,7 @@ import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { createHash } from "node:crypto";
 import { encryptSecret } from "../../lib/crypto";
 import { db } from "./mock-supabase";
+import { accountRow, connectionRow, listRow } from "./rows";
 
 /** A fixed 32-byte key, so tests never depend on the real environment. */
 const TEST_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
@@ -21,7 +22,7 @@ export const LIST_IDS = [
 export function seedAccount(
   overrides: Partial<Tables<"accounts">> = {},
 ): Tables<"accounts"> {
-  return db.insert("accounts", overrides) as Tables<"accounts">;
+  return accountRow.parse(db.insert("accounts", overrides));
 }
 
 /** An Account that Stremio reaches through its Legacy alias. */
@@ -36,11 +37,13 @@ export function seedList(
   accountId: string,
   overrides: Partial<Tables<"lists">> & { source_ref: string },
 ): Tables<"lists"> {
-  return db.insert("lists", {
-    account_id: accountId,
-    provider: "imdb",
-    ...overrides,
-  }) as Tables<"lists">;
+  return listRow.parse(
+    db.insert("lists", {
+      account_id: accountId,
+      provider: "imdb",
+      ...overrides,
+    }),
+  );
 }
 
 interface ConnectionSeed {
@@ -59,7 +62,7 @@ export function seedConnection(
   useTestEncryptionKey();
   const refreshToken =
     seed.refreshToken === undefined ? "refresh-token" : seed.refreshToken;
-  return db.insert("connections", {
+  const row = db.insert("connections", {
     account_id: accountId,
     provider,
     provider_username: seed.username === undefined ? "leo" : seed.username,
@@ -70,7 +73,8 @@ export function seedConnection(
       seed.expiresAt === undefined
         ? new Date(Date.now() + 24 * 60 * 60_000).toISOString()
         : (seed.expiresAt?.toISOString() ?? null),
-  }) as Tables<"connections">;
+  });
+  return connectionRow.parse(row);
 }
 
 /** The browser key of `seedOAuthState`, as the start gave it. */

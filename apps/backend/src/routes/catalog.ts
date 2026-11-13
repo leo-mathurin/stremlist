@@ -92,6 +92,10 @@ async function serveCatalog(c: Context) {
   const accountKey = c.req.param("accountKey");
   const requestedType = c.req.param("type");
   const catalogId = (routeParam(c, "id") ?? "").replace(/\.json$/u, "");
+  const titleType: TitleType | null =
+    requestedType === "movie" || requestedType === "series"
+      ? requestedType
+      : null;
 
   try {
     if (!accountKey || !requestedType || !catalogId) {
@@ -102,7 +106,7 @@ async function serveCatalog(c: Context) {
       return c.json({ metas: [] });
     }
 
-    if (requestedType !== "movie" && requestedType !== "series") {
+    if (!titleType) {
       return c.json({ metas: [] });
     }
 
@@ -182,7 +186,8 @@ async function serveCatalog(c: Context) {
     // slowdown after a 429) shows soon: say so instead of a 500.
     if (
       err instanceof ListUnavailableError &&
-      (err.queued || err.reason !== "unavailable")
+      (err.queued || err.reason !== "unavailable") &&
+      titleType
     ) {
       console.warn(
         `Catalog unavailable for ${accountKey} (${err.queued ? "queued" : err.reason}): ${requestedType}/${catalogId}`,
@@ -191,12 +196,11 @@ async function serveCatalog(c: Context) {
       if (catalogExtra(c).has("search")) {
         return c.json({ metas: [] });
       }
-      const type = requestedType as TitleType;
       return c.json({
         metas: [
           err.queued
-            ? buildQueuedMeta(err, type)
-            : buildUnavailableMeta(err, type),
+            ? buildQueuedMeta(err, titleType)
+            : buildUnavailableMeta(err, titleType),
         ],
       });
     }
@@ -205,7 +209,7 @@ async function serveCatalog(c: Context) {
     // Stremio may retry, which is appropriate for a transient failure).
     console.error(
       `Error serving catalog for ${accountKey}:`,
-      (err as Error).message,
+      err instanceof Error ? err.message : err,
     );
     return c.json({ metas: [] }, 500);
   }

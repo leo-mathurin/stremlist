@@ -4,7 +4,8 @@ import { shuffleArray } from "../utils";
 
 export type CatalogSort = Omit<SortOptions, "by"> & {
   by: SortOptions["by"] | "runtime" | "released";
-  then?: SortOptions;
+  /** Breaks ties of `by`. */
+  tieBreak?: SortOptions;
 };
 
 export function runtimeMinutes(runtime?: string): number | null {
@@ -21,7 +22,7 @@ export function sortCatalog(
 ): StremioMeta[] {
   const indices = metas.map((_, index) => index);
   const ranks: number[] = [];
-  if (sort.by === "random" || sort.then?.by === "random") {
+  if (sort.by === "random" || sort.tieBreak?.by === "random") {
     shuffleArray([...indices], generation).forEach((index, rank) => {
       ranks[index] = rank;
     });
@@ -54,7 +55,8 @@ export function sortCatalog(
   return indices
     .sort(
       (a, b) =>
-        compare(a, b, sort) || (sort.then ? compare(a, b, sort.then) : 0),
+        compare(a, b, sort) ||
+        (sort.tieBreak ? compare(a, b, sort.tieBreak) : 0),
     )
     .map((index) => metas[index]);
 }

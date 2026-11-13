@@ -1,11 +1,5 @@
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
-import { describe, it, expect, beforeEach, vi } from "vitest";
-
-vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-
+import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
 import app from "../index.js";
 import { SourceUnavailableError } from "../providers/types";
 import * as scraper from "../services/imdb-scraper";
@@ -23,6 +17,12 @@ import {
   useFakeProvider,
 } from "./helpers/mock-registry.js";
 import { db, resetRpc } from "./helpers/mock-supabase.js";
+import { metasBody, readJson } from "./helpers/json.js";
+
+vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
+vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
 
 // Old installs reach their Account through the Legacy alias (`ur…`).
 const OWNER = "ur216216210";
@@ -62,7 +62,7 @@ async function catalog(suffix = ".json", { key = OWNER, list = UUID_1 } = {}) {
   const res = await app.request(
     `/${key}/catalog/movie/wl-${list}-movie${suffix}`,
   );
-  return { res, body: (await res.json()) as { metas: StremioMeta[] } };
+  return { res, body: await readJson(res, metasBody) };
 }
 
 function ids(body: { metas: StremioMeta[] }) {

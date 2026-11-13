@@ -1,17 +1,11 @@
-import type { AccountSyncSnapshot } from "@stremlist/shared/stremio.types";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("../lib/supabase", async () => {
-  return await import("./helpers/mock-supabase.js");
-});
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
-
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import app from "../index.js";
 import { SourceUnavailableError } from "../providers/types";
 import {
@@ -29,6 +23,19 @@ import {
   useFakeProvider,
 } from "./helpers/mock-registry.js";
 import { db, resetRpc } from "./helpers/mock-supabase.js";
+import { readJson, syncSnapshotBody } from "./helpers/json.js";
+import { z } from "zod";
+
+vi.mock("../lib/supabase", async () => {
+  return await import("./helpers/mock-supabase.js");
+});
+vi.mock("../services/list-cache", async () => {
+  return await import("./helpers/mock-list-cache.js");
+});
+vi.mock("../providers/registry", async () => {
+  return await import("./helpers/mock-registry.js");
+});
+vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 
 const TEN_MINUTES_AGO = new Date(Date.now() - 10 * 60_000).toISOString();
 
@@ -81,7 +88,7 @@ describe("sync status on the configure page", () => {
       "2026-10-06T12:00:00.000Z";
 
     const res = await app.request(`/${account.id}/config`);
-    const body = (await res.json()) as AccountSyncSnapshot;
+    const body = await readJson(res, syncSnapshotBody);
 
     expect(body.syncStatus).toEqual({
       [imdb.id]: [
@@ -120,7 +127,7 @@ describe("sync status on the configure page", () => {
     const res = await app.request(`/${account.id}/sync-status`);
 
     expect(res.status).toBe(200);
-    expect((await res.json()) as AccountSyncSnapshot).toEqual({
+    expect(await res.json()).toEqual({
       syncStatus: {
         [list.id]: [
           expect.objectContaining({
@@ -145,9 +152,10 @@ describe("sync status on the configure page", () => {
     seedStatus(trakt.id, "trakt", "me/history");
     seedConnection(account.id, "trakt");
 
-    const body = (await (
-      await app.request("/ur12345678/sync-status")
-    ).json()) as AccountSyncSnapshot;
+    const body = await readJson(
+      await app.request("/ur12345678/sync-status"),
+      syncSnapshotBody,
+    );
 
     expect(Object.keys(body.syncStatus)).toEqual([watchlist.id]);
     expect(body.connections).toEqual([]);
@@ -184,7 +192,10 @@ describe("sync status on the configure page", () => {
     const res = await app.request(`/${account.id}/refresh`, {
       method: "POST",
     });
-    const body = (await res.json()) as AccountSyncSnapshot & { failed: number };
+    const body = await readJson(
+      res,
+      syncSnapshotBody.extend({ failed: z.number() }),
+    );
 
     expect(body.failed).toBe(1);
     expect(body.syncStatus[good.id]).toEqual([
