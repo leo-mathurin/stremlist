@@ -16,6 +16,8 @@ export const HOME = {
     "Stremlist reads each List and shows it in Stremio as its own catalog, next to your other addons.",
   stepsTitle: "How it works",
   featuresTitle: "Features",
+  nuvio: "Stremlist also works in",
+  nuvioTail: "Install it with the same button or Addon URL.",
   findTitle: "Where to find your Lists",
   findLead:
     "Once you install Stremlist, your Lists show in two places in Stremio.",
@@ -79,9 +81,5 @@ export const FEATURES = [
   [
     "RPDB posters",
     "Add a Rating Poster Database key to show ratings right on the cover art.",
-  ],
-  [
-    "Works in Nuvio",
-    "Stremlist also works in Nuvio. Install it with the same button or Addon URL. Your Lists, sort options, filters and search work as in Stremio.",
   ],
 ] as const;

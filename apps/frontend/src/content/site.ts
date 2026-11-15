@@ -20,6 +20,7 @@ export const SITE = {
   repository: "https://github.com/leo-mathurin/stremlist",
   author: "https://leomathurin.com",
   addonManager: "https://stremio-addon-manager.vercel.app/",
+  nuvio: "https://github.com/NuvioMedia/NuvioMobile",
   policyUpdated: "2026-11-09",
 };
 
