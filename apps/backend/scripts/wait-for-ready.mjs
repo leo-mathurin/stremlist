@@ -21,20 +21,32 @@ function backendUrl() {
   return result.stdout.trim();
 }
 
-const url = `${backendUrl().replace(/\/+$/, "")}/health`;
 // Portless serves HTTPS with its own CA, which the system does not trust.
 const portlessCa = join(
   process.env.PORTLESS_STATE_DIR ?? join(homedir(), ".portless"),
   "ca.pem",
 );
-const tls =
-  url.startsWith("https:") && existsSync(portlessCa)
-    ? { ca: readFileSync(portlessCa, "utf8") }
-    : undefined;
 
-console.log(`Waiting for the backend at ${url}…`);
+/**
+ * Resolved on each attempt: before the backend starts the Portless proxy,
+ * `portless get` falls back to port 1355, and the CA may not exist yet.
+ */
+function healthTarget() {
+  const url = `${backendUrl().replace(/\/+$/, "")}/health`;
+  const tls =
+    url.startsWith("https:") && existsSync(portlessCa)
+      ? { ca: readFileSync(portlessCa, "utf8") }
+      : undefined;
+  return { url, tls };
+}
 
+let lastUrl;
 async function isUp() {
+  const { url, tls } = healthTarget();
+  if (url !== lastUrl) {
+    console.log(`Waiting for the backend at ${url}…`);
+    lastUrl = url;
+  }
   try {
     const response = await fetch(url, {
       signal: AbortSignal.timeout(2_000),
@@ -49,7 +61,7 @@ async function isUp() {
 const deadline = Date.now() + TIMEOUT_MS;
 while (!(await isUp())) {
   if (Date.now() > deadline) {
-    throw new Error(`The backend did not answer ${url} within 10 minutes.`);
+    throw new Error(`The backend did not answer ${lastUrl} within 10 minutes.`);
   }
   await new Promise((resolve) => setTimeout(resolve, 500));
 }
