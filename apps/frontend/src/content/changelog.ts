@@ -60,6 +60,11 @@ export const VERSIONS: Version[] = [
       {
         type: "bugfix",
         label: "Compatibility",
+        text: "Stremlist works in Nuvio. The Install button opens Nuvio, and your Lists, sort options, filters and search show as in Stremio.",
+      },
+      {
+        type: "bugfix",
+        label: "Compatibility",
         text: "Addons installed with your IMDb user ID keep working. Open your configure page to add the new sources.",
       },
     ],

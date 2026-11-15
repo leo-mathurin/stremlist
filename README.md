@@ -2,7 +2,7 @@
 
 ![Stremlist OG Image](https://stremlist.com/og-image.png)
 
-Stremlist is a Stremio addon that shows your watchlists and lists from IMDb, Trakt, Simkl, MDBList, JustWatch and SensCritique as catalogs in Stremio, so you can browse your saved movies and TV shows directly inside Stremio. With a connected Trakt, Simkl or MDBList account, it can also add titles to your watchlist, mark them as watched and rate them from Stremio.
+Stremlist is a Stremio addon that shows your watchlists and lists from IMDb, Trakt, Simkl, MDBList, JustWatch and SensCritique as catalogs in Stremio, so you can browse your saved movies and TV shows directly inside Stremio. It also works in [Nuvio](https://github.com/NuvioMedia/NuvioMobile), a Stremio-compatible app. With a connected Trakt, Simkl or MDBList account, it can also add titles to your watchlist, mark them as watched and rate them from Stremio.
 
 The vocabulary used in the code and in these docs (Account, Provider, Source list, List, Catalog, Title, Connection, Action) is defined in [`CONTEXT.md`](CONTEXT.md). Architecture decisions and Provider constraints are in [`docs/architecture.md`](docs/architecture.md).
 
@@ -26,7 +26,7 @@ Cloudflare R2 stores catalog generations, Connection state and detection history
 ## Using the Addon
 
 1. Open [Configure](https://stremlist.com/configure), paste a list link or connect a Provider.
-2. Save and install the generated Addon URL in Stremio.
+2. Save and install the generated Addon URL in Stremio or Nuvio.
 3. Keep the URL: it is the only credential for your configuration.
 
 Legacy `ur…` installs still serve public Lists. Upgrade on the configure page

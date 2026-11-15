@@ -16,6 +16,8 @@ export const HOME = {
     "Stremlist reads each List and shows it in Stremio as its own catalog, next to your other addons.",
   stepsTitle: "How it works",
   featuresTitle: "Features",
+  nuvio: "Stremlist also works in",
+  nuvioTail: "Install it with the same button or Addon URL.",
   findTitle: "Where to find your Lists",
   findLead:
     "Once you install Stremlist, your Lists show in two places in Stremio.",
@@ -38,7 +40,7 @@ export const STEPS = [
   ],
   [
     "Install once",
-    "Save to get your Addon URL and install it in Stremio. Your Lists refresh on their own, about every 30 minutes.",
+    "Save to get your Addon URL and install it in Stremio or Nuvio. Your Lists refresh on their own, about every 30 minutes.",
   ],
 ] as const;
 

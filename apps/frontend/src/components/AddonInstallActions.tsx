@@ -97,7 +97,7 @@ export default function AddonInstallActions({
 
       <div>
         <p className="mb-1.5 text-xs font-semibold text-black/55">
-          Or copy your Addon URL and add it manually in Stremio:
+          Or copy your Addon URL and add it manually in Stremio or Nuvio:
         </p>
         <div className="flex items-center gap-1 rounded-2xl bg-black/5 p-1">
           <div className="relative min-w-0 flex-1">

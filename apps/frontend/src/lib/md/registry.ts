@@ -87,6 +87,7 @@ function home({ userCount }: RenderContext): string {
     ),
     heading(2, HOME.featuresTitle),
     ...FEATURES.flatMap(([title, body]) => [heading(3, title), text(body)]),
+    `${text(HOME.nuvio)} ${link("Nuvio", SITE.nuvio)}. ${text(HOME.nuvioTail)}`,
     heading(2, HOME.findTitle),
     text(HOME.findLead),
     list(

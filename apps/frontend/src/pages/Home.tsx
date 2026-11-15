@@ -5,6 +5,7 @@ import {
   FEATURES as FEATURES_CONTENT,
   FIND_PLACES as FIND_PLACES_CONTENT,
 } from "../content/home";
+import { SITE } from "../content/site";
 import { publicUserCount } from "../lib/public-stats";
 import {
   createRef,
@@ -435,6 +436,18 @@ export default function Home() {
               </div>
             ))}
           </div>
+          <p className="text-sm text-pretty text-black/55">
+            {HOME.nuvio}{" "}
+            <a
+              href={SITE.nuvio}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-stremlist hover:underline"
+            >
+              Nuvio
+            </a>
+            . {HOME.nuvioTail}
+          </p>
         </section>
 
         <section aria-labelledby="find-title" className="space-y-6">

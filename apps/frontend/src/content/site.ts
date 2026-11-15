@@ -13,13 +13,14 @@ export const SITE = {
   name: "Stremlist",
   url: "https://stremlist.com",
   title: "Stremlist - Your watchlists and lists, all in Stremio",
-  description: `Free Stremio addon that shows your watchlists and lists from ${PROVIDER_NAMES} as catalogs in Stremio.`,
+  description: `Free Stremio addon that shows your watchlists and lists from ${PROVIDER_NAMES} as catalogs in Stremio and Nuvio.`,
   contact: "me@leomathurin.com",
   logo: "/icon.png",
   image: "/og-image.png",
   repository: "https://github.com/leo-mathurin/stremlist",
   author: "https://leomathurin.com",
   addonManager: "https://stremio-addon-manager.vercel.app/",
+  nuvio: "https://github.com/NuvioMedia/NuvioMobile",
   policyUpdated: "2026-11-09",
 };
 
