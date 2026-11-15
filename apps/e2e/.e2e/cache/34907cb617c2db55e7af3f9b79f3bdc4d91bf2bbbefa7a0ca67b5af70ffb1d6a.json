@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-06T19:47:38.057Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Copy Addon URL\"",
+        "target": {
+          "role": "button",
+          "name": "Copy Addon URL",
+          "text": "Copy"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/ui.e2e.ts::clipboard%20denial%20offers%20manual%20Addon%20URL%20copy",
+      "targetId": "chromium",
+      "instructionDigest": "d537215ae65dd771687b1fbe82ade09cdaea596ceb850f8fa5099bd57feb538d",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Tried the “Copy Addon URL” control. The app reported: “Could not copy the Addon URL. Select it and copy it manually.”",
+    "startPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endAnchors": [
+      {
+        "role": "alert",
+        "name": "Could not copy the Addon URL. Select it and copy it manually."
+      }
+    ],
+    "endWaitMs": 12017
+  }
+}

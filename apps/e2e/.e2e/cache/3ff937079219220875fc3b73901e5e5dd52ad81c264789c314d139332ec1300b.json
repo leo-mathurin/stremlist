@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-11-10T14:14:38.773Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Trending\"",
+        "target": {
+          "role": "button",
+          "name": "Trending"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save\"",
+        "target": {
+          "role": "button",
+          "name": "Save"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/providers.e2e.ts::a%20Provider%20chart%20is%20added%20from%20Quick%20add",
+      "targetId": "chromium",
+      "instructionDigest": "c864864e276408fa8ebd49b3d84528f7edc721a75a7136f55376fee57b09f842",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Verified the chart was added: “Trakt Trending” appears in Your lists. The Save action committed successfully; the screen shows “Saved! Reinstall Stremlist in Stremio to see your changes.”",
+    "startPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endAnchors": [
+      {
+        "role": "status",
+        "name": "Update Stremio with your changes"
+      },
+      {
+        "text": "Update Stremio with your changes"
+      },
+      {
+        "text": "Your catalogs or Actions changed. Stremio keeps showing the old ones until it gets the update."
+      },
+      {
+        "text": "Update it for me"
+      },
+      {
+        "text": "Recommended"
+      },
+      {
+        "text": "Connect your Stremio account once. Your next saves update Stremio on their own."
+      },
+      {
+        "text": "I'll reinstall myself"
+      },
+      {
+        "text": "No account needed. Two steps in Stremio after each change."
+      }
+    ],
+    "goneAnchors": [
+      {
+        "text": "1 of 10 lists"
+      },
+      {
+        "text": "No new titles detected yet."
+      },
+      {
+        "role": "heading",
+        "name": "Install or reinstall in Stremio"
+      },
+      {
+        "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
+      }
+    ],
+    "endWaitMs": 39611
+  }
+}

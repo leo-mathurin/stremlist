@@ -2,20 +2,18 @@ import type { StremioManifest } from "./stremio.types";
 
 export const APP_NAME = "Stremlist";
 export const ADDON_VERSION = "1.12.0";
-export const APP_DESCRIPTION = "Your IMDb Watchlist in Stremio";
-export const APP_LOGO = "https://stremlist.com/icon.png";
-export const APP_ID_PREFIX = "com.stremlist";
+export const APP_DESCRIPTION = "Your watchlists and lists, all in Stremio";
 
 export const SORT_OPTIONS = [
-  { value: "added_at-asc", label: "Date Added (Oldest First) - (IMDb Order)" },
+  { value: "added_at-asc", label: "Date Added (Oldest First)" },
   { value: "added_at-desc", label: "Date Added (Newest First)" },
   { value: "random", label: "Random" },
   { value: "title-asc", label: "Title (A-Z)" },
   { value: "title-desc", label: "Title (Z-A)" },
-  { value: "year-desc", label: "Newest First" },
-  { value: "year-asc", label: "Oldest First" },
-  { value: "rating-desc", label: "Highest Rated" },
-  { value: "rating-asc", label: "Lowest Rated" },
+  { value: "year-desc", label: "Release Year (Newest First)" },
+  { value: "year-asc", label: "Release Year (Oldest First)" },
+  { value: "rating-desc", label: "IMDb Rating (Highest First)" },
+  { value: "rating-asc", label: "IMDb Rating (Lowest First)" },
 ] as const;
 
 export const DEFAULT_SORT_OPTION = "added_at-asc";
@@ -30,6 +28,9 @@ export const DEFAULT_DISPLAY_MODE = "split";
 
 export type DisplayMode = (typeof DISPLAY_MODE_OPTIONS)[number]["value"];
 
+/** The two kinds of Title, and of Catalog. */
+export type TitleType = "movie" | "series";
+
 export type SortField = "added_at" | "random" | "title" | "year" | "rating";
 export type SortOrder = "asc" | "desc";
 export interface SortOptions {
@@ -42,34 +43,61 @@ export const DEFAULT_SORT_OPTIONS: SortOptions = {
   order: "asc",
 };
 
-const VALID_SORT_FIELDS: SortField[] = [
+const VALID_SORT_FIELDS: readonly SortField[] = [
   "title",
   "year",
   "rating",
   "added_at",
   "random",
 ];
-const VALID_SORT_ORDERS: SortOrder[] = ["asc", "desc"];
+const VALID_SORT_ORDERS: readonly SortOrder[] = ["asc", "desc"];
+
+function isSortField(value: string | undefined): value is SortField {
+  return VALID_SORT_FIELDS.some((field) => field === value);
+}
+
+function isSortOrder(value: string | undefined): value is SortOrder {
+  return VALID_SORT_ORDERS.some((order) => order === value);
+}
 
 export function parseSortOption(
   sortOption: string | null | undefined,
 ): SortOptions {
   if (!sortOption) return DEFAULT_SORT_OPTIONS;
 
-  const [by, order] = sortOption.split("-") as [string, string];
-  if (!by || !VALID_SORT_FIELDS.includes(by as SortField)) {
+  const [by, order] = sortOption.split("-");
+  if (!isSortField(by)) {
     return DEFAULT_SORT_OPTIONS;
   }
-  if (!order || !VALID_SORT_ORDERS.includes(order as SortOrder)) {
-    return { by: by as SortField, order: "asc" };
+  if (!isSortOrder(order)) {
+    return { by, order: "asc" };
   }
 
-  return { by: by as SortField, order: order as SortOrder };
+  return { by, order };
 }
 
-const IMDB_UR_ID_SOURCE = String.raw`ur\d{4,}`;
-const IMDB_LS_ID_SOURCE = String.raw`ls\d+`;
-const IMDB_P_HANDLE_SOURCE = String.raw`p\.[a-zA-Z0-9]+`;
+/**
+ * A generated Account ID (ADR 0001): `sl_` and 22 base62 characters. It is the
+ * secret part of the Addon URL.
+ */
+const ACCOUNT_ID_SOURCE = String.raw`sl_[0-9A-Za-z]{22}`;
+export const ACCOUNT_ID_PATTERN = new RegExp(`^${ACCOUNT_ID_SOURCE}$`);
+
+/** An IMDb user ID, also the form of a Legacy alias. */
+export const IMDB_UR_ID_SOURCE = String.raw`ur\d{4,}`;
+export const IMDB_LS_ID_SOURCE = String.raw`ls\d+`;
+export const IMDB_P_HANDLE_SOURCE = String.raw`p\.[a-zA-Z0-9]+`;
+const IMDB_TITLE_ID_SOURCE = String.raw`tt\d+`;
+
+/** A Title's IMDb ID (ADR 0002). */
+export const IMDB_TITLE_ID_PATTERN = new RegExp(`^${IMDB_TITLE_ID_SOURCE}$`);
+
+/** The value when it is a Title's IMDb ID (`tt…`), else undefined. */
+export function asImdbId(value: unknown): string | undefined {
+  return typeof value === "string" && IMDB_TITLE_ID_PATTERN.test(value)
+    ? value
+    : undefined;
+}
 
 export const IMDB_LIST_ID_PATTERN = new RegExp(`^${IMDB_LS_ID_SOURCE}$`);
 export const IMDB_USER_ID_PATTERN = new RegExp(
@@ -78,20 +106,35 @@ export const IMDB_USER_ID_PATTERN = new RegExp(
 export const IMDB_WATCHLIST_SOURCE_ID_PATTERN = new RegExp(
   `^(${IMDB_UR_ID_SOURCE}|${IMDB_LS_ID_SOURCE}|${IMDB_P_HANDLE_SOURCE})$`,
 );
-export const IMDB_USER_ID_EXTRACT_PATTERN = new RegExp(
-  `(${IMDB_UR_ID_SOURCE}|${IMDB_P_HANDLE_SOURCE})`,
-);
-export const IMDB_WATCHLIST_SOURCE_ID_EXTRACT_PATTERN = new RegExp(
-  `(${IMDB_UR_ID_SOURCE}|${IMDB_LS_ID_SOURCE}|${IMDB_P_HANDLE_SOURCE})`,
-);
 
-export const IMDB_USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
+/**
+ * A Legacy alias: the key of a v1 install, kept as `legacy_imdb_user_id`.
+ * v1 served any key until 2026-09-01, then `ur` + 4 or more digits and `p.`
+ * handles. The installs that still exist use an IMDb user ID (some short, some
+ * with letters), a `p.` handle or an IMDb list ID. Other stored keys cannot
+ * be a URL path segment that any install uses, so they stay unreachable.
+ */
+const LEGACY_ALIAS_SOURCE = String.raw`ur[0-9A-Za-z]+|${IMDB_P_HANDLE_SOURCE}|${IMDB_LS_ID_SOURCE}`;
+export const LEGACY_ALIAS_PATTERN = new RegExp(`^(?:${LEGACY_ALIAS_SOURCE})$`);
+
+/** An Addon URL key: a generated Account ID or a Legacy alias. */
+export const ACCOUNT_KEY_SOURCE = `${ACCOUNT_ID_SOURCE}|${LEGACY_ALIAS_SOURCE}`;
+export const ACCOUNT_KEY_PATTERN = new RegExp(`^(?:${ACCOUNT_KEY_SOURCE})$`);
+
+/** The longest pasted link that the link check reads. */
+export const SOURCE_LINK_MAX_LENGTH = 500;
+
+/**
+ * The longest stored Source list reference. Every link that the link check
+ * accepts fits: the longest is a Letterboxd share link, whose encrypted
+ * reference is at most about 700 characters for a 500-character link.
+ */
+export const SOURCE_REF_MAX_LENGTH = 1000;
 
 export const FACEBOOK_EXTERNAL_HIT_USER_AGENT = "facebookexternalhit/1.1";
 
 export const BASE_MANIFEST: StremioManifest = {
-  id: APP_ID_PREFIX,
+  id: "com.stremlist",
   version: ADDON_VERSION,
   name: APP_NAME,
   description: APP_DESCRIPTION,
@@ -116,7 +159,7 @@ export const BASE_MANIFEST: StremioManifest = {
       type: "series",
     },
   ],
-  logo: APP_LOGO,
+  logo: "https://stremlist.com/icon.png",
   behaviorHints: {
     configurable: true,
     configurationRequired: false,

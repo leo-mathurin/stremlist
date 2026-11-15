@@ -1,48 +1,60 @@
-import type {
-  ConfigWatchlist,
-  StremioMeta,
-} from "@stremlist/shared/stremio.types";
+import type { TitleType } from "@stremlist/shared/constants";
+import { queuedCatalogCopy } from "@stremlist/shared/provider-queue";
+import {
+  sourceProblemCopy,
+  storedSourceNoun,
+} from "@stremlist/shared/source-problems";
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { getVisibleListById, resolveAccountKey } from "../services/accounts";
 import {
   resolveCatalogSelection,
   filterCatalog,
 } from "../services/catalog-filters";
 import { parseCatalogId } from "../services/catalog-id";
-import { getUserRpdbApiKey, getUserWatchlistById } from "../services/user";
-import {
-  getWatchlistByConfig,
-  WatchlistUnavailableError,
-} from "../services/watchlist";
+import { getNewTitlesCatalog } from "../services/detections";
+import { getListCatalog, ListUnavailableError } from "../services/lists";
 
 const catalog = new Hono();
 const CATALOG_PAGE_SIZE = 100;
 
 // A single informational card Stremio renders inside the catalog row, so the
-// user sees *why* it's empty (e.g. their IMDb list is private) instead of a
+// user sees *why* it's empty (e.g. their list is private) instead of a
 // silent blank or a 500 the client retry-storms.
 function buildUnavailableMeta(
-  reason: "private" | "not_found",
-  type: "movie" | "series",
+  error: ListUnavailableError,
+  type: TitleType,
 ): StremioMeta {
-  const copy =
-    reason === "private"
-      ? {
-          name: "⚠️ This IMDb watchlist is private",
-          description:
-            "Make your watchlist public in your IMDb settings, then reopen this catalog in Stremio.",
-        }
-      : {
-          name: "⚠️ IMDb watchlist not found",
-          description:
-            "We couldn't find this IMDb watchlist. Check the IMDb ID in your Stremlist configuration.",
-        };
-
+  const { title, fix } = sourceProblemCopy(
+    error.provider,
+    error.reason,
+    storedSourceNoun(error.provider, error.sourceRef),
+    error.sourceRef,
+  );
   return {
-    id: `stremlist:unavailable:${reason}`,
+    id: `stremlist:unavailable:${error.reason}`,
     type,
-    name: copy.name,
-    description: copy.description,
+    name: `⚠️ ${title}`,
+    description: fix,
+    poster: null,
+    posterShape: "poster",
+    genres: [],
+  };
+}
+
+// The card of a List that the Provider's queue holds back: the read goes on
+// in the background and the List shows in a few minutes.
+function buildQueuedMeta(
+  error: ListUnavailableError,
+  type: TitleType,
+): StremioMeta {
+  const { title, description } = queuedCatalogCopy(error.provider);
+  return {
+    id: `stremlist:queued:${error.provider}`,
+    type,
+    name: title,
+    description,
     poster: null,
     posterShape: "poster",
     genres: [],
@@ -77,24 +89,24 @@ function routeParam(c: Context, name: string): string | undefined {
 
 async function serveCatalog(c: Context) {
   c.header("Cache-Control", "no-store");
-  const userId = c.req.param("userId");
+  const accountKey = c.req.param("accountKey");
   const requestedType = c.req.param("type");
   const catalogId = (routeParam(c, "id") ?? "").replace(/\.json$/u, "");
+  const titleType: TitleType | null =
+    requestedType === "movie" || requestedType === "series"
+      ? requestedType
+      : null;
 
   try {
-    if (!userId || !requestedType || !catalogId) {
+    if (!accountKey || !requestedType || !catalogId) {
       console.warn(
         `Missing route params`,
-        JSON.stringify({
-          userId,
-          requestedType,
-          catalogId,
-        }),
+        JSON.stringify({ accountKey, requestedType, catalogId }),
       );
       return c.json({ metas: [] });
     }
 
-    if (requestedType !== "movie" && requestedType !== "series") {
+    if (!titleType) {
       return c.json({ metas: [] });
     }
 
@@ -106,54 +118,62 @@ async function serveCatalog(c: Context) {
     }
 
     const parsedCatalog = parseCatalogId(catalogId);
-    if (!parsedCatalog?.type || parsedCatalog.type !== requestedType) {
+    if (parsedCatalog?.type !== requestedType) {
       console.warn(
-        `Unknown catalog id for user ${userId}: ${requestedType}/${catalogId}`,
+        `Unknown catalog id for user ${accountKey}: ${requestedType}/${catalogId}`,
       );
       return c.json({ metas: [] });
     }
 
-    const watchlistConfig: ConfigWatchlist | null = await getUserWatchlistById(
-      userId,
-      parsedCatalog.watchlistId,
-    );
+    const access = await resolveAccountKey(accountKey);
+    if (!access) {
+      return c.json({ metas: [] });
+    }
 
-    if (!watchlistConfig) {
-      console.warn(
-        `Watchlist not found for user ${userId}: ${parsedCatalog.watchlistId}`,
-      );
+    if (parsedCatalog.kind === "new-titles") {
+      // The "New titles" catalogs have no search (ADR 0007).
+      if (!access.account.newTitlesCatalog || extra.has("search")) {
+        return c.json({ metas: [] });
+      }
+      const metas = await getNewTitlesCatalog(access, parsedCatalog.type);
+      return c.json({ metas: metas.slice(skip, skip + CATALOG_PAGE_SIZE) });
+    }
+
+    // Lists read through a Connection never answer through a Legacy alias.
+    const list = await getVisibleListById(access, parsedCatalog.listId);
+    if (!list) {
+      console.warn(`List not found for ${accountKey}: ${parsedCatalog.listId}`);
       return c.json({ metas: [] });
     }
 
     const preset = parsedCatalog.preset;
-    if (preset && !watchlistConfig.catalogSettings?.presets?.includes(preset)) {
+    if (preset && !list.catalogSettings?.presets?.includes(preset)) {
       return c.json({ metas: [] });
     }
     const selection = resolveCatalogSelection(
-      watchlistConfig.sortOption,
-      watchlistConfig.catalogSettings,
+      list.sortOption,
+      list.catalogSettings,
       filter,
       preset,
     );
-    const rpdbApiKey = await getUserRpdbApiKey(userId);
 
-    const watchlistData = await getWatchlistByConfig({
-      ownerUserId: userId,
-      watchlistId: watchlistConfig.id,
-      imdbUserId: watchlistConfig.imdbUserId,
+    const listData = await getListCatalog(list, {
+      accountId: access.account.id,
       sort: selection.sort,
-      rpdbApiKey,
+      rpdbApiKey: access.account.rpdbApiKey,
+      allowConnection: access.via === "private",
+      policy: "catalog",
     });
 
     const matchingMetas = filterCatalog(
-      watchlistData.metas.filter((item) => item.type === requestedType),
+      listData.metas.filter((item) => item.type === requestedType),
       selection.filters,
       extra.get("search"),
     );
     const metas = matchingMetas.slice(skip, skip + CATALOG_PAGE_SIZE);
 
     console.log(
-      `Serving catalog for user ${userId}, type: ${requestedType}, watchlist: ${watchlistConfig.id}, skip: ${skip}, page items: ${metas.length}, total items: ${matchingMetas.length}`,
+      `Serving catalog for user ${accountKey}, type: ${requestedType}, list: ${list.id}, skip: ${skip}, page items: ${metas.length}, total items: ${matchingMetas.length}`,
     );
 
     return c.json({ metas });
@@ -162,12 +182,15 @@ async function serveCatalog(c: Context) {
     // return 200 with an informational card so Stremio shows the user *why* the
     // catalog is empty instead of a 500 it would retry-storm — that retry storm
     // on private watchlists was the dominant prod error flood.
+    // A List that waits in the Provider's queue (a busy Letterboxd, or a
+    // slowdown after a 429) shows soon: say so instead of a 500.
     if (
-      err instanceof WatchlistUnavailableError &&
-      err.reason !== "unavailable"
+      err instanceof ListUnavailableError &&
+      (err.queued || err.reason !== "unavailable") &&
+      titleType
     ) {
       console.warn(
-        `Catalog unavailable for ${userId} (${err.reason}): ${requestedType}/${catalogId}`,
+        `Catalog unavailable for ${accountKey} (${err.queued ? "queued" : err.reason}): ${requestedType}/${catalogId}`,
       );
       // Informational cards explain empty catalogs, but aren't search matches.
       if (catalogExtra(c).has("search")) {
@@ -175,7 +198,9 @@ async function serveCatalog(c: Context) {
       }
       return c.json({
         metas: [
-          buildUnavailableMeta(err.reason, requestedType as "movie" | "series"),
+          err.queued
+            ? buildQueuedMeta(err, titleType)
+            : buildUnavailableMeta(err, titleType),
         ],
       });
     }
@@ -183,14 +208,14 @@ async function serveCatalog(c: Context) {
     // Genuine or transient server error → keep the 500 (visible in monitoring;
     // Stremio may retry, which is appropriate for a transient failure).
     console.error(
-      `Error serving catalog for ${userId}:`,
-      (err as Error).message,
+      `Error serving catalog for ${accountKey}:`,
+      err instanceof Error ? err.message : err,
     );
     return c.json({ metas: [] }, 500);
   }
 }
 
-catalog.get("/:userId/catalog/:type/:id/:extra.json", serveCatalog);
-catalog.get("/:userId/catalog/:type/:id.json", serveCatalog);
+catalog.get("/:accountKey/catalog/:type/:id/:extra.json", serveCatalog);
+catalog.get("/:accountKey/catalog/:type/:id.json", serveCatalog);
 
 export default catalog;

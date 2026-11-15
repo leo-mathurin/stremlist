@@ -9,6 +9,6 @@
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["tests", "helpers", "*.ts"],
+  "include": ["tests", "helpers", "*.ts", "toolkit"],
   "exclude": ["node_modules"]
 }

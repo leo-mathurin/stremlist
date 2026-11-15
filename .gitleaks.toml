@@ -1,0 +1,14 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Keys that are public or fake on purpose"
+regexes = [
+  # The demo keys of every local Supabase stack (issuer `supabase-demo`).
+  '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJpc3MiOiJzdXBhYmFzZS1kZW1v[\w.-]*''',
+  # Synthetic values in tests.
+  '''^e2e-synthetic-''',
+  '''^2OS5xaC1fJOBBvGv$''',
+  # An empty variable in a shell example.
+  '''^TMDB_API_KEY=$''',
+]

@@ -1,0 +1,36 @@
+name: Deployment smoke test
+
+# Vercel reports each deployment to GitHub. Send real requests to every
+# successful backend deployment (staging previews and production), so a
+# failure that only happens on the deployed Vercel Bun function is visible.
+on: deployment_status
+
+jobs:
+  backend:
+    name: Backend deployment smoke test
+    if: >-
+      github.event.deployment_status.state == 'success' &&
+      contains(github.event.deployment.environment, 'stremlist-backend')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_URL: ${{ github.event.deployment_status.environment_url }}
+    steps:
+      - name: Check /health and /manifest.json
+        run: |
+          set -euo pipefail
+          check() {
+            local path="$1" filter="$2" body
+            for attempt in 1 2 3 4 5; do
+              if body=$(curl --fail --silent --show-error --max-time 20 "${BASE_URL%/}${path}") &&
+                jq -e "$filter" <<<"$body" >/dev/null; then
+                echo "${path}: OK"
+                return 0
+              fi
+              echo "${path}: attempt ${attempt} failed: ${body:-no body}"
+              sleep 10
+            done
+            return 1
+          }
+          check /health '.status == "ok" and .database == "up"'
+          check /manifest.json '.id == "com.stremlist"'

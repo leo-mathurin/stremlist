@@ -23,7 +23,7 @@ permissions:
   contents: read
 
 env:
-  SUPABASE_CLI_VERSION: 2.118.0
+  SUPABASE_CLI_VERSION: 2.122.1
   SUPABASE_PROJECT_REF: igbmxubzxjfdbgmawrtr
 
 jobs:

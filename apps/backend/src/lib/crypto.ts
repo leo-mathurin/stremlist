@@ -1,0 +1,112 @@
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from "node:crypto";
+
+const VERSION = "v1";
+const IV_BYTES = 12;
+const TAG_BYTES = 16;
+
+/** The server has no usable CONNECTION_ENCRYPTION_KEY: a setup error. */
+export class EncryptionKeyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "EncryptionKeyError";
+  }
+}
+
+function encryptionKey(): Buffer {
+  const encoded = process.env.CONNECTION_ENCRYPTION_KEY;
+  if (!encoded) {
+    throw new EncryptionKeyError(
+      "Missing CONNECTION_ENCRYPTION_KEY environment variable",
+    );
+  }
+  const key = Buffer.from(encoded, "base64");
+  if (key.length !== 32) {
+    throw new EncryptionKeyError(
+      "CONNECTION_ENCRYPTION_KEY must be 32 bytes in base64",
+    );
+  }
+  return key;
+}
+
+/**
+ * Encrypt a Connection secret (OAuth token) for storage. AES-256-GCM with a
+ * random IV; the output is "v1:" + base64(iv | tag | ciphertext).
+ */
+export function encryptSecret(plaintext: string): string {
+  const iv = randomBytes(IV_BYTES);
+  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
+  const ciphertext = Buffer.concat([
+    cipher.update(plaintext, "utf8"),
+    cipher.final(),
+  ]);
+  return `${VERSION}:${Buffer.concat([iv, cipher.getAuthTag(), ciphertext]).toString("base64")}`;
+}
+
+/**
+ * Encrypt a value whose ciphertext must be stable, so the same plaintext always
+ * produces the same stored string (for example a Share link token that doubles
+ * as a Source list's identity for duplicate checks). The IV is derived from the
+ * plaintext with HMAC, so equal plaintexts share an IV and distinct ones do not,
+ * which keeps AES-256-GCM safe. Same output shape as `encryptSecret`.
+ */
+export function encryptStable(plaintext: string): string {
+  const iv = createHmac("sha256", encryptionKey())
+    .update(plaintext, "utf8")
+    .digest()
+    .subarray(0, IV_BYTES);
+  const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
+  const ciphertext = Buffer.concat([
+    cipher.update(plaintext, "utf8"),
+    cipher.final(),
+  ]);
+  return `${VERSION}:${Buffer.concat([iv, cipher.getAuthTag(), ciphertext]).toString("base64")}`;
+}
+
+export function decryptSecret(stored: string): string {
+  const [version, payload] = stored.split(":", 2);
+  if (version !== VERSION || !payload) {
+    throw new Error("Unknown secret format");
+  }
+  const raw = Buffer.from(payload, "base64");
+  const decipher = createDecipheriv(
+    "aes-256-gcm",
+    encryptionKey(),
+    raw.subarray(0, IV_BYTES),
+  );
+  decipher.setAuthTag(raw.subarray(IV_BYTES, IV_BYTES + TAG_BYTES));
+  return Buffer.concat([
+    decipher.update(raw.subarray(IV_BYTES + TAG_BYTES)),
+    decipher.final(),
+  ]).toString("utf8");
+}
+
+/**
+ * A URL-safe HMAC of `value`, for tokens that the backend hands out and
+ * checks later. `purpose` keeps the tokens of one use invalid for another.
+ */
+export function signValue(purpose: string, value: string): string {
+  return createHmac("sha256", encryptionKey())
+    .update(`${purpose}\n${value}`, "utf8")
+    .digest("base64url");
+}
+
+export function hasValidSignature(
+  purpose: string,
+  value: string,
+  signature: string,
+): boolean {
+  const expected = Buffer.from(signValue(purpose, value));
+  const given = Buffer.from(signature);
+  return expected.length === given.length && timingSafeEqual(expected, given);
+}
+
+/** URL-safe random string, for OAuth `state` and PKCE verifiers. */
+export function randomToken(bytes = 32): string {
+  return randomBytes(bytes).toString("base64url");
+}

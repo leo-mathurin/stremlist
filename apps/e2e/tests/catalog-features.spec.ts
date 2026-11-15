@@ -1,52 +1,75 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { BACKEND_URL, FRONTEND_URL, addonManifestUrl } from "../env.js";
+import type { ConfigListInput } from "@stremlist/shared/stremio.types";
+import { BACKEND_URL, addonManifestUrl } from "../env.js";
 import {
   getCatalog,
   getConfig,
+  getManifest,
   getMeta,
-  getUserManifest,
+  isCatalog,
+  listInput,
   postConfig,
 } from "../helpers/api.js";
 import { CATALOG_TITLES, seedCatalog } from "../helpers/catalog-fixture.js";
 import { resetDb } from "../helpers/db.js";
+import { parsed } from "../helpers/json.js";
 import {
   discoverUrl,
   installAddon,
   uninstallAddon,
 } from "../helpers/stremio.js";
+import { CATALOG_FIXTURE_USER } from "../helpers/test-data.js";
+import {
+  configureUrl,
+  saveConfigure,
+  SAVED_REINSTALL,
+} from "../helpers/configure.js";
 
 const MATCHES = ["QA Été & café + cinéma", "QA Autumn Drama"];
+/** Filters that only the two MATCHES pass. */
+const FILTERS = { genre: "Drama", decade: 1990, maxRuntime: 90, minRating: 7 };
+/** The same FILTERS as configure page dropdown labels and options. */
+const FILTER_OPTIONS = [
+  ["Genre", "Drama"],
+  ["Decade", "1990s"],
+  ["Maximum runtime", "90 min or less"],
+  ["Minimum IMDb rating", "7 and above"],
+] as const;
+const ALL_DRAMAS = [...MATCHES, "QA Long Drama", "QA Low Rated Drama"].sort();
+const CARDS = 'a[href^="#/detail/"][data-index][title]';
 
 async function choose(page: Page, label: string, option: string) {
   await page.getByRole("combobox", { name: label, exact: true }).click();
   await page.getByRole("option", { name: option, exact: true }).click();
 }
 
-async function openFilters(page: Page, userId: string) {
-  await page.goto(`${FRONTEND_URL}/configure?userId=${userId}`);
+async function openFilters(page: Page, accountId: string) {
+  await page.goto(configureUrl(accountId));
+  await page.getByRole("button", { name: "Settings for Release QA" }).click();
   await page.getByRole("button", { name: /Filters & extra catalogs/ }).click();
 }
 
-async function save(page: Page) {
-  const response = page.waitForResponse(
-    (res) => res.url().endsWith("/config") && res.request().method() === "POST",
-  );
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  expect((await response).status()).toBe(200);
-  await expect(page.getByText("Saved!", { exact: false })).toBeVisible();
+/** The order of `sort()` without a compare function: by UTF-16 code units. */
+function byCodeUnits(a: string | null, b: string | null): number {
+  const [x, y] = [String(a), String(b)];
+  return x < y ? -1 : x > y ? 1 : 0;
+}
+
+function cardTitles(page: Page) {
+  return page
+    .locator(CARDS)
+    .evaluateAll((elements) => elements.map((el) => el.getAttribute("title")));
 }
 
 async function expectTitles(page: Page, expected: string[]) {
-  const cards = page.locator('a[href^="#/detail/"][data-index][title]');
-  await expect(cards).toHaveCount(expected.length);
-  await expect
-    .poll(() =>
-      cards.evaluateAll((elements) =>
-        elements.map((el) => el.getAttribute("title")),
-      ),
-    )
-    .toEqual(expected);
+  await expect(page.locator(CARDS)).toHaveCount(expected.length);
+  await expect.poll(() => cardTitles(page)).toEqual(expected);
+}
+
+async function saveList(accountId: string, list: Partial<ConfigListInput>) {
+  const lists = [listInput("imdb", CATALOG_FIXTURE_USER, list)];
+  expect((await postConfig(accountId, lists)).status).toBe(200);
 }
 
 test.use({ actionTimeout: 20_000 });
@@ -57,55 +80,42 @@ test(
   "combined filters persist through reload and clear without disabling presets",
   { tag: "@local" },
   async ({ page }) => {
-    const { userId, catalogId } = await seedCatalog();
-    await openFilters(page, userId);
-    await choose(page, "Genre", "Drama");
-    await choose(page, "Decade", "1990s");
-    await choose(page, "Maximum runtime", "90 min or less");
-    await choose(page, "Minimum IMDb rating", "7 and above");
+    const { accountId, catalogId } = await seedCatalog();
+    await openFilters(page, accountId);
+    for (const [label, option] of FILTER_OPTIONS) {
+      await choose(page, label, option);
+    }
     await page
       .getByRole("checkbox", { name: "Top rated", exact: true })
       .check();
-    await save(page);
-    expect(
-      (await getConfig(userId)).body.watchlists[0].catalogSettings,
-    ).toEqual({
-      genre: "Drama",
-      decade: 1990,
-      maxRuntime: 90,
-      minRating: 7,
+    await saveConfigure(page);
+    expect((await getConfig(accountId)).body.lists[0].catalogSettings).toEqual({
+      ...FILTERS,
       presets: ["rated"],
     });
     expect(
-      (await getCatalog(userId, "movie", catalogId)).metas.map(
+      (await getCatalog(accountId, "movie", catalogId)).metas.map(
         (meta) => meta.name,
       ),
     ).toEqual(MATCHES);
 
-    await openFilters(page, userId);
-    await expect(
-      page.getByRole("combobox", { name: "Genre", exact: true }),
-    ).toHaveText("Drama");
-    await expect(
-      page.getByRole("combobox", { name: "Decade", exact: true }),
-    ).toHaveText("1990s");
-    await expect(
-      page.getByRole("combobox", { name: "Maximum runtime", exact: true }),
-    ).toHaveText("90 min or less");
-    await expect(
-      page.getByRole("combobox", { name: "Minimum IMDb rating", exact: true }),
-    ).toHaveText("7 and above");
+    await openFilters(page, accountId);
+    for (const [name, option] of FILTER_OPTIONS) {
+      await expect(
+        page.getByRole("combobox", { name, exact: true }),
+      ).toHaveText(option);
+    }
     await expect(
       page.getByRole("checkbox", { name: "Top rated", exact: true }),
     ).toBeChecked();
     await page.getByRole("button", { name: "Clear filters" }).click();
-    await save(page);
+    await saveConfigure(page);
+    expect((await getConfig(accountId)).body.lists[0].catalogSettings).toEqual({
+      presets: ["rated"],
+    });
     expect(
-      (await getConfig(userId)).body.watchlists[0].catalogSettings,
-    ).toEqual({ presets: ["rated"] });
-    expect((await getCatalog(userId, "movie", catalogId)).metas).toHaveLength(
-      7,
-    );
+      (await getCatalog(accountId, "movie", catalogId)).metas,
+    ).toHaveLength(7);
   },
 );
 
@@ -113,32 +123,19 @@ test(
   "search combines saved filters with accents and literal URL characters",
   { tag: "@local" },
   async ({ request }) => {
-    const { userId, id, catalogId } = await seedCatalog();
-    expect(
-      (
-        await postConfig(userId, [
-          {
-            id,
-            imdbUserId: userId,
-            sortOption: "added_at-asc",
-            displayMode: "movie",
-            catalogSettings: {
-              genre: "Drama",
-              decade: 1990,
-              maxRuntime: 90,
-              minRating: 7,
-            },
-          },
-        ])
-      ).status,
-    ).toBe(200);
+    const { accountId, id, catalogId } = await seedCatalog();
+    await saveList(accountId, {
+      id,
+      displayMode: "movie",
+      catalogSettings: FILTERS,
+    });
     for (const [search, names] of [
       ["qa ete & cafe + cinema", [MATCHES[0]]],
       ["drama", [MATCHES[1]]],
       ["long drama", []],
     ] as const) {
       const response = await request.get(
-        `${BACKEND_URL}/${userId}/catalog/movie/${catalogId}/search=${encodeURIComponent(search)}.json`,
+        `${BACKEND_URL}/${accountId}/catalog/movie/${catalogId}/search=${encodeURIComponent(search)}.json`,
       );
       expect(response.status()).toBe(200);
       expect(await response.json()).toMatchObject({
@@ -158,16 +155,18 @@ test(
       name: `QA Page ${index}`,
       runtime: "80m",
     }));
-    const { userId, catalogId } = await seedCatalog(metas);
+    const { accountId, catalogId } = await seedCatalog(metas);
     const pages: string[][] = [];
     for (const skip of [0, 100, 200, 300]) {
-      const url = `${BACKEND_URL}/${userId}/catalog/movie/${catalogId}/genre=Shuffle&skip=${skip}.json`;
+      const url = `${BACKEND_URL}/${accountId}/catalog/movie/${catalogId}/genre=Shuffle&skip=${skip}.json`;
       const first = await request.get(url);
       const second = await request.get(url);
       expect(first.status()).toBe(200);
-      const body = await first.json();
+      const body: unknown = await first.json();
       expect(await second.json()).toEqual(body);
-      pages.push(body.metas.map((meta: { id: string }) => meta.id));
+      pages.push(
+        parsed(body, isCatalog, "catalog page").metas.map((meta) => meta.id),
+      );
     }
     expect(pages.map((page) => page.length)).toEqual([100, 100, 15, 0]);
     expect(new Set(pages.flat()).size).toBe(215);
@@ -179,31 +178,20 @@ test(
   "series catalogs remain available while episode metadata is delegated",
   { tag: "@local" },
   async () => {
-    const { userId, id } = await seedCatalog();
-    expect(
-      (
-        await postConfig(userId, [
-          {
-            id,
-            imdbUserId: userId,
-            sortOption: "added_at-asc",
-            displayMode: "split",
-          },
-        ])
-      ).status,
-    ).toBe(200);
-    const manifest = await getUserManifest(userId);
+    const { accountId, id } = await seedCatalog();
+    await saveList(accountId, { id, displayMode: "split" });
+    const manifest = await getManifest(accountId);
     expect(manifest.resources).toContainEqual({
       name: "meta",
       types: ["movie"],
       idPrefixes: ["tt"],
     });
     expect(
-      (await getCatalog(userId, "series", `wl-${id}-series`)).metas.map(
+      (await getCatalog(accountId, "series", `wl-${id}-series`)).metas.map(
         (meta) => meta.name,
       ),
     ).toEqual(["QA Series"]);
-    expect(await getMeta(userId, "series", "tt0903747")).toEqual({
+    expect(await getMeta(accountId, "series", "tt0903747")).toEqual({
       status: 200,
       meta: null,
     });
@@ -214,27 +202,14 @@ test(
   "saved filters and the new runtime/date dropdown sorts render in Stremio",
   { tag: "@live-regression" },
   async ({ page }) => {
-    const { userId, id, catalogId } = await seedCatalog();
-    expect(
-      (
-        await postConfig(userId, [
-          {
-            id,
-            imdbUserId: userId,
-            catalogTitle: "Release QA",
-            sortOption: "added_at-asc",
-            displayMode: "movie",
-            catalogSettings: {
-              genre: "Drama",
-              decade: 1990,
-              maxRuntime: 90,
-              minRating: 7,
-            },
-          },
-        ])
-      ).status,
-    ).toBe(200);
-    const manifestUrl = addonManifestUrl(userId);
+    const { accountId, id, catalogId } = await seedCatalog();
+    await saveList(accountId, {
+      id,
+      catalogTitle: "Release QA",
+      displayMode: "movie",
+      catalogSettings: FILTERS,
+    });
+    const manifestUrl = addonManifestUrl(accountId);
     await installAddon(page, manifestUrl);
     await page.goto(discoverUrl(manifestUrl, "movie", catalogId));
     await expectTitles(page, MATCHES);
@@ -255,7 +230,7 @@ test(
       selectedOption = option;
       await expectTitles(page, [...expected]);
     }
-    expect((await getConfig(userId)).body.watchlists[0].sortOption).toBe(
+    expect((await getConfig(accountId)).body.lists[0].sortOption).toBe(
       "added_at-asc",
     );
   },
@@ -265,25 +240,27 @@ test(
   "all three preset catalogs appear after reinstall and serve their expected titles",
   { tag: "@live-regression" },
   async ({ page }) => {
-    const { userId, catalogId } = await seedCatalog();
-    const manifestUrl = addonManifestUrl(userId);
+    const { accountId, catalogId } = await seedCatalog();
+    const presets = ["90 min or less", "Top rated", "Shuffle"];
+    const manifestUrl = addonManifestUrl(accountId);
     await installAddon(page, manifestUrl);
-    await openFilters(page, userId);
-    await choose(page, "Genre", "Drama");
-    await choose(page, "Decade", "1990s");
-    for (const name of ["90 min or less", "Top rated", "Shuffle"]) {
+    await openFilters(page, accountId);
+    for (const [label, option] of FILTER_OPTIONS.slice(0, 2)) {
+      await choose(page, label, option);
+    }
+    for (const name of presets) {
       await page.getByRole("checkbox", { name, exact: true }).check();
     }
-    await save(page);
+    await saveConfigure(page, { message: SAVED_REINSTALL });
     await expect(
-      page.getByText(
-        "Catalog structure changed: reinstall required in Stremio",
-      ),
+      page.getByRole("heading", {
+        name: "Reinstall in Stremio to see your changes",
+      }),
     ).toBeVisible();
     await uninstallAddon(page, manifestUrl);
     await installAddon(page, manifestUrl);
     await page.goto("https://web.stremio.com/#/");
-    for (const label of ["90 min or less", "Top rated", "Shuffle"]) {
+    for (const label of presets) {
       await expect(
         page
           .getByText(`Stremlist Release QA · ${label} - Movie`, { exact: true })
@@ -303,22 +280,11 @@ test(
     );
     await page.goto(discoverUrl(manifestUrl, "movie", `${catalogId}--shuffle`));
     expect((await shuffleResponse).status()).toBe(200);
-    const cards = page.locator('a[href^="#/detail/"][data-index][title]');
     await expect
-      .poll(async () =>
-        (
-          await cards.evaluateAll((elements) =>
-            elements.map((el) => el.getAttribute("title")),
-          )
-        ).sort(),
-      )
-      .toEqual([...MATCHES, "QA Long Drama", "QA Low Rated Drama"].sort());
-    const shuffled = await cards.evaluateAll((elements) =>
-      elements.map((el) => el.getAttribute("title")),
-    );
-    expect([...shuffled].sort()).toEqual(
-      [...MATCHES, "QA Long Drama", "QA Low Rated Drama"].sort(),
-    );
+      .poll(async () => (await cardTitles(page)).sort(byCodeUnits))
+      .toEqual(ALL_DRAMAS);
+    const shuffled = await cardTitles(page);
+    expect([...shuffled].sort(byCodeUnits)).toEqual(ALL_DRAMAS);
     await page.reload();
     await expectTitles(page, shuffled.map(String));
   },
@@ -328,27 +294,14 @@ test(
   "Stremio search sends accented-title queries and respects saved filters",
   { tag: "@live-regression" },
   async ({ page }) => {
-    const { userId, id, catalogId } = await seedCatalog();
-    expect(
-      (
-        await postConfig(userId, [
-          {
-            id,
-            imdbUserId: userId,
-            catalogTitle: "Release QA",
-            sortOption: "added_at-asc",
-            displayMode: "movie",
-            catalogSettings: {
-              genre: "Drama",
-              decade: 1990,
-              maxRuntime: 90,
-              minRating: 7,
-            },
-          },
-        ])
-      ).status,
-    ).toBe(200);
-    await installAddon(page, addonManifestUrl(userId));
+    const { accountId, id, catalogId } = await seedCatalog();
+    await saveList(accountId, {
+      id,
+      catalogTitle: "Release QA",
+      displayMode: "movie",
+      catalogSettings: FILTERS,
+    });
+    await installAddon(page, addonManifestUrl(accountId));
     for (const [query, names] of [
       ["qa ete & cafe + cinema", [MATCHES[0]]],
       ["long drama", []],
@@ -356,16 +309,14 @@ test(
       // Start each query from a fresh search page so the previous query's row
       // cannot satisfy the lazy-loading scroll before the new results mount.
       await page.goto("https://web.stremio.com/#/search");
-      await expect(page.getByPlaceholder("Search or paste link")).toHaveValue(
-        "",
-      );
       const search = page.getByPlaceholder("Search or paste link");
+      await expect(search).toHaveValue("");
       const response = page.waitForResponse(
         (res) =>
           res
             .url()
             .startsWith(
-              `${BACKEND_URL}/${userId}/catalog/movie/${catalogId}/`,
+              `${BACKEND_URL}/${accountId}/catalog/movie/${catalogId}/`,
             ) && res.url().includes(`search=${encodeURIComponent(query)}.json`),
       );
       await search.fill(query);

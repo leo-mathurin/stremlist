@@ -1,0 +1,557 @@
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+} from "@aws-sdk/client-s3";
+import {
+  isProviderId,
+  sourceRequiresConnection,
+} from "@stremlist/shared/providers";
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
+import { z } from "zod";
+import { randomUUID } from "node:crypto";
+import { gunzipSync, gzipSync } from "node:zlib";
+import { LruCache } from "../lib/lru";
+import { getR2Bucket, getR2Client } from "../lib/r2";
+import { isNotFound, isPreconditionFailed, writeJson } from "../lib/r2-json";
+import {
+  connectionIdentitySchema,
+  isCurrentConnection,
+} from "./connection-identity";
+import type { ConnectionIdentity } from "./connection-identity";
+
+const CACHE_FORMAT_VERSION = 1;
+const MEMORY_CACHE_TTL_MS = 60_000;
+const MEMORY_CACHE_MAX_ENTRIES = 100;
+// Parsed catalogs, weighed by their JSON length. A 10,000-Title catalog is
+// ~15 MB of heap once parsed, about two to three times its JSON. 24 MB of
+// JSON keeps the catalog cache under ~75 MB of heap, with room for the other
+// in-memory caches of an instance.
+const CATALOG_MEMORY_MAX_WEIGHT = 24 * 1024 * 1024;
+
+const stremioMetaSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  poster: z.string().nullable(),
+  posterShape: z.enum(["poster", "square", "landscape"]),
+  type: z.enum(["movie", "series"]),
+  genres: z.array(z.string()),
+  description: z.string(),
+  imdbRating: z.string().optional(),
+  releaseInfo: z.string().optional(),
+  director: z.array(z.string()).optional(),
+  cast: z.array(z.string()).optional(),
+  runtime: z.string().optional(),
+  released: z.iso.datetime().optional(),
+  // When the Title joined the Source list; never served to Stremio.
+  addedAt: z.iso.datetime().optional(),
+  enrichedAt: z.iso.datetime().optional(),
+});
+
+/**
+ * A Title as the cache keeps it: its meta, and when it joined its Source
+ * list (ADR 0006). The date is never served to Stremio.
+ */
+export type SourceMeta = StremioMeta & {
+  addedAt?: string;
+  enrichedAt?: string;
+};
+
+/** The canonical Catalog of one Source list, as the cache keeps it. */
+export interface SourceCatalogData {
+  metas: SourceMeta[];
+}
+
+const catalogObjectSchema = z.object({
+  version: z.literal(CACHE_FORMAT_VERSION),
+  metas: z.array(stremioMetaSchema),
+});
+
+const cacheManifestSchema = z.object({
+  version: z.literal(CACHE_FORMAT_VERSION),
+  generation: z.guid(),
+  cachedAt: z.iso.datetime(),
+  catalogKey: z.string(),
+  metaKeys: z.array(z.string()),
+  // The Source list the catalog was read from. A List that now points to
+  // another source must not serve it. Older generations have none.
+  source: z.string().optional(),
+  connection: connectionIdentitySchema.optional(),
+  // Older cache generations acquire summaries on their next refresh.
+  genres: z
+    .object({ movie: z.array(z.string()), series: z.array(z.string()) })
+    .optional(),
+});
+
+const deletedManifestSchema = z.object({
+  version: z.literal(CACHE_FORMAT_VERSION),
+  deleted: z.literal(true),
+  deletedAt: z.iso.datetime(),
+});
+
+const storedManifestSchema = z.union([
+  cacheManifestSchema,
+  deletedManifestSchema,
+]);
+
+type CatalogObject = z.infer<typeof catalogObjectSchema>;
+type CacheManifest = z.infer<typeof cacheManifestSchema>;
+
+interface ManifestRead {
+  manifest: CacheManifest | null;
+  etag?: string;
+}
+
+interface CatalogRead {
+  manifest: CacheManifest;
+  catalog: CatalogObject;
+}
+
+/** The Source list a cached catalog was read from. */
+export interface CacheSource {
+  provider: string;
+  sourceRef: string;
+}
+
+function sourceKey(source: CacheSource): string {
+  return `${source.provider}:${source.sourceRef}`;
+}
+
+/** Whether a manifest may serve a List that now reads from `source`. */
+async function servesSource(
+  manifest: CacheManifest,
+  source?: CacheSource,
+): Promise<boolean> {
+  if (manifest.connection) {
+    if (!(await isCurrentConnection(manifest.connection))) return false;
+  } else if (
+    source &&
+    isProviderId(source.provider) &&
+    sourceRequiresConnection(source.provider, source.sourceRef)
+  ) {
+    // Private caches written before ownership was recorded must be rebuilt.
+    return false;
+  }
+  return (
+    !source ||
+    manifest.source === undefined ||
+    manifest.source === sourceKey(source)
+  );
+}
+
+interface CachedList {
+  data: SourceCatalogData;
+  cachedAt: Date;
+  generation: string;
+}
+
+const manifestMemoryCache = new Map<
+  string,
+  { value: CacheManifest | null; expiresAt: number }
+>();
+const catalogMemoryCache = new LruCache<string, CatalogObject>({
+  maxEntries: MEMORY_CACHE_MAX_ENTRIES,
+  maxWeight: CATALOG_MEMORY_MAX_WEIGHT,
+  ttlMs: MEMORY_CACHE_TTL_MS,
+});
+
+// R2 keys keep the "watchlists/" prefix so caches written before Lists had
+// several Providers stay readable.
+function manifestKey(listId: string): string {
+  return `watchlists/${listId}/manifest.json`;
+}
+
+function catalogKey(listId: string, generation: string): string {
+  return `watchlists/${listId}/generations/${generation}.json.gz`;
+}
+
+function metaKey(meta: Pick<StremioMeta, "id" | "type">): string {
+  return `${meta.type}:${meta.id}`;
+}
+
+function getMemoryManifest(listId: string): CacheManifest | null | undefined {
+  const entry = manifestMemoryCache.get(listId);
+  manifestMemoryCache.delete(listId);
+  if (!entry || entry.expiresAt <= Date.now()) return undefined;
+  manifestMemoryCache.set(listId, entry);
+  return entry.value;
+}
+
+function setMemoryManifest(listId: string, value: CacheManifest | null): void {
+  manifestMemoryCache.delete(listId);
+  manifestMemoryCache.set(listId, {
+    value,
+    expiresAt: Date.now() + MEMORY_CACHE_TTL_MS,
+  });
+  while (manifestMemoryCache.size > MEMORY_CACHE_MAX_ENTRIES) {
+    const oldestKey = manifestMemoryCache.keys().next().value;
+    if (!oldestKey) break;
+    manifestMemoryCache.delete(oldestKey);
+  }
+}
+
+function cacheDeletedManifest(listId: string, deletedGeneration: string): void {
+  const entry = manifestMemoryCache.get(listId);
+  if (entry?.value && entry.value.generation !== deletedGeneration) return;
+  setMemoryManifest(listId, null);
+}
+
+function evictManifestGeneration(
+  listId: string,
+  staleGeneration: string,
+): void {
+  const entry = manifestMemoryCache.get(listId);
+  if (entry?.value && entry.value.generation !== staleGeneration) return;
+  manifestMemoryCache.delete(listId);
+}
+
+async function readManifestFromR2(listId: string): Promise<ManifestRead> {
+  try {
+    const response = await getR2Client().send(
+      new GetObjectCommand({
+        Bucket: getR2Bucket(),
+        Key: manifestKey(listId),
+      }),
+    );
+    if (!response.Body) return { manifest: null, etag: response.ETag };
+
+    const parsed: unknown = JSON.parse(await response.Body.transformToString());
+    const storedManifest = storedManifestSchema.parse(parsed);
+    if ("deleted" in storedManifest) {
+      return { manifest: null, etag: response.ETag };
+    }
+
+    const manifest = storedManifest;
+    if (manifest.catalogKey !== catalogKey(listId, manifest.generation)) {
+      throw new Error(`Invalid R2 catalog key for ${listId}`);
+    }
+    return { manifest, etag: response.ETag };
+  } catch (error) {
+    if (!isNotFound(error)) throw error;
+    return { manifest: null };
+  }
+}
+
+async function readManifest(listId: string): Promise<CacheManifest | null> {
+  const cached = getMemoryManifest(listId);
+  if (cached !== undefined) return cached;
+
+  const entryBeforeRead = manifestMemoryCache.get(listId);
+  const { manifest } = await readManifestFromR2(listId);
+  const concurrentEntry = manifestMemoryCache.get(listId);
+  if (concurrentEntry !== entryBeforeRead) {
+    const concurrentValue = getMemoryManifest(listId);
+    if (concurrentValue !== undefined) return concurrentValue;
+  }
+  setMemoryManifest(listId, manifest);
+  return manifest;
+}
+
+async function readCatalog(
+  manifest: CacheManifest,
+): Promise<CatalogObject | null> {
+  const cached = catalogMemoryCache.get(manifest.catalogKey);
+  if (cached) return cached;
+
+  try {
+    const response = await getR2Client().send(
+      new GetObjectCommand({
+        Bucket: getR2Bucket(),
+        Key: manifest.catalogKey,
+      }),
+    );
+    if (!response.Body) return null;
+
+    const compressed = Buffer.from(await response.Body.transformToByteArray());
+    const text = gunzipSync(compressed).toString("utf8");
+    const catalog = catalogObjectSchema.parse(JSON.parse(text));
+    catalogMemoryCache.set(manifest.catalogKey, catalog, {
+      weight: text.length,
+    });
+    return catalog;
+  } catch (error) {
+    if (!isNotFound(error)) throw error;
+    return null;
+  }
+}
+
+async function readCatalogWithManifestRefresh(
+  listId: string,
+  manifest: CacheManifest,
+): Promise<CatalogRead | null> {
+  const catalog = await readCatalog(manifest);
+  if (catalog) return { manifest, catalog };
+
+  evictManifestGeneration(listId, manifest.generation);
+  const refreshedManifest = await readManifest(listId);
+  if (
+    !refreshedManifest ||
+    refreshedManifest.generation === manifest.generation
+  ) {
+    return null;
+  }
+
+  const refreshedCatalog = await readCatalog(refreshedManifest);
+  if (!refreshedCatalog) return null;
+  return { manifest: refreshedManifest, catalog: refreshedCatalog };
+}
+
+function collectGenres(
+  metas: StremioMeta[],
+  type: StremioMeta["type"],
+): string[] {
+  return [
+    ...new Set(
+      metas
+        .filter((meta) => meta.type === type)
+        .flatMap((meta) => meta.genres)
+        .filter((genre) => genre.trim().length > 0),
+    ),
+  ].sort();
+}
+
+function uniqueMetas(metas: SourceMeta[]): SourceMeta[] {
+  const seen = new Set<string>();
+  return metas.filter((meta) => {
+    const key = metaKey(meta);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function hasSortedKey(keys: string[], target: string): boolean {
+  let low = 0;
+  let high = keys.length - 1;
+
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const candidate = keys[middle];
+    if (candidate === target) return true;
+    if (candidate < target) low = middle + 1;
+    else high = middle - 1;
+  }
+
+  return false;
+}
+
+export async function getCachedListSummary(
+  listId: string,
+  source?: CacheSource,
+): Promise<{ movie: string[]; series: string[] } | null> {
+  try {
+    const manifest = await readManifest(listId);
+    if (!manifest || !(await servesSource(manifest, source))) return null;
+    return manifest.genres ?? null;
+  } catch (error) {
+    console.error(`Failed to read R2 cache summary for ${listId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * When the cached Catalog of a List was written and how many Titles it has,
+ * from the manifest only. Null when nothing is cached or the cache was marked
+ * stale.
+ */
+export async function getCachedListInfo(
+  listId: string,
+  source?: CacheSource,
+): Promise<{ cachedAt: string; titleCount: number } | null> {
+  try {
+    const manifest = await readManifest(listId);
+    if (
+      !manifest ||
+      !(await servesSource(manifest, source)) ||
+      new Date(manifest.cachedAt).getTime() <= 0
+    ) {
+      return null;
+    }
+    return {
+      cachedAt: manifest.cachedAt,
+      titleCount: manifest.metaKeys.length,
+    };
+  } catch (error) {
+    console.error(`Failed to read R2 cache info for ${listId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * The cached catalog of a List. With `source`, a catalog read from another
+ * Source list (the List was edited since) is a miss.
+ */
+export async function getCachedList(
+  listId: string,
+  source?: CacheSource,
+): Promise<CachedList | null> {
+  try {
+    const manifest = await readManifest(listId);
+    if (!manifest) return null;
+
+    const current = await readCatalogWithManifestRefresh(listId, manifest);
+    if (
+      !current ||
+      current.catalog.metas.length === 0 ||
+      !(await servesSource(current.manifest, source))
+    ) {
+      return null;
+    }
+
+    return {
+      data: { metas: current.catalog.metas },
+      cachedAt: new Date(current.manifest.cachedAt),
+      generation: current.manifest.generation,
+    };
+  } catch (error) {
+    console.error(`Failed to read R2 cache for ${listId}:`, error);
+    return null;
+  }
+}
+
+export async function writeCachedList(
+  listId: string,
+  listData: SourceCatalogData,
+  cachedAt = new Date(),
+  source?: CacheSource,
+  connection?: ConnectionIdentity,
+): Promise<string> {
+  const metas = uniqueMetas(listData.metas);
+  if (metas.length === 0) {
+    await deleteCachedList(listId);
+    return randomUUID();
+  }
+
+  const generation = randomUUID();
+  const nextCatalogKey = catalogKey(listId, generation);
+  const catalog = catalogObjectSchema.parse({
+    version: CACHE_FORMAT_VERSION,
+    metas,
+  });
+  const catalogJson = JSON.stringify(catalog);
+  const manifest: CacheManifest = {
+    version: CACHE_FORMAT_VERSION,
+    generation,
+    cachedAt: cachedAt.toISOString(),
+    catalogKey: nextCatalogKey,
+    metaKeys: catalog.metas.map(metaKey).sort(),
+    ...(source ? { source: sourceKey(source) } : {}),
+    ...(connection ? { connection } : {}),
+    genres: {
+      movie: collectGenres(catalog.metas, "movie"),
+      series: collectGenres(catalog.metas, "series"),
+    },
+  };
+
+  await getR2Client().send(
+    new PutObjectCommand({
+      Bucket: getR2Bucket(),
+      Key: nextCatalogKey,
+      Body: gzipSync(Buffer.from(catalogJson)),
+      ContentType: "application/json",
+      ContentEncoding: "gzip",
+      CacheControl: "private, max-age=0, must-revalidate",
+    }),
+  );
+
+  await writeJson(manifestKey(listId), manifest);
+
+  catalogMemoryCache.set(nextCatalogKey, catalog, {
+    weight: catalogJson.length,
+  });
+  setMemoryManifest(listId, manifest);
+
+  return generation;
+}
+
+export async function findCachedMeta(
+  listId: string,
+  type: string,
+  id: string,
+  source?: CacheSource,
+): Promise<SourceMeta | null> {
+  const target = `${type}:${id}`;
+  try {
+    const manifest = await readManifest(listId);
+    if (
+      !manifest ||
+      !(await servesSource(manifest, source)) ||
+      !hasSortedKey(manifest.metaKeys, target)
+    )
+      return null;
+    const current = await readCatalogWithManifestRefresh(listId, manifest);
+    if (
+      !current ||
+      !(await servesSource(current.manifest, source)) ||
+      !hasSortedKey(current.manifest.metaKeys, target)
+    ) {
+      return null;
+    }
+    return (
+      current.catalog.metas.find(
+        (item) => item.type === type && item.id === id,
+      ) ?? null
+    );
+  } catch (error) {
+    console.error(`Failed to read the R2 cache of ${listId}:`, error);
+    return null;
+  }
+}
+
+export async function deleteCachedList(listId: string): Promise<void> {
+  let current: ManifestRead;
+  try {
+    current = await readManifestFromR2(listId);
+  } catch (error) {
+    console.error(
+      `Failed to read R2 manifest before deleting ${listId}:`,
+      error,
+    );
+    throw error;
+  }
+
+  if (!current.manifest) {
+    setMemoryManifest(listId, null);
+    return;
+  }
+  if (!current.etag) {
+    throw new Error(`R2 manifest for ${listId} is missing an ETag`);
+  }
+
+  try {
+    await writeJson(
+      manifestKey(listId),
+      {
+        version: CACHE_FORMAT_VERSION,
+        deleted: true,
+        deletedAt: new Date().toISOString(),
+      },
+      { etag: current.etag },
+    );
+  } catch (error) {
+    if (isPreconditionFailed(error)) return;
+    throw error;
+  }
+
+  cacheDeletedManifest(listId, current.manifest.generation);
+
+  await getR2Client().send(
+    new DeleteObjectCommand({
+      Bucket: getR2Bucket(),
+      Key: current.manifest.catalogKey,
+    }),
+  );
+  catalogMemoryCache.delete(current.manifest.catalogKey);
+}
+
+/**
+ * Make the next catalog request refetch this List (after an Action changed
+ * it on the Provider), while keeping the cached items as a fallback.
+ */
+export async function markCachedListStale(listId: string): Promise<void> {
+  const manifest = await readManifest(listId);
+  if (!manifest) return;
+  const stale = { ...manifest, cachedAt: new Date(0).toISOString() };
+  await writeJson(manifestKey(listId), stale);
+  setMemoryManifest(listId, stale);
+}

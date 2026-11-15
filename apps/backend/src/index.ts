@@ -1,31 +1,47 @@
-import { withRelatedProject } from "@vercel/related-projects";
+// First import: stops the start when a required variable is missing.
+import "./lib/env";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { supabase } from "./lib/supabase";
+import { frontendUrl } from "./lib/urls";
+import actions from "./routes/actions";
 import api from "./routes/api";
 import catalog from "./routes/catalog";
 import manifest from "./routes/manifest";
 import meta from "./routes/meta";
+import oauth from "./routes/oauth";
+import stream from "./routes/stream";
+import watch from "./routes/watch";
 
 const app = new Hono();
 
 app.use("*", cors({ origin: "*" }));
-app.use("*", logger());
+// OAuth callbacks carry one-time codes in the query string: keep them out of logs.
+app.use(
+  "*",
+  logger((message, ...rest) => {
+    console.log(
+      message.replace(/(\/oauth\/[^\s?]+)\?\S*/g, "$1?[redacted]"),
+      ...rest,
+    );
+  }),
+);
 
 app.route("", api);
+app.route("", watch);
 app.route("", manifest);
 app.route("", catalog);
 app.route("", meta);
+app.route("", stream);
+app.route("", oauth);
+app.route("", actions);
 
-// Stremio sends users here — redirect to frontend
-app.get("/:userId/configure", (c) => {
-  const userId = c.req.param("userId");
-  const frontendUrl = withRelatedProject({
-    projectName: "stremlist-frontend",
-    defaultHost: process.env.FRONTEND_URL ?? "http://localhost:5173",
-  });
-  return c.redirect(`${frontendUrl}/configure?userId=${userId}`);
+// Stremio sends users here: redirect to the configure page.
+app.get("/:accountKey/configure", (c) => {
+  const url = new URL("/configure", frontendUrl());
+  url.searchParams.set("account", c.req.param("accountKey"));
+  return c.redirect(url.toString());
 });
 
 // Real health check: pings Supabase so uptime monitors reflect the actual
@@ -33,8 +49,8 @@ app.get("/:userId/configure", (c) => {
 // database is down (e.g. usage limit exceeded) and the addon is dead.
 app.get("/health", async (c) => {
   const { error } = await supabase
-    .from("users")
-    .select("imdb_user_id", { count: "exact", head: true })
+    .from("accounts")
+    .select("id", { count: "exact", head: true })
     .limit(1);
 
   if (error) {

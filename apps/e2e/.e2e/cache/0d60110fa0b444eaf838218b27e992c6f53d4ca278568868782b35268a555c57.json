@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-08T14:30:34.649Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Connect again for Trakt Watchlist\"",
+        "target": {
+          "role": "button",
+          "name": "Connect again for Trakt Watchlist",
+          "text": "Connect again"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/sync-status.e2e.ts::a%20refused%20Connection%20asks%20to%20renew%20it%2C%20from%20its%20List%20and%20from%20the%20Providers%20panel",
+      "targetId": "chromium",
+      "instructionDigest": "2fcfdf2bd66c81e393fa337e921c8c24a95538942dd519fa514cd56f9debf3c9",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "Clicked “Connect again for Trakt Watchlist,” which navigated to the Trakt authorization fixture, renewing the connection flow.",
+    "startPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endPath": "http://127.0.0.1:4314/authorize-fixture",
+    "endAnchors": [
+      {
+        "role": "heading",
+        "name": "Trakt authorization fixture"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "role": "status",
+        "name": "Trakt refused the Stremlist Connection, so this List does not show in Stremio. Connect Trakt again to renew it. Connect again for Trakt Watchlist"
+      },
+      {
+        "text": "Stremlist"
+      },
+      {
+        "role": "heading",
+        "name": "Providers"
+      },
+      {
+        "text": "Paste a link, or connect an account."
+      },
+      {
+        "text": "Paste a link to a watchlist or list"
+      },
+      {
+        "role": "textbox",
+        "name": "Paste a link to a watchlist or list",
+        "placeholder": "Paste a link to any list"
+      },
+      {
+        "role": "button",
+        "name": "Add"
+      },
+      {
+        "text": "IMDb, Trakt, MDBList, JustWatch and SensCritique links work."
+      }
+    ],
+    "endWaitMs": 12279
+  }
+}

@@ -19,22 +19,28 @@
         "VERCEL_RELATED_PROJECTS"
       ]
     },
-    "transit": {
-      "dependsOn": ["^transit"]
+    "dev:local": {
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "DOCKER_*",
+        "PORTLESS",
+        "PORTLESS_*",
+        "NODE_EXTRA_CA_CERTS",
+        "VITE_BACKEND_URL",
+        "DEV_BACKEND_URL",
+        "VERCEL_RELATED_PROJECTS"
+      ]
     },
-    "lint": {
-      "dependsOn": ["transit"]
+    "dev:ready": {
+      "cache": false,
+      "passThroughEnv": ["PORTLESS", "PORTLESS_*"]
     },
-    "format": {},
-    "format:check": {},
     "test": {
       "dependsOn": ["^build"]
     },
     "test:e2e": {
       "cache": false
-    },
-    "typecheck": {
-      "dependsOn": ["^build"]
     },
     "dev:tailnet": {
       "cache": false,
@@ -47,6 +53,14 @@
         "DEV_BACKEND_URL",
         "VERCEL_RELATED_PROJECTS"
       ]
+    },
+    "//#lint:repo": {
+      "dependsOn": ["@stremlist/backend#build"],
+      "cache": false
+    },
+    "//#typecheck:repo": {
+      "dependsOn": ["@stremlist/backend#build"],
+      "cache": false
     }
   }
 }

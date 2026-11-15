@@ -1,0 +1,243 @@
+import { z } from "zod";
+import {
+  ensureOk,
+  limitersPerUser,
+  providerFetch,
+  RateLimiter,
+  sourceErrorFromHttp,
+} from "../http";
+import { oauthClient } from "../oauth-app";
+import type { ConnectionAccess, PagedRead } from "../types";
+import { ConnectionExpiredError, SourceUnavailableError } from "../types";
+
+export const TRAKT_API = "https://api.trakt.tv";
+export const TRAKT_AUTH = "https://auth.trakt.tv";
+
+/** Largest page size that Trakt accepts on most paginated endpoints. */
+const TRAKT_PAGE_SIZE = 250;
+
+// Trakt allows 500 GETs per 5 minutes for all unauthenticated calls of the
+// app together, and 500 per 5 minutes per user for calls with a token. The
+// public limiter only smooths bursts inside one instance (a big list, a
+// prewarm); long freshness for public Source lists is what keeps the shared
+// quota safe. Calls with a token have limiters per Trakt user that keep one
+// instance below 90% of that user's quota: one user's backlog (a membership
+// refresh while Trakt is slow) never delays another user's reads.
+const publicReadLimiter = new RateLimiter(15, 10_000);
+const USER_WINDOW_MS = 5 * 60_000;
+const USER_READS_PER_WINDOW = 450;
+const limitersFor = limitersPerUser(() => ({
+  read: new RateLimiter(USER_READS_PER_WINDOW, USER_WINDOW_MS),
+  // Trakt allows 1 write per second per user.
+  write: new RateLimiter(1, 1000),
+}));
+
+export const traktClient = oauthClient("TRAKT");
+
+/** The string, or null when it is missing or empty. */
+export function nonEmpty(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return value;
+}
+
+/** Headers of every Trakt API call; the token goes in `bearer`. */
+export function traktHeaders() {
+  const clientId = traktClient.clientId();
+  if (!clientId) {
+    throw new SourceUnavailableError("disabled", "Trakt is not configured");
+  }
+  return {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    "trakt-api-key": clientId,
+    "trakt-api-version": "2",
+  };
+}
+
+export interface TraktReadOptions {
+  /**
+   * For Source lists that anyone may read (a user's public watchlist): when
+   * the Connection's token is refused, try once without it, so a 401 tells
+   * "private" apart from "the Connection is broken".
+   */
+  publicFallback?: boolean;
+  /** Query parameters added to the path's own. */
+  query?: Record<string, string>;
+}
+
+/** One GET: with the Connection's token when given, else public. */
+async function send(
+  path: string,
+  query: Record<string, string> | undefined,
+  auth?: { token: string; connection: ConnectionAccess },
+): Promise<Response> {
+  return providerFetch(`${TRAKT_API}${path}`, {
+    headers: traktHeaders(),
+    bearer: auth?.token,
+    query,
+    limiter: auth ? limitersFor(auth.connection).read : publicReadLimiter,
+  });
+}
+
+/**
+ * One GET. Reads through the Connection when there is one (per-user quota),
+ * otherwise with the client ID only. A 401 becomes a SourceUnavailableError:
+ * "private" for public reads, "needs_connection" when the Connection's token
+ * keeps being refused. Other non-2xx statuses throw HttpError.
+ */
+async function traktGet(
+  path: string,
+  connection: ConnectionAccess | null,
+  options: TraktReadOptions = {},
+): Promise<Response> {
+  // A Connection that cannot give a token any more (refused refresh) must
+  // not make Source lists that anyone may read fail.
+  const token = connection
+    ? await connection.getAccessToken().catch((error: unknown) => {
+        if (options.publicFallback && error instanceof ConnectionExpiredError) {
+          return null;
+        }
+        throw error;
+      })
+    : null;
+  if (!connection || token === null) {
+    const response = await send(path, options.query);
+    if (response.status === 401) {
+      throw new SourceUnavailableError("private", `Trakt ${path} is private`);
+    }
+    return ensureOk(response, `${TRAKT_API}${path}`);
+  }
+
+  let response = await send(path, options.query, { token, connection });
+  if (response.status === 401) {
+    // ConnectionAccess refreshes a token that is about to expire; a second
+    // read only helps when that gave us a new one.
+    const renewed = await connection.getAccessToken();
+    if (renewed !== token) {
+      response = await send(path, options.query, {
+        token: renewed,
+        connection,
+      });
+    }
+  }
+  if (response.status === 401 && options.publicFallback) {
+    response = await send(path, options.query);
+    if (response.status === 401) {
+      throw new SourceUnavailableError("private", `Trakt ${path} is private`);
+    }
+    // Readable without the token but refused with it: the Connection is
+    // broken even though this public read works.
+    await connection.reportRefused();
+  }
+  if (response.status === 401) {
+    throw new SourceUnavailableError(
+      "needs_connection",
+      "Trakt refused the Connection's token",
+    );
+  }
+  return ensureOk(response, `${TRAKT_API}${path}`);
+}
+
+/** GET and parse JSON. A 204 (Trakt's answer for some missing records) is null. */
+export async function traktGetJson(
+  path: string,
+  connection: ConnectionAccess | null,
+  options: TraktReadOptions = {},
+): Promise<unknown> {
+  const response = await traktGet(path, connection, options);
+  if (response.status === 204) return null;
+  return parseJsonText(await response.text());
+}
+
+/** traktGetJson() parsed with `schema`. */
+export async function traktGetParsed<T>(
+  path: string,
+  schema: z.ZodType<T>,
+  connection: ConnectionAccess | null,
+  options: TraktReadOptions = {},
+): Promise<T | null> {
+  return schema.nullable().parse(await traktGetJson(path, connection, options));
+}
+
+/** The parsed body, or null when it is empty. */
+function parseJsonText(text: string): unknown {
+  return text ? JSON.parse(text) : null;
+}
+
+interface PaginateOptions extends TraktReadOptions {
+  maxItems: number;
+}
+
+/**
+ * Every page of a paginated endpoint, up to `maxItems`, and whether
+ * `maxItems` left items out. Pagination must be explicit: without `limit`
+ * many endpoints return only their first 10 items. Endpoints where
+ * pagination is optional answer without the page headers; their single
+ * response is then the whole set.
+ */
+export async function traktGetAll<T>(
+  path: string,
+  schema: z.ZodType<T>,
+  connection: ConnectionAccess | null,
+  options: PaginateOptions,
+): Promise<PagedRead<T>> {
+  const items: T[] = [];
+  for (let page = 1; ; page++) {
+    const response = await traktGet(path, connection, {
+      ...options,
+      query: {
+        ...options.query,
+        page: String(page),
+        limit: String(TRAKT_PAGE_SIZE),
+      },
+    });
+    if (response.status === 204) break;
+    const data: unknown = await response.json();
+    if (!Array.isArray(data) || data.length === 0) break;
+    items.push(...z.array(schema).parse(data));
+    const pageCount = Number(response.headers.get("X-Pagination-Page-Count"));
+    const lastPage = !Number.isFinite(pageCount) || page >= pageCount;
+    if (items.length >= options.maxItems) {
+      return {
+        items: items.slice(0, options.maxItems),
+        complete: lastPage && items.length === options.maxItems,
+      };
+    }
+    if (lastPage) break;
+  }
+  return { items, complete: true };
+}
+
+/** Map an HttpError from Trakt to the Source list state it means. */
+export function toSourceError(error: unknown): unknown {
+  // 420: account limit exceeded; 426: VIP only.
+  return sourceErrorFromHttp(error, {
+    404: "not_found",
+    420: "premium_only",
+    426: "premium_only",
+  });
+}
+
+/**
+ * POST a change through the Connection (1 write per second per user). Throws HttpError
+ * on non-2xx (420: account limit reached, 426: Trakt VIP only).
+ */
+export async function traktPost(
+  path: string,
+  connection: ConnectionAccess,
+  body: unknown,
+): Promise<unknown> {
+  const token = await connection.getAccessToken();
+  const url = `${TRAKT_API}${path}`;
+  const response = await ensureOk(
+    await providerFetch(url, {
+      method: "POST",
+      headers: traktHeaders(),
+      bearer: token,
+      json: body,
+      limiter: limitersFor(connection).write,
+    }),
+    url,
+  );
+  return parseJsonText(await response.text());
+}

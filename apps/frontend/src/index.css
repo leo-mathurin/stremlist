@@ -4,6 +4,8 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  --edge-top-background: var(--color-paper);
+  --edge-bottom-background: var(--color-paper);
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -50,33 +52,170 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* Brand color tokens — defined in @theme (not inline) so Tailwind generates
-   bg-imdb, text-imdb, border-imdb, etc. utility classes */
+/* Brand tokens, defined in @theme (not inline) so Tailwind generates
+   bg-brand, text-ink, bg-paper, etc. utility classes. The yellow started as
+   IMDb's and is now Stremlist's accent; `imdb` stays as an alias for the
+   components that still use it. */
 @theme {
-  --color-imdb: #f5c518;
-  --color-imdb-dark: #e0b015;
+  --color-brand: #f5c518;
+  --color-brand-dark: #e0b015;
+  --color-imdb: var(--color-brand);
+  --color-imdb-dark: var(--color-brand-dark);
   --color-stremlist: #0d8aee;
+  --color-ink: #141414;
+  --color-paper: #f0f0f0;
+  --color-cloud: #f5f5f5;
+  --font-rounded:
+    ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", system-ui,
+    -apple-system, "Segoe UI", Roboto, sans-serif;
   /* Strong ease-out for UI enter/reveal motion: starts fast, settles gently. */
   --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
+  /* Strong ease-in-out for elements that morph in place on screen. */
+  --ease-in-out-quart: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+/* Registered so the edge fade of a scrollable field can transition its
+   width when the text reaches or leaves an edge. */
+@property --edge-fade-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --edge-fade-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@layer components {
+  /* Fades the text of a horizontally scrollable field at each edge that has
+     hidden content. Set data-overflow-start / data-overflow-end to show it. */
+  .edge-fade {
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 var(--edge-fade-start),
+      #000 calc(100% - var(--edge-fade-end)),
+      transparent
+    );
+    transition:
+      --edge-fade-start 200ms var(--ease-out-quint),
+      --edge-fade-end 200ms var(--ease-out-quint);
+  }
+  .edge-fade[data-overflow-start] {
+    --edge-fade-start: 1.5rem;
+  }
+  .edge-fade[data-overflow-end] {
+    --edge-fade-end: 1.5rem;
+  }
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+  /* No rubber-band overscroll: it shows the page color around the dark
+     panel. */
+  html,
+  body {
+    overscroll-behavior: none;
+  }
+  html {
+    background-color: var(--edge-top-background);
+  }
   body {
     @apply text-foreground;
     margin: 0;
-    font-family:
-      system-ui,
-      -apple-system,
-      "Segoe UI",
-      Roboto,
-      Helvetica,
-      Arial,
-      sans-serif;
-    background-color: #f0f0f0;
-    color: #333;
+    font-family: var(--font-rounded);
+    background-color: var(--edge-bottom-background);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
     line-height: 1.6;
+  }
+}
+
+@media (max-width: 1023px) {
+  html:has(.split-layout) {
+    --edge-top-background: var(--color-ink);
+  }
+
+  body {
+    padding-top: max(5px, env(safe-area-inset-top));
+    padding-bottom: max(5px, env(safe-area-inset-bottom));
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  .edge-top,
+  .edge-bottom {
+    position: fixed;
+    left: 0;
+    right: 0;
+    height: 12px;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .edge-top {
+    top: -7px;
+    background: var(--edge-top-background);
+  }
+
+  .edge-bottom {
+    bottom: -7px;
+    background: var(--edge-bottom-background);
+  }
+
+  .safari-save-bar {
+    bottom: calc(1.25rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* Motion of the Stremlist 2.0 card of a v1 install (LegacyChecklist). It
+   enters with a strong ease-out, under 300ms, and moves only transform and
+   opacity. Reduced motion keeps the fades and drops the movement. */
+@keyframes checklist-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes checklist-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes checklist-check {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+@layer components {
+  .checklist-rise {
+    animation: checklist-rise 260ms var(--ease-out-quint) both;
+  }
+  .checklist-fade-in {
+    animation: checklist-fade-in 200ms ease-out both;
+  }
+  .checklist-check {
+    animation: checklist-check 200ms var(--ease-out-quint) both;
+  }
+  /* A short stagger for the steps. Set --i on each child. */
+  .checklist-stagger > * {
+    animation: checklist-rise 240ms var(--ease-out-quint) both;
+    animation-delay: calc(var(--i, 0) * 45ms);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .checklist-rise,
+    .checklist-check,
+    .checklist-stagger > * {
+      animation-name: checklist-fade-in;
+    }
   }
 }

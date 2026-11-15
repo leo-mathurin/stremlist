@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-10-08T18:57:10.099Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Clear filters\"",
+        "target": {
+          "role": "button",
+          "name": "Clear filters"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap combobox \"Genre\"",
+        "target": {
+          "role": "combobox",
+          "name": "Genre"
+        }
+      },
+      {
+        "name": "press",
+        "summary": "press \"Escape\" on option \"All genres\"",
+        "target": {
+          "role": "option",
+          "name": "All genres"
+        },
+        "key": "Escape"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save\" (2 of 2)",
+        "target": {
+          "role": "button",
+          "name": "Save",
+          "position": {
+            "index": 1,
+            "of": 2
+          }
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/ui.e2e.ts::catalog%20filters%20and%20extra%20presets%20survive%20save%20and%20clear",
+      "targetId": "chromium",
+      "instructionDigest": "b95e750f42d4ecd11672a627cf016c852b932296dc6293e3ede9d998aaeb81ab",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "The genre filter is cleared (All genres), and Top rated remains checked. I tapped Save; the visible confirmation says “Saved! Reinstall Stremlist in Stremio to see your changes.”",
+    "startPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endAnchors": [
+      {
+        "text": "1 active"
+      },
+      {
+        "text": "All genres"
+      },
+      {
+        "role": "button",
+        "name": "Filters & extra catalogs 1 active",
+        "states": [
+          "expanded"
+        ]
+      }
+    ],
+    "goneAnchors": [
+      {
+        "text": "2 active"
+      },
+      {
+        "role": "button",
+        "name": "Clear filters"
+      },
+      {
+        "text": "Drama"
+      },
+      {
+        "role": "button",
+        "name": "Filters & extra catalogs 2 active",
+        "states": [
+          "expanded"
+        ]
+      }
+    ],
+    "endWaitMs": 15369
+  }
+}

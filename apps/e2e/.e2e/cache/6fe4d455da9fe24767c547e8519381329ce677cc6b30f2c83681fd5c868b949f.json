@@ -1,0 +1,111 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-11-05T18:21:29.705Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "type",
+        "summary": "type \"https://www.imdb.com/user/p.example/\" into textbox \"Paste a link to a watchlist or list\"",
+        "target": {
+          "role": "textbox",
+          "name": "Paste a link to a watchlist or list",
+          "placeholder": "Paste a link to a watchlist or list"
+        },
+        "value": "https://www.imdb.com/user/p.example/"
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Add this list\"",
+        "target": {
+          "role": "button",
+          "name": "Add this list"
+        }
+      },
+      {
+        "name": "tap",
+        "summary": "tap button \"Save\"",
+        "target": {
+          "role": "button",
+          "name": "Save"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "toolkit/ui.e2e.ts::profile%20URLs%20resolve%20to%20canonical%20install%20URLs",
+      "targetId": "chromium",
+      "instructionDigest": "c94b6f10d872653e00f6930263d3e5635adee0422d04cf8a96be25f64920e4ea",
+      "paramsDigest": "c96bf5650ec258cd0156896c66ed3d6d6e96574dec3647118f1e00aefad4763e",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "summary": "The IMDb profile list is already added as “IMDb Watchlist” (ur99123456), and the addon is ready with its Addon URL shown. Stopping here without opening Stremio.",
+    "startPath": "/",
+    "endPath": "/configure?account=sl_E2eFixtureAccount00001",
+    "endAnchors": [
+      {
+        "role": "heading",
+        "name": "Providers"
+      },
+      {
+        "text": "Paste a link, or connect an account."
+      },
+      {
+        "role": "textbox",
+        "name": "Paste a link to a watchlist or list",
+        "placeholder": "Paste a link to any list"
+      },
+      {
+        "role": "button",
+        "name": "Add"
+      },
+      {
+        "text": "IMDb, Trakt, MDBList, JustWatch, SensCritique and Letterboxd links work."
+      },
+      {
+        "text": "Paste a link"
+      },
+      {
+        "text": "Link"
+      },
+      {
+        "text": "Paste a link, or connect"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "text": "Stremio."
+      },
+      {
+        "text": "Paste a link to any watchlist or list, or connect your account. Each one shows up as its own row in Stremio."
+      },
+      {
+        "role": "textbox",
+        "name": "Paste a link to a watchlist or list",
+        "placeholder": "Paste a link to a watchlist or list"
+      },
+      {
+        "role": "button",
+        "name": "Build my Stremlist"
+      },
+      {
+        "role": "button",
+        "name": "Open it"
+      },
+      {
+        "text": "2 people use Stremlist"
+      },
+      {
+        "role": "heading",
+        "name": "Many sites, one addon"
+      },
+      {
+        "text": "Paste a link from any of these sites, or connect your Trakt, Simkl or MDBList account."
+      }
+    ],
+    "endWaitMs": 40859
+  }
+}

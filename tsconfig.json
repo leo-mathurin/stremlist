@@ -1,0 +1,11 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./apps/backend" },
+    { "path": "./apps/backend/stress" },
+    { "path": "./apps/frontend" },
+    { "path": "./apps/e2e" },
+    { "path": "./packages/shared" },
+    { "path": "./tools" }
+  ]
+}

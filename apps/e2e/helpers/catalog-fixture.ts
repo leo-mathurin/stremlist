@@ -1,5 +1,5 @@
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
-import { seedWatchlist } from "./db.js";
+import { seedAccountWithLists } from "./db.js";
 import { seedCachedCatalog } from "./r2.js";
 import { CATALOG_FIXTURE_USER } from "./test-data.js";
 
@@ -84,9 +84,17 @@ export const CATALOG_TITLES: StremioMeta[] = [
   },
 ];
 
-/** Only the input data is seeded; all actions use the real API and storage. */
+/**
+ * A private Account whose only List is the synthetic IMDb watchlist. Only the
+ * input data is seeded; all actions use the real API and storage.
+ */
 export async function seedCatalog(metas = CATALOG_TITLES) {
-  const id = await seedWatchlist(CATALOG_FIXTURE_USER, "Release QA");
+  const {
+    accountId,
+    listIds: [id],
+  } = await seedAccountWithLists([
+    { sourceRef: CATALOG_FIXTURE_USER, catalogTitle: "Release QA" },
+  ]);
   await seedCachedCatalog(id, metas);
-  return { userId: CATALOG_FIXTURE_USER, id, catalogId: `wl-${id}-movie` };
+  return { accountId, id, catalogId: `wl-${id}-movie` };
 }

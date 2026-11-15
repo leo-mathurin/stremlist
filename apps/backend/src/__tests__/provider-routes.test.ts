@@ -1,0 +1,370 @@
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+import { PROVIDER_IDS } from "@stremlist/shared/providers";
+import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
+import { z } from "zod";
+
+import app from "../index.js";
+import { LetterboxdBusyError } from "../providers/letterboxd-gate";
+import { currentReadQueue } from "../providers/read-priority";
+import { SourceUnavailableError } from "../providers/types";
+import * as scraper from "../services/imdb-scraper";
+import {
+  legacyAccountId,
+  OWNER,
+  postJson,
+  resetConfigTest,
+} from "./helpers/config-api.js";
+import { seedAccount, seedConnection } from "./helpers/fixtures.js";
+import { fakeAdapter, useFakeProvider } from "./helpers/mock-registry.js";
+import { db } from "./helpers/mock-supabase.js";
+import {
+  haltLetterboxdGate,
+  letterboxdGate,
+} from "./helpers/supabase/letterboxd-gate-rpcs.js";
+import { readJson } from "./helpers/json.js";
+
+const { backgroundMocks, prewarmMocks, supabaseMocks } = await vi.hoisted(
+  () => import("./helpers/config-api-mocks.js"),
+);
+vi.mock("../lib/background", () => backgroundMocks);
+vi.mock("../services/list-prewarm", () => prewarmMocks);
+vi.mock("../lib/supabase", () => supabaseMocks);
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
+vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
+vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
+
+const providersBody = z.object({
+  providers: z.array(
+    z
+      .object({
+        id: z.string(),
+        enabled: z.boolean(),
+        connectable: z.boolean(),
+      })
+      .loose(),
+  ),
+});
+
+function haltLetterboxd() {
+  haltLetterboxdGate();
+}
+
+beforeEach(resetConfigTest);
+
+describe("POST /links/resolve", () => {
+  function resolve(input: string, accountKey?: string) {
+    return postJson("/links/resolve", { input, accountKey });
+  }
+
+  it.each([
+    ["not a link", { reason: "unrecognized" }],
+    [
+      "https://mdblist.com/lists/leo/top-movies",
+      { reason: "needs_connection", provider: "mdblist" },
+    ],
+  ])("refuses %j with %j", async (input, expected) => {
+    const res = await resolve(input);
+    expect(await res.json()).toEqual({ ok: false, ...expected });
+  });
+
+  it("resolves a public Letterboxd watchlist without a Connection", async () => {
+    useFakeProvider(fakeAdapter("letterboxd"));
+    const res = await resolve("https://letterboxd.com/leo/watchlist/");
+    expect(await res.json()).toMatchObject({
+      ok: true,
+      provider: "letterboxd",
+      sourceRef: "users/leo/watchlist",
+      requiresConnection: false,
+    });
+  });
+
+  it("says when a Provider is turned off", async () => {
+    const validateSource = vi.fn();
+    useFakeProvider(fakeAdapter("trakt", { validateSource }));
+    process.env.DISABLED_PROVIDERS = "imdb, trakt";
+
+    const res = await resolve("https://trakt.tv/users/leo/watchlist");
+
+    expect(await res.json()).toEqual({
+      ok: false,
+      reason: "disabled",
+      provider: "trakt",
+    });
+    expect(validateSource).not.toHaveBeenCalled();
+  });
+
+  it("lets a link check through to send Letterboxd's due recovery probe", async () => {
+    const validateSource = vi.fn(() =>
+      Promise.resolve({ ok: true as const, ref: "users/leo/watchlist" }),
+    );
+    useFakeProvider(fakeAdapter("letterboxd", { validateSource }));
+    haltLetterboxd();
+    const gate = letterboxdGate();
+    if (gate) gate.nextProbeAt = Date.now() - 1;
+    const res = await resolve("https://letterboxd.com/leo/watchlist/");
+    expect(await res.json()).toMatchObject({ ok: true });
+    expect(validateSource).toHaveBeenCalledTimes(1);
+  });
+
+  it("answers with the Letterboxd queue state, then keeps the place with its ticket", async () => {
+    const ticket = "0f4ef1b5-0a8c-4a4e-9f1e-3b2c1d0e9a87";
+    const seen: { ticket: string | null; answerAtMs: number | null }[] = [];
+    const validateSource = vi.fn(() => {
+      const queue = currentReadQueue();
+      seen.push({ ticket: queue.ticket, answerAtMs: queue.answerAtMs });
+      return seen.length === 1
+        ? Promise.reject(
+            new LetterboxdBusyError(12_000, { retryMs: 11_000, ticket }),
+          )
+        : Promise.resolve({ ok: true as const, ref: "users/leo/watchlist" });
+    });
+    useFakeProvider(fakeAdapter("letterboxd", { validateSource }));
+
+    const queued = await resolve("https://letterboxd.com/leo/watchlist/");
+    expect(await queued.json()).toEqual({
+      ok: false,
+      reason: "queued",
+      provider: "letterboxd",
+      waitMs: 12_000,
+      retryMs: 11_000,
+      ticket,
+    });
+    const again = await postJson("/links/resolve", {
+      input: "https://letterboxd.com/leo/watchlist/",
+      ticket,
+    });
+    expect(await again.json()).toMatchObject({ ok: true });
+    // The check answers at once from a 3 s wait, and the ticket comes back.
+    expect(seen).toEqual([
+      { ticket: null, answerAtMs: 3_000 },
+      { ticket, answerAtMs: 3_000 },
+    ]);
+  });
+
+  it("says when Letterboxd is unavailable after it refused Stremlist", async () => {
+    useFakeProvider(fakeAdapter("letterboxd"));
+    haltLetterboxd();
+    try {
+      const res = await resolve("https://letterboxd.com/leo/watchlist/");
+      expect(await res.json()).toEqual({
+        ok: false,
+        reason: "disabled",
+        provider: "letterboxd",
+      });
+    } finally {
+      db.reset();
+    }
+  });
+
+  it("never uses a Connection for a Legacy alias", async () => {
+    seedConnection(legacyAccountId, "mdblist");
+    const res = await resolve(
+      "https://mdblist.com/lists/leo/top-movies",
+      OWNER,
+    );
+    expect(
+      (await readJson(res, z.object({ reason: z.string() }).loose())).reason,
+    ).toBe("needs_connection");
+  });
+
+  it("asks for a Connection again when the Connection expired", async () => {
+    const validateSource = vi.fn(
+      async (
+        _ref: string,
+        ctx: { connection: { getAccessToken(): Promise<string> } | null },
+      ) => {
+        await ctx.connection?.getAccessToken();
+        return { ok: true as const, ref: "lists/leo/top-movies" };
+      },
+    );
+    useFakeProvider(fakeAdapter("mdblist", { validateSource }));
+    const account = seedAccount();
+    // Expired, and no refresh token to renew it.
+    seedConnection(account.id, "mdblist", {
+      expiresAt: new Date(Date.now() - 60_000),
+      refreshToken: null,
+    });
+
+    const res = await resolve(
+      "https://mdblist.com/lists/leo/top-movies",
+      account.id,
+    );
+
+    expect(await res.json()).toEqual({
+      ok: false,
+      reason: "needs_connection",
+      provider: "mdblist",
+    });
+  });
+
+  it("reports why a Provider refuses the Source list", async () => {
+    const validateSource = vi.fn(() =>
+      Promise.reject(
+        new SourceUnavailableError(
+          "private",
+          "Trakt list leo/watchlist is private",
+        ),
+      ),
+    );
+    useFakeProvider(fakeAdapter("trakt", { validateSource }));
+
+    const res = await resolve("https://trakt.tv/users/leo/watchlist");
+
+    expect(await res.json()).toEqual({
+      ok: false,
+      reason: "private",
+      provider: "trakt",
+    });
+  });
+
+  it("validates through the Connection of a private Account", async () => {
+    const validateSource = vi.fn(() =>
+      Promise.resolve({
+        ok: true as const,
+        ref: "lists/leo/top-movies",
+        suggestedTitle: "Top movies",
+      }),
+    );
+    useFakeProvider(fakeAdapter("mdblist", { validateSource }));
+    const account = seedAccount();
+    seedConnection(account.id, "mdblist", { username: "leo" });
+
+    const res = await resolve(
+      "https://mdblist.com/lists/leo/top-movies",
+      account.id,
+    );
+
+    expect(await res.json()).toEqual({
+      ok: true,
+      provider: "mdblist",
+      sourceRef: "lists/leo/top-movies",
+      kind: "list",
+      requiresConnection: true,
+      suggestedTitle: "Top movies",
+      defaultDisplayMode: null,
+    });
+    expect(validateSource).toHaveBeenCalledWith("lists/leo/top-movies", {
+      connection: expect.objectContaining({
+        provider: "mdblist",
+        username: "leo",
+      }) as unknown,
+    });
+  });
+
+  it("resolves an IMDb watchlist link (p. handle) to its user ID", async () => {
+    const validate = vi
+      .spyOn(scraper, "validateImdbWatchlist")
+      .mockResolvedValue({ valid: true, userId: OWNER });
+
+    const res = await resolve("https://www.imdb.com/user/p.leo123/watchlist");
+
+    expect(await res.json()).toEqual({
+      ok: true,
+      provider: "imdb",
+      sourceRef: OWNER,
+      kind: "watchlist",
+      requiresConnection: false,
+      suggestedTitle: null,
+      defaultDisplayMode: null,
+    });
+    expect(validate).toHaveBeenCalledWith("p.leo123");
+  });
+
+  it("reports a private IMDb watchlist", async () => {
+    vi.spyOn(scraper, "validateImdbWatchlist").mockResolvedValue({
+      valid: false,
+      reason: "private",
+    });
+
+    const res = await resolve(OWNER);
+
+    expect(await res.json()).toEqual({
+      ok: false,
+      reason: "private",
+      provider: "imdb",
+    });
+  });
+
+  it("resolves an IMDb chart without a network call", async () => {
+    const res = await resolve("imdb:top-rated-movies");
+
+    expect(await res.json()).toMatchObject({
+      ok: true,
+      provider: "imdb",
+      sourceRef: "imdb:top-rated-movies",
+      kind: "chart",
+      suggestedTitle: "Top 250 Movies",
+      defaultDisplayMode: "movie",
+    });
+  });
+
+  it("answers unavailable when validation throws", async () => {
+    vi.spyOn(scraper, "validateImdbList").mockRejectedValue(
+      new Error("socket hang up"),
+    );
+
+    const res = await resolve("https://www.imdb.com/list/ls123456789/");
+
+    expect(await res.json()).toEqual({
+      ok: false,
+      reason: "unavailable",
+      provider: "imdb",
+    });
+  });
+});
+
+describe("GET /providers", () => {
+  it("lists every Provider with its kill switch and OAuth status", async () => {
+    useFakeProvider(
+      fakeAdapter("trakt", {
+        oauth: {
+          authorizeUrl: "https://trakt.example/oauth/authorize",
+          tokenUrl: "https://trakt.example/oauth/token",
+          clientId: () => "client-id",
+        },
+      }),
+    );
+    useFakeProvider(
+      fakeAdapter("simkl", {
+        oauth: {
+          authorizeUrl: "https://simkl.example/oauth/authorize",
+          tokenUrl: "https://simkl.example/oauth/token",
+          clientId: () => undefined,
+        },
+      }),
+    );
+    process.env.DISABLED_PROVIDERS = "justwatch";
+
+    const res = await app.request("/providers");
+    const { providers } = await readJson(res, providersBody);
+
+    expect(providers.map((provider) => provider.id)).toEqual([...PROVIDER_IDS]);
+    const byId = new Map(providers.map((provider) => [provider.id, provider]));
+    expect(byId.get("trakt")).toEqual({
+      id: "trakt",
+      enabled: true,
+      connectable: true,
+    });
+    expect(byId.get("simkl")?.connectable).toBe(false);
+    expect(byId.get("imdb")?.connectable).toBe(false);
+    expect(byId.get("justwatch")?.enabled).toBe(false);
+    expect(byId.get("letterboxd")?.enabled).toBe(true);
+  });
+
+  it("reports a halted Letterboxd as unavailable, like the kill switch", async () => {
+    haltLetterboxd();
+    try {
+      const res = await app.request("/providers");
+      const { providers } = await readJson(res, providersBody);
+      const byId = new Map(
+        providers.map((provider) => [provider.id, provider]),
+      );
+      expect(byId.get("letterboxd")?.enabled).toBe(false);
+      expect(byId.get("imdb")?.enabled).toBe(true);
+    } finally {
+      db.reset();
+    }
+  });
+});

@@ -1,58 +1,77 @@
-import { describe, expect, it } from "vitest";
+import type { ConfigList } from "@stremlist/shared/stremio.types";
+import { describe, expect, it } from "vite-plus/test";
 import { buildCatalogId, parseCatalogId } from "../catalog-id";
 import { buildManifestCatalogs } from "../stremio-catalogs";
 
-function catalogsWithoutExtra(
-  catalogs: ReturnType<typeof buildManifestCatalogs>,
-) {
-  return catalogs.map(({ id, name, type }) => ({ id, name, type }));
+const FIRST = "77e10eda-0e07-4c60-8ec7-23fb1b1d0573";
+const SECOND = "3be4e39f-3e27-42e7-a69f-c14f0709de52";
+
+function list(overrides: Partial<ConfigList> = {}): ConfigList {
+  return {
+    id: FIRST,
+    provider: "imdb",
+    sourceRef: "ur12345678",
+    catalogTitle: "Leo Picks",
+    sortOption: "added_at-asc",
+    displayMode: "split",
+    position: 0,
+    ...overrides,
+  };
+}
+
+const second = (overrides: Partial<ConfigList> = {}) =>
+  list({ id: SECOND, sourceRef: "ur87654321", position: 1, ...overrides });
+
+function catalogsWithoutExtra(lists: ConfigList[]) {
+  return buildManifestCatalogs(lists).map(({ id, name, type }) => ({
+    id,
+    name,
+    type,
+  }));
+}
+
+/** The expected movie and series catalogs of a List. */
+function both(listId: string, name: string) {
+  return (["movie", "series"] as const).map((type) => ({
+    id: `wl-${listId}-${type}`,
+    name,
+    type,
+  }));
 }
 
 describe("catalog id helpers", () => {
   it("builds and parses movie ids", () => {
-    const watchlistId = "77e10eda-0e07-4c60-8ec7-23fb1b1d0573";
-    const catalogId = buildCatalogId(watchlistId, "movie");
+    const catalogId = buildCatalogId(FIRST, "movie");
 
-    expect(catalogId).toBe("wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie");
-    expect(parseCatalogId(catalogId)).toEqual({ watchlistId, type: "movie" });
+    expect(catalogId).toBe(`wl-${FIRST}-movie`);
+    expect(parseCatalogId(catalogId)).toEqual({
+      kind: "list",
+      listId: FIRST,
+      type: "movie",
+    });
   });
 
   it("rejects malformed ids", () => {
     expect(parseCatalogId("stremlist-movies")).toBeNull();
     expect(parseCatalogId("wl-not-a-uuid-series")).toBeNull();
-    expect(
-      parseCatalogId("wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-anime"),
-    ).toBeNull();
+    expect(parseCatalogId(`wl-${FIRST}-anime`)).toBeNull();
   });
 });
 
 describe("manifest catalog generation", () => {
-  it("creates movie and series catalogs for each watchlist title", () => {
-    const catalogs = buildManifestCatalogs([
-      {
-        id: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
-        imdbUserId: "ur12345678",
-        catalogTitle: "Leo Picks",
-        availableGenres: ["Comedy"],
-        sortOption: "added_at-asc",
-        displayMode: "split",
-        position: 0,
-      },
-      {
-        id: "3be4e39f-3e27-42e7-a69f-c14f0709de52",
-        imdbUserId: "ur87654321",
+  it("creates movie and series catalogs for each List title", () => {
+    const lists = [
+      list({ availableGenres: ["Comedy"] }),
+      second({
         catalogTitle: "Family Queue",
         availableGenres: ["Comedy"],
         sortOption: "title-asc",
-        displayMode: "split",
-        position: 1,
-      },
-    ]);
+      }),
+    ];
+    const catalogs = buildManifestCatalogs(lists);
 
-    expect(
-      catalogs.every((catalog) => catalog.extra?.[0]?.name === "skip"),
-    ).toBe(true);
     for (const catalog of catalogs) {
+      expect(catalog.extra?.[0]?.name).toBe("skip");
       const genre = catalog.extra?.find((extra) => extra.name === "genre");
       expect(genre?.isRequired).toBe(false);
       expect(genre?.optionsLimit).toBe(1);
@@ -65,201 +84,135 @@ describe("manifest catalog generation", () => {
         ]),
       );
     }
-    expect(catalogsWithoutExtra(catalogs)).toEqual([
-      {
-        id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
-        name: "Stremlist Leo Picks",
-        type: "movie",
-      },
-      {
-        id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-series",
-        name: "Stremlist Leo Picks",
-        type: "series",
-      },
-      {
-        id: "wl-3be4e39f-3e27-42e7-a69f-c14f0709de52-movie",
-        name: "Stremlist Family Queue",
-        type: "movie",
-      },
-      {
-        id: "wl-3be4e39f-3e27-42e7-a69f-c14f0709de52-series",
-        name: "Stremlist Family Queue",
-        type: "series",
-      },
+    expect(catalogsWithoutExtra(lists)).toEqual([
+      ...both(FIRST, "Stremlist Leo Picks"),
+      ...both(SECOND, "Stremlist Family Queue"),
     ]);
   });
 
   it("exposes enabled presets on the home and keeps search on the base catalog", () => {
     const catalogs = buildManifestCatalogs([
-      {
-        id: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
-        imdbUserId: "ur12345678",
+      list({
         catalogTitle: "Picks",
         sortOption: "title-asc",
         displayMode: "movie",
-        position: 0,
         catalogSettings: { presets: ["short", "rated", "shuffle"] },
-      },
+      }),
     ]);
+    const hasSearch = (catalog: (typeof catalogs)[number]) =>
+      catalog.extra?.some((extra) => extra.name === "search");
     expect(catalogs.map((catalog) => catalog.id)).toEqual([
-      "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
-      "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie--short",
-      "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie--rated",
-      "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie--shuffle",
+      `wl-${FIRST}-movie`,
+      `wl-${FIRST}-movie--short`,
+      `wl-${FIRST}-movie--rated`,
+      `wl-${FIRST}-movie--shuffle`,
     ]);
-    expect(catalogs[0].extra?.some((extra) => extra.name === "search")).toBe(
-      true,
-    );
-    expect(
-      catalogs
-        .slice(1)
-        .every(
-          (catalog) => !catalog.extra?.some((extra) => extra.name === "search"),
-        ),
-    ).toBe(true);
+    expect(hasSearch(catalogs[0])).toBe(true);
+    expect(catalogs.slice(1).some(hasSearch)).toBe(false);
     expect(parseCatalogId(catalogs[1].id)).toEqual({
-      watchlistId: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
+      kind: "list",
+      listId: FIRST,
       type: "movie",
       preset: "short",
     });
     expect(parseCatalogId(`${catalogs[0].id}--unknown`)).toBeNull();
   });
 
-  it("uses base Stremlist title when catalog title is empty", () => {
-    const catalogs = buildManifestCatalogs([
-      {
-        id: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
-        imdbUserId: "ur12345678",
+  it("names a single untitled IMDb watchlist Stremlist, like v1", () => {
+    expect(catalogsWithoutExtra([list({ catalogTitle: "" })])).toEqual(
+      both(FIRST, "Stremlist"),
+    );
+  });
+
+  it("names untitled Lists after their Source list, never their position", () => {
+    expect(
+      catalogsWithoutExtra([
+        list({ catalogTitle: "" }),
+        second({ catalogTitle: "", sortOption: "title-asc" }),
+      ]),
+    ).toEqual([
+      ...both(FIRST, "Stremlist IMDb Watchlist"),
+      ...both(SECOND, "Stremlist IMDb Watchlist"),
+    ]);
+  });
+
+  it("keeps the names of untitled Lists when Lists are added before them", () => {
+    const imdb = list({ catalogTitle: "" });
+    const before = buildManifestCatalogs([
+      second({
         catalogTitle: "",
-        sortOption: "added_at-asc",
-        displayMode: "split",
-        position: 0,
-      },
+        provider: "simkl",
+        sourceRef: "me/plantowatch",
+      }),
+      imdb,
     ]);
-
-    expect(catalogsWithoutExtra(catalogs)).toEqual([
-      {
-        id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
-        name: "Stremlist",
-        type: "movie",
-      },
-      {
-        id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-series",
-        name: "Stremlist",
-        type: "series",
-      },
-    ]);
-  });
-
-  it("defaults unnamed watchlists to numeric titles when multiple exist", () => {
-    const catalogs = buildManifestCatalogs([
-      {
-        id: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
-        imdbUserId: "ur12345678",
+    const after = buildManifestCatalogs([
+      list({
+        id: "0f0e8a51-2d1c-4a39-9f43-2c1d3b0b8d11",
         catalogTitle: "",
-        sortOption: "added_at-asc",
-        displayMode: "split",
-        position: 0,
-      },
-      {
-        id: "3be4e39f-3e27-42e7-a69f-c14f0709de52",
-        imdbUserId: "ur87654321",
+        provider: "mdblist",
+        sourceRef: "me/watchlist",
+      }),
+      second({
         catalogTitle: "",
-        sortOption: "title-asc",
-        displayMode: "split",
-        position: 1,
-      },
+        provider: "simkl",
+        sourceRef: "me/plantowatch",
+      }),
+      { ...imdb, position: 2 },
     ]);
+    const names = (catalogs: typeof before) =>
+      catalogs.map((catalog) => `${catalog.id} ${catalog.name}`);
+    expect(names(before)).toEqual([
+      `wl-${SECOND}-movie Stremlist Simkl Plan to watch`,
+      `wl-${SECOND}-series Stremlist Simkl Plan to watch`,
+      `wl-${FIRST}-movie Stremlist IMDb Watchlist`,
+      `wl-${FIRST}-series Stremlist IMDb Watchlist`,
+    ]);
+    expect(names(after).slice(2)).toEqual(names(before));
+  });
 
-    expect(catalogsWithoutExtra(catalogs)).toEqual([
-      {
-        id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
-        name: "Stremlist 1",
-        type: "movie",
-      },
-      {
-        id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-series",
-        name: "Stremlist 1",
-        type: "series",
-      },
-      {
-        id: "wl-3be4e39f-3e27-42e7-a69f-c14f0709de52-movie",
-        name: "Stremlist 2",
-        type: "movie",
-      },
-      {
-        id: "wl-3be4e39f-3e27-42e7-a69f-c14f0709de52-series",
-        name: "Stremlist 2",
-        type: "series",
-      },
+  it("names a single untitled List of v2 after its Source list", () => {
+    expect(
+      catalogsWithoutExtra([
+        list({ catalogTitle: "", sourceRef: "ls012345678" }),
+      ]).map((catalog) => catalog.name),
+    ).toEqual(["Stremlist IMDb List", "Stremlist IMDb List"]);
+    expect(
+      catalogsWithoutExtra([
+        list({ catalogTitle: "", sourceRef: "imdb:top-rated-movies" }),
+      ]).map((catalog) => catalog.name),
+    ).toContain("Stremlist Top 250 Movies");
+  });
+
+  it("lets a user title win over the Source list name", () => {
+    expect(
+      catalogsWithoutExtra([
+        list({ catalogTitle: " Picks " }),
+        second({ catalogTitle: "" }),
+      ]).map((catalog) => catalog.name),
+    ).toEqual([
+      "Stremlist Picks",
+      "Stremlist Picks",
+      "Stremlist IMDb Watchlist",
+      "Stremlist IMDb Watchlist",
     ]);
   });
 
-  it("emits only the movie catalog when displayMode is movie", () => {
-    const catalogs = buildManifestCatalogs([
-      {
-        id: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
-        imdbUserId: "ur12345678",
-        catalogTitle: "Leo Picks",
-        sortOption: "added_at-asc",
-        displayMode: "movie",
-        position: 0,
-      },
-    ]);
-
-    expect(catalogsWithoutExtra(catalogs)).toEqual([
-      {
-        id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
-        name: "Stremlist Leo Picks",
-        type: "movie",
-      },
-    ]);
-  });
-
-  it("emits only the series catalog when displayMode is series", () => {
-    const catalogs = buildManifestCatalogs([
-      {
-        id: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
-        imdbUserId: "ur12345678",
-        catalogTitle: "Leo Picks",
-        sortOption: "added_at-asc",
-        displayMode: "series",
-        position: 0,
-      },
-    ]);
-
-    expect(catalogsWithoutExtra(catalogs)).toEqual([
-      {
-        id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-series",
-        name: "Stremlist Leo Picks",
-        type: "series",
-      },
-    ]);
-  });
-
-  it("defaults to both catalogs for an unknown displayMode", () => {
-    const catalogs = buildManifestCatalogs([
-      {
-        id: "77e10eda-0e07-4c60-8ec7-23fb1b1d0573",
-        imdbUserId: "ur12345678",
-        catalogTitle: "Leo Picks",
-        sortOption: "added_at-asc",
-        displayMode: "bogus" as never,
-        position: 0,
-      },
-    ]);
-
-    expect(catalogsWithoutExtra(catalogs)).toEqual([
-      {
-        id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-movie",
-        name: "Stremlist Leo Picks",
-        type: "movie",
-      },
-      {
-        id: "wl-77e10eda-0e07-4c60-8ec7-23fb1b1d0573-series",
-        name: "Stremlist Leo Picks",
-        type: "series",
-      },
-    ]);
+  it.each([
+    ["only the movie catalog when displayMode is movie", "movie", ["movie"]],
+    [
+      "only the series catalog when displayMode is series",
+      "series",
+      ["series"],
+    ],
+    ["both catalogs for an unknown displayMode", "bogus", ["movie", "series"]],
+  ])("emits %s", (_case, displayMode, types) => {
+    // A stored List can hold a display mode that this build does not know.
+    const stored = Object.assign(list(), { displayMode });
+    expect(catalogsWithoutExtra([stored])).toEqual(
+      both(FIRST, "Stremlist Leo Picks").filter((catalog) =>
+        types.includes(catalog.type),
+      ),
+    );
   });
 });

@@ -17,15 +17,20 @@ const ZERO = "0".repeat(40);
 const before = process.env.BEFORE ?? "";
 const after = process.env.AFTER || "HEAD";
 
-const range = !before || before === ZERO ? `${after}~1..${after}` : `${before}..${after}`;
+const range =
+  !before || before === ZERO ? `${after}~1..${after}` : `${before}..${after}`;
 
 // %x00 = NUL field separator, %x1e = record separator — safe against newlines in bodies.
 let raw = "";
 try {
-  raw = execSync(`git log ${range} --format=%s%x00%b%x1e`, { encoding: "utf8" });
+  raw = execSync(`git log ${range} --format=%s%x00%b%x1e`, {
+    encoding: "utf8",
+  });
 } catch {
   // Range unresolvable (e.g. force-push); fall back to the tip commit only.
-  raw = execSync(`git log -1 ${after} --format=%s%x00%b%x1e`, { encoding: "utf8" });
+  raw = execSync(`git log -1 ${after} --format=%s%x00%b%x1e`, {
+    encoding: "utf8",
+  });
 }
 
 const commits = raw

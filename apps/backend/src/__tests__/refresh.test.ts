@@ -1,202 +1,157 @@
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
-import { describe, it, expect, beforeEach, vi } from "vitest";
-
-vi.mock("../lib/supabase", async () => {
-  return await import("./helpers/mock-supabase.js");
-});
-
-vi.mock("../services/watchlist-cache", async () => {
-  return await import("./helpers/mock-watchlist-cache.js");
-});
-
-vi.mock("../lib/resend", () => ({
-  resend: { contacts: { create: vi.fn() } },
-}));
-
+import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
 import app from "../index.js";
 import * as scraper from "../services/imdb-scraper";
-import { db } from "./helpers/mock-supabase.js";
-import { cache } from "./helpers/mock-watchlist-cache.js";
+import {
+  movie,
+  seedAccount,
+  seedLegacyAccount,
+  seedList,
+} from "./helpers/fixtures.js";
+import { cache } from "./helpers/mock-list-cache.js";
+import { db, resetRpc } from "./helpers/mock-supabase.js";
+import { readJson, refreshBody } from "./helpers/json.js";
+
+vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
+vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
+vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 
 const OWNER = "ur216216210";
 const UUID_1 = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
+const CACHED_MOVIE = movie("tt0111161", { name: "The Shawshank Redemption" });
 
 // Older than the default 60s refresh cooldown so a manual refresh is allowed.
 const TEN_MINUTES_AGO = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
-function seedUser(lastFetchedAt: string) {
-  db.getTable("users").push({
-    imdb_user_id: OWNER,
-    is_active: true,
-    created_at: new Date().toISOString(),
-    last_fetched_at: lastFetchedAt,
-    rpdb_api_key: null,
-    last_cache_served_at: null,
+let accountId = "";
+
+function seedWatchlist(lastFetchedAt = TEN_MINUTES_AGO) {
+  accountId = seedLegacyAccount(OWNER, { last_fetched_at: lastFetchedAt }).id;
+  seedList(accountId, { id: UUID_1, source_ref: OWNER });
+}
+
+function serveWatchlist(metas: StremioMeta[]) {
+  vi.spyOn(scraper, "fetchWatchlist").mockResolvedValue({
+    metas,
+    complete: true,
   });
 }
 
-function seedWatchlist(id: string) {
-  db.getTable("user_watchlists").push({
-    id,
-    owner_user_id: OWNER,
-    imdb_user_id: OWNER,
-    catalog_title: "",
-    sort_option: "added_at-asc",
-    display_mode: "split",
-    position: 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  });
+async function refresh(key = OWNER) {
+  const res = await app.request(`/${key}/refresh`, { method: "POST" });
+  expect(res.status).toBe(200);
+  return readJson(res, refreshBody);
 }
 
-function seedCache(watchlistId: string, metas: { id: string; type: string }[]) {
-  cache.seed(watchlistId, metas as StremioMeta[]);
-}
-
-const CACHED_MOVIE: StremioMeta = {
-  id: "tt0111161",
-  type: "movie",
-  name: "The Shawshank Redemption",
-  poster: null,
-  posterShape: "poster",
-  genres: [],
-  description: "",
-};
-
-interface RefreshResponse {
-  ok: boolean;
-  lastFetchedAt: string;
-  refreshed: number;
-  failed: number;
-  total: number;
-  throttled?: boolean;
-  cooldownSeconds: number;
-}
-
-function requestRefresh() {
-  return app.request(`/${OWNER}/refresh`, { method: "POST" });
+function cachedIds() {
+  return (cache.get(UUID_1)?.data.metas ?? []).map((meta) => meta.id).sort();
 }
 
 beforeEach(() => {
   db.reset();
+  resetRpc();
   cache.reset();
   vi.restoreAllMocks();
 });
 
 describe("manual refresh reports honest success/failure counts", () => {
   it("counts a failed fetch as failed (not refreshed) even when a non-empty cache exists", async () => {
-    seedUser(TEN_MINUTES_AGO);
-    seedWatchlist(UUID_1);
-    // A populated cache exists: the catalog path would gracefully fall back to
-    // it, but a manual refresh must report that the live fetch failed rather
-    // than masking it as a successful refresh of stale data.
-    seedCache(UUID_1, [CACHED_MOVIE]);
+    seedWatchlist();
+    // The catalog path would fall back to this cache, but a manual refresh
+    // must report that the live fetch failed.
+    cache.seed(UUID_1, [CACHED_MOVIE]);
     vi.spyOn(scraper, "fetchWatchlist").mockRejectedValue(
       new Error(scraper.ERROR_PRIVATE),
     );
 
-    const res = await requestRefresh();
-
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as RefreshResponse;
-    expect(body.refreshed).toBe(0);
-    expect(body.failed).toBe(1);
-    expect(body.total).toBe(1);
-    // No real fetch happened, so the cooldown timestamp must be left untouched.
-    expect(body.lastFetchedAt).toBe(TEN_MINUTES_AGO);
+    // No real fetch happened, so the cooldown timestamp is left untouched.
+    expect(await refresh()).toMatchObject({
+      refreshed: 0,
+      failed: 1,
+      total: 1,
+      lastFetchedAt: TEN_MINUTES_AGO,
+    });
   });
 
   it("reports a successful refresh and advances last_fetched_at", async () => {
-    seedUser(TEN_MINUTES_AGO);
-    seedWatchlist(UUID_1);
-    vi.spyOn(scraper, "fetchWatchlist").mockResolvedValue({
-      metas: [CACHED_MOVIE],
-    });
+    seedWatchlist();
+    serveWatchlist([CACHED_MOVIE]);
 
-    const res = await requestRefresh();
+    const body = await refresh();
 
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as RefreshResponse;
-    expect(body.refreshed).toBe(1);
-    expect(body.failed).toBe(0);
+    expect(body).toMatchObject({ refreshed: 1, failed: 0 });
     expect(body.lastFetchedAt).not.toBe(TEN_MINUTES_AGO);
   });
 
   it("replaces the previous cache with fresh non-duplicated items", async () => {
-    seedUser(TEN_MINUTES_AGO);
-    seedWatchlist(UUID_1);
-    // Previous cache: an item that gets dropped (OLD) and one that stays
-    // (SHARED). Seed them with an older timestamp so a refresh is required.
-    const anHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    seedWatchlist();
+    // tt0000001 gets dropped, tt0111161 stays; older, so a refresh is required.
     cache.seed(
       UUID_1,
-      [
-        { ...CACHED_MOVIE, id: "tt0000001" },
-        { ...CACHED_MOVIE, id: "tt0111161" },
-      ],
-      new Date(anHourAgo),
+      [{ ...CACHED_MOVIE, id: "tt0000001" }, CACHED_MOVIE],
+      new Date(Date.now() - 60 * 60 * 1000),
     );
-    // Fresh fetch keeps SHARED (tt0111161) and adds NEW (tt0000002); OLD is gone.
-    const NEW: StremioMeta = {
-      id: "tt0000002",
-      type: "movie",
-      name: "A New Film",
-      poster: null,
-      posterShape: "poster",
-      genres: [],
-      description: "",
-    };
-    vi.spyOn(scraper, "fetchWatchlist").mockResolvedValue({
-      metas: [CACHED_MOVIE, NEW],
-    });
+    serveWatchlist([CACHED_MOVIE, movie("tt0000002", { name: "A New Film" })]);
 
-    const res = await requestRefresh();
+    await refresh();
 
-    expect(res.status).toBe(200);
-    const ids = (cache.get(UUID_1)?.data.metas ?? [])
-      .map((meta) => meta.id)
-      .sort();
-    // OLD dropped, SHARED kept once (not duplicated), NEW added.
-    expect(ids).toEqual(["tt0000002", "tt0111161"]);
+    expect(cachedIds()).toEqual(["tt0000002", "tt0111161"]);
   });
 
   it("de-duplicates repeated ids before caching", async () => {
-    seedUser(TEN_MINUTES_AGO);
-    seedWatchlist(UUID_1);
+    seedWatchlist();
     // IMDb lists aren't guaranteed sets: this one carries tt0111161 twice.
-    const GODFATHER: StremioMeta = {
-      ...CACHED_MOVIE,
-      id: "tt0068646",
-      name: "The Godfather",
-    };
-    vi.spyOn(scraper, "fetchWatchlist").mockResolvedValue({
-      metas: [CACHED_MOVIE, GODFATHER, { ...CACHED_MOVIE }],
-    });
+    serveWatchlist([
+      CACHED_MOVIE,
+      { ...CACHED_MOVIE, id: "tt0068646", name: "The Godfather" },
+      { ...CACHED_MOVIE },
+    ]);
 
-    const res = await requestRefresh();
-
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as RefreshResponse;
-    expect(body.refreshed).toBe(1);
-    expect(body.failed).toBe(0);
-    // tt0111161 stored exactly once (first occurrence kept), alongside the other.
-    const ids = (cache.get(UUID_1)?.data.metas ?? [])
-      .map((meta) => meta.id)
-      .sort();
-    expect(ids).toEqual(["tt0068646", "tt0111161"]);
+    expect(await refresh()).toMatchObject({ refreshed: 1, failed: 0 });
+    expect(cachedIds()).toEqual(["tt0068646", "tt0111161"]);
   });
 
   it("throttles a refresh that arrives within the cooldown window", async () => {
-    seedUser(new Date().toISOString());
-    seedWatchlist(UUID_1);
+    seedWatchlist(new Date().toISOString());
     const spy = vi.spyOn(scraper, "fetchWatchlist");
 
-    const res = await requestRefresh();
-
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as RefreshResponse;
-    expect(body.throttled).toBe(true);
+    expect((await refresh()).throttled).toBe(true);
     // A throttled refresh must not touch IMDb at all.
     expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe("manual refresh through each kind of Addon URL", () => {
+  it("refreshes through a private Account ID", async () => {
+    const account = seedAccount({ last_fetched_at: TEN_MINUTES_AGO });
+    seedList(account.id, { id: UUID_1, source_ref: OWNER });
+    serveWatchlist([CACHED_MOVIE]);
+
+    const body = await refresh(account.id);
+
+    expect(body).toMatchObject({ refreshed: 1, failed: 0, total: 1 });
+    expect(db.getTable("accounts")[0].last_fetched_at).toBe(body.lastFetchedAt);
+  });
+
+  it("skips Connection lists when the refresh comes through a Legacy alias", async () => {
+    seedWatchlist();
+    seedList(accountId, {
+      id: "22222222-2222-4222-8222-222222222222",
+      provider: "trakt",
+      source_ref: "me/watchlist",
+      position: 1,
+    });
+    serveWatchlist([CACHED_MOVIE]);
+
+    expect(await refresh()).toMatchObject({
+      refreshed: 1,
+      failed: 0,
+      total: 1,
+    });
+  });
+
+  it("returns 404 for an unknown Addon URL", async () => {
+    const res = await app.request(`/ur99999999/refresh`, { method: "POST" });
+    expect(res.status).toBe(404);
   });
 });

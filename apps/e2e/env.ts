@@ -57,6 +57,17 @@ assertSafeSupabaseTarget();
 // Short cooldown so refresh-throttle tests stay fast.
 export const REFRESH_COOLDOWN_SECONDS = 2;
 
-export function addonManifestUrl(userId: string): string {
-  return `${BACKEND_URL}/${userId}/manifest.json`;
+// AES-256 key for Connection tokens in the disposable test database only. It
+// is a fixed, public test value, like the local service-role key above.
+export const CONNECTION_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+
+// Accounts get generated IDs, so cleanup also removes the Accounts that this
+// run created. The runner process sets the start first; workers inherit it.
+// One minute of margin covers clock drift between the host and Docker.
+process.env.E2E_RUN_STARTED_AT ??= new Date(Date.now() - 60_000).toISOString();
+export const RUN_STARTED_AT = process.env.E2E_RUN_STARTED_AT;
+
+/** The Addon URL of an Account ID or a Legacy alias. */
+export function addonManifestUrl(accountKey: string): string {
+  return `${BACKEND_URL}/${accountKey}/manifest.json`;
 }

@@ -21,27 +21,57 @@
   "homepage": "https://github.com/leo-mathurin/imdb-watchlist-stremio#readme",
   "scripts": {
     "dev": "turbo run dev",
+    "dev:local": "turbo run dev:local",
     "dev:backend": "turbo run dev --filter=@stremlist/backend",
     "dev:frontend": "turbo run dev --filter=@stremlist/frontend",
+    "dev:tailnet": "turbo run dev:tailnet",
     "build": "turbo run build",
-    "lint": "turbo run lint",
-    "format": "turbo run format",
-    "format:check": "turbo run format:check",
     "test": "turbo run test",
     "test:e2e": "turbo run test:e2e",
-    "typecheck": "turbo run typecheck",
-    "generate:types": "pnpm supabase gen types typescript --project-id igbmxubzxjfdbgmawrtr --schema public > packages/shared/src/database.types.ts",
-    "prepare": "husky",
-    "dev:tailnet": "turbo run dev:tailnet"
+    "test:tooling": "node --test \".github/scripts/*.test.mjs\" \"tools/oxlint/anti-slop/rules/*.test.ts\"",
+    "test:toolkit": "bun run --cwd apps/e2e test:toolkit",
+    "test:toolkit:record": "bun run --cwd apps/e2e test:toolkit:record",
+    "test:toolkit:replay": "bun run --cwd apps/e2e test:toolkit:replay",
+    "lint": "turbo run lint:repo",
+    "typecheck": "turbo run typecheck:repo",
+    "lint:repo": "vp check",
+    "typecheck:repo": "bun check",
+    "fix": "vp check --fix",
+    "format": "vp fmt",
+    "format:check": "vp fmt --check",
+    "knip": "knip",
+    "generate:types": "bun run --cwd packages/shared generate:types",
+    "prepare": "vp config --no-agent"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.11.0"
   },
-  "packageManager": "pnpm@10.30.1",
+  "packageManager": "bun@1.4.4",
   "devDependencies": {
-    "husky": "^9.1.7",
-    "lint-staged": "^16.2.7",
+    "@commitlint/cli": "21.2.4",
+    "@commitlint/config-conventional": "21.2.4",
+    "@types/node": "^24.19.2",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "knip": "6.45.1",
     "portless": "0.15.6",
-    "turbo": "^2.9.6"
+    "turbo": "^2.11.11",
+    "typescript": "7.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "trustedDependencies": [
+    "esbuild",
+    "unrs-resolver"
+  ],
+  "catalog": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.6.0",
+    "vite-plus": "1.6.0"
+  },
+  "overrides": {
+    "vite": "catalog:"
   }
 }

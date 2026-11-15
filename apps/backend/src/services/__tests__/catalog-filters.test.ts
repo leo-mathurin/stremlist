@@ -1,37 +1,23 @@
-import type { StremioMeta } from "@stremlist/shared/stremio.types";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
+import { movie } from "../../__tests__/helpers/fixtures";
 import { filterCatalog, resolveCatalogSelection } from "../catalog-filters";
+import { sortCatalog } from "../catalog-sort";
 
-import { sortWatchlist } from "../watchlist-sort";
-
-const base: StremioMeta = {
-  id: "tt1",
-  name: "Film",
-  type: "movie",
-  poster: null,
-  posterShape: "poster",
-  genres: [],
-  description: "",
-};
-const metas: StremioMeta[] = [
-  {
-    ...base,
-    id: "tt1",
+const metas = [
+  movie("tt1", {
     runtime: "1h 30m",
     imdbRating: "8",
     releaseInfo: "2000",
     released: "2000-10-01T00:00:00.000Z",
-  },
-  {
-    ...base,
-    id: "tt2",
+  }),
+  movie("tt2", {
     runtime: "2h 0m",
     imdbRating: "7",
     releaseInfo: "2000",
     released: "2000-01-01T00:00:00.000Z",
-  },
-  { ...base, id: "tt3", runtime: "2h 1m", imdbRating: "6" },
-  { ...base, id: "tt4" },
+  }),
+  movie("tt3", { runtime: "2h 1m", imdbRating: "6" }),
+  movie("tt4"),
 ];
 
 describe("catalog selection", () => {
@@ -46,7 +32,7 @@ describe("catalog selection", () => {
     const selection = resolveCatalogSelection("added_at-asc", {}, filter);
     expect(
       filterCatalog(
-        sortWatchlist(metas, selection.sort, "test"),
+        sortCatalog(metas, selection.sort, "test"),
         selection.filters,
       ).map((meta) => meta.id),
     ).toEqual(ids);
@@ -80,8 +66,8 @@ it.each([
         filter,
         preset,
       );
-      expect(sortWatchlist(ties, selected.sort, "generation")).toEqual(
-        sortWatchlist(ties, fallback.sort, "generation"),
+      expect(sortCatalog(ties, selected.sort, "generation")).toEqual(
+        sortCatalog(ties, fallback.sort, "generation"),
       );
     }
   },

@@ -1,3 +1,4 @@
+import { SITE } from "../content/site";
 import { Link } from "react-router";
 import NewsletterForm from "./NewsletterForm";
 import { Button } from "@/components/ui/button";
@@ -7,15 +8,18 @@ const NAV_LINKS = [
   { label: "Changelog", to: "/changelog", internal: true },
   {
     label: "Source code",
-    to: "https://github.com/leo-mathurin/stremlist",
+    to: SITE.repository,
     internal: false,
   },
-  { label: "Contact", to: "mailto:me@leomathurin.com", internal: false },
+  { label: "Contact", to: `mailto:${SITE.contact}`, internal: false },
 ];
+
+/** Read once when the app loads: a render must not read the clock. */
+const COPYRIGHT_YEAR = new Date().getFullYear();
 
 export default function Footer() {
   return (
-    <footer className="mt-8 pt-6 border-t border-gray-200">
+    <footer className="mt-8 border-t border-black/10 pt-6">
       <NewsletterForm />
 
       <div className="mt-6 space-y-3 text-center">
@@ -70,11 +74,7 @@ export default function Footer() {
             asChild
             className="h-auto p-0 text-sm text-gray-500 hover:text-stremlist"
           >
-            <a
-              href="https://leomathurin.com"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+            <a href={SITE.author} target="_blank" rel="noopener noreferrer">
               Built by Léo Mathurin
             </a>
           </Button>
@@ -91,8 +91,9 @@ export default function Footer() {
         </div>
 
         <p className="text-xs text-gray-400">
-          © 2025 IMDb Watchlist for Stremio &mdash; not affiliated with IMDb or
-          Stremio
+          © {COPYRIGHT_YEAR} Stremlist. Not affiliated with Stremio, IMDb or any
+          other list service. Logos are trademarks of their owners. IMDb and all
+          related logos are trademarks of IMDb.com, Inc. or its affiliates.
         </p>
       </div>
     </footer>

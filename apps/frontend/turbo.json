@@ -1,0 +1,18 @@
+{
+  "$schema": "https://turborepo.dev/schema.v2.json",
+  "extends": ["//"],
+  "tasks": {
+    "dev": {
+      "with": ["@stremlist/backend#dev"],
+      "dependsOn": ["@stremlist/backend#dev:ready"]
+    },
+    "dev:local": {
+      "with": ["@stremlist/backend#dev:local"],
+      "dependsOn": ["@stremlist/backend#dev:ready"]
+    },
+    "dev:tailnet": {
+      "with": ["@stremlist/backend#dev:tailnet"],
+      "dependsOn": ["@stremlist/backend#dev:ready"]
+    }
+  }
+}
