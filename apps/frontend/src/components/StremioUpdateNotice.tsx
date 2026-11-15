@@ -246,6 +246,10 @@ function ManualSteps({
   );
 }
 
+/** Both choices look the same at rest. Only the badge marks the recommended one. */
+const CHOICE_BUTTON =
+  "flex flex-col items-start gap-1 rounded-2xl p-4 text-left ring-1 ring-amber-200 transition-[box-shadow,scale] duration-150 ease-out hover:ring-amber-400 active:scale-[0.98] motion-reduce:active:scale-100";
+
 function ChoiceCard({
   accountKey,
   stremio,
@@ -313,7 +317,7 @@ function ChoiceCard({
             onClick={() => void stremio.connect()}
             aria-labelledby={`${id}-auto`}
             aria-describedby={`${id}-badge ${id}-auto-body`}
-            className="flex flex-col items-start gap-1 rounded-2xl bg-white p-4 text-left ring-1 ring-amber-200 transition-[box-shadow,scale] duration-150 ease-out hover:ring-amber-300 active:scale-[0.98] motion-reduce:active:scale-100"
+            className={CHOICE_BUTTON}
           >
             <span className="flex flex-wrap items-center gap-2 font-bold text-ink">
               <Zap className="size-4 text-amber-600" aria-hidden="true" />
@@ -338,7 +342,7 @@ function ChoiceCard({
             onClick={() => setManualOpen(true)}
             aria-labelledby={`${id}-manual`}
             aria-describedby={`${id}-manual-body`}
-            className="flex flex-col items-start gap-1 rounded-2xl p-4 text-left ring-1 ring-amber-200/70 transition-[background-color,scale] duration-150 ease-out hover:bg-white/60 active:scale-[0.98] motion-reduce:active:scale-100"
+            className={CHOICE_BUTTON}
           >
             <span className="flex items-center gap-2 font-bold text-ink">
               <RefreshCw className="size-4 text-amber-700" aria-hidden="true" />
