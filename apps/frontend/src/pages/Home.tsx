@@ -484,15 +484,16 @@ export default function Home() {
           </div>
         </section>
 
-        <p className="text-sm text-black/50">
-          {HOME.disclaimer}{" "}
-          <Link to="/terms" className="underline hover:text-stremlist">
-            terms and privacy policy
-          </Link>
-          .
-        </p>
-
-        <Footer />
+        <div>
+          <p className="text-sm text-black/50">
+            {HOME.disclaimer}{" "}
+            <Link to="/terms" className="underline hover:text-stremlist">
+              terms and privacy policy
+            </Link>
+            .
+          </p>
+          <Footer />
+        </div>
       </div>
     </SplitLayout>
   );
