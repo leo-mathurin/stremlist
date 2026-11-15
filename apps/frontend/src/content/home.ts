@@ -38,7 +38,7 @@ export const STEPS = [
   ],
   [
     "Install once",
-    "Save to get your Addon URL and install it in Stremio. Your Lists refresh on their own, about every 30 minutes.",
+    "Save to get your Addon URL and install it in Stremio or Nuvio. Your Lists refresh on their own, about every 30 minutes.",
   ],
 ] as const;
 
@@ -79,5 +79,9 @@ export const FEATURES = [
   [
     "RPDB posters",
     "Add a Rating Poster Database key to show ratings right on the cover art.",
+  ],
+  [
+    "Works in Nuvio",
+    "Stremlist also works in Nuvio. Install it with the same button or Addon URL. Your Lists, sort options, filters and search work as in Stremio.",
   ],
 ] as const;

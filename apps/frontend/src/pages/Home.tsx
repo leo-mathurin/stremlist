@@ -24,6 +24,7 @@ import {
   House,
   Image as ImageIcon,
   Link2,
+  MonitorSmartphone,
   Plug,
   Plus,
   TrendingUp,
@@ -63,6 +64,7 @@ const FEATURE_ICONS = {
   "IMDb and Trakt charts": TrendingUp,
   "Actions in Stremio": BookmarkCheck,
   "RPDB posters": ImageIcon,
+  "Works in Nuvio": MonitorSmartphone,
 } satisfies Record<(typeof FEATURES_CONTENT)[number][0], LucideIcon>;
 const FEATURES: [LucideIcon, string, string][] = FEATURES_CONTENT.map(
   ([title, body]) => [FEATURE_ICONS[title], title, body],
@@ -422,10 +424,16 @@ export default function Home() {
         <section aria-labelledby="features-title" className="space-y-6">
           <SectionHeading id="features-title" title={HOME.featuresTitle} />
           <div className="grid gap-4 sm:grid-cols-2">
-            {FEATURES.map(([Icon, title, body]) => (
+            {FEATURES.map(([Icon, title, body], i) => (
               <div
                 key={title}
-                className="rounded-3xl bg-white p-5 ring-1 ring-black/5"
+                className={cn(
+                  "rounded-3xl bg-white p-5 ring-1 ring-black/5",
+                  // An odd last card fills the row instead of leaving a gap.
+                  i === FEATURES.length - 1 &&
+                    FEATURES.length % 2 === 1 &&
+                    "sm:col-span-2",
+                )}
               >
                 <span className="flex size-10 items-center justify-center rounded-xl bg-brand">
                   <Icon className="size-5 text-black" />
