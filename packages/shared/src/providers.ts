@@ -839,6 +839,12 @@ export const CONNECTION_SOURCES: Partial<
       label: "History",
       defaultDisplayMode: "split",
     },
+    {
+      ref: "me/ratings",
+      kind: "list",
+      label: "Ratings",
+      defaultDisplayMode: "split",
+    },
   ],
   // The user's own lists (`me/lists/{id}`) and external lists
   // (`me/external/{id}`) depend on the account; the backend lists them.

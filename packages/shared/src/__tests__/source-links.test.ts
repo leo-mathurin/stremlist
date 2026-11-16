@@ -432,6 +432,7 @@ describe("sourceRequiresConnection", () => {
     ["trakt", "users/leo/watchlist", false],
     ["trakt", "trending", false],
     ["simkl", "me/plantowatch", true],
+    ["simkl", "me/ratings", true],
     ["mdblist", "lists/leo/top", true],
     ["imdb", "ur12345678", false],
     ["justwatch", JUSTWATCH_ID, false],
@@ -673,5 +674,20 @@ describe("sourceHasAddedDates: SensCritique", () => {
       "polls/3996052",
     ])
       expect(sourceHasAddedDates("senscritique", ref)).toBe(false);
+  });
+});
+
+describe("Simkl Source lists", () => {
+  it("dates ratings by when they were given", () => {
+    expect(sourceHasAddedDates("simkl", "me/ratings")).toBe(true);
+  });
+
+  it("names the Source lists after Simkl", () => {
+    expect(describeSourceRef("simkl", "me/ratings")).toEqual({
+      kind: "list",
+      detail: "Your account",
+      url: null,
+      title: "Simkl Ratings",
+    });
   });
 });

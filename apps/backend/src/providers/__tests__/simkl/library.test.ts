@@ -20,6 +20,7 @@ import {
   resetSimklTest,
   restoreStubs,
   routes,
+  storedLibrary,
 } from "./harness";
 import { r2 } from "./mocks";
 
@@ -146,6 +147,63 @@ describe("simkl activities gating", () => {
     );
     const membership = await simklProvider.actions?.getMembership(connection);
     expect(membership?.ratings).not.toHaveProperty("tt0068646");
+  });
+
+  it("dates a rating from the ratings delta, and forgets a removed one", async () => {
+    await simklProvider.fetchSource("me/ratings", ctx());
+    ageLibrary();
+    clearCalls();
+    routes.set("GET /sync/activities", () =>
+      activities({
+        all: "2026-10-03T08:00:00Z",
+        movies: { rated_at: "2026-10-03T08:00:00Z" },
+        shows: { rated_at: "2026-10-03T08:00:00Z" },
+      }),
+    );
+    routes.set("GET /sync/ratings", () => ({
+      movies: [
+        {
+          status: "plantowatch",
+          user_rating: 7,
+          user_rated_at: "2026-10-03T07:00:00Z",
+          movie: { title: "Pulp Fiction", ids: { simkl: 54130 } },
+        },
+      ],
+      shows: [
+        {
+          status: "completed",
+          user_rating: null,
+          user_rated_at: null,
+          show: { title: "Game of Thrones", ids: { simkl: 17465 } },
+        },
+      ],
+    }));
+
+    const { entries } = await simklProvider.fetchSource("me/ratings", ctx());
+    expect(apiCalls()).toEqual([
+      "GET /sync/activities",
+      "GET /sync/ratings?date_from=2026-10-01T10:00:00Z",
+    ]);
+    expect(entries.map((entry) => [entry.title, entry.addedAt])).toEqual([
+      ["The Godfather", undefined],
+      ["Pulp Fiction", "2026-10-03T07:00:00Z"],
+    ]);
+  });
+
+  it("reads a library snapshot without rating dates again in full", async () => {
+    await simklProvider.fetchSource("me/ratings", ctx());
+    r2.objects.set(
+      "connections/acc-1/simkl/library.json",
+      JSON.stringify({ ...storedLibrary(), version: 2 }),
+    );
+    clearCalls();
+    await simklProvider.fetchSource("me/ratings", ctx());
+    expect(apiCalls()).toEqual([
+      "GET /sync/activities",
+      "GET /sync/all-items/shows",
+      "GET /sync/all-items/movies",
+      "GET /sync/all-items/anime",
+    ]);
   });
 
   it("falls back to lighter reads when Simkl answers max_items", async () => {

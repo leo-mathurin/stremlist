@@ -311,6 +311,7 @@ describe("simkl actions", () => {
       "me/completed",
       "me/dropped",
       "me/history",
+      "me/ratings",
     ];
     expect(actions.kinds).toEqual(["watchlist", "watched", "rating"]);
     expect(actions.affectedSources({ kind: "watchlist", add: true })).toEqual(

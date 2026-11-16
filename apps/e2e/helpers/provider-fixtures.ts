@@ -335,6 +335,9 @@ function simkl({ request, url, body }: FixtureRequest): Response {
           {
             status: "plantowatch",
             added_to_watchlist_at: "2026-01-02T00:00:00Z",
+            // Only the show is rated: the movie's Actions start unrated.
+            user_rating: 8,
+            user_rated_at: "2026-01-03T00:00:00Z",
             show: {
               title: BREAKING_BAD.title,
               ids: { simkl: 2, imdb: "tt0903747" },

@@ -9,13 +9,7 @@ import {
   simklLimiters,
   simklRequest,
 } from "./simkl/api";
-import {
-  historyEntries,
-  HISTORY_REF,
-  LIBRARY_REFS,
-  STATUS_REFS,
-  statusEntries,
-} from "./simkl/entries";
+import { LIBRARY_REFS, libraryEntries } from "./simkl/entries";
 import {
   clearInFlightSyncs,
   forgetInFlightSync,
@@ -40,10 +34,10 @@ export function resetSimklState(): void {
 
 /**
  * Simkl: the Connection's own statuses (`me/plantowatch`, `me/watching`,
- * `me/completed`, `me/hold`, `me/dropped`, with movies, shows and anime) and
- * custom lists (`me/lists/{id}`, Simkl PRO and VIP only), through OAuth
- * (AUTH V2). Reads follow Simkl's activities-first sync model; the library
- * snapshot lives in R2 under the Account's Connection.
+ * `me/completed`, `me/hold`, `me/dropped`, with movies, shows and anime),
+ * history and ratings, and custom lists (`me/lists/{id}`, Simkl PRO and VIP
+ * only), through OAuth (AUTH V2). Reads follow Simkl's activities-first sync
+ * model; the library snapshot lives in R2 under the Account's Connection.
  */
 export const simklProvider: ProviderAdapter = {
   id: "simkl",
@@ -77,9 +71,8 @@ export const simklProvider: ProviderAdapter = {
   },
 
   async fetchSource(ref, ctx) {
-    const status = STATUS_REFS.get(ref);
     const listId = LIST_REF.exec(ref)?.[1];
-    if (!status && !listId && ref !== HISTORY_REF) {
+    if (!LIBRARY_REFS.includes(ref) && !listId) {
       throw new SourceUnavailableError(
         "not_found",
         `Unknown Simkl source ${ref}`,
@@ -95,9 +88,7 @@ export const simklProvider: ProviderAdapter = {
     if (listId) return fetchCustomList(connection, listId);
     const library = await syncLibrary(connection);
     return {
-      entries: status
-        ? statusEntries(library.items, status)
-        : historyEntries(library.items),
+      entries: libraryEntries(library.items, ref),
       // The library sync has no page cap: it is the whole library.
       complete: true,
     };

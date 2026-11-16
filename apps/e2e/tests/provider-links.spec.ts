@@ -146,6 +146,14 @@ test(
         expect.objectContaining({ ref: "me/lists/77", label: "Horror nights" }),
       ]),
     );
+    expect(
+      (await api.getConnectionSources(accountId, "simkl")).body.sources,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ref: "me/plantowatch" }),
+        expect.objectContaining({ ref: "me/ratings", label: "Ratings" }),
+      ]),
+    );
 
     const saved = await api.postConfig(accountId, [
       listInput("mdblist", "lists/4242", {
@@ -153,10 +161,16 @@ test(
         displayMode: "split",
       }),
       listInput("simkl", "me/plantowatch", SPLIT),
+      listInput("simkl", "me/ratings", SPLIT),
     ]);
     expect(saved.status).toBe(200);
     for (const row of (await api.getConfig(accountId)).body.lists) {
-      expect(await catalogs(accountId, row.id)).toEqual(BOTH);
+      expect(await catalogs(accountId, row.id)).toEqual(
+        // Only the show is rated in the fixture library.
+        row.sourceRef === "me/ratings"
+          ? { movie: [], series: BOTH.series }
+          : BOTH,
+      );
     }
     for (const host of ["api.mdblist.com", "api.simkl.com"]) {
       const reads = backend.requests((url) => url.host === host);

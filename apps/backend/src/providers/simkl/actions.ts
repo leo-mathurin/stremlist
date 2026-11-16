@@ -166,6 +166,7 @@ export const simklActions: ProviderActions = {
 
   // A Simkl title sits in exactly one status, so adding, watching or rating
   // it (rating files an unlisted title) can move it between all of them.
+  // Removing a title also clears its rating, so every kind touches Ratings.
   affectedSources() {
     return LIBRARY_REFS;
   },
