@@ -129,6 +129,7 @@ function listPage(products: SensCritiqueProduct[], total: number) {
 
 const pageVariablesSchema = z.object({
   universe: z.string().optional(),
+  action: z.string().optional(),
   offset: z.number(),
   limit: z.number(),
 });
@@ -174,7 +175,11 @@ describe("SensCritique fetchSource", () => {
         ["tvShow", 0, 100],
       ]),
     );
-    expect(requests[0].json.query).toContain("action: WISH");
+    expect(requests.map((request) => pageVariables(request).action)).toEqual([
+      "WISH",
+      "WISH",
+      "WISH",
+    ]);
     expect(entries).toHaveLength(102);
     const ids = entries.map((entry) => entry.externalIds?.senscritique);
     expect([ids[0], ids[1], ids.at(-2), ids.at(-1)]).toEqual([
@@ -186,9 +191,114 @@ describe("SensCritique fetchSource", () => {
   });
 
   it.each([
+    ["rated", "RATING"],
+    ["recommend", "RECOMMEND"],
+  ])("reads the %s collection of films and series", async (name, action) => {
+    handler = (request) => {
+      const { universe } = pageVariables(request);
+      return wishesPage(
+        [product(universe === "movie" ? 1 : 2, { universe: 1 })],
+        1,
+      );
+    };
+
+    const { entries } = await senscritiqueProvider.fetchSource(
+      `users/Sergent_Pepper/${name}`,
+      ctx,
+    );
+
+    expect(
+      requests.map((request) => {
+        const variables = pageVariables(request);
+        return [variables.action, variables.universe];
+      }),
+    ).toEqual([
+      [action, "movie"],
+      [action, "tvShow"],
+    ]);
+    expect(entries).toHaveLength(2);
+  });
+
+  it("reads the done films, and the done and rated series", async () => {
+    // A series both done and rated has the same action row in both reads.
+    const both = product(30, { universe: 4, otherUserInfos: { id: 300 } });
+    const reads = new Map([
+      ["DONE movie", [product(10, { otherUserInfos: { id: 500 } })]],
+      ["DONE tvShow", [both]],
+      [
+        "RATING tvShow",
+        [product(40, { universe: 4, otherUserInfos: { id: 400 } }), both],
+      ],
+    ]);
+    handler = (request) => {
+      const { action, universe } = pageVariables(request);
+      const products = reads.get(`${action} ${universe}`) ?? [];
+      return wishesPage(products, products.length);
+    };
+
+    const { entries, complete } = await senscritiqueProvider.fetchSource(
+      "users/Sergent_Pepper/done",
+      ctx,
+    );
+
+    expect(complete).toBe(true);
+    expect(requests).toHaveLength(3);
+    // Oldest action first, each product once.
+    expect(entries.map((entry) => entry.externalIds?.senscritique)).toEqual([
+      30, 40, 10,
+    ]);
+  });
+
+  it("reads a chart in its rank order", async () => {
+    handler = () => ({
+      data: {
+        top: [
+          product(3, { universe: 4 }),
+          product(1, { universe: 4 }),
+          product(2, { universe: 4 }),
+        ],
+      },
+    });
+
+    const { entries, complete } = await senscritiqueProvider.fetchSource(
+      "top100-series",
+      ctx,
+    );
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0].json.variables).toMatchObject({
+      subtype: "TOP_100_OUT_OF_TOP_10",
+      universe: "tvShow",
+    });
+    expect(complete).toBe(true);
+    expect(entries.map((entry) => entry.externalIds?.senscritique)).toEqual([
+      3, 1, 2,
+    ]);
+  });
+
+  it("reads the results of a poll in their rank order", async () => {
+    handler = () => ({
+      data: { poll: { id: 3996052, products: [product(9), product(4)] } },
+    });
+
+    const { entries } = await senscritiqueProvider.fetchSource(
+      "polls/3996052",
+      ctx,
+    );
+
+    expect(requests[0].json.variables).toEqual({ id: 3996052 });
+    expect(entries.map((entry) => entry.externalIds?.senscritique)).toEqual([
+      9, 4,
+    ]);
+  });
+
+  it.each([
     ["users/nobody/wishes", { data: { user: null } }, "not_found"],
     ["users/hidden/wishes", wishesPage([], 0, true), "private"],
+    ["users/hidden/done", wishesPage([], 0, true), "private"],
+    ["users/someone/current", {}, "not_found"],
     ["lists/1", { data: { userList: null } }, "not_found"],
+    ["polls/1", { data: { poll: null } }, "not_found"],
   ])("reports %s as %s", async (ref, response, reason) => {
     handler = () => response;
     const error = await senscritiqueProvider
@@ -301,6 +411,60 @@ describe("SensCritique validateSource", () => {
     });
   });
 
+  it.each([
+    ["done", "watched"],
+    ["rated", "ratings"],
+    ["recommend", "favorites"],
+  ])("keeps the %s collection", async (name, noun) => {
+    handler = () => ({
+      data: {
+        user: {
+          username: "Sergent_Pepper",
+          settings: { privacyProfile: false },
+        },
+      },
+    });
+    await expect(
+      senscritiqueProvider.validateSource(`users/sergent_pepper/${name}`, ctx),
+    ).resolves.toEqual({
+      ok: true,
+      ref: `users/Sergent_Pepper/${name}`,
+      suggestedTitle: `Sergent_Pepper's ${noun}`,
+      defaultDisplayMode: "split",
+    });
+  });
+
+  it("accepts a chart without a request", async () => {
+    await expect(
+      senscritiqueProvider.validateSource("top111-movies", ctx),
+    ).resolves.toEqual({
+      ok: true,
+      ref: "top111-movies",
+      defaultDisplayMode: "movie",
+    });
+    expect(requests).toHaveLength(0);
+  });
+
+  it("uses the poll label and universe", async () => {
+    handler = () => ({
+      data: {
+        poll: {
+          id: 2582684,
+          label: "Les meilleures séries de 2020",
+          universe: 4,
+        },
+      },
+    });
+    await expect(
+      senscritiqueProvider.validateSource("polls/2582684", ctx),
+    ).resolves.toEqual({
+      ok: true,
+      ref: "polls/2582684",
+      suggestedTitle: "Les meilleures séries de 2020",
+      defaultDisplayMode: "series",
+    });
+  });
+
   it("uses the list label and universe", async () => {
     handler = () => ({
       data: {
@@ -326,6 +490,9 @@ describe("SensCritique validateSource", () => {
     ["users/nobody/wishes", { user: null }, "not_found"],
     ["lists/2", { userList: { isPrivate: true, universe: 1 } }, "private"],
     ["lists/3", { userList: { isPrivate: false, universe: 2 } }, "not_found"],
+    ["polls/4", { poll: null }, "not_found"],
+    ["polls/5", { poll: { id: 5, label: "Livres", universe: 2 } }, "not_found"],
+    ["users/someone/current", {}, "not_found"],
     ["nonsense", {}, "not_found"],
   ])("rejects %s as %s", async (ref, data, reason) => {
     handler = () => ({ data });
@@ -706,6 +873,11 @@ describe("parseSourceLink for SensCritique", () => {
     kind: "watchlist",
     suggestedTitle: "Sergent_Pepper's wishlist",
   };
+  const done = {
+    sourceRef: "users/Sergent_Pepper/done",
+    kind: "history",
+    suggestedTitle: "Sergent_Pepper's watched",
+  };
 
   it.each([
     ["https://www.senscritique.com/Sergent_Pepper", wishes],
@@ -714,6 +886,14 @@ describe("parseSourceLink for SensCritique", () => {
       wishes,
     ],
     ["senscritique.com/Sergent_Pepper/listes", wishes],
+    [
+      "https://www.senscritique.com/Sergent_Pepper/collection?action=DONE&universe=1",
+      done,
+    ],
+    [
+      "https://www.senscritique.com/films/tops/top111",
+      { sourceRef: "top111-movies", kind: "chart" },
+    ],
     [
       "https://www.senscritique.com/liste/les_arcanes_du_blockbuster/369869",
       { sourceRef: "lists/369869", kind: "list" },
@@ -730,7 +910,7 @@ describe("parseSourceLink for SensCritique", () => {
     "https://www.senscritique.com/serie/generation_kill/149118",
     "https://www.senscritique.com/films",
     "https://www.senscritique.com/liste/no-id",
-    "https://www.senscritique.com/Sergent_Pepper/collection?action=DONE",
+    "https://www.senscritique.com/Sergent_Pepper/collection?action=CURRENT",
     "https://www.senscritique.com/",
   ])("does not parse %s as a SensCritique Source list", (link) => {
     expect(parseSourceLink(link)?.provider === "senscritique").toBe(false);

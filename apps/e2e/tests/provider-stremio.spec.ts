@@ -132,6 +132,7 @@ const EVERY_PROVIDER: [ProviderId, string, string][] = [
   ["mdblist", "lists/4242", "MDBList weekend"],
   ["justwatch", "tl-us-11111111-2222-4333-8444-555555555555", "JustWatch"],
   ["senscritique", "users/fixture-user/wishes", "SensCritique"],
+  ["senscritique", "users/fixture-user/done", "SensCritique watched"],
   ["letterboxd", "users/fixture_user/watchlist", "Letterboxd"],
 ];
 

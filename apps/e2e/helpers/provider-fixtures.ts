@@ -455,13 +455,15 @@ function isSensCritiqueVariables(value: unknown): value is {
   offset?: number;
   username?: string;
   universe?: string;
+  action?: string;
 } {
   return (
     isRecord(value) &&
     optional(value.id, isNumber) &&
     optional(value.offset, isNumber) &&
     optional(value.username, isString) &&
-    optional(value.universe, isString)
+    optional(value.universe, isString) &&
+    optional(value.action, isString)
   );
 }
 
@@ -482,8 +484,15 @@ function senscritique({ body }: FixtureRequest): Response {
     settings: { privacyProfile: false },
   };
   if (operation === "StremlistUser") return json({ data: { user } });
-  if (operation !== "StremlistWishes") {
+  if (operation !== "StremlistCollection") {
     throw new Error(`Unexpected SensCritique operation ${operation}`);
+  }
+  // Every collection holds the same two products. The done collection also
+  // reads the rated series, which the backend keeps once.
+  if (
+    !["WISH", "DONE", "RATING", "RECOMMEND"].includes(variables.action ?? "")
+  ) {
+    throw new Error(`Unexpected SensCritique action ${variables.action}`);
   }
   const products =
     variables.universe === "movie"
