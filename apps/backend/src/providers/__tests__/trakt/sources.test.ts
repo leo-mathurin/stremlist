@@ -454,4 +454,14 @@ describe("Trakt Connection sources", () => {
       ["me/smart-lists/silos", "Silos", "series"],
     ]);
   });
+
+  it("still offers the lists when smart lists fail", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    route("GET /users/me/lists", [
+      { name: "Favs", ids: { trakt: 7, slug: "favs" } },
+    ]);
+    route("GET /users/me/smart-lists", status(500));
+    const sources = await traktProvider.listConnectionSources?.(connection());
+    expect(sources?.map((source) => source.ref)).toEqual(["me/lists/favs"]);
+  });
 });

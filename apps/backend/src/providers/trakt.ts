@@ -95,11 +95,18 @@ export const traktProvider: ProviderAdapter = {
         z.array(traktOwnListSchema),
         connection,
       ),
+      // Smart lists are new on Trakt: if they fail, still offer the lists.
       traktGetParsed(
         "/users/me/smart-lists",
         z.array(traktOwnListSchema),
         connection,
-      ),
+      ).catch((error: unknown) => {
+        console.error(
+          "Listing Trakt smart lists failed:",
+          error instanceof Error ? error.message : error,
+        );
+        return null;
+      }),
     ]);
     const toSources = (prefix: string, found: TraktOwnList[] | null) =>
       (found ?? []).flatMap((list) => {

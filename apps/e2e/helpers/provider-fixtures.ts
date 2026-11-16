@@ -165,6 +165,14 @@ function trakt({ request, url, body }: FixtureRequest): Response {
       return json(url.searchParams.has("sort_by") ? traktEntries : []);
     case "/users/me/lists":
       return json([{ name: "Fixture List", ids: { slug: "fixture-list" } }]);
+    case "/users/me/smart-lists":
+      return json([
+        {
+          name: "Fixture Smart List",
+          media_type: "movies",
+          ids: { slug: "fixture-smart-list", trakt: 1 },
+        },
+      ]);
     // The Source lists that only a Connection reads.
     case "/recommendations/movies":
       return json([traktMovie]);
