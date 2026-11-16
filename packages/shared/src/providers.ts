@@ -891,7 +891,7 @@ export const CONNECTION_SOURCES: Partial<
     {
       ref: "official/most-watched",
       kind: "chart",
-      label: "Most Watched",
+      label: "Most Watched (Past Year)",
       defaultDisplayMode: "split",
     },
   ],

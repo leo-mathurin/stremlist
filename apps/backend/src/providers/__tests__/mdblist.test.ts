@@ -55,7 +55,7 @@ const NO_IMDB = {
 };
 const EPISODE_ITEM = { id: 62085, mediatype: "episode", title: "Pilot" };
 // The media of a /sync/ratings or /sync/watched row. Production reads only
-// `ids`; `title` and the other IDs are from the OpenAPI schema.
+// `ids`; `title` was confirmed by a live read (2026-11-16).
 const RATED_SHAWSHANK = {
   title: "The Shawshank Redemption",
   ids: { imdb: "tt0111161", tmdb: 278, trakt: 234, mdblist: "a0" },
@@ -265,7 +265,7 @@ describe("mdblistProvider.validateSource", () => {
   });
 
   it("names an official chart from its info", async () => {
-    // OfficialList, as in the OpenAPI schema (not a live read).
+    // Shape of /lists/official/{slug} (live read, 2026-11-16).
     handler = () =>
       Response.json([
         {
@@ -429,8 +429,8 @@ describe("mdblistProvider.fetchSource", () => {
 
   it("reads the ratings oldest rated first, dated by rating", async () => {
     // Rows, ids and paging as the Action membership reads them in
-    // production; the `rated_at` and `title` fields come from the OpenAPI
-    // schema, not from a live read.
+    // production; `rated_at` and `title` were confirmed by a live read with a
+    // test account (2026-11-16).
     handler = (url) =>
       url.searchParams.get("cursor")
         ? Response.json({
@@ -499,29 +499,40 @@ describe("mdblistProvider.fetchSource", () => {
     ]);
   });
 
-  it("reads the history by last watch, one read per type", async () => {
-    // `last_watched_at` is in the OpenAPI text and examples, `watched_at` on
-    // its movie and show rows: neither is from a live read.
+  it("reads the history by last watch, with shows from their seasons", async () => {
+    // Recorded shapes of /sync/watched?mediatype=movie|season (live read with
+    // a test account, 2026-11-16). A show that is not fully watched has no
+    // `shows` row, only seasons and episodes.
     handler = (url) =>
       Response.json(
         url.searchParams.get("mediatype") === "movie"
           ? {
               movies: [
                 {
-                  last_watched_at: "2026-10-05T20:00:00Z",
+                  last_watched_at: "2026-10-05T20:00:00.000Z",
                   movie: RATED_SHAWSHANK,
                 },
               ],
-              pagination: { has_more: false },
+              shows: [],
+              seasons: [],
+              episodes: [],
+              pagination: { offset: 0, limit: 1000, has_more: false },
             }
           : {
-              shows: [
+              movies: [],
+              shows: [],
+              seasons: [
                 {
-                  watched_at: "2026-10-04T20:00:00Z",
-                  show: RATED_BREAKING_BAD,
+                  last_watched_at: "2026-10-01T20:00:00.000Z",
+                  season: { number: 1, show: RATED_BREAKING_BAD },
+                },
+                {
+                  last_watched_at: "2026-10-04T20:00:00.000Z",
+                  season: { number: 2, show: RATED_BREAKING_BAD },
                 },
               ],
-              pagination: { has_more: false },
+              episodes: [],
+              pagination: { offset: 0, limit: 1000, has_more: false },
             },
       );
     const snapshot = await mdblistProvider.fetchSource("me/history", ctx());
@@ -533,13 +544,13 @@ describe("mdblistProvider.fetchSource", () => {
       ]),
     ).toEqual([
       ["/sync/watched", "movie"],
-      ["/sync/watched", "show"],
+      ["/sync/watched", "season"],
     ]);
     expect(
       snapshot.entries.map((entry) => [entry.imdbId, entry.addedAt]),
     ).toEqual([
-      ["tt0903747", "2026-10-04T20:00:00Z"],
-      ["tt0111161", "2026-10-05T20:00:00Z"],
+      ["tt0903747", "2026-10-04T20:00:00.000Z"],
+      ["tt0111161", "2026-10-05T20:00:00.000Z"],
     ]);
     expect(snapshot.complete).toBe(true);
   });
@@ -556,8 +567,8 @@ describe("mdblistProvider.fetchSource", () => {
   });
 
   it("reads an official chart in MDBList's order, undated", async () => {
-    // The items endpoint is the list one; the official path is from the
-    // OpenAPI schema, not from a live read.
+    // Same items shape and cursor headers as the list endpoints (live read
+    // of /lists/official/trending/items, 2026-11-16).
     handler = () => itemsPage([SUPER_MARIO, BREAKING_BAD]);
     const snapshot = await mdblistProvider.fetchSource(
       "official/trending",
@@ -817,7 +828,7 @@ describe("listMdblistUserSources", () => {
     source: "letterboxd",
     items: 10,
   };
-  // A /lists/liked list, as in the OpenAPI schema (not a live read).
+  // A /lists/liked list (shape confirmed by a live read, 2026-11-16).
   const likedList = {
     id: 14,
     user_id: 3,

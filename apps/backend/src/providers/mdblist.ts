@@ -116,9 +116,6 @@ const syncRowFields = {
   rating: z.number().nullish(),
   rated_at: z.string().nullish(),
   last_watched_at: z.string().nullish(),
-  // The OpenAPI schema names the watched date `watched_at` on movie and show
-  // rows, while its text names it `last_watched_at`: read both.
-  watched_at: z.string().nullish(),
 };
 
 /** GET /sync/watched and GET /sync/ratings. */
@@ -131,6 +128,14 @@ const syncPageSchema = z.object({
     .optional(),
   episodes: z
     .array(z.object({ episode: syncEpisodeSchema.nullish() }))
+    .optional(),
+  seasons: z
+    .array(
+      z.object({
+        season: z.object({ show: syncMediaSchema.nullish() }).nullish(),
+        last_watched_at: z.string().nullish(),
+      }),
+    )
     .optional(),
   pagination: z
     .object({
@@ -275,6 +280,7 @@ async function readAllSync(
       movies: pages.flatMap((page) => page.movies ?? []),
       shows: pages.flatMap((page) => page.shows ?? []),
       episodes: pages.flatMap((page) => page.episodes ?? []),
+      seasons: pages.flatMap((page) => page.seasons ?? []),
     },
     complete,
   };
@@ -479,19 +485,41 @@ async function readSyncSource(
     const { sync, complete } = await readAllSync(connection, "/sync/ratings");
     return { entries: syncEntries(sync, (row) => row.rated_at), complete };
   }
-  // One read per type, so the pages do not carry every watched episode.
-  const [movies, shows] = await Promise.all(
-    ["movie", "show"].map((mediatype) =>
+  // A show that is not fully watched has no `shows` row, only its seasons
+  // and episodes. One row per season keeps the pages small.
+  const [movies, seasons] = await Promise.all(
+    ["movie", "season"].map((mediatype) =>
       readAllSync(connection, "/sync/watched", { mediatype }),
     ),
   );
   return {
     entries: syncEntries(
-      { movies: movies.sync.movies, shows: shows.sync.shows },
-      (row) => row.last_watched_at ?? row.watched_at,
+      {
+        movies: movies.sync.movies,
+        shows: latestPerShow(seasons.sync.seasons ?? []),
+      },
+      (row) => row.last_watched_at,
     ),
-    complete: movies.complete && shows.complete,
+    complete: movies.complete && seasons.complete,
   };
+}
+
+/** One row per show, dated by the last watch of any of its seasons. */
+function latestPerShow(
+  seasons: NonNullable<SyncPage["seasons"]>,
+): NonNullable<SyncPage["shows"]> {
+  const shows = new Map<string, NonNullable<SyncPage["shows"]>[number]>();
+  for (const row of seasons) {
+    const show = row.season?.show;
+    const key = show?.ids?.imdb ?? show?.ids?.tmdb;
+    if (!show || key == null) continue;
+    const seen = shows.get(String(key));
+    const at = row.last_watched_at;
+    if (!seen || (at && (!seen.last_watched_at || at > seen.last_watched_at))) {
+      shows.set(String(key), { show, last_watched_at: at });
+    }
+  }
+  return [...shows.values()];
 }
 
 function watchedPayload(intent: ActionIntent, target: ActionTarget): SyncBody {
