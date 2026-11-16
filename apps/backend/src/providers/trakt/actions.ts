@@ -231,7 +231,7 @@ export const traktActions: ProviderActions = {
       case "watched":
         return ["me/history", "me/up-next"];
       case "rating":
-        return [];
+        return ["me/ratings"];
     }
   },
 };

@@ -20,7 +20,8 @@ export type TraktMedia = z.infer<typeof traktMediaSchema>;
 /**
  * One item of a Trakt response that carries a movie or a show: list and
  * watchlist items (`type` + object), chart rows (`watchers` + object), sync
- * rows (`last_watched_at` + object), up next rows (`show` + `progress`).
+ * rows (`last_watched_at` + object), ratings (`rated_at` + object), up next
+ * rows (`show` + `progress`).
  */
 export const traktItemSchema = z.object({
   type: z.string().optional(),
@@ -30,6 +31,7 @@ export const traktItemSchema = z.object({
   last_watched_at: z.string().nullish(),
   collected_at: z.string().nullish(),
   last_collected_at: z.string().nullish(),
+  rated_at: z.string().nullish(),
   progress: z.object({ last_watched_at: z.string().nullish() }).nullish(),
 });
 export type TraktItem = z.infer<typeof traktItemSchema>;

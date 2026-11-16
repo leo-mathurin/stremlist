@@ -39,8 +39,26 @@ const CHART_ITEMS = 100;
  */
 const SMART_LIST_ITEMS = 1000;
 
-const TRAKT_CHARTS = ["trending", "popular", "anticipated"] as const;
+const TRAKT_CHARTS = [
+  "trending",
+  "popular",
+  "anticipated",
+  "boxoffice",
+  "watched",
+  "played",
+  "collected",
+  "favorited",
+  "recommended",
+] as const;
 type TraktChart = (typeof TRAKT_CHARTS)[number];
+/** Charts that Trakt counts over a period; Stremlist reads the past week. */
+const WEEKLY_CHARTS = new Set<TraktChart>([
+  "watched",
+  "played",
+  "collected",
+  "favorited",
+  "recommended",
+]);
 
 /**
  * A Trakt Source list reference, parsed. `user: "me"` reads through the
@@ -48,6 +66,8 @@ type TraktChart = (typeof TRAKT_CHARTS)[number];
  */
 export type TraktSource =
   | { kind: "watchlist"; user: string }
+  | { kind: "favorites"; user: string }
+  | { kind: "ratings"; user: string }
   | { kind: "list"; user: string; list: string }
   | { kind: "shared_list"; id: string }
   /** `user: "me"` is one of the connected user's own, maybe private. */
@@ -55,14 +75,34 @@ export type TraktSource =
   | { kind: "chart"; chart: TraktChart }
   | { kind: "recommendations" }
   | { kind: "up_next" }
-  | { kind: "history" }
-  | { kind: "collection" };
+  | { kind: "history"; user: string }
+  | { kind: "collection"; user: string };
 
 const CHARTS: Record<TraktChart, string> = {
   trending: "Trakt Trending",
   popular: "Trakt Popular",
   anticipated: "Trakt Anticipated",
+  boxoffice: "Trakt Box Office",
+  watched: "Trakt Most Watched",
+  played: "Trakt Most Played",
+  collected: "Trakt Most Collected",
+  favorited: "Trakt Most Favorited",
+  recommended: "Trakt Most Recommended",
 };
+
+/** Source lists that every Trakt user has, public or through the Connection. */
+const USER_SOURCES = [
+  "watchlist",
+  "favorites",
+  "ratings",
+  "history",
+  "collection",
+] as const;
+type UserSourceKind = (typeof USER_SOURCES)[number];
+
+function userSourceKind(segment: string | undefined): UserSourceKind | null {
+  return USER_SOURCES.find((kind) => kind === segment) ?? null;
+}
 
 const SEGMENT = /^[a-z0-9][a-z0-9._-]*$/i;
 
@@ -72,17 +112,13 @@ export function parseTraktRef(ref: string): TraktSource | null {
   if (chart) return { kind: "chart", chart };
   if (parts[0] === "me") {
     if (parts.length === 2) {
+      const kind = userSourceKind(parts[1]);
+      if (kind) return { kind, user: "me" };
       switch (parts[1]) {
-        case "watchlist":
-          return { kind: "watchlist", user: "me" };
         case "recommendations":
           return { kind: "recommendations" };
         case "up-next":
           return { kind: "up_next" };
-        case "history":
-          return { kind: "history" };
-        case "collection":
-          return { kind: "collection" };
       }
     }
     if (parts.length === 3 && parts[1] === "lists" && SEGMENT.test(parts[2])) {
@@ -99,9 +135,8 @@ export function parseTraktRef(ref: string): TraktSource | null {
   }
   if (parts[0] === "users" && parts[1] && SEGMENT.test(parts[1])) {
     const user = parts[1].toLowerCase();
-    if (parts.length === 3 && parts[2] === "watchlist") {
-      return { kind: "watchlist", user };
-    }
+    const kind = userSourceKind(parts[2]);
+    if (parts.length === 3 && kind) return { kind, user };
     if (parts.length === 4 && parts[2] === "lists" && SEGMENT.test(parts[3])) {
       return { kind: "list", user, list: parts[3].toLowerCase() };
     }
@@ -123,9 +158,13 @@ export function parseTraktRef(ref: string): TraktSource | null {
 function sourceToRef(source: TraktSource): string {
   switch (source.kind) {
     case "watchlist":
+    case "favorites":
+    case "ratings":
+    case "history":
+    case "collection":
       return source.user === "me"
-        ? "me/watchlist"
-        : `users/${source.user}/watchlist`;
+        ? `me/${source.kind}`
+        : `users/${source.user}/${source.kind}`;
     case "list":
       return source.user === "me"
         ? `me/lists/${source.list}`
@@ -142,27 +181,12 @@ function sourceToRef(source: TraktSource): string {
       return "me/recommendations";
     case "up_next":
       return "me/up-next";
-    case "history":
-      return "me/history";
-    case "collection":
-      return "me/collection";
   }
 }
 
 export function isPersonal(source: TraktSource): boolean {
-  if (
-    source.kind === "watchlist" ||
-    source.kind === "list" ||
-    source.kind === "smart_list"
-  ) {
-    return source.user === "me";
-  }
-  return (
-    source.kind === "recommendations" ||
-    source.kind === "up_next" ||
-    source.kind === "history" ||
-    source.kind === "collection"
-  );
+  if ("user" in source) return source.user === "me";
+  return source.kind === "recommendations" || source.kind === "up_next";
 }
 
 function userPath(user: string): string {
@@ -229,6 +253,16 @@ function newestRows(
 const rankedRowSchema = traktItemSchema.extend(traktMediaSchema.shape);
 type RankedRow = z.infer<typeof rankedRowSchema>;
 
+function rankedPath(
+  source: TraktSource & { kind: "chart" | "recommendations" },
+  kind: "movies" | "shows",
+): string {
+  if (source.kind === "recommendations") return `/recommendations/${kind}`;
+  return WEEKLY_CHARTS.has(source.chart)
+    ? `/${kind}/${source.chart}/weekly`
+    : `/${kind}/${source.chart}`;
+}
+
 /** Movies and shows interleaved, each in Trakt's rank order. */
 async function rankedEntries(
   source: TraktSource & { kind: "chart" | "recommendations" },
@@ -237,16 +271,20 @@ async function rankedEntries(
 ): Promise<SourceEntry[]> {
   const read = (kind: "movies" | "shows") =>
     traktGetParsed(
-      source.kind === "chart"
-        ? `/${kind}/${source.chart}?limit=${CHART_ITEMS}`
-        : `/recommendations/${kind}?limit=${CHART_ITEMS}`,
+      `${rankedPath(source, kind)}?limit=${CHART_ITEMS}`,
       z.array(rankedRowSchema),
       connection,
       options,
     );
-  const [movies, shows] = await Promise.all([read("movies"), read("shows")]);
-  // Popular rows and recommendations are the media itself; trending and
-  // anticipated rows wrap it.
+  const [movies, shows] = await Promise.all([
+    read("movies"),
+    // The box office has only movies.
+    source.kind === "chart" && source.chart === "boxoffice"
+      ? null
+      : read("shows"),
+  ]);
+  // Popular rows and recommendations are the media itself; the other
+  // charts wrap it.
   const toEntry = (row: RankedRow, type: "movie" | "series") =>
     mediaToEntry((type === "movie" ? row.movie : row.show) ?? row, type);
   return interleave(
@@ -318,18 +356,22 @@ async function upNextEntries(
 
 /** Watched movies and shows, by last watch, oldest first. */
 async function historyEntries(
+  user: string,
   connection: ConnectionAccess | null,
+  options: TraktReadOptions,
 ): Promise<SourceSnapshot> {
   const [movies, shows] = await Promise.all([
     traktGetParsed(
-      "/users/me/watched/movies",
+      `${userPath(user)}/watched/movies`,
       z.array(traktItemSchema),
       connection,
+      options,
     ),
     traktGetParsed(
-      "/users/me/watched/shows?extended=noseasons",
+      `${userPath(user)}/watched/shows?extended=noseasons`,
       z.array(traktItemSchema),
       connection,
+      options,
     ),
   ]);
   return newestRows(
@@ -338,23 +380,57 @@ async function historyEntries(
   );
 }
 
+/** Collected movies and shows, by collection date, oldest first. */
 async function collectionEntries(
+  user: string,
   connection: ConnectionAccess | null,
+  options: TraktReadOptions,
 ): Promise<SourceSnapshot> {
+  // The connected user's own collection reads through /sync; another
+  // user's public one through their profile.
+  const base =
+    user === "me" ? "/sync/collection" : `${userPath(user)}/collection`;
   const [movies, shows] = await Promise.all([
-    traktGetAll("/sync/collection/movies", traktItemSchema, connection, {
+    traktGetAll(`${base}/movies`, traktItemSchema, connection, {
+      ...options,
       maxItems: MAX_SOURCE_ITEMS,
     }),
     traktGetParsed(
-      "/sync/collection/shows",
+      `${base}/shows`,
       z.array(traktItemSchema),
       connection,
+      options,
     ),
   ]);
   return newestRows(
     [...movies.items, ...(shows ?? [])],
     (row) => row.collected_at ?? row.last_collected_at,
     movies.complete,
+  );
+}
+
+/** Rated movies and shows, by rating date, oldest first. */
+async function ratingsEntries(
+  user: string,
+  connection: ConnectionAccess | null,
+  options: TraktReadOptions,
+): Promise<SourceSnapshot> {
+  // Rated seasons and episodes are left out: they do not mean the show.
+  const read = (kind: "movies" | "shows") =>
+    traktGetAll(
+      `${userPath(user)}/ratings/${kind}`,
+      traktItemSchema,
+      connection,
+      {
+        ...options,
+        maxItems: MAX_SOURCE_ITEMS,
+      },
+    );
+  const [movies, shows] = await Promise.all([read("movies"), read("shows")]);
+  return newestRows(
+    [...movies.items, ...shows.items],
+    (row) => row.rated_at,
+    movies.complete && shows.complete,
   );
 }
 
@@ -373,6 +449,16 @@ export async function readSource(
           connection,
           options,
         );
+        break;
+      case "favorites":
+        snapshot = await listedEntries(
+          `${userPath(source.user)}/favorites?sort_by=added&sort_how=asc`,
+          connection,
+          options,
+        );
+        break;
+      case "ratings":
+        snapshot = await ratingsEntries(source.user, connection, options);
         break;
       case "list":
       case "shared_list":
@@ -397,10 +483,10 @@ export async function readSource(
         snapshot = await upNextEntries(connection);
         break;
       case "history":
-        snapshot = await historyEntries(connection);
+        snapshot = await historyEntries(source.user, connection, options);
         break;
       case "collection":
-        snapshot = await collectionEntries(connection);
+        snapshot = await collectionEntries(source.user, connection, options);
         break;
     }
     return { ...snapshot, entries: uniqueEntries(snapshot.entries) };
@@ -436,11 +522,22 @@ const traktUserSchema = z.object({
 
 const PERSONAL_TITLES = {
   watchlist: "Trakt Watchlist",
+  favorites: "Trakt Favorites",
+  ratings: "Trakt Ratings",
   recommendations: "Trakt Recommendations",
   up_next: "Trakt Up Next",
   history: "Trakt History",
   collection: "Trakt Collection",
 } satisfies Partial<Record<TraktSource["kind"], string>>;
+
+/** A paginated read of each user Source list, for a one-item probe. */
+const USER_PROBES: Record<UserSourceKind, string> = {
+  watchlist: "watchlist",
+  favorites: "favorites",
+  ratings: "ratings",
+  history: "history",
+  collection: "collection/movies",
+};
 
 /**
  * Check that a Source list exists and can be read, and normalize its ref.
@@ -452,7 +549,12 @@ export async function validateTraktSource(
 ): Promise<SourceValidation> {
   const source = parseTraktRef(ref);
   if (!source) return { ok: false, reason: "not_found" };
-  const displayMode = source.kind === "up_next" ? "series" : "split";
+  const displayMode =
+    source.kind === "up_next"
+      ? "series"
+      : source.kind === "chart" && source.chart === "boxoffice"
+        ? "movie"
+        : "split";
 
   try {
     const connection = requireConnection(source, ctx.connection);
@@ -465,10 +567,14 @@ export async function validateTraktSource(
           suggestedTitle: CHARTS[source.chart],
           defaultDisplayMode: displayMode,
         };
-      case "watchlist": {
+      case "watchlist":
+      case "favorites":
+      case "ratings":
+      case "history":
+      case "collection": {
         if (source.user === "me") break;
-        // A missing user's watchlist answers 200 with no items: check the
-        // profile first.
+        // A missing user's Source list answers 200 with no items: check
+        // the profile first.
         const user = await traktGetParsed(
           userPath(source.user),
           traktUserSchema,
@@ -476,16 +582,17 @@ export async function validateTraktSource(
           options,
         );
         if (!user) return { ok: false, reason: "not_found" };
+        // One small read proves that this Source list is public too.
         await traktGetJson(
-          `${userPath(source.user)}/watchlist?limit=1`,
+          `${userPath(source.user)}/${USER_PROBES[source.kind]}?limit=1`,
           connection,
           options,
         );
         const slug = nonEmpty(user.ids?.slug)?.toLowerCase() ?? source.user;
         return {
           ok: true,
-          ref: sourceToRef({ kind: "watchlist", user: slug }),
-          suggestedTitle: `${nonEmpty(user.username) ?? slug}'s watchlist`,
+          ref: sourceToRef({ kind: source.kind, user: slug }),
+          suggestedTitle: `${nonEmpty(user.username) ?? slug}'s ${source.kind}`,
           defaultDisplayMode: displayMode,
         };
       }
@@ -529,8 +636,6 @@ export async function validateTraktSource(
       }
       case "recommendations":
       case "up_next":
-      case "history":
-      case "collection":
         break;
     }
     // Personal Source lists: one small read proves the Connection works.

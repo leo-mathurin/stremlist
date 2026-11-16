@@ -318,6 +318,8 @@ describe("Trakt actions", () => {
       "me/history",
       "me/up-next",
     ]);
-    expect(actions.affectedSources({ kind: "rating", rating: 5 })).toEqual([]);
+    expect(actions.affectedSources({ kind: "rating", rating: 5 })).toEqual([
+      "me/ratings",
+    ]);
   });
 });

@@ -235,6 +235,155 @@ describe("Trakt reads", () => {
     ]);
   });
 
+  it("reads the weekly charts and the movie-only box office", async () => {
+    // Recorded shapes of /movies/watched/weekly and /movies/boxoffice
+    // (api.trakt.tv, 2026-11-16).
+    route("GET /movies/watched/weekly", [
+      { watcher_count: 17589, play_count: 18309, movie: clerks },
+    ]);
+    route("GET /shows/watched/weekly", [
+      { watcher_count: 42568, play_count: 98171, show: pitt },
+    ]);
+    expect(
+      (await fetchEntries("watched")).map((e) => [e.type, e.imdbId]),
+    ).toEqual([
+      ["movie", "tt11128440"],
+      ["series", "tt31938062"],
+    ]);
+    route("GET /movies/boxoffice", [
+      { revenue: 19000000, movie: halloween },
+      { revenue: 11400000, movie: clerks },
+    ]);
+    expect((await fetchEntries("boxoffice")).map((e) => e.imdbId)).toEqual([
+      "tt10665342",
+      "tt11128440",
+    ]);
+    expect(callsTo("/shows/boxoffice")).toHaveLength(0);
+  });
+
+  it("reads a public user's favorites, oldest added first", async () => {
+    // Recorded shape of /users/{user}/favorites (api.trakt.tv, 2026-11-16).
+    route(
+      "GET /users/sean/favorites",
+      pages([
+        [
+          {
+            ...listed("show", pitt, "2024-02-01T00:00:00.000Z", 2),
+            notes: null,
+          },
+          {
+            ...listed("movie", clerks, "2020-08-01T04:47:04.000Z", 20),
+            notes: null,
+          },
+        ],
+      ]),
+    );
+    const { entries, complete } = await traktProvider.fetchSource(
+      "users/sean/favorites",
+      { connection: null },
+    );
+    expect(entries.map((e) => [e.imdbId, e.addedAt])).toEqual([
+      ["tt11128440", "2020-08-01T04:47:04.000Z"],
+      ["tt31938062", "2024-02-01T00:00:00.000Z"],
+    ]);
+    expect(complete).toBe(true);
+    expect(calls[0].headers.has("Authorization")).toBe(false);
+  });
+
+  it("reads rated movies and shows by rating date, without episodes", async () => {
+    // Recorded shape of /users/{user}/ratings/{type} (api.trakt.tv, 2026-11-16).
+    route(
+      "GET /users/sean/ratings/movies",
+      pages([
+        [
+          {
+            rated_at: "2022-07-12T19:28:14.000Z",
+            rating: 10,
+            type: "movie",
+            movie: clerks,
+          },
+        ],
+      ]),
+    );
+    route(
+      "GET /users/sean/ratings/shows",
+      pages([
+        [
+          {
+            rated_at: "2021-01-01T00:00:00.000Z",
+            rating: 9,
+            type: "show",
+            show: pitt,
+          },
+        ],
+      ]),
+    );
+    const entries = await fetchEntries("users/sean/ratings");
+    expect(entries.map((e) => [e.imdbId, e.addedAt])).toEqual([
+      ["tt31938062", "2021-01-01T00:00:00.000Z"],
+      ["tt11128440", "2022-07-12T19:28:14.000Z"],
+    ]);
+    expect(callsTo("/users/sean/ratings")).toHaveLength(0);
+  });
+
+  it("reads the user's own favorites and ratings through the Connection", async () => {
+    route("GET /users/me/favorites", [
+      listed("movie", clerks, "2022-10-14T03:19:22.000Z", 1),
+    ]);
+    route("GET /users/me/ratings/movies", [
+      { rated_at: "2022-01-01T00:00:00.000Z", rating: 8, movie: halloween },
+    ]);
+    route("GET /users/me/ratings/shows", []);
+    for (const ref of ["me/favorites", "me/ratings"]) {
+      await expect(fetchEntries(ref)).rejects.toMatchObject({
+        reason: "needs_connection",
+      });
+    }
+    expect(
+      (await fetchEntries("me/favorites", connection())).map((e) => e.imdbId),
+    ).toEqual(["tt11128440"]);
+    expect(
+      (await fetchEntries("me/ratings", connection())).map((e) => e.imdbId),
+    ).toEqual(["tt10665342"]);
+    expect(calls.at(-1)?.headers.get("Authorization")).toBe("Bearer token-1");
+  });
+
+  it("reads a public user's history and collection without a Connection", async () => {
+    route("GET /users/sean/watched/movies", [
+      { plays: 1, last_watched_at: "2025-03-01T00:00:00.000Z", movie: clerks },
+    ]);
+    route("GET /users/sean/watched/shows", [
+      { plays: 2, last_watched_at: "2024-03-01T00:00:00.000Z", show: pitt },
+    ]);
+    expect(
+      (await fetchEntries("users/sean/history")).map((e) => e.imdbId),
+    ).toEqual(["tt31938062", "tt11128440"]);
+    // Recorded shape of /users/{user}/collection/movies (api.trakt.tv,
+    // 2026-11-16): paginated when asked.
+    route(
+      "GET /users/sean/collection/movies",
+      pages([
+        [
+          {
+            collected_at: "2026-11-10T02:20:23.000Z",
+            type: "movie",
+            movie: halloween,
+          },
+        ],
+      ]),
+    );
+    route("GET /users/sean/collection/shows", [
+      { last_collected_at: "2020-01-01T00:00:00.000Z", show: mandalorian },
+    ]);
+    expect(
+      (await fetchEntries("users/sean/collection")).map((e) => e.imdbId),
+    ).toEqual(["tt8111088", "tt10665342"]);
+    expect(calls.every((call) => !call.headers.has("Authorization"))).toBe(
+      true,
+    );
+    expect(callsTo("/sync/collection/movies")).toHaveLength(0);
+  });
+
   it("reads me/watchlist and me/lists through the Connection", async () => {
     route("GET /users/me/watchlist", [
       listed("movie", clerks, "2022-10-14T03:19:22.000Z", 1),
