@@ -455,6 +455,32 @@ describe("Provider outages", () => {
       expect(await outages()).toEqual(["letterboxd"]);
     });
 
+    it.each([
+      [
+        "a Cloudflare error page",
+        502,
+        '<div class="cf-error-details">Bad gateway</div>',
+      ],
+      ["no body", 503, null],
+    ])(
+      "reports a Letterboxd outage for a 5xx answer with %s",
+      async (_name, status, body) => {
+        vi.stubGlobal(
+          "fetch",
+          vi.fn((url: string) =>
+            Promise.resolve(
+              url.startsWith("https://letterboxd.com/")
+                ? new Response(body, { status })
+                : new Response("ok"),
+            ),
+          ),
+        );
+        await monitor();
+        await monitor();
+        expect(await outages()).toEqual(["letterboxd"]);
+      },
+    );
+
     it("reports no Letterboxd outage for a page it cannot read", async () => {
       // HTTP 200 whose markup is not a list page.
       await monitor();

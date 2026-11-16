@@ -262,6 +262,8 @@ async function readHtml(
   const read = await withLetterboxdPermit<PageRead>(async () => {
     let blocked = false;
     let retryAfterMs = 0;
+    // A 5xx answer is Letterboxd's own failure, whatever its body says.
+    let serverError: HttpError | undefined;
     const details = requestDetails(kind, url);
     try {
       const response = await providerFetch(url, {
@@ -271,6 +273,8 @@ async function readHtml(
         headers: { Accept: "text/html" },
       });
       noteResponse(details, response);
+      if (response.status >= 500)
+        serverError = new HttpError(response.status, "", url);
       blocked =
         response.status === 403 ||
         response.headers.get("cf-mitigated") === "challenge";
@@ -333,13 +337,7 @@ async function readHtml(
           (kind === "collection" && (!parsed.valid || !paginationValid)))
       ) {
         return {
-          value: {
-            ok: false,
-            reason: "unavailable",
-            ...(response.status >= 500
-              ? { cause: new HttpError(response.status, "", url) }
-              : {}),
-          },
+          value: { ok: false, reason: "unavailable", cause: serverError },
           result: "failed",
           retryAfterMs,
           details,
@@ -347,7 +345,7 @@ async function readHtml(
       }
       return {
         value: blocked
-          ? { ok: false, reason: "unavailable" }
+          ? { ok: false, reason: "unavailable", cause: serverError }
           : { ok: true, html },
         result: blocked ? "blocked" : "ok",
         details,
@@ -356,7 +354,11 @@ async function readHtml(
       details.error = errorText(error);
       // A body timeout after HTTP 200 is still a failed read, never valid empty content.
       return {
-        value: { ok: false, reason: "unavailable", cause: error },
+        value: {
+          ok: false,
+          reason: "unavailable",
+          cause: serverError ?? error,
+        },
         result: blocked ? "blocked" : "failed",
         retryAfterMs,
         details,
