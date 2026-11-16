@@ -41,19 +41,20 @@ export function isOutageFailure(error: unknown): boolean {
 }
 
 /**
- * Record one conclusive probe. Never throws: a database failure must not
- * stop the other probes or their heartbeats.
+ * Record one conclusive probe. `immediate` starts the outage at once: the
+ * Provider's own status page says it is down. Never throws: a database
+ * failure must not stop the other probes or their heartbeats.
  */
 export async function recordProviderProbe(
   provider: ProviderId,
-  result: { ok: true } | { ok: false; error: string },
+  result: { ok: true } | { ok: false; error: string; immediate?: boolean },
 ): Promise<void> {
   try {
     const { error } = await supabase.rpc("record_provider_probe", {
       p_provider: provider,
       p_ok: result.ok,
       p_error: result.ok ? undefined : result.error,
-      p_threshold: OUTAGE_THRESHOLD,
+      p_threshold: !result.ok && result.immediate ? 1 : OUTAGE_THRESHOLD,
     });
     if (error) throw new Error(error.message);
   } catch (error) {

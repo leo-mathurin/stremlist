@@ -86,7 +86,7 @@ Whether Stremlist currently reads a Provider. A Provider is unavailable when an 
 _Avoid_: Down, offline, disabled (for the user-facing state)
 
 **Outage**:
-A period when a Provider fails Stremlist's monitor because of the Provider itself: two probes in a row end with a server error, a timeout, or no connection. A rate limit, a bad monitor list, an expired Connection, or missing configuration is never an outage. Unlike Availability, an outage does not stop reads; the configure page names the Provider in a banner until a probe works again. See [Provider outages](docs/provider-outages.md).
+A period when a Provider fails Stremlist's monitor because of the Provider itself: two probes in a row end with a server error, a timeout, or no connection, or the Provider's own status page says the part Stremlist reads is down. A rate limit, a bad monitor list, an expired Connection, or missing configuration is never an outage. Unlike Availability, an outage does not stop reads; the configure page names the Provider in a banner until a probe works again. See [Provider outages](docs/provider-outages.md).
 _Avoid_: Incident, downtime
 
 **Action**:

@@ -50,6 +50,14 @@ function monitor(secret = SECRET) {
 let beats: { url: string; method: string }[];
 /** Status that the stubbed fetch answers per URL prefix; 200 otherwise. */
 let statuses: Map<string, number>;
+/** Status page bodies per URL prefix; other status pages answer 503. */
+let pages: Map<string, unknown>;
+const NO_PAGES = {
+  trakt: null,
+  simkl: null,
+  mdblist: null,
+  senscritique: null,
+};
 beforeEach(() => {
   resetConfigTest();
   resetProviders();
@@ -77,9 +85,16 @@ beforeEach(() => {
   useFakeProvider(fakeAdapter("letterboxd"));
   beats = [];
   statuses = new Map();
+  pages = new Map();
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string, init?: RequestInit) => {
+      if (url.startsWith("https://status.")) {
+        const page = [...pages].find(([prefix]) => url.startsWith(prefix));
+        return Promise.resolve(
+          page ? Response.json(page[1]) : new Response("", { status: 503 }),
+        );
+      }
       beats.push({ url, method: init?.method ?? "GET" });
       const status = [...statuses].find(([prefix]) =>
         url.startsWith(prefix),
@@ -141,6 +156,7 @@ describe("GET /monitor", () => {
           error: "halted",
         },
       ],
+      statusPages: NO_PAGES,
     });
     expect(imdbRead).toHaveBeenCalledWith("ur12345678", {
       connection: null,
@@ -180,6 +196,8 @@ describe("GET /monitor", () => {
     expect(await res.json()).toEqual({
       ok: true,
       results: [{ provider: "letterboxd", ok: true, entries: 0 }],
+      // No status page answers in this test.
+      statusPages: NO_PAGES,
     });
     expect(beats).toEqual([{ url: LBX_BEAT, method: "GET" }]);
     expect(justwatchRead).not.toHaveBeenCalled();
@@ -498,6 +516,126 @@ describe("Provider outages", () => {
       await monitor();
       await monitor();
       expect(await outages()).toEqual([]);
+    });
+  });
+
+  describe("official status pages", () => {
+    const traktPage = (statusClass: string) => ({
+      psp: {
+        monitors: [
+          { name: "Trending", statusClass, groupName: "API" },
+          { name: "Web App", statusClass: "success", groupName: "Web" },
+        ],
+      },
+    });
+
+    it("starts an outage at once when the status page says the API is down", async () => {
+      pages.set("https://status.trakt.tv/", traktPage("danger"));
+      const res = await monitor();
+      expect(await outages()).toEqual(["trakt"]);
+      // A status page never fails the monitor by itself.
+      expect(res.status).toBe(200);
+    });
+
+    it("keeps the outage while the page says down, even when Stremlist's probe works", async () => {
+      vi.stubEnv("TRAKT_CLIENT_ID", "trakt-app");
+      useFakeProvider(
+        fakeAdapter("trakt", {
+          oauth: {
+            authorizeUrl: "",
+            tokenUrl: "",
+            clientId: () => "trakt-app",
+          },
+        }),
+      );
+      pages.set("https://status.trakt.tv/", traktPage("danger"));
+      await monitor();
+      await monitor();
+      expect(await outages()).toEqual(["trakt"]);
+
+      pages.set("https://status.trakt.tv/", traktPage("success"));
+      await monitor();
+      expect(await outages()).toEqual([]);
+    });
+
+    it("ends an outage when the page says up and nothing probes the Provider", async () => {
+      pages.set("https://status.trakt.tv/", traktPage("danger"));
+      await monitor();
+      pages.set("https://status.trakt.tv/", traktPage("success"));
+      await monitor();
+      expect(await outages()).toEqual([]);
+    });
+
+    it("ignores components that Stremlist does not read", async () => {
+      pages.set("https://status.trakt.tv/", {
+        psp: {
+          monitors: [
+            { name: "Trending", statusClass: "success", groupName: "API" },
+            { name: "Web App", statusClass: "danger", groupName: "Web" },
+          ],
+        },
+      });
+      pages.set("https://status.mdblist.com/", {
+        included: [
+          {
+            type: "status_page_resource",
+            attributes: { public_name: "Lists Queue", status: "downtime" },
+          },
+          {
+            type: "status_page_resource",
+            attributes: { public_name: "api.mdblist.com", status: "degraded" },
+          },
+        ],
+      });
+      await monitor();
+      expect(await outages()).toEqual([]);
+    });
+
+    it("reads the Simkl, MDBList and SensCritique pages", async () => {
+      pages.set("https://status.simkl.com/", {
+        psp: {
+          monitors: [{ name: "API.simkl.com", statusClass: "danger" }],
+        },
+      });
+      pages.set("https://status.mdblist.com/", {
+        included: [
+          {
+            type: "status_page_resource",
+            attributes: { public_name: "api.mdblist.com", status: "downtime" },
+          },
+        ],
+      });
+      pages.set("https://status.senscritique.com/", {
+        components: [{ name: "senscritique.com", status: "MAJOROUTAGE" }],
+      });
+      const res = await monitor();
+      const { statusPages } = await readJson(
+        res,
+        z.object({ statusPages: z.record(z.string(), z.string().nullable()) }),
+      );
+      expect(statusPages).toEqual({
+        trakt: null,
+        simkl: "down",
+        mdblist: "down",
+        senscritique: "down",
+      });
+      expect(await outages()).toEqual(["simkl", "mdblist", "senscritique"]);
+    });
+
+    it("treats a changed page format as no signal", async () => {
+      pages.set("https://status.trakt.tv/", { monitors: "changed" });
+      await monitor();
+      await monitor();
+      expect(await outages()).toEqual([]);
+    });
+
+    it("does not read the page of a turned-off Provider", async () => {
+      vi.stubEnv("DISABLED_PROVIDERS", "trakt");
+      pages.set("https://status.trakt.tv/", traktPage("danger"));
+      await monitor();
+      expect(
+        db.getTable("provider_outages").map((row) => row.provider),
+      ).not.toContain("trakt");
     });
   });
 

@@ -21,6 +21,24 @@ probes every Provider that Stremlist can check:
 | SensCritique | Reads `MONITOR_SENSCRITIQUE_REF`                                | The reference       |
 | Letterboxd   | Reads the official Top 500 list, or `MONITOR_LETTERBOXD_REF`    | Nothing             |
 
+`/monitor` also reads the official status pages of four Providers, for the
+part that Stremlist reads:
+
+| Provider     | Status page                          | Components         |
+| ------------ | ------------------------------------ | ------------------ |
+| Trakt        | `status.trakt.tv` (UptimeRobot)      | The "API" group    |
+| Simkl        | `status.simkl.com` (UptimeRobot)     | `API.simkl.com`    |
+| MDBList      | `status.mdblist.com` (Better Stack)  | `api.mdblist.com`  |
+| SensCritique | `status.senscritique.com` (Instatus) | `senscritique.com` |
+
+Letterboxd, IMDb and JustWatch publish none. When a page says a component is
+down, the outage starts at once and lasts while the page says so, even when
+Stremlist's own probe works. A degraded component is not an outage. A page
+that does not answer or whose format changed gives no signal. The UptimeRobot
+endpoint (`/api/getMonitorList/<page>`) is the one the page itself loads, not
+a documented API, so it can change. A status page never fails `/monitor` or a
+heartbeat.
+
 A Better Stack heartbeat (`BETTERSTACK_HEARTBEAT_URL_<PROVIDER>`) is optional.
 When it is set, every failed probe alerts, as before.
 
@@ -38,8 +56,10 @@ These do not count, so they never show a banner:
   already says "Temporarily unavailable".
 
 The table `provider_outages` (migration `20261116120000_provider_outages.sql`)
-keeps one row per Provider. Two failed probes in a row start an outage. The
-next successful probe ends it. A failure that does not count changes nothing.
+keeps one row per Provider. Two failed probes in a row start an outage, or one
+"down" from the status page. The next successful probe ends it, or the status
+page saying "up" when no probe decides. A failure that does not count changes
+nothing.
 
 `GET /providers` gives `outageSince` for each Provider. It is null when the
 Provider has no outage, when it is unavailable, when the last counted probe is

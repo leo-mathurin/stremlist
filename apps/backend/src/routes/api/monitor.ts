@@ -6,7 +6,12 @@ import {
 } from "../../providers/availability";
 import { HttpError, providerFetch } from "../../providers/http";
 import { isOutageFailure, recordProviderProbe } from "../../providers/outages";
-import { getProvider } from "../../providers/registry";
+import { getProvider, isProviderEnabled } from "../../providers/registry";
+import type { StatusPageState } from "../../providers/status-pages";
+import {
+  readStatusPage,
+  STATUS_PAGE_PROVIDERS,
+} from "../../providers/status-pages";
 import { SIMKL_API } from "../../providers/simkl/api";
 
 /** An environment variable, with an empty value read as unset. */
@@ -164,11 +169,6 @@ async function runProbe(
     result = { provider, ok: false, outage: isOutageFailure(err), error };
   }
 
-  // Only conclusive probes change the outage state.
-  if (result.ok) await recordProviderProbe(provider, { ok: true });
-  else if (result.outage)
-    await recordProviderProbe(provider, { ok: false, error: result.error });
-
   if (heartbeat) {
     try {
       await (result.ok
@@ -182,8 +182,31 @@ async function runProbe(
 }
 
 /**
- * The uptime check: probes each Provider, records outages for the configure
- * page, and reports to Better Stack.
+ * Record what this run learned about a Provider's outage. The Provider's own
+ * status page saying "down" starts an outage at once. Otherwise a working
+ * probe, then a probe that failed because of the Provider, then the status
+ * page saying "up" decide. With none of them, nothing changes.
+ */
+async function recordOutage(
+  provider: ProviderId,
+  probe: ProbeResult | undefined,
+  page: StatusPageState | null,
+): Promise<void> {
+  if (page === "down")
+    return recordProviderProbe(provider, {
+      ok: false,
+      error: `The ${provider} status page reports an outage`,
+      immediate: true,
+    });
+  if (probe?.ok) return recordProviderProbe(provider, { ok: true });
+  if (probe?.outage)
+    return recordProviderProbe(provider, { ok: false, error: probe.error });
+  if (page === "up") return recordProviderProbe(provider, { ok: true });
+}
+
+/**
+ * The uptime check: probes each Provider, reads the official status pages,
+ * records outages for the configure page, and reports to Better Stack.
  */
 const monitor = new Hono().get("/monitor", async (c) => {
   const authHeader = c.req.header("Authorization");
@@ -192,15 +215,30 @@ const monitor = new Hono().get("/monitor", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  // Independent probes: one failure never skips the others.
-  const results = await Promise.all(
-    PROBES.flatMap((probe) => {
-      const read = probe.read();
-      return read ? [runProbe(probe.provider, read, probe.heartbeat())] : [];
+  // Independent probes: one failure never skips the others. A turned-off
+  // Provider's status page is not read: its label already says it all.
+  const checks = await Promise.all(
+    PROBES.map(async ({ provider, read: readOf, heartbeat }) => {
+      const read = readOf();
+      const [probe, page] = await Promise.all([
+        read ? runProbe(provider, read, heartbeat()) : undefined,
+        STATUS_PAGE_PROVIDERS.includes(provider) && isProviderEnabled(provider)
+          ? readStatusPage(provider)
+          : null,
+      ]);
+      await recordOutage(provider, probe, page);
+      return { provider, probe, page };
     }),
   );
+  const results = checks.flatMap(({ probe }) => (probe ? [probe] : []));
+  const statusPages = Object.fromEntries(
+    checks
+      .filter(({ provider }) => STATUS_PAGE_PROVIDERS.includes(provider))
+      .map(({ provider, page }) => [provider, page]),
+  );
+  // Only the probes alert: a status page is an extra signal.
   const ok = results.every((result) => result.ok);
-  return c.json({ ok, results }, ok ? 200 : 502);
+  return c.json({ ok, results, statusPages }, ok ? 200 : 502);
 });
 
 export default monitor;
