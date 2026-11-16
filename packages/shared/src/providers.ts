@@ -3,6 +3,7 @@ import {
   IMDB_LIST_ID_PATTERN,
   IMDB_LS_ID_SOURCE,
   IMDB_P_HANDLE_SOURCE,
+  IMDB_RATINGS_REF_PATTERN,
   IMDB_UR_ID_SOURCE,
   IMDB_USER_ID_PATTERN,
 } from "./constants";
@@ -232,6 +233,20 @@ function parseImdbLink(input: string): ParsedSourceLink | null {
     !/[/.:]/.test(trimmed.replace(/^p\./, "")) ||
     /^p\.[a-zA-Z0-9]+$/.test(trimmed);
   if (!isImdbUrl && !bare) return null;
+
+  // imdb.com/user/{ur… or p.handle}/ratings: the ratings, not the watchlist
+  // of the user ID that the link also contains.
+  const parts = url && isImdbUrl ? segments(url) : [];
+  if (
+    parts[0]?.toLowerCase() === "user" &&
+    parts[2]?.toLowerCase() === "ratings"
+  ) {
+    const user = parts[1].startsWith("p.") ? parts[1] : parts[1].toLowerCase();
+    const sourceRef = `${user}/ratings`;
+    return parts.length === 3 && IMDB_RATINGS_REF_PATTERN.test(sourceRef)
+      ? { provider: "imdb", sourceRef, kind: "list" }
+      : null;
+  }
 
   const list = IMDB_LS.exec(trimmed);
   if (list) {
@@ -862,6 +877,15 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
           kind: "list",
           detail: ref,
           url: `https://www.imdb.com/list/${ref}/`,
+        }),
+      },
+      {
+        pattern: IMDB_RATINGS_REF_PATTERN,
+        describe: ([, user]) => ({
+          kind: "list",
+          detail: user,
+          url: `https://www.imdb.com/user/${user}/ratings`,
+          title: "IMDb Ratings",
         }),
       },
       {

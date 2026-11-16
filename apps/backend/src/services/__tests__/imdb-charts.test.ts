@@ -1,4 +1,7 @@
-import { IMDB_WATCHLIST_SOURCE_ID_PATTERN } from "@stremlist/shared/constants";
+import {
+  IMDB_RATINGS_REF_PATTERN,
+  IMDB_WATCHLIST_SOURCE_ID_PATTERN,
+} from "@stremlist/shared/constants";
 import { CHART_REGISTRY, isChartId } from "@stremlist/shared/imdb-charts";
 import {
   describe,
@@ -70,9 +73,10 @@ describe("CHART_REGISTRY invariants", () => {
     }
   });
 
-  it("does not collide with the user-source id pattern", () => {
+  it("does not collide with the user-source id patterns", () => {
     for (const entry of CHART_REGISTRY) {
       expect(IMDB_WATCHLIST_SOURCE_ID_PATTERN.test(entry.id)).toBe(false);
+      expect(IMDB_RATINGS_REF_PATTERN.test(entry.id)).toBe(false);
     }
   });
 });
@@ -151,17 +155,22 @@ describe("fetchChart", () => {
   });
 });
 
-describe("config source-id rule (mirrors the api.ts refine predicate)", () => {
+describe("config source-id rule (mirrors account-config)", () => {
   it.each([
     ["imdb:top-rated-movies", true],
     ["imdb:unknown", false],
     ["ur12345678", true],
     ["ls593621567", true],
     ["p.colneedham", true],
+    ["ur12345678/ratings", true],
+    ["ls593621567/ratings", false],
+    ["ur12345678/watchlist", false],
   ])("treats %s as accepted: %s", (id, accepted) => {
-    expect(IMDB_WATCHLIST_SOURCE_ID_PATTERN.test(id) || isChartId(id)).toBe(
-      accepted,
-    );
+    expect(
+      IMDB_WATCHLIST_SOURCE_ID_PATTERN.test(id) ||
+        IMDB_RATINGS_REF_PATTERN.test(id) ||
+        isChartId(id),
+    ).toBe(accepted);
   });
 });
 

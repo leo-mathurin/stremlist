@@ -8,6 +8,7 @@ import {
 } from "vite-plus/test";
 import {
   getImdbList,
+  getImdbRatings,
   getImdbWatchlist,
   fetchWatchlist,
   normalizeImdbUserId,
@@ -284,6 +285,41 @@ describe("getImdbList (unit)", () => {
   });
 });
 
+describe("getImdbRatings (unit)", () => {
+  it("keeps the newest 10,000 ratings, where IMDb's search ends", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const requestedPageSizes = servePages(17_282, ({ edges, ...search }) =>
+      jsonResponse({
+        data: {
+          advancedTitleSearch: {
+            ...search,
+            edges: z
+              .array(z.object({ listItem: z.object({}).loose() }))
+              .parse(edges)
+              .map(({ listItem }) => ({
+                node: {
+                  title: {
+                    ...listItem,
+                    userRating: { date: "2026-01-01T00:00:00.000Z" },
+                  },
+                },
+              })),
+          },
+        },
+      }),
+    );
+
+    const { items, complete } = await getImdbRatings("ur1000000");
+
+    expect(items).toHaveLength(10_000);
+    expect(complete).toBe(false);
+    expect(requestedPageSizes).toEqual([...Array<number>(13).fill(750), 250]);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("10,000-item limit"),
+    );
+  });
+});
+
 describe("validateImdbWatchlist (unit)", () => {
   it("returns valid for a public watchlist", async () => {
     respond(publicWatchlist());
@@ -445,6 +481,17 @@ describe("normalizeImdbUserId (unit)", () => {
     expect(init?.headers).toMatchObject({
       "User-Agent": "facebookexternalhit/1.1",
     });
+  });
+
+  it("resolves the p.handle of a ratings reference and keeps the suffix", async () => {
+    respond(profileHtml("ur1000000"));
+
+    expect(await normalizeImdbUserId("p.ratingshandle/ratings")).toBe(
+      "ur1000000/ratings",
+    );
+    expect(vi.mocked(globalThis.fetch).mock.calls[0][0]).toBe(
+      "https://www.imdb.com/user/p.ratingshandle/",
+    );
   });
 
   it("caches resolved p.handle results (second call does not re-fetch)", async () => {
