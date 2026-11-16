@@ -20,7 +20,7 @@ import {
   resetProviders,
   useFakeProvider,
 } from "./helpers/mock-registry.js";
-import { callRpc, db } from "./helpers/mock-supabase.js";
+import { callRpc, db, rpcHandlers } from "./helpers/mock-supabase.js";
 import {
   haltLetterboxdGate,
   letterboxdGate,
@@ -387,6 +387,10 @@ describe("Provider outages", () => {
     ["a rate limit", new HttpError(429, "", "https://apis.justwatch.com/")],
     ["a busy queue", new LetterboxdBusyError(60_000)],
     ["a response Stremlist cannot read", new Error("Unexpected token <")],
+    [
+      "an unavailable read without a Provider failure behind it",
+      new SourceUnavailableError("unavailable", "Simkl is not configured"),
+    ],
     ["a bug in Stremlist", new TypeError("x is undefined")],
   ])("never reports an outage for %s", async (_name, error) => {
     vi.stubEnv("MONITOR_JUSTWATCH_REF", "tl-us-list");
@@ -414,7 +418,9 @@ describe("Provider outages", () => {
     const justwatch = useFakeProvider(
       fakeAdapter("justwatch", {
         fetchSource: failingRead(
-          new SourceUnavailableError("unavailable", "did not answer"),
+          new SourceUnavailableError("unavailable", "did not answer", {
+            cause: new HttpError(503, "", "https://apis.justwatch.com/"),
+          }),
         ),
       }),
     );
@@ -425,6 +431,46 @@ describe("Provider outages", () => {
     );
     await monitor();
     expect(await outages()).toEqual(["justwatch"]);
+  });
+
+  describe("through the real adapters", () => {
+    beforeEach(() => {
+      // The real Letterboxd adapter, not the fake from the outer setup.
+      resetProviders();
+    });
+
+    it("reports an IMDb outage when IMDb answers 5xx", async () => {
+      vi.stubEnv("MONITOR_IMDB_USER_ID", "ur12345678");
+      statuses.set("https://api.graphql.imdb.com/", 503);
+      statuses.set("https://letterboxd.com/", 404);
+      await monitor();
+      await monitor();
+      expect(await outages()).toContain("imdb");
+    });
+
+    it("reports a Letterboxd outage when Letterboxd answers 5xx", async () => {
+      statuses.set("https://letterboxd.com/", 502);
+      await monitor();
+      await monitor();
+      expect(await outages()).toEqual(["letterboxd"]);
+    });
+
+    it("reports no Letterboxd outage for a page it cannot read", async () => {
+      // HTTP 200 whose markup is not a list page.
+      await monitor();
+      await monitor();
+      expect(await outages()).toEqual([]);
+    });
+
+    it("reports no Letterboxd outage when its gate cannot be read", async () => {
+      rpcHandlers.set("letterboxd_take_turn", () => ({
+        data: null,
+        error: { message: "database down" },
+      }));
+      await monitor();
+      await monitor();
+      expect(await outages()).toEqual([]);
+    });
   });
 
   it("hides an outage once the monitor has not checked for an hour", async () => {

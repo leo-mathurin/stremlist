@@ -4,7 +4,7 @@ import { load } from "cheerio";
 import { createHash } from "node:crypto";
 import { decryptSecret, encryptStable } from "../lib/crypto";
 import { wikidataStrategy } from "../titles/wikidata";
-import { providerFetch } from "./http";
+import { HttpError, providerFetch } from "./http";
 import { isProviderEnabled } from "./kill-switch";
 import {
   LETTERBOXD_FRESHNESS_MS,
@@ -51,6 +51,8 @@ type PageRead =
       rateLimitedMs?: number;
       /** A redirect: where Letterboxd sends the read instead. */
       movedTo?: string;
+      /** The Provider's own failure: a 5xx answer or a failed request. */
+      cause?: unknown;
     };
 
 const SHARE_PREFIX = "share/";
@@ -331,7 +333,13 @@ async function readHtml(
           (kind === "collection" && (!parsed.valid || !paginationValid)))
       ) {
         return {
-          value: { ok: false, reason: "unavailable" },
+          value: {
+            ok: false,
+            reason: "unavailable",
+            ...(response.status >= 500
+              ? { cause: new HttpError(response.status, "", url) }
+              : {}),
+          },
           result: "failed",
           retryAfterMs,
           details,
@@ -348,7 +356,7 @@ async function readHtml(
       details.error = errorText(error);
       // A body timeout after HTTP 200 is still a failed read, never valid empty content.
       return {
-        value: { ok: false, reason: "unavailable" },
+        value: { ok: false, reason: "unavailable", cause: error },
         result: blocked ? "blocked" : "failed",
         retryAfterMs,
         details,
@@ -362,6 +370,7 @@ async function readHtml(
     throw new SourceUnavailableError(
       read.reason,
       "Letterboxd could not read this public list",
+      { cause: read.cause },
     );
   }
   return read.html;

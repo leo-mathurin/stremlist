@@ -107,8 +107,17 @@ export type SourceValidation =
 export class SourceUnavailableError extends Error {
   readonly reason: SourceProblemReason;
 
-  constructor(reason: SourceProblemReason, message: string) {
-    super(message);
+  /**
+   * `cause` keeps the failure behind an "unavailable" read (an HttpError, a
+   * timeout), so the monitor can tell a Provider outage from Stremlist's own
+   * failures.
+   */
+  constructor(
+    reason: SourceProblemReason,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
     this.name = "SourceUnavailableError";
     this.reason = reason;
   }

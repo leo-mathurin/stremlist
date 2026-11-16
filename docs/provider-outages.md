@@ -24,14 +24,16 @@ probes every Provider that Stremlist can check:
 A Better Stack heartbeat (`BETTERSTACK_HEARTBEAT_URL_<PROVIDER>`) is optional.
 When it is set, every failed probe alerts, as before.
 
-Only some failures count toward an outage: a server error (5xx), a timeout, a
-network failure, or a Provider that "did not answer". These do not count, so
-they never show a banner:
+Only some failures count toward an outage: a server error (5xx), a timeout, or
+a network failure, also when an adapter wraps it in an "unavailable" error.
+These do not count, so they never show a banner:
 
 - a rate limit (429) or a busy Letterboxd queue,
 - a private or missing monitor list,
 - a refused Connection or a Provider app that is not configured,
 - an answer that Stremlist cannot read, or a bug in Stremlist,
+- an "unavailable" error with no Provider failure behind it, such as an
+  unreadable Letterboxd gate or cache,
 - a Provider that is unavailable (kill switch or Letterboxd halt). Its row
   already says "Temporarily unavailable".
 

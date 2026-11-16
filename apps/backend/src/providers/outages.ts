@@ -18,7 +18,8 @@ export const OUTAGE_STALE_MS = 60 * 60_000;
 
 /**
  * Whether a failed probe says that the Provider itself is down. Only server
- * errors, timeouts, network failures and "did not answer" count. Rate limits,
+ * errors, timeouts and network failures count, also when an adapter wraps
+ * them in an "unavailable" SourceUnavailableError (as its `cause`). Rate limits,
  * a private or missing monitor list, a refused Connection, missing server
  * configuration and responses that Stremlist cannot parse do not: they are
  * Stremlist's problems or the monitor's, and the user must not read them as
@@ -26,8 +27,10 @@ export const OUTAGE_STALE_MS = 60 * 60_000;
  */
 export function isOutageFailure(error: unknown): boolean {
   if (error instanceof SourceBusyError) return false;
+  // "unavailable" alone also covers Stremlist's own failures (an unreadable
+  // gate or cache, a page it cannot parse, a missing client ID).
   if (error instanceof SourceUnavailableError)
-    return error.reason === "unavailable";
+    return error.reason === "unavailable" && isOutageFailure(error.cause);
   if (error instanceof HttpError) return error.status >= 500;
   if (!(error instanceof Error)) return false;
   // AbortSignal.timeout() rejects with a TimeoutError. fetch() rejects with a
