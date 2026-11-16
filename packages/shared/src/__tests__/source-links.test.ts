@@ -615,6 +615,31 @@ describe("describeSourceRef", () => {
     });
   });
 
+  it("names the MDBList ratings, history and official charts", () => {
+    expect(describeSourceRef("mdblist", "me/ratings")).toEqual({
+      kind: "list",
+      detail: "Your account",
+      url: null,
+      title: "MDBList Ratings",
+    });
+    expect(describeSourceRef("mdblist", "me/history")).toMatchObject({
+      kind: "history",
+      title: "MDBList History",
+    });
+    expect(describeSourceRef("mdblist", "official/trending")).toEqual({
+      kind: "chart",
+      detail: "Your account",
+      url: null,
+      title: "MDBList Trending",
+    });
+    // An official chart that the configure page does not offer.
+    expect(describeSourceRef("mdblist", "official/moviemeter")).toEqual({
+      kind: "chart",
+      detail: "moviemeter",
+      url: null,
+    });
+  });
+
   it("keeps an unknown reference as a list", () => {
     expect(describeSourceRef("trakt", "me/lists/42")).toEqual({
       kind: "list",
@@ -707,5 +732,14 @@ describe("Simkl Source lists", () => {
     expect(sourceTitleType("simkl", "trending/movies")).toBe("movie");
     expect(sourceTitleType("simkl", "trending/tv")).toBe("series");
     expect(sourceTitleType("simkl", "trending/anime")).toBeNull();
+  });
+});
+
+describe("sourceHasAddedDates: MDBList", () => {
+  it("dates the watchlist, ratings and history, not lists or charts", () => {
+    for (const ref of ["me/watchlist", "me/ratings", "me/history"])
+      expect(sourceHasAddedDates("mdblist", ref)).toBe(true);
+    for (const ref of ["lists/14", "me/lists/42", "official/trending"])
+      expect(sourceHasAddedDates("mdblist", ref)).toBe(false);
   });
 });

@@ -54,6 +54,16 @@ const NO_IMDB = {
   release_year: 2026,
 };
 const EPISODE_ITEM = { id: 62085, mediatype: "episode", title: "Pilot" };
+// The media of a /sync/ratings or /sync/watched row. Production reads only
+// `ids`; `title` and the other IDs are from the OpenAPI schema.
+const RATED_SHAWSHANK = {
+  title: "The Shawshank Redemption",
+  ids: { imdb: "tt0111161", tmdb: 278, trakt: 234, mdblist: "a0" },
+};
+const RATED_BREAKING_BAD = {
+  title: "Breaking Bad",
+  ids: { imdb: "tt0903747", tmdb: 1396, tvdb: 81189, mdblist: "8plj" },
+};
 
 interface Call {
   url: URL;
@@ -238,6 +248,57 @@ describe("mdblistProvider.validateSource", () => {
     });
   });
 
+  it("accepts the ratings and the history with no read", async () => {
+    const ctx = { connection: connection() };
+    await expect(
+      mdblistProvider.validateSource("me/ratings", ctx),
+    ).resolves.toEqual({
+      ok: true,
+      ref: "me/ratings",
+      suggestedTitle: "MDBList ratings",
+      defaultDisplayMode: "split",
+    });
+    await expect(
+      mdblistProvider.validateSource("me/history", ctx),
+    ).resolves.toMatchObject({ ok: true, ref: "me/history" });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("names an official chart from its info", async () => {
+    // OfficialList, as in the OpenAPI schema (not a live read).
+    handler = () =>
+      Response.json([
+        {
+          id: 3,
+          user_id: 1,
+          user_name: "mdblist",
+          name: "Trending",
+          slug: "trending",
+          media: "movie,show",
+          mediatype: null,
+          description: "",
+          updated: "2026-11-16T00:00:00Z",
+          items: 200,
+          movies: 100,
+          shows: 100,
+          url: "https://mdblist.com/lists/official/trending",
+          source: "mdblist",
+          private: false,
+        },
+      ]);
+    await expect(
+      mdblistProvider.validateSource("official/trending", {
+        connection: connection(),
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      ref: "official/trending",
+      suggestedTitle: "Trending",
+      defaultDisplayMode: "split",
+    });
+    expect(calls[0].url.pathname).toBe("/lists/official/trending");
+  });
+
   it("rejects unknown refs", async () => {
     await expect(
       mdblistProvider.validateSource("users/leo", { connection: connection() }),
@@ -364,6 +425,152 @@ describe("mdblistProvider.fetchSource", () => {
     await expect(
       mdblistProvider.fetchSource("me/watchlist", { connection: null }),
     ).rejects.toMatchObject({ reason: "needs_connection" });
+  });
+
+  it("reads the ratings oldest rated first, dated by rating", async () => {
+    // Rows, ids and paging as the Action membership reads them in
+    // production; the `rated_at` and `title` fields come from the OpenAPI
+    // schema, not from a live read.
+    handler = (url) =>
+      url.searchParams.get("cursor")
+        ? Response.json({
+            movies: [{ rating: 6, movie: { ids: { imdb: "tt6718170" } } }],
+            shows: [],
+            seasons: [],
+            episodes: [],
+            pagination: { has_more: false, next_cursor: null },
+          })
+        : Response.json({
+            movies: [
+              {
+                rated_at: "2026-10-02T10:00:00Z",
+                rating: 8,
+                rating_precise: 8,
+                movie: RATED_SHAWSHANK,
+              },
+            ],
+            shows: [
+              {
+                rated_at: "2026-10-01T10:00:00Z",
+                rating: 9,
+                rating_precise: 9,
+                show: RATED_BREAKING_BAD,
+              },
+            ],
+            seasons: [],
+            episodes: [
+              {
+                rated_at: "2026-10-03T10:00:00Z",
+                rating: 7,
+                episode: {
+                  season: 1,
+                  number: 1,
+                  show: { ids: { imdb: "tt0903747", tmdb: 1396 } },
+                },
+              },
+            ],
+            pagination: { has_more: true, next_cursor: "r2" },
+          });
+    const snapshot = await mdblistProvider.fetchSource("me/ratings", ctx());
+
+    expect(calls.map((call) => call.url.pathname)).toEqual([
+      "/sync/ratings",
+      "/sync/ratings",
+    ]);
+    expect(calls[1].url.searchParams.get("cursor")).toBe("r2");
+    expect(snapshot.complete).toBe(true);
+    expect(snapshot.entries).toEqual([
+      {
+        type: "series",
+        imdbId: "tt0903747",
+        externalIds: { tmdb: { id: 1396, type: "series" } },
+        title: "Breaking Bad",
+        addedAt: "2026-10-01T10:00:00Z",
+      },
+      {
+        type: "movie",
+        imdbId: "tt0111161",
+        externalIds: { tmdb: { id: 278, type: "movie" } },
+        title: "The Shawshank Redemption",
+        addedAt: "2026-10-02T10:00:00Z",
+      },
+      // Undated rows come last.
+      { type: "movie", imdbId: "tt6718170" },
+    ]);
+  });
+
+  it("reads the history by last watch, one read per type", async () => {
+    // `last_watched_at` is in the OpenAPI text and examples, `watched_at` on
+    // its movie and show rows: neither is from a live read.
+    handler = (url) =>
+      Response.json(
+        url.searchParams.get("mediatype") === "movie"
+          ? {
+              movies: [
+                {
+                  last_watched_at: "2026-10-05T20:00:00Z",
+                  movie: RATED_SHAWSHANK,
+                },
+              ],
+              pagination: { has_more: false },
+            }
+          : {
+              shows: [
+                {
+                  watched_at: "2026-10-04T20:00:00Z",
+                  show: RATED_BREAKING_BAD,
+                },
+              ],
+              pagination: { has_more: false },
+            },
+      );
+    const snapshot = await mdblistProvider.fetchSource("me/history", ctx());
+
+    expect(
+      calls.map((call) => [
+        call.url.pathname,
+        call.url.searchParams.get("mediatype"),
+      ]),
+    ).toEqual([
+      ["/sync/watched", "movie"],
+      ["/sync/watched", "show"],
+    ]);
+    expect(
+      snapshot.entries.map((entry) => [entry.imdbId, entry.addedAt]),
+    ).toEqual([
+      ["tt0903747", "2026-10-04T20:00:00Z"],
+      ["tt0111161", "2026-10-05T20:00:00Z"],
+    ]);
+    expect(snapshot.complete).toBe(true);
+  });
+
+  it("marks a sync read cut by the page cap as incomplete", async () => {
+    handler = () =>
+      Response.json({
+        movies: [{ rated_at: "2026-10-01T10:00:00Z", movie: RATED_SHAWSHANK }],
+        pagination: { has_more: true, next_cursor: `page-${calls.length}` },
+      });
+    const snapshot = await mdblistProvider.fetchSource("me/ratings", ctx());
+    expect(calls).toHaveLength(50);
+    expect(snapshot.complete).toBe(false);
+  });
+
+  it("reads an official chart in MDBList's order, undated", async () => {
+    // The items endpoint is the list one; the official path is from the
+    // OpenAPI schema, not from a live read.
+    handler = () => itemsPage([SUPER_MARIO, BREAKING_BAD]);
+    const snapshot = await mdblistProvider.fetchSource(
+      "official/trending",
+      ctx(),
+    );
+    expect(calls[0].url.pathname).toBe("/lists/official/trending/items");
+    expect(calls[0].url.searchParams.get("unified")).toBe("true");
+    expect(
+      snapshot.entries.map((entry) => [entry.imdbId, entry.addedAt]),
+    ).toEqual([
+      ["tt6718170", undefined],
+      ["tt0903747", undefined],
+    ]);
   });
 });
 
@@ -507,13 +714,17 @@ describe("mdblistProvider.actions", () => {
     ).rejects.toThrow(/does not know/);
   });
 
-  it("marks only the watchlist Catalog as stale", () => {
+  it("marks the Catalog of the changed Source list as stale", () => {
     expect(actions.kinds).toEqual(["watchlist", "watched", "rating"]);
     expect(actions.affectedSources({ kind: "watchlist", add: true })).toEqual([
       "me/watchlist",
     ]);
-    expect(actions.affectedSources({ kind: "watched", add: true })).toEqual([]);
-    expect(actions.affectedSources({ kind: "rating", rating: 5 })).toEqual([]);
+    expect(actions.affectedSources({ kind: "watched", add: true })).toEqual([
+      "me/history",
+    ]);
+    expect(actions.affectedSources({ kind: "rating", rating: 5 })).toEqual([
+      "me/ratings",
+    ]);
   });
 
   it("reads membership from the watchlist, watched and ratings syncs", async () => {
@@ -593,28 +804,58 @@ describe("mdblistProvider.actions", () => {
 });
 
 describe("listMdblistUserSources", () => {
-  it("offers the user's own lists and external lists", async () => {
-    handler = (url) =>
-      Response.json(
-        url.pathname === "/lists/user"
-          ? [
-              {
-                id: 42,
-                name: "Favorites",
-                slug: "favorites",
-                items: 3,
-                mediatype: "movie",
-              },
-            ]
-          : [
-              {
-                id: 77,
-                name: "Letterboxd watchlist",
-                source: "letterboxd",
-                items: 10,
-              },
-            ],
-      );
+  const ownList = {
+    id: 42,
+    name: "Favorites",
+    slug: "favorites",
+    items: 3,
+    mediatype: "movie",
+  };
+  const externalList = {
+    id: 77,
+    name: "Letterboxd watchlist",
+    source: "letterboxd",
+    items: 10,
+  };
+  // A /lists/liked list, as in the OpenAPI schema (not a live read).
+  const likedList = {
+    id: 14,
+    user_id: 3,
+    user_name: "linaspurinis",
+    name: "Top Watched Movies of The Week / >60",
+    slug: "top-watched-movies-of-the-week",
+    mediatype: "movie",
+    items: 50,
+    likes: 900,
+    private: false,
+    dynamic: true,
+    type: "dynamic",
+    liked_at: "2026-11-01T10:00:00Z",
+  };
+
+  function likedPage(lists: unknown[], hasMore = false): Response {
+    return Response.json({
+      lists,
+      pagination: {
+        page: 1,
+        limit: 100,
+        offset: 0,
+        total: lists.length,
+        has_more: hasMore,
+      },
+    });
+  }
+
+  it("offers the user's own, external and liked lists", async () => {
+    handler = (url) => {
+      if (url.pathname === "/lists/user") return Response.json([ownList]);
+      if (url.pathname === "/lists/liked") {
+        return url.searchParams.get("offset") === "0"
+          ? likedPage([likedList], true)
+          : likedPage([{ ...ownList, liked_at: "2026-10-01T10:00:00Z" }]);
+      }
+      return Response.json([externalList]);
+    };
     await expect(listMdblistUserSources(connection())).resolves.toEqual([
       {
         ref: "me/lists/42",
@@ -628,6 +869,36 @@ describe("listMdblistUserSources", () => {
         label: "Letterboxd watchlist",
         defaultDisplayMode: "split",
       },
+      // The liked own list stays under me/ only.
+      {
+        ref: "lists/14",
+        kind: "list",
+        label: "Top Watched Movies of The Week / >60",
+        defaultDisplayMode: "movie",
+      },
+    ]);
+    const liked = calls.filter((call) => call.url.pathname === "/lists/liked");
+    expect(
+      liked.map((call) => Object.fromEntries(call.url.searchParams)),
+    ).toEqual([
+      { limit: "100", offset: "0" },
+      { limit: "100", offset: "1" },
+    ]);
+  });
+
+  it("still offers the other lists when liked lists fail", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    handler = (url) => {
+      if (url.pathname === "/lists/user") return Response.json([ownList]);
+      if (url.pathname === "/lists/liked") {
+        return Response.json({ error: "boom" }, { status: 500 });
+      }
+      return Response.json([externalList]);
+    };
+    const sources = await listMdblistUserSources(connection());
+    expect(sources.map((source) => source.ref)).toEqual([
+      "me/lists/42",
+      "me/external/77",
     ]);
   });
 });

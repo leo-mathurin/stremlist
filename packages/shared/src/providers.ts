@@ -847,13 +847,51 @@ export const CONNECTION_SOURCES: Partial<
       defaultDisplayMode: "split",
     },
   ],
-  // The user's own lists (`me/lists/{id}`) and external lists
-  // (`me/external/{id}`) depend on the account; the backend lists them.
+  // The user's own lists (`me/lists/{id}`), external lists
+  // (`me/external/{id}`) and liked lists (`lists/{id}`) depend on the
+  // account; the backend lists them. Every MDBList read needs the
+  // Connection, so its official charts are here too.
   mdblist: [
     {
       ref: "me/watchlist",
       kind: "watchlist",
       label: "Watchlist",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "me/ratings",
+      kind: "list",
+      label: "Ratings",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "me/history",
+      kind: "history",
+      label: "History",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "official/trending",
+      kind: "chart",
+      label: "Trending",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "official/popular",
+      kind: "chart",
+      label: "Popular",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "official/anticipated",
+      kind: "chart",
+      label: "Anticipated",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "official/most-watched",
+      kind: "chart",
+      label: "Most Watched",
       defaultDisplayMode: "split",
     },
   ],
@@ -1135,6 +1173,11 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
           detail: user,
           url: null,
         }),
+      },
+      // An official chart that CONNECTION_SOURCES does not offer.
+      {
+        pattern: /^official\/([^/]+)$/,
+        describe: ([, slug]) => ({ kind: "chart", detail: slug, url: null }),
       },
     ],
     justwatch: [
