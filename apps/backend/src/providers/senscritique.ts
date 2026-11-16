@@ -20,6 +20,11 @@ import { SourceUnavailableError } from "./types";
  */
 const SENSCRITIQUE_GRAPHQL = "https://apollo.senscritique.com/";
 const senscritiqueLimiter = new RateLimiter(3, 1000);
+/**
+ * A page answers in under a second. Some requests stall until the timeout,
+ * so a query waits less than the default and is sent again once.
+ */
+const QUERY_TIMEOUT_MS = 8_000;
 const PAGE_SIZE = 100;
 /** Stop after this many pages per universe (10,000 products). */
 const MAX_PAGES = 100;
@@ -171,13 +176,16 @@ async function senscritiqueQuery<T>(
   variables: Record<string, unknown>,
   schema: z.ZodType<T>,
 ): Promise<T> {
-  const json = await graphqlRequest(
-    SENSCRITIQUE_GRAPHQL,
-    query,
-    variables,
-    schema,
-    { limiter: senscritiqueLimiter },
-  );
+  const send = () =>
+    graphqlRequest(SENSCRITIQUE_GRAPHQL, query, variables, schema, {
+      limiter: senscritiqueLimiter,
+      timeoutMs: QUERY_TIMEOUT_MS,
+    });
+  // The queries only read, so sending one again is safe.
+  const json = await send().catch((error: unknown) => {
+    if (error instanceof Error && error.name === "TimeoutError") return send();
+    throw error;
+  });
   if (!json.data) {
     throw new Error(
       `SensCritique GraphQL error: ${json.errors?.[0]?.message ?? "no data"}`,

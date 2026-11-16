@@ -198,6 +198,35 @@ describe("SensCritique fetchSource", () => {
     expect(error).toMatchObject({ reason });
   });
 
+  it("sends a query again once when it times out", async () => {
+    let calls = 0;
+    handler = () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new DOMException("The operation timed out.", "TimeoutError");
+      }
+      return listPage([product(1)], 1);
+    };
+
+    const { entries } = await senscritiqueProvider.fetchSource("lists/1", ctx);
+
+    expect(requests).toHaveLength(2);
+    expect(entries).toHaveLength(1);
+  });
+
+  it("fails when the second try also times out", async () => {
+    handler = () => {
+      throw new DOMException("The operation timed out.", "TimeoutError");
+    };
+
+    const error = await senscritiqueProvider
+      .fetchSource("lists/1", ctx)
+      .catch((caught: unknown) => caught);
+
+    expect(requests).toHaveLength(2);
+    expect(error).toMatchObject({ name: "TimeoutError" });
+  });
+
   it("treats a Cloudflare block as unavailable, not as an expected state", async () => {
     handler = () => new Response("<html>blocked</html>", { status: 403 });
     const error = await senscritiqueProvider
