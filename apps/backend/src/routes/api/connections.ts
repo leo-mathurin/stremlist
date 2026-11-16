@@ -7,6 +7,7 @@ import { z } from "zod";
 import { scheduleBackgroundTask } from "../../lib/background";
 import { backendOrigin } from "../../lib/urls";
 import { isProviderAvailable } from "../../providers/availability";
+import { currentProviderOutages } from "../../providers/outages";
 import { getProvider, isProviderEnabled } from "../../providers/registry";
 import {
   ConfigError,
@@ -99,17 +100,24 @@ const connections = new Hono()
   // What the configure page needs to know about each Provider right now.
   // `enabled` is the Provider's Availability: false when the kill switch turns
   // it off or when it refuses Stremlist's reads (one label for both causes).
-  .get("/providers", async (c) =>
-    c.json({
+  // `outageSince` is when the monitor found the Provider down, or null; an
+  // unavailable Provider has no outage, as its label already says it all.
+  .get("/providers", async (c) => {
+    const outages = await currentProviderOutages();
+    return c.json({
       providers: await Promise.all(
-        PROVIDER_IDS.map(async (id) => ({
-          id,
-          enabled: await isProviderAvailable(id),
-          connectable: isOAuthConfigured(id),
-        })),
+        PROVIDER_IDS.map(async (id) => {
+          const enabled = await isProviderAvailable(id);
+          return {
+            id,
+            enabled,
+            connectable: isOAuthConfigured(id),
+            outageSince: enabled ? (outages[id] ?? null) : null,
+          };
+        }),
       ),
-    }),
-  )
+    });
+  })
 
   .post(
     "/:accountId/connections/:provider/start",

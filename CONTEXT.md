@@ -85,6 +85,10 @@ _Avoid_: Integration, link, login
 Whether Stremlist currently reads a Provider. A Provider is unavailable when an operator turns it off, or when the Provider refuses Stremlist's reads. While it is unavailable, its Lists keep showing the last successful Catalog and the user cannot add a new Source list from it. The configure page shows one label, "Temporarily unavailable", for both causes; the cause stays in the logs and the alerts.
 _Avoid_: Down, offline, disabled (for the user-facing state)
 
+**Outage**:
+A period when a Provider fails Stremlist's monitor because of the Provider itself: two probes in a row end with a server error, a timeout, or no connection. A rate limit, a bad monitor list, an expired Connection, or missing configuration is never an outage. Unlike Availability, an outage does not stop reads; the configure page names the Provider in a banner until a probe works again. See [Provider outages](docs/provider-outages.md).
+_Avoid_: Incident, downtime
+
 **Action**:
 A change that a user asks Stremlist to make on a Provider from inside Stremio, such as add to watchlist, remove from watchlist, mark as watched, or rate. Only a Provider with a Connection supports Actions.
 _Avoid_: Write, sync-back

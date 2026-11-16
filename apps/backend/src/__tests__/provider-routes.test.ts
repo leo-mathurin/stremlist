@@ -346,6 +346,7 @@ describe("GET /providers", () => {
       id: "trakt",
       enabled: true,
       connectable: true,
+      outageSince: null,
     });
     expect(byId.get("simkl")?.connectable).toBe(false);
     expect(byId.get("imdb")?.connectable).toBe(false);

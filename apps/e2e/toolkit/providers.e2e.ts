@@ -571,6 +571,69 @@ test("a Provider turned off is unavailable to connect, link or add", async ({
   expect(inputs).toEqual([{ input: link, accountKey: accountId }]);
 });
 
+test("a banner names every Provider with an outage and says when they work again", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const since = new Date(Date.now() - 20 * 60_000).toISOString();
+  let providers = providerStatus({
+    trakt: { outageSince: since },
+    simkl: { outageSince: since },
+  });
+  await baseRoutes(browser);
+  await browser.route(`${backend}/providers`, (route) =>
+    route.fulfill({ json: providers }),
+  );
+  await browser.route(`${backend}/${accountId}/config`, (route) =>
+    route.fulfill({ json: toJson(configuration) }),
+  );
+  await app.open(`/configure?account=${accountId}`);
+  await expect(screen.getByText("Test catalog")).toBeVisible();
+
+  await expect(
+    screen.getByText("Trakt and Simkl are having problems"),
+  ).toBeVisible();
+  await expect(screen.getByText("Started 20 minutes ago")).toBeVisible();
+  const rows = screen
+    .getByRole("listitem")
+    .filter({ hasText: "Having problems" });
+  await expect(rows).toHaveCount(2);
+  // An outage is not unavailability: Trakt and Simkl can still connect.
+  await expect(screen.getByRole("button", "Connect")).toHaveCount(3);
+
+  // Simkl comes back; Trakt is still down.
+  providers = providerStatus({ trakt: { outageSince: since } });
+  await browser.evaluate(() =>
+    document.dispatchEvent(new Event("visibilitychange")),
+  );
+  await expect(screen.getByText("Trakt is having problems")).toBeVisible();
+  await expect(screen.getByText("Simkl is working again.")).toBeVisible();
+  await expect(rows).toHaveCount(1);
+
+  // A failed status request neither shows nor ends an outage.
+  await browser.route(`${backend}/providers`, (route) =>
+    route.fulfill({ status: 500, json: { error: "Internal Server Error" } }),
+  );
+  await browser.evaluate(() =>
+    document.dispatchEvent(new Event("visibilitychange")),
+  );
+  await expect(screen.getByText("Trakt is having problems")).toBeVisible();
+
+  // Trakt comes back: no banner is left.
+  await browser.route(`${backend}/providers`, (route) =>
+    route.fulfill({ json: providerStatus() }),
+  );
+  await browser.evaluate(() =>
+    document.dispatchEvent(new Event("visibilitychange")),
+  );
+  // The live region announces it; the note shows the same words.
+  await expect(
+    screen.getByRole("status").filter({ hasText: "Trakt is working again." }),
+  ).toHaveCount(1);
+  await expect(screen.getByText(/having problems/i)).toHaveCount(0);
+});
+
 test("a public Letterboxd link becomes a List without connecting an account", async ({
   app,
   browser,
