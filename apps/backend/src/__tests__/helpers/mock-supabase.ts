@@ -10,6 +10,7 @@ import { accountRpcs } from "./supabase/account-rpcs";
 import { connectionRpcs } from "./supabase/connection-rpcs";
 import { letterboxdGateRpcs } from "./supabase/letterboxd-gate-rpcs";
 import { MockQueryBuilder } from "./supabase/query-builder";
+import { providerOutageRpcs } from "./supabase/provider-outage-rpcs";
 import type { RpcArgs, RpcHandler } from "./supabase/rpc";
 import { rpcError } from "./supabase/rpc";
 import { sourceListRpcs } from "./supabase/source-list-rpcs";
@@ -24,6 +25,7 @@ const defaultRpcHandlers = new Map<string, RpcHandler>(
     ...accountRpcs,
     ...connectionRpcs,
     ...letterboxdGateRpcs,
+    ...providerOutageRpcs,
     ...sourceListRpcs,
   }),
 );

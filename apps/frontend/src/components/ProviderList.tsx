@@ -70,6 +70,8 @@ export default function ProviderList({
           status.enabled &&
           !soon;
         const busy = connecting === id;
+        // The Provider is down: the banner explains; the row names it.
+        const outage = !soon && status.enabled && status.outageSince !== null;
 
         let trailing: ReactNode;
         if (isDetected) {
@@ -201,12 +203,16 @@ export default function ProviderList({
                 <span
                   className={cn(
                     "truncate text-xs",
-                    connection?.needsRenewalSince
+                    connection?.needsRenewalSince || outage
                       ? "font-semibold text-amber-300"
                       : "text-white/45",
                   )}
                 >
-                  {soon ? "Not supported yet" : subtitle(id, connection)}
+                  {soon
+                    ? "Not supported yet"
+                    : outage && !connection?.needsRenewalSince
+                      ? "Having problems"
+                      : subtitle(id, connection)}
                 </span>
               </span>
               <span className="shrink-0">{trailing}</span>

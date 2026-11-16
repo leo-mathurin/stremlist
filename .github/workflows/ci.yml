@@ -170,6 +170,7 @@ jobs:
             letterboxd_gate \
             letterboxd_queue \
             letterboxd_request_log \
+            provider_outages \
             watch_tracking
           do
             echo "::group::$test"

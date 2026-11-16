@@ -503,6 +503,31 @@ export type Database = {
           },
         ];
       };
+      provider_outages: {
+        Row: {
+          checked_at: string;
+          failures: number;
+          last_error: string | null;
+          outage_since: string | null;
+          provider: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          checked_at?: string;
+          failures?: number;
+          last_error?: string | null;
+          outage_since?: string | null;
+          provider: string;
+        };
+        Update: {
+          checked_at?: string;
+          failures?: number;
+          last_error?: string | null;
+          outage_since?: string | null;
+          provider?: string;
+        };
+        Relationships: [];
+      };
       stremio_connections: {
         Row: {
           account_id: string;
@@ -1175,6 +1200,27 @@ export type Database = {
           p_title_count: number;
         };
         Returns: boolean;
+      };
+      record_provider_probe: {
+        Args: {
+          p_error?: string;
+          p_ok: boolean;
+          p_provider: string;
+          p_threshold?: number;
+        };
+        Returns: {
+          checked_at: string;
+          failures: number;
+          last_error: string | null;
+          outage_since: string | null;
+          provider: string;
+        };
+        SetofOptions: {
+          from: "*";
+          to: "provider_outages";
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
       };
       release_connection_refresh: {
         Args: {

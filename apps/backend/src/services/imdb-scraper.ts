@@ -3,6 +3,7 @@ import { CHART_BY_ID, isChartId } from "@stremlist/shared/imdb-charts";
 import type { ChartEntry } from "@stremlist/shared/imdb-charts";
 import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
 import { z } from "zod";
+import { HttpError } from "../providers/http";
 import type { PagedRead } from "../providers/types";
 
 export { buildPosterUrl } from "@stremlist/shared/poster";
@@ -326,6 +327,10 @@ async function queryImdbGraphQL(
     body: JSON.stringify({ operationName, query, variables }),
   });
 
+  // IMDb itself failed: not a missing list.
+  if (response.status >= 500) {
+    throw new HttpError(response.status, "", GRAPHQL_ENDPOINT);
+  }
   if (!response.ok) {
     throw new Error(ERROR_NOT_FOUND);
   }
@@ -353,6 +358,13 @@ async function resolvePHandle(handle: string): Promise<string> {
     headers: { "User-Agent": FACEBOOK_EXTERNAL_HIT_USER_AGENT },
   });
 
+  if (response.status >= 500) {
+    throw new HttpError(
+      response.status,
+      "",
+      response.url || "https://www.imdb.com/",
+    );
+  }
   if (!response.ok) {
     throw new Error(ERROR_NOT_FOUND);
   }

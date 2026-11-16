@@ -28,6 +28,7 @@ import LinkPaste from "../components/LinkPaste";
 import NewTitlesSettings from "../components/NewTitlesSettings";
 import type { LinkProblem, ResolvedLink } from "../components/LinkPaste";
 import ProviderList from "../components/ProviderList";
+import ProviderOutageBanner from "../components/ProviderOutageBanner";
 import QuickAdd from "../components/QuickAdd";
 import WatchTrackingSettings from "../components/WatchTrackingSettings";
 import RelativeTime from "../components/RelativeTime";
@@ -506,6 +507,8 @@ export default function Configure() {
             </div>
           )}
         </div>
+
+        <ProviderOutageBanner providerStatus={config.providerStatus} />
 
         {ready && accountKey && !policy.editLock && (
           <StremioUpdateNotice

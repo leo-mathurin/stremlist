@@ -4,7 +4,7 @@ import { load } from "cheerio";
 import { createHash } from "node:crypto";
 import { decryptSecret, encryptStable } from "../lib/crypto";
 import { wikidataStrategy } from "../titles/wikidata";
-import { providerFetch } from "./http";
+import { HttpError, providerFetch } from "./http";
 import { isProviderEnabled } from "./kill-switch";
 import {
   LETTERBOXD_FRESHNESS_MS,
@@ -51,6 +51,8 @@ type PageRead =
       rateLimitedMs?: number;
       /** A redirect: where Letterboxd sends the read instead. */
       movedTo?: string;
+      /** The Provider's own failure: a 5xx answer or a failed request. */
+      cause?: unknown;
     };
 
 const SHARE_PREFIX = "share/";
@@ -260,6 +262,8 @@ async function readHtml(
   const read = await withLetterboxdPermit<PageRead>(async () => {
     let blocked = false;
     let retryAfterMs = 0;
+    // A 5xx answer is Letterboxd's own failure, whatever its body says.
+    let serverError: HttpError | undefined;
     const details = requestDetails(kind, url);
     try {
       const response = await providerFetch(url, {
@@ -269,6 +273,8 @@ async function readHtml(
         headers: { Accept: "text/html" },
       });
       noteResponse(details, response);
+      if (response.status >= 500)
+        serverError = new HttpError(response.status, "", url);
       blocked =
         response.status === 403 ||
         response.headers.get("cf-mitigated") === "challenge";
@@ -292,6 +298,7 @@ async function readHtml(
               ? { rateLimitedMs: retryAfterMs }
               : {}),
             ...(moved ? { movedTo: moved } : {}),
+            cause: serverError,
           },
           result: blocked
             ? "blocked"
@@ -331,7 +338,7 @@ async function readHtml(
           (kind === "collection" && (!parsed.valid || !paginationValid)))
       ) {
         return {
-          value: { ok: false, reason: "unavailable" },
+          value: { ok: false, reason: "unavailable", cause: serverError },
           result: "failed",
           retryAfterMs,
           details,
@@ -339,7 +346,7 @@ async function readHtml(
       }
       return {
         value: blocked
-          ? { ok: false, reason: "unavailable" }
+          ? { ok: false, reason: "unavailable", cause: serverError }
           : { ok: true, html },
         result: blocked ? "blocked" : "ok",
         details,
@@ -348,7 +355,11 @@ async function readHtml(
       details.error = errorText(error);
       // A body timeout after HTTP 200 is still a failed read, never valid empty content.
       return {
-        value: { ok: false, reason: "unavailable" },
+        value: {
+          ok: false,
+          reason: "unavailable",
+          cause: serverError ?? error,
+        },
         result: blocked ? "blocked" : "failed",
         retryAfterMs,
         details,
@@ -362,6 +373,7 @@ async function readHtml(
     throw new SourceUnavailableError(
       read.reason,
       "Letterboxd could not read this public list",
+      { cause: read.cause },
     );
   }
   return read.html;

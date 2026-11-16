@@ -184,10 +184,16 @@ export const legacyConfiguration = {
   accountId: null,
 } satisfies AccountConfigResponse;
 
-/** `GET /providers`: every Provider on, OAuth configured where it exists. */
+/**
+ * `GET /providers`: every Provider on, OAuth configured where it exists, and
+ * no outage.
+ */
 export function providerStatus(
   overrides: Partial<
-    Record<ProviderId, { enabled?: boolean; connectable?: boolean }>
+    Record<
+      ProviderId,
+      { enabled?: boolean; connectable?: boolean; outageSince?: string }
+    >
   > = {},
 ) {
   return {
@@ -197,6 +203,7 @@ export function providerStatus(
       connectable:
         overrides[id]?.connectable ??
         ["trakt", "simkl", "mdblist"].includes(id),
+      outageSince: overrides[id]?.outageSince ?? null,
     })),
   };
 }
