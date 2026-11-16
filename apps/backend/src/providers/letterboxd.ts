@@ -298,6 +298,7 @@ async function readHtml(
               ? { rateLimitedMs: retryAfterMs }
               : {}),
             ...(moved ? { movedTo: moved } : {}),
+            cause: serverError,
           },
           result: blocked
             ? "blocked"
