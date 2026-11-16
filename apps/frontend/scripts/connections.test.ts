@@ -19,7 +19,7 @@ const trakt: ConnectionSummary = {
 const merged: MergeableList = {
   provider: "imdb",
   sourceRef: "ur1000001",
-  mergedSources: [{ provider: "simkl", sourceRef: "watchlist" }],
+  mergedSources: [{ provider: "simkl", sourceRef: "me/plantowatch" }],
 };
 
 describe("missingConnections", () => {

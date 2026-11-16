@@ -1,4 +1,8 @@
-import { CONNECTION_SOURCES } from "@stremlist/shared/providers";
+import {
+  CONNECTION_SOURCES,
+  sourceTitle,
+  staticSource,
+} from "@stremlist/shared/providers";
 import { z } from "zod";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
 import { revokeToken } from "./oauth-app";
@@ -17,6 +21,12 @@ import {
 } from "./simkl/library";
 import { fetchCustomList, readListPage } from "./simkl/lists";
 import { clearMemoryState, forgetMemoryState } from "./simkl/state";
+import {
+  clearTrendingReads,
+  isTrendingRef,
+  readTrending,
+  TRENDING_FRESHNESS_MS,
+} from "./simkl/trending";
 import type { ProviderAdapter, SourceValidation } from "./types";
 import { SourceUnavailableError } from "./types";
 
@@ -30,7 +40,10 @@ const simklSettingsSchema = z.object({
 export function resetSimklState(): void {
   clearMemoryState();
   clearInFlightSyncs();
+  clearTrendingReads();
 }
+
+const LIBRARY_FRESHNESS_MS = 60 * 60_000;
 
 /**
  * Simkl: the Connection's own statuses (`me/plantowatch`, `me/watching`,
@@ -38,12 +51,26 @@ export function resetSimklState(): void {
  * history and ratings, and custom lists (`me/lists/{id}`, Simkl PRO and VIP
  * only), through OAuth (AUTH V2). Reads follow Simkl's activities-first sync
  * model; the library snapshot lives in R2 under the Account's Connection.
+ * The trending charts (`trending/movies`, `trending/tv`, `trending/anime`)
+ * come from Simkl's CDN files, with no Connection and no user quota.
  */
 export const simklProvider: ProviderAdapter = {
   id: "simkl",
-  freshnessMs: 60 * 60_000,
+  freshnessMs: LIBRARY_FRESHNESS_MS,
+
+  freshnessFor(ref) {
+    return isTrendingRef(ref) ? TRENDING_FRESHNESS_MS : LIBRARY_FRESHNESS_MS;
+  },
 
   async validateSource(ref, ctx): Promise<SourceValidation> {
+    if (isTrendingRef(ref)) {
+      return {
+        ok: true,
+        ref,
+        suggestedTitle: sourceTitle("simkl", ref),
+        defaultDisplayMode: staticSource("simkl", ref)?.defaultDisplayMode,
+      };
+    }
     const fromLibrary = LIBRARY_REFS.includes(ref);
     const listId = LIST_REF.exec(ref)?.[1];
     if (!fromLibrary && !listId) return { ok: false, reason: "not_found" };
@@ -71,6 +98,7 @@ export const simklProvider: ProviderAdapter = {
   },
 
   async fetchSource(ref, ctx) {
+    if (isTrendingRef(ref)) return readTrending(ref, ctx.forceRefresh);
     const listId = LIST_REF.exec(ref)?.[1];
     if (!LIBRARY_REFS.includes(ref) && !listId) {
       throw new SourceUnavailableError(

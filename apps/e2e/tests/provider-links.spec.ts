@@ -183,6 +183,41 @@ test(
 );
 
 test(
+  "Simkl trending charts become Catalogs with no Connection",
+  { tag: "@local" },
+  async () => {
+    const { api } = backend;
+    const created = await api.createAccount([
+      listInput("simkl", "trending/movies", { displayMode: "movie" }),
+      listInput("simkl", "trending/tv", { displayMode: "series" }),
+      listInput("simkl", "trending/anime", { displayMode: "series" }),
+    ]);
+    expect(created.status).toBe(200);
+    const accountId = present(created.body.accountId, "the new Account ID");
+    const shown: Record<string, unknown> = {};
+    for (const row of (await api.getConfig(accountId)).body.lists) {
+      shown[row.sourceRef] = await catalogs(accountId, row.id);
+    }
+    expect(shown).toEqual({
+      "trending/movies": { movie: BOTH.movie, series: [] },
+      "trending/tv": { movie: [], series: BOTH.series },
+      // Both anime seasons are one Title.
+      "trending/anime": { movie: [], series: BOTH.series },
+    });
+    const files = backend.requests((url) => url.host === "data.simkl.in");
+    expect(new Set(files.map((entry) => new URL(entry.url).pathname))).toEqual(
+      new Set(
+        ["movies", "tv", "anime"].map(
+          (type) => `/discover/trending/${type}/week_100.json`,
+        ),
+      ),
+    );
+    expect(files.every((entry) => entry.authorization === null)).toBe(true);
+    expect(backend.requests((url) => url.host === "api.simkl.com")).toEqual([]);
+  },
+);
+
+test(
   "Trakt charts and the Source lists of a Trakt Connection become Catalogs",
   { tag: "@local" },
   async () => {

@@ -31,29 +31,32 @@ interface RequestOptions {
   body?: unknown;
 }
 
+/**
+ * The app's client ID, name and version, which Simkl wants on every call,
+ * API or CDN file.
+ */
+export function simklAppQuery() {
+  const id = simklClient.clientId();
+  if (!id) {
+    throw new SourceUnavailableError("unavailable", "Simkl is not configured");
+  }
+  return { client_id: id, "app-name": APP_NAME, "app-version": ADDON_VERSION };
+}
+
 export async function simklRequest<T>(
   path: string,
   schema: z.ZodType<T>,
   options: RequestOptions,
 ): Promise<T> {
-  const id = simklClient.clientId();
-  if (!id) {
-    throw new SourceUnavailableError("unavailable", "Simkl is not configured");
-  }
+  const app = simklAppQuery();
   const method = options.method ?? "GET";
   try {
     const { data } = await providerFetchJson(
       new URL(path, SIMKL_API).toString(),
       {
         method,
-        // Every Simkl call carries the app's client ID, name and version.
-        query: {
-          ...options.params,
-          client_id: id,
-          "app-name": APP_NAME,
-          "app-version": ADDON_VERSION,
-        },
-        headers: { Accept: "application/json", "simkl-api-key": id },
+        query: { ...options.params, ...app },
+        headers: { Accept: "application/json", "simkl-api-key": app.client_id },
         bearer: options.token,
         json: options.body,
         limiter: simklLimiters(options.token)[

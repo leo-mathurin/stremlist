@@ -33,9 +33,9 @@ interface ProviderInfo {
   /** "soon": shown in the UI, but no Source list can be added yet. */
   availability: "available" | "soon";
   /**
-   * "none": public links only. "optional": public links work, a Connection
-   * unlocks private Source lists and Actions. "required": every Source list
-   * needs a Connection.
+   * "none": public links only. "optional": public links or charts work, a
+   * Connection unlocks private Source lists and Actions. "required": every
+   * Source list needs a Connection.
    */
   connection: "none" | "optional" | "required";
   /** Actions this Provider supports when the Account has a Connection. */
@@ -67,7 +67,8 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
   simkl: {
     label: "Simkl",
     availability: "available",
-    connection: "required",
+    // Its trending charts need no Connection (PUBLIC_SOURCES).
+    connection: "optional",
     actions: ["watchlist", "watched", "rating"],
     linkExample: null,
   },
@@ -959,6 +960,34 @@ export const PUBLIC_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>> = {
       defaultDisplayMode: "series",
       titleType: "series",
       url: "https://www.senscritique.com/series/tops/top100-des-top10",
+    },
+  ],
+  // Simkl's trending files for the week. Simkl's API rules ask that a
+  // trending section names Simkl: the Catalogs are "Simkl Trending Movies"…
+  simkl: [
+    {
+      ref: "trending/movies",
+      kind: "chart",
+      label: "Trending Movies",
+      defaultDisplayMode: "movie",
+      titleType: "movie",
+      url: "https://simkl.com/movies/best-movies/most-watched/",
+    },
+    {
+      ref: "trending/tv",
+      kind: "chart",
+      label: "Trending TV",
+      defaultDisplayMode: "series",
+      titleType: "series",
+      url: "https://simkl.com/tv/best-shows/most-watched/",
+    },
+    // Mostly series, but anime films trend too.
+    {
+      ref: "trending/anime",
+      kind: "chart",
+      label: "Trending Anime",
+      defaultDisplayMode: "series",
+      url: "https://simkl.com/anime/best-anime/most-watched/",
     },
   ],
 };

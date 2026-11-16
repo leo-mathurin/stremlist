@@ -357,6 +357,29 @@ function simkl({ request, url, body }: FixtureRequest): Response {
   throw new Error(`Unexpected Simkl request ${request.method} ${path}`);
 }
 
+/** Simkl's trending files: public, with the app's client ID and no token. */
+function simklCdn({ request, url }: FixtureRequest): Response {
+  if (url.searchParams.get("client_id") !== "fixture-simkl-client") {
+    return json({ error: "missing client id" }, 403);
+  }
+  const ids = (simkl: number, imdb: string) => ({ simkl_id: simkl, imdb });
+  switch (url.pathname) {
+    case "/discover/trending/movies/week_100.json":
+      return json([{ title: SHAWSHANK.title, ids: ids(1, "tt0111161") }]);
+    case "/discover/trending/tv/week_100.json":
+      return json([{ title: BREAKING_BAD.title, ids: ids(2, "tt0903747") }]);
+    // Two seasons of one anime share the series' IMDb ID.
+    case "/discover/trending/anime/week_100.json":
+      return json([
+        { title: "Season 2", anime_type: "tv", ids: ids(3, "tt0903747") },
+        { title: "Season 1", anime_type: "tv", ids: ids(4, "tt0903747") },
+      ]);
+  }
+  throw new Error(
+    `Unexpected Simkl CDN request ${request.method} ${url.pathname}`,
+  );
+}
+
 function justwatch({ body }: FixtureRequest): Response {
   const { operation, variables } = graphql(
     body,
@@ -612,6 +635,7 @@ installFetchFixture({
     "auth.trakt.tv": trakt,
     "api.mdblist.com": mdblist,
     "api.simkl.com": simkl,
+    "data.simkl.in": simklCdn,
     "apis.justwatch.com": justwatch,
     "apollo.senscritique.com": senscritique,
     "query.wikidata.org": wikidata,

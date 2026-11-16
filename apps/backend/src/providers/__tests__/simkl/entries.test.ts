@@ -82,7 +82,7 @@ describe("simkl entries", () => {
     ]);
   });
 
-  it("needs a Connection for every Source list", async () => {
+  it("needs a Connection for every Source list but the charts", async () => {
     await expect(
       simklProvider.fetchSource("me/plantowatch", { connection: null }),
     ).rejects.toMatchObject({ reason: "needs_connection" });
