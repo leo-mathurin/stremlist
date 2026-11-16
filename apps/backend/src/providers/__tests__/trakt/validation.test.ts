@@ -113,6 +113,37 @@ describe("Trakt validateSource", () => {
     });
   });
 
+  it("names a smart list and starts it with its only media type", async () => {
+    // Recorded shape of /smart-lists/{slug} (api.trakt.tv, 2026-11-16).
+    route("GET /smart-lists/silos", {
+      name: "Silos",
+      privacy: "public",
+      ids: { trakt: 42, slug: "silos" },
+      source: "discover",
+      media_type: "shows",
+      filters: { genres: ["science-fiction"] },
+    });
+    await expect(
+      traktProvider.validateSource("smart-lists/silos", { connection: null }),
+    ).resolves.toEqual({
+      ok: true,
+      ref: "smart-lists/silos",
+      suggestedTitle: "Silos",
+      defaultDisplayMode: "series",
+    });
+  });
+
+  it("reports a smart list that is missing or private as not_found", async () => {
+    route("GET /smart-lists/hidden", status(404));
+    expect(
+      await unavailableReason(
+        traktProvider.validateSource("smart-lists/hidden", {
+          connection: null,
+        }),
+      ),
+    ).toBe("not_found");
+  });
+
   it("personal Source lists need a Connection, and up next shows series", async () => {
     expect(
       await unavailableReason(

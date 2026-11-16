@@ -251,6 +251,72 @@ describe("Trakt reads", () => {
     ).toEqual(["tt31938062"]);
   });
 
+  it("reads a smart list in Trakt's rank order", async () => {
+    // Recorded shape of /smart-lists/{slug}/items (api.trakt.tv, 2026-11-16).
+    route(
+      "GET /smart-lists/silos/items",
+      pages([
+        [
+          { rank: 1, type: "show", show: pitt },
+          { rank: 2, type: "movie", movie: halloween },
+          { rank: 3, type: "movie", movie: clerks },
+        ],
+      ]),
+    );
+    const { entries, complete } = await traktProvider.fetchSource(
+      "smart-lists/silos",
+      { connection: null },
+    );
+    expect(entries.map((e) => [e.type, e.imdbId, e.addedAt])).toEqual([
+      ["series", "tt31938062", undefined],
+      ["movie", "tt10665342", undefined],
+      ["movie", "tt11128440", undefined],
+    ]);
+    expect(complete).toBe(true);
+    expect(calls[0].headers.has("Authorization")).toBe(false);
+  });
+
+  it("caps a smart list at its best-ranked Titles", async () => {
+    route("GET /smart-lists/everything/items", (call) => {
+      const page = Number(call.url.searchParams.get("page"));
+      return json(
+        Array.from({ length: 250 }, (_, i) => ({
+          rank: page * 1000 + i,
+          type: "movie",
+          movie: {
+            title: "x",
+            ids: {
+              trakt: page * 1000 + i,
+              imdb: `tt${4000000 + page * 1000 + i}`,
+            },
+          },
+        })),
+        { headers: { "X-Pagination-Page-Count": "40" } },
+      );
+    });
+    const snapshot = await traktProvider.fetchSource("smart-lists/everything", {
+      connection: null,
+    });
+    expect(snapshot.entries).toHaveLength(1000);
+    expect(snapshot.complete).toBe(false);
+    expect(callsTo("/smart-lists/everything/items")).toHaveLength(4);
+  });
+
+  it("reads the user's own smart list through the Connection", async () => {
+    route("GET /smart-lists/private-picks/items", [
+      { rank: 1, type: "movie", movie: clerks },
+    ]);
+    await expect(
+      fetchEntries("me/smart-lists/private-picks"),
+    ).rejects.toMatchObject({ reason: "needs_connection" });
+    expect(
+      (await fetchEntries("me/smart-lists/private-picks", connection())).map(
+        (e) => e.imdbId,
+      ),
+    ).toEqual(["tt11128440"]);
+    expect(calls.at(-1)?.headers.get("Authorization")).toBe("Bearer token-1");
+  });
+
   it("reads up next as shows, oldest watched first", async () => {
     route(
       "GET /sync/progress/up_next",
@@ -360,6 +426,32 @@ describe("Trakt reads", () => {
     expect(entries.map((e) => [e.type, e.imdbId])).toEqual([
       ["movie", "tt11128440"],
       ["series", "tt31938062"],
+    ]);
+  });
+});
+
+describe("Trakt Connection sources", () => {
+  it("offers the user's own lists and smart lists", async () => {
+    route("GET /users/me/lists", [
+      { name: "Favs", ids: { trakt: 7, slug: "Favs" } },
+    ]);
+    route("GET /users/me/smart-lists", [
+      {
+        name: "Silos",
+        media_type: "shows",
+        ids: { trakt: 42, slug: "silos" },
+      },
+    ]);
+    const sources = await traktProvider.listConnectionSources?.(connection());
+    expect(
+      sources?.map((source) => [
+        source.ref,
+        source.label,
+        source.defaultDisplayMode,
+      ]),
+    ).toEqual([
+      ["me/lists/favs", "Favs", "split"],
+      ["me/smart-lists/silos", "Silos", "series"],
     ]);
   });
 });

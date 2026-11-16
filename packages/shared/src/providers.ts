@@ -260,6 +260,7 @@ const TRAKT_LIST_PAGES = new Set([
   "liked",
   "official",
   "personal",
+  "smart",
 ]);
 
 function parseTraktLink(input: string): ParsedSourceLink | null {
@@ -287,6 +288,20 @@ function parseTraktLink(input: string): ParsedSourceLink | null {
         kind: "list",
       };
     }
+  }
+  // app.trakt.tv/lists/smart/view/{slug}: a smart list, which Trakt fills
+  // from its filters.
+  if (
+    parts[0] === "lists" &&
+    parts[1]?.toLowerCase() === "smart" &&
+    parts[2]?.toLowerCase() === "view" &&
+    parts[3]
+  ) {
+    return {
+      provider: "trakt",
+      sourceRef: `smart-lists/${parts[3].toLowerCase()}`,
+      kind: "list",
+    };
   }
   // trakt.tv/lists/official/{slug}: an official list (collections). The
   // API reads it by slug, like any shared list.
@@ -785,6 +800,14 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
           kind: "list",
           detail: list,
           url: `https://trakt.tv/lists/${list}`,
+        }),
+      },
+      {
+        pattern: /^(me\/)?smart-lists\/([^/]+)$/,
+        describe: ([, me, slug]) => ({
+          kind: "list",
+          detail: me ? "Your account" : slug,
+          url: `https://app.trakt.tv/lists/smart/view/${slug}`,
         }),
       },
     ],

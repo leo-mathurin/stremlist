@@ -103,8 +103,20 @@ describe("parseSourceLink: Trakt", () => {
   });
 
   it.each([
+    "https://app.trakt.tv/lists/smart/view/silos",
+    "app.trakt.tv/lists/smart/view/Silos?type=movies",
+  ])("reads the smart list %j", (input) => {
+    expect(parseSourceLink(input)).toEqual(
+      parsed("trakt", "smart-lists/silos", "list"),
+    );
+    expect(sourceRequiresConnection("trakt", "smart-lists/silos")).toBe(false);
+  });
+
+  it.each([
     "https://trakt.tv/users/leo",
     "https://trakt.tv/movies/inception-2010",
+    "https://app.trakt.tv/lists/smart/view",
+    "https://app.trakt.tv/lists/smart",
   ])("does not read %j", (input) => {
     expect(parseSourceLink(input)).toBeNull();
   });
@@ -325,6 +337,7 @@ describe("describeSourceRef kind", () => {
     "https://trakt.tv/users/LeoM/lists/horror",
     "https://trakt.tv/lists/official/star-wars",
     "https://trakt.tv/movies/trending",
+    "https://app.trakt.tv/lists/smart/view/silos",
     "https://mdblist.com/lists/LeoM/top-movies",
     "https://mdblist.com/watchlist/LeoM",
     `https://www.justwatch.com/us/lists/${JUSTWATCH_ID}`,
@@ -397,6 +410,19 @@ describe("describeSourceRef", () => {
     expect(describeSourceRef("imdb", "imdb:top-rated-movies")).toMatchObject({
       kind: "chart",
       title: "Top 250 Movies",
+    });
+  });
+
+  it("links a Trakt smart list to its page", () => {
+    expect(describeSourceRef("trakt", "smart-lists/silos")).toEqual({
+      kind: "list",
+      detail: "silos",
+      url: "https://app.trakt.tv/lists/smart/view/silos",
+    });
+    expect(describeSourceRef("trakt", "me/smart-lists/silos")).toEqual({
+      kind: "list",
+      detail: "Your account",
+      url: "https://app.trakt.tv/lists/smart/view/silos",
     });
   });
 

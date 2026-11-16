@@ -14,6 +14,7 @@ import {
   isPersonal,
   parseTraktRef,
   readSource,
+  smartListDisplayMode,
   validateTraktSource,
 } from "./trakt/sources";
 import type { ProviderAdapter } from "./types";
@@ -21,10 +22,14 @@ import { SourceUnavailableError } from "./types";
 
 const traktOwnListSchema = z.object({
   name: z.string().optional(),
+  // Smart lists only: "movies", "shows" or "media".
+  media_type: z.string().nullish(),
   ids: z
     .object({ slug: z.string().optional(), trakt: z.number().optional() })
     .optional(),
 });
+
+type TraktOwnList = z.infer<typeof traktOwnListSchema>;
 
 const traktSettingsSchema = z.object({
   user: z
@@ -81,28 +86,40 @@ export const traktProvider: ProviderAdapter = {
 
   actions: traktActions,
 
-  // The user's own lists, so the configure page can offer them in one click.
+  // The user's own lists and smart lists, so the configure page can offer
+  // them in one click.
   async listConnectionSources(connection) {
-    const lists =
-      (await traktGetParsed(
+    const [lists, smartLists] = await Promise.all([
+      traktGetParsed(
         "/users/me/lists",
         z.array(traktOwnListSchema),
         connection,
-      )) ?? [];
-    return lists.flatMap((list) => {
-      const id = list.ids?.slug ?? list.ids?.trakt;
-      return id === undefined
-        ? []
-        : [
-            {
-              ref: `me/lists/${String(id).toLowerCase()}`,
-              kind: "list" as const,
-              // An empty name falls back to the slug.
-              label: list.name?.trim() ? list.name.trim() : String(id),
-              defaultDisplayMode: "split" as const,
-            },
-          ];
-    });
+      ),
+      traktGetParsed(
+        "/users/me/smart-lists",
+        z.array(traktOwnListSchema),
+        connection,
+      ),
+    ]);
+    const toSources = (prefix: string, found: TraktOwnList[] | null) =>
+      (found ?? []).flatMap((list) => {
+        const id = list.ids?.slug ?? list.ids?.trakt;
+        return id === undefined
+          ? []
+          : [
+              {
+                ref: `${prefix}/${String(id).toLowerCase()}`,
+                kind: "list" as const,
+                // An empty name falls back to the slug.
+                label: list.name?.trim() ? list.name.trim() : String(id),
+                defaultDisplayMode: smartListDisplayMode(list.media_type),
+              },
+            ];
+      });
+    return [
+      ...toSources("me/lists", lists),
+      ...toSources("me/smart-lists", smartLists),
+    ];
   },
 
   oauth: {

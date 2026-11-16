@@ -1,3 +1,4 @@
+import type { DisplayMode } from "@stremlist/shared/constants";
 import { z } from "zod";
 import { HttpError } from "../http";
 import type {
@@ -32,6 +33,11 @@ import {
 const MAX_SOURCE_ITEMS = 5000;
 /** Charts and recommendations: one page per kind is plenty. */
 const CHART_ITEMS = 100;
+/**
+ * A smart list built on Trakt's whole catalog can match thousands of
+ * Titles. Its best-ranked ones are enough for a catalog.
+ */
+const SMART_LIST_ITEMS = 1000;
 
 const TRAKT_CHARTS = ["trending", "popular", "anticipated"] as const;
 type TraktChart = (typeof TRAKT_CHARTS)[number];
@@ -44,6 +50,8 @@ export type TraktSource =
   | { kind: "watchlist"; user: string }
   | { kind: "list"; user: string; list: string }
   | { kind: "shared_list"; id: string }
+  /** `user: "me"` is one of the connected user's own, maybe private. */
+  | { kind: "smart_list"; user: "me" | null; slug: string }
   | { kind: "chart"; chart: TraktChart }
   | { kind: "recommendations" }
   | { kind: "up_next" }
@@ -80,6 +88,13 @@ export function parseTraktRef(ref: string): TraktSource | null {
     if (parts.length === 3 && parts[1] === "lists" && SEGMENT.test(parts[2])) {
       return { kind: "list", user: "me", list: parts[2] };
     }
+    if (
+      parts.length === 3 &&
+      parts[1] === "smart-lists" &&
+      SEGMENT.test(parts[2])
+    ) {
+      return { kind: "smart_list", user: "me", slug: parts[2].toLowerCase() };
+    }
     return null;
   }
   if (parts[0] === "users" && parts[1] && SEGMENT.test(parts[1])) {
@@ -94,6 +109,13 @@ export function parseTraktRef(ref: string): TraktSource | null {
   }
   if (parts.length === 2 && parts[0] === "lists" && SEGMENT.test(parts[1])) {
     return { kind: "shared_list", id: parts[1].toLowerCase() };
+  }
+  if (
+    parts.length === 2 &&
+    parts[0] === "smart-lists" &&
+    SEGMENT.test(parts[1])
+  ) {
+    return { kind: "smart_list", user: null, slug: parts[1].toLowerCase() };
   }
   return null;
 }
@@ -110,6 +132,10 @@ function sourceToRef(source: TraktSource): string {
         : `users/${source.user}/lists/${source.list}`;
     case "shared_list":
       return `lists/${source.id}`;
+    case "smart_list":
+      return source.user === "me"
+        ? `me/smart-lists/${source.slug}`
+        : `smart-lists/${source.slug}`;
     case "chart":
       return source.chart;
     case "recommendations":
@@ -124,7 +150,11 @@ function sourceToRef(source: TraktSource): string {
 }
 
 export function isPersonal(source: TraktSource): boolean {
-  if (source.kind === "watchlist" || source.kind === "list") {
+  if (
+    source.kind === "watchlist" ||
+    source.kind === "list" ||
+    source.kind === "smart_list"
+  ) {
     return source.user === "me";
   }
   return (
@@ -145,6 +175,10 @@ function listPath(
   return source.kind === "list"
     ? `${userPath(source.user)}/lists/${encodeURIComponent(source.list)}`
     : `/lists/${encodeURIComponent(source.id)}`;
+}
+
+function smartListPath(source: TraktSource & { kind: "smart_list" }): string {
+  return `/smart-lists/${encodeURIComponent(source.slug)}`;
 }
 
 /** The Connection to read through: personal Source lists need one. */
@@ -219,6 +253,30 @@ async function rankedEntries(
     (movies ?? []).map((row) => toEntry(row, "movie")),
     (shows ?? []).map((row) => toEntry(row, "series")),
   );
+}
+
+/**
+ * A smart list in Trakt's rank order. Trakt works its Titles out from the
+ * list's filters on each read, so they carry no added date.
+ */
+async function smartListEntries(
+  source: TraktSource & { kind: "smart_list" },
+  connection: ConnectionAccess | null,
+  options: TraktReadOptions,
+): Promise<SourceSnapshot> {
+  const { items, complete } = await traktGetAll(
+    `${smartListPath(source)}/items`,
+    traktItemSchema,
+    connection,
+    { ...options, maxItems: SMART_LIST_ITEMS },
+  );
+  return {
+    entries: items.flatMap((item) => {
+      const entry = itemToEntry(item);
+      return entry ? [entry] : [];
+    }),
+    complete,
+  };
 }
 
 /** Shows in progress, oldest watched first (the show, not the next episode). */
@@ -324,6 +382,9 @@ export async function readSource(
           options,
         );
         break;
+      case "smart_list":
+        snapshot = await smartListEntries(source, connection, options);
+        break;
       case "chart":
       case "recommendations":
         // The first CHART_ITEMS titles are the whole Source list.
@@ -352,6 +413,21 @@ const traktListSummarySchema = z.object({
   name: z.string().nullish(),
   ids: z.object({ trakt: z.number().nullish() }).nullish(),
 });
+
+const traktSmartListSummarySchema = z.object({
+  name: z.string().nullish(),
+  media_type: z.string().nullish(),
+  ids: z.object({ slug: z.string().nullish() }).nullish(),
+});
+
+/** A smart list of only movies or only shows starts with that one Catalog. */
+export function smartListDisplayMode(
+  mediaType: string | null | undefined,
+): DisplayMode {
+  if (mediaType === "movies") return "movie";
+  if (mediaType === "shows") return "series";
+  return "split";
+}
 
 const traktUserSchema = z.object({
   username: z.string().nullish(),
@@ -432,6 +508,23 @@ export async function validateTraktSource(
           ref: sourceToRef(normalized),
           suggestedTitle: nonEmpty(list.name) ?? undefined,
           defaultDisplayMode: displayMode,
+        };
+      }
+      case "smart_list": {
+        // A private smart list is a 404 for anyone but its owner.
+        const list = await traktGetParsed(
+          smartListPath(source),
+          traktSmartListSummarySchema,
+          connection,
+          options,
+        );
+        if (!list) return { ok: false, reason: "not_found" };
+        const slug = nonEmpty(list.ids?.slug)?.toLowerCase() ?? source.slug;
+        return {
+          ok: true,
+          ref: sourceToRef({ ...source, slug }),
+          suggestedTitle: nonEmpty(list.name) ?? undefined,
+          defaultDisplayMode: smartListDisplayMode(list.media_type),
         };
       }
       case "recommendations":
