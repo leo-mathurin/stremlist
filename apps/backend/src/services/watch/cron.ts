@@ -41,7 +41,17 @@ export interface CronReport {
 }
 
 function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  if (error instanceof Error) return error.message;
+  // Supabase gives its errors as plain objects, not as Error instances.
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+  return String(error);
 }
 
 async function heartbeat(report: CronReport): Promise<void> {
