@@ -15,7 +15,7 @@ import type {
   ProviderActions,
 } from "../types";
 import { targetEpisodes, UnknownTitleError } from "../types";
-import { traktGetAll, traktGetParsed, traktPost } from "./api";
+import { traktGetAll, traktPost } from "./api";
 import type { TraktItem } from "./entries";
 import { imdbIdOf, traktItemSchema } from "./entries";
 
@@ -104,22 +104,15 @@ async function getMembership(
   const [watchlist, watchedMovies, watchedShows, movieRatings, showRatings] =
     await Promise.all([
       all("/users/me/watchlist", traktItemSchema),
-      traktGetParsed(
-        "/sync/watched/movies",
-        z.array(traktItemSchema),
-        connection,
-      ),
-      traktGetParsed(
-        "/sync/watched/shows",
-        z.array(watchedShowSchema),
-        connection,
-      ),
+      // Trakt pages these 100 at a time when no limit is given.
+      all("/sync/watched/movies", traktItemSchema),
+      all("/sync/watched/shows", watchedShowSchema),
       all("/sync/ratings/movies", ratedItemSchema),
       all("/sync/ratings/shows", ratedItemSchema),
     ]);
   return {
     watchlist: watchlistIds(watchlist),
-    ...parseWatched(watchedMovies ?? [], watchedShows ?? []),
+    ...parseWatched(watchedMovies, watchedShows),
     ratings: parseRatings([...movieRatings, ...showRatings]),
   };
 }

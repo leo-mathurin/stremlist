@@ -354,34 +354,51 @@ async function upNextEntries(
   };
 }
 
+/**
+ * Every page of a movies read and a shows read, newest MAX_SOURCE_ITEMS
+ * rows by `date`. Trakt pages these reads 100 at a time when no limit is
+ * given.
+ */
+async function moviesAndShows(
+  moviesPath: string,
+  showsPath: string,
+  date: (row: TraktItem) => string | null | undefined,
+  connection: ConnectionAccess | null,
+  options: TraktReadOptions,
+): Promise<SourceSnapshot> {
+  const read = (path: string) =>
+    traktGetAll(path, traktItemSchema, connection, {
+      ...options,
+      maxItems: MAX_SOURCE_ITEMS,
+    });
+  const [movies, shows] = await Promise.all([
+    read(moviesPath),
+    read(showsPath),
+  ]);
+  return newestRows(
+    [...movies.items, ...shows.items],
+    date,
+    movies.complete && shows.complete,
+  );
+}
+
 /** Watched movies and shows, by last watch, oldest first. */
-async function historyEntries(
+function historyEntries(
   user: string,
   connection: ConnectionAccess | null,
   options: TraktReadOptions,
 ): Promise<SourceSnapshot> {
-  const [movies, shows] = await Promise.all([
-    traktGetParsed(
-      `${userPath(user)}/watched/movies`,
-      z.array(traktItemSchema),
-      connection,
-      options,
-    ),
-    traktGetParsed(
-      `${userPath(user)}/watched/shows?extended=noseasons`,
-      z.array(traktItemSchema),
-      connection,
-      options,
-    ),
-  ]);
-  return newestRows(
-    [...(movies ?? []), ...(shows ?? [])],
+  return moviesAndShows(
+    `${userPath(user)}/watched/movies`,
+    `${userPath(user)}/watched/shows?extended=noseasons`,
     (row) => row.last_watched_at,
+    connection,
+    options,
   );
 }
 
 /** Collected movies and shows, by collection date, oldest first. */
-async function collectionEntries(
+function collectionEntries(
   user: string,
   connection: ConnectionAccess | null,
   options: TraktReadOptions,
@@ -390,47 +407,28 @@ async function collectionEntries(
   // user's public one through their profile.
   const base =
     user === "me" ? "/sync/collection" : `${userPath(user)}/collection`;
-  const [movies, shows] = await Promise.all([
-    traktGetAll(`${base}/movies`, traktItemSchema, connection, {
-      ...options,
-      maxItems: MAX_SOURCE_ITEMS,
-    }),
-    traktGetParsed(
-      `${base}/shows`,
-      z.array(traktItemSchema),
-      connection,
-      options,
-    ),
-  ]);
-  return newestRows(
-    [...movies.items, ...(shows ?? [])],
+  return moviesAndShows(
+    `${base}/movies`,
+    `${base}/shows`,
     (row) => row.collected_at ?? row.last_collected_at,
-    movies.complete,
+    connection,
+    options,
   );
 }
 
 /** Rated movies and shows, by rating date, oldest first. */
-async function ratingsEntries(
+function ratingsEntries(
   user: string,
   connection: ConnectionAccess | null,
   options: TraktReadOptions,
 ): Promise<SourceSnapshot> {
   // Rated seasons and episodes are left out: they do not mean the show.
-  const read = (kind: "movies" | "shows") =>
-    traktGetAll(
-      `${userPath(user)}/ratings/${kind}`,
-      traktItemSchema,
-      connection,
-      {
-        ...options,
-        maxItems: MAX_SOURCE_ITEMS,
-      },
-    );
-  const [movies, shows] = await Promise.all([read("movies"), read("shows")]);
-  return newestRows(
-    [...movies.items, ...shows.items],
+  return moviesAndShows(
+    `${userPath(user)}/ratings/movies`,
+    `${userPath(user)}/ratings/shows`,
     (row) => row.rated_at,
-    movies.complete && shows.complete,
+    connection,
+    options,
   );
 }
 

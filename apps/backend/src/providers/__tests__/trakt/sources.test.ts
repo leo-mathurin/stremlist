@@ -538,6 +538,41 @@ describe("Trakt reads", () => {
     ]);
   });
 
+  it("follows every page of watched titles", async () => {
+    // Trakt pages /users/{user}/watched/* 100 at a time when no limit is
+    // given (live read, 2026-11-16: 1,792 movies over 18 pages).
+    route(
+      "GET /users/sean/watched/movies",
+      pages([
+        [{ last_watched_at: "2025-01-01T00:00:00.000Z", movie: clerks }],
+        [{ last_watched_at: "2025-02-01T00:00:00.000Z", movie: halloween }],
+      ]),
+    );
+    route(
+      "GET /users/sean/watched/shows",
+      pages([
+        [{ last_watched_at: "2024-01-01T00:00:00.000Z", show: pitt }],
+        [{ last_watched_at: "2024-02-01T00:00:00.000Z", show: mandalorian }],
+      ]),
+    );
+    const { entries, complete } = await traktProvider.fetchSource(
+      "users/sean/history",
+      { connection: null },
+    );
+    expect(entries.map((e) => e.imdbId)).toEqual([
+      "tt31938062",
+      "tt8111088",
+      "tt11128440",
+      "tt10665342",
+    ]);
+    expect(complete).toBe(true);
+    expect(
+      callsTo("/users/sean/watched/movies").map((call) =>
+        call.url.searchParams.get("limit"),
+      ),
+    ).toEqual(["250", "250"]);
+  });
+
   it("reads the collection, by collection date", async () => {
     route(
       "GET /sync/collection/movies",
