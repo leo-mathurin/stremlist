@@ -171,6 +171,11 @@ test(
           ref: "me/lists/fixture-list",
           label: "Fixture List",
         }),
+        expect.objectContaining({
+          ref: "me/smart-lists/fixture-smart-list",
+          label: "Fixture Smart List",
+          defaultDisplayMode: "movie",
+        }),
       ]),
     );
     expect(
