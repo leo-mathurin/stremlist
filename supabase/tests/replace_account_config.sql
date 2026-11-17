@@ -112,9 +112,9 @@ BEGIN
 
   ASSERT public.generate_account_id() ~ '^sl_[0-9A-Za-z]{22}$';
 
-  ASSERT NOT has_function_privilege('anon', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean)', 'EXECUTE');
-  ASSERT NOT has_function_privilege('authenticated', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean)', 'EXECUTE');
-  ASSERT has_function_privilege('service_role', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean)', 'EXECUTE');
+  ASSERT NOT has_function_privilege('anon', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text)', 'EXECUTE');
+  ASSERT NOT has_function_privilege('authenticated', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text)', 'EXECUTE');
+  ASSERT has_function_privilege('service_role', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text)', 'EXECUTE');
   ASSERT NOT has_function_privilege('anon', 'public.claim_connection_refresh(text,text,integer,uuid)', 'EXECUTE');
 END;
 $$;
@@ -182,6 +182,30 @@ BEGIN
     RAISE EXCEPTION 'Expected check violation';
   EXCEPTION WHEN check_violation THEN NULL;
   END;
+END;
+$$;
+
+-- Poster source: IMDb by default, saved with the configuration, kept when a
+-- caller omits it, and limited to IMDb and TMDB.
+DO $$
+DECLARE
+  payload jsonb := '[{"id":"11111111-1111-4111-8111-111111111111","provider":"imdb","source_ref":"ur1","catalog_title":"One","sort_option":"title-asc","display_mode":"split","position":0}]';
+BEGIN
+  ASSERT (SELECT poster_source FROM public.accounts WHERE id = 'sl_configtransactiontest00') = 'imdb',
+    'Existing Accounts keep IMDb posters';
+  PERFORM public.replace_account_config('sl_configtransactiontest00', NULL, payload, NULL, NULL, NULL, 'tmdb');
+  ASSERT (SELECT poster_source FROM public.accounts WHERE id = 'sl_configtransactiontest00') = 'tmdb';
+  PERFORM public.replace_account_config('sl_configtransactiontest00', NULL, payload, NULL, NULL);
+  ASSERT (SELECT poster_source FROM public.accounts WHERE id = 'sl_configtransactiontest00') = 'tmdb',
+    'An omitted poster source keeps the saved one';
+  ASSERT (SELECT poster_source FROM public.accounts WHERE id = 'sl_configothertest00000000') = 'imdb',
+    'A save changes the poster source of its Account only';
+  BEGIN
+    PERFORM public.replace_account_config('sl_configtransactiontest00', NULL, payload, NULL, NULL, NULL, 'tvdb');
+    RAISE EXCEPTION 'Expected check violation';
+  EXCEPTION WHEN check_violation THEN NULL;
+  END;
+  ASSERT (SELECT poster_source FROM public.accounts WHERE id = 'sl_configtransactiontest00') = 'tmdb';
 END;
 $$;
 
