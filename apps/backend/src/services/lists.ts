@@ -37,7 +37,7 @@ import { isCurrentConnection } from "./connection-identity";
 import { deleteConnection, getConnectionAccess } from "./connections";
 import type { OwnedConnectionAccess } from "./connections";
 import { recordSynchronization } from "./detections";
-import { buildPosterUrl } from "./imdb-scraper";
+import { withAccountPosters } from "./posters";
 import {
   deleteCachedList,
   findCachedMeta,
@@ -158,7 +158,6 @@ const READ_POLICIES: Record<ReadPolicy, ReadRules> = {
 export interface ListRead {
   accountId: string;
   sort: CatalogSort;
-  rpdbApiKey: string | null;
   /**
    * Whether this request may read through the Account's Connection. False for
    * requests that come through a Legacy alias (ADR 0001).
@@ -177,7 +176,7 @@ type ReadableList = MergeableList & { id: string };
  * (its sync status is recorded there), `cacheKey` is where this Source list
  * keeps its cached Catalog (ADR 0006).
  */
-interface SourceRead extends Omit<ListRead, "sort" | "rpdbApiKey"> {
+interface SourceRead extends Omit<ListRead, "sort"> {
   source: SourceId;
   listId: string;
   cacheKey: string;
@@ -593,13 +592,9 @@ function present(
   data: SourceCatalogData,
   sort: CatalogSort,
   generation: string,
-  rpdbApiKey?: string | null,
 ): CatalogData {
   return {
-    metas: sortCatalog(data.metas, sort, generation).map((meta) => ({
-      ...toStremioMeta(meta),
-      poster: buildPosterUrl(meta.id, meta.poster, rpdbApiKey),
-    })),
+    metas: sortCatalog(data.metas, sort, generation).map(toStremioMeta),
   };
 }
 
@@ -614,7 +609,7 @@ export function sourceProblemReason(error: unknown): SourceProblemReason {
   return "unavailable";
 }
 
-/** The canonical Catalog of one Source list, before sorting and posters. */
+/** The canonical Catalog of one Source list, before sorting. */
 interface SourceCatalog {
   data: SourceCatalogData;
   generation: string;
@@ -744,7 +739,9 @@ async function forgetRevokedCatalog(
 }
 
 /**
- * The Titles of a List, sorted and with posters applied. Each Source list is
+ * The Titles of a List, sorted, with the posters of their metadata: the
+ * caller applies the Account's poster settings (`withAccountPosters`) to
+ * what it serves. Each Source list is
  * read and cached on its own (a List with one Source list has only one), and
  * a merged List shows their Titles once each (ADR 0006). A Source list that
  * cannot be served is left out, so the others still show; the List fails
@@ -801,7 +798,6 @@ export async function getListCatalog(
     },
     read.sort,
     catalogs.map((catalog) => catalog.generation).join("|"),
-    read.rpdbApiKey,
   );
 }
 
@@ -832,10 +828,11 @@ export async function findMetaInAccountCache(
       false,
     ).at(0);
     if (!found) return null;
-    return {
-      ...toStremioMeta(found),
-      poster: buildPosterUrl(found.id, found.poster, access.account.rpdbApiKey),
-    };
+    const [meta] = await withAccountPosters(
+      [toStremioMeta(found)],
+      access.account,
+    );
+    return meta;
   } catch (error) {
     console.error(
       `findMetaInAccountCache failed for ${access.account.id}:`,

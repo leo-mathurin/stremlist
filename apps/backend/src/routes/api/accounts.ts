@@ -1,5 +1,6 @@
 import { zValidator } from "@hono/zod-validator";
 import { parseSortOption } from "@stremlist/shared/constants";
+import { DEFAULT_POSTER_SOURCE } from "@stremlist/shared/poster";
 import type {
   AccountConfigResponse,
   ConfigList,
@@ -89,7 +90,8 @@ const accounts = new Hono()
     "/accounts",
     zValidator("json", createBody, firstIssueAsError),
     async (c) => {
-      const { rpdbApiKey, lists, newTitles } = c.req.valid("json");
+      const { rpdbApiKey, posterSource, lists, newTitles } =
+        c.req.valid("json");
       // A new Account has no saved Lists: IDs of another Account's Lists,
       // such as those of a legacy install, do not apply.
       const fresh = lists.map((list) => ({ ...list, id: undefined }));
@@ -104,9 +106,14 @@ const accounts = new Hono()
         const { accountId, lists: saved } = await createAccountWithConfig(
           normalized,
           rpdbKey(rpdbApiKey),
-          { newTitlesCatalog: newTitles?.enabled },
+          { newTitlesCatalog: newTitles?.enabled, posterSource },
         );
-        scheduleBackgroundTask(() => prewarmLists(accountId, saved, true));
+        scheduleBackgroundTask(() =>
+          prewarmLists(accountId, saved, true, {
+            posterSource: posterSource ?? DEFAULT_POSTER_SOURCE,
+            rpdbApiKey: rpdbKey(rpdbApiKey),
+          }),
+        );
         return c.json({
           ok: true as const,
           accountId,
@@ -141,6 +148,7 @@ const accounts = new Hono()
         access: access.via,
         accountId: access.via === "private" ? account.id : null,
         rpdbApiKey: account.rpdbApiKey,
+        posterSource: account.posterSource,
         lists,
         ...sync,
         actions: {
@@ -173,7 +181,8 @@ const accounts = new Hono()
     zValidator("param", accountKeyParam),
     zValidator("json", configBody, firstIssueAsError),
     async (c) => {
-      const { rpdbApiKey, lists, actions, newTitles } = c.req.valid("json");
+      const { rpdbApiKey, posterSource, lists, actions, newTitles } =
+        c.req.valid("json");
       const access = await requireAccess(c, c.req.valid("param").accountKey);
       if (access instanceof Response) return access;
       if (access.via === "legacy" && actions?.enabled) {
@@ -216,6 +225,7 @@ const accounts = new Hono()
                   }
                 : undefined,
             newTitlesCatalog: newTitles?.enabled,
+            posterSource,
           },
         );
       } catch (error) {
@@ -239,7 +249,10 @@ const accounts = new Hono()
 
       // Queue every saved List; the cache-first path skips warm entries.
       scheduleBackgroundTask(() =>
-        prewarmLists(access.account.id, saved, access.via === "private"),
+        prewarmLists(access.account.id, saved, access.via === "private", {
+          posterSource: posterSource ?? access.account.posterSource,
+          rpdbApiKey: rpdbKey(rpdbApiKey),
+        }),
       );
 
       // The saved Lists change what the summary counts.
@@ -287,7 +300,6 @@ const accounts = new Hono()
           getListCatalog(list, {
             accountId: account.id,
             sort: parseSortOption(list.sortOption),
-            rpdbApiKey: account.rpdbApiKey,
             allowConnection: access.via === "private",
             policy: "manual",
           }),

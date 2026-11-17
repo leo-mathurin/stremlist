@@ -128,6 +128,7 @@ describe("configBody", () => {
       }),
     ],
     rpdbApiKey: "key",
+    posterSource: "tmdb",
     actionsEnabled: true,
     actions: { order: ["simkl", "trakt"], selected: ["trakt", "simkl"] },
     newTitlesEnabled: true,
@@ -148,6 +149,7 @@ describe("configBody", () => {
   test("sends the trimmed Lists with their positions", () => {
     const body = configBody(form, "private");
     assert.equal(body.rpdbApiKey, "key");
+    assert.equal(body.posterSource, "tmdb");
     assert.deepEqual(body.newTitles, { enabled: true });
     assert.equal(body.lists[0].sourceRef, "ur1000001");
     assert.equal(body.lists[0].catalogTitle, "Watchlist");
@@ -166,6 +168,10 @@ describe("configBody", () => {
       );
       assert.equal(
         hasUnsavedChanges(form, { ...form, lists: [] }, "private"),
+        true,
+      );
+      assert.equal(
+        hasUnsavedChanges(form, { ...form, posterSource: "imdb" }, "legacy"),
         true,
       );
     });

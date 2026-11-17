@@ -10,13 +10,17 @@ type GeneratedFunctions = GeneratedDatabase["public"]["Functions"];
 // this list in step with the SQL functions instead of editing the generated
 // file, which CI regenerates from the migrations.
 type NullableArgs = {
-  create_account_with_config: "p_new_titles_catalog" | "p_rpdb_api_key";
+  create_account_with_config:
+    | "p_new_titles_catalog"
+    | "p_poster_source"
+    | "p_rpdb_api_key";
   letterboxd_take_turn: "p_ticket";
   record_list_refresh: "p_failure_reason" | "p_title_count";
   replace_account_config:
     | "p_action_providers"
     | "p_actions_enabled"
     | "p_new_titles_catalog"
+    | "p_poster_source"
     | "p_rpdb_api_key";
   save_connection:
     | "p_expires_at"

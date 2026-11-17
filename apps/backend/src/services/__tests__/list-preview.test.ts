@@ -191,6 +191,7 @@ describe("previewList: Catalogs", () => {
       type: "movie",
       name: "Movie tt0000001",
       poster: null,
+      tmdbPoster: null,
       releaseInfo: null,
     });
   });

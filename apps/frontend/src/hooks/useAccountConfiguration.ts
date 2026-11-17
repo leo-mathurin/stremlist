@@ -7,6 +7,11 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { listSourcesKey } from "@stremlist/shared/list-merge";
+import type { PosterSource } from "@stremlist/shared/poster";
+import {
+  DEFAULT_POSTER_SOURCE,
+  isPosterSource,
+} from "@stremlist/shared/poster";
 import { PROVIDERS } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type {
@@ -81,10 +86,18 @@ function toastError(err: unknown, options?: { id: string }) {
   );
 }
 
+/** The poster source of a kept draft; one kept by an older page has none. */
+function keptPosterSource(draft: AccountForm): PosterSource {
+  return isPosterSource(draft.posterSource)
+    ? draft.posterSource
+    : DEFAULT_POSTER_SOURCE;
+}
+
 /** What a new setup starts with: a form with this content has nothing to lose. */
 const EMPTY_FORM: AccountForm = {
   lists: [],
   rpdbApiKey: "",
+  posterSource: DEFAULT_POSTER_SOURCE,
   actionsEnabled: false,
   actions: { order: [], selected: [] },
   newTitlesEnabled: false,
@@ -209,6 +222,9 @@ export function useAccountConfiguration(
   const editor = useListEditor();
   const { lists, setLists } = editor;
   const [rpdbApiKey, setRpdbApiKey] = useState("");
+  const [posterSource, setPosterSource] = useState<PosterSource>(
+    DEFAULT_POSTER_SOURCE,
+  );
   const [access, setAccess] = useState<AccountAccess>(
     accountKey ? "private" : "new",
   );
@@ -269,6 +285,7 @@ export function useAccountConfiguration(
   const form: AccountForm = {
     lists,
     rpdbApiKey,
+    posterSource,
     actionsEnabled,
     actions,
     newTitlesEnabled,
@@ -301,6 +318,7 @@ export function useAccountConfiguration(
       if (draft) {
         setLists(draft.lists);
         setRpdbApiKey(draft.rpdbApiKey);
+        setPosterSource(keptPosterSource(draft));
         setNewTitlesEnabled(draft.newTitlesEnabled);
       }
       setStatus("ready");
@@ -372,6 +390,7 @@ export function useAccountConfiguration(
         const storedForm: AccountForm = {
           lists: rows,
           rpdbApiKey: data.rpdbApiKey ?? "",
+          posterSource: data.posterSource ?? DEFAULT_POSTER_SOURCE,
           actionsEnabled: data.actions.enabled,
           actions: saved,
           newTitlesEnabled: data.newTitles.enabled,
@@ -382,6 +401,7 @@ export function useAccountConfiguration(
           draft && hasUnsavedChanges(storedForm, draft, data.access)
             ? {
                 ...draft,
+                posterSource: keptPosterSource(draft),
                 actions: reconcileActionProviders(
                   draft.actions.order,
                   draft.actions.selected,
@@ -396,6 +416,7 @@ export function useAccountConfiguration(
         setAccountId(data.accountId);
         setLoadedStremio(data.stremio);
         setRpdbApiKey(shown.rpdbApiKey);
+        setPosterSource(shown.posterSource);
         setActionsEnabled(shown.actionsEnabled);
         setActions(shown.actions);
         setNewTitlesEnabled(shown.newTitlesEnabled);
@@ -735,6 +756,8 @@ export function useAccountConfiguration(
     saveNeeded: dirty || reinstall === "after-save",
     rpdbApiKey,
     setRpdbApiKey,
+    posterSource,
+    setPosterSource,
     access,
     accountId,
     upgradedTo,

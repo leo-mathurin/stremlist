@@ -110,6 +110,7 @@ describe("List CRUD via the config API", () => {
         p_actions_enabled: null,
         p_action_providers: null,
         p_new_titles_catalog: null,
+        p_poster_source: null,
       });
       const expected = [
         {
@@ -139,6 +140,7 @@ describe("List CRUD via the config API", () => {
         legacyAccountId,
         expected,
         false,
+        { posterSource: "imdb", rpdbApiKey: "secret-key" },
       );
     });
 

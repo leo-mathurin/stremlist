@@ -16,6 +16,7 @@ export const accountRow = z.object({
   last_fetched_at: z.string(),
   legacy_imdb_user_id: z.string().nullable(),
   new_titles_catalog: z.boolean(),
+  poster_source: z.string(),
   prewarm_lease_token: z.string().nullable(),
   prewarm_locked_until: z.string(),
   prewarm_request_generation: z.number(),

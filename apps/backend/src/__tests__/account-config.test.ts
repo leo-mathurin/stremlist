@@ -458,6 +458,7 @@ describe("List CRUD via the config API", () => {
         account.id,
         expect.any(Array),
         true,
+        { posterSource: "imdb", rpdbApiKey: null },
       );
     });
 

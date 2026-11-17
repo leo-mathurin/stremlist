@@ -137,7 +137,6 @@ describe("prewarmLists", () => {
         {
           accountId: ACCOUNT_ID,
           sort,
-          rpdbApiKey: null,
           allowConnection: true,
           policy: "prewarm",
           queueDeadline: expect.any(Number) as unknown,

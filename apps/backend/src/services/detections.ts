@@ -16,7 +16,6 @@ import type { ProviderAdapter, SourceEntry } from "../providers/types";
 import type { AccountAccess } from "./accounts";
 import { getVisibleLists, visibleLists } from "./accounts";
 import { listConnections } from "./connections";
-import { buildPosterUrl } from "./imdb-scraper";
 import { getCachedList } from "./list-cache";
 import type { SourceMeta } from "./list-cache";
 import { sourceCaches, toStremioMeta } from "./merged-lists";
@@ -318,12 +317,7 @@ export async function getNewTitlesCatalog(
         .map((metas) => metas.get(detection.imdbId))
         .find((found) => !!found);
     if (meta?.type !== type) return [];
-    return [
-      {
-        ...withDetectionLine(toStremioMeta(meta), detection),
-        poster: buildPosterUrl(meta.id, meta.poster, access.account.rpdbApiKey),
-      },
-    ];
+    return [withDetectionLine(toStremioMeta(meta), detection)];
   });
 }
 

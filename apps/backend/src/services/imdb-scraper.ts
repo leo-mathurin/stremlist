@@ -9,8 +9,6 @@ import { z } from "zod";
 import { HttpError } from "../providers/http";
 import type { PagedRead } from "../providers/types";
 
-export { buildPosterUrl } from "@stremlist/shared/poster";
-
 const GRAPHQL_ENDPOINT = "https://api.graphql.imdb.com/";
 const GRAPHQL_CLIENT_NAME = "imdb-next-desktop";
 
