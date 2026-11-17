@@ -167,6 +167,8 @@ test(
     expect(sources.body.sources).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ ref: "me/watchlist" }),
+        expect.objectContaining({ ref: "me/favorites", label: "Favorites" }),
+        expect.objectContaining({ ref: "me/ratings", label: "Ratings" }),
         expect.objectContaining({
           ref: "me/lists/fixture-list",
           label: "Fixture List",
@@ -182,16 +184,24 @@ test(
       (
         await api.postConfig(accountId, [
           listInput("trakt", "me/watchlist", { displayMode: "split" }),
+          listInput("trakt", "me/ratings", { displayMode: "split" }),
         ])
       ).status,
     ).toBe(200);
-    const [saved] = (await api.getConfig(accountId)).body.lists;
+    const [saved, ratings] = (await api.getConfig(accountId)).body.lists;
     expect(await api.listCatalogNames(accountId, saved.id, "movie")).toEqual([
       "The Shawshank Redemption",
     ]);
+    expect(await api.listCatalogNames(accountId, ratings.id, "series")).toEqual(
+      ["Breaking Bad"],
+    );
     expect(
       backend
-        .requests((url) => url.pathname === "/users/me/watchlist")
+        .requests((url) =>
+          ["/users/me/watchlist", "/users/me/ratings/shows"].includes(
+            url.pathname,
+          ),
+        )
         .every((entry) => entry.authorization === "fresh-access"),
     ).toBe(true);
   },

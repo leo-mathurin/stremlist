@@ -113,8 +113,45 @@ describe("parseSourceLink: Trakt", () => {
   });
 
   it.each([
+    ["favorites", "list"],
+    ["ratings", "list"],
+    ["history", "history"],
+    ["collection", "collection"],
+  ] as const)("reads a user's %s", (source, kind) => {
+    expect(parseSourceLink(`https://trakt.tv/users/LeoM/${source}`)).toEqual(
+      parsed("trakt", `users/leom/${source}`, kind, {
+        suggestedTitle: `LeoM's ${source}`,
+      }),
+    );
+    expect(sourceRequiresConnection("trakt", `users/leom/${source}`)).toBe(
+      false,
+    );
+    expect(parseSourceLink(`https://trakt.tv/users/me/${source}`)).toEqual(
+      parsed("trakt", `me/${source}`, kind),
+    );
+    expect(sourceRequiresConnection("trakt", `me/${source}`)).toBe(true);
+  });
+
+  it.each([
+    ["https://trakt.tv/movies/boxoffice", "boxoffice"],
+    ["https://trakt.tv/movies/watched", "watched"],
+    ["https://trakt.tv/shows/watched/weekly", "watched"],
+    ["https://trakt.tv/movies/collected/weekly", "collected"],
+    ["https://trakt.tv/movies/played/weekly", "played"],
+    ["https://trakt.tv/shows/favorited/weekly", "favorited"],
+    ["https://trakt.tv/movies/recommended/weekly", "recommended"],
+  ])("reads the chart %j", (input, ref) => {
+    expect(parseSourceLink(input)).toEqual(parsed("trakt", ref, "chart"));
+  });
+
+  it.each([
     "https://trakt.tv/users/leo",
     "https://trakt.tv/movies/inception-2010",
+    // Another period than the week would read the wrong chart.
+    "https://trakt.tv/movies/watched/monthly",
+    "https://trakt.tv/movies/trending/weekly",
+    "https://trakt.tv/users/leo/ratings/movies/10",
+    "https://trakt.tv/users/leo/constructor",
     "https://app.trakt.tv/lists/smart/view",
     "https://app.trakt.tv/lists/smart",
   ])("does not read %j", (input) => {
@@ -413,6 +450,31 @@ describe("describeSourceRef", () => {
     });
   });
 
+  it("names a Trakt user's Source lists after the user", () => {
+    expect(describeSourceRef("trakt", "users/sean/ratings")).toEqual({
+      kind: "list",
+      detail: "sean",
+      url: "https://trakt.tv/users/sean/ratings",
+      title: "sean's ratings",
+    });
+    expect(describeSourceRef("trakt", "users/sean/history")).toMatchObject({
+      kind: "history",
+      title: "sean's history",
+    });
+    expect(describeSourceRef("trakt", "me/favorites")).toEqual({
+      kind: "list",
+      detail: "Your account",
+      url: null,
+      title: "Trakt Favorites",
+    });
+    expect(describeSourceRef("trakt", "boxoffice")).toEqual({
+      kind: "chart",
+      detail: null,
+      url: "https://trakt.tv/movies/boxoffice",
+      title: "Trakt Box Office",
+    });
+  });
+
   it("links a Trakt smart list to its page", () => {
     expect(describeSourceRef("trakt", "smart-lists/silos")).toEqual({
       kind: "list",
@@ -445,5 +507,23 @@ describe("sourceHasAddedDates: Letterboxd", () => {
       "users/leom/watchlist",
     ])
       expect(sourceHasAddedDates("letterboxd", ref)).toBe(false);
+  });
+});
+
+describe("sourceHasAddedDates: Trakt", () => {
+  it("dates favorites, ratings, history and collections, not charts", () => {
+    for (const ref of [
+      "me/favorites",
+      "me/ratings",
+      "users/sean/favorites",
+      "users/sean/ratings",
+      "users/sean/history",
+      "users/sean/collection",
+      "me/history",
+      "me/collection",
+    ])
+      expect(sourceHasAddedDates("trakt", ref)).toBe(true);
+    for (const ref of ["boxoffice", "watched", "smart-lists/silos"])
+      expect(sourceHasAddedDates("trakt", ref)).toBe(false);
   });
 });

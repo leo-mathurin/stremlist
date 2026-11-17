@@ -96,7 +96,7 @@ export function sourceTitleType(
 }
 
 const TRAKT_DATED =
-  /^(?:(?:me|users\/[^/]+)\/(?:watchlist|lists\/[^/]+)|lists\/[^/]+|me\/history|me\/collection)$/;
+  /^(?:(?:me|users\/[^/]+)\/(?:watchlist|favorites|ratings|history|collection|lists\/[^/]+)|lists\/[^/]+)$/;
 const SIMKL_DATED =
   /^me\/(?:plantowatch|watching|completed|hold|dropped|history)$/;
 

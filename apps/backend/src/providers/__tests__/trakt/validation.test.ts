@@ -9,6 +9,7 @@ import {
 import { traktProvider } from "../../trakt";
 import {
   calls,
+  callsTo,
   connection,
   resetTraktTest,
   restoreTraktTest,
@@ -38,6 +39,21 @@ describe("Trakt validateSource", () => {
       ref: "trending",
       suggestedTitle: "Trakt Trending",
       defaultDisplayMode: "split",
+    });
+    expect(calls).toHaveLength(0);
+    await expect(
+      traktProvider.validateSource("boxoffice", { connection: null }),
+    ).resolves.toEqual({
+      ok: true,
+      ref: "boxoffice",
+      suggestedTitle: "Trakt Box Office",
+      defaultDisplayMode: "movie",
+    });
+    await expect(
+      traktProvider.validateSource("collected", { connection: null }),
+    ).resolves.toMatchObject({
+      ok: true,
+      suggestedTitle: "Trakt Most Collected",
     });
     expect(calls).toHaveLength(0);
   });
@@ -71,6 +87,47 @@ describe("Trakt validateSource", () => {
       suggestedTitle: "Sean's watchlist",
       defaultDisplayMode: "split",
     });
+  });
+
+  it("names a public user's favorites, ratings, history and collection", async () => {
+    route("GET /users/sean", { username: "Sean", ids: { slug: "sean" } });
+    route("GET /users/sean/favorites", []);
+    route("GET /users/sean/ratings", []);
+    route("GET /users/sean/history", []);
+    route("GET /users/sean/collection/movies", []);
+    for (const [kind, mode] of [
+      ["favorites", "split"],
+      ["ratings", "split"],
+      ["history", "split"],
+      ["collection", "split"],
+    ]) {
+      await expect(
+        traktProvider.validateSource(`users/Sean/${kind}`, {
+          connection: null,
+        }),
+      ).resolves.toEqual({
+        ok: true,
+        ref: `users/sean/${kind}`,
+        suggestedTitle: `Sean's ${kind}`,
+        defaultDisplayMode: mode,
+      });
+    }
+    // One cheap probe of each Source list: never the whole history.
+    expect(callsTo("/users/sean/watched/movies")).toHaveLength(0);
+    expect(
+      callsTo("/users/sean/history")[0].url.searchParams.get("limit"),
+    ).toBe("1");
+  });
+
+  it("reports a private user's ratings", async () => {
+    route("GET /users/hidden", status(401));
+    expect(
+      await unavailableReason(
+        traktProvider.validateSource("users/hidden/ratings", {
+          connection: null,
+        }),
+      ),
+    ).toBe("private");
   });
 
   it("reports a private watchlist", async () => {
@@ -204,5 +261,7 @@ describe("Trakt resolution and freshness", () => {
     expect(freshness("lists/42")).toBe(6 * 60 * 60_000);
     expect(freshness("me/watchlist")).toBe(30 * 60_000);
     expect(freshness("me/up-next")).toBe(30 * 60_000);
+    expect(freshness("users/sean/ratings")).toBe(6 * 60 * 60_000);
+    expect(freshness("me/favorites")).toBe(30 * 60_000);
   });
 });

@@ -188,7 +188,7 @@ describe("Trakt read errors", () => {
   });
 
   it("an unknown ref is not_found", async () => {
-    expect(await unavailableReason(fetchEntries("users/x/favorites"))).toBe(
+    expect(await unavailableReason(fetchEntries("users/x/followers"))).toBe(
       "not_found",
     );
   });

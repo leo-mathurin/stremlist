@@ -118,6 +118,37 @@ describe("Trakt actions", () => {
     ).toBe(true);
   });
 
+  it("reads every page of watched movies and shows", async () => {
+    // Trakt pages /sync/watched/* 100 at a time when no limit is given.
+    route("GET /users/me/watchlist", []);
+    route(
+      "GET /sync/watched/movies",
+      pages([[{ plays: 1, movie: clerks }], [{ plays: 1, movie: halloween }]]),
+    );
+    route(
+      "GET /sync/watched/shows",
+      pages([
+        [{ plays: 0, show: pitt, seasons: [] }],
+        [
+          {
+            plays: 1,
+            show: mandalorian,
+            seasons: [{ number: 1, episodes: [{ number: 1, plays: 1 }] }],
+          },
+        ],
+      ]),
+    );
+    route("GET /sync/ratings/movies", []);
+    route("GET /sync/ratings/shows", []);
+    const membership = await actions.getMembership(connection());
+    expect(membership.watched).toEqual([
+      "tt11128440",
+      "tt10665342",
+      "tt8111088",
+    ]);
+    expect(membership.watchedEpisodes).toEqual(["tt8111088:1:1"]);
+  });
+
   async function performed(
     intent: Parameters<typeof actions.perform>[1],
     target: Parameters<typeof actions.perform>[2],
@@ -318,6 +349,8 @@ describe("Trakt actions", () => {
       "me/history",
       "me/up-next",
     ]);
-    expect(actions.affectedSources({ kind: "rating", rating: 5 })).toEqual([]);
+    expect(actions.affectedSources({ kind: "rating", rating: 5 })).toEqual([
+      "me/ratings",
+    ]);
   });
 });

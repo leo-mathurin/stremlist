@@ -126,6 +126,8 @@ async function expectMetaAndStreams(api: Api, accountKey: string) {
 const EVERY_PROVIDER: [ProviderId, string, string][] = [
   ["trakt", "users/fixture-user/watchlist", "Trakt watchlist"],
   ["trakt", "trending", "Trakt trending"],
+  ["trakt", "users/fixture-user/ratings", "Trakt ratings"],
+  ["trakt", "watched", "Trakt most watched"],
   ["simkl", "me/plantowatch", "Simkl plan to watch"],
   ["mdblist", "lists/4242", "MDBList weekend"],
   ["justwatch", "tl-us-11111111-2222-4333-8444-555555555555", "JustWatch"],

@@ -46,6 +46,25 @@ const IMDB_TITLES = new Map<string, ImdbTitle>([
 
 const traktMovie = { ...SHAWSHANK, ids: { trakt: 1, imdb: "tt0111161" } };
 const traktShow = { ...BREAKING_BAD, ids: { trakt: 2, imdb: "tt0903747" } };
+/** Rows of a ratings read, by type. */
+const traktRatings = {
+  movies: [
+    {
+      rated_at: "2026-01-01T00:00:00.000Z",
+      rating: 9,
+      type: "movie",
+      movie: traktMovie,
+    },
+  ],
+  shows: [
+    {
+      rated_at: "2026-01-02T00:00:00.000Z",
+      rating: 8,
+      type: "show",
+      show: traktShow,
+    },
+  ],
+};
 const traktEntries = [
   { type: "movie", listed_at: "2026-01-01T00:00:00.000Z", movie: traktMovie },
   { type: "show", listed_at: "2026-01-02T00:00:00.000Z", show: traktShow },
@@ -144,6 +163,13 @@ function trakt({ request, url, body }: FixtureRequest): Response {
       return json({ error: "private" }, 401);
     case "/users/fixture-user/watchlist":
       return json(url.searchParams.has("sort_by") ? traktEntries : []);
+    // Validation probes the ratings with one item, then reads each type.
+    case "/users/fixture-user/ratings":
+      return json([]);
+    case "/users/fixture-user/ratings/movies":
+      return json(traktRatings.movies);
+    case "/users/fixture-user/ratings/shows":
+      return json(traktRatings.shows);
     // Charts: trending rows wrap the media, popular rows are the media.
     case "/movies/trending":
       return json([{ watchers: 9, movie: traktMovie }]);
@@ -153,6 +179,10 @@ function trakt({ request, url, body }: FixtureRequest): Response {
       return json([traktMovie]);
     case "/shows/popular":
       return json([traktShow]);
+    case "/movies/watched/weekly":
+      return json([{ watcher_count: 9, play_count: 9, movie: traktMovie }]);
+    case "/shows/watched/weekly":
+      return json([{ watcher_count: 7, play_count: 7, show: traktShow }]);
   }
   const refused = requireToken(request);
   if (refused) return refused;
@@ -163,6 +193,12 @@ function trakt({ request, url, body }: FixtureRequest): Response {
       });
     case "/users/me/watchlist":
       return json(url.searchParams.has("sort_by") ? traktEntries : []);
+    case "/users/me/favorites":
+      return json(url.searchParams.has("sort_by") ? traktEntries : []);
+    case "/users/me/ratings/movies":
+      return json(traktRatings.movies);
+    case "/users/me/ratings/shows":
+      return json(traktRatings.shows);
     case "/users/me/lists":
       return json([{ name: "Fixture List", ids: { slug: "fixture-list" } }]);
     case "/users/me/smart-lists":

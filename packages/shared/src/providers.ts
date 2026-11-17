@@ -252,7 +252,32 @@ function parseImdbLink(input: string): ParsedSourceLink | null {
   return null;
 }
 
-const TRAKT_CHARTS = ["trending", "popular", "anticipated"] as const;
+const TRAKT_CHARTS = [
+  "trending",
+  "popular",
+  "anticipated",
+  "boxoffice",
+  "watched",
+  "played",
+  "collected",
+  "favorited",
+  "recommended",
+] as const;
+/** Trakt charts counted over a period: Stremlist reads the weekly one. */
+const TRAKT_WEEKLY_CHARTS = new Set<string>([
+  "watched",
+  "played",
+  "collected",
+  "favorited",
+  "recommended",
+]);
+/** Source lists of a Trakt user, at trakt.tv/users/{user}/{kind}. */
+const TRAKT_USER_SOURCES = new Map<string, SourceKind>([
+  ["favorites", "list"],
+  ["ratings", "list"],
+  ["history", "history"],
+  ["collection", "collection"],
+]);
 // trakt.tv/lists/{these} are pages that browse lists, not lists.
 const TRAKT_LIST_PAGES = new Set([
   "trending",
@@ -286,6 +311,17 @@ function parseTraktLink(input: string): ParsedSourceLink | null {
         provider: "trakt",
         sourceRef: `${owner}/lists/${parts[3].toLowerCase()}`,
         kind: "list",
+      };
+    }
+    // trakt.tv/users/{user}/favorites, /ratings, /history, /collection.
+    const userKind =
+      parts.length === 3 ? TRAKT_USER_SOURCES.get(parts[2]) : undefined;
+    if (userKind) {
+      return {
+        provider: "trakt",
+        sourceRef: `${owner}/${parts[2]}`,
+        kind: userKind,
+        suggestedTitle: user === "me" ? undefined : `${parts[1]}'s ${parts[2]}`,
       };
     }
   }
@@ -328,10 +364,16 @@ function parseTraktLink(input: string): ParsedSourceLink | null {
       kind: "list",
     };
   }
-  // trakt.tv/movies/trending, trakt.tv/shows/popular…: the chart covers both kinds.
-  if ((parts[0] === "movies" || parts[0] === "shows") && parts.length === 2) {
-    const chart = TRAKT_CHARTS.find((name) => name === parts[1].toLowerCase());
-    if (chart) {
+  // trakt.tv/movies/trending, trakt.tv/shows/popular…: the chart covers
+  // both kinds. A chart counted over a period is read for the week.
+  if (parts[0] === "movies" || parts[0] === "shows") {
+    const chart = TRAKT_CHARTS.find((name) => name === parts[1]?.toLowerCase());
+    const weekly =
+      parts.length === 3 &&
+      parts[2].toLowerCase() === "weekly" &&
+      !!chart &&
+      TRAKT_WEEKLY_CHARTS.has(chart);
+    if (chart && (parts.length === 2 || weekly)) {
       return { provider: "trakt", sourceRef: chart, kind: "chart" };
     }
   }
@@ -609,6 +651,18 @@ export const CONNECTION_SOURCES: Partial<
       defaultDisplayMode: "split",
     },
     {
+      ref: "me/favorites",
+      kind: "list",
+      label: "Favorites",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "me/ratings",
+      kind: "list",
+      label: "Ratings",
+      defaultDisplayMode: "split",
+    },
+    {
       ref: "me/recommendations",
       kind: "recommendations",
       label: "Recommendations",
@@ -709,6 +763,49 @@ export const PUBLIC_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>> = {
       defaultDisplayMode: "split",
       url: "https://trakt.tv/movies/anticipated",
     },
+    {
+      ref: "boxoffice",
+      kind: "chart",
+      label: "Box Office",
+      defaultDisplayMode: "movie",
+      titleType: "movie",
+      url: "https://trakt.tv/movies/boxoffice",
+    },
+    {
+      ref: "watched",
+      kind: "chart",
+      label: "Most Watched",
+      defaultDisplayMode: "split",
+      url: "https://trakt.tv/movies/watched/weekly",
+    },
+    {
+      ref: "played",
+      kind: "chart",
+      label: "Most Played",
+      defaultDisplayMode: "split",
+      url: "https://trakt.tv/movies/played/weekly",
+    },
+    {
+      ref: "collected",
+      kind: "chart",
+      label: "Most Collected",
+      defaultDisplayMode: "split",
+      url: "https://trakt.tv/movies/collected/weekly",
+    },
+    {
+      ref: "favorited",
+      kind: "chart",
+      label: "Most Favorited",
+      defaultDisplayMode: "split",
+      url: "https://trakt.tv/movies/favorited/weekly",
+    },
+    {
+      ref: "recommended",
+      kind: "chart",
+      label: "Most Recommended",
+      defaultDisplayMode: "split",
+      url: "https://trakt.tv/movies/recommended/weekly",
+    },
   ],
 };
 
@@ -792,6 +889,15 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
           kind: "list",
           detail: `${user}/${list}`,
           url: `https://trakt.tv/users/${user}/lists/${list}`,
+        }),
+      },
+      {
+        pattern: /^users\/([^/]+)\/(favorites|ratings|history|collection)$/,
+        describe: ([, user, source]) => ({
+          kind: TRAKT_USER_SOURCES.get(source) ?? "list",
+          detail: user,
+          url: `https://trakt.tv/users/${user}/${source}`,
+          title: `${user}'s ${source}`,
         }),
       },
       {
