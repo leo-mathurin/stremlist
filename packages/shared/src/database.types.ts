@@ -592,25 +592,6 @@ export type Database = {
           },
         ];
       };
-      tmdb_posters: {
-        Row: {
-          checked_at: string;
-          imdb_id: string;
-          poster_path: string | null;
-        };
-        ComputedFields: never;
-        Insert: {
-          checked_at?: string;
-          imdb_id: string;
-          poster_path?: string | null;
-        };
-        Update: {
-          checked_at?: string;
-          imdb_id?: string;
-          poster_path?: string | null;
-        };
-        Relationships: [];
-      };
       title_id_map: {
         Row: {
           external_id: string;
@@ -636,6 +617,25 @@ export type Database = {
           resolved_at?: string;
           retry_after?: string | null;
           strategy?: string | null;
+        };
+        Relationships: [];
+      };
+      tmdb_posters: {
+        Row: {
+          checked_at: string;
+          imdb_id: string;
+          poster_path: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          checked_at?: string;
+          imdb_id: string;
+          poster_path?: string | null;
+        };
+        Update: {
+          checked_at?: string;
+          imdb_id?: string;
+          poster_path?: string | null;
         };
         Relationships: [];
       };
