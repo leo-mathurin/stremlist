@@ -5,6 +5,9 @@
 // drive the real form state (posterSource, rpdbApiKey), so the preview
 // follows them. Leaving RPDB clears the key field and keeps the typed key in
 // memory, so picking RPDB again brings it back.
+// Sample posters: the same three Titles from each provider. IMDb and TMDB
+// URLs were read from their APIs on 2026-11-17. RPDB uses the typed key, or
+// RPDB's public free key `t0-free-rpdb` while none is typed.
 import { useId, useState } from "react";
 import type { PosterSource } from "@stremlist/shared/poster";
 import { Check, Eye, EyeOff } from "lucide-react";
@@ -62,6 +65,68 @@ function usePosterChoice(form: PosterFormState) {
     form.setPosterSource(next);
   };
   return { choice, choose };
+}
+
+const SAMPLES = [
+  {
+    id: "tt1190634",
+    name: "The Boys",
+    imdb: "https://m.media-amazon.com/images/M/MV5BZjU4OWNiYzQtMzc1NS00NjZlLTgyYTctZWY4ZmEzMTkxYjA4XkEyXkFqcGc@._V1_QL75_UX240_.jpg",
+    tmdb: "https://image.tmdb.org/t/p/w342/in1R2dDc421JxsoRWaIIAqVI2KE.jpg",
+  },
+  {
+    id: "tt15398776",
+    name: "Oppenheimer",
+    imdb: "https://m.media-amazon.com/images/M/MV5BN2JkMDc5MGQtZjg3YS00NmFiLWIyZmQtZTJmNTM5MjVmYTQ4XkEyXkFqcGc@._V1_QL75_UX240_.jpg",
+    tmdb: "https://image.tmdb.org/t/p/w342/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg",
+  },
+  {
+    id: "tt0111161",
+    name: "The Shawshank Redemption",
+    imdb: "https://m.media-amazon.com/images/M/MV5BMDAyY2FhYjctNDc5OS00MDNlLThiMGUtY2UxYWVkNGY2ZjljXkEyXkFqcGc@._V1_QL75_UX240_.jpg",
+    tmdb: "https://image.tmdb.org/t/p/w342/9cqNxx0GxF0bflZmeSMuL5tnGzr.jpg",
+  },
+];
+
+function samplePoster(
+  sample: (typeof SAMPLES)[number],
+  choice: Choice,
+  rpdbKey: string,
+): string {
+  if (choice !== "rpdb") return sample[choice];
+  const key = encodeURIComponent(rpdbKey.trim() || "t0-free-rpdb");
+  return `https://api.ratingposterdb.com/${key}/imdb/poster-default/${sample.id}.jpg`;
+}
+
+/** Example posters of one source, the size of the preview tiles. */
+function PosterSamples({
+  choice,
+  rpdbKey,
+  size = "md",
+  count = SAMPLES.length,
+}: {
+  choice: Choice;
+  rpdbKey: string;
+  size?: "sm" | "md";
+  count?: number;
+}) {
+  return (
+    <ul className="flex gap-2" aria-label="Example posters">
+      {SAMPLES.slice(0, count).map((sample) => (
+        <li key={sample.id}>
+          <img
+            src={samplePoster(sample, choice, rpdbKey)}
+            alt={`${sample.name}, example poster`}
+            loading="lazy"
+            className={cn(
+              "aspect-[2/3] rounded-lg bg-black/5 object-cover ring-1 ring-black/5",
+              size === "sm" ? "w-9" : "w-[4.5rem] sm:w-20",
+            )}
+          />
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function KeyField({ form }: { form: PosterFormState }) {
@@ -145,6 +210,12 @@ function VariantA({ form }: { form: PosterFormState }) {
         </Select>
         <p className="mt-1.5 text-xs text-black/55">{current?.hint}</p>
       </div>
+      <div className="rounded-2xl bg-black/[0.03] p-3">
+        <p className="mb-2 text-xs font-semibold text-black/60">
+          Example with {current?.label}
+        </p>
+        <PosterSamples choice={choice} rpdbKey={form.rpdbApiKey} />
+      </div>
       {choice === "rpdb" && <KeyField form={form} />}
     </div>
   );
@@ -178,7 +249,7 @@ function VariantB({ form }: { form: PosterFormState }) {
                   onChange={() => choose(option.value)}
                   className="mt-1 size-4 accent-[var(--color-brand,#f5c518)]"
                 />
-                <span className="min-w-0">
+                <span className="min-w-0 flex-1">
                   <span className="block text-sm font-semibold">
                     {option.label}
                     {option.value === "imdb" && (
@@ -190,6 +261,13 @@ function VariantB({ form }: { form: PosterFormState }) {
                   <span className="block text-xs text-black/55">
                     {option.hint}
                   </span>
+                </span>
+                <span className="hidden shrink-0 sm:block">
+                  <PosterSamples
+                    choice={option.value}
+                    rpdbKey={form.rpdbApiKey}
+                    size="sm"
+                  />
                 </span>
               </label>
               {selected && option.value === "rpdb" && (
@@ -239,6 +317,32 @@ function VariantC({ form }: { form: PosterFormState }) {
           </SelectContent>
         </Select>
       </div>
+      <ul
+        className="mt-4 grid grid-cols-3 gap-2"
+        aria-label={`${SAMPLES[0].name} from each source`}
+      >
+        {CHOICES.map((option) => (
+          <li
+            key={option.value}
+            className={cn(
+              "flex flex-col items-center gap-1.5 rounded-2xl p-2 text-xs font-semibold",
+              choice === option.value
+                ? "bg-brand/15 ring-2 ring-brand"
+                : "text-black/45",
+            )}
+          >
+            <img
+              src={samplePoster(SAMPLES[0], option.value, form.rpdbApiKey)}
+              alt={`${SAMPLES[0].name} from ${option.label}`}
+              className={cn(
+                "aspect-[2/3] w-full max-w-28 rounded-lg object-cover ring-1 ring-black/5",
+                choice !== option.value && "opacity-60",
+              )}
+            />
+            {option.label}
+          </li>
+        ))}
+      </ul>
       {choice === "rpdb" && (
         <div className="mt-4 border-t border-black/5 pt-4">
           <KeyField form={form} />
