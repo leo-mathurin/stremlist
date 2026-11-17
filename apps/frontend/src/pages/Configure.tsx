@@ -27,6 +27,8 @@ import LegacyChecklist, { WhatsNewButton } from "../components/LegacyChecklist";
 import LinkPaste from "../components/LinkPaste";
 import NewTitlesSettings from "../components/NewTitlesSettings";
 import PosterSourceSettings from "../components/PosterSourceSettings";
+// PROTOTYPE (STR-106 poster UI): remove with the prototype branch.
+import PosterSettingsPrototype from "../components/PosterSettingsPrototype";
 import type { LinkProblem, ResolvedLink } from "../components/LinkPaste";
 import ProviderList from "../components/ProviderList";
 import ProviderOutageBanner from "../components/ProviderOutageBanner";
@@ -701,56 +703,67 @@ export default function Configure() {
 
             <section className="space-y-3">
               <SectionHeading size="md" title="Options" />
-              <div className="rounded-3xl bg-white p-4 ring-1 ring-black/5 sm:p-5">
-                <PosterSourceSettings
-                  value={config.posterSource}
-                  onChange={config.setPosterSource}
-                  rpdbKeySet={config.rpdbApiKey.trim() !== ""}
+              {import.meta.env.DEV && searchParams.get("variant") ? (
+                <PosterSettingsPrototype
+                  variant={searchParams.get("variant") ?? "A"}
+                  form={config}
                 />
-                <hr className="my-4 border-black/5" />
-                <label htmlFor="rpdb-api-key" className="block font-bold">
-                  RPDB API key{" "}
-                  <span className="font-normal text-black/45">(optional)</span>
-                </label>
-                <p className="mt-0.5 mb-3 text-sm text-black/55">
-                  Shows{" "}
-                  <a
-                    href="https://ratingposterdb.com/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-semibold text-stremlist hover:underline"
-                  >
-                    Rating Poster Database
-                  </a>{" "}
-                  posters, with ratings on the cover art. RPDB posters replace
-                  the poster source above.
-                </p>
-                <div className="flex items-center gap-1 rounded-2xl bg-black/5 p-1">
-                  <input
-                    id="rpdb-api-key"
-                    type={showRpdbApiKey ? "text" : "password"}
-                    value={config.rpdbApiKey}
-                    onChange={(e) => config.setRpdbApiKey(e.target.value)}
-                    placeholder="Paste your RPDB API key"
-                    autoComplete="off"
-                    className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm outline-none"
+              ) : (
+                <div className="rounded-3xl bg-white p-4 ring-1 ring-black/5 sm:p-5">
+                  <PosterSourceSettings
+                    value={config.posterSource}
+                    onChange={config.setPosterSource}
+                    rpdbKeySet={config.rpdbApiKey.trim() !== ""}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowRpdbApiKey((current) => !current)}
-                    aria-label={
-                      showRpdbApiKey ? "Hide RPDB API key" : "Show RPDB API key"
-                    }
-                    className="flex size-9 shrink-0 items-center justify-center rounded-xl text-black/50 transition-colors hover:bg-white hover:text-ink"
-                  >
-                    {showRpdbApiKey ? (
-                      <EyeOff className="size-4" />
-                    ) : (
-                      <Eye className="size-4" />
-                    )}
-                  </button>
+                  <hr className="my-4 border-black/5" />
+                  <label htmlFor="rpdb-api-key" className="block font-bold">
+                    RPDB API key{" "}
+                    <span className="font-normal text-black/45">
+                      (optional)
+                    </span>
+                  </label>
+                  <p className="mt-0.5 mb-3 text-sm text-black/55">
+                    Shows{" "}
+                    <a
+                      href="https://ratingposterdb.com/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold text-stremlist hover:underline"
+                    >
+                      Rating Poster Database
+                    </a>{" "}
+                    posters, with ratings on the cover art. RPDB posters replace
+                    the poster source above.
+                  </p>
+                  <div className="flex items-center gap-1 rounded-2xl bg-black/5 p-1">
+                    <input
+                      id="rpdb-api-key"
+                      type={showRpdbApiKey ? "text" : "password"}
+                      value={config.rpdbApiKey}
+                      onChange={(e) => config.setRpdbApiKey(e.target.value)}
+                      placeholder="Paste your RPDB API key"
+                      autoComplete="off"
+                      className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowRpdbApiKey((current) => !current)}
+                      aria-label={
+                        showRpdbApiKey
+                          ? "Hide RPDB API key"
+                          : "Show RPDB API key"
+                      }
+                      className="flex size-9 shrink-0 items-center justify-center rounded-xl text-black/50 transition-colors hover:bg-white hover:text-ink"
+                    >
+                      {showRpdbApiKey ? (
+                        <EyeOff className="size-4" />
+                      ) : (
+                        <Eye className="size-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <ActionsSettings
                 enabled={config.actionsEnabled}
