@@ -1,17 +1,17 @@
 -- Poster source: each Account chooses where its posters come from: IMDb (the
--- default, the posters that Stremlist always showed), TMDB, or RPDB with the
--- Account's RPDB key. The key stays saved when another source is chosen. The
+-- default, the posters that Stremlist always showed), TMDB, TheTVDB, or RPDB
+-- with the Account's RPDB key. The key stays saved when another source is chosen. The
 -- choice is saved with the rest of the configuration by
 -- `replace_account_config`, so a save never mixes two requests.
 --
--- `tmdb_posters` caches the TMDB poster of each Title for every Account: the
--- poster of a Title does not depend on who asks, only the choice to show it
--- does.
+-- `title_posters` caches the TMDB and TheTVDB poster of each Title for every
+-- Account: the poster of a Title does not depend on who asks, only the choice
+-- to show it does.
 
 ALTER TABLE public.accounts
   ADD COLUMN poster_source text NOT NULL DEFAULT 'imdb'
   CONSTRAINT accounts_poster_source_check
-    CHECK (poster_source IN ('imdb', 'tmdb', 'rpdb'));
+    CHECK (poster_source IN ('imdb', 'tmdb', 'tvdb', 'rpdb'));
 
 -- Before this change, an RPDB key alone turned RPDB posters on: those
 -- Accounts keep them.
@@ -20,17 +20,20 @@ SET poster_source = 'rpdb'
 WHERE nullif(btrim(rpdb_api_key), '') IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
--- tmdb_posters: the TMDB poster of each Title (IMDb ID)
+-- title_posters: the poster of each Title (IMDb ID) on TMDB and TheTVDB
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE public.tmdb_posters (
-  imdb_id text PRIMARY KEY,
-  -- The TMDB image path (`/abc.jpg`). NULL: TMDB has no poster for the Title.
-  -- Such rows are checked again later; a failed TMDB request writes no row.
-  poster_path text,
-  checked_at timestamptz NOT NULL DEFAULT now()
+CREATE TABLE public.title_posters (
+  source text NOT NULL CHECK (source IN ('tmdb', 'tvdb')),
+  imdb_id text NOT NULL,
+  -- The TMDB image path (`/abc.jpg`) or the TheTVDB artwork URL. NULL: the
+  -- source has no poster for the Title. Such rows are checked again later;
+  -- a failed request writes no row.
+  poster text,
+  checked_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (source, imdb_id)
 );
-ALTER TABLE public.tmdb_posters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.title_posters ENABLE ROW LEVEL SECURITY;
 
 -- ---------------------------------------------------------------------------
 -- replace_account_config and create_account_with_config

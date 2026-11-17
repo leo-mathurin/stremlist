@@ -14,13 +14,14 @@ import {
 } from "./config-fixture";
 
 // The poster source of an Account (STR-106): one choice between IMDb (the
-// default), TMDB and RPDB, with the RPDB key field for RPDB only. The preview
+// default), TMDB, TheTVDB and RPDB, with the RPDB key field for RPDB only. The preview
 // gives both IMDb and TMDB posters of each Title, so the page switches
 // source without a new preview. The backend answers are intercepted;
 // tests/poster-source.spec.ts covers the real handlers.
 
 const IMDB_POSTER = "https://posters.e2e.test/imdb/shawshank.svg";
 const TMDB_POSTER = "https://posters.e2e.test/tmdb/shawshank.svg";
+const TVDB_POSTER = "https://posters.e2e.test/tvdb/shawshank.svg";
 const GODFATHER = "https://posters.e2e.test/imdb/godfather.svg";
 const RPDB_POSTER =
   "https://api.ratingposterdb.com/e2e-synthetic-rpdb/imdb/poster-default/tt0111161.jpg?fallback=true";
@@ -36,6 +37,7 @@ function previewWithPosters(request: PreviewRequest) {
       const shawshank = title.id === "tt0111161";
       title.poster = shawshank ? IMDB_POSTER : GODFATHER;
       title.tmdbPoster = shawshank ? TMDB_POSTER : null;
+      title.tvdbPoster = shawshank ? TVDB_POSTER : null;
     }
   }
   return preview;
@@ -48,6 +50,7 @@ async function routePosterImages(browser: Browser) {
     "https://api.ratingposterdb.com/**",
     "https://m.media-amazon.com/**",
     "https://image.tmdb.org/**",
+    "https://artworks.thetvdb.com/**",
   ]) {
     await browser.route(pattern, async (route) => {
       await route.fulfill({ body: IMAGE, contentType: "image/svg+xml" });
@@ -110,6 +113,15 @@ test("each poster source changes the preview at once, RPDB with its key", async 
   await expect
     .poll(() => tilePosters(browser))
     .toEqual([TMDB_POSTER, GODFATHER]);
+
+  // TheTVDB, with the attribution that its API terms ask for.
+  await choose(screen, /^TheTVDB/);
+  await expect
+    .poll(() => tilePosters(browser))
+    .toEqual([TVDB_POSTER, GODFATHER]);
+  await expect(
+    screen.getByRole("link", "TheTVDB", { exact: true }),
+  ).toBeVisible();
 
   // RPDB without a key shows IMDb posters until the key is added.
   await choose(screen, /^RPDB/);
@@ -195,6 +207,14 @@ test("example posters open on request and follow the chosen source", async ({
   await expect
     .poll(() => exampleHosts(browser))
     .toEqual(["image.tmdb.org", "image.tmdb.org", "image.tmdb.org"]);
+  await choose(screen, /^TheTVDB/);
+  await expect
+    .poll(() => exampleHosts(browser))
+    .toEqual([
+      "artworks.thetvdb.com",
+      "artworks.thetvdb.com",
+      "artworks.thetvdb.com",
+    ]);
   await choose(screen, /^RPDB/);
   await expect(
     screen.getByText("Add your RPDB API key to see examples."),

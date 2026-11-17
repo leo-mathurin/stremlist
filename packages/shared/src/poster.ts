@@ -2,7 +2,7 @@
  * Where the posters of an Account come from. IMDb is the default and the
  * posters that Stremlist always showed. RPDB needs the Account's RPDB key.
  */
-export const POSTER_SOURCES = ["imdb", "tmdb", "rpdb"] as const;
+export const POSTER_SOURCES = ["imdb", "tmdb", "tvdb", "rpdb"] as const;
 export type PosterSource = (typeof POSTER_SOURCES)[number];
 export const DEFAULT_POSTER_SOURCE: PosterSource = "imdb";
 
@@ -16,6 +16,8 @@ export interface TitlePosters {
   imdb: string | null;
   /** The TMDB poster; null or absent when TMDB has none or did not answer. */
   tmdb?: string | null;
+  /** The TheTVDB poster, with the same rule. */
+  tvdb?: string | null;
 }
 
 /** The RPDB poster of a Title. RPDB shows its own image when it has none. */
@@ -25,8 +27,8 @@ export function rpdbPosterUrl(rpdbApiKey: string, imdbId: string): string {
 
 /**
  * The poster that Stremio and the configure page show for a Title: the
- * chosen source. RPDB without a key shows the IMDb poster, and so does TMDB
- * when it has no poster for the Title.
+ * chosen source. RPDB without a key shows the IMDb poster, and so do TMDB and
+ * TheTVDB when they have no poster for the Title.
  */
 export function choosePoster(
   imdbId: string,
@@ -40,6 +42,8 @@ export function choosePoster(
         : posters.imdb;
     case "tmdb":
       return posters.tmdb ?? posters.imdb;
+    case "tvdb":
+      return posters.tvdb ?? posters.imdb;
     case "imdb":
       return posters.imdb;
   }

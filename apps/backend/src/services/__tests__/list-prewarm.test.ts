@@ -2,7 +2,7 @@ import type { ConfigList } from "@stremlist/shared/stremio.types";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import { LIST_IDS } from "../../__tests__/helpers/fixtures";
-import type { findTmdbPosters } from "../../titles/tmdb-posters";
+import type { findPosters } from "../../titles/title-posters";
 import { prewarmLists } from "../list-prewarm";
 
 const listMocks = vi.hoisted(() => ({ getListCatalog: vi.fn() }));
@@ -16,14 +16,14 @@ const supabaseMocks = vi.hoisted(() => ({
 }));
 const accountMocks = vi.hoisted(() => ({ getAccountLists: vi.fn() }));
 const posterMocks = vi.hoisted(() => ({
-  findTmdbPosters: vi.fn<typeof findTmdbPosters>(() =>
+  findPosters: vi.fn<typeof findPosters>(() =>
     Promise.resolve(new Map<string, string>()),
   ),
 }));
 
 vi.mock("../lists", () => listMocks);
 vi.mock("../accounts", () => accountMocks);
-vi.mock("../../titles/tmdb-posters", () => posterMocks);
+vi.mock("../../titles/title-posters", () => posterMocks);
 vi.mock("../../lib/supabase", () => ({
   supabase: { rpc: supabaseMocks.rpc },
 }));
@@ -132,7 +132,7 @@ describe("prewarmLists", () => {
     listMocks.getListCatalog.mockResolvedValue({
       metas: [...titles("movie", 150), ...titles("series", 3)],
     });
-    posterMocks.findTmdbPosters.mockClear();
+    posterMocks.findPosters.mockClear();
 
     await prewarmLists(
       ACCOUNT_ID,
@@ -142,9 +142,10 @@ describe("prewarmLists", () => {
     );
 
     // The split List: one call per Catalog, each at most one page.
-    const calls = posterMocks.findTmdbPosters.mock.calls.map(([metas]) =>
-      metas.map((meta) => meta.type),
-    );
+    const calls = posterMocks.findPosters.mock.calls.map(([source, metas]) => {
+      expect(source).toBe("tmdb");
+      return metas.map((meta) => meta.type);
+    });
     // Lists prewarm two at a time, so the calls can come in any order.
     expect(calls.map((types) => `${types[0]}:${types.length}`).sort()).toEqual([
       "movie:100",
@@ -154,7 +155,7 @@ describe("prewarmLists", () => {
     expect(calls.every((types) => new Set(types).size === 1)).toBe(true);
 
     // IMDb and RPDB posters need no TMDB lookup.
-    posterMocks.findTmdbPosters.mockClear();
+    posterMocks.findPosters.mockClear();
     await prewarmLists(ACCOUNT_ID, SAVED_LISTS, true, {
       posterSource: "rpdb",
       rpdbApiKey: "key",
@@ -163,7 +164,7 @@ describe("prewarmLists", () => {
       posterSource: "imdb",
       rpdbApiKey: null,
     });
-    expect(posterMocks.findTmdbPosters).not.toHaveBeenCalled();
+    expect(posterMocks.findPosters).not.toHaveBeenCalled();
   });
 
   it("uses the cache-first fetch path for every saved List", async () => {

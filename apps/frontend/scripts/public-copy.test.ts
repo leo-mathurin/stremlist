@@ -99,6 +99,7 @@ test("the privacy policy names every service that receives data", () => {
     "Vercel",
     "Cloudflare R2",
     "RPDB",
+    "TheTVDB",
   ])
     assert.ok(privacy.includes(service), `privacy policy omits ${service}`);
 });

@@ -3,6 +3,7 @@ import { choosePoster } from "../poster";
 
 const IMDB = "https://m.media-amazon.com/images/M/poster.jpg";
 const TMDB = "https://image.tmdb.org/t/p/w500/poster.jpg";
+const TVDB = "https://artworks.thetvdb.com/banners/posters/poster.jpg";
 const RPDB =
   "https://api.ratingposterdb.com/key/imdb/poster-default/tt0111161.jpg?fallback=true";
 const BOTH = { imdb: IMDB, tmdb: TMDB };
@@ -33,6 +34,19 @@ describe("choosePoster", () => {
         ),
       ).toBe(IMDB);
     }
+  });
+
+  it("shows the TheTVDB poster, and the IMDb one when TheTVDB has none", () => {
+    expect(
+      choosePoster(
+        "tt0111161",
+        { ...BOTH, tvdb: TVDB },
+        { posterSource: "tvdb", rpdbApiKey: "key" },
+      ),
+    ).toBe(TVDB);
+    expect(choosePoster("tt0111161", BOTH, { posterSource: "tvdb" })).toBe(
+      IMDB,
+    );
   });
 
   it("shows the RPDB poster with a key, and the IMDb one without", () => {

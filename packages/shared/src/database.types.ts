@@ -620,22 +620,25 @@ export type Database = {
         };
         Relationships: [];
       };
-      tmdb_posters: {
+      title_posters: {
         Row: {
           checked_at: string;
           imdb_id: string;
-          poster_path: string | null;
+          poster: string | null;
+          source: string;
         };
         ComputedFields: never;
         Insert: {
           checked_at?: string;
           imdb_id: string;
-          poster_path?: string | null;
+          poster?: string | null;
+          source: string;
         };
         Update: {
           checked_at?: string;
           imdb_id?: string;
-          poster_path?: string | null;
+          poster?: string | null;
+          source?: string;
         };
         Relationships: [];
       };

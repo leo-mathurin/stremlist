@@ -369,20 +369,24 @@ export async function getPosterSource(accountId: string): Promise<string> {
   return data.poster_source;
 }
 
-/** Forget the TMDB posters cached for these Titles. */
-export async function clearTmdbPosters(imdbIds: string[]): Promise<void> {
+/** Forget the TMDB and TheTVDB posters cached for these Titles. */
+export async function clearTitlePosters(imdbIds: string[]): Promise<void> {
   const { error } = await db
-    .from("tmdb_posters")
+    .from("title_posters")
     .delete()
     .in("imdb_id", imdbIds);
   if (error) throw error;
 }
 
-/** The TMDB posters cached for these Titles, by IMDb ID. */
-export async function getTmdbPosterRows(imdbIds: string[]) {
+/** The posters of `source` cached for these Titles, by IMDb ID. */
+export async function getTitlePosterRows(
+  source: "tmdb" | "tvdb",
+  imdbIds: string[],
+) {
   const { data, error } = await db
-    .from("tmdb_posters")
-    .select("imdb_id, poster_path")
+    .from("title_posters")
+    .select("imdb_id, poster")
+    .eq("source", source)
     .in("imdb_id", imdbIds)
     .order("imdb_id");
   if (error) throw error;

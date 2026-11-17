@@ -8,7 +8,8 @@ import {
   vi,
 } from "vite-plus/test";
 import app from "../index.js";
-import { resetTmdbPosterMemory } from "../titles/tmdb-posters";
+import { resetPosterMemory } from "../titles/title-posters";
+import { resetTvdbToken } from "../titles/tvdb";
 import { movie, seedAccount, seedList } from "./helpers/fixtures.js";
 import {
   configBody,
@@ -86,7 +87,7 @@ beforeEach(() => {
   db.reset();
   resetRpc();
   cache.reset();
-  resetTmdbPosterMemory();
+  resetPosterMemory();
   vi.stubEnv("TMDB_API_KEY", "test-tmdb-key");
   vi.stubEnv("TMDB_READ_ACCESS_TOKEN", "");
 });
@@ -120,14 +121,19 @@ describe("poster source in Stremio responses", () => {
     });
     // Each answer is stored for every Account, a missing poster included.
     expect(
-      db.getTable("tmdb_posters").map(({ imdb_id, poster_path }) => ({
+      db.getTable("title_posters").map(({ source, imdb_id, poster }) => ({
+        source,
         imdb_id,
-        poster_path,
+        poster,
       })),
     ).toEqual(
       expect.arrayContaining([
-        { imdb_id: SHAWSHANK.id, poster_path: "/shawshank-tmdb.jpg" },
-        { imdb_id: ALIEN.id, poster_path: null },
+        {
+          source: "tmdb",
+          imdb_id: SHAWSHANK.id,
+          poster: "/shawshank-tmdb.jpg",
+        },
+        { source: "tmdb", imdb_id: ALIEN.id, poster: null },
       ]),
     );
   });
@@ -140,7 +146,7 @@ describe("poster source in Stremio responses", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
 
     // A new instance has an empty memory and reads the stored posters.
-    resetTmdbPosterMemory();
+    resetPosterMemory();
     expect((await catalogPosters(accountId))[SHAWSHANK.id]).toBe(
       TMDB_SHAWSHANK,
     );
@@ -198,7 +204,7 @@ describe("poster source in Stremio responses", () => {
       [SHAWSHANK.id]: IMDB_POSTER,
       [ALIEN.id]: ALIEN.poster,
     });
-    expect(db.getTable("tmdb_posters")).toEqual([]);
+    expect(db.getTable("title_posters")).toEqual([]);
     // After a failure, the next requests do not wait for TMDB.
     const calls = fetch.mock.calls.length;
     await catalogPosters(accountId);
@@ -222,6 +228,55 @@ describe("poster source in Stremio responses", () => {
 
     expect((await catalogPosters(accountId))[SHAWSHANK.id]).toBe(IMDB_POSTER);
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+// With the real TheTVDB API, when TVDB_LIVE_API_KEY is set (it is not in CI).
+describe.runIf(process.env.TVDB_LIVE_API_KEY)("TheTVDB posters, live", () => {
+  beforeEach(() => {
+    vi.stubEnv("TVDB_API_KEY", process.env.TVDB_LIVE_API_KEY ?? "");
+  });
+  beforeEach(() => {
+    resetTvdbToken();
+  });
+
+  it("shows TheTVDB posters and stores them for every Account", async () => {
+    const accountId = seedWithList({ poster_source: "tvdb" });
+
+    const posters = await catalogPosters(accountId);
+    for (const id of [SHAWSHANK.id, ALIEN.id]) {
+      expect(posters[id]).toMatch(
+        /^https:\/\/artworks\.thetvdb\.com\/.+\.(jpe?g|png|webp)$/u,
+      );
+    }
+    expect(
+      db
+        .getTable("title_posters")
+        .filter((row) => row.source === "tvdb")
+        .map((row) => String(row.imdb_id))
+        .sort((a, b) => a.localeCompare(b)),
+    ).toEqual([ALIEN.id, SHAWSHANK.id].sort((a, b) => a.localeCompare(b)));
+
+    // An Account on IMDb keeps IMDb posters for the same Titles.
+    const imdbAccount = seedWithList({}, OTHER_LIST_ID);
+    expect(
+      (await catalogPosters(imdbAccount, OTHER_LIST_ID))[SHAWSHANK.id],
+    ).toBe(IMDB_POSTER);
+  });
+
+  it("finds the poster of a series", async () => {
+    const accountId = seedWithList({ poster_source: "tvdb" }, LIST_ID, [
+      movie("tt1190634", {
+        type: "series",
+        name: "The Boys",
+        poster: "https://m.media-amazon.com/images/M/boys.jpg",
+      }),
+    ]);
+    const res = await app.request(
+      `/${accountId}/catalog/series/wl-${LIST_ID}-series.json`,
+    );
+    const { metas } = await readJson(res, metasBody);
+    expect(metas[0].poster).toMatch(/^https:\/\/artworks\.thetvdb\.com\//u);
   });
 });
 
@@ -299,7 +354,7 @@ describe("saving the poster source", () => {
 
   it("refuses an unknown source", async () => {
     const { id } = seedAccount({});
-    expect((await save(id, { posterSource: "tvdb" })).status).toBe(400);
+    expect((await save(id, { posterSource: "fanart" })).status).toBe(400);
     expect(await savedSource(id)).toBe("imdb");
   });
 });

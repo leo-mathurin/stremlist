@@ -203,11 +203,13 @@ BEGIN
     'A save changes the poster source of its Account only';
   PERFORM public.replace_account_config('sl_configtransactiontest00', 'kept-key', payload, NULL, NULL, NULL, 'rpdb');
   ASSERT (SELECT poster_source FROM public.accounts WHERE id = 'sl_configtransactiontest00') = 'rpdb';
+  PERFORM public.replace_account_config('sl_configtransactiontest00', 'kept-key', payload, NULL, NULL, NULL, 'tvdb');
+  ASSERT (SELECT poster_source FROM public.accounts WHERE id = 'sl_configtransactiontest00') = 'tvdb';
   -- Another source keeps the RPDB key.
   PERFORM public.replace_account_config('sl_configtransactiontest00', 'kept-key', payload, NULL, NULL, NULL, 'tmdb');
   ASSERT (SELECT rpdb_api_key FROM public.accounts WHERE id = 'sl_configtransactiontest00') = 'kept-key';
   BEGIN
-    PERFORM public.replace_account_config('sl_configtransactiontest00', NULL, payload, NULL, NULL, NULL, 'tvdb');
+    PERFORM public.replace_account_config('sl_configtransactiontest00', NULL, payload, NULL, NULL, NULL, 'fanart');
     RAISE EXCEPTION 'Expected check violation';
   EXCEPTION WHEN check_violation THEN NULL;
   END;

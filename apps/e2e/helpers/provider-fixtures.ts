@@ -667,6 +667,8 @@ function tmdb({ url }: FixtureRequest): Response {
 
 installFetchFixture({
   log: process.env.E2E_PROVIDER_LOG,
+  // Only a backend started with a real TheTVDB key reaches TheTVDB.
+  passthrough: process.env.TVDB_API_KEY ? ["api4.thetvdb.com"] : [],
   hosts: {
     "letterboxd.com": letterboxd,
     "api.trakt.tv": trakt,

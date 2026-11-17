@@ -8,9 +8,9 @@ import {
   saveConfigure,
 } from "../helpers/configure.js";
 import {
-  clearTmdbPosters,
+  clearTitlePosters,
   getPosterSource,
-  getTmdbPosterRows,
+  getTitlePosterRows,
   resetDb,
   seedAccount,
 } from "../helpers/db.js";
@@ -47,7 +47,7 @@ test.afterAll(async () => {
 
 test.beforeEach(async () => {
   await resetDb();
-  await clearTmdbPosters(TITLES);
+  await clearTitlePosters(TITLES);
   backend.clearRequests();
 });
 
@@ -161,9 +161,9 @@ test(
     ]);
 
     // TMDB answers are stored once for every Account, a missing poster too.
-    expect(await getTmdbPosterRows(TITLES)).toEqual([
-      { imdb_id: MOVIE, poster_path: "/fixture-shawshank.jpg" },
-      { imdb_id: SERIES, poster_path: null },
+    expect(await getTitlePosterRows("tmdb", TITLES)).toEqual([
+      { imdb_id: MOVIE, poster: "/fixture-shawshank.jpg" },
+      { imdb_id: SERIES, poster: null },
     ]);
     backend.clearRequests();
     await stremioPosters(backend.api, accountId, listId);
@@ -220,9 +220,77 @@ test(
       expect(
         down.requests((url) => url.host === "api.themoviedb.org").length,
       ).toBeGreaterThan(0);
-      expect(await getTmdbPosterRows(TITLES)).toEqual([]);
+      expect(await getTitlePosterRows("tmdb", TITLES)).toEqual([]);
     } finally {
       await down.stop();
+    }
+  },
+);
+
+/** The real TheTVDB key of the run; the test is skipped without it (CI). */
+const LIVE_TVDB_KEY = process.env.TVDB_LIVE_API_KEY ?? "";
+const TVDB_ARTWORK =
+  /^https:\/\/artworks\.thetvdb\.com\/.+\.(?:jpe?g|png|webp)$/u;
+
+test(
+  "TheTVDB posters, with the real API, save and reach Stremio",
+  { tag: "@local" },
+  async ({ page }) => {
+    test.skip(!LIVE_TVDB_KEY, "Needs TVDB_LIVE_API_KEY (a real TheTVDB key)");
+    const live = await startFixtureBackend("./provider-fixtures.ts", {
+      TVDB_API_KEY: LIVE_TVDB_KEY,
+      E2E_IMDB_POSTERS: "1",
+    });
+    try {
+      const { accountId, listId } = await seedWatchlistAccount(live.api);
+      await routePageTo(page, live.url);
+      await routePosterImages(page);
+      await page.goto(configureUrl(accountId));
+      await expect(
+        page.getByText("Poster fixture", { exact: true }),
+      ).toBeVisible();
+
+      // The preview shows TheTVDB thumbnails at once, with the attribution.
+      await page
+        .getByRole("button", { name: "Preview Poster fixture" })
+        .click();
+      const tile = page
+        .getByRole("link", { name: /^The Shawshank Redemption/ })
+        .locator("img");
+      await expect(tile).toHaveAttribute("src", /fixture-tt0111161/);
+      const posters = page.getByRole("combobox", { name: "Posters" });
+      await posters.click();
+      await page.getByRole("option", { name: /^TheTVDB/ }).click();
+      await expect(tile).toHaveAttribute(
+        "src",
+        /^https:\/\/artworks\.thetvdb\.com\/.+_t\.jpe?g$/u,
+      );
+      await expect(
+        page.getByRole("link", { name: "TheTVDB", exact: true }),
+      ).toHaveAttribute("href", "https://thetvdb.com/");
+      await saveConfigure(page);
+
+      await page.reload();
+      await expect(posters).toHaveText(/TheTVDB/);
+      expect(await getPosterSource(accountId)).toBe("tvdb");
+
+      // Stremio: full-size TheTVDB posters for the movie and the series.
+      const served = await stremioPosters(live.api, accountId, listId);
+      expect(served[MOVIE]).toMatch(TVDB_ARTWORK);
+      expect(served[SERIES]).toMatch(TVDB_ARTWORK);
+      expect(served[MOVIE]).not.toMatch(/_t\.jpe?g$/u);
+      expect(
+        (await getTitlePosterRows("tvdb", TITLES)).map((row) => row.imdb_id),
+      ).toEqual([MOVIE, SERIES]);
+
+      // Cached for every Account: another read asks TheTVDB nothing.
+      live.clearRequests();
+      await stremioPosters(live.api, accountId, listId);
+      expect(live.requests((url) => url.host === "api4.thetvdb.com")).toEqual(
+        [],
+      );
+    } finally {
+      await live.stop();
     }
   },
 );

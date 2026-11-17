@@ -362,7 +362,11 @@ function CatalogRow({
           className="-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 sm:-mx-5 sm:scroll-px-5 sm:px-5"
         >
           {row.titles.map((title) => {
-            const posters = { imdb: title.poster, tmdb: title.tmdbPoster };
+            const posters = {
+              imdb: title.poster,
+              tmdb: title.tmdbPoster,
+              tvdb: title.tvdbPoster,
+            };
             // What Stremio shows, then what shows when an image fails: the
             // chosen source without RPDB, then the IMDb poster.
             const candidates = [

@@ -132,7 +132,7 @@ export const LEGAL_SECTIONS: LegalSection[] = [
             },
             {
               label: "Title data:",
-              text: "TMDB, Wikidata, JustWatch and Cinemeta (from Stremio) receive title IDs only, to match titles, fill in missing details and find TMDB posters.",
+              text: "TMDB, TheTVDB, Wikidata, JustWatch and Cinemeta (from Stremio) receive title IDs only, to match titles, fill in missing details and find TMDB and TheTVDB posters.",
             },
             {
               label: "Email:",
@@ -140,7 +140,7 @@ export const LEGAL_SECTIONS: LegalSection[] = [
             },
             {
               label: "Posters:",
-              text: "if you choose RPDB posters, Stremio and the configure page send your RPDB key and title IDs to RPDB to load poster images. If you choose TMDB posters, Stremio and the configure page load poster images from TMDB. The configure page preview also loads posters from Stremio's image service, and the example posters, when you open them, load from IMDb, TMDB or RPDB.",
+              text: "if you choose RPDB posters, Stremio and the configure page send your RPDB key and title IDs to RPDB to load poster images. If you choose TMDB or TheTVDB posters, Stremio and the configure page load poster images from that service. The configure page preview also loads posters from Stremio's image service, and the example posters, when you open them, load from IMDb, TMDB, TheTVDB or RPDB.",
             },
           ],
           "We do not control and are not responsible for the privacy practices of these services. We encourage you to review their privacy policies.",

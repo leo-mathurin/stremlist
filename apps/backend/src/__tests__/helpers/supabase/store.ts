@@ -85,7 +85,7 @@ const TABLE_DEFAULTS = new Map<string, () => Row>(
       created_at: now(),
       updated_at: now(),
     }),
-    tmdb_posters: () => ({ poster_path: null, checked_at: now() }),
+    title_posters: () => ({ poster: null, checked_at: now() }),
     title_id_map: () => ({
       imdb_id: null,
       strategy: null,
@@ -105,7 +105,7 @@ const UNIQUE_KEYS = new Map<string, string[][]>(
     oauth_states: [["state"]],
     stremio_connections: [["account_id"]],
     title_id_map: [["namespace", "external_id"]],
-    tmdb_posters: [["imdb_id"]],
+    title_posters: [["source", "imdb_id"]],
   }),
 );
 

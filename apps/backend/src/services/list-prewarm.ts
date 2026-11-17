@@ -3,11 +3,11 @@ import type { ConfigList } from "@stremlist/shared/stremio.types";
 import { randomUUID } from "node:crypto";
 import { mapWithConcurrency } from "../lib/concurrency";
 import { supabase } from "../lib/supabase";
-import { findTmdbPosters } from "../titles/tmdb-posters";
+import { findPosters } from "../titles/title-posters";
 import { getAccountLists } from "./accounts";
 import { getListCatalog } from "./lists";
 import type { PosterSettings } from "./posters";
-import { showsTmdbPosters } from "./posters";
+import { lookupSourceOf } from "./posters";
 
 const PREWARM_CONCURRENCY = 2;
 /**
@@ -76,19 +76,22 @@ async function runPrewarmBatch(
       });
       prewarmed += 1;
       // Posters are applied when Stremio requests the Catalog. Looking up
-      // the TMDB ones of its first page now lets that request find them.
-      if (posters && showsTmdbPosters(posters)) {
+      // the TMDB or TheTVDB ones of its first page now lets that request
+      // find them.
+      const source = posters && lookupSourceOf(posters);
+      if (source) {
         const types =
           list.displayMode === "split"
             ? (["movie", "series"] as const)
             : [list.displayMode];
         // One call per Catalog: each call looks up at most one page.
         for (const type of types) {
-          await findTmdbPosters(
+          await findPosters(
+            source,
             metas
               .filter((meta) => meta.type === type)
               .slice(0, PREWARM_POSTERS_PER_CATALOG),
-            { budgetMs: Infinity, size: "w500" },
+            { budgetMs: Infinity, size: "stremio" },
           );
         }
       }

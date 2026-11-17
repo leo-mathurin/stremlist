@@ -17,6 +17,8 @@ export interface PreviewTitle {
    * an older backend.
    */
   tmdbPoster?: string | null;
+  /** The TheTVDB poster, with the same rules as `tmdbPoster`. */
+  tvdbPoster?: string | null;
   releaseInfo: string | null;
 }
 

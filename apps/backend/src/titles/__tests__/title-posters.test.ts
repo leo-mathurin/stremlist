@@ -8,7 +8,8 @@ import {
 } from "vite-plus/test";
 import { db } from "../../__tests__/helpers/mock-supabase";
 import { MockQueryBuilder } from "../../__tests__/helpers/supabase/query-builder";
-import { findTmdbPosters, resetTmdbPosterMemory } from "../tmdb-posters";
+import { findPosters, resetPosterMemory } from "../title-posters";
+import { resetTvdbToken } from "../tvdb";
 
 vi.mock(
   "../../lib/supabase",
@@ -31,7 +32,8 @@ function answer(body: unknown, delayMs = 0) {
 
 beforeEach(() => {
   db.reset();
-  resetTmdbPosterMemory();
+  resetPosterMemory();
+  resetTvdbToken();
   vi.stubEnv("TMDB_API_KEY", "test-tmdb-key");
 });
 
@@ -40,15 +42,16 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("findTmdbPosters", () => {
+describe("findPosters on TMDB", () => {
   it("takes the TMDB result of the Title's type first", async () => {
     vi.stubGlobal("fetch", answer(BOTH));
-    const posters = await findTmdbPosters(
+    const posters = await findPosters(
+      "tmdb",
       [
         { id: "tt0000001", type: "movie" },
         { id: "tt0000002", type: "series" },
       ],
-      { budgetMs: 1000, size: "w342" },
+      { budgetMs: 1000, size: "preview" },
     );
     expect(Object.fromEntries(posters)).toEqual({
       tt0000001: "https://image.tmdb.org/t/p/w342/as-movie.jpg",
@@ -59,12 +62,13 @@ describe("findTmdbPosters", () => {
   it("ignores IDs that are not IMDb Title IDs and unsafe image paths", async () => {
     const fetch = answer({ movie_results: [{ poster_path: "../x?y" }] });
     vi.stubGlobal("fetch", fetch);
-    const posters = await findTmdbPosters(
+    const posters = await findPosters(
+      "tmdb",
       [
         { id: "stremlist:unavailable:private", type: "movie" },
         { id: "tt0000003", type: "movie" },
       ],
-      { budgetMs: 1000, size: "w500" },
+      { budgetMs: 1000, size: "stremio" },
     );
     expect(posters.size).toBe(0);
     expect(fetch).toHaveBeenCalledOnce();
@@ -78,9 +82,10 @@ describe("findTmdbPosters", () => {
       .spyOn(MockQueryBuilder.prototype, "then")
       .mockImplementationOnce(() => new Promise(() => {}));
     const started = Date.now();
-    const posters = await findTmdbPosters(
+    const posters = await findPosters(
+      "tmdb",
       [{ id: "tt0000009", type: "movie" }],
-      { budgetMs: 50, size: "w500" },
+      { budgetMs: 50, size: "stremio" },
     );
     expect(posters.size).toBe(0);
     expect(Date.now() - started).toBeLessThan(1000);
@@ -93,8 +98,8 @@ describe("findTmdbPosters", () => {
     vi.stubGlobal("fetch", fetch);
     const title = { id: "tt0000010", type: "movie" as const };
     const [first, second] = await Promise.all([
-      findTmdbPosters([title], { budgetMs: 1000, size: "w500" }),
-      findTmdbPosters([title], { budgetMs: 1000, size: "w500" }),
+      findPosters("tmdb", [title], { budgetMs: 1000, size: "stremio" }),
+      findPosters("tmdb", [title], { budgetMs: 1000, size: "stremio" }),
     ]);
     expect(fetch).toHaveBeenCalledOnce();
     expect(first.get(title.id)).toBe(
@@ -107,18 +112,76 @@ describe("findTmdbPosters", () => {
     vi.stubGlobal("fetch", answer(BOTH, 200));
     const title = { id: "tt0000004", type: "movie" as const };
 
-    const first = await findTmdbPosters([title], {
+    const first = await findPosters("tmdb", [title], {
       budgetMs: 10,
-      size: "w500",
+      size: "stremio",
     });
     expect(first.size).toBe(0);
 
     await vi.waitFor(() => {
-      expect(db.getTable("tmdb_posters")).toHaveLength(1);
+      expect(db.getTable("title_posters")).toHaveLength(1);
     });
-    const next = await findTmdbPosters([title], { budgetMs: 10, size: "w500" });
+    const next = await findPosters("tmdb", [title], {
+      budgetMs: 10,
+      size: "stremio",
+    });
     expect(next.get(title.id)).toBe(
       "https://image.tmdb.org/t/p/w500/as-movie.jpg",
     );
   });
 });
+
+// With the real TheTVDB API, when TVDB_LIVE_API_KEY is set (it is not in CI).
+describe.runIf(process.env.TVDB_LIVE_API_KEY)(
+  "findPosters on TheTVDB, live",
+  () => {
+    beforeEach(() => {
+      vi.stubEnv("TVDB_API_KEY", process.env.TVDB_LIVE_API_KEY ?? "");
+    });
+    it("finds series and movie posters by IMDb ID, small for the preview", async () => {
+      vi.unstubAllGlobals();
+      const titles = [
+        { id: "tt1190634", type: "series" as const },
+        { id: "tt0903747", type: "series" as const },
+        { id: "tt15398776", type: "movie" as const },
+        { id: "tt0111161", type: "movie" as const },
+      ];
+      const stremio = await findPosters("tvdb", titles, {
+        budgetMs: 20_000,
+        size: "stremio",
+      });
+      expect([...stremio.keys()].sort((a, b) => a.localeCompare(b))).toEqual(
+        titles.map(({ id }) => id).sort((a, b) => a.localeCompare(b)),
+      );
+      for (const url of stremio.values()) {
+        expect(url).toMatch(/^https:\/\/artworks\.thetvdb\.com\/.+\.jpg$/u);
+        expect(url).not.toMatch(/_t\.jpg$/u);
+      }
+      // Cached now: the preview size needs no new lookup.
+      const preview = await findPosters("tvdb", titles, {
+        budgetMs: 0,
+        size: "preview",
+      });
+      expect(preview.get("tt1190634")).toBe(
+        stremio.get("tt1190634")?.replace(/\.jpg$/u, "_t.jpg"),
+      );
+      // The thumbnail is a real image.
+      const image = await fetch(preview.get("tt0111161") ?? "");
+      expect(image.status).toBe(200);
+      expect(image.headers.get("content-type")).toBe("image/jpeg");
+    });
+
+    it("finds no poster for an IMDb ID that TheTVDB does not know", async () => {
+      vi.unstubAllGlobals();
+      const posters = await findPosters(
+        "tvdb",
+        [{ id: "tt99999999999", type: "movie" }],
+        { budgetMs: 20_000, size: "stremio" },
+      );
+      expect(posters.size).toBe(0);
+      expect(db.getTable("title_posters")).toMatchObject([
+        { source: "tvdb", imdb_id: "tt99999999999", poster: null },
+      ]);
+    });
+  },
+);

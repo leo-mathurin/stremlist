@@ -19,31 +19,39 @@ const SOURCES: { value: PosterSource; label: string; hint: string }[] = [
     hint: "Posters from The Movie Database. When TMDB has none, the IMDb poster shows.",
   },
   {
+    value: "tvdb",
+    label: "TheTVDB",
+    hint: "Posters from TheTVDB. When TheTVDB has none, the IMDb poster shows.",
+  },
+  {
     value: "rpdb",
     label: "RPDB",
     hint: "Rating Poster Database: posters with ratings on the cover art. Needs your RPDB API key.",
   },
 ];
 
-/** The same three Titles from IMDb and TMDB, to compare the sources. */
+/** The same three Titles from IMDb, TMDB and TheTVDB, to compare them. */
 const EXAMPLES = [
   {
     id: "tt1190634",
     name: "The Boys",
     imdb: "https://m.media-amazon.com/images/M/MV5BZjU4OWNiYzQtMzc1NS00NjZlLTgyYTctZWY4ZmEzMTkxYjA4XkEyXkFqcGc@._V1_QL75_UX240_.jpg",
     tmdb: "https://image.tmdb.org/t/p/w342/in1R2dDc421JxsoRWaIIAqVI2KE.jpg",
+    tvdb: "https://artworks.thetvdb.com/banners/posters/5c5c402b075cc_t.jpg",
   },
   {
     id: "tt15398776",
     name: "Oppenheimer",
     imdb: "https://m.media-amazon.com/images/M/MV5BN2JkMDc5MGQtZjg3YS00NmFiLWIyZmQtZTJmNTM5MjVmYTQ4XkEyXkFqcGc@._V1_QL75_UX240_.jpg",
     tmdb: "https://image.tmdb.org/t/p/w342/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg",
+    tvdb: "https://artworks.thetvdb.com/banners/v4/movie/287533/posters/64552f43bff1e_t.jpg",
   },
   {
     id: "tt0111161",
     name: "The Shawshank Redemption",
     imdb: "https://m.media-amazon.com/images/M/MV5BMDAyY2FhYjctNDc5OS00MDNlLThiMGUtY2UxYWVkNGY2ZjljXkEyXkFqcGc@._V1_QL75_UX240_.jpg",
     tmdb: "https://image.tmdb.org/t/p/w342/9cqNxx0GxF0bflZmeSMuL5tnGzr.jpg",
+    tvdb: "https://artworks.thetvdb.com/banners/v4/movie/190/posters/6089f8cd44f59_t.jpg",
   },
 ];
 
@@ -149,7 +157,25 @@ export default function PosterSourceSettings({
           </SelectContent>
         </Select>
         <div className="mt-1.5 flex items-center justify-between gap-3">
-          <p className="text-xs text-pretty text-black/55">{current?.hint}</p>
+          <p className="text-xs text-pretty text-black/55">
+            {current?.hint}
+            {value === "tvdb" && (
+              // TheTVDB's API terms ask for this attribution, with a link.
+              <>
+                {" "}
+                Metadata provided by{" "}
+                <a
+                  href="https://thetvdb.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-stremlist hover:underline"
+                >
+                  TheTVDB
+                </a>
+                .
+              </>
+            )}
+          </p>
           <button
             type="button"
             aria-expanded={examplesOpen}
