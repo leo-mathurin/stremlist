@@ -11,6 +11,11 @@ import {
  * binds a snapshot to its authorization instead of the Simkl username.
  */
 export const STATE_VERSION = 2;
+/**
+ * Version of the library snapshot. Version 3 keeps when each title was
+ * rated: older snapshots are read again once, custom lists are not.
+ */
+export const LIBRARY_VERSION = 3;
 
 export function libraryKey(accountId: string): string {
   return `${connectionPrefix(accountId, "simkl")}library.json`;

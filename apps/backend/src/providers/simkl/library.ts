@@ -2,7 +2,7 @@ import { asImdbId } from "@stremlist/shared/constants";
 import { z } from "zod";
 import type { ConnectionAccess } from "../types";
 import { isMaxItemsError, simklRequest } from "./api";
-import { libraryKey, readState, STATE_VERSION, writeState } from "./state";
+import { LIBRARY_VERSION, libraryKey, readState, writeState } from "./state";
 
 /**
  * Each user has a small daily request allowance (500 on a free plan), shared
@@ -44,6 +44,7 @@ const rawEntrySchema = z.object({
   added_to_watchlist_at: z.string().nullish(),
   last_watched_at: z.string().nullish(),
   user_rating: z.number().nullish(),
+  user_rated_at: z.string().nullish(),
   status: z.string().nullish(),
   watched_episodes_count: z.number().nullish(),
   anime_type: z.string().nullish(),
@@ -142,6 +143,8 @@ const libraryItemSchema = z.object({
   addedAt: z.string().optional(),
   lastWatchedAt: z.string().optional(),
   rating: z.number().optional(),
+  /** When the user gave `rating`. */
+  ratedAt: z.string().optional(),
   watchedEpisodes: z.number(),
   /**
    * Watched episodes as "season:episode" (TVDB numbering for anime), or
@@ -201,6 +204,7 @@ function parseEntry(
   const status = normalizeStatus(entry.status ?? undefined);
   if (!simkl || !status) return null;
   const rating = toInt(entry.user_rating);
+  const rated = rating !== undefined && rating <= 10;
   return {
     simkl,
     kind,
@@ -211,7 +215,8 @@ function parseEntry(
     animeType: entry.anime_type ?? undefined,
     addedAt: entry.added_to_watchlist_at ?? undefined,
     lastWatchedAt: entry.last_watched_at ?? undefined,
-    rating: rating && rating <= 10 ? rating : undefined,
+    rating: rated ? rating : undefined,
+    ratedAt: rated ? (entry.user_rated_at ?? undefined) : undefined,
     watchedEpisodes: entry.watched_episodes_count ?? 0,
     episodes: entry.seasons
       ? parseEpisodes(entry)
@@ -351,7 +356,9 @@ async function applyChanges(
       const existing = items.get(row.simkl);
       items.set(
         row.simkl,
-        existing ? { ...existing, rating: row.rating } : row,
+        existing
+          ? { ...existing, rating: row.rating, ratedAt: row.ratedAt }
+          : row,
       );
     }
   }
@@ -363,7 +370,7 @@ function usableSnapshot(
   snapshot: LibrarySnapshot | null,
   connection: ConnectionAccess,
 ): LibrarySnapshot | null {
-  return snapshot?.version === STATE_VERSION &&
+  return snapshot?.version === LIBRARY_VERSION &&
     snapshot.authorization === connection.authorization
     ? snapshot
     : null;
@@ -439,7 +446,7 @@ async function runSync(connection: ConnectionAccess): Promise<LibrarySnapshot> {
   }
 
   const snapshot: LibrarySnapshot = {
-    version: STATE_VERSION,
+    version: LIBRARY_VERSION,
     authorization: connection.authorization,
     activities,
     checkedAt: Date.now(),

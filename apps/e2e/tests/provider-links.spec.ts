@@ -146,6 +146,14 @@ test(
         expect.objectContaining({ ref: "me/lists/77", label: "Horror nights" }),
       ]),
     );
+    expect(
+      (await api.getConnectionSources(accountId, "simkl")).body.sources,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ref: "me/plantowatch" }),
+        expect.objectContaining({ ref: "me/ratings", label: "Ratings" }),
+      ]),
+    );
 
     const saved = await api.postConfig(accountId, [
       listInput("mdblist", "lists/4242", {
@@ -153,10 +161,16 @@ test(
         displayMode: "split",
       }),
       listInput("simkl", "me/plantowatch", SPLIT),
+      listInput("simkl", "me/ratings", SPLIT),
     ]);
     expect(saved.status).toBe(200);
     for (const row of (await api.getConfig(accountId)).body.lists) {
-      expect(await catalogs(accountId, row.id)).toEqual(BOTH);
+      expect(await catalogs(accountId, row.id)).toEqual(
+        // Only the show is rated in the fixture library.
+        row.sourceRef === "me/ratings"
+          ? { movie: [], series: BOTH.series }
+          : BOTH,
+      );
     }
     for (const host of ["api.mdblist.com", "api.simkl.com"]) {
       const reads = backend.requests((url) => url.host === host);
@@ -165,6 +179,41 @@ test(
         reads.every((entry) => entry.authorization === "fixture-access-token"),
       ).toBe(true);
     }
+  },
+);
+
+test(
+  "Simkl trending charts become Catalogs with no Connection",
+  { tag: "@local" },
+  async () => {
+    const { api } = backend;
+    const created = await api.createAccount([
+      listInput("simkl", "trending/movies", { displayMode: "movie" }),
+      listInput("simkl", "trending/tv", { displayMode: "series" }),
+      listInput("simkl", "trending/anime", { displayMode: "series" }),
+    ]);
+    expect(created.status).toBe(200);
+    const accountId = present(created.body.accountId, "the new Account ID");
+    const shown: Record<string, unknown> = {};
+    for (const row of (await api.getConfig(accountId)).body.lists) {
+      shown[row.sourceRef] = await catalogs(accountId, row.id);
+    }
+    expect(shown).toEqual({
+      "trending/movies": { movie: BOTH.movie, series: [] },
+      "trending/tv": { movie: [], series: BOTH.series },
+      // Both anime seasons are one Title.
+      "trending/anime": { movie: [], series: BOTH.series },
+    });
+    const files = backend.requests((url) => url.host === "data.simkl.in");
+    expect(new Set(files.map((entry) => new URL(entry.url).pathname))).toEqual(
+      new Set(
+        ["movies", "tv", "anime"].map(
+          (type) => `/discover/trending/${type}/week_100.json`,
+        ),
+      ),
+    );
+    expect(files.every((entry) => entry.authorization === null)).toBe(true);
+    expect(backend.requests((url) => url.host === "api.simkl.com")).toEqual([]);
   },
 );
 

@@ -335,6 +335,9 @@ function simkl({ request, url, body }: FixtureRequest): Response {
           {
             status: "plantowatch",
             added_to_watchlist_at: "2026-01-02T00:00:00Z",
+            // Only the show is rated: the movie's Actions start unrated.
+            user_rating: 8,
+            user_rated_at: "2026-01-03T00:00:00Z",
             show: {
               title: BREAKING_BAD.title,
               ids: { simkl: 2, imdb: "tt0903747" },
@@ -352,6 +355,29 @@ function simkl({ request, url, body }: FixtureRequest): Response {
       if (request.method === "POST") return syncWrite(body, SIMKL_KNOWN);
   }
   throw new Error(`Unexpected Simkl request ${request.method} ${path}`);
+}
+
+/** Simkl's trending files: public, with the app's client ID and no token. */
+function simklCdn({ request, url }: FixtureRequest): Response {
+  if (url.searchParams.get("client_id") !== "fixture-simkl-client") {
+    return json({ error: "missing client id" }, 403);
+  }
+  const ids = (simkl: number, imdb: string) => ({ simkl_id: simkl, imdb });
+  switch (url.pathname) {
+    case "/discover/trending/movies/week_100.json":
+      return json([{ title: SHAWSHANK.title, ids: ids(1, "tt0111161") }]);
+    case "/discover/trending/tv/week_100.json":
+      return json([{ title: BREAKING_BAD.title, ids: ids(2, "tt0903747") }]);
+    // Two seasons of one anime share the series' IMDb ID.
+    case "/discover/trending/anime/week_100.json":
+      return json([
+        { title: "Season 2", anime_type: "tv", ids: ids(3, "tt0903747") },
+        { title: "Season 1", anime_type: "tv", ids: ids(4, "tt0903747") },
+      ]);
+  }
+  throw new Error(
+    `Unexpected Simkl CDN request ${request.method} ${url.pathname}`,
+  );
 }
 
 function justwatch({ body }: FixtureRequest): Response {
@@ -609,6 +635,7 @@ installFetchFixture({
     "auth.trakt.tv": trakt,
     "api.mdblist.com": mdblist,
     "api.simkl.com": simkl,
+    "data.simkl.in": simklCdn,
     "apis.justwatch.com": justwatch,
     "apollo.senscritique.com": senscritique,
     "query.wikidata.org": wikidata,

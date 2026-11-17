@@ -82,7 +82,7 @@ describe("simkl entries", () => {
     ]);
   });
 
-  it("needs a Connection for every Source list", async () => {
+  it("needs a Connection for every Source list but the charts", async () => {
     await expect(
       simklProvider.fetchSource("me/plantowatch", { connection: null }),
     ).rejects.toMatchObject({ reason: "needs_connection" });
@@ -110,6 +110,18 @@ describe("simkl entries", () => {
     await expect(
       simklProvider.validateSource("me/history", ctx()),
     ).resolves.toMatchObject({ ok: true, suggestedTitle: "History" });
+  });
+
+  it("lists everything rated, oldest rating first", async () => {
+    const { entries } = await simklProvider.fetchSource("me/ratings", ctx());
+    // Simkl gave no rating date for The Godfather: it comes first.
+    expect(entries.map((entry) => [entry.title, entry.addedAt])).toEqual([
+      ["The Godfather", undefined],
+      ["Game of Thrones", "2026-05-16T14:20:16Z"],
+    ]);
+    await expect(
+      simklProvider.validateSource("me/ratings", ctx()),
+    ).resolves.toMatchObject({ ok: true, suggestedTitle: "Ratings" });
   });
 
   it("links every entry back to its Simkl page", async () => {

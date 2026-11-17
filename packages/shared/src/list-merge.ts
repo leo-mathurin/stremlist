@@ -98,7 +98,7 @@ export function sourceTitleType(
 const TRAKT_DATED =
   /^(?:(?:me|users\/[^/]+)\/(?:watchlist|favorites|ratings|history|collection|lists\/[^/]+)|lists\/[^/]+)$/;
 const SIMKL_DATED =
-  /^me\/(?:plantowatch|watching|completed|hold|dropped|history)$/;
+  /^me\/(?:plantowatch|watching|completed|hold|dropped|history|ratings)$/;
 
 /**
  * Whether the Provider gives the date when each Title joined this Source

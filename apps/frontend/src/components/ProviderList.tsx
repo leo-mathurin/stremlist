@@ -21,7 +21,10 @@ function subtitle(
     case "none":
       return "Paste a link";
     case "optional":
-      return "Paste a link, or connect";
+      // Simkl has no links, only charts in Quick add.
+      return PROVIDERS[provider].linkExample
+        ? "Paste a link, or connect"
+        : "Add a chart, or connect";
     case "required":
       return "Connect to add lists";
   }
@@ -177,7 +180,11 @@ export default function ProviderList({
             </span>
           );
         } else {
-          trailing = <span className="text-xs text-white/40">Link</span>;
+          trailing = (
+            <span className="text-xs text-white/40">
+              {info.linkExample ? "Link" : "Charts"}
+            </span>
+          );
         }
 
         const affected = affectedLists[id] ?? 0;

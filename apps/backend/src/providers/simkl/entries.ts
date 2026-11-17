@@ -7,13 +7,15 @@ import type {
 } from "./library";
 import { STATUSES } from "./library";
 
-export const STATUS_REFS = new Map<string, SimklStatus>(
+const STATUS_REFS = new Map<string, SimklStatus>(
   STATUSES.map((status) => [`me/${status}`, status]),
 );
 /** Everything the user watched something of, from the library snapshot. */
-export const HISTORY_REF = "me/history";
+const HISTORY_REF = "me/history";
+/** Everything the user rated, from the library snapshot. */
+const RATINGS_REF = "me/ratings";
 /** Source lists read from the library snapshot. */
-export const LIBRARY_REFS = [...STATUS_REFS.keys(), HISTORY_REF];
+export const LIBRARY_REFS = [...STATUS_REFS.keys(), HISTORY_REF, RATINGS_REF];
 
 export function titleType(
   kind: SimklKind,
@@ -60,14 +62,32 @@ function byDate(
 }
 
 /** Watched items, in the order they were last watched (oldest first). */
-export function historyEntries(items: LibraryItem[]): SourceEntry[] {
+function historyEntries(items: LibraryItem[]): SourceEntry[] {
   return items
     .filter((item) => item.lastWatchedAt)
     .sort(byDate((item) => item.lastWatchedAt))
     .map((item) => toEntry(item, item.lastWatchedAt));
 }
 
-export function statusEntries(
+/** Rated items, in the order they were rated (oldest first). */
+function ratingEntries(items: LibraryItem[]): SourceEntry[] {
+  return items
+    .filter((item) => item.rating)
+    .sort(byDate((item) => item.ratedAt))
+    .map((item) => toEntry(item, item.ratedAt));
+}
+
+/** The entries of one of the LIBRARY_REFS. */
+export function libraryEntries(
+  items: LibraryItem[],
+  ref: string,
+): SourceEntry[] {
+  const status = STATUS_REFS.get(ref);
+  if (status) return statusEntries(items, status);
+  return ref === RATINGS_REF ? ratingEntries(items) : historyEntries(items);
+}
+
+function statusEntries(
   items: LibraryItem[],
   status: SimklStatus,
 ): SourceEntry[] {

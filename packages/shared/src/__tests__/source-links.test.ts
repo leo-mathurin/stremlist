@@ -3,8 +3,9 @@ import {
   describeSourceRef,
   parseSourceLink,
   sourceRequiresConnection,
+  sourceTitle,
 } from "../providers";
-import { sourceHasAddedDates } from "../list-merge";
+import { sourceHasAddedDates, sourceTitleType } from "../list-merge";
 import { describe, expect, it } from "vite-plus/test";
 
 const JUSTWATCH_ID = "tl-us-0f1e2d3c-4b5a-4968-8776-655443322110";
@@ -432,6 +433,8 @@ describe("sourceRequiresConnection", () => {
     ["trakt", "users/leo/watchlist", false],
     ["trakt", "trending", false],
     ["simkl", "me/plantowatch", true],
+    ["simkl", "me/ratings", true],
+    ["simkl", "trending/movies", false],
     ["mdblist", "lists/leo/top", true],
     ["imdb", "ur12345678", false],
     ["justwatch", JUSTWATCH_ID, false],
@@ -673,5 +676,36 @@ describe("sourceHasAddedDates: SensCritique", () => {
       "polls/3996052",
     ])
       expect(sourceHasAddedDates("senscritique", ref)).toBe(false);
+  });
+});
+
+describe("Simkl Source lists", () => {
+  it("dates ratings by when they were given, but not the trending charts", () => {
+    expect(sourceHasAddedDates("simkl", "me/ratings")).toBe(true);
+    for (const ref of ["trending/movies", "trending/tv", "trending/anime"])
+      expect(sourceHasAddedDates("simkl", ref)).toBe(false);
+  });
+
+  it("names the trending charts after Simkl and links its Most Watched pages", () => {
+    expect(describeSourceRef("simkl", "trending/movies")).toEqual({
+      kind: "chart",
+      detail: null,
+      url: "https://simkl.com/movies/best-movies/most-watched/",
+      title: "Simkl Trending Movies",
+    });
+    expect(sourceTitle("simkl", "trending/tv")).toBe("Simkl Trending TV");
+    expect(sourceTitle("simkl", "trending/anime")).toBe("Simkl Trending Anime");
+    expect(describeSourceRef("simkl", "me/ratings")).toEqual({
+      kind: "list",
+      detail: "Your account",
+      url: null,
+      title: "Simkl Ratings",
+    });
+  });
+
+  it("types the movie and TV charts, but not anime, which has films", () => {
+    expect(sourceTitleType("simkl", "trending/movies")).toBe("movie");
+    expect(sourceTitleType("simkl", "trending/tv")).toBe("series");
+    expect(sourceTitleType("simkl", "trending/anime")).toBeNull();
   });
 });
