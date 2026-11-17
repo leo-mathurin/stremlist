@@ -230,6 +230,32 @@ describe("parseSourceLink: SensCritique", () => {
     );
   });
 
+  it.each([
+    ["DONE&universe=1", "done", "history", "watched"],
+    ["done", "done", "history", "watched"],
+    [
+      "RATING&universe=4&order=POPULARITY_DESC&page=2",
+      "rated",
+      "list",
+      "ratings",
+    ],
+    ["recommend", "recommend", "list", "favorites"],
+    ["Wish&universe=4", "wishes", "watchlist", "wishlist"],
+  ] as const)(
+    "reads the collection of action=%s",
+    (query, collection, kind, noun) => {
+      expect(
+        parseSourceLink(
+          `https://www.senscritique.com/LeoM/collection?action=${query}`,
+        ),
+      ).toEqual(
+        parsed("senscritique", `users/LeoM/${collection}`, kind, {
+          suggestedTitle: `LeoM's ${noun}`,
+        }),
+      );
+    },
+  );
+
   it("reads a list by its ID", () => {
     expect(
       parseSourceLink(
@@ -238,11 +264,42 @@ describe("parseSourceLink: SensCritique", () => {
     ).toEqual(parsed("senscritique", "lists/3171742", "list"));
   });
 
+  it("reads the results of a poll by their ID", () => {
+    expect(
+      parseSourceLink(
+        "https://www.senscritique.com/top/resultats/Les_meilleurs_films_de_2025/3996052",
+      ),
+    ).toEqual(parsed("senscritique", "polls/3996052", "chart"));
+  });
+
+  it.each([
+    ["films/tops/top111", "top111-movies"],
+    ["series/tops/top111", "top111-series"],
+    ["films/tops/top100-des-top10", "top100-movies"],
+    ["series/tops/top100-des-top10", "top100-series"],
+  ])("reads the chart %s", (path, ref) => {
+    expect(parseSourceLink(`https://www.senscritique.com/${path}`)).toEqual(
+      parsed("senscritique", ref, "chart"),
+    );
+  });
+
   it.each([
     "https://www.senscritique.com/",
     "https://www.senscritique.com/film/inception/450170",
     "https://www.senscritique.com/serie/breaking_bad/507411",
     "https://www.senscritique.com/liste/films_cultes",
+    "https://www.senscritique.com/films/tops/top42",
+    "https://www.senscritique.com/films/sondages",
+    "https://www.senscritique.com/top/resultats/no-id",
+    // Collections that Stremlist does not read.
+    "https://www.senscritique.com/LeoM/collection?action=CURRENT",
+    "https://www.senscritique.com/LeoM/collection?action=RECENT",
+    "https://www.senscritique.com/LeoM/collection?action=SHOPPING_LIST",
+    // Books: no movies or series.
+    "https://www.senscritique.com/LeoM/collection?action=DONE&universe=2",
+    // A filter that Stremlist cannot apply.
+    "https://www.senscritique.com/LeoM/collection?action=DONE&genreId=12",
+    "https://www.senscritique.com/LeoM/collection?action=DONE&yearDateDone=2024",
   ])("does not read %j", (input) => {
     expect(parseSourceLink(input)).toBeNull();
   });
@@ -400,7 +457,12 @@ describe("describeSourceRef kind", () => {
     "https://mdblist.com/watchlist/LeoM",
     `https://www.justwatch.com/us/lists/${JUSTWATCH_ID}`,
     "https://www.senscritique.com/Sergent_Pepper/collection?action=WISH",
+    "https://www.senscritique.com/Sergent_Pepper/collection?action=DONE",
+    "https://www.senscritique.com/Sergent_Pepper/collection?action=RATING",
+    "https://www.senscritique.com/Sergent_Pepper/collection?action=RECOMMEND",
     "https://www.senscritique.com/liste/films/369869",
+    "https://www.senscritique.com/films/tops/top111",
+    "https://www.senscritique.com/top/resultats/films_2025/3996052",
     "https://letterboxd.com/leom/watchlist/",
     "https://letterboxd.com/leom/list/best-of-2026/",
     "https://letterboxd.com/leom/films/",
@@ -429,6 +491,38 @@ describe("describeSourceRef", () => {
       detail: "leom",
       url: "https://www.senscritique.com/leom/collection?action=WISH",
       title: "leom's wishlist",
+    });
+  });
+
+  it("names a SensCritique collection after the user", () => {
+    expect(describeSourceRef("senscritique", "users/leom/done")).toEqual({
+      kind: "history",
+      detail: "leom",
+      url: "https://www.senscritique.com/leom/collection?action=DONE",
+      title: "leom's watched",
+    });
+    expect(describeSourceRef("senscritique", "users/leom/rated")).toEqual({
+      kind: "list",
+      detail: "leom",
+      url: "https://www.senscritique.com/leom/collection?action=RATING",
+      title: "leom's ratings",
+    });
+    expect(
+      describeSourceRef("senscritique", "users/leom/recommend"),
+    ).toMatchObject({ kind: "list", title: "leom's favorites" });
+  });
+
+  it("names a SensCritique chart and poll", () => {
+    expect(describeSourceRef("senscritique", "top111-series")).toEqual({
+      kind: "chart",
+      detail: null,
+      url: "https://www.senscritique.com/series/tops/top111",
+      title: "SensCritique Top 111 TV Shows",
+    });
+    expect(describeSourceRef("senscritique", "polls/3996052")).toEqual({
+      kind: "chart",
+      detail: "3996052",
+      url: null,
     });
   });
 
@@ -564,5 +658,20 @@ describe("sourceHasAddedDates: Trakt", () => {
       expect(sourceHasAddedDates("trakt", ref)).toBe(true);
     for (const ref of ["boxoffice", "watched", "smart-lists/silos"])
       expect(sourceHasAddedDates("trakt", ref)).toBe(false);
+  });
+});
+
+describe("sourceHasAddedDates: SensCritique", () => {
+  it("has no dates: collections carry no date for each entry", () => {
+    for (const ref of [
+      "users/leom/wishes",
+      "users/leom/done",
+      "users/leom/rated",
+      "users/leom/recommend",
+      "lists/369869",
+      "top111-movies",
+      "polls/3996052",
+    ])
+      expect(sourceHasAddedDates("senscritique", ref)).toBe(false);
   });
 });

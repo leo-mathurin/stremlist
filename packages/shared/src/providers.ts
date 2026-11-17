@@ -439,16 +439,100 @@ function parseJustwatchLink(input: string): ParsedSourceLink | null {
   };
 }
 
+/**
+ * The collections of a SensCritique user that Stremlist reads, by the name in
+ * their stored reference (`users/{user}/{name}`). `action` is the collection
+ * action, the same in the site links and in the API.
+ */
+export const SENSCRITIQUE_COLLECTIONS = {
+  wishes: { action: "WISH", kind: "watchlist", noun: "wishlist" },
+  done: { action: "DONE", kind: "history", noun: "watched" },
+  rated: { action: "RATING", kind: "list", noun: "ratings" },
+  recommend: { action: "RECOMMEND", kind: "list", noun: "favorites" },
+} as const satisfies Record<
+  string,
+  { action: string; kind: SourceKind; noun: string }
+>;
+export type SensCritiqueCollection = keyof typeof SENSCRITIQUE_COLLECTIONS;
+
+export function isSensCritiqueCollection(
+  name: string,
+): name is SensCritiqueCollection {
+  return Object.hasOwn(SENSCRITIQUE_COLLECTIONS, name);
+}
+
+/** The collection behind a collection link action, such as "done" or "DONE". */
+function sensCritiqueCollectionOf(
+  action: string,
+): SensCritiqueCollection | null {
+  const upper = action.toUpperCase();
+  for (const [name, { action: known }] of Object.entries(
+    SENSCRITIQUE_COLLECTIONS,
+  )) {
+    if (known === upper && isSensCritiqueCollection(name)) return name;
+  }
+  return null;
+}
+
+/**
+ * Collection link filters that Stremlist cannot apply: a link with one of
+ * them is refused instead of read without the filter.
+ */
+const SENSCRITIQUE_COLLECTION_FILTERS = [
+  "categoryId",
+  "gameSystemId",
+  "genreId",
+  "keywords",
+  "maxPeriod",
+  "minPeriod",
+  "releaseDate",
+  "yearDateDone",
+];
+
+/** SensCritique universes in collection links: 1 for films, 4 for series. */
+const SENSCRITIQUE_FILM_SERIES_UNIVERSES = new Set(["1", "4"]);
+
+/** The SensCritique charts at senscritique.com/{films|series}/tops/{page}. */
+const SENSCRITIQUE_CHART_PAGES = new Map([
+  ["top111", "top111"],
+  ["top100-des-top10", "top100"],
+]);
+
 function parseSensCritiqueLink(input: string): ParsedSourceLink | null {
   const url = toUrl(input);
   if (!url || !hostIs(url, "senscritique.com")) return null;
   const parts = segments(url);
+  const first = parts[0]?.toLowerCase();
   // senscritique.com/liste/{slug}/{id}
-  if (parts[0]?.toLowerCase() === "liste") {
+  if (first === "liste") {
     const id = parts.slice(1).find((part) => /^\d+$/.test(part));
     return id
       ? { provider: "senscritique", sourceRef: `lists/${id}`, kind: "list" }
       : null;
+  }
+  // senscritique.com/top/resultats/{slug}/{id}: the results of a poll.
+  if (first === "top") {
+    const id =
+      parts[1]?.toLowerCase() === "resultats"
+        ? parts.slice(2).find((part) => /^\d+$/.test(part))
+        : undefined;
+    return id
+      ? { provider: "senscritique", sourceRef: `polls/${id}`, kind: "chart" }
+      : null;
+  }
+  // senscritique.com/films/tops/top111, /series/tops/top100-des-top10…
+  if (
+    (first === "films" || first === "series") &&
+    parts[1]?.toLowerCase() === "tops" &&
+    parts.length === 3
+  ) {
+    const chart = SENSCRITIQUE_CHART_PAGES.get(parts[2].toLowerCase());
+    if (!chart) return null;
+    return {
+      provider: "senscritique",
+      sourceRef: `${chart}-${first === "films" ? "movies" : "series"}`,
+      kind: "chart",
+    };
   }
   // Top-level paths of senscritique.com that are not user profiles.
   const reserved = new Set([
@@ -491,21 +575,35 @@ function parseSensCritiqueLink(input: string): ParsedSourceLink | null {
     "sondages",
     "top",
   ]);
-  // senscritique.com/{username}, or its wishes:
-  // /{username}/collection?action=WISH&universe=1. Only wishes are supported,
-  // so a collection link with another action ("done", ratings) is rejected.
+  // senscritique.com/{username} (its wishes), or one of its collections:
+  // /{username}/collection?action=DONE&universe=1. The universe is optional:
+  // the collection reads films and series.
   const username = parts[0];
   if (!username || reserved.has(username.toLowerCase())) return null;
   if (!/^[\w.-]+$/.test(username)) return null;
-  const action = url.searchParams.get("action");
-  if (parts[1] === "collection" && action && action.toUpperCase() !== "WISH") {
-    return null;
+  let collection: SensCritiqueCollection = "wishes";
+  if (parts[1]?.toLowerCase() === "collection") {
+    const { searchParams } = url;
+    const action = searchParams.get("action");
+    const universe = searchParams.get("universe");
+    if (action) {
+      const found = sensCritiqueCollectionOf(action);
+      if (!found) return null;
+      collection = found;
+    }
+    if (universe && !SENSCRITIQUE_FILM_SERIES_UNIVERSES.has(universe)) {
+      return null;
+    }
+    if (SENSCRITIQUE_COLLECTION_FILTERS.some((key) => searchParams.get(key))) {
+      return null;
+    }
   }
+  const { kind, noun } = SENSCRITIQUE_COLLECTIONS[collection];
   return {
     provider: "senscritique",
-    sourceRef: `users/${username}/wishes`,
-    kind: "watchlist",
-    suggestedTitle: `${username}'s wishlist`,
+    sourceRef: `users/${username}/${collection}`,
+    kind,
+    suggestedTitle: `${username}'s ${noun}`,
   };
 }
 
@@ -822,6 +920,41 @@ export const PUBLIC_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>> = {
       url: "https://trakt.tv/movies/recommended/weekly",
     },
   ],
+  senscritique: [
+    {
+      ref: "top111-movies",
+      kind: "chart",
+      label: "Top 111 Movies",
+      defaultDisplayMode: "movie",
+      titleType: "movie",
+      url: "https://www.senscritique.com/films/tops/top111",
+    },
+    {
+      ref: "top111-series",
+      kind: "chart",
+      label: "Top 111 TV Shows",
+      defaultDisplayMode: "series",
+      titleType: "series",
+      url: "https://www.senscritique.com/series/tops/top111",
+    },
+    // Ranked from the members' top 10s.
+    {
+      ref: "top100-movies",
+      kind: "chart",
+      label: "Top 100 Favorite Movies",
+      defaultDisplayMode: "movie",
+      titleType: "movie",
+      url: "https://www.senscritique.com/films/tops/top100-des-top10",
+    },
+    {
+      ref: "top100-series",
+      kind: "chart",
+      label: "Top 100 Favorite TV Shows",
+      defaultDisplayMode: "series",
+      titleType: "series",
+      url: "https://www.senscritique.com/series/tops/top100-des-top10",
+    },
+  ],
 };
 
 /** Whether a stored Source list of this Provider must read through a Connection. */
@@ -976,18 +1109,24 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
       },
     ],
     senscritique: [
-      {
-        pattern: /^users\/([^/]+)\/wishes$/,
-        describe: ([, user]) => ({
-          kind: "watchlist",
-          detail: user,
-          url: `https://www.senscritique.com/${user}/collection?action=WISH`,
-          title: `${user}'s wishlist`,
+      ...Object.entries(SENSCRITIQUE_COLLECTIONS).map(
+        ([name, { action, kind, noun }]): StoredRefForm => ({
+          pattern: new RegExp(`^users/([^/]+)/${name}$`),
+          describe: ([, user]) => ({
+            kind,
+            detail: user,
+            url: `https://www.senscritique.com/${user}/collection?action=${action}`,
+            title: `${user}'s ${noun}`,
+          }),
         }),
-      },
+      ),
       {
         pattern: /^lists\/([^/]+)$/,
         describe: ([, id]) => ({ kind: "list", detail: id, url: null }),
+      },
+      {
+        pattern: /^polls\/([^/]+)$/,
+        describe: ([, id]) => ({ kind: "chart", detail: id, url: null }),
       },
     ],
     letterboxd: [

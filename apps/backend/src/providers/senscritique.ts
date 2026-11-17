@@ -1,3 +1,8 @@
+import {
+  isSensCritiqueCollection,
+  SENSCRITIQUE_COLLECTIONS,
+} from "@stremlist/shared/providers";
+import type { SensCritiqueCollection } from "@stremlist/shared/providers";
 import { z } from "zod";
 import { justwatchPathStrategy } from "../titles/justwatch-lookup";
 import { tmdbSearchMatchStrategy } from "../titles/tmdb-match";
@@ -36,8 +41,54 @@ const UNIVERSE_SERIES = 4;
 /** Wikidata property "SensCritique work ID". */
 const WIKIDATA_SENSCRITIQUE_WORK = "P10100";
 
-const USER_REF = /^users\/([\w.-]+)\/wishes$/;
+const USER_REF = /^users\/([\w.-]+)\/([a-z]+)$/;
 const LIST_REF = /^lists\/(\d+)$/;
+const POLL_REF = /^polls\/(\d+)$/;
+
+type Universe = "movie" | "tvShow";
+type CollectionAction =
+  (typeof SENSCRITIQUE_COLLECTIONS)[SensCritiqueCollection]["action"];
+
+interface Chart {
+  subtype: "TOP_111" | "TOP_100_OUT_OF_TOP_10";
+  universe: Universe;
+}
+
+/** The public charts, read with `top(universe, subtype)`. */
+const CHARTS = new Map<string, Chart>([
+  ["top111-movies", { subtype: "TOP_111", universe: "movie" }],
+  ["top111-series", { subtype: "TOP_111", universe: "tvShow" }],
+  ["top100-movies", { subtype: "TOP_100_OUT_OF_TOP_10", universe: "movie" }],
+  ["top100-series", { subtype: "TOP_100_OUT_OF_TOP_10", universe: "tvShow" }],
+]);
+/** A chart has 100 or 111 products; one request reads it whole. */
+const CHART_LIMIT = 200;
+
+/**
+ * The collection actions read per universe. A rated series is watched, but
+ * the series DONE collection misses most of them (7 DONE against 167 rated
+ * for one user), so "done" also reads the rated series. For films, DONE
+ * already holds the rated ones.
+ */
+function collectionReads(
+  collection: SensCritiqueCollection,
+): [Universe, CollectionAction][] {
+  const { action } = SENSCRITIQUE_COLLECTIONS[collection];
+  const reads: [Universe, CollectionAction][] = [
+    ["movie", action],
+    ["tvShow", action],
+  ];
+  if (collection === "done") reads.push(["tvShow", "RATING"]);
+  return reads;
+}
+
+/** The username and collection of a `users/{user}/{collection}` reference. */
+function userRef(ref: string): [string, SensCritiqueCollection] | null {
+  const match = USER_REF.exec(ref);
+  return match && isSensCritiqueCollection(match[2])
+    ? [match[1], match[2]]
+    : null;
+}
 
 const personSchema = z.object({ name: z.string().nullish() });
 
@@ -86,13 +137,14 @@ const USER_QUERY = `
   }
 `;
 
-// LAST_ACTION_DESC is the only order the collection accepts: newest first.
-const WISHES_QUERY = `
-  query StremlistWishes($username: String!, $universe: String, $limit: Int, $offset: Int) {
+// LAST_ACTION_DESC is newest first, the order of the action row IDs that
+// mergeByActionId relies on.
+const COLLECTION_QUERY = `
+  query StremlistCollection($username: String!, $action: ProductAction!, $universe: String, $limit: Int, $offset: Int) {
     user(username: $username) {
       username
       settings { privacyProfile }
-      collection(universe: $universe, action: WISH, order: LAST_ACTION_DESC, limit: $limit, offset: $offset) {
+      collection(universe: $universe, action: $action, order: LAST_ACTION_DESC, limit: $limit, offset: $offset) {
         total
         products {
           ${PRODUCT_FIELDS}
@@ -123,6 +175,28 @@ const LIST_QUERY = `
   }
 `;
 
+// Best ranked first.
+const CHART_QUERY = `
+  query StremlistChart($universe: String, $subtype: TopSubtype!, $limit: Int) {
+    top(universe: $universe, subtype: $subtype, limit: $limit, offset: 0) {
+      ${PRODUCT_FIELDS}
+    }
+  }
+`;
+
+const POLL_INFO_QUERY = `
+  query StremlistPollInfo($id: Int!) {
+    poll(id: $id) { id label universe }
+  }
+`;
+
+// The results of a poll, best ranked first.
+const POLL_QUERY = `
+  query StremlistPoll($id: Int!) {
+    poll(id: $id) { id products { ${PRODUCT_FIELDS} } }
+  }
+`;
+
 const userSchema = z.object({
   username: z.string(),
   settings: z.object({ privacyProfile: z.boolean().nullish() }).nullish(),
@@ -130,7 +204,7 @@ const userSchema = z.object({
 
 const userDataSchema = z.object({ user: userSchema.nullish() });
 
-const wishesDataSchema = z.object({
+const collectionDataSchema = z.object({
   user: userSchema
     .extend({
       collection: z
@@ -140,6 +214,26 @@ const wishesDataSchema = z.object({
         })
         .nullish(),
     })
+    .nullish(),
+});
+
+const chartDataSchema = z.object({
+  top: z.array(senscritiqueProductSchema).nullish(),
+});
+
+const pollInfoDataSchema = z.object({
+  poll: z
+    .object({
+      id: z.number(),
+      label: z.string().nullish(),
+      universe: z.number().nullish(),
+    })
+    .nullish(),
+});
+
+const pollDataSchema = z.object({
+  poll: z
+    .object({ products: z.array(senscritiqueProductSchema).nullish() })
     .nullish(),
 });
 
@@ -304,19 +398,26 @@ function nextPage(page: number, count: number, total: number): number | null {
     : page + 1;
 }
 
-/** The wishes of one universe, newest first, as the API returns them. */
-function fetchUniverseWishes(
+/** One collection of one universe, newest first, as the API returns it. */
+function fetchUniverseCollection(
   username: string,
-  universe: "movie" | "tvShow",
+  universe: Universe,
+  action: CollectionAction,
 ): Promise<PagedRead<SensCritiqueProduct>> {
   return readPages({
     maxPages: MAX_PAGES,
     first: 0,
     async page(page) {
       const { user } = await senscritiqueQuery(
-        WISHES_QUERY,
-        { username, universe, limit: PAGE_SIZE, offset: page * PAGE_SIZE },
-        wishesDataSchema,
+        COLLECTION_QUERY,
+        {
+          username,
+          action,
+          universe,
+          limit: PAGE_SIZE,
+          offset: page * PAGE_SIZE,
+        },
+        collectionDataSchema,
       );
       if (!user) {
         throw new SourceUnavailableError(
@@ -339,19 +440,47 @@ function fetchUniverseWishes(
   });
 }
 
-async function fetchWishes(
+async function fetchCollection(
   username: string,
+  collection: SensCritiqueCollection,
 ): Promise<PagedRead<SensCritiqueProduct>> {
-  // The shared limiter keeps both reads under SensCritique's rate.
-  const [movies, shows] = await Promise.all([
-    fetchUniverseWishes(username, "movie"),
-    fetchUniverseWishes(username, "tvShow"),
-  ]);
-  // The API returns the newest wish first; the canonical order is oldest first.
+  // The shared limiter keeps the reads under SensCritique's rate.
+  const reads = await Promise.all(
+    collectionReads(collection).map(([universe, action]) =>
+      fetchUniverseCollection(username, universe, action),
+    ),
+  );
+  // The API returns the newest action first; the canonical order is oldest
+  // first. A series both done and rated comes twice with the same action
+  // row, and fetchSource keeps it once.
   return {
-    items: mergeByActionId(movies.items.reverse(), shows.items.reverse()),
-    complete: movies.complete && shows.complete,
+    items: reads
+      .map((read) => read.items.reverse())
+      .reduce<SensCritiqueProduct[]>(mergeByActionId, []),
+    complete: reads.every((read) => read.complete),
   };
+}
+
+async function fetchChart(
+  chart: Chart,
+): Promise<PagedRead<SensCritiqueProduct>> {
+  const { top } = await senscritiqueQuery(
+    CHART_QUERY,
+    { ...chart, limit: CHART_LIMIT },
+    chartDataSchema,
+  );
+  return { items: top ?? [], complete: true };
+}
+
+async function fetchPoll(id: number): Promise<PagedRead<SensCritiqueProduct>> {
+  const { poll } = await senscritiqueQuery(POLL_QUERY, { id }, pollDataSchema);
+  if (!poll) {
+    throw new SourceUnavailableError(
+      "not_found",
+      `SensCritique poll ${id} not found`,
+    );
+  }
+  return { items: poll.products ?? [], complete: true };
 }
 
 function fetchListProducts(
@@ -397,30 +526,64 @@ export const senscritiqueWikidataStrategy = wikidataStrategy(
 );
 
 /**
- * SensCritique: a user's wishes (films and series, "Envies") and public
- * lists, read anonymously. No Connection and no Actions: SensCritique has no
- * public API for them.
+ * SensCritique: a user's collections of films and series ("Envies", "Vus",
+ * "Notés", "Coups de cœur"), public lists, the public charts and the results
+ * of polls, read anonymously. No Connection and no Actions: SensCritique has
+ * no public API for them.
  */
 export const senscritiqueProvider: ProviderAdapter = {
   id: "senscritique",
   freshnessMs: 6 * 60 * 60_000,
 
   async validateSource(ref): Promise<SourceValidation> {
-    const user = USER_REF.exec(ref);
+    const user = userRef(ref);
     if (user) {
+      const [name, collection] = user;
       const data = await senscritiqueQuery(
         USER_QUERY,
-        { username: user[1] },
+        { username: name },
         userDataSchema,
       );
       if (!data.user) return { ok: false, reason: "not_found" };
       if (isPrivateProfile(data.user)) return { ok: false, reason: "private" };
       const username = data.user.username;
+      const { noun } = SENSCRITIQUE_COLLECTIONS[collection];
       return {
         ok: true,
-        ref: `users/${username}/wishes`,
-        suggestedTitle: `${username}'s wishlist`,
+        ref: `users/${username}/${collection}`,
+        suggestedTitle: `${username}'s ${noun}`,
         defaultDisplayMode: "split",
+      };
+    }
+
+    const chart = CHARTS.get(ref);
+    if (chart) {
+      return {
+        ok: true,
+        ref,
+        defaultDisplayMode: chart.universe === "movie" ? "movie" : "series",
+      };
+    }
+
+    const pollMatch = POLL_REF.exec(ref);
+    if (pollMatch) {
+      const { poll } = await senscritiqueQuery(
+        POLL_INFO_QUERY,
+        { id: Number(pollMatch[1]) },
+        pollInfoDataSchema,
+      );
+      if (!poll) return { ok: false, reason: "not_found" };
+      const type = universeType(poll.universe);
+      // A poll of another universe has no movies or series.
+      if (typeof poll.universe === "number" && !type) {
+        return { ok: false, reason: "not_found" };
+      }
+      const label = poll.label?.trim();
+      return {
+        ok: true,
+        ref: `polls/${poll.id}`,
+        suggestedTitle: label === "" ? undefined : label,
+        defaultDisplayMode: type ?? "split",
       };
     }
 
@@ -451,13 +614,19 @@ export const senscritiqueProvider: ProviderAdapter = {
   },
 
   async fetchSource(ref) {
-    const user = USER_REF.exec(ref);
+    const user = userRef(ref);
     const list = LIST_REF.exec(ref);
+    const chart = CHARTS.get(ref);
+    const poll = POLL_REF.exec(ref);
     let read: PagedRead<SensCritiqueProduct>;
     if (user) {
-      read = await fetchWishes(user[1]);
+      read = await fetchCollection(...user);
     } else if (list) {
       read = await fetchListProducts(Number(list[1]));
+    } else if (chart) {
+      read = await fetchChart(chart);
+    } else if (poll) {
+      read = await fetchPoll(Number(poll[1]));
     } else {
       throw new SourceUnavailableError(
         "not_found",
