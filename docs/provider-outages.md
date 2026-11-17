@@ -146,6 +146,28 @@ The monitor Account is a normal Account. Connect it to Trakt, Simkl and
 MDBList on the configure page, and keep Titles in each Source list that a
 canary reads: an empty watchlist fails its canary.
 
+### Production setup
+
+Production uses this setup since 2026-11-17 (v2.8.0):
+
+- **Heartbeats:** IMDb, Letterboxd, JustWatch and SensCritique each have
+  their own heartbeat. Trakt, Simkl and MDBList share one heartbeat,
+  "Stremlist Trakt, Simkl, MDBList probe", because the free Better Stack
+  plan has 10 monitors and heartbeats in total.
+- **Monitor Account:** `MONITOR_ACCOUNT_ID` names an Account that is
+  connected to the owner's Trakt, Simkl and MDBList accounts. It has no
+  Lists, no Stremio connection and no Actions, so it never writes to a
+  Provider. Do not delete it, and do not disconnect its Connections.
+- **Empty Source lists:** some lists of the owner's accounts are empty. In
+  `MONITOR_CANARY_REFS`, their types have a minimum of 0, so their canaries
+  alert only when the read fails. When such a list gets Titles, set its
+  minimum back to about 80% of its size.
+- **Trakt public users:** `MONITOR_CANARY_REFS` reads the watchlist,
+  favorites, ratings and history of one public Trakt profile. Its history
+  has more than 100 Titles, so a read that stops after the first page fails
+  the canary. Public collections are not covered: one read costs about 44
+  calls of the app quota.
+
 ## Operations
 
 - Call `/monitor` at least every 15 minutes, so that two failed probes come
