@@ -24,12 +24,12 @@ probes every Provider that Stremlist can check:
 `/monitor` also reads the official status pages of four Providers, for the
 part that Stremlist reads:
 
-| Provider     | Status page                          | Components         |
-| ------------ | ------------------------------------ | ------------------ |
-| Trakt        | `status.trakt.tv` (UptimeRobot)      | The "API" group    |
-| Simkl        | `status.simkl.com` (UptimeRobot)     | `API.simkl.com`    |
-| MDBList      | `status.mdblist.com` (Better Stack)  | `api.mdblist.com`  |
-| SensCritique | `status.senscritique.com` (Instatus) | `senscritique.com` |
+| Provider     | Status page                            | Components         |
+| ------------ | -------------------------------------- | ------------------ |
+| Trakt        | `status.trakt.tv` (UptimeRobot)        | The "API" group    |
+| Simkl        | `status.simkl.com` (UptimeRobot)       | `API.simkl.com`    |
+| MDBList      | `status.mdblist.com` (Better Stack)    | `api.mdblist.com`  |
+| SensCritique | `senscritique.instatus.com` (Instatus) | `senscritique.com` |
 
 Letterboxd, IMDb and JustWatch publish none. When a page says a component is
 down, the outage starts at once and lasts while the page says so, even when
@@ -37,7 +37,8 @@ Stremlist's own probe works. A degraded component is not an outage. A page
 that does not answer or whose format changed gives no signal. The UptimeRobot
 endpoint (`/api/getMonitorList/<page>`) is the one the page itself loads, not
 a documented API, so it can change. A status page never fails `/monitor` or a
-heartbeat.
+heartbeat. SensCritique's page is read on its Instatus domain:
+`status.senscritique.com` answers HTTP 403 with a Vercel bot challenge.
 
 A Better Stack heartbeat (`BETTERSTACK_HEARTBEAT_URL_<PROVIDER>`) is optional.
 When it is set, every failed probe alerts, as before.

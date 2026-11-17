@@ -89,7 +89,10 @@ beforeEach(() => {
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string, init?: RequestInit) => {
-      if (url.startsWith("https://status.")) {
+      if (
+        url.startsWith("https://status.") ||
+        url.startsWith("https://senscritique.instatus.com/")
+      ) {
         const page = [...pages].find(([prefix]) => url.startsWith(prefix));
         return Promise.resolve(
           page ? Response.json(page[1]) : new Response("", { status: 503 }),
@@ -605,7 +608,7 @@ describe("Provider outages", () => {
           },
         ],
       });
-      pages.set("https://status.senscritique.com/", {
+      pages.set("https://senscritique.instatus.com/", {
         components: [{ name: "senscritique.com", status: "MAJOROUTAGE" }],
       });
       const res = await monitor();
