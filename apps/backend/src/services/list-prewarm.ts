@@ -78,14 +78,19 @@ async function runPrewarmBatch(
       // Posters are applied when Stremio requests the Catalog. Looking up
       // the TMDB ones of its first page now lets that request find them.
       if (posters && showsTmdbPosters(posters)) {
-        await findTmdbPosters(
-          (["movie", "series"] as const).flatMap((type) =>
+        const types =
+          list.displayMode === "split"
+            ? (["movie", "series"] as const)
+            : [list.displayMode];
+        // One call per Catalog: each call looks up at most one page.
+        for (const type of types) {
+          await findTmdbPosters(
             metas
               .filter((meta) => meta.type === type)
               .slice(0, PREWARM_POSTERS_PER_CATALOG),
-          ),
-          { budgetMs: Infinity, size: "w500" },
-        );
+            { budgetMs: Infinity, size: "w500" },
+          );
+        }
       }
     } catch (error) {
       console.error(`Failed to prewarm list ${list.id}:`, error);
@@ -106,7 +111,7 @@ export async function prewarmLists(
   accountId: string,
   lists: ConfigList[],
   allowConnection: boolean,
-  /** The poster settings of the save; null when it changed none. */
+  /** The poster settings of the save; null looks up no TMDB poster. */
   posters: PosterSettings | null = null,
 ): Promise<void> {
   const leaseToken = randomUUID();

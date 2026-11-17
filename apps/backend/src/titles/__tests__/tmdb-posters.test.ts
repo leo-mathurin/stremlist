@@ -88,6 +88,21 @@ describe("findTmdbPosters", () => {
     read.mockRestore();
   });
 
+  it("asks TMDB once for a Title that concurrent requests need", async () => {
+    const fetch = answer(BOTH, 20);
+    vi.stubGlobal("fetch", fetch);
+    const title = { id: "tt0000010", type: "movie" as const };
+    const [first, second] = await Promise.all([
+      findTmdbPosters([title], { budgetMs: 1000, size: "w500" }),
+      findTmdbPosters([title], { budgetMs: 1000, size: "w500" }),
+    ]);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(first.get(title.id)).toBe(
+      "https://image.tmdb.org/t/p/w500/as-movie.jpg",
+    );
+    expect(second.get(title.id)).toBe(first.get(title.id));
+  });
+
   it("answers within its budget and stores late answers for the next call", async () => {
     vi.stubGlobal("fetch", answer(BOTH, 200));
     const title = { id: "tt0000004", type: "movie" as const };

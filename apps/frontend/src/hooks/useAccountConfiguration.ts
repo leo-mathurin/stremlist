@@ -396,12 +396,15 @@ export function useAccountConfiguration(
           newTitlesEnabled: data.newTitles.enabled,
         };
         // Back from Connect: the edits the user had not saved yet.
-        const draft = data.accountId ? takeDraft(data.accountId) : null;
+        const kept = data.accountId ? takeDraft(data.accountId) : null;
+        const draft = kept && {
+          ...kept,
+          posterSource: keptPosterSource(kept),
+        };
         const restored =
           draft && hasUnsavedChanges(storedForm, draft, data.access)
             ? {
                 ...draft,
-                posterSource: keptPosterSource(draft),
                 actions: reconcileActionProviders(
                   draft.actions.order,
                   draft.actions.selected,

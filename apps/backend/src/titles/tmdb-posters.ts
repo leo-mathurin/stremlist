@@ -31,6 +31,11 @@ const memory = new LruCache<string, string | null>({
   ttlMs: MEMORY_TTL_MS,
 });
 let pausedUntil = 0;
+/**
+ * The TMDB lookups that run now, by IMDb ID: concurrent requests (Stremio
+ * asks for every Catalog at once) wait for them instead of asking again.
+ */
+const running = new Map<string, Promise<void>>();
 
 export interface PosterTitle {
   id: string;
@@ -157,9 +162,19 @@ export async function findTmdbPosters(
       const missing = unknown
         .filter(({ id }) => !stored.has(id))
         .slice(0, MAX_LOOKUPS);
-      if (missing.length > 0 && Date.now() >= pausedUntil) {
-        await lookUpAll(missing);
-      }
+      if (missing.length === 0 || Date.now() < pausedUntil) return;
+      const fresh = missing.filter(({ id }) => !running.has(id));
+      const lookups = lookUpAll(fresh);
+      for (const { id } of fresh) running.set(id, lookups);
+      void lookups.finally(() => {
+        for (const { id } of fresh) {
+          if (running.get(id) === lookups) running.delete(id);
+        }
+      });
+      await Promise.all([
+        lookups,
+        ...missing.flatMap(({ id }) => running.get(id) ?? []),
+      ]);
     })().catch((error: unknown) => {
       // Posters never fail a request: the Titles keep their IMDb posters.
       console.error(
@@ -193,5 +208,6 @@ export async function findTmdbPosters(
 /** For tests: forget the in-memory cache and any pause after a failure. */
 export function resetTmdbPosterMemory(): void {
   memory.clear();
+  running.clear();
   pausedUntil = 0;
 }
