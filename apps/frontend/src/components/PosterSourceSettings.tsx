@@ -134,10 +134,16 @@ export default function PosterSourceSettings({
           <SelectContent>
             {SOURCES.map((source) => (
               <SelectItem key={source.value} value={source.value}>
-                {source.label}
-                {source.value === "imdb" && (
-                  <span className="ml-1 text-black/45">(default)</span>
-                )}
+                {/* One inline element, so the name keeps its space. */}
+                <span>
+                  {source.label}
+                  {source.value === "imdb" && (
+                    <>
+                      {" "}
+                      <span className="text-black/45">(default)</span>
+                    </>
+                  )}
+                </span>
               </SelectItem>
             ))}
           </SelectContent>
