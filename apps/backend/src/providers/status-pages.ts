@@ -119,7 +119,9 @@ const STATUS_PAGES: Partial<Record<ProviderId, StatusPage>> = {
     },
   },
   senscritique: {
-    url: "https://status.senscritique.com/v2/components.json",
+    // The same page on Instatus' own domain: status.senscritique.com puts a
+    // Vercel bot challenge (HTTP 403) in front of it.
+    url: "https://senscritique.instatus.com/v2/components.json",
     read: (data) => {
       const parsed = instatusSchema.safeParse(data);
       if (!parsed.success) return null;
