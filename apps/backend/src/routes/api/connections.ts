@@ -1,4 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
+import { DEFAULT_POSTER_SOURCE } from "@stremlist/shared/poster";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDER_IDS, PROVIDERS } from "@stremlist/shared/providers";
 import type { Context } from "hono";
@@ -195,7 +196,10 @@ const connections = new Hono()
           const created = await createAccountWithConfig(
             newSetup,
             rpdbKey(setup?.rpdbApiKey),
-            { newTitlesCatalog: setup?.newTitles?.enabled },
+            {
+              newTitlesCatalog: setup?.newTitles?.enabled,
+              posterSource: setup?.posterSource,
+            },
           );
           accountId = created.accountId;
           try {
@@ -213,7 +217,10 @@ const connections = new Hono()
           }
           const createdId = accountId;
           scheduleBackgroundTask(() =>
-            prewarmLists(createdId, created.lists, true),
+            prewarmLists(createdId, created.lists, true, {
+              posterSource: setup?.posterSource ?? DEFAULT_POSTER_SOURCE,
+              rpdbApiKey: rpdbKey(setup?.rpdbApiKey),
+            }),
           );
           return c.json({ ok: true as const, accountId, created: true });
         }

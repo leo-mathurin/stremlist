@@ -253,7 +253,6 @@ describe("a save that waits for a busy Letterboxd", () => {
       {
         accountId,
         sort: { by: "added_at", order: "asc" },
-        rpdbApiKey: null,
         allowConnection: true,
         policy: "prewarm",
       },

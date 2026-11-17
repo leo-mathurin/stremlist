@@ -62,6 +62,7 @@ Levels: **U** unit (Vitest or SQL), **T** toolkit replay, **P** Playwright `@loc
 | Phone width (390 x 844)                                       | `phone-journey` "on a phone, a link pasted on Home…"; `phone` "on a phone, Home adds a List…"                                           | T, P    | Real phones, Safari          |
 | Legacy v1 installs                                            | `addon-api` bootstrap; `stremio-install` Legacy; `sync-status`; `new-titles`; `provider-connections` Legacy; `ui` `?userId`             | T, P, L |                              |
 | Kill switch                                                   | `provider-actions` kill switch; `providers` "a Provider turned off…"; `provider-connections` turned off                                 | T, P    |                              |
+| Poster source (IMDb or TMDB), with RPDB over both             | `poster-source` (spec and journey); backend `poster-source`, `tmdb-posters`                                                             | U, T, P | Real TMDB answers            |
 | Playback, RPDB poster delivery                                | `addon-api` "RPDB key rewrites posters" (URL only)                                                                                      | L       | Playback, authenticated RPDB |
 
 ## Coverage gaps

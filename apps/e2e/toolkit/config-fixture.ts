@@ -164,6 +164,7 @@ export const configuration = {
   access: "private",
   accountId,
   rpdbApiKey: null,
+  posterSource: "imdb",
   lists: [row],
   syncStatus: { [row.id]: [syncedStatus(row.sourceRef)] },
   connections: [],

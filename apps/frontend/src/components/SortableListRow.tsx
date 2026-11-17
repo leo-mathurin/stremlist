@@ -14,6 +14,7 @@ import {
   isSortAllowed,
   listSources,
 } from "@stremlist/shared/list-merge";
+import type { PosterSource } from "@stremlist/shared/poster";
 import { PROVIDERS } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { ExternalLink, Eye, GripVertical, Settings2, X } from "lucide-react";
@@ -62,6 +63,7 @@ export default function SortableListRow({
   index,
   accountKey,
   rpdbApiKey,
+  posterSource,
   onFieldChange,
   onRemove,
   missingProviders,
@@ -82,6 +84,7 @@ export default function SortableListRow({
   /** Lets the preview read through the Account's Connections. */
   accountKey: string | null;
   rpdbApiKey: string;
+  posterSource: PosterSource;
   /** Its refreshes, or null on a new setup that has nothing saved yet. */
   sync: ListSyncState | null;
   /** Saved with its current Source lists. */
@@ -442,6 +445,7 @@ export default function SortableListRow({
             list={list}
             accountKey={accountKey}
             rpdbApiKey={rpdbApiKey}
+            posterSource={posterSource}
             open={previewOpen}
           />
         </div>

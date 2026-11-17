@@ -26,6 +26,7 @@ import LeaveDialog from "../components/LeaveDialog";
 import LegacyChecklist, { WhatsNewButton } from "../components/LegacyChecklist";
 import LinkPaste from "../components/LinkPaste";
 import NewTitlesSettings from "../components/NewTitlesSettings";
+import PosterSourceSettings from "../components/PosterSourceSettings";
 import type { LinkProblem, ResolvedLink } from "../components/LinkPaste";
 import ProviderList from "../components/ProviderList";
 import ProviderOutageBanner from "../components/ProviderOutageBanner";
@@ -631,6 +632,7 @@ export default function Configure() {
                             justAdded={list.localId === lastAdded?.localId}
                             accountKey={accountId ?? accountKey}
                             rpdbApiKey={config.rpdbApiKey}
+                            posterSource={config.posterSource}
                             onFieldChange={config.setListField}
                             onRemove={config.removeList}
                             missingProviders={missing}
@@ -700,6 +702,12 @@ export default function Configure() {
             <section className="space-y-3">
               <SectionHeading size="md" title="Options" />
               <div className="rounded-3xl bg-white p-4 ring-1 ring-black/5 sm:p-5">
+                <PosterSourceSettings
+                  value={config.posterSource}
+                  onChange={config.setPosterSource}
+                  rpdbKeySet={config.rpdbApiKey.trim() !== ""}
+                />
+                <hr className="my-4 border-black/5" />
                 <label htmlFor="rpdb-api-key" className="block font-bold">
                   RPDB API key{" "}
                   <span className="font-normal text-black/45">(optional)</span>
@@ -714,7 +722,8 @@ export default function Configure() {
                   >
                     Rating Poster Database
                   </a>{" "}
-                  posters, with ratings on the cover art.
+                  posters, with ratings on the cover art. RPDB posters replace
+                  the poster source above.
                 </p>
                 <div className="flex items-center gap-1 rounded-2xl bg-black/5 p-1">
                   <input

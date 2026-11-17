@@ -6,6 +6,7 @@ import {
 } from "@stremlist/shared/constants";
 import { isChartId } from "@stremlist/shared/imdb-charts";
 import type { ListSource } from "@stremlist/shared/list-merge";
+import { POSTER_SOURCES } from "@stremlist/shared/poster";
 import {
   MAX_LISTS,
   MAX_SOURCES_PER_LIST,
@@ -87,6 +88,8 @@ const actionsBody = z.object({
 /** A saved configuration: Lists and settings. */
 export const configBody = z.object({
   rpdbApiKey: z.string().trim().optional(),
+  // Omitted by older clients: the saved source stays.
+  posterSource: z.enum(POSTER_SOURCES).optional(),
   lists: z.array(listBody).min(1).max(MAX_LISTS),
   actions: actionsBody.optional(),
   newTitles: z.object({ enabled: z.boolean() }).optional(),

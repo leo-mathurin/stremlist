@@ -12,6 +12,7 @@ import type {
   StremioMeta,
   StremioStream,
 } from "@stremlist/shared/stremio.types";
+import type { PosterSource } from "@stremlist/shared/poster";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { hcWithType } from "@stremlist/backend/client";
 import { BACKEND_URL } from "../env.js";
@@ -33,6 +34,7 @@ interface ApiResponse<T> {
 
 interface ConfigOptions {
   rpdbApiKey?: string;
+  posterSource?: PosterSource;
   actions?: { enabled: boolean; providers: ProviderId[] };
 }
 

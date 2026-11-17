@@ -1,3 +1,4 @@
+import type { PosterSource } from "@stremlist/shared/poster";
 import { joinProviderLabels } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
 import type { AddonAccess } from "@stremlist/shared/stremio.types";
@@ -100,6 +101,7 @@ export function reconcileActionProviders(
 export interface AccountForm {
   lists: ListFormRow[];
   rpdbApiKey: string;
+  posterSource: PosterSource;
   actionsEnabled: boolean;
   actions: ActionProviders;
   newTitlesEnabled: boolean;
@@ -112,6 +114,7 @@ export interface AccountForm {
 export function configBody(form: AccountForm, access: AccountAccess) {
   return {
     rpdbApiKey: form.rpdbApiKey,
+    posterSource: form.posterSource,
     lists: listPayload(form.lists),
     actions:
       access === "private"

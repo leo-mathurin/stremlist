@@ -286,7 +286,12 @@ test("a link that needs a Connection saves the setup, connects, then adds the li
       state: "fixture-state",
       code: "fixture-code",
       browserKey: "fixture-browser-key",
-      setup: { rpdbApiKey: "", lists: [], newTitles: { enabled: false } },
+      setup: {
+        rpdbApiKey: "",
+        posterSource: "imdb",
+        lists: [],
+        newTitles: { enabled: false },
+      },
     },
   ]);
   expect(starts).toEqual(["POST"]);
