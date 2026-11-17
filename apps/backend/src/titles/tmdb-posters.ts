@@ -159,18 +159,21 @@ export async function findTmdbPosters(
     const work = (async () => {
       const stored = await readStored(unknown.map(({ id }) => id));
       for (const [id, path] of stored) memory.set(id, path);
+      // Another request may have looked a Title up during the read.
       const missing = unknown
-        .filter(({ id }) => !stored.has(id))
+        .filter(({ id }) => !stored.has(id) && !memory.has(id))
         .slice(0, MAX_LOOKUPS);
       if (missing.length === 0 || Date.now() < pausedUntil) return;
       const fresh = missing.filter(({ id }) => !running.has(id));
       const lookups = lookUpAll(fresh);
       for (const { id } of fresh) running.set(id, lookups);
-      void lookups.finally(() => {
-        for (const { id } of fresh) {
-          if (running.get(id) === lookups) running.delete(id);
-        }
-      });
+      void lookups
+        .finally(() => {
+          for (const { id } of fresh) {
+            if (running.get(id) === lookups) running.delete(id);
+          }
+        })
+        .catch(() => undefined);
       await Promise.all([
         lookups,
         ...missing.flatMap(({ id }) => running.get(id) ?? []),
