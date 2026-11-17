@@ -13,6 +13,7 @@
     "test": "node --test --test-timeout=60000 scripts/dev-proxy.test.mjs && bun test ./scripts/*.test.ts"
   },
   "dependencies": {
+    "@dnd-kit/dom": "^0.3.2",
     "@dnd-kit/react": "^0.3.2",
     "@hookform/resolvers": "^5.9.2",
     "@radix-ui/react-checkbox": "^1.4.1",
