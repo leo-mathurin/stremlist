@@ -213,6 +213,9 @@ function VariantA({ form }: { form: PosterFormState }) {
           </SelectContent>
         </Select>
         <p className="mt-1.5 text-xs text-black/55">{current?.hint}</p>
+      </div>
+      {/* A collapsed panel, as settings pages fold optional details. */}
+      <div className="rounded-2xl bg-black/[0.03]">
         <button
           type="button"
           aria-expanded={examplesOpen}
@@ -221,34 +224,37 @@ function VariantA({ form }: { form: PosterFormState }) {
             setExamplesOpen((open) => !open);
             setExamplesShown(true);
           }}
-          className="mt-2 inline-flex min-h-8 items-center gap-1 rounded-lg text-xs font-semibold text-stremlist hover:underline"
+          className="group flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl px-3 text-left text-sm font-semibold focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:outline-none"
         >
-          {examplesOpen ? "Hide example posters" : "Show example posters"}
+          <span>
+            Example posters{" "}
+            <span className="ml-1 font-normal text-black/45">
+              {current?.label}
+            </span>
+          </span>
           <ChevronDown
+            aria-hidden
             className={cn(
-              "size-3.5 transition-transform duration-200",
+              "size-4 text-black/45 transition-[transform,color] duration-200 ease-out group-hover:text-ink motion-reduce:transition-none",
               examplesOpen && "rotate-180",
             )}
           />
         </button>
-      </div>
-      <div
-        id={examplesId}
-        inert={!examplesOpen}
-        className={cn(
-          "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
-          examplesOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-        )}
-      >
-        <div className="min-h-0 overflow-hidden">
-          {examplesShown && (
-            <div className="rounded-2xl bg-black/[0.03] p-3">
-              <p className="mb-2 text-xs font-semibold text-black/60">
-                Example with {current?.label}
-              </p>
-              <PosterSamples choice={choice} rpdbKey={form.rpdbApiKey} />
-            </div>
+        <div
+          id={examplesId}
+          inert={!examplesOpen}
+          className={cn(
+            "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+            examplesOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
           )}
+        >
+          <div className="min-h-0 overflow-hidden">
+            {examplesShown && (
+              <div className="px-3 pb-3">
+                <PosterSamples choice={choice} rpdbKey={form.rpdbApiKey} />
+              </div>
+            )}
+          </div>
         </div>
       </div>
       {choice === "rpdb" && <KeyField form={form} />}
