@@ -66,6 +66,94 @@ function rowTitles(browser: Browser) {
   );
 }
 
+test("List order buttons work on a phone, stop at the ends and save positions", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  const second = {
+    ...row,
+    id: "00000000-0000-4000-8000-000000000002",
+    sourceRef: "ls99123456",
+    catalogTitle: "Second catalog",
+    position: 1,
+  };
+  const third = {
+    ...row,
+    id: "00000000-0000-4000-8000-000000000003",
+    sourceRef: "ls99123457",
+    catalogTitle: "Third catalog",
+    position: 2,
+  };
+  const saves = await captureConfig(browser, {
+    ...configuration,
+    lists: [row, second, third],
+  });
+  await browser.setViewport(PHONE);
+  await app.open(`/configure?account=${accountId}`);
+  const settings = screen.getByRole("button", "Settings for Test catalog");
+  await settings.tap();
+  const up = screen.getByRole("button", "Move up, Test catalog");
+  const down = screen.getByRole("button", "Move down, Test catalog");
+  await expect(up).toBeVisible();
+  await expect(up).toBeDisabled();
+  await down.tap();
+  await expect
+    .poll(() => rowTitles(browser))
+    .toEqual(["Second catalog", "Test catalog", "Third catalog"]);
+  await expect(settings).toBeExpanded();
+  await expect(down).toBeFocused();
+  await expect(up).toBeEnabled();
+  await up.press("Enter");
+  await expect
+    .poll(() => rowTitles(browser))
+    .toEqual(["Test catalog", "Second catalog", "Third catalog"]);
+  await expect(saveButton(screen)).toBeDisabled();
+  await expect(down).toBeFocused();
+  const buttonTop = () =>
+    browser.evaluate(() => {
+      const button = document.querySelector(
+        '[aria-label="Move down, Test catalog"]',
+      );
+      if (!button) throw new Error("Move down button not found");
+      return button.getBoundingClientRect().top;
+    });
+  const beforeMove = await buttonTop();
+  await browser.keyboard.press("Enter");
+  await expect(down).toBeFocused();
+  const afterMove = await buttonTop();
+  expect(Math.abs(afterMove - beforeMove)).toBeLessThan(2);
+  await browser.keyboard.press("Enter");
+  await expect
+    .poll(() => rowTitles(browser))
+    .toEqual(["Second catalog", "Third catalog", "Test catalog"]);
+  await expect(down).toBeDisabled();
+  await expect(up).toBeFocused();
+  await saveButton(screen).tap();
+  await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
+  expect(saves[0].lists).toMatchObject([
+    { catalogTitle: "Second catalog", position: 0 },
+    { catalogTitle: "Third catalog", position: 1 },
+    { catalogTitle: "Test catalog", position: 2 },
+  ]);
+});
+
+test("a single List has no available order button", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await captureConfig(browser);
+  await browser.setViewport(PHONE);
+  await app.open(`/configure?account=${accountId}`);
+  await screen.getByRole("button", "Settings for Test catalog").tap();
+  const up = screen.getByRole("button", "Move up, Test catalog");
+  const down = screen.getByRole("button", "Move down, Test catalog");
+  await expect(up).toBeVisible();
+  await expect(up).toBeDisabled();
+  await expect(down).toBeDisabled();
+});
+
 test("unsaved changes ask before the page reloads, and a save clears them", async ({
   app,
   browser,

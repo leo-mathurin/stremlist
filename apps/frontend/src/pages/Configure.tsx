@@ -633,6 +633,16 @@ export default function Configure() {
                             rpdbApiKey={config.rpdbApiKey}
                             onFieldChange={config.setListField}
                             onRemove={config.removeList}
+                            onMoveUp={
+                              !policy.editLock && index > 0
+                                ? () => config.reorderLists(index, index - 1)
+                                : undefined
+                            }
+                            onMoveDown={
+                              !policy.editLock && index < lists.length - 1
+                                ? () => config.reorderLists(index, index + 1)
+                                : undefined
+                            }
                             missingProviders={missing}
                             sync={sync}
                             saved={saved}
@@ -663,7 +673,8 @@ export default function Configure() {
               )}
               <p className="px-1 text-xs text-black/45 tabular-nums">
                 {lists.length} of {MAX_LISTS} lists
-                {lists.length > 1 && ". Drag the handle to reorder."}
+                {lists.length > 1 &&
+                  ". Drag the handle, or use Move up and Move down in Settings."}
               </p>
             </section>
 
