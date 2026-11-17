@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import type { PosterSource } from "@stremlist/shared/poster";
 import { rpdbPosterUrl } from "@stremlist/shared/poster";
 import { ChevronDown, Eye, EyeOff, Images } from "lucide-react";
@@ -30,7 +30,7 @@ const SOURCES: { value: PosterSource; label: string; hint: string }[] = [
   },
 ];
 
-/** The same three Titles from IMDb, TMDB and TheTVDB, to compare them. */
+/** The same Titles from IMDb, TMDB and TheTVDB, to compare them. */
 const EXAMPLES = [
   {
     id: "tt1190634",
@@ -40,11 +40,60 @@ const EXAMPLES = [
     tvdb: "https://artworks.thetvdb.com/banners/posters/5c5c402b075cc_t.jpg",
   },
   {
+    id: "tt4574334",
+    name: "Stranger Things",
+    imdb: "https://m.media-amazon.com/images/M/MV5BMjEzMDAxOTUyMV5BMl5BanBnXkFtZTgwNzAxMzYzOTE@._V1_QL75_UX240_.jpg",
+    tmdb: "https://image.tmdb.org/t/p/w342/uOOtwVbSr4QDjAGIifLDwpb2Pdl.jpg",
+    tvdb: "https://artworks.thetvdb.com/banners/posters/305288-4_t.jpg",
+  },
+  {
+    id: "tt11280740",
+    name: "Severance",
+    imdb: "https://m.media-amazon.com/images/M/MV5BZDI5YzJhODQtMzQyNy00YWNmLWIxMjUtNDBjNjA5YWRjMzExXkEyXkFqcGc@._V1_QL75_UX240_.jpg",
+    tmdb: "https://image.tmdb.org/t/p/w342/pPHpeI2X1qEd1CS1SeyrdhZ4qnT.jpg",
+    tvdb: "https://artworks.thetvdb.com/banners/v4/series/371980/posters/621096b26f0e2_t.jpg",
+  },
+  {
+    id: "tt3581920",
+    name: "The Last of Us",
+    imdb: "https://m.media-amazon.com/images/M/MV5BYWI3ODJlMzktY2U5NC00ZjdlLWE1MGItNWQxZDk3NWNjN2RhXkEyXkFqcGc@._V1_QL75_UX240_.jpg",
+    tmdb: "https://image.tmdb.org/t/p/w342/dmo6TYuuJgaYinXBPjrgG9mB5od.jpg",
+    tvdb: "https://artworks.thetvdb.com/banners/v4/series/392256/posters/6362e8b41ca10_t.jpg",
+  },
+  {
+    id: "tt10919420",
+    name: "Squid Game",
+    imdb: "https://m.media-amazon.com/images/M/MV5BMDcxYjg1OTctYmUxZi00ZjhjLWIwNTMtNmI2M2Y4OTU1YWU2XkEyXkFqcGc@._V1_QL75_UX240_.jpg",
+    tmdb: "https://image.tmdb.org/t/p/w342/1QdXdRYfktUSONkl1oD5gc6Be0s.jpg",
+    tvdb: "https://artworks.thetvdb.com/banners/v4/series/383275/posters/6151351c5420c_t.jpg",
+  },
+  {
+    id: "tt14452776",
+    name: "The Bear",
+    imdb: "https://m.media-amazon.com/images/M/MV5BMjk2NWI5OTctODcwYy00NGRmLWFmN2YtOTZiNzFiYjVlODBkXkEyXkFqcGc@._V1_QL75_UX240_.jpg",
+    tmdb: "https://image.tmdb.org/t/p/w342/eKfVzzEazSIjJMrw9ADa2x8ksLz.jpg",
+    tvdb: "https://artworks.thetvdb.com/banners/v4/series/403294/posters/62cb2fad70271_t.jpg",
+  },
+  {
     id: "tt15398776",
     name: "Oppenheimer",
     imdb: "https://m.media-amazon.com/images/M/MV5BN2JkMDc5MGQtZjg3YS00NmFiLWIyZmQtZTJmNTM5MjVmYTQ4XkEyXkFqcGc@._V1_QL75_UX240_.jpg",
     tmdb: "https://image.tmdb.org/t/p/w342/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg",
     tvdb: "https://artworks.thetvdb.com/banners/v4/movie/287533/posters/64552f43bff1e_t.jpg",
+  },
+  {
+    id: "tt15239678",
+    name: "Dune: Part Two",
+    imdb: "https://m.media-amazon.com/images/M/MV5BNTc0YmQxMjEtODI5MC00NjFiLTlkMWUtOGQ5NjFmYWUyZGJhXkEyXkFqcGc@._V1_QL75_UX240_.jpg",
+    tmdb: "https://image.tmdb.org/t/p/w342/6izwz7rsy95ARzTR3poZ8H6c5pp.jpg",
+    tvdb: "https://artworks.thetvdb.com/banners/v4/movie/290272/posters/65a3fccf3815b_t.jpg",
+  },
+  {
+    id: "tt1517268",
+    name: "Barbie",
+    imdb: "https://m.media-amazon.com/images/M/MV5BYjI3NDU0ZGYtYjA2YS00Y2RlLTgwZDAtYTE2YTM5ZjE1M2JlXkEyXkFqcGc@._V1_QL75_UX240_.jpg",
+    tmdb: "https://image.tmdb.org/t/p/w342/iuFNMS8U5cb6xfzi51Dbkovj7vM.jpg",
+    tvdb: "https://artworks.thetvdb.com/banners/v4/movie/16612/posters/64ba61bb1dc73_t.jpg",
   },
   {
     id: "tt0111161",
@@ -55,7 +104,78 @@ const EXAMPLES = [
   },
 ];
 
-/** Example posters of `source`; RPDB ones need the key. */
+/**
+ * End a mouse drag of the example row: glide to the nearest poster, then
+ * snap again.
+ */
+function endDrag(
+  strip: HTMLElement,
+  drag: { current: { x: number; left: number } | null },
+) {
+  if (!drag.current) return;
+  drag.current = null;
+  const box = strip.getBoundingClientRect();
+  const padding = Number.parseFloat(getComputedStyle(strip).scrollPaddingLeft);
+  const offsets = Array.from(
+    strip.children,
+    (item) => item.getBoundingClientRect().left - box.left - padding,
+  );
+  const nearest = offsets.reduce(
+    (best, offset) => (Math.abs(offset) < Math.abs(best) ? offset : best),
+    Number.POSITIVE_INFINITY,
+  );
+  const target = Math.min(
+    Math.max(strip.scrollLeft + nearest, 0),
+    strip.scrollWidth - strip.clientWidth,
+  );
+  const snap = () => {
+    if (!drag.current) strip.style.scrollSnapType = "";
+  };
+  if (!Number.isFinite(target) || Math.abs(target - strip.scrollLeft) <= 1) {
+    snap();
+    return;
+  }
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  strip.scrollTo({ left: target, behavior: reduce ? "auto" : "smooth" });
+  strip.addEventListener("scrollend", snap, { once: true });
+  // For a browser without `scrollend`.
+  setTimeout(snap, 600);
+}
+
+/** The widest fade on an edge of the example row. */
+const FADE_PX = 20;
+/** A smoothstep ramp of alpha, so the fade shows no band where it ends. */
+const RAMP = [0, 1, 2, 3, 4, 5, 6].map((step) => {
+  const t = step / 6;
+  return { t, alpha: t * t * (3 - 2 * t) };
+});
+
+/**
+ * The mask that fades an edge of the row where more posters are past it.
+ * Each fade grows with the distance scrolled from its edge, so it comes in
+ * with the movement of the row and never shows all at once.
+ */
+function fadeMask(strip: HTMLElement): string {
+  const max = Math.max(strip.scrollWidth - strip.clientWidth, 0);
+  const start = Math.min(Math.max(strip.scrollLeft, 0), FADE_PX);
+  const end = Math.min(Math.max(max - strip.scrollLeft, 0), FADE_PX);
+  const stops = [
+    ...RAMP.map(
+      ({ t, alpha }) =>
+        `rgb(0 0 0 / ${alpha.toFixed(3)}) ${(t * start).toFixed(1)}px`,
+    ),
+    ...RAMP.map(
+      ({ t, alpha }) =>
+        `rgb(0 0 0 / ${(1 - alpha).toFixed(3)}) calc(100% - ${((1 - t) * end).toFixed(1)}px)`,
+    ),
+  ];
+  return `linear-gradient(to right, ${stops.join(", ")})`;
+}
+
+/**
+ * Example posters of `source`, in one row that scrolls sideways at any
+ * width. A mouse can drag it. RPDB examples need the key.
+ */
 function Examples({
   source,
   rpdbApiKey,
@@ -63,6 +183,27 @@ function Examples({
   source: PosterSource;
   rpdbApiKey: string;
 }) {
+  // Whether some posters are past an edge: only then can the mouse drag.
+  const [overflows, setOverflows] = useState(true);
+  const paint = useCallback((strip: HTMLElement) => {
+    // Set on the element, not through React: it changes on every scroll.
+    strip.style.maskImage = fadeMask(strip);
+    setOverflows(strip.scrollWidth > strip.clientWidth + 1);
+  }, []);
+  // The width changes with the window, so the fades can change too.
+  const measure = useCallback(
+    (strip: HTMLUListElement | null) => {
+      if (!strip) return;
+      paint(strip);
+      const observer = new ResizeObserver(() => paint(strip));
+      observer.observe(strip);
+      return () => observer.disconnect();
+    },
+    [paint],
+  );
+  // A mouse drags the row; touch and trackpads scroll it natively.
+  const drag = useRef<{ x: number; left: number } | null>(null);
+
   if (source === "rpdb" && !rpdbApiKey.trim()) {
     return (
       <p className="text-xs text-black/55">
@@ -71,9 +212,32 @@ function Examples({
     );
   }
   return (
-    <ul className="flex gap-2" aria-label="Example posters">
+    <ul
+      ref={measure}
+      aria-label="Example posters"
+      onScroll={(event) => paint(event.currentTarget)}
+      onPointerDown={(event) => {
+        if (event.pointerType !== "mouse" || event.button !== 0) return;
+        const strip = event.currentTarget;
+        drag.current = { x: event.clientX, left: strip.scrollLeft };
+        strip.setPointerCapture(event.pointerId);
+        // Snapping would hold the row in place while it follows the mouse.
+        strip.style.scrollSnapType = "none";
+      }}
+      onPointerMove={(event) => {
+        if (!drag.current) return;
+        event.currentTarget.scrollLeft =
+          drag.current.left - (event.clientX - drag.current.x);
+      }}
+      onPointerUp={(event) => endDrag(event.currentTarget, drag)}
+      onPointerCancel={(event) => endDrag(event.currentTarget, drag)}
+      className={cn(
+        "-mx-3 flex cursor-grab snap-x snap-mandatory scroll-px-3 gap-2 overflow-x-auto overscroll-x-contain px-3 select-none active:cursor-grabbing [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        !overflows && "cursor-auto active:cursor-auto",
+      )}
+    >
       {EXAMPLES.map((example) => (
-        <li key={example.id}>
+        <li key={example.id} className="w-[4.5rem] shrink-0 snap-start sm:w-20">
           <img
             src={
               source === "rpdb"
@@ -83,7 +247,8 @@ function Examples({
             alt={`${example.name}, example poster`}
             loading="lazy"
             decoding="async"
-            className="aspect-[2/3] w-[4.5rem] rounded-lg bg-black/5 object-cover ring-1 ring-black/5 sm:w-20"
+            draggable={false}
+            className="aspect-[2/3] w-full rounded-lg bg-black/5 object-cover ring-1 ring-black/5"
           />
         </li>
       ))}
@@ -93,7 +258,7 @@ function Examples({
 
 /**
  * Where the posters of the Account come from: one choice between IMDb,
- * TMDB and RPDB. The RPDB key field shows only for RPDB; a key stays saved
+ * TMDB, TheTVDB and RPDB. The RPDB key field shows only for RPDB; a key stays saved
  * when another source is chosen. Example posters open on request, so their
  * images load only then.
  */

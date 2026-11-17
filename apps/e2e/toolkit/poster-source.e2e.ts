@@ -82,6 +82,31 @@ function exampleHosts(browser: Browser) {
   );
 }
 
+const EXAMPLE_COUNT = 10;
+
+/**
+ * How the example posters lie out: the number of rows they take, how many
+ * show whole, and how far the page scrolls sideways.
+ */
+function exampleLayout(browser: Browser) {
+  return browser.evaluate(() => {
+    const strip = document.querySelector('ul[aria-label="Example posters"]');
+    if (!strip) return null;
+    const box = strip.getBoundingClientRect();
+    const posters = Array.from(strip.children, (item) =>
+      item.getBoundingClientRect(),
+    );
+    return {
+      rows: new Set(posters.map((poster) => Math.round(poster.top))).size,
+      whole: posters.filter(
+        (poster) =>
+          poster.left >= box.left - 1 && poster.right <= box.right + 1,
+      ).length,
+      sideways: document.documentElement.scrollWidth - window.innerWidth,
+    };
+  });
+}
+
 async function choose(screen: Screen, source: RegExp) {
   await screen.getByRole("combobox", "Posters").tap();
   await screen.getByRole("option", source).tap();
@@ -198,23 +223,15 @@ test("example posters open on request and follow the chosen source", async ({
   await expect(examples).toHaveAttribute("aria-expanded", "true");
   await expect
     .poll(() => exampleHosts(browser))
-    .toEqual([
-      "m.media-amazon.com",
-      "m.media-amazon.com",
-      "m.media-amazon.com",
-    ]);
+    .toEqual(Array(EXAMPLE_COUNT).fill("m.media-amazon.com"));
   await choose(screen, /^TMDB/);
   await expect
     .poll(() => exampleHosts(browser))
-    .toEqual(["image.tmdb.org", "image.tmdb.org", "image.tmdb.org"]);
+    .toEqual(Array(EXAMPLE_COUNT).fill("image.tmdb.org"));
   await choose(screen, /^TheTVDB/);
   await expect
     .poll(() => exampleHosts(browser))
-    .toEqual([
-      "artworks.thetvdb.com",
-      "artworks.thetvdb.com",
-      "artworks.thetvdb.com",
-    ]);
+    .toEqual(Array(EXAMPLE_COUNT).fill("artworks.thetvdb.com"));
   await choose(screen, /^RPDB/);
   await expect(
     screen.getByText("Add your RPDB API key to see examples."),
@@ -222,4 +239,102 @@ test("example posters open on request and follow the chosen source", async ({
 
   await examples.tap();
   await expect(examples).toHaveAttribute("aria-expanded", "false");
+});
+
+for (const viewport of [
+  { width: 1280, height: 800 },
+  { width: 390, height: 844 },
+]) {
+  test(`at ${viewport.width} px, the example posters stay in one row that scrolls`, async ({
+    app,
+    browser,
+    screen,
+  }) => {
+    await browser.setViewport(viewport);
+    await captureConfig(browser);
+    await routePosterImages(browser);
+    await app.open(`/configure?account=${accountId}`);
+
+    await screen.getByRole("button", "Examples").tap();
+    await expect.poll(() => exampleHosts(browser)).toHaveLength(EXAMPLE_COUNT);
+    const layout = await exampleLayout(browser);
+    expect(layout?.rows).toBe(1);
+    expect(layout?.sideways).toBe(0);
+    // Some posters are past the edge; the row scrolls to them.
+    expect(layout?.whole).toBeLessThan(EXAMPLE_COUNT);
+    await browser.evaluate(() => {
+      const strip = document.querySelector('ul[aria-label="Example posters"]');
+      strip?.scrollTo({ left: strip.scrollWidth });
+      return null;
+    });
+    // The last poster shows whole at the end of the row.
+    await expect
+      .poll(() =>
+        browser.evaluate(() => {
+          const strip = document.querySelector(
+            'ul[aria-label="Example posters"]',
+          );
+          const last = strip?.lastElementChild;
+          if (!strip || !last) return false;
+          const box = strip.getBoundingClientRect();
+          return last.getBoundingClientRect().right <= box.right + 1;
+        }),
+      )
+      .toBe(true);
+    expect((await exampleLayout(browser))?.sideways).toBe(0);
+  });
+}
+
+test("a mouse drags the example posters, which stop on a poster", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await browser.setViewport({ width: 1280, height: 800 });
+  await captureConfig(browser);
+  await routePosterImages(browser);
+  await app.open(`/configure?account=${accountId}`);
+  await screen.getByRole("button", "Examples").tap();
+  await expect.poll(() => exampleHosts(browser)).toHaveLength(EXAMPLE_COUNT);
+
+  const strip = await browser.evaluate(() => {
+    const element = document.querySelector('ul[aria-label="Example posters"]');
+    element?.scrollIntoView({ block: "center" });
+    const box = element?.getBoundingClientRect();
+    return box ? { x: box.x + box.width / 2, y: box.y + box.height / 2 } : null;
+  });
+  if (!strip) throw new Error("The example posters do not show");
+  await browser.mouse.move(strip.x, strip.y);
+  await browser.mouse.down();
+  for (let step = 1; step <= 10; step += 1) {
+    await browser.mouse.move(strip.x - 13 * step, strip.y);
+  }
+  await browser.mouse.up();
+
+  // The row followed the mouse, then glided until a poster lines up with
+  // its start, and snaps again.
+  await expect
+    .poll(() =>
+      browser.evaluate(() => {
+        const element = document.querySelector<HTMLElement>(
+          'ul[aria-label="Example posters"]',
+        );
+        if (!element) return null;
+        const box = element.getBoundingClientRect();
+        const padding = Number.parseFloat(
+          getComputedStyle(element).scrollPaddingLeft,
+        );
+        const aligned = Array.from(element.children).some(
+          (item) =>
+            Math.abs(item.getBoundingClientRect().left - box.left - padding) <=
+            1,
+        );
+        return {
+          scrolled: element.scrollLeft > 0,
+          aligned,
+          snaps: element.style.scrollSnapType === "",
+        };
+      }),
+    )
+    .toEqual({ scrolled: true, aligned: true, snaps: true });
 });
