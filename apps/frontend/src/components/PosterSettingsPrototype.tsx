@@ -10,7 +10,7 @@
 // RPDB's public free key `t0-free-rpdb` while none is typed.
 import { useId, useState } from "react";
 import type { PosterSource } from "@stremlist/shared/poster";
-import { Check, Eye, EyeOff } from "lucide-react";
+import { Check, ChevronDown, Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Select,
@@ -177,6 +177,10 @@ function KeyField({ form }: { form: PosterFormState }) {
 function VariantA({ form }: { form: PosterFormState }) {
   const { choice, choose } = usePosterChoice(form);
   const id = useId();
+  const examplesId = useId();
+  const [examplesOpen, setExamplesOpen] = useState(false);
+  // Images load on the first open only; after it, closing animates too.
+  const [examplesShown, setExamplesShown] = useState(false);
   const current = CHOICES.find((option) => option.value === choice);
   return (
     <div className="space-y-3">
@@ -209,12 +213,43 @@ function VariantA({ form }: { form: PosterFormState }) {
           </SelectContent>
         </Select>
         <p className="mt-1.5 text-xs text-black/55">{current?.hint}</p>
+        <button
+          type="button"
+          aria-expanded={examplesOpen}
+          aria-controls={examplesId}
+          onClick={() => {
+            setExamplesOpen((open) => !open);
+            setExamplesShown(true);
+          }}
+          className="mt-2 inline-flex min-h-8 items-center gap-1 rounded-lg text-xs font-semibold text-stremlist hover:underline"
+        >
+          {examplesOpen ? "Hide example posters" : "Show example posters"}
+          <ChevronDown
+            className={cn(
+              "size-3.5 transition-transform duration-200",
+              examplesOpen && "rotate-180",
+            )}
+          />
+        </button>
       </div>
-      <div className="rounded-2xl bg-black/[0.03] p-3">
-        <p className="mb-2 text-xs font-semibold text-black/60">
-          Example with {current?.label}
-        </p>
-        <PosterSamples choice={choice} rpdbKey={form.rpdbApiKey} />
+      <div
+        id={examplesId}
+        inert={!examplesOpen}
+        className={cn(
+          "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+          examplesOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          {examplesShown && (
+            <div className="rounded-2xl bg-black/[0.03] p-3">
+              <p className="mb-2 text-xs font-semibold text-black/60">
+                Example with {current?.label}
+              </p>
+              <PosterSamples choice={choice} rpdbKey={form.rpdbApiKey} />
+            </div>
+          )}
+        </div>
       </div>
       {choice === "rpdb" && <KeyField form={form} />}
     </div>
