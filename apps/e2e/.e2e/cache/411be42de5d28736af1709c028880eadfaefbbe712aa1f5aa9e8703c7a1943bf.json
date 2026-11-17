@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-06T19:49:43.339Z",
+  "createdAt": "2026-11-17T13:48:21.306Z",
   "payload": {
     "actions": [
       {
@@ -33,30 +33,40 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Added the built-in IMDb chart Top 250 Movies. It now appears in Your Lists as an IMDb chart, and the count increased to 2 of 10 lists.",
+    "summary": "The Top 250 Movies IMDb chart is present in Your lists, labeled IMDb · Chart, with a preview showing The Shawshank Redemption and The Godfather. The recorded addition took effect.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
+      {
+        "text": "These changes need a reinstall."
+      },
       {
         "role": "button",
         "name": "Drag to reorder Top 250 Movies"
       },
       {
-        "text": "Top 250 Movies"
+        "name": "Top 250 Movies"
       },
       {
         "text": "IMDb · Chart"
       },
       {
         "role": "button",
-        "name": "Remove Top 250 Movies"
-      },
-      {
-        "text": "2 of 10 lists. Drag the handle to reorder."
+        "name": "Preview Top 250 Movies",
+        "states": [
+          "expanded"
+        ]
       },
       {
         "role": "button",
         "name": "Settings for Top 250 Movies"
+      },
+      {
+        "role": "button",
+        "name": "Remove Top 250 Movies"
+      },
+      {
+        "text": "Not saved yet"
       }
     ],
     "goneAnchors": [
@@ -64,6 +74,6 @@
         "text": "1 of 10 lists"
       }
     ],
-    "endWaitMs": 14688
+    "endWaitMs": 27996
   }
 }

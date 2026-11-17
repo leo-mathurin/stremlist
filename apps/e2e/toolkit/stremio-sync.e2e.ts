@@ -762,6 +762,7 @@ test("an expired Stremio code can be replaced by a new one", async ({
 
   await screen.getByRole("button", "Update it for me").tap();
   await expect(screen.getByText(WAITING)).toBeVisible();
+  await expect.poll(() => stremioTab(browser)).toBe(LINK);
   // Five minutes pass without a confirmation.
   await setClock(browser, 6 * 60_000);
   await expect(screen.getByText("The Stremio code expired")).toBeVisible({
