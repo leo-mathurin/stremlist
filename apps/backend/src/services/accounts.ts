@@ -28,7 +28,7 @@ export interface Account {
   id: string;
   legacyImdbUserId: string | null;
   rpdbApiKey: string | null;
-  /** Where its posters come from when it has no RPDB key. */
+  /** Where its posters come from (see `choosePoster`). */
   posterSource: PosterSource;
   actionsEnabled: boolean;
   actionProviders: ProviderId[];
