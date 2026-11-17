@@ -189,7 +189,8 @@ $$;
 -- caller omits it, and limited to IMDb and TMDB.
 DO $$
 DECLARE
-  payload jsonb := '[{"id":"11111111-1111-4111-8111-111111111111","provider":"imdb","source_ref":"ur1","catalog_title":"One","sort_option":"title-asc","display_mode":"split","position":0}]';
+  -- No List ID: each save replaces the Lists of the Account with this one.
+  payload jsonb := '[{"provider":"imdb","source_ref":"ur9","catalog_title":"","sort_option":"title-asc","display_mode":"split","position":0}]';
 BEGIN
   ASSERT (SELECT poster_source FROM public.accounts WHERE id = 'sl_configtransactiontest00') = 'imdb',
     'Existing Accounts keep IMDb posters';
