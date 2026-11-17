@@ -10,7 +10,7 @@
 // RPDB's public free key `t0-free-rpdb` while none is typed.
 import { useId, useState } from "react";
 import type { PosterSource } from "@stremlist/shared/poster";
-import { Check, ChevronDown, Eye, EyeOff } from "lucide-react";
+import { ChevronDown, Eye, EyeOff, Images } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Select,
@@ -173,8 +173,23 @@ function KeyField({ form }: { form: PosterFormState }) {
   );
 }
 
-/** A: a full-width dropdown, the key field below it. */
-function VariantA({ form }: { form: PosterFormState }) {
+type ToggleStyle = "panel" | "beside" | "hint" | "peek";
+
+/**
+ * A: a full-width dropdown, the key field below it. `toggle` sets how the
+ * closed example posters look:
+ * - panel: a gray row with a chevron, the posters open inside it;
+ * - beside: a "Preview" button next to the dropdown;
+ * - hint: a small neutral button at the end of the hint line;
+ * - peek: small overlapping posters at the end of the hint line.
+ */
+function VariantA({
+  form,
+  toggle,
+}: {
+  form: PosterFormState;
+  toggle: ToggleStyle;
+}) {
   const { choice, choose } = usePosterChoice(form);
   const id = useId();
   const examplesId = useId();
@@ -182,6 +197,71 @@ function VariantA({ form }: { form: PosterFormState }) {
   // Images load on the first open only; after it, closing animates too.
   const [examplesShown, setExamplesShown] = useState(false);
   const current = CHOICES.find((option) => option.value === choice);
+  const toggleProps = {
+    type: "button" as const,
+    "aria-expanded": examplesOpen,
+    "aria-controls": examplesId,
+    onClick: () => {
+      setExamplesOpen((open) => !open);
+      setExamplesShown(true);
+    },
+  };
+  const chevron = (
+    <ChevronDown
+      aria-hidden
+      className={cn(
+        "size-4 text-black/45 transition-transform duration-200 ease-out motion-reduce:transition-none",
+        examplesOpen && "rotate-180",
+      )}
+    />
+  );
+  const examples = (
+    <div
+      id={examplesId}
+      inert={!examplesOpen}
+      className={cn(
+        "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
+        examplesOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+      )}
+    >
+      <div className="min-h-0 overflow-hidden">
+        {examplesShown &&
+          (toggle === "panel" ? (
+            <div className="px-3 pb-3">
+              <PosterSamples choice={choice} rpdbKey={form.rpdbApiKey} />
+            </div>
+          ) : (
+            <div className="mt-3 rounded-2xl bg-black/[0.03] p-3">
+              <PosterSamples choice={choice} rpdbKey={form.rpdbApiKey} />
+            </div>
+          ))}
+      </div>
+    </div>
+  );
+  const select = (
+    <Select
+      value={choice}
+      onValueChange={(value) => {
+        const next = CHOICES.find((option) => option.value === value);
+        if (next) choose(next.value);
+      }}
+    >
+      <SelectTrigger id={id} className="h-11 w-full rounded-2xl bg-white">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {CHOICES.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+            {option.value === "imdb" && (
+              <span className="ml-1 text-black/45">(default)</span>
+            )}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+
   return (
     <div className="space-y-3">
       <div>
@@ -191,216 +271,91 @@ function VariantA({ form }: { form: PosterFormState }) {
         <p className="mt-0.5 mb-3 text-sm text-black/55">
           Where Stremlist gets the posters of your catalogs. {LOGOS}
         </p>
-        <Select
-          value={choice}
-          onValueChange={(value) => {
-            const next = CHOICES.find((option) => option.value === value);
-            if (next) choose(next.value);
-          }}
-        >
-          <SelectTrigger id={id} className="h-11 w-full rounded-2xl bg-white">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CHOICES.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-                {option.value === "imdb" && (
-                  <span className="ml-1 text-black/45">(default)</span>
-                )}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="mt-1.5 text-xs text-black/55">{current?.hint}</p>
-      </div>
-      {/* A collapsed panel, as settings pages fold optional details. */}
-      <div className="rounded-2xl bg-black/[0.03]">
-        <button
-          type="button"
-          aria-expanded={examplesOpen}
-          aria-controls={examplesId}
-          onClick={() => {
-            setExamplesOpen((open) => !open);
-            setExamplesShown(true);
-          }}
-          className="group flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl px-3 text-left text-sm font-semibold focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:outline-none"
-        >
-          <span>
-            Example posters{" "}
-            <span className="ml-1 font-normal text-black/45">
-              {current?.label}
-            </span>
-          </span>
-          <ChevronDown
-            aria-hidden
-            className={cn(
-              "size-4 text-black/45 transition-[transform,color] duration-200 ease-out group-hover:text-ink motion-reduce:transition-none",
-              examplesOpen && "rotate-180",
-            )}
-          />
-        </button>
-        <div
-          id={examplesId}
-          inert={!examplesOpen}
-          className={cn(
-            "grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none",
-            examplesOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
-          )}
-        >
-          <div className="min-h-0 overflow-hidden">
-            {examplesShown && (
-              <div className="px-3 pb-3">
-                <PosterSamples choice={choice} rpdbKey={form.rpdbApiKey} />
-              </div>
-            )}
+        {toggle === "beside" ? (
+          <div className="flex gap-2">
+            <div className="min-w-0 flex-1">{select}</div>
+            <button
+              {...toggleProps}
+              className={cn(
+                "flex h-11 shrink-0 items-center gap-1.5 rounded-2xl px-3.5 text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:outline-none",
+                examplesOpen
+                  ? "bg-ink text-white"
+                  : "bg-black/5 text-black/70 hover:bg-black/10",
+              )}
+            >
+              <Images aria-hidden className="size-4" />
+              Examples
+            </button>
           </div>
+        ) : (
+          select
+        )}
+        <div className="mt-1.5 flex items-center justify-between gap-3">
+          <p className="text-xs text-black/55">{current?.hint}</p>
+          {toggle === "hint" && (
+            <button
+              {...toggleProps}
+              className="flex min-h-8 shrink-0 items-center gap-1 rounded-full bg-black/5 px-2.5 text-xs font-semibold text-black/70 transition-colors hover:bg-black/10 focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:outline-none"
+            >
+              <Images aria-hidden className="size-3.5" />
+              Examples
+              {chevron}
+            </button>
+          )}
+          {toggle === "peek" && (
+            <button
+              {...toggleProps}
+              aria-label="Example posters"
+              className="group flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-1.5 text-xs font-semibold text-black/60 focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:outline-none"
+            >
+              <span className="flex" aria-hidden>
+                {SAMPLES.map((sample, index) => (
+                  <img
+                    key={sample.id}
+                    src={samplePoster(sample, choice, form.rpdbApiKey)}
+                    alt=""
+                    className={cn(
+                      "h-9 w-6 rounded-[4px] object-cover ring-2 ring-white transition-transform duration-200 ease-out group-hover:-translate-y-0.5 motion-reduce:transition-none",
+                      index > 0 && "-ml-2",
+                    )}
+                    style={{ transitionDelay: `${index * 30}ms` }}
+                  />
+                ))}
+              </span>
+              {chevron}
+            </button>
+          )}
         </div>
       </div>
+      {toggle === "panel" ? (
+        <div className="rounded-2xl bg-black/[0.03]">
+          <button
+            {...toggleProps}
+            className="group flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl px-3 text-left text-sm font-semibold focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:outline-none"
+          >
+            <span>
+              Example posters{" "}
+              <span className="ml-1 font-normal text-black/45">
+                {current?.label}
+              </span>
+            </span>
+            {chevron}
+          </button>
+          {examples}
+        </div>
+      ) : (
+        <div className="-mt-3">{examples}</div>
+      )}
       {choice === "rpdb" && <KeyField form={form} />}
     </div>
   );
 }
 
-/** B: a list of three options, the key field inside the RPDB option. */
-function VariantB({ form }: { form: PosterFormState }) {
-  const { choice, choose } = usePosterChoice(form);
-  const name = useId();
-  return (
-    <fieldset>
-      <legend className="font-bold">Posters</legend>
-      <p className="mt-0.5 mb-3 text-sm text-black/55">{LOGOS}</p>
-      <div className="divide-y divide-black/5 overflow-hidden rounded-2xl ring-1 ring-black/10">
-        {CHOICES.map((option) => {
-          const selected = choice === option.value;
-          return (
-            <div
-              key={option.value}
-              className={cn(selected ? "bg-brand/10" : "bg-white")}
-            >
-              <label
-                aria-label={option.label}
-                className="flex cursor-pointer items-start gap-3 px-4 py-3"
-              >
-                <input
-                  type="radio"
-                  name={name}
-                  value={option.value}
-                  checked={selected}
-                  onChange={() => choose(option.value)}
-                  className="mt-1 size-4 accent-[var(--color-brand,#f5c518)]"
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold">
-                    {option.label}
-                    {option.value === "imdb" && (
-                      <span className="ml-1 font-normal text-black/45">
-                        (default)
-                      </span>
-                    )}
-                  </span>
-                  <span className="block text-xs text-black/55">
-                    {option.hint}
-                  </span>
-                </span>
-                <span className="hidden shrink-0 sm:block">
-                  <PosterSamples
-                    choice={option.value}
-                    rpdbKey={form.rpdbApiKey}
-                    size="sm"
-                  />
-                </span>
-              </label>
-              {selected && option.value === "rpdb" && (
-                <div className="px-4 pb-4 pl-11">
-                  <KeyField form={form} />
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </fieldset>
-  );
-}
-
-/** C: a compact settings row, label left and a small dropdown right. */
-function VariantC({ form }: { form: PosterFormState }) {
-  const { choice, choose } = usePosterChoice(form);
-  const id = useId();
-  return (
-    <div>
-      <div className="flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <label htmlFor={id} className="block font-bold">
-            Posters
-          </label>
-          <p className="text-sm text-black/55">
-            {CHOICES.find((option) => option.value === choice)?.hint}
-          </p>
-        </div>
-        <Select
-          value={choice}
-          onValueChange={(value) => {
-            const next = CHOICES.find((option) => option.value === value);
-            if (next) choose(next.value);
-          }}
-        >
-          <SelectTrigger id={id} className="w-32 shrink-0 rounded-xl bg-white">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent align="end">
-            {CHOICES.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <ul
-        className="mt-4 grid grid-cols-3 gap-2"
-        aria-label={`${SAMPLES[0].name} from each source`}
-      >
-        {CHOICES.map((option) => (
-          <li
-            key={option.value}
-            className={cn(
-              "flex flex-col items-center gap-1.5 rounded-2xl p-2 text-xs font-semibold",
-              choice === option.value
-                ? "bg-brand/15 ring-2 ring-brand"
-                : "text-black/45",
-            )}
-          >
-            <img
-              src={samplePoster(SAMPLES[0], option.value, form.rpdbApiKey)}
-              alt={`${SAMPLES[0].name} from ${option.label}`}
-              className={cn(
-                "aspect-[2/3] w-full max-w-28 rounded-lg object-cover ring-1 ring-black/5",
-                choice !== option.value && "opacity-60",
-              )}
-            />
-            {option.label}
-          </li>
-        ))}
-      </ul>
-      {choice === "rpdb" && (
-        <div className="mt-4 border-t border-black/5 pt-4">
-          <KeyField form={form} />
-        </div>
-      )}
-      <p className="mt-3 flex items-center gap-1.5 text-xs text-black/45">
-        <Check className="size-3.5" />
-        {LOGOS}
-      </p>
-    </div>
-  );
-}
-
-const VARIANTS = [
-  { key: "A", name: "Dropdown", render: VariantA },
-  { key: "B", name: "Option list", render: VariantB },
-  { key: "C", name: "Settings row", render: VariantC },
+const VARIANTS: { key: string; name: string; toggle: ToggleStyle }[] = [
+  { key: "A1", name: "Panel row", toggle: "panel" },
+  { key: "A2", name: "Button beside the dropdown", toggle: "beside" },
+  { key: "A3", name: "Button on the hint line", toggle: "hint" },
+  { key: "A4", name: "Poster peek", toggle: "peek" },
 ];
 
 export default function PosterSettingsPrototype({
@@ -411,13 +366,12 @@ export default function PosterSettingsPrototype({
   form: PosterFormState;
 }) {
   const current = VARIANTS.find((item) => item.key === variant) ?? VARIANTS[0];
-  const Variant = current.render;
   const state = `saves posterSource=${form.posterSource}, rpdbApiKey=${form.rpdbApiKey.trim() ? "set" : "empty"}`;
   return (
     <>
       <div className="rounded-3xl bg-white p-4 ring-1 ring-black/5 sm:p-5">
         {/* A new key per variant resets its local choice. */}
-        <Variant key={current.key} form={form} />
+        <VariantA key={current.key} form={form} toggle={current.toggle} />
       </div>
       <PrototypeSwitcher
         variants={VARIANTS}
