@@ -11,7 +11,12 @@ import type { ProviderId } from "@stremlist/shared/providers";
 import { Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
-import { DragDropProvider } from "@dnd-kit/react";
+import {
+  DragDropProvider,
+  KeyboardSensor,
+  PointerSensor,
+} from "@dnd-kit/react";
+import { PointerActivationConstraints } from "@dnd-kit/dom";
 import { isSortable } from "@dnd-kit/react/sortable";
 import ActionsSettings from "../components/ActionsSettings";
 import FloatingSaveButton, {
@@ -52,6 +57,21 @@ import { cn } from "@/lib/utils";
 
 /** A link that waited for a Connection, added again after the OAuth return. */
 const PENDING_LINK_STORAGE = "stremlist:pending-link";
+
+const catalogSensors = [
+  PointerSensor.configure({
+    activationConstraints(event, source) {
+      if (event.pointerType === "touch") {
+        return [new PointerActivationConstraints.Distance({ value: 4 })];
+      }
+      const defaults = PointerSensor.defaults.activationConstraints;
+      return typeof defaults === "function"
+        ? defaults(event, source)
+        : defaults;
+    },
+  }),
+  KeyboardSensor,
+];
 
 type Notice = { type: "success" | "error"; message: string };
 
@@ -607,6 +627,7 @@ export default function Configure() {
                 </div>
               ) : (
                 <DragDropProvider
+                  sensors={catalogSensors}
                   onDragEnd={(event) => {
                     if (event.canceled) return;
                     const { source } = event.operation;
