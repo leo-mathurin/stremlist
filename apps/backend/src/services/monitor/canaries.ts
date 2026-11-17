@@ -94,11 +94,26 @@ export const CANARIES = {
   "simkl:me/hold": { min: 1 },
   "simkl:me/dropped": { min: 1 },
   "simkl:me/history": { min: 1 },
+  "simkl:me/ratings": { min: 1 },
+  // Simkl's CDN files list 100 Titles each.
+  "simkl:trending/movies": { min: 50 },
+  "simkl:trending/tv": { min: 50 },
+  "simkl:trending/anime": { min: 50 },
   "simkl:me/lists/{id}": {
     none: "Custom lists need Simkl PRO or VIP, and they read the same library as the statuses.",
   },
 
   "mdblist:me/watchlist": { min: 1 },
+  "mdblist:me/ratings": { min: 1 },
+  "mdblist:me/history": { min: 1 },
+  // MDBList reads its official charts through the Connection too.
+  "mdblist:official/trending": { min: 20 },
+  "mdblist:official/popular": { min: 20 },
+  "mdblist:official/anticipated": { min: 20 },
+  "mdblist:official/most-watched": { min: 20 },
+  "mdblist:official/{slug}": {
+    none: "Another official chart reads the same endpoint as the four official charts, which have their canaries.",
+  },
   "mdblist:lists/{id}": { min: 1 },
   "mdblist:lists/{user}/{slug}": {
     none: "Validation stores a pasted list link as lists/{id}.",
@@ -116,6 +131,19 @@ export const CANARIES = {
     min: 700,
   },
   "senscritique:lists/{id}": { ref: "lists/369869", min: 35 },
+  // The same public user for the three collections. A first read resolves
+  // the Titles slowly, so the counts grow over the first runs.
+  "senscritique:users/{user}/done": { ref: "users/Plume231/done", min: 320 },
+  "senscritique:users/{user}/rated": { ref: "users/Plume231/rated", min: 400 },
+  "senscritique:users/{user}/recommend": {
+    ref: "users/Plume231/recommend",
+    min: 100,
+  },
+  "senscritique:top111-movies": { min: 80 },
+  "senscritique:top111-series": { min: 75 },
+  "senscritique:top100-movies": { min: 80 },
+  "senscritique:top100-series": { min: 75 },
+  "senscritique:polls/{id}": { ref: "polls/3996052", min: 80 },
 
   "letterboxd:share/{token}": {
     none: "A Share link is secret, and Letterboxd reads it as the same list page as users/{user}/lists/{slug}.",
