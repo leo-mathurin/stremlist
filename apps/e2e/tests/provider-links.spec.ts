@@ -143,7 +143,15 @@ test(
     expect(sources.body.sources).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ ref: "me/watchlist" }),
+        expect.objectContaining({ ref: "me/ratings", label: "Ratings" }),
+        expect.objectContaining({ ref: "me/history", label: "History" }),
+        expect.objectContaining({
+          ref: "official/trending",
+          label: "Trending",
+        }),
         expect.objectContaining({ ref: "me/lists/77", label: "Horror nights" }),
+        // A liked list reads by its ID.
+        expect.objectContaining({ ref: "lists/4242", label: "Weekend" }),
       ]),
     );
     expect(
@@ -160,6 +168,7 @@ test(
         catalogTitle: "Weekend",
         displayMode: "split",
       }),
+      listInput("mdblist", "official/trending", SPLIT),
       listInput("simkl", "me/plantowatch", SPLIT),
       listInput("simkl", "me/ratings", SPLIT),
     ]);

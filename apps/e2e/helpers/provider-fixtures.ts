@@ -292,10 +292,16 @@ function mdblist({ request, url, body }: FixtureRequest): Response {
     case "/lists/4242":
       return json({ id: 4242, name: "Weekend", mediatype: null });
     case "/lists/4242/items":
+    case "/lists/official/trending/items":
     case "/watchlist/items":
       return json(mdblistItems);
     case "/lists/user":
       return json([{ id: 77, name: "Horror nights", mediatype: "movie" }]);
+    case "/lists/liked":
+      return json({
+        lists: [{ id: 4242, name: "Weekend", mediatype: null }],
+        pagination: { offset: 0, total: 1, has_more: false },
+      });
     case "/external/lists/user":
       return json([]);
   }
