@@ -179,6 +179,20 @@ test(
           label: "Fixture Smart List",
           defaultDisplayMode: "movie",
         }),
+        expect.objectContaining({
+          ref: "me/continue-watching",
+          label: "Continue Watching",
+        }),
+        expect.objectContaining({ ref: "me/calendar", label: "Calendar" }),
+        // Liked and collaboration lists read at their owner's profile.
+        expect.objectContaining({
+          ref: "users/other-user/lists/liked-list",
+          label: "Fixture Liked List",
+        }),
+        expect.objectContaining({
+          ref: "users/other-user/lists/shared-work",
+          label: "Fixture Shared Work",
+        }),
       ]),
     );
     expect(

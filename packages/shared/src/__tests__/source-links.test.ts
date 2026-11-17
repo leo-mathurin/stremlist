@@ -485,6 +485,21 @@ describe("describeSourceRef kind", () => {
     expect(describeSourceRef("simkl", "me/completed").kind).toBe("status");
     expect(describeSourceRef("trakt", "me/up-next").kind).toBe("up_next");
   });
+
+  it("names the Trakt calendars and Continue Watching", () => {
+    expect(sourceTitle("trakt", "me/continue-watching")).toBe(
+      "Trakt Continue Watching",
+    );
+    expect(sourceTitle("trakt", "me/calendar")).toBe("Trakt Calendar");
+    expect(sourceRequiresConnection("trakt", "me/calendar")).toBe(true);
+    expect(sourceTitle("trakt", "calendars/shows/premieres")).toBe(
+      "Trakt Season Premieres",
+    );
+    expect(sourceRequiresConnection("trakt", "calendars/dvd")).toBe(false);
+    expect(sourceTitleType("trakt", "calendars/shows/new")).toBe("series");
+    expect(sourceTitleType("trakt", "calendars/movies")).toBe("movie");
+    expect(sourceTitleType("trakt", "me/calendar")).toBeNull();
+  });
 });
 
 describe("describeSourceRef", () => {
@@ -672,8 +687,9 @@ describe("sourceHasAddedDates: Letterboxd", () => {
 });
 
 describe("sourceHasAddedDates: Trakt", () => {
-  it("dates favorites, ratings, history and collections, not charts", () => {
+  it("dates favorites, ratings, history, collections and paused titles, not charts or calendars", () => {
     for (const ref of [
+      "me/continue-watching",
       "me/favorites",
       "me/ratings",
       "users/sean/favorites",
@@ -684,7 +700,13 @@ describe("sourceHasAddedDates: Trakt", () => {
       "me/collection",
     ])
       expect(sourceHasAddedDates("trakt", ref)).toBe(true);
-    for (const ref of ["boxoffice", "watched", "smart-lists/silos"])
+    for (const ref of [
+      "boxoffice",
+      "watched",
+      "smart-lists/silos",
+      "me/calendar",
+      "calendars/movies",
+    ])
       expect(sourceHasAddedDates("trakt", ref)).toBe(false);
   });
 });

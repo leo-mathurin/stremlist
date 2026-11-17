@@ -790,6 +790,21 @@ export const CONNECTION_SOURCES: Partial<
       defaultDisplayMode: "series",
       titleType: "series",
     },
+    // Movies and episodes that the user paused, as movies and series.
+    {
+      ref: "me/continue-watching",
+      kind: "status",
+      label: "Continue Watching",
+      defaultDisplayMode: "split",
+    },
+    // What airs or comes out in the next 30 days for the user's shows and
+    // movies.
+    {
+      ref: "me/calendar",
+      kind: "list",
+      label: "Calendar",
+      defaultDisplayMode: "split",
+    },
     {
       ref: "me/history",
       kind: "history",
@@ -963,6 +978,36 @@ export const PUBLIC_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>> = {
       label: "Most Recommended",
       defaultDisplayMode: "split",
       url: "https://trakt.tv/movies/recommended/weekly",
+    },
+    // Trakt's calendars for the next 30 days. The Trakt site has no page
+    // for them any more.
+    {
+      ref: "calendars/shows/new",
+      kind: "chart",
+      label: "New Shows",
+      defaultDisplayMode: "series",
+      titleType: "series",
+    },
+    {
+      ref: "calendars/shows/premieres",
+      kind: "chart",
+      label: "Season Premieres",
+      defaultDisplayMode: "series",
+      titleType: "series",
+    },
+    {
+      ref: "calendars/movies",
+      kind: "chart",
+      label: "Upcoming Movies",
+      defaultDisplayMode: "movie",
+      titleType: "movie",
+    },
+    {
+      ref: "calendars/dvd",
+      kind: "chart",
+      label: "DVD Releases",
+      defaultDisplayMode: "movie",
+      titleType: "movie",
     },
   ],
   senscritique: [

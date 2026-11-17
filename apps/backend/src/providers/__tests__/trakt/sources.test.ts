@@ -27,6 +27,7 @@ import {
   restoreTraktTest,
   route,
   status,
+  unavailableReason,
 } from "./harness";
 
 vi.mock("../../http", async (importOriginal) => {
@@ -515,6 +516,140 @@ describe("Trakt reads", () => {
     ).toEqual(["tt31938062"]);
   });
 
+  it("reads Continue Watching as paused movies and the shows of paused episodes", async () => {
+    route(
+      "GET /sync/playback/movies",
+      pages([
+        [
+          {
+            progress: 25,
+            paused_at: "2026-11-10T00:00:00.000Z",
+            id: 1,
+            type: "movie",
+            movie: clerks,
+          },
+        ],
+      ]),
+    );
+    // Recorded shape (2026-11-17): one row per paused episode, newest first.
+    const episode = (number: number, pausedAt: string) => ({
+      progress: 40,
+      paused_at: pausedAt,
+      id: 10 + number,
+      type: "episode",
+      episode: { season: 1, number, ids: { trakt: 100 + number } },
+      show: pitt,
+    });
+    route(
+      "GET /sync/playback/episodes",
+      pages([
+        [
+          episode(3, "2026-11-15T00:00:00.000Z"),
+          episode(2, "2026-11-01T00:00:00.000Z"),
+        ],
+      ]),
+    );
+    const snapshot = await traktProvider.fetchSource("me/continue-watching", {
+      connection: connection(),
+    });
+    expect(snapshot.complete).toBe(true);
+    // Oldest pause first; the show keeps its newest pause.
+    expect(snapshot.entries.map((e) => [e.type, e.imdbId, e.addedAt])).toEqual([
+      ["movie", "tt11128440", "2026-11-10T00:00:00.000Z"],
+      ["series", "tt31938062", "2026-11-15T00:00:00.000Z"],
+    ]);
+    expect(
+      callsTo("/sync/playback/movies")[0]?.headers.get("Authorization"),
+    ).toBe("Bearer token-1");
+    expect(
+      await unavailableReason(
+        traktProvider.fetchSource("me/continue-watching", { connection: null }),
+      ),
+    ).toBe("needs_connection");
+  });
+
+  /** Fix the date that a calendar starts from. */
+  function pinToday(): string {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-17T23:59:00.000Z"));
+    return "2026-11-17";
+  }
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("reads a public calendar of the next 30 days, one entry per show", async () => {
+    const today = pinToday();
+    const aired = (number: number, at: string) => ({
+      show: pitt,
+      episode: { season: 2, number, ids: { trakt: 200 + number } },
+      first_aired: at,
+      released: null,
+    });
+    route("GET /calendars/all/shows/premieres/" + today + "/30", [
+      aired(1, "2026-11-20T02:00:00.000Z"),
+      { ...aired(1, "2026-11-18T02:00:00.000Z"), show: mandalorian },
+      aired(2, "2026-11-27T02:00:00.000Z"),
+    ]);
+    const snapshot = await traktProvider.fetchSource(
+      "calendars/shows/premieres",
+      { connection: null },
+    );
+    expect(snapshot).toMatchObject({ complete: true });
+    // Soonest first, with no added date.
+    expect(snapshot.entries).toEqual([
+      expect.objectContaining({ type: "series", imdbId: "tt8111088" }),
+      expect.objectContaining({ type: "series", imdbId: "tt31938062" }),
+    ]);
+    expect(snapshot.entries.every((e) => e.addedAt === undefined)).toBe(true);
+    const [call] = callsTo(`/calendars/all/shows/premieres/${today}/30`);
+    expect(call?.headers.get("Authorization")).toBeNull();
+    expect(call?.url.searchParams.get("page")).toBeNull();
+  });
+
+  it("reads the movie calendars by release date", async () => {
+    const today = pinToday();
+    route(`GET /calendars/all/dvd/${today}/30`, [
+      { released: "2026-11-30", movie: halloween },
+      { released: "2026-11-18", movie: clerks },
+    ]);
+    expect(
+      (await fetchEntries("calendars/dvd")).map((e) => [e.type, e.imdbId]),
+    ).toEqual([
+      ["movie", "tt11128440"],
+      ["movie", "tt10665342"],
+    ]);
+  });
+
+  it("reads the user's calendar of shows and movies through the Connection", async () => {
+    const today = pinToday();
+    route(`GET /calendars/my/shows/${today}/30`, [
+      {
+        show: pitt,
+        episode: { season: 2, number: 1, ids: { trakt: 201 } },
+        first_aired: "2026-11-19T09:00:00.000Z",
+        released: null,
+      },
+    ]);
+    route(`GET /calendars/my/movies/${today}/30`, [
+      { released: "2026-11-18", movie: clerks },
+    ]);
+    expect(
+      (await fetchEntries("me/calendar", connection())).map((e) => [
+        e.type,
+        e.imdbId,
+      ]),
+    ).toEqual([
+      ["movie", "tt11128440"],
+      ["series", "tt31938062"],
+    ]);
+    expect(
+      callsTo(`/calendars/my/movies/${today}/30`)[0]?.headers.get(
+        "Authorization",
+      ),
+    ).toBe("Bearer token-1");
+  });
+
   it("reads history from watched movies and shows, by last watch", async () => {
     route("GET /users/me/watched/movies", [
       { plays: 1, last_watched_at: "2025-03-01T00:00:00.000Z", movie: clerks },
@@ -615,6 +750,11 @@ describe("Trakt reads", () => {
 });
 
 describe("Trakt Connection sources", () => {
+  beforeEach(() => {
+    route("GET /users/likes/lists", pages([[]]));
+    route("GET /users/me/lists/collaborations", []);
+  });
+
   it("offers the user's own lists and smart lists", async () => {
     route("GET /users/me/lists", [
       { name: "Favs", ids: { trakt: 7, slug: "Favs" } },
@@ -645,6 +785,68 @@ describe("Trakt Connection sources", () => {
       { name: "Favs", ids: { trakt: 7, slug: "favs" } },
     ]);
     route("GET /users/me/smart-lists", status(500));
+    const sources = await traktProvider.listConnectionSources?.(connection());
+    expect(sources?.map((source) => source.ref)).toEqual(["me/lists/favs"]);
+  });
+
+  /** A list of another user, as Trakt gives it in likes and collaborations. */
+  const otherList = (owner: string, slug: string, trakt: number) => ({
+    name: ` ${slug} `,
+    privacy: "public",
+    ids: { trakt, slug },
+    user: { username: owner, ids: { slug: owner.toLowerCase() } },
+  });
+
+  it("offers liked lists and collaboration lists at their owner's profile", async () => {
+    route("GET /users/me/lists", [
+      { name: "Favs", ids: { trakt: 7, slug: "favs" } },
+    ]);
+    route("GET /users/me/smart-lists", []);
+    route(
+      "GET /users/likes/lists",
+      pages([
+        [
+          // Recorded shape (2026-11-17), trimmed.
+          {
+            liked_at: "2023-11-06T19:43:36.000Z",
+            type: "list",
+            list: otherList("Acoucalancha", "upcoming-series", 6434384),
+          },
+          // A user can like their own list.
+          {
+            liked_at: "2023-11-06T19:43:36.000Z",
+            type: "list",
+            list: { ...otherList("leo", "favs", 7), name: "Favs" },
+          },
+          { liked_at: "2023-11-06T19:43:36.000Z", type: "list", list: null },
+        ],
+      ]),
+    );
+    route("GET /users/me/lists/collaborations", [
+      otherList("Justin", "summer-shows", 23526133),
+      otherList("Acoucalancha", "upcoming-series", 6434384),
+    ]);
+    const sources = await traktProvider.listConnectionSources?.(connection());
+    expect(
+      sources?.map((source) => [source.ref, source.label, source.kind]),
+    ).toEqual([
+      ["me/lists/favs", "Favs", "list"],
+      ["users/acoucalancha/lists/upcoming-series", "upcoming-series", "list"],
+      ["users/justin/lists/summer-shows", "summer-shows", "list"],
+    ]);
+    expect(
+      callsTo("/users/likes/lists")[0]?.url.searchParams.get("limit"),
+    ).toBe("250");
+  });
+
+  it("still offers the user's own lists when likes and collaborations fail", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    route("GET /users/me/lists", [
+      { name: "Favs", ids: { trakt: 7, slug: "favs" } },
+    ]);
+    route("GET /users/me/smart-lists", []);
+    route("GET /users/likes/lists", status(500));
+    route("GET /users/me/lists/collaborations", status(500));
     const sources = await traktProvider.listConnectionSources?.(connection());
     expect(sources?.map((source) => source.ref)).toEqual(["me/lists/favs"]);
   });
