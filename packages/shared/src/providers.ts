@@ -7,7 +7,7 @@ import {
   IMDB_UR_ID_SOURCE,
   IMDB_USER_ID_PATTERN,
 } from "./constants";
-import { imdbChartOf, isChartId } from "./imdb-charts";
+import { CHART_REGISTRY, imdbChartOf, isChartId } from "./imdb-charts";
 
 /**
  * Providers: the external services that keep lists of Titles. See CONTEXT.md.
@@ -1071,7 +1071,25 @@ interface SourceRefDescription {
  */
 interface StoredRefForm {
   pattern: RegExp;
+  /**
+   * The list type of the form: the reference with its variable parts as
+   * `{names}`. See listTypeOf.
+   */
+  type: string;
   describe: (match: RegExpExecArray) => SourceRefDescription;
+}
+
+/**
+ * A list of the connected user that the Provider lists for the Account,
+ * such as `me/lists/{id}`. It reads as a list named by its reference.
+ */
+function accountListForm(type: string): StoredRefForm {
+  const [prefix] = type.split("{");
+  return {
+    pattern: new RegExp(`^${prefix}[^/]+$`),
+    type,
+    describe: ([ref]) => ({ kind: "list", detail: ref, url: null }),
+  };
 }
 
 const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
@@ -1079,6 +1097,7 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
     imdb: [
       {
         pattern: IMDB_LIST_ID_PATTERN,
+        type: "ls/list",
         describe: ([ref]) => ({
           kind: "list",
           detail: ref,
@@ -1087,6 +1106,7 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
       },
       {
         pattern: IMDB_RATINGS_REF_PATTERN,
+        type: "ur/ratings",
         describe: ([, user]) => ({
           kind: "list",
           detail: user,
@@ -1096,6 +1116,7 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
       },
       {
         pattern: IMDB_USER_ID_PATTERN,
+        type: "ur/watchlist",
         describe: ([ref]) => ({
           kind: "watchlist",
           detail: ref,
@@ -1106,6 +1127,7 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
     trakt: [
       {
         pattern: /^users\/([^/]+)\/watchlist$/,
+        type: "users/{user}/watchlist",
         describe: ([, user]) => ({
           kind: "watchlist",
           detail: user,
@@ -1115,23 +1137,27 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
       },
       {
         pattern: /^users\/([^/]+)\/lists\/([^/]+)$/,
+        type: "users/{user}/lists/{list}",
         describe: ([, user, list]) => ({
           kind: "list",
           detail: `${user}/${list}`,
           url: `https://trakt.tv/users/${user}/lists/${list}`,
         }),
       },
-      {
-        pattern: /^users\/([^/]+)\/(favorites|ratings|history|collection)$/,
-        describe: ([, user, source]) => ({
-          kind: TRAKT_USER_SOURCES.get(source) ?? "list",
+      // One form per Source list of a user, so that each is a list type.
+      ...[...TRAKT_USER_SOURCES].map(([source, kind]): StoredRefForm => ({
+        pattern: new RegExp(`^users/([^/]+)/${source}$`),
+        type: `users/{user}/${source}`,
+        describe: ([, user]) => ({
+          kind,
           detail: user,
           url: `https://trakt.tv/users/${user}/${source}`,
           title: `${user}'s ${source}`,
         }),
-      },
+      })),
       {
         pattern: /^lists\/([^/]+)$/,
+        type: "lists/{list}",
         describe: ([, list]) => ({
           kind: "list",
           detail: list,
@@ -1139,19 +1165,32 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
         }),
       },
       {
-        pattern: /^(me\/)?smart-lists\/([^/]+)$/,
-        describe: ([, me, slug]) => ({
+        pattern: /^smart-lists\/([^/]+)$/,
+        type: "smart-lists/{slug}",
+        describe: ([, slug]) => ({
           kind: "list",
-          detail: me ? "Your account" : slug,
+          detail: slug,
           url: `https://app.trakt.tv/lists/smart/view/${slug}`,
         }),
       },
+      {
+        pattern: /^me\/smart-lists\/([^/]+)$/,
+        type: "me/smart-lists/{slug}",
+        describe: ([, slug]) => ({
+          kind: "list",
+          detail: "Your account",
+          url: `https://app.trakt.tv/lists/smart/view/${slug}`,
+        }),
+      },
+      accountListForm("me/lists/{list}"),
     ],
+    simkl: [accountListForm("me/lists/{id}")],
     mdblist: [
       // Validation stores pasted links as `lists/{id}`, which has no public
       // page; only `lists/{user}/{slug}` maps back to one.
       {
         pattern: /^lists\/([^/]+)$/,
+        type: "lists/{id}",
         describe: ([, id]) => ({
           kind: "list",
           detail: `List ${id}`,
@@ -1160,6 +1199,7 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
       },
       {
         pattern: /^lists\/([^/]+)\/([^/]+)$/,
+        type: "lists/{user}/{slug}",
         describe: ([, user, slug]) => ({
           kind: "list",
           detail: `${user}/${slug}`,
@@ -1168,21 +1208,26 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
       },
       {
         pattern: /^watchlist\/([^/]+)$/,
+        type: "watchlist/{user}",
         describe: ([, user]) => ({
           kind: "watchlist",
           detail: user,
           url: null,
         }),
       },
+      accountListForm("me/lists/{id}"),
+      accountListForm("me/external/{id}"),
       // An official chart that CONNECTION_SOURCES does not offer.
       {
         pattern: /^official\/([^/]+)$/,
+        type: "official/{slug}",
         describe: ([, slug]) => ({ kind: "chart", detail: slug, url: null }),
       },
     ],
     justwatch: [
       {
         pattern: /^/,
+        type: "{list}",
         describe: () => ({ kind: "list", detail: "Shared list", url: null }),
       },
     ],
@@ -1190,6 +1235,7 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
       ...Object.entries(SENSCRITIQUE_COLLECTIONS).map(
         ([name, { action, kind, noun }]): StoredRefForm => ({
           pattern: new RegExp(`^users/([^/]+)/${name}$`),
+          type: `users/{user}/${name}`,
           describe: ([, user]) => ({
             kind,
             detail: user,
@@ -1200,10 +1246,12 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
       ),
       {
         pattern: /^lists\/([^/]+)$/,
+        type: "lists/{id}",
         describe: ([, id]) => ({ kind: "list", detail: id, url: null }),
       },
       {
         pattern: /^polls\/([^/]+)$/,
+        type: "polls/{id}",
         describe: ([, id]) => ({ kind: "chart", detail: id, url: null }),
       },
     ],
@@ -1212,10 +1260,12 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
         // A Share link carries a secret token. Never show the token, the slug,
         // or a clickable URL: only that it is a list shared through a link.
         pattern: /^(?:share|lbxshare|lbxshort)\//,
+        type: "share/{token}",
         describe: () => ({ kind: "list", detail: "Shared list", url: null }),
       },
       {
         pattern: /^users\/([^/]+)\/lists\/([^/]+)$/,
+        type: "users/{user}/lists/{slug}",
         describe: ([, user, slug]) => ({
           kind: "list",
           detail: `${user}/${slug}`,
@@ -1224,6 +1274,7 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
       },
       {
         pattern: /^users\/([^/]+)\/watchlist$/,
+        type: "users/{user}/watchlist",
         describe: ([, user]) => ({
           kind: "watchlist",
           detail: user,
@@ -1233,6 +1284,7 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
       },
       {
         pattern: /^users\/([^/]+)\/diary$/,
+        type: "users/{user}/diary",
         describe: ([, user]) => ({
           kind: "history",
           detail: user,
@@ -1242,6 +1294,7 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
       },
       {
         pattern: /^users\/([^/]+)\/films\/rated\/([\d.-]+)$/,
+        type: "users/{user}/films/rated/{range}",
         describe: ([, user, rating]) => ({
           kind: "list",
           detail: `${user} ${rating}`,
@@ -1251,6 +1304,7 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
       },
       {
         pattern: /^users\/([^/]+)\/films$/,
+        type: "users/{user}/films",
         describe: ([, user]) => ({
           kind: "list",
           detail: user,
@@ -1260,6 +1314,7 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
       },
       {
         pattern: /^users\/([^/]+)\/likes\/films$/,
+        type: "users/{user}/likes/films",
         describe: ([, user]) => ({
           kind: "list",
           detail: user,
@@ -1307,4 +1362,37 @@ export function describeSourceRef(
 export function sourceTitle(provider: ProviderId, ref: string): string {
   const { kind, title } = describeSourceRef(provider, ref);
   return title ?? `${PROVIDERS[provider].label} ${SOURCE_KIND_LABELS[kind]}`;
+}
+
+/**
+ * The list type of a stored Source list reference: what the monitor checks
+ * and alerts on, such as `imdb:chart/top-rated-movies`, `trakt:me/history`
+ * or `trakt:users/{user}/watchlist`. Each IMDb chart, each fixed Source list
+ * and each stored reference form is one type; a reference that none of them
+ * knows is `{provider}:other`.
+ */
+export function listTypeOf(provider: ProviderId, ref: string): string {
+  const chart = imdbChartOf({ provider, sourceRef: ref });
+  if (chart) return `imdb:chart/${chart.id.slice("imdb:".length)}`;
+  if (staticSource(provider, ref)) return `${provider}:${ref}`;
+  const form = STORED_REF_FORMS[provider]?.find(({ pattern }) =>
+    pattern.test(ref),
+  );
+  return `${provider}:${form ? form.type : "other"}`;
+}
+
+/** Every list type that Stremlist offers, in Provider order. */
+export function listTypes(): string[] {
+  return PROVIDER_IDS.flatMap((provider) => [
+    ...(provider === "imdb"
+      ? CHART_REGISTRY.map((chart) => listTypeOf("imdb", chart.id))
+      : []),
+    ...[
+      ...(CONNECTION_SOURCES[provider] ?? []),
+      ...(PUBLIC_SOURCES[provider] ?? []),
+    ].map((source) => `${provider}:${source.ref}`),
+    ...(STORED_REF_FORMS[provider] ?? []).map(
+      (form) => `${provider}:${form.type}`,
+    ),
+  ]);
 }

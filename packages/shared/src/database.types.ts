@@ -464,6 +464,28 @@ export type Database = {
           },
         ];
       };
+      monitor_runs: {
+        Row: {
+          finished_at: string | null;
+          name: string;
+          started_at: string;
+          summary: Json | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          finished_at?: string | null;
+          name: string;
+          started_at: string;
+          summary?: Json | null;
+        };
+        Update: {
+          finished_at?: string | null;
+          name?: string;
+          started_at?: string;
+          summary?: Json | null;
+        };
+        Relationships: [];
+      };
       oauth_states: {
         Row: {
           account_id: string | null;
@@ -963,6 +985,10 @@ export type Database = {
           p_lease_token: string;
           p_provider: string;
         };
+        Returns: boolean;
+      };
+      claim_monitor_run: {
+        Args: { p_interval_seconds: number; p_name: string };
         Returns: boolean;
       };
       claim_stremio_update: {

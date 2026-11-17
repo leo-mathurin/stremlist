@@ -14,7 +14,7 @@ function compareValues(a: unknown, b: unknown): number {
 
 /**
  * The chained PostgREST query patterns used throughout the backend (select,
- * insert, upsert, update, delete with eq/is/in/not/order/limit/single,
+ * insert, upsert, update, delete with eq/is/in/not/gte/order/limit/range/single,
  * `.select()` after a write), run against the in-memory tables.
  */
 export class MockQueryBuilder {
@@ -24,6 +24,7 @@ export class MockQueryBuilder {
   private filters: ((row: Row) => boolean)[] = [];
   private orderBys: [string, { ascending: boolean }][] = [];
   private limitN: number | null = null;
+  private rangeFrom = 0;
   private isSingle = false;
   private isMaybeSingle = false;
   private selectCols: string | null = null;
@@ -112,6 +113,21 @@ export class MockQueryBuilder {
     return this;
   }
 
+  /** Rows from `from` to `to`, both included, as PostgREST pages them. */
+  range(from: number, to: number) {
+    this.rangeFrom = from;
+    this.limitN = to - from + 1;
+    return this;
+  }
+
+  gte(col: string, val: unknown) {
+    this.filters.push(
+      (row) =>
+        typeof row[col] === typeof val && compareValues(row[col], val) >= 0,
+    );
+    return this;
+  }
+
   single() {
     this.isSingle = true;
     return this;
@@ -187,7 +203,8 @@ export class MockQueryBuilder {
           });
         }
 
-        if (this.limitN !== null) rows = rows.slice(0, this.limitN);
+        if (this.limitN !== null)
+          rows = rows.slice(this.rangeFrom, this.rangeFrom + this.limitN);
 
         return this.respond(rows);
       }

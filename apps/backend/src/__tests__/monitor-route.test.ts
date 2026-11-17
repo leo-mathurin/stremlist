@@ -13,6 +13,7 @@ import { HttpError } from "../providers/http";
 import { LetterboxdBusyError } from "../providers/letterboxd-gate";
 import { OUTAGE_STALE_MS } from "../providers/outages";
 import { SourceUnavailableError } from "../providers/types";
+import type { CanaryResult } from "../services/monitor/canaries";
 import { resetConfigTest } from "./helpers/config-api.js";
 import { readJson } from "./helpers/json.js";
 import {
@@ -36,18 +37,41 @@ vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
 vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
 vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
 vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
+const { runCanaries } = vi.hoisted(() => ({
+  runCanaries: vi.fn<() => Promise<CanaryResult[]>>(),
+}));
+vi.mock("../services/monitor/canaries", () => ({ runCanaries }));
 
 const IMDB_BEAT = "https://beat.example/imdb";
 const LBX_BEAT = "https://beat.example/letterboxd";
 const SECRET = "cron-secret";
 
-function monitor(secret = SECRET) {
-  return app.request("/monitor", {
+/**
+ * Call /monitor, then run the list checks that it started after its answer
+ * (the canaries are fakes: `runCanaries`). The route schedules them last;
+ * the background tasks of the adapters stay unrun, as before.
+ */
+async function monitor(secret = SECRET) {
+  const { calls } = backgroundMocks.scheduleBackgroundTask.mock;
+  const res = await app.request("/monitor", {
     headers: { Authorization: `Bearer ${secret}` },
   });
+  const started = await readJson(
+    res.clone(),
+    z.object({ listChecks: z.object({ started: z.boolean() }) }).partial(),
+  );
+  if (started.listChecks?.started) await calls.at(-1)?.[0]();
+  return res;
+}
+
+/** Let the next /monitor call start the list checks again. */
+function endListCheckInterval() {
+  db.getTable("monitor_runs").length = 0;
 }
 
 let beats: { url: string; method: string }[];
+/** The bodies of the failed heartbeats, by URL. */
+let failBodies: Map<string, string>;
 /** Status that the stubbed fetch answers per URL prefix; 200 otherwise. */
 let statuses: Map<string, number>;
 /** Status page bodies per URL prefix; other status pages answer 503. */
@@ -81,9 +105,12 @@ beforeEach(() => {
   ])
     vi.stubEnv(name, "");
   vi.stubEnv("CRON_SECRET", SECRET);
+  runCanaries.mockReset();
+  runCanaries.mockResolvedValue([]);
   // Letterboxd always has a reference; tests that probe it replace this.
   useFakeProvider(fakeAdapter("letterboxd"));
   beats = [];
+  failBodies = new Map();
   statuses = new Map();
   pages = new Map();
   vi.stubGlobal(
@@ -99,6 +126,7 @@ beforeEach(() => {
         );
       }
       beats.push({ url, method: init?.method ?? "GET" });
+      if (typeof init?.body === "string") failBodies.set(url, init.body);
       const status = [...statuses].find(([prefix]) =>
         url.startsWith(prefix),
       )?.[1];
@@ -148,7 +176,7 @@ describe("GET /monitor", () => {
     const res = await monitor();
 
     expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       ok: false,
       results: [
         { provider: "imdb", ok: true, entries: 1 },
@@ -160,6 +188,11 @@ describe("GET /monitor", () => {
         },
       ],
       statusPages: NO_PAGES,
+      // This call starts the list checks; none completed before it.
+      listChecks: {
+        started: true,
+        last: { finishedAt: null },
+      },
     });
     expect(imdbRead).toHaveBeenCalledWith("ur12345678", {
       connection: null,
@@ -196,11 +229,16 @@ describe("GET /monitor", () => {
 
     expect(res.status).toBe(200);
     // Trakt, Simkl and MDBList have no client ID here: no probe.
-    expect(await res.json()).toEqual({
+    expect(await res.json()).toMatchObject({
       ok: true,
       results: [{ provider: "letterboxd", ok: true, entries: 0 }],
       // No status page answers in this test.
       statusPages: NO_PAGES,
+      // This call starts the list checks; none completed before it.
+      listChecks: {
+        started: true,
+        last: { finishedAt: null },
+      },
     });
     expect(beats).toEqual([{ url: LBX_BEAT, method: "GET" }]);
     expect(justwatchRead).not.toHaveBeenCalled();
@@ -241,6 +279,7 @@ describe("GET /monitor", () => {
     expect(letterboxdRead).not.toHaveBeenCalled();
 
     Object.assign(letterboxdGate() ?? {}, { nextProbeAt: Date.now() - 1 });
+    endListCheckInterval();
     beats = [];
     expect((await monitor()).status).toBe(200);
     expect(letterboxdRead).toHaveBeenCalledTimes(1);
@@ -676,6 +715,159 @@ describe("Provider outages", () => {
     });
     const res = await app.request("/providers");
     expect(res.status).toBe(200);
+    expect(await outages()).toEqual([]);
+  });
+});
+
+describe("list checks", () => {
+  const APPS_BEAT = "https://beat.example/apps";
+  beforeEach(() => rpcHandlers.clear());
+
+  function canary(
+    provider: CanaryResult["provider"],
+    type: string,
+    entries: number,
+    min = 1,
+  ): CanaryResult {
+    return entries >= min
+      ? { type, provider, ref: type, status: "ok", entries, min }
+      : {
+          type,
+          provider,
+          ref: type,
+          status: "failed",
+          entries,
+          min,
+          error: `${entries} entries, expected at least ${min}`,
+        };
+  }
+
+  it("runs at most once per interval, whatever the number of calls", async () => {
+    vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
+    const first = await readJson(
+      await monitor(),
+      z.object({ listChecks: z.object({ started: z.boolean() }) }),
+    );
+    expect(first.listChecks.started).toBe(true);
+    expect(runCanaries).toHaveBeenCalledTimes(1);
+    expect(beats).toEqual([{ url: LBX_BEAT, method: "GET" }]);
+
+    // The other regions call in the same interval: probes only, no pings.
+    beats = [];
+    const second = await monitor();
+    expect(await second.json()).toMatchObject({
+      listChecks: {
+        started: false,
+        last: { summary: { canaries: [], alarms: [], failures: {} } },
+      },
+    });
+    await monitor();
+    expect(runCanaries).toHaveBeenCalledTimes(1);
+    expect(beats).toEqual([]);
+
+    const row = db.getTable("monitor_runs")[0];
+    row.started_at = new Date(Date.now() - 601_000).toISOString();
+    await monitor();
+    expect(runCanaries).toHaveBeenCalledTimes(2);
+    expect(beats).toEqual([{ url: LBX_BEAT, method: "GET" }]);
+  });
+
+  it("starts no list checks when the run cannot be claimed", async () => {
+    vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
+    rpcHandlers.set("claim_monitor_run", () => ({
+      data: null,
+      error: { message: "database down" },
+    }));
+
+    const res = await monitor();
+
+    expect(res.status).toBe(200);
+    expect(runCanaries).not.toHaveBeenCalled();
+    expect(beats).toEqual([]);
+  });
+
+  it("sends one ping to a heartbeat that several Providers share, and names each failure", async () => {
+    vi.stubEnv("TRAKT_CLIENT_ID", "trakt-app");
+    vi.stubEnv("SIMKL_CLIENT_ID", "simkl-app");
+    vi.stubEnv("MDBLIST_CLIENT_ID", "mdblist-app");
+    for (const provider of ["TRAKT", "SIMKL", "MDBLIST"])
+      vi.stubEnv(`BETTERSTACK_HEARTBEAT_URL_${provider}`, APPS_BEAT);
+    useFakeProvider(
+      fakeAdapter("trakt", {
+        oauth: { authorizeUrl: "", tokenUrl: "", clientId: () => "trakt-app" },
+      }),
+    );
+    runCanaries.mockResolvedValue([
+      canary("trakt", "trakt:me/watchlist", 40),
+      canary("simkl", "simkl:me/history", 0),
+      canary("mdblist", "mdblist:me/watchlist", 12),
+    ]);
+
+    await monitor();
+
+    expect(beats.filter((beat) => beat.url.startsWith(APPS_BEAT))).toEqual([
+      { url: `${APPS_BEAT}/fail`, method: "POST" },
+    ]);
+    expect(failBodies.get(`${APPS_BEAT}/fail`)).toBe(
+      "simkl:me/history (simkl:me/history): 0 entries, expected at least 1",
+    );
+
+    runCanaries.mockResolvedValue([
+      canary("trakt", "trakt:me/watchlist", 40),
+      canary("simkl", "simkl:me/history", 3),
+    ]);
+    endListCheckInterval();
+    beats = [];
+    await monitor();
+    expect(beats.filter((beat) => beat.url.startsWith(APPS_BEAT))).toEqual([
+      { url: APPS_BEAT, method: "GET" },
+    ]);
+  });
+
+  it("fails the Provider's heartbeat for a failed canary, but shows no outage", async () => {
+    vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
+    runCanaries.mockResolvedValue([
+      canary("letterboxd", "letterboxd:users/{user}/diary", 3, 40),
+    ]);
+
+    for (let run = 0; run < 3; run++) {
+      endListCheckInterval();
+      beats = [];
+      const res = await monitor();
+      // The probe works: the answer is still 200.
+      expect(res.status).toBe(200);
+      expect(beats).toEqual([{ url: `${LBX_BEAT}/fail`, method: "POST" }]);
+    }
+    expect(failBodies.get(`${LBX_BEAT}/fail`)).toContain(
+      "letterboxd:users/{user}/diary",
+    );
+    expect(await outages()).toEqual([]);
+  });
+
+  it("fails the Provider's heartbeat when real Lists of one type fail as unavailable", async () => {
+    vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
+    const table = db.getTable("list_sync_status");
+    for (const [index, reason] of [
+      "unavailable",
+      "unavailable",
+      "unavailable",
+      "private",
+      null,
+    ].entries())
+      table.push({
+        list_id: `list-${index}`,
+        provider: "letterboxd",
+        source_ref: `users/user${index}/films`,
+        failure_reason: reason,
+        last_attempt_at: new Date().toISOString(),
+      });
+
+    await monitor();
+
+    expect(beats).toEqual([{ url: `${LBX_BEAT}/fail`, method: "POST" }]);
+    expect(failBodies.get(`${LBX_BEAT}/fail`)).toBe(
+      "letterboxd:users/{user}/films: 3 of 5 Lists fail as unavailable",
+    );
     expect(await outages()).toEqual([]);
   });
 });
