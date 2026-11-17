@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import type { Api } from "../helpers/api.js";
-import { listInput, ok } from "../helpers/api.js";
+import { asInput, listInput, ok } from "../helpers/api.js";
 import { configureUrl, saveConfigure } from "../helpers/configure.js";
 import {
   clearTmdbPosters,
@@ -168,18 +168,12 @@ test(
       await stremioPosters(backend.api, other.accountId, other.listId),
     ).toEqual({ [MOVIE]: imdbPoster(MOVIE), [SERIES]: imdbPoster(SERIES) });
 
-    // An RPDB key replaces the TMDB posters.
+    // An RPDB key replaces the TMDB posters. The save keeps the List.
+    const { lists } = ok(await backend.api.getConfig(accountId));
     ok(
-      await backend.api.postConfig(
-        accountId,
-        [
-          listInput("trakt", TRAKT_WATCHLIST, {
-            catalogTitle: "Poster fixture",
-            displayMode: "split",
-          }),
-        ],
-        { rpdbApiKey: "e2e-test-key" },
-      ),
+      await backend.api.postConfig(accountId, asInput(lists), {
+        rpdbApiKey: "e2e-test-key",
+      }),
     );
     expect(await getPosterSource(accountId)).toBe("tmdb");
     expect((await stremioPosters(backend.api, accountId, listId))[MOVIE]).toBe(
