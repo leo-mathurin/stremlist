@@ -41,7 +41,8 @@ heartbeat. SensCritique's page is read on its Instatus domain:
 `status.senscritique.com` answers HTTP 403 with a Vercel bot challenge.
 
 A Better Stack heartbeat (`BETTERSTACK_HEARTBEAT_URL_<PROVIDER>`) is optional.
-When it is set, every failed probe alerts, as before.
+When it is set, every failed probe alerts. The list checks below send the
+pings.
 
 Only some failures count toward an outage: a server error (5xx), a timeout, or
 a network failure, also when an adapter wraps it in an "unavailable" error.
@@ -68,10 +69,86 @@ more than one hour old (the monitor stopped), or when the table cannot be read.
 The configure page asks again every 2 minutes while it is visible. A failed
 request keeps the last answer.
 
+## List checks
+
+A probe reads one Source list per Provider. It does not find a failure of
+one list type, such as Trakt ratings or IMDb charts, and it does not find a
+read that gives no error but too few Titles. The list checks find these
+failures. They alert in Better Stack and name the list type. They never
+change the outage state or the banner: only the probe does that.
+
+A list type is one IMDb chart, one fixed Source list (`trakt:me/history`,
+`trakt:trending`) or one stored reference form with its variable parts in
+braces (`trakt:users/{user}/watchlist`). `listTypeOf` in
+`packages/shared/src/providers.ts` gives the list type of a reference.
+
+At most once in 10 minutes, one `/monitor` call starts the list checks after
+its answer. The table `monitor_runs` (migration
+`20261117120000_monitor_runs.sql`) gives this run to one call only, because
+Better Stack calls from 4 regions and serverless instances share no memory.
+The other calls only probe. A run does these steps:
+
+1. It reads one **canary** for each list type
+   (`apps/backend/src/services/monitor/canaries.ts`). A canary reads a Source
+   list through the Provider adapter, without the cache, and fails when the
+   read fails or gives fewer entries than its minimum. Public types read a
+   built-in reference. Types that need a Connection read through the
+   Connections of the monitor Account (`MONITOR_ACCOUNT_ID`). Types with
+   variable parts that have no built-in reference are read only when
+   `MONITOR_CANARY_REFS` gives one. A type that cannot be read is "not
+   covered", which is never a failure.
+2. It reads `list_sync_status`. A list type alarms when at least 3 of its
+   Source lists fail as "unavailable", or at least 2 that are half or more of
+   that type. Only Source lists refreshed in the last 24 hours count. Other
+   reasons (private, not found, a lost Connection) are the user's problems
+   and never alarm.
+3. It sends one ping per heartbeat URL. The ping fails when the probe, a
+   canary or the alarm of one of its Providers failed. The body has one line
+   per failure, for example
+   `imdb:ls/list (ls055592025): 12 entries, expected at least 80`. Several
+   Providers can use the same URL. A URL whose Providers nothing read gets
+   no ping, so Better Stack alerts when the checks stop.
+
+The answer of `/monitor` gives `listChecks.started` and `listChecks.last`:
+the last run, with each canary result (`ok`, `failed`, `skipped` or
+`not_covered` with its reason), the alarms and the failures per Provider.
+
+A unit test (`monitor-canaries.test.ts`) fails when a list type has no
+canary and no written reason for none. When you add a list type, add its
+entry to `CANARIES`.
+
+Canaries read through these references by default:
+
+| List type                                  | Source list                                      |
+| ------------------------------------------ | ------------------------------------------------ |
+| `imdb:chart/*`                             | The chart                                        |
+| `imdb:ls/list`                             | `ls055592025`                                    |
+| `imdb:ur/watchlist`                        | `ur195879360`                                    |
+| `imdb:ur/ratings`                          | `ur102185135/ratings`                            |
+| `trakt:` charts (`trending`, `boxoffice`…) | The chart (needs `TRAKT_CLIENT_ID`)              |
+| `justwatch:{list}`                         | `tl-tu-12653`                                    |
+| `senscritique:users/{user}/wishes`         | `users/Sergent_Pepper/wishes`                    |
+| `senscritique:lists/{id}`                  | `lists/369869`                                   |
+| `letterboxd:users/{user}/lists/{slug}`     | `users/official/lists/letterboxds-top-500-films` |
+| `trakt:me/*`, `simkl:me/*`, `mdblist:me/*` | The monitor Account's Connection                 |
+
+The other types with variable parts (Trakt user lists, smart lists, MDBList
+lists, Letterboxd member pages) need an entry in `MONITOR_CANARY_REFS`. Pick
+a Source list that does not change much, and set its minimum to about 80% of
+its size: `letterboxd:users/alice/diary=40`. For Trakt, pick small public
+Source lists: Trakt public reads share an app quota of 500 requests in 5
+minutes, and a user's history or collection can cost about 20.
+
+The monitor Account is a normal Account. Connect it to Trakt, Simkl and
+MDBList on the configure page, and keep Titles in each Source list that a
+canary reads: an empty watchlist fails its canary.
+
 ## Operations
 
 - Call `/monitor` at least every 15 minutes, so that two failed probes come
   well within the one-hour limit. An outage then shows after two calls.
+- Set the heartbeat period to more than 20 minutes. The list checks ping
+  every 10 to 20 minutes, from the first call after the 10 minutes.
 - Nothing else needs to change for the release: probes for Trakt, Simkl and
   MDBList use the client IDs that production already has.
 - To see the state, read `provider_outages` in the Supabase dashboard

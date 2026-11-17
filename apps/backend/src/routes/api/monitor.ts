@@ -13,6 +13,12 @@ import {
   STATUS_PAGE_PROVIDERS,
 } from "../../providers/status-pages";
 import { SIMKL_API } from "../../providers/simkl/api";
+import { scheduleBackgroundTask } from "../../lib/background";
+import {
+  claimListChecks,
+  lastListChecks,
+  runListChecks,
+} from "../../services/monitor/list-checks";
 
 /** An environment variable, with an empty value read as unset. */
 function env(name: string): string | undefined {
@@ -66,13 +72,12 @@ function serviceRead(url: string): ProbeRead {
  * One probe per Provider. A probe runs when Stremlist knows what to read:
  * a public Source list for Providers read without a Connection, the API
  * itself for the others. Its result feeds the Provider's outage state (what
- * the configure page shows) and, when set, its own Better Stack heartbeat,
- * so an alert names the Provider that broke.
+ * the configure page shows) and its Better Stack heartbeat, which the list
+ * checks send (services/monitor/list-checks.ts).
  */
 const PROBES: {
   provider: ProviderId;
   read: () => ProbeRead | undefined;
-  heartbeat: () => string | undefined;
 }[] = [
   {
     provider: "imdb",
@@ -80,9 +85,6 @@ const PROBES: {
       const ref = env("MONITOR_IMDB_USER_ID");
       return ref ? sourceRead("imdb", ref) : undefined;
     },
-    // BETTERSTACK_HEARTBEAT_URL is the original IMDb heartbeat.
-    heartbeat: () =>
-      env("BETTERSTACK_HEARTBEAT_URL_IMDB") ?? env("BETTERSTACK_HEARTBEAT_URL"),
   },
   {
     provider: "letterboxd",
@@ -92,7 +94,6 @@ const PROBES: {
         env("MONITOR_LETTERBOXD_REF") ??
           "users/official/lists/letterboxds-top-500-films",
       ),
-    heartbeat: () => env("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD"),
   },
   {
     provider: "justwatch",
@@ -100,7 +101,6 @@ const PROBES: {
       const ref = env("MONITOR_JUSTWATCH_REF");
       return ref ? sourceRead("justwatch", ref) : undefined;
     },
-    heartbeat: () => env("BETTERSTACK_HEARTBEAT_URL_JUSTWATCH"),
   },
   {
     provider: "senscritique",
@@ -108,7 +108,6 @@ const PROBES: {
       const ref = env("MONITOR_SENSCRITIQUE_REF");
       return ref ? sourceRead("senscritique", ref) : undefined;
     },
-    heartbeat: () => env("BETTERSTACK_HEARTBEAT_URL_SENSCRITIQUE"),
   },
   {
     // Trakt's public charts need only the app's client ID.
@@ -117,7 +116,6 @@ const PROBES: {
       clientId("trakt")
         ? sourceRead("trakt", env("MONITOR_TRAKT_REF") ?? "trending")
         : undefined,
-    heartbeat: () => env("BETTERSTACK_HEARTBEAT_URL_TRAKT"),
   },
   {
     provider: "simkl",
@@ -129,7 +127,6 @@ const PROBES: {
       url.searchParams.set("client_id", id);
       return serviceRead(url.toString());
     },
-    heartbeat: () => env("BETTERSTACK_HEARTBEAT_URL_SIMKL"),
   },
   {
     provider: "mdblist",
@@ -137,7 +134,6 @@ const PROBES: {
       clientId("mdblist")
         ? serviceRead("https://api.mdblist.com/lists/top")
         : undefined,
-    heartbeat: () => env("BETTERSTACK_HEARTBEAT_URL_MDBLIST"),
   },
 ];
 
@@ -152,9 +148,7 @@ type ProbeResult =
 async function runProbe(
   provider: ProviderId,
   read: ProbeRead,
-  heartbeat: string | undefined,
 ): Promise<ProbeResult> {
-  let result: ProbeResult;
   try {
     // An unavailable Provider (turned off, or halted with no probe due) is
     // never contacted. Its Availability already tells the user.
@@ -162,23 +156,12 @@ async function runProbe(
       throw new Error(`${provider} is unavailable (turned off or halted)`);
     const degraded = await providerDegradation(provider);
     if (degraded) throw new Error(degraded);
-    result = { provider, ok: true, entries: await read() };
+    return { provider, ok: true, entries: await read() };
   } catch (err) {
     const error = err instanceof Error ? err.message : "Unknown error";
     console.error(`${provider} monitor check failed:`, error);
-    result = { provider, ok: false, outage: isOutageFailure(err), error };
+    return { provider, ok: false, outage: isOutageFailure(err), error };
   }
-
-  if (heartbeat) {
-    try {
-      await (result.ok
-        ? fetch(heartbeat)
-        : fetch(`${heartbeat}/fail`, { method: "POST", body: result.error }));
-    } catch {
-      /* Better Stack also alerts when the heartbeat stops arriving. */
-    }
-  }
-  return result;
 }
 
 /**
@@ -205,8 +188,11 @@ async function recordOutage(
 }
 
 /**
- * The uptime check: probes each Provider, reads the official status pages,
- * records outages for the configure page, and reports to Better Stack.
+ * The uptime check: probes each Provider, reads the official status pages
+ * and records outages for the configure page. At most once in 10 minutes,
+ * one call also starts the list checks after its answer: they report each
+ * Provider to Better Stack. The answer gives the last run of the list
+ * checks.
  */
 const monitor = new Hono().get("/monitor", async (c) => {
   const authHeader = c.req.header("Authorization");
@@ -217,28 +203,36 @@ const monitor = new Hono().get("/monitor", async (c) => {
 
   // Independent probes: one failure never skips the others. A turned-off
   // Provider's status page is not read: its label already says it all.
-  const checks = await Promise.all(
-    PROBES.map(async ({ provider, read: readOf, heartbeat }) => {
-      const read = readOf();
-      const [probe, page] = await Promise.all([
-        read ? runProbe(provider, read, heartbeat()) : undefined,
-        STATUS_PAGE_PROVIDERS.includes(provider) && isProviderEnabled(provider)
-          ? readStatusPage(provider)
-          : null,
-      ]);
-      await recordOutage(provider, probe, page);
-      return { provider, probe, page };
-    }),
-  );
+  const [checks, claimed] = await Promise.all([
+    Promise.all(
+      PROBES.map(async ({ provider, read: readOf }) => {
+        const read = readOf();
+        const [probe, page] = await Promise.all([
+          read ? runProbe(provider, read) : undefined,
+          STATUS_PAGE_PROVIDERS.includes(provider) &&
+          isProviderEnabled(provider)
+            ? readStatusPage(provider)
+            : null,
+        ]);
+        await recordOutage(provider, probe, page);
+        return { provider, probe, page };
+      }),
+    ),
+    claimListChecks(),
+  ]);
   const results = checks.flatMap(({ probe }) => (probe ? [probe] : []));
+  // The list checks take longer than Better Stack waits for an answer.
+  if (claimed) scheduleBackgroundTask(() => runListChecks(results));
   const statusPages = Object.fromEntries(
     checks
       .filter(({ provider }) => STATUS_PAGE_PROVIDERS.includes(provider))
       .map(({ provider, page }) => [provider, page]),
   );
-  // Only the probes alert: a status page is an extra signal.
+  // Only the probes fail the answer: a status page is an extra signal, and
+  // the list checks alert through the heartbeats after the answer.
   const ok = results.every((result) => result.ok);
-  return c.json({ ok, results, statusPages }, ok ? 200 : 502);
+  const listChecks = { started: claimed, last: await lastListChecks() };
+  return c.json({ ok, results, statusPages, listChecks }, ok ? 200 : 502);
 });
 
 export default monitor;
