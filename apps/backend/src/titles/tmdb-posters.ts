@@ -130,9 +130,9 @@ async function lookUpAll(titles: PosterTitle[]): Promise<void> {
 }
 
 /**
- * The TMDB poster URL of each Title that has one. Cached posters answer at
- * once. The others are looked up on TMDB for at most `budgetMs`; lookups
- * that take longer go on in the background, so the next request has them.
+ * The TMDB poster URL of each Title that has one. Posters in memory answer
+ * at once. Stored and TMDB lookups get at most `budgetMs` together; what
+ * takes longer goes on in the background, so the next request has it.
  * A Title left out (no TMDB poster, TMDB down, not yet looked up) keeps its
  * IMDb poster.
  */
@@ -150,26 +150,35 @@ export async function findTmdbPosters(
 
   const unknown = [...unique.values()].filter(({ id }) => !memory.has(id));
   if (unknown.length > 0) {
-    const stored = await readStored(unknown.map(({ id }) => id));
-    for (const [id, path] of stored) memory.set(id, path);
-    const missing = unknown
-      .filter(({ id }) => !stored.has(id))
-      .slice(0, MAX_LOOKUPS);
-    if (missing.length > 0 && Date.now() >= pausedUntil) {
-      const lookups = lookUpAll(missing);
-      if (Number.isFinite(budgetMs)) {
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        await Promise.race([
-          lookups,
-          new Promise((resolve) => {
-            timer = setTimeout(resolve, budgetMs);
-          }),
-        ]);
-        clearTimeout(timer);
-        scheduleBackgroundTask(() => lookups);
-      } else {
-        await lookups;
+    // One deadline for the stored posters and the TMDB lookups.
+    const work = (async () => {
+      const stored = await readStored(unknown.map(({ id }) => id));
+      for (const [id, path] of stored) memory.set(id, path);
+      const missing = unknown
+        .filter(({ id }) => !stored.has(id))
+        .slice(0, MAX_LOOKUPS);
+      if (missing.length > 0 && Date.now() >= pausedUntil) {
+        await lookUpAll(missing);
       }
+    })().catch((error: unknown) => {
+      // Posters never fail a request: the Titles keep their IMDb posters.
+      console.error(
+        "TMDB poster lookup failed:",
+        error instanceof Error ? error.message : error,
+      );
+    });
+    if (Number.isFinite(budgetMs)) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        work,
+        new Promise((resolve) => {
+          timer = setTimeout(resolve, budgetMs);
+        }),
+      ]);
+      clearTimeout(timer);
+      scheduleBackgroundTask(() => work);
+    } else {
+      await work;
     }
   }
 

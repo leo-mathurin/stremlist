@@ -7,6 +7,7 @@ import {
   vi,
 } from "vite-plus/test";
 import { db } from "../../__tests__/helpers/mock-supabase";
+import { MockQueryBuilder } from "../../__tests__/helpers/supabase/query-builder";
 import { findTmdbPosters, resetTmdbPosterMemory } from "../tmdb-posters";
 
 vi.mock(
@@ -67,6 +68,24 @@ describe("findTmdbPosters", () => {
     );
     expect(posters.size).toBe(0);
     expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("keeps its budget when the stored posters are slow to read", async () => {
+    const fetch = answer(BOTH);
+    vi.stubGlobal("fetch", fetch);
+    // The read of the stored posters never answers.
+    const read = vi
+      .spyOn(MockQueryBuilder.prototype, "then")
+      .mockImplementationOnce(() => new Promise(() => {}));
+    const started = Date.now();
+    const posters = await findTmdbPosters(
+      [{ id: "tt0000009", type: "movie" }],
+      { budgetMs: 50, size: "w500" },
+    );
+    expect(posters.size).toBe(0);
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(fetch).not.toHaveBeenCalled();
+    read.mockRestore();
   });
 
   it("answers within its budget and stores late answers for the next call", async () => {
