@@ -1,4 +1,7 @@
-import { FACEBOOK_EXTERNAL_HIT_USER_AGENT } from "@stremlist/shared/constants";
+import {
+  FACEBOOK_EXTERNAL_HIT_USER_AGENT,
+  IMDB_RATINGS_REF_PATTERN,
+} from "@stremlist/shared/constants";
 import { CHART_BY_ID, isChartId } from "@stremlist/shared/imdb-charts";
 import type { ChartEntry } from "@stremlist/shared/imdb-charts";
 import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
@@ -20,10 +23,18 @@ const IMDB_CURSOR_WINDOW_SIZE = 10_000;
 // This is intentionally bounded: every additional page is a sequential IMDb
 // request, so raising it further would make cold loads in Stremio even slower.
 const MAX_ITEMS = 15_000;
-const MAX_PAGES =
-  Math.floor(MAX_ITEMS / IMDB_CURSOR_WINDOW_SIZE) *
-    Math.ceil(IMDB_CURSOR_WINDOW_SIZE / PAGE_SIZE) +
-  Math.ceil((MAX_ITEMS % IMDB_CURSOR_WINDOW_SIZE) / PAGE_SIZE);
+// The ratings search ends after its first cursor window: it answers no next
+// page at 10,000, whatever its total.
+const MAX_RATINGS = IMDB_CURSOR_WINDOW_SIZE;
+
+/** The pagination safety stop for a read of at most `maxItems`. */
+function pagesFor(maxItems: number): number {
+  return (
+    Math.floor(maxItems / IMDB_CURSOR_WINDOW_SIZE) *
+      Math.ceil(IMDB_CURSOR_WINDOW_SIZE / PAGE_SIZE) +
+    Math.ceil((maxItems % IMDB_CURSOR_WINDOW_SIZE) / PAGE_SIZE)
+  );
+}
 
 function getPageSize(itemsFetched: number, targetItems: number): number {
   const remaining = targetItems - itemsFetched;
@@ -85,6 +96,45 @@ const LIST_QUERY = `
           listItem: title { ${TITLE_FRAGMENT} }
         }
       }
+    }
+  }
+`;
+
+// Ratings come from a title search, newest rating first. `userRating` needs
+// the `userId` argument: without it, IMDb asks for a login.
+const RATINGS_QUERY = `
+  query UserRatings($userId: ID!, $first: Int!, $after: String) {
+    advancedTitleSearch(
+      first: $first
+      after: $after
+      constraints: {
+        singleUserRatingConstraint: { filterType: INCLUDE, userId: $userId }
+      }
+      sort: { sortBy: SINGLE_USER_RATING_DATE, sortOrder: DESC }
+    ) {
+      total
+      pageInfo { hasNextPage endCursor }
+      edges {
+        node {
+          title {
+            ${TITLE_FRAGMENT}
+            userRating(userId: $userId) { date }
+          }
+        }
+      }
+    }
+  }
+`;
+
+const VALIDATE_RATINGS_QUERY = `
+  query ValidateRatings($userId: ID!) {
+    advancedTitleSearch(
+      first: 1
+      constraints: {
+        singleUserRatingConstraint: { filterType: INCLUDE, userId: $userId }
+      }
+    ) {
+      total
     }
   }
 `;
@@ -221,11 +271,28 @@ const imdbListSchema = z.object({
   titleListItemSearch: titleListItemSearchSchema.nullish(),
 });
 
+const ratedTitleSchema = titleNodeSchema.extend({
+  userRating: z.object({ date: z.string().nullish() }).nullish(),
+});
+
 const graphqlResponseSchema = z.object({
   data: z
     .object({
       predefinedList: imdbListSchema.nullish(),
       list: imdbListSchema.nullish(),
+      advancedTitleSearch: z
+        .object({
+          total: z.number().nullish(),
+          pageInfo: pageInfoSchema.nullish(),
+          edges: z
+            .array(
+              z.object({
+                node: z.object({ title: ratedTitleSchema.nullish() }).nullish(),
+              }),
+            )
+            .nullish(),
+        })
+        .nullish(),
       chartTitles: z
         .object({
           pageInfo: pageInfoSchema.nullish(),
@@ -291,6 +358,11 @@ const ERROR_LIST_NOT_FOUND =
 const ERROR_LIST_PRIVATE =
   "This IMDb list is private. Please ask the list owner to make it public.";
 
+const ERROR_RATINGS_NOT_FOUND =
+  "Could not find the IMDb ratings of this user. Please check and try again.";
+const ERROR_RATINGS_PRIVATE =
+  "These IMDb ratings are private. Please make your ratings public in your IMDb settings.";
+
 export type WatchlistErrorReason = "private" | "not_found";
 
 /**
@@ -300,10 +372,18 @@ export type WatchlistErrorReason = "private" | "not_found";
  */
 export function classifyImdbError(error: unknown): WatchlistErrorReason | null {
   const message = error instanceof Error ? error.message : "";
-  if (message === ERROR_PRIVATE || message === ERROR_LIST_PRIVATE) {
+  if (
+    message === ERROR_PRIVATE ||
+    message === ERROR_LIST_PRIVATE ||
+    message === ERROR_RATINGS_PRIVATE
+  ) {
     return "private";
   }
-  if (message === ERROR_NOT_FOUND || message === ERROR_LIST_NOT_FOUND) {
+  if (
+    message === ERROR_NOT_FOUND ||
+    message === ERROR_LIST_NOT_FOUND ||
+    message === ERROR_RATINGS_NOT_FOUND
+  ) {
     return "not_found";
   }
   return null;
@@ -386,6 +466,10 @@ export async function normalizeImdbUserId(input: string): Promise<string> {
   if (isChartId(input)) {
     return input;
   }
+  const ratings = IMDB_RATINGS_REF_PATTERN.exec(input);
+  if (ratings) {
+    return `${await normalizeImdbUserId(ratings[1])}/ratings`;
+  }
   if (!input.startsWith("p.")) {
     return input;
   }
@@ -441,7 +525,7 @@ export async function validateImdbWatchlist(
   }
 }
 
-/** Every page of a watchlist or list, up to MAX_ITEMS. */
+/** Every page of a watchlist, list or ratings, up to `maxItems`. */
 async function readListPages(
   label: string,
   errors: { private: string; notFound: string },
@@ -449,19 +533,21 @@ async function readListPages(
     first: number,
     after: string | null,
   ) => Promise<{ json: GraphQLResponse; list: ImdbList }>,
+  maxItems = MAX_ITEMS,
 ): Promise<PagedRead<ImdbEdge>> {
   const edges: ImdbEdge[] = [];
   let after: string | null = null;
-  let targetItems = MAX_ITEMS;
+  let targetItems = maxItems;
   let complete = true;
   const truncate = () => {
     complete = false;
     console.warn(
-      `${label} exceeded the ${MAX_ITEMS.toLocaleString("en-US")}-item limit; remaining items truncated.`,
+      `${label} exceeded the ${maxItems.toLocaleString("en-US")}-item limit; remaining items truncated.`,
     );
   };
 
-  for (let page = 0; page < MAX_PAGES; page++) {
+  const maxPages = pagesFor(maxItems);
+  for (let page = 0; page < maxPages; page++) {
     const first = getPageSize(edges.length, targetItems);
     if (first <= 0) break;
 
@@ -475,15 +561,15 @@ async function readListPages(
     if (list.visibility?.id === "PRIVATE") throw new Error(errors.private);
 
     const search = list.titleListItemSearch;
-    targetItems = Math.min(search?.total ?? MAX_ITEMS, MAX_ITEMS);
+    targetItems = Math.min(search?.total ?? maxItems, maxItems);
     const pageInfo = search?.pageInfo;
     const pageCapacity = Math.max(targetItems - edges.length, 0);
     edges.push(...(search?.edges ?? []).slice(0, pageCapacity));
 
     if (edges.length >= targetItems) {
       if (
-        (search?.total ?? 0) > MAX_ITEMS ||
-        (targetItems === MAX_ITEMS && pageInfo?.hasNextPage)
+        (search?.total ?? 0) > maxItems ||
+        (targetItems === maxItems && pageInfo?.hasNextPage)
       ) {
         truncate();
       }
@@ -492,7 +578,7 @@ async function readListPages(
     if (!pageInfo?.hasNextPage || !pageInfo.endCursor) break;
     after = pageInfo.endCursor;
 
-    if (page === MAX_PAGES - 1) truncate();
+    if (page === maxPages - 1) truncate();
   }
 
   return { items: edges, complete };
@@ -831,6 +917,97 @@ export async function fetchList(listId: string): Promise<ImdbListData> {
   const { items, complete } = await getImdbList(listId);
   const metas = toMetas(items, `list data received from IMDb for ${listId}`);
   return { metas, complete, addedAt: addedDates(items) };
+}
+
+/**
+ * Whether a user's ratings are public. IMDb refuses the ratings of a missing
+ * user as it refuses private ones, so the watchlist query tells them apart:
+ * it answers null for a missing user.
+ */
+export async function validateImdbRatings(
+  input: string,
+): Promise<ValidationResult> {
+  let userId: string;
+  try {
+    userId = await normalizeImdbUserId(input);
+  } catch {
+    return { valid: false, reason: "not_found" };
+  }
+
+  const json = await queryImdbGraphQL(
+    "ValidateRatings",
+    VALIDATE_RATINGS_QUERY,
+    { userId },
+  );
+  if (!json.errors?.length && json.data?.advancedTitleSearch) {
+    return { valid: true, userId };
+  }
+  if (!hasForbiddenError(json.errors)) {
+    throw new Error(`IMDb could not check the ratings of ${userId}`);
+  }
+  const owner = await queryImdbGraphQL("ValidateWatchlist", VALIDATE_QUERY, {
+    urConst: userId,
+  });
+  const exists =
+    !!owner.data?.predefinedList || hasForbiddenError(owner.errors);
+  return { valid: false, reason: exists ? "private" : "not_found" };
+}
+
+/** The newest MAX_RATINGS ratings of a user, newest first. */
+export async function getImdbRatings(
+  input: string,
+): Promise<PagedRead<ImdbEdge>> {
+  const userId = await normalizeImdbUserId(input);
+  return readListPages(
+    `Ratings of ${userId}`,
+    { private: ERROR_RATINGS_PRIVATE, notFound: ERROR_RATINGS_NOT_FOUND },
+    async (first, after) => {
+      const json = await queryImdbGraphQL("UserRatings", RATINGS_QUERY, {
+        userId,
+        first,
+        after,
+      });
+      // Only a refusal says something about the ratings; IMDb's search also
+      // fails now and then, which must not empty the Catalog.
+      if (json.errors?.length && !hasForbiddenError(json.errors)) {
+        throw new Error(`IMDb could not read the ratings of ${userId}`);
+      }
+      const search = json.data?.advancedTitleSearch;
+      return {
+        json,
+        list: search && {
+          titleListItemSearch: {
+            total: search.total,
+            pageInfo: search.pageInfo,
+            edges: (search.edges ?? []).flatMap((edge) => {
+              const title = edge.node?.title;
+              return title
+                ? [
+                    {
+                      node: { createdDate: title.userRating?.date },
+                      listItem: title,
+                    },
+                  ]
+                : [];
+            }),
+          },
+        },
+      };
+    },
+    MAX_RATINGS,
+  );
+}
+
+/** A user's ratings, oldest first, each dated by its rating. */
+export async function fetchRatings(userId: string): Promise<ImdbListData> {
+  console.log(`Fetching IMDb ratings of ${userId}...`);
+  const { items, complete } = await getImdbRatings(userId);
+  const oldestFirst = [...items].reverse();
+  const metas = toMetas(
+    oldestFirst,
+    `ratings received from IMDb for ${userId}`,
+  );
+  return { metas, complete, addedAt: addedDates(oldestFirst) };
 }
 
 const TITLES_BY_ID_QUERY = `

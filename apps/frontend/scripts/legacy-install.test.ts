@@ -51,6 +51,16 @@ test("a pasted list ID never looks for a v1 install", async () => {
   assert.deepEqual(checked, []);
 });
 
+test("a pasted ratings link never looks for a v1 install", async () => {
+  // v1 installs read the watchlist of the ID; a ratings link asks for more.
+  const { lookup, checked } = lookupOver(["ur12345678"]);
+  assert.equal(
+    await find("https://www.imdb.com/user/ur12345678/ratings", lookup),
+    null,
+  );
+  assert.deepEqual(checked, []);
+});
+
 test("a p. handle opens the install keyed by the handle", async () => {
   const handle = "https://www.imdb.com/user/p.someone/";
   const { lookup, resolved } = lookupOver(["p.someone"]);

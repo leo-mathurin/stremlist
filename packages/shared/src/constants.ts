@@ -106,6 +106,13 @@ export const IMDB_USER_ID_PATTERN = new RegExp(
 export const IMDB_WATCHLIST_SOURCE_ID_PATTERN = new RegExp(
   `^(${IMDB_UR_ID_SOURCE}|${IMDB_LS_ID_SOURCE}|${IMDB_P_HANDLE_SOURCE})$`,
 );
+/**
+ * The stored reference of an IMDb user's ratings: the user, then `/ratings`.
+ * The suffix keeps it apart from the bare user ID of a watchlist.
+ */
+export const IMDB_RATINGS_REF_PATTERN = new RegExp(
+  `^(${IMDB_UR_ID_SOURCE}|${IMDB_P_HANDLE_SOURCE})/ratings$`,
+);
 
 /**
  * A Legacy alias: the key of a v1 install, kept as `legacy_imdb_user_id`.

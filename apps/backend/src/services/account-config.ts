@@ -1,5 +1,6 @@
 import {
   DISPLAY_MODE_OPTIONS,
+  IMDB_RATINGS_REF_PATTERN,
   IMDB_WATCHLIST_SOURCE_ID_PATTERN,
   SORT_OPTIONS,
   SOURCE_REF_MAX_LENGTH,
@@ -149,6 +150,7 @@ async function normalizeSource(
     // malformed one would be saved and fail on every catalog request.
     if (
       !IMDB_WATCHLIST_SOURCE_ID_PATTERN.test(sourceRef) &&
+      !IMDB_RATINGS_REF_PATTERN.test(sourceRef) &&
       !isChartId(sourceRef)
     ) {
       throw new ConfigError(`"${source.sourceRef}" is not a valid IMDb list.`);

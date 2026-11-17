@@ -1,5 +1,6 @@
 import {
   IMDB_LIST_ID_PATTERN,
+  IMDB_RATINGS_REF_PATTERN,
   IMDB_USER_ID_PATTERN,
 } from "@stremlist/shared/constants";
 import { CHART_BY_ID, isChartId } from "@stremlist/shared/imdb-charts";
@@ -7,14 +8,28 @@ import {
   classifyImdbError,
   fetchChart,
   fetchList,
+  fetchRatings,
   fetchWatchlist,
   isListId,
   validateImdbList,
+  validateImdbRatings,
   validateImdbWatchlist,
 } from "../services/imdb-scraper";
 import type { ImdbListData } from "../services/imdb-scraper";
 import type { ProviderAdapter, SourceValidation } from "./types";
 import { SourceUnavailableError } from "./types";
+
+/**
+ * Charts are ranked, not dated; watchlists and lists say when each Title was
+ * added, and ratings when it was rated.
+ */
+function readSource(ref: string): Promise<ImdbListData> {
+  if (isChartId(ref)) return fetchChart(ref);
+  if (isListId(ref)) return fetchList(ref);
+  const ratings = IMDB_RATINGS_REF_PATTERN.exec(ref);
+  if (ratings) return fetchRatings(ratings[1]);
+  return fetchWatchlist(ref);
+}
 
 const CACHE_TTL_MS =
   (Number.isFinite(Number(process.env.CACHE_TTL_MINUTES))
@@ -23,8 +38,9 @@ const CACHE_TTL_MS =
 
 /**
  * IMDb: public watchlists (`ur…`, or a `p.` handle resolved to `ur…`), public
- * lists (`ls…`) and the built-in charts (`imdb:…`), read through IMDb's
- * GraphQL API. Entries come with full metadata, so they skip enrichment.
+ * ratings (`ur…/ratings`), public lists (`ls…`) and the built-in charts
+ * (`imdb:…`), read through IMDb's GraphQL API. Entries come with full
+ * metadata, so they skip enrichment.
  */
 export const imdbProvider: ProviderAdapter = {
   id: "imdb",
@@ -48,6 +64,13 @@ export const imdbProvider: ProviderAdapter = {
         ? { ok: true, ref }
         : { ok: false, reason: result.reason };
     }
+    const ratings = IMDB_RATINGS_REF_PATTERN.exec(ref);
+    if (ratings) {
+      const result = await validateImdbRatings(ratings[1]);
+      return result.valid
+        ? { ok: true, ref: `${result.userId}/ratings` }
+        : { ok: false, reason: result.reason };
+    }
     if (IMDB_USER_ID_PATTERN.test(ref)) {
       const result = await validateImdbWatchlist(ref);
       return result.valid
@@ -59,13 +82,7 @@ export const imdbProvider: ProviderAdapter = {
 
   async fetchSource(ref) {
     try {
-      // Charts are ranked, not dated; watchlists and lists say when each
-      // Title was added.
-      const data: ImdbListData = isChartId(ref)
-        ? await fetchChart(ref)
-        : isListId(ref)
-          ? await fetchList(ref)
-          : await fetchWatchlist(ref);
+      const data = await readSource(ref);
       return {
         entries: data.metas.map((meta) => {
           const addedAt = data.addedAt?.get(meta.id);

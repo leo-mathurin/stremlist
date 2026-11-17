@@ -50,12 +50,29 @@ describe("parseSourceLink: IMDb", () => {
     expect(parseSourceLink(input)).toEqual(parsed("imdb", ref, "list"));
   });
 
-  it.each(["imdb:most-popular-movies", "imdb:top-rated-tv", "imdb:box-office"])(
-    "reads the built-in chart %j",
-    (input) => {
-      expect(parseSourceLink(input)).toEqual(parsed("imdb", input, "chart"));
-    },
-  );
+  it.each([
+    ["https://www.imdb.com/user/ur12345678/ratings", "ur12345678/ratings"],
+    ["https://www.imdb.com/user/ur12345678/ratings/", "ur12345678/ratings"],
+    [
+      "https://www.imdb.com/user/ur12345678/ratings?sort=date_added%2Cdesc",
+      "ur12345678/ratings",
+    ],
+    ["imdb.com/user/UR12345678/Ratings/", "ur12345678/ratings"],
+    ["https://m.imdb.com/user/ur12345678/ratings", "ur12345678/ratings"],
+    ["https://www.imdb.com/user/p.leo123/ratings", "p.leo123/ratings"],
+  ])("reads the ratings of %j, not the watchlist", (input, ref) => {
+    expect(parseSourceLink(input)).toEqual(parsed("imdb", ref, "list"));
+  });
+
+  it.each([
+    "imdb:most-popular-movies",
+    "imdb:top-rated-tv",
+    "imdb:box-office",
+    "imdb:top-rated-indian-movies",
+    "imdb:lowest-rated-movies",
+  ])("reads the built-in chart %j", (input) => {
+    expect(parseSourceLink(input)).toEqual(parsed("imdb", input, "chart"));
+  });
 
   it.each([
     "imdb:not-a-chart",
@@ -63,6 +80,9 @@ describe("parseSourceLink: IMDb", () => {
     "tt0111161",
     "https://example.com/user/ur12345678/watchlist",
     "https://www.imdb.com/chart/top/",
+    "https://www.imdb.com/user/ur12/ratings",
+    "https://www.imdb.com/user/ur12345678/ratings/extra",
+    "ur12345678/ratings",
   ])("does not read %j", (input) => {
     expect(parseSourceLink(input)).toBeNull();
   });
@@ -367,6 +387,7 @@ describe("describeSourceRef kind", () => {
   it.each([
     "https://www.imdb.com/user/ur12345678/watchlist",
     "https://www.imdb.com/list/ls012345678/",
+    "https://www.imdb.com/user/ur12345678/ratings",
     "p.leom",
     "imdb:top-rated-movies",
     "https://trakt.tv/users/LeoM/watchlist",
@@ -475,6 +496,15 @@ describe("describeSourceRef", () => {
     });
   });
 
+  it("names IMDb ratings and links them to their page", () => {
+    expect(describeSourceRef("imdb", "ur12345678/ratings")).toEqual({
+      kind: "list",
+      detail: "ur12345678",
+      url: "https://www.imdb.com/user/ur12345678/ratings",
+      title: "IMDb Ratings",
+    });
+  });
+
   it("links a Trakt smart list to its page", () => {
     expect(describeSourceRef("trakt", "smart-lists/silos")).toEqual({
       kind: "list",
@@ -494,6 +524,15 @@ describe("describeSourceRef", () => {
       detail: "me/lists/42",
       url: null,
     });
+  });
+});
+
+describe("sourceHasAddedDates: IMDb", () => {
+  it("dates watchlists, lists and ratings, not charts", () => {
+    for (const ref of ["ur12345678", "ls012345678", "ur12345678/ratings"])
+      expect(sourceHasAddedDates("imdb", ref)).toBe(true);
+    for (const ref of ["imdb:top-rated-movies", "imdb:lowest-rated-movies"])
+      expect(sourceHasAddedDates("imdb", ref)).toBe(false);
   });
 });
 
