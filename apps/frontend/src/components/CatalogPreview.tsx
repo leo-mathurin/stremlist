@@ -362,17 +362,22 @@ function CatalogRow({
           className="-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 sm:-mx-5 sm:scroll-px-5 sm:px-5"
         >
           {row.titles.map((title) => {
-            const poster = choosePoster(
-              title.id,
-              { imdb: title.poster, tmdb: title.tmdbPoster },
-              { posterSource, rpdbApiKey },
-            );
+            const posters = { imdb: title.poster, tmdb: title.tmdbPoster };
+            // What Stremio shows, then what shows when an image fails: the
+            // chosen source without RPDB, then the IMDb poster.
+            const candidates = [
+              ...new Set([
+                choosePoster(title.id, posters, { posterSource, rpdbApiKey }),
+                choosePoster(title.id, posters, { posterSource }),
+                title.poster,
+              ]),
+            ].filter((poster): poster is string => poster !== null);
             return (
               <li key={title.id} className="snap-start">
                 <PosterTile
-                  key={`${poster}:${title.poster}`}
+                  key={candidates.join(" ")}
                   title={title}
-                  poster={poster}
+                  posters={candidates}
                 />
               </li>
             );
@@ -395,12 +400,14 @@ function CatalogRow({
 
 function PosterTile({
   title,
-  poster: initialPoster,
+  posters,
 }: {
   title: PreviewTitle;
-  poster: string | null;
+  /** The poster to show, then the ones to try when an image fails. */
+  posters: string[];
 }) {
-  const [poster, setPoster] = useState(initialPoster);
+  const [attempt, setAttempt] = useState(0);
+  const poster = posters.at(attempt) ?? null;
   const [loaded, setLoaded] = useState(false);
   const label = title.releaseInfo
     ? `${title.name} (${title.releaseInfo})`
@@ -426,7 +433,7 @@ function PosterTile({
             onLoad={() => setLoaded(true)}
             onError={() => {
               setLoaded(false);
-              setPoster(poster !== title.poster ? title.poster : null);
+              setAttempt((current) => current + 1);
             }}
             className={cn(
               "size-full object-cover transition-opacity duration-200 ease-out",
