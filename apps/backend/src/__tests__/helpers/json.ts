@@ -189,7 +189,7 @@ export const configBody = z
     access: z.enum(["private", "legacy"]),
     accountId: z.string().nullable(),
     rpdbApiKey: z.string().nullable(),
-    posterSource: z.enum(["imdb", "tmdb"]).optional(),
+    posterSource: z.enum(["imdb", "tmdb", "rpdb"]).optional(),
     lists: z.array(configList),
     connections: z.array(
       z

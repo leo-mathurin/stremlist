@@ -86,11 +86,13 @@ function toastError(err: unknown, options?: { id: string }) {
   );
 }
 
-/** The poster source of a kept draft; one kept by an older page has none. */
+/**
+ * The poster source of a kept draft. One kept by an older page has none:
+ * then an RPDB key meant RPDB posters.
+ */
 function keptPosterSource(draft: AccountForm): PosterSource {
-  return isPosterSource(draft.posterSource)
-    ? draft.posterSource
-    : DEFAULT_POSTER_SOURCE;
+  if (isPosterSource(draft.posterSource)) return draft.posterSource;
+  return draft.rpdbApiKey.trim() ? "rpdb" : DEFAULT_POSTER_SOURCE;
 }
 
 /** What a new setup starts with: a form with this content has nothing to lose. */

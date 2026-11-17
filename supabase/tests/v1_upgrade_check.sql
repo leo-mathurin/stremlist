@@ -18,6 +18,10 @@ BEGIN
 
   SELECT * INTO legacy FROM public.accounts WHERE legacy_imdb_user_id = 'ur7200001';
   ASSERT legacy.rpdb_api_key = 'rpdb-1';
+  -- An RPDB key turned RPDB posters on: the Account keeps them.
+  ASSERT legacy.poster_source = 'rpdb';
+  ASSERT (SELECT poster_source FROM public.accounts
+    WHERE legacy_imdb_user_id = 'p.upgradehandle') = 'imdb';
   ASSERT legacy.last_fetched_at = '2026-01-01T00:00:00Z';
   ASSERT legacy.prewarm_lease_token = '74444444-4444-4444-8444-444444444444';
   ASSERT legacy.prewarm_request_generation = 1;

@@ -1,6 +1,7 @@
 import { test } from "@e2e-dev/web";
 import type { Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
+import type { Screen } from "e2e";
 import type { PreviewRequest } from "./config-fixture";
 import {
   SAVED,
@@ -12,36 +13,29 @@ import {
   saveButton,
 } from "./config-fixture";
 
-// The poster source of an Account (STR-106): IMDb by default, or TMDB, with
-// an RPDB key over both. The preview gives both posters of each Title, so
-// the page switches source without a new preview. The backend answers are
-// intercepted; tests/poster-source.spec.ts covers the real handlers.
+// The poster source of an Account (STR-106): one choice between IMDb (the
+// default), TMDB and RPDB, with the RPDB key field for RPDB only. The preview
+// gives both IMDb and TMDB posters of each Title, so the page switches
+// source without a new preview. The backend answers are intercepted;
+// tests/poster-source.spec.ts covers the real handlers.
 
 const IMDB_POSTER = "https://posters.e2e.test/imdb/shawshank.svg";
 const TMDB_POSTER = "https://posters.e2e.test/tmdb/shawshank.svg";
+const GODFATHER = "https://posters.e2e.test/imdb/godfather.svg";
 const RPDB_POSTER =
   "https://api.ratingposterdb.com/e2e-synthetic-rpdb/imdb/poster-default/tt0111161.jpg?fallback=true";
-const TILE = "The Shawshank Redemption (1994), on IMDb";
-const POSTER_NOTE = {
-  imdb: "Stremlist uses IMDb posters, as before.",
-  tmdb: "When TMDB has no poster for a title, or does not answer, Stremlist shows the IMDb poster.",
-  rpdb: "Your RPDB key is set, so RPDB posters replace this choice.",
-};
+const NO_KEY = "Until you add a key, Stremlist shows IMDb posters.";
 const IMAGE =
   '<svg xmlns="http://www.w3.org/2000/svg" width="2" height="3"><rect width="2" height="3"/></svg>';
 
-/** The first poster tiles: Shawshank has both posters, The Godfather only IMDb's. */
+/** Shawshank has both posters, The Godfather only the IMDb one. */
 function previewWithPosters(request: PreviewRequest) {
   const preview = previewOf(request);
   for (const row of preview.catalogs) {
     for (const title of row.titles) {
-      if (title.id === "tt0111161") {
-        title.poster = IMDB_POSTER;
-        title.tmdbPoster = TMDB_POSTER;
-      } else {
-        title.poster = "https://posters.e2e.test/imdb/godfather.svg";
-        title.tmdbPoster = null;
-      }
+      const shawshank = title.id === "tt0111161";
+      title.poster = shawshank ? IMDB_POSTER : GODFATHER;
+      title.tmdbPoster = shawshank ? TMDB_POSTER : null;
     }
   }
   return preview;
@@ -52,6 +46,8 @@ async function routePosterImages(browser: Browser) {
   for (const pattern of [
     "https://posters.e2e.test/**",
     "https://api.ratingposterdb.com/**",
+    "https://m.media-amazon.com/**",
+    "https://image.tmdb.org/**",
   ]) {
     await browser.route(pattern, async (route) => {
       await route.fulfill({ body: IMAGE, contentType: "image/svg+xml" });
@@ -59,7 +55,7 @@ async function routePosterImages(browser: Browser) {
   }
 }
 
-/** The poster URL that each tile of the first preview shows. */
+/** The poster URL that the first two tiles of the List preview show. */
 function tilePosters(browser: Browser) {
   return browser.evaluate(() =>
     Array.from(
@@ -72,7 +68,23 @@ function tilePosters(browser: Browser) {
   );
 }
 
-test("the poster source changes the preview at once and saves", async ({
+/** The hosts of the example posters that show. */
+function exampleHosts(browser: Browser) {
+  return browser.evaluate(() =>
+    Array.from(
+      document.querySelectorAll<HTMLImageElement>(
+        'img[alt$=", example poster"]',
+      ),
+    ).map((image) => new URL(image.src).host),
+  );
+}
+
+async function choose(screen: Screen, source: RegExp) {
+  await screen.getByRole("combobox", "Posters").tap();
+  await screen.getByRole("option", source).tap();
+}
+
+test("each poster source changes the preview at once, RPDB with its key", async ({
   app,
   browser,
   screen,
@@ -82,50 +94,49 @@ test("the poster source changes the preview at once and saves", async ({
   await routePosterImages(browser);
   await app.open(`/configure?account=${accountId}`);
 
-  // Existing Accounts keep IMDb posters.
-  await expect(screen.getByRole("radio", /^IMDb/)).toBeChecked();
-  await expect(screen.getByText(POSTER_NOTE.imdb)).toBeVisible();
+  // Existing Accounts keep IMDb posters, and no key field shows.
+  await expect(screen.getByRole("combobox", "Posters")).toHaveText(/IMDb/);
+  await expect(screen.getByLabel(/^RPDB API key/)).not.toBeVisible();
   await screen.getByRole("button", "Preview Test catalog").tap();
-  await expect(screen.getByRole("link", TILE).first()).toBeVisible();
+  await expect(
+    screen.getByRole("link", "The Shawshank Redemption (1994), on IMDb"),
+  ).toBeVisible();
   await expect
     .poll(() => tilePosters(browser))
-    .toEqual([IMDB_POSTER, "https://posters.e2e.test/imdb/godfather.svg"]);
-  expect(requests).toHaveLength(1);
+    .toEqual([IMDB_POSTER, GODFATHER]);
 
   // TMDB: the Title without a TMDB poster keeps its IMDb poster.
-  await screen.getByRole("radio", /^TMDB/).tap();
-  await expect(screen.getByRole("radio", /^TMDB/)).toBeChecked();
-  await expect(screen.getByText(POSTER_NOTE.tmdb)).toBeVisible();
+  await choose(screen, /^TMDB/);
   await expect
     .poll(() => tilePosters(browser))
-    .toEqual([TMDB_POSTER, "https://posters.e2e.test/imdb/godfather.svg"]);
+    .toEqual([TMDB_POSTER, GODFATHER]);
+
+  // RPDB without a key shows IMDb posters until the key is added.
+  await choose(screen, /^RPDB/);
+  await expect(screen.getByText(NO_KEY, { exact: false })).toBeVisible();
+  await expect
+    .poll(() => tilePosters(browser))
+    .toEqual([IMDB_POSTER, GODFATHER]);
+  await screen.getByLabel(/^RPDB API key/).fill("e2e-synthetic-rpdb");
+  await expect
+    .poll(async () => (await tilePosters(browser))[0])
+    .toBe(RPDB_POSTER);
   // The choice is a page setting: no new preview, no reinstall.
   expect(requests).toHaveLength(1);
   await expect(
     screen.getByText("These changes need a reinstall."),
   ).not.toBeVisible();
 
-  // An RPDB key replaces the chosen source.
-  await screen.getByLabel(/^RPDB API key/).fill("e2e-synthetic-rpdb");
-  await expect(screen.getByText(POSTER_NOTE.rpdb)).toBeVisible();
-  await expect
-    .poll(async () => (await tilePosters(browser))[0])
-    .toBe(RPDB_POSTER);
-  await screen.getByLabel(/^RPDB API key/).fill("");
-  await expect
-    .poll(async () => (await tilePosters(browser))[0])
-    .toBe(TMDB_POSTER);
-
   await saveButton(screen).tap();
   await expect(screen.getByText(SAVED)).toBeVisible();
   expect(submissions).toHaveLength(1);
   expect(submissions[0]).toMatchObject({
-    posterSource: "tmdb",
-    rpdbApiKey: "",
+    posterSource: "rpdb",
+    rpdbApiKey: "e2e-synthetic-rpdb",
   });
 });
 
-test("a saved TMDB choice shows again after a reload", async ({
+test("another source keeps the saved RPDB key", async ({
   app,
   browser,
   screen,
@@ -133,18 +144,62 @@ test("a saved TMDB choice shows again after a reload", async ({
   const submissions = await captureConfig(browser, {
     ...configuration,
     posterSource: "tmdb",
+    rpdbApiKey: "kept-key",
   });
   await app.open(`/configure?account=${accountId}`);
-  await expect(screen.getByRole("radio", /^TMDB/)).toBeChecked();
-  await expect(screen.getByRole("radio", /^IMDb/)).not.toBeChecked();
+  await expect(screen.getByRole("combobox", "Posters")).toHaveText(/TMDB/);
+  await expect(screen.getByLabel(/^RPDB API key/)).not.toBeVisible();
   // The loaded choice is not an edit.
   await expect(saveButton(screen)).toHaveAttribute(
     "title",
     "No changes to save",
   );
 
-  await screen.getByRole("radio", /^IMDb/).tap();
+  await choose(screen, /^RPDB/);
+  // The field hides the key: show it to read it.
+  await screen.getByRole("button", "Show RPDB API key").tap();
+  await expect(screen.getByLabel(/^RPDB API key/)).toHaveValue("kept-key");
+  await choose(screen, /^IMDb/);
   await saveButton(screen).tap();
   await expect(screen.getByText(SAVED)).toBeVisible();
-  expect(submissions[0]).toMatchObject({ posterSource: "imdb" });
+  expect(submissions[0]).toMatchObject({
+    posterSource: "imdb",
+    rpdbApiKey: "kept-key",
+  });
+});
+
+test("example posters open on request and follow the chosen source", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await captureConfig(browser);
+  await routePosterImages(browser);
+  await app.open(`/configure?account=${accountId}`);
+
+  const examples = screen.getByRole("button", "Examples");
+  await expect(examples).toHaveAttribute("aria-expanded", "false");
+  // Closed, no example image loads.
+  expect(await exampleHosts(browser)).toEqual([]);
+
+  await examples.tap();
+  await expect(examples).toHaveAttribute("aria-expanded", "true");
+  await expect
+    .poll(() => exampleHosts(browser))
+    .toEqual([
+      "m.media-amazon.com",
+      "m.media-amazon.com",
+      "m.media-amazon.com",
+    ]);
+  await choose(screen, /^TMDB/);
+  await expect
+    .poll(() => exampleHosts(browser))
+    .toEqual(["image.tmdb.org", "image.tmdb.org", "image.tmdb.org"]);
+  await choose(screen, /^RPDB/);
+  await expect(
+    screen.getByText("Add your RPDB API key to see examples."),
+  ).toBeVisible();
+
+  await examples.tap();
+  await expect(examples).toHaveAttribute("aria-expanded", "false");
 });

@@ -8,7 +8,7 @@ import {
   staticSource,
 } from "@stremlist/shared/providers";
 import type { ProviderId } from "@stremlist/shared/providers";
-import { Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 import {
@@ -210,7 +210,6 @@ export default function Configure() {
   });
   const { lists, access, accountId, status } = config;
   const [detected, setDetected] = useState<ProviderId | null>(null);
-  const [showRpdbApiKey, setShowRpdbApiKey] = useState(false);
   const full = lists.length >= MAX_LISTS;
   const ready = status === "ready" && (!rawKey || keyIsValid);
   const justCreated = !!accountId && createdId === accountId;
@@ -737,51 +736,9 @@ export default function Configure() {
                 <PosterSourceSettings
                   value={config.posterSource}
                   onChange={config.setPosterSource}
-                  rpdbKeySet={config.rpdbApiKey.trim() !== ""}
+                  rpdbApiKey={config.rpdbApiKey}
+                  onRpdbApiKeyChange={config.setRpdbApiKey}
                 />
-                <hr className="my-4 border-black/5" />
-                <label htmlFor="rpdb-api-key" className="block font-bold">
-                  RPDB API key{" "}
-                  <span className="font-normal text-black/45">(optional)</span>
-                </label>
-                <p className="mt-0.5 mb-3 text-sm text-black/55">
-                  Shows{" "}
-                  <a
-                    href="https://ratingposterdb.com/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-semibold text-stremlist hover:underline"
-                  >
-                    Rating Poster Database
-                  </a>{" "}
-                  posters, with ratings on the cover art. RPDB posters replace
-                  the poster source above.
-                </p>
-                <div className="flex items-center gap-1 rounded-2xl bg-black/5 p-1">
-                  <input
-                    id="rpdb-api-key"
-                    type={showRpdbApiKey ? "text" : "password"}
-                    value={config.rpdbApiKey}
-                    onChange={(e) => config.setRpdbApiKey(e.target.value)}
-                    placeholder="Paste your RPDB API key"
-                    autoComplete="off"
-                    className="min-w-0 flex-1 bg-transparent px-3 py-2 text-sm outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowRpdbApiKey((current) => !current)}
-                    aria-label={
-                      showRpdbApiKey ? "Hide RPDB API key" : "Show RPDB API key"
-                    }
-                    className="flex size-9 shrink-0 items-center justify-center rounded-xl text-black/50 transition-colors hover:bg-white hover:text-ink"
-                  >
-                    {showRpdbApiKey ? (
-                      <EyeOff className="size-4" />
-                    ) : (
-                      <Eye className="size-4" />
-                    )}
-                  </button>
-                </div>
               </div>
 
               <ActionsSettings

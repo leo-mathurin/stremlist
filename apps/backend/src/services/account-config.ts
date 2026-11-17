@@ -8,6 +8,7 @@ import {
 import { isChartId } from "@stremlist/shared/imdb-charts";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import { POSTER_SOURCES } from "@stremlist/shared/poster";
+import type { PosterSource } from "@stremlist/shared/poster";
 import {
   MAX_LISTS,
   MAX_SOURCES_PER_LIST,
@@ -114,6 +115,18 @@ export class ConfigError extends Error {
 /** The stored RPDB key: an empty one is no key. */
 export function rpdbKey(value: string | undefined): string | null {
   return value && value.length > 0 ? value : null;
+}
+
+/**
+ * The poster source that a save sets; undefined keeps the saved one. A page
+ * from before the poster source sends none: for it, as then, an RPDB key
+ * means RPDB posters.
+ */
+export function savedPosterSource(body: {
+  posterSource?: PosterSource;
+  rpdbApiKey?: string;
+}): PosterSource | undefined {
+  return body.posterSource ?? (rpdbKey(body.rpdbApiKey) ? "rpdb" : undefined);
 }
 
 /**

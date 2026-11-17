@@ -94,7 +94,8 @@ describe("List CRUD via the config API", () => {
         data.accountId,
         expect.any(Array),
         true,
-        expect.objectContaining({ posterSource: "imdb" }),
+        // The setup sends an RPDB key and no poster source: RPDB.
+        expect.objectContaining({ posterSource: "rpdb" }),
       );
 
       // The new Addon URL works right away.
@@ -228,7 +229,8 @@ describe("upgrading a legacy install", () => {
       accountId,
       expect.any(Array),
       true,
-      expect.objectContaining({ posterSource: "imdb" }),
+      // The setup sends an RPDB key and no poster source: RPDB.
+      expect.objectContaining({ posterSource: "rpdb" }),
     );
   });
 

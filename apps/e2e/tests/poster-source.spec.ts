@@ -1,8 +1,12 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import type { Api } from "../helpers/api.js";
-import { asInput, listInput, ok } from "../helpers/api.js";
-import { configureUrl, saveConfigure } from "../helpers/configure.js";
+import { listInput, ok } from "../helpers/api.js";
+import {
+  configureUrl,
+  fillRpdbKey,
+  saveConfigure,
+} from "../helpers/configure.js";
 import {
   clearTmdbPosters,
   getPosterSource,
@@ -114,16 +118,20 @@ test(
     await expect(
       page.getByText("Poster fixture", { exact: true }),
     ).toBeVisible();
-    const imdb = page.getByRole("radio", { name: /^IMDb/ });
-    const tmdb = page.getByRole("radio", { name: /^TMDB/ });
-    await expect(imdb).toBeChecked();
+    const posters = page.getByRole("combobox", { name: "Posters" });
+    const choose = async (source: RegExp) => {
+      await posters.click();
+      await page.getByRole("option", { name: source }).click();
+    };
+    await expect(posters).toHaveText(/IMDb/);
+    await expect(page.locator("#rpdb-api-key")).toHaveCount(0);
 
     await page.getByRole("button", { name: "Preview Poster fixture" }).click();
     const tile = page
       .getByRole("link", { name: /^The Shawshank Redemption/ })
       .locator("img");
     await expect(tile).toHaveAttribute("src", /fixture-tt0111161/);
-    await tmdb.check();
+    await choose(/^TMDB/);
     await expect(tile).toHaveAttribute("src", TMDB_PREVIEW);
     await saveConfigure(page);
 
@@ -131,8 +139,7 @@ test(
     await expect(
       page.getByText("Poster fixture", { exact: true }),
     ).toBeVisible();
-    await expect(tmdb).toBeChecked();
-    await expect(imdb).not.toBeChecked();
+    await expect(posters).toHaveText(/TMDB/);
     expect(await getPosterSource(accountId)).toBe("tmdb");
 
     // Stremio: the TMDB poster, and the IMDb poster where TMDB has none.
@@ -168,16 +175,26 @@ test(
       await stremioPosters(backend.api, other.accountId, other.listId),
     ).toEqual({ [MOVIE]: imdbPoster(MOVIE), [SERIES]: imdbPoster(SERIES) });
 
-    // An RPDB key replaces the TMDB posters. The save keeps the List.
-    const { lists } = ok(await backend.api.getConfig(accountId));
-    ok(
-      await backend.api.postConfig(accountId, asInput(lists), {
-        rpdbApiKey: "e2e-test-key",
-      }),
-    );
-    expect(await getPosterSource(accountId)).toBe("tmdb");
+    // RPDB with a key: Stremio gets RPDB posters.
+    await fillRpdbKey(page, "e2e-test-key");
+    await saveConfigure(page);
+    expect(await getPosterSource(accountId)).toBe("rpdb");
     expect((await stremioPosters(backend.api, accountId, listId))[MOVIE]).toBe(
       `https://api.ratingposterdb.com/e2e-test-key/imdb/poster-default/${MOVIE}.jpg?fallback=true`,
+    );
+
+    // Back to TMDB: the key stays saved, unused, and the List is the same.
+    await choose(/^TMDB/);
+    await expect(page.locator("#rpdb-api-key")).toHaveCount(0);
+    await saveConfigure(page);
+    const saved = ok(await backend.api.getConfig(accountId));
+    expect(saved).toMatchObject({
+      posterSource: "tmdb",
+      rpdbApiKey: "e2e-test-key",
+    });
+    expect(saved.lists.map((list) => list.id)).toEqual([listId]);
+    expect((await stremioPosters(backend.api, accountId, listId))[MOVIE]).toBe(
+      TMDB_POSTER,
     );
   },
 );

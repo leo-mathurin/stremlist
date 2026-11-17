@@ -1,7 +1,8 @@
--- Poster source: each Account chooses where its posters come from, IMDb (the
--- default, the posters that Stremlist always showed) or TMDB. An RPDB key
--- still replaces both. The choice is saved with the rest of the configuration
--- by `replace_account_config`, so a save never mixes two requests.
+-- Poster source: each Account chooses where its posters come from: IMDb (the
+-- default, the posters that Stremlist always showed), TMDB, or RPDB with the
+-- Account's RPDB key. The key stays saved when another source is chosen. The
+-- choice is saved with the rest of the configuration by
+-- `replace_account_config`, so a save never mixes two requests.
 --
 -- `tmdb_posters` caches the TMDB poster of each Title for every Account: the
 -- poster of a Title does not depend on who asks, only the choice to show it
@@ -9,7 +10,14 @@
 
 ALTER TABLE public.accounts
   ADD COLUMN poster_source text NOT NULL DEFAULT 'imdb'
-  CONSTRAINT accounts_poster_source_check CHECK (poster_source IN ('imdb', 'tmdb'));
+  CONSTRAINT accounts_poster_source_check
+    CHECK (poster_source IN ('imdb', 'tmdb', 'rpdb'));
+
+-- Before this change, an RPDB key alone turned RPDB posters on: those
+-- Accounts keep them.
+UPDATE public.accounts
+SET poster_source = 'rpdb'
+WHERE nullif(btrim(rpdb_api_key), '') IS NOT NULL;
 
 -- ---------------------------------------------------------------------------
 -- tmdb_posters: the TMDB poster of each Title (IMDb ID)

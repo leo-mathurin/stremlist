@@ -1,6 +1,7 @@
 import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
 import {
+  chooseRpdb,
   SAVED,
   SAVED_WITH_CHANGES,
   accountId,
@@ -44,6 +45,7 @@ for (const editFilter of [false, true]) {
     await openFilters(screen, browser);
     const genre = screen.getByLabel("Genre", { exact: true });
     await expect(genre).toBeDisabled();
+    await chooseRpdb(screen);
     await screen.getByLabel(/^RPDB API key/).fill("e2e-synthetic-rpdb");
     await saveButton(screen).tap();
     await expect(saveButton(screen, "Saving")).toBeVisible();

@@ -16,6 +16,7 @@ import {
   normalizeLists,
   providerParam,
   rpdbKey,
+  savedPosterSource,
 } from "../../services/account-config";
 import {
   createAccountWithConfig,
@@ -198,7 +199,7 @@ const connections = new Hono()
             rpdbKey(setup?.rpdbApiKey),
             {
               newTitlesCatalog: setup?.newTitles?.enabled,
-              posterSource: setup?.posterSource,
+              posterSource: setup && savedPosterSource(setup),
             },
           );
           accountId = created.accountId;
@@ -218,7 +219,8 @@ const connections = new Hono()
           const createdId = accountId;
           scheduleBackgroundTask(() =>
             prewarmLists(createdId, created.lists, true, {
-              posterSource: setup?.posterSource ?? DEFAULT_POSTER_SOURCE,
+              posterSource:
+                (setup && savedPosterSource(setup)) ?? DEFAULT_POSTER_SOURCE,
               rpdbApiKey: rpdbKey(setup?.rpdbApiKey),
             }),
           );

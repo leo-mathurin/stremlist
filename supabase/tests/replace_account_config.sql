@@ -201,6 +201,11 @@ BEGIN
     'An omitted poster source keeps the saved one';
   ASSERT (SELECT poster_source FROM public.accounts WHERE id = 'sl_configothertest00000000') = 'imdb',
     'A save changes the poster source of its Account only';
+  PERFORM public.replace_account_config('sl_configtransactiontest00', 'kept-key', payload, NULL, NULL, NULL, 'rpdb');
+  ASSERT (SELECT poster_source FROM public.accounts WHERE id = 'sl_configtransactiontest00') = 'rpdb';
+  -- Another source keeps the RPDB key.
+  PERFORM public.replace_account_config('sl_configtransactiontest00', 'kept-key', payload, NULL, NULL, NULL, 'tmdb');
+  ASSERT (SELECT rpdb_api_key FROM public.accounts WHERE id = 'sl_configtransactiontest00') = 'kept-key';
   BEGIN
     PERFORM public.replace_account_config('sl_configtransactiontest00', NULL, payload, NULL, NULL, NULL, 'tvdb');
     RAISE EXCEPTION 'Expected check violation';

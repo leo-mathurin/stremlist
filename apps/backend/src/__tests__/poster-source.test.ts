@@ -160,18 +160,32 @@ describe("poster source in Stremio responses", () => {
     ).toBe(IMDB_POSTER);
   });
 
-  it("lets an RPDB key replace TMDB posters", async () => {
+  it("shows RPDB posters with a key, and IMDb posters without one", async () => {
     const fetch = tmdbFind();
     vi.stubGlobal("fetch", fetch);
+    const withKey = seedWithList({
+      poster_source: "rpdb",
+      rpdb_api_key: "rpdb-key",
+    });
+    const withoutKey = seedWithList({ poster_source: "rpdb" }, OTHER_LIST_ID);
+
+    expect((await catalogPosters(withKey))[SHAWSHANK.id]).toBe(RPDB_SHAWSHANK);
+    expect(
+      (await catalogPosters(withoutKey, OTHER_LIST_ID))[SHAWSHANK.id],
+    ).toBe(IMDB_POSTER);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps the RPDB key unused while another source is chosen", async () => {
+    vi.stubGlobal("fetch", tmdbFind());
     const accountId = seedWithList({
       poster_source: "tmdb",
       rpdb_api_key: "rpdb-key",
     });
 
     expect((await catalogPosters(accountId))[SHAWSHANK.id]).toBe(
-      RPDB_SHAWSHANK,
+      TMDB_SHAWSHANK,
     );
-    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("keeps IMDb posters while TMDB fails, and stores nothing", async () => {
@@ -264,6 +278,23 @@ describe("saving the poster source", () => {
 
     expect((await save(id, { posterSource: "imdb" })).status).toBe(200);
     expect(await savedSource(id)).toBe("imdb");
+  });
+
+  it("keeps the RPDB key when another source is chosen", async () => {
+    const { id } = seedAccount({});
+    await save(id, { posterSource: "rpdb", rpdbApiKey: "rpdb-key" });
+    await save(id, { posterSource: "tmdb", rpdbApiKey: "rpdb-key" });
+    const res = await app.request(`/${id}/config`);
+    expect(await readJson(res, configBody)).toMatchObject({
+      posterSource: "tmdb",
+      rpdbApiKey: "rpdb-key",
+    });
+  });
+
+  it("turns RPDB on for an older client that sends only a key", async () => {
+    const { id } = seedAccount({});
+    expect((await save(id, { rpdbApiKey: "rpdb-key" })).status).toBe(200);
+    expect(await savedSource(id)).toBe("rpdb");
   });
 
   it("refuses an unknown source", async () => {

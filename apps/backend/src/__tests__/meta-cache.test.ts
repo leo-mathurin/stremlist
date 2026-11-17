@@ -40,7 +40,11 @@ const BREAKING_BAD: StremioMeta = {
 let accountId = "";
 
 function seedUser(rpdbApiKey: string | null = null) {
-  accountId = seedLegacyAccount(OWNER, { rpdb_api_key: rpdbApiKey }).id;
+  // A saved key means RPDB posters, as the poster source migration sets.
+  accountId = seedLegacyAccount(OWNER, {
+    rpdb_api_key: rpdbApiKey,
+    poster_source: rpdbApiKey ? "rpdb" : "imdb",
+  }).id;
 }
 
 function seedWatchlist(metas?: StremioMeta[], cachedAt?: Date) {

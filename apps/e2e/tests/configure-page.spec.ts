@@ -10,6 +10,7 @@ import {
   UNKNOWN_USER,
 } from "../helpers/test-data.js";
 import {
+  fillRpdbKey,
   configureUrl,
   openConfigure,
   saveButton,
@@ -231,11 +232,11 @@ test("saves and clears the RPDB key", { tag: "@local" }, async ({ page }) => {
   const { accountId } = await seedWatchlist();
   await openConfigure(page, accountId, TITLE);
 
-  await page.locator("#rpdb-api-key").fill("e2e-rpdb-key");
+  await fillRpdbKey(page, "e2e-rpdb-key");
   await saveConfigure(page);
   expect((await getConfig(accountId)).body.rpdbApiKey).toBe("e2e-rpdb-key");
 
-  await page.locator("#rpdb-api-key").fill("");
+  await fillRpdbKey(page, "");
   await saveConfigure(page);
   expect((await getConfig(accountId)).body.rpdbApiKey).toBeNull();
 });
@@ -365,7 +366,7 @@ test(
     await page
       .getByRole("option", { name: "IMDb Rating (Highest First)" })
       .click();
-    await page.locator("#rpdb-api-key").fill("e2e-rpdb-key");
+    await fillRpdbKey(page, "e2e-rpdb-key");
     await expect(beforeSave).toHaveCount(0);
     await saveConfigure(page, { message: SAVED });
     await expect(reminder).toHaveCount(0);
@@ -401,7 +402,7 @@ test(
     await page.reload();
     await expect(reminder).toBeVisible();
     await expect(saveButton(page)).toBeDisabled();
-    await page.locator("#rpdb-api-key").fill("e2e-rpdb-key-2");
+    await fillRpdbKey(page, "e2e-rpdb-key-2");
     await saveConfigure(page, { message: SAVED_REINSTALL });
     await expect(reminder).toBeVisible();
 
@@ -416,7 +417,7 @@ test(
     await page.reload();
     await expect(page.getByText("Renamed watchlist")).toBeVisible();
     await expect(reminder).toHaveCount(0);
-    await page.locator("#rpdb-api-key").fill("e2e-rpdb-key");
+    await fillRpdbKey(page, "e2e-rpdb-key");
     await saveConfigure(page, { message: SAVED });
     const { body } = await getConfig(accountId);
     expect(body.rpdbApiKey).toBe("e2e-rpdb-key");
@@ -491,7 +492,7 @@ test(
     await expect(floatingBar).toHaveAttribute("inert", "");
 
     // An edit at the end of the page, then Save from there.
-    await page.locator("#rpdb-api-key").fill("floating-save-key");
+    await fillRpdbKey(page, "floating-save-key");
     await page.evaluate(() =>
       window.scrollTo(0, document.documentElement.scrollHeight),
     );

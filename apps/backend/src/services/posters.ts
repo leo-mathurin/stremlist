@@ -16,9 +16,9 @@ export interface PosterSettings {
   rpdbApiKey: string | null;
 }
 
-/** Whether the Account shows TMDB posters: an RPDB key replaces them. */
+/** Whether the Account shows TMDB posters. */
 export function showsTmdbPosters(settings: PosterSettings): boolean {
-  return settings.posterSource === "tmdb" && !settings.rpdbApiKey?.trim();
+  return settings.posterSource === "tmdb";
 }
 
 /**

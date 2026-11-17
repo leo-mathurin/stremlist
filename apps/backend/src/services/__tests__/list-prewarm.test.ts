@@ -153,10 +153,10 @@ describe("prewarmLists", () => {
     ]);
     expect(calls.every((types) => new Set(types).size === 1)).toBe(true);
 
-    // IMDb posters and RPDB keys need no TMDB lookup.
+    // IMDb and RPDB posters need no TMDB lookup.
     posterMocks.findTmdbPosters.mockClear();
     await prewarmLists(ACCOUNT_ID, SAVED_LISTS, true, {
-      posterSource: "tmdb",
+      posterSource: "rpdb",
       rpdbApiKey: "key",
     });
     await prewarmLists(ACCOUNT_ID, SAVED_LISTS, true, {

@@ -19,6 +19,7 @@ import {
   createBody,
   normalizeLists,
   rpdbKey,
+  savedPosterSource,
   syncSnapshot,
 } from "../../services/account-config";
 import {
@@ -90,8 +91,9 @@ const accounts = new Hono()
     "/accounts",
     zValidator("json", createBody, firstIssueAsError),
     async (c) => {
-      const { rpdbApiKey, posterSource, lists, newTitles } =
-        c.req.valid("json");
+      const body = c.req.valid("json");
+      const { rpdbApiKey, lists, newTitles } = body;
+      const posterSource = savedPosterSource(body);
       // A new Account has no saved Lists: IDs of another Account's Lists,
       // such as those of a legacy install, do not apply.
       const fresh = lists.map((list) => ({ ...list, id: undefined }));
@@ -181,8 +183,9 @@ const accounts = new Hono()
     zValidator("param", accountKeyParam),
     zValidator("json", configBody, firstIssueAsError),
     async (c) => {
-      const { rpdbApiKey, posterSource, lists, actions, newTitles } =
-        c.req.valid("json");
+      const body = c.req.valid("json");
+      const { rpdbApiKey, lists, actions, newTitles } = body;
+      const posterSource = savedPosterSource(body);
       const access = await requireAccess(c, c.req.valid("param").accountKey);
       if (access instanceof Response) return access;
       if (access.via === "legacy" && actions?.enabled) {

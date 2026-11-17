@@ -147,6 +147,12 @@ export function syncedStatus(
   } satisfies ListSyncStatus;
 }
 
+/** Pick RPDB posters, so that the RPDB API key field shows. */
+export async function chooseRpdb(screen: Screen) {
+  await screen.getByRole("combobox", "Posters").tap();
+  await screen.getByRole("option", /^RPDB/).tap();
+}
+
 /** A Connection that the Provider accepts. */
 export function connected(
   provider: ProviderId,

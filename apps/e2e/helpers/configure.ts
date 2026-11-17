@@ -57,3 +57,16 @@ export async function saveConfigure(
   expect((await response).status()).toBe(200);
   await expect(page.getByText(options.message ?? "Saved!")).toBeVisible();
 }
+
+/**
+ * Type `key` in the RPDB API key field. The field shows for RPDB posters
+ * only: pick RPDB first when another source is chosen.
+ */
+export async function fillRpdbKey(page: Page, key: string): Promise<void> {
+  const field = page.locator("#rpdb-api-key");
+  if (!(await field.isVisible())) {
+    await page.getByRole("combobox", { name: "Posters" }).click();
+    await page.getByRole("option", { name: /^RPDB/ }).click();
+  }
+  await field.fill(key);
+}

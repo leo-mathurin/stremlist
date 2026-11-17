@@ -110,7 +110,8 @@ describe("List CRUD via the config API", () => {
         p_actions_enabled: null,
         p_action_providers: null,
         p_new_titles_catalog: null,
-        p_poster_source: null,
+        // A client that sends no poster source: its RPDB key means RPDB.
+        p_poster_source: "rpdb",
       });
       const expected = [
         {
@@ -140,7 +141,7 @@ describe("List CRUD via the config API", () => {
         legacyAccountId,
         expected,
         false,
-        { posterSource: "imdb", rpdbApiKey: "secret-key" },
+        { posterSource: "rpdb", rpdbApiKey: "secret-key" },
       );
     });
 

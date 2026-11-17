@@ -71,7 +71,7 @@ A movie or a series, always identified by its IMDb ID (`tt…`). Everything that
 _Avoid_: Item, media, product, film (for both kinds)
 
 **Poster source**:
-Where the posters of an Account come from: IMDb, the default, or TMDB. It applies to every Catalog of the Account, whatever the Provider of each List. An RPDB key replaces both sources. When TMDB has no poster for a Title, or does not answer, the Title shows its IMDb poster. Either source can show posters with logos of streaming services.
+Where the posters of an Account come from: IMDb (the default), TMDB, or RPDB with the Account's RPDB key. It applies to every Catalog of the Account, whatever the Provider of each List. The RPDB key stays saved when another source is chosen. When TMDB has no poster for a Title, or does not answer, and when RPDB has no key, the Title shows its IMDb poster. Any source can show posters with logos of streaming services.
 _Avoid_: Artwork provider, image source
 
 **Unresolved entry**:
