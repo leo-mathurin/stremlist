@@ -1,7 +1,7 @@
 // Loaded only by the isolated backend of watch-tracking.spec.ts. Stremio's
 // API answers from the JSON file at E2E_WATCH_STREMIO, which the test
 // rewrites to change the member's library; the backend never sees a real
-// Stremio account. Trakt and Simkl accept watched writes. Every request is
+// Stremio account. Trakt, Simkl and MDBList accept watched writes. Every request is
 // logged to E2E_PROVIDER_LOG (see fetch-fixture.ts); any other host is
 // refused.
 import { readFileSync, writeFileSync } from "node:fs";
@@ -93,6 +93,17 @@ function provider({ request, url }: FixtureRequest): Response {
   return json({ error: "not found" }, 404);
 }
 
+/** MDBList's watched write; nothing else is known. */
+function mdblist({ request, url }: FixtureRequest): Response {
+  if (bearer(request) !== "fixture-access-token") {
+    return json({ error: "Invalid OAuth token" }, 403);
+  }
+  if (request.method === "POST" && url.pathname === "/sync/watched") {
+    return json({ added: { movies: 0, episodes: 1 }, not_found: {} });
+  }
+  return json({ error: "not found" }, 404);
+}
+
 installFetchFixture({
   log: process.env.E2E_PROVIDER_LOG,
   hosts: {
@@ -100,5 +111,6 @@ installFetchFixture({
     "v3-cinemeta.strem.io": cinemeta,
     "api.trakt.tv": provider,
     "api.simkl.com": provider,
+    "api.mdblist.com": mdblist,
   },
 });
