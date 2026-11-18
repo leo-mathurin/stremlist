@@ -25,7 +25,7 @@ import {
   SAVE_NEW,
   holdToasts,
   fitConfigurePage,
-} from "./config-fixture";
+} from "./config.test-utils";
 
 const PASTE = "Paste a link to a watchlist or list";
 const addonUrl = (key: string) => `${backend}/${key}/manifest.json`;
@@ -560,7 +560,11 @@ test(
       "Clear this catalog's filters while keeping the Top rated extra catalog enabled, then save.",
       { maxModelCalls: 6 },
     );
-    await expect.poll(() => submissions.length).toBe(2);
+    await expect(saveButton(screen)).toHaveAttribute(
+      "title",
+      "No changes to save",
+    );
+    expect(submissions).toHaveLength(2);
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     expect(submissions.at(-1)?.lists[0].catalogSettings).toEqual({
       presets: ["rated"],

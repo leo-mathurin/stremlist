@@ -30,9 +30,9 @@
       "entry": [
         "e2e.config.ts",
         "toolkit/**/*.e2e.ts",
-        "helpers/provider-fixtures.ts",
+        "helpers/provider.fixture.ts",
         "helpers/provider-transport.ts",
-        "helpers/watch-fixtures.ts",
+        "helpers/watch.fixture.ts",
       ],
       // Keeps the frontend build in Turbo's dependency graph for browser tests.
       "ignoreDependencies": ["@stremlist/frontend"],

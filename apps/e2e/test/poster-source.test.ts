@@ -16,6 +16,7 @@ import {
 } from "../helpers/db.js";
 import type { FixtureBackend } from "../helpers/fixture-backend.js";
 import { startFixtureBackend } from "../helpers/fixture-backend.js";
+import { routeToLoopback } from "../helpers/loopback-page.js";
 import { routePageTo } from "../helpers/page-backend.js";
 
 const MOVIE = "tt0111161";
@@ -32,7 +33,7 @@ const IMAGE =
 let backend: FixtureBackend;
 
 test.beforeAll(async () => {
-  backend = await startFixtureBackend("./provider-fixtures.ts", {
+  backend = await startFixtureBackend("./provider.fixture.ts", {
     TMDB_API_KEY: "fixture-tmdb-key",
     E2E_IMDB_POSTERS: "1",
   });
@@ -84,9 +85,10 @@ async function routePosterImages(page: Page) {
     "https://m.media-amazon.com/**",
     "https://image.tmdb.org/**",
   ]) {
-    await page.route(pattern, (route) =>
-      route.fulfill({ body: IMAGE, contentType: "image/svg+xml" }),
-    );
+    await routeToLoopback(page, pattern, {
+      contentType: "image/svg+xml",
+      body: IMAGE,
+    });
   }
 }
 
@@ -189,7 +191,7 @@ test(
   "while TMDB fails, Stremio keeps the IMDb posters and nothing is stored",
   { tag: "@local" },
   async () => {
-    const down = await startFixtureBackend("./provider-fixtures.ts", {
+    const down = await startFixtureBackend("./provider.fixture.ts", {
       TMDB_API_KEY: "fixture-tmdb-key",
       E2E_IMDB_POSTERS: "1",
       E2E_TMDB_STATUS: "503",
@@ -222,7 +224,7 @@ test(
   { tag: "@local" },
   async ({ page }) => {
     test.skip(!LIVE_TVDB_KEY, "Needs TVDB_LIVE_API_KEY (a real TheTVDB key)");
-    const live = await startFixtureBackend("./provider-fixtures.ts", {
+    const live = await startFixtureBackend("./provider.fixture.ts", {
       TVDB_API_KEY: LIVE_TVDB_KEY,
       E2E_IMDB_POSTERS: "1",
     });

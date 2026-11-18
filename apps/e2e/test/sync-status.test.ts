@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { getConfig, getSyncStatus, refresh } from "../helpers/api.js";
-import { CATALOG_TITLES } from "../helpers/catalog-fixture.js";
+import { CATALOG_TITLES } from "../helpers/catalog.fixture.js";
 import { openConfigure, saveButton } from "../helpers/configure.js";
 import {
   clearRefreshCooldown,

@@ -15,7 +15,7 @@ import {
 } from "./env.js";
 
 export default defineConfig({
-  testDir: "./tests",
+  testDir: "./test",
   /** Every project shares one backend and database, so tests run serially. */
   fullyParallel: false,
   workers: 1,

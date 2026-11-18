@@ -19,6 +19,7 @@ import {
 } from "../helpers/db.js";
 import type { FixtureBackend } from "../helpers/fixture-backend.js";
 import { startFixtureBackend } from "../helpers/fixture-backend.js";
+import { routeToLoopback } from "../helpers/loopback-page.js";
 import { getCacheManifest } from "../helpers/r2.js";
 import { isRecord, present } from "../helpers/json.js";
 import { LEGACY_CONNECTION_USER } from "../helpers/test-data.js";
@@ -26,7 +27,7 @@ import { LEGACY_CONNECTION_USER } from "../helpers/test-data.js";
 let backend: FixtureBackend;
 
 test.beforeAll(async () => {
-  backend = await startFixtureBackend("./provider-fixtures.ts");
+  backend = await startFixtureBackend("./provider.fixture.ts");
 });
 test.afterAll(async () => {
   await backend?.stop();
@@ -488,12 +489,10 @@ async function connectFromPage(
   const authorize = page.waitForRequest(
     (request) => new URL(request.url()).host === authorizeHost,
   );
-  await page.route(`https://${authorizeHost}/**`, (route) =>
-    route.fulfill({
-      contentType: "text/html",
-      body: `<!doctype html><title>Authorize</title><h1>${label} authorization fixture</h1>`,
-    }),
-  );
+  await routeToLoopback(page, `https://${authorizeHost}/**`, {
+    contentType: "text/html",
+    body: `<!doctype html><title>Authorize</title><h1>${label} authorization fixture</h1>`,
+  });
   await page
     .getByRole("listitem")
     .filter({ hasText: label })
@@ -625,7 +624,7 @@ test(
     await fillRpdbKey(page, "draft-rpdb-key");
 
     const comeBack = await connectFromPage(page, "Trakt", "auth.trakt.tv");
-    const off = await startFixtureBackend("./provider-fixtures.ts", {
+    const off = await startFixtureBackend("./provider.fixture.ts", {
       DISABLED_PROVIDERS: "trakt",
     });
     try {

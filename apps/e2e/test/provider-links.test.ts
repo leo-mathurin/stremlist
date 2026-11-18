@@ -22,7 +22,7 @@ const catalogs = async (accountId: string, listId: string) => ({
 });
 
 test.beforeAll(async () => {
-  backend = await startFixtureBackend("./provider-fixtures.ts");
+  backend = await startFixtureBackend("./provider.fixture.ts");
 });
 test.afterAll(async () => {
   await backend?.stop();

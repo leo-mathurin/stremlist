@@ -15,7 +15,7 @@ import { LEGACY_ACTIONS_USER } from "../helpers/test-data.js";
 let backend: FixtureBackend;
 
 test.beforeAll(async () => {
-  backend = await startFixtureBackend("./provider-fixtures.ts");
+  backend = await startFixtureBackend("./provider.fixture.ts");
 });
 test.afterAll(async () => {
   await backend?.stop();
@@ -305,7 +305,7 @@ test(
       await backend.api.listCatalogNames(accountId, cached, "movie"),
     ).toEqual(["The Shawshank Redemption"]);
 
-    const off = await startFixtureBackend("./provider-fixtures.ts", {
+    const off = await startFixtureBackend("./provider.fixture.ts", {
       DISABLED_PROVIDERS: "justwatch,senscritique,trakt",
     });
     try {
@@ -369,8 +369,8 @@ test(
   "concurrent Actions from separate backends preserve both membership changes",
   { tag: "@local" },
   async ({ request }) => {
-    const writer = await startFixtureBackend("./provider-fixtures.ts");
-    const reader = await startFixtureBackend("./provider-fixtures.ts");
+    const writer = await startFixtureBackend("./provider.fixture.ts");
+    const reader = await startFixtureBackend("./provider.fixture.ts");
     try {
       const accountId = await seedAccount({ actions: ["trakt"] });
       await seedConnection(accountId, "trakt");

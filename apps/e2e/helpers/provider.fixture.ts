@@ -1,11 +1,11 @@
-import type { FixtureRequest } from "./fetch-fixture.js";
-import { bearer, graphql, installFetchFixture } from "./fetch-fixture.js";
+import type { FixtureRequest } from "./fetch.test-utils.js";
+import { bearer, graphql, installFetchFixture } from "./fetch.test-utils.js";
 import { isNumber, isRecord, isString, optional, present } from "./json.js";
 import {
   PREVIEW_PRIVATE_LIST,
   PREVIEW_PRODUCTS,
   PREVIEW_PUBLIC_LIST,
-} from "./preview-fixture.js";
+} from "./preview.fixture.js";
 
 const VALID_TOKENS = new Set(["fixture-access-token", "fresh-access"]);
 
@@ -23,7 +23,7 @@ const IMDB_TITLES = new Map<string, ImdbTitle>([
     "tt0903747",
     { text: BREAKING_BAD.title, type: "TV Series", year: BREAKING_BAD.year },
   ],
-  ...PREVIEW_PRODUCTS.flatMap(({ imdb, year }) =>
+  ...PREVIEW_PRODUCTS.flatMap<[string, ImdbTitle]>(({ imdb, year }) =>
     imdb
       ? [
           [

@@ -2,7 +2,7 @@ import { test } from "@e2e-dev/web";
 import type { Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
 import type { Screen } from "e2e";
-import type { PreviewRequest } from "./config-fixture";
+import type { PreviewRequest } from "./config.test-utils";
 import {
   SAVED,
   accountId,
@@ -11,7 +11,7 @@ import {
   previewOf,
   routePreview,
   saveButton,
-} from "./config-fixture";
+} from "./config.test-utils";
 
 const IMDB_POSTER = "https://posters.e2e.test/imdb/shawshank.svg";
 const TMDB_POSTER = "https://posters.e2e.test/tmdb/shawshank.svg";

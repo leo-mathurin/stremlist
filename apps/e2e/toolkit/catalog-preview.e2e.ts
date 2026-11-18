@@ -26,7 +26,7 @@ import {
   toJson,
   routeConnectionSources,
   routePreview,
-} from "./config-fixture";
+} from "./config.test-utils";
 
 const PASTE = "Paste a link to a watchlist or list";
 const NEEDS_REINSTALL = "These changes need a reinstall.";
@@ -75,9 +75,11 @@ test("a pasted List opens its preview at once, a saved List only on request", as
   ]);
 
   const toggle = screen.getByRole("button", "Preview Test catalog");
+  const preview = browser.waitForResponse(`${backend}/lists/preview`);
   await toggle.tap();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
-  await expect.poll(() => requests.length).toBe(2);
+  await preview;
+  expect(requests).toHaveLength(2);
   expect(requests[1]).toMatchObject({ provider: "imdb", sourceRef: imdbUser });
   await toggle.tap();
   await expect(toggle).toHaveAttribute("aria-expanded", "false");

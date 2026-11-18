@@ -71,16 +71,17 @@ test(
 test(
   "clipboard denial explains how to copy the Addon URL manually",
   { tag: "@local" },
-  async ({ page }) => {
+  async ({ context, page }) => {
+    const cdp = await context.newCDPSession(page);
+    const { targetInfo } = await cdp.send("Target.getTargetInfo");
+    await cdp.send("Browser.setPermission", {
+      permission: { name: "clipboard-write" },
+      setting: "denied",
+      origin: FRONTEND_URL,
+      browserContextId: targetInfo.browserContextId,
+    });
     const { accountId } = await seedWatchlist();
     await openConfigure(page, accountId, TITLE);
-    await page.evaluate(() => {
-      Object.defineProperty(navigator.clipboard, "writeText", {
-        configurable: true,
-        value: () =>
-          Promise.reject(new DOMException("Denied", "NotAllowedError")),
-      });
-    });
 
     await page.getByRole("button", { name: "Copy Addon URL" }).click();
     await expect(

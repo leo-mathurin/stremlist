@@ -7,7 +7,7 @@ import {
   configuration,
   captureConfig,
   saveButton,
-} from "./config-fixture";
+} from "./config.test-utils";
 
 for (const failure of ["http", "network"] as const) {
   test(`refresh recovers from ${failure} failure without discarding unsaved edits`, async ({

@@ -1,5 +1,6 @@
 import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
+import type { QueuedAnswer } from "@stremlist/shared/provider-queue";
 import type { AccountSyncSnapshot } from "@stremlist/shared/stremio.types";
 import {
   accountId,
@@ -13,7 +14,7 @@ import {
   routePreview,
   row,
   toJson,
-} from "./config-fixture";
+} from "./config.test-utils";
 
 const PASTE = "Paste a link to a watchlist or list";
 const LINK = "https://letterboxd.com/someone/watchlist/";
@@ -27,7 +28,7 @@ function queued(waitMs: number, retryMs: number) {
     waitMs,
     retryMs,
     ticket: TICKET,
-  };
+  } satisfies QueuedAnswer;
 }
 
 test("a busy Letterboxd shows the wait on the link check and the preview, then the List", async ({
@@ -67,10 +68,9 @@ test("a busy Letterboxd shows the wait on the link check and the preview, then t
       /^Letterboxd is busy right now\. Your list is in the queue, about (39|40) s left\.$/,
     ),
   ).toBeVisible({ timeout: 10_000 });
-  await expect(
-    screen.getByRole("progressbar", "Place in the queue"),
-  ).toBeVisible();
-  await new Promise((done) => setTimeout(done, 2_000));
+  const bar = screen.getByRole("progressbar", "Place in the queue");
+  await expect(bar).toBeVisible();
+  await expect(bar).toHaveAttribute("aria-valuenow", /^(?:[3-9]|[1-9]\d)$/);
   await app.screenshot("Letterboxd queue on the Catalog preview");
   await expect(screen.getByText("The Shawshank Redemption")).toBeVisible({
     timeout: 10_000,

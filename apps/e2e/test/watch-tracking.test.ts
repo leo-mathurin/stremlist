@@ -143,7 +143,8 @@ async function call(path: string, init: RequestInit & { json?: unknown } = {}) {
     body: init.json === undefined ? init.body : JSON.stringify(init.json),
   });
   const text = await response.text();
-  return { status: response.status, body: text ? JSON.parse(text) : null };
+  const body: unknown = text ? JSON.parse(text) : null;
+  return { status: response.status, body };
 }
 
 async function runCron() {
@@ -165,7 +166,7 @@ test.beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "stremlist-watch-"));
   stremioFile = join(dir, "stremio.json");
   writeStremio({ authKey: AUTH_KEY, trakt: false, library: [], addons: [] });
-  backend = await startFixtureBackend("./watch-fixtures.ts", {
+  backend = await startFixtureBackend("./watch.fixture.ts", {
     CRON_SECRET,
     E2E_WATCH_STREMIO: stremioFile,
   });

@@ -79,5 +79,5 @@ export async function startProviderBackend(
       child.kill("SIGTERM");
     });
   };
-  return { url, stop };
+  return { url, stop } satisfies ProviderBackend;
 }

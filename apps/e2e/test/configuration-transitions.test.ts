@@ -8,7 +8,7 @@ import {
   listInput,
   postConfig,
 } from "../helpers/api.js";
-import { CATALOG_TITLES, seedCatalog } from "../helpers/catalog-fixture.js";
+import { CATALOG_TITLES, seedCatalog } from "../helpers/catalog.fixture.js";
 import { resetDb, seedAccount, seedList } from "../helpers/db.js";
 import { seedCachedCatalog } from "../helpers/r2.js";
 import { CATALOG_FIXTURE_USER } from "../helpers/test-data.js";

@@ -9,7 +9,7 @@ import {
   providerStatus,
   row,
   savedLists,
-} from "../toolkit/config-fixture.js";
+} from "../toolkit/config.test-utils.js";
 
 test.use({
   viewport: { width: 390, height: 844 },

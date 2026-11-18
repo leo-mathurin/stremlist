@@ -6,7 +6,7 @@ import {
   isManifest,
   isMetaAnswer,
 } from "../helpers/api.js";
-import { CATALOG_TITLES } from "../helpers/catalog-fixture.js";
+import { CATALOG_TITLES } from "../helpers/catalog.fixture.js";
 import { configureUrl } from "../helpers/configure.js";
 import {
   getAccountByLegacyAlias,

@@ -64,7 +64,7 @@ function title(
     description: "Merged List fixture",
     ...overrides,
     addedAt: `${addedIn}-01-01T00:00:00.000Z`,
-  };
+  } satisfies CachedTitle;
 }
 
 async function seedMerged(
@@ -298,14 +298,15 @@ test(
       );
     expect(await keysOf(third)).toHaveLength(2);
 
-    const mergedList = (mergedSources: ListSource[]) => ({
-      id: listId,
-      ...FIRST,
-      catalogTitle: "Merged QA",
-      sortOption: "added_at-desc",
-      displayMode: "movie",
-      mergedSources,
-    });
+    const mergedList = (mergedSources: ListSource[]) =>
+      ({
+        id: listId,
+        ...FIRST,
+        catalogTitle: "Merged QA",
+        sortOption: "added_at-desc",
+        displayMode: "movie",
+        mergedSources,
+      }) satisfies ConfigListInput;
 
     const removed = await postConfig(accountId, [mergedList([SECOND])]);
     expect(removed.status).toBe(200);

@@ -24,7 +24,7 @@ import {
   toJson,
   isPreviewRequest,
   parseBody,
-} from "./config-fixture";
+} from "./config.test-utils";
 
 const PASTE = "Paste a link to a watchlist or list";
 const PHONE = { width: 390, height: 844 };
@@ -311,7 +311,12 @@ test("a new list goes first: in view on a wide screen, and a toast can show it o
   await expect(screen.getByText("IMDb · List · ls99123456")).toBeVisible();
   expect(await rowTitles(browser)).toEqual(["IMDb List", "Test catalog"]);
   expect(await inViewport(browser, "p", "IMDb List")).toBe(true);
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  await browser.evaluate(
+    () =>
+      new Promise<null>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve(null))),
+      ),
+  );
   await expect(screen.getByText("Added IMDb List")).toBeHidden();
 
   await browser.setViewport(PHONE);

@@ -30,7 +30,7 @@ const MOVIE = {
 const SERIES = { id: "tt0903747", type: "series", name: "Breaking Bad" };
 
 test.beforeAll(async () => {
-  backend = await startFixtureBackend("./provider-fixtures.ts");
+  backend = await startFixtureBackend("./provider.fixture.ts");
 });
 test.afterAll(async () => {
   await backend?.stop();

@@ -33,7 +33,7 @@ import {
   syncedStatus,
   toJson,
   routeConnectionSources,
-} from "./config-fixture";
+} from "./config.test-utils";
 
 const TOGGLE = "Show newly detected titles";
 const MOVED_HINT =
@@ -43,7 +43,11 @@ const NONE_YET_ONE_WAITING =
 const ONE_WAITING = { detected: 0, latestDetectedAt: null, waitingLists: 1 };
 
 function withNewTitles(summary: AccountConfigResponse["newTitles"]["summary"]) {
-  return { ...configuration, newTitles: { enabled: true, summary } };
+  const config: AccountConfigResponse = {
+    ...configuration,
+    newTitles: { enabled: true, summary },
+  };
+  return config;
 }
 
 test(

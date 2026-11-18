@@ -15,6 +15,7 @@ import type {
   AccountConfigInput,
   AccountConfigResponse,
   ConfigList,
+  ConnectionSummary,
 } from "@stremlist/shared/stremio.types";
 import type { ListSyncStatus } from "@stremlist/shared/sync-status";
 import { type Guard, isRecord, isString, parseJson } from "../helpers/json";
@@ -158,7 +159,7 @@ export function connected(
     username,
     connectedAt: "2026-10-01T00:00:00.000Z",
     needsRenewalSince: null,
-  };
+  } satisfies ConnectionSummary;
 }
 
 export const configuration = {
@@ -253,7 +254,7 @@ export function previewOf(
     request.displayMode === "split"
       ? ["movie", "series"]
       : [request.displayMode];
-  return {
+  const preview: CatalogPreview = {
     ok: true,
     titleCount: titles.length,
     typeCounts: { movie: titles.length, series: 0 },
@@ -267,6 +268,7 @@ export function previewOf(
     withoutDetails: 0,
     ...overrides,
   };
+  return preview;
 }
 
 /**
@@ -323,7 +325,7 @@ export function savedLists(
   submitted: AccountConfigInput,
   genres: string[] = ["Drama", "Comedy"],
 ) {
-  return submitted.lists.map((list, index) => ({
+  const lists: ConfigList[] = submitted.lists.map((list, index) => ({
     catalogTitle: "",
     displayMode: "split",
     ...list,
@@ -331,6 +333,7 @@ export function savedLists(
     position: index,
     availableGenres: genres,
   }));
+  return lists;
 }
 
 type Json = NonNullable<Parameters<WebRoute["fulfill"]>[0]["json"]>;

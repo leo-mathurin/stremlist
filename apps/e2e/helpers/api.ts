@@ -60,12 +60,17 @@ export function listInput(
   sourceRef: string,
   extra: Partial<ConfigListInput> = {},
 ) {
-  return { provider, sourceRef, sortOption: "added_at-asc", ...extra };
+  return {
+    provider,
+    sourceRef,
+    sortOption: "added_at-asc",
+    ...extra,
+  } satisfies ConfigListInput;
 }
 
 /** The Lists of a saved configuration as a save payload (same IDs). */
 export function asInput(lists: ConfigList[]) {
-  return lists.map((list) => ({
+  const inputs: ConfigListInput[] = lists.map((list) => ({
     id: list.id,
     provider: list.provider,
     sourceRef: list.sourceRef,
@@ -75,6 +80,7 @@ export function asInput(lists: ConfigList[]) {
     catalogSettings: list.catalogSettings,
     mergedSources: list.mergedSources,
   }));
+  return inputs;
 }
 
 /** The body of a 200 answer; any other status fails the test. */
@@ -350,7 +356,8 @@ export function apiAt(baseUrl: string) {
       const response = await client.links.resolve.$post({
         json: { input, accountKey },
       });
-      return await response.json();
+      const body: Record<string, unknown> = await response.json();
+      return body;
     },
 
     async upgrade(accountKey: string) {

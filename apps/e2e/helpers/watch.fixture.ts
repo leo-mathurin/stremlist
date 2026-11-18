@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import type { FixtureRequest } from "./fetch-fixture.js";
-import { bearer, installFetchFixture } from "./fetch-fixture.js";
+import type { FixtureRequest } from "./fetch.test-utils.js";
+import { bearer, installFetchFixture } from "./fetch.test-utils.js";
 import { isFakeStremio } from "./fake-stremio.js";
 import { parseJson } from "./json.js";
 

@@ -11,7 +11,7 @@ import {
   openFilters,
   row,
   saveButton,
-} from "./config-fixture";
+} from "./config.test-utils";
 
 const list = { ...row, availableGenres: [] };
 

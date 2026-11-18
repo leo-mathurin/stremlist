@@ -18,7 +18,8 @@ function parseBody(text: string, contentType: string | null) {
     return Object.fromEntries(new URLSearchParams(text));
   }
   try {
-    return JSON.parse(text);
+    const json: unknown = JSON.parse(text);
+    return json;
   } catch {
     return text;
   }

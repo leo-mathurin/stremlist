@@ -17,7 +17,7 @@ import {
   legacyConfiguration,
   routeConfig,
   saveButton,
-} from "./config-fixture";
+} from "./config.test-utils";
 import { isRecord } from "../helpers/json";
 
 const ADDON_URL = `${backend}/${accountId}/manifest.json`;
@@ -100,6 +100,7 @@ async function routeStremio(browser: Browser, start: StremioStart = {}) {
     failure: null as Failure,
     noCode: false,
     updateGate: null as Promise<void> | null,
+    onGated: () => {},
     calls: [] as string[],
     submissions,
     get linked() {
@@ -168,7 +169,10 @@ async function routeStremio(browser: Browser, start: StremioStart = {}) {
       return route.fulfill({ json: { result: "updated" } });
     }
     if (path !== "update") throw new Error(`Unexpected Stremio route ${path}`);
-    if (stremio.updateGate) await stremio.updateGate;
+    if (stremio.updateGate) {
+      stremio.onGated();
+      await stremio.updateGate;
+    }
     if (at < 0) return route.fulfill({ json: { result: "missing" } });
     const current = stremio.collection[at].manifest;
     if (JSON.stringify(current) === JSON.stringify(stremio.served)) {
@@ -615,10 +619,13 @@ test("a save made while Stremio updates becomes one more update", async ({
   stremio.updateGate = new Promise<void>((resolve) => {
     release = resolve;
   });
+  const gated = Promise.withResolvers<void>();
+  stremio.onGated = gated.resolve;
   await changeCatalogs(screen);
   stremio.served = servedManifest;
   await saveButton(screen).tap();
-  await expect.poll(() => stremio.calls.length).toBe(2);
+  await gated.promise;
+  expect(stremio.calls).toHaveLength(2);
 
   await screen.getByRole("button", "Settings for Test catalog").tap();
   await screen.getByLabel("Catalog title").fill("Renamed catalog");
@@ -631,8 +638,10 @@ test("a save made while Stremio updates becomes one more update", async ({
     ),
   };
   stremio.served = renamed;
+  const saved = browser.waitForResponse(`${backend}/${accountId}/config`);
   await saveButton(screen).tap();
-  await expect.poll(() => stremio.submissions.length).toBe(2);
+  await saved;
+  expect(stremio.submissions).toHaveLength(2);
   await expect(saveButton(screen)).toBeDisabled();
 
   stremio.updateGate = null;

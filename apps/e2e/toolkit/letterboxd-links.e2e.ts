@@ -6,7 +6,7 @@ import {
   routeResolve,
   saveButton,
   SAVE_NEW,
-} from "./config-fixture";
+} from "./config.test-utils";
 
 const PASTE = "Paste a link to a watchlist or list";
 

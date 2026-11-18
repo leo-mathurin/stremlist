@@ -138,5 +138,5 @@ export async function startFixtureBackend(
         rmSync(logDir, { recursive: true, force: true });
       }
     },
-  };
+  } satisfies FixtureBackend;
 }

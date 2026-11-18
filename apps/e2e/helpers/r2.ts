@@ -109,7 +109,8 @@ async function readJson(Key: string, what: string) {
     new GetObjectCommand({ Bucket: R2_BUCKET, Key }),
   );
   if (!response.Body) throw new Error(`R2 ${what} has no body`);
-  return JSON.parse(await response.Body.transformToString());
+  const json: unknown = JSON.parse(await response.Body.transformToString());
+  return json;
 }
 
 export async function getCacheManifest(listId: string) {

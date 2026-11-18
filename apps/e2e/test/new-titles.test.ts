@@ -15,7 +15,7 @@ import {
   isRefreshResult,
   ok,
 } from "../helpers/api.js";
-import { CATALOG_TITLES, seedCatalog } from "../helpers/catalog-fixture.js";
+import { CATALOG_TITLES, seedCatalog } from "../helpers/catalog.fixture.js";
 import {
   configureUrl,
   SAVED_REINSTALL,

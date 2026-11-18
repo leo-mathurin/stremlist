@@ -24,7 +24,7 @@ import {
   routeConfig,
   routeConnectionSources,
   parseBody,
-} from "./config-fixture";
+} from "./config.test-utils";
 import { isRecord } from "../helpers/json";
 
 const PASTE = "Paste a link to a watchlist or list";

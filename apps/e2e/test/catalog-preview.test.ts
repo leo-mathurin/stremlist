@@ -21,7 +21,7 @@ import {
   PREVIEW_PRIVATE_LIST,
   PREVIEW_PRODUCT_IDS,
   PREVIEW_PUBLIC_LIST,
-} from "../helpers/preview-fixture.js";
+} from "../helpers/preview.fixture.js";
 import { present } from "../helpers/json.js";
 import { countCacheObjects } from "../helpers/r2.js";
 import { CATALOG_FIXTURE_USER, PUBLIC_LIST } from "../helpers/test-data.js";
@@ -37,7 +37,7 @@ const ANIMATION_LIST = {
 let backend: FixtureBackend;
 
 test.beforeAll(async () => {
-  backend = await startFixtureBackend("./provider-fixtures.ts");
+  backend = await startFixtureBackend("./provider.fixture.ts");
 });
 test.afterAll(async () => {
   await backend?.stop();
