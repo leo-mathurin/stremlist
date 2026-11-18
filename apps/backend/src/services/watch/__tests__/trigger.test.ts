@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
   >(),
   item: undefined as LibraryItem | undefined,
   state: null as WatchState | null,
+  /** Saves refused as if another run saved first. */
+  conflicts: 0,
 }));
 
 vi.mock("../../../lib/supabase", () => ({ supabase: { rpc: mocks.rpc } }));
@@ -37,6 +39,10 @@ vi.mock("../state", async (importOriginal) => ({
   ...(await importOriginal<typeof StateModule>()),
   readState: () => Promise.resolve({ state: mocks.state, etag: "v1" }),
   writeState: (_: string, next: WatchState) => {
+    if (mocks.conflicts > 0) {
+      mocks.conflicts -= 1;
+      return Promise.resolve(false);
+    }
     mocks.state = next;
     return Promise.resolve(true);
   },
@@ -116,6 +122,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.unstubAllGlobals();
+  mocks.conflicts = 0;
   mocks.rpc.mockReset();
 });
 
@@ -202,10 +209,14 @@ describe("a /stream request of a tracked Account", () => {
       series: { [SHOW]: `${SHOW}:9:9:3:eJxjAAAAAQAB` },
     };
     mocks.item = series([1, 2], 3);
+    // Another run saves first: the save is tried again.
+    mocks.conflicts = 1;
 
     await onStreamRequest(account, "series", `${SHOW}:1:3`);
 
     expect(queued()).toEqual([]);
+    expect(calls("watch_destination_list")).toEqual([]);
+    expect(mocks.conflicts).toBe(0);
     expect(mocks.state.series[SHOW]).toEqual(["1:1", "1:2"]);
   });
 

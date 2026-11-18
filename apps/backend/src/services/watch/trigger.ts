@@ -11,11 +11,11 @@ import { decryptSecret } from "../../lib/crypto";
 import { LruCache } from "../../lib/lru";
 import { supabase } from "../../lib/supabase";
 import type { LibraryItem } from "../stremio";
-import { diffItems, recordItems } from "./detect";
+import { recordItems } from "./detect";
 import { isEpisodeWatched, movieWatched } from "./library";
 import { readLibraryItems } from "./pace";
 import { newCycle, planAfterRead } from "./schedule";
-import { linkOf, readState, writeState } from "./state";
+import { linkOf } from "./state";
 import { destinationsNow } from "./sweep";
 
 interface WatchContext {
@@ -66,34 +66,30 @@ async function isTracked(accountId: string): Promise<boolean> {
 
 /**
  * Sends what `item` shows as newly watched against the Account's watch
- * state. The caller checks that the Account has its Watched baseline.
+ * state. The caller checks that the Account has its Watched baseline. Most
+ * reads show nothing new: the Destinations are read only when needed.
  */
 async function sendNewTitles(
   accountId: string,
   context: WatchContext,
   item: LibraryItem,
 ): Promise<void> {
-  const link = linkOf(context.authKey);
-  const version = await readState(accountId);
-  if (version.state?.link !== link) return;
-  // Most reads show nothing new: the Destinations are read only when needed.
-  const { titles, next } = await diffItems(version.state, [item]);
-  if (titles.length === 0) {
-    // A change with no title to send (a baseline that Cinemeta renumbered)
-    // is still saved; another run that saves first does it instead.
-    if (next) await writeState(accountId, next, version.etag);
-    return;
-  }
-  const { data, error } = await supabase.rpc("watch_destination_list", {
-    p_account_id: accountId,
-  });
-  if (error) throw error;
-  const destinations = await destinationsNow(
+  await recordItems(
     accountId,
-    decryptSecret(context.authKey),
-    data.filter(isProviderId),
+    async () => {
+      const { data, error } = await supabase.rpc("watch_destination_list", {
+        p_account_id: accountId,
+      });
+      if (error) throw error;
+      return destinationsNow(
+        accountId,
+        decryptSecret(context.authKey),
+        data.filter(isProviderId),
+      );
+    },
+    [item],
+    { link: linkOf(context.authKey) },
   );
-  await recordItems(accountId, destinations, [item], { link, version });
 }
 
 /**
