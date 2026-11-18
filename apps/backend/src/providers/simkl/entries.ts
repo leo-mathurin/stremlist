@@ -15,7 +15,13 @@ const HISTORY_REF = "me/history";
 /** Everything the user rated, from the library snapshot. */
 const RATINGS_REF = "me/ratings";
 /** Source lists read from the library snapshot. */
-export const LIBRARY_REFS = [...STATUS_REFS.keys(), HISTORY_REF, RATINGS_REF];
+const LIBRARY_REFS = [...STATUS_REFS.keys(), HISTORY_REF, RATINGS_REF];
+/** The library joined with Simkl's airing calendar. */
+export const AIRING_SOON_REF = "me/airing-soon";
+/** The paused playback sessions. */
+export const PLAYBACK_REF = "me/continue-watching";
+/** Source lists that the Connection reads, apart from custom lists. */
+export const CONNECTION_REFS = [...LIBRARY_REFS, AIRING_SOON_REF, PLAYBACK_REF];
 
 export function titleType(
   kind: SimklKind,

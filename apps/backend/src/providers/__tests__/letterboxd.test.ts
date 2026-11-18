@@ -1118,6 +1118,34 @@ describe("Letterboxd member collections and charts", () => {
       true,
     );
   });
+  it("fails only the list when Cloudflare challenges a member film page", async () => {
+    // Letterboxd's Cloudflare challenges page 2 of a member's films, while
+    // watchlists and lists still read.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) =>
+        Promise.resolve(
+          url === "https://letterboxd.com/alice/films/"
+            ? new Response(page([1], "/alice/films/page/2/"))
+            : url.includes("/films/page/2/")
+              ? new Response("<title>Just a moment...</title>", {
+                  status: 403,
+                  headers: { "cf-mitigated": "challenge" },
+                })
+              : new Response(page([3])),
+        ),
+      ),
+    );
+    await expect(
+      letterboxdProvider.fetchSource("users/alice/films", context),
+    ).rejects.toMatchObject({ reason: "unavailable" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(gate()).toMatchObject({ haltedAt: null, windowFailures: 1 });
+    expect(
+      (await letterboxdProvider.fetchSource("users/bob/watchlist", context))
+        .entries,
+    ).toHaveLength(1);
+  });
 });
 
 describe("Letterboxd live page shapes", () => {

@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import type { CatalogPreviewResponse } from "@stremlist/shared/catalog-preview";
+import type {
+  CatalogPreview,
+  CatalogPreviewResponse,
+  CatalogTitlesPage,
+  PreviewTitle,
+} from "@stremlist/shared/catalog-preview";
 import { BACKEND_URL } from "../env.js";
 import type { Api, PreviewInput } from "../helpers/api.js";
 import { api } from "../helpers/api.js";
@@ -22,7 +27,7 @@ import {
   PREVIEW_PRODUCT_IDS,
   PREVIEW_PUBLIC_LIST,
 } from "../helpers/preview-fixture.js";
-import { present } from "../helpers/json.js";
+import { isRecord, present } from "../helpers/json.js";
 import { countCacheObjects } from "../helpers/r2.js";
 import { CATALOG_FIXTURE_USER, PUBLIC_LIST } from "../helpers/test-data.js";
 
@@ -312,6 +317,124 @@ test(
     await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(
       0,
     );
+  },
+);
+
+/** A movie of the long fixture Catalog: its position names it. */
+function longTitle(index: number): PreviewTitle {
+  const id = `tt99${String(index + 1).padStart(5, "0")}`;
+  return {
+    id,
+    type: "movie",
+    name: `Long fixture ${index + 1}`,
+    poster: null,
+    releaseInfo: "2001",
+  };
+}
+
+test(
+  "the more tile opens every Title of a Catalog, one page at a time",
+  { tag: "@local" },
+  async ({ page }) => {
+    // 130 movies: the preview shows 12, then pages of 60 from offsets 12
+    // and 72. The handlers have their own tests; this checks the page.
+    const total = 130;
+    const { accountId } = await seedAccountWithLists([ANIMATION_LIST]);
+    const answer: CatalogPreview = {
+      ok: true,
+      titleCount: total,
+      typeCounts: { movie: total, series: 0 },
+      catalogs: [
+        {
+          type: "movie",
+          preset: null,
+          total,
+          titles: Array.from({ length: 12 }, (_, index) => longTitle(index)),
+        },
+      ],
+      unresolved: { count: 0, notCheckedYet: 0, entries: [] },
+      withoutDetails: 0,
+    };
+    // The previews after the first wait for `release`.
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let previews = 0;
+    await page.route(`${BACKEND_URL}/lists/preview`, async (route) => {
+      previews += 1;
+      if (previews > 1) await held;
+      await route.fulfill({ json: answer });
+    });
+    const pageRequests: { offset: unknown; catalog: unknown }[] = [];
+    await page.route(`${BACKEND_URL}/lists/preview/titles`, async (route) => {
+      const body: unknown = route.request().postDataJSON();
+      if (!isRecord(body)) throw new Error("A page request needs a body");
+      const { offset, catalog, sourceRef } = body;
+      expect(sourceRef).toBe(PUBLIC_REF);
+      pageRequests.push({ offset, catalog });
+      const start = Number(offset);
+      const json: CatalogTitlesPage = {
+        ok: true,
+        total,
+        titles: Array.from(
+          { length: Math.max(0, Math.min(60, total - start)) },
+          (_, index) => longTitle(start + index),
+        ),
+      };
+      await route.fulfill({ json });
+    });
+    await page.goto(configureUrl(accountId));
+
+    await page
+      .getByRole("button", { name: "Preview Animation fixture" })
+      .click();
+    await expect(
+      page.getByRole("link", { name: "Long fixture 12 (2001), on IMDb" }),
+    ).toBeVisible();
+    expect(pageRequests).toEqual([]);
+    await page
+      .getByRole("button", { name: "Show all 130 movies of this catalog" })
+      .click();
+
+    const dialog = page.getByRole("dialog", { name: "Animation fixture" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("Movies · 130 titles")).toBeVisible();
+    // The first page comes at once, the next one on scroll.
+    await expect(
+      dialog.getByRole("link", { name: "Long fixture 72 (2001), on IMDb" }),
+    ).toBeAttached();
+    const last = dialog.getByRole("link", {
+      name: "Long fixture 130 (2001), on IMDb",
+    });
+    await expect(last).toHaveCount(0);
+    await dialog
+      .getByRole("link", { name: "Long fixture 72 (2001), on IMDb" })
+      .scrollIntoViewIfNeeded();
+    await last.scrollIntoViewIfNeeded();
+    await expect(last).toBeVisible();
+    await expect(dialog.getByRole("listitem")).toHaveCount(total);
+    expect(pageRequests).toEqual([
+      { offset: 12, catalog: { type: "movie", preset: null } },
+      { offset: 72, catalog: { type: "movie", preset: null } },
+    ]);
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    const showAll = page.getByRole("button", {
+      name: "Show all 130 movies of this catalog",
+    });
+    await expect(showAll).toBeFocused();
+
+    // While a new sort updates the preview, the rows on screen are from the
+    // old one: their pages would not follow on.
+    await page.getByRole("combobox", { name: "Sort order" }).click();
+    await page
+      .getByRole("option", { name: "IMDb Rating (Highest First)" })
+      .click();
+    await expect(showAll).toBeDisabled();
+    release();
+    await expect(showAll).toBeEnabled();
   },
 );
 

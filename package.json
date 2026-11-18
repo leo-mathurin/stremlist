@@ -1,6 +1,6 @@
 {
   "name": "stremlist",
-  "version": "2.9.4",
+  "version": "2.11.0",
   "private": true,
   "description": "Stremlist - Sync your IMDb watchlist with Stremio",
   "repository": {
@@ -68,8 +68,8 @@
     "unrs-resolver"
   ],
   "catalog": {
-    "vite": "npm:@voidzero-dev/vite-plus-core@1.6.0",
-    "vite-plus": "1.6.0"
+    "vite": "npm:@voidzero-dev/vite-plus-core@8.3.8000",
+    "vite-plus": "1.7.0"
   },
   "overrides": {
     "vite": "catalog:"

@@ -13,6 +13,7 @@ import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
 import type { ProviderStatus } from "@/hooks/useProviderStatus";
 import { PlusIcon } from "@/components/ui/plus-icon";
 import { cn } from "@/lib/utils";
+import SimklChartPicker from "./SimklChartPicker";
 import { ProviderMark } from "./brand";
 
 type Chip = {
@@ -25,7 +26,12 @@ type Chip = {
   /** A longer description, shown on hover. */
   hint?: string;
 };
-type Section = { title: string; chips: Chip[] };
+type Section = {
+  title: string;
+  chips: Chip[];
+  /** The Simkl chart menu, for the charts that are not chips. */
+  simklMenu?: boolean;
+};
 type ProviderEntry = {
   provider: ProviderId;
   /** "@moviebuff, 28 lists" or "13 charts". */
@@ -82,7 +88,8 @@ export default function QuickAdd({
     const mine = (connection && connectionSources[provider]) || [];
     const charts = [
       ...mine.filter((source) => source.kind === "chart"),
-      ...(PUBLIC_SOURCES[provider] ?? []),
+      // The other charts are in the Provider's chart menu.
+      ...(PUBLIC_SOURCES[provider] ?? []).filter((source) => !source.menu),
     ].filter(
       (source, index, all) =>
         all.findIndex((other) => other.ref === source.ref) === index,
@@ -106,7 +113,11 @@ export default function QuickAdd({
         title: "Your lists",
         chips: mine.filter((s) => isOwnList(s.ref)).map(chip),
       },
-      { title: "Charts", chips: charts.map(chip) },
+      {
+        title: "Charts",
+        chips: charts.map(chip),
+        simklMenu: provider === "simkl",
+      },
     ].filter((section) => section.chips.length > 0);
     if (sections.length === 0) continue;
     const count = sections.reduce((sum, s) => sum + s.chips.length, 0);
@@ -226,6 +237,13 @@ export default function QuickAdd({
                           />
                         ))}
                       </div>
+                      {section.simklMenu && (
+                        <SimklChartPicker
+                          usedKeys={usedKeys}
+                          disabled={full}
+                          onAdd={(source) => onAdd("simkl", source)}
+                        />
+                      )}
                     </div>
                   ))}
                 </div>

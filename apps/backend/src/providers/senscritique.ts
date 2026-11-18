@@ -41,7 +41,8 @@ const UNIVERSE_SERIES = 4;
 /** Wikidata property "SensCritique work ID". */
 const WIKIDATA_SENSCRITIQUE_WORK = "P10100";
 
-const USER_REF = /^users\/([\w.-]+)\/([a-z]+)$/;
+/** `users/{user}/{collection}`, or `users/{user}/done/{year}` for one year. */
+const USER_REF = /^users\/([\w.-]+)\/([a-z]+)(?:\/(\d{4}))?$/;
 const LIST_REF = /^lists\/(\d+)$/;
 const POLL_REF = /^polls\/(\d+)$/;
 
@@ -50,7 +51,7 @@ type CollectionAction =
   (typeof SENSCRITIQUE_COLLECTIONS)[SensCritiqueCollection]["action"];
 
 interface Chart {
-  subtype: "TOP_111" | "TOP_100_OUT_OF_TOP_10";
+  subtype: "TOP_111" | "TOP_100_OUT_OF_TOP_10" | "TOP_111_ANIME";
   universe: Universe;
 }
 
@@ -60,8 +61,10 @@ const CHARTS = new Map<string, Chart>([
   ["top111-series", { subtype: "TOP_111", universe: "tvShow" }],
   ["top100-movies", { subtype: "TOP_100_OUT_OF_TOP_10", universe: "movie" }],
   ["top100-series", { subtype: "TOP_100_OUT_OF_TOP_10", universe: "tvShow" }],
+  // The anime chart has only series: with "movie" it is empty.
+  ["top111-anime", { subtype: "TOP_111_ANIME", universe: "tvShow" }],
 ]);
-/** A chart has 100 or 111 products; one request reads it whole. */
+/** A chart has 100 to 150 products; one request reads it whole. */
 const CHART_LIMIT = 200;
 
 /**
@@ -82,11 +85,24 @@ function collectionReads(
   return reads;
 }
 
-/** The username and collection of a `users/{user}/{collection}` reference. */
-function userRef(ref: string): [string, SensCritiqueCollection] | null {
+interface UserRef {
+  username: string;
+  collection: SensCritiqueCollection;
+  /** Only the titles that the user watched in this year. */
+  year?: number;
+}
+
+/**
+ * The parts of a `users/{user}/{collection}` reference. Only the watched
+ * collection has a form for one year, `users/{user}/done/{year}`.
+ */
+function userRef(ref: string): UserRef | null {
   const match = USER_REF.exec(ref);
-  return match && isSensCritiqueCollection(match[2])
-    ? [match[1], match[2]]
+  if (!match || !isSensCritiqueCollection(match[2])) return null;
+  const [, username, collection, year] = match;
+  if (year === undefined) return { username, collection };
+  return collection === "done"
+    ? { username, collection, year: Number(year) }
     : null;
 }
 
@@ -138,13 +154,13 @@ const USER_QUERY = `
 `;
 
 // LAST_ACTION_DESC is newest first, the order of the action row IDs that
-// mergeByActionId relies on.
+// mergeByActionId relies on. A null yearDateDone reads all the years.
 const COLLECTION_QUERY = `
-  query StremlistCollection($username: String!, $action: ProductAction!, $universe: String, $limit: Int, $offset: Int) {
+  query StremlistCollection($username: String!, $action: ProductAction!, $universe: String, $yearDateDone: Int, $limit: Int, $offset: Int) {
     user(username: $username) {
       username
       settings { privacyProfile }
-      collection(universe: $universe, action: $action, order: LAST_ACTION_DESC, limit: $limit, offset: $offset) {
+      collection(universe: $universe, action: $action, yearDateDone: $yearDateDone, order: LAST_ACTION_DESC, limit: $limit, offset: $offset) {
         total
         products {
           ${PRODUCT_FIELDS}
@@ -400,7 +416,7 @@ function nextPage(page: number, count: number, total: number): number | null {
 
 /** One collection of one universe, newest first, as the API returns it. */
 function fetchUniverseCollection(
-  username: string,
+  { username, year }: UserRef,
   universe: Universe,
   action: CollectionAction,
 ): Promise<PagedRead<SensCritiqueProduct>> {
@@ -414,6 +430,7 @@ function fetchUniverseCollection(
           username,
           action,
           universe,
+          yearDateDone: year ?? null,
           limit: PAGE_SIZE,
           offset: page * PAGE_SIZE,
         },
@@ -441,13 +458,12 @@ function fetchUniverseCollection(
 }
 
 async function fetchCollection(
-  username: string,
-  collection: SensCritiqueCollection,
+  user: UserRef,
 ): Promise<PagedRead<SensCritiqueProduct>> {
   // The shared limiter keeps the reads under SensCritique's rate.
   const reads = await Promise.all(
-    collectionReads(collection).map(([universe, action]) =>
-      fetchUniverseCollection(username, universe, action),
+    collectionReads(user.collection).map(([universe, action]) =>
+      fetchUniverseCollection(user, universe, action),
     ),
   );
   // The API returns the newest action first; the canonical order is oldest
@@ -527,8 +543,9 @@ export const senscritiqueWikidataStrategy = wikidataStrategy(
 
 /**
  * SensCritique: a user's collections of films and series ("Envies", "Vus",
- * "Notés", "Coups de cœur"), public lists, the public charts and the results
- * of polls, read anonymously. No Connection and no Actions: SensCritique has
+ * also for one year, "Notés", "Coups de cœur", "En cours", "Il a récemment
+ * aimé"), public lists (top 10s and poll rankings among them), the public
+ * charts and the results of polls, read anonymously. No Connection and no Actions: SensCritique has
  * no public API for them.
  */
 export const senscritiqueProvider: ProviderAdapter = {
@@ -538,10 +555,10 @@ export const senscritiqueProvider: ProviderAdapter = {
   async validateSource(ref): Promise<SourceValidation> {
     const user = userRef(ref);
     if (user) {
-      const [name, collection] = user;
+      const { collection, year } = user;
       const data = await senscritiqueQuery(
         USER_QUERY,
-        { username: name },
+        { username: user.username },
         userDataSchema,
       );
       if (!data.user) return { ok: false, reason: "not_found" };
@@ -550,8 +567,14 @@ export const senscritiqueProvider: ProviderAdapter = {
       const { noun } = SENSCRITIQUE_COLLECTIONS[collection];
       return {
         ok: true,
-        ref: `users/${username}/${collection}`,
-        suggestedTitle: `${username}'s ${noun}`,
+        ref:
+          year === undefined
+            ? `users/${username}/${collection}`
+            : `users/${username}/${collection}/${year}`,
+        suggestedTitle:
+          year === undefined
+            ? `${username}'s ${noun}`
+            : `${username}'s ${noun} in ${year}`,
         defaultDisplayMode: "split",
       };
     }
@@ -620,7 +643,7 @@ export const senscritiqueProvider: ProviderAdapter = {
     const poll = POLL_REF.exec(ref);
     let read: PagedRead<SensCritiqueProduct>;
     if (user) {
-      read = await fetchCollection(...user);
+      read = await fetchCollection(user);
     } else if (list) {
       read = await fetchListProducts(Number(list[1]));
     } else if (chart) {

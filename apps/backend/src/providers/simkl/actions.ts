@@ -15,7 +15,7 @@ import type {
 } from "../types";
 import { targetEpisodes, UnknownTitleError } from "../types";
 import { simklRequest } from "./api";
-import { LIBRARY_REFS, titleType } from "./entries";
+import { CONNECTION_REFS, titleType } from "./entries";
 import type { LibraryItem } from "./library";
 import { knownItems, markLibraryChanged, syncLibrary } from "./library";
 
@@ -167,7 +167,9 @@ export const simklActions: ProviderActions = {
   // A Simkl title sits in exactly one status, so adding, watching or rating
   // it (rating files an unlisted title) can move it between all of them.
   // Removing a title also clears its rating, so every kind touches Ratings.
+  // Airing soon follows the statuses, and a watched mark can end a paused
+  // playback session.
   affectedSources() {
-    return LIBRARY_REFS;
+    return CONNECTION_REFS;
   },
 };

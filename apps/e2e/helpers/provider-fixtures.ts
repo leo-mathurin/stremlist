@@ -147,6 +147,20 @@ function tokenResponse(body: Record<string, string>): Response {
   return json({ error: "unsupported_grant_type" }, 400);
 }
 
+/** A Trakt calendar: `shows/…` gives episodes, the others movies. */
+function traktCalendar(name: string): Response {
+  if (name.startsWith("shows")) {
+    return json(
+      [1, 2].map((number) => ({
+        first_aired: `2026-01-0${number}T02:00:00.000Z`,
+        episode: { season: 2, number, ids: { trakt: 30 + number } },
+        show: traktShow,
+      })),
+    );
+  }
+  return json([{ released: "2026-01-01", movie: traktMovie }]);
+}
+
 function trakt({ request, url, body }: FixtureRequest): Response {
   const path = url.pathname;
   if (url.host === "auth.trakt.tv") {
@@ -184,8 +198,14 @@ function trakt({ request, url, body }: FixtureRequest): Response {
     case "/shows/watched/weekly":
       return json([{ watcher_count: 7, play_count: 7, show: traktShow }]);
   }
+  // Calendars start today, so their paths change each day.
+  const calendar = /^\/calendars\/(all|my)\/(.+)\/\d{4}-\d{2}-\d{2}\/30$/.exec(
+    path,
+  );
+  if (calendar?.[1] === "all") return traktCalendar(calendar[2]);
   const refused = requireToken(request);
   if (refused) return refused;
+  if (calendar) return traktCalendar(calendar[2]);
   switch (path) {
     case "/users/settings":
       return json({
@@ -217,6 +237,46 @@ function trakt({ request, url, body }: FixtureRequest): Response {
     case "/sync/progress/up_next":
       // A limited-access endpoint: the adapter reads the watched progress.
       return json({ error: "forbidden" }, 403);
+    case "/users/likes/lists":
+      return json([
+        {
+          liked_at: "2026-01-01T00:00:00.000Z",
+          type: "list",
+          list: {
+            name: "Fixture Liked List",
+            ids: { slug: "liked-list", trakt: 3 },
+            user: { ids: { slug: "other-user" } },
+          },
+        },
+      ]);
+    case "/users/me/lists/collaborations":
+      return json([
+        {
+          name: "Fixture Shared Work",
+          ids: { slug: "shared-work", trakt: 4 },
+          user: { ids: { slug: "other-user" } },
+        },
+      ]);
+    // One paused movie and two paused episodes of one show.
+    case "/sync/playback/movies":
+      return json([
+        {
+          progress: 25,
+          paused_at: "2026-01-01T00:00:00.000Z",
+          type: "movie",
+          movie: traktMovie,
+        },
+      ]);
+    case "/sync/playback/episodes":
+      return json(
+        [2, 1].map((number) => ({
+          progress: 40,
+          paused_at: `2026-01-0${number + 1}T00:00:00.000Z`,
+          type: "episode",
+          episode: { season: 1, number, ids: { trakt: 20 + number } },
+          show: traktShow,
+        })),
+      );
     case "/sync/progress/watched":
       return json([
         {
@@ -304,6 +364,17 @@ function mdblist({ request, url, body }: FixtureRequest): Response {
       });
     case "/external/lists/user":
       return json([]);
+    // A free account: only the global section.
+    case "/lists/recommended":
+      return json({
+        sections: [
+          {
+            slug: "rising",
+            label: "Rising Fast",
+            items_url: "/lists/recommended/rising/items",
+          },
+        ],
+      });
   }
   throw new Error(`Unexpected MDBList request ${request.method} ${path}`);
 }
@@ -353,6 +424,21 @@ function simkl({ request, url, body }: FixtureRequest): Response {
       });
     case "/sync/all-items/anime":
       return json({});
+    // The shape of GET /sync/playback: a paused episode of the show.
+    case "/sync/playback":
+      return json([
+        {
+          id: 1,
+          progress: 40,
+          paused_at: "2026-01-04T00:00:00Z",
+          type: "episode",
+          episode: { season: 1, number: 2 },
+          show: {
+            title: BREAKING_BAD.title,
+            ids: { simkl: 2, imdb: "tt0903747" },
+          },
+        },
+      ]);
     case "/sync/add-to-list":
     case "/sync/history":
     case "/sync/history/remove":
@@ -380,6 +466,24 @@ function simklCdn({ request, url }: FixtureRequest): Response {
         { title: "Season 2", anime_type: "tv", ids: ids(3, "tt0903747") },
         { title: "Season 1", anime_type: "tv", ids: ids(4, "tt0903747") },
       ]);
+    case "/discover/trending/movies/today_100.json":
+    case "/discover/dvd/releases_100.json":
+      return json([{ title: SHAWSHANK.title, ids: ids(1, "tt0111161") }]);
+    case "/discover/trending/tv/genre/index.json":
+      return json([{ name: "Drama", slug: "drama", count: 500 }]);
+    case "/discover/trending/tv/genre/drama_month_500.json":
+      return json([{ title: BREAKING_BAD.title, ids: ids(2, "tt0903747") }]);
+    // The movie in the fixture library's Plan to watch comes out tomorrow.
+    case "/calendar/v2/movie_release.json":
+      return json({
+        calendar: [
+          {
+            simkl_id: 1,
+            date: new Date(Date.now() + 86_400_000).toISOString(),
+          },
+        ],
+        metadata: { "1": { title: SHAWSHANK.title, ids: ids(1, "tt0111161") } },
+      });
   }
   throw new Error(
     `Unexpected Simkl CDN request ${request.method} ${url.pathname}`,
