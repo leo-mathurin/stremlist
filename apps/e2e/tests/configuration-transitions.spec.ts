@@ -40,14 +40,12 @@ async function saveLists(accountId: string, lists: ConfigListInput[]) {
 async function manifestCatalogIds(accountId: string) {
   return (await getManifest(accountId)).catalogs.map((catalog) => catalog.id);
 }
-/** The ID and name of each manifest Catalog, in order. */
 async function manifestCatalogNames(accountId: string) {
   return (await getManifest(accountId)).catalogs.map((catalog) => [
     catalog.id,
     catalog.name,
   ]);
 }
-/** The "Provider · kind · detail" line of each List row, in order. */
 function rowSources(page: Page) {
   return page.getByText(/^IMDb · (Watchlist|List|Chart)/);
 }
@@ -59,8 +57,6 @@ test(
   { tag: "@local" },
   async ({ page }) => {
     const { accountId, id } = await seedCatalog();
-    // The API refuses a 61-character title with a readable error and keeps
-    // the stored configuration.
     const rejected = await postConfig(accountId, [
       listInput("imdb", CATALOG_FIXTURE_USER, {
         id,
@@ -76,11 +72,9 @@ test(
       "Release QA",
     );
 
-    // The field stops at the limit, so the page can only submit a valid title.
     await openConfigure(page, accountId, "Release QA");
     await openSettings(page, "Release QA");
     const title = page.getByLabel("Catalog title", { exact: true });
-    // Clear first: Chromium counts a selected value against maxlength.
     await title.fill("");
     await title.fill("A".repeat(61));
     const maxTitle = "A".repeat(60);
@@ -104,7 +98,6 @@ test(
     await page.getByRole("button", { name: "Add an IMDb chart" }).click();
     await page.getByRole("menuitem", { name: /^Top 250 Movies/ }).click();
     await saveConfigure(page);
-    // The new List goes first.
     const before = (await getConfig(accountId)).body.lists[0];
     await openSettings(page, "Top 250 Movies");
     await page.getByRole("combobox", { name: "Built-in chart" }).click();
@@ -132,7 +125,6 @@ test(
     await expect(
       page.getByRole("combobox", { name: "Built-in chart" }),
     ).toHaveText("Top 250 TV Shows");
-    // Only the regular row exposes a content-type select.
     await openSettings(page, "Release QA");
     await expect(
       page.getByRole("combobox", { name: "Show", exact: true }),
@@ -224,7 +216,6 @@ test(
     await page.reload();
     await expect(page.getByText("Keep me", { exact: true })).toBeVisible();
     await expect(page.getByText("Release QA", { exact: true })).toHaveCount(0);
-    // An Account keeps at least one List: without one, Save is off.
     await page.getByRole("button", { name: "Remove Keep me" }).click();
     await expect(page.getByText("No lists yet")).toBeVisible();
     await expect(saveButton(page)).toBeDisabled();
@@ -235,7 +226,6 @@ test(
   "an untitled List keeps its Stremio name when Lists are added before it",
   { tag: "@local" },
   async ({ page }) => {
-    // A v1 install: one IMDb watchlist without a title.
     const accountId = await seedAccount();
     const id = await seedList(accountId, {
       sourceRef: CATALOG_FIXTURE_USER,
@@ -243,14 +233,11 @@ test(
       position: 0,
     });
     await seedCachedCatalog(id, CATALOG_TITLES);
-    // Like v1, its Catalog is "Stremlist".
     expect(await manifestCatalogNames(accountId)).toEqual([
       [`wl-${id}-movie`, "Stremlist"],
     ]);
     await openConfigure(page, accountId, "IMDb Watchlist");
 
-    // New Lists go first. The watchlist gets the name that the page shows,
-    // never its position.
     for (const chart of ["Top 250 Movies", "Most Popular Movies"]) {
       await page.getByRole("button", { name: "Add an IMDb chart" }).click();
       await page
@@ -290,7 +277,6 @@ test(
       position: 1,
     });
     await seedCachedCatalog(second, [CATALOG_TITLES[5]]);
-    // v1 saved the positions of untitled Lists as their titles.
     await saveLists(accountId, [
       listInput("imdb", CATALOG_FIXTURE_USER, {
         id,
@@ -330,8 +316,6 @@ test(
       "IMDb · List · ls99123456",
       `IMDb · Watchlist · ${CATALOG_FIXTURE_USER}`,
     ];
-    // Numbered titles follow the position, so the page drops them: the
-    // Lists take the names of their Source lists.
     await expect(rowSources(page)).toHaveText(reordered);
     await expect(page.getByText("1", { exact: true })).toHaveCount(0);
     await saveConfigure(page);

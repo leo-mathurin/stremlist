@@ -15,15 +15,10 @@ import {
   validateImdbRatings,
   validateImdbWatchlist,
 } from "../services/imdb-scraper";
-import type { ImdbListData } from "../services/imdb-scraper";
-import type { ProviderAdapter, SourceValidation } from "./types";
+import type { ProviderAdapter } from "./types";
 import { SourceUnavailableError } from "./types";
 
-/**
- * Charts are ranked, not dated; watchlists and lists say when each Title was
- * added, and ratings when it was rated.
- */
-function readSource(ref: string): Promise<ImdbListData> {
+function readSource(ref: string) {
   if (isChartId(ref)) return fetchChart(ref);
   if (isListId(ref)) return fetchList(ref);
   const ratings = IMDB_RATINGS_REF_PATTERN.exec(ref);
@@ -46,7 +41,7 @@ export const imdbProvider: ProviderAdapter = {
   id: "imdb",
   freshnessMs: CACHE_TTL_MS,
 
-  async validateSource(ref): Promise<SourceValidation> {
+  async validateSource(ref) {
     if (isChartId(ref)) {
       const chart = CHART_BY_ID.get(ref);
       return chart

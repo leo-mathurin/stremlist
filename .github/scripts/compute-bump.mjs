@@ -1,15 +1,3 @@
-// Determines the semver bump level from the Conventional Commits pushed to main.
-//
-// Reads the commit range from $BEFORE..$AFTER (the push event range), classifies
-// each commit, and writes `bump`, `current_version`, and `new_version` to
-// $GITHUB_OUTPUT. Bump is the highest level found:
-//   feat                       -> minor
-//   fix | perf                 -> patch
-//   <type>! | BREAKING CHANGE: -> major
-//   anything else              -> none (no release)
-//
-// Relies on merge commits preserving the branch's individual commits in the
-// range. If you squash-merge instead, make the squash commit title conventional.
 import { execSync } from "node:child_process";
 import { readFileSync, appendFileSync } from "node:fs";
 
@@ -20,14 +8,12 @@ const after = process.env.AFTER || "HEAD";
 const range =
   !before || before === ZERO ? `${after}~1..${after}` : `${before}..${after}`;
 
-// %x00 = NUL field separator, %x1e = record separator — safe against newlines in bodies.
 let raw = "";
 try {
   raw = execSync(`git log ${range} --format=%s%x00%b%x1e`, {
     encoding: "utf8",
   });
 } catch {
-  // Range unresolvable (e.g. force-push); fall back to the tip commit only.
   raw = execSync(`git log -1 ${after} --format=%s%x00%b%x1e`, {
     encoding: "utf8",
   });

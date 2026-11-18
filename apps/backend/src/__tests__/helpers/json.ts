@@ -1,8 +1,3 @@
-/**
- * Readers for the JSON that the routes answer. Each one parses the body with
- * a schema, so a test reads typed fields instead of asserting a type. Object
- * schemas keep unknown keys, so `toEqual` still sees the whole body.
- */
 import type { Json } from "@stremlist/shared/database";
 import type {
   StremioManifest,
@@ -12,15 +7,12 @@ import type {
 import { z } from "zod";
 
 /** The body of `res`, parsed with `schema`. */
-export async function readJson<T>(
-  res: Response,
-  schema: z.ZodType<T>,
-): Promise<T> {
+export async function readJson<T>(res: Response, schema: z.ZodType<T>) {
   return schema.parse(await res.json());
 }
 
 /** `text` as JSON, parsed with `schema`. */
-export function parseJson<T>(text: string, schema: z.ZodType<T>): T {
+export function parseJson<T>(text: string, schema: z.ZodType<T>) {
   return schema.parse(JSON.parse(text));
 }
 
@@ -28,7 +20,7 @@ export function parseJson<T>(text: string, schema: z.ZodType<T>): T {
  * `schema`, but a parse gives back the value itself instead of a copy, so
  * its key order stays the same (for code that compares JSON text).
  */
-export function unchanged<T>(schema: z.ZodType<T>): z.ZodType<T> {
+export function unchanged<T>(schema: z.ZodType<T>) {
   return z.custom<T>((value) => schema.safeParse(value).success);
 }
 
@@ -37,7 +29,7 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** `value` when it is a string, or a clear failure. */
-export function mustString(value: unknown, what: string): string {
+export function mustString(value: unknown, what: string) {
   if (typeof value !== "string") throw new Error(`Expected ${what} string`);
   return value;
 }

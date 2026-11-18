@@ -69,7 +69,6 @@ const FEATURES: [LucideIcon, string, string][] = FEATURES_CONTENT.map(
   ([title, body]) => [FEATURE_ICONS[title], title, body],
 );
 
-/** Beam start times, spread over two seconds so the dashes never sync. */
 const BEAM_DELAYS = [0, 1.2, 0.5, 1.6, 0.9, 0.2, 1.4];
 
 function ProviderRow({
@@ -113,8 +112,6 @@ function ProviderRow({
           </span>
         )}
       </span>
-      {/* Where the beam starts: the right edge of the column, so every beam
-          leaves from the same line whatever the label length. */}
       <span ref={anchorRef} className="ml-auto size-0" />
     </motion.li>
   );
@@ -216,8 +213,6 @@ function TroubleshootingItem({
           />
         </button>
       </h3>
-      {/* Rows from 0fr to 1fr animate the panel to its own height, without
-          measuring it. */}
       <div
         id={`${id}-panel`}
         role="region"
@@ -236,17 +231,11 @@ function TroubleshootingItem({
   );
 }
 
-/** Digits shown at least, so a small count still reads as a counter. */
 const COUNTER_DIGITS = 6;
 
-/**
- * How many people use Stremlist, as a split-flap counter. Each digit
- * rolls from 0 to its value once on load; leading zeros stay dim.
- */
 function LiveCount({ count }: { count: number }) {
   const [rolled, setRolled] = useState(false);
   useEffect(() => {
-    // Two frames, so the browser paints the zeros before the roll starts.
     let second = 0;
     const first = requestAnimationFrame(() => {
       second = requestAnimationFrame(() => setRolled(true));
@@ -301,7 +290,6 @@ function LiveCount({ count }: { count: number }) {
                     </span>
                   ))}
                 </span>
-                {/* The flap split */}
                 <span className="absolute inset-x-0 top-1/2 h-px bg-ink/70" />
               </span>
             </Fragment>
@@ -330,8 +318,6 @@ export default function Home() {
     );
   }, []);
 
-  // Old links sent returning users to `/?userId=ur…`; their install lives on
-  // the configure page now.
   const legacyUserId = searchParams.get("userId");
   if (legacyUserId && ACCOUNT_KEY_PATTERN.test(legacyUserId)) {
     return (
@@ -346,7 +332,6 @@ export default function Home() {
     <div className="space-y-10">
       <Wordmark />
       <div>
-        {/* Sized to the column so the headline never wraps past two lines. */}
         <h1 className="text-[clamp(2.25rem,9.5vw,3.75rem)] leading-[1.1] font-bold tracking-tight text-balance lg:text-[clamp(2rem,4.4vw-0.75rem,4rem)]">
           Your lists,{" "}
           <span className="whitespace-nowrap">

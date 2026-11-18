@@ -1,11 +1,5 @@
 import { useSyncExternalStore } from "react";
 
-/**
- * One clock for the page, ticking once a second while a component reads it.
- * Only the components that show a live time render each second, not the
- * whole page: a page render can take long enough to stall a running
- * animation.
- */
 const listeners = new Set<() => void>();
 let now = Date.now();
 let timer: ReturnType<typeof setInterval> | undefined;
@@ -29,6 +23,6 @@ function subscribe(listener: () => void) {
 }
 
 /** The current time, updated once a second. */
-export function useNow(): number {
+export function useNow() {
   return useSyncExternalStore(subscribe, () => now);
 }

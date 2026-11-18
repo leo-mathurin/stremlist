@@ -21,15 +21,12 @@ export type SourceProblemReason = (typeof SOURCE_PROBLEM_REASONS)[number];
 /** What to call a Source list in user-facing copy. */
 export type SourceNoun = "watchlist" | "list";
 
-export function sourceNoun(kind: SourceKind): SourceNoun {
+export function sourceNoun(kind: SourceKind) {
   return kind === "watchlist" ? "watchlist" : "list";
 }
 
 /** The noun for a stored Source list, from its kind. */
-export function storedSourceNoun(
-  provider: ProviderId,
-  ref: string,
-): SourceNoun {
+export function storedSourceNoun(provider: ProviderId, ref: string) {
   return sourceNoun(describeSourceRef(provider, ref).kind);
 }
 
@@ -40,12 +37,7 @@ interface SourceProblemCopy {
   fix: string;
 }
 
-/**
- * Why Letterboxd cannot find a Source list (HTTP 404), by the kind of its
- * reference: a member page (watchlist, diary, films) has a wrong username,
- * a list can also be private, and a share link can be turned off.
- */
-function letterboxdNotFound(ref: string): SourceProblemCopy {
+function letterboxdNotFound(ref: string) {
   if (/^(?:share|lbxshare)\//.test(ref))
     return {
       title: "This Letterboxd share link no longer works",
@@ -84,7 +76,7 @@ export function sourceProblemCopy(
   reason: SourceProblemReason,
   noun: SourceNoun,
   sourceRef?: string,
-): SourceProblemCopy {
+) {
   const label = PROVIDERS[provider].label;
   switch (reason) {
     case "private":

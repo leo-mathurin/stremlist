@@ -33,7 +33,7 @@ const torrentio: StremioAddon = {
   transportUrl: "https://torrentio.strem.fun/manifest.json",
   manifest: { id: "com.stremio.torrentio.addon", name: "Torrentio" },
 };
-const stremlist = (catalog: string): StremioAddon => ({
+const stremlist = (catalog: string) => ({
   transportUrl: ADDON_URL,
   transportName: "http",
   manifest: manifest(catalog),
@@ -54,23 +54,16 @@ const stremioRequest = z.object({
   addons: z.array(stremioAddon).optional(),
 });
 
-function urlOf(input: string | URL | Request): string {
+function urlOf(input: string | URL | Request) {
   return input instanceof Request ? input.url : String(input);
 }
 
-/**
- * A Stremio account in memory. `answer` overrides the API answer per
- * method.
- */
 function fakeStremio(
   collection: StremioAddon[],
   answer: Record<string, () => unknown> = {},
 ) {
   const state = { collection: structuredClone(collection), writes: 0 };
-  const respond = (
-    input: string | URL | Request,
-    init?: RequestInit,
-  ): Response => {
+  const respond = (input: string | URL | Request, init?: RequestInit) => {
     const url = urlOf(input);
     const method = url.split("/api/")[1];
     const override = answer[method] as (() => unknown) | undefined;
@@ -95,7 +88,6 @@ function fakeStremio(
   return { state, fetchImpl };
 }
 
-/** A fetch that always gives this JSON answer. */
 const answering = (body: unknown) =>
   (() => Promise.resolve(Response.json(body))) as typeof fetch;
 
@@ -248,7 +240,6 @@ describe("installing Stremlist again", () => {
 
 describe("reading library items", () => {
   test("reads null or odd state fields as absent", async () => {
-    // Stremio sends `null` for a Title that was added but never played.
     const library = answering({
       result: [
         {

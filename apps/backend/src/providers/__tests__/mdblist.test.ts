@@ -8,10 +8,9 @@ import {
   vi,
 } from "vite-plus/test";
 import { listMdblistUserSources, mdblistProvider } from "../mdblist";
-import type { ActionIntent, ActionTarget, ConnectionAccess } from "../types";
+import type { ActionIntent, ActionTarget } from "../types";
 import { ConnectionExpiredError, SourceUnavailableError } from "../types";
 
-// Shapes recorded from api.mdblist.com on 2026-10-06 (trimmed).
 const SUPER_MARIO = {
   id: 502356,
   mediatype: "movie",
@@ -54,8 +53,6 @@ const NO_IMDB = {
   release_year: 2026,
 };
 const EPISODE_ITEM = { id: 62085, mediatype: "episode", title: "Pilot" };
-// The media of a /sync/ratings or /sync/watched row. Production reads only
-// `ids`; `title` was confirmed by a live read (2026-11-16).
 const RATED_SHAWSHANK = {
   title: "The Shawshank Redemption",
   ids: { imdb: "tt0111161", tmdb: 278, trakt: 234, mdblist: "a0" },
@@ -73,8 +70,7 @@ interface Call {
 let calls: Call[];
 let handler: (url: URL) => Response;
 
-/** One page of items, with MDBList's cursor headers. */
-function itemsPage(items: unknown[], nextCursor?: string): Response {
+function itemsPage(items: unknown[], nextCursor?: string) {
   return Response.json(items, {
     headers: nextCursor
       ? { "X-Has-More": "true", "X-Next-Cursor": nextCursor }
@@ -82,7 +78,7 @@ function itemsPage(items: unknown[], nextCursor?: string): Response {
   });
 }
 
-function connection(username: string | null = "leo"): ConnectionAccess {
+function connection(username: string | null = "leo") {
   return {
     accountId: "sl_testaccount0000000000",
     provider: "mdblist",
@@ -94,19 +90,19 @@ function connection(username: string | null = "leo"): ConnectionAccess {
   };
 }
 
-function defined<T>(value: T | undefined): T {
+function defined<T>(value: T | undefined) {
   if (value === undefined) throw new Error("expected a value");
   return value;
 }
 
-function textBody(call: Call): string {
+function textBody(call: Call) {
   if (typeof call.init.body !== "string") {
     throw new Error("Expected a text request body");
   }
   return call.init.body;
 }
 
-function bodyOf(call: Call): unknown {
+function bodyOf(call: Call) {
   return JSON.parse(textBody(call));
 }
 
@@ -265,7 +261,6 @@ describe("mdblistProvider.validateSource", () => {
   });
 
   it("names an official chart from its info", async () => {
-    // Shape of /lists/official/{slug} (live read, 2026-11-16).
     handler = () =>
       Response.json([
         {
@@ -349,7 +344,6 @@ describe("mdblistProvider.fetchSource", () => {
     ]);
   });
 
-  // Items may be missing after a loop or a cap: not a complete synchronization.
   it("stops when the cursor repeats", async () => {
     handler = () => itemsPage([SUPER_MARIO], "same");
     const snapshot = await mdblistProvider.fetchSource("lists/14", ctx());
@@ -365,7 +359,6 @@ describe("mdblistProvider.fetchSource", () => {
   });
 
   it("reads the watchlist oldest added first", async () => {
-    // MDBList returns the watchlist newest first.
     handler = () => itemsPage([BREAKING_BAD, SHAWSHANK]);
     const snapshot = await mdblistProvider.fetchSource("me/watchlist", ctx());
     expect(calls[0].url.pathname).toBe("/watchlist/items");
@@ -428,9 +421,6 @@ describe("mdblistProvider.fetchSource", () => {
   });
 
   it("reads the ratings oldest rated first, dated by rating", async () => {
-    // Rows, ids and paging as the Action membership reads them in
-    // production; `rated_at` and `title` were confirmed by a live read with a
-    // test account (2026-11-16).
     handler = (url) =>
       url.searchParams.get("cursor")
         ? Response.json({
@@ -494,15 +484,11 @@ describe("mdblistProvider.fetchSource", () => {
         title: "The Shawshank Redemption",
         addedAt: "2026-10-02T10:00:00Z",
       },
-      // Undated rows come last.
       { type: "movie", imdbId: "tt6718170" },
     ]);
   });
 
   it("reads the history by last watch, with shows from their seasons", async () => {
-    // Recorded shapes of /sync/watched?mediatype=movie|season (live read with
-    // a test account, 2026-11-16). A show that is not fully watched has no
-    // `shows` row, only seasons and episodes.
     handler = (url) =>
       Response.json(
         url.searchParams.get("mediatype") === "movie"
@@ -567,8 +553,6 @@ describe("mdblistProvider.fetchSource", () => {
   });
 
   it("reads an official chart in MDBList's order, undated", async () => {
-    // Same items shape and cursor headers as the list endpoints (live read
-    // of /lists/official/trending/items, 2026-11-16).
     handler = () => itemsPage([SUPER_MARIO, BREAKING_BAD]);
     const snapshot = await mdblistProvider.fetchSource(
       "official/trending",
@@ -616,7 +600,7 @@ describe("mdblistProvider.actions", () => {
     not_found: { movies: [], shows: [] },
   };
   const movie: ActionTarget = { imdbId: "tt0111161", type: "movie" };
-  const episode = (season: number, number: number): ActionTarget => ({
+  const episode = (season: number, number: number) => ({
     imdbId: "tt0903747",
     type: "series",
     episode: { season, episode: number },
@@ -828,7 +812,6 @@ describe("listMdblistUserSources", () => {
     source: "letterboxd",
     items: 10,
   };
-  // A /lists/liked list (shape confirmed by a live read, 2026-11-16).
   const likedList = {
     id: 14,
     user_id: 3,
@@ -844,7 +827,7 @@ describe("listMdblistUserSources", () => {
     liked_at: "2026-11-01T10:00:00Z",
   };
 
-  function likedPage(lists: unknown[], hasMore = false): Response {
+  function likedPage(lists: unknown[], hasMore = false) {
     return Response.json({
       lists,
       pagination: {
@@ -880,7 +863,6 @@ describe("listMdblistUserSources", () => {
         label: "Letterboxd watchlist",
         defaultDisplayMode: "split",
       },
-      // The liked own list stays under me/ only.
       {
         ref: "lists/14",
         kind: "list",

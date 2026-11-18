@@ -3,7 +3,6 @@ import { test } from "node:test";
 import { parseSourceLink } from "@stremlist/shared/providers";
 import { findLegacyInstall } from "../src/lib/legacy-install.ts";
 
-/** A lookup over `installs` that records every request. */
 function lookupOver(
   installs: string[],
   canonical: Record<string, string> = {},
@@ -42,7 +41,6 @@ test("a pasted IMDb user ID or watchlist link opens its v1 install", async () =>
 });
 
 test("a pasted list ID never looks for a v1 install", async () => {
-  // A public list is shared: its v1 install is not the person's who pastes it.
   const { lookup, checked } = lookupOver(["ls123456789"]);
   assert.equal(
     await find("https://www.imdb.com/list/ls123456789/", lookup),
@@ -52,7 +50,6 @@ test("a pasted list ID never looks for a v1 install", async () => {
 });
 
 test("a pasted ratings link never looks for a v1 install", async () => {
-  // v1 installs read the watchlist of the ID; a ratings link asks for more.
   const { lookup, checked } = lookupOver(["ur12345678"]);
   assert.equal(
     await find("https://www.imdb.com/user/ur12345678/ratings", lookup),

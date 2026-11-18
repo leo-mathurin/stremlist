@@ -1,7 +1,3 @@
-// Replaces outbound Provider calls with a fake IMDb GraphQL API. Local calls
-// (Supabase, the R2 container) pass through. Every other external host is
-// counted and answered with a fast 503, so unexpected outbound traffic shows
-// up in the report, and Trakt behaves as if it were down.
 import { z } from "zod";
 
 const realFetch = globalThis.fetch;
@@ -19,21 +15,20 @@ export const stats = {
   maxInflight: 0,
 };
 
-export function resetStats(): void {
+export function resetStats() {
   stats.hosts = {};
   stats.imdbPages = 0;
   stats.imdbItems = 0;
   stats.maxInflight = stats.inflight;
 }
 
-function hash(value: string): number {
+function hash(value: string) {
   let h = 2166136261;
   for (const char of value) h = Math.imul(h ^ char.charCodeAt(0), 16777619);
   return h >>> 0;
 }
 
-/** 60% 20-200, 30% 200-1,000, 9% 1,000-3,000, 1% 5,000-12,000 titles. */
-function watchlistSize(id: string): number {
+function watchlistSize(id: string) {
   const h = hash(id);
   const bucket = h % 100;
   const spread = (h >>> 8) % 1000;
@@ -43,8 +38,7 @@ function watchlistSize(id: string): number {
   return 5000 + spread * 7;
 }
 
-/** About 3% of the watchlists and lists are private. */
-function isPrivate(id: string): boolean {
+function isPrivate(id: string) {
   return hash(`p${id}`) % 100 < 3;
 }
 
@@ -96,8 +90,7 @@ function title(i: number) {
   };
 }
 
-/** Title indexes of a list. With drift, lists grow by one title a minute. */
-function itemsFor(id: string): number[] {
+function itemsFor(id: string) {
   const drift = DRIFT ? Math.floor(Date.now() / 60_000) % 50 : 0;
   const start = hash(id) % POOL;
   const stride = 1 + (hash(`s${id}`) % 7);
@@ -121,11 +114,11 @@ const graphQLBodySchema = z.object({
 });
 type GraphQLBody = z.infer<typeof graphQLBodySchema>;
 
-function stringVar(value: unknown): string {
+function stringVar(value: unknown) {
   return typeof value === "string" ? value : "";
 }
 
-async function imdb(body: GraphQLBody): Promise<Response> {
+async function imdb(body: GraphQLBody) {
   const op = body.operationName ?? "";
   const vars = body.variables ?? {};
   const key = stringVar(vars.urConst) || stringVar(vars.listId);
@@ -180,7 +173,6 @@ async function imdb(body: GraphQLBody): Promise<Response> {
     });
   }
 
-  // Charts: 100 titles on a single page.
   await sleep(BASE_LATENCY);
   const edges = Array.from({ length: 100 }, (_, k) => ({
     node: title((hash(op) + k) % POOL),
@@ -198,23 +190,20 @@ async function imdb(body: GraphQLBody): Promise<Response> {
   });
 }
 
-async function requestBody(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<string> {
+async function requestBody(input: RequestInfo | URL, init?: RequestInit) {
   if (typeof init?.body === "string") return init.body;
   if (input instanceof Request) return input.text();
   return "{}";
 }
 
-function requestUrl(input: RequestInfo | URL): URL {
+function requestUrl(input: RequestInfo | URL) {
   if (typeof input === "string") return new URL(input);
   if (input instanceof URL) return input;
   return new URL(input.url);
 }
 
 globalThis.fetch = Object.assign(
-  async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = requestUrl(input);
     if (LOCAL_HOSTS.has(url.hostname)) return realFetch(input, init);
     stats.hosts[url.host] = (stats.hosts[url.host] ?? 0) + 1;

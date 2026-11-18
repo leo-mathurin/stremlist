@@ -40,7 +40,7 @@ const STREAM_NAME = "Stremlist";
 export async function forgetConnectionObjects(
   accountId: string,
   provider: ProviderId,
-): Promise<void> {
+) {
   forgetConnectionMemory(accountId, provider);
   await deletePrefix(connectionPrefix(accountId, provider));
 }
@@ -49,27 +49,18 @@ export async function forgetConnectionObjects(
 export async function resetConnectionCaches(
   accountId: string,
   provider: ProviderId,
-): Promise<void> {
+) {
   forgetConnectionMemory(accountId, provider);
   const prefix = connectionPrefix(accountId, provider);
   await deletePrefix(prefix, `${prefix}history/`);
 }
 
-function forgetConnectionMemory(accountId: string, provider: ProviderId): void {
+function forgetConnectionMemory(accountId: string, provider: ProviderId) {
   forgetMembership(accountId, provider);
   getProvider(provider).forgetConnection?.(accountId);
 }
 
-/**
- * The Connections that receive Actions for this Account, in the user's
- * order, with the connected Provider user.
- */
-async function actionConnections(account: Account): Promise<
-  {
-    provider: ProviderId;
-    owner: { username: string | null; authorization: string };
-  }[]
-> {
+async function actionConnections(account: Account) {
   if (!account.actionsEnabled) return [];
   const connected = new Map(
     (await listConnectionAuthorizations(account.id)).map(
@@ -85,15 +76,12 @@ async function actionConnections(account: Account): Promise<
 }
 
 /** The Providers that receive Actions for this Account, in the user's order. */
-export async function actionProviders(account: Account): Promise<ProviderId[]> {
+export async function actionProviders(account: Account) {
   return (await actionConnections(account)).map(({ provider }) => provider);
 }
 
 /** "tt123:2:5" → the series ID and the episode. */
-export function parseStreamId(
-  type: "movie" | "series",
-  id: string,
-): ActionTarget | null {
+export function parseStreamId(type: "movie" | "series", id: string) {
   const [imdbId, season, episode] = id.split(":");
   if (!IMDB_TITLE_ID_PATTERN.test(imdbId)) return null;
   if (type === "series" && season && episode) {
@@ -106,7 +94,7 @@ export function parseStreamId(
   return { imdbId, type };
 }
 
-function pad(value: number): string {
+function pad(value: number) {
   return String(value).padStart(2, "0");
 }
 
@@ -120,10 +108,6 @@ interface SlotMember {
   has: boolean;
 }
 
-/**
- * One slot (watchlist or watched) as stream entries: one entry when every
- * Provider agrees, two when they differ (ADR 0003, mockup in STR-16).
- */
 function slotEntries(
   members: SlotMember[],
   labels: {
@@ -134,7 +118,7 @@ function slotEntries(
     undo: string;
   },
   link: (op: "add" | "remove") => string,
-): StremioStream[] {
+) {
   const withIt = members.filter((m) => m.has).map((m) => m.provider);
   const without = members.filter((m) => !m.has).map((m) => m.provider);
   const single =
@@ -183,7 +167,7 @@ export async function buildActionStreams(
   account: Account,
   target: ActionTarget,
   link: ActionLinkBuilder,
-): Promise<StremioStream[]> {
+) {
   const connections = await actionConnections(account);
   if (connections.length === 0) return [];
 
@@ -299,7 +283,6 @@ export async function buildActionStreams(
     } else {
       title = `⭐ ${ratings.map((r) => `${r.rating}/10 on ${PROVIDERS[r.provider].label}`).join(", ")}, change`;
       if (ratings.length < raters.length) {
-        // Say where the rating is, and where it is still missing.
         const rated = new Set(ratings.map((r) => r.provider));
         title += `\nNot rated on ${joinProviderLabels(
           raters.map((r) => r.provider).filter((p) => !rated.has(p)),
@@ -332,7 +315,7 @@ export async function performOnConnection(
   intent: ActionIntent,
   target: ActionTarget,
   lists: ConfigList[],
-): Promise<void> {
+) {
   const { provider } = connection;
   const actions = getProvider(provider).actions;
   if (!actions) throw new Error(`${provider} has no Actions`);
@@ -366,12 +349,12 @@ export async function performAction(
   providers: ProviderId[],
   intent: ActionIntent,
   target: ActionTarget,
-): Promise<ActionOutcome[]> {
+) {
   const allowed = new Set(await actionProviders(account));
   const lists = await getAccountLists(account.id);
 
   return Promise.all(
-    providers.map(async (provider): Promise<ActionOutcome> => {
+    providers.map(async (provider) => {
       const actions = getProvider(provider).actions;
       if (
         !actions ||
@@ -397,10 +380,7 @@ export async function performAction(
 }
 
 /** Current rating of a Title on each Provider, for the rating page. */
-export async function currentRatings(
-  account: Account,
-  imdbId: string,
-): Promise<{ provider: ProviderId; rating: number | null }[]> {
+export async function currentRatings(account: Account, imdbId: string) {
   const connections = (await actionConnections(account)).filter(
     ({ provider }) => supportsAction(provider, "rating"),
   );

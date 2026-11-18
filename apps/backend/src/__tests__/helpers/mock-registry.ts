@@ -1,8 +1,3 @@
-/**
- * Provider registry for tests: the real adapters, except the ones a test
- * replaces with a fake. Use it with
- * `vi.mock("…/providers/registry", () => import("…/helpers/mock-registry"))`.
- */
 import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
 import { imdbProvider } from "../../providers/imdb";
 import { justwatchProvider } from "../../providers/justwatch";
@@ -29,21 +24,21 @@ const REAL: Record<ProviderId, ProviderAdapter> = {
 
 const providerOverrides = new Map<ProviderId, ProviderAdapter>();
 
-export function useFakeProvider(adapter: ProviderAdapter): ProviderAdapter {
+export function useFakeProvider(adapter: ProviderAdapter) {
   providerOverrides.set(adapter.id, adapter);
   return adapter;
 }
 
-export function resetProviders(): void {
+export function resetProviders() {
   providerOverrides.clear();
   delete process.env.DISABLED_PROVIDERS;
 }
 
-export function getProvider(id: ProviderId): ProviderAdapter {
+export function getProvider(id: ProviderId) {
   return providerOverrides.get(id) ?? REAL[id];
 }
 
-export function supportsAction(id: ProviderId, kind: ActionKind): boolean {
+export function supportsAction(id: ProviderId, kind: ActionKind) {
   return getProvider(id).actions?.kinds.includes(kind) ?? false;
 }
 
@@ -53,7 +48,7 @@ export { isProviderEnabled } from "../../providers/kill-switch";
 export function fakeAdapter(
   id: ProviderId,
   overrides: Partial<ProviderAdapter> & { entries?: SourceEntry[] } = {},
-): ProviderAdapter {
+) {
   const { entries = [], ...rest } = overrides;
   return {
     id,
@@ -66,9 +61,7 @@ export function fakeAdapter(
 }
 
 /** Actions that record every call and never touch a network. */
-export function fakeActions(
-  overrides: Partial<ProviderActions> = {},
-): ProviderActions {
+export function fakeActions(overrides: Partial<ProviderActions> = {}) {
   return {
     kinds: ["watchlist", "watched", "rating"],
     getMembership: () =>

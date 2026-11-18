@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { LibraryItem } from "../../stremio";
-import type { ReadRow } from "../schedule";
 import {
   newCycle,
   nextWriteRetry,
@@ -11,8 +10,7 @@ import {
 const MINUTE = 60_000;
 const T0 = Date.parse("2026-11-12T20:00:00.000Z");
 
-/** A movie of 100 minutes, `watched` minutes in, last written at `at`. */
-function playing(watched: number, at: number): LibraryItem {
+function playing(watched: number, at: number) {
   return {
     _id: "tt0063350",
     type: "movie",
@@ -26,14 +24,13 @@ function playing(watched: number, at: number): LibraryItem {
   };
 }
 
-function cycle(item?: LibraryItem): ReadRow {
+function cycle(item?: LibraryItem) {
   return newCycle("movie", "tt0063350", item, T0);
 }
 
 describe("the read schedule", () => {
   it("waits for the threshold, then reads every 2 minutes", () => {
     const first = planAfterRead(cycle(), playing(0, T0), false, T0);
-    // Stremio's threshold is 70% of the duration.
     expect(first.row.expectedFlipAt).toBe(T0 + 70 * MINUTE);
     expect(first.row.phase).toBe("wait");
     expect(first.next).toBe(T0 + 70 * MINUTE);
@@ -54,10 +51,8 @@ describe("the read schedule", () => {
     row = { ...row, phase: "flip" };
     const at = T0 + 10 * MINUTE;
     row = planAfterRead(row, playing(10, at), false, at).row;
-    // 4 minutes without progress: still the normal pace.
     const soon = planAfterRead(row, playing(10, at), false, at + 4 * MINUTE);
     expect(soon.row.phase).not.toBe("stalled");
-    // 5 minutes: read every 30 minutes until the expected end.
     const stalled = planAfterRead(
       soon.row,
       playing(10, at),
@@ -81,7 +76,6 @@ describe("the read schedule", () => {
   it("stops 3 hours after the expected end", () => {
     const row = planAfterRead(cycle(), playing(0, T0), false, T0).row;
     const after = T0 + 100 * MINUTE + 3 * 60 * MINUTE + 1;
-    // Still moving a minute ago, so not stalled.
     const plan = planAfterRead(
       { ...row, lastTimeWatched: 99 * MINUTE, lastMovedAt: after - MINUTE },
       playing(99, after),

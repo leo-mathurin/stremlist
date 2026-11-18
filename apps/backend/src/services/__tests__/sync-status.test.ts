@@ -1,6 +1,5 @@
 import type { ListSource } from "@stremlist/shared/list-merge";
 import type { ProviderId } from "@stremlist/shared/providers";
-import type { CatalogData } from "@stremlist/shared/stremio.types";
 import {
   afterEach,
   beforeEach,
@@ -62,7 +61,6 @@ const WATCHLIST_READ = { sourceRef: "me/watchlist" } as const;
 let accountId = "";
 let listId = "";
 
-/** A read of one List, its fields and the read options side by side. */
 interface TestRead extends ListRead {
   listId: string;
   provider: ProviderId;
@@ -70,11 +68,7 @@ interface TestRead extends ListRead {
   mergedSources?: ListSource[];
 }
 
-/**
- * A catalog read. The fake Providers below never count as fresh, so each
- * read asks the Provider again and a failed one can fall back to the cache.
- */
-function read(overrides: Partial<TestRead> = {}): Promise<CatalogData> {
+function read(overrides: Partial<TestRead> = {}) {
   const fields: TestRead = {
     accountId,
     listId,
@@ -111,8 +105,7 @@ const serving = (...ids: string[]) =>
 const failing = (error: Error) =>
   vi.fn<FetchSource>(() => Promise.reject(error));
 
-/** A second Trakt List, read through the Connection. */
-function seedWatchlist(): string {
+function seedWatchlist() {
   return seedList(accountId, {
     provider: "trakt",
     source_ref: "me/watchlist",
@@ -120,7 +113,6 @@ function seedWatchlist(): string {
   }).id;
 }
 
-/** The sync status of the first Source list of a List, if it was read. */
 async function statusOf(id = listId) {
   const { syncStatus } = await getListSyncStatuses(
     await getAccountLists(accountId),
@@ -159,7 +151,6 @@ describe("recording refreshes", () => {
 
     await read();
 
-    // A matcher, not a string: `toEqual` checks that the field is one.
     const anyTime: unknown = expect.any(String);
     expect(await statusOf()).toEqual({
       provider: "trakt",
@@ -186,7 +177,6 @@ describe("recording refreshes", () => {
     await read();
 
     vi.setSystemTime(new Date("2026-10-06T12:00:00Z"));
-    // Stremio still gets the cached Titles.
     await expect(read()).resolves.toMatchObject({
       metas: [{ id: "tt0000001" }],
     });
@@ -226,7 +216,6 @@ describe("recording refreshes", () => {
     vi.setSystemTime(new Date("2026-10-06T12:00:00Z"));
     await read();
 
-    // An empty Source list is a success with no Titles, not a failure.
     expect(await statusOf()).toMatchObject({
       problem: null,
       failingSince: null,
@@ -274,7 +263,6 @@ describe("recording refreshes", () => {
     );
     useSource(serving("tt0000001"));
 
-    // This request still gets the Titles it read.
     await expect(read()).resolves.toMatchObject({
       metas: [{ id: "tt0000001" }],
     });
@@ -344,7 +332,6 @@ describe("Lists without a recorded status", () => {
     cache.seed(listId, [movie("tt0000001"), movie("tt0000002")], cachedAt);
     useSource(failing(new Error("socket hang up")));
 
-    // Stremio still gets the cached Titles.
     await expect(read()).resolves.toMatchObject({
       metas: [{ id: "tt0000001" }, { id: "tt0000002" }],
     });
@@ -400,11 +387,9 @@ describe("the read after a new authorization", () => {
 
     await rereadConnectionLists(accountId, "trakt");
 
-    // Both Trakt Lists were read again; the older read did not count.
     expect(fetchSource).toHaveBeenCalledTimes(3);
     const expected = { problem: null, titleCount: 1 };
     expect(await statusOf(watchlistId)).toMatchObject(expected);
-    // The older read ends last and must not undo the new one.
     first.resolve(entries());
     await older;
     expect(await statusOf(watchlistId)).toMatchObject(expected);
@@ -503,7 +488,6 @@ describe("Connections that need to be renewed", () => {
     await read({ listId: watchlistId, ...WATCHLIST_READ });
 
     expect(await needsRenewalSince()).toBeNull();
-    // The List status waits for a saved Catalog.
     expect(await statusOf(watchlistId)).toBeUndefined();
   });
 
@@ -516,7 +500,6 @@ describe("Connections that need to be renewed", () => {
     );
 
     await tryRead();
-    // Trakt reads a public list without the refused Connection.
     await read();
 
     expect(await needsRenewalSince()).not.toBeNull();
@@ -575,7 +558,6 @@ describe("merged Lists", () => {
       failing(new SourceUnavailableError("needs_connection", "token refused")),
     );
 
-    // The IMDb Source list still shows.
     await expect(
       read({
         listId: mergedId,

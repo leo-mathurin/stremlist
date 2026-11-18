@@ -13,7 +13,6 @@ import {
   saveButton,
 } from "./config-fixture";
 
-// The List has no genre choices until a refresh brings them.
 const list = { ...row, availableGenres: [] };
 
 for (const editFilter of [false, true]) {
@@ -50,7 +49,6 @@ for (const editFilter of [false, true]) {
     await saveButton(screen).tap();
     await expect(saveButton(screen, "Saving")).toBeVisible();
     await screen.getByRole("button", "Refresh now").tap();
-    // Genre availability confirms that React has committed the refresh result.
     await expect(genre).toBeEnabled();
     if (editFilter) {
       await genre.tap();
@@ -63,7 +61,6 @@ for (const editFilter of [false, true]) {
     ).toBeVisible();
     expect(submissions[0].lists[0].catalogSettings).toEqual({});
     if (!editFilter) {
-      // The refresh left nothing to save.
       await expect(saveButton(screen)).toBeDisabled();
       expect(submissions).toHaveLength(1);
       return;

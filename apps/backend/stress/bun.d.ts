@@ -1,5 +1,7 @@
-// Bun's own types are not installed in this package. Declare only the part of
-// Bun.serve that the stress server uses.
+/**
+ * Bun's own types are not installed in this package. Declare only the part of
+ * Bun.serve that the stress server uses.
+ */
 declare const Bun: {
   serve(options: {
     port: number;

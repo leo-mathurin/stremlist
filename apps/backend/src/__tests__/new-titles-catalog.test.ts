@@ -60,7 +60,6 @@ beforeEach(resetNewTitlesTest);
 afterEach(restoreNewTitlesTest);
 
 describe("New titles catalog", () => {
-  /** An IMDb List and a Trakt List, both with tt0000001 in their Baseline. */
   async function seedImdbAndTraktLists(traktTitle: string) {
     seedNewTitlesAccount();
     seedList(accountId, {
@@ -152,7 +151,6 @@ describe("New titles catalog", () => {
     source.metas = [movie("tt0000001"), movie("tt0000002")];
     await sync(LIST_IDS[0]);
 
-    // History is kept, so turning the catalog on shows it at once.
     expect(detectionRows().some((row) => row.detected_at !== null)).toBe(true);
     expect(await newTitles()).toEqual([]);
   });
@@ -200,7 +198,6 @@ describe("New titles catalog", () => {
       }),
     );
     expect(ids(await newTitles())).toEqual(["tt0000002"]);
-    // Counts without that List would be wrong: the page shows the setting.
     expect((await summary()).summary).toBeNull();
   });
 });
@@ -211,10 +208,6 @@ describe("merged Lists", () => {
     sourceRef: "users/leo/watchlist",
   };
 
-  /**
-   * One List that merges the IMDb watchlist `ur1` and a Trakt watchlist,
-   * each with its own Baseline: tt0000001 on IMDb, tt0000005 on Trakt.
-   */
   async function seedMergedList(catalogTitle = "Merged picks") {
     seedNewTitlesAccount();
     seedList(accountId, {
@@ -245,7 +238,6 @@ describe("merged Lists", () => {
 
     const metas = await newTitles();
     expect(ids(metas)).toEqual(["tt0000002"]);
-    // The earliest detection, in the List as the user named it.
     expect(metas[0].description).toBe(
       "Detected by Stremlist on 2 Oct 2026 in Merged picks.",
     );
@@ -286,7 +278,6 @@ describe("merged Lists", () => {
     };
     await sync(LIST_IDS[0]);
 
-    // The List waits: one of its Source lists has no Baseline yet.
     expect((await summary()).summary).toMatchObject({ waitingLists: 1 });
     expect(syncRows()).toMatchObject([{ provider: "imdb", source_ref: "ur1" }]);
 
@@ -294,7 +285,6 @@ describe("merged Lists", () => {
     await sync(LIST_IDS[0]);
     expect(ids(await newTitles())).toEqual(["tt0000002"]);
 
-    // Trakt's first complete read is its Baseline: what it had is not new.
     trakt.read = null;
     trakt.metas = [movie("tt0000005"), movie("tt0000006")];
     await sync(LIST_IDS[0]);
@@ -310,7 +300,6 @@ describe("merged Lists", () => {
     const { imdb, trakt } = await seedMergedList();
 
     imdb.metas = [movie("tt0000001"), movie("tt0000002")];
-    // The first page only: tt0000005 is on a page that was not read.
     trakt.read = () => ({
       entries: [entry(movie("tt0000007"))],
       complete: false,
@@ -339,7 +328,6 @@ describe("merged Lists", () => {
     imdb.metas = [movie("tt0000001"), movie("tt0000002")];
     trakt.metas = [movie("tt0000005"), movie("tt0000006"), movie("tt0000003")];
     await sync(LIST_IDS[0]);
-    // Read from the cache of each Source list of the merged List.
     expect(ids(await newTitles()).sort()).toEqual(["tt0000002", "tt0000003"]);
   });
 
@@ -366,7 +354,6 @@ describe("merged Lists", () => {
     cache.seed(traktCache.cacheKey, [movie("tt0000002")]);
     cache.seed(LIST_IDS[1], [movie("tt0000003")]);
 
-    // Not even the Titles of its public Source list: the whole List is hidden.
     expect(ids(await newTitles("movie", "ur7654321"))).toEqual(["tt0000003"]);
   });
 
@@ -395,7 +382,7 @@ describe("merged Lists", () => {
 });
 
 describe("manifest", () => {
-  async function catalogIds(key: string): Promise<string[]> {
+  async function catalogIds(key: string) {
     const res = await app.request(`/${key}/manifest.json`);
     return (await readJson(res, stremioManifest)).catalogs.map((c) => c.id);
   }

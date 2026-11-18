@@ -22,7 +22,6 @@ import { SourceUnavailableError } from "./types";
 
 const traktOwnListSchema = z.object({
   name: z.string().optional(),
-  // Smart lists only: "movies", "shows" or "media".
   media_type: z.string().nullish(),
   ids: z
     .object({ slug: z.string().optional(), trakt: z.number().optional() })
@@ -40,7 +39,6 @@ const traktSettingsSchema = z.object({
     .optional(),
 });
 
-/** Public Source lists share the app's quota of 500 GETs per 5 minutes. */
 const PUBLIC_FRESHNESS_MS = 6 * 60 * 60_000;
 const PERSONAL_FRESHNESS_MS = 30 * 60_000;
 
@@ -86,8 +84,10 @@ export const traktProvider: ProviderAdapter = {
 
   actions: traktActions,
 
-  // The user's own lists and smart lists, so the configure page can offer
-  // them in one click.
+  /**
+   * The user's own lists and smart lists, so the configure page can offer
+   * them in one click.
+   */
   async listConnectionSources(connection) {
     const [lists, smartLists] = await Promise.all([
       traktGetParsed(
@@ -95,7 +95,6 @@ export const traktProvider: ProviderAdapter = {
         z.array(traktOwnListSchema),
         connection,
       ),
-      // Smart lists are new on Trakt: if they fail, still offer the lists.
       traktGetParsed(
         "/users/me/smart-lists",
         z.array(traktOwnListSchema),
@@ -117,7 +116,6 @@ export const traktProvider: ProviderAdapter = {
               {
                 ref: `${prefix}/${String(id).toLowerCase()}`,
                 kind: "list" as const,
-                // An empty name falls back to the slug.
                 label: list.name?.trim() ? list.name.trim() : String(id),
                 defaultDisplayMode: smartListDisplayMode(list.media_type),
               },
@@ -130,10 +128,9 @@ export const traktProvider: ProviderAdapter = {
   },
 
   oauth: {
-    // Trakt wants every OAuth call on its auth host, not the API host.
+    /** Trakt wants every OAuth call on its auth host, not the API host. */
     authorizeUrl: `${TRAKT_AUTH}/oauth/authorize`,
     tokenUrl: `${TRAKT_AUTH}/oauth/token`,
-    // A public PKCE client needs no secret; send it only when one is set.
     ...traktClient,
     async revoke(accessToken) {
       const secret = traktClient.clientSecret();

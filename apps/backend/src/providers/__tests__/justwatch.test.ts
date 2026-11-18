@@ -29,9 +29,6 @@ function edge(
   };
 }
 
-// Recorded from apis.justwatch.com on 2026-10-06 (public list "Sci-Fi
-// Military", tl-pa-037cf385-…). The first two titles have IMDb IDs; the last
-// two have none on JustWatch.
 const HALO_4 = edge(
   "ts44021",
   "SHOW",
@@ -91,7 +88,6 @@ function listPage(
   });
 }
 
-// Recorded response for a deleted list or a bad ID.
 const NOT_FOUND = {
   errors: [
     {
@@ -117,14 +113,14 @@ type GraphQLBody = z.infer<typeof graphQLBody>;
 
 let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>;
 
-function parseBody(init: RequestInit | undefined): GraphQLBody {
+function parseBody(init: RequestInit | undefined) {
   if (typeof init?.body !== "string") {
     throw new Error("Expected a JSON request body");
   }
   return graphQLBody.parse(JSON.parse(init.body));
 }
 
-function requestBodies(): GraphQLBody[] {
+function requestBodies() {
   return fetchMock.mock.calls.map(([, init]) => parseBody(init));
 }
 
@@ -208,7 +204,6 @@ describe("justwatchProvider.fetchSource", () => {
       after: null,
     });
     expect(bodies[1].variables).toMatchObject({ after: "Mg==" });
-    // Without this filter, titles that have no page in the country vanish.
     expect(bodies[0].query).toContain("includeTitlesWithoutUrl: true");
     const [, init] = fetchMock.mock.calls[0];
     expect(new Headers(init?.headers).get("User-Agent")).toMatch(
@@ -254,7 +249,6 @@ describe("justwatchProvider.fetchSource", () => {
 
     expect(entries).toHaveLength(2_000);
     expect(fetchMock).toHaveBeenCalledTimes(10);
-    // The cap left titles out: not a complete synchronization (ADR 0007).
     expect(complete).toBe(false);
   });
 
@@ -393,7 +387,6 @@ describe("JustWatch ID resolution", () => {
   });
 
   it("re-reads the IMDb IDs of the nodes", async () => {
-    // Recorded shape: an unknown node nulls only its own slot.
     fetchMock.mockResolvedValueOnce(
       Response.json({
         errors: [

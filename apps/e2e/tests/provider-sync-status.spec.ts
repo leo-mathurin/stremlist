@@ -10,12 +10,6 @@ import {
 import type { FixtureBackend } from "../helpers/fixture-backend.js";
 import { startFixtureBackend } from "../helpers/fixture-backend.js";
 
-// The sync status of Lists read through a Connection (STR-58), and Catalog
-// previews through a Connection (STR-57), against the real backend, database
-// and R2 store. A separate backend with helpers/provider-fixtures.ts answers
-// every Provider request with deterministic data and logs what the backend
-// sent. tests/sync-status.spec.ts covers the cases without Provider fixtures.
-
 let backend: FixtureBackend;
 
 test.beforeAll(async () => {
@@ -30,13 +24,11 @@ test.beforeEach(async () => {
   backend.clearRequests();
 });
 
-/** An expired Trakt token whose refresh Trakt refuses. */
 const REFUSED_TRAKT = {
   expiresAt: new Date(Date.now() - 60_000),
   refreshToken: "rejected-refresh",
 };
 
-/** The List of the private Trakt watchlist, read through the Connection. */
 const TRAKT_WATCHLIST = {
   provider: "trakt",
   sourceRef: "me/watchlist",
@@ -45,7 +37,6 @@ const TRAKT_WATCHLIST = {
   displayMode: "split",
 } as const;
 
-/** A Trakt Connection that carries a renewal mark, in a sync status. */
 const NEEDS_RENEWAL = expect.objectContaining({
   provider: "trakt",
   needsRenewalSince: expect.any(String),
@@ -104,20 +95,17 @@ test(
       ),
     ).toBe(true);
 
-    // The private read never serves another Account or a new setup.
     for (const key of [other, undefined]) {
       expect((await preview(key)).body).toEqual({
         ok: false,
         reason: "needs_connection",
       });
     }
-    // A new sort reuses the read of the same Account.
     expect((await preview(owner, "title-asc")).body).toMatchObject({
       ok: true,
     });
     expect(watchlistReads()).toHaveLength(firstReads.length);
 
-    // After a disconnect, the kept read is not served again.
     expect((await api.disconnect(owner, "trakt")).status).toBe(200);
     expect((await preview(owner)).body).toEqual({
       ok: false,
@@ -145,10 +133,7 @@ test(
     });
     expect(preview.body).toEqual({ ok: false, reason: "needs_connection" });
 
-    // The refused tokens are a fact about the Connection, whoever used them:
-    // the configure page asks to renew it.
     expect(await renewalMark(accountId)).not.toBeNull();
-    // The preview changed no Catalog, so the List keeps no sync status.
     expect(await getSyncStatusRows(listId)).toEqual([]);
     expect(await syncStatus(accountId)).toEqual({
       syncStatus: { [listId]: [null] },
@@ -202,7 +187,6 @@ test(
     expect(completion.status).toBe(200);
     expect(await renewalMark(accountId)).toBeNull();
 
-    // The callback reads the List again in the background, with the new token.
     await expect
       .poll(async () => (await syncStatus(accountId)).syncStatus[listId][0], {
         timeout: 15_000,
@@ -226,7 +210,6 @@ test(
   async () => {
     const { api } = backend;
     const accountId = await seedAccount();
-    // Marked earlier, for example by an Action that Trakt refused.
     await seedConnection(accountId, "trakt", {
       needsRenewalSince: new Date(Date.now() - 60_000),
     });
@@ -253,7 +236,6 @@ test(
       body: { ok: true },
     });
 
-    // The private List's status described a Catalog that is gone now.
     expect(await getSyncStatusRows(privateId)).toEqual([]);
     expect(await getSyncStatusRows(publicId)).toHaveLength(1);
     const body = await syncStatus(accountId);
@@ -281,7 +263,6 @@ test(
       mergedSources: [{ provider: "trakt", sourceRef: "me/watchlist" }],
     });
 
-    // The public Source list still shows; the private one is left out.
     expect(await api.listCatalogNames(accountId, listId, "movie")).toEqual([
       "The Shawshank Redemption",
     ]);
@@ -304,7 +285,6 @@ test(
       readQueue: {},
     });
 
-    // A new authorization reads the private Source list again.
     const { callback, completion } = await backend.authorize(
       accountId,
       "trakt",
@@ -323,7 +303,6 @@ test(
         }),
       );
 
-    // A disconnect forgets the private Source list only.
     expect(await api.disconnect(accountId, "trakt")).toEqual({
       status: 200,
       body: { ok: true },

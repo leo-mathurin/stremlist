@@ -1,7 +1,3 @@
-/**
- * The fetch mock and fakes that the Simkl and Trakt adapter tests share.
- * `vi.mock` factories import this module, so it must not import an adapter.
- */
 import { expect, vi } from "vite-plus/test";
 import type * as Http from "../http";
 import type { ConnectionAccess } from "../types";
@@ -17,7 +13,7 @@ export interface Call {
 export const calls: Call[] = [];
 
 /** Forget the calls so far, to check only the ones that follow. */
-export function clearCalls(): void {
+export function clearCalls() {
   calls.length = 0;
 }
 
@@ -25,7 +21,7 @@ export function json(
   body: unknown,
   status = 200,
   headers: Record<string, string> = {},
-): Response {
+) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json", ...headers },
@@ -35,7 +31,7 @@ export function json(
 /** Record every fetch in `calls` and answer it with `respond`. */
 export function stubFetch(
   respond: (call: Call) => Response | Promise<Response>,
-): void {
+) {
   clearCalls();
   vi.stubGlobal(
     "fetch",
@@ -52,7 +48,7 @@ export function stubFetch(
   );
 }
 
-export function restoreStubs(): void {
+export function restoreStubs() {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 }
@@ -77,15 +73,13 @@ export function connection(
   } satisfies ConnectionAccess;
 }
 
-export function required<T>(value: T | undefined): T {
+export function required<T>(value: T | undefined) {
   if (value === undefined) throw new Error("Missing adapter part");
   return value;
 }
 
 /** The reason of the SourceUnavailableError that `promise` rejects with. */
-export async function unavailableReason(
-  promise: Promise<unknown>,
-): Promise<string> {
+export async function unavailableReason(promise: Promise<unknown>) {
   const error = await promise.catch((e: unknown) => e);
   expect(error).toBeInstanceOf(SourceUnavailableError);
   if (!(error instanceof SourceUnavailableError)) throw error;
@@ -100,7 +94,7 @@ export function httpModule(actual: typeof Http) {
     constructor(limit: number, windowMs: number) {
       limiters.push([limit, windowMs]);
     }
-    acquire(): Promise<void> {
+    acquire() {
       return Promise.resolve();
     }
   }

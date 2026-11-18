@@ -1,11 +1,3 @@
-// Loaded only by the isolated Provider backends of the provider-*.spec.ts files
-// and catalog-preview.spec.ts (the synthetic list of preview-fixture.ts).
-// The real adapters, OAuth flow, ID resolver, database and R2 code run; every
-// outbound request to a Provider is answered here with deterministic data.
-// Loopback requests (the local Supabase stack) use the real fetch. Any other
-// destination is refused: no request ever reaches a real Provider, and no
-// credential exists in this process. Each Provider request is appended as one
-// JSON line to E2E_PROVIDER_LOG, so tests can check what the backend sent.
 import type { FixtureRequest } from "./fetch-fixture.js";
 import { bearer, graphql, installFetchFixture } from "./fetch-fixture.js";
 import { isNumber, isRecord, isString, optional, present } from "./json.js";
@@ -15,7 +7,6 @@ import {
   PREVIEW_PUBLIC_LIST,
 } from "./preview-fixture.js";
 
-/** Tokens the fixtures accept: seeded Connections and fresh exchanges. */
 const VALID_TOKENS = new Set(["fixture-access-token", "fresh-access"]);
 
 const SHAWSHANK = { title: "The Shawshank Redemption", year: 1994 };
@@ -32,7 +23,7 @@ const IMDB_TITLES = new Map<string, ImdbTitle>([
     "tt0903747",
     { text: BREAKING_BAD.title, type: "TV Series", year: BREAKING_BAD.year },
   ],
-  ...PREVIEW_PRODUCTS.flatMap(({ imdb, year }): [string, ImdbTitle][] =>
+  ...PREVIEW_PRODUCTS.flatMap(({ imdb, year }) =>
     imdb
       ? [
           [
@@ -46,7 +37,6 @@ const IMDB_TITLES = new Map<string, ImdbTitle>([
 
 const traktMovie = { ...SHAWSHANK, ids: { trakt: 1, imdb: "tt0111161" } };
 const traktShow = { ...BREAKING_BAD, ids: { trakt: 2, imdb: "tt0903747" } };
-/** Rows of a ratings read, by type. */
 const traktRatings = {
   movies: [
     {
@@ -77,11 +67,7 @@ const mdblistItems = [
 const json = (body: unknown, status = 200, headers: HeadersInit = {}) =>
   Response.json(body, { status, headers });
 
-/**
- * The answer of a Simkl or MDBList Action write (the Trakt-style /sync
- * body): every Title of `known` is written, the others are not found.
- */
-function syncWrite(body: unknown, known: readonly string[]): Response {
+function syncWrite(body: unknown, known: readonly string[]) {
   const notFound = (bucket: "movies" | "shows") => {
     const items = isRecord(body) ? body[bucket] : undefined;
     const list: unknown[] = Array.isArray(items) ? items : [];
@@ -96,18 +82,15 @@ function syncWrite(body: unknown, known: readonly string[]): Response {
   );
 }
 
-/** The IMDb ID of an item of a /sync body, or "". */
-function imdbIdOf(item: unknown): string {
+function imdbIdOf(item: unknown) {
   return isRecord(item) && isRecord(item.ids) && isString(item.ids.imdb)
     ? item.ids.imdb
     : "";
 }
 
-/** Titles the Simkl and MDBList fixtures know (MDBList: no Godfather). */
 const SIMKL_KNOWN = ["tt0111161", "tt0903747", "tt0068646"];
 const MDBLIST_KNOWN = ["tt0111161", "tt0903747"];
 
-/** The fields of a form-encoded request (token exchanges, SPARQL). */
 function form(body: unknown) {
   return Object.fromEntries(
     Object.entries(isRecord(body) ? body : {}).filter(
@@ -116,15 +99,14 @@ function form(body: unknown) {
   );
 }
 
-/** 401 unless the request carries a token that the fixtures issued. */
-function requireToken(request: Request): Response | null {
+function requireToken(request: Request) {
   const token = bearer(request);
   return token && VALID_TOKENS.has(token)
     ? null
     : json({ error: "invalid_token" }, 401);
 }
 
-function tokenResponse(body: Record<string, string>): Response {
+function tokenResponse(body: Record<string, string>) {
   if (body.grant_type === "authorization_code") {
     return body.code === "fixture-code" && body.code_verifier
       ? json({
@@ -147,7 +129,7 @@ function tokenResponse(body: Record<string, string>): Response {
   return json({ error: "unsupported_grant_type" }, 400);
 }
 
-function trakt({ request, url, body }: FixtureRequest): Response {
+function trakt({ request, url, body }: FixtureRequest) {
   const path = url.pathname;
   if (url.host === "auth.trakt.tv") {
     if (path === "/oauth/token") return tokenResponse(form(body));
@@ -163,14 +145,12 @@ function trakt({ request, url, body }: FixtureRequest): Response {
       return json({ error: "private" }, 401);
     case "/users/fixture-user/watchlist":
       return json(url.searchParams.has("sort_by") ? traktEntries : []);
-    // Validation probes the ratings with one item, then reads each type.
     case "/users/fixture-user/ratings":
       return json([]);
     case "/users/fixture-user/ratings/movies":
       return json(traktRatings.movies);
     case "/users/fixture-user/ratings/shows":
       return json(traktRatings.shows);
-    // Charts: trending rows wrap the media, popular rows are the media.
     case "/movies/trending":
       return json([{ watchers: 9, movie: traktMovie }]);
     case "/shows/trending":
@@ -209,13 +189,11 @@ function trakt({ request, url, body }: FixtureRequest): Response {
           ids: { slug: "fixture-smart-list", trakt: 1 },
         },
       ]);
-    // The Source lists that only a Connection reads.
     case "/recommendations/movies":
       return json([traktMovie]);
     case "/recommendations/shows":
       return json([traktShow]);
     case "/sync/progress/up_next":
-      // A limited-access endpoint: the adapter reads the watched progress.
       return json({ error: "forbidden" }, 403);
     case "/sync/progress/watched":
       return json([
@@ -251,7 +229,6 @@ function trakt({ request, url, body }: FixtureRequest): Response {
     case "/sync/history/remove":
     case "/sync/ratings":
     case "/sync/ratings/remove":
-      // Every Action write: Trakt knows both fixture Titles.
       return json(
         {
           added: { movies: 1, shows: 0 },
@@ -264,7 +241,7 @@ function trakt({ request, url, body }: FixtureRequest): Response {
   throw new Error(`Unexpected Trakt request ${request.method} ${path}`);
 }
 
-function mdblist({ request, url, body }: FixtureRequest): Response {
+function mdblist({ request, url, body }: FixtureRequest) {
   const path = url.pathname;
   if (path === "/oauth/token/") return tokenResponse(form(body));
   if (path === "/oauth/revoke_token/") return json({});
@@ -286,7 +263,6 @@ function mdblist({ request, url, body }: FixtureRequest): Response {
       return json({ username: "fixture-user" });
     case "/sync/watched":
     case "/sync/ratings":
-      // The Action membership: nothing watched or rated yet.
       return json({ movies: [], shows: [], episodes: [] });
     case "/lists/fixture-user/weekend":
     case "/lists/4242":
@@ -308,7 +284,7 @@ function mdblist({ request, url, body }: FixtureRequest): Response {
   throw new Error(`Unexpected MDBList request ${request.method} ${path}`);
 }
 
-function simkl({ request, url, body }: FixtureRequest): Response {
+function simkl({ request, url, body }: FixtureRequest) {
   const path = url.pathname;
   if (path === "/oauth2/token") return tokenResponse(form(body));
   if (path === "/oauth2/revoke") return json({});
@@ -341,7 +317,6 @@ function simkl({ request, url, body }: FixtureRequest): Response {
           {
             status: "plantowatch",
             added_to_watchlist_at: "2026-01-02T00:00:00Z",
-            // Only the show is rated: the movie's Actions start unrated.
             user_rating: 8,
             user_rated_at: "2026-01-03T00:00:00Z",
             show: {
@@ -363,8 +338,7 @@ function simkl({ request, url, body }: FixtureRequest): Response {
   throw new Error(`Unexpected Simkl request ${request.method} ${path}`);
 }
 
-/** Simkl's trending files: public, with the app's client ID and no token. */
-function simklCdn({ request, url }: FixtureRequest): Response {
+function simklCdn({ request, url }: FixtureRequest) {
   if (url.searchParams.get("client_id") !== "fixture-simkl-client") {
     return json({ error: "missing client id" }, 403);
   }
@@ -374,7 +348,6 @@ function simklCdn({ request, url }: FixtureRequest): Response {
       return json([{ title: SHAWSHANK.title, ids: ids(1, "tt0111161") }]);
     case "/discover/trending/tv/week_100.json":
       return json([{ title: BREAKING_BAD.title, ids: ids(2, "tt0903747") }]);
-    // Two seasons of one anime share the series' IMDb ID.
     case "/discover/trending/anime/week_100.json":
       return json([
         { title: "Season 2", anime_type: "tv", ids: ids(3, "tt0903747") },
@@ -386,7 +359,7 @@ function simklCdn({ request, url }: FixtureRequest): Response {
   );
 }
 
-function justwatch({ body }: FixtureRequest): Response {
+function justwatch({ body }: FixtureRequest) {
   const { operation, variables } = graphql(
     body,
     (value): value is { id?: string } =>
@@ -440,15 +413,12 @@ function justwatch({ body }: FixtureRequest): Response {
   });
 }
 
-/** A user list of the Catalog preview tests (preview-fixture.ts). */
 function senscritiqueList(variables: { id?: number; offset?: number }) {
   const { offset = 0 } = variables;
   const id = present(variables.id, "the ID of the SensCritique list");
   if (id === PREVIEW_PRIVATE_LIST) {
     return json({ data: { userList: { id, isPrivate: true } } });
   }
-  // Every other ID of the fixture range is the same public list, so a test
-  // can ask for a list that the backend did not read yet.
   if (id < PREVIEW_PUBLIC_LIST || id >= PREVIEW_PUBLIC_LIST + 1000) {
     throw new Error(`Unexpected SensCritique list ${id}`);
   }
@@ -466,7 +436,6 @@ function senscritiqueList(variables: { id?: number; offset?: number }) {
             universe: product.type === "movie" ? 1 : 4,
             directors: [],
             creators: [],
-            // No JustWatch link: the JustWatch strategy has nothing to do.
             providers: [],
           },
         }))
@@ -499,7 +468,7 @@ function isSensCritiqueVariables(value: unknown): value is {
   );
 }
 
-function senscritique({ body }: FixtureRequest): Response {
+function senscritique({ body }: FixtureRequest) {
   const { operation, variables } = graphql(body, isSensCritiqueVariables);
   if (operation === "StremlistList") return senscritiqueList(variables);
   if (variables.username === "private-user") {
@@ -519,8 +488,6 @@ function senscritique({ body }: FixtureRequest): Response {
   if (operation !== "StremlistCollection") {
     throw new Error(`Unexpected SensCritique operation ${operation}`);
   }
-  // Every collection holds the same two products. The done collection also
-  // reads the rated series, which the backend keeps once.
   if (
     !["WISH", "DONE", "RATING", "RECOMMEND"].includes(variables.action ?? "")
   ) {
@@ -560,7 +527,7 @@ function senscritique({ body }: FixtureRequest): Response {
   });
 }
 
-function letterboxd({ request, url }: FixtureRequest): Response {
+function letterboxd({ request, url }: FixtureRequest) {
   if (
     request.method !== "GET" ||
     request.headers.has("cookie") ||
@@ -581,8 +548,7 @@ function letterboxd({ request, url }: FixtureRequest): Response {
   );
 }
 
-/** Exact Wikidata links for the Provider fixture entries. */
-function wikidata({ body }: FixtureRequest): Response {
+function wikidata({ body }: FixtureRequest) {
   const query = form(body).query ?? "";
   const known = {
     "101": "tt0111161",
@@ -604,7 +570,7 @@ function wikidata({ body }: FixtureRequest): Response {
   return json({ results: { bindings } });
 }
 
-function imdb({ body }: FixtureRequest): Response {
+function imdb({ body }: FixtureRequest) {
   const { operation, variables } = graphql(
     body,
     (value): value is { ids: string[] } =>
@@ -626,7 +592,6 @@ function imdb({ body }: FixtureRequest): Response {
               ...(title.rating && {
                 ratingsSummary: { aggregateRating: title.rating },
               }),
-              // Only tests/poster-source.spec.ts asks for IMDb posters.
               ...(process.env.E2E_IMDB_POSTERS && {
                 primaryImage: { url: imdbPosterOf(id) },
               }),
@@ -637,20 +602,13 @@ function imdb({ body }: FixtureRequest): Response {
   });
 }
 
-/** The fixture IMDb poster of a Title (E2E_IMDB_POSTERS). */
-function imdbPosterOf(imdbId: string): string {
+function imdbPosterOf(imdbId: string) {
   return `https://m.media-amazon.com/images/M/fixture-${imdbId}.jpg`;
 }
 
-/** The TMDB poster that the fixture gives: Shawshank only. */
 const TMDB_POSTER_PATHS = new Map([["tt0111161", "/fixture-shawshank.jpg"]]);
 
-/**
- * TMDB /find by IMDb ID (poster source, STR-106). Breaking Bad has no
- * poster on TMDB. With E2E_TMDB_STATUS, every request fails with that status
- * (an outage).
- */
-function tmdb({ url }: FixtureRequest): Response {
+function tmdb({ url }: FixtureRequest) {
   const status = Number(process.env.E2E_TMDB_STATUS);
   if (status) return json({ status_message: "fixture outage" }, status);
   const found = /^\/3\/find\/(tt\d+)$/u.exec(url.pathname);
@@ -667,7 +625,6 @@ function tmdb({ url }: FixtureRequest): Response {
 
 installFetchFixture({
   log: process.env.E2E_PROVIDER_LOG,
-  // Only a backend started with a real TheTVDB key reaches TheTVDB.
   passthrough: process.env.TVDB_API_KEY ? ["api4.thetvdb.com"] : [],
   hosts: {
     "letterboxd.com": letterboxd,

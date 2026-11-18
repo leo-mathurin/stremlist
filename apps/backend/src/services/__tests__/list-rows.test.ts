@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { listRowCacheKeys, mapList } from "../list-rows";
 import { sourceCaches } from "../merged-lists";
 
-function row(overrides: Partial<Tables<"lists">>): Tables<"lists"> {
+function row(overrides: Partial<Tables<"lists">>) {
   return {
     id: "11111111-1111-4111-8111-111111111111",
     account_id: "sl_0000000000000000000000",

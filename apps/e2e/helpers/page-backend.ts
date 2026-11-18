@@ -6,7 +6,7 @@ import { BACKEND_URL } from "../env.js";
  * backend) instead of the Playwright backend. Both use the same database,
  * so Accounts that the page creates exist on both.
  */
-export async function routePageTo(page: Page, url: string): Promise<void> {
+export async function routePageTo(page: Page, url: string) {
   await page.route(`${BACKEND_URL}/**`, async (route) => {
     const target = new URL(route.request().url());
     const response = await route.fetch({

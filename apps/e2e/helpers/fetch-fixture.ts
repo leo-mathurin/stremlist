@@ -1,8 +1,3 @@
-// The outbound transport of an isolated backend (see fixture-backend.ts). A
-// preload declares one handler per Provider host and calls
-// `installFetchFixture` once. Loopback requests (the local Supabase stack)
-// use the real fetch; every other host without a handler is refused, so no
-// request ever reaches a real Provider.
 import { appendFileSync } from "node:fs";
 import { type Guard, isRecord, isString, parsed } from "./json.js";
 
@@ -18,8 +13,7 @@ type FixtureHandler = (input: FixtureRequest) => Response | Promise<Response>;
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
-/** The fields or JSON of a request with a body (`text` is not empty). */
-function parseBody(text: string, contentType: string | null): unknown {
+function parseBody(text: string, contentType: string | null) {
   if (contentType?.includes("application/x-www-form-urlencoded")) {
     return Object.fromEntries(new URLSearchParams(text));
   }
@@ -31,7 +25,7 @@ function parseBody(text: string, contentType: string | null): unknown {
 }
 
 /** The bearer token of a request, or null. */
-export function bearer(request: Request): string | null {
+export function bearer(request: Request) {
   return request.headers.get("authorization")?.replace(/^Bearer /, "") ?? null;
 }
 
@@ -46,7 +40,7 @@ export function installFetchFixture(options: {
   hosts: Record<string, FixtureHandler>;
   passthrough?: string[];
   log?: string;
-}): void {
+}) {
   const realFetch = globalThis.fetch;
   Object.defineProperty(globalThis, "fetch", {
     value: async (input: string | URL | Request, init?: RequestInit) => {

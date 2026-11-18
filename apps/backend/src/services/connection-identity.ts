@@ -12,9 +12,7 @@ export const connectionIdentitySchema = z.object({
 export type ConnectionIdentity = z.infer<typeof connectionIdentitySchema>;
 
 /** Fail closed, including on a database outage; never trust local cleanup. */
-export async function isCurrentConnection(
-  identity: ConnectionIdentity,
-): Promise<boolean> {
+export async function isCurrentConnection(identity: ConnectionIdentity) {
   const { data, error } = await supabase
     .from("connections")
     .select("authorization_version")

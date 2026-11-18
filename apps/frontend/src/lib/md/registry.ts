@@ -39,7 +39,7 @@ export const SKIPPED_HTML_ROUTES: SkippedHtmlRoutes = {
   "*": "Noindex error page for unknown routes.",
 };
 
-// Real Markdown files bypass suffix handling; none exist in this app today.
+/** Real Markdown files bypass suffix handling; none exist in this app today. */
 export const PASSTHROUGH_MARKDOWN_ROUTES: readonly string[] = [];
 
 export const PRIVATE_PATHS = [
@@ -57,7 +57,7 @@ export const PRIVATE_PATHS = [
   "/auth",
 ];
 
-function home({ userCount }: RenderContext): string {
+function home({ userCount }: RenderContext) {
   return [
     text(HOME.intro),
     ...(userCount === null
@@ -104,7 +104,7 @@ function home({ userCount }: RenderContext): string {
   ].join("\n\n");
 }
 
-function terms(): string {
+function terms() {
   return [
     "How Stremlist works, what it stores, and what you can ask for.",
     ...LEGAL_SECTIONS.flatMap((section) => [
@@ -129,7 +129,7 @@ function terms(): string {
   ].join("\n\n");
 }
 
-function changelog(): string {
+function changelog() {
   return [
     "A history of updates and improvements to Stremlist.",
     ...VERSIONS.flatMap((version) => [
@@ -185,7 +185,7 @@ export function listMarkdownRoutes() {
   return pages;
 }
 
-export function markdownPath(path: string): string {
+export function markdownPath(path: string) {
   return path === "/" ? "/index.md" : `${path}.md`;
 }
 
@@ -194,10 +194,7 @@ export function getMarkdownPage(path: string) {
   return pages.find((page) => page.path === normalized);
 }
 
-export function renderMarkdownPage(
-  page: MarkdownPage,
-  context: RenderContext,
-): string {
+export function renderMarkdownPage(page: MarkdownPage, context: RenderContext) {
   return (
     [
       heading(1, page.title),

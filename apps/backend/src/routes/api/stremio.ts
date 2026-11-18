@@ -26,7 +26,6 @@ const linkBody = z.object({
   token: z.string().regex(/^[A-Za-z0-9]{1,32}\.\d{1,16}\.[A-Za-z0-9_-]{43}$/),
 });
 
-/** Why a Stremio request failed, as the configure page names it. */
 type StremioFailure = "signed-out" | "unavailable";
 
 function failureBody(reason: StremioFailure) {
@@ -34,7 +33,6 @@ function failureBody(reason: StremioFailure) {
 }
 
 function failure(c: Context, error: unknown) {
-  // Not linked any more: the key was forgotten, as for a signed-out one.
   if (
     error instanceof StremioSessionError ||
     error instanceof StremioNotLinkedError
@@ -56,7 +54,6 @@ function addonUrl(c: Context, accountId: string) {
  * only: the key can rewrite the member's Stremio addons.
  */
 const stremio = new Hono()
-  // A code for the member to confirm on Stremio's page.
   .post(
     "/:accountId/stremio/link",
     zValidator("param", accountParam),
@@ -72,8 +69,6 @@ const stremio = new Hono()
     },
   )
 
-  // Asked every few seconds while the member confirms the code. The token
-  // stays in the body: request logs keep URLs.
   .post(
     "/:accountId/stremio/link/confirm",
     zValidator("param", accountParam),
@@ -112,8 +107,6 @@ const stremio = new Hono()
     },
   )
 
-  // Only on the member's request: a removed Stremlist is never added back
-  // by an update.
   .post(
     "/:accountId/stremio/install",
     zValidator("param", accountParam),

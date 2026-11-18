@@ -29,16 +29,14 @@ export interface LetterboxdRequestDetails {
 }
 
 const EXCERPT_BYTES = 2048;
-/** How long the log waits for a background excerpt. */
 const EXCERPT_WAIT_MS = 3000;
 const REDACTED = "[redacted]";
-/** Share of successful requests logged in full, to compare with failures. */
 const SUCCESS_SAMPLE = 0.01;
 
 export function requestDetails(
   kind: LetterboxdRequestDetails["kind"],
   url: string,
-): LetterboxdRequestDetails {
+) {
   return {
     kind,
     url,
@@ -93,17 +91,15 @@ async function readExcerpt(
       if (part.done) break;
       chunks.push(part.value);
       bytes += part.value.byteLength;
-      // Kept as it arrives: a body that stalls still shows its first bytes.
       details.bodyExcerpt = excerpt(Buffer.concat(chunks).toString("utf8"));
     }
   } catch {
-    /* The excerpt is best effort. */
   } finally {
     await reader.cancel().catch(() => undefined);
   }
 }
 
-export function excerpt(text: string): string {
+export function excerpt(text: string) {
   return Buffer.from(text, "utf8")
     .subarray(0, EXCERPT_BYTES)
     .toString("utf8")
@@ -119,18 +115,13 @@ export interface LetterboxdRequestOutcome {
   probe: boolean;
 }
 
-/**
- * The secrets in a Letterboxd URL: a Share link token, or a boxd.it code
- * (a short link to a Share link carries its token). Stored references keep
- * them encrypted, so the log must not keep them in plaintext.
- */
-function secretsOf(url: string): string[] {
+function secretsOf(url: string) {
   const share = /\/share\/([^/?#]+)/.exec(url)?.[1];
   const short = /^https:\/\/boxd\.it\/([^/?#]+)/.exec(url)?.[1];
   return [share, short].filter((value): value is string => Boolean(value));
 }
 
-function redact(text: string | null, secrets: string[]): string | null {
+function redact(text: string | null, secrets: string[]) {
   if (text === null) return null;
   return secrets.reduce(
     (result, secret) => result.split(secret).join(REDACTED),

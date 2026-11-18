@@ -16,7 +16,6 @@ import {
 import type { ListSource } from "@stremlist/shared/list-merge";
 import { describe, expect, it } from "vite-plus/test";
 import { movie } from "../../__tests__/helpers/fixtures";
-import type { SourceMeta } from "../list-cache";
 import {
   mergeSourceCatalogs,
   sourceCaches,
@@ -49,12 +48,12 @@ function merged(
   };
 }
 
-function dated(id: string, addedAt?: string, description = ""): SourceMeta {
+function dated(id: string, addedAt?: string, description = "") {
   return { ...movie(id, { description }), ...(addedAt ? { addedAt } : {}) };
 }
 
 describe("account List rules", () => {
-  const imdbList = (n: number): ListSource => ({
+  const imdbList = (n: number) => ({
     provider: "imdb",
     sourceRef: `ls${n}`,
   });
@@ -273,9 +272,7 @@ describe("source caches", () => {
       (key) => key.cacheKey,
     );
 
-    // Merging: the List ID cache belonged to the single Source list.
     expect(unusedSourceCaches([single], [both])).toEqual([LIST_ID]);
-    // Removing one Source list drops only its cache.
     expect(
       unusedSourceCaches(
         [{ ...both, mergedSources: [TRAKT, TOP_MOVIES] }],
@@ -284,16 +281,13 @@ describe("source caches", () => {
     ).toEqual([
       sourceCaches({ ...both, mergedSources: [TRAKT, TOP_MOVIES] })[2].cacheKey,
     ]);
-    // Back to one Source list: both merged caches go.
     expect(unusedSourceCaches([both], [single])).toEqual([
       watchlistKey,
       traktKey,
     ]);
-    // A List whose single Source list changed loses the List ID cache.
     expect(unusedSourceCaches([single], [{ id: LIST_ID, ...TRAKT }])).toEqual([
       LIST_ID,
     ]);
-    // Unchanged Lists and removed Lists.
     expect(unusedSourceCaches([both], [both])).toEqual([]);
     expect(unusedSourceCaches([single], [])).toEqual([LIST_ID]);
   });

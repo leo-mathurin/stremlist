@@ -37,10 +37,6 @@ vi.mock("../../http", async (importOriginal) => {
 beforeEach(resetTraktTest);
 afterEach(restoreTraktTest);
 
-// ---------------------------------------------------------------------------
-// Reads
-// ---------------------------------------------------------------------------
-
 describe("Trakt reads", () => {
   it("follows every page with the largest page size", async () => {
     const page1 = Array.from({ length: 250 }, (_, i) =>
@@ -149,7 +145,6 @@ describe("Trakt reads", () => {
       "tt11128440",
       "tt10665342",
     ]);
-    // Merged Lists sort Source lists together by these dates.
     expect(entries.map((e) => e.addedAt)).toEqual([
       "2021-01-01T00:00:00.000Z",
       "2022-10-14T03:19:22.000Z",
@@ -236,8 +231,6 @@ describe("Trakt reads", () => {
   });
 
   it("reads the weekly charts and the movie-only box office", async () => {
-    // Recorded shapes of /movies/watched/weekly and /movies/boxoffice
-    // (api.trakt.tv, 2026-11-16).
     route("GET /movies/watched/weekly", [
       { watcher_count: 17589, play_count: 18309, movie: clerks },
     ]);
@@ -262,7 +255,6 @@ describe("Trakt reads", () => {
   });
 
   it("reads a public user's favorites, oldest added first", async () => {
-    // Recorded shape of /users/{user}/favorites (api.trakt.tv, 2026-11-16).
     route(
       "GET /users/sean/favorites",
       pages([
@@ -291,7 +283,6 @@ describe("Trakt reads", () => {
   });
 
   it("reads rated movies and shows by rating date, without episodes", async () => {
-    // Recorded shape of /users/{user}/ratings/{type} (api.trakt.tv, 2026-11-16).
     route(
       "GET /users/sean/ratings/movies",
       pages([
@@ -358,8 +349,6 @@ describe("Trakt reads", () => {
     expect(
       (await fetchEntries("users/sean/history")).map((e) => e.imdbId),
     ).toEqual(["tt31938062", "tt11128440"]);
-    // Recorded shape of /users/{user}/collection/movies (api.trakt.tv,
-    // 2026-11-16): paginated when asked.
     route(
       "GET /users/sean/collection/movies",
       pages([
@@ -401,7 +390,6 @@ describe("Trakt reads", () => {
   });
 
   it("reads a smart list in Trakt's rank order", async () => {
-    // Recorded shape of /smart-lists/{slug}/items (api.trakt.tv, 2026-11-16).
     route(
       "GET /smart-lists/silos/items",
       pages([
@@ -539,8 +527,6 @@ describe("Trakt reads", () => {
   });
 
   it("follows every page of watched titles", async () => {
-    // Trakt pages /users/{user}/watched/* 100 at a time when no limit is
-    // given (live read, 2026-11-16: 1,792 movies over 18 pages).
     route(
       "GET /users/sean/watched/movies",
       pages([

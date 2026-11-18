@@ -1,10 +1,3 @@
-/**
- * A library item that may hold new watched titles: compare it with the
- * Account's watch state, save the state, then queue a write for each
- * Destination. The state is the only reference for "already sent": its
- * conditional write lets one run claim a title, so the trigger, the events
- * and the sweep never send it twice.
- */
 import { IMDB_TITLE_ID_PATTERN } from "@stremlist/shared/constants";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { supabase } from "../../lib/supabase";
@@ -22,9 +15,7 @@ import { readState, writeState } from "./state";
 
 type Version = Awaited<ReturnType<typeof readState>>;
 
-/** Tries before giving up on a state that other runs keep changing. */
 const SAVE_TRIES = 5;
-/** Rows per answer when reading the queue back (PostgREST's page limit). */
 const QUEUE_PAGE = 1000;
 
 /**
@@ -35,7 +26,7 @@ export function withItems(
   state: WatchState,
   items: LibraryItem[],
   checkedAt?: number,
-): WatchState | false {
+) {
   const next: WatchState = {
     ...state,
     movies: [...state.movies],
@@ -64,20 +55,15 @@ export function withItems(
   return next;
 }
 
-/**
- * The episodes ("season:episode") that the state has for a series, or null
- * when its baseline field cannot be placed in Cinemeta's list any more.
- */
 async function knownEpisodes(
   imdbId: string,
   stored: string | string[] | undefined,
-): Promise<Set<string> | null> {
+) {
   if (Array.isArray(stored)) return new Set(stored);
   const known = await watchedEpisodes(imdbId, stored);
   return known instanceof Set ? known : null;
 }
 
-/** Only IMDb titles can go to a Destination (other addons' IDs cannot). */
 const isTitle = (item: LibraryItem) => IMDB_TITLE_ID_PATTERN.test(item._id);
 
 /**
@@ -88,7 +74,7 @@ export async function diffItems(
   state: WatchState,
   items: LibraryItem[],
   checkedAt?: number,
-): Promise<{ titles: WatchedTitle[]; next: WatchState | false }> {
+) {
   const next: WatchState = {
     ...state,
     movies: [...state.movies],
@@ -96,7 +82,6 @@ export async function diffItems(
   };
   let changed = false;
   const titles: WatchedTitle[] = [];
-  /** The oldest change of an item to compare again at the next sweep. */
   let retryFrom = Number.POSITIVE_INFINITY;
   for (const item of items) {
     if (!isTitle(item)) continue;
@@ -116,8 +101,6 @@ export async function diffItems(
       knownEpisodes(item._id, stored),
       watchedEpisodes(item._id, field),
     ]);
-    // Cinemeta has no episode list for it: send nothing. A list of
-    // episodes already sent stays, so none of them is sent again later.
     if (now === UNLISTED) {
       if (!Array.isArray(stored)) {
         next.series[item._id] = field;
@@ -125,14 +108,11 @@ export async function diffItems(
       }
       continue;
     }
-    // Cinemeta cannot place the field now: the next sweep compares it again.
     if (!now) {
       retryFrom = Math.min(retryFrom, mtimeOf(item));
       continue;
     }
     if (!known) {
-      // The baseline cannot be read any more: what is watched now becomes
-      // the reference, and nothing of it is sent.
       next.series[item._id] = [...now];
       changed = true;
       continue;
@@ -155,12 +135,11 @@ export async function diffItems(
   return { titles, next };
 }
 
-/** Queue one write per Destination and title. */
 async function queueWrites(
   accountId: string,
   destinations: readonly ProviderId[],
   titles: WatchedTitle[],
-): Promise<void> {
+) {
   const rows = titles.flatMap((title) =>
     destinations.map((provider) => ({
       account_id: accountId,
@@ -177,17 +156,12 @@ async function queueWrites(
   if (error) throw error;
 }
 
-/**
- * Whether the insert of these writes committed: every one of them, for each
- * Destination, is in the queue. A failed insert leaves some out.
- */
 async function allQueued(
   accountId: string,
   destinations: readonly ProviderId[],
   titles: WatchedTitle[],
-): Promise<boolean> {
+) {
   const queued = new Set<string>();
-  // Every page: a bulk mark can queue more rows than one answer holds.
   for (let from = 0; ; from += QUEUE_PAGE) {
     const { data, error } = await supabase
       .from("watch_writes")
@@ -211,15 +185,11 @@ async function allQueued(
   );
 }
 
-/**
- * Takes `titles` out of the state again after their writes failed to queue,
- * and moves the sweep back to `checkedAt` so it reads their items again.
- */
 async function forgetTitles(
   accountId: string,
   titles: WatchedTitle[],
   checkedAt: number,
-): Promise<void> {
+) {
   for (let attempt = 0; attempt < SAVE_TRIES; attempt++) {
     const { state, etag } = await readState(accountId);
     if (!state) return;
@@ -253,7 +223,7 @@ export async function recordItems(
   destinations: readonly ProviderId[],
   items: LibraryItem[],
   options: { link: string; version?: Version; checkedAt?: number },
-): Promise<WatchedTitle[]> {
+) {
   let version = options.version ?? (await readState(accountId));
   for (let attempt = 0; attempt < SAVE_TRIES; attempt++) {
     if (version.state?.link !== options.link) return [];
@@ -267,9 +237,6 @@ export async function recordItems(
       try {
         await queueWrites(accountId, destinations, titles);
       } catch (error) {
-        // Not queued: let a later read find these titles again. An answer
-        // lost after the insert committed must keep them, or they would be
-        // sent twice.
         const committed = await allQueued(
           accountId,
           destinations,

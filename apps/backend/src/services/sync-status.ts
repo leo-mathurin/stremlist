@@ -4,10 +4,7 @@ import type { ProviderId, SourceId } from "@stremlist/shared/providers";
 import { sourceRequiresConnection } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { SOURCE_PROBLEM_REASONS } from "@stremlist/shared/source-problems";
-import type {
-  AccountSyncSnapshot,
-  ConfigList,
-} from "@stremlist/shared/stremio.types";
+import type { ConfigList } from "@stremlist/shared/stremio.types";
 import type { ListSyncStatus } from "@stremlist/shared/sync-status";
 import { supabase } from "../lib/supabase";
 import type { ConnectionAccess } from "../providers/types";
@@ -17,10 +14,6 @@ import { sourceCaches } from "./merged-lists";
 /** How one refresh of a List ended. */
 export type RefreshOutcome =
   | { kind: "saved"; titleCount: number }
-  /**
-   * The read worked, but the Catalog could not be saved: Stremio still gets
-   * the older one, so this is no update.
-   */
   | { kind: "unsaved" }
   | { kind: "failed"; problem: SourceProblemReason };
 
@@ -38,7 +31,7 @@ export async function recordRefreshOutcome(
   source: SourceId & { listId: string },
   outcome: RefreshOutcome,
   connection: ConnectionAccess | null,
-): Promise<void> {
+) {
   const problem = outcome.kind === "failed" ? outcome.problem : null;
   const writes: PromiseLike<void>[] = [];
   if (outcome.kind !== "unsaved") {
@@ -76,16 +69,14 @@ export async function recordRefreshOutcome(
   }
 }
 
-/** A failure reason that this version does not know reads as "unavailable". */
-function problemOf(reason: string | null): SourceProblemReason | null {
+function problemOf(reason: string | null) {
   if (reason === null) return null;
   return (
     SOURCE_PROBLEM_REASONS.find((known) => known === reason) ?? "unavailable"
   );
 }
 
-/** The row of a Source list of `provider`. */
-function toStatus(row: StatusRow, provider: ProviderId): ListSyncStatus {
+function toStatus(row: StatusRow, provider: ProviderId) {
   return {
     provider,
     sourceRef: row.source_ref,
@@ -97,16 +88,11 @@ function toStatus(row: StatusRow, provider: ProviderId): ListSyncStatus {
   };
 }
 
-/**
- * Take the last success from the cache when no refresh recorded one: Lists
- * cached before sync statuses existed, also after their first recorded
- * refresh failed (Stremio still gets those cached Titles).
- */
 async function withCachedSuccess(
   status: ListSyncStatus | null,
   source: ListSource,
   cacheKey: string,
-): Promise<ListSyncStatus | null> {
+) {
   if (status?.lastSuccessAt) return status;
   const cached = await getCachedListInfo(cacheKey, source);
   if (!cached) return status;
@@ -122,18 +108,7 @@ async function withCachedSuccess(
   };
 }
 
-/**
- * The sync status of each Source list of one List, from its recorded rows,
- * in the List's order; null for a Source list that was never read. In a
- * List with one Source list, a row for another Source list means the List
- * changed its Source list: its cache (under the List ID) may still hold the
- * old one, so it is not used. Each Source list of a merged List has a cache
- * of its own (ADR 0006).
- */
-async function sourceStatusesOf(
-  list: ConfigList,
-  rows: StatusRow[],
-): Promise<(ListSyncStatus | null)[]> {
+async function sourceStatusesOf(list: ConfigList, rows: StatusRow[]) {
   const caches = sourceCaches(list);
   return Promise.all(
     caches.map(async ({ source, cacheKey }) => {
@@ -158,9 +133,7 @@ async function sourceStatusesOf(
  * the recorded statuses cannot be read, only the cache answers: the page
  * shows Lists as waiting, not as broken.
  */
-export async function getListSyncStatuses(
-  lists: ConfigList[],
-): Promise<Pick<AccountSyncSnapshot, "syncStatus">> {
+export async function getListSyncStatuses(lists: ConfigList[]) {
   if (lists.length === 0) return { syncStatus: {} };
   const { data, error } = await supabase
     .from("list_sync_status")

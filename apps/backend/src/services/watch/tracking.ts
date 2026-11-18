@@ -1,15 +1,8 @@
-/**
- * Turning Watch tracking on and off, Destination by Destination (ADR 0003).
- * The first Destination reads the Watched baseline before anything else;
- * the last one off forgets the Account's watch state.
- */
 import type { ProviderId } from "@stremlist/shared/providers";
 import type {
   WatchDestinationError as DestinationErrorCode,
-  WatchDestinationStatus,
   WatchedTitleRef,
   WatchProviderId,
-  WatchTrackingStatus,
 } from "@stremlist/shared/watch-tracking";
 import {
   isWatchProvider,
@@ -26,7 +19,6 @@ import { deleteState } from "./state";
 import { takeBaseline } from "./sweep";
 import { forgetWatchContext } from "./trigger";
 
-// The status shows what the database holds; a value of another shape is none.
 const lastTitleSchema = z
   .object({
     imdbId: z.string(),
@@ -59,7 +51,7 @@ export class WatchDestinationError extends Error {
 }
 
 /** Whether the Account is tracked, read from the database (no cache). */
-export async function isTrackedNow(accountId: string): Promise<boolean> {
+export async function isTrackedNow(accountId: string) {
   const { data, error } = await supabase
     .from("watch_tracking")
     .select("account_id")
@@ -69,9 +61,7 @@ export async function isTrackedNow(accountId: string): Promise<boolean> {
   return data !== null;
 }
 
-export async function getWatchTracking(
-  accountId: string,
-): Promise<WatchTrackingStatus> {
+export async function getWatchTracking(accountId: string) {
   const [connections, link, tracking, destinations, pending] =
     await Promise.all([
       listConnections(accountId),
@@ -107,7 +97,7 @@ export async function getWatchTracking(
     stremioTrakt,
     destinations: WATCH_PROVIDERS.filter(
       (provider) => connected.has(provider) && isProviderEnabled(provider),
-    ).map((provider): WatchDestinationStatus => {
+    ).map((provider) => {
       const row = rows.get(provider);
       return {
         provider,
@@ -124,8 +114,7 @@ export async function getWatchTracking(
   };
 }
 
-/** The sealed key of the Stremio link. */
-async function stremioKey(accountId: string): Promise<string> {
+async function stremioKey(accountId: string) {
   const { data, error } = await supabase
     .from("stremio_connections")
     .select("auth_key")
@@ -136,7 +125,7 @@ async function stremioKey(accountId: string): Promise<string> {
   return data.auth_key;
 }
 
-async function stopTracking(accountId: string): Promise<void> {
+async function stopTracking(accountId: string) {
   const { error } = await supabase
     .from("watch_tracking")
     .delete()
@@ -153,7 +142,7 @@ async function stopTracking(accountId: string): Promise<void> {
 export async function setWatchDestinations(
   accountId: string,
   providers: ProviderId[],
-): Promise<void> {
+) {
   forgetWatchContext(accountId);
   const wanted = [...new Set(providers)];
   if (wanted.length === 0) {
@@ -178,14 +167,18 @@ export async function setWatchDestinations(
 
   const started = !(await isTrackedNow(accountId));
   if (started) {
-    const { error } = await supabase.from("watch_tracking").upsert(
-      // Accounts spread over the 360 minutes of the sweep cycle.
-      { account_id: accountId, sweep_slot: randomInt(360), baseline_at: null },
-      { onConflict: "account_id", ignoreDuplicates: true },
-    );
+    const { error } = await supabase
+      .from("watch_tracking")
+      .upsert(
+        {
+          account_id: accountId,
+          sweep_slot: randomInt(360),
+          baseline_at: null,
+        },
+        { onConflict: "account_id", ignoreDuplicates: true },
+      );
     if (error) throw error;
   }
-  // Add before removing: the last Destination removed ends the tracking.
   const { error: addError } = await supabase.from("watch_destinations").upsert(
     destinations.map((provider) => ({ account_id: accountId, provider })),
     { onConflict: "account_id,provider", ignoreDuplicates: true },
@@ -199,7 +192,6 @@ export async function setWatchDestinations(
   if (removeError) throw removeError;
 
   if (!started && destinations.includes("trakt")) {
-    // Show at once whether Stremio's own Trakt keeps this one paused.
     const { error } = await supabase
       .from("watch_tracking")
       .update({ stremio_trakt: await readStremioTrakt(decryptSecret(authKey)) })
@@ -223,9 +215,7 @@ export async function setWatchDestinations(
  * reference, so nothing is sent until the Watched baseline is read again,
  * and the running cycles end. Returns whether the Account is tracked.
  */
-export async function invalidateWatchBaseline(
-  accountId: string,
-): Promise<boolean> {
+export async function invalidateWatchBaseline(accountId: string) {
   forgetWatchContext(accountId);
   const { data, error } = await supabase
     .from("watch_tracking")
@@ -243,6 +233,6 @@ export async function invalidateWatchBaseline(
 }
 
 /** After a new Stremio link is saved: read its Watched baseline. */
-export async function retakeWatchBaseline(accountId: string): Promise<void> {
+export async function retakeWatchBaseline(accountId: string) {
   await takeBaseline(accountId, await stremioKey(accountId));
 }

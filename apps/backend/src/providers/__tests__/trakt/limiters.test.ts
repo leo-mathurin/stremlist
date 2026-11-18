@@ -7,7 +7,6 @@ import {
   vi,
 } from "vite-plus/test";
 import { traktGetJson, traktPost } from "../../trakt/api";
-import type { ConnectionAccess } from "../../types";
 import {
   calls,
   connection,
@@ -16,8 +15,6 @@ import {
   restoreTraktTest,
   route,
 } from "./harness";
-
-// No mock of ../../http here: these tests use the real limiters.
 
 beforeEach(() => {
   resetTraktTest();
@@ -31,15 +28,11 @@ afterEach(() => {
   restoreTraktTest();
 });
 
-function user(
-  username: string,
-  accountId = `sl_${username}`,
-): ConnectionAccess {
+function user(username: string, accountId = `sl_${username}`) {
   return { ...connection(), username, accountId };
 }
 
-/** Whether the promise settles without advancing the rate-limit clock. */
-async function settlesNow(promise: Promise<unknown>): Promise<boolean> {
+async function settlesNow(promise: Promise<unknown>) {
   let settled = false;
   void promise.then(
     () => (settled = true),
@@ -54,7 +47,6 @@ describe("Trakt limiters per user", () => {
     const a = user("limiter-a");
     const b = user("limiter-b");
 
-    // More reads than one user may make in 5 minutes: the last ones wait.
     const backlog = Array.from({ length: 460 }, () =>
       traktGetJson("/users/me/watchlist", a),
     );
@@ -65,7 +57,6 @@ describe("Trakt limiters per user", () => {
     expect(await settlesNow(traktGetJson("/users/me/watchlist", b))).toBe(true);
     expect(calls).toHaveLength(451);
 
-    // The backlog goes on once the user's window moves.
     await vi.advanceTimersByTimeAsync(5 * 60_000 + 1);
     await blocked;
     expect(calls).toHaveLength(461);

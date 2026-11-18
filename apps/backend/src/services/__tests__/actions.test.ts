@@ -70,7 +70,7 @@ const ADD_TO_WATCHLIST = { kind: "watchlist", add: true } as const;
 
 const link = (kind: ActionKind, op: string) => `${kind}/${op}`;
 
-function membership(overrides: Partial<Membership> = {}): Membership {
+function membership(overrides: Partial<Membership> = {}) {
   return {
     watchlist: [],
     watched: [],
@@ -80,7 +80,7 @@ function membership(overrides: Partial<Membership> = {}): Membership {
   };
 }
 
-function membershipKey(accountId: string, provider: ProviderId): string {
+function membershipKey(accountId: string, provider: ProviderId) {
   return `connections/${accountId}/${provider}/membership.json`;
 }
 
@@ -89,12 +89,11 @@ function seedMembership(
   provider: ProviderId,
   value: Membership,
   fetchedAt = new Date(),
-): void {
+) {
   r2Objects.set(
     membershipKey(accountId, provider),
     JSON.stringify({
       fetchedAt: fetchedAt.toISOString(),
-      // The Provider user of the seeded Connections.
       username: "leo",
       membership: value,
     }),
@@ -110,10 +109,7 @@ const storedMembershipSchema = z.object({
   }),
 });
 
-function storedMembership(
-  accountId: string,
-  provider: ProviderId,
-): Membership | null {
+function storedMembership(accountId: string, provider: ProviderId) {
   const raw = r2Objects.get(membershipKey(accountId, provider));
   return raw ? storedMembershipSchema.parse(JSON.parse(raw)).membership : null;
 }
@@ -123,7 +119,7 @@ const performMocks = new Map<ProviderId, ReturnType<typeof vi.fn>>();
 function useActionProvider(
   id: ProviderId,
   overrides: Partial<ProviderActions> = {},
-): void {
+) {
   const perform = vi.fn(overrides.perform ?? (() => Promise.resolve()));
   performMocks.set(id, perform);
   const actions = fakeActions({
@@ -134,17 +130,12 @@ function useActionProvider(
   useFakeProvider(fakeAdapter(id, { actions }));
 }
 
-async function accountOf(id: string): Promise<Account> {
+async function accountOf(id: string) {
   const access = await resolveAccountKey(id);
   if (!access) throw new Error("account missing");
   return access.account;
 }
 
-/**
- * A private Account with Actions on for the given Providers, each connected
- * and with the given membership. Every call creates a new Account ID, so the
- * module's in-memory membership never leaks between tests.
- */
 function setup(
   providers: Partial<Record<ProviderId, Membership | null>>,
   options: {
@@ -153,7 +144,7 @@ function setup(
     stale?: boolean;
     connectedAs?: string;
   } = {},
-): Promise<Account> {
+) {
   const ids = options.order ?? Object.keys(providers).filter(isProviderId);
   const row = seedAccount({
     actions_enabled: options.enabled ?? true,
@@ -172,13 +163,12 @@ function setup(
 function staleAccount(
   getMembership: ProviderActions["getMembership"],
   stored: Membership | null = membership(),
-): Promise<Account> {
+) {
   useActionProvider("trakt", { getMembership });
   return setup({ trakt: stored }, { stale: true });
 }
 
-/** Run every scheduled task, as the background queue would. */
-async function runScheduled(): Promise<void> {
+async function runScheduled() {
   const tasks = backgroundMocks.scheduleBackgroundTask.mock.calls.map(
     ([task]) => task,
   );
@@ -249,7 +239,6 @@ describe("actionProviders", () => {
     }
     const account = await accountOf(row.id);
 
-    // mdblist has no Actions here; imdb has no Connection.
     expect(await actionProviders(account)).toEqual(["simkl", "trakt"]);
 
     process.env.DISABLED_PROVIDERS = "simkl";
@@ -272,7 +261,6 @@ describe("buildActionStreams", () => {
       ["⭐ Rate on Trakt", "rating/rate"],
     ]);
     expect(streams.every((stream) => stream.name === "Stremlist")).toBe(true);
-    // Every entry opens a page; none is playable (ADR 0003).
     expect(streams.every((stream) => !("url" in stream))).toBe(true);
     expect(streams.every((stream) => !stream.behaviorHints)).toBe(true);
   });
@@ -424,8 +412,6 @@ describe("buildActionStreams", () => {
   });
 
   it("ignores the membership of the previous Provider user", async () => {
-    // Connected again as another Trakt user: the stored membership is fresh,
-    // but it is the previous user's.
     const account = await setup(
       { trakt: membership({ watchlist: [MOVIE] }) },
       { connectedAs: "other" },
@@ -436,9 +422,6 @@ describe("buildActionStreams", () => {
   });
 
   it("ignores a refresh of the previous authorization, also without a username", async () => {
-    // A refresh with the old tokens finishes after a reconnect to another
-    // Provider user. Neither user has a username, so only the authorization
-    // tells the two memberships apart.
     const row = seedAccount({
       actions_enabled: true,
       action_providers: ["trakt"],
@@ -476,7 +459,6 @@ describe("background membership refresh", () => {
     expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledOnce();
 
     const running = runScheduled();
-    // While the refresh is in flight, later requests join it.
     await Promise.all(Array.from({ length: 5 }, () => open(account)));
     expect(backgroundMocks.scheduleBackgroundTask).not.toHaveBeenCalled();
 
@@ -538,8 +520,6 @@ describe("background membership refresh", () => {
     expect((await open(account))[0].title).toBe("🔖 Add to Trakt watchlist");
     await runScheduled();
 
-    // Another instance writes the membership: this one sees it only after
-    // its copy (here, of the absence) expires.
     seedMembership(account.id, "trakt", membership({ watchlist: [MOVIE] }));
     expect((await open(account))[0].title).toBe("🔖 Add to Trakt watchlist");
 
@@ -551,7 +531,6 @@ describe("background membership refresh", () => {
 
   it("writes an Action on top of what another instance stored", async () => {
     const account = await setup({ trakt: membership() });
-    // Read once, so this instance has its own copy.
     await open(account);
     seedMembership(account.id, "trakt", membership({ watched: [MOVIE] }));
 
@@ -683,7 +662,6 @@ describe("performAction", () => {
       { provider: "simkl", ok: false, error: "provider_error" },
       { provider: "mdblist", ok: false, error: "not_available" },
     ]);
-    // A failed Action leaves the membership as it was.
     expect(storedMembership(account.id, "simkl")?.watchlist).toEqual([]);
   });
 

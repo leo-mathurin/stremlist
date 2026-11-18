@@ -32,7 +32,6 @@ vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
 vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
 vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
 
-/** What the link check answers for a link it accepts. */
 const sourceRefBody = z.object({ sourceRef: z.string() }).loose();
 
 const key = Buffer.from("0123456789abcdef0123456789abcdef").toString("base64");
@@ -41,10 +40,6 @@ function page(ids: number[]) {
   return `<html><head><title>A list • Letterboxd</title></head><body><h1>A list</h1><ul class="poster-list -grid">${ids.map((id) => `<li data-postered-identifier='{"uid":"film:${id}"}' data-item-slug="film-${id}" data-item-name="Film ${id} (2000)"></li>`).join("")}</ul></body></html>`;
 }
 
-/**
- * A share link of exactly `length` characters. Without a scheme, most of the
- * characters are in the path, so its stored reference is the longest.
- */
 function shareLink(length: number) {
   const user = "u".repeat(40);
   const token = "T0k3n".repeat(4);

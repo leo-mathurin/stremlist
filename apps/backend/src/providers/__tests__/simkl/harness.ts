@@ -19,7 +19,7 @@ export type Route = (call: Call) => unknown;
 
 export const routes = new Map<string, Route>();
 
-export function apiCalls(): string[] {
+export function apiCalls() {
   return calls.map(({ method, url }) => {
     const from = url.searchParams.get("date_from");
     return `${method} ${url.pathname}${from ? `?date_from=${from}` : ""}`;
@@ -32,7 +32,6 @@ export function ctx() {
   return { connection };
 }
 
-// Passthrough keeps the fields that `ageLibrary` writes back unchanged.
 const storedLibrarySchema = z
   .object({
     checkedAt: z.number(),
@@ -47,12 +46,12 @@ export function storedLibrary() {
 }
 
 /** Pretend the last activities check is older than the gate. */
-export function ageLibrary(): void {
+export function ageLibrary() {
   const library = { ...storedLibrary(), checkedAt: Date.now() - 10 * 60_000 };
   r2.objects.set(LIBRARY_KEY, JSON.stringify(library));
 }
 
-export function resetSimklTest(): void {
+export function resetSimklTest() {
   vi.stubEnv("SIMKL_CLIENT_ID", "client-123");
   vi.stubEnv("SIMKL_CLIENT_SECRET", "secret-456");
   r2.objects.clear();

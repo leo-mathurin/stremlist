@@ -20,9 +20,6 @@ export default function BuiltInCatalogPicker({
   onAdd: (chartId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  // Keep the panel mounted through its close animation; Radix's <Select> gets
-  // this for free via Presence, so we mirror the data-state pattern by hand.
-  // `mounted` is set on open and cleared when the close animation finishes.
   const [mounted, setMounted] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -80,9 +77,6 @@ export default function BuiltInCatalogPicker({
           role="menu"
           data-state={open ? "open" : "closed"}
           onAnimationEnd={(event) => {
-            // Unmount synchronously on the close animation's end frame so the
-            // browser never paints the snap-back from scale(0.95) to scale(1)
-            // (tw-animate-css's `animate-out` has no forwards fill-mode).
             if (event.target === event.currentTarget && !open) {
               flushSync(() => setMounted(false));
             }

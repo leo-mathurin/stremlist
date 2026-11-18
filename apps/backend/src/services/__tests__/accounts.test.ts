@@ -47,8 +47,6 @@ describe("resolveAccountKey", () => {
   });
 
   it("never opens an Account with a Legacy alias through its private ID", async () => {
-    // The ID of a legacy Account is not a secret that its owner received:
-    // the Account stays reachable only through the alias.
     const account = seedLegacyAccount(IMDB_USER);
 
     await expect(resolveAccountKey(account.id)).resolves.toBeNull();

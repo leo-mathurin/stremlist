@@ -36,32 +36,24 @@ import {
   CATALOG_FIXTURE_USER_2,
 } from "../helpers/test-data.js";
 
-// Merged Lists (STR-59, ADR 0006) against the real backend, Supabase and
-// RustFS. Each Source list of a merged List has its own cache key; the
-// synthetic watchlists are seeded there, so no Provider is read.
-
 const FIRST: ListSource = { provider: "imdb", sourceRef: CATALOG_FIXTURE_USER };
 const SECOND: ListSource = {
   provider: "imdb",
   sourceRef: CATALOG_FIXTURE_USER_2,
 };
-// Read through a Connection that the Account does not have: it always fails
-// with "needs_connection", without a network call.
 const NO_CONNECTION: ListSource = {
   provider: "trakt",
   sourceRef: "me/watchlist",
 };
 const HISTORY: ListSource = { provider: "trakt", sourceRef: "me/history" };
 
-/** The cache keeps the date added next to the meta; Stremio never gets it. */
 type CachedTitle = StremioMeta & { addedAt: string };
 
-/** A cached Title, added on 1 January of `addedIn`. */
 function title(
   id: string,
   addedIn: number,
   overrides: Partial<StremioMeta> = {},
-): CachedTitle {
+) {
   return {
     id,
     name: `QA ${id}`,
@@ -75,7 +67,6 @@ function title(
   };
 }
 
-/** A private Account with one merged List and its Source lists cached. */
 async function seedMerged(
   sources: ListSource[],
   caches: (CachedTitle[] | null)[],
@@ -112,11 +103,7 @@ test(
       [FIRST, SECOND],
       [
         [title("tt9910001", 2020), title("tt9910002", 2024)],
-        [
-          title("tt9910003", 2022),
-          // Also in the first Source list: it keeps its first date.
-          title("tt9910001", 2025),
-        ],
+        [title("tt9910003", 2022), title("tt9910001", 2025)],
       ],
     );
 
@@ -129,9 +116,7 @@ test(
     ]);
     expect(metas.some((meta) => "addedAt" in meta)).toBe(false);
 
-    // One List, one Catalog in the manifest.
     expect(await catalogIds(accountId)).toEqual([catalogId]);
-    // The meta route finds a Title of the second Source list, from its cache.
     const { meta } = await getMeta(accountId, "movie", "tt9910003");
     expect(meta?.name).toBe("QA tt9910003");
     expect(meta && "addedAt" in meta).toBe(false);
@@ -159,7 +144,6 @@ test(
     expect(status).toBe(200);
     expect(metas.map((meta) => meta.id)).toEqual(["tt9910001"]);
 
-    // When no Source list can be read, the card of the first problem shows.
     await resetDb();
     const failing = await seedMerged([NO_CONNECTION, HISTORY], [null, null], {
       sortOption: "title-asc",
@@ -266,7 +250,6 @@ test(
         "A catalog can merge at most 5 lists.",
       ],
       [
-        // Four full Lists and one more: 21 Source lists in the Account.
         [
           ...[1, 2, 3, 4].map((group) => ({
             provider: "imdb" as const,
@@ -315,7 +298,7 @@ test(
       );
     expect(await keysOf(third)).toHaveLength(2);
 
-    const mergedList = (mergedSources: ListSource[]): ConfigListInput => ({
+    const mergedList = (mergedSources: ListSource[]) => ({
       id: listId,
       ...FIRST,
       catalogTitle: "Merged QA",
@@ -324,10 +307,8 @@ test(
       mergedSources,
     });
 
-    // Removing one Source list drops only its cache.
     const removed = await postConfig(accountId, [mergedList([SECOND])]);
     expect(removed.status).toBe(200);
-    // A deleted cache keeps only a tombstone manifest (no generation).
     expect(await keysOf(third)).toEqual([`${prefix(third)}manifest.json`]);
     expect(await getCacheManifest(sourceCacheKey(listId, third))).toMatchObject(
       { deleted: true },
@@ -335,7 +316,6 @@ test(
     expect(await keysOf(FIRST)).toHaveLength(2);
     expect(await keysOf(SECOND)).toHaveLength(2);
 
-    // Splitting the List back to one Source list drops every merged cache.
     const split = await postConfig(accountId, [
       mergedList([]),
       { ...SECOND, sortOption: "title-asc", displayMode: "movie" },
@@ -413,7 +393,6 @@ test(
   },
 );
 
-/** The genre options of one manifest Catalog. */
 async function genreOptions(accountId: string, catalogId: string) {
   const catalog = (await getManifest(accountId)).catalogs.find(
     (entry) => entry.id === catalogId,
@@ -425,7 +404,6 @@ test(
   "Source lists of different Providers share a Title once, with each link back",
   { tag: "@local" },
   async () => {
-    // A public Trakt list needs no Connection; its cache answers the read.
     const trakt: ListSource = {
       provider: "trakt",
       sourceRef: "users/qa/lists/merged-qa",
@@ -460,7 +438,6 @@ test(
       [shared, "Bravo"],
       ["tt9910002", "Charlie"],
     ]);
-    // The copy with the first date stays and gets the other link back.
     const bravo = metas.find((meta) => meta.id === shared);
     expect(bravo?.description).toBe(
       `Merged List fixture\n\nMore on Trakt: https://trakt.tv/movies/bravo\n\nMore on IMDb: https://www.imdb.com/title/${shared}/`,
@@ -469,7 +446,6 @@ test(
     expect(meta?.description).toContain("More on Trakt:");
     expect(meta?.description).toContain("More on IMDb:");
 
-    // The Catalog offers the genres of every Source list.
     expect(await genreOptions(accountId, catalogId)).toEqual(
       expect.arrayContaining(["Drama", "Western"]),
     );
@@ -480,7 +456,6 @@ test(
   "a save that omits the merged Source lists keeps them and their labels",
   { tag: "@local" },
   async () => {
-    // Clients from before merged Lists send no `mergedSources`.
     const accountId = await seedAccount();
     const listId = await seedList(accountId, {
       ...FIRST,
@@ -518,10 +493,6 @@ const WESTERN: ListSource = {
   label: "Western QA",
 };
 
-/**
- * A merged List of three Source lists: the first two have only Drama, the
- * third only Western, so only the third brings a genre of its own.
- */
 function seedThreeSources() {
   return seedMerged(
     [FIRST, { ...SECOND, label: "Second QA" }, WESTERN],
@@ -534,7 +505,6 @@ function seedThreeSources() {
   );
 }
 
-/** Remove one Source list of "Merged QA" on the configure page. */
 async function removeSource(page: Page, accountId: string, name: string) {
   await page.goto(configureUrl(accountId));
   await page.getByRole("button", { name: "Settings for Merged QA" }).click();
@@ -548,9 +518,6 @@ test(
   "removing a merged Source list asks for a reinstall only when the manifest changes",
   { tag: "@local" },
   async ({ page }) => {
-    // Stremio reads the genre options of a Catalog only at install time
-    // (ADR 0006): a Source list that takes its own genres away changes the
-    // manifest, one whose genres the others have does not, whatever its place.
     for (const name of ["Second QA", "IMDb Watchlist"]) {
       await resetDb();
       const { accountId } = await seedThreeSources();
@@ -576,7 +543,6 @@ test(
         name: "Reinstall in Stremio to see your changes",
       }),
     ).toBeVisible();
-    // Same Catalog, without the genre that only Western QA had.
     expect(await catalogIds(accountId)).toEqual([catalogId]);
     const options = await genreOptions(accountId, catalogId);
     expect(options).toContain("Drama");

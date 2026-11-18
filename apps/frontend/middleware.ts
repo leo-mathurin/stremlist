@@ -8,7 +8,7 @@ export const config = {
   ],
 };
 
-export default function middleware(request: Request): Response {
+export default function middleware(request: Request) {
   const url = new URL(request.url);
   const source = aiRequestPath(request);
   if (source !== null) {

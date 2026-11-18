@@ -18,10 +18,6 @@ import type { FixtureBackend } from "../helpers/fixture-backend.js";
 import { startFixtureBackend } from "../helpers/fixture-backend.js";
 import { routePageTo } from "../helpers/page-backend.js";
 
-// The poster source of an Account (STR-106), through the real backend,
-// database and caches. helpers/provider-fixtures.ts answers Trakt, IMDb and
-// TMDB: Shawshank has a TMDB poster, Breaking Bad has none.
-
 const MOVIE = "tt0111161";
 const SERIES = "tt0903747";
 const TITLES = [MOVIE, SERIES];
@@ -51,7 +47,6 @@ test.beforeEach(async () => {
   backend.clearRequests();
 });
 
-/** A private Account with the Trakt fixture watchlist, saved through the API. */
 async function seedWatchlistAccount(api: Api, options = {}) {
   const accountId = await seedAccount();
   ok(
@@ -70,7 +65,6 @@ async function seedWatchlistAccount(api: Api, options = {}) {
   return { accountId, listId: lists[0].id };
 }
 
-/** The poster of each Title that Stremio receives, movie and series Catalogs. */
 async function stremioPosters(api: Api, accountId: string, listId: string) {
   const posters: Record<string, string | null> = {};
   for (const type of ["movie", "series"]) {
@@ -85,7 +79,6 @@ async function stremioPosters(api: Api, accountId: string, listId: string) {
   return posters;
 }
 
-/** Answer poster images locally: the page never reaches IMDb or TMDB. */
 async function routePosterImages(page: Page) {
   for (const pattern of [
     "https://m.media-amazon.com/**",
@@ -105,7 +98,6 @@ test(
   { tag: "@local" },
   async ({ page }) => {
     const { accountId, listId } = await seedWatchlistAccount(backend.api);
-    // Existing Accounts keep IMDb posters, and Stremio sees no TMDB poster.
     expect(await getPosterSource(accountId)).toBe("imdb");
     expect(await stremioPosters(backend.api, accountId, listId)).toEqual({
       [MOVIE]: imdbPoster(MOVIE),
@@ -142,7 +134,6 @@ test(
     await expect(posters).toHaveText(/TMDB/);
     expect(await getPosterSource(accountId)).toBe("tmdb");
 
-    // Stremio: the TMDB poster, and the IMDb poster where TMDB has none.
     expect(await stremioPosters(backend.api, accountId, listId)).toEqual({
       [MOVIE]: TMDB_POSTER,
       [SERIES]: imdbPoster(SERIES),
@@ -150,7 +141,6 @@ test(
     expect(
       (await backend.api.getMeta(accountId, "movie", MOVIE)).meta,
     ).toMatchObject({ id: MOVIE, poster: TMDB_POSTER });
-    // IMDb IDs and Titles stay the same.
     const { metas } = await backend.api.getCatalog(
       accountId,
       "movie",
@@ -160,7 +150,6 @@ test(
       { id: MOVIE, name: "The Shawshank Redemption" },
     ]);
 
-    // TMDB answers are stored once for every Account, a missing poster too.
     expect(await getTitlePosterRows("tmdb", TITLES)).toEqual([
       { imdb_id: MOVIE, poster: "/fixture-shawshank.jpg" },
       { imdb_id: SERIES, poster: null },
@@ -169,13 +158,11 @@ test(
     await stremioPosters(backend.api, accountId, listId);
     expect(tmdbRequests()).toEqual([]);
 
-    // Another Account with the same watchlist keeps its own IMDb posters.
     const other = await seedWatchlistAccount(backend.api);
     expect(
       await stremioPosters(backend.api, other.accountId, other.listId),
     ).toEqual({ [MOVIE]: imdbPoster(MOVIE), [SERIES]: imdbPoster(SERIES) });
 
-    // RPDB with a key: Stremio gets RPDB posters.
     await fillRpdbKey(page, "e2e-test-key");
     await saveConfigure(page);
     expect(await getPosterSource(accountId)).toBe("rpdb");
@@ -183,7 +170,6 @@ test(
       `https://api.ratingposterdb.com/e2e-test-key/imdb/poster-default/${MOVIE}.jpg?fallback=true`,
     );
 
-    // Back to TMDB: the key stays saved, unused, and the List is the same.
     await choose(/^TMDB/);
     await expect(page.locator("#rpdb-api-key")).toHaveCount(0);
     await saveConfigure(page);
@@ -227,7 +213,6 @@ test(
   },
 );
 
-/** The real TheTVDB key of the run; the test is skipped without it (CI). */
 const LIVE_TVDB_KEY = process.env.TVDB_LIVE_API_KEY ?? "";
 const TVDB_ARTWORK =
   /^https:\/\/artworks\.thetvdb\.com\/.+\.(?:jpe?g|png|webp)$/u;
@@ -250,7 +235,6 @@ test(
         page.getByText("Poster fixture", { exact: true }),
       ).toBeVisible();
 
-      // The preview shows TheTVDB thumbnails at once, with the attribution.
       await page
         .getByRole("button", { name: "Preview Poster fixture" })
         .click();
@@ -274,7 +258,6 @@ test(
       await expect(posters).toHaveText(/TheTVDB/);
       expect(await getPosterSource(accountId)).toBe("tvdb");
 
-      // Stremio: full-size TheTVDB posters for the movie and the series.
       const served = await stremioPosters(live.api, accountId, listId);
       expect(served[MOVIE]).toMatch(TVDB_ARTWORK);
       expect(served[SERIES]).toMatch(TVDB_ARTWORK);
@@ -283,7 +266,6 @@ test(
         (await getTitlePosterRows("tvdb", TITLES)).map((row) => row.imdb_id),
       ).toEqual([MOVIE, SERIES]);
 
-      // Cached for every Account: another read asks TheTVDB nothing.
       live.clearRequests();
       await stremioPosters(live.api, accountId, listId);
       expect(live.requests((url) => url.host === "api4.thetvdb.com")).toEqual(

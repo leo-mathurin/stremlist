@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vite-plus/test";
-import type { ClaimedWrite } from "../writes";
 import { capPerDestination } from "../writes";
 
 vi.mock("../../../lib/supabase", () => ({ supabase: {} }));
@@ -8,7 +7,7 @@ vi.mock("../../../providers/registry", () => ({
 }));
 
 let next = 0;
-function write(account: string, provider: string): ClaimedWrite {
+function write(account: string, provider: string) {
   next += 1;
   return {
     id: next,

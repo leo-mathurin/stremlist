@@ -29,7 +29,7 @@ const OTHER = { provider: "trakt" as const, sourceRef: "users/a/watchlist" };
 const DAY_MS = 24 * 60 * 60_000;
 const T0 = new Date("2026-10-01T00:00:00.000Z");
 
-function at(days: number): Date {
+function at(days: number) {
   return new Date(T0.getTime() + days * DAY_MS);
 }
 
@@ -37,8 +37,6 @@ function keyed(...ids: string[]) {
   return ids.map((id) => ({ key: `imdb:${id}`, imdbId: id }));
 }
 
-/** The history a recorded synchronization gave. */
-// The fields a test rewrites; passthrough keeps the others as stored.
 const storedHistory = z
   .object({
     lastSyncAt: z.string(),
@@ -53,18 +51,17 @@ const storedHistory = z
   })
   .loose();
 
-function recorded(result: { history: SourceHistory } | null): SourceHistory {
+function recorded(result: { history: SourceHistory } | null) {
   if (!result) throw new Error("expected a recorded synchronization");
   return result.history;
 }
 
-/** The history after a synchronization of SOURCE, `days` after T0. */
 function apply(
   previous: SourceHistory | null,
   ids: string[] | { key: string; imdbId: string | null }[],
   days: number,
   source: typeof SOURCE | typeof PRIVATE | typeof OTHER = SOURCE,
-): SourceHistory {
+) {
   const entries = ids.map((id) =>
     typeof id === "string" ? { key: `imdb:${id}`, imdbId: id } : id,
   );
@@ -134,7 +131,6 @@ describe("applySynchronization", () => {
     history = apply(history, ["tt1"], days + 1);
     expect(Object.keys(history.entries)).toEqual(["imdb:tt1"]);
 
-    // It is new when it comes back.
     history = apply(history, ["tt1", "tt2"], days + 2);
     expect(history.entries["imdb:tt2"][1]).toBe(at(days + 2).toISOString());
   });
@@ -155,7 +151,6 @@ describe("historyApplies", () => {
 
   it("needs the same Connection for a Connection-only Source list", () => {
     expect(historyApplies(history, PRIVATE, connection)).toBe(true);
-    // Postgres gives the same time with microseconds.
     expect(
       historyApplies(history, PRIVATE, {
         ...connection,
@@ -166,7 +161,6 @@ describe("historyApplies", () => {
     expect(
       historyApplies(history, PRIVATE, { ...connection, user: "sam" }),
     ).toBe(false);
-    // A new Connection after a disconnect, even for the same user.
     expect(
       historyApplies(history, PRIVATE, {
         ...connection,
@@ -224,7 +218,6 @@ describe("listNewTitles", () => {
 
   it("never lists a Title that one of its entries has in the Baseline", () => {
     let history = apply(null, ["tt1"], 0);
-    // The Provider gave the same Title a new key.
     history = apply(
       history,
       [
@@ -278,7 +271,6 @@ describe("recordHistory", () => {
     await recordHistory("acc", SOURCE, keyed("tt1"), at(0), null);
     await recordHistory("acc", SOURCE, keyed("tt1"), at(0.75), null);
 
-    // The slower read saw a temporary addition that the newer read did not.
     expect(
       await recordHistory("acc", SOURCE, keyed("tt1", "tt2"), at(0.5), null),
     ).toBeNull();
@@ -299,7 +291,6 @@ describe("recordHistory", () => {
     const key = historyKey("acc", SOURCE);
     r2Puts.before = () => {
       r2Puts.before = null;
-      // Another instance records tt2 just before this write.
       const stored = storedHistory.parse(JSON.parse(r2Objects.get(key) ?? ""));
       stored.entries["imdb:tt2"] = ["tt2", at(1).toISOString(), null];
       stored.lastSyncAt = at(1).toISOString();

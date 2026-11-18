@@ -64,10 +64,7 @@ function storedToken(column: "access_token" | "refresh_token") {
   return decryptSecret(value);
 }
 
-function tokens(
-  accessToken: string,
-  overrides: Partial<OAuthTokens> = {},
-): OAuthTokens {
+function tokens(accessToken: string, overrides: Partial<OAuthTokens> = {}) {
   return {
     accessToken,
     refreshToken: null,
@@ -96,7 +93,6 @@ async function accessToken(provider: ProviderId = "trakt") {
   return (await getConnectionAccess(accountId, provider))?.getAccessToken();
 }
 
-/** Another instance holds the refresh lease. */
 function leaseTaken(onClaim: () => void = () => undefined) {
   rpcHandlers.set("claim_connection_refresh", () => {
     onClaim();
@@ -174,7 +170,6 @@ describe("listConnections and deleteConnection", () => {
   it("lists Connections without any token", async () => {
     seedConnection(accountId, "trakt", { username: "leo" });
 
-    // A matcher, not a string: `toEqual` checks that the field is one.
     const anyTime: unknown = expect.any(String);
     expect(await listConnections(accountId)).toEqual([
       {
@@ -215,7 +210,6 @@ describe("listConnections and deleteConnection", () => {
     }
     await deleteConnection(accountId, "trakt", [
       { listId: list.id, sourceRef: "me/watchlist" },
-      // Another Account's List is never touched.
       { listId: otherList.id, sourceRef: "me/watchlist" },
     ]);
 
@@ -286,7 +280,6 @@ describe("getConnectionAccess", () => {
     expect(await access.getAccessToken()).toBe("new");
     expect(access.identity).toEqual(identity);
     expect(await isCurrentConnection(identity)).toBe(true);
-    // The same redirect URI as the authorization, whatever the origin now.
     expect(oauthMocks.refreshTokens).toHaveBeenCalledExactlyOnceWith(
       "trakt",
       "old-refresh",
@@ -296,10 +289,8 @@ describe("getConnectionAccess", () => {
     expect(storedToken("refresh_token")).toBe("new-refresh");
     const row = connectionRow();
     expect(row.expires_at).toBe(newExpiry.toISOString());
-    // The lease is released for the next refresh.
     expect(row.refresh_lease_token).toBeNull();
     expect(row.refresh_locked_until).toBe("1970-01-01T00:00:00.000Z");
-    // The next call reuses the new token.
     await expect(access.getAccessToken()).resolves.toBe("new");
     expect(oauthMocks.refreshTokens).toHaveBeenCalledOnce();
   });
@@ -323,7 +314,6 @@ describe("getConnectionAccess", () => {
       expiresAt: ago(),
     });
     oauthMocks.refreshTokens.mockImplementation(async () => {
-      // The user connects again (maybe as another Trakt user) meanwhile.
       await save(
         "reconnected",
         { refreshToken: "reconnected-refresh" },
@@ -365,7 +355,6 @@ describe("getConnectionAccess", () => {
       expect(oauthMocks.refreshTokens).toHaveBeenCalledOnce();
     });
     const secondToken = second?.getAccessToken();
-    // The second request sees the lease taken and waits for the new token.
     await new Promise((resolve) => setTimeout(resolve, 50));
     refreshed.resolve(tokens("new", { refreshToken: "rotated" }));
 
@@ -379,7 +368,6 @@ describe("getConnectionAccess", () => {
       accessToken: "old",
       expiresAt: new Date(Date.now() + MINUTE),
     });
-    // The other instance saves its new token meanwhile.
     leaseTaken(() => {
       connectionRow().access_token = encryptSecret("from-other-instance");
       connectionRow().expires_at = inAnHour().toISOString();
@@ -429,9 +417,7 @@ describe("getConnectionAccess", () => {
       expect(oauthMocks.refreshTokens).toHaveBeenCalledTimes(
         refreshToken ? 1 : 0,
       );
-      // The lease is released even when the refresh fails.
       expect(connectionRow().refresh_lease_token).toBeNull();
-      // Any caller (a public read, an Action) sees it, not only List reads.
       expect((await listConnections(accountId))[0].needsRenewalSince).toEqual(
         expect.any(String),
       );

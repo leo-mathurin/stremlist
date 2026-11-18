@@ -1,5 +1,3 @@
-// The Stremio account that the fake Stremio API of watch-fixtures.ts serves:
-// a JSON file that watch-tracking.spec.ts writes and the backend reads.
 import { isRecord, isString } from "./json.js";
 
 export interface FakeStremio {

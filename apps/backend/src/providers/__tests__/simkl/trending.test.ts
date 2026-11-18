@@ -25,7 +25,6 @@ vi.mock("../../http", async (importOriginal) => {
   return httpModule(await importOriginal());
 });
 
-// Shapes from data.simkl.in/discover/trending/{type}/week_100.json, 2026-11.
 const MOVIES = [
   {
     title: "The Odyssey",
@@ -39,7 +38,6 @@ const MOVIES = [
       tmdb: "1368337",
     },
   },
-  // No Simkl ID: nothing to link back to.
   { title: "Broken", ids: { imdb: "tt0000001" } },
 ];
 const ANIME = [
@@ -60,7 +58,6 @@ const ANIME = [
     anime_type: "movie",
     ids: { simkl_id: 2414064, imdb: "tt32820897", tmdb: "1311031" },
   },
-  // Another season of the same series: Simkl gives the series' IMDb ID.
   {
     title: "Black Clover",
     anime_type: "tv",
@@ -125,7 +122,6 @@ describe("simkl trending charts", () => {
       ["Demon Slayer: Infinity Castle", "movie", "tt32820897"],
       ["Mouse Cursor", "series", undefined],
     ]);
-    // The entry without an IMDb ID resolves through its TMDB ID.
     expect(entries[2].externalIds).toEqual({
       simkl: 3004128,
       tmdb: { id: 334779, type: "series" },

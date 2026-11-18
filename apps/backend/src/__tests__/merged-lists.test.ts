@@ -64,11 +64,7 @@ const TRAKT_LIST: ListSource = {
 
 let accountId = "";
 
-function entry(
-  id: string,
-  addedAt?: string,
-  type: TitleType = "movie",
-): SourceEntry {
+function entry(id: string, addedAt?: string, type: TitleType = "movie") {
   return {
     imdbId: id,
     type,
@@ -77,7 +73,6 @@ function entry(
   };
 }
 
-/** A fake Provider whose Source lists are keyed by reference. */
 function fakeSources(
   provider: ProviderId,
   sources: Partial<Record<string, SourceEntry[] | Error>>,
@@ -96,10 +91,9 @@ function fakeSources(
   );
 }
 
-/** Seed a merged List and answer the cache key of each Source list. */
 function seedMergedList(
   overrides: Partial<Tables<"lists">> & { merged?: ListSource[] } = {},
-): string[] {
+) {
   const { merged = [TRAKT_LIST], ...rest } = overrides;
   seedList(accountId, {
     id: LIST_1,
@@ -208,7 +202,6 @@ describe("merged Catalog", () => {
     fakeSources("justwatch", {
       [JUSTWATCH_LIST.sourceRef]: [entry("tt3"), entry("tt2"), entry("tt0")],
     });
-    // Equal (missing) ratings keep the canonical order.
     seedMergedList({ merged: [JUSTWATCH_LIST], sort_option: "rating-desc" });
 
     const { body } = await catalog();
@@ -342,7 +335,6 @@ describe("saving merged Lists", () => {
 
     const config = await app.request(`/${accountId}/config`);
     const json = await readJson(config, configBody);
-    // The label names a Source list on the configure page only.
     expect(json.lists[0].mergedSources).toEqual([
       TRAKT_LIST,
       { ...JUSTWATCH_LIST, label: "Family picks" },
@@ -378,8 +370,6 @@ describe("saving merged Lists", () => {
       { provider: "trakt", source_ref: TRAKT_LIST.sourceRef },
       { provider: "justwatch", source_ref: JUSTWATCH_LIST.sourceRef },
     ];
-    // Another save merges a Source list after this save read the Lists and
-    // before its transaction runs.
     const rpc = vi.spyOn(supabase, "rpc");
     rpc.mockImplementationOnce((name, args) => {
       db.getTable("lists")[0].merged_sources = concurrent;
@@ -412,8 +402,6 @@ describe("saving merged Lists", () => {
     const json = await readJson(config, configBody);
     expect(json.lists[0].sourceLabel).toBe("Family picks");
 
-    // A client that omits the label keeps it while the first Source list
-    // stays the same.
     const listId = mustString(db.getTable("lists")[0].id, "the List ID");
     const kept = await postConfig([
       { ...listBody(JUSTWATCH_LIST, [TRAKT_LIST]), id: listId },
@@ -553,7 +541,6 @@ describe("saving merged Lists", () => {
       configBody,
     );
 
-    // The legacy configure page sends the setup it shows, with its List IDs.
     const res = await app.request("/accounts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

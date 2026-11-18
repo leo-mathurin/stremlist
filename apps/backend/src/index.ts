@@ -1,4 +1,3 @@
-// First import: stops the start when a required variable is missing.
 import "./lib/env";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -17,7 +16,6 @@ import watch from "./routes/watch";
 const app = new Hono();
 
 app.use("*", cors({ origin: "*" }));
-// OAuth callbacks carry one-time codes in the query string: keep them out of logs.
 app.use(
   "*",
   logger((message, ...rest) => {
@@ -37,16 +35,12 @@ app.route("", stream);
 app.route("", oauth);
 app.route("", actions);
 
-// Stremio sends users here: redirect to the configure page.
 app.get("/:accountKey/configure", (c) => {
   const url = new URL("/configure", frontendUrl());
   url.searchParams.set("account", c.req.param("accountKey"));
   return c.redirect(url.toString());
 });
 
-// Real health check: pings Supabase so uptime monitors reflect the actual
-// state of the addon. A static 200 here would report "up" even when the
-// database is down (e.g. usage limit exceeded) and the addon is dead.
 app.get("/health", async (c) => {
   const { error } = await supabase
     .from("accounts")

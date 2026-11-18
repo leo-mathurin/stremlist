@@ -3,7 +3,6 @@ import { numberOf } from "./rpc";
 import type { Row } from "./store";
 import { db, now } from "./store";
 
-/** record_provider_probe, from 20261116120000_provider_outages.sql. */
 const recordProviderProbe: RpcHandler = (args) => {
   const provider = args.p_provider;
   if (typeof provider !== "string") throw new Error("p_provider is required");

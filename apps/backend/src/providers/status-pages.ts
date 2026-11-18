@@ -10,19 +10,15 @@ export type StatusPageState = "down" | "up";
 
 interface StatusPage {
   url: string;
-  /** The state of the components Stremlist reads, or null. */
   read: (data: unknown) => StatusPageState | null;
 }
 
-/** "down" when any listed component is down, "up" when all are up. */
-function stateOf(states: (boolean | null)[]): StatusPageState | null {
+function stateOf(states: (boolean | null)[]) {
   if (states.length === 0) return null;
   if (states.some((down) => down === true)) return "down";
   return states.every((down) => down === false) ? "up" : null;
 }
 
-// UptimeRobot public status pages (Trakt, Simkl). Not a documented API: the
-// page itself loads it. "danger" is a monitor that is down.
 const uptimeRobotSchema = z.object({
   psp: z.object({
     monitors: z.array(
@@ -39,7 +35,7 @@ function uptimeRobot(
   pageId: string,
   host: string,
   isApi: (monitor: { name: string; groupName?: string | null }) => boolean,
-): StatusPage {
+) {
   return {
     url: `https://${host}/api/getMonitorList/${pageId}`,
     read: (data) => {
@@ -60,7 +56,6 @@ function uptimeRobot(
   };
 }
 
-// Better Stack status page (MDBList): "downtime" is a resource that is down.
 const betterStackSchema = z.object({
   included: z.array(
     z.object({
@@ -75,15 +70,10 @@ const betterStackSchema = z.object({
   ),
 });
 
-// Instatus status page (SensCritique).
 const instatusSchema = z.object({
   components: z.array(z.object({ name: z.string(), status: z.string() })),
 });
 
-/**
- * The official status pages that say whether the part Stremlist reads is
- * down. Letterboxd, IMDb and JustWatch publish none.
- */
 const STATUS_PAGES: Partial<Record<ProviderId, StatusPage>> = {
   trakt: uptimeRobot(
     "wVLWNFLGN9",
@@ -119,8 +109,6 @@ const STATUS_PAGES: Partial<Record<ProviderId, StatusPage>> = {
     },
   },
   senscritique: {
-    // The same page on Instatus' own domain: status.senscritique.com puts a
-    // Vercel bot challenge (HTTP 403) in front of it.
     url: "https://senscritique.instatus.com/v2/components.json",
     read: (data) => {
       const parsed = instatusSchema.safeParse(data);
@@ -152,9 +140,7 @@ export const STATUS_PAGE_PROVIDERS = Object.keys(STATUS_PAGES).filter(
  * the page does not answer, or its format changed. Never throws: a status
  * page is an extra signal, never a reason to fail the monitor.
  */
-export async function readStatusPage(
-  provider: ProviderId,
-): Promise<StatusPageState | null> {
+export async function readStatusPage(provider: ProviderId) {
   const page = STATUS_PAGES[provider];
   if (!page) return null;
   try {

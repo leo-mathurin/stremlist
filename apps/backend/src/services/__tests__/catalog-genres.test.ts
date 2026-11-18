@@ -109,7 +109,6 @@ describe("genres of a merged List", () => {
     const [withGenres] = await withAvailableGenres([merged]);
 
     expect(withGenres.availableGenres).toEqual(["Drama", "Western"]);
-    // The third Source list has no cache yet.
     expect(withGenres.sourceGenres).toEqual([
       { movie: ["Drama"], series: [] },
       { movie: [], series: ["Western"] },

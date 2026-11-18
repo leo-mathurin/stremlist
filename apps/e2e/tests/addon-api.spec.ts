@@ -44,14 +44,9 @@ import {
   UNKNOWN_USER,
 } from "../helpers/test-data.js";
 
-// Addon protocol contract — the exact HTTP surface every Stremio client
-// (web, desktop, mobile) consumes. Data comes from live IMDb, so assertions
-// are structural: ordering invariants, id shapes, counts.
-
 const CATALOG_ID_PATTERN =
   /^wl-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-(movie|series)$/;
 
-/** What resolveLink answers for a link that it cannot read. */
 const failedLink = (reason: string, provider = "imdb") => ({
   ok: false,
   reason,
@@ -75,7 +70,6 @@ test.describe("manifest", () => {
       const manifest = await getManifest(PUBLIC_USER);
       expect(manifest.id).toBe(`com.stremlist.${PUBLIC_USER}`);
       expect(manifest.behaviorHints?.configurationRequired).toBe(false);
-      // Default watchlist in split mode → one movie + one series catalog.
       expect(manifest.catalogs).toHaveLength(2);
       expect(manifest.catalogs.map((c) => c.type).sort()).toEqual([
         "movie",
@@ -83,16 +77,13 @@ test.describe("manifest", () => {
       ]);
       for (const catalogRef of manifest.catalogs) {
         expect(catalogRef.id).toMatch(CATALOG_ID_PATTERN);
-        // The name v1 gave it: the only List, an untitled IMDb watchlist.
         expect(catalogRef.name).toBe("Stremlist");
       }
-      // The meta resource must stay declared — Stremio clients rely on it.
       const metaResource = manifest.resources.find(
         (r): r is StremioResource => typeof r === "object" && r.name === "meta",
       );
       expect(metaResource?.idPrefixes).toEqual(["tt"]);
 
-      // The install got a legacy Account with one IMDb watchlist List.
       const account = await getAccountByLegacyAlias(PUBLIC_USER);
       expect(account).not.toBeNull();
       expect(
@@ -166,7 +157,6 @@ test.describe("catalogs", () => {
         expect(meta.id).toMatch(/^tt\d+$/);
         expect(meta.name.length).toBeGreaterThan(0);
       }
-      // One manifest and one compressed catalog generation are persisted.
       expect(await countCacheObjects(listId)).toBe(2);
     },
   );
@@ -269,8 +259,6 @@ test.describe("catalogs", () => {
       expect(pages[2].metas.length).toBeGreaterThan(0);
 
       const metas = pages.flatMap((page) => page.metas);
-      // IMDb Top 250. Allow slack for titles Stremio types cannot represent,
-      // but make sure pagination neither duplicates nor drops a whole page.
       expect(metas.length).toBeGreaterThan(200);
       expect(new Set(metas.map((meta) => meta.id)).size).toBe(metas.length);
       for (const meta of metas.slice(0, 10)) {
@@ -406,8 +394,6 @@ test.describe("meta", () => {
       expect(hit.meta?.name).toBe(first.name);
       expect(hit.meta?.id).toBe(first.id);
 
-      // Cache-only: unknown ids must return null (Stremio then asks Cinemeta),
-      // never 500.
       const miss = await getMeta(accountId, "movie", "tt9999999999");
       expect(miss.status).toBe(200);
       expect(miss.meta).toBeNull();
@@ -442,8 +428,6 @@ test.describe("link resolution", () => {
       });
       expect(await resolveLink(UNKNOWN_LIST)).toEqual(failedLink("not_found"));
 
-      // p-handles resolve to a canonical ur id first. The target account's
-      // watchlist visibility is not under our control, so only assert shape.
       const handleResult = await resolveLink(
         `https://www.imdb.com/user/${P_HANDLE}/`,
       );
@@ -457,8 +441,6 @@ test.describe("link resolution", () => {
 
   test("reports private sources", { tag: "@live-regression" }, async () => {
     expect(await resolveLink(PRIVATE_USER)).toEqual(failedLink("private"));
-    // Same account via its p-handle: exercises handle resolution on a
-    // private source.
     expect(await resolveLink(PRIVATE_P_HANDLE)).toEqual(failedLink("private"));
     if (PRIVATE_LIST) {
       expect(await resolveLink(PRIVATE_LIST)).toEqual(failedLink("private"));
@@ -482,7 +464,6 @@ test.describe("link resolution", () => {
         suggestedTitle: "Box Office (Weekend)",
         defaultDisplayMode: "movie",
       });
-      // MDBList Source lists always read through a Connection.
       expect(
         await resolveLink("https://mdblist.com/lists/someone/some-list"),
       ).toEqual(failedLink("needs_connection", "mdblist"));
@@ -505,7 +486,6 @@ test.describe("config API", () => {
     expect(await status([{ ...valid, sortOption: "bogus" }])).toBe(400);
     expect(await status([valid, valid])).toBe(400);
     expect(await status([{ ...valid, sourceRef: "banana" }])).toBe(400);
-    // A Source list that needs a Connection the Account does not have.
     const needsConnection = await postConfig(accountId, [
       {
         provider: "simkl",
@@ -517,7 +497,6 @@ test.describe("config API", () => {
       status: 400,
       body: { error: "Connect your Simkl account first." },
     });
-    // Nothing above changed the stored configuration.
     expect((await getConfig(accountId)).body.lists).toMatchObject([
       { provider: "imdb", sourceRef: PUBLIC_USER, sortOption: "added_at-asc" },
     ]);
@@ -543,7 +522,6 @@ test.describe("config API", () => {
         actions: { enabled: false, providers: [] },
         lists: [{ provider: "imdb", sourceRef: "imdb:box-office" }],
       });
-      // Creation validates like a save.
       expect((await createAccount([listInput("imdb", "banana")])).status).toBe(
         400,
       );

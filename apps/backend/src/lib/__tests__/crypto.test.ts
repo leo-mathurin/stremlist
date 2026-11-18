@@ -9,7 +9,7 @@ import {
 const KEY = Buffer.alloc(32, 1).toString("base64");
 const OTHER_KEY = Buffer.alloc(32, 2).toString("base64");
 
-function tamper(stored: string, index: number): string {
+function tamper(stored: string, index: number) {
   const [version, payload] = stored.split(":");
   const raw = Buffer.from(payload, "base64");
   raw[index] ^= 0x01;

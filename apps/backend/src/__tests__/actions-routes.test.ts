@@ -26,7 +26,6 @@ vi.mock("../lib/background", () => ({ scheduleBackgroundTask: vi.fn() }));
 vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
 vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
 vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
-// Pages name the Title; tests use a fixed name instead of IMDb.
 vi.mock("../titles/enrich", () => ({
   enrichTitles: vi.fn((titles: { imdbId: string; type?: string }[]) =>
     Promise.resolve(
@@ -72,7 +71,6 @@ function seedMembership(
   );
 }
 
-/** An Account with Actions on Trakt, connected; private unless `legacy`. */
 function seedActionAccount(
   overrides: {
     enabled?: boolean;
@@ -278,7 +276,6 @@ describe("Action pages", () => {
     `watchlist/toggle/movie/${MOVIE}`,
     `watchlist/add/channel/${MOVIE}`,
     `delete/add/movie/${MOVIE}`,
-    // Broken percent encoding.
     `watched/add/series/${SERIES}%`,
   ])("refuses the malformed Action %s", async (path) => {
     const account = seedActionAccount();
@@ -383,7 +380,6 @@ describe("Action pages", () => {
       expect(html).toContain("Rate The Title");
       expect(html).toContain("Choose at least one account");
       expect(html).toMatch(/value="8"[^>]*checked/);
-      // The form shows the choice the user sent: nothing ticked.
       expect(html).not.toMatch(/value="trakt"[^>]*checked/);
       expect(perform).not.toHaveBeenCalled();
     });

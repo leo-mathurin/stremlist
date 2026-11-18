@@ -21,8 +21,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// Radix Select reserves "" for "nothing selected", so the "any" option needs
-// a real value of its own.
 const ANY = "__any__";
 
 type Filter = {
@@ -111,9 +109,6 @@ export default function CatalogFilterSettings({
         />
       </button>
 
-      {/* Height reveal via grid-template-rows so the transition stays
-          interruptible and needs no measurement. Inner wrapper bleeds 4px on
-          each side so focus rings aren't clipped by overflow-hidden. */}
       <div
         id={panelId}
         inert={!open}

@@ -7,26 +7,16 @@ import type { ChartEntry } from "@stremlist/shared/imdb-charts";
 import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
 import { z } from "zod";
 import { HttpError } from "../providers/http";
-import type { PagedRead } from "../providers/types";
 
 const GRAPHQL_ENDPOINT = "https://api.graphql.imdb.com/";
 const GRAPHQL_CLIENT_NAME = "imdb-next-desktop";
 
-// 750 cuts the number of sequential IMDb requests by two thirds while keeping
-// each full-metadata response below the size where latency rises sharply.
 const PAGE_SIZE = 750;
 const IMDB_CURSOR_WINDOW_SIZE = 10_000;
-// Keep the user-facing item ceiling explicit, then derive the pagination safety
-// stop from it so changing PAGE_SIZE cannot silently change the supported limit.
-// This is intentionally bounded: every additional page is a sequential IMDb
-// request, so raising it further would make cold loads in Stremio even slower.
 const MAX_ITEMS = 15_000;
-// The ratings search ends after its first cursor window: it answers no next
-// page at 10,000, whatever its total.
 const MAX_RATINGS = IMDB_CURSOR_WINDOW_SIZE;
 
-/** The pagination safety stop for a read of at most `maxItems`. */
-function pagesFor(maxItems: number): number {
+function pagesFor(maxItems: number) {
   return (
     Math.floor(maxItems / IMDB_CURSOR_WINDOW_SIZE) *
       Math.ceil(IMDB_CURSOR_WINDOW_SIZE / PAGE_SIZE) +
@@ -34,16 +24,13 @@ function pagesFor(maxItems: number): number {
   );
 }
 
-function getPageSize(itemsFetched: number, targetItems: number): number {
+function getPageSize(itemsFetched: number, targetItems: number) {
   const remaining = targetItems - itemsFetched;
   const cursorWindowRemaining =
     IMDB_CURSOR_WINDOW_SIZE - (itemsFetched % IMDB_CURSOR_WINDOW_SIZE);
   return Math.min(PAGE_SIZE, remaining, cursorWindowRemaining);
 }
 
-// Single source of truth for the `Title` node field selection. Both watchlist
-// queries and all three chart queries return this exact node shape, so they all
-// interpolate this fragment and reuse `processWatchlist`/`convertToStremioFormat`.
 const TITLE_FRAGMENT = `
   id
   titleText { text }
@@ -98,8 +85,6 @@ const LIST_QUERY = `
   }
 `;
 
-// Ratings come from a title search, newest rating first. `userRating` needs
-// the `userId` argument: without it, IMDb asks for a login.
 const RATINGS_QUERY = `
   query UserRatings($userId: ID!, $first: Int!, $after: String) {
     advancedTitleSearch(
@@ -137,11 +122,7 @@ const VALIDATE_RATINGS_QUERY = `
   }
 `;
 
-// Chart query builders. `chartType` / `comingSoonType` are GraphQL enums and the
-// release date is a scalar, so they're interpolated directly (values come from
-// the closed registry / our own clock — never user input — so no injection risk).
-// `first` stays a variable. boxOffice is fully fixed.
-function buildChartTitlesQuery(chartType: string): string {
+function buildChartTitlesQuery(chartType: string) {
   return `
     query ChartTitles($first: Int!, $after: String) {
       chartTitles(chart: { chartType: ${chartType} }, first: $first, after: $after) {
@@ -174,7 +155,7 @@ const BOX_OFFICE_QUERY = `
   }
 `;
 
-function buildComingSoonQuery(comingSoonType: string, date: string): string {
+function buildComingSoonQuery(comingSoonType: string, date: string) {
   return `
     query ComingSoon($first: Int!) {
       comingSoon(
@@ -199,7 +180,6 @@ const VALIDATE_LIST_QUERY = `
   }
 `;
 
-// IMDb answers null for a missing field, so every field accepts null.
 const textSchema = z.object({ text: z.string().nullish() }).nullish();
 
 const titleNodeSchema = z.object({
@@ -245,7 +225,6 @@ const titleNodeSchema = z.object({
 type TitleNode = z.infer<typeof titleNodeSchema>;
 
 const imdbEdgeSchema = z.object({
-  /** Watchlist and list items: when the user added the Title. */
   node: z.object({ createdDate: z.string().nullish() }).nullish(),
   listItem: titleNodeSchema,
 });
@@ -368,7 +347,7 @@ export type WatchlistErrorReason = "private" | "not_found";
  * not-found) vs. something else (transient/unknown → null). Kept next to the
  * message constants so the mapping has a single source of truth.
  */
-export function classifyImdbError(error: unknown): WatchlistErrorReason | null {
+export function classifyImdbError(error: unknown) {
   const message = error instanceof Error ? error.message : "";
   if (
     message === ERROR_PRIVATE ||
@@ -387,7 +366,7 @@ export function classifyImdbError(error: unknown): WatchlistErrorReason | null {
   return null;
 }
 
-function hasForbiddenError(errors: GraphQLResponse["errors"]): boolean {
+function hasForbiddenError(errors: GraphQLResponse["errors"]) {
   return errors?.some((e) => e.extensions?.code === "FORBIDDEN") ?? false;
 }
 
@@ -395,7 +374,7 @@ async function queryImdbGraphQL(
   operationName: string,
   query: string,
   variables: Record<string, unknown>,
-): Promise<GraphQLResponse> {
+) {
   const response = await fetch(GRAPHQL_ENDPOINT, {
     method: "POST",
     headers: {
@@ -405,7 +384,6 @@ async function queryImdbGraphQL(
     body: JSON.stringify({ operationName, query, variables }),
   });
 
-  // IMDb itself failed: not a missing list.
   if (response.status >= 500) {
     throw new HttpError(response.status, "", GRAPHQL_ENDPOINT);
   }
@@ -426,7 +404,7 @@ export type ListValidationResult =
 
 const pHandleCache = new Map<string, string>();
 
-async function resolvePHandle(handle: string): Promise<string> {
+async function resolvePHandle(handle: string) {
   const cached = pHandleCache.get(handle);
   if (cached) {
     return cached;
@@ -458,9 +436,7 @@ async function resolvePHandle(handle: string): Promise<string> {
   return canonical;
 }
 
-export async function normalizeImdbUserId(input: string): Promise<string> {
-  // Built-in chart ids are synthetic (no IMDb user behind them) — pass through
-  // with no network call before the p-handle resolution branch.
+export async function normalizeImdbUserId(input: string) {
   if (isChartId(input)) {
     return input;
   }
@@ -485,11 +461,7 @@ const VALIDATE_QUERY = `
 
 type ImdbList = z.infer<typeof imdbListSchema> | null | undefined;
 
-/** Whether a watchlist or list that a validation query returned is public. */
-function validationResult(
-  json: GraphQLResponse,
-  list: ImdbList,
-): ListValidationResult {
+function validationResult(json: GraphQLResponse, list: ImdbList) {
   if (json.errors?.length) {
     return {
       valid: false,
@@ -502,9 +474,7 @@ function validationResult(
     : { valid: false, reason: "private" };
 }
 
-export async function validateImdbWatchlist(
-  input: string,
-): Promise<ValidationResult> {
+export async function validateImdbWatchlist(input: string) {
   let userId: string;
   try {
     userId = await normalizeImdbUserId(input);
@@ -523,7 +493,6 @@ export async function validateImdbWatchlist(
   }
 }
 
-/** Every page of a watchlist, list or ratings, up to `maxItems`. */
 async function readListPages(
   label: string,
   errors: { private: string; notFound: string },
@@ -532,7 +501,7 @@ async function readListPages(
     after: string | null,
   ) => Promise<{ json: GraphQLResponse; list: ImdbList }>,
   maxItems = MAX_ITEMS,
-): Promise<PagedRead<ImdbEdge>> {
+) {
   const edges: ImdbEdge[] = [];
   let after: string | null = null;
   let targetItems = maxItems;
@@ -582,9 +551,7 @@ async function readListPages(
   return { items: edges, complete };
 }
 
-export async function getImdbWatchlist(
-  input: string,
-): Promise<PagedRead<ImdbEdge>> {
+export async function getImdbWatchlist(input: string) {
   const userId = await normalizeImdbUserId(input);
   return readListPages(
     `Watchlist for ${userId}`,
@@ -600,7 +567,7 @@ export async function getImdbWatchlist(
   );
 }
 
-function processWatchlist(edges: ImdbEdge[]): ProcessedItem[] {
+function processWatchlist(edges: ImdbEdge[]) {
   const items: ProcessedItem[] = [];
 
   for (const edge of edges) {
@@ -658,7 +625,7 @@ function processWatchlist(edges: ImdbEdge[]): ProcessedItem[] {
   return items;
 }
 
-function releaseDate(date: TitleNode["releaseDate"]): string | undefined {
+function releaseDate(date: TitleNode["releaseDate"]) {
   if (!date?.year || !date.month || !date.day) return undefined;
   const value = new Date(Date.UTC(date.year, date.month - 1, date.day));
   if (
@@ -670,16 +637,12 @@ function releaseDate(date: TitleNode["releaseDate"]): string | undefined {
   return value.toISOString();
 }
 
-function formatRuntime(seconds: number): string {
+function formatRuntime(seconds: number) {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 }
 
-// Stremio only has `movie` and `series` catalog types, so every single-video
-// IMDb title (theatrical, made-for-TV, short, etc.) maps to `movie`. Episodic
-// content (`TV Episode`) and non-video titles (`Video Game`, `Music Video`,
-// `Podcast Series`, `Podcast Episode`) are dropped.
 const MOVIE_TYPES = new Set([
   "Movie",
   "TV Movie",
@@ -690,7 +653,7 @@ const MOVIE_TYPES = new Set([
 ]);
 const SERIES_TYPES = new Set(["TV Series", "TV Mini Series"]);
 
-function convertToStremioFormat(items: ProcessedItem[]): StremioMeta[] {
+function convertToStremioFormat(items: ProcessedItem[]) {
   const metas: StremioMeta[] = [];
 
   for (const item of items) {
@@ -745,7 +708,7 @@ export interface ImdbListData extends CatalogData {
   addedAt?: Map<string, string>;
 }
 
-function addedDates(edges: ImdbEdge[]): Map<string, string> {
+function addedDates(edges: ImdbEdge[]) {
   const dates = new Map<string, string>();
   for (const edge of edges) {
     const date = edge.node?.createdDate;
@@ -754,21 +717,18 @@ function addedDates(edges: ImdbEdge[]): Map<string, string> {
   return dates;
 }
 
-export function isListId(id: string): boolean {
+export function isListId(id: string) {
   return id.startsWith("ls");
 }
 
-/** Stremio metas of IMDb edges, with the logs of a read. */
-function toMetas(edges: ImdbEdge[], read: string): StremioMeta[] {
+function toMetas(edges: ImdbEdge[], read: string) {
   console.log(`Raw ${read} (${edges.length} items)`);
   const metas = convertToStremioFormat(processWatchlist(edges));
   console.log(`Converted ${metas.length} items to Stremio format`);
   return metas;
 }
 
-export async function fetchWatchlist(
-  imdbUserId: string,
-): Promise<ImdbListData> {
+export async function fetchWatchlist(imdbUserId: string) {
   console.log(`Fetching IMDb watchlist for user ${imdbUserId}...`);
   const { items, complete } = await getImdbWatchlist(imdbUserId);
   const metas = toMetas(
@@ -778,12 +738,7 @@ export async function fetchWatchlist(
   return { metas, complete, addedAt: addedDates(items) };
 }
 
-/**
- * Fetch a built-in IMDb chart and normalise its three possible edge shapes into
- * the shared `ImdbEdge` (`{ listItem: <Title> }`) so the rest of the pipeline
- * (processWatchlist + convertToStremioFormat) is reused verbatim.
- */
-async function getChartEdges(entry: ChartEntry): Promise<ImdbEdge[]> {
+async function getChartEdges(entry: ChartEntry) {
   switch (entry.query.kind) {
     case "chartTitles": {
       const query = buildChartTitlesQuery(entry.query.chartType);
@@ -834,8 +789,6 @@ async function getChartEdges(entry: ChartEntry): Promise<ImdbEdge[]> {
 
       const edges: ImdbEdge[] = [];
       for (const edge of releases.edges ?? []) {
-        // Some releases carry no resolved title yet — skip rather than emit a
-        // meta with an empty id (which convertToStremioFormat would drop anyway).
         const title = edge.node.release?.titles?.[0];
         if (!title) {
           continue;
@@ -867,24 +820,19 @@ async function getChartEdges(entry: ChartEntry): Promise<ImdbEdge[]> {
   }
 }
 
-export async function fetchChart(sourceId: string): Promise<ImdbListData> {
+export async function fetchChart(sourceId: string) {
   const entry = CHART_BY_ID.get(sourceId);
   if (!entry) {
-    // Unknown chart id has no fetcher. Charts are public, so there's no
-    // private/not-found nuance — just signal "nothing to serve".
     throw new Error(ERROR_NOT_FOUND);
   }
 
   console.log(`Fetching IMDb chart ${sourceId}...`);
   const edges = await getChartEdges(entry);
   const metas = toMetas(edges, `chart data received from IMDb for ${sourceId}`);
-  // A chart is its first N titles by definition, so the read is complete.
   return { metas, complete: true };
 }
 
-export async function validateImdbList(
-  listId: string,
-): Promise<ListValidationResult> {
+export async function validateImdbList(listId: string) {
   try {
     const json = await queryImdbGraphQL("ValidateList", VALIDATE_LIST_QUERY, {
       listId,
@@ -895,7 +843,7 @@ export async function validateImdbList(
   }
 }
 
-export function getImdbList(listId: string): Promise<PagedRead<ImdbEdge>> {
+export function getImdbList(listId: string) {
   return readListPages(
     `List ${listId}`,
     { private: ERROR_LIST_PRIVATE, notFound: ERROR_LIST_NOT_FOUND },
@@ -910,7 +858,7 @@ export function getImdbList(listId: string): Promise<PagedRead<ImdbEdge>> {
   );
 }
 
-export async function fetchList(listId: string): Promise<ImdbListData> {
+export async function fetchList(listId: string) {
   console.log(`Fetching IMDb list ${listId}...`);
   const { items, complete } = await getImdbList(listId);
   const metas = toMetas(items, `list data received from IMDb for ${listId}`);
@@ -922,9 +870,7 @@ export async function fetchList(listId: string): Promise<ImdbListData> {
  * user as it refuses private ones, so the watchlist query tells them apart:
  * it answers null for a missing user.
  */
-export async function validateImdbRatings(
-  input: string,
-): Promise<ValidationResult> {
+export async function validateImdbRatings(input: string) {
   let userId: string;
   try {
     userId = await normalizeImdbUserId(input);
@@ -952,9 +898,7 @@ export async function validateImdbRatings(
 }
 
 /** The newest MAX_RATINGS ratings of a user, newest first. */
-export async function getImdbRatings(
-  input: string,
-): Promise<PagedRead<ImdbEdge>> {
+export async function getImdbRatings(input: string) {
   const userId = await normalizeImdbUserId(input);
   return readListPages(
     `Ratings of ${userId}`,
@@ -965,8 +909,6 @@ export async function getImdbRatings(
         first,
         after,
       });
-      // Only a refusal says something about the ratings; IMDb's search also
-      // fails now and then, which must not empty the Catalog.
       if (json.errors?.length && !hasForbiddenError(json.errors)) {
         throw new Error(`IMDb could not read the ratings of ${userId}`);
       }
@@ -997,7 +939,7 @@ export async function getImdbRatings(
 }
 
 /** A user's ratings, oldest first, each dated by its rating. */
-export async function fetchRatings(userId: string): Promise<ImdbListData> {
+export async function fetchRatings(userId: string) {
   console.log(`Fetching IMDb ratings of ${userId}...`);
   const { items, complete } = await getImdbRatings(userId);
   const oldestFirst = [...items].reverse();
@@ -1014,7 +956,6 @@ const TITLES_BY_ID_QUERY = `
   }
 `;
 
-// IMDb answers 250 titles in well under a second.
 const TITLES_BATCH_SIZE = 250;
 
 /**
@@ -1022,9 +963,7 @@ const TITLES_BATCH_SIZE = 250;
  * enrichment step for Providers that only give IMDb IDs. Unknown IDs and
  * non-video titles (episodes, games…) are left out of the result.
  */
-export async function fetchTitlesByIds(
-  imdbIds: string[],
-): Promise<Map<string, StremioMeta>> {
+export async function fetchTitlesByIds(imdbIds: string[]) {
   const result = new Map<string, StremioMeta>();
   for (let start = 0; start < imdbIds.length; start += TITLES_BATCH_SIZE) {
     const ids = imdbIds.slice(start, start + TITLES_BATCH_SIZE);

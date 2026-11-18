@@ -90,7 +90,6 @@ describe("detection", () => {
 
     const metas = await newTitles();
     expect(ids(metas)).toEqual(["tt0000002"]);
-    // The date of the detection, not an addition date from the Provider.
     expect(metas[0].description).toBe(
       "Detected by Stremlist on 3 Oct 2026 in Watchlist.\n\nA plot.",
     );
@@ -116,7 +115,6 @@ describe("detection", () => {
     expect(ids(await newTitles())).toEqual(["tt0000002"]);
     expect(detectionRows().every((row) => row.removed_at === null)).toBe(true);
 
-    // The next complete one is compared with the last complete one.
     source.read = null;
     await sync(LIST_IDS[0]);
     expect(ids(await newTitles())).toEqual(["tt0000002"]);
@@ -129,7 +127,6 @@ describe("detection", () => {
     const source = sourceList("imdb", [movie("tt0000001"), movie("tt0000002")]);
     await sync(LIST_IDS[0]);
 
-    // The first page only, with a Title that is new.
     source.read = () => ({
       entries: [entry(movie("tt0000001")), entry(movie("tt0000003"))],
       complete: false,
@@ -139,7 +136,6 @@ describe("detection", () => {
     expect(await newTitles()).toEqual([]);
     expect(detectionRows().every((row) => row.removed_at === null)).toBe(true);
 
-    // The next complete read detects it, at its own date.
     source.read = null;
     source.metas = [movie("tt0000001"), movie("tt0000002"), movie("tt0000003")];
     vi.setSystemTime(Date.now() + DAY_MS);
@@ -180,15 +176,10 @@ describe("detection", () => {
     source.metas = [movie("tt0000001"), movie("tt0000002")];
     await sync(LIST_IDS[1]);
 
-    // Compared with the earlier Baseline, not taken as a new one.
     expect(ids(await newTitles())).toEqual(["tt0000002"]);
   });
 });
 
-/**
- * A Source list whose entries carry a Provider ID (the entry key) and
- * resolve through a strategy that knows only the IDs in `known`.
- */
 function resolvingSourceList() {
   const state = {
     entries: [] as SourceEntry[],
@@ -224,8 +215,7 @@ function resolvingSourceList() {
   return state;
 }
 
-/** An entry without an IMDb ID that the strategy resolves to `imdbId`. */
-function providerEntry(trakt: number, imdbId: string): SourceEntry {
+function providerEntry(trakt: number, imdbId: string) {
   return {
     externalIds: { trakt },
     type: "movie",
@@ -234,7 +224,6 @@ function providerEntry(trakt: number, imdbId: string): SourceEntry {
   };
 }
 
-/** An entry that no strategy ever resolves (no IMDb entry at all). */
 const NEVER_RESOLVED: SourceEntry = {
   externalIds: { trakt: 999 },
   type: "movie",
@@ -242,7 +231,6 @@ const NEVER_RESOLVED: SourceEntry = {
 };
 
 describe("Unresolved entries", () => {
-  // The resolver retries an Unresolved entry after 24 hours.
   const AFTER_RETRY_MS = 25 * 60 * 60_000;
 
   function seedTraktList() {
@@ -303,7 +291,6 @@ describe("Unresolved entries", () => {
     source.entries = [...source.entries, providerEntry(4, "tt0000004")];
     await sync(LIST_IDS[0]);
     const firstSeen = new Date().toISOString();
-    // Not shown while it has no Title yet.
     expect(await newTitles()).toEqual([]);
 
     source.known.set(4, "tt0000004");
@@ -337,7 +324,6 @@ describe("overlapping reads and Connections", () => {
     useFakeProvider(
       fakeAdapter("imdb", {
         fetchSource: () => {
-          // A slow read: a newer one may start and finish meanwhile.
           vi.setSystemTime(Date.now() + 10 * 60_000);
           return Promise.resolve({
             entries: [entry(movie("tt0000001"))],
@@ -368,7 +354,6 @@ describe("overlapping reads and Connections", () => {
     useFakeProvider(
       fakeAdapter("trakt", {
         fetchSource: () => {
-          // The user disconnects while the read runs.
           db.tables.connections = [];
           return Promise.resolve({
             entries: [entry(movie("tt0000001"))],

@@ -23,7 +23,6 @@ const newsletter = new Hono().post(
         unsubscribed: false,
         audienceId: process.env.RESEND_AUDIENCE_ID,
       });
-      // Resend returns provider failures as data rather than rejecting.
       if (contact.error) {
         throw Object.assign(new Error(contact.error.message), {
           statusCode: contact.error.statusCode,

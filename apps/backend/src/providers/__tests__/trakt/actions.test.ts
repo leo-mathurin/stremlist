@@ -17,7 +17,6 @@ import {
   noImdbShow,
   pitt,
 } from "./fixtures";
-import type { Call } from "./harness";
 import {
   calls,
   clearCalls,
@@ -119,7 +118,6 @@ describe("Trakt actions", () => {
   });
 
   it("reads every page of watched movies and shows", async () => {
-    // Trakt pages /sync/watched/* 100 at a time when no limit is given.
     route("GET /users/me/watchlist", []);
     route(
       "GET /sync/watched/movies",
@@ -152,7 +150,7 @@ describe("Trakt actions", () => {
   async function performed(
     intent: Parameters<typeof actions.perform>[1],
     target: Parameters<typeof actions.perform>[2],
-  ): Promise<Call> {
+  ) {
     route(`POST /sync/watchlist`, {
       added: {},
       not_found: { movies: [], shows: [] },

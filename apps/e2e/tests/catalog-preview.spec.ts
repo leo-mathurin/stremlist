@@ -26,12 +26,6 @@ import { present } from "../helpers/json.js";
 import { countCacheObjects } from "../helpers/r2.js";
 import { CATALOG_FIXTURE_USER, PUBLIC_LIST } from "../helpers/test-data.js";
 
-// The Catalog preview (POST /lists/preview, STR-57) against real handlers.
-// A second backend reads a synthetic SensCritique list through the real
-// adapter, ID resolver (with its Supabase cache) and IMDb enrichment, with
-// only the outbound Provider transport replaced (helpers/provider-fixtures.ts).
-// The standard backend covers the access rules and a live IMDb list.
-
 const PUBLIC_REF = `lists/${PREVIEW_PUBLIC_LIST}`;
 const PRIVATE_REF = `lists/${PREVIEW_PRIVATE_LIST}`;
 const ANIMATION_LIST = {
@@ -51,15 +45,13 @@ test.afterAll(async () => {
 
 test.beforeEach(async () => {
   await resetDb();
-  // Forget what earlier runs resolved for the synthetic products.
   await clearResolverCache("senscritique", PREVIEW_PRODUCT_IDS);
 });
 
-/** A preview through `through`, sorted by date added and split by default. */
 async function preview(
   through: Api,
   input: Omit<PreviewInput, "sortOption"> & { sortOption?: string },
-): Promise<CatalogPreviewResponse> {
+) {
   const { status, body } = await through.previewList({
     sortOption: "added_at-asc",
     displayMode: "split",
@@ -78,8 +70,6 @@ test(
   "a preview resolves the Source list and lists its Unresolved entries",
   { tag: "@local" },
   async () => {
-    // The backend keeps a read for minutes: a retry asks for a list that it
-    // did not read yet, so the resolver runs (and writes its cache) again.
     const result = previewOk(
       await preview(backend.api, {
         provider: "senscritique",
@@ -122,7 +112,6 @@ test(
     });
     expect(result.withoutDetails).toBe(0);
 
-    // The resolver remembers both outcomes; unresolved ones wait for a retry.
     const rows = await getResolverRows("senscritique", PREVIEW_PRODUCT_IDS);
     expect(
       rows.map(({ external_id, imdb_id, strategy }) => ({
@@ -178,7 +167,6 @@ test(
         preset: null,
         names: ["Princess Mononoke", "Spirited Away"],
       },
-      // Top rated sorts by IMDb rating, whatever the saved sort.
       {
         type: "movie",
         preset: "rated",
@@ -221,7 +209,6 @@ test(
     );
 
     expect(await countCacheObjects(listId)).toBe(0);
-    // A preview is not a refresh: the List keeps no sync status.
     expect(await getSyncStatusRows(listId)).toEqual([]);
     expect(await getListRows(accountId)).toEqual(before);
   },
@@ -266,7 +253,6 @@ test(
   },
 );
 
-/** Send the page's previews to the fixture backend. */
 async function routePreviews(page: Page) {
   await page.route(`${BACKEND_URL}/lists/preview`, async (route) => {
     const response = await route.fetch({ url: `${backend.url}/lists/preview` });
@@ -335,7 +321,6 @@ test(
     for (const title of [...movies.titles, ...series.titles]) {
       expect(title.id).toMatch(/^tt\d+$/);
     }
-    // IMDb gives every entry its IMDb ID.
     expect(result.unresolved.count).toBe(0);
   },
 );

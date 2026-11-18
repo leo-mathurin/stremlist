@@ -7,14 +7,7 @@ import { onStreamRequest } from "../services/watch/trigger";
 
 const stream = new Hono();
 
-/**
- * Action entries for a Title. Only private Addon URLs with Actions turned on
- * get entries; every entry opens a Stremlist page (externalUrl), so the
- * Stremio player never loads. Stremio asks for streams before every play, so
- * the request also starts the Watch tracking reads of the title (ADR 0003).
- */
 stream.get("/:accountKey/stream/:type/:id.json", async (c) => {
-  // Labels reflect membership, which changes after each Action.
   c.header("Cache-Control", "no-store");
   const empty = { streams: [], cacheMaxAge: 0 };
   const type = c.req.param("type");

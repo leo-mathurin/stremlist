@@ -70,7 +70,7 @@ export interface FixtureBackend {
 export async function startFixtureBackend(
   preload: string,
   extraEnv: Record<string, string> = {},
-): Promise<FixtureBackend> {
+) {
   const logDir = mkdtempSync(join(tmpdir(), "stremlist-provider-log-"));
   const logFile = join(logDir, "requests.jsonl");
   writeFileSync(logFile, "");
@@ -84,10 +84,7 @@ export async function startFixtureBackend(
     R2_SECRET_ACCESS_KEY,
     R2_BUCKET,
     CONNECTION_ENCRYPTION_KEY,
-    // The Resend SDK throws at import time without a key; no mail is sent.
     RESEND_API_KEY: "re_e2e_dummy_key",
-    // Dummy OAuth apps: helpers/provider-fixtures.ts expects these client IDs.
-    // No TMDB key, so the ID resolver uses Wikidata only.
     TRAKT_CLIENT_ID: "fixture-trakt-client",
     SIMKL_CLIENT_ID: "fixture-simkl-client",
     MDBLIST_CLIENT_ID: "fixture-mdblist-client",

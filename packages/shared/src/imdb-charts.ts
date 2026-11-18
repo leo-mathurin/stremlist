@@ -176,12 +176,12 @@ export const CHART_BY_ID: ReadonlyMap<string, ChartEntry> = new Map(
 );
 
 /** True only for ids that have a fetcher in the registry (closed set). */
-export function isChartId(id: string): boolean {
+export function isChartId(id: string) {
   return CHART_BY_ID.has(id);
 }
 
 /** The IMDb chart that a Source list is, if it is one. */
-export function imdbChartOf(source: SourceId): ChartEntry | undefined {
+export function imdbChartOf(source: SourceId) {
   return source.provider === "imdb"
     ? CHART_BY_ID.get(source.sourceRef)
     : undefined;

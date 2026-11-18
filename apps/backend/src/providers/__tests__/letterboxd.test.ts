@@ -44,7 +44,6 @@ const stateSchema = z.object({
 function stored(key: string) {
   return stateSchema.parse(JSON.parse(r2Objects.get(key) ?? "null"));
 }
-/** The shared gate, created by the first Letterboxd request. */
 function gate() {
   const value = letterboxdGate();
   if (!value) throw new Error("No Letterboxd request went through the gate");
@@ -207,7 +206,6 @@ describe("Letterboxd public reads", () => {
       Promise.resolve(new Response(page([1], "/alice/watchlist/"))),
     );
     vi.stubGlobal("fetch", send);
-    // Each read waits for its slot once the burst is spent.
     async function failedRead(count: number) {
       const read = letterboxdProvider.fetchSource(
         `users/u${count}/watchlist`,
@@ -224,7 +222,6 @@ describe("Letterboxd public reads", () => {
     await failedRead(20);
     expect(gate()).toMatchObject({ rate: 5, haltedAt: null });
     expect(gate().pausedUntil).toBeGreaterThan(Date.now() + 59_000);
-    // The slowdown refuses new reads without sending them.
     await expect(
       letterboxdProvider.fetchSource("users/u21/watchlist", context),
     ).rejects.toBeInstanceOf(LetterboxdBusyError);
@@ -313,7 +310,6 @@ describe("Letterboxd public reads", () => {
       await expect(
         letterboxdProvider.fetchSource(ref, context),
       ).rejects.toMatchObject({ reason: "unavailable" });
-      // Once halted, Letterboxd is unavailable as a Provider ("disabled").
       await expect(
         letterboxdProvider.fetchSource("users/bob/watchlist", context),
       ).rejects.toMatchObject({ reason: "disabled" });
@@ -406,7 +402,6 @@ describe("Letterboxd public reads", () => {
       letterboxdProvider.fetchSource(ref, context),
     ).rejects.toMatchObject({ reason: "unavailable" });
     await vi.advanceTimersByTimeAsync(0);
-    // Once halted, Letterboxd is unavailable as a Provider ("disabled").
     await expect(
       letterboxdProvider.fetchSource("users/bob/watchlist", context),
     ).rejects.toMatchObject({ reason: "disabled" });
@@ -423,7 +418,6 @@ describe("Letterboxd public reads", () => {
       ),
     );
     vi.stubGlobal("fetch", fetch);
-    // The read itself waits out the pause, like the reads after it.
     const limited = letterboxdProvider.fetchSource(ref, context);
     await expect(limited).rejects.toBeInstanceOf(LetterboxdBusyError);
     await expect(limited).rejects.toMatchObject({ waitMs: 120_000 });
@@ -470,7 +464,6 @@ describe("Letterboxd public reads", () => {
       letterboxdProvider.fetchSource(ref, context),
     ).rejects.toMatchObject({ reason: "unavailable" });
     await vi.advanceTimersByTimeAsync(0);
-    // One failed read is counted, not paused on.
     expect(gate()).toMatchObject({
       haltedAt: null,
       windowFailures: 1,
@@ -549,14 +542,12 @@ describe("shared Letterboxd coordination", () => {
     await pending;
     sent.sort((a, b) => a - b);
     expect(sent.filter((at) => at === 0)).toHaveLength(10);
-    // The next 20 follow one slot every 100 ms.
     expect(sent[29]).toBeGreaterThanOrEqual(1900);
     expect(sent[29]).toBeLessThanOrEqual(2100);
     for (const at of sent)
       expect(
         sent.filter((other) => other > at - 1000 && other <= at).length,
       ).toBeLessThanOrEqual(20);
-    // Requests overlap: there is no single request in flight any more.
     expect(maximum).toBeGreaterThan(1);
   });
   it("refuses a background read when no slot is free now, without sending", async () => {
@@ -570,7 +561,6 @@ describe("shared Letterboxd coordination", () => {
     expect(read).not.toHaveBeenCalled();
   });
   it("refuses an interactive read that would wait more than 10 s, with an estimate", async () => {
-    // 10 free slots, then 100 reserved ones: the next slot is 10.1 s away.
     const reserved = Array.from({ length: 110 }, () =>
       withLetterboxdPermit(ok),
     );
@@ -585,13 +575,11 @@ describe("shared Letterboxd coordination", () => {
   });
   it("does not send a request reserved over 1 s ahead when a slowdown started meanwhile", async () => {
     for (let index = 0; index < 10; index++) await withLetterboxdPermit(ok);
-    // Slots every 100 ms: the 10th reserved read waits 1 s, the 11th 1.1 s.
     const reserved = Array.from({ length: 20 }, () => vi.fn(ok));
     const pending = Promise.allSettled(
       reserved.map((read) => withLetterboxdPermit(read)),
     );
     await vi.advanceTimersByTimeAsync(50);
-    // Another instance records a 429.
     await callRpc("letterboxd_report", {
       p_target: 10,
       p_outcome: "rate_limited",
@@ -600,7 +588,6 @@ describe("shared Letterboxd coordination", () => {
     });
     await vi.runAllTimersAsync();
     const results = await pending;
-    // Reads due within 1 s still go; the later ones check the gate and stop.
     expect(
       reserved.slice(10).every((read) => read.mock.calls.length === 0),
     ).toBe(true);
@@ -648,7 +635,6 @@ describe("shared Letterboxd coordination", () => {
 
 describe("the Letterboxd queue", () => {
   const ok = () => Promise.resolve({ value: true, result: "ok" as const });
-  /** Take every slot of the next second, so new requests wait in the queue. */
   async function fillGate() {
     for (let index = 0; index < 20; index++)
       await callRpc("letterboxd_take_turn", {
@@ -672,8 +658,6 @@ describe("the Letterboxd queue", () => {
     const pending = Promise.all([...later, first]);
     await vi.runAllTimersAsync();
     await pending;
-    // Grants are reserved at most 1 s ahead: only the later pages granted
-    // before the first page asked go before it.
     expect(sent.indexOf("first")).toBeLessThanOrEqual(2);
     expect(sent.filter((name) => name !== "first")).toEqual(
       later.map((_, index) => `later ${index}`),
@@ -684,7 +668,6 @@ describe("the Letterboxd queue", () => {
     await fillGate();
     const sent: string[] = [];
     const queue = readQueue({ maxWaitMs: 60_000 });
-    // An older read waits for its second page, then asks for its third.
     const older = withReadPriority(
       "interactive",
       async () => {
@@ -710,14 +693,11 @@ describe("the Letterboxd queue", () => {
     await vi.runAllTimersAsync();
     await pending;
     expect(sent.indexOf("older 2")).toBe(0);
-    // Its next page keeps the older place: only the newer reads granted in
-    // the second before it asked (10 slots) go first, not all 30.
     expect(sent.indexOf("older 3")).toBeLessThanOrEqual(12);
     expect(queue.ticket).not.toBeNull();
   });
 
   it("answers at once with the estimate and a ticket when the wait is 3 s or more", async () => {
-    // 50 reads already wait: about 6 s.
     await fillGate();
     const waiting = Array.from({ length: 50 }, () => withLetterboxdPermit(ok));
     await vi.advanceTimersByTimeAsync(10);
@@ -751,7 +731,6 @@ describe("the Letterboxd queue", () => {
       vi.fn(async (url: string) => {
         urls.push(url);
         if (url.endsWith("/page/2/")) return new Response(page([3]));
-        // Other reads take the next seconds while the first page loads.
         for (let index = 0; index < 60; index++)
           await callRpc("letterboxd_take_turn", {
             p_target: 10,
@@ -780,7 +759,6 @@ describe("the Letterboxd queue", () => {
     expect(result.complete).toBe(true);
     expect(result.interrupted).toBeUndefined();
     expect(result.entries).toHaveLength(3);
-    // The first page came from the cache.
     expect(urls.slice(1)).toEqual([
       "https://letterboxd.com/alice/list/big/page/2/",
     ]);
@@ -822,7 +800,6 @@ describe("the Letterboxd queue", () => {
     );
     await vi.advanceTimersByTimeAsync(65_000);
     await waiting;
-    // Every 10 s at least, so the configure page never drops it.
     expect(estimates.length).toBeGreaterThanOrEqual(6);
     expect(estimates[0]).toBeGreaterThan(59_000);
     expect(estimates.at(-1)).toBeLessThan(11_000);
@@ -887,13 +864,11 @@ describe("Letterboxd share links", () => {
     );
     expect(validated.ok).toBe(true);
     if (!validated.ok) throw new Error("expected ok");
-    // The stored reference encrypts the token and never carries it in plaintext.
     expect(validated.ref.startsWith("share/v1:")).toBe(true);
     expect(validated.ref).not.toContain("2OS5xaC1fJOBBvGv");
 
     const result = await letterboxdProvider.fetchSource(validated.ref, context);
     expect(result.complete).toBe(true);
-    // A shared list keeps page order (no watchlist reversal).
     expect(
       result.entries.map((entry) => entry.externalIds?.letterboxd?.uid),
     ).toEqual(["film:2", "film:1"]);
@@ -908,9 +883,6 @@ describe("Letterboxd share links", () => {
     const a = await letterboxdProvider.validateSource(provisional, context);
     const b = await letterboxdProvider.validateSource(provisional, context);
     if (!a.ok || !b.ok) throw new Error("expected ok");
-    // Stable encryption: the same share link always yields the same reference,
-    // so the (account, provider, source_ref) uniqueness catches a re-add, and
-    // both reads share one cached page.
     expect(a.ref).toBe(b.ref);
     await letterboxdProvider.fetchSource(a.ref, context);
     await letterboxdProvider.fetchSource(b.ref, context);
@@ -941,7 +913,6 @@ describe("Letterboxd share links", () => {
     );
     if (!validated.ok) throw new Error("expected ok");
 
-    // Time passes, then the link is revoked: a forced read now gets 404.
     await vi.advanceTimersByTimeAsync(3001);
     vi.stubGlobal(
       "fetch",
@@ -955,8 +926,6 @@ describe("Letterboxd share links", () => {
     await vi.runAllTimersAsync();
     await expect(revoked).rejects.toMatchObject({ reason: "not_found" });
 
-    // The stale snapshot is gone, so an ordinary read re-requests and fails too,
-    // instead of serving the Titles cached before the revocation.
     await vi.advanceTimersByTimeAsync(3001);
     const after = vi.fn(() =>
       Promise.resolve(new Response("gone", { status: 404 })),
@@ -1033,7 +1002,6 @@ describe("Letterboxd share links", () => {
 describe("Letterboxd member collections and charts", () => {
   it.each([
     ["users/alice/films", "https://letterboxd.com/alice/films/"],
-    // Letterboxd's own form of the range, as in its pagination links.
     [
       "users/alice/films/rated/4.0-5.0",
       "https://letterboxd.com/alice/films/rated/4-5/",
@@ -1047,7 +1015,6 @@ describe("Letterboxd member collections and charts", () => {
     vi.stubGlobal("fetch", fetch);
     const result = await letterboxdProvider.fetchSource(sourceRef, context);
     expect(result.complete).toBe(true);
-    // No reversal: these keep the page order (unlike a watchlist).
     expect(
       result.entries.map((entry) => entry.externalIds?.letterboxd?.uid),
     ).toEqual(["film:2", "film:1"]);
@@ -1081,7 +1048,6 @@ describe("Letterboxd live page shapes", () => {
     const result = await letterboxdProvider.fetchSource(ref, context);
     expect(result).toEqual({ complete: true, entries: [] });
     await vi.advanceTimersByTimeAsync(0);
-    // A valid empty page is not a failed read.
     expect(gate()).toMatchObject({ windowFailures: 0, windowRequests: 1 });
   });
 
@@ -1129,7 +1095,7 @@ describe("Letterboxd diary", () => {
           diaryPage([
             { id: 1, date: "2026-01-10" },
             { id: 2, date: "2026-03-05" },
-            { id: 1, date: "2026-05-20" }, // a rewatch of film 1
+            { id: 1, date: "2026-05-20" },
           ]),
         ),
       );
@@ -1140,8 +1106,6 @@ describe("Letterboxd diary", () => {
       context,
     );
     expect(result.complete).toBe(true);
-    // film 1 appears once, with its most recent date (2026-05-20), so the order
-    // oldest-first is film 2 (03-05) then film 1 (05-20).
     expect(
       result.entries.map((entry) => entry.externalIds?.letterboxd?.uid),
     ).toEqual(["film:2", "film:1"]);
@@ -1240,7 +1204,6 @@ describe("Letterboxd halt alert", () => {
     await expect(
       letterboxdProvider.fetchSource(ref, context),
     ).rejects.toMatchObject({ reason: "unavailable" });
-    // A later read is refused by the halt itself and does not report again.
     await expect(
       letterboxdProvider.fetchSource("users/bob/watchlist", context),
     ).rejects.toMatchObject({ reason: "disabled" });
@@ -1366,7 +1329,6 @@ describe("Letterboxd request log", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(gate().haltReason).toBe("blocked");
     expect(kept()).toHaveLength(0);
-    // The log waits 3 s for the body, then keeps what arrived.
     await vi.advanceTimersByTimeAsync(3000);
     expect(kept()).toEqual([
       expect.objectContaining({
@@ -1383,7 +1345,6 @@ describe("Letterboxd request log", () => {
         Promise.resolve(
           new Response(
             new ReadableStream({
-              // The first read gets bytes, the next one breaks.
               pull(controller) {
                 if (sent) controller.error(new Error("connection reset"));
                 else

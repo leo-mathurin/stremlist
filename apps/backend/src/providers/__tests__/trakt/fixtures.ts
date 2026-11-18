@@ -1,4 +1,4 @@
-// Recorded shapes (api.trakt.tv, 2026-10-06), trimmed.
+/** Recorded shapes (api.trakt.tv, 2026-10-06), trimmed. */
 export const clerks = {
   title: "Clerks III",
   year: 2022,

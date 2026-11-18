@@ -1,5 +1,3 @@
-// Read-only access to the production Supabase project through the
-// Management API, shared by the deploy scripts.
 import { appendFileSync, readdirSync, readFileSync } from "node:fs";
 
 const PROJECT_REF = "igbmxubzxjfdbgmawrtr";
@@ -10,8 +8,6 @@ function token() {
   return value;
 }
 
-// `read_only: true` runs the query in a read-only transaction, so these
-// scripts cannot change production even if a query is wrong.
 async function readOnlyQuery(query) {
   const response = await fetch(
     `https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query`,
@@ -44,10 +40,12 @@ export function localMigrations(dir = "supabase/migrations") {
     .sort((a, b) => a.version.localeCompare(b.version));
 }
 
-// Extensions that a migration creates. `db push --dry-run` does not run the
-// SQL, so without this check an extension that production cannot install
-// would only fail in the middle of the push.
-// The order of a sort() without a compare function: by UTF-16 code unit.
+/**
+ * Extensions that a migration creates. `db push --dry-run` does not run the
+ * SQL, so without this check an extension that production cannot install
+ * would only fail in the middle of the push.
+ * The order of a sort() without a compare function: by UTF-16 code unit.
+ */
 export function compareCodeUnits(a, b) {
   if (a < b) return -1;
   return a > b ? 1 : 0;
@@ -68,7 +66,7 @@ export function migrationSql({ version, name }, dir = "supabase/migrations") {
   return readFileSync(`${dir}/${version}_${name}.sql`, "utf8");
 }
 
-// Names come from createdExtensions, so they are [a-z0-9_] only.
+/** Names come from createdExtensions, so they are [a-z0-9_] only. */
 export async function availableExtensions(names) {
   if (names.length === 0) return [];
   const list = names.map((name) => `'${name}'`).join(", ");
@@ -83,8 +81,10 @@ export async function remoteMigrations() {
   );
 }
 
-// pending: in the repo, not applied. unknown: applied, but no file in the
-// repo. renamed: same version, different name.
+/**
+ * pending: in the repo, not applied. unknown: applied, but no file in the
+ * repo. renamed: same version, different name.
+ */
 export function compareMigrations(local, remote) {
   const remoteByVersion = new Map(remote.map((m) => [m.version, m.name]));
   const localByVersion = new Map(local.map((m) => [m.version, m.name]));

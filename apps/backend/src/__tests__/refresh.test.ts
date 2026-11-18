@@ -20,7 +20,6 @@ const OWNER = "ur216216210";
 const UUID_1 = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
 const CACHED_MOVIE = movie("tt0111161", { name: "The Shawshank Redemption" });
 
-// Older than the default 60s refresh cooldown so a manual refresh is allowed.
 const TEN_MINUTES_AGO = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
 let accountId = "";
@@ -57,14 +56,11 @@ beforeEach(() => {
 describe("manual refresh reports honest success/failure counts", () => {
   it("counts a failed fetch as failed (not refreshed) even when a non-empty cache exists", async () => {
     seedWatchlist();
-    // The catalog path would fall back to this cache, but a manual refresh
-    // must report that the live fetch failed.
     cache.seed(UUID_1, [CACHED_MOVIE]);
     vi.spyOn(scraper, "fetchWatchlist").mockRejectedValue(
       new Error(scraper.ERROR_PRIVATE),
     );
 
-    // No real fetch happened, so the cooldown timestamp is left untouched.
     expect(await refresh()).toMatchObject({
       refreshed: 0,
       failed: 1,
@@ -85,7 +81,6 @@ describe("manual refresh reports honest success/failure counts", () => {
 
   it("replaces the previous cache with fresh non-duplicated items", async () => {
     seedWatchlist();
-    // tt0000001 gets dropped, tt0111161 stays; older, so a refresh is required.
     cache.seed(
       UUID_1,
       [{ ...CACHED_MOVIE, id: "tt0000001" }, CACHED_MOVIE],
@@ -100,7 +95,6 @@ describe("manual refresh reports honest success/failure counts", () => {
 
   it("de-duplicates repeated ids before caching", async () => {
     seedWatchlist();
-    // IMDb lists aren't guaranteed sets: this one carries tt0111161 twice.
     serveWatchlist([
       CACHED_MOVIE,
       { ...CACHED_MOVIE, id: "tt0068646", name: "The Godfather" },
@@ -116,7 +110,6 @@ describe("manual refresh reports honest success/failure counts", () => {
     const spy = vi.spyOn(scraper, "fetchWatchlist");
 
     expect((await refresh()).throttled).toBe(true);
-    // A throttled refresh must not touch IMDb at all.
     expect(spy).not.toHaveBeenCalled();
   });
 });

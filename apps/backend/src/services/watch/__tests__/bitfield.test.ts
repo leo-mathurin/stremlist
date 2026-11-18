@@ -7,8 +7,7 @@ function video(season: number, episode: number, released?: string) {
   return { id: `tt0944947:${season}:${episode}`, season, episode, released };
 }
 
-/** A `watched` field as Stremio writes it: the last watched one anchors it. */
-function field(videos: SeriesVideo[], watched: string[]): string {
+function field(videos: SeriesVideo[], watched: string[]) {
   const bits = Buffer.alloc(Math.ceil(videos.length / 8));
   let last = 0;
   videos.forEach((entry, index) => {
@@ -30,14 +29,12 @@ describe("Stremio's watched field", () => {
   });
 
   it("decodes a field from Stremio itself", () => {
-    // Episode 1:1 of 10 watched, as stremio-watched-bitfield encodes it.
     const real = `tt0944947:1:1:1:${deflateSync(Buffer.from([1, 0])).toString("base64")}`;
     expect([...watchedVideos(real, season1)]).toEqual(["tt0944947:1:1"]);
   });
 
   it("realigns on the anchor when episodes were added before it", () => {
     const before = field(season1, ["tt0944947:1:2", "tt0944947:1:3"]);
-    // Two specials now come first in Stremio's order.
     const now = stremioOrder([...season1, video(0, 1), video(0, 2)]);
     expect([...watchedVideos(before, now)]).toEqual([
       "tt0944947:1:2",

@@ -2,7 +2,6 @@ import type { MergeableList } from "@stremlist/shared/list-merge";
 import type { ProviderId, SourceId } from "@stremlist/shared/providers";
 import { sourceRequiresConnection } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
-import type { StremioMeta, CatalogData } from "@stremlist/shared/stremio.types";
 import { scheduleBackgroundTask } from "../lib/background";
 import type {
   QueuePolicy,
@@ -58,18 +57,8 @@ import { recordRefreshOutcome } from "./sync-status";
 import { deleteState } from "./watch/state";
 import { isTrackedNow } from "./watch/tracking";
 
-/**
- * When the ID resolver left entries untried, the next read comes this soon
- * instead of after the Provider's usual freshness.
- */
 const RESUME_RESOLUTION_MS = 2 * 60_000;
-/**
- * A Stremio request waits at most this long for a Catalog that it does not
- * have from a queued Provider (Letterboxd). The read goes on in the
- * background.
- */
 const CATALOG_WAIT_MS = 10_000;
-/** How long the background read after a Stremio request may wait its turn. */
 const CONTINUATION_WAIT_MS = 200_000;
 
 /**
@@ -109,34 +98,21 @@ export class ListUnavailableError extends Error {
 type ReadPolicy = "catalog" | "prewarm" | "manual";
 
 interface ReadRules {
-  /** Read the Provider even when the cached Catalog is fresh. */
   forceFresh: boolean;
-  /**
-   * A failed read is not masked by the existing cache: the error is rethrown
-   * so the manual refresh can report it honestly.
-   */
   noCacheFallback: boolean;
-  /** A Provider read marks when the Account was read (`last_fetched_at`). */
   marksAccount: boolean;
-  /** Time the ID resolver may spend on entries without an IMDb ID. */
   resolveBudgetMs: number;
-  /** How an interactive read waits in a Provider queue (Letterboxd). */
   queue: QueuePolicy;
 }
 
 const READ_POLICIES: Record<ReadPolicy, ReadRules> = {
-  // A Stremio catalog request.
   catalog: {
     forceFresh: false,
     noCacheFallback: false,
     marksAccount: true,
     resolveBudgetMs: DEFAULT_RESOLVE_BUDGET_MS,
-    // Leaves time for ID resolution within the 10 s that Stremio waits.
     queue: { maxWaitMs: 8_000, partial: true },
   },
-  // A background read after a save or a new Connection: it can resolve more
-  // of a big cold list. Kept short because a catalog request for the same
-  // List joins this read instead of starting its own.
   prewarm: {
     forceFresh: false,
     noCacheFallback: false,
@@ -144,7 +120,6 @@ const READ_POLICIES: Record<ReadPolicy, ReadRules> = {
     resolveBudgetMs: 25_000,
     queue: { maxWaitMs: 120_000, partial: true },
   },
-  // The "Refresh now" button. The route marks the Account itself, once.
   manual: {
     forceFresh: true,
     noCacheFallback: true,
@@ -171,18 +146,11 @@ export interface ListRead {
 /** The List fields that a read needs. */
 type ReadableList = MergeableList & { id: string };
 
-/**
- * One Source list of a List, as a read handles it: `listId` stays the List
- * (its sync status is recorded there), `cacheKey` is where this Source list
- * keeps its cached Catalog (ADR 0006).
- */
 interface SourceRead extends Omit<ListRead, "sort"> {
   source: SourceId;
   listId: string;
   cacheKey: string;
-  /** Interactive unless a cached Catalog can be served meanwhile. */
   priority?: ReadPriority;
-  /** Overrides of the policy's queue rules, such as a kept ticket. */
   queue?: Partial<QueuePolicy>;
 }
 
@@ -190,16 +158,13 @@ interface FreshList {
   data: SourceCatalogData;
   cachedAt: Date;
   generation: string | null;
-  /** The read stopped early in the Provider's queue: it must go on soon. */
   interrupted: boolean;
-  /** The read's place in the Provider's queue, for the read that goes on. */
   ticket: string | null;
 }
 
 interface InFlightRefresh {
   promise: Promise<FreshList>;
   policy: SourceRead["policy"];
-  /** Aborted when a newer read replaces this one: it must not write. */
   controller: AbortController;
 }
 
@@ -213,7 +178,7 @@ const inFlightRefreshes = new Map<string, InFlightRefresh>();
 export async function providerContext(
   source: SourceId,
   connectionAccountId: string | null,
-): Promise<{ connection: OwnedConnectionAccess | null }> {
+) {
   const connection = connectionAccountId
     ? await getConnectionAccess(connectionAccountId, source.provider)
     : null;
@@ -229,16 +194,11 @@ export async function providerContext(
   return { connection };
 }
 
-/**
- * The cached form of an entry: its meta with the link back and the date it
- * joined the Source list (metadata reused from the previous cache may carry
- * an older date).
- */
 function toSourceMeta(
   meta: SourceMeta,
   entry: SourceEntry,
   provider: ProviderId,
-): SourceMeta {
+) {
   const linked: SourceMeta = {
     ...toStremioMeta(withLinkBack(meta, provider, entry.sourceUrl)),
     enrichedAt: meta.enrichedAt ?? new Date().toISOString(),
@@ -276,7 +236,7 @@ export async function buildCatalog(
     resolveBudgetMs?: number;
   },
   ctx: ProviderContext,
-): Promise<BuiltCatalog> {
+) {
   const snapshot = await adapter.fetchSource(config.sourceRef, ctx);
   if (snapshot.entries.every((entry) => entry.meta)) {
     return {
@@ -348,21 +308,12 @@ export async function buildCatalog(
   };
 }
 
-function freshnessOf(adapter: ProviderAdapter, sourceRef: string): number {
+function freshnessOf(adapter: ProviderAdapter, sourceRef: string) {
   return adapter.freshnessFor?.(sourceRef) ?? adapter.freshnessMs;
 }
 
-/**
- * Read a Source list and cache its Catalog. An interactive read waits in
- * the Provider's queue by the rules of its policy.
- */
-async function fetchAndCacheList(
-  read: SourceRead,
-  signal: AbortSignal,
-): Promise<FreshList> {
+async function fetchAndCacheList(read: SourceRead, signal: AbortSignal) {
   const rules = READ_POLICIES[read.policy];
-  // A background read after a save shows its queue estimate on the
-  // configure page.
   const mark =
     read.policy === "prewarm"
       ? listReadQueueMark({ ...read.source, listId: read.listId })
@@ -370,8 +321,6 @@ async function fetchAndCacheList(
   const policy = { ...rules.queue, ...read.queue };
   const queue = readQueue({
     ...policy,
-    // A background read never replaces a cached Catalog with fewer pages:
-    // when the queue is long, it stops and the cache stays.
     partial: policy.partial === true && read.priority !== "background",
     maxWaitMs: Math.min(
       policy.maxWaitMs,
@@ -394,12 +343,11 @@ async function readAndCacheList(
   read: SourceRead,
   signal: AbortSignal,
   queue: ReadQueue,
-): Promise<FreshList> {
+) {
   const { source, cacheKey } = read;
   const adapter = getProvider(source.provider);
   const rules = READ_POLICIES[read.policy];
   let connection: OwnedConnectionAccess | null = null;
-  // A read that a newer one replaced leaves no trace.
   const record = async (outcome: RefreshOutcome) => {
     if (!signal.aborted) {
       await recordRefreshOutcome(
@@ -410,8 +358,6 @@ async function readAndCacheList(
     }
   };
 
-  // Taken before the read: when two reads overlap, the history keeps the
-  // one that started last.
   const startedAt = new Date();
   let built: BuiltCatalog;
   try {
@@ -441,7 +387,6 @@ async function readAndCacheList(
       queue,
     );
   } catch (error) {
-    // A read that waits its turn has not failed: the List keeps its status.
     if (!(error instanceof SourceBusyError))
       await record({ kind: "failed", problem: sourceProblemReason(error) });
     throw error;
@@ -455,8 +400,6 @@ async function readAndCacheList(
   const interrupted = built.snapshot.interrupted === true;
   const resume = { interrupted, ticket: queue.ticket };
   if (signal.aborted) return { data, cachedAt, generation: null, ...resume };
-  // Back-date the cache so the next request resumes resolution, or a read
-  // that stopped in the Provider's queue, soon.
   const storedAt =
     deferred > 0 || interrupted
       ? new Date(
@@ -484,7 +427,6 @@ async function readAndCacheList(
       ? { kind: "unsaved" }
       : { kind: "saved", titleCount: data.metas.length },
   );
-  // A read cut short is served, but never compared (ADR 0007).
   if (built.snapshot.complete) {
     await recordSynchronization(
       { ...source, accountId: read.accountId, listId: read.listId },
@@ -497,19 +439,7 @@ async function readAndCacheList(
   return { data, cachedAt, generation, ...resume };
 }
 
-/**
- * One read per List and per access level at a time: a save can prewarm at
- * the same moment Stremio requests the Catalog. With `supersede`, a read in
- * flight is replaced instead of joined, because it may use an older
- * Connection; its late result must not replace the Catalog or the status of
- * the new one.
- */
-function refreshList(
-  read: SourceRead,
-  { supersede = false } = {},
-): InFlightRefresh {
-  // The source is part of the key: a read started before an edit of the List
-  // must not answer for its new Source list.
+function refreshList(read: SourceRead, { supersede = false } = {}) {
   const key = `${read.cacheKey}:${read.source.provider}:${read.source.sourceRef}:${read.allowConnection ? "c" : "p"}`;
   const existing = inFlightRefreshes.get(key);
   const revalidate = read.policy === "manual" && existing?.policy !== "manual";
@@ -518,7 +448,6 @@ function refreshList(
 
   const controller = new AbortController();
   const refresh: InFlightRefresh = {
-    // Let any previous write settle before a forced read can publish its result.
     promise:
       existing && revalidate
         ? existing.promise
@@ -536,12 +465,6 @@ function refreshList(
   return refresh;
 }
 
-/**
- * After a Stremio read that stopped in the Provider's queue, go on in the
- * background with the same place in the queue, so the List is complete in a
- * few minutes. Only a Stremio read goes on; a read that joined one does not
- * start another.
- */
 function continueInBackground(read: SourceRead, refresh: InFlightRefresh) {
   if (refresh.policy !== "catalog") return;
   scheduleBackgroundTask(async () => {
@@ -567,8 +490,7 @@ function continueInBackground(read: SourceRead, refresh: InFlightRefresh) {
   });
 }
 
-/** A Stremio request stops waiting for a read after `ms`. */
-async function within<T>(promise: Promise<T>, ms: number): Promise<T> {
+async function within<T>(promise: Promise<T>, ms: number) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -584,7 +506,7 @@ async function within<T>(promise: Promise<T>, ms: number): Promise<T> {
   }
 }
 
-function contentGeneration(listId: string, data: SourceCatalogData): string {
+function contentGeneration(listId: string, data: SourceCatalogData) {
   return `${listId}:${data.metas.map((meta) => `${meta.type}:${meta.id}`).join(",")}`;
 }
 
@@ -592,7 +514,7 @@ function present(
   data: SourceCatalogData,
   sort: CatalogSort,
   generation: string,
-): CatalogData {
+) {
   return {
     metas: sortCatalog(data.metas, sort, generation).map(toStremioMeta),
   };
@@ -603,39 +525,28 @@ function present(
  * expected state (the user revoked access): it asks to connect again instead
  * of a server error.
  */
-export function sourceProblemReason(error: unknown): SourceProblemReason {
+export function sourceProblemReason(error: unknown) {
   if (error instanceof SourceUnavailableError) return error.reason;
   if (error instanceof ConnectionExpiredError) return "needs_connection";
   return "unavailable";
 }
 
-/** The canonical Catalog of one Source list, before sorting. */
 interface SourceCatalog {
   data: SourceCatalogData;
   generation: string;
-  /** When this call read the Provider; null when the cache answered. */
   readAt: Date | null;
 }
 
-/**
- * The canonical Catalog of one Source list. Cache first; a stale or empty
- * cache triggers a Provider read; a failed read falls back to the last
- * non-empty cached Catalog. The caller marks when the Account was read.
- */
-async function readSourceCatalog(read: SourceRead): Promise<SourceCatalog> {
+async function readSourceCatalog(read: SourceRead) {
   const { source, cacheKey } = read;
   const rules = READ_POLICIES[read.policy];
   const adapter = getProvider(source.provider);
   const freshnessMs = freshnessOf(adapter, source.sourceRef);
-  // A Stremio request for a Provider that queues its reads waits less.
   const queued = adapter.queuedReads === true && read.policy === "catalog";
-  // A stale Catalog that can still be served makes the read a background one.
   let servable = false;
   if (!rules.forceFresh) {
     const cached = await getCachedList(cacheKey, source);
     servable = !rules.noCacheFallback && (cached?.data.metas.length ?? 0) > 0;
-    // An empty cache is not a hit: it cannot be told apart from "the list
-    // became private", which must surface its reason.
     if (
       cached &&
       cached.data.metas.length > 0 &&
@@ -643,12 +554,10 @@ async function readSourceCatalog(read: SourceRead): Promise<SourceCatalog> {
     ) {
       return { data: cached.data, generation: cached.generation, readAt: null };
     }
-    // Serve the stale Catalog at once and read in the background.
     if (cached && servable && queued) {
       const refresh = refreshList({ ...read, priority: "background" });
       scheduleBackgroundTask(() =>
         refresh.promise.catch(async (error: unknown) => {
-          // A busy Provider refuses background reads: the next request tries again.
           if (error instanceof SourceBusyError) return;
           if (await forgetRevokedCatalog(source, cacheKey, error)) return;
           console.warn(
@@ -678,16 +587,11 @@ async function readSourceCatalog(read: SourceRead): Promise<SourceCatalog> {
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    // Waiting in a Provider's queue is expected, not an error.
     (error instanceof SourceBusyError ? console.warn : console.error)(
       `Reading list ${cacheKey} (${source.provider}) failed, trying cache:`,
       message,
     );
 
-    // A Source list the Provider no longer shows must not keep serving the
-    // Titles it cached before: a List that lost its Connection, or a
-    // Letterboxd list that is gone, turned private, or whose Share link was
-    // revoked (HTTP 404, mapped to not_found).
     const reason = sourceProblemReason(error);
     const revoked = await forgetRevokedCatalog(source, cacheKey, error);
     const providerDropped = reason === "needs_connection" || revoked;
@@ -712,18 +616,11 @@ async function readSourceCatalog(read: SourceRead): Promise<SourceCatalog> {
   }
 }
 
-/**
- * A Letterboxd list that is gone, turned private, or whose Share link was
- * revoked (HTTP 404, mapped to not_found): drop its cached Catalog so its
- * Titles cannot come back on a later read, even one served from a
- * still-fresh cache. The shared page snapshot is cleared by the adapter on
- * the same 404. Returns whether the Catalog was revoked.
- */
 async function forgetRevokedCatalog(
   source: SourceId,
   cacheKey: string,
   error: unknown,
-): Promise<boolean> {
+) {
   if (
     source.provider !== "letterboxd" ||
     sourceProblemReason(error) !== "not_found"
@@ -748,10 +645,7 @@ async function forgetRevokedCatalog(
  * only when none can be served, or on a manual refresh when any of them
  * fails.
  */
-export async function getListCatalog(
-  list: ReadableList,
-  read: ListRead,
-): Promise<CatalogData> {
+export async function getListCatalog(list: ReadableList, read: ListRead) {
   const rules = READ_POLICIES[read.policy];
   const results = await Promise.allSettled(
     sourceCaches(list).map(({ source, cacheKey }) =>
@@ -811,11 +705,9 @@ export async function findMetaInAccountCache(
   access: AccountAccess,
   type: string,
   id: string,
-): Promise<StremioMeta | null> {
+) {
   try {
     const lists = await getVisibleLists(access);
-    // Every cached copy, so the detail page keeps the link back of each
-    // Source list that has the Title, as its catalog card does.
     const copies = await Promise.all(
       lists
         .flatMap(sourceCaches)
@@ -853,7 +745,7 @@ export async function findMetaInAccountCache(
 export async function disconnectProvider(
   accountId: string,
   provider: ProviderId,
-): Promise<void> {
+) {
   const sources = (await getAccountLists(accountId)).flatMap((list) =>
     sourceCaches(list)
       .filter(
@@ -871,8 +763,6 @@ export async function disconnectProvider(
   const cleanup = await Promise.allSettled([
     ...sources.map(({ cacheKey }) => deleteCachedList(cacheKey)),
     forgetConnectionObjects(accountId, provider),
-    // Its last Destination gone, the Account is not tracked any more: its
-    // watch state (what it watched) is not kept.
     isTrackedNow(accountId).then((tracked) =>
       tracked ? undefined : deleteState(accountId),
     ),
@@ -895,7 +785,7 @@ export async function disconnectProvider(
 export async function rereadConnectionLists(
   accountId: string,
   provider: ProviderId,
-): Promise<void> {
+) {
   for (const list of await getAccountLists(accountId)) {
     for (const { source, cacheKey } of sourceCaches(list)) {
       if (source.provider !== provider) continue;

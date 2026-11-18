@@ -5,7 +5,6 @@ import {
   LEGACY_ALIAS_PATTERN,
 } from "../constants";
 
-// The key shapes that production holds as `legacy_imdb_user_id`.
 const V1_KEYS = [
   "ur12345678",
   "ur12",

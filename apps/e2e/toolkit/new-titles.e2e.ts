@@ -35,9 +35,6 @@ import {
   routeConnectionSources,
 } from "./config-fixture";
 
-// The "New titles" catalog setting (ADR 0007). Detection itself runs in the
-// backend; tests/new-titles.spec.ts covers it against real storage.
-
 const TOGGLE = "Show newly detected titles";
 const MOVED_HINT =
   "This install has a private URL now. Make changes from the configure page of your new install.";
@@ -45,9 +42,7 @@ const NONE_YET_ONE_WAITING =
   "No new titles detected yet. Stremlist could not read 1 list in full yet, so it cannot compare it.";
 const ONE_WAITING = { detected: 0, latestDetectedAt: null, waitingLists: 1 };
 
-function withNewTitles(
-  summary: AccountConfigResponse["newTitles"]["summary"],
-): AccountConfigResponse {
+function withNewTitles(summary: AccountConfigResponse["newTitles"]["summary"]) {
   return { ...configuration, newTitles: { enabled: true, summary } };
 }
 
@@ -69,7 +64,6 @@ test(
 
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(screen.getByRole("checkbox", TOGGLE)).toBeChecked();
-    // The reminder stays until the user says they reinstalled.
     await expect(
       screen.getByText("Update Stremio with your changes"),
     ).toBeVisible();
@@ -116,7 +110,6 @@ test("an unreadable history hides the summary, and a save that keeps the catalog
   await expect(screen.getByRole("checkbox", TOGGLE)).toBeChecked();
   await expect(screen.getByText(/new titles? detected/)).toHaveCount(0);
 
-  // An RPDB key changes the posters, not the Catalogs that Stremio reads.
   await chooseRpdb(screen);
   await screen.getByLabel(/^RPDB API key/).fill("e2e-synthetic-rpdb");
   await saveButton(screen).tap();
@@ -136,7 +129,6 @@ test("a new setup sends the setting with its first save", async ({
   });
 
   await app.open("/configure");
-  // A new setup has no history yet, so there is no summary.
   await expect(screen.getByText(/new titles? detected/)).toHaveCount(0);
   await screen.getByRole("button", "Add an IMDb chart").tap();
   await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
@@ -234,7 +226,6 @@ test("a refresh updates the summary, and a throttled refresh keeps it", async ({
   );
   await expect(updated).toBeVisible();
 
-  // A throttled refresh read nothing, so the summary stays.
   await expect(screen.getByRole("button", "Refresh now")).toBeEnabled();
   await screen.getByRole("button", "Refresh now").tap();
   await expect(screen.getByRole("button", /Refresh in \d+s/)).toBeDisabled();
@@ -301,7 +292,6 @@ test("a save and a disconnect show the summary of what is left", async ({
     });
   });
   await routeConnectionSources(browser);
-  // The sync status poll after the save answers the current Connections.
   await browser.route(`${backend}/${accountId}/sync-status`, async (route) => {
     await route.fulfill({
       json: toJson({
@@ -315,8 +305,6 @@ test("a save and a disconnect show the summary of what is left", async ({
     `${backend}/${accountId}/connections/trakt`,
     async (route) => {
       deletes.push(route.request.method);
-      // The backend forgets the history of the Lists that only the
-      // Connection could read, so the history List waits again.
       current = {
         ...current,
         connections: [],
@@ -361,11 +349,9 @@ test("the reinstall notice follows the New titles setting before a save", async 
   await expect(screen.getByRole("checkbox", TOGGLE)).not.toBeChecked();
   await expect(notice).toBeHidden();
 
-  // Two more Catalogs in the manifest, which Stremio reads at install time.
   await screen.getByRole("checkbox", TOGGLE).tap();
   await expect(notice).toBeVisible();
 
-  // Back to what Stremio has: nothing to reinstall, and nothing to save.
   await screen.getByRole("checkbox", TOGGLE).tap();
   await expect(notice).toBeHidden();
   await expect(saveButton(screen)).toBeDisabled();

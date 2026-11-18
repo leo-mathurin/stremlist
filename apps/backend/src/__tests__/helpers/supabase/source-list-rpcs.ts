@@ -1,13 +1,8 @@
-/**
- * In-memory versions of the RPCs in supabase/migrations that record what a
- * read of a Source list found: List sync status.
- */
 import type { RpcArgs, RpcHandler } from "./rpc";
-import type { Result, Row } from "./store";
+import type { Row } from "./store";
 import { db, now } from "./store";
 
-/** Same rules as public.record_list_refresh. */
-function recordListRefresh(args: RpcArgs): Result {
+function recordListRefresh(args: RpcArgs) {
   if (!db.getTable("lists").some((row) => row.id === args.p_list_id)) {
     return { data: false, error: null };
   }

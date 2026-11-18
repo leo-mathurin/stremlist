@@ -1,7 +1,3 @@
-/**
- * Shared setup for the configuration API tests: the Legacy alias install of
- * OWNER, request helpers and the reset that runs before each test.
- */
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { DisplayMode } from "@stremlist/shared/constants";
 import type { Database } from "@stremlist/shared/database";
@@ -29,7 +25,7 @@ const replaceConfigArgs = z.object({
   p_rpdb_api_key: z.string().nullable(),
 }) satisfies z.ZodType<ReplaceConfig["Args"]>;
 
-// The legacy install of OWNER reaches its Account through the Legacy alias.
+/** The legacy install of OWNER reaches its Account through the Legacy alias. */
 export const OWNER = "ur12345678";
 export const OTHER_IMDB = "ur87654321";
 
@@ -96,7 +92,7 @@ export function postConfig(accountKey: string, body: ConfigBody) {
   return postJson(`/${accountKey}/config`, withProviders(body));
 }
 
-export function rpcArgs(call = 0): ReplaceConfig["Args"] {
+export function rpcArgs(call = 0) {
   return replaceConfigArgs.parse(rpcMocks.rpc.mock.calls[call][1]);
 }
 

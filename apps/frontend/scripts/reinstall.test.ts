@@ -45,8 +45,6 @@ test("turning Actions on or off needs a reinstall", () => {
 const changed = { signature: "other", actionsLive: false };
 
 test("a saved catalog change needs a reinstall", () => {
-  // The installed baseline is what Stremio read, not the last save, so a
-  // later save that keeps these catalogs keeps the reminder.
   assert.equal(reinstallState(unchanged, changed, changed), "required");
 });
 

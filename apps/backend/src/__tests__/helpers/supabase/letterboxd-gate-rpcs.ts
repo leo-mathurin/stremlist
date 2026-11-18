@@ -1,12 +1,5 @@
-/**
- * In-memory versions of the Letterboxd gate RPCs
- * (supabase/migrations/20261108120000_letterboxd_gate.sql and
- * 20261108140000_letterboxd_queue.sql). Same rules; the SQL itself is tested
- * by supabase/tests/letterboxd_gate.sql and letterboxd_queue.sql.
- */
 import type { RpcArgs, RpcHandler } from "./rpc";
 import { rowOf } from "./rpc";
-import type { Result } from "./store";
 import { db } from "./store";
 
 export interface Gate {
@@ -30,7 +23,7 @@ export interface Gate {
 }
 
 /** A gate by ID, kept in the in-memory DB so db.reset() clears it. */
-export function letterboxdGate(id = "production"): Gate | undefined {
+export function letterboxdGate(id = "production") {
   return db.letterboxdGates.find((gate) => gate.id === id);
 }
 
@@ -60,7 +53,7 @@ function settle(g: Gate, t: number, target: number) {
   }
 }
 
-function lock(id: string, target: number, t: number): Gate {
+function lock(id: string, target: number, t: number) {
   let g = letterboxdGate(id);
   if (!g) {
     g = {
@@ -90,7 +83,7 @@ function lock(id: string, target: number, t: number): Gate {
 const targetOf = (args: RpcArgs) => Math.max(Number(args.p_target), 0.01);
 const gateOf = (args: RpcArgs) =>
   typeof args.p_gate === "string" ? args.p_gate : "production";
-const ok = (data: unknown): Result => ({ data, error: null });
+const ok = (data: unknown) => ({ data, error: null });
 
 export interface Waiter {
   id: string;
@@ -103,11 +96,10 @@ export interface Waiter {
 }
 
 /** The queue of a gate, kept in the in-memory DB so db.reset() clears it. */
-export function letterboxdWaiters(gate = "production"): Waiter[] {
+export function letterboxdWaiters(gate = "production") {
   return db.letterboxdWaiters.filter((waiter) => waiter.gate === gate);
 }
 
-/** The answer of letterboxd_take_turn, before its ticket. */
 interface Turn {
   status: string;
   wait_ms: number;
@@ -115,14 +107,11 @@ interface Turn {
 }
 
 let waiterSeq = 0;
-/** A grant is reserved at most this far ahead. */
 const HORIZON_MS = 1000;
-/** A waiter later than this stops holding the turn of the others. */
 const LATE_MS = 5000;
-/** A ticket is forgotten this long after its waiter was due. */
 const GRACE_MS = 30_000;
 
-function takeTurn(args: RpcArgs): Result {
+function takeTurn(args: RpcArgs) {
   const t = Date.now();
   const target = targetOf(args);
   const gate = gateOf(args);
@@ -226,7 +215,7 @@ function takeTurn(args: RpcArgs): Result {
   return ok({ ...result, ticket });
 }
 
-function report(args: RpcArgs): Result {
+function report(args: RpcArgs) {
   const t = Date.now();
   const target = targetOf(args);
   const floorRate = Math.min(0.33, target);
@@ -328,7 +317,7 @@ function report(args: RpcArgs): Result {
   return ok({ halted, halt_reason: g.haltReason, recovered, slow });
 }
 
-function status(args: RpcArgs): Result {
+function status(args: RpcArgs) {
   const t = Date.now();
   const target = targetOf(args);
   const stored = letterboxdGate(gateOf(args));
@@ -357,8 +346,7 @@ function status(args: RpcArgs): Result {
   });
 }
 
-/** Same rules as public.letterboxd_record: count every request, keep some. */
-function record(args: RpcArgs): Result {
+function record(args: RpcArgs) {
   const request = rowOf(args.p_request, "p_request");
   db.getTable("letterboxd_request_counts").push({ ...request });
   if (args.p_keep === true)
@@ -377,7 +365,7 @@ export const letterboxdGateRpcs = {
 } satisfies Record<string, RpcHandler>;
 
 /** Halt a gate as if Letterboxd had refused a request. */
-export function haltLetterboxdGate(id = "production"): void {
+export function haltLetterboxdGate(id = "production") {
   const g = lock(id, 10, Date.now());
   g.haltedAt = Date.now();
   g.haltReason = "blocked";

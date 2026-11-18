@@ -10,13 +10,6 @@ import {
   writeJson,
 } from "../lib/r2-json";
 
-/*
- * The detection history of each Source list (ADR 0007), one R2 object per
- * Account and Source list (ADR 0008). The rules that compare two
- * synchronizations and that list the new Titles are pure functions, so they
- * are tested without storage.
- */
-
 const HISTORY_FORMAT_VERSION = 1;
 
 /**
@@ -26,28 +19,16 @@ const HISTORY_FORMAT_VERSION = 1;
  */
 export const REMOVED_ENTRY_RETENTION_MS = 180 * 24 * 60 * 60_000;
 
-/** Conditional writes that lose a race to another instance are tried again. */
 const MAX_WRITE_ATTEMPTS = 4;
 
 const historySchema = z.object({
   version: z.literal(HISTORY_FORMAT_VERSION),
   source: z.string(),
-  /** The first complete synchronization: its entries are the Baseline. */
   baselineAt: z.string(),
-  /** The latest complete synchronization, which the next one is compared with. */
   lastSyncAt: z.string(),
-  /**
-   * For a Source list that only a Connection can read: the Connection whose
-   * Provider user the history belongs to. Another user, or a new Connection
-   * after a disconnect, means another history.
-   */
   connection: z
     .object({ user: z.string().nullable(), connectedAt: z.string() })
     .nullable(),
-  /**
-   * Entry key → [IMDb ID (null: Unresolved), detection date (null: in the
-   * Baseline), removal date (null: present)].
-   */
   entries: z.record(
     z.string(),
     z.tuple([
@@ -72,27 +53,25 @@ export interface KeyedEntry {
   imdbId: string | null;
 }
 
-export function historyKey(accountId: string, source: SourceId): string {
+export function historyKey(accountId: string, source: SourceId) {
   const hash = createHash("sha256")
     .update(sourceKey(source))
     .digest("hex")
     .slice(0, 16);
-  // Under the Connection's prefix, a disconnect deletes it with the rest.
   return sourceRequiresConnection(source.provider, source.sourceRef)
     ? `${connectionPrefix(accountId, source.provider)}history/${hash}.json`
     : `history/${accountId}/${hash}.json`;
 }
 
 /** The R2 prefix of an Account's histories that need no Connection. */
-export function accountHistoryPrefix(accountId: string): string {
+export function accountHistoryPrefix(accountId: string) {
   return `history/${accountId}/`;
 }
 
-/** The same Connection; dates compare as times (Postgres keeps microseconds). */
 function sameConnection(
   a: HistoryConnection | null,
   b: HistoryConnection | null,
-): boolean {
+) {
   if (!a || !b) return a === b;
   return (
     a.user === b.user && Date.parse(a.connectedAt) === Date.parse(b.connectedAt)
@@ -107,14 +86,13 @@ export function historyApplies(
   history: SourceHistory,
   source: SourceId,
   current: HistoryConnection | null,
-): boolean {
+) {
   if (history.source !== sourceKey(source)) return false;
   if (!sourceRequiresConnection(source.provider, source.sourceRef)) return true;
   return current !== null && sameConnection(history.connection, current);
 }
 
-/** One pair per entry key; a resolved entry wins over an unresolved one. */
-function uniqueEntries(entries: KeyedEntry[]): Map<string, string | null> {
+function uniqueEntries(entries: KeyedEntry[]) {
   const unique = new Map<string, string | null>();
   for (const { key, imdbId } of entries) {
     const known = unique.get(key);
@@ -148,7 +126,7 @@ export function applySynchronization(
   entries: KeyedEntry[],
   syncedAt: Date,
   connection: HistoryConnection | null,
-): SynchronizationResult | null {
+) {
   const at = syncedAt.toISOString();
   const current = uniqueEntries(entries);
 
@@ -178,12 +156,10 @@ export function applySynchronization(
     previous.entries,
   )) {
     if (current.has(key)) {
-      // Back, or resolved since: the detection date never changes.
       const resolved = current.get(key) ?? imdbId;
       if (removedAt !== null || resolved !== imdbId) changed = true;
       next[key] = [resolved, detectedAt, null];
     } else if (removedAt === null) {
-      // Gone: marked, so an entry that comes back keeps its detection.
       next[key] = [imdbId, detectedAt, at];
       changed = true;
     } else if (Date.parse(removedAt) >= forgetBefore) {
@@ -231,7 +207,7 @@ interface TitleInSource {
 export function listNewTitles(
   histories: { source: SourceId; history: SourceHistory }[],
   limit: number,
-): NewTitle[] {
+) {
   const titles = new Map<string, TitleInSource[]>();
   for (const { source, history } of histories) {
     const perTitle = new Map<string, TitleInSource>();
@@ -261,8 +237,6 @@ export function listNewTitles(
   const found: NewTitle[] = [];
   for (const [imdbId, sources] of titles) {
     if (!sources.some((title) => title.present)) continue;
-    // The earliest detection, also from a Source list that dropped it since:
-    // removing it from one List must not give it a later date.
     const earliest = sources.reduce((best, title) =>
       compareDetections(title, best) < 0 ? title : best,
     );
@@ -282,7 +256,7 @@ export function listNewTitles(
     .slice(0, Math.max(limit, 0));
 }
 
-function compareDetections(a: TitleInSource, b: TitleInSource): number {
+function compareDetections(a: TitleInSource, b: TitleInSource) {
   return (
     (a.detectedAt ?? "").localeCompare(b.detectedAt ?? "") ||
     a.source.provider.localeCompare(b.source.provider) ||
@@ -295,11 +269,10 @@ interface StoredVersion {
   etag: string | null;
 }
 
-async function readStored(key: string): Promise<StoredVersion> {
+async function readStored(key: string) {
   const stored = await readJsonVersion(key);
   if (!stored) return { history: null, etag: null };
   const parsed = historySchema.safeParse(stored.value);
-  // A history that cannot be read starts a new Baseline over it.
   return {
     history: parsed.success ? parsed.data : null,
     etag: stored.etag ?? null,
@@ -307,10 +280,7 @@ async function readStored(key: string): Promise<StoredVersion> {
 }
 
 /** The stored history of a Source list, or null. Errors throw. */
-export async function readHistory(
-  accountId: string,
-  source: SourceId,
-): Promise<SourceHistory | null> {
+export async function readHistory(accountId: string, source: SourceId) {
   return (await readStored(historyKey(accountId, source))).history;
 }
 
@@ -326,7 +296,7 @@ export async function recordHistory(
   entries: KeyedEntry[],
   syncedAt: Date,
   connection: HistoryConnection | null,
-): Promise<number | null> {
+) {
   const key = historyKey(accountId, source);
   for (let attempt = 1; ; attempt++) {
     const stored = await readStored(key);
@@ -343,12 +313,9 @@ export async function recordHistory(
     );
     if (!result) return null;
     try {
-      // Even unchanged reads must advance the timestamp: an older read on
-      // another instance may still contain a title that disappeared since.
       await writeJson(key, result.history, { etag: stored.etag });
       return result.added;
     } catch (error) {
-      // Another instance wrote in between: compare with its version.
       if (!isPreconditionFailed(error) || attempt >= MAX_WRITE_ATTEMPTS) {
         throw error;
       }

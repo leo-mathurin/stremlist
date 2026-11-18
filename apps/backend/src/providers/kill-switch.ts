@@ -6,7 +6,7 @@ import type { ProviderId } from "@stremlist/shared/providers";
  * request goes to their API: no Source list read, no ID resolution, no
  * Connection, no Action.
  */
-export function isProviderEnabled(id: ProviderId): boolean {
+export function isProviderEnabled(id: ProviderId) {
   const disabled = (process.env.DISABLED_PROVIDERS ?? "")
     .split(",")
     .map((value) => value.trim().toLowerCase())

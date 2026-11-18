@@ -21,30 +21,22 @@ type PreviewBody = InferRequestType<typeof api.lists.preview.$post>["json"];
 
 type CatalogPreviewState =
   | { status: "loading" }
-  /** A Source list waits in its Provider's queue (Letterboxd). */
   | { status: "queued"; wait: QueueWait }
   | { status: "ready"; preview: CatalogPreview; updating: boolean }
   | {
       status: "problem";
       reason: SourceProblemReason;
-      /** In a merged List, the Source list that has the problem. */
       source?: SourceId;
     }
   | { status: "error" };
 
-/** Wait this long after the last settings change before asking again. */
 const SETTINGS_DEBOUNCE_MS = 300;
 
-function previewBody(
-  list: ListFormRow,
-  accountKey: string | null,
-): PreviewBody {
+function previewBody(list: ListFormRow, accountKey: string | null) {
   return {
     accountKey: accountKey ?? undefined,
     provider: list.provider,
     sourceRef: list.sourceRef,
-    // Labels name Source lists on this page only: a new label is no new
-    // preview. A List with one Source list sends none.
     mergedSources:
       list.mergedSources.length > 0
         ? list.mergedSources.map(({ provider, sourceRef }) => ({
@@ -83,8 +75,6 @@ export function useCatalogPreview({
   const connectionKey = previewConnectionKey(list, use(ConnectionsContext));
   const nextBody = previewBody(list, accountKey);
   const bodyKey = JSON.stringify(nextBody);
-  // Kept by value, so that a new object with the same values asks nothing
-  // again.
   const [shown, setShown] = useState({ key: bodyKey, body: nextBody });
   if (shown.key !== bodyKey) setShown({ key: bodyKey, body: nextBody });
   const body = shown.body;
@@ -99,8 +89,6 @@ export function useCatalogPreview({
         : { status: "loading" },
     );
     let wait: QueueWait | null = null;
-    // A queued answer keeps the place in the queue: ask again with its
-    // ticket when the queue says so.
     const ask = (ticket?: string) => {
       api.lists.preview
         .$post({ json: { ...body, ticket } })

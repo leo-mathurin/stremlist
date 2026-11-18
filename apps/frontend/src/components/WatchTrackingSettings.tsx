@@ -18,7 +18,7 @@ const ALL_PROVIDERS = joinProviderLabels([...WATCH_PROVIDERS], "or");
 
 const LINK_BUTTON = "font-semibold text-stremlist hover:underline";
 
-function pad(value: number): string {
+function pad(value: number) {
   return String(value).padStart(2, "0");
 }
 
@@ -30,11 +30,10 @@ interface StatusLine {
   text: React.ReactNode;
 }
 
-/** What an account shows under its name. */
 function statusLine(
   destination: WatchDestinationStatus,
   change: WatchChange | null,
-): StatusLine {
+) {
   const label = PROVIDERS[destination.provider].label;
   const { lastTitle } = destination;
   if (change?.provider === destination.provider) {
@@ -190,8 +189,6 @@ export default function WatchTrackingSettings({
                 aria-labelledby={`${rowId}-name`}
                 aria-describedby={`${rowId}-line`}
                 checked={destination.enabled}
-                // The row being saved keeps focus; the hook ignores clicks
-                // until its answer comes.
                 disabled={(busy !== null && !isBusy) || loadFailed}
                 onCheckedChange={(next) =>
                   onToggle(destination.provider, next === true)
@@ -266,7 +263,6 @@ export default function WatchTrackingSettings({
 
       {body}
 
-      {/* One stable region, so screen readers hear each notice. */}
       <div role="status">
         {loadFailed && destinations && !locked && (
           <Note className={cn("mt-3", ENTER)}>

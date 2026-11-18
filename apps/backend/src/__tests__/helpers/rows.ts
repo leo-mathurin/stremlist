@@ -1,7 +1,3 @@
-/**
- * Schemas of the rows that the in-memory tables hold, so a test reads a typed
- * row instead of asserting one.
- */
 import type { Tables } from "@stremlist/shared/database";
 import { z } from "zod";
 import { jsonObject } from "./json";

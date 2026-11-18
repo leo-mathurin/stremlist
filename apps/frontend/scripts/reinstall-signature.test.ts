@@ -11,10 +11,6 @@ import type {
 } from "../src/lib/reinstall-signature.ts";
 import { z } from "zod";
 
-// The signature must change exactly when the manifest that Stremio reads at
-// install time changes (apps/backend/src/routes/manifest.ts): the Catalog
-// IDs, names, types and genre options of each List, in order.
-
 const signatureEntries = z.array(
   z.object({ newTitles: z.literal(true).optional(), type: z.string() }),
 );
@@ -34,7 +30,7 @@ const genres: KnownSourceGenres = {
 function list(
   sources: ListSource[],
   overrides: Partial<SignatureRow & { sortOption: string }> = {},
-): SignatureRow {
+) {
   const [first, ...mergedSources] = sources;
   return {
     id: "00000000-0000-4000-8000-000000000001",
@@ -71,14 +67,11 @@ test("a merged Source list without a new genre keeps the signature", () => {
 });
 
 test("the first Source list counts like the others", () => {
-  // Removing the first Source list keeps the Catalog: same ID, name, type
-  // and genres.
   assert.equal(signature([list([FIRST, SECOND])]), signature([list([SECOND])]));
   assert.notEqual(
     signature([list([WESTERN, FIRST])]),
     signature([list([FIRST])]),
   );
-  // The order of the Source lists is not in the manifest.
   assert.equal(
     signature([list([FIRST, WESTERN])]),
     signature([list([WESTERN, FIRST])]),
@@ -138,12 +131,10 @@ test("an empty title has the name of the first Source list", () => {
     signature([list([FIRST]), second("")]),
     signature([list([FIRST]), second("IMDb List")]),
   );
-  // Never the position: a List added before it keeps its name.
   assert.notEqual(
     signature([list([FIRST]), second("")]),
     signature([list([FIRST]), second("2")]),
   );
-  // An untitled List that now reads another Source list has another name.
   assert.notEqual(
     signature([list([FIRST]), second("")]),
     signature([list([FIRST]), { ...second(""), ...WESTERN }]),
@@ -189,19 +180,15 @@ test("learned genres follow each Source list and keep what a cache gap hides", (
     "imdb:ur1000001": { movie: ["Drama"], series: [] },
     "imdb:ls1000002": { movie: ["Western"], series: [] },
   });
-  // A Source list whose cache is not written yet (null) keeps its genres:
-  // the manifest has them again once it is.
   assert.deepEqual(
     learnSourceGenres(learned, [{ ...SECOND, sourceGenres: [null] }]),
     learned,
   );
-  // A List without genres by Source list keeps what the page learned.
   assert.deepEqual(learnSourceGenres(learned, [{ ...FIRST }]), learned);
 });
 
 test("without genres by Source list, genre options are left out", () => {
   assert.equal(learnSourceGenres(null, [{ ...FIRST }]), null);
-  // The page cannot tell which genres a change takes away.
   assert.equal(
     signature([list([FIRST, WESTERN])], null),
     signature([list([FIRST])], null),
@@ -224,7 +211,6 @@ test("turning the New titles Catalogs on or off changes the signature", () => {
     getListReinstallSignature(rows, genres, withNewTitles),
     signature(rows),
   );
-  // Without Lists, the manifest has no New titles Catalog to add.
   assert.equal(
     getListReinstallSignature([], genres, withNewTitles),
     signature([]),
@@ -248,7 +234,6 @@ test("the New titles Catalogs follow the types that the Lists show", () => {
 });
 
 test("with New titles off, the signature has the format of a stored reminder", () => {
-  // Reminders saved before New titles keep matching.
   assert.equal(
     getListReinstallSignature([list([FIRST])], genres, { newTitles: false }),
     signature([list([FIRST])]),

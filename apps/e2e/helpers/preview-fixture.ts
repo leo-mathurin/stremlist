@@ -1,7 +1,3 @@
-// A synthetic SensCritique list for the Catalog preview tests. Product IDs
-// are far above the real SensCritique range, so the resolver cache rows that
-// the tests create never mix with real ones.
-
 export const PREVIEW_PUBLIC_LIST = 990_000_001;
 export const PREVIEW_PRIVATE_LIST = 990_000_002;
 

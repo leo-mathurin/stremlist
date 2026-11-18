@@ -1,6 +1,5 @@
 import { test } from "@e2e-dev/web";
 import { expect } from "e2e";
-import type { QueuedAnswer } from "@stremlist/shared/provider-queue";
 import type { AccountSyncSnapshot } from "@stremlist/shared/stremio.types";
 import {
   accountId,
@@ -16,15 +15,11 @@ import {
   toJson,
 } from "./config-fixture";
 
-// The queue state of a busy Letterboxd: the link check, the Catalog preview
-// and the sync line of a saved List show the estimated wait. The backend
-// answers are intercepted; the backend tests cover the queue itself.
-
 const PASTE = "Paste a link to a watchlist or list";
 const LINK = "https://letterboxd.com/someone/watchlist/";
 const TICKET = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
 
-function queued(waitMs: number, retryMs: number): QueuedAnswer {
+function queued(waitMs: number, retryMs: number) {
   return {
     ok: false,
     reason: "queued",
@@ -67,7 +62,6 @@ test("a busy Letterboxd shows the wait on the link check and the preview, then t
   ).toBeVisible();
   await app.screenshot("Letterboxd queue on the link check");
 
-  // The preview of the new List waits in the queue with a bar.
   await expect(
     screen.getByText(
       /^Letterboxd is busy right now\. Your list is in the queue, about (39|40) s left\.$/,
@@ -76,7 +70,6 @@ test("a busy Letterboxd shows the wait on the link check and the preview, then t
   await expect(
     screen.getByRole("progressbar", "Place in the queue"),
   ).toBeVisible();
-  // Let the bar fill a little for the screenshot.
   await new Promise((done) => setTimeout(done, 2_000));
   await app.screenshot("Letterboxd queue on the Catalog preview");
   await expect(screen.getByText("The Shawshank Redemption")).toBeVisible({
@@ -84,7 +77,6 @@ test("a busy Letterboxd shows the wait on the link check and the preview, then t
   });
   await expect(screen.getByRole("progressbar")).not.toBeVisible();
 
-  // Each check asks again with the ticket, to keep its place in the queue.
   expect(checks.map((check) => check.ticket)).toEqual([
     undefined,
     TICKET,

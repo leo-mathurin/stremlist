@@ -1,6 +1,3 @@
-// Loaded only by the isolated provider-contract backend process. The real SDK,
-// GraphQL parser and HTTP handlers run; every outbound request is intercepted.
-// No fallback to native fetch is permitted, including for unexpected hosts.
 import { strict as assert } from "node:assert";
 import { isRecord } from "./json.js";
 

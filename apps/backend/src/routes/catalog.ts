@@ -4,7 +4,6 @@ import {
   sourceProblemCopy,
   storedSourceNoun,
 } from "@stremlist/shared/source-problems";
-import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { getVisibleListById, resolveAccountKey } from "../services/accounts";
@@ -20,13 +19,7 @@ import { withAccountPosters } from "../services/posters";
 const catalog = new Hono();
 const CATALOG_PAGE_SIZE = 100;
 
-// A single informational card Stremio renders inside the catalog row, so the
-// user sees *why* it's empty (e.g. their list is private) instead of a
-// silent blank or a 500 the client retry-storms.
-function buildUnavailableMeta(
-  error: ListUnavailableError,
-  type: TitleType,
-): StremioMeta {
+function buildUnavailableMeta(error: ListUnavailableError, type: TitleType) {
   const { title, fix } = sourceProblemCopy(
     error.provider,
     error.reason,
@@ -44,12 +37,7 @@ function buildUnavailableMeta(
   };
 }
 
-// The card of a List that the Provider's queue holds back: the read goes on
-// in the background and the List shows in a few minutes.
-function buildQueuedMeta(
-  error: ListUnavailableError,
-  type: TitleType,
-): StremioMeta {
+function buildQueuedMeta(error: ListUnavailableError, type: TitleType) {
   const { title, description } = queuedCatalogCopy(error.provider);
   return {
     id: `stremlist:queued:${error.provider}`,
@@ -62,10 +50,8 @@ function buildQueuedMeta(
   };
 }
 
-function catalogExtra(c: Context): URLSearchParams {
+function catalogExtra(c: Context) {
   const url = new URL(c.req.url);
-  // Hono decodes route params. Read the raw segment to keep encoded & and +
-  // inside search terms instead of treating them as parameter separators.
   return routeParam(c, "extra")
     ? new URLSearchParams(
         url.pathname
@@ -75,7 +61,7 @@ function catalogExtra(c: Context): URLSearchParams {
     : new URLSearchParams(url.search);
 }
 
-function parseSkip(extra: URLSearchParams): number | null {
+function parseSkip(extra: URLSearchParams) {
   const value = extra.get("skip");
   if (value === null || value === "") return 0;
 
@@ -83,7 +69,7 @@ function parseSkip(extra: URLSearchParams): number | null {
   return Number.isSafeInteger(skip) && skip >= 0 ? skip : null;
 }
 
-function routeParam(c: Context, name: string): string | undefined {
+function routeParam(c: Context, name: string) {
   const params = c.req.param() as Record<string, string | undefined>;
   return params[name] ?? params[`${name}.json`];
 }
@@ -132,7 +118,6 @@ async function serveCatalog(c: Context) {
     }
 
     if (parsedCatalog.kind === "new-titles") {
-      // The "New titles" catalogs have no search (ADR 0007).
       if (!access.account.newTitlesCatalog || extra.has("search")) {
         return c.json({ metas: [] });
       }
@@ -145,7 +130,6 @@ async function serveCatalog(c: Context) {
       });
     }
 
-    // Lists read through a Connection never answer through a Legacy alias.
     const list = await getVisibleListById(access, parsedCatalog.listId);
     if (!list) {
       console.warn(`List not found for ${accountKey}: ${parsedCatalog.listId}`);
@@ -186,12 +170,6 @@ async function serveCatalog(c: Context) {
 
     return c.json({ metas });
   } catch (err) {
-    // Expected user-state (private / not-found list, no cache to fall back on):
-    // return 200 with an informational card so Stremio shows the user *why* the
-    // catalog is empty instead of a 500 it would retry-storm — that retry storm
-    // on private watchlists was the dominant prod error flood.
-    // A List that waits in the Provider's queue (a busy Letterboxd, or a
-    // slowdown after a 429) shows soon: say so instead of a 500.
     if (
       err instanceof ListUnavailableError &&
       (err.queued || err.reason !== "unavailable") &&
@@ -200,7 +178,6 @@ async function serveCatalog(c: Context) {
       console.warn(
         `Catalog unavailable for ${accountKey} (${err.queued ? "queued" : err.reason}): ${requestedType}/${catalogId}`,
       );
-      // Informational cards explain empty catalogs, but aren't search matches.
       if (catalogExtra(c).has("search")) {
         return c.json({ metas: [] });
       }
@@ -213,8 +190,6 @@ async function serveCatalog(c: Context) {
       });
     }
 
-    // Genuine or transient server error → keep the 500 (visible in monitoring;
-    // Stremio may retry, which is appropriate for a transient failure).
     console.error(
       `Error serving catalog for ${accountKey}:`,
       err instanceof Error ? err.message : err,

@@ -15,14 +15,9 @@ import {
   toJson,
 } from "./config-fixture";
 
-// The main journey at phone width (390 x 844): Home, add a List, save,
-// install, reload. Every API answer is intercepted; tests/phone-journey.spec.ts
-// runs the same journey against the real backend and database.
-
 const LINK = "https://trakt.tv/users/someone/watchlist";
 const ADDON_URL = `${backend}/${accountId}/manifest.json`;
 
-/** The page is no wider than the phone: nothing scrolls sideways. */
 async function expectNoSidewaysScroll(browser: Browser) {
   await expect
     .poll(() =>
@@ -33,10 +28,6 @@ async function expectNoSidewaysScroll(browser: Browser) {
     .toBeLessThanOrEqual(0);
 }
 
-/**
- * Serve the configuration of the fixture Account with the Lists of its first
- * save, as the backend does after the save created it.
- */
 async function routeSavedConfig(
   browser: Browser,
   created: AccountConfigInput[],

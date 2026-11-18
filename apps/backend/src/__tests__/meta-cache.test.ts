@@ -19,7 +19,6 @@ vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
 vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
 vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 
-/** A meta answer, kept whole: series metas carry more fields. */
 const anyMetaBody = z.object({
   meta: z.record(z.string(), z.unknown()).nullable(),
 });
@@ -40,7 +39,6 @@ const BREAKING_BAD: StremioMeta = {
 let accountId = "";
 
 function seedUser(rpdbApiKey: string | null = null) {
-  // A saved key means RPDB posters, as the poster source migration sets.
   accountId = seedLegacyAccount(OWNER, {
     rpdb_api_key: rpdbApiKey,
     poster_source: rpdbApiKey ? "rpdb" : "imdb",
@@ -115,8 +113,6 @@ describe("meta route serves from cache only", () => {
     expect(await res.json()).toEqual({ metas: [BREAKING_BAD] });
   });
 
-  // Cached two days ago is far past the 30min refresh TTL: the catalog path
-  // would re-scrape, the meta path still serves from cache with no fetch.
   it.each([
     ["a cached item, with its raw poster", "tt0111161", new Date(), SHAWSHANK],
     [

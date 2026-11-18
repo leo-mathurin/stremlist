@@ -1,4 +1,4 @@
-import type { ExternalIds, SourceEntry } from "../types";
+import type { ExternalIds } from "../types";
 import type {
   LibraryItem,
   SimklKind,
@@ -10,17 +10,12 @@ import { STATUSES } from "./library";
 const STATUS_REFS = new Map<string, SimklStatus>(
   STATUSES.map((status) => [`me/${status}`, status]),
 );
-/** Everything the user watched something of, from the library snapshot. */
 const HISTORY_REF = "me/history";
-/** Everything the user rated, from the library snapshot. */
 const RATINGS_REF = "me/ratings";
 /** Source lists read from the library snapshot. */
 export const LIBRARY_REFS = [...STATUS_REFS.keys(), HISTORY_REF, RATINGS_REF];
 
-export function titleType(
-  kind: SimklKind,
-  animeType?: string | null,
-): "movie" | "series" {
+export function titleType(kind: SimklKind, animeType?: string | null) {
   return kind === "movies" || animeType === "movie" ? "movie" : "series";
 }
 
@@ -29,12 +24,12 @@ export function simklItemUrl(item: {
   simkl: number;
   kind: SimklKind;
   slug?: string;
-}): string {
+}) {
   const section = item.kind === "shows" ? "tv" : item.kind;
   return `https://simkl.com/${section}/${item.simkl}/${item.slug ?? ""}`;
 }
 
-export function toEntry(item: SimklTitle, addedAt?: string): SourceEntry {
+export function toEntry(item: SimklTitle, addedAt?: string) {
   const type = titleType(item.kind, item.animeType);
   const externalIds: ExternalIds = { simkl: item.simkl };
   if (item.tmdb) externalIds.tmdb = { id: item.tmdb, type };
@@ -49,10 +44,7 @@ export function toEntry(item: SimklTitle, addedAt?: string): SourceEntry {
   };
 }
 
-/** Oldest `date` first, then by Simkl ID; items without a date first. */
-function byDate(
-  date: (item: LibraryItem) => string | undefined,
-): (a: LibraryItem, b: LibraryItem) => number {
+function byDate(date: (item: LibraryItem) => string | undefined) {
   return (a, b) => {
     const left = date(a) ?? "";
     const right = date(b) ?? "";
@@ -61,16 +53,14 @@ function byDate(
   };
 }
 
-/** Watched items, in the order they were last watched (oldest first). */
-function historyEntries(items: LibraryItem[]): SourceEntry[] {
+function historyEntries(items: LibraryItem[]) {
   return items
     .filter((item) => item.lastWatchedAt)
     .sort(byDate((item) => item.lastWatchedAt))
     .map((item) => toEntry(item, item.lastWatchedAt));
 }
 
-/** Rated items, in the order they were rated (oldest first). */
-function ratingEntries(items: LibraryItem[]): SourceEntry[] {
+function ratingEntries(items: LibraryItem[]) {
   return items
     .filter((item) => item.rating)
     .sort(byDate((item) => item.ratedAt))
@@ -78,24 +68,15 @@ function ratingEntries(items: LibraryItem[]): SourceEntry[] {
 }
 
 /** The entries of one of the LIBRARY_REFS. */
-export function libraryEntries(
-  items: LibraryItem[],
-  ref: string,
-): SourceEntry[] {
+export function libraryEntries(items: LibraryItem[], ref: string) {
   const status = STATUS_REFS.get(ref);
   if (status) return statusEntries(items, status);
   return ref === RATINGS_REF ? ratingEntries(items) : historyEntries(items);
 }
 
-function statusEntries(
-  items: LibraryItem[],
-  status: SimklStatus,
-): SourceEntry[] {
-  return (
-    items
-      .filter((item) => item.status === status)
-      // Canonical order: oldest added first; legacy items without a date first.
-      .sort(byDate((item) => item.addedAt ?? item.lastWatchedAt))
-      .map((item) => toEntry(item, item.addedAt ?? item.lastWatchedAt))
-  );
+function statusEntries(items: LibraryItem[], status: SimklStatus) {
+  return items
+    .filter((item) => item.status === status)
+    .sort(byDate((item) => item.addedAt ?? item.lastWatchedAt))
+    .map((item) => toEntry(item, item.addedAt ?? item.lastWatchedAt));
 }

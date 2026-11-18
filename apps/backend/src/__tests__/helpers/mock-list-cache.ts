@@ -24,14 +24,11 @@ interface CacheSource {
   sourceRef: string;
 }
 
-function sourceKey(source?: CacheSource): string | undefined {
+function sourceKey(source?: CacheSource) {
   return source && `${source.provider}:${source.sourceRef}`;
 }
 
-async function servesSource(
-  entry: Entry,
-  source?: CacheSource,
-): Promise<boolean> {
+async function servesSource(entry: Entry, source?: CacheSource) {
   if (entry.connection) {
     if (!(await isCurrentConnection(entry.connection))) return false;
   } else if (
@@ -46,7 +43,7 @@ async function servesSource(
 class InMemoryListCache {
   private entries = new Map<string, Entry>();
 
-  reset(): void {
+  reset() {
     this.entries.clear();
   }
 
@@ -56,8 +53,7 @@ class InMemoryListCache {
     cachedAt = new Date(),
     source?: CacheSource,
     connection?: ConnectionIdentity,
-  ): void {
-    // Seed a snapshot as if the configured Source list had just been read.
+  ) {
     const owner = db
       .getTable("lists")
       .flatMap((row) => {
@@ -100,7 +96,7 @@ class InMemoryListCache {
     });
   }
 
-  markStale(listId: string, entry: Entry): void {
+  markStale(listId: string, entry: Entry) {
     const cachedAt = new Date(0);
     this.entries.set(listId, {
       ...entry,
@@ -109,21 +105,18 @@ class InMemoryListCache {
     });
   }
 
-  get(listId: string): Entry | null {
+  get(listId: string) {
     return this.entries.get(listId) ?? null;
   }
 
-  delete(listId: string): void {
+  delete(listId: string) {
     this.entries.delete(listId);
   }
 }
 
 export const cache = new InMemoryListCache();
 
-export async function getCachedList(
-  listId: string,
-  source?: CacheSource,
-): Promise<Entry | null> {
+export async function getCachedList(listId: string, source?: CacheSource) {
   const entry = cache.get(listId);
   return Promise.resolve(
     entry && (await servesSource(entry, source)) ? entry : null,
@@ -136,7 +129,7 @@ export function writeCachedList(
   cachedAt = new Date(),
   source?: CacheSource,
   connection?: ConnectionIdentity,
-): Promise<string> {
+) {
   const seen = new Set<string>();
   const metas = listData.metas.filter((meta) => {
     const key = `${meta.type}:${meta.id}`;
@@ -154,7 +147,7 @@ export async function findCachedMeta(
   type: string,
   id: string,
   source?: CacheSource,
-): Promise<StremioMeta | null> {
+) {
   const entry = cache.get(listId);
   if (!entry || !(await servesSource(entry, source))) return null;
   const found = cache
@@ -163,7 +156,7 @@ export async function findCachedMeta(
   return Promise.resolve(found ?? null);
 }
 
-export function deleteCachedList(listId: string): Promise<void> {
+export function deleteCachedList(listId: string) {
   cache.delete(listId);
   return Promise.resolve();
 }
@@ -187,7 +180,7 @@ export async function getCachedListSummary(
   return Promise.resolve({ movie: genres("movie"), series: genres("series") });
 }
 
-export function markCachedListStale(listId: string): Promise<void> {
+export function markCachedListStale(listId: string) {
   const entry = cache.get(listId);
   if (entry) cache.markStale(listId, entry);
   return Promise.resolve();

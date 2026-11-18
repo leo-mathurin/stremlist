@@ -86,7 +86,6 @@ describe("POST /lists/preview", () => {
     });
 
     expect(res.status).toBe(200);
-    // The Title of both Source lists shows once.
     expect(await res.json()).toMatchObject({ ok: true, titleCount: 2 });
     expect(fetchSource).toHaveBeenCalledWith(
       "me/watchlist",
@@ -134,7 +133,6 @@ describe("POST /lists/preview", () => {
     const ready = await preview({ ...list, ticket });
     expect(await ready.json()).toMatchObject({ ok: true, titleCount: 1 });
     expect(tickets).toEqual([null, ticket]);
-    // The Source list that was read is not read again.
     expect(trakt).toHaveBeenCalledTimes(1);
   });
 

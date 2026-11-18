@@ -1,9 +1,3 @@
-// Loaded only by the isolated backend of watch-tracking.spec.ts. Stremio's
-// API answers from the JSON file at E2E_WATCH_STREMIO, which the test
-// rewrites to change the member's library; the backend never sees a real
-// Stremio account. Trakt and Simkl accept watched writes. Every request is
-// logged to E2E_PROVIDER_LOG (see fetch-fixture.ts); any other host is
-// refused.
 import { readFileSync, writeFileSync } from "node:fs";
 import type { FixtureRequest } from "./fetch-fixture.js";
 import { bearer, installFetchFixture } from "./fetch-fixture.js";
@@ -12,13 +6,13 @@ import { parseJson } from "./json.js";
 
 const json = (body: unknown, status = 200) => Response.json(body, { status });
 
-function stremioFile(): string {
+function stremioFile() {
   const file = process.env.E2E_WATCH_STREMIO;
   if (!file) throw new Error("E2E_WATCH_STREMIO is not set");
   return file;
 }
 
-function stremio({ url, body }: FixtureRequest): Response {
+function stremio({ url, body }: FixtureRequest) {
   const state = parseJson(
     readFileSync(stremioFile(), "utf8"),
     isFakeStremio,
@@ -63,8 +57,7 @@ function stremio({ url, body }: FixtureRequest): Response {
   }
 }
 
-/** Breaking Bad's first season, as Cinemeta lists it. */
-function cinemeta({ url }: FixtureRequest): Response {
+function cinemeta({ url }: FixtureRequest) {
   if (url.pathname !== "/meta/series/tt0903747.json") {
     return json({ meta: null });
   }
@@ -81,7 +74,7 @@ function cinemeta({ url }: FixtureRequest): Response {
   });
 }
 
-function provider({ request, url }: FixtureRequest): Response {
+function provider({ request, url }: FixtureRequest) {
   if (bearer(request) !== "fixture-access-token") {
     return json({ error: "invalid_token" }, 401);
   }
@@ -89,7 +82,6 @@ function provider({ request, url }: FixtureRequest): Response {
     return json({ added: { movies: 1, episodes: 1 }, not_found: {} });
   }
   if (url.pathname.startsWith("/sync/history/")) return json([]);
-  // Membership refreshes after a write: nothing else is known.
   return json({ error: "not found" }, 404);
 }
 

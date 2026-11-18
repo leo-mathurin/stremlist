@@ -20,7 +20,7 @@ const pageRequest = z.object({
   variables: z.object({ first: z.number() }),
 });
 
-function requestBody(init: RequestInit | undefined): string {
+function requestBody(init: RequestInit | undefined) {
   if (typeof init?.body !== "string") {
     throw new Error("Expected a JSON request body");
   }
@@ -109,17 +109,13 @@ const FORBIDDEN = () =>
 
 const NOT_FOUND = () => new Response("Not Found", { status: 404 });
 
-function profileHtml(userId: string): Response {
+function profileHtml(userId: string) {
   return new Response(
     `<html><head><script>window.__NEXT_DATA__ = {"userId":"${userId}","profileId":"p.something"};</script></head></html>`,
     { status: 200, headers: { "Content-Type": "text/html" } },
   );
 }
 
-/**
- * Serves `total` items in the page sizes the scraper asks for, and records
- * those sizes. `pageOf` wraps a search result in the response of one source.
- */
 function servePages(
   total: number,
   pageOf: (titleListItemSearch: Record<string, unknown>) => Response = (
@@ -131,7 +127,7 @@ function servePages(
       titleListItemSearch: search,
     }),
   hasNextPage = (offset: number) => offset < total,
-): number[] {
+) {
   const requestedPageSizes: number[] = [];
   let offset = 0;
   vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
@@ -158,8 +154,6 @@ function servePages(
 
 const NOT_FOUND_ERROR = /Could not find an IMDb watchlist/;
 
-// Without an implementation the spy passes through, so the integration tests
-// still reach the network.
 beforeEach(() => {
   vi.spyOn(globalThis, "fetch");
 });
@@ -539,8 +533,6 @@ describe("integration: real IMDb GraphQL API", () => {
     },
   );
 
-  // The unauthenticated API answers FORBIDDEN for a private list, unlike a
-  // nonexistent user.
   it("throws for a private watchlist (ur198342247)", async () => {
     await expect(fetchWatchlist("ur198342247")).rejects.toThrow(/private/i);
   });

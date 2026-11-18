@@ -41,17 +41,13 @@ import { connectionParam, requireAccess } from "./access";
 
 const providerOnlyParam = z.object({ provider: providerParam });
 
-/** What the configure page sends back after the Provider's consent page. */
 const completeBody = z.object({
   state: z.string().min(1).max(200),
   code: z.string().min(1).max(2000),
-  /** The key that the start gave to this browser. */
   browserKey: z.string().min(1).max(200),
-  /** The setup to create the Account with, for a new setup. */
   setup: createBody.optional(),
 });
 
-/** Why a completion failed, as the configure page names it. */
 type CompleteFailure = "expired" | "unavailable" | "failed";
 
 function completeFailure(
@@ -62,11 +58,6 @@ function completeFailure(
   return c.json({ error: `Connection ${reason}.`, reason }, status);
 }
 
-/**
- * Start an authorization for an Account, or for a new setup (`accountId`
- * null). Answers the Provider's authorize URL and the browser key that only
- * this browser keeps.
- */
 async function startFor(
   c: Context,
   accountId: string | null,
@@ -99,11 +90,6 @@ async function startFor(
 
 /** Providers and the Connections of an Account. */
 const connections = new Hono()
-  // What the configure page needs to know about each Provider right now.
-  // `enabled` is the Provider's Availability: false when the kill switch turns
-  // it off or when it refuses Stremlist's reads (one label for both causes).
-  // `outageSince` is when the monitor found the Provider down, or null; an
-  // unavailable Provider has no outage, as its label already says it all.
   .get("/providers", async (c) => {
     const outages = await currentProviderOutages();
     return c.json({
@@ -132,15 +118,12 @@ const connections = new Hono()
     },
   )
 
-  // A new setup connects before it has an Account: nothing is created until
-  // the connection succeeds, so a cancelled connect leaves nothing behind.
   .post(
     "/connections/:provider/start",
     zValidator("param", providerOnlyParam),
     (c) => startFor(c, null, c.req.valid("param").provider),
   )
 
-  // The browser that started the authorization completes it with its key.
   .post(
     "/connections/:provider/complete",
     zValidator("param", providerOnlyParam),
@@ -150,7 +133,6 @@ const connections = new Hono()
       const { state, code, browserKey, setup } = c.req.valid("json");
       const pending = await consumeState(provider, state, browserKey);
       if (!pending) return completeFailure(c, "expired", 400);
-      // Turned off (kill switch) since the authorization started.
       if (!isProviderEnabled(provider)) {
         return completeFailure(c, "unavailable", 503);
       }
@@ -212,7 +194,6 @@ const connections = new Hono()
               redirect,
             );
           } catch (saveError) {
-            // No Account without the Connection that it was created for.
             await deleteAccount(accountId);
             throw saveError;
           }
@@ -238,10 +219,6 @@ const connections = new Hono()
         return completeFailure(c, "failed", 502);
       }
 
-      // What Stremlist stored for the previous authorization (Action
-      // membership, the Provider's own snapshots) may be another Provider
-      // user's. Then Lists that failed without the Connection (or with the
-      // refused one) read through the new one.
       const connectedId = accountId;
       scheduleBackgroundTask(async () => {
         try {
@@ -258,7 +235,6 @@ const connections = new Hono()
     },
   )
 
-  // Everything a Connection unlocks: static sources plus the user's own lists.
   .get(
     "/:accountId/connections/:provider/sources",
     zValidator("param", connectionParam),
@@ -277,7 +253,6 @@ const connections = new Hono()
       const { accountId, provider } = c.req.valid("param");
       const access = await requireAccess(c, accountId, { privateOnly: true });
       if (access instanceof Response) return access;
-      // Nothing read through the Connection stays served or stored.
       await disconnectProvider(accountId, provider);
       return c.json({ ok: true as const });
     },

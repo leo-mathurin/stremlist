@@ -6,11 +6,10 @@ import { HttpError, providerFetchJson, RateLimiter } from "../providers/http";
 import type { ResolverStrategy, SourceEntry } from "../providers/types";
 
 const TMDB_API = "https://api.themoviedb.org/3";
-// TMDB allows about 50 requests per second; stay well below.
 const tmdbLimiter = new RateLimiter(30, 1000);
 const CONCURRENCY = 6;
 
-export function isTmdbConfigured(): boolean {
+export function isTmdbConfigured() {
   return (
     Boolean(process.env.TMDB_READ_ACCESS_TOKEN) ||
     Boolean(process.env.TMDB_API_KEY)
@@ -22,7 +21,7 @@ export async function tmdbGet<T>(
   path: string,
   schema: z.ZodType<T>,
   params: Record<string, string> = {},
-): Promise<T | null> {
+) {
   const token = process.env.TMDB_READ_ACCESS_TOKEN;
   const apiKey = process.env.TMDB_API_KEY;
   if (!token && !apiKey) throw new Error("TMDB is not configured");
@@ -42,11 +41,7 @@ export async function tmdbGet<T>(
 
 const externalIdsSchema = z.object({ imdb_id: z.string().nullish() });
 
-/** IMDb ID of a TMDB movie or show, or null. */
-async function tmdbImdbId(
-  tmdbId: number,
-  type: "movie" | "series",
-): Promise<string | null> {
+async function tmdbImdbId(tmdbId: number, type: "movie" | "series") {
   const data = await tmdbGet(
     `/${type === "movie" ? "movie" : "tv"}/${tmdbId}/external_ids`,
     externalIdsSchema,
@@ -81,7 +76,7 @@ const findSchema = z.object({
 const POSTER_PATH = /^\/[\w.-]+$/u;
 
 /** Whether `value` is a TMDB image path that is safe to put in a URL. */
-export function isTmdbPosterPath(value: string): boolean {
+export function isTmdbPosterPath(value: string) {
   return POSTER_PATH.test(value);
 }
 
@@ -92,13 +87,12 @@ export function isTmdbPosterPath(value: string): boolean {
 export async function findTmdbPosterPath(title: {
   id: string;
   type: TitleType;
-}): Promise<string | null> {
+}) {
   const data = await tmdbGet(`/find/${title.id}`, findSchema, {
     external_source: "imdb_id",
   });
   const movies = data?.movie_results ?? [];
   const shows = data?.tv_results ?? [];
-  // An IMDb ID is one Title, but TMDB can list it as a movie and a show.
   const ordered =
     title.type === "series" ? [...shows, ...movies] : [...movies, ...shows];
   return (

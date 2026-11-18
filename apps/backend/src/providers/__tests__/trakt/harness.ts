@@ -1,9 +1,6 @@
-/**
- * The fetch mock and helpers that every Trakt adapter test file shares.
- */
 import { vi } from "vite-plus/test";
 import { traktProvider } from "../../trakt";
-import type { ConnectionAccess, SourceEntry } from "../../types";
+import type { ConnectionAccess } from "../../types";
 import {
   clearCalls as clearRecordedCalls,
   connection as oauthConnection,
@@ -34,16 +31,13 @@ let routes: { match: string; handler: Handler }[] = [];
 export const calls: Call[] = [];
 
 /** Forget the calls so far, to check only the ones that follow. */
-export function clearCalls(): void {
+export function clearCalls() {
   calls.length = 0;
   clearRecordedCalls();
 }
 
 /** Route on "METHOD /path" (query ignored). Later routes win. */
-export function route(
-  match: string,
-  handler: Handler | Response | JsonBody,
-): void {
+export function route(match: string, handler: Handler | Response | JsonBody) {
   const fn: Handler =
     typeof handler === "function"
       ? handler
@@ -56,16 +50,16 @@ export function route(
 export function json(
   data: unknown,
   init: { status?: number; headers?: Record<string, string> } = {},
-): Response {
+) {
   return oauthJson(data, init.status, init.headers);
 }
 
-export function status(code: number): Response {
+export function status(code: number) {
   return new Response(code === 204 ? null : "", { status: code });
 }
 
 /** One page of a paginated endpoint, chosen by the `page` query parameter. */
-export function pages(all: unknown[][]): Handler {
+export function pages(all: unknown[][]) {
   return (call) => {
     const page = Number(call.url.searchParams.get("page") ?? "1");
     return json(all[page - 1] ?? [], {
@@ -77,17 +71,16 @@ export function pages(all: unknown[][]): Handler {
   };
 }
 
-export function callsTo(path: string): Call[] {
+export function callsTo(path: string) {
   return calls.filter((call) => call.url.pathname === path);
 }
 
-export function resetTraktTest(): void {
+export function resetTraktTest() {
   routes = [];
   vi.stubEnv("TRAKT_CLIENT_ID", "client-123");
   vi.stubEnv("TRAKT_CLIENT_SECRET", "");
   calls.length = 0;
   stubFetch((recorded) => {
-    // Trakt assertions inspect the decoded JSON body.
     const call: Call = {
       ...recorded,
       body:
@@ -111,6 +104,6 @@ export function connection(tokens: string[] = ["token-1"]) {
 export async function fetchEntries(
   ref: string,
   conn: ConnectionAccess | null = null,
-): Promise<SourceEntry[]> {
+) {
   return (await traktProvider.fetchSource(ref, { connection: conn })).entries;
 }

@@ -5,7 +5,6 @@ import { randomToken } from "../lib/crypto";
 import { supabase } from "../lib/supabase";
 import { providerFetch } from "../providers/http";
 import { getProvider } from "../providers/registry";
-import type { OAuthConfig } from "../providers/types";
 
 const STATE_TTL_MS = 15 * 60_000;
 
@@ -23,13 +22,13 @@ export class OAuthNotConfiguredError extends Error {
   }
 }
 
-function getOAuthConfig(provider: ProviderId): OAuthConfig {
+function getOAuthConfig(provider: ProviderId) {
   const config = getProvider(provider).oauth;
   if (!config?.clientId()) throw new OAuthNotConfiguredError(provider);
   return config;
 }
 
-export function isOAuthConfigured(provider: ProviderId): boolean {
+export function isOAuthConfigured(provider: ProviderId) {
   return !!getProvider(provider).oauth?.clientId();
 }
 
@@ -37,15 +36,15 @@ export function isOAuthConfigured(provider: ProviderId): boolean {
  * The callback URL registered with every Provider app, on the public origin
  * of this backend (`backendOrigin`).
  */
-export function redirectUri(provider: ProviderId, origin: string): string {
+export function redirectUri(provider: ProviderId, origin: string) {
   return `${origin}/oauth/${provider}/callback`;
 }
 
-function pkceChallenge(verifier: string): string {
+function pkceChallenge(verifier: string) {
   return createHash("sha256").update(verifier).digest("base64url");
 }
 
-function hashBrowserKey(browserKey: string): string {
+function hashBrowserKey(browserKey: string) {
   return createHash("sha256").update(browserKey).digest("base64url");
 }
 
@@ -62,9 +61,8 @@ function hashBrowserKey(browserKey: string): string {
 export async function startAuthorization(
   accountId: string | null,
   provider: ProviderId,
-  /** The public origin of this backend (`backendOrigin`). */
   origin: string,
-): Promise<{ authorizeUrl: string; browserKey: string }> {
+) {
   const config = getOAuthConfig(provider);
   const state = randomToken();
   const verifier = randomToken(48);
@@ -100,7 +98,7 @@ export async function consumeState(
   provider: ProviderId,
   state: string,
   browserKey: string,
-): Promise<{ accountId: string | null; codeVerifier: string } | null> {
+) {
   const { data, error } = await supabase
     .from("oauth_states")
     .delete()
@@ -114,8 +112,6 @@ export async function consumeState(
   return { accountId: data.account_id, codeVerifier: data.code_verifier };
 }
 
-// A field of another type reads as missing, and an answer that is not an
-// object as a failed request.
 const tokenResponseSchema = z
   .object({
     access_token: z.string().nullish().catch(undefined),
@@ -129,7 +125,7 @@ const tokenResponseSchema = z
 async function requestTokens(
   provider: ProviderId,
   params: Record<string, string>,
-): Promise<OAuthTokens> {
+) {
   const config = getOAuthConfig(provider);
   const body = new URLSearchParams({
     client_id: config.clientId() ?? "",
@@ -171,7 +167,7 @@ export function exchangeCode(
   code: string,
   codeVerifier: string,
   redirect: string,
-): Promise<OAuthTokens> {
+) {
   return requestTokens(provider, {
     grant_type: "authorization_code",
     code,
@@ -188,7 +184,7 @@ export function refreshTokens(
   provider: ProviderId,
   refreshToken: string,
   redirect: string,
-): Promise<OAuthTokens> {
+) {
   return requestTokens(provider, {
     grant_type: "refresh_token",
     refresh_token: refreshToken,

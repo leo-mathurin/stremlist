@@ -7,11 +7,9 @@ import { fetchTitlesByIds } from "../services/imdb-scraper";
 
 const CINEMETA = "https://v3-cinemeta.strem.io";
 const cinemetaLimiter = new RateLimiter(20, 1000);
-/** Maximum age of metadata reused from a persisted Source catalog. */
 const METADATA_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
 const MEMORY_TTL_MS = 6 * 60 * 60_000;
 const MEMORY_MAX_ENTRIES = 5000;
-/** Most titles one refresh asks Cinemeta for when IMDb fails. */
 const MAX_CINEMETA_TITLES = 200;
 
 export type EnrichedMeta = StremioMeta & { enrichedAt: string };
@@ -19,7 +17,7 @@ type PreviousMeta = StremioMeta & { enrichedAt?: string };
 
 const memory = new Map<string, { meta: EnrichedMeta; expiresAt: number }>();
 
-function remember(meta: StremioMeta): EnrichedMeta {
+function remember(meta: StremioMeta) {
   const dated = { ...meta, enrichedAt: new Date().toISOString() };
   memory.delete(meta.id);
   memory.set(meta.id, { meta: dated, expiresAt: Date.now() + MEMORY_TTL_MS });
@@ -31,7 +29,7 @@ function remember(meta: StremioMeta): EnrichedMeta {
   return dated;
 }
 
-function recall(imdbId: string): EnrichedMeta | null {
+function recall(imdbId: string) {
   const entry = memory.get(imdbId);
   if (!entry) return null;
   if (entry.expiresAt <= Date.now()) {
@@ -62,10 +60,7 @@ const cinemetaResponseSchema = z.object({
   meta: cinemetaMetaSchema.nullish(),
 });
 
-async function fetchCinemeta(
-  imdbId: string,
-  typeHint?: "movie" | "series",
-): Promise<StremioMeta | null> {
+async function fetchCinemeta(imdbId: string, typeHint?: "movie" | "series") {
   const types: ("movie" | "series")[] = typeHint
     ? [typeHint]
     : ["movie", "series"];
@@ -116,10 +111,9 @@ interface TitleToEnrich {
 export async function enrichTitles(
   titles: TitleToEnrich[],
   previous = new Map<string, PreviousMeta>(),
-): Promise<Map<string, EnrichedMeta>> {
+) {
   const result = new Map<string, EnrichedMeta>();
   const missing = new Map<string, TitleToEnrich>();
-  // A Source list can hold a Title twice (history, two seasons): look it up once.
   for (const title of titles) {
     if (result.has(title.imdbId) || missing.has(title.imdbId)) continue;
     const cached = previous.get(title.imdbId);
@@ -136,7 +130,6 @@ export async function enrichTitles(
   if (missing.size === 0) return result;
 
   let notFromImdb = [...missing.values()];
-  // With IMDb turned off (kill switch), every Title comes from Cinemeta.
   if (isProviderEnabled("imdb")) {
     try {
       const fromImdb = await fetchTitlesByIds([...missing.keys()]);

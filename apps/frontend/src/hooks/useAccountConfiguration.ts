@@ -53,25 +53,18 @@ import { useReinstallBaseline } from "./useReinstallBaseline";
 import type { InstallSetup } from "./useReinstallBaseline";
 import { STREMIO_UPDATE_TOAST, useStremioSync } from "./useStremioSync";
 
-/** The Lists that a save stored, in the order it got them. */
 type StoredLists = Pick<
   ConfigList,
   "id" | "provider" | "sourceRef" | "mergedSources" | "availableGenres"
 >[];
 
-/** Providers whose Actions an Account can turn on: connected, with Actions. */
-function actionCapableProviders(
-  connections: ConnectionSummary[],
-): ProviderId[] {
+function actionCapableProviders(connections: ConnectionSummary[]) {
   return ACTION_PROVIDERS.filter((id) =>
     connections.some((connection) => connection.provider === id),
   );
 }
 
-function errorMessage<Body extends object>(
-  body: Body,
-  fallback: string,
-): string {
+function errorMessage<Body extends object>(body: Body, fallback: string) {
   return "error" in body &&
     typeof body.error === "string" &&
     body.error.length > 0
@@ -86,16 +79,11 @@ function toastError(err: unknown, options?: { id: string }) {
   );
 }
 
-/**
- * The poster source of a kept draft. One kept by an older page has none:
- * then an RPDB key meant RPDB posters.
- */
-function keptPosterSource(draft: AccountForm): PosterSource {
+function keptPosterSource(draft: AccountForm) {
   if (isPosterSource(draft.posterSource)) return draft.posterSource;
   return draft.rpdbApiKey.trim() ? "rpdb" : DEFAULT_POSTER_SOURCE;
 }
 
-/** What a new setup starts with: a form with this content has nothing to lose. */
 const EMPTY_FORM: AccountForm = {
   lists: [],
   rpdbApiKey: "",
@@ -105,14 +93,7 @@ const EMPTY_FORM: AccountForm = {
   newTitlesEnabled: false,
 };
 
-/**
- * The saved form, with its Actions fitted to the Providers that can have
- * Actions now, as the page fits the edited form.
- */
-function reconcileSavedActions(
-  saved: AccountForm,
-  capable: ProviderId[],
-): AccountForm {
+function reconcileSavedActions(saved: AccountForm, capable: ProviderId[]) {
   return {
     ...saved,
     actions: reconcileActionProviders(
@@ -123,13 +104,7 @@ function reconcileSavedActions(
   };
 }
 
-/**
- * The configuration of an Account, "notFound", or null when it cannot be
- * read (an answer without Lists included).
- */
-async function fetchConfig(
-  accountKey: string,
-): Promise<AccountConfigResponse | "notFound" | null> {
+async function fetchConfig(accountKey: string) {
   const res = await api[":accountKey"].config.$get({ param: { accountKey } });
   if (res.status === 404) return "notFound";
   if (!res.ok) return null;
@@ -137,10 +112,6 @@ async function fetchConfig(
   return "lists" in body ? body : null;
 }
 
-/**
- * Create an Account from `form`. It may have no Lists yet when it is created
- * to connect a Provider.
- */
 async function postNewAccount(form: AccountForm) {
   const res = await api.accounts.$post({ json: configBody(form, "new") });
   const body = await res.json();
@@ -150,7 +121,6 @@ async function postNewAccount(form: AccountForm) {
   return body;
 }
 
-/** Save `form` to an existing Account. Returns what the save stored. */
 async function postConfig(
   accountKey: string,
   form: AccountForm,
@@ -167,7 +137,6 @@ async function postConfig(
   return body;
 }
 
-/** Ask the backend to read the Lists of an Account again. */
 async function postRefresh(accountKey: string) {
   const res = await api[":accountKey"].refresh.$post({
     param: { accountKey },
@@ -179,7 +148,6 @@ async function postRefresh(accountKey: string) {
   return body;
 }
 
-/** Start the OAuth flow of a Provider, for an Account or a new setup. */
 async function postConnectStart(
   accountId: string | null,
   provider: ProviderId,
@@ -205,7 +173,7 @@ async function deleteConnection(
   accountId: string,
   provider: ProviderId,
   label: string,
-): Promise<void> {
+) {
   const res = await api[":accountId"].connections[":provider"].$delete({
     param: { accountId, provider },
   });
@@ -231,10 +199,6 @@ export function useAccountConfiguration(
     accountKey ? "private" : "new",
   );
   const [accountId, setAccountId] = useState<string | null>(null);
-  /**
-   * The private Account that this page just made from a Legacy alias
-   * install. The old page then stops editing: the user leaves that install.
-   */
   const [upgradedTo, setUpgradedTo] = useState<string | null>(null);
   const {
     connections,
@@ -268,18 +232,12 @@ export function useAccountConfiguration(
     : 0;
   const baseline = useReinstallBaseline(accountKey);
   const { reset: resetBaseline, onLoaded: onBaselineLoaded } = baseline;
-  // Optional: a linked Stremio account turns the reinstall into an update.
   const [loadedStremio, setLoadedStremio] = useState<StremioLink | null>(null);
   const stremio = useStremioSync(
     access === "private" ? accountId : null,
     loadedStremio,
     baseline.markReinstalled,
   );
-  /**
-   * The Account that the first save just created, with what it stored. The
-   * page already shows that setup, so loading the Account must not replace
-   * it with a loader.
-   */
   const created = useRef<{ accountId: string; setup: InstallSetup } | null>(
     null,
   );
@@ -292,30 +250,16 @@ export function useAccountConfiguration(
     actions,
     newTitlesEnabled,
   };
-  /**
-   * The form as the server last stored it, or null until it is known. The
-   * page has unsaved changes when the form differs from it.
-   */
   const [savedForm, setSavedForm] = useState<AccountForm | null>(null);
-  /**
-   * The Account key whose state the page shows. Undefined before the first
-   * render, so that the first render sets up the state too.
-   */
   const [shownKey, setShownKey] = useState<string | null | undefined>(
     undefined,
   );
-  /** The Account that the first save just created, until the key moves on. */
   const [createdKey, setCreatedKey] = useState<string | null>(null);
-  // Another Account key: what the page shows belongs to the old one. The
-  // Account that the first save created keeps its form on screen: only the
-  // server state loads.
   if (shownKey !== accountKey) {
     setShownKey(accountKey);
     if (!accountKey) {
       setAccess("new");
       setSavedForm(EMPTY_FORM);
-      // Back from a connect that did not complete: the setup it took along.
-      // The effect below forgets it once this render commits.
       const draft = readDraft(null);
       if (draft) {
         setLists(draft.lists);
@@ -331,16 +275,10 @@ export function useAccountConfiguration(
     if (accountKey !== createdKey) setCreatedKey(null);
   }
   const currentForm = useRef(form);
-  // Save responses must see edits committed while the request was in flight.
   useLayoutEffect(() => {
     currentForm.current = form;
   });
 
-  /**
-   * Take what the server says about the Account and the page does not edit:
-   * the sync status, Connections, refresh times, the New titles summary, and
-   * the Providers that can have Actions.
-   */
   const applyServerState = useCallback(
     (data: AccountConfigResponse) => {
       applySync(data);
@@ -359,7 +297,6 @@ export function useAccountConfiguration(
   useEffect(() => {
     resetBaseline();
     if (!accountKey) {
-      // The render took the draft of the new setup, if any.
       dropDraft();
       return;
     }
@@ -383,7 +320,6 @@ export function useAccountConfiguration(
         }
         const rows = rowsFromLists(data.lists);
         const capable = actionCapableProviders(data.connections);
-        // The saved Actions Providers first, in their order.
         const saved = reconcileActionProviders(
           data.actions.providers,
           data.actions.providers,
@@ -397,7 +333,6 @@ export function useAccountConfiguration(
           actions: saved,
           newTitlesEnabled: data.newTitles.enabled,
         };
-        // Back from Connect: the edits the user had not saved yet.
         const kept = data.accountId ? takeDraft(data.accountId) : null;
         const draft = kept && {
           ...kept,
@@ -441,8 +376,6 @@ export function useAccountConfiguration(
       .catch(() => {
         if (cancelled) return;
         created.current = null;
-        // The new Account is saved and on screen: without its server state,
-        // the rows only show no sync status.
         if (!justCreated) setStatus("error");
       });
     return () => {
@@ -457,8 +390,6 @@ export function useAccountConfiguration(
     setLists,
   ]);
 
-  // Actions add a `stream` resource to the manifest, which Stremio also reads
-  // only at install time.
   const actionsLive =
     access === "private" && actionsEnabled && actions.selected.length > 0;
   const reinstall =
@@ -470,10 +401,6 @@ export function useAccountConfiguration(
           actionsLive,
         });
 
-  /**
-   * Give the submitted rows the IDs and Source lists that the save stored.
-   * Returns the saved rows.
-   */
   const adoptStoredLists = (submitted: ListFormRow[], stored: StoredLists) => {
     rememberSaved(stored);
     const savedRows = submitted.map((row, index) => {
@@ -488,8 +415,6 @@ export function useAccountConfiguration(
           }
         : row;
     });
-    // Match rows by their local ID: the user may have added, removed or
-    // reordered Lists while the save was in flight.
     const savedByLocalId = new Map(savedRows.map((row) => [row.localId, row]));
     const submittedByLocalId = new Map(
       submitted.map((row) => [row.localId, row]),
@@ -529,7 +454,6 @@ export function useAccountConfiguration(
       },
     };
     setCreatedKey(body.accountId);
-    // Show the Account at once; its server state loads in the background.
     setAccess("private");
     setAccountId(body.accountId);
     toast.success("Saved! Install Stremlist in Stremio with your Addon URL.", {
@@ -549,7 +473,6 @@ export function useAccountConfiguration(
       newTitles: submitted.newTitlesEnabled,
       actionsLive,
     });
-    // The saved Lists change what the summary counts.
     setNewTitlesSummary(body.newTitles);
     if (unsaved) {
       toast.success(
@@ -557,7 +480,6 @@ export function useAccountConfiguration(
         { id: "configuration-save" },
       );
     } else if (needsReinstall && stremio.connection) {
-      // The update result replaces this toast.
       toast.dismiss("configuration-save");
       toast.success("Saved! Stremlist is updating Stremio.", {
         id: STREMIO_UPDATE_TOAST,
@@ -567,7 +489,6 @@ export function useAccountConfiguration(
       stremio.available &&
       !stremio.manualPreferred
     ) {
-      // The reminder on the page offers both ways to update Stremio.
       toast.success("Saved! Choose how Stremio gets your changes.", {
         id: "configuration-save",
         action: null,
@@ -580,8 +501,6 @@ export function useAccountConfiguration(
           duration: 10_000,
           action: {
             label: "Reinstall",
-            // The reinstall takes the link twice (Uninstall, then
-            // Install), so the reminder stays until "I did it".
             onClick: () => {
               const { stremioUrl, webUrl } = buildAddonUrls(accountKey);
               if (stremioUrl) window.location.assign(stremioUrl);
@@ -596,7 +515,6 @@ export function useAccountConfiguration(
         { id: "configuration-save" },
       );
     }
-    // Also with edits made during the save: Stremio gets what was saved.
     if (needsReinstall && stremio.connection) void stremio.update();
   };
 
@@ -626,7 +544,6 @@ export function useAccountConfiguration(
       const body = await postRefresh(accountKey);
       setCooldownSeconds(body.cooldownSeconds);
       setLastFetchedAt(body.lastFetchedAt);
-      // A throttled refresh read nothing new.
       if ("syncStatus" in body) applySync(body);
       if ("newTitles" in body) setNewTitlesSummary(body.newTitles);
       if ("lists" in body) {
@@ -644,8 +561,6 @@ export function useAccountConfiguration(
           }),
         );
       }
-      // Success feedback is the live "Last refreshed" label and the cooldown,
-      // so only report when some Lists failed. Each failed List says why.
       if (body.failed > 0) {
         toast.error(
           `Refreshed ${body.refreshed} of ${body.total} lists. The others failed to update: each list shows why.`,
@@ -657,13 +572,7 @@ export function useAccountConfiguration(
     setRefreshing(false);
   };
 
-  /**
-   * Give a Legacy alias install a private Addon URL: a new Account with the
-   * setup that this page shows, unsaved edits included. The legacy install
-   * stays as it is, because its `ur…` ID is public (ADR 0001). Returns the
-   * new ID.
-   */
-  const upgrade = async (): Promise<string | null> => {
+  const upgrade = async () => {
     if (!accountKey || access !== "legacy") return null;
     try {
       const { accountId: id } = await postNewAccount(form);
@@ -675,11 +584,6 @@ export function useAccountConfiguration(
     }
   };
 
-  /**
-   * Start the OAuth flow of a Provider. A Connection belongs to an Account:
-   * a new setup gets its Account only when the connection succeeds, with the
-   * setup kept here, so a cancelled connect leaves nothing behind.
-   */
   const connect = async (provider: ProviderId) => {
     const label = PROVIDERS[provider].label;
     if (access === "legacy") {
@@ -689,7 +593,6 @@ export function useAccountConfiguration(
       return;
     }
     setConnecting(provider);
-    // Leaving for the Provider reloads the page: keep the unsaved edits.
     keepDraft(accountId, form);
     try {
       const body = await postConnectStart(accountId, provider, label);
@@ -723,9 +626,6 @@ export function useAccountConfiguration(
       toast.info(
         `${label} is disconnected. Lists read through ${label} stop showing in Stremio until you connect it again.`,
       );
-      // Read the server state again without touching the Lists being
-      // edited, so rows show what the backend now serves. When it cannot be
-      // read, the local state already reflects the disconnect.
       const data = await fetchConfig(accountId).catch(() => null);
       if (data && data !== "notFound") applyServerState(data);
     } catch (err) {
@@ -734,7 +634,6 @@ export function useAccountConfiguration(
     setConnecting(null);
   };
 
-  /** What a List row shows about its refreshes and Connections. */
   const rowModel = (list: ListFormRow) => {
     const sync = syncStateOf(list);
     const missing =
@@ -747,17 +646,12 @@ export function useAccountConfiguration(
     };
   };
 
-  /** The form has changes that a save would send. */
   const dirty =
     savedForm !== null && hasUnsavedChanges(savedForm, form, access);
 
   return {
     ...editor,
     dirty,
-    /**
-     * A save has work to do: the form has changes, or the page asks to
-     * save, then reinstall (a disconnect turned Actions off without an edit).
-     */
     saveNeeded: dirty || reinstall === "after-save",
     rpdbApiKey,
     setRpdbApiKey,
@@ -771,8 +665,6 @@ export function useAccountConfiguration(
     providerStatus,
     rowModel,
     actionsEnabled,
-    // Turning Actions on selects every capable Provider, so saving right
-    // away gives working Actions.
     setActionsEnabled: (enabled: boolean) => {
       setActionsEnabled(enabled);
       if (enabled) {

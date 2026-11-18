@@ -1,12 +1,10 @@
 import { SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL } from "./env.js";
 import { ensureR2Bucket } from "./helpers/r2.js";
 
-function errorMessage(error: unknown): string {
+function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-// This script runs before Playwright starts its web servers, so database
-// failures surface immediately instead of becoming a backend startup timeout.
 try {
   const response = await fetch(
     `${SUPABASE_URL}/rest/v1/accounts?select=id&limit=1`,

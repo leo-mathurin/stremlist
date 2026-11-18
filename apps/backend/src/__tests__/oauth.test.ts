@@ -127,7 +127,6 @@ function callback(query: Record<string, string>, provider = "trakt") {
   );
 }
 
-/** The configure page completes with the key that its start answered. */
 function complete(body: Record<string, unknown> = {}, provider = "trakt") {
   return app.request(`/connections/${provider}/complete`, {
     method: "POST",
@@ -201,9 +200,7 @@ describe("startAuthorization", () => {
     });
     expect(row).toMatchObject({ account_id: accountId, provider: "trakt" });
     expect(row.code_verifier).toMatch(/^[A-Za-z0-9_-]{43,128}$/);
-    // The verifier itself never leaves the server.
     expect(url.toString()).not.toContain(row.code_verifier);
-    // Only the browser keeps its key; the server keeps a hash.
     expect(browserKey).toMatch(/^[A-Za-z0-9_-]{43,}$/);
     expect(url.toString()).not.toContain(browserKey);
     expect(row.browser_key_hash).toBe(
@@ -362,8 +359,6 @@ describe("GET /:accountId/connections/:provider/sources", () => {
 
 describe("OAuth login CSRF", () => {
   async function attackerStart() {
-    // The attacker starts a connect on their own Account and sends the
-    // Provider consent link to a victim.
     const start = await app.request(`/${accountId}/connections/trakt/start`, {
       method: "POST",
     });
@@ -380,8 +375,6 @@ describe("OAuth login CSRF", () => {
     useOAuthProvider();
     const { state } = await attackerStart();
 
-    // The victim approves: the Provider sends the victim's browser, which
-    // never started this connect, back with a code.
     const res = await callback({ code: "victim-code", state });
     for (const task of background.tasks.splice(0)) await task();
 
@@ -394,7 +387,6 @@ describe("OAuth login CSRF", () => {
     useOAuthProvider();
     const { state } = await attackerStart();
 
-    // The victim's page has no key for this authorization, or its own.
     const res = await complete({
       state,
       code: "victim-code",
@@ -405,7 +397,6 @@ describe("OAuth login CSRF", () => {
     expect(await res.json()).toMatchObject({ reason: "expired" });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(db.getTable("connections")).toEqual([]);
-    // A wrong key does not consume the authorization.
     expect(db.getTable("oauth_states")).toHaveLength(1);
   });
 
@@ -565,7 +556,6 @@ describe("POST /connections/:provider/complete", () => {
       provider: "trakt",
       provider_username: "leo",
       scope: "public",
-      // Kept for refreshes, which must send the same redirect URI.
       redirect_uri: "http://localhost/oauth/trakt/callback",
     });
     expect(decryptSecret(mustString(row.access_token, "access_token"))).toBe(
@@ -575,7 +565,6 @@ describe("POST /connections/:provider/complete", () => {
       "refresh-1",
     );
     expect(JSON.stringify(row)).not.toContain("access-1");
-    // The state is single use.
     expect(db.getTable("oauth_states")).toEqual([]);
   });
 
@@ -607,7 +596,6 @@ describe("POST /connections/:provider/complete", () => {
         rpdbApiKey: "rpdb",
         lists: [
           {
-            // An ID from another Account does not apply to a new one.
             id: "11111111-1111-4111-8111-111111111111",
             provider: "imdb",
             sourceRef: "ls123456789",

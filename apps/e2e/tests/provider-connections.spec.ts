@@ -23,12 +23,6 @@ import { getCacheManifest } from "../helpers/r2.js";
 import { isRecord, present } from "../helpers/json.js";
 import { LEGACY_CONNECTION_USER } from "../helpers/test-data.js";
 
-// Connections against the real backend, database and R2 store: OAuth start
-// and callback, disconnect, expired tokens and the Legacy alias limits. A
-// separate backend with helpers/provider-fixtures.ts answers every Provider
-// request with deterministic data (dummy client IDs, no real credentials)
-// and logs what the backend sent.
-
 let backend: FixtureBackend;
 
 test.beforeAll(async () => {
@@ -43,7 +37,6 @@ test.beforeEach(async () => {
   backend.clearRequests();
 });
 
-/** The movie Catalog of the List `listId`, from the fixture backend. */
 const movieCatalog = async (accountKey: string, listId: string) =>
   (await backend.api.getCatalog(accountKey, "movie", `wl-${listId}-movie`))
     .metas;
@@ -83,7 +76,6 @@ test(
     });
     expect(await getOAuthStates(state)).toEqual([{ provider: "trakt" }]);
 
-    // The callback only hands the answer to the page, in the fragment.
     const callback = await api.oauthCallback("trakt", {
       code: "fixture-code",
       state,
@@ -93,7 +85,6 @@ test(
       `${FRONTEND_URL}/configure#oauth=trakt&state=${state}&code=fixture-code`,
     );
     expect(await getConnectionRow(accountId, "trakt")).toBeNull();
-    // Another browser, with no key or its own, links nothing (login CSRF).
     const foreign = await api.completeConnection("trakt", {
       state,
       code: "fixture-code",
@@ -110,7 +101,6 @@ test(
     const completed = await complete();
     expect(completed.status).toBe(200);
     expect(completed.body).toEqual({ ok: true, accountId, created: false });
-    // PKCE: the token request proves the verifier behind the challenge.
     const [exchange] = backend.requests(
       (url) => url.host === "auth.trakt.tv" && url.pathname === "/oauth/token",
     );
@@ -141,7 +131,6 @@ test(
       { provider: "trakt", username: "fixture-user" },
     ]);
 
-    // A state works once; a refusal and a broken request say why.
     const replay = await complete();
     expect(replay).toMatchObject({ status: 400, body: { reason: "expired" } });
     const second = present(
@@ -160,7 +149,6 @@ test(
       `${FRONTEND_URL}/configure?connection_error=invalid_request`,
     );
 
-    // The Connection unlocks private Source lists and the user's own lists.
     expect(
       await api.resolveLink("https://trakt.tv/users/me/watchlist", accountId),
     ).toMatchObject({ ok: true, provider: "trakt", sourceRef: "me/watchlist" });
@@ -238,7 +226,6 @@ test(
       client_id: "fixture-trakt-client",
     });
     expect(await getConnectionRow(accountId, "trakt")).toBeNull();
-    // Nothing read through the Connection stays stored or served.
     expect(await getCacheManifest(listId)).toMatchObject({ deleted: true });
     expect(await movieCatalog(accountId, listId)).toMatchObject([
       {
@@ -278,7 +265,6 @@ test(
         name: "⚠️ This watchlist needs your Trakt account",
       },
     ]);
-    // The refresh used the redirect URI stored with the Connection.
     expect(
       backend
         .requests((url) => url.pathname === "/oauth/token")
@@ -347,7 +333,6 @@ test(
     expect(await api.listCatalogNames(alias, publicList, "movie")).toEqual([
       "The Shawshank Redemption",
     ]);
-    // The Account ID of a legacy Account is no second way in.
     expect((await api.getConfig(accountId)).status).toBe(404);
     expect(
       (
@@ -360,8 +345,6 @@ test(
         "Trakt lists need your private Addon URL. Upgrade this install first.",
     });
 
-    // The upgrade copies what the legacy page shows to a private Account:
-    // not the List that needs the Connection, and not the Connection.
     const upgraded = await api.upgrade(alias);
     expect(upgraded.status).toBe(200);
     const copy = present(upgraded.body.accountId, "the copy's Account ID");
@@ -369,7 +352,6 @@ test(
       (await api.getConfig(copy)).body.lists.map((row) => row.sourceRef),
     ).toEqual(["users/fixture-user/watchlist"]);
     expect(await getConnectionRow(copy, "trakt")).toBeNull();
-    // Nothing locks the legacy install: its `ur…` ID is public.
     expect(
       (
         await api.postConfig(alias, [
@@ -401,18 +383,15 @@ test(
     const titles = await api.listCatalogNames(alias, legacyList, "movie");
     expect(titles).toEqual(["The Shawshank Redemption"]);
 
-    // Anyone who knows the public `ur…` ID can make this copy.
     const upgraded = await api.upgrade(alias);
     expect(upgraded.status).toBe(200);
     const copy = present(upgraded.body.accountId, "the copy's Account ID");
     expect(copy).toMatch(/^sl_/);
 
-    // The old install in Stremio keeps serving the same manifest and Titles.
     expect(await api.getManifest(alias)).toEqual(before);
     expect(await api.listCatalogNames(alias, legacyList, "movie")).toEqual(
       titles,
     );
-    // The private Addon URL serves the same Lists, with their own IDs.
     const privateManifest = await api.getManifest(copy);
     expect(shape(privateManifest)).toEqual(shape(before));
     const [privateList] = (await api.getConfig(copy)).body.lists;
@@ -421,7 +400,6 @@ test(
       titles,
     );
 
-    // The legacy install is not frozen: its own page still saves.
     const saved = await api.postConfig(alias, [
       listInput("trakt", "users/fixture-user/watchlist", {
         id: legacyList,
@@ -433,7 +411,6 @@ test(
     expect(
       (await api.getManifest(alias)).catalogs.map((catalog) => catalog.name),
     ).toEqual(["Stremlist Renamed", "Stremlist Renamed"]);
-    // The private copy is a separate Account.
     expect(shape(await api.getManifest(copy))).toEqual(shape(before));
   },
 );
@@ -482,7 +459,6 @@ test(
     expect(
       config.body.connections.map((connection) => connection.provider).sort(),
     ).toEqual(["mdblist", "simkl"]);
-    // Both token exchanges sent the one-time code.
     expect(
       backend
         .requests((url) => /\/oauth2?\/token\/?$/.test(url.pathname))
@@ -491,14 +467,9 @@ test(
   },
 );
 
-// The configure page against the fixture backend: the page's API requests go
-// to it, and the Provider's authorize page is a fixture. The test comes back
-// to the real OAuth callback, which sends the browser back to the page.
-
 const DRAFT_RESTORED = "Your unsaved changes are back. Save to apply them.";
 const TRAKT_LIST = "users/fixture-user/watchlist";
 
-/** Send every request of the page to the backend at `url`. */
 async function routePageTo(page: Page, url: string) {
   await page.route(`${BACKEND_URL}/**`, async (route) => {
     const target = new URL(route.request().url());
@@ -509,11 +480,6 @@ async function routePageTo(page: Page, url: string) {
   });
 }
 
-/**
- * Click Connect for `label` in the Providers panel. The fixture authorize
- * page opens; the returned function comes back to the OAuth callback of
- * `callbackOrigin` with the fixture code, as when the user agrees.
- */
 async function connectFromPage(
   page: Page,
   label: string,
@@ -554,7 +520,6 @@ async function connectFromPage(
   };
 }
 
-/** A private Account with one public Trakt List. */
 async function seedTraktAccount() {
   const accountId = await seedAccount();
   await seedList(accountId, {
@@ -598,7 +563,6 @@ test(
     await expect(page.getByLabel("Catalog title", { exact: true })).toHaveValue(
       "Renamed before connecting",
     );
-    // Nothing is saved until the user saves.
     expect(await getConnectionRow(accountId, "trakt")).toMatchObject({
       provider_username: "fixture-user",
     });
@@ -618,7 +582,6 @@ test(
       { provider: "trakt", username: "fixture-user" },
     ]);
 
-    // The kept edits are used once: a reload shows the saved setup only.
     await page.reload();
     await expect(page.getByText("Renamed before connecting")).toBeVisible();
     await expect(page.locator("#rpdb-api-key")).toHaveValue("draft-rpdb-key");
@@ -662,12 +625,10 @@ test(
     await fillRpdbKey(page, "draft-rpdb-key");
 
     const comeBack = await connectFromPage(page, "Trakt", "auth.trakt.tv");
-    // The kill switch turns Trakt off before the user comes back.
     const off = await startFixtureBackend("./provider-fixtures.ts", {
       DISABLED_PROVIDERS: "trakt",
     });
     try {
-      // The page completes the authorization on the backend that is off.
       await routePageTo(page, off.url);
       await comeBack(off.url);
       await expect(page).toHaveURL(configureUrl(accountId));
@@ -678,7 +639,6 @@ test(
       ).toBeVisible();
       await expect(page.getByText(DRAFT_RESTORED)).toBeVisible();
       await expect(page.locator("#rpdb-api-key")).toHaveValue("draft-rpdb-key");
-      // No token was asked for and no Connection was stored.
       expect(off.requests((url) => url.pathname === "/oauth/token")).toEqual(
         [],
       );

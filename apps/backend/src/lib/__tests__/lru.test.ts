@@ -25,7 +25,6 @@ describe("LruCache", () => {
     const cache = new LruCache<string, number>({ maxEntries: 2 });
     cache.set("a", 1);
     cache.set("b", 2);
-    // Reading "a" makes "b" the least recently used.
     expect(cache.get("a")).toBe(1);
     cache.set("c", 3);
 

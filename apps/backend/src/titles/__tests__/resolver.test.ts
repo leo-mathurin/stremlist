@@ -1,4 +1,3 @@
-import type { Mock } from "vite-plus/test";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { fakeAdapter } from "../../__tests__/helpers/mock-registry";
 import { db } from "../../__tests__/helpers/mock-supabase";
@@ -11,21 +10,17 @@ vi.mock("../../lib/supabase", async () => {
 
 const DAY = 24 * 60 * 60_000;
 
-function tmdb(id: number): SourceEntry {
+function tmdb(id: number) {
   return { externalIds: { tmdb: { id, type: "movie" } }, type: "movie" };
 }
 
-/** A strategy that knows a fixed TMDB ID → IMDb ID table. */
-function strategy(
-  name: string,
-  known: Record<number, string>,
-): ResolverStrategy & { resolve: Mock<ResolverStrategy["resolve"]> } {
+function strategy(name: string, known: Record<number, string>) {
   return {
     name,
     resolve: vi.fn<ResolverStrategy["resolve"]>((entries) =>
       Promise.resolve(
         new Map(
-          entries.flatMap((entry, index): [number, string][] => {
+          entries.flatMap((entry, index) => {
             const imdbId = known[entry.externalIds?.tmdb?.id ?? -1];
             return imdbId ? [[index, imdbId]] : [];
           }),
@@ -50,7 +45,7 @@ function adapter(strategies: ResolverStrategy[]) {
 
 const tt = (n: number) => `tt${String(n).padStart(7, "0")}`;
 
-function knowing(entries: SourceEntry[]): Record<number, string> {
+function knowing(entries: SourceEntry[]) {
   return Object.fromEntries(
     entries.map((_, index) => [index + 1, tt(index + 1)]),
   );
@@ -125,7 +120,6 @@ describe("resolveEntries", () => {
 
       expect(justwatch.resolve).not.toHaveBeenCalled();
       expect(imdbIds(result)).toEqual(["tt0068646"]);
-      // The skipped entry is retried later, like any Unresolved entry.
       expect(result.unresolvedEntries).toHaveLength(1);
     } finally {
       delete process.env.DISABLED_PROVIDERS;
@@ -220,7 +214,6 @@ describe("resolveEntries", () => {
     ]);
     expect(first.resolve).toHaveBeenCalledWith([tmdb(1), tmdb(2), tmdb(3)]);
     expect(second.resolve).toHaveBeenCalledWith([tmdb(2)]);
-    // Everything is resolved: later strategies do not run.
     expect(third.resolve).not.toHaveBeenCalled();
     expect(cacheRow("1")).toMatchObject({
       imdb_id: "tt0000001",
@@ -308,15 +301,12 @@ describe("resolveEntries", () => {
 
     const firstRun = await resolveEntries(adapter([first]), entries);
 
-    // Chunks of 50, so a slow strategy can stop at the time budget.
     const sent = () =>
       first.resolve.mock.calls.map(([entries]) => entries.length);
     expect(sent()).toEqual([50, 50, 50, 50, 50, 50]);
     expect(firstRun.resolved).toHaveLength(300);
     expect(firstRun.unresolvedEntries).toHaveLength(50);
     expect(firstRun.deferred).toBe(50);
-    // Entries over the cap are not marked as failures: the next refresh
-    // resolves them right away.
     expect(cacheRow("301")).toBeUndefined();
 
     first.resolve.mockClear();
@@ -342,11 +332,9 @@ describe("resolveEntries", () => {
       budgetMs: 10,
     });
 
-    // The first chunk always runs; the budget stops the next ones.
     expect(slow.resolve).toHaveBeenCalledOnce();
     expect(result.resolved).toHaveLength(50);
     expect(result.deferred).toBe(70);
-    // Untried entries leave no cache row, so they are not delayed a day.
     expect(cacheRow("51")).toBeUndefined();
   });
 
@@ -361,7 +349,6 @@ describe("resolveEntries", () => {
     expect(imdbIds(result)).toEqual(["tt0137523", "tt0137523"]);
     expect(cacheRow("550")).toMatchObject({ imdb_id: "tt0137523" });
 
-    // The next refresh finds it in the cache.
     await resolveEntries(adapter([first]), [tmdb(550), tmdb(550)]);
     expect(first.resolve).toHaveBeenCalledOnce();
   });

@@ -12,12 +12,6 @@ import { startFixtureBackend } from "../helpers/fixture-backend.js";
 import { present } from "../helpers/json.js";
 import { LEGACY_ACTIONS_USER } from "../helpers/test-data.js";
 
-// Actions from Stremio and the Provider kill switch against the real
-// backend, database and R2 store. A separate backend with
-// helpers/provider-fixtures.ts answers every Provider request with
-// deterministic data (dummy client IDs, no real credentials) and logs what
-// the backend sent, so the tests check each Provider write.
-
 let backend: FixtureBackend;
 
 test.beforeAll(async () => {
@@ -81,7 +75,6 @@ test(
       },
     ]);
 
-    // Actions never answer through a Legacy alias or without a Connection.
     const alias = LEGACY_ACTIONS_USER;
     await seedAccount({ legacyImdbUserId: alias });
     expect((await api.getStreams(alias, "movie", "tt0111161")).body).toEqual({
@@ -112,7 +105,6 @@ test(
     const expectHeading = (name: string) =>
       expect(page.getByRole("heading", { name })).toBeVisible();
 
-    // Watched, for one episode, then undone from the updated entry.
     await page.goto(action("watched/add/series/tt0903747%3A1%3A2"));
     await expectHeading("✓ Breaking Bad S01E02 is marked as watched on Trakt");
     const episode = {
@@ -138,7 +130,6 @@ test(
     );
     expect(writes("/sync/history/remove")).toEqual([episode]);
 
-    // Watchlist: add, then remove from the entry that says it is there.
     const movie = { movies: [{ ids: { imdb: "tt0111161" } }] };
     await page.goto(action("watchlist/add/movie/tt0111161"));
     await expectHeading(
@@ -156,7 +147,6 @@ test(
     );
     expect(writes("/sync/watchlist/remove")).toEqual([movie]);
 
-    // Rating: a form with 1 to 10, then the saved rating can be removed.
     const rate = (await entries("movie", "tt0111161")).at(-1);
     expect(rate).toEqual({
       name: "Stremlist",
@@ -189,7 +179,6 @@ test(
     );
     expect(writes("/sync/ratings/remove")).toEqual([movie]);
 
-    // A link with an unknown intent, or for another Account, changes nothing.
     const syncWrites = () =>
       backend.requests((url) => url.pathname.startsWith("/sync/")).length;
     const before = syncWrites();
@@ -228,8 +217,6 @@ test(
       expect(page.getByRole("heading", { name })).toBeVisible();
     const movie = { ids: { imdb: "tt0111161" } };
 
-    // The first entries read the library of each Provider in the background:
-    // both have the movie in their watchlist, neither watched or rated it.
     await expect
       .poll(() => titles("movie", "tt0111161"))
       .toEqual([
@@ -241,7 +228,6 @@ test(
       backend.requests((url) => url.pathname === "/sync/all-items/movies"),
     ).toHaveLength(1);
 
-    // Watched: one page writes both Providers.
     await page.goto(action("watched/add/movie/tt0111161"));
     await expectHeading(
       "✓ The Shawshank Redemption is marked as watched on Simkl and MDBList",
@@ -256,7 +242,6 @@ test(
       "✅ Watched on Simkl and MDBList\nSelect to mark as unwatched everywhere",
     );
 
-    // Rating: the form names both Providers; only the checked one gets it.
     await page.goto(action("rating/rate/movie/tt0111161"));
     await expectHeading("Rate The Shawshank Redemption");
     const simkl = page.getByRole("checkbox", { name: "Simkl" });
@@ -276,7 +261,6 @@ test(
       "⭐ 7/10 on Simkl, change\nNot rated on MDBList",
     );
 
-    // A Provider that refuses the Title fails alone, and the page says so.
     await page.goto(action("watchlist/add/movie/tt0068646"));
     await expectHeading("✓ This title is in your watchlist on Simkl");
     await expect(
@@ -317,7 +301,6 @@ test(
       catalogTitle: "",
       position: 1,
     });
-    // The running backend reads the JustWatch list once, into R2.
     expect(
       await backend.api.listCatalogNames(accountId, cached, "movie"),
     ).toEqual(["The Shawshank Redemption"]);
@@ -341,7 +324,6 @@ test(
         ),
       ).toEqual({ ok: false, reason: "disabled", provider: "justwatch" });
 
-      // The cached Catalog stays; a List without a cache explains why.
       const catalog = async (listId: string) =>
         (await off.api.getCatalog(accountId, "movie", `wl-${listId}-movie`))
           .metas;
@@ -356,7 +338,6 @@ test(
         },
       ]);
 
-      // No Connection, own list or Action goes through a Provider that is off.
       expect(await off.api.startConnection(accountId, "trakt")).toEqual({
         status: 503,
         body: { error: "Trakt is temporarily unavailable." },
@@ -367,7 +348,6 @@ test(
       expect(
         (await off.api.getStreams(accountId, "movie", "tt0111161")).body,
       ).toEqual({ streams: [], cacheMaxAge: 0 });
-      // The Catalog preview reads nothing either.
       expect(
         (
           await off.api.previewList({
@@ -406,7 +386,6 @@ test(
         expect(response.status()).toBe(200);
         expect(await response.text()).toContain('class="ok"');
       }
-      // A third process has no local copy: both changes must be stored in R2.
       const streams = (
         await reader.api.getStreams(accountId, "movie", "tt0111161")
       ).body.streams;

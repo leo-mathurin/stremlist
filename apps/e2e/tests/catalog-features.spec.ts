@@ -27,9 +27,7 @@ import {
 } from "../helpers/configure.js";
 
 const MATCHES = ["QA Été & café + cinéma", "QA Autumn Drama"];
-/** Filters that only the two MATCHES pass. */
 const FILTERS = { genre: "Drama", decade: 1990, maxRuntime: 90, minRating: 7 };
-/** The same FILTERS as configure page dropdown labels and options. */
 const FILTER_OPTIONS = [
   ["Genre", "Drama"],
   ["Decade", "1990s"],
@@ -50,8 +48,7 @@ async function openFilters(page: Page, accountId: string) {
   await page.getByRole("button", { name: /Filters & extra catalogs/ }).click();
 }
 
-/** The order of `sort()` without a compare function: by UTF-16 code units. */
-function byCodeUnits(a: string | null, b: string | null): number {
+function byCodeUnits(a: string | null, b: string | null) {
   const [x, y] = [String(a), String(b)];
   return x < y ? -1 : x > y ? 1 : 0;
 }
@@ -75,7 +72,6 @@ async function saveList(accountId: string, list: Partial<ConfigListInput>) {
 test.use({ actionTimeout: 20_000 });
 test.beforeEach(resetDb);
 
-// These use the real local backend and storage; only the cached IMDb input is seeded.
 test(
   "combined filters persist through reload and clear without disabling presets",
   { tag: "@local" },
@@ -213,8 +209,6 @@ test(
     await installAddon(page, manifestUrl);
     await page.goto(discoverUrl(manifestUrl, "movie", catalogId));
     await expectTitles(page, MATCHES);
-    // Dropdown interaction is intentional: a deep link alone would not prove
-    // that the client exposes and sends the newly advertised options.
     let selectedOption = "Genre";
     for (const [option, expected] of [
       ["Shortest", [...MATCHES].reverse()],
@@ -306,8 +300,6 @@ test(
       ["qa ete & cafe + cinema", [MATCHES[0]]],
       ["long drama", []],
     ] as const) {
-      // Start each query from a fresh search page so the previous query's row
-      // cannot satisfy the lazy-loading scroll before the new results mount.
       await page.goto("https://web.stremio.com/#/search");
       const search = page.getByPlaceholder("Search or paste link");
       await expect(search).toHaveValue("");
@@ -325,8 +317,6 @@ test(
         (url) =>
           new URLSearchParams(url.hash.split("?")[1]).get("search") === query,
       );
-      // Rows load on entering the viewport and disappear for empty results.
-      // Either receiving the response or revealing the row advances the search.
       await Promise.race([
         response,
         expect(async () => {

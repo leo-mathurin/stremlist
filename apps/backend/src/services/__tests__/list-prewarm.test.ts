@@ -28,7 +28,6 @@ vi.mock("../../lib/supabase", () => ({
   supabase: { rpc: supabaseMocks.rpc },
 }));
 
-// Passthrough keeps unknown keys, so `toEqual` still sees all the arguments.
 const requestPrewarmArgs = z
   .object({
     p_account_id: z.string(),
@@ -41,7 +40,7 @@ const finishPrewarmArgs = requestPrewarmArgs.extend({
   p_completed_generation: z.number(),
 });
 
-function mockPrewarmQueue(): void {
+function mockPrewarmQueue() {
   let generation = 0;
   let activeLeaseToken: string | null = null;
 
@@ -68,8 +67,7 @@ function mockPrewarmQueue(): void {
   });
 }
 
-/** Makes each List read wait until the test finishes it. */
-function holdReads(): (() => void)[] {
+function holdReads() {
   const finishFetches: (() => void)[] = [];
   listMocks.getListCatalog.mockImplementation(
     () =>
@@ -86,10 +84,7 @@ const ACCOUNT_ID = "sl_AbCdEfGhIjKlMnOpQrStUv";
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-function savedList(
-  position: number,
-  overrides: Partial<ConfigList> = {},
-): ConfigList {
+function savedList(position: number, overrides: Partial<ConfigList> = {}) {
   return {
     id: LIST_IDS[position],
     provider: "imdb",
@@ -104,7 +99,7 @@ function savedList(
 
 const SAVED_LISTS = [savedList(0)];
 
-function expectRequest(args: unknown): void {
+function expectRequest(args: unknown) {
   expect(args).toEqual({
     p_account_id: ACCOUNT_ID,
     p_lease_seconds: 600,
@@ -141,12 +136,10 @@ describe("prewarmLists", () => {
       { posterSource: "tmdb", rpdbApiKey: null },
     );
 
-    // The split List: one call per Catalog, each at most one page.
     const calls = posterMocks.findPosters.mock.calls.map(([source, metas]) => {
       expect(source).toBe("tmdb");
       return metas.map((meta) => meta.type);
     });
-    // Lists prewarm two at a time, so the calls can come in any order.
     expect(calls.map((types) => `${types[0]}:${types.length}`).sort()).toEqual([
       "movie:100",
       "movie:100",
@@ -154,7 +147,6 @@ describe("prewarmLists", () => {
     ]);
     expect(calls.every((types) => new Set(types).size === 1)).toBe(true);
 
-    // IMDb and RPDB posters need no TMDB lookup.
     posterMocks.findPosters.mockClear();
     await prewarmLists(ACCOUNT_ID, SAVED_LISTS, true, {
       posterSource: "rpdb",

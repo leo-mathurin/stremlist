@@ -21,7 +21,6 @@ import {
 } from "../services/actions";
 import { enrichTitles } from "../titles/enrich";
 
-/** Give up on the Title's name quickly: the page works without it. */
 const NAME_TIMEOUT_MS = 2500;
 
 const actions = new Hono();
@@ -84,11 +83,7 @@ function Page({ title, children }: { title: string; children: Child }) {
   );
 }
 
-/** The Title's name, or null when it cannot be found quickly. */
-async function titleName(
-  imdbId: string,
-  type: TitleType,
-): Promise<string | null> {
+async function titleName(imdbId: string, type: TitleType) {
   try {
     const metas = await Promise.race([
       enrichTitles([{ imdbId, type }]),
@@ -138,7 +133,6 @@ function OutcomePage({
   );
 }
 
-/** The Title and the private Account of an Action link, or null. */
 async function actionRequest(c: Context) {
   const type = c.req.param("type");
   const id = c.req.param("id");
@@ -166,8 +160,6 @@ function supporting(providers: ProviderId[], kind: ActionIntent["kind"]) {
   return providers.filter((provider) => supportsAction(provider, kind));
 }
 
-// Watchlist and watched: one explicit intent per URL, so opening it twice
-// gives the same result (ADR 0003).
 actions.get("/:accountId/actions/:kind/:op/:type/:id", async (c) => {
   const { kind, op } = c.req.param();
   if (kind === "rating") return renderRating(c);
@@ -183,7 +175,6 @@ actions.get("/:accountId/actions/:kind/:op/:type/:id", async (c) => {
 
   const providers = supporting(await actionProviders(account), kind);
   const add = op === "add";
-  // Watchlist Actions apply to the whole series, not to one episode.
   const effective =
     kind === "watchlist"
       ? { imdbId: target.imdbId, type: target.type }
@@ -210,10 +201,6 @@ actions.get("/:accountId/actions/:kind/:op/:type/:id", async (c) => {
   return c.html(<OutcomePage done={done} outcomes={outcomes} />);
 });
 
-/**
- * The rating form. `retry` is a refused submission: the form shows what the
- * user chose and why it was not sent.
- */
 async function renderRating(
   c: Context,
   retry?: { rating: number | null; providers: ProviderId[]; error: string },

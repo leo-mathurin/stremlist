@@ -1,8 +1,3 @@
-/**
- * Mocks for the configuration API tests. The test files load them with
- * `await vi.hoisted(() => import(…))` for their `vi.mock` factories, so this
- * module must not import the app.
- */
 import { vi } from "vite-plus/test";
 import type { scheduleBackgroundTask } from "../../lib/background";
 import type { prewarmLists } from "../../services/list-prewarm";

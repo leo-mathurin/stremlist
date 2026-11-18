@@ -20,8 +20,10 @@ import { reinstallLinkProps } from "@/lib/list-sources";
 import type { ReinstallState } from "@/lib/reinstall";
 import { cn } from "@/lib/utils";
 
-// A block that appears in the page: a short rise with a strong ease-out.
-// Reduced motion keeps the fade only.
+/**
+ * A block that appears in the page: a short rise with a strong ease-out.
+ * Reduced motion keeps the fade only.
+ */
 export const ENTER =
   "transition-[opacity,translate] duration-200 ease-[var(--ease-out-quint)] starting:translate-y-1.5 starting:opacity-0 motion-reduce:starting:translate-y-0";
 
@@ -73,7 +75,6 @@ export function StremioUpdateNotice({
     );
   }
 
-  // The linked account itself is in the "Refreshed" line (StremioStatus).
   if (stremio.connection) {
     if (state === "after-save") {
       return (
@@ -155,7 +156,6 @@ export function StremioStatus({ stremio }: { stremio: StremioSync }) {
           Updating Stremio…
         </p>
       ) : (
-        // The menu stays after an update, to disconnect or check the account.
         <div key={sync.kind} className={ENTER}>
           <DropdownMenu>
             <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 outline-none transition-colors duration-150 hover:bg-black/5 hover:text-ink focus-visible:ring-[3px] focus-visible:ring-brand/50 data-[state=open]:bg-black/5 data-[state=open]:text-ink pointer-coarse:min-h-11">
@@ -212,7 +212,6 @@ export function StremioStatus({ stremio }: { stremio: StremioSync }) {
   );
 }
 
-/** The two manual steps. Stremio has no update for an installed addon. */
 function ManualSteps({
   accountKey,
   onReinstalled,
@@ -246,7 +245,6 @@ function ManualSteps({
   );
 }
 
-/** Both choices look the same at rest. Only the badge marks the recommended one. */
 const CHOICE_BUTTON =
   "flex flex-col items-start gap-1 rounded-2xl p-4 text-left ring-1 ring-amber-200 transition-[box-shadow,scale] duration-150 ease-out hover:ring-amber-400 active:scale-[0.98] motion-reduce:active:scale-100";
 
@@ -286,7 +284,6 @@ function ChoiceCard({
       {manualOpen ? (
         <div className={cn("space-y-3", ENTER)}>
           <ManualSteps accountKey={accountKey} onReinstalled={onReinstalled} />
-          {/* A Legacy alias install has no Account to link Stremio to. */}
           {stremio.available && (
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-amber-200 pt-3 text-sm text-amber-900">
               <label className="flex items-center gap-2">
@@ -361,7 +358,6 @@ function ChoiceCard({
   );
 }
 
-/** Linked, but Stremio still reads an older setup: offer the update. */
 function OutdatedCard({
   accountKey,
   stremio,

@@ -1,6 +1,3 @@
-// Shared constants for the E2E harness. Every port is distinct from the
-// regular dev ports (7001/5173) so tests can run next to a dev session.
-
 export const BACKEND_PORT = 7301;
 export const FRONTEND_PORT = 7302;
 
@@ -9,17 +6,21 @@ export const FRONTEND_URL = `http://127.0.0.1:${FRONTEND_PORT}`;
 
 export const STREMIO_WEB_URL = "https://web.stremio.com";
 
-// Local Supabase stack (supabase start). The service-role key below is the
-// public, well-known key every local Supabase CLI stack ships with — it is not
-// a secret. Both values can be overridden for non-default stacks.
+/**
+ * Local Supabase stack (supabase start). The service-role key below is the
+ * public, well-known key every local Supabase CLI stack ships with — it is not
+ * a secret. Both values can be overridden for non-default stacks.
+ */
 export const SUPABASE_URL =
   process.env.E2E_SUPABASE_URL ?? "http://127.0.0.1:54321";
 export const SUPABASE_SERVICE_ROLE_KEY =
   process.env.E2E_SUPABASE_SERVICE_ROLE_KEY ??
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU";
 
-// RustFS is used as the local S3-compatible R2 test double. These credentials
-// belong only to the disposable E2E container and may be overridden in CI.
+/**
+ * RustFS is used as the local S3-compatible R2 test double. These credentials
+ * belong only to the disposable E2E container and may be overridden in CI.
+ */
 export const R2_ENDPOINT =
   process.env.E2E_R2_ENDPOINT ?? "http://127.0.0.1:7431";
 export const R2_ACCESS_KEY_ID =
@@ -30,7 +31,7 @@ export const R2_BUCKET = process.env.E2E_R2_BUCKET ?? "stremlist-e2e-cache";
 
 const REMOTE_DATABASE_CONFIRMATION = "I_UNDERSTAND_THIS_WIPES_DATA";
 
-function assertSafeSupabaseTarget(): void {
+function assertSafeSupabaseTarget() {
   let hostname: string;
   try {
     hostname = new URL(SUPABASE_URL).hostname.toLowerCase();
@@ -54,20 +55,19 @@ function assertSafeSupabaseTarget(): void {
 
 assertSafeSupabaseTarget();
 
-// Short cooldown so refresh-throttle tests stay fast.
+/** Short cooldown so refresh-throttle tests stay fast. */
 export const REFRESH_COOLDOWN_SECONDS = 2;
 
-// AES-256 key for Connection tokens in the disposable test database only. It
-// is a fixed, public test value, like the local service-role key above.
+/**
+ * AES-256 key for Connection tokens in the disposable test database only. It
+ * is a fixed, public test value, like the local service-role key above.
+ */
 export const CONNECTION_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
 
-// Accounts get generated IDs, so cleanup also removes the Accounts that this
-// run created. The runner process sets the start first; workers inherit it.
-// One minute of margin covers clock drift between the host and Docker.
 process.env.E2E_RUN_STARTED_AT ??= new Date(Date.now() - 60_000).toISOString();
 export const RUN_STARTED_AT = process.env.E2E_RUN_STARTED_AT;
 
 /** The Addon URL of an Account ID or a Legacy alias. */
-export function addonManifestUrl(accountKey: string): string {
+export function addonManifestUrl(accountKey: string) {
   return `${BACKEND_URL}/${accountKey}/manifest.json`;
 }

@@ -6,7 +6,7 @@ import { buildManifestCatalogs } from "../stremio-catalogs";
 const FIRST = "77e10eda-0e07-4c60-8ec7-23fb1b1d0573";
 const SECOND = "3be4e39f-3e27-42e7-a69f-c14f0709de52";
 
-function list(overrides: Partial<ConfigList> = {}): ConfigList {
+function list(overrides: Partial<ConfigList> = {}) {
   return {
     id: FIRST,
     provider: "imdb",
@@ -30,7 +30,6 @@ function catalogsWithoutExtra(lists: ConfigList[]) {
   }));
 }
 
-/** The expected movie and series catalogs of a List. */
 function both(listId: string, name: string) {
   return (["movie", "series"] as const).map((type) => ({
     id: `wl-${listId}-${type}`,
@@ -207,7 +206,6 @@ describe("manifest catalog generation", () => {
     ],
     ["both catalogs for an unknown displayMode", "bogus", ["movie", "series"]],
   ])("emits %s", (_case, displayMode, types) => {
-    // A stored List can hold a display mode that this build does not know.
     const stored = Object.assign(list(), { displayMode });
     expect(catalogsWithoutExtra([stored])).toEqual(
       both(FIRST, "Stremlist Leo Picks").filter((catalog) =>

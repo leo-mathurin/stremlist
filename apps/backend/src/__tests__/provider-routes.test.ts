@@ -136,7 +136,6 @@ describe("POST /links/resolve", () => {
       ticket,
     });
     expect(await again.json()).toMatchObject({ ok: true });
-    // The check answers at once from a 3 s wait, and the ticket comes back.
     expect(seen).toEqual([
       { ticket: null, answerAtMs: 3_000 },
       { ticket, answerAtMs: 3_000 },
@@ -181,7 +180,6 @@ describe("POST /links/resolve", () => {
     );
     useFakeProvider(fakeAdapter("mdblist", { validateSource }));
     const account = seedAccount();
-    // Expired, and no refresh token to renew it.
     seedConnection(account.id, "mdblist", {
       expiresAt: new Date(Date.now() - 60_000),
       refreshToken: null,

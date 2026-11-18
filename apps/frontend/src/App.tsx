@@ -17,18 +17,12 @@ import ConnectReturn from "./pages/ConnectReturn";
 import NotFound from "./pages/NotFound";
 import { parseConnectAnswer } from "./lib/connections";
 
-/**
- * The configure page, or the completion of a connect when the backend
- * callback brings the Provider's answer in the fragment.
- */
 function ConfigureRoute() {
   const { hash } = useLocation();
   const answer = useMemo(() => parseConnectAnswer(hash), [hash]);
   return answer ? <ConnectReturn answer={answer} /> : <Configure />;
 }
 
-// A data router, so the configure page can hold a navigation while it has
-// unsaved changes (`useBlocker`).
 const router = createBrowserRouter(
   createRoutesFromElements(
     <>
@@ -62,8 +56,6 @@ export default function App() {
           },
         }}
       />
-      {/* Send the page only: the query holds the private Account ID and the
-          fragment a one-time OAuth answer. */}
       <Analytics
         beforeSend={(event) => ({ ...event, url: event.url.split(/[?#]/)[0] })}
       />

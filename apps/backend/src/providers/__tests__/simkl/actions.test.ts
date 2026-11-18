@@ -45,7 +45,7 @@ describe("simkl actions", () => {
     };
   }
 
-  function acceptWrites(): void {
+  function acceptWrites() {
     for (const path of [
       "/sync/add-to-list",
       "/sync/history",
@@ -72,7 +72,6 @@ describe("simkl actions", () => {
         "tt0944947:1:1",
         "tt0944947:1:2",
         "tt1520211:1:2",
-        // AniDB episode 1 of the Season 2 entry is TVDB (IMDb) S2E1.
         "tt2560140:2:1",
       ]),
     );
@@ -128,7 +127,6 @@ describe("simkl actions", () => {
       { kind: "watchlist", add: false },
       { imdbId: "tt0158552", type: "series" },
     );
-    // A recent snapshot is not enough: the title may be watched since.
     expect(apiCalls()).toEqual([
       "GET /sync/activities",
       "POST /sync/history/remove",

@@ -20,7 +20,7 @@ import {
   useFakeProvider,
 } from "../../__tests__/helpers/mock-registry";
 import { db } from "../../__tests__/helpers/mock-supabase";
-import type { ConnectionAccess, SourceEntry } from "../../providers/types";
+import type { ConnectionAccess } from "../../providers/types";
 import { SourceBusyError } from "../../providers/types";
 import type { CanaryResult, CanarySpec } from "../monitor/canaries";
 import {
@@ -51,13 +51,13 @@ vi.mock("../connections", () => ({ getConnectionAccess }));
 
 const MONITOR_ACCOUNT = "sl_monitor";
 
-function entries(count: number): SourceEntry[] {
+function entries(count: number) {
   return Array.from({ length: count }, (_, index) => ({
     imdbId: `tt${String(index).padStart(7, "0")}`,
   }));
 }
 
-function connectionOf(provider: ProviderId): ConnectionAccess {
+function connectionOf(provider: ProviderId) {
   return {
     accountId: MONITOR_ACCOUNT,
     provider,
@@ -69,7 +69,6 @@ function connectionOf(provider: ProviderId): ConnectionAccess {
   };
 }
 
-/** Each fake Provider answers `count(ref)` entries and records its reads. */
 let reads: { provider: ProviderId; ref: string; connection: boolean }[];
 function fakeEveryProvider(count: (ref: string) => number = () => 1000) {
   for (const provider of PROVIDER_IDS)
@@ -87,7 +86,7 @@ function fakeEveryProvider(count: (ref: string) => number = () => 1000) {
     );
 }
 
-function resultOf(results: CanaryResult[], type: string): CanaryResult {
+function resultOf(results: CanaryResult[], type: string) {
   const result = results.find((candidate) => candidate.type === type);
   if (!result) throw new Error(`No result for ${type}`);
   return result;
@@ -112,8 +111,6 @@ afterEach(() => {
 
 describe("canary coverage", () => {
   it("has a canary, or a written reason for none, for every list type that Stremlist offers", () => {
-    // A new list type (a chart, a fixed Source list, a stored reference
-    // form) needs an entry in CANARIES, so that the monitor checks it.
     expect(Object.keys(CANARIES).sort()).toEqual(listTypes().sort());
     for (const spec of Object.values<CanarySpec>(CANARIES)) {
       if ("none" in spec) expect(spec.none.length).toBeGreaterThan(20);
@@ -258,7 +255,6 @@ describe("runCanaries", () => {
       expect(read.connection).toBe(
         sourceRequiresConnection(read.provider, read.ref),
       );
-    // One Connection per Provider, not one per canary.
     expect(
       getConnectionAccess.mock.calls.filter(
         ([, provider]) => provider === "trakt",

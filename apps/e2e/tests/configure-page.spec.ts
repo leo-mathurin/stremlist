@@ -20,12 +20,8 @@ import {
   SAVED_REINSTALL_BY_HAND,
 } from "../helpers/configure.js";
 
-// The /configure page against the real backend: List management, options,
-// refresh, install links.
-
 const TITLE = "My watchlist";
 
-/** A private Account with one IMDb watchlist List titled `TITLE`. */
 const seedWatchlist = () => seedImdbAccount(PUBLIC_USER, TITLE);
 
 test.beforeEach(resetDb);
@@ -100,8 +96,6 @@ test(
   { tag: "@local" },
   async ({ page }) => {
     const { accountId } = await seedWatchlist();
-    // Development builds run the load effect twice, so fail every load until
-    // the error is on screen.
     let failing = true;
     await page.route(`**/${accountId}/config`, async (route) => {
       if (route.request().method() === "GET" && failing) {
@@ -152,7 +146,6 @@ test(
 
     await saveConfigure(page);
     const { body } = await getConfig(accountId);
-    // The new List goes first.
     expect(body.lists.map((list) => list.sourceRef)).toEqual([
       PUBLIC_LIST,
       PUBLIC_USER,
@@ -164,7 +157,6 @@ test(
   "the first List of an Account saved without Lists asks for a reinstall",
   { tag: "@local" },
   async ({ page }) => {
-    // Simkl and MDBList users create the Account first, to connect.
     const { body } = await createAccount([]);
     const accountId = present(body.accountId, "the new Account ID");
     await page.goto(configureUrl(accountId));
@@ -195,7 +187,6 @@ test("adds a built-in chart List", { tag: "@local" }, async ({ page }) => {
 
   await saveConfigure(page);
   const { body } = await getConfig(accountId);
-  // The new List goes first.
   expect(body.lists[0]).toMatchObject({
     provider: "imdb",
     sourceRef: "imdb:top-rated-movies",
@@ -337,8 +328,6 @@ test(
         page.getByText(`IMDb · Watchlist · ${PUBLIC_USER}`),
       ).toBeVisible();
     }
-    // The Legacy alias install says what is new, with the private Addon URL
-    // upgrade.
     await expect(
       page.getByRole("heading", {
         name: "Stremlist 2.0 is here. Your install still works.",
@@ -361,7 +350,6 @@ test(
       .getByRole("status")
       .filter({ hasText: "Update Stremio with your changes" });
 
-    // Sort order and posters apply without a reinstall: no hint, no reminder.
     await page.getByRole("combobox", { name: "Sort order" }).click();
     await page
       .getByRole("option", { name: "IMDb Rating (Highest First)" })
@@ -374,7 +362,6 @@ test(
       page.getByRole("heading", { name: "Install or reinstall in Stremio" }),
     ).toBeVisible();
 
-    // A new catalog title changes what Stremio read at install time.
     await page
       .getByRole("button", { name: "Settings for My watchlist" })
       .click();
@@ -388,17 +375,13 @@ test(
         name: "Reinstall in Stremio to see your changes",
       }),
     ).toBeVisible();
-    // The manual steps are one choice; linking Stremio is the other.
     await reminder
       .getByRole("button", { name: "I'll reinstall myself" })
       .click();
-    // A local Addon URL has no `stremio://` link, so Reinstall opens Stremio Web.
     await expect(
       reminder.getByRole("link", { name: "Reinstall" }),
     ).toHaveAttribute("href", addonsDeepLink(addonManifestUrl(accountId)));
 
-    // The reminder stays until the user reinstalls, also after a reload and
-    // after a save that keeps the catalogs. With no edits, Save is off.
     await page.reload();
     await expect(reminder).toBeVisible();
     await expect(saveButton(page)).toBeDisabled();
@@ -432,14 +415,12 @@ test(
   "for a member who reinstalls by hand, the Reinstall action of the save toast opens Stremio Web and keeps the reminder",
   { tag: "@local" },
   async ({ page, context }) => {
-    // Stremio Web is not under test here: answer it with an empty page.
     await context.route("https://web.stremio.com/**", (route) =>
       route.fulfill({
         contentType: "text/html",
         body: "<title>Stremio</title>",
       }),
     );
-    // "Always reinstall myself": the toast then links to the reinstall.
     await page.addInitScript(() =>
       localStorage.setItem("stremlist:stremio-manual", "1"),
     );
@@ -462,8 +443,6 @@ test(
     await stremioWeb.waitForLoadState();
     expect(stremioWeb.url()).toBe(addonsDeepLink(addonManifestUrl(accountId)));
     await stremioWeb.close();
-    // Stremio only offers Uninstall for an installed addon, so the user
-    // needs the link a second time: the reminder stays until "I did it".
     await expect(reminder).toBeVisible();
     await expect(reminder).toContainText(
       "Select Reinstall again, then choose Install.",
@@ -488,10 +467,8 @@ test(
     const floatingBar = floatingSave.locator("xpath=..");
     await expect(saves).toHaveCount(2);
     await expect(headerSave).toBeInViewport();
-    // Hidden while the header Save is in view: inert and transparent.
     await expect(floatingBar).toHaveAttribute("inert", "");
 
-    // An edit at the end of the page, then Save from there.
     await fillRpdbKey(page, "floating-save-key");
     await page.evaluate(() =>
       window.scrollTo(0, document.documentElement.scrollHeight),
@@ -505,7 +482,6 @@ test(
       "floating-save-key",
     );
 
-    // Back at the top, the header Save takes over again.
     await page.evaluate(() => window.scrollTo(0, 0));
     await expect(headerSave).toBeInViewport();
     await expect(floatingBar).toHaveAttribute("inert", "");

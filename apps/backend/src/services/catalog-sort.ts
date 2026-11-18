@@ -8,7 +8,7 @@ export type CatalogSort = Omit<SortOptions, "by"> & {
   tieBreak?: SortOptions;
 };
 
-export function runtimeMinutes(runtime?: string): number | null {
+export function runtimeMinutes(runtime?: string) {
   const match = runtime?.match(/^(?:(\d+)h\s*)?(?:(\d+)m(?:in)?)?$/);
   if (!match || (!match[1] && !match[2])) return null;
   const minutes = Number(match[1] || 0) * 60 + Number(match[2] || 0);
@@ -19,7 +19,7 @@ export function sortCatalog(
   metas: StremioMeta[],
   sort: CatalogSort,
   generation: string,
-): StremioMeta[] {
+) {
   const indices = metas.map((_, index) => index);
   const ranks: number[] = [];
   if (sort.by === "random" || sort.tieBreak?.by === "random") {
@@ -27,13 +27,13 @@ export function sortCatalog(
       ranks[index] = rank;
     });
   }
-  function compare(a: number, b: number, { by, order }: CatalogSort): number {
+  function compare(a: number, b: number, { by, order }: CatalogSort) {
     const direction = order === "desc" ? -1 : 1;
     if (by === "random") return ranks[a] - ranks[b];
     if (by === "added_at") return (a - b) * direction;
     if (by === "title")
       return metas[a].name.localeCompare(metas[b].name) * direction;
-    const value = (meta: StremioMeta): number => {
+    const value = (meta: StremioMeta) => {
       switch (by) {
         case "year":
           return Number.parseInt(meta.releaseInfo ?? "", 10) || 0;
@@ -47,7 +47,6 @@ export function sortCatalog(
     };
     const left = value(metas[a]);
     const right = value(metas[b]);
-    // Runtime and complete dates put missing values last in either direction.
     if (!Number.isFinite(left)) return Number.isFinite(right) ? 1 : 0;
     if (!Number.isFinite(right)) return -1;
     return (left - right) * direction;

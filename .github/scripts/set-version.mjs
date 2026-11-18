@@ -1,9 +1,3 @@
-// Writes a new version (argv[2], e.g. "1.5.0") to every source of truth:
-//   1. root package.json           — the repo/app version
-//   2. packages/shared/constants.ts — ADDON_VERSION, surfaced in the Stremio manifest
-//
-// The user-facing changelog (apps/frontend/src/pages/Changelog.tsx) is curated by
-// hand and intentionally left untouched.
 import { readFileSync, writeFileSync } from "node:fs";
 
 const version = process.argv[2];

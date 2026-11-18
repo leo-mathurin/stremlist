@@ -33,7 +33,7 @@ export type ListFormRow = {
 export function createListRow(
   partial: Pick<ListFormRow, "provider" | "sourceRef"> &
     Partial<Omit<ListFormRow, "localId">>,
-): ListFormRow {
+) {
   return {
     id: partial.id,
     localId: crypto.randomUUID(),
@@ -53,7 +53,7 @@ export function createListRow(
 }
 
 /** The rows of saved Lists. */
-export function rowsFromLists(lists: ConfigList[]): ListFormRow[] {
+export function rowsFromLists(lists: ConfigList[]) {
   return lists.map((list) => createListRow(list));
 }
 
@@ -77,7 +77,7 @@ export function listPayload(rows: ListFormRow[]) {
  * The title that a row shows: its own, or the name of its Source list. The
  * manifest names the List's Catalogs in Stremio with the same title.
  */
-export function rowTitle(row: ListFormRow): string {
+export function rowTitle(row: ListFormRow) {
   return listTitle(row);
 }
 
@@ -85,6 +85,6 @@ export function rowTitle(row: ListFormRow): string {
  * The keys of every Source list in the rows, merged ones included: a Source
  * list may be in only one List.
  */
-export function sourceKeys(rows: ListFormRow[]): string[] {
+export function sourceKeys(rows: ListFormRow[]) {
   return rows.flatMap((row) => listSources(row).map(sourceKey));
 }

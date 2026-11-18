@@ -15,7 +15,7 @@ function parsed(
   ref: string,
   kind: ParsedSourceLink["kind"],
   extra: Partial<ParsedSourceLink> = {},
-): ParsedSourceLink {
+) {
   return { provider, sourceRef: ref, kind, ...extra };
 }
 
@@ -168,7 +168,6 @@ describe("parseSourceLink: Trakt", () => {
   it.each([
     "https://trakt.tv/users/leo",
     "https://trakt.tv/movies/inception-2010",
-    // Another period than the week would read the wrong chart.
     "https://trakt.tv/movies/watched/monthly",
     "https://trakt.tv/movies/trending/weekly",
     "https://trakt.tv/users/leo/ratings/movies/10",
@@ -182,7 +181,6 @@ describe("parseSourceLink: Trakt", () => {
 
 describe("parseSourceLink: MDBList", () => {
   it("reads a list, which always needs a Connection", () => {
-    // The backend resolves user and slug to a list ID, so case is kept.
     expect(
       parseSourceLink("https://mdblist.com/lists/LeoM/Top-Movies-2026"),
     ).toEqual(parsed("mdblist", "lists/LeoM/Top-Movies-2026", "list"));
@@ -292,13 +290,10 @@ describe("parseSourceLink: SensCritique", () => {
     "https://www.senscritique.com/films/tops/top42",
     "https://www.senscritique.com/films/sondages",
     "https://www.senscritique.com/top/resultats/no-id",
-    // Collections that Stremlist does not read.
     "https://www.senscritique.com/LeoM/collection?action=CURRENT",
     "https://www.senscritique.com/LeoM/collection?action=RECENT",
     "https://www.senscritique.com/LeoM/collection?action=SHOPPING_LIST",
-    // Books: no movies or series.
     "https://www.senscritique.com/LeoM/collection?action=DONE&universe=2",
-    // A filter that Stremlist cannot apply.
     "https://www.senscritique.com/LeoM/collection?action=DONE&genreId=12",
     "https://www.senscritique.com/LeoM/collection?action=DONE&yearDateDone=2024",
   ])("does not read %j", (input) => {
@@ -349,7 +344,6 @@ describe("parseSourceLink: Letterboxd", () => {
 
   it.each([
     ["https://letterboxd.com/leom/films/", "users/leom/films", "leom's films"],
-    // Letterboxd's own form drops trailing zeros: 4.0-5.0 is 4-5.
     [
       "https://letterboxd.com/leom/films/rated/4.0-5.0/",
       "users/leom/films/rated/4-5",
@@ -418,7 +412,6 @@ describe("parseSourceLink: junk", () => {
     "https://example.com/list/ls123456789",
     "https://netflix.com/browse/my-list",
     "javascript:alert(1)",
-    // Broken percent encoding must not throw while the page renders.
     "https://trakt.tv/users/alice%/watchlist",
     "https://mdblist.com/lists/alice/%E0%A4%A",
     "https://www.senscritique.com/liste/%/123",
@@ -632,7 +625,6 @@ describe("describeSourceRef", () => {
       url: null,
       title: "MDBList Trending",
     });
-    // An official chart that the configure page does not offer.
     expect(describeSourceRef("mdblist", "official/moviemeter")).toEqual({
       kind: "chart",
       detail: "moviemeter",

@@ -15,7 +15,7 @@ export interface ProviderBackend {
 export async function startProviderBackend(
   preload: string,
   env: Record<string, string>,
-): Promise<ProviderBackend> {
+) {
   const child: ChildProcess = spawn(
     "bun",
     [
@@ -59,10 +59,8 @@ export async function startProviderBackend(
       clearTimeout(timeout);
       reject(new Error(`Provider backend exited (${code})`));
     });
-    // Drain diagnostics without exposing headers, API keys or request contents.
     child.stderr?.resume();
   });
-  // Keep reading stdout so the pipe never fills up.
   child.stdout?.resume();
 
   const stop = async () => {

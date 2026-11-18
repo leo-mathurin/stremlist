@@ -1,9 +1,6 @@
 import { z } from "zod";
 import type { ActionIntent, ActionTarget } from "./types";
 
-// The Trakt-style /sync body that Trakt, Simkl and MDBList share for
-// Actions: Titles keyed by IMDb ID, in a "movies" or "shows" bucket.
-
 /** The IDs object that names a Title. */
 export interface SyncIds {
   imdb: string;
@@ -18,12 +15,12 @@ export interface SyncWrite {
   body: SyncBody;
 }
 
-export function syncIds(target: ActionTarget): SyncIds {
+export function syncIds(target: ActionTarget) {
   return { imdb: target.imdbId };
 }
 
 /** Where a Title goes in a /sync body (anime and series go under "shows"). */
-export function bucketOf(target: ActionTarget): "movies" | "shows" {
+export function bucketOf(target: ActionTarget) {
   return target.type === "movie" ? "movies" : "shows";
 }
 
@@ -49,7 +46,7 @@ export function episodeItem(
 }
 
 /** The date of a play, for a /sync write that adds one. */
-export function watchedAtOf(intent: ActionIntent): { watched_at?: string } {
+export function watchedAtOf(intent: ActionIntent) {
   return intent.kind === "watched" && intent.add && intent.watchedAt
     ? { watched_at: intent.watchedAt }
     : {};
@@ -64,10 +61,7 @@ const notFoundSchema = z.object({
  * the `not_found` counts (numbers, or arrays of items) under `keys`, or under
  * every key when `keys` is not given.
  */
-export function countNotFound(
-  result: unknown,
-  keys?: readonly string[],
-): number {
+export function countNotFound(result: unknown, keys?: readonly string[]) {
   const parsed = notFoundSchema.safeParse(result);
   if (!parsed.success) return 0;
   const byKey = new Map(Object.entries(parsed.data.not_found));

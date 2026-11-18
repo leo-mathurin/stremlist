@@ -25,11 +25,10 @@ import {
 import type { SourceEntry } from "../types";
 import { SourceUnavailableError } from "../types";
 
-// No waiting between mocked requests.
 vi.mock("../http", async (importOriginal) => {
   const actual = await importOriginal<typeof HttpModule>();
   class InstantLimiter {
-    acquire(): Promise<void> {
+    acquire() {
       return Promise.resolve();
     }
   }
@@ -46,7 +45,6 @@ const graphQLRequest = z.object({
 interface RecordedRequest {
   url: string;
   body: string;
-  /** Parsed GraphQL request, for SensCritique calls. */
   json: z.infer<typeof graphQLRequest>;
 }
 
@@ -80,10 +78,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-function product(
-  id: number,
-  overrides: Partial<SensCritiqueProduct> = {},
-): SensCritiqueProduct {
+function product(id: number, overrides: Partial<SensCritiqueProduct> = {}) {
   return {
     id,
     title: `Film ${id}`,
@@ -140,11 +135,9 @@ function pageVariables({ json }: RecordedRequest) {
 
 describe("SensCritique fetchSource", () => {
   it("pages through films and series, oldest wish first", async () => {
-    // The API answers newest first. Films: action IDs 1050 (newest) … 50.
     const films = Array.from({ length: 101 }, (_, index) =>
       product(1000 - index, { otherUserInfos: { id: 1050 - index * 10 } }),
     );
-    // A book that slipped into the collection must be skipped.
     films[3] = product(5, { universe: 2, otherUserInfos: { id: 1020 } });
     const series = [
       product(2001, { universe: 4, otherUserInfos: { id: 1055 } }),
@@ -162,7 +155,6 @@ describe("SensCritique fetchSource", () => {
     );
 
     expect(complete).toBe(true);
-    // Films and series are read at the same time.
     const pages = requests.map((request) => {
       const { universe, offset, limit } = pageVariables(request);
       return [universe, offset, limit];
@@ -220,7 +212,6 @@ describe("SensCritique fetchSource", () => {
   });
 
   it("reads the done films, and the done and rated series", async () => {
-    // A series both done and rated has the same action row in both reads.
     const both = product(30, { universe: 4, otherUserInfos: { id: 300 } });
     const reads = new Map([
       ["DONE movie", [product(10, { otherUserInfos: { id: 500 } })]],
@@ -243,7 +234,6 @@ describe("SensCritique fetchSource", () => {
 
     expect(complete).toBe(true);
     expect(requests).toHaveLength(3);
-    // Oldest action first, each product once.
     expect(entries.map((entry) => entry.externalIds?.senscritique)).toEqual([
       30, 40, 10,
     ]);
@@ -624,10 +614,8 @@ describe("Wikidata strategy", () => {
         results: {
           bindings: [
             { external: { value: "473747" }, imdb: { value: "tt1663662" } },
-            // Two different Titles for one ID: ambiguous, left out.
             { external: { value: "20" }, imdb: { value: "tt0000001" } },
             { external: { value: "20" }, imdb: { value: "tt0000002" } },
-            // Not a Title ID.
             { external: { value: "10" }, imdb: { value: "nm0000001" } },
           ],
         },
@@ -709,7 +697,6 @@ describe("TMDB search match", () => {
         expect(parsed.searchParams.get("language")).toBe("fr-FR");
         return {
           results: [
-            // Wrong year: never checked.
             { id: 1, title: "Pacific Rim", release_date: "1990-01-01" },
             {
               id: 68726,
@@ -800,7 +787,6 @@ describe("TMDB search match", () => {
         directors: ["Jackie Chan"],
       }),
     ).resolves.toBe("tt0000001");
-    // Police Story 2 (three years later) is never even loaded.
     expect(requests.some(({ url }) => url.includes("/movie/2?"))).toBe(false);
   });
 
@@ -862,7 +848,6 @@ describe("TMDB search match", () => {
       runtimeMinutes: 25,
     };
     await expect(matchOnTmdb(series)).resolves.toBe("tt1266020");
-    // Without a creator, the runtime alone does not cover such a year gap.
     await expect(matchOnTmdb({ ...series, directors: [] })).resolves.toBeNull();
   });
 });

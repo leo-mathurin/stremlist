@@ -14,7 +14,7 @@ type Status = Record<
   { enabled: boolean; outageSince: string | null }
 >;
 
-function status(overrides: Partial<Status> = {}): Status {
+function status(overrides: Partial<Status> = {}) {
   const up = { enabled: true, outageSince: null };
   return {
     imdb: up,

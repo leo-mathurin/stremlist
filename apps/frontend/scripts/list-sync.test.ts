@@ -10,7 +10,6 @@ import {
 } from "../src/lib/list-sync.ts";
 import type { ListSyncState } from "../src/lib/list-sync.ts";
 
-/** Assert only the fields of `expected`, like a partial match. */
 function assertFields(actual: ListSyncState, expected: Partial<ListSyncState>) {
   const values = new Map<string, unknown>(Object.entries(actual));
   const picked = Object.fromEntries(
@@ -32,7 +31,7 @@ describe("listSyncState", () => {
   const failing = (
     problem: ListSyncStatus["problem"],
     overrides: Partial<ListSyncStatus> = {},
-  ): ListSyncStatus => ({
+  ) => ({
     ...ok,
     lastAttemptAt: "2026-10-06T13:00:00.000Z",
     problem,
@@ -90,14 +89,11 @@ describe("listSyncState", () => {
   });
 
   test("asks to renew a refused Connection", () => {
-    // Even before the List's own next read fails: Stremio still serves its
-    // cached Titles until then.
     assert.deepEqual(listSyncState(ok, "renew", true), {
       kind: "connection",
       renew: true,
       stillShown: true,
     });
-    // A Source list whose read the Provider refused shows nothing.
     assert.deepEqual(
       listSyncState(failing("needs_connection"), "renew", false),
       { kind: "connection", renew: true, stillShown: false },
@@ -131,7 +127,7 @@ describe("listSyncState", () => {
 describe("mergedListSyncState", () => {
   const IMDB = { provider: "imdb", sourceRef: "ur1000001" } as const;
   const TRAKT = { provider: "trakt", sourceRef: "me/watchlist" } as const;
-  const synced = (at: string): ListSyncState => ({
+  const synced = (at: string) => ({
     kind: "synced",
     at,
     titleCount: 3,
@@ -233,10 +229,7 @@ describe("mergedListSyncState", () => {
 });
 
 describe("syncLineTone", () => {
-  const renew = (
-    stillShown: boolean,
-    othersShown?: boolean,
-  ): ListSyncState => ({
+  const renew = (stillShown: boolean, othersShown?: boolean) => ({
     kind: "connection",
     renew: true,
     stillShown,
@@ -263,7 +256,7 @@ describe("syncLineTone", () => {
   });
 
   test("follows the attention tone of a failed refresh", () => {
-    const failing = (olderTitlesFrom: string | null): ListSyncState => ({
+    const failing = (olderTitlesFrom: string | null) => ({
       kind: "failing",
       problem: "unavailable",
       since: "2026-10-06T13:00:00.000Z",

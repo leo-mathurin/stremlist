@@ -1,8 +1,3 @@
-// Loaded only by the isolated backend of `new-titles.spec.ts`. The real
-// adapters, ID resolver, enrichment, database and R2 code run; only the
-// Provider transport is replaced by Source lists that the test controls
-// through a JSON file. Loopback requests (Supabase) use the real fetch. Every
-// other destination is refused, so no real Provider is ever called.
 import { readFileSync } from "node:fs";
 import type { FixtureRequest } from "./fetch-fixture.js";
 import { graphql, installFetchFixture } from "./fetch-fixture.js";
@@ -31,7 +26,7 @@ export interface SourceFixture {
   >;
 }
 
-function fixturePath(): string {
+function fixturePath() {
   const file = process.env.E2E_SOURCE_FIXTURE_FILE;
   if (!file) throw new Error("E2E_SOURCE_FIXTURE_FILE is not set");
   return file;
@@ -47,7 +42,7 @@ function isSourceFixture(value: unknown): value is SourceFixture {
   );
 }
 
-function fixture(): SourceFixture {
+function fixture() {
   return parseJson(
     readFileSync(fixtureFile, "utf8"),
     isSourceFixture,
@@ -85,7 +80,7 @@ function titleNode(id: string, state: SourceFixture) {
   };
 }
 
-function imdb({ body }: FixtureRequest): Response {
+function imdb({ body }: FixtureRequest) {
   const { operation, variables } = graphql(body, isImdbVariables);
   const state = fixture();
   if (operation === "WatchListPage") {
@@ -124,7 +119,7 @@ function imdb({ body }: FixtureRequest): Response {
   throw new Error(`Unexpected IMDb operation ${operation}`);
 }
 
-function trakt({ url }: FixtureRequest): Response {
+function trakt({ url }: FixtureRequest) {
   const user = /^\/users\/([^/]+)\/watchlist$/.exec(url.pathname)?.[1];
   const list = user ? fixture().trakt[user] : undefined;
   if (!list) return Response.json({ error: "not found" }, { status: 404 });
@@ -147,7 +142,6 @@ installFetchFixture({
   hosts: {
     "api.graphql.imdb.com": imdb,
     "api.trakt.tv": trakt,
-    // Enrichment falls back to Cinemeta for Titles IMDb did not answer.
     "v3-cinemeta.strem.io": () => new Response("Not found", { status: 404 }),
   },
 });

@@ -1,8 +1,7 @@
 import type { RateLimiter } from "./http";
 import { ensureOk, providerFetch } from "./http";
 
-/** An environment value; blank counts as unset. */
-function envValue(name: string): string | undefined {
+function envValue(name: string) {
   const value = process.env[name]?.trim();
   if (!value) return undefined;
   return value;
@@ -28,7 +27,7 @@ export async function revokeToken(
   token: string,
   client: ReturnType<typeof oauthClient>,
   limiter?: RateLimiter,
-): Promise<void> {
+) {
   const body = new URLSearchParams({
     token,
     client_id: client.clientId() ?? "",

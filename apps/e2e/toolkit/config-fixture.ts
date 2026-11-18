@@ -15,14 +15,9 @@ import type {
   AccountConfigInput,
   AccountConfigResponse,
   ConfigList,
-  ConnectionSummary,
 } from "@stremlist/shared/stremio.types";
 import type { ListSyncStatus } from "@stremlist/shared/sync-status";
 import { type Guard, isRecord, isString, parseJson } from "../helpers/json";
-
-// Intercepted API of the configure page. These fixtures record requests and
-// prove UI state; real storage and manifest behavior is covered by the
-// Playwright integration specs rather than reimplemented here.
 
 export const backend = "http://127.0.0.1:4314";
 /** A private Account ID (`sl_` and 22 base62 characters). */
@@ -157,7 +152,7 @@ export async function chooseRpdb(screen: Screen) {
 export function connected(
   provider: ProviderId,
   username: string | null = "someone",
-): ConnectionSummary {
+) {
   return {
     provider,
     username,
@@ -237,7 +232,7 @@ export interface PreviewRequest {
 export function previewOf(
   request: Pick<PreviewRequest, "displayMode">,
   overrides: Partial<CatalogPreview> = {},
-): CatalogPreview {
+) {
   const titles = [
     {
       id: "tt0111161",
@@ -289,7 +284,6 @@ export async function baseRoutes(
     if (pathname === "/providers") await route.fulfill({ json: providers });
     else if (pathname === "/stats")
       await route.fulfill({ json: { activeUsers: 2 } });
-    // Tests that check sync states route the poll themselves.
     else if (pathname.endsWith("/sync-status"))
       await route.fulfill({
         json: toJson({
@@ -297,7 +291,6 @@ export async function baseRoutes(
           connections: [],
         }),
       });
-    // Watch tracking (ADR 0003): no Stremio link, so nothing to turn on.
     else if (
       route.request.method === "GET" &&
       pathname.endsWith("/watch-tracking")
@@ -305,7 +298,6 @@ export async function baseRoutes(
       await route.fulfill({
         json: { stremioLinked: false, stremioTrakt: false, destinations: [] },
       });
-    // Home asks whether a pasted IMDb ID has a v1 install: by default none.
     else if (
       route.request.method === "GET" &&
       /^\/[^/]+\/config$/.test(pathname) &&
@@ -330,7 +322,7 @@ export async function baseRoutes(
 export function savedLists(
   submitted: AccountConfigInput,
   genres: string[] = ["Drama", "Comedy"],
-): ConfigList[] {
+) {
   return submitted.lists.map((list, index) => ({
     catalogTitle: "",
     displayMode: "split",
@@ -351,7 +343,7 @@ function isJsonValue(value: unknown): value is Json | null {
 }
 
 /** Typed fixtures as a route body (interfaces are not JSON-typed). */
-export function toJson<T>(value: T): Json {
+export function toJson<T>(value: T) {
   const json: unknown = JSON.parse(JSON.stringify(value));
   if (json === null || !isJsonValue(json)) {
     throw new Error(`Not a JSON route body: ${JSON.stringify(value)}`);
@@ -360,7 +352,7 @@ export function toJson<T>(value: T): Json {
 }
 
 /** The JSON body that the app sent, as checked by `is`. */
-export function parseBody<T>(route: WebRoute, is: Guard<T>): T {
+export function parseBody<T>(route: WebRoute, is: Guard<T>) {
   return parseJson(route.request.postData ?? "{}", is, "request body");
 }
 
@@ -584,7 +576,6 @@ export const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 
 /** Drag the second List above the first one with the pointer. */
 export async function dragSecondAboveFirst(browser: Browser) {
-  // Centers of the List drag handles, in visible order.
   const handles = await browser.evaluate(() =>
     Array.from(
       document.querySelectorAll('[aria-label^="Drag to reorder"]'),

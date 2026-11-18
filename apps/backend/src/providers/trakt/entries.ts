@@ -2,7 +2,6 @@ import { asImdbId } from "@stremlist/shared/constants";
 import { z } from "zod";
 import type { SourceEntry } from "../types";
 
-/** The IDs object of a Trakt movie or show. */
 const traktIdsSchema = z.object({
   trakt: z.number().nullish(),
   slug: z.string().nullish(),
@@ -36,15 +35,12 @@ export const traktItemSchema = z.object({
 });
 export type TraktItem = z.infer<typeof traktItemSchema>;
 
-export function imdbIdOf(media: TraktMedia | null | undefined): string | null {
+export function imdbIdOf(media: TraktMedia | null | undefined) {
   return asImdbId(media?.ids?.imdb) ?? null;
 }
 
 /** A Trakt movie or show as a Source list entry. */
-export function mediaToEntry(
-  media: TraktMedia,
-  type: "movie" | "series",
-): SourceEntry {
+export function mediaToEntry(media: TraktMedia, type: "movie" | "series") {
   const ids = media.ids ?? {};
   const entry: SourceEntry = { type };
   const imdbId = imdbIdOf(media);
@@ -62,7 +58,7 @@ export function mediaToEntry(
  * The Title behind a list item. Seasons and episodes in a list stand for
  * their show; people and anything unknown are skipped.
  */
-export function itemToEntry(item: TraktItem): SourceEntry | null {
+export function itemToEntry(item: TraktItem) {
   if (item.movie && (item.type === undefined || item.type === "movie")) {
     return mediaToEntry(item.movie, "movie");
   }
@@ -74,12 +70,12 @@ export function itemToEntry(item: TraktItem): SourceEntry | null {
 export function withAddedAt(
   entry: SourceEntry,
   date: string | null | undefined,
-): SourceEntry {
+) {
   return date ? { ...entry, addedAt: date } : entry;
 }
 
 /** Same Title twice (several seasons of one show in a list) keeps the first. */
-export function uniqueEntries(entries: SourceEntry[]): SourceEntry[] {
+export function uniqueEntries(entries: SourceEntry[]) {
   const seen = new Set<string>();
   return entries.filter((entry) => {
     const id =
@@ -102,7 +98,7 @@ export function uniqueEntries(entries: SourceEntry[]): SourceEntry[] {
 export function oldestFirst<T>(
   items: T[],
   dateOf: (item: T) => string | null | undefined,
-): T[] {
+) {
   const time = (item: T) => {
     const value = dateOf(item);
     const parsed = value ? Date.parse(value) : NaN;
@@ -115,7 +111,7 @@ export function oldestFirst<T>(
 }
 
 /** m1, s1, m2, s2…: keeps each chart's rank while mixing both kinds. */
-export function interleave<T>(first: T[], second: T[]): T[] {
+export function interleave<T>(first: T[], second: T[]) {
   const result: T[] = [];
   for (let i = 0; i < Math.max(first.length, second.length); i++) {
     if (i < first.length) result.push(first[i]);

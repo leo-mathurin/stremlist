@@ -26,10 +26,6 @@ vi.mock("../../http", async (importOriginal) => {
 beforeEach(resetTraktTest);
 afterEach(restoreTraktTest);
 
-// ---------------------------------------------------------------------------
-// Validation, resolution, freshness
-// ---------------------------------------------------------------------------
-
 describe("Trakt validateSource", () => {
   it("accepts charts without a network call", async () => {
     await expect(
@@ -112,7 +108,6 @@ describe("Trakt validateSource", () => {
         defaultDisplayMode: mode,
       });
     }
-    // One cheap probe of each Source list: never the whole history.
     expect(callsTo("/users/sean/watched/movies")).toHaveLength(0);
     expect(
       callsTo("/users/sean/history")[0].url.searchParams.get("limit"),
@@ -171,7 +166,6 @@ describe("Trakt validateSource", () => {
   });
 
   it("names a smart list and starts it with its only media type", async () => {
-    // Recorded shape of /smart-lists/{slug} (api.trakt.tv, 2026-11-16).
     route("GET /smart-lists/silos", {
       name: "Silos",
       privacy: "public",

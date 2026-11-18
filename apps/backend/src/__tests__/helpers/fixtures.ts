@@ -6,10 +6,9 @@ import { encryptSecret } from "../../lib/crypto";
 import { db } from "./mock-supabase";
 import { accountRow, connectionRow, listRow } from "./rows";
 
-/** A fixed 32-byte key, so tests never depend on the real environment. */
 const TEST_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
 
-export function useTestEncryptionKey(): void {
+export function useTestEncryptionKey() {
   process.env.CONNECTION_ENCRYPTION_KEY = TEST_ENCRYPTION_KEY;
 }
 
@@ -19,9 +18,7 @@ export const LIST_IDS = [
   "33333333-3333-4333-8333-333333333333",
 ] as const;
 
-export function seedAccount(
-  overrides: Partial<Tables<"accounts">> = {},
-): Tables<"accounts"> {
+export function seedAccount(overrides: Partial<Tables<"accounts">> = {}) {
   return accountRow.parse(db.insert("accounts", overrides));
 }
 
@@ -29,14 +26,14 @@ export function seedAccount(
 export function seedLegacyAccount(
   imdbUserId: string,
   overrides: Partial<Tables<"accounts">> = {},
-): Tables<"accounts"> {
+) {
   return seedAccount({ legacy_imdb_user_id: imdbUserId, ...overrides });
 }
 
 export function seedList(
   accountId: string,
   overrides: Partial<Tables<"lists">> & { source_ref: string },
-): Tables<"lists"> {
+) {
   return listRow.parse(
     db.insert("lists", {
       account_id: accountId,
@@ -58,7 +55,7 @@ export function seedConnection(
   accountId: string,
   provider: ProviderId,
   seed: ConnectionSeed = {},
-): Tables<"connections"> {
+) {
   useTestEncryptionKey();
   const refreshToken =
     seed.refreshToken === undefined ? "refresh-token" : seed.refreshToken;
@@ -77,7 +74,6 @@ export function seedConnection(
   return connectionRow.parse(row);
 }
 
-/** The browser key of `seedOAuthState`, as the start gave it. */
 const TEST_BROWSER_KEY = "browser-key-1";
 
 /** A pending authorization that the test browser started. */
@@ -107,10 +103,7 @@ export function completeOAuthBody(code = "code-1", state = "state-abc") {
   };
 }
 
-export function movie(
-  id: string,
-  overrides: Partial<StremioMeta> = {},
-): StremioMeta {
+export function movie(id: string, overrides: Partial<StremioMeta> = {}) {
   return {
     id,
     type: "movie",

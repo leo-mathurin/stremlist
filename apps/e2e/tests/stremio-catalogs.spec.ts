@@ -20,10 +20,6 @@ import {
   UNKNOWN_USER,
 } from "../helpers/test-data.js";
 
-// Catalog rendering inside the real Stremio Web app. Expected content is read
-// from the addon's own catalog endpoint in the same run, so assertions stay
-// deterministic even though the underlying IMDb data is live.
-
 test.beforeEach(resetDb);
 
 test(
@@ -81,8 +77,6 @@ test(
     const manifestUrl = addonManifestUrl(accountId);
     await installAddon(page, manifestUrl);
 
-    // Adding a List changes the manifest, which Stremio only picks up on
-    // reinstall — exactly what the configure page tells the user to do.
     await postConfig(accountId, [
       listInput("imdb", PUBLIC_USER, { id: listId }),
       listInput("imdb", "imdb:box-office", { displayMode: "movie" }),
@@ -112,7 +106,6 @@ test(
   async ({ page }) => {
     const { accountId, listId } = await seedImdbAccount();
     const manifestUrl = addonManifestUrl(accountId);
-    // Distinctive title so the Board row is unambiguous.
     await postConfig(accountId, [
       listInput("imdb", PUBLIC_USER, { id: listId, catalogTitle: "E2E QA" }),
     ]);
@@ -126,7 +119,6 @@ test(
   },
 );
 
-// An unreadable watchlist shows its informational card in Discover.
 for (const [title, sourceRef, card] of [
   [
     "broken watchlist shows the informational card in Stremio",

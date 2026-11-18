@@ -17,7 +17,7 @@ import {
   renderMarkdownPage,
 } from "./registry";
 
-export function prefersMarkdown(accept: string | null): boolean {
+export function prefersMarkdown(accept: string | null) {
   if (!accept) return false;
   const ranges = (
     accept.toLowerCase().match(/(?:[^,"]|"(?:\\.|[^"\\])*")+/g) ?? []
@@ -69,7 +69,7 @@ export function prefersMarkdown(accept: string | null): boolean {
   return markdown > 0 && markdown > quality("text/html");
 }
 
-function pathname(url: URL): string | null {
+function pathname(url: URL) {
   try {
     return decodeURIComponent(url.pathname);
   } catch {
@@ -77,7 +77,7 @@ function pathname(url: URL): string | null {
   }
 }
 
-export function aiRequestPath(request: Request): string | null {
+export function aiRequestPath(request: Request) {
   const url = new URL(request.url);
   const path = pathname(url);
   if (!path || PASSTHROUGH_MARKDOWN_ROUTES.includes(path)) return null;
@@ -94,7 +94,7 @@ export function aiRequestPath(request: Request): string | null {
     : null;
 }
 
-export function htmlHeaders(path: string): Record<string, string> {
+export function htmlHeaders(path: string) {
   return getMarkdownPage(path)
     ? { Link: discoveryLinks(), Vary: "Accept" }
     : { Link: discoveryLinks(), "X-Robots-Tag": "noindex, nofollow" };
@@ -112,12 +112,8 @@ let fullSnapshot:
   | { backendUrl: string; expires: number; body: Promise<string> }
   | undefined;
 
-export async function handleAiRequest(
-  request: Request,
-  backendUrl: string,
-): Promise<Response> {
+export async function handleAiRequest(request: Request, backendUrl: string) {
   const url = new URL(request.url);
-  // The Vercel middleware passes only a public path, never Account query parameters.
   const source =
     url.pathname === "/api/ai"
       ? url.searchParams.get("source")

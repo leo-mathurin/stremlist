@@ -73,11 +73,10 @@ const MOVIE: StremioMeta = {
   description: "",
 };
 
-function meta(id: string, overrides: Partial<StremioMeta> = {}): StremioMeta {
+function meta(id: string, overrides: Partial<StremioMeta> = {}) {
   return { ...MOVIE, id, name: `Title ${id}`, ...overrides };
 }
 
-/** A read of one List, its fields and the read options side by side. */
 interface TestRead extends ListRead {
   listId: string;
   provider: ProviderId;
@@ -91,14 +90,14 @@ function readList({
   sourceRef,
   mergedSources,
   ...read
-}: TestRead): Promise<CatalogData> {
+}: TestRead) {
   return getListCatalog(
     { id: listId, provider, sourceRef, mergedSources },
     read,
   );
 }
 
-function config(overrides: Partial<TestRead> = {}): TestRead {
+function config(overrides: Partial<TestRead> = {}) {
   return {
     accountId: "sl_0000000000000000000000",
     listId: LIST_ID,
@@ -267,9 +266,7 @@ describe("getListCatalog", () => {
       priorities.push(currentReadPriority());
       return Promise.resolve({ metas: [meta("tt0000002")] });
     });
-    // No cache: someone waits for this read.
     await readList(config());
-    // A stale cache is served if the read is refused, so it never queues.
     cache.seed(LIST_ID, [MOVIE], new Date(Date.now() - 2 * 60 * 60_000));
     await readList(config());
 
@@ -366,13 +363,12 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
       { imdbId: "tt0000001", type: "movie" },
       { externalIds: { tmdb: { id: 550, type: "movie" } }, type: "movie" },
       { externalIds: { tmdb: { id: 999, type: "movie" } }, type: "movie" },
-      // A second copy of a Title is shown once.
       { imdbId: "tt0000001", type: "movie" },
     ];
     const strategy = vi.fn((pending: SourceEntry[]) =>
       Promise.resolve(
         new Map(
-          pending.flatMap((entry, index): [number, string][] =>
+          pending.flatMap((entry, index) =>
             entry.externalIds?.tmdb?.id === 550 ? [[index, "tt0137523"]] : [],
           ),
         ),
@@ -408,7 +404,6 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
       "tt0000001",
       "tt0137523",
     ]);
-    // The unresolved entry is remembered for a later retry, not dropped.
     expect(db.getTable("title_id_map")).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -427,8 +422,6 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
   });
 
   it("asks for a new read soon when the resolver left entries untried", async () => {
-    // 350 entries without an IMDb ID: the resolver tries 300 per read.
-    // IDs from 5000 up: enrichment keeps an in-memory cache between tests.
     const entries: SourceEntry[] = Array.from({ length: 350 }, (_, index) => ({
       externalIds: { tmdb: { id: 5000 + index, type: "movie" } },
       type: "movie",
@@ -447,7 +440,7 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
             resolve: (pending) =>
               Promise.resolve(
                 new Map(
-                  pending.map((entry, index): [number, string] => [
+                  pending.map((entry, index) => [
                     index,
                     `tt${String(entry.externalIds?.tmdb?.id).padStart(7, "0")}`,
                   ]),
@@ -465,7 +458,6 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
       config({ provider: "senscritique", sourceRef: "users/leo/wishes" }),
     );
 
-    // Stored as if it went stale two minutes from now, not in six hours.
     const storedAt = cache.get(LIST_ID)?.cachedAt.getTime() ?? 0;
     const staleIn = storedAt + 6 * 60 * 60_000 - Date.now();
     expect(staleIn).toBeGreaterThan(60_000);
@@ -506,10 +498,8 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
   });
 
   it("links each item back to its page on the Provider, once", async () => {
-    // Generic: any adapter may set sourceUrl (Simkl does, as its terms ask).
     const url = "https://trakt.tv/movies/the-shawshank-redemption-1994";
     const cachedAt = new Date(Date.now() - 2 * 60 * 60_000);
-    // The previous cache generation already has the line.
     cache.seed(
       LIST_ID,
       [
@@ -598,7 +588,6 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
   it("does not serve the cache of a List whose Connection is gone", async () => {
     useFakeProvider(fakeAdapter("simkl"));
     const account = seedAccount();
-    // Cached while connected, and stale now.
     cache.seed(LIST_ID, [MOVIE], new Date(Date.now() - 2 * 60 * 60_000));
 
     const error = await readList(
@@ -622,7 +611,6 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
           ),
       }),
     );
-    // Cached before the Share link was revoked, and stale now.
     cache.seed(LIST_ID, [MOVIE], new Date(Date.now() - 2 * 60 * 60_000));
 
     const error = await readList(
@@ -641,10 +629,8 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
           ),
       }),
     );
-    // The cache is still fresh, so an ordinary read would serve it.
     cache.seed(LIST_ID, [MOVIE], new Date());
 
-    // Refresh now sees the revocation and must clear the cached Catalog.
     await expect(
       readList(
         config({
@@ -656,7 +642,6 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
     ).rejects.toMatchObject({ reason: "not_found" });
     expect(cache.get(LIST_ID)).toBeNull();
 
-    // A later ordinary read no longer has stale Titles to serve.
     await expect(
       readList(
         config({ provider: "letterboxd", sourceRef: "share/v1:ciphertext" }),

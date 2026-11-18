@@ -21,14 +21,12 @@ import { ProviderMark } from "./brand";
 import { CONNECTABLE_PROVIDERS } from "@/lib/provider-groups";
 import { cn } from "@/lib/utils";
 
-/** Public links that a v1 install can add as it is, with no upgrade. */
 const PUBLIC_PROVIDERS = LINK_PROVIDERS.filter(
   (id) => id !== "imdb" && PROVIDERS[id].connection !== "required",
 );
 
 type StepId = "works" | "public" | "private";
 
-/** Press feedback of the card's buttons and links. */
 const PRESS =
   "transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.97] motion-reduce:active:scale-100";
 const PRIMARY = cn(
@@ -92,9 +90,6 @@ export default function LegacyChecklist({
   );
   const card = useRef<HTMLElement>(null);
 
-  // Connect and the upgrade links of the page open the private URL step, and
-  // so does a list from another site that was just added: it is the next
-  // step.
   const [seen, setSeen] = useState({
     request: upgradeRequest,
     other: otherProviderAdded,
@@ -265,10 +260,6 @@ function worksTitle(imdbLists: number) {
   return `Your ${imdbLists} IMDb lists still sync`;
 }
 
-/**
- * The private Addon URL: create it from what this page shows, install it,
- * then open its configure page.
- */
 function UpgradeStep({
   upgradedTo,
   confirmed,
@@ -439,10 +430,6 @@ function CheckDot({ done }: { done: boolean }) {
   );
 }
 
-/**
- * Progress as a ring. The footer says the same in words, so the ring is
- * hidden from screen readers.
- */
 function ProgressRing({ done, total }: { done: number; total: number }) {
   const r = 17;
   const c = 2 * Math.PI * r;
@@ -479,7 +466,7 @@ function ProgressRing({ done, total }: { done: number; total: number }) {
   );
 }
 
-function scrollBehavior(): ScrollBehavior {
+function scrollBehavior() {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches
     ? "auto"
     : "smooth";

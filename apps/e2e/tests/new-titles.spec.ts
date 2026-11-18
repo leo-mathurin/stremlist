@@ -40,10 +40,6 @@ import { seedCachedCatalog } from "../helpers/r2.js";
 import type { SourceFixture } from "../helpers/source-transport.js";
 import { CATALOG_FIXTURE_USER } from "../helpers/test-data.js";
 
-// New titles (ADR 0007): consecutive refreshes of Source lists that the test
-// controls. The real backend, ID resolver, database and R2 store run in an
-// isolated process; only the Provider transport is the fixture.
-
 const WATCHLIST = "ur9999999999201";
 const TRAKT_USER = "e2e-fixture";
 const TRAKT_REF = `users/${TRAKT_USER}/watchlist`;
@@ -73,7 +69,7 @@ function sources(
   trakt: SourceFixture["trakt"][string]["items"] = [],
   read: { imdbFails?: boolean; imdbCapped?: boolean } = {},
   watchlist = WATCHLIST,
-): SourceFixture {
+) {
   return {
     imdb: {
       [watchlist]: { ids: imdb, fail: read.imdbFails, capped: read.imdbCapped },
@@ -87,7 +83,6 @@ function traktItem(trakt: number, imdb: string) {
   return { trakt, imdb, name: TITLES[imdb].name, year: TITLES[imdb].year };
 }
 
-/** A cached Catalog entry for one of the TITLES. */
 const cachedTitle = (imdbId: string) => ({
   ...CATALOG_TITLES[0],
   id: imdbId,
@@ -98,7 +93,6 @@ let backend: FixtureBackend;
 let fixtureDir: string;
 let fixtureFile: string;
 
-/** Rewrite the Source lists that the isolated backend reads next. */
 function writeSources(state: SourceFixture) {
   writeFileSync(fixtureFile, JSON.stringify(state));
 }
@@ -117,7 +111,6 @@ test.afterAll(async () => {
 });
 test.beforeEach(resetDb);
 
-/** An Account with the New titles catalog on and these Lists. */
 function seedDetectionAccount(
   lists: {
     provider: "imdb" | "trakt";
@@ -137,7 +130,6 @@ function seedDetectionAccount(
   );
 }
 
-/** One synchronization of every List, as the Refresh button asks. */
 async function refreshAll(accountId: string, state: SourceFixture) {
   writeSources(state);
   await clearRefreshCooldown(accountId);
@@ -148,12 +140,11 @@ async function refreshAll(accountId: string, state: SourceFixture) {
   );
 }
 
-/** The New titles catalog of `type`, read from the isolated backend. */
 async function newTitles(
   accountId: string,
   type: "movie" | "series" = "movie",
   extra: { search?: string; skip?: number } = {},
-): Promise<StremioMeta[]> {
+) {
   const { status, metas } = await backend.api.getCatalog(
     accountId,
     type,
@@ -169,7 +160,6 @@ const ids = (metas: StremioMeta[]) => metas.map((meta) => meta.id);
 const daysAgo = (days: number) =>
   new Date(Date.now() - days * 24 * 60 * 60_000).toISOString();
 
-/** Save these Lists through the isolated backend, as the configure page does. */
 async function saveLists(accountId: string, lists: ConfigListInput[]) {
   return parsed(
     ok(await backend.api.postConfig(accountId, lists)),
@@ -213,7 +203,6 @@ test(
     await refreshAll(accountId, sources([A, B, C], [traktItem(1, A)]));
     expect(ids(await newTitles(accountId))).toEqual([C]);
 
-    // C also reaches the Trakt watchlist later: it keeps its first detection.
     const last = await refreshAll(
       accountId,
       sources([A, B, C], [traktItem(1, A), traktItem(3, C), traktItem(4, D)]),
@@ -318,7 +307,6 @@ test(
     expect(capped).toMatchObject({ refreshed: 1, failed: 0 });
     expect(capped.newTitles).toEqual({ ...EMPTY_SUMMARY, waitingLists: 1 });
     expect(await getSourceListSyncs(accountId)).toEqual([]);
-    // The cut-short read still serves the List's own Catalog.
     const manifest = await backend.api.getManifest(accountId);
     const listCatalog = manifest.catalogs.find(
       (catalog) => !catalog.id.startsWith("new-titles-"),
@@ -337,8 +325,6 @@ test(
       ),
     ).toBeVisible();
 
-    // The first complete read is the Baseline, also for C, which the
-    // cut-short read did not have.
     const baseline = await refreshAll(accountId, sources([A, B, C]));
     expect(baseline.newTitles).toEqual(EMPTY_SUMMARY);
     expect(await newTitles(accountId)).toEqual([]);
@@ -351,7 +337,6 @@ test(
       [`imdb:${C}`, null, null],
     ]);
 
-    // A later cut-short read without B and C removes nothing.
     await refreshAll(accountId, sources([A], [], { imdbCapped: true }));
     expect(await getSourceListEntries(accountId)).toEqual(known);
 
@@ -402,7 +387,6 @@ test(
       removed_at: null,
     });
 
-    // Removing the List hides its Titles but keeps its history.
     const [watchlistList, traktList] = ok(
       await backend.api.getConfig(accountId),
     ).lists;
@@ -412,8 +396,6 @@ test(
     expect(await newTitles(accountId)).toEqual([]);
     expect(await getSourceListSyncs(accountId)).toEqual(history);
 
-    // Added again as a new List, it keeps its Baseline: nothing in it
-    // becomes new, and C keeps its first detection.
     const [readded] = asInput([watchlistList]);
     const added = await saveLists(accountId, [
       ...asInput([traktList]),
@@ -425,7 +407,6 @@ test(
     const metas = await newTitles(accountId);
     expect(ids(metas)).toEqual([C]);
     expect(metas[0].description).toMatch(detected("QA watchlist"));
-    // Stremio opens the Title through the meta route.
     const { status, meta } = await getMeta(accountId, "movie", C);
     expect(status).toBe(200);
     expect(meta).toMatchObject({ id: C, name: "QA Detection Charlie" });
@@ -496,7 +477,6 @@ test(
     const upgraded = await backend.api.upgrade(alias);
     expect(upgraded.status).toBe(200);
     const accountId = present(upgraded.body.accountId, "the copy's Account ID");
-    // The upgrade reads the copy's List once: that read is its Baseline.
     await expect.poll(() => getSourceListSyncs(accountId)).toHaveLength(1);
 
     expect(ok(await backend.api.getConfig(accountId)).newTitles).toEqual({
@@ -509,7 +489,6 @@ test(
 
     await refreshAll(accountId, sources([A, B, C], [], {}, alias));
     expect(ids(await newTitles(accountId))).toEqual([C]);
-    // The legacy Account keeps its own history.
     expect(await getSourceListSyncs(legacyId)).toHaveLength(1);
     expect(ids(await newTitles(alias))).toEqual([A]);
   },
@@ -574,7 +553,6 @@ test(
       ]),
     ).toEqual([["imdb", WATCHLIST]]);
     expect(ids(await newTitles(accountId))).toEqual([A]);
-    // The history List cannot be read now, so it waits for a new Baseline.
     expect(
       ok(await backend.api.getConfig(accountId)).newTitles.summary,
     ).toEqual({
@@ -641,7 +619,6 @@ test(
       mergedSources: [{ provider: "trakt", sourceRef: TRAKT_REF }],
     });
 
-    // IMDb cannot be read: Trakt gets its Baseline, the List waits for IMDb.
     const first = await refreshAll(
       accountId,
       sources([], [traktItem(1, A)], { imdbFails: true }),
@@ -651,11 +628,9 @@ test(
       { provider: "trakt", source_ref: TRAKT_REF },
     ]);
 
-    // The first complete IMDb read is its own Baseline, B included.
     await refreshAll(accountId, sources([A, B], [traktItem(1, A)]));
     expect(await newTitles(accountId)).toEqual([]);
 
-    // C reaches IMDb, then Trakt: one new title, with its first detection.
     await refreshAll(accountId, sources([A, B, C], [traktItem(1, A)]));
     const last = await refreshAll(
       accountId,
@@ -672,8 +647,6 @@ test(
     );
     expect(imdbC).toHaveLength(2);
 
-    // IMDb fails again: nothing of it is removed, and Trakt, which dropped
-    // A, is still compared.
     const before = (await getSourceListEntries(accountId)).filter(
       (row) => row.provider === "imdb",
     );
@@ -689,7 +662,6 @@ test(
     ).not.toBeNull();
     expect(ids(await newTitles(accountId))).toEqual([D, C]);
 
-    // The List's own Catalog still shows the cached IMDb Titles.
     const served = await backend.api.getCatalog(
       accountId,
       "movie",
@@ -745,13 +717,10 @@ test(
       /^Detected by Stremlist on \d{1,2} \w{3} \d{4} in Release QA\./,
     );
 
-    // The reminder survives the reload until the user reinstalls.
     await page.getByRole("button", { name: "I'll reinstall myself" }).click();
     await page.getByRole("button", { name: "I did it" }).click();
     await expect(page.getByRole("button", { name: "I did it" })).toHaveCount(0);
 
-    // Turning the catalog off removes it from the manifest: Stremio needs a
-    // reinstall again.
     await toggle.click();
     await expect(
       page.getByText("These changes need a reinstall.", { exact: true }),

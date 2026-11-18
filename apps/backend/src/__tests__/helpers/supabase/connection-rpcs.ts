@@ -1,11 +1,9 @@
-/** In-memory versions of the Connection RPCs in supabase/migrations. */
 import type { RpcArgs, RpcHandler } from "./rpc";
 import { numberOf, rpcError, secondsFromNow, stringsOf } from "./rpc";
-import type { Result, Row } from "./store";
+import type { Row } from "./store";
 import { EPOCH, db, now } from "./store";
 
-/** Same rules as public.save_connection. */
-function saveConnection(args: RpcArgs): Result {
+function saveConnection(args: RpcArgs) {
   const fields: Row = {
     authorization_version: crypto.randomUUID(),
     provider_username: args.p_provider_username ?? null,
@@ -29,8 +27,7 @@ function saveConnection(args: RpcArgs): Result {
   return { data: null, error: null };
 }
 
-/** Same rules as public.delete_connection. */
-function deleteConnection(args: RpcArgs): Result {
+function deleteConnection(args: RpcArgs) {
   const listIds = stringsOf(args.p_list_ids, "p_list_ids");
   const refs = stringsOf(args.p_source_refs, "p_source_refs");
   if (listIds.length !== refs.length) {
@@ -60,7 +57,7 @@ function deleteConnection(args: RpcArgs): Result {
   return { data: null, error: null };
 }
 
-function findConnection(args: RpcArgs): Row | undefined {
+function findConnection(args: RpcArgs) {
   return db
     .getTable("connections")
     .find(
@@ -124,7 +121,7 @@ export const connectionRpcs = {
   },
 } satisfies Record<string, RpcHandler>;
 
-function findStremioLink(args: RpcArgs): Row | undefined {
+function findStremioLink(args: RpcArgs) {
   return db
     .getTable("stremio_connections")
     .find((row) => row.account_id === args.p_account_id);

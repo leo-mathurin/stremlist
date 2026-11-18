@@ -265,7 +265,6 @@ describe("after a new Connection", () => {
     expect(fetchSource).toHaveBeenCalledWith("me/watchlist", {
       connection: expect.objectContaining({ provider: "trakt" }) as unknown,
     });
-    // Lists on other Providers are not read again.
     expect(imdbRead).not.toHaveBeenCalled();
     expect(
       db.getTable("list_sync_status").some((row) => row.list_id === other.id),

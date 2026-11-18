@@ -3,13 +3,6 @@ import { z } from "zod";
 
 const required = z.string().trim().min(1);
 
-/**
- * Variables without which the backend cannot serve Lists or Connections.
- * `index.ts` imports this module first, so a missing one stops the start
- * instead of failing later, inside a request. On Vercel, the release smoke
- * test then fails on `/health` and the deployment is not promoted. Tests mock
- * Supabase and R2, so Vitest skips the check.
- */
 createEnv({
   server: {
     SUPABASE_URL: required.url(),
@@ -25,7 +18,6 @@ createEnv({
     ),
   },
   runtimeEnv: process.env,
-  // A local S3-compatible store (R2_ENDPOINT) replaces the R2 account.
   createFinalSchema: (shape) =>
     z.object(shape).refine((env) => env.R2_ENDPOINT ?? env.R2_ACCOUNT_ID, {
       message: "set R2_ACCOUNT_ID, or R2_ENDPOINT for a local store",

@@ -1,11 +1,9 @@
 import { useEffect, useId, useState, type RefObject } from "react";
 import { motion, useReducedMotion } from "motion/react";
 
-/** One dash and its gap, in px: the beam runs at 100 px/s. */
 const DASH = 40;
 const GAP = 160;
 const DURATION = 4;
-/** Spreads the beam ends on the target, as a share of the vertical gap. */
 const SPREAD = 0.12;
 
 interface AnimatedBeamProps {
@@ -42,7 +40,6 @@ export function AnimatedBeam({
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    // ResizeObserver also fires once on observe, which does the first layout.
     const observer = new ResizeObserver(() => {
       const from = fromRef.current;
       const to = toRef.current;
@@ -55,8 +52,6 @@ export function AnimatedBeam({
       const ex = b.left - box.left + b.width / 2;
       const cy = b.top - box.top + b.height / 2;
       const ey = cy + (sy - cy) * SPREAD;
-      // Both control points sit halfway across, so every beam leaves its
-      // source and lands on its target flat.
       const mx = (sx + ex) / 2;
       const d = `M ${sx},${sy} C ${mx},${sy} ${mx},${ey} ${ex},${ey}`;
       setGeometry({ d, x1: sx, x2: ex, width: box.width, height: box.height });
@@ -86,8 +81,6 @@ export function AnimatedBeam({
       {!idle && !reduceMotion && (
         <>
           <defs>
-            {/* Runs from source to target, so a dash fades in as it leaves
-                the source and is brightest when it reaches the target. */}
             <linearGradient
               id={id}
               gradientUnits="userSpaceOnUse"

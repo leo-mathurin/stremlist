@@ -94,11 +94,9 @@ describe("List CRUD via the config API", () => {
         data.accountId,
         expect.any(Array),
         true,
-        // The setup sends an RPDB key and no poster source: RPDB.
         expect.objectContaining({ posterSource: "rpdb" }),
       );
 
-      // The new Addon URL works right away.
       const config = await readJson(
         await getConfig(data.accountId),
         configBody,
@@ -114,7 +112,6 @@ describe("List CRUD via the config API", () => {
       expect(data.accountId).toMatch(/^sl_[0-9A-Za-z]{22}$/);
       expect(data.lists).toEqual([]);
 
-      // Its Addon URL already works: a manifest without catalogs.
       const manifest = await readJson(
         await app.request(`/${data.accountId}/manifest.json`),
         stremioManifest,
@@ -153,8 +150,6 @@ describe("a caller who knows only the Legacy alias", () => {
   it("cannot freeze the legacy install", async () => {
     seedWatchlist({ id: UUID_1, catalogTitle: "Mine" });
 
-    // A stranger reads the public `ur…` ID and makes a private copy of
-    // what the legacy page shows, the old way and the new way.
     await app.request(`/${OWNER}/upgrade`, { method: "POST" });
     const shown = await readJson(await getConfig(OWNER), configBody);
     expect((await postJson("/accounts", { lists: shown.lists })).status).toBe(
@@ -188,7 +183,6 @@ describe("upgrading a legacy install", () => {
     seedWatchlist({ id: UUID_2, sourceRef: "ls123456789", position: 1 });
     const legacy = await readJson(await getConfig(OWNER), configBody);
 
-    // The page sends what it shows, its unsaved edits included.
     const res = await postJson("/accounts", {
       rpdbApiKey: legacy.rpdbApiKey,
       lists: legacy.lists.map((list: { catalogTitle: string }, index: number) =>
@@ -212,12 +206,10 @@ describe("upgrading a legacy install", () => {
       [OWNER, "Mine"],
       ["ls123456789", "Edited"],
     ]);
-    // New List IDs: the copy has its own Catalogs.
     expect(copy.lists.map((list: { id: string }) => list.id)).not.toContain(
       UUID_1,
     );
 
-    // The old install is unchanged and stays editable.
     const after = await readJson(await getConfig(OWNER), configBody);
     expect(
       after.lists.map((list: { catalogTitle: string }) => list.catalogTitle),
@@ -229,7 +221,6 @@ describe("upgrading a legacy install", () => {
       accountId,
       expect.any(Array),
       true,
-      // The setup sends an RPDB key and no poster source: RPDB.
       expect.objectContaining({ posterSource: "rpdb" }),
     );
   });
@@ -271,10 +262,8 @@ describe("DELETE /:accountId/connections/:provider", () => {
 
     expect(res.status).toBe(200);
     expect(db.getTable("connections")).toEqual([]);
-    // The private List's cache is gone; the public one stays.
     expect(cache.get(privateList.id)).toBeNull();
     expect(cache.get(publicList.id)).not.toBeNull();
-    // Its old success no longer claims Titles that Stremio cannot show.
     expect(db.getTable("list_sync_status").map((row) => row.list_id)).toEqual([
       publicList.id,
     ]);
@@ -307,7 +296,6 @@ describe("DELETE /:accountId/connections/:provider", () => {
     expect(res.status).toBe(200);
     expect(own.filter((key) => r2Objects.has(key))).toEqual([]);
     expect(kept.filter((key) => r2Objects.has(key))).toEqual(kept);
-    // The adapter also forgets what it keeps in memory.
     expect(forgetConnection).toHaveBeenCalledWith(account.id);
   });
 
@@ -321,7 +309,6 @@ describe("DELETE /:accountId/connections/:provider", () => {
 
     const res = await disconnect(account.id, "trakt");
 
-    // The disconnect still succeeds; the stray object is not silent.
     expect(res.status).toBe(200);
     expect(db.getTable("connections")).toEqual([]);
     expect(logged).toHaveBeenCalledWith(

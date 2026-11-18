@@ -20,24 +20,19 @@ import {
   runListChecks,
 } from "../../services/monitor/list-checks";
 
-/** An environment variable, with an empty value read as unset. */
-function env(name: string): string | undefined {
+function env(name: string) {
   const value = process.env[name]?.trim();
   return value === "" ? undefined : value;
 }
 
-/** The client ID of the Provider's app, or undefined when it has none. */
-function clientId(provider: ProviderId): string | undefined {
+function clientId(provider: ProviderId) {
   return getProvider(provider).oauth?.clientId();
 }
 
-/** A probe's read: the number of entries it found. */
 type ProbeRead = () => Promise<number>;
 
-/** Read a public Source list through the Provider's adapter. */
-function sourceRead(provider: ProviderId, ref: string): ProbeRead {
+function sourceRead(provider: ProviderId, ref: string) {
   return async () => {
-    // forceRefresh reads the Provider itself, never a cached page.
     const snapshot = await getProvider(provider).fetchSource(ref, {
       connection: null,
       forceRefresh: true,
@@ -46,12 +41,7 @@ function sourceRead(provider: ProviderId, ref: string): ProbeRead {
   };
 }
 
-/**
- * Check that a Provider's API answers, for Providers whose lists all need a
- * Connection. Any answer below 500 (a 401 or 404 included) means that the
- * service is up; a 429 is a rate limit, not an outage.
- */
-function serviceRead(url: string): ProbeRead {
+function serviceRead(url: string) {
   return async () => {
     const response = await providerFetch(url, {
       retryOn429: false,
@@ -68,13 +58,6 @@ function serviceRead(url: string): ProbeRead {
   };
 }
 
-/**
- * One probe per Provider. A probe runs when Stremlist knows what to read:
- * a public Source list for Providers read without a Connection, the API
- * itself for the others. Its result feeds the Provider's outage state (what
- * the configure page shows) and its Better Stack heartbeat, which the list
- * checks send (services/monitor/list-checks.ts).
- */
 const PROBES: {
   provider: ProviderId;
   read: () => ProbeRead | undefined;
@@ -110,7 +93,6 @@ const PROBES: {
     },
   },
   {
-    // Trakt's public charts need only the app's client ID.
     provider: "trakt",
     read: () =>
       clientId("trakt")
@@ -137,21 +119,12 @@ const PROBES: {
   },
 ];
 
-/**
- * A failed probe. `outage` says whether the failure counts toward an outage
- * of the Provider (see isOutageFailure); other failures still alert.
- */
 type ProbeResult =
   | { provider: ProviderId; ok: true; entries: number }
   | { provider: ProviderId; ok: false; outage: boolean; error: string };
 
-async function runProbe(
-  provider: ProviderId,
-  read: ProbeRead,
-): Promise<ProbeResult> {
+async function runProbe(provider: ProviderId, read: ProbeRead) {
   try {
-    // An unavailable Provider (turned off, or halted with no probe due) is
-    // never contacted. Its Availability already tells the user.
     if (!(await mayReadProvider(provider)))
       throw new Error(`${provider} is unavailable (turned off or halted)`);
     const degraded = await providerDegradation(provider);
@@ -164,17 +137,11 @@ async function runProbe(
   }
 }
 
-/**
- * Record what this run learned about a Provider's outage. The Provider's own
- * status page saying "down" starts an outage at once. Otherwise a working
- * probe, then a probe that failed because of the Provider, then the status
- * page saying "up" decide. With none of them, nothing changes.
- */
 async function recordOutage(
   provider: ProviderId,
   probe: ProbeResult | undefined,
   page: StatusPageState | null,
-): Promise<void> {
+) {
   if (page === "down")
     return recordProviderProbe(provider, {
       ok: false,
@@ -201,8 +168,6 @@ const monitor = new Hono().get("/monitor", async (c) => {
     return c.json({ error: "Unauthorized" }, 401);
   }
 
-  // Independent probes: one failure never skips the others. A turned-off
-  // Provider's status page is not read: its label already says it all.
   const [checks, claimed] = await Promise.all([
     Promise.all(
       PROBES.map(async ({ provider, read: readOf }) => {
@@ -221,15 +186,12 @@ const monitor = new Hono().get("/monitor", async (c) => {
     claimListChecks(),
   ]);
   const results = checks.flatMap(({ probe }) => (probe ? [probe] : []));
-  // The list checks take longer than Better Stack waits for an answer.
   if (claimed) scheduleBackgroundTask(() => runListChecks(results));
   const statusPages = Object.fromEntries(
     checks
       .filter(({ provider }) => STATUS_PAGE_PROVIDERS.includes(provider))
       .map(({ provider, page }) => [provider, page]),
   );
-  // Only the probes fail the answer: a status page is an extra signal, and
-  // the list checks alert through the heartbeats after the answer.
   const ok = results.every((result) => result.ok);
   const listChecks = { started: claimed, last: await lastListChecks() };
   return c.json({ ok, results, statusPages, listChecks }, ok ? 200 : 502);

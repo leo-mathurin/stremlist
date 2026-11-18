@@ -6,12 +6,11 @@ import { useNow } from "@/hooks/useNow";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BRAND_CHECKBOX } from "./ActionsSettings";
 
-function plural(count: number, one: string, other: string): string {
+function plural(count: number, one: string, other: string) {
   return `${count} ${count === 1 ? one : other}`;
 }
 
-/** What Stremlist detected so far, or why nothing is detected yet. */
-function summaryText(summary: NewTitlesSummary, now: number): string {
+function summaryText(summary: NewTitlesSummary, now: number) {
   const waiting =
     summary.waitingLists > 0
       ? ` Stremlist could not read ${plural(summary.waitingLists, "list", "lists")} in full yet, so it cannot compare ${summary.waitingLists === 1 ? "it" : "them"}.`
@@ -22,7 +21,6 @@ function summaryText(summary: NewTitlesSummary, now: number): string {
   return `${plural(summary.detected, "new title", "new titles")} detected, the latest ${formatRelativeTime(summary.latestDetectedAt, now)}.${waiting}`;
 }
 
-/** The summary, kept live on its own so the setting does not render each second. */
 function SummaryText({ summary }: { summary: NewTitlesSummary }) {
   return <span>{summaryText(summary, useNow())}</span>;
 }

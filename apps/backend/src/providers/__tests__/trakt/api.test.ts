@@ -194,10 +194,6 @@ describe("Trakt read errors", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// OAuth
-// ---------------------------------------------------------------------------
-
 describe("Trakt OAuth", () => {
   const oauth: OAuthConfig = required(traktProvider.oauth);
 

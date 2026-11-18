@@ -3,7 +3,6 @@ import { spawnSync } from "node:child_process";
 export const excludedServices =
   "gotrue,realtime,storage-api,imgproxy,studio,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta";
 
-// CLI container names differ from the names accepted by --exclude.
 const excludedContainers = [
   "auth",
   "realtime",
@@ -42,8 +41,6 @@ export function runSupabase(args, { cwd, projectId, capture = true }) {
   const expectedStopped = new Set(
     excludedContainers.map((name) => `supabase_${name}_${projectId}`),
   );
-  // Successful commands repeat status summaries for services we intentionally
-  // exclude. Keep every other diagnostic, and all stderr when a command fails.
   const stderr = result.stderr
     .split(/\r?\n/)
     .filter((line) => {
@@ -65,8 +62,6 @@ export function runSupabase(args, { cwd, projectId, capture = true }) {
     })
     .join("\n");
   if (stderr) process.stderr.write(`${stderr}\n`);
-  // Supabase start/status stdout can contain credentials; only migration output
-  // is explicitly forwarded by the caller.
   if (!capture && result.stdout) process.stdout.write(result.stdout);
   return result.stdout;
 }

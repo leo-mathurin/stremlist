@@ -21,7 +21,7 @@ export interface TitlePosters {
 }
 
 /** The RPDB poster of a Title. RPDB shows its own image when it has none. */
-export function rpdbPosterUrl(rpdbApiKey: string, imdbId: string): string {
+export function rpdbPosterUrl(rpdbApiKey: string, imdbId: string) {
   return `https://api.ratingposterdb.com/${encodeURIComponent(rpdbApiKey.trim())}/imdb/poster-default/${imdbId}.jpg?fallback=true`;
 }
 
@@ -34,7 +34,7 @@ export function choosePoster(
   imdbId: string,
   posters: TitlePosters,
   settings: { posterSource: PosterSource; rpdbApiKey?: string | null },
-): string | null {
+) {
   switch (settings.posterSource) {
     case "rpdb":
       return settings.rpdbApiKey?.trim()

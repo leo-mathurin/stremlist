@@ -11,13 +11,7 @@ export function isWatchProvider(provider: string): provider is WatchProviderId {
 }
 
 /** Why the last write to a Destination failed, until the next success. */
-export type WatchDestinationError =
-  /** The Provider does not know the title. */
-  | "not_found"
-  /** The Connection was refused: connect again. */
-  | "needs_renewal"
-  /** Writes failed for 72 hours and were dropped. */
-  | "gave_up";
+export type WatchDestinationError = "not_found" | "needs_renewal" | "gave_up";
 
 export interface WatchedTitleRef {
   imdbId: string;

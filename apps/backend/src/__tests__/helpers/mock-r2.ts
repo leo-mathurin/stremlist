@@ -1,8 +1,3 @@
-/**
- * In-memory R2 for tests of modules that store JSON objects directly (Action
- * membership). Use it with
- * `vi.mock("…/lib/r2", () => import("…/helpers/mock-r2"))`.
- */
 import {
   DeleteObjectCommand,
   DeleteObjectsCommand,
@@ -12,7 +7,6 @@ import {
 } from "@aws-sdk/client-s3";
 import { createHash } from "node:crypto";
 
-/** Keys per ListObjectsV2 page; small, so tests cover the pagination. */
 const LIST_PAGE_SIZE = 2;
 
 export const r2Objects = new Map<string, string>();
@@ -34,12 +28,11 @@ interface R2Puts {
 
 export const r2Puts: R2Puts = { count: 0, before: null };
 
-/** The ETag of a stored body, like a store that hashes its content. */
-function etagOf(body: string): string {
+function etagOf(body: string) {
   return `"${createHash("md5").update(body).digest("hex")}"`;
 }
 
-function preconditionFailed(): Promise<never> {
+function preconditionFailed() {
   return Promise.reject(
     Object.assign(new Error("precondition failed"), {
       name: "PreconditionFailed",
@@ -48,7 +41,7 @@ function preconditionFailed(): Promise<never> {
   );
 }
 
-function send(command: unknown): Promise<unknown> {
+function send(command: unknown) {
   if (command instanceof PutObjectCommand) {
     const { Key, Body, IfMatch, IfNoneMatch } = command.input;
     if (!Key) return Promise.reject(new Error("R2 test command needs a key"));
@@ -100,8 +93,6 @@ function send(command: unknown): Promise<unknown> {
     return Promise.resolve({});
   }
   if (command instanceof ListObjectsV2Command) {
-    // Like S3, the continuation token resumes after the last key returned,
-    // so deleting a page before reading the next one skips nothing.
     const prefix = command.input.Prefix ?? "";
     const after = command.input.ContinuationToken ?? "";
     const keys = [...r2Objects.keys()]
@@ -134,6 +125,6 @@ export function getR2Client() {
   return { send };
 }
 
-export function getR2Bucket(): string {
+export function getR2Bucket() {
   return "test-bucket";
 }

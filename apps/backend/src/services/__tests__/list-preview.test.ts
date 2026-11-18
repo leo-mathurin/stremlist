@@ -1,4 +1,3 @@
-import type { CatalogPreview } from "@stremlist/shared/catalog-preview";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import {
   afterEach,
@@ -20,7 +19,6 @@ import {
   useFakeProvider,
 } from "../../__tests__/helpers/mock-registry";
 import { db } from "../../__tests__/helpers/mock-supabase";
-import type { SourceEntry } from "../../providers/types";
 import {
   ConnectionExpiredError,
   SourceUnavailableError,
@@ -71,7 +69,7 @@ const MOVIES = [
 ];
 const SERIES = [movie("tt0000004", { type: "series", name: "Delta" })];
 
-function entries(metas: StremioMeta[]): SourceEntry[] {
+function entries(metas: StremioMeta[]) {
   return metas.map((item) => ({
     imdbId: item.id,
     type: item.type,
@@ -79,7 +77,7 @@ function entries(metas: StremioMeta[]): SourceEntry[] {
   }));
 }
 
-function request(overrides: Partial<PreviewRequest> = {}): PreviewRequest {
+function request(overrides: Partial<PreviewRequest> = {}) {
   return {
     connectionAccountId: null,
     provider: "trakt",
@@ -90,8 +88,7 @@ function request(overrides: Partial<PreviewRequest> = {}): PreviewRequest {
   };
 }
 
-/** A preview that must succeed. */
-async function previewOk(req: PreviewRequest): Promise<CatalogPreview> {
+async function previewOk(req: PreviewRequest) {
   const preview = await previewList(req);
   if (!preview.ok) throw new Error(`Preview refused: ${preview.reason}`);
   return preview;
@@ -158,11 +155,8 @@ describe("previewList: Catalogs", () => {
         ids: titles.map((title) => title.id),
       })),
     ).toEqual([
-      // Rating 7+, Source list order.
       { preset: null, total: 2, ids: ["tt0000002", "tt0000003"] },
-      // Also 90 minutes or less.
       { preset: "short", total: 2, ids: ["tt0000002", "tt0000003"] },
-      // Top rated sorts by rating.
       { preset: "rated", total: 2, ids: ["tt0000002", "tt0000003"] },
     ]);
   });
@@ -227,7 +221,6 @@ describe("previewList: Unresolved entries", () => {
             originalTitle: "Original Only",
             externalIds: { tmdb: { id: 42, type: "series" } },
           },
-          // The Provider's own page comes first.
           {
             title: "On Simkl",
             sourceUrl: "https://simkl.com/movies/1/on-simkl",
@@ -424,7 +417,6 @@ describe("previewList: reads", () => {
     await previewList(history);
     expect(fetchSource).toHaveBeenCalledOnce();
 
-    // A new authorization, for example as another Trakt user.
     const connections = db.getTable("connections");
     connections.splice(0, connections.length);
     seedConnection(account.id, "trakt", { accessToken: "second-user" });
@@ -452,8 +444,7 @@ describe("previewList: reads", () => {
 
   it("reads again after 30 seconds when entries were not checked yet", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    // More entries than one refresh sends through the strategies.
-    const unknown = Array.from({ length: 301 }, (_, index): SourceEntry => ({
+    const unknown = Array.from({ length: 301 }, (_, index) => ({
       type: "movie",
       externalIds: { tmdb: { id: index + 1, type: "movie" } },
     }));
@@ -485,7 +476,7 @@ describe("previewList: reads", () => {
 describe("previewList: merged Lists", () => {
   const IMDB = { provider: "imdb", sourceRef: "ur1000001" } as const;
 
-  function dated(metas: StremioMeta[], dates: string[]): SourceEntry[] {
+  function dated(metas: StremioMeta[], dates: string[]) {
     return entries(metas).map((entry, index) => ({
       ...entry,
       addedAt: dates[index],
@@ -554,7 +545,6 @@ describe("previewList: merged Lists", () => {
       request({ mergedSources: [IMDB], sortOption: "added_at-asc" }),
     );
 
-    // Charlie keeps its first date (2021).
     expect(preview.catalogs[0].titles.map((title) => title.name)).toEqual([
       "Charlie",
       "Bravo",

@@ -14,9 +14,6 @@ import {
   SAVE_NEW,
 } from "./config-fixture";
 
-// The redesigned Home, Terms and Changelog pages: deterministic checks of
-// their sections, links and states. Every API answer is intercepted.
-
 const ADDON_URL_HELP =
   "Paste the Addon URL that you installed in Stremio. It ends with /manifest.json.";
 
@@ -41,7 +38,6 @@ test("Home shows every Provider, the live count and the help sections", async ({
     await expect(screen.getByRole("heading", heading)).toBeVisible();
   }
 
-  // The Providers diagram: one row per available Provider.
   const diagram = screen.getByRole("region", "Many sites, one addon");
   await expect(diagram.getByRole("listitem")).toHaveText([
     "IMDb",
@@ -53,7 +49,6 @@ test("Home shows every Provider, the live count and the help sections", async ({
     "Letterboxd",
   ]);
 
-  // `/stats` answers 2 active Accounts in the fixture.
   await expect(screen.getByText("people use Stremlist")).toBeVisible();
   await expect(screen.getByText("2 people use Stremlist")).toBeAttached();
 
@@ -61,8 +56,6 @@ test("Home shows every Provider, the live count and the help sections", async ({
     screen.getByRole("link", "Stremio Addon Manager"),
   ).toHaveAttribute("href", "https://stremio-addon-manager.vercel.app/");
 
-  // Troubleshooting: each problem opens and closes its fix. A closed fix
-  // keeps its text in the page, but its panel is inert.
   const problem = screen.getByRole("button", "I lost my configure page");
   const panelId = await problem.getAttribute("aria-controls");
   const panel = browser.locator(`[id="${panelId}"]`);
@@ -94,11 +87,6 @@ declare global {
   }
 }
 
-/**
- * Counts the `/stats` requests that the page starts and the answers that it
- * has read. An answer counts one task after `response.json()` settles, so the
- * app's own `.then` (which hands the number to React) has already run.
- */
 async function countStatsReads(browser: Browser) {
   await browser.addInitScript(() => {
     const scope = window;
@@ -124,10 +112,6 @@ async function countStatsReads(browser: Browser) {
   });
 }
 
-/**
- * Waits until the page has read every `/stats` answer and rendered it.
- * StrictMode mounts Home twice in development, so there can be two.
- */
 async function statsRendered(browser: Browser) {
   await expect
     .poll(() =>
@@ -137,7 +121,6 @@ async function statsRendered(browser: Browser) {
       }),
     )
     .toBe(true);
-  // React renders the new count in a task queued before this one.
   await browser.evaluate(
     () => new Promise<null>((resolve) => setTimeout(() => resolve(null), 0)),
   );
@@ -159,11 +142,8 @@ test("the live count reads one person and hides when stats fail", async ({
         json: { activeUsers: stats === "one" ? 1 : 0 },
       });
   });
-  // The sr-only sentence and the visible label under the digits.
   const liveCount = screen.getByText(/(person uses|people use) Stremlist$/);
 
-  // The count starts hidden, so a check made before `/stats` answers would
-  // pass on the initial state. Each check waits for the answer to render.
   for (const state of ["one", "zero", "error"] as const) {
     stats = state;
     await app.open("/");
@@ -191,7 +171,6 @@ test("Open it refuses text that is not an Addon URL, then opens one", async ({
   await screen.getByRole("button", "Open", { exact: true }).tap();
   await expect(screen.getByRole("alert")).toHaveText(ADDON_URL_HELP);
   await expect(browser).toHaveURL("/");
-  // Typing again removes the error.
   await field.fill(`stremio://127.0.0.1:4314/${accountId}/manifest.json`);
   await expect(screen.getByText(ADDON_URL_HELP)).toBeHidden();
   await screen.getByRole("button", "Open", { exact: true }).tap();
@@ -278,7 +257,6 @@ test("a returning v1 user who pastes their IMDb ID opens their install", async (
     await app.open("/");
     await screen.getByLabel(HOME_FIELD).fill(link);
     await screen.getByRole("button", "Add this list").tap();
-    // Someone else's install can answer to a pasted ID: ask first.
     await expect(screen.getByText("Is this your Stremlist?")).toBeVisible();
     await expect(browser).toHaveURL("/");
     await screen.getByRole("button", "Open my Stremlist").tap();

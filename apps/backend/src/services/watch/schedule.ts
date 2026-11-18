@@ -1,23 +1,10 @@
-/**
- * When to read a library item again (ADR 0003). Pure.
- *
- * - A /stream request reads at once. Until the play shows in the library,
- *   read every 2 minutes (warmup), for at most 10 minutes.
- * - Then wait until the earliest time the item can turn watched, read every
- *   2 minutes for 30 minutes, every 5 minutes after, and stop 3 hours after
- *   the expected end.
- * - When `timeWatched` has not moved for 5 minutes, the playback stopped:
- *   read every 30 minutes until the expected end, then stop.
- */
 import { z } from "zod";
 import type { LibraryItem } from "../stremio";
 import { mtimeOf } from "./library";
 
 const MINUTE = 60_000;
-/** Stremio's own threshold (`WATCHED_THRESHOLD_COEF`). */
 const THRESHOLD = 0.7;
 const WARMUP_MS = 10 * MINUTE;
-/** Android TV writes its progress every 90 s: 3 missed writes. */
 const STALL_MS = 5 * MINUTE;
 const AFTER_END_MS = 3 * 60 * MINUTE;
 const DEFAULT_DURATION_MS = { movie: 120 * MINUTE, series: 45 * MINUTE };
@@ -56,7 +43,7 @@ export interface Plan {
   stopReason?: StopReason;
 }
 
-function startStateOf(item: LibraryItem | undefined): StartState {
+function startStateOf(item: LibraryItem | undefined) {
   return {
     timesWatched: item?.state?.timesWatched ?? 0,
     bits: item?.state?.watched ?? "",
@@ -69,7 +56,7 @@ export function newCycle(
   videoId: string,
   item: LibraryItem | undefined,
   now: number,
-): ReadRow {
+) {
   return {
     itemType,
     videoId,
@@ -95,7 +82,7 @@ export function planAfterRead(
   item: LibraryItem | undefined,
   detected: boolean,
   now: number,
-): Plan {
+) {
   const row: ReadRow = { ...input, reads: input.reads + 1, failures: 0 };
   if (detected) return { next: null, row, stopReason: "detected" };
 
@@ -108,11 +95,7 @@ export function planAfterRead(
 
   const playing =
     !!item && state.video_id === row.videoId && (state.duration ?? 0) > 0;
-  // The first read that sees the play sets the expectation, even when
-  // timeWatched is still 0 (Stremio Web pushes only every 180 s).
   if (playing && (moved || input.phase === "warmup")) {
-    // The cloud got timeWatched at _mtime; assume playback at real speed.
-    // On the /stream read itself, the play (re)starts now.
     const at = input.reads === 0 ? now : mtimeOf(item) || now;
     const duration = state.duration ?? 0;
     row.expectedFlipAt = at + Math.max(0, THRESHOLD * duration - timeWatched);
@@ -151,7 +134,7 @@ export function planAfterRead(
 }
 
 /** After a failed read: again in 1 minute, for at most 3 hours. */
-export function planAfterFailure(input: ReadRow, now: number): Plan {
+export function planAfterFailure(input: ReadRow, now: number) {
   const row = { ...input, failures: input.failures + 1 };
   if (now - row.cycleStartedAt > AFTER_END_MS + DEFAULT_DURATION_MS.movie) {
     return { next: null, row, stopReason: "after_end" };
@@ -164,7 +147,7 @@ export function nextWriteRetry(
   attempts: number,
   firstFailedAt: number,
   now: number,
-): number | null {
+) {
   if (now - firstFailedAt > 72 * 60 * MINUTE) return null;
   const delays = [1, 5, 30];
   return now + (delays[attempts] ?? 360) * MINUTE;

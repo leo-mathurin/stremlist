@@ -9,6 +9,13 @@ export default defineConfig({
     jsPlugins: [
       { name: "vite-plus", specifier: "vite-plus/oxlint-plugin" },
       { name: "anti-slop", specifier: "./tools/oxlint/anti-slop/index.ts" },
+      { name: "landmines-testing", specifier: "@interfere/landmines/testing" },
+      { name: "landmines-style", specifier: "@interfere/landmines/style" },
+      {
+        name: "landmines-structure",
+        specifier: "@interfere/landmines/structure",
+      },
+      { name: "landmines-types", specifier: "@interfere/landmines/types" },
     ],
     ignorePatterns: [
       "**/dist/**",
@@ -18,7 +25,6 @@ export default defineConfig({
       ".agents/**",
       ".claude/**",
       "tools/oxlint/anti-slop/**",
-      // k6 runs these load scripts with its own globals and modules.
       "apps/backend/stress/k6/**",
       ...generatedFiles,
     ],
@@ -30,6 +36,16 @@ export default defineConfig({
       respectEslintDisableDirectives: false,
     },
     rules: {
+      "landmines-testing/no-fixed-sleep": "error",
+      "landmines-testing/no-flake-masking": "error",
+      "landmines-testing/no-test-doubles": "error",
+      "landmines-testing/no-unsignaled-poll": "error",
+      "landmines-testing/strict-msw": "error",
+      "landmines-style/no-comments": "error",
+      "landmines-structure/colocated-tests": "error",
+      "landmines-structure/package-exports": "error",
+      "landmines-structure/test-file-names": "error",
+      "landmines-types/no-explicit-return-types": "error",
       "vite-plus/prefer-vite-plus-imports": "error",
       eqeqeq: ["error", "smart"],
       "no-unused-expressions": [
@@ -98,7 +114,7 @@ export default defineConfig({
     },
     overrides: [
       {
-        // Plain JavaScript has no types to check, so every value is `any`.
+        /** Plain JavaScript has no types to check, so every value is `any`. */
         files: ["**/*.{js,mjs}"],
         rules: {
           "typescript/no-unsafe-argument": "off",
@@ -141,7 +157,7 @@ export default defineConfig({
         rules: { "react/only-export-components": "off" },
       },
       {
-        // Mirrors the awaitable Supabase query builder, which has `then`.
+        /** Mirrors the awaitable Supabase query builder, which has `then`. */
         files: ["apps/backend/src/__tests__/helpers/supabase/query-builder.ts"],
         rules: { "unicorn/no-thenable": "off" },
       },
@@ -166,7 +182,6 @@ export default defineConfig({
       "**/node_modules",
       "**/.turbo",
       "**/coverage",
-      // Recorded toolkit runs, replayed by content hash.
       "apps/e2e/.e2e/**",
       "tools/oxlint/anti-slop/**",
     ],

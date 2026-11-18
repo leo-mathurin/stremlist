@@ -8,7 +8,7 @@ const MIN_DURATION_MS = 600;
  * longer than `DELAY_MS`, then stays for at least `MIN_DURATION_MS`, so a
  * fast request never flashes it.
  */
-export function usePendingIndicator(pending: boolean): boolean {
+export function usePendingIndicator(pending: boolean) {
   const [shown, setShown] = useState(false);
   const shownAt = useRef(0);
 

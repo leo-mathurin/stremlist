@@ -11,7 +11,7 @@ export function buildCatalogId(
   listId: string,
   type: TitleType,
   preset?: CatalogPreset,
-): string {
+) {
   return `${CATALOG_ID_PREFIX}${CATALOG_ID_SEPARATOR}${listId}${CATALOG_ID_SEPARATOR}${type}${preset ? `--${preset}` : ""}`;
 }
 
@@ -26,7 +26,7 @@ type ParsedCatalogId =
   | ({ kind: "list" } & ListCatalogId)
   | { kind: "new-titles"; type: TitleType };
 
-function parseListCatalogId(catalogId: string): ListCatalogId | null {
+function parseListCatalogId(catalogId: string) {
   const separator = catalogId.indexOf("--");
   if (separator !== -1) {
     const preset = CATALOG_PRESETS.find(
@@ -51,14 +51,13 @@ function parseListCatalogId(catalogId: string): ListCatalogId | null {
   return null;
 }
 
-/** The "New titles" catalogs, one per type (ADR 0007). */
 const NEW_TITLES_PREFIX = "new-titles-";
 
-export function buildNewTitlesCatalogId(type: TitleType): string {
+export function buildNewTitlesCatalogId(type: TitleType) {
   return `${NEW_TITLES_PREFIX}${type}`;
 }
 
-export function parseCatalogId(catalogId: string): ParsedCatalogId | null {
+export function parseCatalogId(catalogId: string) {
   if (catalogId.startsWith(NEW_TITLES_PREFIX)) {
     const type = catalogId.slice(NEW_TITLES_PREFIX.length);
     return type === "movie" || type === "series"

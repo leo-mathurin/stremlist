@@ -75,7 +75,6 @@ describe("List CRUD via the config API", () => {
         ],
       });
       expect(response.status).toBe(200);
-      // The other RPC reads the New titles summary of the saved Lists.
       expect(
         rpcMocks.rpc.mock.calls.filter(
           ([name]) => name === "replace_account_config",
@@ -110,7 +109,6 @@ describe("List CRUD via the config API", () => {
         p_actions_enabled: null,
         p_action_providers: null,
         p_new_titles_catalog: null,
-        // A client that sends no poster source: its RPDB key means RPDB.
         p_poster_source: "rpdb",
       });
       const expected = [
@@ -136,7 +134,6 @@ describe("List CRUD via the config API", () => {
       });
       expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledOnce();
       await runScheduledTasks();
-      // A Legacy alias never reads through a Connection, even when prewarming.
       expect(prewarmMocks.prewarmLists).toHaveBeenCalledExactlyOnceWith(
         legacyAccountId,
         expected,
@@ -226,7 +223,6 @@ describe("List CRUD via the config API", () => {
       cache.seed(UUID_1, []);
       cache.seed(UUID_2, []);
       rpcMocks.rpc.mockResolvedValueOnce({
-        // The Lists that the transaction replaced, read under its lock.
         data: [
           {
             previous_lists: [

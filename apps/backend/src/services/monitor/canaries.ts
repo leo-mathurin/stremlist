@@ -53,7 +53,7 @@ export const CANARIES = {
   "imdb:chart/coming-soon-tv": { min: 15 },
   "imdb:ls/list": { ref: "ls055592025", min: 80 },
   "imdb:ur/watchlist": { ref: "ur195879360", min: 60 },
-  // A small list: IMDb reads ratings slowly (about 5 s per 1,000).
+  /** A small list: IMDb reads ratings slowly (about 5 s per 1,000). */
   "imdb:ur/ratings": { ref: "ur102185135/ratings", min: 50 },
 
   "trakt:me/watchlist": { min: 1 },
@@ -68,15 +68,17 @@ export const CANARIES = {
   "trakt:trending": { min: 50 },
   "trakt:popular": { min: 50 },
   "trakt:anticipated": { min: 50 },
-  // Trakt's box office has the 10 movies of the weekend.
+  /** Trakt's box office has the 10 movies of the weekend. */
   "trakt:boxoffice": { min: 5 },
   "trakt:watched": { min: 50 },
   "trakt:played": { min: 50 },
   "trakt:collected": { min: 50 },
   "trakt:favorited": { min: 50 },
   "trakt:recommended": { min: 50 },
-  // A public user's history or collection costs up to about 20 calls of
-  // the app-wide quota: give a small one in MONITOR_CANARY_REFS.
+  /**
+   * A public user's history or collection costs up to about 20 calls of
+   * the app-wide quota: give a small one in MONITOR_CANARY_REFS.
+   */
   "trakt:users/{user}/watchlist": { min: 1 },
   "trakt:users/{user}/favorites": { min: 1 },
   "trakt:users/{user}/ratings": { min: 1 },
@@ -95,7 +97,7 @@ export const CANARIES = {
   "simkl:me/dropped": { min: 1 },
   "simkl:me/history": { min: 1 },
   "simkl:me/ratings": { min: 1 },
-  // Simkl's CDN files list 100 Titles each.
+  /** Simkl's CDN files list 100 Titles each. */
   "simkl:trending/movies": { min: 50 },
   "simkl:trending/tv": { min: 50 },
   "simkl:trending/anime": { min: 50 },
@@ -106,7 +108,7 @@ export const CANARIES = {
   "mdblist:me/watchlist": { min: 1 },
   "mdblist:me/ratings": { min: 1 },
   "mdblist:me/history": { min: 1 },
-  // MDBList reads its official charts through the Connection too.
+  /** MDBList reads its official charts through the Connection too. */
   "mdblist:official/trending": { min: 20 },
   "mdblist:official/popular": { min: 20 },
   "mdblist:official/anticipated": { min: 20 },
@@ -131,8 +133,10 @@ export const CANARIES = {
     min: 700,
   },
   "senscritique:lists/{id}": { ref: "lists/369869", min: 35 },
-  // The same public user for the three collections. A first read resolves
-  // the Titles slowly, so the counts grow over the first runs.
+  /**
+   * The same public user for the three collections. A first read resolves
+   * the Titles slowly, so the counts grow over the first runs.
+   */
   "senscritique:users/{user}/done": { ref: "users/Plume231/done", min: 320 },
   "senscritique:users/{user}/rated": { ref: "users/Plume231/rated", min: 400 },
   "senscritique:users/{user}/recommend": {
@@ -169,26 +173,22 @@ export type CanaryResult = { type: string; provider: ProviderId } & (
       entries?: number;
       min: number;
     }
-  /** The run could not tell, such as a busy Letterboxd queue. */
   | { status: "skipped"; ref: string; reason: string }
   | { status: "not_covered"; reason: string }
 );
 
-/** An environment variable, with an empty value read as unset. */
-function env(name: string): string | undefined {
+function env(name: string) {
   const value = process.env[name]?.trim();
   return value === "" ? undefined : value;
 }
 
-/** The Provider that a list type belongs to. */
-function providerOf(type: string): ProviderId {
+function providerOf(type: string) {
   const provider = type.slice(0, type.indexOf(":"));
   if (!isProviderId(provider)) throw new Error(`Unknown list type ${type}`);
   return provider;
 }
 
-/** The reference of a list type without variable parts, such as a chart. */
-function fixedRef(type: string): string | undefined {
+function fixedRef(type: string) {
   const ref = type.slice(type.indexOf(":") + 1);
   if (ref.includes("{")) return undefined;
   if (ref.startsWith("chart/")) {
@@ -203,9 +203,7 @@ function fixedRef(type: string): string | undefined {
  * `provider:ref` or `provider:ref=min`, separated by spaces or commas, such
  * as `trakt:users/alice/watchlist=40`.
  */
-export function canaryRefsFromEnv(
-  value = env("MONITOR_CANARY_REFS"),
-): Map<string, { ref: string; min?: number }> {
+export function canaryRefsFromEnv(value = env("MONITOR_CANARY_REFS")) {
   const refs = new Map<string, { ref: string; min?: number }>();
   for (const entry of value?.split(/[\s,]+/) ?? []) {
     const match = /^([a-z]+):(.+?)(?:=(\d+))?$/.exec(entry);
@@ -232,9 +230,7 @@ interface Canary {
 }
 
 /** The canaries to read, and the list types that none reads. */
-export function plannedCanaries(
-  refs = canaryRefsFromEnv(),
-): (Canary | Extract<CanaryResult, { status: "not_covered" }>)[] {
+export function plannedCanaries(refs = canaryRefsFromEnv()) {
   return Object.entries<CanarySpec>(CANARIES).map(([type, spec]) => {
     const provider = providerOf(type);
     if ("none" in spec)
@@ -252,11 +248,7 @@ export function plannedCanaries(
   });
 }
 
-/**
- * Why the canaries of a Provider cannot be read in this run, or null. An
- * unavailable Provider is never contacted: its probe already alerts.
- */
-async function providerBlocker(provider: ProviderId): Promise<string | null> {
+async function providerBlocker(provider: ProviderId) {
   if (!(await mayReadProvider(provider)))
     return `${provider} is unavailable (turned off or halted)`;
   const degraded = await providerDegradation(provider);
@@ -266,10 +258,7 @@ async function providerBlocker(provider: ProviderId): Promise<string | null> {
   return null;
 }
 
-/** The Connection of the monitor Account with a Provider, or why none. */
-async function monitorConnection(
-  provider: ProviderId,
-): Promise<ConnectionAccess | string> {
+async function monitorConnection(provider: ProviderId) {
   const accountId = env("MONITOR_ACCOUNT_ID");
   if (!accountId) return "MONITOR_ACCOUNT_ID is not set";
   try {
@@ -284,13 +273,9 @@ async function monitorConnection(
   }
 }
 
-async function readCanary(
-  canary: Canary,
-  connection: ConnectionAccess | null,
-): Promise<CanaryResult> {
+async function readCanary(canary: Canary, connection: ConnectionAccess | null) {
   const { type, provider, ref, min } = canary;
   try {
-    // forceRefresh reads the Provider itself, never a cached page.
     const snapshot = await getProvider(provider).fetchSource(ref, {
       connection,
       forceRefresh: true,
@@ -329,11 +314,10 @@ async function readCanary(
   }
 }
 
-/** Read the canaries of one Provider, one at a time. */
 async function runProviderCanaries(
   provider: ProviderId,
   planned: ReturnType<typeof plannedCanaries>,
-): Promise<CanaryResult[]> {
+) {
   const mine = planned.filter((canary) => canary.provider === provider);
   const blocker = mine.some((canary) => !("status" in canary))
     ? await providerBlocker(provider)
@@ -369,7 +353,7 @@ async function runProviderCanaries(
  * canaries of one Provider one after the other, to stay far below each
  * Provider's rate limits.
  */
-export async function runCanaries(): Promise<CanaryResult[]> {
+export async function runCanaries() {
   const planned = plannedCanaries();
   const results = await Promise.all(
     PROVIDER_IDS.map((provider) => runProviderCanaries(provider, planned)),

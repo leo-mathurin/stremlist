@@ -45,13 +45,13 @@ interface ValidationResult {
   reason?: "bad_format" | "imdb_not_found" | "network_error";
 }
 
-function parseArgs(argv: string[]): Args {
-  const getStringFlag = (name: string): string | null => {
+function parseArgs(argv: string[]) {
+  const getStringFlag = (name: string) => {
     const index = argv.indexOf(name);
     return index === -1 ? null : (argv[index + 1] ?? null);
   };
 
-  const getNumberFlag = (name: string, fallback: number): number => {
+  const getNumberFlag = (name: string, fallback: number) => {
     const index = argv.indexOf(name);
     if (index === -1) return fallback;
     const value = Number(argv[index + 1]);
@@ -75,18 +75,17 @@ function parseArgs(argv: string[]): Args {
   };
 }
 
-function sleep(ms: number): Promise<void> {
+function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchAllUserIds(limit: number | null): Promise<string[]> {
+async function fetchAllUserIds(limit: number | null) {
   let from = 0;
   const step = 1000;
   const ids: string[] = [];
 
   for (;;) {
     const to = from + step - 1;
-    // Only Legacy alias accounts have an IMDb user ID to check.
     const { data, error } = await supabase
       .from("accounts")
       .select("legacy_imdb_user_id")
@@ -116,10 +115,7 @@ async function fetchAllUserIds(limit: number | null): Promise<string[]> {
   return ids;
 }
 
-async function validateUserId(
-  userId: string,
-  timeoutMs: number,
-): Promise<ValidationResult> {
+async function validateUserId(userId: string, timeoutMs: number) {
   if (!IMDB_USER_ID_PATTERN.test(userId)) {
     return { userId, valid: false, reason: "bad_format" };
   }
@@ -139,7 +135,7 @@ async function validateUserId(
   }
 }
 
-async function deleteUsers(userIds: string[]): Promise<void> {
+async function deleteUsers(userIds: string[]) {
   for (let i = 0; i < userIds.length; i += BATCH_SIZE) {
     const batch = userIds.slice(i, i + BATCH_SIZE);
 
@@ -165,9 +161,6 @@ async function deleteUsers(userIds: string[]): Promise<void> {
       );
     }
 
-    // A merged List keeps one cache per Source list (ADR 0006). The
-    // detection history and the Connection objects are R2 objects too
-    // (ADR 0008): the database cascade does not reach them.
     const cacheDeletes = await Promise.allSettled([
       ...listRowCacheKeys(lists).map((key) => deleteCachedList(key)),
       ...accounts.flatMap(({ id }) => [
@@ -185,7 +178,6 @@ async function deleteUsers(userIds: string[]): Promise<void> {
       );
     }
 
-    // lists cascade from accounts; their R2 objects were removed above.
     const { error: userError } = await supabase
       .from("accounts")
       .delete()
@@ -196,10 +188,9 @@ async function deleteUsers(userIds: string[]): Promise<void> {
   }
 }
 
-async function main(): Promise<void> {
+async function main() {
   const args = parseArgs(process.argv.slice(2));
 
-  // --from-file: skip scanning, delete IDs from a saved file
   if (args.fromFile) {
     const ids = readFileSync(args.fromFile, "utf8")
       .split("\n")

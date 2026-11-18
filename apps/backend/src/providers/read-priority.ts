@@ -35,7 +35,6 @@ export interface ReadQueue {
   readonly onQueued?: (waitMs: number) => void;
 }
 
-/** A read without a queue policy waits at most this long for each request. */
 const DEFAULT_MAX_WAIT_MS = 10_000;
 
 interface ReadContext {
@@ -46,7 +45,7 @@ interface ReadContext {
 const storage = new AsyncLocalStorage<ReadContext>();
 
 /** The queue state of a new read. */
-export function readQueue(policy: QueuePolicy): ReadQueue {
+export function readQueue(policy: QueuePolicy) {
   return {
     deadline: Date.now() + policy.maxWaitMs,
     answerAtMs: policy.answerAtMs ?? null,
@@ -64,12 +63,12 @@ export function withReadPriority<T>(
   priority: ReadPriority,
   read: () => Promise<T>,
   queue: ReadQueue | null = null,
-): Promise<T> {
+) {
   return storage.run({ priority, queue }, read);
 }
 
 /** Reads started outside withReadPriority are interactive. */
-export function currentReadPriority(): ReadPriority {
+export function currentReadPriority() {
   return storage.getStore()?.priority ?? "interactive";
 }
 
@@ -77,7 +76,7 @@ export function currentReadPriority(): ReadPriority {
  * The queue state of the current read. Outside a read with a queue, each
  * request waits at most 10 s on its own.
  */
-export function currentReadQueue(): ReadQueue {
+export function currentReadQueue() {
   return (
     storage.getStore()?.queue ?? readQueue({ maxWaitMs: DEFAULT_MAX_WAIT_MS })
   );

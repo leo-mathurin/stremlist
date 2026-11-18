@@ -1,5 +1,3 @@
-// Read k6 JSON summaries and server stats, print the report table and
-// evaluate the pass/fail checks.
 import { z } from "zod";
 import { readFileSync } from "node:fs";
 import type { BucketUsage } from "./stack";
@@ -34,7 +32,7 @@ interface RouteResult {
   max: number;
 }
 
-// The report keeps the other stats of the server too.
+/** The report keeps the other stats of the server too. */
 export const serverStatsSchema = z
   .object({
     hosts: z.record(z.string(), z.number()),
@@ -76,7 +74,7 @@ export type RunSummary = Pick<
   "durationS" | "routes" | "unavailableCards"
 >;
 
-export function readSummary(path: string): RunSummary {
+export function readSummary(path: string) {
   const summary = k6SummarySchema.parse(JSON.parse(readFileSync(path, "utf8")));
   const value = (metric: string, key: string) =>
     summary.metrics[metric]?.values[key] ?? 0;
@@ -106,7 +104,7 @@ export function readSummary(path: string): RunSummary {
 
 export type Totals = Pick<RouteResult, "requests" | "ok" | "errors5xx">;
 
-export function totals(result: ScenarioResult): Totals {
+export function totals(result: ScenarioResult) {
   const all = Object.values(result.routes);
   return {
     requests: all.reduce((sum, route) => sum + route.requests, 0),
@@ -120,19 +118,19 @@ const num = (value: number) => integer.format(value);
 const percent = (part: number, whole: number) =>
   whole === 0 ? "-" : `${((part / whole) * 100).toFixed(2)}%`;
 
-function duration(ms: number): string {
+function duration(ms: number) {
   if (ms < 1000) return `${ms.toFixed(0)} ms`;
   return `${(ms / 1000).toFixed(1)} s`;
 }
 
-function bytes(value: number): string {
+function bytes(value: number) {
   if (value < 1024) return `${num(value)} B`;
   if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`;
   if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MB`;
   return `${(value / 1024 ** 3).toFixed(2)} GB`;
 }
 
-function table(rows: string[][]): string {
+function table(rows: string[][]) {
   const widths = (rows.at(0) ?? []).map((_, column) =>
     Math.max(...rows.map((row) => (row[column] ?? "").length)),
   );
@@ -201,7 +199,7 @@ export function formatScenario(result: ScenarioResult, checks: Check[]) {
  * Trakt catalog has its own rule: with Trakt down and no cache, an error
  * answer is expected; a hang is not.
  */
-export function evaluate(result: ScenarioResult): Check[] {
+export function evaluate(result: ScenarioResult) {
   const { trakt_catalog: catalog, ...others } = result.routes;
   const total = totals({ ...result, routes: others });
   const checks: Check[] = [];
@@ -228,10 +226,6 @@ export function evaluate(result: ScenarioResult): Check[] {
       label: `Trakt catalog answers within 10 s during the outage (${answers})`,
       pass: !!catalog && catalog.max <= 10_000,
     });
-    // Expected: 5 per Account for one membership refresh (then the
-    // cooldown), plus one list read per Trakt catalog request. The limit is
-    // twice that, so a stray retry passes, but a refresh per stream request
-    // (the old storm: about 5 calls per request) fails.
     const accounts = result.traktAccounts ?? 0;
     const expected = 5 * accounts + (catalog?.requests ?? 0);
     const limit = 2 * expected;
@@ -248,7 +242,7 @@ export function formatStorage(
   databaseBytes: { before: number; after: number },
   tables: string[][],
   usage: BucketUsage,
-): string {
+) {
   const lines = [
     `== Storage after the run (before cleanup)`,
     `database size ${bytes(databaseBytes.after)} (${bytes(databaseBytes.before)} before seeding)`,

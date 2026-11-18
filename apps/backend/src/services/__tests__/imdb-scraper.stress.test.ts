@@ -1,32 +1,18 @@
-/**
- * Stress test for the IMDb GraphQL scraper.
- *
- * Simulates load patterns that arise when serving thousands of registered users
- * whose watchlists are fetched on-demand or refreshed in the background.
- *
- * Run manually with: bun run --filter @stremlist/backend test:stress
- * Not included in the regular `test` task to keep CI fast.
- */
-
 import { describe, it, expect } from "vite-plus/test";
 import { fetchWatchlist } from "../imdb-scraper.js";
 
-// ---------------------------------------------------------------------------
-// Config
-// ---------------------------------------------------------------------------
-
 const USER_IDS = [
-  "ur101395618", // 500 items
-  "ur195879360", //  52 items
-  "ur101546112", //  51 items
-  "ur102135398", //  19 items
-  "ur102185135", // 146 items
-  "ur102200114", // 757 items
-  "ur102367147", // 231 items
-  "ur102383613", // 126 items
-  "ur102551738", //  31 items
-  "ur102823061", //  20 items
-  "ur102873414", // 215 items
+  "ur101395618",
+  "ur195879360",
+  "ur101546112",
+  "ur102135398",
+  "ur102185135",
+  "ur102200114",
+  "ur102367147",
+  "ur102383613",
+  "ur102551738",
+  "ur102823061",
+  "ur102873414",
 ];
 
 const PHASES = [
@@ -36,15 +22,9 @@ const PHASES = [
   { label: "spike", concurrency: 25, rounds: 3 },
   { label: "cool-down", concurrency: 5, rounds: 3 },
 ];
-// Total requests: 3 + 100 + 75 + 75 + 15 = 268
 
-// Acceptable thresholds
-const MAX_ERROR_RATE = 0.05; // 5%
-const MAX_P95_MS = 8_000; // 8 s
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+const MAX_ERROR_RATE = 0.05;
+const MAX_P95_MS = 8_000;
 
 interface RequestResult {
   userId: string;
@@ -54,11 +34,11 @@ interface RequestResult {
   itemCount?: number;
 }
 
-function pickId(index: number): string {
+function pickId(index: number) {
   return USER_IDS[index % USER_IDS.length];
 }
 
-async function runRequest(userId: string): Promise<RequestResult> {
+async function runRequest(userId: string) {
   const start = performance.now();
   try {
     const data = await fetchWatchlist(userId);
@@ -78,16 +58,16 @@ async function runRequest(userId: string): Promise<RequestResult> {
   }
 }
 
-async function runBatch(userIds: string[]): Promise<RequestResult[]> {
+async function runBatch(userIds: string[]) {
   return Promise.all(userIds.map(runRequest));
 }
 
-function percentile(sorted: number[], p: number): number {
+function percentile(sorted: number[], p: number) {
   const idx = Math.ceil((p / 100) * sorted.length) - 1;
   return sorted[Math.max(0, idx)];
 }
 
-function printMetrics(label: string, results: RequestResult[]): void {
+function printMetrics(label: string, results: RequestResult[]) {
   const durations = results.map((r) => r.durationMs).sort((a, b) => a - b);
   const errors = results.filter((r) => !r.ok);
   const errorRate = errors.length / results.length;
@@ -118,10 +98,6 @@ function printMetrics(label: string, results: RequestResult[]): void {
     }
   }
 }
-
-// ---------------------------------------------------------------------------
-// Stress test
-// ---------------------------------------------------------------------------
 
 describe(
   "stress: IMDb GraphQL scraper under load",

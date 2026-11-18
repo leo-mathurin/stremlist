@@ -115,7 +115,6 @@ describe("simkl activities gating", () => {
     );
     routes.set("GET /sync/all-items", (call) => {
       expect(call.url.searchParams.get("extended")).toBe("simkl_ids_only");
-      // Pulp Fiction (54130) is gone.
       return {
         shows: [297, 17465, 2090].map((simkl) => ({
           show: { ids: { simkl } },
@@ -230,7 +229,6 @@ describe("simkl activities gating", () => {
     await simklProvider.fetchSource("me/plantowatch", ctx());
     clearCalls();
     await simklProvider.fetchSource("me/plantowatch", {
-      // Another Simkl user is always another authorization.
       connection: {
         ...connection,
         username: "someone-else",
@@ -242,7 +240,6 @@ describe("simkl activities gating", () => {
 });
 
 describe("simkl reconnect", () => {
-  /** The same Account connected to Simkl with another authorization. */
   function authorization(id: string, token: string) {
     return {
       ...oauthConnection("simkl", "acc-1", [token]),
@@ -288,8 +285,6 @@ describe("simkl reconnect", () => {
       );
     }
 
-    // A sync of the old authorization is still running when the user
-    // reconnects to another Simkl account.
     const old = simklProvider.fetchSource("me/plantowatch", {
       connection: authorization("auth-1", "old_token"),
     });
@@ -303,7 +298,6 @@ describe("simkl reconnect", () => {
     release();
     await old;
     const fresh = await reading;
-    // The old sync ended last; the next read inside the gate.
     const next = await simklProvider.fetchSource("me/plantowatch", {
       connection: current,
     });
@@ -316,7 +310,6 @@ describe("simkl reconnect", () => {
 describe("simkl disconnect", () => {
   it("forgets the in-memory copies of the Connection's state", async () => {
     await simklProvider.fetchSource("me/plantowatch", ctx());
-    // While R2 is down, the in-memory copy answers inside the gate.
     r2.down = true;
     clearCalls();
     await simklProvider.fetchSource("me/plantowatch", ctx());

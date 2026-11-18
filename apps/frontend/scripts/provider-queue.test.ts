@@ -39,7 +39,6 @@ describe("queue state", () => {
       previewQueueMessage(preview, T),
       "Letterboxd is busy right now. Your list is in the queue, about 40 s left.",
     );
-    // The estimate counts down, never below 1 s.
     assert.match(
       previewQueueMessage(preview, T + 45_000),
       /about 1 s left\.$/u,

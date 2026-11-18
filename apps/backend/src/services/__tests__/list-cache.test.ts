@@ -39,16 +39,16 @@ const r2 = vi.hoisted(() => ({
   send: vi.fn<(command: unknown) => Promise<unknown>>(),
 }));
 
-function requiredKey(key: string | undefined): string {
+function requiredKey(key: string | undefined) {
   if (!key) throw new Error("R2 test command is missing a key");
   return key;
 }
 
-function etagFor(body: Uint8Array): string {
+function etagFor(body: Uint8Array) {
   return `"${Buffer.from(body).toString("base64")}"`;
 }
 
-function stored(objects: Map<string, Uint8Array>, key: string): Uint8Array {
+function stored(objects: Map<string, Uint8Array>, key: string) {
   const body = objects.get(key);
   if (!body) throw new Error(`Missing R2 test object: ${key}`);
   return body;
@@ -136,19 +136,18 @@ const DRAMA_SUMMARY = { movie: ["Drama"], series: [] };
 const TRAKT_WATCHLIST = { provider: "trakt", sourceRef: "me/watchlist" };
 
 let sequence = 0;
-function watchlistId(): string {
+function watchlistId() {
   sequence += 1;
   return `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`;
 }
 
-/** Writes more Lists than the process caches hold, so reads go to R2. */
-async function evictMemoryCaches(): Promise<void> {
+async function evictMemoryCaches() {
   for (let index = 0; index <= 100; index += 1) {
     await writeCachedList(watchlistId(), { metas: [MOVIE] });
   }
 }
 
-function expectOnlyManifestRead(id: string): void {
+function expectOnlyManifestRead(id: string) {
   expect(r2.send).toHaveBeenCalledTimes(1);
   const command = r2.send.mock.calls[0][0];
   expect(command).toBeInstanceOf(GetObjectCommand);
@@ -175,7 +174,6 @@ describe("R2 watchlist cache", () => {
 
     const meta = { ...MOVIE, enrichedAt: "2026-08-20T00:00:00.000Z" };
     await writeCachedList(id, { metas: [meta, { ...meta }] }, cachedAt);
-    // Drop the process caches: enrichment time must survive persisted JSON.
     vi.setSystemTime(Date.now() + 61_000);
     const cached = await getCachedList(id);
     expect(cached?.data).toEqual({ metas: [meta] });
@@ -297,9 +295,6 @@ describe("R2 watchlist cache", () => {
 
     r2.failPutContaining = null;
     expect((await getCachedList(id))?.data.metas).toEqual([MOVIE]);
-    // The unreferenced generation is left for the lifecycle rule. Deleting it
-    // after a network error would be unsafe because the manifest PUT may have
-    // committed even when the client did not receive the response.
     expect(r2.objects.size).toBe(3);
     expect(await getCachedListSummary(id)).toEqual(DRAMA_SUMMARY);
   });
@@ -411,7 +406,6 @@ describe("R2 watchlist cache", () => {
 });
 
 describe("private cache ownership", () => {
-  /** Writes MOVIE as read through a new Trakt Connection of a new Account. */
   async function writePrivate() {
     const account = seedAccount();
     seedConnection(account.id, "trakt");
@@ -473,7 +467,6 @@ describe("private cache ownership", () => {
       "https://example.test/callback",
     );
     expect(await getCachedList(id, TRAKT_WATCHLIST)).toBeNull();
-    // A late old writer is equally unreadable.
     await write();
     expect(
       await findCachedMeta(id, "movie", MOVIE.id, TRAKT_WATCHLIST),

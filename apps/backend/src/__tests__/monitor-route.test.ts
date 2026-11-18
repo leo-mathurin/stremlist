@@ -46,11 +46,6 @@ const IMDB_BEAT = "https://beat.example/imdb";
 const LBX_BEAT = "https://beat.example/letterboxd";
 const SECRET = "cron-secret";
 
-/**
- * Call /monitor, then run the list checks that it started after its answer
- * (the canaries are fakes: `runCanaries`). The route schedules them last;
- * the background tasks of the adapters stay unrun, as before.
- */
 async function monitor(secret = SECRET) {
   const { calls } = backgroundMocks.scheduleBackgroundTask.mock;
   const res = await app.request("/monitor", {
@@ -64,17 +59,13 @@ async function monitor(secret = SECRET) {
   return res;
 }
 
-/** Let the next /monitor call start the list checks again. */
 function endListCheckInterval() {
   db.getTable("monitor_runs").length = 0;
 }
 
 let beats: { url: string; method: string }[];
-/** The bodies of the failed heartbeats, by URL. */
 let failBodies: Map<string, string>;
-/** Status that the stubbed fetch answers per URL prefix; 200 otherwise. */
 let statuses: Map<string, number>;
-/** Status page bodies per URL prefix; other status pages answer 503. */
 let pages: Map<string, unknown>;
 const NO_PAGES = {
   trakt: null,
@@ -107,7 +98,6 @@ beforeEach(() => {
   vi.stubEnv("CRON_SECRET", SECRET);
   runCanaries.mockReset();
   runCanaries.mockResolvedValue([]);
-  // Letterboxd always has a reference; tests that probe it replace this.
   useFakeProvider(fakeAdapter("letterboxd"));
   beats = [];
   failBodies = new Map();
@@ -188,7 +178,6 @@ describe("GET /monitor", () => {
         },
       ],
       statusPages: NO_PAGES,
-      // This call starts the list checks; none completed before it.
       listChecks: {
         started: true,
         last: { finishedAt: null },
@@ -198,7 +187,6 @@ describe("GET /monitor", () => {
       connection: null,
       forceRefresh: true,
     });
-    // The Letterboxd probe defaults to Letterboxd's official Top 500 list.
     expect(letterboxdRead).toHaveBeenCalledWith(
       "users/official/lists/letterboxds-top-500-films",
       {
@@ -217,7 +205,6 @@ describe("GET /monitor", () => {
 
   it("answers 200 when every probe works, and skips Providers it cannot read", async () => {
     vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
-    // JustWatch has a heartbeat but no reference: it is not probed.
     vi.stubEnv(
       "BETTERSTACK_HEARTBEAT_URL_JUSTWATCH",
       "https://beat.example/jw",
@@ -228,13 +215,10 @@ describe("GET /monitor", () => {
     const res = await monitor();
 
     expect(res.status).toBe(200);
-    // Trakt, Simkl and MDBList have no client ID here: no probe.
     expect(await res.json()).toMatchObject({
       ok: true,
       results: [{ provider: "letterboxd", ok: true, entries: 0 }],
-      // No status page answers in this test.
       statusPages: NO_PAGES,
-      // This call starts the list checks; none completed before it.
       listChecks: {
         started: true,
         last: { finishedAt: null },
@@ -315,8 +299,7 @@ const providersBody = z.object({
   ),
 });
 
-/** The Providers that GET /providers reports with an outage. */
-async function outages(): Promise<string[]> {
+async function outages() {
   const { providers } = await readJson(
     await app.request("/providers"),
     providersBody,
@@ -337,7 +320,6 @@ describe("Provider outages", () => {
     vi.stubEnv("MDBLIST_CLIENT_ID", "mdblist-app");
     vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_TRAKT", "https://beat.example/trakt");
     vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_SIMKL", "https://beat.example/simkl");
-    // MDBList answers 401 without a user token: its API is up.
     statuses.set("https://api.mdblist.com/", 401);
     const traktRead = vi.fn(() =>
       Promise.resolve({ entries: [{ imdbId: "tt0111161" }], complete: true }),
@@ -459,7 +441,6 @@ describe("Provider outages", () => {
     );
 
     for (let run = 0; run < 3; run++) {
-      // The failure still alerts: the probe is not ok.
       expect((await monitor()).status).toBe(502);
     }
     expect(await outages()).toEqual([]);
@@ -495,7 +476,6 @@ describe("Provider outages", () => {
 
   describe("through the real adapters", () => {
     beforeEach(() => {
-      // The real Letterboxd adapter, not the fake from the outer setup.
       resetProviders();
     });
 
@@ -544,7 +524,6 @@ describe("Provider outages", () => {
     );
 
     it("reports no Letterboxd outage for a page it cannot read", async () => {
-      // HTTP 200 whose markup is not a list page.
       await monitor();
       await monitor();
       expect(await outages()).toEqual([]);
@@ -575,7 +554,6 @@ describe("Provider outages", () => {
       pages.set("https://status.trakt.tv/", traktPage("danger"));
       const res = await monitor();
       expect(await outages()).toEqual(["trakt"]);
-      // A status page never fails the monitor by itself.
       expect(res.status).toBe(200);
     });
 
@@ -728,7 +706,7 @@ describe("list checks", () => {
     type: string,
     entries: number,
     min = 1,
-  ): CanaryResult {
+  ) {
     return entries >= min
       ? { type, provider, ref: type, status: "ok", entries, min }
       : {
@@ -752,7 +730,6 @@ describe("list checks", () => {
     expect(runCanaries).toHaveBeenCalledTimes(1);
     expect(beats).toEqual([{ url: LBX_BEAT, method: "GET" }]);
 
-    // The other regions call in the same interval: probes only, no pings.
     beats = [];
     const second = await monitor();
     expect(await second.json()).toMatchObject({
@@ -834,7 +811,6 @@ describe("list checks", () => {
       endListCheckInterval();
       beats = [];
       const res = await monitor();
-      // The probe works: the answer is still 200.
       expect(res.status).toBe(200);
       expect(beats).toEqual([{ url: `${LBX_BEAT}/fail`, method: "POST" }]);
     }

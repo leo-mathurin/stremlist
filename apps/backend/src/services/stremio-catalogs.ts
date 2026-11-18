@@ -1,15 +1,9 @@
 import { addonCatalogEntries } from "@stremlist/shared/manifest-catalogs";
-import type {
-  ConfigList,
-  StremioCatalog,
-} from "@stremlist/shared/stremio.types";
+import type { ConfigList } from "@stremlist/shared/stremio.types";
 import { CATALOG_FILTER_OPTIONS } from "./catalog-filters";
 import { buildCatalogId, buildNewTitlesCatalogId } from "./catalog-id";
 
-function catalogExtras(
-  genres: string[],
-  search: boolean,
-): StremioCatalog["extra"] {
+function catalogExtras(genres: string[], search: boolean) {
   return [
     { name: "skip", isRequired: false },
     ...(search ? [{ name: "search" as const, isRequired: false }] : []),
@@ -30,7 +24,7 @@ function catalogExtras(
 export function buildManifestCatalogs(
   lists: ConfigList[],
   options: { newTitles: boolean } = { newTitles: false },
-): StremioCatalog[] {
+) {
   return addonCatalogEntries(lists, options).map((entry) =>
     "newTitles" in entry
       ? {

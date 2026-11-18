@@ -18,7 +18,7 @@ const graphqlRequest = z.object({
   variables: z.record(z.string(), z.unknown()),
 });
 
-function json(body: unknown): Response {
+function json(body: unknown) {
   return new Response(JSON.stringify(body), {
     status: 200,
     headers: { "Content-Type": "application/json" },
@@ -48,7 +48,6 @@ const FORBIDDEN = {
   ],
 };
 
-/** Answers each GraphQL operation in turn, and records the requests. */
 function serve(...responses: unknown[]) {
   const requests: z.infer<typeof graphqlRequest>[] = [];
   vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {

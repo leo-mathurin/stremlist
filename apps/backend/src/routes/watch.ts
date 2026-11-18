@@ -8,8 +8,7 @@ import {
   onPlayerEvent,
 } from "../services/watch/trigger";
 
-/** A Vercel Cron request carries `Authorization: Bearer $CRON_SECRET`. */
-function isCron(header: string | undefined): boolean {
+function isCron(header: string | undefined) {
   const secret = process.env.CRON_SECRET;
   if (!secret || !header) return false;
   const given = Buffer.from(header);
@@ -17,8 +16,7 @@ function isCron(header: string | undefined): boolean {
   return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
-/** `action=pause&currentTime=…`, Stremio's extra segment, as a map. */
-function extraOf(extra: string): URLSearchParams {
+function extraOf(extra: string) {
   return new URLSearchParams(extra.replace(/\.json$/u, ""));
 }
 

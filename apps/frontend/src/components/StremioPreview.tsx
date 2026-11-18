@@ -4,7 +4,6 @@ import { ChevronRight, Search } from "lucide-react";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { ProviderMark } from "./brand";
 
-/** Example Lists, each inView from a different Provider. */
 const ROWS: {
   provider: ProviderId;
   title: string;
@@ -61,9 +60,7 @@ const ROWS: {
   },
 ];
 
-/** Seconds between two rows starting to fill. */
 const ROW_GAP = 0.9;
-/** Seconds between two posters of a row. */
 const POSTER_GAP = 0.07;
 const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 
@@ -100,7 +97,6 @@ export default function StremioPreview() {
               <div key={row.title}>
                 <div className="mb-2 flex h-6 items-center justify-between pr-4">
                   <div className="relative flex items-center">
-                    {/* Skeleton title, replaced by the real one */}
                     <motion.span
                       className="absolute h-3 w-32 rounded-full bg-white/10"
                       initial={false}

@@ -51,10 +51,7 @@ export interface AccountAccess {
  * The Lists that a request may see. A Legacy alias can be guessed, so it
  * never sees the Lists that only a Connection can read.
  */
-export function visibleLists(
-  { via }: AccountAccess,
-  lists: ConfigList[],
-): ConfigList[] {
+export function visibleLists({ via }: AccountAccess, lists: ConfigList[]) {
   return via === "private"
     ? lists
     : lists.filter((list) => !listRequiresConnection(list));
@@ -81,7 +78,7 @@ export interface ListInput {
 /** A concurrent save changed merged Source lists that this save kept. */
 export class MergedSourcesChangedError extends Error {}
 
-function mapAccount(row: AccountRow): Account {
+function mapAccount(row: AccountRow) {
   return {
     id: row.id,
     legacyImdbUserId: row.legacy_imdb_user_id,
@@ -101,9 +98,7 @@ function mapAccount(row: AccountRow): Account {
  * Legacy alias. An Account that has a Legacy alias is reachable only through
  * that alias, so its internal ID is never a second way in.
  */
-export async function resolveAccountKey(
-  key: string,
-): Promise<AccountAccess | null> {
+export async function resolveAccountKey(key: string) {
   const via = ACCOUNT_ID_PATTERN.test(key)
     ? "private"
     : LEGACY_ALIAS_PATTERN.test(key)
@@ -127,9 +122,7 @@ export async function resolveAccountKey(
  * whose only List is the IMDb watchlist of that user. The caller checks that
  * the key is an IMDb user ID or a `p.` handle.
  */
-export async function ensureLegacyAccount(
-  imdbUserId: string,
-): Promise<AccountAccess> {
+export async function ensureLegacyAccount(imdbUserId: string) {
   const existing = await resolveAccountKey(imdbUserId);
   if (existing) {
     await supabase
@@ -174,9 +167,7 @@ export async function ensureLegacyAccount(
   return { account: mapAccount(data), via: "legacy" };
 }
 
-export async function getAccountLists(
-  accountId: string,
-): Promise<ConfigList[]> {
+export async function getAccountLists(accountId: string) {
   const { data, error } = await supabase
     .from("lists")
     .select("*")
@@ -191,9 +182,7 @@ export async function getAccountLists(
 }
 
 /** The Account's Lists that the request may see (see visibleLists). */
-export async function getVisibleLists(
-  access: AccountAccess,
-): Promise<ConfigList[]> {
+export async function getVisibleLists(access: AccountAccess) {
   return visibleLists(access, await getAccountLists(access.account.id));
 }
 
@@ -201,7 +190,7 @@ export async function getVisibleLists(
 export async function getVisibleListById(
   access: AccountAccess,
   listId: string,
-): Promise<ConfigList | null> {
+) {
   const { data, error } = await supabase
     .from("lists")
     .select("*")
@@ -213,7 +202,6 @@ export async function getVisibleListById(
   return list && visibleLists(access, [list]).length > 0 ? list : null;
 }
 
-/** The stored form of submitted Lists (`p_lists` of the config RPCs). */
 function toStoredLists(lists: ListInput[]) {
   return lists.map((list) => ({
     ...(list.id ? { id: list.id } : {}),
@@ -233,7 +221,7 @@ function toStoredLists(lists: ListInput[]) {
   }));
 }
 
-function mapLists(rows: unknown): ConfigList[] {
+function mapLists(rows: unknown) {
   return z
     .array(listRowSchema)
     .parse(rows)
@@ -249,7 +237,7 @@ export async function createAccountWithConfig(
   lists: ListInput[],
   rpdbApiKey: string | null,
   settings: { newTitlesCatalog?: boolean; posterSource?: PosterSource } = {},
-): Promise<{ accountId: string; lists: ConfigList[] }> {
+) {
   const { data, error } = await supabase.rpc("create_account_with_config", {
     p_rpdb_api_key: rpdbApiKey,
     p_lists: toStoredLists(lists),
@@ -273,13 +261,12 @@ export async function replaceAccountConfig(
   accountId: string,
   lists: ListInput[],
   rpdbApiKey: string | null,
-  /** Settings to change; an omitted one keeps its stored value. */
   settings: {
     actions?: { enabled: boolean; providers: ProviderId[] };
     newTitlesCatalog?: boolean;
     posterSource?: PosterSource;
   } = {},
-): Promise<ConfigList[]> {
+) {
   const { actions, newTitlesCatalog, posterSource } = settings;
   const { data, error } = await supabase.rpc("replace_account_config", {
     p_account_id: accountId,
@@ -291,7 +278,6 @@ export async function replaceAccountConfig(
     p_poster_source: posterSource ?? null,
   });
   if (error) {
-    // Raised by `replace_account_config` when kept Source lists changed.
     if (error.message === "Merged Source lists changed") {
       throw new MergedSourcesChangedError();
     }
@@ -320,7 +306,7 @@ export async function replaceAccountConfig(
  * Delete an Account with everything that cascades from it. Only for an
  * Account that was just created and has no cached Catalogs yet.
  */
-export async function deleteAccount(accountId: string): Promise<void> {
+export async function deleteAccount(accountId: string) {
   const { error } = await supabase
     .from("accounts")
     .delete()
@@ -339,7 +325,7 @@ export async function markAccountFetched(
   accountId: string,
   field: "last_fetched_at" | "last_cache_served_at",
   at = new Date(),
-): Promise<void> {
+) {
   const { error } = await supabase
     .from("accounts")
     .update(

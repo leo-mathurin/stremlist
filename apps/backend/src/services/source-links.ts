@@ -3,7 +3,6 @@ import {
   SOURCE_REF_MAX_LENGTH,
 } from "@stremlist/shared/constants";
 import { QUEUE_STATE_MIN_MS } from "@stremlist/shared/provider-queue";
-import type { QueuedAnswer } from "@stremlist/shared/provider-queue";
 import {
   PROVIDERS,
   parseSourceLink,
@@ -21,14 +20,10 @@ import {
 import type { AccountAccess } from "./accounts";
 import { getConnectionAccess } from "./connections";
 
-/** A check waits this long at most in the Provider's queue. */
 const CHECK_WAIT_MS = 10_000;
 
 /** The answer of a read that waits its turn in the Provider's queue. */
-export function queuedAnswer(
-  error: SourceBusyError,
-  provider: ProviderId,
-): QueuedAnswer {
+export function queuedAnswer(error: SourceBusyError, provider: ProviderId) {
   return {
     ok: false,
     reason: "queued",
@@ -95,7 +90,6 @@ export async function resolveSourceLink(
       }),
     );
     if (!result.ok) return refuse(result.reason);
-    // Only a redirect (a boxd.it link) can make a reference this long.
     if (result.ref.length > SOURCE_REF_MAX_LENGTH) {
       return { ok: false as const, reason: "too_long" as const };
     }
@@ -110,12 +104,10 @@ export async function resolveSourceLink(
     };
   } catch (error) {
     if (error instanceof SourceBusyError) return queuedAnswer(error, provider);
-    // Expected failures of the Source list: private, missing, refused.
     if (error instanceof SourceUnavailableError) return refuse(error.reason);
     if (error instanceof ConnectionExpiredError) {
       return refuse("needs_connection");
     }
-    // Never log the raw reference: a Share link reference carries a secret token.
     console.error(
       `Validating a ${provider} source failed:`,
       error instanceof Error ? error.message : error,

@@ -8,7 +8,7 @@ export async function publicUserCount({
 }: {
   backendUrl: string;
   signal?: AbortSignal;
-}): Promise<number | null> {
+}) {
   try {
     const response = await fetch(`${backendUrl.replace(/\/$/, "")}/stats`, {
       signal,

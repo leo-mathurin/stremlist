@@ -45,7 +45,6 @@ function snapshot(ids: string[], more: Partial<SourceSnapshot> = {}) {
   return { entries: ids.map(entry), complete: true, ...more };
 }
 
-/** A Letterboxd Provider that reads through `fetchSource`. */
 function letterboxd(fetchSource: () => Promise<SourceSnapshot>) {
   const read = vi.fn(fetchSource);
   useFakeProvider(
@@ -102,12 +101,10 @@ describe("a Stremio request for a busy Letterboxd", () => {
           "Letterboxd is busy right now. Stremlist is reading your list and it will show here in a few minutes.",
       }),
     ]);
-    // The read goes on in the background and keeps its ticket.
     await vi.waitFor(() => {
       expect(cache.get(LIST_ID)).not.toBeNull();
     });
     expect(tickets).toEqual([null, "t-1"]);
-    // A waiting read is not a failed refresh.
     expect(
       db
         .getTable("list_sync_status")
@@ -151,7 +148,6 @@ describe("a Stremio request for a busy Letterboxd", () => {
 
   it("serves the pages read so far, comes back soon and completes them in the background", async () => {
     const read = letterboxd(() => Promise.reject(new Error("No more reads")));
-    // Hold the background read until the first answer is checked.
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => (release = resolve));
     read.mockImplementationOnce(() =>
@@ -167,7 +163,6 @@ describe("a Stremio request for a busy Letterboxd", () => {
     const { body } = await catalog();
 
     expect(ids(body)).toEqual(["tt0000001"]);
-    // Back-dated: stale again in about 2 minutes.
     const cached = cache.get(LIST_ID);
     expect(cached).not.toBeNull();
     const age = Date.now() - (cached?.cachedAt.getTime() ?? 0);
@@ -206,7 +201,6 @@ describe("a Stremio request for a busy Letterboxd", () => {
     await vi.waitFor(() => {
       expect(priorities).toEqual(["background"]);
     });
-    // It never replaces the cached Catalog with only its first pages.
     expect(partial).toEqual([false]);
     finish(snapshot(["tt0000010"]));
     await vi.waitFor(() => {

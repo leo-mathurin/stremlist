@@ -15,7 +15,6 @@ const trakt: ConnectionSummary = {
   needsRenewalSince: null,
 };
 
-// A Simkl watchlist needs a Connection; an IMDb watchlist does not.
 const merged: MergeableList = {
   provider: "imdb",
   sourceRef: "ur1000001",

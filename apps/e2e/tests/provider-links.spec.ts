@@ -10,19 +10,12 @@ import type { FixtureBackend } from "../helpers/fixture-backend.js";
 import { startFixtureBackend } from "../helpers/fixture-backend.js";
 import { present } from "../helpers/json.js";
 
-// Provider links against the real backend, database and R2 store: the real
-// adapters resolve links and read Source lists, and a separate backend with
-// helpers/provider-fixtures.ts answers every Provider request with
-// deterministic data (dummy client IDs, no real credentials), including anonymous Letterboxd pages.
-
 let backend: FixtureBackend;
 
 const SPLIT = { displayMode: "split" } as const;
 const JUSTWATCH_REF = "tl-us-11111111-2222-4333-8444-555555555555";
-/** What every fixture Source list shows. */
 const BOTH = { movie: ["The Shawshank Redemption"], series: ["Breaking Bad"] };
 
-/** The names in the movie and series Catalogs of a List. */
 const catalogs = async (accountId: string, listId: string) => ({
   movie: await backend.api.listCatalogNames(accountId, listId, "movie"),
   series: await backend.api.listCatalogNames(accountId, listId, "series"),
@@ -38,7 +31,6 @@ test.afterAll(async () => {
 test.beforeEach(async () => {
   await resetDb();
   backend.clearRequests();
-  // The ID resolver caches SensCritique products across runs.
   await clearResolverCache("senscritique", ["101", "202"]);
   await clearResolverCache("letterboxd", ["film:101", "film:202"]);
 });
@@ -76,7 +68,6 @@ test(
       sourceRef: "users/fixture-user/wishes",
       kind: "watchlist",
     });
-    // Expected refusals of the same Providers.
     expect(
       await api.resolveLink("https://trakt.tv/users/private-user/watchlist"),
     ).toEqual({ ok: false, reason: "private", provider: "trakt" });
@@ -105,13 +96,11 @@ test(
     for (const row of lists) {
       expect(await catalogs(accountId, row.id)).toEqual(BOTH);
     }
-    // Public reads carry the app's client ID and no user token.
     const traktReads = backend.requests((url) => url.host === "api.trakt.tv");
     expect(traktReads.length).toBeGreaterThan(0);
     expect(traktReads.every((entry) => entry.authorization === null)).toBe(
       true,
     );
-    // SensCritique products resolved to IMDb IDs through Wikidata.
     expect(
       backend.requests((url) => url.host === "query.wikidata.org").length,
     ).toBeGreaterThan(0);
@@ -150,7 +139,6 @@ test(
           label: "Trending",
         }),
         expect.objectContaining({ ref: "me/lists/77", label: "Horror nights" }),
-        // A liked list reads by its ID.
         expect.objectContaining({ ref: "lists/4242", label: "Weekend" }),
       ]),
     );
@@ -175,7 +163,6 @@ test(
     expect(saved.status).toBe(200);
     for (const row of (await api.getConfig(accountId)).body.lists) {
       expect(await catalogs(accountId, row.id)).toEqual(
-        // Only the show is rated in the fixture library.
         row.sourceRef === "me/ratings"
           ? { movie: [], series: BOTH.series }
           : BOTH,
@@ -210,7 +197,6 @@ test(
     expect(shown).toEqual({
       "trending/movies": { movie: BOTH.movie, series: [] },
       "trending/tv": { movie: [], series: BOTH.series },
-      // Both anime seasons are one Title.
       "trending/anime": { movie: [], series: BOTH.series },
     });
     const files = backend.requests((url) => url.host === "data.simkl.in");
@@ -232,7 +218,6 @@ test(
   async () => {
     const { api } = backend;
 
-    // Charts need no Connection: the app's client ID reads them.
     const created = await api.createAccount([
       listInput("trakt", "trending", SPLIT),
       listInput("trakt", "popular", SPLIT),
@@ -255,8 +240,6 @@ test(
     );
     expect(charts.every((entry) => entry.authorization === null)).toBe(true);
 
-    // Recommendations, Up Next, History and Collection read through the
-    // Connection, with the user's token.
     backend.clearRequests();
     const accountId = await seedAccount();
     await seedConnection(accountId, "trakt");
@@ -276,13 +259,11 @@ test(
     ]);
     for (const row of lists) {
       expect(await catalogs(accountId, row.id)).toEqual(
-        // Up Next lists the series in progress, not movies.
         row.sourceRef === "me/up-next"
           ? { movie: [], series: BOTH.series }
           : BOTH,
       );
     }
-    // Trakt refuses Up Next to some apps: the watched progress gives the same rows.
     const progress = backend.requests((url) =>
       url.pathname.startsWith("/sync/progress/"),
     );

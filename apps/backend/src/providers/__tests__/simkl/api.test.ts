@@ -53,7 +53,6 @@ describe("simkl requests", () => {
       [1, 1000],
     ]);
     expect(simklLimiters("simkl_at_first")).toBe(first);
-    // AUTH V2 has no app-wide cap: another user never waits for this one.
     expect(simklLimiters("simkl_at_second")).not.toBe(first);
   });
 

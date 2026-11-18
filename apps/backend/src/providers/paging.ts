@@ -1,5 +1,3 @@
-import type { PagedRead } from "./types";
-
 /** One page of a paginated read, and the cursor of the next one (null: last). */
 interface Page<T, C> {
   items: T[];
@@ -22,9 +20,7 @@ interface ReadPagesOptions<T, C> {
  * a page says it is the last; a page or item cap, or a cursor seen before
  * (which would loop), stops it with `complete: false` (ADR 0007).
  */
-export async function readPages<T, C>(
-  options: ReadPagesOptions<T, C>,
-): Promise<PagedRead<T>> {
+export async function readPages<T, C>(options: ReadPagesOptions<T, C>) {
   const items: T[] = [];
   const seen = new Set<C>([options.first]);
   let cursor = options.first;

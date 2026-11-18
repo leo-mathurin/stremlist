@@ -20,12 +20,6 @@ import { BACKEND_URL } from "../env.js";
 import { type FakeStremio, isFakeStremio } from "../helpers/fake-stremio.js";
 import { isRecord, optional, parseJson, parsed } from "../helpers/json.js";
 
-// Watch tracking (ADR 0003) from the request that Stremio sends before a play
-// to the write on Trakt and Simkl. The real backend, database and R2 store
-// run; Stremio's API answers from a file this test rewrites
-// (helpers/watch-fixtures.ts), and the test calls the cron route itself, as
-// Vercel Cron does every minute.
-
 const CRON_SECRET = "e2e-cron-secret";
 const AUTH_KEY = "fixture-stremio-session";
 const MOVIE = "tt0111161";
@@ -37,16 +31,15 @@ let backend: FixtureBackend;
 let dir: string;
 let stremioFile: string;
 
-function writeStremio(state: FakeStremio): void {
+function writeStremio(state: FakeStremio) {
   writeFileSync(stremioFile, JSON.stringify(state));
 }
 
-function readStremio(): FakeStremio {
+function readStremio() {
   return parseJson(readFileSync(stremioFile, "utf8"), isFakeStremio, "Stremio");
 }
 
-/** The names of the resources of an installed manifest. */
-function resourceNames(manifest: unknown): unknown[] {
+function resourceNames(manifest: unknown) {
   if (!isRecord(manifest) || !Array.isArray(manifest.resources)) return [];
   return manifest.resources.map((resource: unknown) =>
     isRecord(resource) ? resource.name : undefined,
@@ -62,14 +55,12 @@ function isWatchStatus(value: unknown): value is WatchTrackingStatus {
   );
 }
 
-/** The answer of `PUT /:accountId/watch-tracking`. */
 function isWatchUpdate(
   value: unknown,
 ): value is { status: WatchTrackingStatus; stremio: unknown } {
   return isRecord(value) && isWatchStatus(value.status) && "stremio" in value;
 }
 
-/** A record whose `keys` are numbers. */
 const counts = (keys: string[]) => (value: unknown) =>
   isRecord(value) && keys.every((key) => typeof value[key] === "number");
 
@@ -88,13 +79,11 @@ function isCronReport(value: unknown): value is {
   );
 }
 
-/** Every item of `value` is a record that `is` accepts. */
 const everyRecord = (
   value: unknown,
   is: (item: Record<string, unknown>) => boolean,
 ) => Array.isArray(value) && value.every((item) => isRecord(item) && is(item));
 
-/** A Trakt watched write of episodes. */
 function isShowsWrite(value: unknown): value is {
   shows: { seasons: { episodes: { number: number }[] }[] }[];
 } {
@@ -108,8 +97,7 @@ function isShowsWrite(value: unknown): value is {
   );
 }
 
-/** Stremio's `watched` field with these episodes of season 1 watched. */
-function watchedField(episodes: number[]): string {
+function watchedField(episodes: number[]) {
   const bits = episodes.reduce((sum, episode) => sum | (1 << (episode - 1)), 0);
   const last = Math.max(...episodes);
   const encoded = deflateSync(Buffer.from([bits])).toString("base64");
@@ -144,10 +132,7 @@ function series(episodes: number[], mtime: string) {
   };
 }
 
-async function call(
-  path: string,
-  init: RequestInit & { json?: unknown } = {},
-): Promise<{ status: number; body: unknown }> {
+async function call(path: string, init: RequestInit & { json?: unknown } = {}) {
   const headers = new Headers(init.headers);
   if (init.json !== undefined && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
@@ -169,7 +154,6 @@ async function runCron() {
   return parsed(run.body, isCronReport, "cron report");
 }
 
-/** The watched writes the backend sent to a Provider host. */
 function watchedWrites(host: string) {
   return backend
     .requests((url) => url.host === host && url.pathname === "/sync/history")
@@ -207,7 +191,6 @@ test(
     writeStremio({
       authKey: AUTH_KEY,
       trakt: false,
-      // Watched before Watch tracking: the Watched baseline, never sent.
       library: [movie(SEEN_BEFORE, 1, "2026-11-01T00:00:00.000Z")],
       addons: [
         {
@@ -217,7 +200,6 @@ test(
       ],
     });
 
-    // Turning it on reads the baseline and updates the installed Stremlist.
     const on = await call(`/${accountId}/watch-tracking`, {
       method: "PUT",
       json: { destinations: ["trakt", "simkl"] },
@@ -238,14 +220,12 @@ test(
     );
     expect((await getWatchRows(accountId)).tracking?.baseline_at).toBeTruthy();
 
-    // Stremio asks for streams before the play: the cycle starts.
     const streams = await call(`/${accountId}/stream/movie/${MOVIE}.json`);
     expect(streams.body).toEqual({ streams: [], cacheMaxAge: 0 });
     await expect
       .poll(async () => (await getWatchRows(accountId)).reads.length)
       .toBe(1);
 
-    // The play reaches Stremio's threshold, and Stremio Web sends `stop`.
     writeStremio({
       ...readStremio(),
       library: [
@@ -269,8 +249,6 @@ test(
     expect(watchedWrites("api.trakt.tv")).toEqual([
       { movies: [{ ids: { imdb: MOVIE }, watched_at: LAST_WATCHED }] },
     ]);
-    // Simkl's lane runs beside the reads, through its limiter: the write
-    // found by this run goes at the next one.
     expect(watchedWrites("api.simkl.com")).toEqual([]);
     expect((await runCron()).simkl?.sent).toBe(1);
     expect(watchedWrites("api.simkl.com")).toEqual([
@@ -278,7 +256,6 @@ test(
     ]);
     expect((await getWatchRows(accountId)).writes).toEqual([]);
 
-    // Nothing is sent twice, and the baseline title never.
     await runCron();
     expect(watchedWrites("api.trakt.tv")).toHaveLength(1);
 
@@ -313,7 +290,6 @@ test(
     });
     expect(on.status).toBe(200);
 
-    // Episodes 2 and 3 marked on Android TV: no event, the sweep finds them.
     writeStremio({
       ...readStremio(),
       library: [series([1, 2, 3], "2026-11-12T20:41:00.000Z")],
@@ -321,9 +297,7 @@ test(
     await makeSweepDue(accountId);
     const run = await runCron();
     expect(run.sweep).toMatchObject({ accounts: 1, detected: 2 });
-    // The sweep runs after the writes: what it finds goes at the next run.
     await runCron();
-    // The episodes of one series, marked together, go in one request.
     const [sent, ...more] = watchedWrites("api.trakt.tv").map((write) =>
       parsed(write, isShowsWrite, "Trakt watched write"),
     );
@@ -339,7 +313,6 @@ test(
       { number: 3, watched_at: LAST_WATCHED },
     ]);
 
-    // Stremio's own Trakt connected: Trakt is paused, nothing more is sent.
     writeStremio({ ...readStremio(), trakt: true });
     const paused = await call(`/${accountId}/watch-tracking`, {
       method: "PUT",
@@ -378,7 +351,6 @@ test(
     });
     expect(on.status).toBe(200);
 
-    // The member marks the movie on its page: no /stream, no cycle.
     writeStremio({
       ...readStremio(),
       library: [movie(MOVIE, 1, LAST_WATCHED)],
@@ -387,7 +359,6 @@ test(
       `/${accountId}/library/movie/${MOVIE}/action=watched.json`,
     );
     expect(mark.status).toBe(200);
-    // Other library actions start nothing.
     await call(`/${accountId}/library/movie/${MOVIE}/action=libraryAdd.json`);
     await expect
       .poll(async () => (await getWatchRows(accountId)).writes.length, {
@@ -467,7 +438,6 @@ test(
     await expect(trakt).toBeChecked();
     expect((await getWatchRows(accountId)).tracking?.baseline_at).toBeTruthy();
 
-    // A title turns watched and is sent: the page shows it after a reload.
     writeStremio({
       ...readStremio(),
       library: [movie(MOVIE, 1, LAST_WATCHED)],
@@ -519,7 +489,6 @@ test(
     await seedConnection(accountId, "trakt");
     await seedStremioLink(accountId, AUTH_KEY);
     await routePageTo(page, backend.url);
-    // Stremio does not answer the library read (simulated).
     await page.route(`${BACKEND_URL}/*/watch-tracking`, async (route) => {
       if (route.request().method() !== "PUT") return route.fallback();
       await route.fulfill({ status: 502, json: { reason: "unavailable" } });
@@ -534,7 +503,6 @@ test(
       page.getByText("Stremlist could not read your Stremio library."),
     ).toBeVisible();
     await expect(trakt).not.toBeChecked();
-    // The state was read back: nothing was turned on.
     await expect(section.getByText("Off")).toBeVisible();
     expect((await getWatchRows(accountId)).tracking).toBeNull();
   },

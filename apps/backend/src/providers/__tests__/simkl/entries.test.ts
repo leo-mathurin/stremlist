@@ -114,7 +114,6 @@ describe("simkl entries", () => {
 
   it("lists everything rated, oldest rating first", async () => {
     const { entries } = await simklProvider.fetchSource("me/ratings", ctx());
-    // Simkl gave no rating date for The Godfather: it comes first.
     expect(entries.map((entry) => [entry.title, entry.addedAt])).toEqual([
       ["The Godfather", undefined],
       ["Game of Thrones", "2026-05-16T14:20:16Z"],

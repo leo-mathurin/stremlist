@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { providerFetchJson, RateLimiter } from "../http";
-import type { SourceEntry, SourceSnapshot } from "../types";
+import type { SourceEntry } from "../types";
 import { SourceUnavailableError } from "../types";
 import { simklAppQuery } from "./api";
 import { toEntry } from "./entries";
@@ -9,14 +9,13 @@ import { parseIds, rawIdsSchema, toInt } from "./library";
 
 const TRENDING_URL = "https://data.simkl.in/discover/trending";
 
-/** The trending files, by Source list reference: the week's top 100. */
 const TRENDING_FILES = new Map<string, { path: string; kind: SimklKind }>([
   ["trending/movies", { path: "movies/week_100.json", kind: "movies" }],
   ["trending/tv", { path: "tv/week_100.json", kind: "shows" }],
   ["trending/anime", { path: "anime/week_100.json", kind: "anime" }],
 ]);
 
-export function isTrendingRef(ref: string): boolean {
+export function isTrendingRef(ref: string) {
   return TRENDING_FILES.has(ref);
 }
 
@@ -27,12 +26,10 @@ export function isTrendingRef(ref: string): boolean {
 export const TRENDING_FRESHNESS_MS = 6 * 60 * 60_000;
 const CDN_MAX_AGE_MS = 60 * 60_000;
 
-// The files are free and need no user token, so one limiter serves the app.
 const cdnLimiter = new RateLimiter(4, 1000);
 
 const trendingItemSchema = z.object({
   title: z.string().nullish(),
-  /** "MM/DD/YYYY". */
   release_date: z.string().nullish(),
   anime_type: z.string().nullish(),
   ids: rawIdsSchema.nullish(),
@@ -41,7 +38,7 @@ const trendingItemSchema = z.object({
 function toTrendingEntry(
   item: z.infer<typeof trendingItemSchema>,
   kind: SimklKind,
-): SourceEntry | null {
+) {
   const { simkl, ...ids } = parseIds(item.ids ?? {});
   if (!simkl) return null;
   return toEntry({
@@ -54,10 +51,7 @@ function toTrendingEntry(
   });
 }
 
-async function readFile(file: {
-  path: string;
-  kind: SimklKind;
-}): Promise<SourceEntry[]> {
+async function readFile(file: { path: string; kind: SimklKind }) {
   const { data } = await providerFetchJson(`${TRENDING_URL}/${file.path}`, {
     query: simklAppQuery(),
     headers: { Accept: "application/json" },
@@ -68,7 +62,6 @@ async function readFile(file: {
   for (const item of z.array(trendingItemSchema).parse(data)) {
     const entry = toTrendingEntry(item, file.kind);
     if (!entry) continue;
-    // Seasons of an anime share the series' IMDb ID: keep the best ranked.
     if (entry.imdbId) {
       if (seen.has(entry.imdbId)) continue;
       seen.add(entry.imdbId);
@@ -78,22 +71,18 @@ async function readFile(file: {
   return entries;
 }
 
-/** Reads of each file in this instance, shared while the CDN keeps it. */
 const reads = new Map<
   string,
   { at: number; entries: Promise<SourceEntry[]> }
 >();
 
 /** Test hook: forget the shared reads. */
-export function clearTrendingReads(): void {
+export function clearTrendingReads() {
   reads.clear();
 }
 
 /** A trending chart in Simkl's rank order, from Simkl's CDN, with no token. */
-export async function readTrending(
-  ref: string,
-  forceRefresh = false,
-): Promise<SourceSnapshot> {
+export async function readTrending(ref: string, forceRefresh = false) {
   const file = TRENDING_FILES.get(ref);
   if (!file) {
     throw new SourceUnavailableError("not_found", `Unknown Simkl chart ${ref}`);
@@ -107,6 +96,5 @@ export async function readTrending(
     });
     read = current;
   }
-  // Each reader gets its own copy: the shared pipeline may change entries.
   return { entries: structuredClone(await read.entries), complete: true };
 }

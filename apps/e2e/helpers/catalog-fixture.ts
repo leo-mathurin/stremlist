@@ -17,8 +17,10 @@ const movie: StremioMeta = {
   released: "1999-12-01T00:00:00.000Z",
 };
 
-// Each near-match violates a different filter. Expected results in the tests
-// are literal, not calculated by the production filtering/sorting functions.
+/**
+ * Each near-match violates a different filter. Expected results in the tests
+ * are literal, not calculated by the production filtering/sorting functions.
+ */
 export const CATALOG_TITLES: StremioMeta[] = [
   movie,
   {

@@ -10,11 +10,6 @@ import { parsed } from "../helpers/json.js";
 import { routePageTo } from "../helpers/page-backend.js";
 import { addonsDeepLink } from "../helpers/stremio.js";
 
-// The main journey on a phone (390 x 844, touch): Home, add a List, save,
-// install, reload. The page talks to a fixture backend that shares the real
-// database, so the saved Account is read back. The Trakt link resolves
-// through helpers/provider-fixtures.ts, not the real Trakt.
-
 test.use({
   viewport: { width: 390, height: 844 },
   deviceScaleFactor: 3,
@@ -34,7 +29,6 @@ test.afterAll(async () => {
 });
 test.beforeEach(resetDb);
 
-/** The page is no wider than the phone: nothing scrolls sideways. */
 async function expectNoSidewaysScroll(page: Page) {
   await expect
     .poll(() =>
@@ -79,7 +73,6 @@ test(
     );
     await expect(page).toHaveURL(configureUrl(accountId));
 
-    // Install: the Addon URL and the Stremio Web link fit on the phone.
     const addonUrl = page.getByLabel("Addon URL", { exact: true });
     await expect(addonUrl).toHaveValue(addonManifestUrl(accountId));
     await addonUrl.scrollIntoViewIfNeeded();

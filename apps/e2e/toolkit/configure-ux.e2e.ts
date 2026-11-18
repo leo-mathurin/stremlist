@@ -26,9 +26,6 @@ import {
   parseBody,
 } from "./config-fixture";
 
-// Configure page feedback: unsaved changes, phone-width feedback, plain
-// wording and Connect labels. The API is intercepted.
-
 const PASTE = "Paste a link to a watchlist or list";
 const PHONE = { width: 390, height: 844 };
 const watchlistLink = `https://www.imdb.com/user/${imdbUser}/watchlist`;
@@ -42,7 +39,6 @@ const traktWatchlist = {
   position: 1,
 } as const;
 
-/** Whether the first element that `selector` and `text` find is fully in the viewport. */
 function inViewport(browser: Browser, selector: string, text: string) {
   return browser.evaluate(
     ([css, wanted]) => {
@@ -57,7 +53,6 @@ function inViewport(browser: Browser, selector: string, text: string) {
   );
 }
 
-/** The titles of the List rows, top to bottom. */
 function rowTitles(browser: Browser) {
   return browser.evaluate(() =>
     [...document.querySelectorAll("[data-list-row]")].map(
@@ -168,7 +163,6 @@ test("unsaved changes ask before the page reloads, and a save clears them", asyn
   await app.open(`/configure?account=${accountId}`);
   await expect(screen.getByText("Test catalog")).toBeVisible();
 
-  // Nothing changed yet: no warning.
   expect(
     await browser.evaluate(() =>
       window.dispatchEvent(new Event("beforeunload", { cancelable: true })),
@@ -177,7 +171,6 @@ test("unsaved changes ask before the page reloads, and a save clears them", asyn
 
   await screen.getByRole("button", "Remove Test catalog").tap();
   await expect(screen.getByText("Test catalog")).toHaveCount(0);
-  // A cancelled event is what makes the browser ask before it leaves.
   expect(
     await browser.evaluate(() =>
       window.dispatchEvent(new Event("beforeunload", { cancelable: true })),
@@ -212,7 +205,6 @@ test("Save is off while there is nothing to save", async ({
   const title = screen.getByLabel("Catalog title");
   await title.fill("Renamed");
   await expect(save).toBeEnabled();
-  // The saved title again: nothing to save.
   await title.fill("Test catalog");
   await expect(save).toBeDisabled();
 
@@ -285,8 +277,6 @@ test("on a phone, an added list says so and the install step comes into view aft
 
   await screen.getByLabel(PASTE).fill(watchlistLink);
   await screen.getByRole("button", "Add", { exact: true }).tap();
-  // The new row is below the Providers panel, out of view: a toast says what
-  // happened and can show it.
   await expect(screen.getByText("Added IMDb Watchlist")).toBeVisible();
   expect(await inViewport(browser, "p", "IMDb Watchlist")).toBe(false);
   await screen.getByRole("button", "Show", { exact: true }).tap();
@@ -320,13 +310,10 @@ test("a new list goes first: in view on a wide screen, and a toast can show it o
   await screen.getByRole("button", "Add", { exact: true }).tap();
   await expect(screen.getByText("IMDb · List · ls99123456")).toBeVisible();
   expect(await rowTitles(browser)).toEqual(["IMDb List", "Test catalog"]);
-  // The new row shows at the top of the lists: no toast is needed.
   expect(await inViewport(browser, "p", "IMDb List")).toBe(true);
   await new Promise((resolve) => setTimeout(resolve, 500));
   await expect(screen.getByText("Added IMDb List")).toBeHidden();
 
-  // On a phone, Quick add is below the lists: the new first row is above
-  // the screen, so a toast says so and shows it.
   await browser.setViewport(PHONE);
   await screen.getByRole("button", "Add an IMDb chart").tap();
   await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
@@ -396,7 +383,6 @@ test("an expired Connection uses one label at every width", async ({
   await routeConnectionSources(browser);
   await app.open(`/configure?account=${accountId}`);
 
-  // One in the Providers panel, one in the List's notice.
   await expect(
     screen.getByRole("button", "Connect again", { exact: true }),
   ).toBeVisible();
@@ -437,7 +423,6 @@ test("the configure page uses plain words in sentence case", async ({
     mergedSources: [{ provider: "trakt" as const, sourceRef: "me/watchlist" }],
   };
   await baseRoutes(browser);
-  // Last route wins: a preview with Titles that Stremlist cannot show.
   await browser.route(`${backend}/lists/preview`, (route) => {
     const request = parseBody(route, isPreviewRequest);
     return route.fulfill({
@@ -470,7 +455,6 @@ test("the configure page uses plain words in sentence case", async ({
   await expect(screen.getByText("Lost film")).toBeVisible();
 
   const text = await browser.evaluate(() => document.body.innerText);
-  // Internal terms with a capital inside a sentence, and internal names.
   expect(
     text.match(
       /[a-z,] (Lists?|Source lists?|Connections?)\b|Source lists?|Unresolved entries/g,

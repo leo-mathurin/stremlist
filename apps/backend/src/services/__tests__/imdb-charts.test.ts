@@ -174,20 +174,14 @@ describe("config source-id rule (mirrors account-config)", () => {
   });
 });
 
-// Live IMDb GraphQL calls, so a query that drifts from IMDb's schema fails
-// here instead of silently in prod (a mocked suite missed the box-office
-// enum-vs-string bug).
 describe("integration: every built-in chart returns Stremio-shaped data", () => {
   it.each(CHART_REGISTRY.map((entry) => [entry.id, entry] as const))(
     "fetches %s",
     async (_id, entry) => {
       const { metas } = await fetchChart(entry.id);
 
-      // Editorial charts are always populated.
       expect(metas.length).toBeGreaterThan(0);
 
-      // One Stremio type per chart, so its default display mode never
-      // produces an empty companion catalog.
       const expectedType =
         entry.defaultDisplayMode === "series" ? "series" : "movie";
 
@@ -204,7 +198,7 @@ describe("integration: every built-in chart returns Stremio-shaped data", () => 
   it("returns the full Top 250 in rank order (first item is rank #1)", async () => {
     const { metas } = await fetchChart("imdb:top-rated-movies");
     expect(metas.length).toBe(250);
-    expect(metas[0].id).toBe("tt0111161"); // The Shawshank Redemption
+    expect(metas[0].id).toBe("tt0111161");
   });
 
   it("returns at most the 10 weekend box-office releases", async () => {

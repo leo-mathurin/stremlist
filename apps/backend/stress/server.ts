@@ -1,15 +1,12 @@
-// The real backend app behind Bun.serve, with outbound calls faked by
-// mock-fetch. run.ts starts it as a child process; it is not for production.
 import { resetStats, stats } from "./mock-fetch";
 
-// Import the app only after the fetch mock is in place.
 const { default: app } = await import("../src/index");
 
 const port = Number(process.env.STRESS_PORT ?? 7099);
 let requests = 0;
 let peakRss = 0;
 
-function sampleMemory(): number {
+function sampleMemory() {
   const { rss } = process.memoryUsage();
   peakRss = Math.max(peakRss, rss);
   return rss;
@@ -19,7 +16,6 @@ setInterval(sampleMemory, 500).unref();
 Bun.serve({
   port,
   hostname: "127.0.0.1",
-  // Bun's maximum. A request that hangs shows up as slow, not as a reset.
   idleTimeout: 255,
   async fetch(request) {
     const { pathname } = new URL(request.url);

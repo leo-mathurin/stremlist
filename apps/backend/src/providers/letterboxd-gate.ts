@@ -6,20 +6,11 @@ import { recordLetterboxdRequest } from "./letterboxd-request-log";
 import { currentReadPriority, currentReadQueue } from "./read-priority";
 import { SourceBusyError, SourceUnavailableError } from "./types";
 
-/**
- * The shared Letterboxd gate: a token bucket in Postgres with a fair queue in
- * front of it (supabase/migrations/20261108120000_letterboxd_gate.sql and
- * 20261108140000_letterboxd_queue.sql) that every backend instance asks
- * before each Letterboxd request. The rules live in SQL.
- */
 const GATE = "production";
-/** After a longer wait, check that no slowdown or halt started meanwhile. */
 const RECHECK_AFTER_MS = 1_000;
-/** A read that waits longer reports its estimate again this often. */
 const REPORT_EVERY_MS = 10_000;
 
-/** LETTERBOXD_MAX_RPS, the target rate in requests per second (default 10). */
-function letterboxdTargetRate(): number {
+function letterboxdTargetRate() {
   const value = Number(process.env.LETTERBOXD_MAX_RPS);
   return Number.isFinite(value) && value > 0 ? value : 10;
 }
@@ -42,7 +33,6 @@ export class LetterboxdBusyError extends SourceBusyError {
   }
 }
 
-/** The shortest pause after a 429, as the gate sets it: max(Retry-After, 60 s). */
 const RATE_LIMIT_PAUSE_MS = 60_000;
 
 /**
@@ -80,23 +70,17 @@ export type LetterboxdGateStatus = z.infer<typeof statusSchema>;
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
-/** Letterboxd refused Stremlist: only the gate's probes are sent until it recovers. */
 const halted = () =>
   new SourceUnavailableError(
     "disabled",
     "Letterboxd is temporarily unavailable",
   );
-/** The gate cannot be read: fail closed. */
 const unreadable = () =>
   new SourceUnavailableError(
     "unavailable",
     "Letterboxd is temporarily unavailable",
   );
 
-/**
- * Tell Better Stack about a gate edge. Best effort: a missing URL or a failed
- * ping never affects a read. A success ping resolves the open incident.
- */
 async function heartbeat(failure: string | null) {
   const url = process.env.BETTERSTACK_HEARTBEAT_URL_LETTERBOXD;
   if (!url) return;
@@ -115,7 +99,7 @@ async function heartbeat(failure: string | null) {
   }
 }
 
-export async function letterboxdGateStatus(): Promise<LetterboxdGateStatus> {
+export async function letterboxdGateStatus() {
   const { data, error } = await supabase.rpc("letterboxd_gate_status", {
     p_target: letterboxdTargetRate(),
     p_gate: GATE,
@@ -125,7 +109,7 @@ export async function letterboxdGateStatus(): Promise<LetterboxdGateStatus> {
 }
 
 /** Whether Letterboxd reads are halted. An unreadable gate counts as not halted. */
-export async function isLetterboxdHalted(): Promise<boolean> {
+export async function isLetterboxdHalted() {
   try {
     return (await letterboxdGateStatus()).halted;
   } catch {
@@ -148,7 +132,7 @@ export async function assertLetterboxdNotHalted() {
  * yet. An unreadable gate refuses nothing here; the request itself fails
  * closed at the gate.
  */
-export async function letterboxdRefusesReads(): Promise<boolean> {
+export async function letterboxdRefusesReads() {
   try {
     const status = await letterboxdGateStatus();
     return status.halted && !status.probe_due;
@@ -215,7 +199,7 @@ export async function withLetterboxdPermit<T>(
     details?: LetterboxdRequestDetails;
   }>,
   { first = false, restMs = 0 }: PermitOptions = {},
-): Promise<T> {
+) {
   const priority = currentReadPriority();
   const queue = currentReadQueue();
   const target = letterboxdTargetRate();
@@ -244,8 +228,6 @@ export async function withLetterboxdPermit<T>(
       (queue.answerAtMs !== null && slot.wait_ms >= queue.answerAtMs)
     )
       throw new LetterboxdBusyError(waitMs, place);
-    // A long sleep (a pause after a 429) reports its estimate again on the
-    // way, so the configure page keeps showing it.
     const waitingSince = Date.now();
     const until = waitingSince + Math.min(slot.retry_ms ?? slot.wait_ms, left);
     for (let rest = until - waitingSince; rest > 0; rest = until - Date.now()) {

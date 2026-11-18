@@ -30,7 +30,6 @@ import { previewQueueMessage, queueProgress } from "@/lib/provider-queue";
 import type { QueueWait } from "@/lib/provider-queue";
 import { cn } from "@/lib/utils";
 
-/** Unresolved entries shown before "Show all". */
 const UNRESOLVED_COLLAPSED = 5;
 
 const TYPE_LABELS = { movie: "Movies", series: "TV shows" } as const;
@@ -40,18 +39,17 @@ const TYPE_NOUNS = {
 } as const;
 const OTHER_TYPE = { movie: "series", series: "movie" } as const;
 
-function count(value: number, one: string, other: string): string {
+function count(value: number, one: string, other: string) {
   return `${value.toLocaleString("en")} ${value === 1 ? one : other}`;
 }
 
-/** The label of the Show option that keeps only `type`. */
-function showOnlyLabel(type: TitleType): string {
+function showOnlyLabel(type: TitleType) {
   const option = DISPLAY_MODE_OPTIONS.find((entry) => entry.value === type);
   if (!option) throw new Error(`No Show option for ${type}.`);
   return option.label;
 }
 
-function catalogLabel(row: CatalogPreviewRow): string {
+function catalogLabel(row: CatalogPreviewRow) {
   const preset = CATALOG_PRESETS.find((entry) => entry.id === row.preset);
   return preset
     ? `${TYPE_LABELS[row.type]} · ${preset.label}`
@@ -138,7 +136,7 @@ export default function CatalogPreview({
   );
 }
 
-function problemMessage(source: SourceId, reason: SourceProblemReason): string {
+function problemMessage(source: SourceId, reason: SourceProblemReason) {
   const { title, fix } = sourceProblemCopy(
     source.provider,
     reason,
@@ -178,10 +176,6 @@ function PosterPlaceholders() {
   );
 }
 
-/**
- * The List waits in its Provider's queue: the time left, and a bar that
- * fills with the time instead of the spinner.
- */
 function PreviewQueued({ wait }: { wait: QueueWait }) {
   const now = useNow();
   const progress = Math.round(queueProgress(wait, now) * 100);
@@ -273,7 +267,6 @@ function PreviewBody({
         />
       ))}
 
-      {/* An empty single-type Catalog already says which Show option to pick. */}
       {shownType &&
         hiddenType &&
         hiddenCount > 0 &&
@@ -355,8 +348,6 @@ function CatalogRow({
               : "This catalog stays empty in Stremio."}
         </p>
       ) : (
-        // A new order mounts a new strip: Chrome would otherwise re-snap to
-        // the Title that was first and leave the strip scrolled.
         <ul
           key={row.titles.map((title) => title.id).join(",")}
           className="-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 sm:-mx-5 sm:scroll-px-5 sm:px-5"
@@ -367,8 +358,6 @@ function CatalogRow({
               tmdb: title.tmdbPoster,
               tvdb: title.tvdbPoster,
             };
-            // What Stremio shows, then what shows when an image fails: the
-            // chosen source without RPDB, then the IMDb poster.
             const candidates = [
               ...new Set([
                 choosePoster(title.id, posters, { posterSource, rpdbApiKey }),
@@ -407,7 +396,6 @@ function PosterTile({
   posters,
 }: {
   title: PreviewTitle;
-  /** The poster to show, then the ones to try when an image fails. */
   posters: string[];
 }) {
   const [attempt, setAttempt] = useState(0);
@@ -502,7 +490,6 @@ function UnresolvedEntries({
           <UnresolvedRow key={index} entry={entry} />
         ))}
       </ul>
-      {/* Entries go unlisted only past the limit, so "Show all" is there. */}
       {unresolved.entries.length > UNRESOLVED_COLLAPSED && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           <button

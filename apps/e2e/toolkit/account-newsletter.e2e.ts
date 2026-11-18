@@ -41,7 +41,6 @@ test(
     const title = screen.getByLabel("Catalog title");
     await title.fill("Discarded draft");
     await screen.getByRole("link", "Stremlist home").tap();
-    // The draft is not saved: the page asks first.
     await screen.getByRole("button", "Leave without saving").tap();
     await expect(browser).toHaveURL("/");
     await agent.act(

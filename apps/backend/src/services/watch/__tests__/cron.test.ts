@@ -7,7 +7,6 @@ vi.mock("../writes", () => ({
   SIMKL_BACKLOG_ALERT_SECONDS: 600,
   simklBacklogSeconds: () => Promise.resolve(0),
   processWrites: () => Promise.resolve(undefined),
-  // Supabase gives its errors as plain objects.
   processSimklWrites: () =>
     Promise.reject({ message: "canceling statement due to lock timeout" }),
 }));

@@ -27,7 +27,7 @@ import {
   readTrending,
   TRENDING_FRESHNESS_MS,
 } from "./simkl/trending";
-import type { ProviderAdapter, SourceValidation } from "./types";
+import type { ProviderAdapter } from "./types";
 import { SourceUnavailableError } from "./types";
 
 const LIST_REF = /^me\/lists\/(\d+)$/;
@@ -37,7 +37,7 @@ const simklSettingsSchema = z.object({
 });
 
 /** Test hook: forget the in-memory fallback state. */
-export function resetSimklState(): void {
+export function resetSimklState() {
   clearMemoryState();
   clearInFlightSyncs();
   clearTrendingReads();
@@ -62,7 +62,7 @@ export const simklProvider: ProviderAdapter = {
     return isTrendingRef(ref) ? TRENDING_FRESHNESS_MS : LIBRARY_FRESHNESS_MS;
   },
 
-  async validateSource(ref, ctx): Promise<SourceValidation> {
+  async validateSource(ref, ctx) {
     if (isTrendingRef(ref)) {
       return {
         ok: true,
@@ -117,7 +117,6 @@ export const simklProvider: ProviderAdapter = {
     const library = await syncLibrary(connection);
     return {
       entries: libraryEntries(library.items, ref),
-      // The library sync has no page cap: it is the whole library.
       complete: true,
     };
   },
@@ -127,7 +126,7 @@ export const simklProvider: ProviderAdapter = {
     return simkl ? { namespace: "simkl", externalId: String(simkl) } : null;
   },
 
-  // Anime often have no IMDb ID on Simkl, but many have a TMDB ID.
+  /** Anime often have no IMDb ID on Simkl, but many have a TMDB ID. */
   resolverStrategies: [tmdbExternalIdsStrategy],
 
   actions: simklActions,
@@ -141,7 +140,7 @@ export const simklProvider: ProviderAdapter = {
     authorizeUrl: "https://simkl.com/oauth2/authorize",
     tokenUrl: `${SIMKL_API}/oauth2/token`,
     ...simklClient,
-    // Without media:write (exact spelling), Simkl silently grants read-only.
+    /** Without media:write (exact spelling), Simkl silently grants read-only. */
     scopes: ["media:read", "media:write"],
 
     revoke: (token) =>

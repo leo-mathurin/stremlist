@@ -25,7 +25,7 @@ export const PROVIDER_LOGOS: Record<
   trakt: { src: "/providers/trakt.svg" },
   simkl: { src: "/providers/simkl.png" },
   mdblist: { src: "/providers/mdblist.png" },
-  // The mark without the wordmark is a transparent 64 px icon.
+  /** The mark without the wordmark is a transparent 64 px icon. */
   justwatch: { src: "/providers/justwatch.png", background: "#0a151f" },
   senscritique: { src: "/providers/senscritique.png" },
   letterboxd: { src: "/providers/letterboxd.svg" },
@@ -35,7 +35,7 @@ export const PROVIDER_LOGOS: Record<
 export const PASTE_LINK_PROMPT = "Paste a link to a watchlist or list";
 
 /** The live hint under a link field, such as "Trakt watchlist detected". */
-export function detectedLinkHint(parsed: ParsedSourceLink): string {
+export function detectedLinkHint(parsed: ParsedSourceLink) {
   const info = PROVIDERS[parsed.provider];
   if (info.availability !== "available") return `${info.label}: coming soon`;
   return `${info.label} ${SOURCE_KIND_LABELS[parsed.kind].toLowerCase()} detected`;
@@ -55,10 +55,7 @@ interface SourceDescription {
  * Describe a stored Source list reference for the configure page. The
  * reference formats are the ones in `@stremlist/shared/providers`.
  */
-export function describeSource(
-  provider: ProviderId,
-  ref: string,
-): SourceDescription {
+export function describeSource(provider: ProviderId, ref: string) {
   const { kind, detail, url } = describeSourceRef(provider, ref);
   return {
     kindLabel: SOURCE_KIND_LABELS[kind],
@@ -68,8 +65,7 @@ export function describeSource(
   };
 }
 
-/** A key in the URL as an Addon URL holds it (`/<key>/manifest.json`). */
-function keyInPath(url: URL): string | null {
+function keyInPath(url: URL) {
   const segments = url.pathname.split("/");
   for (let index = 1; index < segments.length; index++) {
     const key = segments[index - 1];
@@ -83,7 +79,7 @@ function keyInPath(url: URL): string | null {
   return null;
 }
 
-function toUrl(input: string): URL | null {
+function toUrl(input: string) {
   try {
     return new URL(
       /^[a-z]+:\/\//i.test(input)
@@ -101,7 +97,7 @@ function toUrl(input: string): URL | null {
  * anything else, such as an IMDb profile page: a key is only read from where
  * a Stremlist URL puts it.
  */
-export function extractAccountKey(input: string): string | null {
+export function extractAccountKey(input: string) {
   const trimmed = input.trim();
   if (ACCOUNT_KEY_PATTERN.test(trimmed)) return trimmed;
   const url = toUrl(trimmed);
@@ -109,7 +105,6 @@ export function extractAccountKey(input: string): string | null {
   const param =
     url.searchParams.get("account") ?? url.searchParams.get("userId");
   if (param && ACCOUNT_KEY_PATTERN.test(param)) return param;
-  // Stremio Web: `#/addons?addon=<Addon URL>`.
   const hashQuery = url.hash.split("?")[1];
   const addon = hashQuery && new URLSearchParams(hashQuery).get("addon");
   if (addon) {

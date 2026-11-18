@@ -1,5 +1,3 @@
-// Fixtures (shapes from api.simkl.org, 2026-10)
-
 export function activities(overrides: {
   all: string;
   shows?: Record<string, string>;
@@ -156,7 +154,7 @@ export const MOVIES = {
       },
     },
     {
-      // Legacy entry without an add time.
+      /** Legacy entry without an add time. */
       added_to_watchlist_at: null,
       last_watched_at: null,
       user_rating: null,

@@ -36,9 +36,8 @@ interface AccountEditPolicy {
 
 export function accountEditPolicy(
   access: AccountAccess,
-  /** The private Account that this page just made from a legacy install. */
   upgradedTo: string | null,
-): AccountEditPolicy {
+) {
   const moved = access === "legacy" && !!upgradedTo;
   const editLock = moved
     ? "This install has a private URL now. Make changes from the configure page of your new install."
@@ -87,7 +86,7 @@ export function reconcileActionProviders(
   order: ProviderId[],
   selected: ProviderId[],
   capable: ProviderId[],
-): ActionProviders {
+) {
   return {
     order: [
       ...order.filter((id) => capable.includes(id)),
@@ -137,7 +136,7 @@ export function hasUnsavedChanges(
   submitted: AccountForm,
   latest: AccountForm,
   access: AccountAccess,
-): boolean {
+) {
   return (
     JSON.stringify(configBody(latest, access)) !==
     JSON.stringify(configBody(submitted, access))

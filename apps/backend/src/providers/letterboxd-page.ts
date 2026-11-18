@@ -6,7 +6,6 @@ const letterboxdFilmSchema = z.object({
   slug: z.string().regex(/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/),
   title: z.string().min(1),
   year: z.number().int().min(1870).max(2200).optional(),
-  /** The diary watch date (YYYY-MM-DD), only for diary pages. */
   watchedAt: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -21,7 +20,6 @@ export const letterboxdSnapshotSchema = z.object({
   pages: z.number().int().positive().optional(),
 });
 
-/** The diary watch date carried by a diary row's day link, as YYYY-MM-DD. */
 function diaryDate($: ReturnType<typeof load>, card: ReturnType<typeof $>) {
   const row = card.closest("tr.diary-entry-row");
   if (row.length === 0) return undefined;
@@ -98,12 +96,6 @@ export function parseLetterboxdPage(html: string, { diary = false } = {}) {
         $(node).children().length === 0 &&
         !$(node).text().trim(),
     );
-  // A diary has no poster grid: an empty one is a complete document with no
-  // diary rows. completeDocument in `valid` keeps a truncated page from passing.
-  // An empty diary must still be a diary: require its closed table, so an
-  // unrelated complete page cannot replace a saved Catalog with nothing.
-  // An empty watchlist or list has no grid at all, only its closed "No films
-  // yet" block inside the page content.
   const empty = diary
     ? films.length === 0 &&
       closed("table#diary-table") &&
@@ -112,7 +104,6 @@ export function parseLetterboxdPage(html: string, { diary = false } = {}) {
   const next = $("a.next, a[rel='next']").first().attr("href") ?? null;
   if ($("a.next, a[rel='next']").length > 0 && !next?.trim())
     invalid.push("pagination");
-  // The highest page number in the pagination, for the queue estimate only.
   const pages = Math.max(
     0,
     ...$(".paginate-pages a[href]")

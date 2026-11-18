@@ -9,36 +9,18 @@ import { tmdbSearchMatchStrategy } from "../titles/tmdb-match";
 import { wikidataStrategy } from "../titles/wikidata";
 import { graphqlRequest, RateLimiter } from "./http";
 import { readPages } from "./paging";
-import type {
-  PagedRead,
-  ProviderAdapter,
-  SourceEntry,
-  SourceValidation,
-} from "./types";
+import type { PagedRead, ProviderAdapter, SourceEntry } from "./types";
 import { SourceUnavailableError } from "./types";
 
-/**
- * SensCritique's unofficial GraphQL API, the one its website uses. There is
- * no public API: introspection is off, a CSRF check rejects requests that are
- * not JSON, and Cloudflare sits in front. Products carry no IMDb or TMDB ID,
- * so every entry goes through the ID resolver (ADR 0002).
- */
 const SENSCRITIQUE_GRAPHQL = "https://apollo.senscritique.com/";
 const senscritiqueLimiter = new RateLimiter(3, 1000);
-/**
- * A page answers in under a second. Some requests stall until the timeout,
- * so a query waits less than the default and is sent again once.
- */
 const QUERY_TIMEOUT_MS = 8_000;
 const PAGE_SIZE = 100;
-/** Stop after this many pages per universe (10,000 products). */
 const MAX_PAGES = 100;
 
-/** SensCritique universes: products of other universes (books, games…) are skipped. */
 const UNIVERSE_MOVIE = 1;
 const UNIVERSE_SERIES = 4;
 
-/** Wikidata property "SensCritique work ID". */
 const WIKIDATA_SENSCRITIQUE_WORK = "P10100";
 
 const USER_REF = /^users\/([\w.-]+)\/([a-z]+)$/;
@@ -54,25 +36,15 @@ interface Chart {
   universe: Universe;
 }
 
-/** The public charts, read with `top(universe, subtype)`. */
 const CHARTS = new Map<string, Chart>([
   ["top111-movies", { subtype: "TOP_111", universe: "movie" }],
   ["top111-series", { subtype: "TOP_111", universe: "tvShow" }],
   ["top100-movies", { subtype: "TOP_100_OUT_OF_TOP_10", universe: "movie" }],
   ["top100-series", { subtype: "TOP_100_OUT_OF_TOP_10", universe: "tvShow" }],
 ]);
-/** A chart has 100 or 111 products; one request reads it whole. */
 const CHART_LIMIT = 200;
 
-/**
- * The collection actions read per universe. A rated series is watched, but
- * the series DONE collection misses most of them (7 DONE against 167 rated
- * for one user), so "done" also reads the rated series. For films, DONE
- * already holds the rated ones.
- */
-function collectionReads(
-  collection: SensCritiqueCollection,
-): [Universe, CollectionAction][] {
+function collectionReads(collection: SensCritiqueCollection) {
   const { action } = SENSCRITIQUE_COLLECTIONS[collection];
   const reads: [Universe, CollectionAction][] = [
     ["movie", action],
@@ -82,8 +54,7 @@ function collectionReads(
   return reads;
 }
 
-/** The username and collection of a `users/{user}/{collection}` reference. */
-function userRef(ref: string): [string, SensCritiqueCollection] | null {
+function userRef(ref: string) {
   const match = USER_REF.exec(ref);
   return match && isSensCritiqueCollection(match[2])
     ? [match[1], match[2]]
@@ -96,12 +67,9 @@ const senscritiqueProductSchema = z.object({
   id: z.number(),
   title: z.string().nullish(),
   originalTitle: z.string().nullish(),
-  /** Often the French release year, not the original one. */
   yearOfProduction: z.number().nullish(),
-  /** Original release date, sometimes partial ("1966-07-00", "2011"). */
   dateReleaseOriginal: z.string().nullish(),
   dateRelease: z.string().nullish(),
-  /** Seconds (per episode for series). */
   duration: z.number().nullish(),
   universe: z.number().nullish(),
   directors: z.array(personSchema).nullish(),
@@ -109,7 +77,6 @@ const senscritiqueProductSchema = z.object({
   providers: z
     .array(z.object({ justwatchUrl: z.string().nullish() }))
     .nullish(),
-  /** The user's row for this product; its ID grows with each new action. */
   otherUserInfos: z.object({ id: z.number().nullish() }).nullish(),
 });
 export type SensCritiqueProduct = z.infer<typeof senscritiqueProductSchema>;
@@ -137,8 +104,6 @@ const USER_QUERY = `
   }
 `;
 
-// LAST_ACTION_DESC is newest first, the order of the action row IDs that
-// mergeByActionId relies on.
 const COLLECTION_QUERY = `
   query StremlistCollection($username: String!, $action: ProductAction!, $universe: String, $limit: Int, $offset: Int) {
     user(username: $username) {
@@ -161,7 +126,6 @@ const LIST_INFO_QUERY = `
   }
 `;
 
-// BY_DEFAULT is the order that the list shows on SensCritique.
 const LIST_QUERY = `
   query StremlistList($id: Int!, $limit: Int, $offset: Int) {
     userList(id: $id) {
@@ -175,7 +139,6 @@ const LIST_QUERY = `
   }
 `;
 
-// Best ranked first.
 const CHART_QUERY = `
   query StremlistChart($universe: String, $subtype: TopSubtype!, $limit: Int) {
     top(universe: $universe, subtype: $subtype, limit: $limit, offset: 0) {
@@ -190,7 +153,6 @@ const POLL_INFO_QUERY = `
   }
 `;
 
-// The results of a poll, best ranked first.
 const POLL_QUERY = `
   query StremlistPoll($id: Int!) {
     poll(id: $id) { id products { ${PRODUCT_FIELDS} } }
@@ -269,13 +231,12 @@ async function senscritiqueQuery<T>(
   query: string,
   variables: Record<string, unknown>,
   schema: z.ZodType<T>,
-): Promise<T> {
+) {
   const send = () =>
     graphqlRequest(SENSCRITIQUE_GRAPHQL, query, variables, schema, {
       limiter: senscritiqueLimiter,
       timeoutMs: QUERY_TIMEOUT_MS,
     });
-  // The queries only read, so sending one again is safe.
   const json = await send().catch((error: unknown) => {
     if (error instanceof Error && error.name === "TimeoutError") return send();
     throw error;
@@ -288,24 +249,17 @@ async function senscritiqueQuery<T>(
   return json.data;
 }
 
-function universeType(
-  universe: number | null | undefined,
-): "movie" | "series" | null {
+function universeType(universe: number | null | undefined) {
   if (universe === UNIVERSE_MOVIE) return "movie";
   return universe === UNIVERSE_SERIES ? "series" : null;
 }
 
-function yearFromDate(date: string | null | undefined): number | undefined {
+function yearFromDate(date: string | null | undefined) {
   const year = Number(date?.slice(0, 4));
   return Number.isInteger(year) && year > 0 ? year : undefined;
 }
 
-/**
- * The original release year, which is what TMDB and IMDb use.
- * "yearOfProduction" is often the French release year of old films (Gaslight,
- * 1944, has 1947), so it only fills in when no date is known.
- */
-function yearOf(product: SensCritiqueProduct): number | undefined {
+function yearOf(product: SensCritiqueProduct) {
   return (
     yearFromDate(product.dateReleaseOriginal) ??
     yearFromDate(product.dateRelease) ??
@@ -314,15 +268,13 @@ function yearOf(product: SensCritiqueProduct): number | undefined {
   );
 }
 
-function names(
-  people: z.infer<typeof personSchema>[] | null | undefined,
-): string[] {
+function names(people: z.infer<typeof personSchema>[] | null | undefined) {
   return (people ?? [])
     .map((person) => person.name?.trim())
     .filter((name): name is string => !!name);
 }
 
-function justwatchPath(product: SensCritiqueProduct): string | undefined {
+function justwatchPath(product: SensCritiqueProduct) {
   for (const provider of product.providers ?? []) {
     const url = provider.justwatchUrl?.trim();
     if (!url) continue;
@@ -336,9 +288,7 @@ function justwatchPath(product: SensCritiqueProduct): string | undefined {
  * Turn a SensCritique product into a Source entry, or null for products that
  * are not movies or series.
  */
-export function productToEntry(
-  product: SensCritiqueProduct,
-): SourceEntry | null {
+export function productToEntry(product: SensCritiqueProduct) {
   const type = universeType(product.universe);
   if (!type || !product.id) return null;
   const directors = names(product.directors);
@@ -347,8 +297,6 @@ export function productToEntry(
     title: product.title ?? undefined,
     originalTitle: product.originalTitle ?? undefined,
     year: yearOf(product),
-    // Series rarely have a director on SensCritique; their creators play the
-    // same role for the TMDB match (TMDB's "created_by").
     directors:
       directors.length > 0 || type === "movie"
         ? directors
@@ -363,14 +311,7 @@ export function productToEntry(
   };
 }
 
-/**
- * Merge two lists that are each oldest first, using the user's action row ID
- * as the clock. The collection API has no date, but these IDs grow over time.
- */
-function mergeByActionId(
-  a: SensCritiqueProduct[],
-  b: SensCritiqueProduct[],
-): SensCritiqueProduct[] {
+function mergeByActionId(a: SensCritiqueProduct[], b: SensCritiqueProduct[]) {
   const merged: SensCritiqueProduct[] = [];
   let i = 0;
   let j = 0;
@@ -382,28 +323,21 @@ function mergeByActionId(
   return merged.concat(a.slice(i), b.slice(j));
 }
 
-function isPrivateProfile(
-  user: z.infer<typeof userSchema> | null | undefined,
-): boolean {
+function isPrivateProfile(user: z.infer<typeof userSchema> | null | undefined) {
   return user?.settings?.privacyProfile === true;
 }
 
-/**
- * The next page number after `page`, or null when this page of `count`
- * items reached the end of a collection of `total`.
- */
-function nextPage(page: number, count: number, total: number): number | null {
+function nextPage(page: number, count: number, total: number) {
   return count < PAGE_SIZE || page * PAGE_SIZE + count >= total
     ? null
     : page + 1;
 }
 
-/** One collection of one universe, newest first, as the API returns it. */
 function fetchUniverseCollection(
   username: string,
   universe: Universe,
   action: CollectionAction,
-): Promise<PagedRead<SensCritiqueProduct>> {
+) {
   return readPages({
     maxPages: MAX_PAGES,
     first: 0,
@@ -443,16 +377,12 @@ function fetchUniverseCollection(
 async function fetchCollection(
   username: string,
   collection: SensCritiqueCollection,
-): Promise<PagedRead<SensCritiqueProduct>> {
-  // The shared limiter keeps the reads under SensCritique's rate.
+) {
   const reads = await Promise.all(
     collectionReads(collection).map(([universe, action]) =>
       fetchUniverseCollection(username, universe, action),
     ),
   );
-  // The API returns the newest action first; the canonical order is oldest
-  // first. A series both done and rated comes twice with the same action
-  // row, and fetchSource keeps it once.
   return {
     items: reads
       .map((read) => read.items.reverse())
@@ -461,9 +391,7 @@ async function fetchCollection(
   };
 }
 
-async function fetchChart(
-  chart: Chart,
-): Promise<PagedRead<SensCritiqueProduct>> {
+async function fetchChart(chart: Chart) {
   const { top } = await senscritiqueQuery(
     CHART_QUERY,
     { ...chart, limit: CHART_LIMIT },
@@ -472,7 +400,7 @@ async function fetchChart(
   return { items: top ?? [], complete: true };
 }
 
-async function fetchPoll(id: number): Promise<PagedRead<SensCritiqueProduct>> {
+async function fetchPoll(id: number) {
   const { poll } = await senscritiqueQuery(POLL_QUERY, { id }, pollDataSchema);
   if (!poll) {
     throw new SourceUnavailableError(
@@ -483,9 +411,7 @@ async function fetchPoll(id: number): Promise<PagedRead<SensCritiqueProduct>> {
   return { items: poll.products ?? [], complete: true };
 }
 
-function fetchListProducts(
-  id: number,
-): Promise<PagedRead<SensCritiqueProduct>> {
+function fetchListProducts(id: number) {
   return readPages({
     maxPages: MAX_PAGES,
     first: 0,
@@ -535,7 +461,7 @@ export const senscritiqueProvider: ProviderAdapter = {
   id: "senscritique",
   freshnessMs: 6 * 60 * 60_000,
 
-  async validateSource(ref): Promise<SourceValidation> {
+  async validateSource(ref) {
     const user = userRef(ref);
     if (user) {
       const [name, collection] = user;
@@ -574,7 +500,6 @@ export const senscritiqueProvider: ProviderAdapter = {
       );
       if (!poll) return { ok: false, reason: "not_found" };
       const type = universeType(poll.universe);
-      // A poll of another universe has no movies or series.
       if (typeof poll.universe === "number" && !type) {
         return { ok: false, reason: "not_found" };
       }
@@ -597,7 +522,6 @@ export const senscritiqueProvider: ProviderAdapter = {
       if (!userList) return { ok: false, reason: "not_found" };
       if (userList.isPrivate) return { ok: false, reason: "private" };
       const type = universeType(userList.universe);
-      // A list of another universe has no movies or series.
       if (typeof userList.universe === "number" && !type) {
         return { ok: false, reason: "not_found" };
       }
@@ -651,8 +575,10 @@ export const senscritiqueProvider: ProviderAdapter = {
       : { namespace: "senscritique", externalId: String(id) };
   },
 
-  // Exact strategies first. Wikidata answers a whole batch in one request, so
-  // it goes before the JustWatch lookups (one request per entry).
+  /**
+   * Exact strategies first. Wikidata answers a whole batch in one request, so
+   * it goes before the JustWatch lookups (one request per entry).
+   */
   resolverStrategies: [
     senscritiqueWikidataStrategy,
     justwatchPathStrategy,

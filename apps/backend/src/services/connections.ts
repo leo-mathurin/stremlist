@@ -1,7 +1,6 @@
 import type { Tables } from "@stremlist/shared/database";
 import type { ConnectionSource, ProviderId } from "@stremlist/shared/providers";
 import { CONNECTION_SOURCES, isProviderId } from "@stremlist/shared/providers";
-import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
 import { randomUUID } from "node:crypto";
 import { decryptSecret, encryptSecret } from "../lib/crypto";
 import { supabase } from "../lib/supabase";
@@ -16,7 +15,6 @@ export interface OwnedConnectionAccess extends ConnectionAccess {
   readonly identity: ConnectionIdentity;
 }
 
-/** Refresh a little before expiry so a request never uses a dying token. */
 const REFRESH_MARGIN_MS = 10 * 60_000;
 const REFRESH_LEASE_SECONDS = 30;
 const LEASE_WAIT_ATTEMPTS = 6;
@@ -28,18 +26,13 @@ interface StoredConnection {
   provider: ProviderId;
   username: string | null;
   accessToken: string;
-  /**
-   * The stored ciphertext of the access token. It changes with every new
-   * authorization and token refresh, so renewal marks written with it only
-   * apply to the tokens that the request used.
-   */
   sealedToken: string;
   refreshToken: string | null;
   expiresAt: Date | null;
   redirectUri: string;
 }
 
-function decode(row: Tables<"connections">): StoredConnection | null {
+function decode(row: Tables<"connections">) {
   if (!isProviderId(row.provider)) return null;
   try {
     return {
@@ -62,10 +55,7 @@ function decode(row: Tables<"connections">): StoredConnection | null {
   }
 }
 
-async function readConnection(
-  accountId: string,
-  provider: ProviderId,
-): Promise<StoredConnection | null> {
+async function readConnection(accountId: string, provider: ProviderId) {
   const { data, error } = await supabase
     .from("connections")
     .select("*")
@@ -76,9 +66,7 @@ async function readConnection(
   return decode(data);
 }
 
-export async function listConnections(
-  accountId: string,
-): Promise<ConnectionSummary[]> {
+export async function listConnections(accountId: string) {
   const { data, error } = await supabase
     .from("connections")
     .select("provider, provider_username, created_at, needs_renewal_since")
@@ -105,11 +93,7 @@ export async function listConnections(
  * The Provider user and authorization of each Connection, for state that
  * belongs to one authorization (Action membership). Server side only.
  */
-export async function listConnectionAuthorizations(
-  accountId: string,
-): Promise<
-  { provider: ProviderId; username: string | null; authorization: string }[]
-> {
+export async function listConnectionAuthorizations(accountId: string) {
   const { data, error } = await supabase
     .from("connections")
     .select("provider, provider_username, authorization_version")
@@ -142,7 +126,7 @@ export async function saveConnection(
   tokens: OAuthTokens,
   username: string | null,
   redirectUri: string,
-): Promise<void> {
+) {
   const { error } = await supabase.rpc("save_connection", {
     p_account_id: accountId,
     p_provider: provider,
@@ -158,28 +142,20 @@ export async function saveConnection(
   if (error) throw error;
 }
 
-/**
- * Save refreshed tokens, only over the refreshed ones and while the lease is
- * still held. Returns the sealed access token, or null when the Connection
- * changed meanwhile (a new authorization, or a refresh after an expired
- * lease): its tokens are newer, so they stay.
- */
 async function updateTokens(
   refreshed: StoredConnection,
   leaseToken: string,
   tokens: OAuthTokens,
-): Promise<string | null> {
+) {
   const sealedToken = encryptSecret(tokens.accessToken);
   const { data, error } = await supabase
     .from("connections")
     .update({
       access_token: sealedToken,
-      // Keep the old refresh token when the Provider does not rotate it.
       ...(tokens.refreshToken
         ? { refresh_token: encryptSecret(tokens.refreshToken) }
         : {}),
       expires_at: tokens.expiresAt?.toISOString() ?? null,
-      // The Provider accepted the refresh token, so the grant still works.
       needs_renewal_since: null,
       updated_at: new Date().toISOString(),
     })
@@ -192,17 +168,7 @@ async function updateTokens(
   return data.length > 0 ? sealedToken : null;
 }
 
-/**
- * Mark these tokens as refused by the Provider (revoked grant, refused
- * refresh), so the configure page asks the user to connect again, or clear
- * the mark after a read with them worked. Marking keeps the first time it
- * happened. Tokens replaced since (a new authorization, a refresh by another
- * request) are left alone. Never throws.
- */
-async function setNeedsRenewal(
-  connection: StoredConnection,
-  refused: boolean,
-): Promise<void> {
+async function setNeedsRenewal(connection: StoredConnection, refused: boolean) {
   const query = supabase
     .from("connections")
     .update({ needs_renewal_since: refused ? new Date().toISOString() : null })
@@ -230,8 +196,7 @@ export async function deleteConnection(
   accountId: string,
   provider: ProviderId,
   sources: { listId: string; sourceRef: string }[],
-): Promise<void> {
-  // A Provider turned off (kill switch) gets no request, not even this one.
+) {
   const stored = isProviderEnabled(provider)
     ? await readConnection(accountId, provider)
     : null;
@@ -254,30 +219,22 @@ export async function deleteConnection(
   if (error) throw error;
 }
 
-function isFresh(connection: StoredConnection): boolean {
+function isFresh(connection: StoredConnection) {
   return (
     !connection.expiresAt ||
     connection.expiresAt.getTime() - Date.now() > REFRESH_MARGIN_MS
   );
 }
 
-function isUsable(connection: StoredConnection): boolean {
+function isUsable(connection: StoredConnection) {
   return !connection.expiresAt || connection.expiresAt.getTime() > Date.now();
 }
 
-function sleep(ms: number): Promise<void> {
+function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Refresh under a lease: only one process refreshes a Connection at a time
- * (Trakt refresh tokens are single-use; Simkl cancels the previous access
- * token). The others wait for the new token, or keep the old one while it is
- * still valid.
- */
-async function refreshUnderLease(
-  connection: StoredConnection,
-): Promise<StoredConnection> {
+async function refreshUnderLease(connection: StoredConnection) {
   const { accountId, provider } = connection;
   const leaseToken = randomUUID();
   const { data: claimed, error } = await supabase.rpc(
@@ -293,7 +250,6 @@ async function refreshUnderLease(
 
   if (claimed) {
     try {
-      // Another process may have refreshed between our read and the claim.
       const latest = (await readConnection(accountId, provider)) ?? connection;
       if (isFresh(latest)) return latest;
       if (!latest.refreshToken) {
@@ -354,7 +310,7 @@ async function refreshUnderLease(
 export async function getConnectionAccess(
   accountId: string,
   provider: ProviderId,
-): Promise<OwnedConnectionAccess | null> {
+) {
   const stored = await readConnection(accountId, provider);
   if (!stored) return null;
   let current = stored;
@@ -393,9 +349,8 @@ export async function getConnectionAccess(
 export async function connectionSources(
   accountId: string,
   provider: ProviderId,
-): Promise<ConnectionSource[]> {
+) {
   const staticSources = CONNECTION_SOURCES[provider] ?? [];
-  // The kill switch also stops the call that lists the user's own lists.
   const connection = isProviderEnabled(provider)
     ? await getConnectionAccess(accountId, provider)
     : null;

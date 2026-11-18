@@ -4,13 +4,6 @@ import { frontendUrl } from "../lib/urls";
 
 const oauth = new Hono();
 
-/**
- * The redirect URI registered with every Provider app. It completes nothing:
- * it hands the answer to the configure page in the URL fragment, which never
- * reaches a server or a Referer. The page completes the authorization only
- * if this browser started it (`POST /connections/:provider/complete` with
- * its browser key), so a consent link sent to someone else links nothing.
- */
 oauth.get("/oauth/:provider/callback", (c) => {
   const provider = c.req.param("provider");
   const { code, state, error } = c.req.query();

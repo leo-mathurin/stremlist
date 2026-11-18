@@ -1,11 +1,10 @@
-/** In-memory versions of the Account and List RPCs in supabase/migrations. */
 import { isRecord, mustString } from "../json";
 import type { RpcArgs, RpcHandler } from "./rpc";
 import { numberOf, rpcError, secondsFromNow } from "./rpc";
-import type { Result, Row } from "./store";
+import type { Row } from "./store";
 import { EPOCH, db, now, uniqueError } from "./store";
 
-function replaceAccountConfig(args: RpcArgs): Result {
+function replaceAccountConfig(args: RpcArgs) {
   const accountId = args.p_account_id;
   const account = db.getTable("accounts").find((row) => row.id === accountId);
   if (typeof accountId !== "string" || !account) {
@@ -106,8 +105,7 @@ function replaceAccountConfig(args: RpcArgs): Result {
   };
 }
 
-/** Copies of an Account's List rows, in their order. */
-function listsOf(accountId: string): Row[] {
+function listsOf(accountId: string) {
   return db
     .getTable("lists")
     .filter((row) => row.account_id === accountId)
@@ -120,8 +118,7 @@ function listsOf(accountId: string): Row[] {
     .map((row) => ({ ...row }));
 }
 
-/** Same rules as public.create_account_with_config. */
-function createAccountWithConfig(args: RpcArgs): Result {
+function createAccountWithConfig(args: RpcArgs) {
   const account = db.insert("accounts", { is_active: true });
   const accountId = mustString(account.id, "accounts.id");
   const saved = replaceAccountConfig({
@@ -143,7 +140,7 @@ function createAccountWithConfig(args: RpcArgs): Result {
   };
 }
 
-function findAccount(args: RpcArgs): Row | undefined {
+function findAccount(args: RpcArgs) {
   return db.getTable("accounts").find((row) => row.id === args.p_account_id);
 }
 

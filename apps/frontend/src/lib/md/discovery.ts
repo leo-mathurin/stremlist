@@ -16,7 +16,7 @@ export const DISCOVERY_PATHS = [
   "/api/md/_catalog",
 ];
 
-export function sitemap(): string {
+export function sitemap() {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${listMarkdownRoutes()
     .map(
       (page) =>
@@ -25,13 +25,13 @@ export function sitemap(): string {
     .join("\n")}\n</urlset>\n`;
 }
 
-export function discoveryLinks(): string {
+export function discoveryLinks() {
   return ["/llms.txt", "/llms-full.txt", "/ai.txt"]
     .map((path) => `<${absoluteUrl(path)}>; rel="describedby"`)
     .join(", ");
 }
 
-export function llms(): string {
+export function llms() {
   return (
     [
       heading(1, SITE.name),
@@ -60,7 +60,7 @@ export function llms(): string {
   );
 }
 
-export function fullContent(userCount: number | null): string {
+export function fullContent(userCount: number | null) {
   const content =
     [
       heading(1, `${SITE.name} - full content`),
@@ -91,7 +91,7 @@ export function catalog() {
   }));
 }
 
-export function aiPolicy(): string {
+export function aiPolicy() {
   return `# AI usage policy for ${SITE.name}
 
 Website: ${SITE.url}
@@ -136,7 +136,7 @@ URL: mailto:${SITE.contact}
 `;
 }
 
-export function robots(): string {
+export function robots() {
   return (
     [
       "# Keep in sync with /llms.txt and /ai.txt; generated from the shared site config and Markdown registry.",

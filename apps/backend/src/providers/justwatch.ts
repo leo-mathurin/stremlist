@@ -6,21 +6,11 @@ import {
 } from "../titles/justwatch-lookup";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
 import { readPages } from "./paging";
-import type { ProviderAdapter, SourceEntry, SourceValidation } from "./types";
+import type { ProviderAdapter, SourceValidation } from "./types";
 import { SourceUnavailableError } from "./types";
 
-/**
- * List IDs look like "tl-us-<uuid>" for custom lists and "tl-pa-<uuid>" for
- * JustWatch's public lists. The two letters are not a country.
- */
 const LIST_ID = /^tl-[a-z]{2}-[0-9a-z-]+$/;
 
-/**
- * `titles(country:)` hides the titles that have no page in that country (a
- * public list had 101 titles in the US, 77 in FR, 59 in JP). With
- * `includeTitlesWithoutUrl` every country returns the same titles in the same
- * order, so the country only selects which localized content we read.
- */
 const COUNTRY = "US";
 const LANGUAGE = "en";
 const PAGE_SIZE = 200;
@@ -110,11 +100,7 @@ type JustwatchList = z.infer<typeof justwatchListSchema>;
 
 const listPageSchema = z.object({ node: justwatchListSchema.nullish() });
 
-async function fetchListPage(
-  id: string,
-  first: number,
-  after: string | null,
-): Promise<JustwatchList> {
+async function fetchListPage(id: string, first: number, after: string | null) {
   const json = await justwatchQuery(
     LIST_QUERY,
     { id, country: COUNTRY, language: LANGUAGE, first, after },
@@ -130,9 +116,6 @@ async function fetchListPage(
       "This JustWatch list is private",
     );
   }
-  // A deleted list or a bad ID gives `node: null` with a gRPC NotFound. Any
-  // other error (for example a schema change) is a real failure, so it must
-  // not look like a deleted list.
   const isOtherNode = !!node && node.__typename !== "GenericTitleList";
   if (isOtherNode || (!node && (!message || /not ?found/i.test(message)))) {
     throw new SourceUnavailableError(
@@ -143,7 +126,7 @@ async function fetchListPage(
   throw new Error(`JustWatch list query failed: ${message}`);
 }
 
-function toEntry(node: JustwatchTitleNode): SourceEntry {
+function toEntry(node: JustwatchTitleNode) {
   const type =
     node.objectType === "SHOW"
       ? "series"
@@ -167,8 +150,7 @@ function toEntry(node: JustwatchTitleNode): SourceEntry {
   };
 }
 
-function listName(list: JustwatchList): string | undefined {
-  // Public lists keep their name in `content`; the top-level field is "".
+function listName(list: JustwatchList) {
   for (const name of [list.content?.name, list.name]) {
     const trimmed = name?.trim();
     if (trimmed) return trimmed;
@@ -176,7 +158,7 @@ function listName(list: JustwatchList): string | undefined {
   return undefined;
 }
 
-function normalizeRef(ref: string): string {
+function normalizeRef(ref: string) {
   return ref.trim().toLowerCase();
 }
 
@@ -194,7 +176,7 @@ export const justwatchProvider: ProviderAdapter = {
   id: "justwatch",
   freshnessMs: 6 * 60 * 60_000,
 
-  async validateSource(rawRef): Promise<SourceValidation> {
+  async validateSource(rawRef) {
     const ref = normalizeRef(rawRef);
     if (!LIST_ID.test(ref)) return { ok: false, reason: "not_found" };
     const list = await fetchListPage(ref, 1, null);
@@ -214,7 +196,6 @@ export const justwatchProvider: ProviderAdapter = {
         "This is not a JustWatch list ID",
       );
     }
-    // Incomplete when MAX_ENTRIES stops the read before the last page.
     const { items: nodes, complete } = await readPages({
       maxPages: Number.POSITIVE_INFINITY,
       maxItems: MAX_ENTRIES,
@@ -238,8 +219,6 @@ export const justwatchProvider: ProviderAdapter = {
       },
     });
 
-    // Custom lists come oldest added first, the canonical order (checked on a
-    // real list on 2026-10-06); JustWatch's own lists keep their curated order.
     return { entries: nodes.map(toEntry), complete };
   },
 

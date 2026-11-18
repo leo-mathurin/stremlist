@@ -31,13 +31,13 @@ const STREAM_RESOURCE = {
   idPrefixes: ["tt"],
 };
 
-async function manifest(key: string): Promise<StremioManifest> {
+async function manifest(key: string) {
   const res = await app.request(`/${key}/manifest.json`);
   expect(res.status).toBe(200);
   return readJson(res, stremioManifest);
 }
 
-function catalogIds(value: StremioManifest): string[] {
+function catalogIds(value: StremioManifest) {
   return value.catalogs.map((catalog) => catalog.id);
 }
 

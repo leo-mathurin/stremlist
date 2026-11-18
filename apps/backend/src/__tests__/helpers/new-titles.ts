@@ -1,14 +1,10 @@
-/**
- * Shared setup for the New titles tests: fake Source lists that change
- * between synchronizations, and requests that read the New titles catalog.
- */
 import type { TitleType } from "@stremlist/shared/constants";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { expect, vi } from "vite-plus/test";
 import { z } from "zod";
 
 import app from "../../index.js";
-import type { SourceEntry, SourceSnapshot } from "../../providers/types";
+import type { SourceSnapshot } from "../../providers/types";
 import type { SourceHistory } from "../../services/title-history";
 import { historyKey } from "../../services/title-history";
 import { LIST_IDS, movie, seedAccount, seedList } from "./fixtures.js";
@@ -22,7 +18,6 @@ import {
 } from "./mock-registry.js";
 import { db, resetRpc } from "./mock-supabase.js";
 
-/** A stored history, as services/title-history.ts writes it. */
 const sourceHistory = z.object({
   version: z.literal(1),
   source: z.string(),
@@ -46,11 +41,11 @@ const START = new Date("2026-10-01T12:00:00.000Z");
 export const NEXT_SYNC_MS = 31 * 60_000;
 export const DAY_MS = 24 * 60 * 60_000;
 
-export function series(id: string): StremioMeta {
+export function series(id: string) {
   return movie(id, { type: "series", name: `Series ${id}` });
 }
 
-export function entry(meta: StremioMeta): SourceEntry {
+export function entry(meta: StremioMeta) {
   return { imdbId: meta.id, meta };
 }
 
@@ -98,10 +93,7 @@ export async function sync(listId: string, type: TitleType = "movie") {
   expect(res.status).toBe(200);
 }
 
-export async function newTitles(
-  type: TitleType = "movie",
-  key = accountId,
-): Promise<StremioMeta[]> {
+export async function newTitles(type: TitleType = "movie", key = accountId) {
   const res = await app.request(
     `/${key}/catalog/${type}/new-titles-${type}.json`,
   );
@@ -109,11 +101,10 @@ export async function newTitles(
   return (await readJson(res, metasBody)).metas;
 }
 
-export function ids(metas: StremioMeta[]): string[] {
+export function ids(metas: StremioMeta[]) {
   return metas.map((meta) => meta.id);
 }
 
-/** The stored histories (ADR 0008), with the Account and Source list. */
 function storedHistories() {
   return [...r2Objects]
     .filter(([key]) =>

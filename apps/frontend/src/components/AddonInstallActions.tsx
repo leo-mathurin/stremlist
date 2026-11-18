@@ -9,7 +9,6 @@ const edgeBlurClassName =
 const swapClassName =
   "transition-[opacity,scale,filter] duration-200 ease-out-quint";
 
-/** Reduced motion keeps the crossfade and drops the scale. */
 const swapHiddenClassName =
   "scale-50 opacity-0 blur-[2px] motion-reduce:scale-100";
 
@@ -32,7 +31,6 @@ export default function AddonInstallActions({
   const urlInput = useRef<HTMLInputElement>(null);
   const urls = buildAddonUrls(accountKey);
 
-  // Shows the edge fade only on the sides where the Addon URL is cut off.
   const updateOverflow = useCallback(() => {
     const input = urlInput.current;
     if (!input) return;
@@ -101,8 +99,6 @@ export default function AddonInstallActions({
         </p>
         <div className="flex items-center gap-1 rounded-2xl bg-black/5 p-1">
           <div className="relative min-w-0 flex-1">
-            {/* An indent instead of padding: it scrolls with the text, so the
-                text reaches the faded edges. */}
             <input
               ref={urlInput}
               type="text"
@@ -138,7 +134,6 @@ export default function AddonInstallActions({
             aria-label={copied ? "Addon URL copied" : "Copy Addon URL"}
             className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-white px-3 text-xs font-bold text-ink shadow-xs transition-[background-color,scale] duration-150 hover:bg-cloud active:scale-[0.97]"
           >
-            {/* Both states stay stacked so the button keeps one width. */}
             <span className="grid *:col-start-1 *:row-start-1">
               <Copy
                 className={cn(

@@ -3,10 +3,10 @@ export async function mapWithConcurrency<T, R>(
   items: T[],
   limit: number,
   task: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
+) {
   const results: R[] = [];
   let next = 0;
-  async function worker(): Promise<void> {
+  async function worker() {
     while (next < items.length) {
       const index = next++;
       results[index] = await task(items[index], index);

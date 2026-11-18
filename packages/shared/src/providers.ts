@@ -60,14 +60,14 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     connection: "optional",
     actions: ["watchlist", "watched", "rating"],
     linkExample: "https://trakt.tv/users/username/watchlist",
-    // Since 2026-07-22 (docs/architecture.md).
+    /** Since 2026-07-22 (docs/architecture.md). */
     connectNote:
       "A free Trakt account can connect only one app. If Stremio's own Trakt sync uses it, paste public Trakt links instead.",
   },
   simkl: {
     label: "Simkl",
     availability: "available",
-    // Its trending charts need no Connection (PUBLIC_SOURCES).
+    /** Its trending charts need no Connection (PUBLIC_SOURCES). */
     connection: "optional",
     actions: ["watchlist", "watched", "rating"],
     linkExample: null,
@@ -106,7 +106,7 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
 export function joinProviderLabels(
   providers: readonly ProviderId[],
   word: "and" | "or" = "and",
-): string {
+) {
   const labels = providers.map((provider) => PROVIDERS[provider].label);
   if (labels.length <= 1) return labels.join("");
   return `${labels.slice(0, -1).join(", ")} ${word} ${labels.at(-1) ?? ""}`;
@@ -175,7 +175,7 @@ export interface ConnectionSource {
   url?: string;
 }
 
-function toUrl(input: string): URL | null {
+function toUrl(input: string) {
   const trimmed = input.trim();
   if (!trimmed) return null;
   try {
@@ -187,19 +187,14 @@ function toUrl(input: string): URL | null {
   }
 }
 
-function hostIs(url: URL, ...domains: string[]): boolean {
+function hostIs(url: URL, ...domains: string[]) {
   const host = url.hostname.toLowerCase().replace(/^www\./, "");
   return domains.some(
     (domain) => host === domain || host.endsWith(`.${domain}`),
   );
 }
 
-/**
- * The decoded path segments, or none when the path is not valid percent
- * encoding (`alice%`), so the link reads as unrecognized instead of throwing
- * while the page renders.
- */
-function segments(url: URL): string[] {
+function segments(url: URL) {
   try {
     return url.pathname
       .split("/")
@@ -222,21 +217,18 @@ const IMDB_P_HANDLE = new RegExp(
   String.raw`(?:^|\/)(${IMDB_P_HANDLE_SOURCE})(?:$|[/?#])`,
 );
 
-function parseImdbLink(input: string): ParsedSourceLink | null {
+function parseImdbLink(input: string) {
   const trimmed = input.trim();
   if (isChartId(trimmed)) {
     return { provider: "imdb", sourceRef: trimmed, kind: "chart" };
   }
   const url = toUrl(trimmed);
   const isImdbUrl = url !== null && hostIs(url, "imdb.com");
-  // Bare IDs (ur…, ls…, p.handle) keep working, as they did before links.
   const bare =
     !/[/.:]/.test(trimmed.replace(/^p\./, "")) ||
     /^p\.[a-zA-Z0-9]+$/.test(trimmed);
   if (!isImdbUrl && !bare) return null;
 
-  // imdb.com/user/{ur… or p.handle}/ratings: the ratings, not the watchlist
-  // of the user ID that the link also contains.
   const parts = url && isImdbUrl ? segments(url) : [];
   if (
     parts[0]?.toLowerCase() === "user" &&
@@ -279,7 +271,6 @@ const TRAKT_CHARTS = [
   "favorited",
   "recommended",
 ] as const;
-/** Trakt charts counted over a period: Stremlist reads the weekly one. */
 const TRAKT_WEEKLY_CHARTS = new Set<string>([
   "watched",
   "played",
@@ -287,14 +278,12 @@ const TRAKT_WEEKLY_CHARTS = new Set<string>([
   "favorited",
   "recommended",
 ]);
-/** Source lists of a Trakt user, at trakt.tv/users/{user}/{kind}. */
 const TRAKT_USER_SOURCES = new Map<string, SourceKind>([
   ["favorites", "list"],
   ["ratings", "list"],
   ["history", "history"],
   ["collection", "collection"],
 ]);
-// trakt.tv/lists/{these} are pages that browse lists, not lists.
 const TRAKT_LIST_PAGES = new Set([
   "trending",
   "popular",
@@ -304,15 +293,12 @@ const TRAKT_LIST_PAGES = new Set([
   "smart",
 ]);
 
-function parseTraktLink(input: string): ParsedSourceLink | null {
+function parseTraktLink(input: string) {
   const url = toUrl(input);
-  // trakt.tv and app.trakt.tv share the same paths.
   if (!url || !hostIs(url, "trakt.tv")) return null;
   const parts = segments(url);
-  // trakt.tv/users/{user}/watchlist and trakt.tv/users/{user}/lists/{list}[/items]
   if (parts[0] === "users" && parts[1]) {
     const user = parts[1].toLowerCase();
-    // "me" is the signed-in user: only a Connection can read it.
     const owner = user === "me" ? "me" : `users/${user}`;
     if (parts[2] === "watchlist") {
       return {
@@ -329,7 +315,6 @@ function parseTraktLink(input: string): ParsedSourceLink | null {
         kind: "list",
       };
     }
-    // trakt.tv/users/{user}/favorites, /ratings, /history, /collection.
     const userKind =
       parts.length === 3 ? TRAKT_USER_SOURCES.get(parts[2]) : undefined;
     if (userKind) {
@@ -341,8 +326,6 @@ function parseTraktLink(input: string): ParsedSourceLink | null {
       };
     }
   }
-  // app.trakt.tv/lists/smart/view/{slug}: a smart list, which Trakt fills
-  // from its filters.
   if (
     parts[0] === "lists" &&
     parts[1]?.toLowerCase() === "smart" &&
@@ -355,8 +338,6 @@ function parseTraktLink(input: string): ParsedSourceLink | null {
       kind: "list",
     };
   }
-  // trakt.tv/lists/official/{slug}: an official list (collections). The
-  // API reads it by slug, like any shared list.
   if (
     parts[0] === "lists" &&
     parts[1]?.toLowerCase() === "official" &&
@@ -368,7 +349,6 @@ function parseTraktLink(input: string): ParsedSourceLink | null {
       kind: "list",
     };
   }
-  // trakt.tv/lists/{id}: official and shared lists by numeric ID or slug.
   if (
     parts[0] === "lists" &&
     parts[1] &&
@@ -380,8 +360,6 @@ function parseTraktLink(input: string): ParsedSourceLink | null {
       kind: "list",
     };
   }
-  // trakt.tv/movies/trending, trakt.tv/shows/popular…: the chart covers
-  // both kinds. A chart counted over a period is read for the week.
   if (parts[0] === "movies" || parts[0] === "shows") {
     const chart = TRAKT_CHARTS.find((name) => name === parts[1]?.toLowerCase());
     const weekly =
@@ -396,11 +374,10 @@ function parseTraktLink(input: string): ParsedSourceLink | null {
   return null;
 }
 
-function parseMdblistLink(input: string): ParsedSourceLink | null {
+function parseMdblistLink(input: string) {
   const url = toUrl(input);
   if (!url || !hostIs(url, "mdblist.com")) return null;
   const parts = segments(url);
-  // mdblist.com/lists/{user}/{slug}: the backend resolves it to `lists/{id}`.
   if (parts[0] === "lists" && parts[1] && parts[2] && parts.length === 3) {
     return {
       provider: "mdblist",
@@ -408,8 +385,6 @@ function parseMdblistLink(input: string): ParsedSourceLink | null {
       kind: "list",
     };
   }
-  // mdblist.com/watchlist/{user}: MDBList only shares the connected user's
-  // own watchlist, so the backend turns it into `me/watchlist`.
   if (parts[0] === "watchlist" && parts[1] && parts.length === 2) {
     return {
       provider: "mdblist",
@@ -421,12 +396,10 @@ function parseMdblistLink(input: string): ParsedSourceLink | null {
   return null;
 }
 
-// User lists use a UUID ("tl-us-<uuid>"); JustWatch's own editorial lists
-// can use a number ("tl-tu-12653").
 const JUSTWATCH_LIST_ID =
   /\b(tl-[a-z]{2}-(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d+))\b/i;
 
-function parseJustwatchLink(input: string): ParsedSourceLink | null {
+function parseJustwatchLink(input: string) {
   const trimmed = input.trim();
   const url = toUrl(trimmed);
   const isJustwatch = url !== null && hostIs(url, "justwatch.com");
@@ -462,10 +435,7 @@ export function isSensCritiqueCollection(
   return Object.hasOwn(SENSCRITIQUE_COLLECTIONS, name);
 }
 
-/** The collection behind a collection link action, such as "done" or "DONE". */
-function sensCritiqueCollectionOf(
-  action: string,
-): SensCritiqueCollection | null {
+function sensCritiqueCollectionOf(action: string) {
   const upper = action.toUpperCase();
   for (const [name, { action: known }] of Object.entries(
     SENSCRITIQUE_COLLECTIONS,
@@ -475,10 +445,6 @@ function sensCritiqueCollectionOf(
   return null;
 }
 
-/**
- * Collection link filters that Stremlist cannot apply: a link with one of
- * them is refused instead of read without the filter.
- */
 const SENSCRITIQUE_COLLECTION_FILTERS = [
   "categoryId",
   "gameSystemId",
@@ -490,28 +456,24 @@ const SENSCRITIQUE_COLLECTION_FILTERS = [
   "yearDateDone",
 ];
 
-/** SensCritique universes in collection links: 1 for films, 4 for series. */
 const SENSCRITIQUE_FILM_SERIES_UNIVERSES = new Set(["1", "4"]);
 
-/** The SensCritique charts at senscritique.com/{films|series}/tops/{page}. */
 const SENSCRITIQUE_CHART_PAGES = new Map([
   ["top111", "top111"],
   ["top100-des-top10", "top100"],
 ]);
 
-function parseSensCritiqueLink(input: string): ParsedSourceLink | null {
+function parseSensCritiqueLink(input: string) {
   const url = toUrl(input);
   if (!url || !hostIs(url, "senscritique.com")) return null;
   const parts = segments(url);
   const first = parts[0]?.toLowerCase();
-  // senscritique.com/liste/{slug}/{id}
   if (first === "liste") {
     const id = parts.slice(1).find((part) => /^\d+$/.test(part));
     return id
       ? { provider: "senscritique", sourceRef: `lists/${id}`, kind: "list" }
       : null;
   }
-  // senscritique.com/top/resultats/{slug}/{id}: the results of a poll.
   if (first === "top") {
     const id =
       parts[1]?.toLowerCase() === "resultats"
@@ -521,7 +483,6 @@ function parseSensCritiqueLink(input: string): ParsedSourceLink | null {
       ? { provider: "senscritique", sourceRef: `polls/${id}`, kind: "chart" }
       : null;
   }
-  // senscritique.com/films/tops/top111, /series/tops/top100-des-top10…
   if (
     (first === "films" || first === "series") &&
     parts[1]?.toLowerCase() === "tops" &&
@@ -535,7 +496,6 @@ function parseSensCritiqueLink(input: string): ParsedSourceLink | null {
       kind: "chart",
     };
   }
-  // Top-level paths of senscritique.com that are not user profiles.
   const reserved = new Set([
     "_next",
     "about",
@@ -576,9 +536,6 @@ function parseSensCritiqueLink(input: string): ParsedSourceLink | null {
     "sondages",
     "top",
   ]);
-  // senscritique.com/{username} (its wishes), or one of its collections:
-  // /{username}/collection?action=DONE&universe=1. The universe is optional:
-  // the collection reads films and series.
   const username = parts[0];
   if (!username || reserved.has(username.toLowerCase())) return null;
   if (!/^[\w.-]+$/.test(username)) return null;
@@ -608,7 +565,7 @@ function parseSensCritiqueLink(input: string): ParsedSourceLink | null {
   };
 }
 
-function parseLetterboxdLink(input: string): ParsedSourceLink | null {
+function parseLetterboxdLink(input: string) {
   const url = toUrl(input);
   if (
     !url ||
@@ -618,9 +575,6 @@ function parseLetterboxdLink(input: string): ParsedSourceLink | null {
   )
     return null;
 
-  // boxd.it short links (public or share). The backend follows the redirect
-  // in validateSource, so carry the raw code (and its $token, if any) as a
-  // provisional reference. The $token is case-sensitive, so keep it verbatim.
   if (hostIs(url, "boxd.it")) {
     const code = url.pathname.replace(/^\/+|\/+$/g, "");
     if (!/^[A-Za-z0-9]+(?:\$[A-Za-z0-9]+)?$/.test(code)) return null;
@@ -648,7 +602,6 @@ function parseLetterboxdLink(input: string): ParsedSourceLink | null {
       suggestedTitle: `${user}'s watchlist`,
     };
   }
-  // The diary, at /{user}/diary/ or /{user}/films/diary/ (which redirects to it).
   const diary =
     (parts[1] === "diary" && parts.length === 2) ||
     (parts[1] === "films" && parts[2] === "diary" && parts.length === 3);
@@ -661,14 +614,12 @@ function parseLetterboxdLink(input: string): ParsedSourceLink | null {
     };
   }
   if (parts[1] === "films") {
-    // Rating-filtered films: /{user}/films/rated/4.0-5.0/ is its own Source list.
     if (
       parts[2] === "rated" &&
       parts[3] &&
       /^\d(?:\.\d)?(?:-\d(?:\.\d)?)?$/.test(parts[3]) &&
       parts.length === 4
     ) {
-      // Letterboxd's own form drops trailing zeros (4.0-5.0 is 4-5).
       const range = parts[3]
         .split("-")
         .map((value) => String(Number(value)))
@@ -680,7 +631,6 @@ function parseLetterboxdLink(input: string): ParsedSourceLink | null {
         suggestedTitle: `${user}'s films rated ${range}`,
       };
     }
-    // Watched films: /{user}/films/.
     if (parts.length === 2) {
       return {
         provider: "letterboxd",
@@ -690,7 +640,6 @@ function parseLetterboxdLink(input: string): ParsedSourceLink | null {
       };
     }
   }
-  // Liked films: /{user}/likes/films/.
   if (parts[1] === "likes" && parts[2] === "films" && parts.length === 3) {
     return {
       provider: "letterboxd",
@@ -705,9 +654,6 @@ function parseLetterboxdLink(input: string): ParsedSourceLink | null {
     slug &&
     /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(slug)
   ) {
-    // Share link: /{user}/list/{slug}/share/{token}/. The token is the secret
-    // and is case-sensitive, so keep it verbatim; the backend encrypts it
-    // before storage.
     if (parts[3] === "share" && parts.length === 5) {
       const token = parts[4];
       if (!/^[A-Za-z0-9]+$/.test(token)) return null;
@@ -734,7 +680,6 @@ const LINK_PARSERS: ((input: string) => ParsedSourceLink | null)[] = [
   parseJustwatchLink,
   parseSensCritiqueLink,
   parseLetterboxdLink,
-  // IMDb last: it also accepts bare IDs.
   parseImdbLink,
 ];
 
@@ -742,7 +687,7 @@ const LINK_PARSERS: ((input: string) => ParsedSourceLink | null)[] = [
  * Detect the Provider and Source list behind a pasted link (or a bare IMDb
  * ID). Returns null when no Provider recognizes the input.
  */
-export function parseSourceLink(input: string): ParsedSourceLink | null {
+export function parseSourceLink(input: string) {
   for (const parse of LINK_PARSERS) {
     const parsed = parse(input);
     if (parsed) return parsed;
@@ -782,7 +727,6 @@ export const CONNECTION_SOURCES: Partial<
       label: "Recommendations",
       defaultDisplayMode: "split",
     },
-    // Up Next lists the series in progress (docs/architecture.md).
     {
       ref: "me/up-next",
       kind: "up_next",
@@ -847,10 +791,12 @@ export const CONNECTION_SOURCES: Partial<
       defaultDisplayMode: "split",
     },
   ],
-  // The user's own lists (`me/lists/{id}`), external lists
-  // (`me/external/{id}`) and liked lists (`lists/{id}`) depend on the
-  // account; the backend lists them. Every MDBList read needs the
-  // Connection, so its official charts are here too.
+  /**
+   * The user's own lists (`me/lists/{id}`), external lists
+   * (`me/external/{id}`) and liked lists (`lists/{id}`) depend on the
+   * account; the backend lists them. Every MDBList read needs the
+   * Connection, so its official charts are here too.
+   */
   mdblist: [
     {
       ref: "me/watchlist",
@@ -982,7 +928,6 @@ export const PUBLIC_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>> = {
       titleType: "series",
       url: "https://www.senscritique.com/series/tops/top111",
     },
-    // Ranked from the members' top 10s.
     {
       ref: "top100-movies",
       kind: "chart",
@@ -1000,8 +945,10 @@ export const PUBLIC_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>> = {
       url: "https://www.senscritique.com/series/tops/top100-des-top10",
     },
   ],
-  // Simkl's trending files for the week. Simkl's API rules ask that a
-  // trending section names Simkl: the Catalogs are "Simkl Trending Movies"…
+  /**
+   * Simkl's trending files for the week. Simkl's API rules ask that a
+   * trending section names Simkl: the Catalogs are "Simkl Trending Movies"…
+   */
   simkl: [
     {
       ref: "trending/movies",
@@ -1019,7 +966,6 @@ export const PUBLIC_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>> = {
       titleType: "series",
       url: "https://simkl.com/tv/best-shows/most-watched/",
     },
-    // Mostly series, but anime films trend too.
     {
       ref: "trending/anime",
       kind: "chart",
@@ -1031,10 +977,7 @@ export const PUBLIC_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>> = {
 };
 
 /** Whether a stored Source list of this Provider must read through a Connection. */
-export function sourceRequiresConnection(
-  provider: ProviderId,
-  ref: string,
-): boolean {
+export function sourceRequiresConnection(provider: ProviderId, ref: string) {
   if (PROVIDERS[provider].connection === "required") return true;
   return ref.startsWith("me/");
 }
@@ -1043,10 +986,7 @@ export function sourceRequiresConnection(
  * The fixed Source list behind a stored reference: one that a Connection
  * unlocks or a public chart of a Provider, or null.
  */
-export function staticSource(
-  provider: ProviderId,
-  ref: string,
-): ConnectionSource | null {
+export function staticSource(provider: ProviderId, ref: string) {
   return (
     CONNECTION_SOURCES[provider]?.find((source) => source.ref === ref) ??
     PUBLIC_SOURCES[provider]?.find((source) => source.ref === ref) ??
@@ -1065,25 +1005,13 @@ interface SourceRefDescription {
   title?: string;
 }
 
-/**
- * One form of the stored references of a Provider: the reverse of its link
- * parser above, for the references that `staticSource` does not know.
- */
 interface StoredRefForm {
   pattern: RegExp;
-  /**
-   * The list type of the form: the reference with its variable parts as
-   * `{names}`. See listTypeOf.
-   */
   type: string;
   describe: (match: RegExpExecArray) => SourceRefDescription;
 }
 
-/**
- * A list of the connected user that the Provider lists for the Account,
- * such as `me/lists/{id}`. It reads as a list named by its reference.
- */
-function accountListForm(type: string): StoredRefForm {
+function accountListForm(type: string) {
   const [prefix] = type.split("{");
   return {
     pattern: new RegExp(`^${prefix}[^/]+$`),
@@ -1144,8 +1072,7 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
           url: `https://trakt.tv/users/${user}/lists/${list}`,
         }),
       },
-      // One form per Source list of a user, so that each is a list type.
-      ...[...TRAKT_USER_SOURCES].map(([source, kind]): StoredRefForm => ({
+      ...[...TRAKT_USER_SOURCES].map(([source, kind]) => ({
         pattern: new RegExp(`^users/([^/]+)/${source}$`),
         type: `users/{user}/${source}`,
         describe: ([, user]) => ({
@@ -1186,8 +1113,6 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
     ],
     simkl: [accountListForm("me/lists/{id}")],
     mdblist: [
-      // Validation stores pasted links as `lists/{id}`, which has no public
-      // page; only `lists/{user}/{slug}` maps back to one.
       {
         pattern: /^lists\/([^/]+)$/,
         type: "lists/{id}",
@@ -1217,7 +1142,6 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
       },
       accountListForm("me/lists/{id}"),
       accountListForm("me/external/{id}"),
-      // An official chart that CONNECTION_SOURCES does not offer.
       {
         pattern: /^official\/([^/]+)$/,
         type: "official/{slug}",
@@ -1233,7 +1157,7 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
     ],
     senscritique: [
       ...Object.entries(SENSCRITIQUE_COLLECTIONS).map(
-        ([name, { action, kind, noun }]): StoredRefForm => ({
+        ([name, { action, kind, noun }]) => ({
           pattern: new RegExp(`^users/([^/]+)/${name}$`),
           type: `users/{user}/${name}`,
           describe: ([, user]) => ({
@@ -1257,8 +1181,6 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
     ],
     letterboxd: [
       {
-        // A Share link carries a secret token. Never show the token, the slug,
-        // or a clickable URL: only that it is a list shared through a link.
         pattern: /^(?:share|lbxshare|lbxshort)\//,
         type: "share/{token}",
         describe: () => ({ kind: "list", detail: "Shared list", url: null }),
@@ -1330,10 +1252,7 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
  * parsers and the source tables above produce. An unknown reference is a
  * list named by its reference.
  */
-export function describeSourceRef(
-  provider: ProviderId,
-  ref: string,
-): SourceRefDescription {
+export function describeSourceRef(provider: ProviderId, ref: string) {
   const chart = imdbChartOf({ provider, sourceRef: ref });
   if (chart) {
     return { kind: "chart", detail: null, url: chart.url, title: chart.label };
@@ -1359,7 +1278,7 @@ export function describeSourceRef(
  * "IMDb Watchlist", "Simkl Plan to watch" or "Top 250 Movies". The configure
  * page shows it and the manifest names the Catalogs with it.
  */
-export function sourceTitle(provider: ProviderId, ref: string): string {
+export function sourceTitle(provider: ProviderId, ref: string) {
   const { kind, title } = describeSourceRef(provider, ref);
   return title ?? `${PROVIDERS[provider].label} ${SOURCE_KIND_LABELS[kind]}`;
 }
@@ -1371,7 +1290,7 @@ export function sourceTitle(provider: ProviderId, ref: string): string {
  * and each stored reference form is one type; a reference that none of them
  * knows is `{provider}:other`.
  */
-export function listTypeOf(provider: ProviderId, ref: string): string {
+export function listTypeOf(provider: ProviderId, ref: string) {
   const chart = imdbChartOf({ provider, sourceRef: ref });
   if (chart) return `imdb:chart/${chart.id.slice("imdb:".length)}`;
   if (staticSource(provider, ref)) return `${provider}:${ref}`;
@@ -1382,7 +1301,7 @@ export function listTypeOf(provider: ProviderId, ref: string): string {
 }
 
 /** Every list type that Stremlist offers, in Provider order. */
-export function listTypes(): string[] {
+export function listTypes() {
   return PROVIDER_IDS.flatMap((provider) => [
     ...(provider === "imdb"
       ? CHART_REGISTRY.map((chart) => listTypeOf("imdb", chart.id))

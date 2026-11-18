@@ -17,9 +17,6 @@ vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
 vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
 vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 
-// Every Addon URL key that a v1 install can have. v1 served any key until
-// 2026-09-01, then `ur` + 4 or more digits and `p.` handles. Production
-// still holds all these shapes as `legacy_imdb_user_id`.
 const LEGACY_KEYS = [
   ["an IMDb user ID", "ur12345678"],
   ["a short IMDb user ID", "ur12"],
@@ -28,8 +25,6 @@ const LEGACY_KEYS = [
   ["a ur ID with letters", "ur12345678ls123456789"],
 ] as const;
 
-// Keys that v1 stored but that no Stremlist URL can use: they never reach the
-// database.
 const JUNK_KEYS = [
   "123",
   "potato",
@@ -165,7 +160,6 @@ describe.each(JUNK_KEYS)("the junk key %j", (key) => {
   const path = (suffix: string) => `/${encodeURIComponent(key)}${suffix}`;
 
   it("is not found as a manifest and reaches no table", async () => {
-    // A stored junk row must stay unreachable.
     seedLegacyAccount(key);
     const from = vi.spyOn(supabase, "from");
 

@@ -2,7 +2,6 @@ import type { RpcHandler } from "./rpc";
 import { numberOf } from "./rpc";
 import { db } from "./store";
 
-/** claim_monitor_run, from 20261117120000_monitor_runs.sql. */
 const claimMonitorRun: RpcHandler = (args) => {
   const name = args.p_name;
   if (typeof name !== "string") throw new Error("p_name is required");

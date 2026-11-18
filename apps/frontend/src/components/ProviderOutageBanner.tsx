@@ -13,7 +13,6 @@ import { cn } from "@/lib/utils";
 import RelativeTime from "./RelativeTime";
 import { ENTER } from "./StremioUpdateNotice";
 
-/** How long "working again" stays after an outage ends. */
 const RECOVERED_MS = 8_000;
 
 /**
@@ -35,8 +34,6 @@ export default function ProviderOutageBanner({
   }>({ key: "", ids: [] });
   const [recovered, setRecovered] = useState<ProviderId[]>([]);
 
-  // Compare with the last outages while rendering, not in an effect, so the
-  // note appears in the same frame as the banner leaves.
   if (seenDown.key !== downKey) {
     const ended = recoveredProviders(seenDown.ids, providerStatus);
     setSeenDown({ key: downKey, ids: down });
@@ -49,7 +46,6 @@ export default function ProviderOutageBanner({
     return () => window.clearTimeout(timer);
   }, [recovered]);
 
-  // A Provider that is down again is not "working again".
   const back = recovered.filter((id) => !down.includes(id));
   const since = earliestOutage(down, providerStatus);
   const copy = down.length > 0 ? outageCopy(down) : null;

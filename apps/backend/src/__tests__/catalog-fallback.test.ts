@@ -24,7 +24,6 @@ vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
 vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
 vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
 
-// Old installs reach their Account through the Legacy alias (`ur…`).
 const OWNER = "ur216216210";
 const UUID_1 = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
 const UUID_2 = "0f4ef1b5-0a8c-4a4e-9f1e-3b2c1d0e9a87";
@@ -124,7 +123,6 @@ describe("catalog route degrades gracefully on fetch failure", () => {
     const watchlist = await catalog();
     const list = await catalog(".json", { list: UUID_2 });
 
-    // Pre-fix this was a 500 that Stremio retry-stormed; now it's a friendly card.
     expect(watchlist.res.status).toBe(200);
     expect(watchlist.body.metas).toMatchObject([
       {
@@ -396,7 +394,6 @@ describe("catalog access through Account IDs and Legacy aliases", () => {
 });
 
 describe("information cards for Lists that cannot be read", () => {
-  /** A Trakt List of a private Account, read through its catalog. */
   async function traktCatalog(
     sourceRef: string,
     connection?: Parameters<typeof seedConnection>[2],
@@ -504,7 +501,6 @@ describe("information cards for Lists that cannot be read", () => {
       }),
     );
 
-    // Expired, and no refresh token to get a new one.
     const body = await traktCatalog("me/watchlist", {
       refreshToken: null,
       expiresAt: new Date(Date.now() - 60_000),

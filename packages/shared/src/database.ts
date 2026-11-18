@@ -4,11 +4,13 @@ export type { Json, Tables } from "./database.types";
 
 type GeneratedFunctions = GeneratedDatabase["public"]["Functions"];
 
-// Postgres function parameters cannot be declared NOT NULL, so
-// `supabase gen types` types every argument as non-null. These arguments take
-// SQL NULL on purpose: it clears the column or keeps the current value. Keep
-// this list in step with the SQL functions instead of editing the generated
-// file, which CI regenerates from the migrations.
+/**
+ * Postgres function parameters cannot be declared NOT NULL, so
+ * `supabase gen types` types every argument as non-null. These arguments take
+ * SQL NULL on purpose: it clears the column or keeps the current value. Keep
+ * this list in step with the SQL functions instead of editing the generated
+ * file, which CI regenerates from the migrations.
+ */
 type NullableArgs = {
   create_account_with_config:
     | "p_new_titles_catalog"
@@ -44,12 +46,16 @@ type Functions = {
     : GeneratedFunctions[Name];
 };
 
-// The schema that the Supabase clients use. Import it instead of the
-// generated `database.types`.
+/**
+ * The schema that the Supabase clients use. Import it instead of the
+ * generated `database.types`.
+ */
 export type Database = Omit<GeneratedDatabase, "public"> & {
-  // `supabase gen types --local` does not report the server version. This is
-  // the PostgREST version of the production project, which unlocks the
-  // PostgREST 13+ query types in supabase-js.
+  /**
+   * `supabase gen types --local` does not report the server version. This is
+   * the PostgREST version of the production project, which unlocks the
+   * PostgREST 13+ query types in supabase-js.
+   */
   __InternalSupabase: { PostgrestVersion: "14.1" };
   public: Omit<GeneratedDatabase["public"], "Functions"> & {
     Functions: Functions;

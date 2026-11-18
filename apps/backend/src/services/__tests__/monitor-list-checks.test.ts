@@ -1,7 +1,6 @@
 import type { ProviderId } from "@stremlist/shared/providers";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { db } from "../../__tests__/helpers/mock-supabase";
-import type { StatusRow } from "../monitor/list-alarm";
 import {
   ALARM_ACTIVE_MS,
   listAlarms,
@@ -18,7 +17,7 @@ function rows(
   ref: (index: number) => string,
   reasons: (string | null)[],
   provider = "letterboxd",
-): StatusRow[] {
+) {
   return reasons.map((failure_reason, index) => ({
     provider,
     source_ref: ref(index),
@@ -91,7 +90,6 @@ describe("readListAlarms", () => {
   it("reads every page of sync statuses, and only Source lists refreshed recently", async () => {
     const now = Date.now();
     const table = db.getTable("list_sync_status");
-    // 2,500 working IMDb watchlists, then three that fail.
     for (let index = 0; index < 2503; index++)
       table.push({
         list_id: `list-${String(index).padStart(5, "0")}`,
@@ -100,7 +98,6 @@ describe("readListAlarms", () => {
         failure_reason: index >= 2500 ? "unavailable" : null,
         last_attempt_at: new Date(now - 60_000).toISOString(),
       });
-    // Failures of Lists that nobody reads any more.
     for (let index = 0; index < 3; index++)
       table.push({
         list_id: `old-${index}`,

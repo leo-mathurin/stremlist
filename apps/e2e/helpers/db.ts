@@ -20,18 +20,9 @@ import {
   writeHistoryObject,
 } from "./r2.js";
 
-// Service-role client: bypasses RLS, used only to reset and inspect state
-// between tests. Live tests bootstrap through the HTTP API; controlled catalog
-// fixtures seed rows before the backend first reads them. Specs use the named
-// seeders and readers below, never the client itself.
 const db = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-/**
- * The Accounts that this run owns: the Legacy aliases of the E2E fixtures,
- * and every Account created since the run started (their IDs are generated,
- * also when the browser creates them).
- */
-async function ownedAccountIds(): Promise<string[]> {
+async function ownedAccountIds() {
   const [legacy, created] = await Promise.all([
     db
       .from("accounts")
@@ -49,7 +40,7 @@ async function ownedAccountIds(): Promise<string[]> {
 }
 
 /** Delete this run's Accounts. Foreign-key cascades remove their data. */
-export async function resetDb(): Promise<void> {
+export async function resetDb() {
   const accountIds = await ownedAccountIds();
   if (accountIds.length === 0) return;
 
@@ -69,7 +60,7 @@ export async function resetDb(): Promise<void> {
 }
 
 /** Rewind an Account's last_fetched_at so the refresh cooldown does not apply. */
-export async function clearRefreshCooldown(accountId: string): Promise<void> {
+export async function clearRefreshCooldown(accountId: string) {
   const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const { error } = await db
     .from("accounts")
@@ -89,7 +80,7 @@ export async function seedAccount(
     /** Actions on, with these Providers in this order. */
     actions?: ProviderId[];
   } = {},
-): Promise<string> {
+) {
   const { data, error } = await db
     .from("accounts")
     .insert({
@@ -111,7 +102,7 @@ export async function seedAccount(
 export async function seedImdbAccount(
   sourceRef: string = PUBLIC_USER,
   catalogTitle = "",
-): Promise<{ accountId: string; listId: string }> {
+) {
   const {
     accountId,
     listIds: [listId],
@@ -125,7 +116,7 @@ export async function seedImdbAccount(
 export async function seedAccountWithLists(
   lists: Omit<SeedListInput, "position">[],
   options: { newTitlesCatalog?: boolean } = {},
-): Promise<{ accountId: string; listIds: string[] }> {
+) {
   const accountId = await seedAccount(options);
   const listIds: string[] = [];
   for (const [position, list] of lists.entries()) {
@@ -149,10 +140,7 @@ interface SeedListInput {
 }
 
 /** Add a controlled List row without a save-triggered external prewarm. */
-export async function seedList(
-  accountId: string,
-  list: SeedListInput,
-): Promise<string> {
+export async function seedList(accountId: string, list: SeedListInput) {
   const id = randomUUID();
   const { error } = await db.from("lists").insert({
     id,
@@ -175,8 +163,7 @@ export async function seedList(
   return id;
 }
 
-/** The backend's "v1:" AES-256-GCM token format (apps/backend/src/lib/crypto.ts). */
-function encryptToken(plaintext: string): string {
+function encryptToken(plaintext: string) {
   const iv = randomBytes(12);
   const cipher = createCipheriv(
     "aes-256-gcm",
@@ -204,7 +191,7 @@ export async function seedConnection(
     /** Since when the Provider refuses it (the renewal mark). */
     needsRenewalSince?: Date;
   } = {},
-): Promise<void> {
+) {
   const {
     username = "fixture-user",
     refreshToken = "fixture-refresh-token",
@@ -277,10 +264,9 @@ export async function seedDetectionHistory(
     connectionUser?: string;
   },
   entries: { imdbId: string; detectedAt?: string }[],
-): Promise<void> {
+) {
   let connection: { user: string; connectedAt: string } | null = null;
   if (sync.connectionUser !== undefined) {
-    // The history belongs to the Account's current Connection.
     const { data, error } = await db
       .from("connections")
       .select("created_at")
@@ -308,7 +294,6 @@ export async function seedDetectionHistory(
   });
 }
 
-/** The Source list of a stored history. */
 function historySource(source: string) {
   const separator = source.indexOf(":");
   return {
@@ -324,7 +309,7 @@ export async function seedSyncStatus(
   sourceRef: string,
   at: Date,
   titleCount: number,
-): Promise<void> {
+) {
   const { error } = await db.from("list_sync_status").insert({
     list_id: listId,
     provider,
@@ -349,7 +334,7 @@ export async function getSyncStatusRows(listId: string) {
 export async function clearResolverCache(
   namespace: string,
   externalIds: string[],
-): Promise<void> {
+) {
   const { error } = await db
     .from("title_id_map")
     .delete()
@@ -359,7 +344,7 @@ export async function clearResolverCache(
 }
 
 /** The saved poster source of an Account. */
-export async function getPosterSource(accountId: string): Promise<string> {
+export async function getPosterSource(accountId: string) {
   const { data, error } = await db
     .from("accounts")
     .select("poster_source")
@@ -370,7 +355,7 @@ export async function getPosterSource(accountId: string): Promise<string> {
 }
 
 /** Forget the TMDB and TheTVDB posters cached for these Titles. */
-export async function clearTitlePosters(imdbIds: string[]): Promise<void> {
+export async function clearTitlePosters(imdbIds: string[]) {
   const { error } = await db
     .from("title_posters")
     .delete()
@@ -451,10 +436,7 @@ export async function getOAuthStates(state: string) {
 }
 
 /** Link a Stremio account to an Account, with a synthetic session key. */
-export async function seedStremioLink(
-  accountId: string,
-  authKey: string,
-): Promise<void> {
+export async function seedStremioLink(accountId: string, authKey: string) {
   const { error } = await db.from("stremio_connections").upsert(
     {
       account_id: accountId,
@@ -484,7 +466,7 @@ export async function getWatchRows(accountId: string) {
 }
 
 /** Make the Account's sweep minute the current one, as if 6 hours passed. */
-export async function makeSweepDue(accountId: string): Promise<void> {
+export async function makeSweepDue(accountId: string) {
   const slot = Math.floor(Date.now() / 60_000) % 360;
   const [tracking, cursor] = await Promise.all([
     db

@@ -20,14 +20,14 @@ const episodes = [1, 2, 3].map((n) => ({
   episode: n,
 }));
 
-function field(watched: number[]): string {
+function field(watched: number[]) {
   let bits = 0;
   for (const n of watched) bits |= 1 << (n - 1);
   const last = Math.max(...watched);
   return `${SHOW}:1:${last}:${last}:${deflateSync(Buffer.from([bits])).toString("base64")}`;
 }
 
-function series(watched: number[]): LibraryItem {
+function series(watched: number[]) {
   return {
     _id: SHOW,
     type: "series",
@@ -36,7 +36,7 @@ function series(watched: number[]): LibraryItem {
   };
 }
 
-function movie(timesWatched: number): LibraryItem {
+function movie(timesWatched: number) {
   return {
     _id: "tt0063350",
     type: "movie",
@@ -66,8 +66,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/** The state to save, when the read changed it. */
-function changed(next: WatchState | false): WatchState {
+function changed(next: WatchState | false) {
   if (next === false) throw new Error("Expected a changed watch state");
   return next;
 }
@@ -99,7 +98,6 @@ describe("new watched titles", () => {
         watchedAt: "2026-11-12T19:59:00.000Z",
       })),
     );
-    // Only the new episode counts, whatever else changed.
     expect(await titlesOf(state, series([2]))).toEqual([
       expect.objectContaining({ episode: { season: 1, episode: 2 } }),
     ]);
@@ -109,12 +107,10 @@ describe("new watched titles", () => {
     const baseline = changed(withItems(empty, [series([1])]));
     const sent = changed((await diffItems(baseline, [series([1, 2])])).next);
     expect(sent.series[SHOW]).toEqual(["1:1", "1:2"]);
-    // An older read (episode 2 not yet watched) changes nothing.
     expect(await diffItems(sent, [series([1])])).toEqual({
       titles: [],
       next: false,
     });
-    // Unmarked, then marked again: not sent twice.
     expect(await titlesOf(sent, series([2]))).toEqual([]);
     expect(await titlesOf(sent, series([1, 2, 3]))).toEqual([
       expect.objectContaining({ episode: { season: 1, episode: 3 } }),
@@ -123,7 +119,6 @@ describe("new watched titles", () => {
 
   it("reads Cinemeta again when its list lacks the anchor episode", async () => {
     const fetchMock = vi.mocked(fetch);
-    // First answer: an old list without episode 3.
     fetchMock.mockImplementationOnce(() =>
       Promise.resolve(
         Response.json({
@@ -148,7 +143,6 @@ describe("new watched titles", () => {
   });
 
   it("adopts a baseline that Cinemeta cannot place any more, sending nothing", async () => {
-    // The baseline's anchor episode is not in Cinemeta's list (renumbered).
     const lost = { ...empty, series: { [SHOW]: `${SHOW}:9:9:3:eJxjAAAAAQAB` } };
     const { titles, next } = await diffItems(lost, [series([1, 2])]);
     expect(titles).toEqual([]);
@@ -162,7 +156,6 @@ describe("new watched titles", () => {
       state: { watched: `${SHOW}:9:9:3:eJxjAAAAAQAB` },
     };
     const { next } = await diffItems(empty, [unplaced], 100);
-    // The sweep moves up to just before that item, not past it.
     expect(changed(next).checkedAt).toBe(39);
   });
 

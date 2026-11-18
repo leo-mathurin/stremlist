@@ -18,10 +18,6 @@ import {
 import { parsed } from "../helpers/json.js";
 import { seedCachedCatalog } from "../helpers/r2.js";
 
-// v1 installs keep their Addon URL key (the Legacy alias). Production holds
-// these key forms; each one must still serve Stremio and its configure page.
-// The Lists are seeded with a fresh cache, so no request reads IMDb.
-
 const LEGACY_KEYS = [
   ["an IMDb user ID", "ur9999999999995"],
   ["a short IMDb user ID", "ur97"],
@@ -36,7 +32,6 @@ const MOVIE_IDS = CATALOG_TITLES.filter((meta) => meta.type === "movie").map(
   (meta) => meta.id,
 );
 
-/** A v1 install keyed by `key` whose one List has a cached catalog. */
 async function seedLegacyInstall(key: string) {
   const accountId = await seedAccount({ legacyImdbUserId: key });
   const listId = await seedList(accountId, {
@@ -160,7 +155,6 @@ for (const [label, key, link] of [
         }),
       ).toBeVisible();
       expect(creates).toBe(0);
-      // The install is unchanged and no other Account answers to the key.
       expect((await getAccountByLegacyAlias(key))?.id).toBe(accountId);
       expect((await getListRows(accountId)).map((row) => row.id)).toEqual([
         listId,

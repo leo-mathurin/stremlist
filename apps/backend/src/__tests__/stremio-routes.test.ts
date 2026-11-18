@@ -69,11 +69,9 @@ const addon = z
   })
   .loose() satisfies z.ZodType<Addon>;
 
-/** What the Stremio API receives. */
 const apiRequest = z
   .object({
     authKey: z.string(),
-    // Kept as sent: Stremlist compares manifests as JSON text.
     addons: z.array(unchanged(addon)).optional(),
   })
   .loose();
@@ -84,24 +82,17 @@ const cinemeta: Addon = {
   flags: { official: true, protected: true },
 };
 
-/**
- * Stremio's code page and API in memory. Every call is recorded by method;
- * `failure` breaks the API.
- */
 function fakeStremio(collection: Addon[]) {
   const stremio = {
     collection: structuredClone(collection),
     approved: false,
     failure: null as "down" | "signed-out" | null,
     calls: [] as string[],
-    /** Runs before each API answer, to change the world meanwhile. */
     meanwhile: () => {},
-    /** While set, the next api.strem.io answer waits for it. */
     hold: null as Promise<void> | null,
-    /** How many api.strem.io answers waited. */
     held: 0,
   };
-  const respond = (input: string | URL, init?: RequestInit): Response => {
+  const respond = (input: string | URL, init?: RequestInit) => {
     const url = new URL(String(input));
     const method = url.pathname.split("/").at(-1) ?? "";
     stremio.calls.push(method);
@@ -157,8 +148,7 @@ function addonUrl() {
   return `${ORIGIN}/${accountId}/manifest.json`;
 }
 
-/** The installed Stremlist, with the manifest that Stremlist serves now. */
-async function installed(): Promise<Addon> {
+async function installed() {
   const res = await app.request(`/${accountId}/manifest.json`);
   return {
     transportUrl: addonUrl(),
@@ -168,7 +158,6 @@ async function installed(): Promise<Addon> {
   };
 }
 
-/** Asks for a code, as the configure page does. */
 async function startLink(account = accountId) {
   const res = await postJson(`/${account}/stremio/link`, {});
   return readJson(res, z.object({ link: z.string(), token: z.string() }));
@@ -178,7 +167,6 @@ function confirmLink(token: string, account = accountId) {
   return postJson(`/${account}/stremio/link/confirm`, { token });
 }
 
-/** Links the Stremio account through the code page, as a member would. */
 async function seedStremioLink() {
   const stremio = fakeStremio([]);
   const { token } = await startLink();
@@ -234,7 +222,6 @@ describe("linking a Stremio account", () => {
     const res = await confirmLink(token, other);
     expect(res.status).toBe(410);
     expect(db.getTable("stremio_connections")).toHaveLength(0);
-    // A token made up from the code alone is refused too.
     const forged = await confirmLink(
       `AB12.${Date.now() + 60_000}.${"A".repeat(43)}`,
     );
@@ -337,9 +324,6 @@ describe("updating the installed Stremlist", () => {
     await vi.waitFor(() => {
       expect(stremio.held).toBe(1);
     });
-    // The second update starts while the first waits for Stremio. Without
-    // one update at a time, it would write first, and the first would
-    // undo it.
     await rename("Second");
     const second = update();
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -365,7 +349,6 @@ describe("updating the installed Stremlist", () => {
     await vi.waitFor(() => {
       expect(stremio.held).toBe(1);
     });
-    // This request waits for the first update.
     const second = update();
     await new Promise((resolve) => setTimeout(resolve, 100));
     for (const row of db.getTable("accounts")) {
@@ -394,7 +377,6 @@ describe("updating the installed Stremlist", () => {
       method: "DELETE",
     });
     await new Promise((resolve) => setTimeout(resolve, 300));
-    // The update still holds the link: a new link cannot start meanwhile.
     expect(db.getTable("stremio_connections")).toHaveLength(1);
     release();
 
@@ -408,7 +390,6 @@ describe("updating the installed Stremlist", () => {
     for (const row of db.getTable("stremio_connections")) {
       row.update_locked_until = "2100-01-01T00:00:00.000Z";
     }
-    // Each read of the clock moves it 10 s on: the 25 s wait is over soon.
     const start = Date.now();
     let calls = 0;
     vi.spyOn(Date, "now").mockImplementation(() => start + calls++ * 10_000);
@@ -445,7 +426,6 @@ describe("updating the installed Stremlist", () => {
     const stremio = fakeStremio([cinemeta, await installed()]);
     stremio.failure = "signed-out";
     stremio.meanwhile = () => {
-      // The member links Stremio again in another tab.
       db.getTable("stremio_connections")[0].auth_key = encryptSecret("new");
     };
     await update();

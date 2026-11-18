@@ -11,9 +11,7 @@ interface OutageStatus {
  * The Providers with an outage, in Provider order. A Provider that is
  * unavailable is left out: its own label already says so.
  */
-export function outageProviders(
-  status: Record<ProviderId, OutageStatus>,
-): ProviderId[] {
+export function outageProviders(status: Record<ProviderId, OutageStatus>) {
   return PROVIDER_IDS.filter(
     (id) => status[id].enabled && status[id].outageSince !== null,
   );
@@ -26,7 +24,7 @@ export function outageProviders(
 export function recoveredProviders(
   before: readonly ProviderId[],
   status: Record<ProviderId, OutageStatus>,
-): ProviderId[] {
+) {
   return before.filter(
     (id) => status[id].enabled && status[id].outageSince === null,
   );
@@ -44,7 +42,7 @@ export function outageCopy(ids: readonly ProviderId[]) {
 }
 
 /** The note after an outage ends. */
-export function recoveredCopy(ids: readonly ProviderId[]): string {
+export function recoveredCopy(ids: readonly ProviderId[]) {
   return `${joinProviderLabels(ids)} ${ids.length === 1 ? "is" : "are"} working again.`;
 }
 
@@ -52,7 +50,7 @@ export function recoveredCopy(ids: readonly ProviderId[]): string {
 export function earliestOutage(
   ids: readonly ProviderId[],
   status: Record<ProviderId, OutageStatus>,
-): string | null {
+) {
   let earliest: string | null = null;
   for (const id of ids) {
     const since = status[id].outageSince;

@@ -12,9 +12,6 @@ import {
 import { configureUrl, saveButton, SAVE_NEW } from "../helpers/configure.js";
 import { addonsDeepLink } from "../helpers/stremio.js";
 
-// First-install flow: a link pasted on Home becomes the first List on the
-// configure page, and the first save creates the Account.
-
 test.beforeEach(async ({ page }) => {
   await resetDb();
   await page.goto(FRONTEND_URL);
@@ -59,8 +56,6 @@ test(
       "href",
       addonsDeepLink(addonManifestUrl(accountId)),
     );
-    // Stremio opens `stremio://` links over HTTPS without a port, so the
-    // local http://127.0.0.1:7301 Addon URL has no app install link.
     await expect(
       page.getByRole("link", { name: "Install in Stremio" }),
     ).toHaveCount(0);
@@ -75,7 +70,6 @@ test(
   { tag: "@local" },
   async ({ page }) => {
     await bootstrapLegacy(PUBLIC_USER);
-    // Old links sent returning users to /?userId=ur…
     await page.goto(`${FRONTEND_URL}/?userId=${PUBLIC_USER}`);
     await expect(page).toHaveURL(configureUrl(PUBLIC_USER));
     await expect(

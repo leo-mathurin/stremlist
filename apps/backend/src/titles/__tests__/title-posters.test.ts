@@ -77,7 +77,6 @@ describe("findPosters on TMDB", () => {
   it("keeps its budget when the stored posters are slow to read", async () => {
     const fetch = answer(BOTH);
     vi.stubGlobal("fetch", fetch);
-    // The read of the stored posters never answers.
     const read = vi
       .spyOn(MockQueryBuilder.prototype, "then")
       .mockImplementationOnce(() => new Promise(() => {}));
@@ -131,7 +130,6 @@ describe("findPosters on TMDB", () => {
   });
 });
 
-// With the real TheTVDB API, when TVDB_LIVE_API_KEY is set (it is not in CI).
 describe.runIf(process.env.TVDB_LIVE_API_KEY)(
   "findPosters on TheTVDB, live",
   () => {
@@ -157,7 +155,6 @@ describe.runIf(process.env.TVDB_LIVE_API_KEY)(
         expect(url).toMatch(/^https:\/\/artworks\.thetvdb\.com\/.+\.jpg$/u);
         expect(url).not.toMatch(/_t\.jpg$/u);
       }
-      // Cached now: the preview size needs no new lookup.
       const preview = await findPosters("tvdb", titles, {
         budgetMs: 0,
         size: "preview",
@@ -165,7 +162,6 @@ describe.runIf(process.env.TVDB_LIVE_API_KEY)(
       expect(preview.get("tt1190634")).toBe(
         stremio.get("tt1190634")?.replace(/\.jpg$/u, "_t.jpg"),
       );
-      // The thumbnail is a real image.
       const image = await fetch(preview.get("tt0111161") ?? "");
       expect(image.status).toBe(200);
       expect(image.headers.get("content-type")).toBe("image/jpeg");

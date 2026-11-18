@@ -17,7 +17,6 @@ test.beforeAll(async () => {
   backend = await startProviderBackend("./provider-transport.ts", {
     SUPABASE_URL: "http://127.0.0.1:1",
     SUPABASE_SERVICE_ROLE_KEY: "fixture-only",
-    // The backend refuses to start without these. This spec never reads R2.
     R2_ENDPOINT,
     R2_ACCESS_KEY_ID,
     R2_SECRET_ACCESS_KEY,
@@ -77,8 +76,6 @@ test(
   "newsletter browser recovers through the real handler and isolated provider",
   { tag: "@local" },
   async ({ page }) => {
-    // Forward only the newsletter endpoint to the real isolated handler. Other
-    // frontend requests still use the standard local backend.
     await page.route(`${BACKEND_URL}/newsletter/subscribe`, async (route) => {
       const response = await route.fetch({
         url: `${backend.url}/newsletter/subscribe`,

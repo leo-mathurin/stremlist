@@ -1,6 +1,3 @@
-// Load test of the real backend against the local stack, with IMDb faked.
-// Usage: bun run stress:load [--accounts 6000] [--scenarios cold,warm,trakt,stale]
-// See stress/README.md.
 import { spawn, spawnSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import {
@@ -23,7 +20,7 @@ import {
   serverStatsSchema,
   totals,
 } from "./report";
-import type { Check, Peaks, ScenarioResult } from "./report";
+import type { Peaks, ScenarioResult } from "./report";
 import {
   backendDir,
   bucketUsage,
@@ -125,7 +122,7 @@ const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 const outDir = `${repoRoot}.dev.local/stress/${stamp}/`;
 const report: string[] = [];
 
-function print(text: string): void {
+function print(text: string) {
   console.log(text);
   report.push(text);
 }
@@ -135,11 +132,11 @@ let k6: ChildProcess | null = null;
 let stopping = false;
 let cleanup: Promise<boolean> | null = null;
 
-function checkAborted(): void {
+function checkAborted() {
   if (stopping) throw new Aborted("Stopped by a signal.");
 }
 
-function waitForExit(child: ChildProcess, timeoutMs: number): Promise<void> {
+function waitForExit(child: ChildProcess, timeoutMs: number) {
   if (child.exitCode !== null || child.signalCode !== null) {
     return Promise.resolve();
   }
@@ -155,7 +152,7 @@ function waitForExit(child: ChildProcess, timeoutMs: number): Promise<void> {
   });
 }
 
-async function stopServer(): Promise<void> {
+async function stopServer() {
   if (!server) return;
   const { child } = server;
   server = null;
@@ -163,11 +160,7 @@ async function stopServer(): Promise<void> {
   await waitForExit(child, 5000);
 }
 
-async function startServer(
-  stack: Stack,
-  options: Options,
-  stale: boolean,
-): Promise<void> {
+async function startServer(stack: Stack, options: Options, stale: boolean) {
   if (server?.stale === stale) return;
   await stopServer();
   const base = `http://127.0.0.1:${String(options.port)}`;
@@ -176,7 +169,6 @@ async function startServer(
   }
   const log = `${outDir}server-${stale ? "stale" : "normal"}.log`;
   const fd = openSync(log, "a");
-  // A minimal environment: never the developer's .env (bun --no-env-file).
   const env: NodeJS.ProcessEnv = {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
@@ -219,7 +211,7 @@ async function serverCall<T>(
   options: Options,
   path: string,
   schema: z.ZodType<T>,
-): Promise<T> {
+) {
   const response = await fetch(
     `http://127.0.0.1:${String(options.port)}/__stress/${path}`,
   );
@@ -227,7 +219,6 @@ async function serverCall<T>(
   return schema.parse(await response.json());
 }
 
-/** DB connections and container CPU, sampled until stop() is called. */
 function startSampler(stack: Stack) {
   const peaks: Peaks = { dbConnections: 0, dbActive: 0, cpu: {} };
   const containers = [
@@ -258,9 +249,7 @@ function startSampler(stack: Stack) {
           const key = short(name);
           peaks.cpu[key] = Math.max(peaks.cpu[key] ?? 0, value);
         }
-      } catch {
-        // Sampling is best effort; the scenario result does not depend on it.
-      }
+      } catch {}
       await sleep(2000);
     }
   })();
@@ -278,7 +267,7 @@ async function runK6(
   name: ScenarioName,
   script: string,
   env: ReadonlyMap<string, string>,
-): Promise<string> {
+) {
   const summary = `${outDir}summary-${name}.json`;
   const log = `${outDir}k6-${name}.log`;
   const fd = openSync(log, "a");
@@ -301,9 +290,7 @@ async function runK6(
   return summary;
 }
 
-async function seedTrakt(
-  stack: Stack,
-): Promise<{ file: string; accounts: number }> {
+async function seedTrakt(stack: Stack) {
   process.env.CONNECTION_ENCRYPTION_KEY = ENCRYPTION_KEY;
   const output = await psql(
     stack,
@@ -333,7 +320,7 @@ async function runScenario(
   stack: Stack,
   options: Options,
   targets: string,
-): Promise<{ result: ScenarioResult; checks: Check[] }> {
+) {
   await startServer(stack, options, name === "stale");
   let traktAccounts: number | undefined;
   let script = "board.js";
@@ -359,7 +346,6 @@ async function runScenario(
       ]),
     );
   } else if (name === "stale") {
-    // Long enough for list caches to expire and refresh more than once.
     const target = Math.max(1, Math.round(options.staleRate));
     const hold = Math.round(Math.max(90, options.hold * 2.5));
     env.set("MODE", "warm");
@@ -404,12 +390,12 @@ async function runScenario(
   return { result, checks: evaluate(result) };
 }
 
-async function databaseSize(stack: Stack): Promise<number> {
+async function databaseSize(stack: Stack) {
   const rows = await query(stack, "select pg_database_size('postgres')");
   return Number(rows.at(0)?.[0] ?? 0);
 }
 
-async function cleanUp(stack: Stack): Promise<boolean> {
+async function cleanUp(stack: Stack) {
   const status = { ok: true };
   const step = async (label: string, action: () => Promise<unknown>) => {
     try {
@@ -437,7 +423,7 @@ async function cleanUp(stack: Stack): Promise<boolean> {
   return status.ok;
 }
 
-async function main(): Promise<number> {
+async function main() {
   const options = parseOptions();
   if (!options) {
     console.log(HELP);
@@ -471,7 +457,6 @@ async function main(): Promise<number> {
       stopping = true;
       console.log(`\n${signal}: stopping and cleaning up…`);
       server?.child.kill("SIGTERM");
-      // Exit now: the main flow may still wait on a long seed or query.
       void doCleanup().finally(() => process.exit(130));
     });
   }

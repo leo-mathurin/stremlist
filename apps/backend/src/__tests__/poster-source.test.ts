@@ -24,7 +24,6 @@ import { db, resetRpc } from "./helpers/mock-supabase.js";
 vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
 vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
 vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
-// A save prewarms its Lists in the background; these tests read the cache.
 vi.mock("../services/list-prewarm", () => ({ prewarmLists: vi.fn() }));
 
 const LIST_ID = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
@@ -42,7 +41,6 @@ const TMDB_SHAWSHANK = "https://image.tmdb.org/t/p/w500/shawshank-tmdb.jpg";
 const RPDB_SHAWSHANK =
   "https://api.ratingposterdb.com/rpdb-key/imdb/poster-default/tt0111161.jpg?fallback=true";
 
-/** TMDB's /find answers: Shawshank has a poster, Alien has none. */
 function tmdbFind(status = 200) {
   return vi.fn((input: string | URL | Request) => {
     const url = new URL(input instanceof Request ? input.url : input);
@@ -67,7 +65,7 @@ function seedWithList(
   account: Parameters<typeof seedAccount>[0],
   listId = LIST_ID,
   metas: StremioMeta[] = [SHAWSHANK, ALIEN],
-): string {
+) {
   const { id } = seedAccount(account);
   seedList(id, { id: listId, source_ref: "ur12345678" });
   cache.seed(listId, metas);
@@ -119,7 +117,6 @@ describe("poster source in Stremio responses", () => {
       [SHAWSHANK.id]: TMDB_SHAWSHANK,
       [ALIEN.id]: ALIEN.poster,
     });
-    // Each answer is stored for every Account, a missing poster included.
     expect(
       db.getTable("title_posters").map(({ source, imdb_id, poster }) => ({
         source,
@@ -145,7 +142,6 @@ describe("poster source in Stremio responses", () => {
     await catalogPosters(accountId);
     expect(fetch).toHaveBeenCalledTimes(2);
 
-    // A new instance has an empty memory and reads the stored posters.
     resetPosterMemory();
     expect((await catalogPosters(accountId))[SHAWSHANK.id]).toBe(
       TMDB_SHAWSHANK,
@@ -205,7 +201,6 @@ describe("poster source in Stremio responses", () => {
       [ALIEN.id]: ALIEN.poster,
     });
     expect(db.getTable("title_posters")).toEqual([]);
-    // After a failure, the next requests do not wait for TMDB.
     const calls = fetch.mock.calls.length;
     await catalogPosters(accountId);
     expect(fetch.mock.calls.length).toBe(calls);
@@ -231,7 +226,6 @@ describe("poster source in Stremio responses", () => {
   });
 });
 
-// With the real TheTVDB API, when TVDB_LIVE_API_KEY is set (it is not in CI).
 describe.runIf(process.env.TVDB_LIVE_API_KEY)("TheTVDB posters, live", () => {
   beforeEach(() => {
     vi.stubEnv("TVDB_API_KEY", process.env.TVDB_LIVE_API_KEY ?? "");
@@ -257,7 +251,6 @@ describe.runIf(process.env.TVDB_LIVE_API_KEY)("TheTVDB posters, live", () => {
         .sort((a, b) => a.localeCompare(b)),
     ).toEqual([ALIEN.id, SHAWSHANK.id].sort((a, b) => a.localeCompare(b)));
 
-    // An Account on IMDb keeps IMDb posters for the same Titles.
     const imdbAccount = seedWithList({}, OTHER_LIST_ID);
     expect(
       (await catalogPosters(imdbAccount, OTHER_LIST_ID))[SHAWSHANK.id],

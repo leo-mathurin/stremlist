@@ -18,9 +18,6 @@ import { present } from "../helpers/json.js";
 import { seedCachedCatalog } from "../helpers/r2.js";
 import { CATALOG_FIXTURE_USER } from "../helpers/test-data.js";
 
-// The sync status of each List (STR-58) against the real backend, database
-// and cache. Trakt reads fail offline here: see README.md.
-
 const HOUR = 60 * 60_000;
 const PUBLIC_TRAKT_LIST = "users/fixture/lists/horror";
 const HORROR_LIST = {
@@ -58,7 +55,6 @@ test(
       refreshed: 0,
       failed: 1,
       total: 1,
-      // The refresh answers with the new statuses, so the page needs no poll.
       syncStatus: {
         [listId]: [
           {
@@ -115,7 +111,6 @@ test(
       },
       HORROR_LIST,
     ]);
-    // An expired token whose refresh cannot work: the Connection is refused.
     await seedConnection(accountId, "trakt", {
       expiresAt: new Date(Date.now() - HOUR),
     });
@@ -130,8 +125,6 @@ test(
     expect(await getSyncStatusRows(watchlistId)).toMatchObject([
       { failure_reason: "needs_connection", last_success_at: null },
     ]);
-    // The public List reads without the refused Connection (it then fails
-    // only because the test backend has no Trakt client ID).
     expect(await getSyncStatusRows(publicId)).toMatchObject([
       { failure_reason: "disabled" },
     ]);
@@ -152,8 +145,6 @@ test(
       page,
       "Trakt is temporarily unavailable. Please try again later. This problem started just now.",
     );
-    // The test backend cannot start a Trakt authorization (no client ID),
-    // so the page offers no Connect button; the toolkit covers that click.
     await expect(
       page.getByRole("button", { name: /^Connect again/ }),
     ).toHaveCount(0);
@@ -239,7 +230,6 @@ test(
     await expectText(page, "Not saved yet");
     await saveButton(page).click();
 
-    // The save prewarms the new List against live IMDb; the page polls.
     const updated = page.getByText(/^Updated .+ · 250 titles$/);
     await expect(updated).toBeVisible({ timeout: 60_000 });
     const { body } = await getConfig(accountId);

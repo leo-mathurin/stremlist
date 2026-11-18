@@ -1,19 +1,7 @@
 import { z } from "zod";
 
-/**
- * Stremio's code page and API, as Stremlist uses them to update the
- * installed Stremlist of a linked Stremio account (ADR 0002).
- *
- * The member links their account with Stremio's own code page (the one
- * Stremio uses for TVs). The code hands over the stremio.com session that
- * confirmed it, so the key ends when the member signs out of stremio.com.
- * Writes replace the manifest of the one matching entry and keep every other
- * addon and the order.
- */
-
 const LINK_API = "https://link.stremio.com/api/v2";
 const STREMIO_API = "https://api.strem.io/api";
-/** Stremio's answer for a session that was signed out or does not exist. */
 const SESSION_GONE = 1;
 
 /** Stremio no longer accepts the session: the member must link again. */
@@ -32,17 +20,14 @@ export class StremioUnavailableError extends Error {
   }
 }
 
-/** A manifest as Stremio keeps it in the collection. */
 interface CollectionManifest {
   id: string;
   [key: string]: unknown;
 }
 
-// The collection is written back whole: every field of every addon stays.
 const stremioAddonSchema = z
   .object({
     transportUrl: z.string(),
-    // Not read, only written back: any value Stremio sends stays as it is.
     transportName: z.unknown().optional(),
     manifest: z.object({ id: z.string() }).loose(),
     flags: z.unknown().optional(),
@@ -53,12 +38,11 @@ export type StremioAddon = z.infer<typeof stremioAddonSchema>;
 /** A manifest that Stremlist builds: any object with an ID. */
 type BuiltManifest = object & { id: string };
 
-/** How long one Stremio call may take before it counts as an outage. */
 const TIMEOUT_MS = 10_000;
 
 type Fetch = typeof fetch;
 
-async function readJson(response: Response): Promise<unknown> {
+async function readJson(response: Response) {
   try {
     return await response.json();
   } catch {
@@ -66,11 +50,7 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-async function send(
-  fetchImpl: Fetch,
-  input: string,
-  init?: RequestInit,
-): Promise<Response> {
+async function send(fetchImpl: Fetch, input: string, init?: RequestInit) {
   try {
     return await fetchImpl(input, {
       ...init,
@@ -81,7 +61,6 @@ async function send(
   }
 }
 
-// Fields of an answer that is not an object read as missing.
 const apiAnswerSchema = z
   .object({ result: z.unknown().optional(), error: z.unknown().optional() })
   .catch({});
@@ -92,8 +71,7 @@ async function readAnswer(response: Response) {
   return apiAnswerSchema.parse(await readJson(response));
 }
 
-/** A `result` of the shape that `schema` expects, else Stremio is down. */
-function parseResult<T>(result: unknown, schema: z.ZodType<T>): T {
+function parseResult<T>(result: unknown, schema: z.ZodType<T>) {
   const parsed = schema.safeParse(result);
   if (!parsed.success) throw new StremioUnavailableError();
   return parsed.data;
@@ -103,7 +81,7 @@ async function callStremio(
   method: string,
   body: Record<string, unknown>,
   fetchImpl: Fetch,
-): Promise<unknown> {
+) {
   const response = await send(fetchImpl, `${STREMIO_API}/${method}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -125,20 +103,16 @@ export interface LinkCode {
   link: string;
 }
 
-/** The codes that Stremlist's link token can carry (`stremio-link.ts`). */
 const LINK_CODE = /^[A-Za-z0-9]{1,32}$/;
 
 /** Asks Stremio for a code that the member confirms on stremio.com. */
-export async function createLinkCode(
-  fetchImpl: Fetch = fetch,
-): Promise<LinkCode> {
+export async function createLinkCode(fetchImpl: Fetch = fetch) {
   const response = await send(fetchImpl, `${LINK_API}/create?type=Create`);
   const answer = await readAnswer(response);
   const { code, link } = z
     .object({ code: z.unknown().optional(), link: z.unknown().optional() })
     .catch({})
     .parse(answer.result);
-  // A code in another format could never be confirmed: report it now.
   if (!response.ok || typeof code !== "string" || !LINK_CODE.test(code)) {
     throw new StremioUnavailableError();
   }
@@ -153,15 +127,11 @@ export async function createLinkCode(
  * have not. Stremio gives the same answer for a pending and an expired code,
  * so the caller decides when to stop asking.
  */
-export async function readLinkCode(
-  code: string,
-  fetchImpl: Fetch = fetch,
-): Promise<string | null> {
+export async function readLinkCode(code: string, fetchImpl: Fetch = fetch) {
   const response = await send(
     fetchImpl,
     `${LINK_API}/read?type=Read&code=${encodeURIComponent(code)}`,
   );
-  // A pending code is an answer with an error, not an HTTP error.
   if (!response.ok) throw new StremioUnavailableError();
   const answer = await readAnswer(response);
   const { authKey } = z
@@ -175,7 +145,7 @@ export async function readLinkCode(
 export async function getStremioEmail(
   authKey: string,
   fetchImpl: Fetch = fetch,
-): Promise<string | null> {
+) {
   const user = z
     .object({ email: z.unknown().optional() })
     .catch({})
@@ -193,7 +163,7 @@ export async function getStremioEmail(
 export async function hasStremioTrakt(
   authKey: string,
   fetchImpl: Fetch = fetch,
-): Promise<boolean> {
+) {
   const user = z
     .object({
       trakt: z.object({ access_token: z.unknown().optional() }).nullish(),
@@ -205,15 +175,10 @@ export async function hasStremioTrakt(
   return typeof user.trakt?.access_token === "string";
 }
 
-/**
- * A field that Stremio may leave out, send as null, or send with another
- * type: each reads as absent, so one odd item never fails the whole read.
- */
 function lenient<T extends z.ZodType>(schema: T) {
   return schema.optional().catch(undefined);
 }
 
-/** A library item, with the fields that Watch tracking reads. */
 const libraryItemSchema = z.object({
   _id: z.string(),
   type: z.string(),
@@ -224,7 +189,6 @@ const libraryItemSchema = z.object({
       duration: lenient(z.number()),
       timesWatched: lenient(z.number()),
       video_id: lenient(z.string()),
-      /** `{anchor video}:{anchor length}:{base64 zlib bits}` (series). */
       watched: lenient(z.string()),
       lastWatched: lenient(z.string()),
     }),
@@ -232,12 +196,11 @@ const libraryItemSchema = z.object({
 });
 export type LibraryItem = z.infer<typeof libraryItemSchema>;
 
-/** A read: tried once more when the first try gets no answer. */
 async function readStremio(
   method: string,
   body: Record<string, unknown>,
   fetchImpl: Fetch,
-): Promise<unknown> {
+) {
   try {
     return await callStremio(method, body, fetchImpl);
   } catch (error) {
@@ -251,7 +214,7 @@ export async function getLibraryItems(
   authKey: string,
   ids: string[],
   fetchImpl: Fetch = fetch,
-): Promise<LibraryItem[]> {
+) {
   const items = await readStremio(
     "datastoreGet",
     { authKey, collection: "libraryItem", ids, all: false },
@@ -264,7 +227,7 @@ export async function getLibraryItems(
 export async function getLibraryMeta(
   authKey: string,
   fetchImpl: Fetch = fetch,
-): Promise<[string, number][]> {
+) {
   const meta = await readStremio(
     "datastoreMeta",
     { authKey, collection: "libraryItem" },
@@ -273,10 +236,7 @@ export async function getLibraryMeta(
   return parseResult(meta, z.array(z.tuple([z.string(), z.number()])));
 }
 
-async function getCollection(
-  authKey: string,
-  fetchImpl: Fetch,
-): Promise<StremioAddon[]> {
+async function getCollection(authKey: string, fetchImpl: Fetch) {
   const result = await callStremio(
     "addonCollectionGet",
     { type: "AddonCollectionGet", authKey, update: true },
@@ -290,7 +250,7 @@ async function setCollection(
   authKey: string,
   addons: StremioAddon[],
   fetchImpl: Fetch,
-): Promise<void> {
+) {
   await callStremio(
     "addonCollectionSet",
     { type: "AddonCollectionSet", authKey, addons },
@@ -298,7 +258,7 @@ async function setCollection(
   );
 }
 
-function pathSegments(url: string): string[] | null {
+function pathSegments(url: string) {
   try {
     return new URL(url.replace(/^stremio:\/\//, "https://")).pathname
       .split("/")
@@ -313,10 +273,7 @@ function pathSegments(url: string): string[] | null {
  * keeps the address it was installed from, which can be an older Stremlist
  * domain, so the path and the manifest decide, not the host.
  */
-export function isThisStremlist(
-  addon: StremioAddon,
-  addonUrl: string,
-): boolean {
+export function isThisStremlist(addon: StremioAddon, addonUrl: string) {
   const installed = pathSegments(addon.transportUrl);
   const ours = pathSegments(addonUrl);
   if (!installed || !ours || ours.length < 2) return false;
@@ -331,17 +288,11 @@ export function isThisStremlist(
   );
 }
 
-function sameJson(a: unknown, b: unknown): boolean {
+function sameJson(a: unknown, b: unknown) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-export type UpdateResult =
-  /** Stremio now reads the saved catalogs. */
-  | "updated"
-  /** Stremio already read them: nothing was written. */
-  | "unchanged"
-  /** This Stremlist is not installed in the linked Stremio account. */
-  | "missing";
+export type UpdateResult = "updated" | "unchanged" | "missing";
 
 /**
  * Gives the installed Stremlist `manifest`, built from the last save. Reads
@@ -355,8 +306,7 @@ export async function updateInstalledStremlist(
   addonUrl: string,
   built: BuiltManifest,
   fetchImpl: Fetch = fetch,
-): Promise<UpdateResult> {
-  // Stremio keeps the manifest as the JSON object it was given.
+) {
   const manifest = built as CollectionManifest;
   const collection = await getCollection(authKey, fetchImpl);
   const index = collection.findIndex((addon) =>
@@ -370,7 +320,6 @@ export async function updateInstalledStremlist(
   );
   await setCollection(authKey, next, fetchImpl);
 
-  // Stremio accepted the write. A check that gets no answer does not undo it.
   const written = await getCollection(authKey, fetchImpl).catch(
     (error: unknown) => {
       if (error instanceof StremioUnavailableError) return null;
@@ -394,8 +343,7 @@ export async function installStremlist(
   addonUrl: string,
   built: BuiltManifest,
   fetchImpl: Fetch = fetch,
-): Promise<void> {
-  // Stremio keeps the manifest as the JSON object it was given.
+) {
   const manifest = built as CollectionManifest;
   const collection = await getCollection(authKey, fetchImpl);
   if (collection.some((addon) => isThisStremlist(addon, addonUrl))) return;

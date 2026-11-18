@@ -150,7 +150,6 @@ describe("simkl custom lists", () => {
     expect(first.entries).toHaveLength(20);
     expect(first.complete).toBe(false);
 
-    // The next read comes from the stored snapshot and keeps the flag.
     ageLibrary();
     clearCalls();
     const second = await simklProvider.fetchSource("me/lists/321", ctx());

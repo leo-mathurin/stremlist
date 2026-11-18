@@ -10,9 +10,6 @@ import {
 } from "../helpers/stremio.js";
 import { PUBLIC_USER } from "../helpers/test-data.js";
 
-// Install lifecycle inside the real Stremio Web app (anonymous profile —
-// a fresh browser context has its own local addon collection).
-
 test.beforeEach(resetDb);
 
 test(
@@ -23,7 +20,6 @@ test(
 
     await installAddon(page, manifestUrl);
 
-    // Re-opening the deep link on an installed addon offers Uninstall.
     await page.goto(addonsDeepLink(manifestUrl));
     await page.reload();
     await dismissDesktopAppPrompt(page);
@@ -31,7 +27,6 @@ test(
     await expect(uninstall).toBeVisible();
     await uninstall.click();
 
-    // And once uninstalled, the same deep link offers Install again.
     await page.goto(addonsDeepLink(manifestUrl));
     await page.reload();
     await dismissDesktopAppPrompt(page);

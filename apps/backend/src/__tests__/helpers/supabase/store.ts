@@ -1,7 +1,3 @@
-/**
- * The in-memory tables behind the Supabase mock: column defaults, unique
- * constraints and ON DELETE CASCADE from supabase/migrations.
- */
 import type { Gate, Waiter } from "./letterboxd-gate-rpcs";
 
 /** A table row: column name to value. */
@@ -17,17 +13,15 @@ export interface Result {
 export const EPOCH = "1970-01-01T00:00:00.000Z";
 const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
-/** Same shape as public.generate_account_id(). */
-function generateAccountId(): string {
+function generateAccountId() {
   const bytes = crypto.getRandomValues(new Uint8Array(22));
   return `sl_${Array.from(bytes, (byte) => BASE62[byte % 62]).join("")}`;
 }
 
-export function now(): string {
+export function now() {
   return new Date().toISOString();
 }
 
-/** Column defaults from the migrations, per table. */
 const TABLE_DEFAULTS = new Map<string, () => Row>(
   Object.entries({
     accounts: () => ({
@@ -110,11 +104,11 @@ const UNIQUE_KEYS = new Map<string, string[][]>(
 );
 
 /** The unique constraints of `table`, each as its columns. */
-export function uniqueKeys(table: string): string[][] {
+export function uniqueKeys(table: string) {
   return UNIQUE_KEYS.get(table) ?? [];
 }
 
-export function withoutUndefined(row: Row): Row {
+export function withoutUndefined(row: Row) {
   return Object.fromEntries(
     Object.entries(row).filter(([, value]) => value !== undefined),
   );
@@ -126,7 +120,7 @@ export class InMemoryDB {
   letterboxdGates: Gate[] = [];
   letterboxdWaiters: Waiter[] = [];
 
-  getTable(name: string): Row[] {
+  getTable(name: string) {
     this.tables[name] ??= [];
     return this.tables[name];
   }
@@ -137,7 +131,7 @@ export class InMemoryDB {
     this.letterboxdWaiters = [];
   }
 
-  withDefaults(table: string, row: Row): Row {
+  withDefaults(table: string, row: Row) {
     const defaults = TABLE_DEFAULTS.get(table)?.() ?? {
       id: crypto.randomUUID(),
       created_at: now(),
@@ -147,7 +141,7 @@ export class InMemoryDB {
   }
 
   /** Insert one row with the table's defaults, as Postgres would. */
-  insert(table: string, row: Row): Row {
+  insert(table: string, row: Row) {
     const stored = this.withDefaults(table, row);
     const conflict = this.uniqueViolation(table, stored);
     if (conflict) throw new Error(conflict);
@@ -156,14 +150,14 @@ export class InMemoryDB {
   }
 
   /** Delete the matching rows. */
-  delete(table: string, matches: (row: Row) => boolean): Row[] {
+  delete(table: string, matches: (row: Row) => boolean) {
     const removed = this.getTable(table).filter(matches);
     this.tables[table] = this.getTable(table).filter((row) => !matches(row));
     return removed;
   }
 
   /** The violated constraint, or null. `ignore` is the row being updated. */
-  uniqueViolation(table: string, row: Row, ignore?: Row): string | null {
+  uniqueViolation(table: string, row: Row, ignore?: Row) {
     for (const columns of uniqueKeys(table)) {
       if (columns.some((column) => row[column] == null)) continue;
       const clash = this.getTable(table).some(
@@ -184,5 +178,5 @@ export function uniqueError(constraint: string) {
   };
 }
 
-// Singleton used by both the mock and the tests
+/** Singleton used by both the mock and the tests */
 export const db = new InMemoryDB();

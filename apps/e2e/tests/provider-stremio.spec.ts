@@ -20,15 +20,8 @@ import {
   installAddon,
 } from "../helpers/stremio.js";
 
-// The path from a Provider to Stremio, for every Provider other than IMDb
-// (tests/stremio-*.spec.ts cover IMDb with live data). A fixture backend runs
-// the real adapters, database and R2 store; helpers/provider-fixtures.ts
-// answers every Provider request. Stremio reads what the manifest declares:
-// the Catalogs of each List, then the meta and the streams of a Title.
-
 let backend: FixtureBackend;
 
-/** What every fixture Source list holds: one movie and one series. */
 const MOVIE = {
   id: "tt0111161",
   type: "movie",
@@ -46,26 +39,19 @@ test.afterAll(async () => {
 test.beforeEach(async () => {
   await resetDb();
   backend.clearRequests();
-  // The ID resolver caches SensCritique and Letterboxd products across runs.
   await clearResolverCache("senscritique", ["101", "202"]);
   await clearResolverCache("letterboxd", ["film:101", "film:202"]);
 });
 
-/** The order of `sort()` without a compare function: by UTF-16 code units. */
-function byCodeUnits(a: string, b: string): number {
+function byCodeUnits(a: string, b: string) {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-/**
- * Read one List as Stremio does. The manifest declares a movie and a series
- * Catalog for it; each Catalog serves the fixture Title of its type.
- * Returns the two Catalog IDs.
- */
 async function expectListInStremio(
   api: Api,
   accountKey: string,
   listId: string,
-): Promise<{ movie: string; series: string }> {
+) {
   const manifest = await api.getManifest(accountKey);
   expect(manifest.behaviorHints.configurationRequired).toBe(false);
   const own = manifest.catalogs.filter((catalog) =>
@@ -94,11 +80,6 @@ async function expectListInStremio(
   return { movie: `wl-${listId}-movie`, series: `wl-${listId}-series` };
 }
 
-/**
- * Stremio asks the addon for meta (movies only, `tt` IDs) and streams. Movie
- * meta comes from the Catalog cache. Series meta is delegated to another
- * addon. Without Actions there are no streams and no stream resource.
- */
 async function expectMetaAndStreams(api: Api, accountKey: string) {
   const manifest = await api.getManifest(accountKey);
   const resources = manifest.resources.map((resource) =>
@@ -122,7 +103,6 @@ async function expectMetaAndStreams(api: Api, accountKey: string) {
   }
 }
 
-/** One Source list of every Provider except IMDb, in one Account. */
 const EVERY_PROVIDER: [ProviderId, string, string][] = [
   ["trakt", "users/fixture-user/watchlist", "Trakt watchlist"],
   ["trakt", "trending", "Trakt trending"],
@@ -136,7 +116,6 @@ const EVERY_PROVIDER: [ProviderId, string, string][] = [
   ["letterboxd", "users/fixture_user/watchlist", "Letterboxd"],
 ];
 
-/** Save `EVERY_PROVIDER` in a private Account with Simkl and MDBList connected. */
 async function seedEveryProvider() {
   const accountId = await seedAccount();
   await seedConnection(accountId, "simkl");
@@ -168,7 +147,6 @@ test(
   },
 );
 
-/** Public links that a visitor pastes on Home, with what they save. */
 const HOME_LINKS: [ProviderId, string, string][] = [
   [
     "trakt",
@@ -203,7 +181,6 @@ for (const [provider, link, sourceRef] of HOME_LINKS) {
       await page.getByRole("button", { name: "Add this list" }).click();
       await expect(page).toHaveURL(`${FRONTEND_URL}/configure`);
 
-      // The List is added once the link resolves; then the setup can save.
       const save = saveButton(page, SAVE_NEW);
       await expect(save).toBeEnabled();
       const created = page.waitForResponse(
@@ -225,7 +202,6 @@ for (const [provider, link, sourceRef] of HOME_LINKS) {
       await expectListInStremio(backend.api, accountId, lists[0].id);
       await expectMetaAndStreams(backend.api, accountId);
 
-      // The saved List is still there after a reload.
       await page.reload();
       await expect(page).toHaveURL(configureUrl(accountId));
       await expect(
@@ -254,9 +230,6 @@ test(
         ["series", SERIES],
       ] as const) {
         await page.goto(discoverUrl(manifestUrl, type, ids[type]));
-        // A hash change keeps the previous Catalog on screen for a moment.
-        // Discover also links the selected Title's details ("Show"), so
-        // only the fixture Titles count.
         await expect
           .poll(
             async () =>

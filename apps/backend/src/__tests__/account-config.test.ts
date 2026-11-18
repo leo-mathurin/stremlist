@@ -150,7 +150,6 @@ describe("List CRUD via the config API", () => {
         UUID_1,
         UUID_2,
       ]);
-      // Tokens never leave the server.
       expect(JSON.stringify(data)).not.toContain("access_token");
       expect(JSON.stringify(data)).not.toContain("v1:");
     });

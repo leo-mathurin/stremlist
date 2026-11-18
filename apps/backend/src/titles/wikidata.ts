@@ -1,14 +1,11 @@
 import { IMDB_TITLE_ID_PATTERN } from "@stremlist/shared/constants";
 import { z } from "zod";
 import { providerFetchJson, RateLimiter } from "../providers/http";
-import type { ResolverStrategy, SourceEntry } from "../providers/types";
+import type { SourceEntry } from "../providers/types";
 
 const WIKIDATA_SPARQL = "https://query.wikidata.org/sparql";
-/** Wikidata property "IMDb ID". */
 const IMDB_PROPERTY = "P345";
-/** IDs per SPARQL query: one request covers a full resolver batch. */
 const BATCH_SIZE = 200;
-// The query service allows 5 parallel queries per client; stay well below.
 const wikidataLimiter = new RateLimiter(2, 1000);
 
 const PROPERTY_PATTERN = /^P\d+$/;
@@ -33,10 +30,7 @@ const sparqlResponseSchema = z.object({
  * work ID) to IMDb IDs, with one SPARQL query per batch. An external ID that
  * Wikidata links to several different Titles is left out: it is ambiguous.
  */
-export async function wikidataImdbIds(
-  property: string,
-  ids: string[],
-): Promise<Map<string, string>> {
+export async function wikidataImdbIds(property: string, ids: string[]) {
   if (!PROPERTY_PATTERN.test(property)) {
     throw new Error(`Invalid Wikidata property: ${property}`);
   }
@@ -46,8 +40,6 @@ export async function wikidataImdbIds(
 
   for (let start = 0; start < unique.length; start += BATCH_SIZE) {
     const batch = unique.slice(start, start + BATCH_SIZE);
-    // JSON strings are valid SPARQL string literals. wdt: reads only
-    // best-rank statements, so deprecated IMDb IDs are skipped.
     const query = `SELECT ?external ?imdb WHERE {
   VALUES ?external { ${batch.map((id) => JSON.stringify(id)).join(" ")} }
   ?item wdt:${property} ?external ;
@@ -86,7 +78,7 @@ export function wikidataStrategy(
   name: string,
   property: string,
   externalId: (entry: SourceEntry) => string | undefined,
-): ResolverStrategy {
+) {
   return {
     name,
     async resolve(entries) {

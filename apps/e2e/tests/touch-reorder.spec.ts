@@ -128,7 +128,6 @@ test(
           }),
         );
         await touch(session, "touchStart", from);
-        // No hold: moving more than 5px cancels the old 250ms touch delay.
         await touch(session, "touchMove", {
           ...from,
           y: from.y + direction * 10,

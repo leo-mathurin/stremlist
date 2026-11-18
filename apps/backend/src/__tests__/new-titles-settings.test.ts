@@ -98,7 +98,6 @@ describe("settings", () => {
 describe("Connection cleanup", () => {
   it("keeps only the current Connection user's history and public Source lists", async () => {
     seedNewTitlesAccount();
-    // leo was connected; a refresh already wrote a Baseline for sam.
     seedConnection(accountId, "trakt", { username: "leo" });
     ["me/history", "me/collection", "users/leo/watchlist"].forEach(
       (sourceRef, position) =>
@@ -116,10 +115,8 @@ describe("Connection cleanup", () => {
       const { summary: found } = await summary();
       return [found?.detected, found?.waitingLists];
     };
-    // The history of sam is not leo's: that List waits for a Baseline.
     expect(await counts()).toEqual([2, 1]);
 
-    // sam connects: the history of leo no longer counts.
     await saveConnection(
       accountId,
       "trakt",
@@ -134,7 +131,6 @@ describe("Connection cleanup", () => {
     );
     expect(await counts()).toEqual([2, 1]);
 
-    // After a disconnect, only the public Source list keeps its history.
     await disconnectProvider(accountId, "trakt");
     expect(db.getTable("connections")).toEqual([]);
     expect(syncRows().map((row) => row.source_ref)).toEqual([
@@ -183,7 +179,6 @@ describe("Connection cleanup", () => {
     );
 
     expect(res.status).toBe(200);
-    // The new user's first read is a Baseline, not a list of new titles.
     await vi.waitFor(() => {
       expect(syncRows()).toMatchObject([
         { source_ref: "me/history", connection_user: "sam" },

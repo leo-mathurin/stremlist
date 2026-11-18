@@ -1,6 +1,4 @@
-import type { DisplayMode } from "@stremlist/shared/constants";
 import { asImdbId } from "@stremlist/shared/constants";
-import type { ConnectionSource } from "@stremlist/shared/providers";
 import { z } from "zod";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
 import {
@@ -25,12 +23,10 @@ import type {
   ActionIntent,
   ActionTarget,
   ConnectionAccess,
-  Membership,
   PagedRead,
   ProviderAdapter,
   ProviderContext,
   SourceEntry,
-  SourceSnapshot,
   SourceValidation,
 } from "./types";
 import {
@@ -41,15 +37,8 @@ import {
 
 const API = "https://api.mdblist.com";
 const PAGE_SIZE = 1000;
-// A safety stop for a broken cursor. MDBList lists hold at most 10,000 items
-// on the free tier, and supporter tiers stay well below this.
 const MAX_PAGES = 50;
 
-/**
- * MDBList allows 1,000 reads and 300 writes per fixed 5-minute window, per
- * MDBList account and shared with every other app of that user. These
- * limiters keep one process below 90% of it, per MDBList user.
- */
 const WINDOW_MS = 5 * 60_000;
 const READS_PER_WINDOW = 900;
 const WRITES_PER_WINDOW = 270;
@@ -64,16 +53,13 @@ const limitersFor = limitersPerUser(
 );
 
 const mdblistIdsSchema = z.object({
-  // Not read: any value is fine.
   mdblist: z.unknown().optional(),
   imdb: z.string().nullish(),
   tmdb: z.number().nullish(),
 });
 type MdblistIds = z.infer<typeof mdblistIdsSchema>;
 
-/** One item of a list, watchlist or external list (`unified=true`). */
 const mdblistItemSchema = z.object({
-  /** The TMDB ID for movies and shows. */
   id: z.number().nullish(),
   mediatype: z.string().nullish(),
   imdb_id: z.string().nullish(),
@@ -85,7 +71,6 @@ const mdblistItemSchema = z.object({
 });
 type MdblistItem = z.infer<typeof mdblistItemSchema>;
 
-/** A list's info, or one of the user's lists. */
 const mdblistListInfoSchema = z.object({
   id: z.number().optional(),
   name: z.string().optional(),
@@ -93,7 +78,6 @@ const mdblistListInfoSchema = z.object({
 });
 type MdblistListInfo = z.infer<typeof mdblistListInfoSchema>;
 
-/** MDBList answers list info as an object or as a one-item array. */
 const listInfoResponseSchema = z
   .union([mdblistListInfoSchema, z.array(mdblistListInfoSchema)])
   .nullable();
@@ -111,14 +95,12 @@ const syncEpisodeSchema = z.object({
   show: syncMediaSchema.nullish(),
 });
 
-/** The rating and dates of a rated or watched movie or show. */
 const syncRowFields = {
   rating: z.number().nullish(),
   rated_at: z.string().nullish(),
   last_watched_at: z.string().nullish(),
 };
 
-/** GET /sync/watched and GET /sync/ratings. */
 const syncPageSchema = z.object({
   movies: z
     .array(z.object({ movie: syncMediaSchema.nullish(), ...syncRowFields }))
@@ -153,11 +135,6 @@ const mdblistErrorSchema = z
   .partial()
   .nullable();
 
-/**
- * Turn an MDBList error response into the reason a Source list cannot be
- * read. MDBList answers 403 both for a revoked token ("Invalid OAuth token")
- * and for a list that the user may not see.
- */
 function throwSourceError(error: unknown): never {
   if (!(error instanceof HttpError)) throw error;
   let message = "";
@@ -201,7 +178,7 @@ async function mdblistRequest(
     params?: Record<string, string>;
     body?: unknown;
   } = {},
-): Promise<{ data: unknown; response: Response }> {
+) {
   const method = options.method ?? "GET";
   const token = await connection.getAccessToken();
   const limiters = limitersFor(connection);
@@ -219,14 +196,7 @@ async function mdblistRequest(
   }
 }
 
-/**
- * Read every item of a list endpoint. With `unified=true` MDBList returns a
- * bare array in list order and gives the next page in `X-Next-Cursor`.
- */
-function readAllItems(
-  connection: ConnectionAccess,
-  path: string,
-): Promise<PagedRead<MdblistItem>> {
+function readAllItems(connection: ConnectionAccess, path: string) {
   return readPages({
     maxPages: MAX_PAGES,
     first: null as string | null,
@@ -250,12 +220,11 @@ function readAllItems(
   });
 }
 
-/** Read every page of a /sync/… snapshot (cursor in `pagination`). */
 async function readAllSync(
   connection: ConnectionAccess,
   path: string,
   params: Record<string, string> = {},
-): Promise<{ sync: SyncPage; complete: boolean }> {
+) {
   const { items: pages, complete } = await readPages({
     maxPages: MAX_PAGES,
     first: null as string | null,
@@ -286,22 +255,6 @@ async function readAllSync(
   };
 }
 
-/**
- * Source list refs:
- * - `lists/{id}`: any list the user can see, by numeric ID (stored form).
- * - `lists/{user}/{slug}`: the same, as pasted from a link (normalized to
- *   `lists/{id}` on validation).
- * - `me/watchlist`: the connected user's watchlist.
- * - `me/lists/{id}`: one of the connected user's own lists.
- * - `me/external/{id}`: a list that MDBList imports for the user from IMDb,
- *   Trakt, Letterboxd, JustWatch and others.
- * - `watchlist/{user}`: a pasted watchlist link; only the connected user's
- *   own watchlist can be read (normalized to `me/watchlist`).
- * - `me/ratings`, `me/history`: the connected user's rated and watched
- *   movies and shows.
- * - `official/{slug}`: an MDBList official chart, such as `trending`. It has
- *   no list ID: one name covers a movie list and a show list.
- */
 type ParsedRef =
   | { kind: "watchlist" }
   | { kind: "list"; id: string }
@@ -315,7 +268,7 @@ type ParsedRef =
 const NUMERIC = /^\d+$/;
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
 
-function parseRef(ref: string): ParsedRef | null {
+function parseRef(ref: string) {
   const parts = ref.split("/");
   if (ref === "me/watchlist") return { kind: "watchlist" };
   if (ref === "me/ratings") return { kind: "ratings" };
@@ -339,10 +292,9 @@ function parseRef(ref: string): ParsedRef | null {
   return null;
 }
 
-/** The refs read through a list items endpoint. */
 type ItemsRef = Exclude<ParsedRef, { kind: "ratings" | "history" }>;
 
-function itemsPath(parsed: ItemsRef): string {
+function itemsPath(parsed: ItemsRef) {
   switch (parsed.kind) {
     case "official":
       return `/lists/official/${parsed.slug}/items`;
@@ -358,19 +310,18 @@ function itemsPath(parsed: ItemsRef): string {
   }
 }
 
-function displayModeFor(mediatype: string | null | undefined): DisplayMode {
+function displayModeFor(mediatype: string | null | undefined) {
   if (mediatype === "movie") return "movie";
   if (mediatype === "show") return "series";
   return "split";
 }
 
-/** MDBList answers list info as an object or as a one-item array. */
-function firstInfo<T>(data: T | T[] | null): T | null {
+function firstInfo<T>(data: T | T[] | null) {
   if (Array.isArray(data)) return data[0] ?? null;
   return data;
 }
 
-function isSameUser(a: string | null | undefined, b: string): boolean {
+function isSameUser(a: string | null | undefined, b: string) {
   return !!a && a.toLowerCase() === b.toLowerCase();
 }
 
@@ -381,14 +332,13 @@ function imdbIdOf(
   return asImdbId(ids?.imdb ?? fallback);
 }
 
-function toEntry(item: MdblistItem): SourceEntry | null {
+function toEntry(item: MdblistItem) {
   const type =
     item.mediatype === "movie"
       ? "movie"
       : item.mediatype === "show"
         ? "series"
         : null;
-  // Seasons and episodes in a list are not Titles.
   if (!type) return null;
   const tmdbId = item.ids?.tmdb ?? item.id;
   const entry: SourceEntry = { type };
@@ -399,7 +349,6 @@ function toEntry(item: MdblistItem): SourceEntry | null {
   }
   if (item.title) entry.title = item.title;
   if (typeof item.release_year === "number") entry.year = item.release_year;
-  // For shows MDBList gives the total runtime of all episodes.
   if (
     type === "movie" &&
     typeof item.runtime === "number" &&
@@ -410,11 +359,7 @@ function toEntry(item: MdblistItem): SourceEntry | null {
   return entry;
 }
 
-/**
- * MDBList returns the watchlist newest first. The canonical order is oldest
- * added first.
- */
-function watchlistOrder(items: MdblistItem[]): MdblistItem[] {
+function watchlistOrder(items: MdblistItem[]) {
   const oldestFirst = [...items].reverse();
   const time = (item: MdblistItem) =>
     item.watchlist_at ? Date.parse(item.watchlist_at) : Number.NaN;
@@ -429,7 +374,7 @@ type SyncRowDates = z.infer<z.ZodObject<typeof syncRowFields>>;
 function syncMediaEntry(
   media: SyncMedia | null | undefined,
   type: "movie" | "series",
-): SourceEntry | null {
+) {
   if (!media) return null;
   const entry: SourceEntry = { type };
   const imdbId = imdbIdOf(media.ids);
@@ -443,14 +388,10 @@ function syncMediaEntry(
   return entry;
 }
 
-/**
- * The movies and shows of a /sync/… snapshot, oldest first by `dateOf`, the
- * undated ones last. Seasons and episodes are not Titles.
- */
 function syncEntries(
   sync: SyncPage,
   dateOf: (row: SyncRowDates) => string | null | undefined,
-): SourceEntry[] {
+) {
   const rows = [
     ...(sync.movies ?? []).map((row) => ({
       entry: syncMediaEntry(row.movie, "movie"),
@@ -476,17 +417,14 @@ function syncEntries(
     });
 }
 
-/** The connected user's rated or watched movies and shows. */
 async function readSyncSource(
   connection: ConnectionAccess,
   kind: "ratings" | "history",
-): Promise<SourceSnapshot> {
+) {
   if (kind === "ratings") {
     const { sync, complete } = await readAllSync(connection, "/sync/ratings");
     return { entries: syncEntries(sync, (row) => row.rated_at), complete };
   }
-  // A show that is not fully watched has no `shows` row, only its seasons
-  // and episodes. One row per season keeps the pages small.
   const [movies, seasons] = await Promise.all(
     ["movie", "season"].map((mediatype) =>
       readAllSync(connection, "/sync/watched", { mediatype }),
@@ -504,10 +442,7 @@ async function readSyncSource(
   };
 }
 
-/** One row per show, dated by the last watch of any of its seasons. */
-function latestPerShow(
-  seasons: NonNullable<SyncPage["seasons"]>,
-): NonNullable<SyncPage["shows"]> {
+function latestPerShow(seasons: NonNullable<SyncPage["seasons"]>) {
   const shows = new Map<string, NonNullable<SyncPage["shows"]>[number]>();
   for (const row of seasons) {
     const show = row.season?.show;
@@ -522,7 +457,7 @@ function latestPerShow(
   return [...shows.values()];
 }
 
-function watchedPayload(intent: ActionIntent, target: ActionTarget): SyncBody {
+function watchedPayload(intent: ActionIntent, target: ActionTarget) {
   const at = watchedAtOf(intent);
   const episodes = targetEpisodes(target);
   if (target.type === "series" && episodes.length > 0) {
@@ -535,12 +470,11 @@ async function perform(
   connection: ConnectionAccess,
   intent: ActionIntent,
   target: ActionTarget,
-): Promise<void> {
+) {
   const ids = syncIds(target);
   const bucket = bucketOf(target);
   let path: string;
   let body: SyncBody;
-  // Removing something that is already gone is not an error.
   let mustExist: boolean;
 
   if (intent.kind === "watchlist") {
@@ -570,15 +504,13 @@ async function perform(
   }
 }
 
-function validRating(value: number | null | undefined): number | null {
+function validRating(value: number | null | undefined) {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   const rating = Math.round(value);
   return rating >= 1 && rating <= 10 ? rating : null;
 }
 
-async function getMembership(
-  connection: ConnectionAccess,
-): Promise<Membership> {
+async function getMembership(connection: ConnectionAccess) {
   const [watchlistItems, watched, rated] = await Promise.all([
     readAllItems(connection, "/watchlist/items").then((read) => read.items),
     readAllSync(connection, "/sync/watched").then((read) => read.sync),
@@ -591,7 +523,6 @@ async function getMembership(
   });
 
   const watchedIds = new Set<string>();
-  // MDBList lists a show here as soon as one episode is watched.
   for (const ids of [
     ...(watched.movies ?? []).map((row) => row.movie?.ids),
     ...(watched.shows ?? []).map((row) => row.show?.ids),
@@ -633,7 +564,7 @@ async function getMembership(
 
 const client = oauthClient("MDBLIST");
 
-async function fetchUsername(token: string): Promise<string | null> {
+async function fetchUsername(token: string) {
   const response = await providerFetch(`${API}/user`, {
     headers: { Accept: "application/json" },
     bearer: token,
@@ -644,10 +575,7 @@ async function fetchUsername(token: string): Promise<string | null> {
   return user.username;
 }
 
-async function validateSource(
-  ref: string,
-  ctx: ProviderContext,
-): Promise<SourceValidation> {
+async function validateSource(ref: string, ctx: ProviderContext) {
   const parsed = parseRef(ref);
   if (!parsed) return { ok: false, reason: "not_found" };
   const connection = ctx.connection;
@@ -656,8 +584,6 @@ async function validateSource(
   switch (parsed.kind) {
     case "watchlist":
     case "user-watchlist":
-      // MDBList has no API for another user's watchlist: it only shares the
-      // watchlist of the connected user.
       if (
         parsed.kind === "user-watchlist" &&
         !isSameUser(connection.username, parsed.user)
@@ -717,7 +643,6 @@ async function validateSource(
       if (!info || typeof info.id !== "number") {
         return { ok: false, reason: "not_found" };
       }
-      // The numeric ID survives a rename of the list or of its owner.
       const normalized =
         parsed.kind === "list" && ref.startsWith("me/")
           ? ref
@@ -732,10 +657,7 @@ async function validateSource(
   }
 }
 
-async function fetchSource(
-  ref: string,
-  ctx: ProviderContext,
-): Promise<SourceSnapshot> {
+async function fetchSource(ref: string, ctx: ProviderContext) {
   const parsed = parseRef(ref);
   if (!parsed) {
     throw new SourceUnavailableError("not_found", `Unknown MDBList ref ${ref}`);
@@ -775,24 +697,19 @@ async function fetchSource(
   };
 }
 
-function asSummaries(data: unknown): MdblistListInfo[] {
+function asSummaries(data: unknown) {
   return Array.isArray(data) ? z.array(mdblistListInfoSchema).parse(data) : [];
 }
 
-/** GET /lists/liked: one page, by offset. */
 const likedListsPageSchema = z.object({
   lists: z.array(mdblistListInfoSchema).optional(),
   pagination: z.object({ has_more: z.boolean().optional() }).optional(),
 });
 
-/** At most 1,000 liked lists: 10 pages of MDBList's largest page. */
 const LIKED_PAGE_SIZE = 100;
 const MAX_LIKED_PAGES = 10;
 
-/** The lists that the connected user liked, most recently liked first. */
-async function readLikedLists(
-  connection: ConnectionAccess,
-): Promise<MdblistListInfo[]> {
+async function readLikedLists(connection: ConnectionAccess) {
   const { items } = await readPages({
     maxPages: MAX_LIKED_PAGES,
     first: 0,
@@ -819,13 +736,10 @@ async function readLikedLists(
  * lists the configure page can offer after the user connects MDBList. A
  * liked list reads by its ID, like a pasted list link.
  */
-export async function listMdblistUserSources(
-  connection: ConnectionAccess,
-): Promise<ConnectionSource[]> {
+export async function listMdblistUserSources(connection: ConnectionAccess) {
   const [lists, external, liked] = await Promise.all([
     mdblistRequest(connection, "/lists/user"),
     mdblistRequest(connection, "/external/lists/user"),
-    // Liked lists are an extra: if they fail, still offer the others.
     readLikedLists(connection).catch((error: unknown) => {
       console.error(
         "Listing MDBList liked lists failed:",
@@ -836,10 +750,7 @@ export async function listMdblistUserSources(
   ]);
   const own = asSummaries(lists.data);
   const ownIds = new Set(own.map((list) => list.id));
-  const toSource = (
-    prefix: string,
-    list: MdblistListInfo,
-  ): ConnectionSource[] =>
+  const toSource = (prefix: string, list: MdblistListInfo) =>
     typeof list.id === "number"
       ? [
           {
@@ -855,7 +766,6 @@ export async function listMdblistUserSources(
     ...asSummaries(external.data).flatMap((list) =>
       toSource("me/external", list),
     ),
-    // A user can like their own list: it is offered once, as their own.
     ...liked
       .filter((list) => !ownIds.has(list.id))
       .flatMap((list) => toSource("lists", list)),

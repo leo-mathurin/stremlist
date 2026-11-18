@@ -15,21 +15,18 @@ const scraperMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../services/imdb-scraper", () => scraperMocks);
-// The Provider registry reaches the Letterboxd gate, which uses Supabase.
 vi.mock(
   "../../lib/supabase",
   () => import("../../__tests__/helpers/mock-supabase"),
 );
 
-// enrich.ts keeps an in-memory cache for the whole process: every test uses
-// its own IMDb IDs so one test's lookups never answer another's.
 let nextId = 1000000;
-function freshId(): string {
+function freshId() {
   nextId += 1;
   return `tt${nextId}`;
 }
 
-function meta(id: string, overrides: Partial<StremioMeta> = {}): StremioMeta {
+function meta(id: string, overrides: Partial<StremioMeta> = {}) {
   return {
     id,
     type: "movie",
@@ -42,17 +39,17 @@ function meta(id: string, overrides: Partial<StremioMeta> = {}): StremioMeta {
   };
 }
 
-function fresh(m: StremioMeta): StremioMeta & { enrichedAt: string } {
+function fresh(m: StremioMeta) {
   return { ...m, enrichedAt: new Date().toISOString() };
 }
 
 const fetchMock = vi.fn<typeof fetch>();
 
-function cinemetaUrl(type: string, id: string): string {
+function cinemetaUrl(type: string, id: string) {
   return `https://v3-cinemeta.strem.io/meta/${type}/${id}.json`;
 }
 
-function urlOf(input: string | URL | Request): string {
+function urlOf(input: string | URL | Request) {
   return typeof input === "string"
     ? input
     : input instanceof URL
@@ -60,7 +57,7 @@ function urlOf(input: string | URL | Request): string {
       : input.url;
 }
 
-function requestedUrls(): string[] {
+function requestedUrls() {
   return fetchMock.mock.calls.map(([url]) => urlOf(url));
 }
 

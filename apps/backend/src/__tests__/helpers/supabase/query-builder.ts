@@ -1,8 +1,7 @@
-import type { InMemoryDB, Result, Row } from "./store";
+import type { InMemoryDB, Row } from "./store";
 import { uniqueError, uniqueKeys, withoutUndefined } from "./store";
 
-/** The order of two column values, like PostgreSQL for numbers and text. */
-function compareValues(a: unknown, b: unknown): number {
+function compareValues(a: unknown, b: unknown) {
   if (
     (typeof a === "number" && typeof b === "number") ||
     (typeof a === "string" && typeof b === "string")
@@ -29,9 +28,7 @@ export class MockQueryBuilder {
   private isMaybeSingle = false;
   private selectCols: string | null = null;
   private wantReturn = false;
-  /** The rows to insert or upsert. */
   private rows: Row[] = [];
-  /** The columns to update. */
   private changes: Row = {};
   private conflictCol: string | null = null;
   private countMode: string | null = null;
@@ -46,7 +43,6 @@ export class MockQueryBuilder {
     if (this.op === "select") {
       this.selectCols = cols ?? "*";
     } else {
-      // `.select()` after a write returns the written rows.
       this.wantReturn = true;
       this.selectCols = cols ?? "*";
     }
@@ -139,13 +135,11 @@ export class MockQueryBuilder {
     return this;
   }
 
-  // ---- internals ----
-
-  private matchesFilters(row: Row): boolean {
+  private matchesFilters(row: Row) {
     return this.filters.every((filter) => filter(row));
   }
 
-  private pickColumns(row: Row): Row {
+  private pickColumns(row: Row) {
     if (!this.selectCols || this.selectCols === "*") return { ...row };
     const cols = this.selectCols.split(",").map((c) => c.trim());
     const result: Row = {};
@@ -155,12 +149,10 @@ export class MockQueryBuilder {
     return result;
   }
 
-  /** Shape the rows a query returns (`single`, `maybeSingle`, columns). */
-  private respond(rows: Row[]): Result {
+  private respond(rows: Row[]) {
     const mapped = rows.map((r) => this.pickColumns(r));
     if (!this.isSingle) return { data: mapped, error: null };
     if (mapped.length === 0) {
-      // maybeSingle resolves to null with no error; single errors.
       return {
         data: null,
         error: this.isMaybeSingle
@@ -177,11 +169,11 @@ export class MockQueryBuilder {
     return { data: mapped[0], error: null };
   }
 
-  private written(rows: Row[]): Result {
+  private written(rows: Row[]) {
     return this.wantReturn ? this.respond(rows) : { data: null, error: null };
   }
 
-  private execute(): Result {
+  private execute() {
     const table = this.db.getTable(this.tableName);
 
     switch (this.op) {
@@ -236,14 +228,8 @@ export class MockQueryBuilder {
 
       case "upsert": {
         const items = this.rows;
-        // onConflict may be a composite key ("namespace,external_id"): match
-        // on every part, otherwise a composite upsert always collides with
-        // the first row.
         const cols = (this.conflictCol ?? "id").split(",").map((c) => c.trim());
 
-        // Postgres rejects an ON CONFLICT command that would touch the same row
-        // twice (duplicate conflict keys within one batch). Mirror that so
-        // callers that forget to de-duplicate a batch fail like in production.
         const batchKeys = new Set<string>();
         for (const item of items) {
           const key = cols.map((c) => String(item[c])).join("\u0000");

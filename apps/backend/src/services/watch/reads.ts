@@ -1,8 +1,3 @@
-/**
- * The due reads of a cron run (ADR 0003): claim a batch with one RPC, read
- * each item from Stremio, record new watched titles, and store the next read.
- */
-import type { ProviderId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
@@ -12,7 +7,7 @@ import { supabase } from "../../lib/supabase";
 import type { LibraryItem } from "../stremio";
 import { recordItems } from "./detect";
 import { readLibraryItems } from "./pace";
-import type { Plan, ReadRow } from "./schedule";
+import type { ReadRow } from "./schedule";
 import {
   PHASES,
   planAfterFailure,
@@ -26,7 +21,6 @@ const BATCH = 200;
 const CONCURRENCY = 20;
 const LEASE_SECONDS = 120;
 
-/** A claimed read, as `claim_watch_reads` returns it. */
 const claimedReadSchema = z.object({
   account_id: z.string(),
   item_id: z.string(),
@@ -63,7 +57,7 @@ const time = (value: string | null) => (value ? Date.parse(value) : null);
 const iso = (value: number | null) =>
   value === null ? null : new Date(value).toISOString();
 
-function toRow(claimed: ClaimedRead): ReadRow {
+function toRow(claimed: ClaimedRead) {
   return {
     itemType: claimed.item_type === "series" ? "series" : "movie",
     videoId: claimed.video_id,
@@ -79,11 +73,7 @@ function toRow(claimed: ClaimedRead): ReadRow {
   };
 }
 
-/** Whether `item` changed its watched status since the cycle started. */
-function changedSinceStart(
-  row: ReadRow,
-  item: LibraryItem | undefined,
-): boolean {
+function changedSinceStart(row: ReadRow, item: LibraryItem | undefined) {
   if (!item) return false;
   if (row.itemType === "movie") {
     return (
@@ -94,19 +84,17 @@ function changedSinceStart(
   return !!item.state?.watched && item.state.watched !== row.startState.bits;
 }
 
-function destinationsOf(claimed: ClaimedRead): ProviderId[] {
+function destinationsOf(claimed: ClaimedRead) {
   return (claimed.destinations ?? []).filter(isProviderId);
 }
 
-async function readOne(claimed: ClaimedRead, stats: ReadStats): Promise<Plan> {
+async function readOne(claimed: ClaimedRead, stats: ReadStats) {
   const row = toRow(claimed);
-  // No Stremio link any more: the cycle ends.
   if (!claimed.auth_key) return { next: null, row };
   try {
     const authKey = decryptSecret(claimed.auth_key);
     const [item] = await readLibraryItems(authKey, [claimed.item_id]);
     let detected = false;
-    // Before the Watched baseline nothing is sent: the baseline has it.
     if (claimed.baseline_at && changedSinceStart(row, item)) {
       const titles = await recordItems(
         claimed.account_id,
@@ -135,7 +123,7 @@ async function readOne(claimed: ClaimedRead, stats: ReadStats): Promise<Plan> {
 }
 
 /** Reads due items until none is left or `deadline` passes. */
-export async function processReads(deadline: number): Promise<ReadStats> {
+export async function processReads(deadline: number) {
   const stats: ReadStats = {
     claimed: 0,
     read: 0,

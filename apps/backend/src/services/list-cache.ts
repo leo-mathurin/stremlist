@@ -23,10 +23,6 @@ import type { ConnectionIdentity } from "./connection-identity";
 const CACHE_FORMAT_VERSION = 1;
 const MEMORY_CACHE_TTL_MS = 60_000;
 const MEMORY_CACHE_MAX_ENTRIES = 100;
-// Parsed catalogs, weighed by their JSON length. A 10,000-Title catalog is
-// ~15 MB of heap once parsed, about two to three times its JSON. 24 MB of
-// JSON keeps the catalog cache under ~75 MB of heap, with room for the other
-// in-memory caches of an instance.
 const CATALOG_MEMORY_MAX_WEIGHT = 24 * 1024 * 1024;
 
 const stremioMetaSchema = z.object({
@@ -43,7 +39,6 @@ const stremioMetaSchema = z.object({
   cast: z.array(z.string()).optional(),
   runtime: z.string().optional(),
   released: z.iso.datetime().optional(),
-  // When the Title joined the Source list; never served to Stremio.
   addedAt: z.iso.datetime().optional(),
   enrichedAt: z.iso.datetime().optional(),
 });
@@ -73,11 +68,8 @@ const cacheManifestSchema = z.object({
   cachedAt: z.iso.datetime(),
   catalogKey: z.string(),
   metaKeys: z.array(z.string()),
-  // The Source list the catalog was read from. A List that now points to
-  // another source must not serve it. Older generations have none.
   source: z.string().optional(),
   connection: connectionIdentitySchema.optional(),
-  // Older cache generations acquire summaries on their next refresh.
   genres: z
     .object({ movie: z.array(z.string()), series: z.array(z.string()) })
     .optional(),
@@ -113,15 +105,11 @@ export interface CacheSource {
   sourceRef: string;
 }
 
-function sourceKey(source: CacheSource): string {
+function sourceKey(source: CacheSource) {
   return `${source.provider}:${source.sourceRef}`;
 }
 
-/** Whether a manifest may serve a List that now reads from `source`. */
-async function servesSource(
-  manifest: CacheManifest,
-  source?: CacheSource,
-): Promise<boolean> {
+async function servesSource(manifest: CacheManifest, source?: CacheSource) {
   if (manifest.connection) {
     if (!(await isCurrentConnection(manifest.connection))) return false;
   } else if (
@@ -129,7 +117,6 @@ async function servesSource(
     isProviderId(source.provider) &&
     sourceRequiresConnection(source.provider, source.sourceRef)
   ) {
-    // Private caches written before ownership was recorded must be rebuilt.
     return false;
   }
   return (
@@ -155,21 +142,19 @@ const catalogMemoryCache = new LruCache<string, CatalogObject>({
   ttlMs: MEMORY_CACHE_TTL_MS,
 });
 
-// R2 keys keep the "watchlists/" prefix so caches written before Lists had
-// several Providers stay readable.
-function manifestKey(listId: string): string {
+function manifestKey(listId: string) {
   return `watchlists/${listId}/manifest.json`;
 }
 
-function catalogKey(listId: string, generation: string): string {
+function catalogKey(listId: string, generation: string) {
   return `watchlists/${listId}/generations/${generation}.json.gz`;
 }
 
-function metaKey(meta: Pick<StremioMeta, "id" | "type">): string {
+function metaKey(meta: Pick<StremioMeta, "id" | "type">) {
   return `${meta.type}:${meta.id}`;
 }
 
-function getMemoryManifest(listId: string): CacheManifest | null | undefined {
+function getMemoryManifest(listId: string) {
   const entry = manifestMemoryCache.get(listId);
   manifestMemoryCache.delete(listId);
   if (!entry || entry.expiresAt <= Date.now()) return undefined;
@@ -177,7 +162,7 @@ function getMemoryManifest(listId: string): CacheManifest | null | undefined {
   return entry.value;
 }
 
-function setMemoryManifest(listId: string, value: CacheManifest | null): void {
+function setMemoryManifest(listId: string, value: CacheManifest | null) {
   manifestMemoryCache.delete(listId);
   manifestMemoryCache.set(listId, {
     value,
@@ -190,22 +175,19 @@ function setMemoryManifest(listId: string, value: CacheManifest | null): void {
   }
 }
 
-function cacheDeletedManifest(listId: string, deletedGeneration: string): void {
+function cacheDeletedManifest(listId: string, deletedGeneration: string) {
   const entry = manifestMemoryCache.get(listId);
   if (entry?.value && entry.value.generation !== deletedGeneration) return;
   setMemoryManifest(listId, null);
 }
 
-function evictManifestGeneration(
-  listId: string,
-  staleGeneration: string,
-): void {
+function evictManifestGeneration(listId: string, staleGeneration: string) {
   const entry = manifestMemoryCache.get(listId);
   if (entry?.value && entry.value.generation !== staleGeneration) return;
   manifestMemoryCache.delete(listId);
 }
 
-async function readManifestFromR2(listId: string): Promise<ManifestRead> {
+async function readManifestFromR2(listId: string) {
   try {
     const response = await getR2Client().send(
       new GetObjectCommand({
@@ -232,7 +214,7 @@ async function readManifestFromR2(listId: string): Promise<ManifestRead> {
   }
 }
 
-async function readManifest(listId: string): Promise<CacheManifest | null> {
+async function readManifest(listId: string) {
   const cached = getMemoryManifest(listId);
   if (cached !== undefined) return cached;
 
@@ -247,9 +229,7 @@ async function readManifest(listId: string): Promise<CacheManifest | null> {
   return manifest;
 }
 
-async function readCatalog(
-  manifest: CacheManifest,
-): Promise<CatalogObject | null> {
+async function readCatalog(manifest: CacheManifest) {
   const cached = catalogMemoryCache.get(manifest.catalogKey);
   if (cached) return cached;
 
@@ -278,7 +258,7 @@ async function readCatalog(
 async function readCatalogWithManifestRefresh(
   listId: string,
   manifest: CacheManifest,
-): Promise<CatalogRead | null> {
+) {
   const catalog = await readCatalog(manifest);
   if (catalog) return { manifest, catalog };
 
@@ -296,10 +276,7 @@ async function readCatalogWithManifestRefresh(
   return { manifest: refreshedManifest, catalog: refreshedCatalog };
 }
 
-function collectGenres(
-  metas: StremioMeta[],
-  type: StremioMeta["type"],
-): string[] {
+function collectGenres(metas: StremioMeta[], type: StremioMeta["type"]) {
   return [
     ...new Set(
       metas
@@ -310,7 +287,7 @@ function collectGenres(
   ].sort();
 }
 
-function uniqueMetas(metas: SourceMeta[]): SourceMeta[] {
+function uniqueMetas(metas: SourceMeta[]) {
   const seen = new Set<string>();
   return metas.filter((meta) => {
     const key = metaKey(meta);
@@ -320,7 +297,7 @@ function uniqueMetas(metas: SourceMeta[]): SourceMeta[] {
   });
 }
 
-function hasSortedKey(keys: string[], target: string): boolean {
+function hasSortedKey(keys: string[], target: string) {
   let low = 0;
   let high = keys.length - 1;
 
@@ -338,7 +315,7 @@ function hasSortedKey(keys: string[], target: string): boolean {
 export async function getCachedListSummary(
   listId: string,
   source?: CacheSource,
-): Promise<{ movie: string[]; series: string[] } | null> {
+) {
   try {
     const manifest = await readManifest(listId);
     if (!manifest || !(await servesSource(manifest, source))) return null;
@@ -354,10 +331,7 @@ export async function getCachedListSummary(
  * from the manifest only. Null when nothing is cached or the cache was marked
  * stale.
  */
-export async function getCachedListInfo(
-  listId: string,
-  source?: CacheSource,
-): Promise<{ cachedAt: string; titleCount: number } | null> {
+export async function getCachedListInfo(listId: string, source?: CacheSource) {
   try {
     const manifest = await readManifest(listId);
     if (
@@ -381,10 +355,7 @@ export async function getCachedListInfo(
  * The cached catalog of a List. With `source`, a catalog read from another
  * Source list (the List was edited since) is a miss.
  */
-export async function getCachedList(
-  listId: string,
-  source?: CacheSource,
-): Promise<CachedList | null> {
+export async function getCachedList(listId: string, source?: CacheSource) {
   try {
     const manifest = await readManifest(listId);
     if (!manifest) return null;
@@ -415,7 +386,7 @@ export async function writeCachedList(
   cachedAt = new Date(),
   source?: CacheSource,
   connection?: ConnectionIdentity,
-): Promise<string> {
+) {
   const metas = uniqueMetas(listData.metas);
   if (metas.length === 0) {
     await deleteCachedList(listId);
@@ -469,7 +440,7 @@ export async function findCachedMeta(
   type: string,
   id: string,
   source?: CacheSource,
-): Promise<SourceMeta | null> {
+) {
   const target = `${type}:${id}`;
   try {
     const manifest = await readManifest(listId);
@@ -498,7 +469,7 @@ export async function findCachedMeta(
   }
 }
 
-export async function deleteCachedList(listId: string): Promise<void> {
+export async function deleteCachedList(listId: string) {
   let current: ManifestRead;
   try {
     current = await readManifestFromR2(listId);
@@ -548,7 +519,7 @@ export async function deleteCachedList(listId: string): Promise<void> {
  * Make the next catalog request refetch this List (after an Action changed
  * it on the Provider), while keeping the cached items as a fallback.
  */
-export async function markCachedListStale(listId: string): Promise<void> {
+export async function markCachedListStale(listId: string) {
   const manifest = await readManifest(listId);
   if (!manifest) return;
   const stale = { ...manifest, cachedAt: new Date(0).toISOString() };

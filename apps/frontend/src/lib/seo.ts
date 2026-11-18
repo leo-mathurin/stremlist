@@ -10,17 +10,14 @@ type HeadTag =
   | { tag: "meta" | "link"; attrs: Record<string, string> }
   | { tag: "title" | "script"; attrs: Record<string, string>; content: string };
 
-function meta(
-  attr: "name" | "property",
-  values: Record<string, string>,
-): HeadTag[] {
+function meta(attr: "name" | "property", values: Record<string, string>) {
   return Object.entries(values).map(([key, content]) => ({
     tag: "meta",
     attrs: { [attr]: key, content },
   }));
 }
 
-export function headTags(path: string): HeadTag[] {
+export function headTags(path: string) {
   const page = getMarkdownPage(path);
   const { title, description, robots } = page
     ? {
