@@ -66,14 +66,13 @@ async function isTracked(accountId: string): Promise<boolean> {
 
 /**
  * Sends what `item` shows as newly watched against the Account's watch
- * state. Nothing is sent before the Watched baseline.
+ * state. The caller checks that the Account has its Watched baseline.
  */
 async function sendNewTitles(
   accountId: string,
   context: WatchContext,
   item: LibraryItem,
 ): Promise<void> {
-  if (!context.hasBaseline) return;
   const { data, error } = await supabase.rpc("watch_destination_list", {
     p_account_id: accountId,
   });
@@ -108,7 +107,11 @@ export async function onStreamRequest(
   const [item] = await readLibraryItems(decryptSecret(context.authKey), [
     itemId,
   ]);
-  if (item && hasWatched(item)) {
+  const watched =
+    type === "movie"
+      ? movieWatched(item)
+      : await isEpisodeWatched(item, videoId);
+  if (context.hasBaseline && item && hasWatched(item)) {
     try {
       await sendNewTitles(accountId, context, item);
     } catch (error) {
@@ -119,10 +122,6 @@ export async function onStreamRequest(
       );
     }
   }
-  const watched =
-    type === "movie"
-      ? movieWatched(item)
-      : await isEpisodeWatched(item, videoId);
   if (watched) return;
   const now = Date.now();
   const row = newCycle(type, videoId, item, now);
