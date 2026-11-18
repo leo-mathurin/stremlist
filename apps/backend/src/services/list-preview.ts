@@ -2,14 +2,19 @@ import type {
   CatalogPreview,
   CatalogPreviewResponse,
   CatalogPreviewRow,
+  CatalogTitlesResponse,
   PreviewSourceProblem,
+  PreviewTitle,
   PreviewUnresolvedEntry,
 } from "@stremlist/shared/catalog-preview";
+import { CATALOG_TITLES_PAGE_SIZE } from "@stremlist/shared/catalog-preview";
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { DisplayMode } from "@stremlist/shared/constants";
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import { listSources, sourceKey } from "@stremlist/shared/list-merge";
 import { listCatalogs } from "@stremlist/shared/manifest-catalogs";
+import type { ListCatalog } from "@stremlist/shared/manifest-catalogs";
 import { QUEUE_STATE_MIN_MS } from "@stremlist/shared/provider-queue";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDERS } from "@stremlist/shared/providers";
@@ -207,70 +212,96 @@ function toUnresolvedEntry(entry: SourceEntry): PreviewUnresolvedEntry {
   };
 }
 
+/** The Titles of all the Source lists read, each once, like the Catalog. */
+function previewMetas(
+  request: PreviewRequest,
+  read: BuiltCatalog[],
+): StremioMeta[] {
+  return mergeListCatalogs(
+    request,
+    read.map((built) => built.data.metas),
+  );
+}
+
+/**
+ * The Titles of one Catalog of the List, in the order that Stremio shows
+ * them. Uses the same sort and filters as the catalog route.
+ */
+function catalogMetas(
+  request: PreviewRequest,
+  metas: StremioMeta[],
+  { type, preset }: ListCatalog,
+): StremioMeta[] {
+  const selection = resolveCatalogSelection(
+    request.sortOption,
+    request.catalogSettings,
+    null,
+    preset ?? undefined,
+  );
+  // The real Catalog seeds Shuffle with its cache generation; a preview has
+  // none, so it uses a stable seed of its own.
+  const generation = `preview:${listSources(request).map(sourceKey).join(",")}`;
+  return filterCatalog(
+    sortCatalog(metas, selection.sort, generation).filter(
+      (meta) => meta.type === type,
+    ),
+    selection.filters,
+  );
+}
+
+function toPreviewTitle(meta: StremioMeta): PreviewTitle {
+  return {
+    id: meta.id,
+    type: meta.type,
+    name: meta.name,
+    poster: previewPoster(meta.poster),
+    releaseInfo: meta.releaseInfo ?? null,
+  };
+}
+
+/**
+ * Add the TMDB and TheTVDB posters of the Titles: the configure page applies
+ * its current poster source and RPDB key, which may not be saved yet.
+ */
+async function addPosters(titles: PreviewTitle[]): Promise<void> {
+  const options = {
+    budgetMs: PREVIEW_POSTER_BUDGET_MS,
+    size: "preview",
+  } as const;
+  const [tmdbPosters, tvdbPosters] = await Promise.all([
+    findPosters("tmdb", titles, options),
+    findPosters("tvdb", titles, options),
+  ]);
+  for (const title of titles) {
+    title.tmdbPoster = tmdbPosters.get(title.id) ?? null;
+    title.tvdbPoster = tvdbPosters.get(title.id) ?? null;
+  }
+}
+
 /**
  * The Catalogs that a List adds to Stremio, each with its first Titles. Uses
  * the same Catalogs, sort and filters as the manifest and the catalog route,
  * so the preview matches what Stremio shows. Each Title has its IMDb, TMDB
- * and TheTVDB posters: the configure page applies its current poster source and
- * RPDB key, which may not be saved yet. A merged
- * List shows the Titles of the Source lists it could read once each, like
- * its Catalog.
+ * and TheTVDB posters. A merged List shows the Titles of the Source lists it
+ * could read once each, like its Catalog.
  */
 async function presentPreview(
   request: PreviewRequest,
   read: BuiltCatalog[],
   sourceProblems: PreviewSourceProblem[],
 ): Promise<CatalogPreview> {
-  const metas = mergeListCatalogs(
-    request,
-    read.map((built) => built.data.metas),
-  );
+  const metas = previewMetas(request, read);
   const unresolvedEntries = read.flatMap((built) => built.unresolvedEntries);
-  // The real Catalog seeds Shuffle with its cache generation; a preview has
-  // none, so it uses a stable seed of its own.
-  const generation = `preview:${listSources(request).map(sourceKey).join(",")}`;
 
-  const catalogs = listCatalogs(request).map(
-    ({ type, preset }): CatalogPreviewRow => {
-      const selection = resolveCatalogSelection(
-        request.sortOption,
-        request.catalogSettings,
-        null,
-        preset ?? undefined,
-      );
-      const matching = filterCatalog(
-        sortCatalog(metas, selection.sort, generation).filter(
-          (meta) => meta.type === type,
-        ),
-        selection.filters,
-      );
-      return {
-        type,
-        preset,
-        total: matching.length,
-        titles: matching.slice(0, TITLES_PER_CATALOG).map((meta) => ({
-          id: meta.id,
-          type: meta.type,
-          name: meta.name,
-          poster: previewPoster(meta.poster),
-          releaseInfo: meta.releaseInfo ?? null,
-        })),
-      };
-    },
-  );
-  const shown = catalogs.flatMap((row) => row.titles);
-  const options = {
-    budgetMs: PREVIEW_POSTER_BUDGET_MS,
-    size: "preview",
-  } as const;
-  const [tmdbPosters, tvdbPosters] = await Promise.all([
-    findPosters("tmdb", shown, options),
-    findPosters("tvdb", shown, options),
-  ]);
-  for (const title of shown) {
-    title.tmdbPoster = tmdbPosters.get(title.id) ?? null;
-    title.tvdbPoster = tvdbPosters.get(title.id) ?? null;
-  }
+  const catalogs = listCatalogs(request).map((catalog): CatalogPreviewRow => {
+    const matching = catalogMetas(request, metas, catalog);
+    return {
+      ...catalog,
+      total: matching.length,
+      titles: matching.slice(0, TITLES_PER_CATALOG).map(toPreviewTitle),
+    };
+  });
+  await addPosters(catalogs.flatMap((row) => row.titles));
 
   return {
     ok: true,
@@ -292,19 +323,22 @@ async function presentPreview(
   };
 }
 
+type SourceReads =
+  | { ok: true; read: BuiltCatalog[]; problems: PreviewSourceProblem[] }
+  | { ok: false; answer: Exclude<CatalogPreviewResponse, CatalogPreview> };
+
 /**
- * Preview a List before it is saved: read its Source lists like a catalog
- * request would, but write no Catalog cache. Expected problems (private list,
- * missing Connection, Provider turned off) come back as a reason. A merged
- * List leaves out the Source lists that cannot be read, as its Catalog does,
- * and fails only when none can be read. When a Provider's queue is long (3 s
- * or more), the answer is the queue state: ask again with its ticket to keep
- * the place. The pages read so far stay cached, so the next request goes on
- * from there.
+ * Read the Source lists of a List for a preview. Expected problems (private
+ * list, missing Connection, Provider turned off) come back as a reason. A
+ * merged List leaves out the Source lists that cannot be read, as its Catalog
+ * does, and fails only when none can be read. When a Provider's queue is
+ * long (3 s or more), the answer is the queue state: ask again with its
+ * ticket to keep the place. The pages read so far stay cached, so the next
+ * request goes on from there.
  */
-export async function previewList(
+async function readPreviewSources(
   request: PreviewRequest,
-): Promise<CatalogPreviewResponse> {
+): Promise<SourceReads> {
   const sources = listSources(request);
   // One place in the queue for all the Source lists of the preview.
   const queue = readQueue({
@@ -333,8 +367,11 @@ export async function previewList(
       b.error.waitMs > a.error.waitMs ? b : a,
     );
     return {
-      ...queuedAnswer(longest.error, longest.provider),
-      ticket: longest.error.ticket ?? queue.ticket,
+      ok: false,
+      answer: {
+        ...queuedAnswer(longest.error, longest.provider),
+        ticket: longest.error.ticket ?? queue.ticket,
+      },
     };
   }
   const read: BuiltCatalog[] = [];
@@ -359,11 +396,49 @@ export async function previewList(
     const [first] = problems;
     return {
       ok: false,
-      reason: first.reason,
-      ...(sources.length > 1
-        ? { source: { provider: first.provider, sourceRef: first.sourceRef } }
-        : {}),
+      answer: {
+        ok: false,
+        reason: first.reason,
+        ...(sources.length > 1
+          ? { source: { provider: first.provider, sourceRef: first.sourceRef } }
+          : {}),
+      },
     };
   }
-  return presentPreview(request, read, problems);
+  return { ok: true, read, problems };
+}
+
+/**
+ * Preview a List before it is saved: read its Source lists like a catalog
+ * request would, but write no Catalog cache (see `readPreviewSources` for
+ * the answers that are not a preview).
+ */
+export async function previewList(
+  request: PreviewRequest,
+): Promise<CatalogPreviewResponse> {
+  const reads = await readPreviewSources(request);
+  if (!reads.ok) return reads.answer;
+  return presentPreview(request, reads.read, reads.problems);
+}
+
+/**
+ * One page of the Titles of one Catalog of a List, for the full preview of
+ * that Catalog. It reuses the recent read of the preview, so each page reads
+ * the Provider again only when that read expired.
+ */
+export async function previewCatalogTitles(
+  request: PreviewRequest & { catalog: ListCatalog; offset: number },
+): Promise<CatalogTitlesResponse> {
+  const reads = await readPreviewSources(request);
+  if (!reads.ok) return reads.answer;
+  const matching = catalogMetas(
+    request,
+    previewMetas(request, reads.read),
+    request.catalog,
+  );
+  const titles = matching
+    .slice(request.offset, request.offset + CATALOG_TITLES_PAGE_SIZE)
+    .map(toPreviewTitle);
+  await addPosters(titles);
+  return { ok: true, total: matching.length, titles };
 }
