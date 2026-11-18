@@ -23,7 +23,7 @@ e2e-chatgpt-session bun run test:toolkit:record
 
 The toolkit starts Vite on `127.0.0.1:4311`; requests to `127.0.0.1:4314`
 are intercepted. Configuration lives in `e2e.config.ts`, journeys in `toolkit/`,
-and shared routes/fixtures in `toolkit/config.test-utils.ts`. Interception verifies
+and shared routes/fixtures in `toolkit/config.fixture.ts`. Interception verifies
 UI behavior and requests; Playwright verifies handlers and storage.
 
 ### Cache rules

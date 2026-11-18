@@ -17,7 +17,7 @@ import {
   legacyConfiguration,
   routeConfig,
   saveButton,
-} from "./config.test-utils";
+} from "./config.fixture";
 import { isRecord } from "../helpers/json";
 
 const ADDON_URL = `${backend}/${accountId}/manifest.json`;

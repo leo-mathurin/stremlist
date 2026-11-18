@@ -14,7 +14,7 @@ import {
   routeResolve,
   saveButton,
   parseBody,
-} from "./config.test-utils";
+} from "./config.fixture";
 import { isRecord } from "../helpers/json";
 
 const PASTE = "Paste a link to a watchlist or list";

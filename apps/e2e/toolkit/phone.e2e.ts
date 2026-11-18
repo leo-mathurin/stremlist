@@ -13,7 +13,7 @@ import {
   savedLists,
   SAVE_NEW,
   toJson,
-} from "./config.test-utils";
+} from "./config.fixture";
 
 const LINK = "https://trakt.tv/users/someone/watchlist";
 const ADDON_URL = `${backend}/${accountId}/manifest.json`;

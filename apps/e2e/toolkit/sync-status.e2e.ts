@@ -30,8 +30,8 @@ import {
   ago,
   routeConnectStart,
   routeConnectionSources,
-} from "./config.test-utils";
-import type { PreviewRequest } from "./config.test-utils";
+} from "./config.fixture";
+import type { PreviewRequest } from "./config.fixture";
 
 const ids = {
   synced: row.id,

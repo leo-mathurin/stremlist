@@ -35,7 +35,7 @@ import {
   routeConnectStart,
   routeConnectionSources,
   routePreview,
-} from "./config.test-utils";
+} from "./config.fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
 const MERGE = "Merge another list into this one";

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import type { FixtureRequest } from "./fetch.test-utils.js";
-import { graphql, installFetchFixture } from "./fetch.test-utils.js";
+import type { FixtureRequest } from "./fetch.fixture.js";
+import { graphql, installFetchFixture } from "./fetch.fixture.js";
 import { isRecord, isString, optional, parseJson } from "./json.js";
 
 /** The Source lists that the test writes to E2E_SOURCE_FIXTURE_FILE. */

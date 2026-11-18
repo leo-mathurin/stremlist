@@ -25,7 +25,7 @@ import {
   SAVE_NEW,
   holdToasts,
   fitConfigurePage,
-} from "./config.test-utils";
+} from "./config.fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
 const addonUrl = (key: string) => `${backend}/${key}/manifest.json`;

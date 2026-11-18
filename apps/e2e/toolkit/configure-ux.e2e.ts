@@ -24,7 +24,7 @@ import {
   toJson,
   isPreviewRequest,
   parseBody,
-} from "./config.test-utils";
+} from "./config.fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
 const PHONE = { width: 390, height: 844 };

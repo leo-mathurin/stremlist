@@ -48,15 +48,12 @@ export function saveButton(screen: Screen, name = "Save") {
  * Keeps toasts on screen until they are replaced or closed. Save and
  * newsletter results are toasts that close after 6 to 10 seconds, and an AI
  * goal can take longer than that to finish, so a check of the toast after the
- * goal could find it gone. Sonner pauses its timers while the document is
- * hidden, so the page reports a hidden document.
+ * goal could find it gone. The frontend keeps every toast open while the
+ * session has its `stremlist:hold-toasts` flag (`lib/toast-duration.ts`).
  */
 export async function holdToasts(browser: Browser) {
   await browser.addInitScript(() => {
-    Object.defineProperty(document, "hidden", {
-      configurable: true,
-      get: () => true,
-    });
+    sessionStorage.setItem("stremlist:hold-toasts", "1");
   });
 }
 

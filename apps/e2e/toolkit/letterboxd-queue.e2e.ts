@@ -14,7 +14,7 @@ import {
   routePreview,
   row,
   toJson,
-} from "./config.test-utils";
+} from "./config.fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
 const LINK = "https://letterboxd.com/someone/watchlist/";

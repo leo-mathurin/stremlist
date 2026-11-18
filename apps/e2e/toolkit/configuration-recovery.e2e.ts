@@ -23,7 +23,7 @@ import {
   holdToasts,
   fitConfigurePage,
   openFilters,
-} from "./config.test-utils";
+} from "./config.fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
 

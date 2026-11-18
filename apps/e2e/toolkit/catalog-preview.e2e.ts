@@ -26,7 +26,7 @@ import {
   toJson,
   routeConnectionSources,
   routePreview,
-} from "./config.test-utils";
+} from "./config.fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
 const NEEDS_REINSTALL = "These changes need a reinstall.";

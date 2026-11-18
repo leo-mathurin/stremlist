@@ -11,7 +11,7 @@ import {
   routeConfig,
   row,
   secondAccountId,
-} from "./config.test-utils";
+} from "./config.fixture";
 
 test(
   "returning home and opening another Addon URL replaces the previous form",

@@ -1,5 +1,5 @@
-import type { FixtureRequest } from "./fetch.test-utils.js";
-import { bearer, graphql, installFetchFixture } from "./fetch.test-utils.js";
+import type { FixtureRequest } from "./fetch.fixture.js";
+import { bearer, graphql, installFetchFixture } from "./fetch.fixture.js";
 import { isNumber, isRecord, isString, optional, present } from "./json.js";
 import {
   PREVIEW_PRIVATE_LIST,

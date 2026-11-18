@@ -12,7 +12,7 @@ import {
   routeResolve,
   saveButton,
   SAVE_NEW,
-} from "./config.test-utils";
+} from "./config.fixture";
 
 const ADDON_URL_HELP =
   "Paste the Addon URL that you installed in Stremio. It ends with /manifest.json.";

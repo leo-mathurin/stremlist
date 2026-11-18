@@ -33,7 +33,7 @@ import {
   syncedStatus,
   toJson,
   routeConnectionSources,
-} from "./config.test-utils";
+} from "./config.fixture";
 
 const TOGGLE = "Show newly detected titles";
 const MOVED_HINT =

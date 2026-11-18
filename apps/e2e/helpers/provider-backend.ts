@@ -9,7 +9,7 @@ export interface ProviderBackend {
 
 /**
  * Start a separate backend on an OS-assigned loopback port, with a test-only
- * preload that replaces the outbound Provider transport. Only the variables
+ * preload that answers the outbound Provider requests. Only the variables
  * in `env` (and PATH) reach the process: no `.env` file is read.
  */
 export async function startProviderBackend(

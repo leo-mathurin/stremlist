@@ -11,7 +11,7 @@ import {
   routeConfig,
   routeCreateAccount,
   routeResolve,
-} from "./config.test-utils";
+} from "./config.fixture";
 
 const TITLE = "Stremlist 2.0 is here. Your install still works.";
 const HOME_TITLE = "Found your install. It still works.";
