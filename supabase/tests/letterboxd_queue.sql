@@ -122,7 +122,9 @@ BEGIN
 
   -- A halt refuses every priority, except the due probe.
   PERFORM public.letterboxd_take_turn(10, 'later', NULL, 'test');
-  PERFORM public.letterboxd_report(10, 'blocked', 0, false, 'test');
+  -- The third refusal within 10 minutes halts.
+  PERFORM public.letterboxd_report(10, 'blocked', 0, false, 'test')
+  FROM generate_series(1, 3);
   r := public.letterboxd_take_turn(10, 'first', NULL, 'test');
   ASSERT r->>'status' = 'halted', r::text;
   UPDATE public.letterboxd_gate

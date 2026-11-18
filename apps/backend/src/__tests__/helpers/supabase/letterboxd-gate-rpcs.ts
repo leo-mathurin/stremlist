@@ -22,6 +22,8 @@ export interface Gate {
   probeUntil: number | null;
   floorSlowdowns: number;
   floorSlowdownsSince: number | null;
+  blockedCount: number;
+  blockedSince: number | null;
   windowStartedAt: number;
   windowRequests: number;
   windowFailures: number;
@@ -75,6 +77,8 @@ function lock(id: string, target: number, t: number): Gate {
       probeUntil: null,
       floorSlowdowns: 0,
       floorSlowdownsSince: null,
+      blockedCount: 0,
+      blockedSince: null,
       windowStartedAt: t,
       windowRequests: 0,
       windowFailures: 0,
@@ -248,6 +252,8 @@ function report(args: RpcArgs): Result {
           refilledAt: t,
           floorSlowdowns: 0,
           floorSlowdownsSince: null,
+          blockedCount: 0,
+          blockedSince: null,
           windowStartedAt: t,
           windowRequests: 0,
           windowFailures: 0,
@@ -263,20 +269,30 @@ function report(args: RpcArgs): Result {
       g.windowRequests = 0;
       g.windowFailures = 0;
     }
-    g.windowRequests++;
+    // A refusal is not part of the failure rate and never checks it: it
+    // cannot slow the gate down.
+    if (args.p_outcome !== "blocked") g.windowRequests++;
     let slowDown = false;
     if (args.p_outcome === "blocked") {
-      g.haltedAt = t;
-      g.haltReason = "blocked";
-      g.nextProbeAt = t + 30 * MINUTE;
-      halted = true;
+      if (g.blockedSince === null || t - g.blockedSince > 10 * MINUTE) {
+        g.blockedSince = t;
+        g.blockedCount = 1;
+      } else {
+        g.blockedCount++;
+      }
+      if (g.blockedCount >= 3) {
+        g.haltedAt = t;
+        g.haltReason = "blocked";
+        g.nextProbeAt = t + 30 * MINUTE;
+        halted = true;
+      }
     } else if (args.p_outcome === "rate_limited") {
       slowDown = true;
     } else if (args.p_outcome === "failed") {
       g.windowFailures++;
     }
     if (
-      !halted &&
+      args.p_outcome !== "blocked" &&
       !slowDown &&
       g.windowRequests >= 20 &&
       g.windowFailures > 0.2 * g.windowRequests
@@ -315,6 +331,11 @@ function report(args: RpcArgs): Result {
         if (g.rate < 0.5 * target) g.slowSince ??= t;
       }
     }
+  }
+  // Any halt, also after 429 responses, starts the refusal count again.
+  if (halted) {
+    g.blockedCount = 0;
+    g.blockedSince = null;
   }
   settle(g, t, target);
   if (
