@@ -8,13 +8,27 @@ import {
   vi,
 } from "vite-plus/test";
 import { z } from "zod";
+import { useBackgroundTasks } from "../../test/helpers/background.test-utils";
+import {
+  FakeLetterboxd,
+  LETTERBOXD,
+  letterboxdFilmPage,
+  letterboxdPage as page,
+} from "../../test/helpers/letterboxd.test-utils";
+import {
+  callRpc,
+  db,
+  resetRpc,
+  rpcHandlers,
+} from "../../test/helpers/mock-supabase";
 import { useMswServer } from "../../test/helpers/msw.test-utils";
-import { r2Objects, r2Puts, r2Unreadable } from "../../test/helpers/mock-r2";
-import { callRpc, db, rpcHandlers } from "../../test/helpers/mock-supabase";
+import { r2Objects, resetR2 } from "../../test/helpers/r2.test-utils";
 import {
   letterboxdGate,
+  letterboxdGateRpcs,
   letterboxdWaiters,
 } from "../../test/helpers/supabase/letterboxd-gate-rpcs";
+import { FakeWikidata } from "../../test/helpers/wikidata.test-utils";
 import { resolveEntries } from "../../titles/resolver";
 import { letterboxdProvider } from "../letterboxd";
 import { letterboxdSnapshot } from "../letterboxd-cache";
@@ -28,20 +42,18 @@ import {
   requestDetails,
 } from "../letterboxd-request-log";
 import { readQueue, withReadPriority } from "../read-priority";
-vi.mock("../../lib/r2", () => import("../../test/helpers/mock-r2"));
-vi.mock("../../lib/supabase", () => import("../../test/helpers/mock-supabase"));
 
 const server = useMswServer();
+const background = useBackgroundTasks();
+const letterboxd = new FakeLetterboxd();
+const wikidata = new FakeWikidata();
 
-function serveLetterboxd(body: () => string) {
-  const requests: Request[] = [];
-  server.use(
-    http.get("https://letterboxd.com/*", ({ request }) => {
-      requests.push(request);
-      return new HttpResponse(body());
-    }),
-  );
-  return requests;
+function respond(
+  code: number,
+  body = "",
+  headers: Record<string, string> = {},
+) {
+  return () => new HttpResponse(body, { status: code, headers });
 }
 
 const context = { connection: null };
@@ -57,23 +69,29 @@ function gate() {
   if (!value) throw new Error("No Letterboxd request went through the gate");
   return value;
 }
-function page(ids: number[], next?: string) {
-  return `<html><head><title>Alice's list • Letterboxd</title></head><body><h1>Alice's list</h1><ul class="poster-list -grid">${ids.map((id) => `<li data-postered-identifier='{"uid":"film:${id}"}' data-item-slug="film-${id}" data-item-name="Film ${id} (2000)"></li>`).join("")}</ul>${next ? `<a class="next" href="${next}">Next</a>` : ""}</body></html>`;
+async function withTimers(operation: Promise<unknown>) {
+  let settled = false;
+  operation.then(
+    () => (settled = true),
+    () => (settled = true),
+  );
+  while (!settled) await vi.advanceTimersToNextTimerAsync();
 }
+
 let testTime = Date.parse("2026-11-05T18:00:00Z");
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(testTime);
   testTime += 24 * 60 * 60_000;
-  r2Objects.clear();
+  resetR2();
   db.reset();
-  r2Unreadable.clear();
-  r2Puts.before = null;
-  rpcHandlers.clear();
+  resetRpc();
+  letterboxd.reset();
+  wikidata.reset();
+  server.use(...letterboxd.handlers, wikidata.handler);
 });
 afterEach(() => {
   vi.useRealTimers();
-  vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
 
@@ -84,35 +102,20 @@ describe("Letterboxd public reads", () => {
         letterboxd: { uid: `film:${index + 1}`, slug: `film-${index + 1}` },
       },
     }));
-    const send = vi.fn((url: string, options: RequestInit) => {
-      expect(url).toBe("https://query.wikidata.org/sparql");
-      if (typeof options.body !== "string")
-        throw new Error("Expected a SPARQL form body");
-      const query = new URLSearchParams(options.body).get("query") ?? "";
-      return Promise.resolve(
-        Response.json({
-          results: {
-            bindings: entries.flatMap((entry, index) =>
-              query.includes(`"${entry.externalIds.letterboxd.slug}"`)
-                ? [
-                    {
-                      external: { value: entry.externalIds.letterboxd.slug },
-                      imdb: { value: `tt${index + 1}` },
-                    },
-                  ]
-                : [],
-            ),
-          },
-        }),
-      );
-    });
-    vi.stubGlobal("fetch", send);
+    entries.forEach((entry, index) =>
+      wikidata.link(
+        "P6127",
+        entry.externalIds.letterboxd.slug,
+        `tt${index + 1}`,
+      ),
+    );
     const pending = resolveEntries(letterboxdProvider, entries);
-    await vi.runAllTimersAsync();
+    await withTimers(pending);
     const result = await pending;
     expect(result.resolved).toHaveLength(50);
     expect(result.deferred).toBe(0);
-    expect(send).toHaveBeenCalledTimes(2);
+    expect(wikidata.queries).toHaveLength(2);
+    expect(letterboxd.requests).toHaveLength(0);
     expect(db.getTable("title_id_map")).toHaveLength(50);
   });
 
@@ -125,30 +128,16 @@ describe("Letterboxd public reads", () => {
         },
       }));
       let fail = true;
-      const films: string[] = [];
-      vi.stubGlobal(
-        "fetch",
-        vi.fn((url: string) => {
-          if (url === "https://query.wikidata.org/sparql")
-            return Promise.resolve(
-              Response.json({ results: { bindings: [] } }),
-            );
-          films.push(url);
-          if (fail && films.length === failedAt + 1)
-            return Promise.resolve(
-              new Response("Unavailable", { status: 503 }),
-            );
-          const id = /film-(\d+)/.exec(url)?.[1];
-          if (!id) throw new Error("Unexpected film URL");
-          return Promise.resolve(
-            new Response(
-              `<title>Film • Letterboxd</title><a data-track-action="IMDb" href="https://www.imdb.com/title/tt${id}/">IMDb</a>`,
-            ),
-          );
-        }),
-      );
+      const films = letterboxd.requests;
+      letterboxd.serveAll(({ url }) => {
+        if (fail && films.length === failedAt + 1)
+          return new HttpResponse("Unavailable", { status: 503 });
+        const id = /film-(\d+)/.exec(url)?.[1];
+        if (!id) throw new Error("Unexpected film URL");
+        return new HttpResponse(letterboxdFilmPage(`tt${id}`));
+      });
       const pending = resolveEntries(letterboxdProvider, entries);
-      await vi.runAllTimersAsync();
+      await withTimers(pending);
       const result = await pending;
       expect(result.resolved).toHaveLength(failedAt);
       expect(result.deferred).toBe(3 - failedAt);
@@ -162,7 +151,7 @@ describe("Letterboxd public reads", () => {
       fail = false;
       await vi.advanceTimersByTimeAsync(15 * 60_000 + 1);
       const retry = resolveEntries(letterboxdProvider, entries);
-      await vi.runAllTimersAsync();
+      await withTimers(retry);
       expect((await retry).resolved).toHaveLength(3);
       expect(db.getTable("title_id_map")).toHaveLength(3);
     },
@@ -187,12 +176,11 @@ describe("Letterboxd public reads", () => {
   });
 
   it("a truncated manual refresh retains the populated page snapshot", async () => {
-    serveLetterboxd(() => page([1]));
+    letterboxd.serveAll(page([1]));
     await letterboxdProvider.fetchSource(ref, context);
     await vi.advanceTimersByTimeAsync(5000);
-    serveLetterboxd(
-      () =>
-        '<html><head><title>List • Letterboxd</title></head><body><ul class="poster-list -grid">',
+    letterboxd.serveAll(
+      '<html><head><title>List • Letterboxd</title></head><body><ul class="poster-list -grid">',
     );
     await expect(
       letterboxdProvider.fetchSource(ref, { ...context, forceRefresh: true }),
@@ -206,10 +194,7 @@ describe("Letterboxd public reads", () => {
   });
 
   it("counts invalid pagination as a failed read, and slows down above 20% of 20 reads", async () => {
-    const send = vi.fn(() =>
-      Promise.resolve(new Response(page([1], "/alice/watchlist/"))),
-    );
-    vi.stubGlobal("fetch", send);
+    letterboxd.serveAll(page([1], "/alice/watchlist/"));
     async function failedRead(count: number) {
       const read = letterboxdProvider.fetchSource(
         `users/u${count}/watchlist`,
@@ -229,7 +214,7 @@ describe("Letterboxd public reads", () => {
     await expect(
       letterboxdProvider.fetchSource("users/u21/watchlist", context),
     ).rejects.toBeInstanceOf(LetterboxdBusyError);
-    expect(send).toHaveBeenCalledTimes(20);
+    expect(letterboxd.requests).toHaveLength(20);
   });
   it("does not treat a real list named Access Denied as a challenge", () => {
     const result = parseLetterboxdPage(
@@ -242,30 +227,25 @@ describe("Letterboxd public reads", () => {
   });
 
   it("marks a capped pagination walk incomplete", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string) => {
-        const number = Number(/\/page\/(\d+)\//.exec(url)?.[1] ?? 1);
-        return Promise.resolve(
-          new Response(
-            page([number], `/alice/list/capped/page/${number + 1}/`),
-          ),
-        );
-      }),
-    );
+    letterboxd.serveAll(({ url }) => {
+      const number = Number(/\/page\/(\d+)\//.exec(url)?.[1] ?? 1);
+      return new HttpResponse(
+        page([number], `/alice/list/capped/page/${number + 1}/`),
+      );
+    });
     const pending = letterboxdProvider.fetchSource(
       "users/alice/lists/capped",
       context,
     );
-    await vi.runAllTimersAsync();
+    await withTimers(pending);
     expect((await pending).complete).toBe(false);
     expect((await pending).entries).toHaveLength(100);
   });
   it("a manual refresh revalidates shared pages instead of waiting six hours", async () => {
-    const first = serveLetterboxd(() => page([1]));
+    letterboxd.serveAll(page([1]));
     await letterboxdProvider.fetchSource(ref, context);
     await vi.advanceTimersByTimeAsync(5000);
-    const second = serveLetterboxd(() => page([2, 1]));
+    letterboxd.serveAll(page([2, 1]));
     expect(
       (await letterboxdProvider.fetchSource(ref, context)).entries,
     ).toHaveLength(1);
@@ -277,7 +257,7 @@ describe("Letterboxd public reads", () => {
         })
       ).entries,
     ).toHaveLength(2);
-    expect([...first, ...second]).toHaveLength(2);
+    expect(letterboxd.requests).toHaveLength(2);
   });
 
   it("resolves an uncatalogued film only through an exact IMDb link", async () => {
@@ -285,48 +265,33 @@ describe("Letterboxd public reads", () => {
       (strategy) => strategy.name === "letterboxd-film-links",
     );
     if (!strategy) throw new Error("Missing film link resolver");
-    const send = vi.fn((url: string) => {
-      expect(url).toBe("https://letterboxd.com/film/film-1/");
-      return Promise.resolve(
-        new Response(
-          '<title>Film • Letterboxd</title><a data-track-action="IMDb" href="http://www.imdb.com/title/tt0111161/maindetails">IMDb</a><a data-track-action="IMDb" href="https://evil.example/title/tt9999999/">Wrong host</a><a href="https://www.imdb.com/title/tt9999999/">A user review link</a>',
-        ),
-      );
-    });
-    vi.stubGlobal("fetch", send);
+    letterboxd.serve(
+      `${LETTERBOXD}/film/film-1/`,
+      '<title>Film • Letterboxd</title><a data-track-action="IMDb" href="http://www.imdb.com/title/tt0111161/maindetails">IMDb</a><a data-track-action="IMDb" href="https://evil.example/title/tt9999999/">Wrong host</a><a href="https://www.imdb.com/title/tt9999999/">A user review link</a>',
+    );
     expect(
       await strategy.resolve([
         { externalIds: { letterboxd: { uid: "film:1", slug: "film-1" } } },
       ]),
     ).toEqual(new Map([[0, "tt0111161"]]));
+    expect(letterboxd.urls).toEqual([`${LETTERBOXD}/film/film-1/`]);
   });
 
   it.each([200, 503])(
     "a challenge in an HTTP %i response stops subsequent requests",
     async (status) => {
-      const send = vi.fn(() =>
-        Promise.resolve(
-          new Response("<title>Just a moment...</title>", { status }),
-        ),
-      );
-      vi.stubGlobal("fetch", send);
+      letterboxd.serveAll(respond(status, "<title>Just a moment...</title>"));
       await expect(
         letterboxdProvider.fetchSource(ref, context),
       ).rejects.toMatchObject({ reason: "unavailable" });
       await expect(
         letterboxdProvider.fetchSource("users/bob/watchlist", context),
       ).rejects.toMatchObject({ reason: "disabled" });
-      expect(send).toHaveBeenCalledTimes(1);
+      expect(letterboxd.requests).toHaveLength(1);
     },
   );
   it("shares validated pages across accounts, resolves links and keeps stable entry IDs", async () => {
-    const fetch = vi.fn((url: string, options: RequestInit) => {
-      expect(url).toBe("https://letterboxd.com/alice/watchlist/");
-      expect(options.redirect).toBe("manual");
-      expect(new Headers(options.headers).has("Cookie")).toBe(false);
-      return Promise.resolve(new Response(page([2, 1])));
-    });
-    vi.stubGlobal("fetch", fetch);
+    letterboxd.serve(`${LETTERBOXD}/alice/watchlist/`, page([2, 1]));
     expect(await letterboxdProvider.validateSource(ref, context)).toMatchObject(
       { ok: true, ref },
     );
@@ -342,26 +307,24 @@ describe("Letterboxd public reads", () => {
     expect(result.entries[0].sourceUrl).toBe(
       "https://letterboxd.com/film/film-1/",
     );
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(letterboxd.urls).toEqual([`${LETTERBOXD}/alice/watchlist/`]);
+    expect(letterboxd.requests[0].redirect).toBe("manual");
+    expect(letterboxd.requests[0].headers.has("Cookie")).toBe(false);
   });
   it("walks pages and keeps a ranked list's order", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string) =>
-        Promise.resolve(
-          new Response(
-            url.includes("/page/2/")
-              ? page([3])
-              : page([1, 2], "/alice/list/favorites/page/2/"),
-          ),
+    letterboxd.serveAll(
+      ({ url }) =>
+        new HttpResponse(
+          url.includes("/page/2/")
+            ? page([3])
+            : page([1, 2], "/alice/list/favorites/page/2/"),
         ),
-      ),
     );
     const pending = letterboxdProvider.fetchSource(
       "users/alice/lists/favorites",
       context,
     );
-    await vi.runAllTimersAsync();
+    await withTimers(pending);
     const result = await pending;
     expect(result.complete).toBe(true);
     expect(result.entries.map((entry) => entry.title)).toEqual([
@@ -371,14 +334,7 @@ describe("Letterboxd public reads", () => {
     ]);
   });
   it("never follows hostile pagination or accepts an unverified empty page", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() =>
-        Promise.resolve(
-          new Response(page([1], "https://evil.example/watchlist/page/2/")),
-        ),
-      ),
-    );
+    letterboxd.serveAll(page([1], "https://evil.example/watchlist/page/2/"));
     await expect(
       letterboxdProvider.fetchSource(ref, context),
     ).rejects.toMatchObject({ reason: "unavailable" });
@@ -397,44 +353,32 @@ describe("Letterboxd public reads", () => {
     });
   });
   it("stops every instance after HTTP 403, with no retry", async () => {
-    const fetch = vi.fn(() =>
-      Promise.resolve(new Response("refused", { status: 403 })),
-    );
-    vi.stubGlobal("fetch", fetch);
+    letterboxd.serveAll(respond(403, "refused"));
     await expect(
       letterboxdProvider.fetchSource(ref, context),
     ).rejects.toMatchObject({ reason: "unavailable" });
-    await vi.advanceTimersByTimeAsync(0);
+    await background.settle();
     await expect(
       letterboxdProvider.fetchSource("users/bob/watchlist", context),
     ).rejects.toMatchObject({ reason: "disabled" });
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(letterboxd.requests).toHaveLength(1);
     expect(gate().haltReason).toBe("blocked");
   });
   it("slows every instance down after HTTP 429, for at least Retry-After", async () => {
-    const fetch = vi.fn(() =>
-      Promise.resolve(
-        new Response("slow down", {
-          status: 429,
-          headers: { "Retry-After": "120" },
-        }),
-      ),
-    );
-    vi.stubGlobal("fetch", fetch);
+    letterboxd.serveAll(respond(429, "slow down", { "Retry-After": "120" }));
     const limited = letterboxdProvider.fetchSource(ref, context);
     await expect(limited).rejects.toBeInstanceOf(LetterboxdBusyError);
     await expect(limited).rejects.toMatchObject({ waitMs: 120_000 });
-    await vi.advanceTimersByTimeAsync(0);
+    await background.settle();
     expect(gate()).toMatchObject({ rate: 5, haltedAt: null });
     expect(gate().pausedUntil).toBe(Date.now() + 120_000);
     const busy = letterboxdProvider.fetchSource("users/bob/watchlist", context);
     await expect(busy).rejects.toBeInstanceOf(LetterboxdBusyError);
     await expect(busy).rejects.toMatchObject({ waitMs: 120_000 });
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(letterboxd.requests).toHaveLength(1);
   });
   it("reports a halt even when the list's pages are cached", async () => {
-    const fetch = vi.fn(() => Promise.resolve(new Response(page([1]))));
-    vi.stubGlobal("fetch", fetch);
+    letterboxd.serveAll(page([1]));
     await letterboxdProvider.fetchSource(ref, context);
     gate().haltedAt = Date.now();
     gate().nextProbeAt = Date.now() + 30 * 60_000;
@@ -446,27 +390,23 @@ describe("Letterboxd public reads", () => {
     ).rejects.toMatchObject({
       reason: "disabled",
     });
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(letterboxd.requests).toHaveLength(1);
   });
   it("keeps a timeout after HTTP 200 temporary and never caches an empty result", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() =>
-        Promise.resolve(
-          new Response(
-            new ReadableStream({
-              start(controller) {
-                controller.error(new DOMException("timed out", "TimeoutError"));
-              },
-            }),
-          ),
+    letterboxd.serveAll(
+      () =>
+        new HttpResponse(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new DOMException("timed out", "TimeoutError"));
+            },
+          }),
         ),
-      ),
     );
     await expect(
       letterboxdProvider.fetchSource(ref, context),
     ).rejects.toMatchObject({ reason: "unavailable" });
-    await vi.advanceTimersByTimeAsync(0);
+    await background.settle();
     expect(gate()).toMatchObject({
       haltedAt: null,
       windowFailures: 1,
@@ -477,28 +417,13 @@ describe("Letterboxd public reads", () => {
       if (key.includes("pages-v1"))
         expect(stateSchema.parse(JSON.parse(value)).snapshot).toBeNull();
     await vi.advanceTimersByTimeAsync(15 * 60_000 + 1);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => Promise.resolve(new Response(page([1])))),
-    );
+    letterboxd.serveAll(page([1]));
     expect(
       (await letterboxdProvider.fetchSource(ref, context)).entries,
     ).toHaveLength(1);
   });
   it("uses exact Wikidata links without per-film Letterboxd calls", async () => {
-    const fetch = vi.fn((url: string) => {
-      expect(url).toBe("https://query.wikidata.org/sparql");
-      return Promise.resolve(
-        Response.json({
-          results: {
-            bindings: [
-              { external: { value: "film-1" }, imdb: { value: "tt0111161" } },
-            ],
-          },
-        }),
-      );
-    });
-    vi.stubGlobal("fetch", fetch);
+    wikidata.link("P6127", "film-1", "tt0111161");
     const strategy = letterboxdProvider.resolverStrategies?.find(
       (strategy) => strategy.name === "letterboxd-wikidata-slug",
     );
@@ -507,10 +432,12 @@ describe("Letterboxd public reads", () => {
       { externalIds: { letterboxd: { uid: "film:1", slug: "film-1" } } },
     ]);
     expect(result.get(0)).toBe("tt0111161");
+    expect(wikidata.queries).toEqual([
+      { property: "P6127", values: ["film-1"] },
+    ]);
+    expect(letterboxd.requests).toHaveLength(0);
   });
   it("rejects invalid references and the kill switch before any upstream request", async () => {
-    const fetch = vi.fn();
-    vi.stubGlobal("fetch", fetch);
     await expect(
       letterboxdProvider.fetchSource("users/../watchlist", context),
     ).rejects.toMatchObject({ reason: "not_found" });
@@ -518,9 +445,20 @@ describe("Letterboxd public reads", () => {
     await expect(
       letterboxdProvider.fetchSource(ref, context),
     ).rejects.toMatchObject({ reason: "disabled" });
-    expect(fetch).not.toHaveBeenCalled();
+    expect(letterboxd.requests).toHaveLength(0);
   });
 });
+
+function countedRead() {
+  const read = Object.assign(
+    () => {
+      read.calls += 1;
+      return Promise.resolve({ value: true, result: "ok" as const });
+    },
+    { calls: 0 },
+  );
+  return read;
+}
 
 describe("shared Letterboxd coordination", () => {
   const ok = () => Promise.resolve({ value: true, result: "ok" as const });
@@ -541,7 +479,7 @@ describe("shared Letterboxd coordination", () => {
       }),
     );
     const pending = Promise.all(requests);
-    await vi.runAllTimersAsync();
+    await withTimers(pending);
     await pending;
     sent.sort((a, b) => a - b);
     expect(sent.filter((at) => at === 0)).toHaveLength(10);
@@ -555,30 +493,30 @@ describe("shared Letterboxd coordination", () => {
   });
   it("refuses a background read when no slot is free now, without sending", async () => {
     for (let index = 0; index < 10; index++) await withLetterboxdPermit(ok);
-    const read = vi.fn(ok);
+    const read = countedRead();
     const busy = withReadPriority("background", () =>
       withLetterboxdPermit(read),
     );
     await expect(busy).rejects.toBeInstanceOf(LetterboxdBusyError);
     await expect(busy).rejects.toMatchObject({ reason: "unavailable" });
-    expect(read).not.toHaveBeenCalled();
+    expect(read.calls).toBe(0);
   });
   it("refuses an interactive read that would wait more than 10 s, with an estimate", async () => {
     const reserved = Array.from({ length: 110 }, () =>
       withLetterboxdPermit(ok),
     );
-    const read = vi.fn(ok);
+    const read = countedRead();
     const busy = withLetterboxdPermit(read);
     await expect(busy).rejects.toBeInstanceOf(LetterboxdBusyError);
     await expect(busy).rejects.toMatchObject({ waitMs: 10_100 });
-    expect(read).not.toHaveBeenCalled();
+    expect(read.calls).toBe(0);
     const pending = Promise.all(reserved);
-    await vi.runAllTimersAsync();
+    await withTimers(pending);
     await pending;
   });
   it("does not send a request reserved over 1 s ahead when a slowdown started meanwhile", async () => {
     for (let index = 0; index < 10; index++) await withLetterboxdPermit(ok);
-    const reserved = Array.from({ length: 20 }, () => vi.fn(ok));
+    const reserved = Array.from({ length: 20 }, () => countedRead());
     const pending = Promise.allSettled(
       reserved.map((read) => withLetterboxdPermit(read)),
     );
@@ -589,11 +527,9 @@ describe("shared Letterboxd coordination", () => {
       p_retry_after_ms: 0,
       p_probe: false,
     });
-    await vi.runAllTimersAsync();
+    await withTimers(pending);
     const results = await pending;
-    expect(
-      reserved.slice(10).every((read) => read.mock.calls.length === 0),
-    ).toBe(true);
+    expect(reserved.slice(10).every((read) => read.calls === 0)).toBe(true);
     expect(
       results.slice(10).every((result) => result.status === "rejected"),
     ).toBe(true);
@@ -606,26 +542,28 @@ describe("shared Letterboxd coordination", () => {
       data: null,
       error: { message: "connection refused" },
     }));
-    const read = vi.fn(ok);
+    const read = countedRead();
     await expect(withLetterboxdPermit(read)).rejects.toMatchObject({
       reason: "unavailable",
     });
-    expect(read).not.toHaveBeenCalled();
+    expect(read.calls).toBe(0);
   });
   it("only reads a cold shared page once and retains a previous snapshot on failure", async () => {
-    const read = vi.fn(() =>
-      Promise.resolve({
+    let reads = 0;
+    const read = () => {
+      reads += 1;
+      return Promise.resolve({
         films: [],
         complete: true,
         title: "Empty",
-      }),
-    );
+      });
+    };
     const pending = Promise.all(
       Array.from({ length: 8 }, () => letterboxdSnapshot("shared-page", read)),
     );
-    await vi.runAllTimersAsync();
+    await withTimers(pending);
     expect(await pending).toHaveLength(8);
-    expect(read).toHaveBeenCalledTimes(1);
+    expect(reads).toBe(1);
     await vi.advanceTimersByTimeAsync(6 * 60 * 60_000 + 1);
     await expect(
       letterboxdSnapshot("shared-page", () =>
@@ -659,7 +597,7 @@ describe("the Letterboxd queue", () => {
     await vi.advanceTimersByTimeAsync(10);
     const first = withLetterboxdPermit(send("first"), { first: true });
     const pending = Promise.all([...later, first]);
-    await vi.runAllTimersAsync();
+    await withTimers(pending);
     await pending;
     expect(sent.indexOf("first")).toBeLessThanOrEqual(2);
     expect(sent.filter((name) => name !== "first")).toEqual(
@@ -693,7 +631,7 @@ describe("the Letterboxd queue", () => {
       }),
     );
     const pending = Promise.all([older, ...newer]);
-    await vi.runAllTimersAsync();
+    await withTimers(pending);
     await pending;
     expect(sent.indexOf("older 2")).toBe(0);
     expect(sent.indexOf("older 3")).toBeLessThanOrEqual(12);
@@ -704,7 +642,7 @@ describe("the Letterboxd queue", () => {
     await fillGate();
     const waiting = Array.from({ length: 50 }, () => withLetterboxdPermit(ok));
     await vi.advanceTimersByTimeAsync(10);
-    const read = vi.fn(ok);
+    const read = countedRead();
     const queue = readQueue({ maxWaitMs: 10_000, answerAtMs: 3_000 });
     const busy = withReadPriority(
       "interactive",
@@ -721,48 +659,43 @@ describe("the Letterboxd queue", () => {
     expect(error.retryMs).toBeGreaterThan(0);
     expect(queue.ticket).toBe(error.ticket);
     expect(letterboxdWaiters().some((w) => w.id === error.ticket)).toBe(true);
-    expect(read).not.toHaveBeenCalled();
+    expect(read.calls).toBe(0);
     const pending = Promise.all(waiting);
-    await vi.runAllTimersAsync();
+    await withTimers(pending);
     await pending;
   });
 
   it("serves the pages read so far when a later page waits too long, and the next read resumes from them", async () => {
-    const urls: string[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string) => {
-        urls.push(url);
-        if (url.endsWith("/page/2/")) return new Response(page([3]));
-        for (let index = 0; index < 60; index++)
-          await callRpc("letterboxd_take_turn", {
-            p_target: 10,
-            p_priority: "later",
-          });
-        return new Response(page([1, 2], "/alice/list/big/page/2/"));
-      }),
-    );
+    letterboxd.serveAll(async ({ url }) => {
+      if (url.endsWith("/page/2/")) return new HttpResponse(page([3]));
+      for (let index = 0; index < 60; index++)
+        await callRpc("letterboxd_take_turn", {
+          p_target: 10,
+          p_priority: "later",
+        });
+      return new HttpResponse(page([1, 2], "/alice/list/big/page/2/"));
+    });
     const first = withReadPriority(
       "interactive",
       () => letterboxdProvider.fetchSource("users/alice/lists/big", context),
       readQueue({ maxWaitMs: 2_000, partial: true }),
     );
-    await vi.runAllTimersAsync();
+    await withTimers(first);
     expect(await first).toMatchObject({ complete: false, interrupted: true });
     expect((await first).entries).toHaveLength(2);
-    expect(urls).toEqual(["https://letterboxd.com/alice/list/big/"]);
+    expect(letterboxd.urls).toEqual(["https://letterboxd.com/alice/list/big/"]);
 
     await vi.advanceTimersByTimeAsync(60_000);
     const next = letterboxdProvider.fetchSource(
       "users/alice/lists/big",
       context,
     );
-    await vi.runAllTimersAsync();
+    await withTimers(next);
     const result = await next;
     expect(result.complete).toBe(true);
     expect(result.interrupted).toBeUndefined();
     expect(result.entries).toHaveLength(3);
-    expect(urls.slice(1)).toEqual([
+    expect(letterboxd.urls.slice(1)).toEqual([
       "https://letterboxd.com/alice/list/big/page/2/",
     ]);
   });
@@ -774,14 +707,13 @@ describe("the Letterboxd queue", () => {
         p_target: 10,
         p_priority: "first",
       });
-    vi.stubGlobal("fetch", vi.fn());
     const read = withReadPriority(
       "interactive",
       () => letterboxdProvider.fetchSource(ref, context),
       readQueue({ maxWaitMs: 2_000, partial: true }),
     );
     await expect(read).rejects.toBeInstanceOf(LetterboxdBusyError);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(letterboxd.requests).toHaveLength(0);
   });
 
   it("reports its estimate again while it waits out a slowdown", async () => {
@@ -802,7 +734,7 @@ describe("the Letterboxd queue", () => {
       }),
     );
     await vi.advanceTimersByTimeAsync(65_000);
-    await waiting;
+    await withTimers(waiting);
     expect(estimates.length).toBeGreaterThanOrEqual(6);
     expect(estimates[0]).toBeGreaterThan(59_000);
     expect(estimates.at(-1)).toBeLessThan(11_000);
@@ -831,21 +763,16 @@ describe("Letterboxd share links", () => {
   beforeEach(() => vi.stubEnv("CONNECTION_ENCRYPTION_KEY", key));
 
   it("never logs a share token in plaintext", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() =>
-        Promise.resolve(
-          new Response(
-            '<html><link rel="canonical" href="/leom/list/best-of-2026/share/2OS5xaC1fJOBBvGv/">',
-            { status: 403 },
-          ),
-        ),
+    letterboxd.serveAll(
+      respond(
+        403,
+        '<html><link rel="canonical" href="/leom/list/best-of-2026/share/2OS5xaC1fJOBBvGv/">',
       ),
     );
     await expect(
       letterboxdProvider.validateSource(provisional, context),
     ).rejects.toMatchObject({ reason: "unavailable" });
-    await vi.advanceTimersByTimeAsync(0);
+    await background.settle();
     const [row] = db.getTable("letterboxd_requests");
     expect(row.url).toBe(
       "https://letterboxd.com/leom/list/best-of-2026/share/[redacted]/",
@@ -855,11 +782,7 @@ describe("Letterboxd share links", () => {
   });
 
   it("encrypts the token on validate and reads the decrypted path on fetch", async () => {
-    const fetch = vi.fn((url: string) => {
-      expect(url).toBe(shareUrl);
-      return Promise.resolve(new Response(page([2, 1])));
-    });
-    vi.stubGlobal("fetch", fetch);
+    letterboxd.serve(shareUrl, page([2, 1]));
 
     const validated = await letterboxdProvider.validateSource(
       provisional,
@@ -875,126 +798,99 @@ describe("Letterboxd share links", () => {
     expect(
       result.entries.map((entry) => entry.externalIds?.letterboxd?.uid),
     ).toEqual(["film:2", "film:1"]);
+    expect(new Set(letterboxd.urls)).toEqual(new Set([shareUrl]));
   });
 
   it("gives the same share link one stable reference, caught as a duplicate", async () => {
-    const fetch = vi.fn((url: string) => {
-      expect(url).toBe(shareUrl);
-      return Promise.resolve(new Response(page([1])));
-    });
-    vi.stubGlobal("fetch", fetch);
+    letterboxd.serve(shareUrl, page([1]));
     const a = await letterboxdProvider.validateSource(provisional, context);
     const b = await letterboxdProvider.validateSource(provisional, context);
     if (!a.ok || !b.ok) throw new Error("expected ok");
     expect(a.ref).toBe(b.ref);
     await letterboxdProvider.fetchSource(a.ref, context);
     await letterboxdProvider.fetchSource(b.ref, context);
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(letterboxd.urls).toEqual([shareUrl]);
   });
 
   it("never reads a plaintext-token reference directly", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => {
-        throw new Error("no request expected");
-      }),
-    );
     await expect(
       letterboxdProvider.fetchSource(provisional, context),
     ).rejects.toMatchObject({ reason: "not_found" });
+    expect(letterboxd.requests).toHaveLength(0);
   });
 
   it("forgets the cached page when a share link is revoked", async () => {
-    const first = vi.fn((url: string) => {
-      expect(url).toBe(shareUrl);
-      return Promise.resolve(new Response(page([1])));
-    });
-    vi.stubGlobal("fetch", first);
+    const gone = () => new HttpResponse(null, { status: 404 });
+    letterboxd.serve(shareUrl, page([1]));
     const validated = await letterboxdProvider.validateSource(
       provisional,
       context,
     );
     if (!validated.ok) throw new Error("expected ok");
+    expect(letterboxd.urls).toEqual([shareUrl]);
 
     await vi.advanceTimersByTimeAsync(3001);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => Promise.resolve(new Response("gone", { status: 404 }))),
-    );
+    letterboxd.reset();
+    letterboxd.serveAll(gone);
     const revoked = letterboxdProvider.fetchSource(validated.ref, {
       ...context,
       forceRefresh: true,
     });
     revoked.catch(() => {});
-    await vi.runAllTimersAsync();
+    await withTimers(revoked);
     await expect(revoked).rejects.toMatchObject({ reason: "not_found" });
 
     await vi.advanceTimersByTimeAsync(3001);
-    const after = vi.fn(() =>
-      Promise.resolve(new Response("gone", { status: 404 })),
-    );
-    vi.stubGlobal("fetch", after);
+    letterboxd.reset();
+    letterboxd.serveAll(gone);
     const second = letterboxdProvider.fetchSource(validated.ref, context);
     second.catch(() => {});
-    await vi.runAllTimersAsync();
+    await withTimers(second);
     await expect(second).rejects.toMatchObject({ reason: "not_found" });
-    expect(after).toHaveBeenCalled();
+    expect(letterboxd.requests.length).toBeGreaterThan(0);
   });
 
   it("follows a boxd.it short link to the share page", async () => {
-    const fetch = vi.fn((url: string) => {
-      if (url === "https://boxd.it/YtpP8$2OS5xaC1fJOBBvGv")
-        return Promise.resolve(
-          new Response(null, { status: 302, headers: { location: shareUrl } }),
-        );
-      expect(url).toBe(shareUrl);
-      return Promise.resolve(new Response(page([1])));
-    });
-    vi.stubGlobal("fetch", fetch);
+    const shortLink = "https://boxd.it/YtpP8$2OS5xaC1fJOBBvGv";
+    letterboxd.redirect(shortLink, shareUrl);
+    letterboxd.serve(shareUrl, page([1]));
     const pending = letterboxdProvider.validateSource(
       "lbxshort/YtpP8$2OS5xaC1fJOBBvGv",
       context,
     );
-    await vi.runAllTimersAsync();
+    await withTimers(pending);
     const validated = await pending;
     if (!validated.ok) throw new Error("expected ok");
     expect(validated.ref.startsWith("share/v1:")).toBe(true);
     const result = await letterboxdProvider.fetchSource(validated.ref, context);
     expect(result.entries).toHaveLength(1);
+    expect(new Set(letterboxd.urls)).toEqual(new Set([shortLink, shareUrl]));
   });
 
   it("resolves a public boxd.it short link to its canonical list", async () => {
     const listUrl = "https://letterboxd.com/leom/list/best-of-2026/";
-    const fetch = vi.fn((url: string) => {
-      if (url === "https://boxd.it/YtpP8")
-        return Promise.resolve(
-          new Response(null, { status: 302, headers: { location: listUrl } }),
-        );
-      expect(url).toBe(listUrl);
-      return Promise.resolve(new Response(page([1])));
-    });
-    vi.stubGlobal("fetch", fetch);
+    letterboxd.redirect("https://boxd.it/YtpP8", listUrl);
+    letterboxd.serve(listUrl, page([1]));
     const pending = letterboxdProvider.validateSource(
       "lbxshort/YtpP8",
       context,
     );
-    await vi.runAllTimersAsync();
+    await withTimers(pending);
     const validated = await pending;
     if (!validated.ok) throw new Error("expected ok");
     expect(validated.ref).toBe("users/leom/lists/best-of-2026");
+    expect(new Set(letterboxd.urls)).toEqual(
+      new Set(["https://boxd.it/YtpP8", listUrl]),
+    );
   });
 
   it("rejects a boxd.it link that is not a list", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() =>
-        Promise.resolve(
-          new Response(null, {
-            status: 302,
-            headers: { location: "https://letterboxd.com/film/harakiri/" },
-          }),
-        ),
-      ),
+    letterboxd.serveAll(
+      () =>
+        new HttpResponse(null, {
+          status: 302,
+          headers: { location: "https://letterboxd.com/film/harakiri/" },
+        }),
     );
     await expect(
       letterboxdProvider.validateSource("lbxshort/film1", context),
@@ -1011,12 +907,9 @@ describe("Letterboxd member collections and charts", () => {
     ],
     ["users/alice/likes/films", "https://letterboxd.com/alice/likes/films/"],
   ])("reads %s from %s in page order", async (sourceRef, url) => {
-    const fetch = vi.fn((requested: string) => {
-      expect(requested).toBe(url);
-      return Promise.resolve(new Response(page([2, 1])));
-    });
-    vi.stubGlobal("fetch", fetch);
+    letterboxd.serve(url, page([2, 1]));
     const result = await letterboxdProvider.fetchSource(sourceRef, context);
+    expect(letterboxd.urls).toEqual([url]);
     expect(result.complete).toBe(true);
     expect(
       result.entries.map((entry) => entry.externalIds?.letterboxd?.uid),
@@ -1029,50 +922,39 @@ describe("Letterboxd member collections and charts", () => {
 
 describe("Letterboxd live page shapes", () => {
   it("never reads the popular charts, which robots.txt disallows", async () => {
-    const fetch = vi.fn();
-    vi.stubGlobal("fetch", fetch);
     await expect(
       letterboxdProvider.fetchSource("films/popular/this/week", context),
     ).rejects.toMatchObject({ reason: "not_found" });
-    expect(fetch).not.toHaveBeenCalled();
+    expect(letterboxd.requests).toHaveLength(0);
   });
 
   it("reads an empty watchlist as empty, not as a failed read", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() =>
-        Promise.resolve(
-          new Response(
-            `<html><head><title>alice's Watchlist • Letterboxd</title></head><body><main id="content"><h1 class="section-heading">alice wants to see 0 films</h1><section class="empty-text body-text -small"><h2 class="ui-block-heading">No films yet</h2></section></main></body></html>`,
-          ),
-        ),
-      ),
+    letterboxd.serveAll(
+      `<html><head><title>alice's Watchlist • Letterboxd</title></head><body><main id="content"><h1 class="section-heading">alice wants to see 0 films</h1><section class="empty-text body-text -small"><h2 class="ui-block-heading">No films yet</h2></section></main></body></html>`,
     );
     const result = await letterboxdProvider.fetchSource(ref, context);
     expect(result).toEqual({ complete: true, entries: [] });
-    await vi.advanceTimersByTimeAsync(0);
+    await background.settle();
     expect(gate()).toMatchObject({ windowFailures: 0, windowRequests: 1 });
   });
 
   it("follows a rating filter's pages in Letterboxd's form of the range", async () => {
-    const fetch = vi.fn((url: string) =>
-      Promise.resolve(
-        new Response(
+    letterboxd.serveAll(
+      ({ url }) =>
+        new HttpResponse(
           url.endsWith("/page/2/")
             ? page([2])
             : page([1], "/alice/films/rated/4-5/page/2/"),
         ),
-      ),
     );
-    vi.stubGlobal("fetch", fetch);
     const pending = letterboxdProvider.fetchSource(
       "users/alice/films/rated/4.0-5.0",
       context,
     );
-    await vi.runAllTimersAsync();
+    await withTimers(pending);
     const result = await pending;
     expect(result.complete).toBe(true);
-    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+    expect(letterboxd.urls).toEqual([
       "https://letterboxd.com/alice/films/rated/4-5/",
       "https://letterboxd.com/alice/films/rated/4-5/page/2/",
     ]);
@@ -1091,19 +973,14 @@ describe("Letterboxd diary", () => {
   }
 
   it("reads /diary/, keeps each Title once with its latest watch date, oldest first", async () => {
-    const fetch = vi.fn((url: string) => {
-      expect(url).toBe("https://letterboxd.com/alice/diary/");
-      return Promise.resolve(
-        new Response(
-          diaryPage([
-            { id: 1, date: "2026-01-10" },
-            { id: 2, date: "2026-03-05" },
-            { id: 1, date: "2026-05-20" },
-          ]),
-        ),
-      );
-    });
-    vi.stubGlobal("fetch", fetch);
+    letterboxd.serve(
+      "https://letterboxd.com/alice/diary/",
+      diaryPage([
+        { id: 1, date: "2026-01-10" },
+        { id: 2, date: "2026-03-05" },
+        { id: 1, date: "2026-05-20" },
+      ]),
+    );
     const result = await letterboxdProvider.fetchSource(
       "users/alice/diary",
       context,
@@ -1116,56 +993,47 @@ describe("Letterboxd diary", () => {
       "2026-03-05T00:00:00.000Z",
       "2026-05-20T00:00:00.000Z",
     ]);
+    expect(letterboxd.urls).toEqual(["https://letterboxd.com/alice/diary/"]);
   });
 
   it("reads rewatch pages that list the same films on different dates", async () => {
-    const fetch = vi.fn((url: string) => {
-      if (url === "https://letterboxd.com/alice/diary/")
-        return Promise.resolve(
-          new Response(
-            diaryPage(
-              [
-                { id: 1, date: "2026-05-20" },
-                { id: 2, date: "2026-05-19" },
-              ],
-              "/alice/diary/page/2/",
-            ),
-          ),
-        );
-      expect(url).toBe("https://letterboxd.com/alice/diary/page/2/");
-      return Promise.resolve(
-        new Response(
-          diaryPage([
-            { id: 1, date: "2026-01-10" },
-            { id: 2, date: "2026-01-09" },
-          ]),
-        ),
-      );
-    });
-    vi.stubGlobal("fetch", fetch);
+    letterboxd.serve(
+      "https://letterboxd.com/alice/diary/",
+      diaryPage(
+        [
+          { id: 1, date: "2026-05-20" },
+          { id: 2, date: "2026-05-19" },
+        ],
+        "/alice/diary/page/2/",
+      ),
+    );
+    letterboxd.serve(
+      "https://letterboxd.com/alice/diary/page/2/",
+      diaryPage([
+        { id: 1, date: "2026-01-10" },
+        { id: 2, date: "2026-01-09" },
+      ]),
+    );
     const pending = letterboxdProvider.fetchSource(
       "users/alice/diary",
       context,
     );
-    await vi.runAllTimersAsync();
+    await withTimers(pending);
     const result = await pending;
     expect(result.complete).toBe(true);
     expect(result.entries.map((entry) => entry.addedAt)).toEqual([
       "2026-05-19T00:00:00.000Z",
       "2026-05-20T00:00:00.000Z",
     ]);
+    expect(letterboxd.urls).toEqual([
+      "https://letterboxd.com/alice/diary/",
+      "https://letterboxd.com/alice/diary/page/2/",
+    ]);
   });
 
   it("refuses an unrelated complete page as an empty diary", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() =>
-        Promise.resolve(
-          new Response(
-            "<html><head><title>Something • Letterboxd</title></head><body><h1>Something</h1></body></html>",
-          ),
-        ),
-      ),
+    letterboxd.serveAll(
+      "<html><head><title>Something • Letterboxd</title></head><body><h1>Something</h1></body></html>",
     );
     await expect(
       letterboxdProvider.fetchSource("users/alice/diary", context),
@@ -1173,10 +1041,7 @@ describe("Letterboxd diary", () => {
   });
 
   it("accepts an empty diary", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => Promise.resolve(new Response(diaryPage([])))),
-    );
+    letterboxd.serveAll(diaryPage([]));
     const result = await letterboxdProvider.fetchSource(
       "users/alice/diary",
       context,
@@ -1188,47 +1053,35 @@ describe("Letterboxd diary", () => {
 
 describe("Letterboxd halt alert", () => {
   const heartbeat = "https://uptime.betterstack.com/api/v1/heartbeat/lbx";
-  beforeEach(() =>
-    vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", heartbeat),
-  );
+  const pings: string[] = [];
+  beforeEach(() => {
+    vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", heartbeat);
+    pings.length = 0;
+    const ping = ({ request }: { request: Request }) => {
+      pings.push(request.url);
+      return new HttpResponse("ok");
+    };
+    server.use(http.all(heartbeat, ping), http.all(`${heartbeat}/fail`, ping));
+  });
 
   it("reports the halt to Better Stack once, when the shared state flips", async () => {
-    const pings: string[] = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string) => {
-        if (url.startsWith(heartbeat)) {
-          pings.push(url);
-          return Promise.resolve(new Response("ok"));
-        }
-        return Promise.resolve(new Response("refused", { status: 403 }));
-      }),
-    );
+    letterboxd.serveAll(respond(403, "refused"));
     await expect(
       letterboxdProvider.fetchSource(ref, context),
     ).rejects.toMatchObject({ reason: "unavailable" });
     await expect(
       letterboxdProvider.fetchSource("users/bob/watchlist", context),
     ).rejects.toMatchObject({ reason: "disabled" });
+    await background.settle();
     expect(pings).toEqual([`${heartbeat}/fail`]);
     expect(gate().haltedAt).not.toBeNull();
   });
   it("reports the recovery when a probe works after 30 minutes", async () => {
-    const pings: string[] = [];
     let refuse = true;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string) => {
-        if (url.startsWith(heartbeat)) {
-          pings.push(url);
-          return Promise.resolve(new Response("ok"));
-        }
-        return Promise.resolve(
-          refuse
-            ? new Response("refused", { status: 403 })
-            : new Response(page([1])),
-        );
-      }),
+    letterboxd.serveAll(() =>
+      refuse
+        ? new HttpResponse("refused", { status: 403 })
+        : new HttpResponse(page([1])),
     );
     await expect(
       letterboxdProvider.fetchSource(ref, context),
@@ -1236,21 +1089,19 @@ describe("Letterboxd halt alert", () => {
     await vi.advanceTimersByTimeAsync(30 * 60_000);
     refuse = false;
     const read = letterboxdProvider.fetchSource("users/bob/watchlist", context);
-    await vi.runAllTimersAsync();
+    await withTimers(read);
     expect((await read).entries).toHaveLength(1);
+    await background.settle();
     expect(pings).toEqual([`${heartbeat}/fail`, heartbeat]);
     expect(gate()).toMatchObject({ haltedAt: null, rate: 0.33 });
   });
 
   it("does not report a successful read", async () => {
-    const send = vi.fn((url: string) => {
-      expect(url.startsWith(heartbeat)).toBe(false);
-      return Promise.resolve(new Response(page([1])));
-    });
-    vi.stubGlobal("fetch", send);
+    letterboxd.serveAll(page([1]));
     await letterboxdProvider.fetchSource(ref, context);
-    await vi.advanceTimersByTimeAsync(0);
+    await background.settle();
     expect(gate().haltedAt).toBeNull();
+    expect(pings).toEqual([]);
   });
 });
 
@@ -1259,21 +1110,16 @@ describe("Letterboxd request log", () => {
   const counted = () => db.getTable("letterboxd_request_counts");
 
   it("keeps a refused request in full, with its Cloudflare headers and body", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() =>
-        Promise.resolve(
-          new Response("<html>Sorry, you have been blocked</html>", {
-            status: 403,
-            headers: { "cf-mitigated": "challenge", "cf-ray": "abc-FRA" },
-          }),
-        ),
-      ),
+    letterboxd.serveAll(
+      respond(403, "<html>Sorry, you have been blocked</html>", {
+        "cf-mitigated": "challenge",
+        "cf-ray": "abc-FRA",
+      }),
     );
     await expect(
       letterboxdProvider.fetchSource(ref, context),
     ).rejects.toMatchObject({ reason: "unavailable" });
-    await vi.advanceTimersByTimeAsync(0);
+    await background.settle();
     expect(kept()).toEqual([
       expect.objectContaining({
         outcome: "blocked",
@@ -1288,12 +1134,9 @@ describe("Letterboxd request log", () => {
     ]);
   });
   it("counts every successful request and keeps 1% of them, without the body", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => Promise.resolve(new Response(page([1])))),
-    );
+    letterboxd.serveAll(page([1]));
     await letterboxdProvider.fetchSource(ref, context);
-    await vi.advanceTimersByTimeAsync(0);
+    await background.settle();
     expect(counted()).toHaveLength(1);
 
     const url = "https://letterboxd.com/bob/watchlist/";
@@ -1326,28 +1169,31 @@ describe("Letterboxd request log", () => {
     expect(keptForBob()[0].bytes).toBeGreaterThan(0);
   });
   it("reports a refusal to the gate at once, even when its body stalls", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() =>
-        Promise.resolve(
-          new Response(
-            new ReadableStream({
-              start(controller) {
-                controller.enqueue(new TextEncoder().encode("<html>Blocked"));
-              },
-            }),
-            { status: 403 },
-          ),
+    const reported = Promise.withResolvers<void>();
+    rpcHandlers.set("letterboxd_report", (args) => {
+      const result = letterboxdGateRpcs.letterboxd_report(args);
+      reported.resolve();
+      return result;
+    });
+    letterboxd.serveAll(
+      () =>
+        new HttpResponse(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("<html>Blocked"));
+            },
+          }),
+          { status: 403 },
         ),
-      ),
     );
     await expect(
       letterboxdProvider.fetchSource(ref, context),
     ).rejects.toMatchObject({ reason: "unavailable" });
-    await vi.advanceTimersByTimeAsync(0);
+    await reported.promise;
     expect(gate().haltReason).toBe("blocked");
     expect(kept()).toHaveLength(0);
     await vi.advanceTimersByTimeAsync(3000);
+    await background.settle();
     expect(kept()).toEqual([
       expect.objectContaining({
         outcome: "blocked",
@@ -1357,27 +1203,26 @@ describe("Letterboxd request log", () => {
   });
   it("keeps the first bytes of a body that breaks while it is read", async () => {
     let sent = false;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() =>
-        Promise.resolve(
-          new Response(
-            new ReadableStream({
+    letterboxd.serveAll(
+      () =>
+        new HttpResponse(
+          new ReadableStream(
+            {
               pull(controller) {
                 if (sent) controller.error(new Error("connection reset"));
                 else
                   controller.enqueue(new TextEncoder().encode("<html><head>"));
                 sent = true;
               },
-            }),
+            },
+            { highWaterMark: 0 },
           ),
         ),
-      ),
     );
     await expect(
       letterboxdProvider.fetchSource(ref, context),
     ).rejects.toMatchObject({ reason: "unavailable" });
-    await vi.advanceTimersByTimeAsync(0);
+    await background.settle();
     expect(kept()).toEqual([
       expect.objectContaining({
         outcome: "failed",
@@ -1386,19 +1231,16 @@ describe("Letterboxd request log", () => {
     ]);
   });
   it("keeps a network error with no status", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => Promise.reject(new TypeError("fetch failed"))),
-    );
+    letterboxd.serveAll(() => HttpResponse.error());
     await expect(
       letterboxdProvider.fetchSource(ref, context),
     ).rejects.toMatchObject({ reason: "unavailable" });
-    await vi.advanceTimersByTimeAsync(0);
+    await background.settle();
     expect(kept()).toEqual([
       expect.objectContaining({
         outcome: "failed",
         status: null,
-        error: expect.stringContaining("fetch failed") as unknown,
+        error: expect.stringContaining("Failed to fetch") as unknown,
       }),
     ]);
   });

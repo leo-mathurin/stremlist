@@ -208,11 +208,6 @@ export async function providerFetchJson(
   return { data, response };
 }
 
-export interface GraphQLResponse<T> {
-  data?: T | null;
-  errors?: { message: string; extensions?: { code?: string } }[];
-}
-
 function graphqlResponseSchema<T>(data: z.ZodType<T>) {
   return z.object({
     data: data.nullish(),

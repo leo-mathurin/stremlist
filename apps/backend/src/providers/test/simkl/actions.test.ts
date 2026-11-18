@@ -1,11 +1,5 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { useMswServer } from "../../../test/helpers/msw.test-utils";
 import { simklProvider } from "../../simkl";
 import {
   apiCalls,
@@ -19,16 +13,11 @@ import {
   routes,
   storedLibrary,
 } from "./harness";
+import { oneSecondLater } from "../../../test/helpers/clock.test-utils";
 
-vi.mock("../../../lib/r2", async () => {
-  return (await import("./mocks")).r2Module;
-});
-vi.mock("../../http", async (importOriginal) => {
-  const { httpModule } = await import("../oauth-harness");
-  return httpModule(await importOriginal());
-});
+const server = useMswServer();
 
-beforeEach(resetSimklTest);
+beforeEach(() => resetSimklTest(server));
 afterEach(restoreStubs);
 
 describe("simkl actions", () => {
@@ -173,6 +162,7 @@ describe("simkl actions", () => {
       }),
     );
 
+    oneSecondLater();
     await actions.perform(
       connection,
       { kind: "watched", add: true },
@@ -182,6 +172,7 @@ describe("simkl actions", () => {
       shows: [{ ids: { imdb: "tt0944947" }, status: "completed" }],
     });
 
+    oneSecondLater();
     await actions.perform(
       connection,
       { kind: "watched", add: false },
@@ -204,6 +195,7 @@ describe("simkl actions", () => {
     expect(lastPost().body).toEqual({
       movies: [{ ids: { imdb: "tt0068646" }, watched_at: at }],
     });
+    oneSecondLater();
     await actions.perform(
       connection,
       { kind: "watched", add: true, watchedAt: at },
@@ -257,6 +249,7 @@ describe("simkl actions", () => {
       path: "/sync/ratings",
       body: { shows: [{ ids: { imdb: "tt0944947" }, rating: 8 }] },
     });
+    oneSecondLater();
     await actions.perform(
       connection,
       { kind: "rating", rating: null },

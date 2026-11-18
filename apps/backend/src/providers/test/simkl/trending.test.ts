@@ -7,6 +7,7 @@ import {
   it,
   vi,
 } from "vite-plus/test";
+import { useMswServer } from "../../../test/helpers/msw.test-utils";
 import { simklProvider } from "../../simkl";
 import {
   calls,
@@ -17,13 +18,7 @@ import {
   routes,
 } from "./harness";
 
-vi.mock("../../../lib/r2", async () => {
-  return (await import("./mocks")).r2Module;
-});
-vi.mock("../../http", async (importOriginal) => {
-  const { httpModule } = await import("../oauth-harness");
-  return httpModule(await importOriginal());
-});
+const server = useMswServer();
 
 const MOVIES = [
   {
@@ -71,7 +66,7 @@ const ANIME = [
 ];
 
 beforeEach(() => {
-  resetSimklTest();
+  resetSimklTest(server);
   routes.set("GET /discover/trending/movies/week_100.json", () => MOVIES);
   routes.set("GET /discover/trending/anime/week_100.json", () => ANIME);
 });

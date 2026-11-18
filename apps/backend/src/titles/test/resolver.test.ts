@@ -1,12 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { fakeAdapter } from "../../test/helpers/mock-registry";
-import { db } from "../../test/helpers/mock-supabase";
-import type { ResolverStrategy, SourceEntry } from "../../providers/types";
+import { traktProvider } from "../../providers/trakt";
+import type {
+  ProviderAdapter,
+  ResolverStrategy,
+  SourceEntry,
+} from "../../providers/types";
+import { db, resetRpc } from "../../test/helpers/mock-supabase";
+import { useMswServer } from "../../test/helpers/msw.test-utils";
 import { resolveEntries } from "../resolver";
 
-vi.mock("../../lib/supabase", async () => {
-  return await import("../../test/helpers/mock-supabase");
-});
+useMswServer();
 
 const DAY = 24 * 60 * 60_000;
 
@@ -19,23 +22,27 @@ function tmdb(id: number) {
 }
 
 function strategy(name: string, known: Record<number, string>) {
+  const calls: SourceEntry[][] = [];
   return {
     name,
-    resolve: vi.fn<ResolverStrategy["resolve"]>((entries) =>
-      Promise.resolve(
+    calls,
+    resolve(entries: SourceEntry[]) {
+      calls.push(entries);
+      return Promise.resolve(
         new Map(
           entries.flatMap((entry, index) => {
             const imdbId = known[entry.externalIds?.tmdb?.id ?? -1];
-            return imdbId ? [[index, imdbId]] : [];
+            return imdbId ? [[index, imdbId] as const] : [];
           }),
         ),
-      ),
-    ),
-  };
+      );
+    },
+  } satisfies ResolverStrategy & { calls: SourceEntry[][] };
 }
 
 function adapter(strategies: ResolverStrategy[]) {
-  return fakeAdapter("trakt", {
+  const value: ProviderAdapter = {
+    ...traktProvider,
     resolutionKey: (entry) =>
       entry.externalIds?.tmdb
         ? {
@@ -44,7 +51,8 @@ function adapter(strategies: ResolverStrategy[]) {
           }
         : null,
     resolverStrategies: strategies,
-  });
+  };
+  return value;
 }
 
 const tt = (n: number) => `tt${String(n).padStart(7, "0")}`;
@@ -75,6 +83,7 @@ function cacheRow(externalId: string) {
 
 beforeEach(() => {
   db.reset();
+  resetRpc();
   vi.spyOn(console, "error");
 });
 
@@ -85,10 +94,10 @@ describe("resolveEntries", () => {
       const slow: ResolverStrategy = {
         name: "paced-film-links",
         batchSize: 2,
-        resolve: vi.fn((batch: SourceEntry[]) => {
+        resolve: (batch: SourceEntry[]) => {
           vi.setSystemTime(Date.now() + batch.length * 3000);
           return Promise.resolve(new Map<number, string>());
-        }),
+        },
       };
       const bulk = strategy("bulk", {});
       const paced = adapter([bulk, slow]);
@@ -100,8 +109,8 @@ describe("resolveEntries", () => {
       );
       expect(Date.now() - started).toBe(12_000);
       expect(result.deferred).toBe(46);
-      expect(bulk.resolve).toHaveBeenCalledTimes(1);
-      expect(bulk.resolve.mock.calls[0][0]).toHaveLength(50);
+      expect(bulk.calls).toHaveLength(1);
+      expect(bulk.calls[0]).toHaveLength(50);
       expect(db.getTable("title_id_map")).toHaveLength(4);
       expect(cacheRow("5")).toBeUndefined();
     } finally {
@@ -122,7 +131,7 @@ describe("resolveEntries", () => {
         tmdb(2),
       ]);
 
-      expect(justwatch.resolve).not.toHaveBeenCalled();
+      expect(justwatch.calls).toEqual([]);
       expect(imdbIds(result)).toEqual(["tt0068646"]);
       expect(result.unresolvedEntries).toHaveLength(1);
     } finally {
@@ -147,7 +156,7 @@ describe("resolveEntries", () => {
       unresolvedEntries: [],
       deferred: 0,
     });
-    expect(first.resolve).not.toHaveBeenCalled();
+    expect(first.calls).toEqual([]);
     expect(db.getTable("title_id_map")).toEqual([]);
   });
 
@@ -196,7 +205,7 @@ describe("resolveEntries", () => {
     const result = await resolveEntries(adapter([first]), [tmdb(550)]);
 
     expect(imdbIds(result)).toEqual(["tt0137523"]);
-    expect(first.resolve).not.toHaveBeenCalled();
+    expect(first.calls).toEqual([]);
   });
 
   it("runs strategies in order and gives each only what is still unresolved", async () => {
@@ -216,9 +225,9 @@ describe("resolveEntries", () => {
       "tt0000003",
       "tt0000004",
     ]);
-    expect(first.resolve).toHaveBeenCalledWith([tmdb(1), tmdb(2), tmdb(3)]);
-    expect(second.resolve).toHaveBeenCalledWith([tmdb(2)]);
-    expect(third.resolve).not.toHaveBeenCalled();
+    expect(first.calls).toEqual([[tmdb(1), tmdb(2), tmdb(3)]]);
+    expect(second.calls).toEqual([[tmdb(2)]]);
+    expect(third.calls).toEqual([]);
     expect(cacheRow("1")).toMatchObject({
       imdb_id: "tt0000001",
       strategy: "first",
@@ -279,7 +288,7 @@ describe("resolveEntries", () => {
     const result = await resolveEntries(adapter([first]), [tmdb(7)]);
 
     expect(result.unresolvedEntries).toHaveLength(1);
-    expect(first.resolve).not.toHaveBeenCalled();
+    expect(first.calls).toEqual([]);
   });
 
   it("retries an unresolved entry after its retry time and caches the new answer", async () => {
@@ -305,15 +314,14 @@ describe("resolveEntries", () => {
 
     const firstRun = await resolveEntries(adapter([first]), entries);
 
-    const sent = () =>
-      first.resolve.mock.calls.map(([entries]) => entries.length);
+    const sent = () => first.calls.map((batch) => batch.length);
     expect(sent()).toEqual([50, 50, 50, 50, 50, 50]);
     expect(firstRun.resolved).toHaveLength(300);
     expect(firstRun.unresolvedEntries).toHaveLength(50);
     expect(firstRun.deferred).toBe(50);
     expect(cacheRow("301")).toBeUndefined();
 
-    first.resolve.mockClear();
+    first.calls.length = 0;
     const secondRun = await resolveEntries(adapter([first]), entries);
 
     expect(sent()).toEqual([50]);
@@ -326,17 +334,17 @@ describe("resolveEntries", () => {
     const known = strategy("slow", knowing(entries));
     const slow = {
       name: "slow",
-      resolve: vi.fn(async (batch: SourceEntry[]) => {
+      async resolve(batch: SourceEntry[]) {
         await new Promise((done) => setTimeout(done, 15));
         return known.resolve(batch);
-      }),
+      },
     };
 
     const result = await resolveEntries(adapter([slow]), entries, {
       budgetMs: 10,
     });
 
-    expect(slow.resolve).toHaveBeenCalledOnce();
+    expect(known.calls).toHaveLength(1);
     expect(result.resolved).toHaveLength(50);
     expect(result.deferred).toBe(70);
     expect(cacheRow("51")).toBeUndefined();
@@ -354,7 +362,7 @@ describe("resolveEntries", () => {
     expect(cacheRow("550")).toMatchObject({ imdb_id: "tt0137523" });
 
     await resolveEntries(adapter([first]), [tmdb(550), tmdb(550)]);
-    expect(first.resolve).toHaveBeenCalledOnce();
+    expect(first.calls).toHaveLength(1);
   });
 
   it("keeps the order of the Source list", async () => {

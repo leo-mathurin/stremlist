@@ -1,3 +1,4 @@
+import { http, HttpResponse } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -7,7 +8,6 @@ import {
   vi,
 } from "vite-plus/test";
 import app from "../../index.js";
-import { SourceUnavailableError } from "../types";
 import {
   completeOAuthBody,
   movie,
@@ -17,25 +17,28 @@ import {
   seedList,
   seedOAuthState,
 } from "../../test/helpers/account.fixture.js";
+import { useBackgroundTasks } from "../../test/helpers/background.test-utils.js";
 import {
-  fakeAdapter,
-  resetProviders,
-  useFakeProvider,
-} from "../../test/helpers/mock-registry.js";
+  cinemetaWithoutTitles,
+  FakeImdb,
+} from "../../test/helpers/imdb.test-utils.js";
+import { cache } from "../../test/helpers/list-cache.test-utils.js";
 import { db, resetRpc } from "../../test/helpers/mock-supabase.js";
+import { useMswServer } from "../../test/helpers/msw.test-utils.js";
+import { resetR2 } from "../../test/helpers/r2.test-utils.js";
+import {
+  FakeTrakt,
+  TRAKT_API,
+  useTraktApp,
+} from "../../test/helpers/trakt.test-utils.js";
 import { readJson, syncSnapshotBody } from "../../test/helpers/json.js";
 import { z } from "zod";
 
-vi.mock("../../lib/supabase", async () => {
-  return await import("../../test/helpers/mock-supabase.js");
-});
-vi.mock("../../services/list-cache", async () => {
-  return await import("../../test/helpers/mock-list-cache.js");
-});
-vi.mock("../registry", async () => {
-  return await import("../../test/helpers/mock-registry.js");
-});
-vi.mock("../../lib/resend", () => import("../../test/helpers/mock-resend"));
+const TRAKT_AUTH = "https://auth.trakt.tv";
+const server = useMswServer();
+const background = useBackgroundTasks();
+const trakt = new FakeTrakt();
+const imdb = new FakeImdb();
 
 const TEN_MINUTES_AGO = new Date(Date.now() - 10 * 60_000).toISOString();
 
@@ -59,13 +62,18 @@ function seedStatus(
 beforeEach(() => {
   db.reset();
   resetRpc();
-  resetProviders();
+  resetR2();
+  cache.reset();
+  trakt.reset();
+  imdb.reset();
+  useTraktApp();
+  server.use(trakt.handler, imdb.handler, cinemetaWithoutTitles);
   vi.spyOn(console, "log");
   vi.spyOn(console, "error");
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -177,17 +185,9 @@ describe("sync status on the configure page", () => {
       source_ref: "users/leo/lists/deleted",
       position: 1,
     });
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        fetchSource: (ref) =>
-          ref.endsWith("deleted")
-            ? Promise.reject(new SourceUnavailableError("not_found", "gone"))
-            : Promise.resolve({
-                entries: [{ imdbId: "tt0000001", meta: movie("tt0000001") }],
-                complete: true,
-              }),
-      }),
-    );
+    trakt.serve("/users/leo/lists/horror/items", [movie("tt0000001")]);
+    trakt.fail("/users/leo/lists/deleted/items", 404);
+    imdb.titles.set("tt0000001", movie("tt0000001"));
 
     const res = await app.request(`/${account.id}/refresh`, {
       method: "POST",
@@ -222,34 +222,17 @@ describe("after a new Connection", () => {
       failure_reason: "needs_connection",
       failing_since: "2026-10-06T12:00:00.000Z",
     });
-    const fetchSource = vi.fn(() =>
-      Promise.resolve({
-        entries: [{ imdbId: "tt0000001", meta: movie("tt0000001") }],
-        complete: true,
-      }),
-    );
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        fetchSource,
-        oauth: {
-          authorizeUrl: "https://trakt.example/oauth/authorize",
-          tokenUrl: "https://api.trakt.example/oauth/token",
-          clientId: () => "client-123",
-          scopes: [],
-        },
-      }),
-    );
-    const imdbRead = vi.fn();
-    useFakeProvider(fakeAdapter("imdb", { fetchSource: imdbRead }));
-    seedOAuthState(account.id);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() =>
-        Promise.resolve(
-          Response.json({ access_token: "access-1", expires_in: 7200 }),
-        ),
+    trakt.serve("/users/me/watchlist", [movie("tt0000001")]);
+    imdb.titles.set("tt0000001", movie("tt0000001"));
+    server.use(
+      http.post(`${TRAKT_AUTH}/oauth/token`, () =>
+        HttpResponse.json({ access_token: "access-1", expires_in: 7200 }),
+      ),
+      http.get(`${TRAKT_API}/users/settings`, () =>
+        HttpResponse.json({ user: { username: "leo" } }),
       ),
     );
+    seedOAuthState(account.id);
 
     const res = await app.request(
       "/connections/trakt/complete",
@@ -257,15 +240,16 @@ describe("after a new Connection", () => {
     );
 
     expect(res.status).toBe(200);
-    await vi.waitFor(() => {
-      expect(
-        db.getTable("list_sync_status").find((row) => row.list_id === list.id),
-      ).toMatchObject({ failure_reason: null, title_count: 1 });
-    });
-    expect(fetchSource).toHaveBeenCalledWith("me/watchlist", {
-      connection: expect.objectContaining({ provider: "trakt" }) as unknown,
-    });
-    expect(imdbRead).not.toHaveBeenCalled();
+    await background.settle();
+    expect(
+      db.getTable("list_sync_status").find((row) => row.list_id === list.id),
+    ).toMatchObject({ failure_reason: null, title_count: 1 });
+    expect(
+      trakt.requestsOf("/users/me/watchlist").map((request) => request.token),
+    ).toEqual(["access-1"]);
+    expect(
+      imdb.requests.filter((request) => request.operationName !== "TitlesById"),
+    ).toEqual([]);
     expect(
       db.getTable("list_sync_status").some((row) => row.list_id === other.id),
     ).toBe(false);

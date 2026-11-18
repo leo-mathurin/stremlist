@@ -1,11 +1,5 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { useMswServer } from "../../../test/helpers/msw.test-utils";
 import { traktProvider } from "../../trakt";
 import {
   calls,
@@ -18,12 +12,9 @@ import {
   unavailableReason,
 } from "./harness";
 
-vi.mock("../../http", async (importOriginal) => {
-  const { httpModule } = await import("../oauth-harness");
-  return httpModule(await importOriginal());
-});
+const server = useMswServer();
 
-beforeEach(resetTraktTest);
+beforeEach(() => resetTraktTest(server));
 afterEach(restoreTraktTest);
 
 describe("Trakt validateSource", () => {

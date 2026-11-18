@@ -1,11 +1,5 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { useMswServer } from "../../../test/helpers/msw.test-utils";
 import { traktProvider } from "../../trakt";
 import { traktPlays } from "../../trakt/actions";
 import type { ProviderActions } from "../../types";
@@ -28,13 +22,11 @@ import {
   route,
   status,
 } from "./harness";
+import { oneSecondLater } from "../../../test/helpers/clock.test-utils";
 
-vi.mock("../../http", async (importOriginal) => {
-  const { httpModule } = await import("../oauth-harness");
-  return httpModule(await importOriginal());
-});
+const server = useMswServer();
 
-beforeEach(resetTraktTest);
+beforeEach(() => resetTraktTest(server));
 afterEach(restoreTraktTest);
 
 describe("Trakt actions", () => {
@@ -192,6 +184,7 @@ describe("Trakt actions", () => {
     expect(add.url.pathname).toBe("/sync/watchlist");
     expect(add.body).toEqual({ movies: [{ ids: { imdb: "tt11128440" } }] });
 
+    oneSecondLater();
     const remove = await performed(
       { kind: "watchlist", add: false },
       { imdbId: "tt8111088", type: "series" },
@@ -208,12 +201,14 @@ describe("Trakt actions", () => {
     expect(movie.url.pathname).toBe("/sync/history");
     expect(movie.body).toEqual({ movies: [{ ids: { imdb: "tt11128440" } }] });
 
+    oneSecondLater();
     const show = await performed(
       { kind: "watched", add: true },
       { imdbId: "tt8111088", type: "series" },
     );
     expect(show.body).toEqual({ shows: [{ ids: { imdb: "tt8111088" } }] });
 
+    oneSecondLater();
     const episode = await performed(
       { kind: "watched", add: false },
       {
@@ -243,6 +238,7 @@ describe("Trakt actions", () => {
       movies: [{ ids: { imdb: "tt11128440" }, watched_at: at }],
     });
 
+    oneSecondLater();
     const episode = await performed(
       { kind: "watched", add: true, watchedAt: at },
       {
@@ -305,6 +301,7 @@ describe("Trakt actions", () => {
       shows: [{ ids: { imdb: "tt8111088" }, rating: 7 }],
     });
 
+    oneSecondLater();
     const clear = await performed(
       { kind: "rating", rating: null },
       { imdbId: "tt11128440", type: "movie" },

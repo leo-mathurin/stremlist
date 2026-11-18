@@ -1,24 +1,12 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { useMswServer } from "../../../test/helpers/msw.test-utils";
 import { simklProvider } from "../../simkl";
 import { simklItemUrl } from "../../simkl/entries";
 import { calls, ctx, resetSimklTest, restoreStubs } from "./harness";
 
-vi.mock("../../../lib/r2", async () => {
-  return (await import("./mocks")).r2Module;
-});
-vi.mock("../../http", async (importOriginal) => {
-  const { httpModule } = await import("../oauth-harness");
-  return httpModule(await importOriginal());
-});
+const server = useMswServer();
 
-beforeEach(resetSimklTest);
+beforeEach(() => resetSimklTest(server));
 afterEach(restoreStubs);
 
 describe("simkl entries", () => {

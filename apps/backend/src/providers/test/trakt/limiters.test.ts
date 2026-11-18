@@ -6,6 +6,7 @@ import {
   it,
   vi,
 } from "vite-plus/test";
+import { useMswServer } from "../../../test/helpers/msw.test-utils";
 import { traktGetJson, traktPost } from "../../trakt/api";
 import {
   calls,
@@ -16,9 +17,11 @@ import {
   route,
 } from "./harness";
 
+const server = useMswServer();
+
 beforeEach(() => {
-  resetTraktTest();
-  vi.useFakeTimers();
+  resetTraktTest(server);
+  vi.useFakeTimers({ now: Date.now() });
   route("GET /users/me/watchlist", json([]));
   route("POST /sync/watchlist", json({}));
 });
@@ -32,33 +35,44 @@ function user(username: string, accountId = `sl_${username}`) {
   return { ...connection(), username, accountId };
 }
 
-async function settlesNow(promise: Promise<unknown>) {
+async function driveTimers(operation: Promise<unknown>) {
   let settled = false;
-  void promise.then(
+  void operation.then(
     () => (settled = true),
     () => (settled = true),
   );
-  await vi.advanceTimersByTimeAsync(0);
-  return settled;
+  while (!settled) await vi.advanceTimersToNextTimerAsync();
+  return operation;
+}
+
+function tracked(promise: Promise<unknown>) {
+  const state = { settled: false };
+  void promise.then(
+    () => (state.settled = true),
+    () => (state.settled = true),
+  );
+  return state;
 }
 
 describe("Trakt limiters per user", () => {
   it("does not delay a user's read behind another user's backlog", async () => {
     const a = user("limiter-a");
     const b = user("limiter-b");
+    const start = Date.now();
 
     const backlog = Array.from({ length: 460 }, () =>
       traktGetJson("/users/me/watchlist", a),
     );
-    const blocked = Promise.all(backlog);
-    await vi.advanceTimersByTimeAsync(1000);
+    await Promise.all(backlog.slice(0, 450));
+    const waiting = tracked(Promise.all(backlog.slice(450)));
     expect(calls).toHaveLength(450);
 
-    expect(await settlesNow(traktGetJson("/users/me/watchlist", b))).toBe(true);
+    await traktGetJson("/users/me/watchlist", b);
     expect(calls).toHaveLength(451);
+    expect(waiting.settled).toBe(false);
 
-    await vi.advanceTimersByTimeAsync(5 * 60_000 + 1);
-    await blocked;
+    await driveTimers(Promise.all(backlog));
+    expect(Date.now()).toBeGreaterThanOrEqual(start + 5 * 60_000);
     expect(calls).toHaveLength(461);
   });
 
@@ -66,25 +80,31 @@ describe("Trakt limiters per user", () => {
     const a = { ...user("x", "sl_nameless-a"), username: null };
     const b = { ...user("x", "sl_nameless-b"), username: null };
 
-    const backlog = Promise.all(
-      Array.from({ length: 460 }, () => traktGetJson("/users/me/watchlist", a)),
+    const backlog = Array.from({ length: 460 }, () =>
+      traktGetJson("/users/me/watchlist", a),
     );
-    expect(await settlesNow(traktGetJson("/users/me/watchlist", b))).toBe(true);
+    await Promise.all([
+      traktGetJson("/users/me/watchlist", b),
+      ...backlog.slice(0, 450),
+    ]);
+    expect(calls).toHaveLength(451);
 
-    await vi.advanceTimersByTimeAsync(5 * 60_000 + 1);
-    await backlog;
+    await driveTimers(Promise.all(backlog));
+    expect(calls).toHaveLength(461);
   });
 
   it("limits writes to one per second for each user, not for all", async () => {
     const a = user("writer-a");
     const b = user("writer-b");
+    const start = Date.now();
 
     await traktPost("/sync/watchlist", a, {});
     const second = traktPost("/sync/watchlist", a, {});
-    expect(await settlesNow(second)).toBe(false);
-    expect(await settlesNow(traktPost("/sync/watchlist", b, {}))).toBe(true);
+    const waiting = tracked(second);
+    await traktPost("/sync/watchlist", b, {});
+    expect(waiting.settled).toBe(false);
 
-    await vi.advanceTimersByTimeAsync(1001);
-    await second;
+    await driveTimers(second);
+    expect(Date.now()).toBeGreaterThanOrEqual(start + 1000);
   });
 });

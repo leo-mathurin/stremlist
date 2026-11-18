@@ -1,19 +1,21 @@
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 import { readPages } from "../paging";
 
 describe("readPages", () => {
   it("is complete when a page says it is the last", async () => {
-    const page = vi.fn((cursor: number) =>
-      Promise.resolve({
+    const cursors: number[] = [];
+    const page = (cursor: number) => {
+      cursors.push(cursor);
+      return Promise.resolve({
         items: [cursor],
         next: cursor < 3 ? cursor + 1 : null,
-      }),
-    );
+      });
+    };
     await expect(readPages({ maxPages: 10, first: 1, page })).resolves.toEqual({
       items: [1, 2, 3],
       complete: true,
     });
-    expect(page).toHaveBeenCalledTimes(3);
+    expect(cursors).toEqual([1, 2, 3]);
   });
 
   it("is incomplete when the page cap stops it", async () => {
@@ -26,21 +28,25 @@ describe("readPages", () => {
   });
 
   it("stops on a cursor seen before instead of looping", async () => {
-    const page = vi.fn((cursor: string | null) =>
-      Promise.resolve({ items: [cursor ?? "start"], next: "a" }),
-    );
+    const cursors: (string | null)[] = [];
+    const page = (cursor: string | null) => {
+      cursors.push(cursor);
+      return Promise.resolve({ items: [cursor ?? "start"], next: "a" });
+    };
     const read = await readPages({ maxPages: 50, first: null, page });
     expect(read).toEqual({ items: ["start", "a"], complete: false });
-    expect(page).toHaveBeenCalledTimes(2);
+    expect(cursors).toEqual([null, "a"]);
   });
 
   it("stops before the next page once maxItems are read", async () => {
-    const page = vi.fn((cursor: number, itemsSoFar: number) =>
-      Promise.resolve({
+    const cursors: number[] = [];
+    const page = (cursor: number, itemsSoFar: number) => {
+      cursors.push(cursor);
+      return Promise.resolve({
         items: [itemsSoFar, itemsSoFar + 1],
         next: cursor + 1,
-      }),
-    );
+      });
+    };
     const read = await readPages({
       maxPages: Number.POSITIVE_INFINITY,
       maxItems: 4,
@@ -48,7 +54,7 @@ describe("readPages", () => {
       page,
     });
     expect(read).toEqual({ items: [0, 1, 2, 3], complete: false });
-    expect(page).toHaveBeenCalledTimes(2);
+    expect(cursors).toEqual([0, 1]);
   });
 
   it("is complete when the last page reaches maxItems exactly", async () => {

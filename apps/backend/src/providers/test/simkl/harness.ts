@@ -1,15 +1,22 @@
+import type { SetupServer } from "msw/node";
 import { vi } from "vite-plus/test";
 import { z } from "zod";
+import {
+  r2Objects,
+  r2Unreadable,
+  resetR2,
+} from "../../../test/helpers/r2.test-utils";
 import { resetSimklState } from "../../simkl";
+import { SIMKL_API } from "../../simkl/api";
 import type { Call } from "../oauth-harness";
 import {
   calls,
   connection as oauthConnection,
   json,
-  stubFetch,
+  serveApi,
+  useFreshLimiters,
 } from "../oauth-harness";
 import { activities, ANIME, MOVIES, SHOWS } from "./simkl.fixture";
-import { r2 } from "./mocks";
 
 export { calls, clearCalls, json, restoreStubs } from "../oauth-harness";
 
@@ -41,21 +48,31 @@ const storedLibrarySchema = z
 
 export function storedLibrary() {
   return storedLibrarySchema.parse(
-    JSON.parse(r2.objects.get(LIBRARY_KEY) ?? "null"),
+    JSON.parse(r2Objects.get(LIBRARY_KEY) ?? "null"),
   );
 }
 
 /** Pretend the last activities check is older than the gate. */
 export function ageLibrary() {
   const library = { ...storedLibrary(), checkedAt: Date.now() - 10 * 60_000 };
-  r2.objects.set(LIBRARY_KEY, JSON.stringify(library));
+  r2Objects.set(LIBRARY_KEY, JSON.stringify(library));
 }
 
-export function resetSimklTest() {
+/** Stores this library snapshot, as an earlier read would have. */
+export function storeLibrary(library: unknown) {
+  r2Objects.set(LIBRARY_KEY, JSON.stringify(library));
+}
+
+/** R2 unreachable: reads of the library fail with an error other than NoSuchKey. */
+export function breakR2() {
+  r2Unreadable.add(LIBRARY_KEY);
+}
+
+export function resetSimklTest(server: SetupServer) {
+  useFreshLimiters();
   vi.stubEnv("SIMKL_CLIENT_ID", "client-123");
   vi.stubEnv("SIMKL_CLIENT_SECRET", "secret-456");
-  r2.objects.clear();
-  r2.down = false;
+  resetR2();
   resetSimklState();
   routes.clear();
   routes.set("GET /sync/activities", () =>
@@ -64,7 +81,7 @@ export function resetSimklTest() {
   routes.set("GET /sync/all-items/shows", () => SHOWS);
   routes.set("GET /sync/all-items/movies", () => MOVIES);
   routes.set("GET /sync/all-items/anime", () => ANIME);
-  stubFetch(async (call) => {
+  serveApi(server, [SIMKL_API, "https://data.simkl.in"], async (call) => {
     const route = routes.get(`${call.method} ${call.url.pathname}`);
     if (!route) return json({ error: "not_found" }, 404);
     const result = await route(call);

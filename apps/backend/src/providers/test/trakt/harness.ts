@@ -1,18 +1,18 @@
-import { vi } from "vite-plus/test";
+import type { SetupServer } from "msw/node";
+import { expect, vi } from "vite-plus/test";
 import { traktProvider } from "../../trakt";
+import { TRAKT_API, TRAKT_AUTH } from "../../trakt/api";
 import type { ConnectionAccess } from "../../types";
 import { ConnectionExpiredError } from "../../types";
 import {
   clearCalls as clearRecordedCalls,
   connection as oauthConnection,
   json as oauthJson,
-  stubFetch,
+  restoreStubs,
+  serveApi,
+  useFreshLimiters,
 } from "../oauth-harness";
-export {
-  required,
-  restoreStubs as restoreTraktTest,
-  unavailableReason,
-} from "../oauth-harness";
+export { required, unavailableReason } from "../oauth-harness";
 
 export interface Call {
   method: string;
@@ -30,6 +30,8 @@ let routes: { match: string; handler: Handler }[] = [];
 
 /** The fetch calls so far, with their JSON bodies decoded. */
 export const calls: Call[] = [];
+
+const unexpected: string[] = [];
 
 /** Forget the calls so far, to check only the ones that follow. */
 export function clearCalls() {
@@ -77,12 +79,14 @@ export function callsTo(path: string) {
   return calls.filter((call) => call.url.pathname === path);
 }
 
-export function resetTraktTest() {
+export function resetTraktTest(server: SetupServer) {
+  useFreshLimiters();
   routes = [];
   vi.stubEnv("TRAKT_CLIENT_ID", "client-123");
   vi.stubEnv("TRAKT_CLIENT_SECRET", "");
   calls.length = 0;
-  stubFetch((recorded) => {
+  unexpected.length = 0;
+  serveApi(server, [TRAKT_API, TRAKT_AUTH], (recorded) => {
     const call: Call = {
       ...recorded,
       body:
@@ -94,9 +98,17 @@ export function resetTraktTest() {
     const found = routes.find(
       ({ match }) => match === `${call.method} ${call.url.pathname}`,
     );
-    if (!found) throw new Error(`Unexpected ${call.method} ${call.url.href}`);
+    if (!found) {
+      unexpected.push(`${call.method} ${call.url.href}`);
+      return new Response("Unexpected call", { status: 599 });
+    }
     return found.handler(call);
   });
+}
+
+export function restoreTraktTest() {
+  restoreStubs();
+  expect(unexpected).toEqual([]);
 }
 
 export function connection(tokens: string[] = ["token-1"]) {

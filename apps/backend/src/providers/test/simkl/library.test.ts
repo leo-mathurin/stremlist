@@ -1,11 +1,5 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { useMswServer } from "../../../test/helpers/msw.test-utils";
 import { simklProvider } from "../../simkl";
 import { connection as oauthConnection } from "../oauth-harness";
 import { activities, ANIME, MOVIES, SHOWS } from "./simkl.fixture";
@@ -21,18 +15,13 @@ import {
   restoreStubs,
   routes,
   storedLibrary,
+  storeLibrary,
+  breakR2,
 } from "./harness";
-import { r2 } from "./mocks";
 
-vi.mock("../../../lib/r2", async () => {
-  return (await import("./mocks")).r2Module;
-});
-vi.mock("../../http", async (importOriginal) => {
-  const { httpModule } = await import("../oauth-harness");
-  return httpModule(await importOriginal());
-});
+const server = useMswServer();
 
-beforeEach(resetSimklTest);
+beforeEach(() => resetSimklTest(server));
 afterEach(restoreStubs);
 
 describe("simkl activities gating", () => {
@@ -191,10 +180,7 @@ describe("simkl activities gating", () => {
 
   it("reads a library snapshot without rating dates again in full", async () => {
     await simklProvider.fetchSource("me/ratings", ctx());
-    r2.objects.set(
-      "connections/acc-1/simkl/library.json",
-      JSON.stringify({ ...storedLibrary(), version: 2 }),
-    );
+    storeLibrary({ ...storedLibrary(), version: 2 });
     clearCalls();
     await simklProvider.fetchSource("me/ratings", ctx());
     expect(apiCalls()).toEqual([
@@ -313,7 +299,7 @@ describe("simkl reconnect", () => {
 describe("simkl disconnect", () => {
   it("forgets the in-memory copies of the Connection's state", async () => {
     await simklProvider.fetchSource("me/plantowatch", ctx());
-    r2.down = true;
+    breakR2();
     clearCalls();
     await simklProvider.fetchSource("me/plantowatch", ctx());
     expect(apiCalls()).toEqual([]);

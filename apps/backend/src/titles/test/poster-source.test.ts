@@ -1,4 +1,5 @@
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
+import { http, HttpResponse, passthrough } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -22,19 +23,19 @@ import {
   metasBody,
   readJson,
 } from "../../test/helpers/json.js";
-import { cache } from "../../test/helpers/mock-list-cache.js";
+import { useBackgroundTasks } from "../../test/helpers/background.test-utils.js";
+import {
+  cinemetaWithoutTitles,
+  FakeImdb,
+} from "../../test/helpers/imdb.test-utils.js";
+import { cache } from "../../test/helpers/list-cache.test-utils.js";
 import { db, resetRpc } from "../../test/helpers/mock-supabase.js";
+import { useMswServer } from "../../test/helpers/msw.test-utils.js";
+import { resetR2 } from "../../test/helpers/r2.test-utils.js";
 
-vi.mock(
-  "../../lib/supabase",
-  () => import("../../test/helpers/mock-supabase.js"),
-);
-vi.mock(
-  "../../services/list-cache",
-  () => import("../../test/helpers/mock-list-cache.js"),
-);
-vi.mock("../../lib/resend", () => import("../../test/helpers/mock-resend"));
-vi.mock("../../services/list-prewarm", () => ({ prewarmLists: vi.fn() }));
+const server = useMswServer();
+const background = useBackgroundTasks();
+const imdb = new FakeImdb();
 
 const LIST_ID = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
 const OTHER_LIST_ID = "0f4ef1b5-0a8c-4a4e-9f1e-3b2c1d0e9a87";
@@ -51,24 +52,21 @@ const TMDB_SHAWSHANK = "https://image.tmdb.org/t/p/w500/shawshank-tmdb.jpg";
 const RPDB_SHAWSHANK =
   "https://api.ratingposterdb.com/rpdb-key/imdb/poster-default/tt0111161.jpg?fallback=true";
 
+let tmdbFinds: string[] = [];
+
 function tmdbFind(status = 200) {
-  return vi.fn((input: string | URL | Request) => {
-    const url = new URL(input instanceof Request ? input.url : input);
-    if (url.host !== "api.themoviedb.org") {
-      throw new Error(`Unexpected request to ${url.host}`);
-    }
-    if (status !== 200) {
-      return Promise.resolve(new Response("down", { status }));
-    }
-    const id = url.pathname.split("/").at(-1);
-    return Promise.resolve(
-      Response.json({
+  server.use(
+    http.get("https://api.themoviedb.org/3/find/:id", ({ params }) => {
+      const id = String(params.id);
+      tmdbFinds.push(id);
+      if (status !== 200) return new HttpResponse("down", { status });
+      return HttpResponse.json({
         movie_results:
           id === SHAWSHANK.id ? [{ poster_path: "/shawshank-tmdb.jpg" }] : [],
         tv_results: [],
-      }),
-    );
-  });
+      });
+    }),
+  );
 }
 
 function seedWithList(
@@ -92,35 +90,39 @@ async function catalogPosters(accountId: string, listId = LIST_ID) {
 }
 
 beforeEach(() => {
+  tmdbFinds = [];
   db.reset();
   resetRpc();
+  resetR2();
   cache.reset();
+  imdb.reset();
+  imdb.watchlists.set("ur12345678", [SHAWSHANK, ALIEN]);
+  server.use(imdb.handler, cinemetaWithoutTitles);
   resetPosterMemory();
   vi.stubEnv("TMDB_API_KEY", "test-tmdb-key");
   vi.stubEnv("TMDB_READ_ACCESS_TOKEN", "");
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await background.settle();
   vi.unstubAllEnvs();
-  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
 describe("poster source in Stremio responses", () => {
   it("keeps IMDb posters by default and never asks TMDB", async () => {
-    const fetch = tmdbFind();
-    vi.stubGlobal("fetch", fetch);
+    tmdbFind();
     const accountId = seedWithList({});
 
     expect(await catalogPosters(accountId)).toEqual({
       [SHAWSHANK.id]: IMDB_POSTER,
       [ALIEN.id]: ALIEN.poster,
     });
-    expect(fetch).not.toHaveBeenCalled();
+    expect(tmdbFinds).toEqual([]);
   });
 
   it("shows TMDB posters, with the IMDb poster when TMDB has none", async () => {
-    vi.stubGlobal("fetch", tmdbFind());
+    tmdbFind();
     const accountId = seedWithList({ poster_source: "tmdb" });
 
     expect(await catalogPosters(accountId)).toEqual({
@@ -146,21 +148,20 @@ describe("poster source in Stremio responses", () => {
   });
 
   it("reuses the stored posters instead of asking TMDB again", async () => {
-    const fetch = tmdbFind();
-    vi.stubGlobal("fetch", fetch);
+    tmdbFind();
     const accountId = seedWithList({ poster_source: "tmdb" });
     await catalogPosters(accountId);
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(tmdbFinds).toHaveLength(2);
 
     resetPosterMemory();
     expect((await catalogPosters(accountId))[SHAWSHANK.id]).toBe(
       TMDB_SHAWSHANK,
     );
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(tmdbFinds).toHaveLength(2);
   });
 
   it("applies the choice of each Account to its own Catalogs only", async () => {
-    vi.stubGlobal("fetch", tmdbFind());
+    tmdbFind();
     const tmdbAccount = seedWithList({ poster_source: "tmdb" });
     const imdbAccount = seedWithList({}, OTHER_LIST_ID);
 
@@ -173,8 +174,7 @@ describe("poster source in Stremio responses", () => {
   });
 
   it("shows RPDB posters with a key, and IMDb posters without one", async () => {
-    const fetch = tmdbFind();
-    vi.stubGlobal("fetch", fetch);
+    tmdbFind();
     const withKey = seedWithList({
       poster_source: "rpdb",
       rpdb_api_key: "rpdb-key",
@@ -185,11 +185,11 @@ describe("poster source in Stremio responses", () => {
     expect(
       (await catalogPosters(withoutKey, OTHER_LIST_ID))[SHAWSHANK.id],
     ).toBe(IMDB_POSTER);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(tmdbFinds).toEqual([]);
   });
 
   it("keeps the RPDB key unused while another source is chosen", async () => {
-    vi.stubGlobal("fetch", tmdbFind());
+    tmdbFind();
     const accountId = seedWithList({
       poster_source: "tmdb",
       rpdb_api_key: "rpdb-key",
@@ -202,8 +202,7 @@ describe("poster source in Stremio responses", () => {
 
   it("keeps IMDb posters while TMDB fails, and stores nothing", async () => {
     vi.spyOn(console, "warn");
-    const fetch = tmdbFind(503);
-    vi.stubGlobal("fetch", fetch);
+    tmdbFind(503);
     const accountId = seedWithList({ poster_source: "tmdb" });
 
     expect(await catalogPosters(accountId)).toEqual({
@@ -211,13 +210,13 @@ describe("poster source in Stremio responses", () => {
       [ALIEN.id]: ALIEN.poster,
     });
     expect(db.getTable("title_posters")).toEqual([]);
-    const calls = fetch.mock.calls.length;
+    const calls = tmdbFinds.length;
     await catalogPosters(accountId);
-    expect(fetch.mock.calls.length).toBe(calls);
+    expect(tmdbFinds).toHaveLength(calls);
   });
 
   it("shows the TMDB poster on the meta of a movie", async () => {
-    vi.stubGlobal("fetch", tmdbFind());
+    tmdbFind();
     const accountId = seedWithList({ poster_source: "tmdb" });
 
     const res = await app.request(`/${accountId}/meta/movie/tt0111161.json`);
@@ -227,18 +226,20 @@ describe("poster source in Stremio responses", () => {
 
   it("keeps IMDb posters when TMDB is not configured", async () => {
     vi.stubEnv("TMDB_API_KEY", "");
-    const fetch = tmdbFind();
-    vi.stubGlobal("fetch", fetch);
+    tmdbFind();
     const accountId = seedWithList({ poster_source: "tmdb" });
 
     expect((await catalogPosters(accountId))[SHAWSHANK.id]).toBe(IMDB_POSTER);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(tmdbFinds).toEqual([]);
   });
 });
 
 describe.runIf(process.env.TVDB_LIVE_API_KEY)("TheTVDB posters, live", () => {
   beforeEach(() => {
     vi.stubEnv("TVDB_API_KEY", process.env.TVDB_LIVE_API_KEY ?? "");
+    server.use(
+      http.all(/^https:\/\/[a-z0-9.-]*thetvdb\.com\//, () => passthrough()),
+    );
   });
   beforeEach(() => {
     resetTvdbToken();
@@ -284,6 +285,10 @@ describe.runIf(process.env.TVDB_LIVE_API_KEY)("TheTVDB posters, live", () => {
 });
 
 describe("saving the poster source", () => {
+  beforeEach(() => {
+    tmdbFind();
+  });
+
   const list = {
     provider: "imdb",
     sourceRef: "ur12345678",

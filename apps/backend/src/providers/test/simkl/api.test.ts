@@ -7,9 +7,9 @@ import {
   it,
   vi,
 } from "vite-plus/test";
+import { useMswServer } from "../../../test/helpers/msw.test-utils";
 import { simklProvider } from "../../simkl";
 import { simklLimiters } from "../../simkl/api";
-import { limiters } from "../oauth-harness";
 import {
   calls,
   ctx,
@@ -19,15 +19,9 @@ import {
   routes,
 } from "./harness";
 
-vi.mock("../../../lib/r2", async () => {
-  return (await import("./mocks")).r2Module;
-});
-vi.mock("../../http", async (importOriginal) => {
-  const { httpModule } = await import("../oauth-harness");
-  return httpModule(await importOriginal());
-});
+const server = useMswServer();
 
-beforeEach(resetSimklTest);
+beforeEach(() => resetSimklTest(server));
 afterEach(restoreStubs);
 
 describe("simkl requests", () => {
@@ -46,14 +40,33 @@ describe("simkl requests", () => {
     }
   });
 
-  it("stay under 10 GET and 1 POST per second for each user token", () => {
+  it("stay under 10 GET and 1 POST per second for each user token", async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers();
     const first = simklLimiters("simkl_at_first");
-    expect(limiters.slice(-2)).toEqual([
-      [10, 1000],
-      [1, 1000],
-    ]);
     expect(simklLimiters("simkl_at_first")).toBe(first);
-    expect(simklLimiters("simkl_at_second")).not.toBe(first);
+    const second = simklLimiters("simkl_at_second");
+    expect(second).not.toBe(first);
+
+    let gets = 0;
+    let posts = 0;
+    const waiting = [
+      ...Array.from({ length: 11 }, () =>
+        first.get.acquire().then(() => gets++),
+      ),
+      ...Array.from({ length: 2 }, () =>
+        first.post.acquire().then(() => posts++),
+      ),
+    ];
+    await vi.advanceTimersByTimeAsync(0);
+    expect([gets, posts]).toEqual([10, 1]);
+    let otherToken = false;
+    void second.post.acquire().then(() => (otherToken = true));
+    await vi.advanceTimersByTimeAsync(999);
+    expect([gets, posts, otherToken]).toEqual([10, 1, true]);
+    await vi.advanceTimersByTimeAsync(2);
+    expect([gets, posts]).toEqual([11, 2]);
+    await Promise.all(waiting);
   });
 
   it("treat a rejected token as a lost Connection", async () => {

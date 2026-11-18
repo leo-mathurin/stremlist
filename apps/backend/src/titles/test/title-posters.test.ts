@@ -1,3 +1,4 @@
+import { delay, http, HttpResponse, passthrough } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -6,28 +7,38 @@ import {
   it,
   vi,
 } from "vite-plus/test";
-import { db } from "../../test/helpers/mock-supabase";
+import { useBackgroundTasks } from "../../test/helpers/background.test-utils";
+import { db, resetRpc } from "../../test/helpers/mock-supabase";
+import { useMswServer } from "../../test/helpers/msw.test-utils";
 import { findPosters, resetPosterMemory } from "../title-posters";
 import { resetTvdbToken } from "../tvdb";
 
-vi.mock("../../lib/supabase", () => import("../../test/helpers/mock-supabase"));
+const server = useMswServer();
+const background = useBackgroundTasks();
 
 const BOTH = {
   movie_results: [{ poster_path: "/as-movie.jpg" }],
   tv_results: [{ poster_path: "/as-show.jpg" }],
 };
 
+let tmdbFinds: string[] = [];
+
 function answer(body: unknown, delayMs = 0) {
-  return vi.fn(
-    () =>
-      new Promise<Response>((resolve) =>
-        setTimeout(() => resolve(Response.json(body)), delayMs),
-      ),
+  server.use(
+    http.get("https://api.themoviedb.org/3/find/:id", async ({ params }) => {
+      tmdbFinds.push(String(params.id));
+      await delay(delayMs);
+      return new HttpResponse(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }),
   );
 }
 
 beforeEach(() => {
+  tmdbFinds = [];
   db.reset();
+  resetRpc();
   resetPosterMemory();
   resetTvdbToken();
   vi.stubEnv("TMDB_API_KEY", "test-tmdb-key");
@@ -35,12 +46,11 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  vi.unstubAllGlobals();
 });
 
 describe("findPosters on TMDB", () => {
   it("takes the TMDB result of the Title's type first", async () => {
-    vi.stubGlobal("fetch", answer(BOTH));
+    answer(BOTH);
     const posters = await findPosters(
       "tmdb",
       [
@@ -56,8 +66,7 @@ describe("findPosters on TMDB", () => {
   });
 
   it("ignores IDs that are not IMDb Title IDs and unsafe image paths", async () => {
-    const fetch = answer({ movie_results: [{ poster_path: "../x?y" }] });
-    vi.stubGlobal("fetch", fetch);
+    answer({ movie_results: [{ poster_path: "../x?y" }] });
     const posters = await findPosters(
       "tmdb",
       [
@@ -67,12 +76,11 @@ describe("findPosters on TMDB", () => {
       { budgetMs: 1000, size: "stremio" },
     );
     expect(posters.size).toBe(0);
-    expect(fetch).toHaveBeenCalledOnce();
+    expect(tmdbFinds).toEqual(["tt0000003"]);
   });
 
   it("keeps its budget when the stored posters are slow to read", async () => {
-    const fetch = answer(BOTH);
-    vi.stubGlobal("fetch", fetch);
+    answer(BOTH);
     db.stalledTables.add("title_posters");
     const started = Date.now();
     const posters = await findPosters(
@@ -82,18 +90,17 @@ describe("findPosters on TMDB", () => {
     );
     expect(posters.size).toBe(0);
     expect(Date.now() - started).toBeLessThan(1000);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(tmdbFinds).toEqual([]);
   });
 
   it("asks TMDB once for a Title that concurrent requests need", async () => {
-    const fetch = answer(BOTH, 20);
-    vi.stubGlobal("fetch", fetch);
+    answer(BOTH, 20);
     const title = { id: "tt0000010", type: "movie" as const };
     const [first, second] = await Promise.all([
       findPosters("tmdb", [title], { budgetMs: 1000, size: "stremio" }),
       findPosters("tmdb", [title], { budgetMs: 1000, size: "stremio" }),
     ]);
-    expect(fetch).toHaveBeenCalledOnce();
+    expect(tmdbFinds).toEqual(["tt0000010"]);
     expect(first.get(title.id)).toBe(
       "https://image.tmdb.org/t/p/w500/as-movie.jpg",
     );
@@ -101,7 +108,7 @@ describe("findPosters on TMDB", () => {
   });
 
   it("answers within its budget and stores late answers for the next call", async () => {
-    vi.stubGlobal("fetch", answer(BOTH, 200));
+    answer(BOTH, 200);
     const title = { id: "tt0000004", type: "movie" as const };
 
     const first = await findPosters("tmdb", [title], {
@@ -110,9 +117,8 @@ describe("findPosters on TMDB", () => {
     });
     expect(first.size).toBe(0);
 
-    await vi.waitFor(() => {
-      expect(db.getTable("title_posters")).toHaveLength(1);
-    });
+    await background.settle();
+    expect(db.getTable("title_posters")).toHaveLength(1);
     const next = await findPosters("tmdb", [title], {
       budgetMs: 10,
       size: "stremio",
@@ -128,9 +134,11 @@ describe.runIf(process.env.TVDB_LIVE_API_KEY)(
   () => {
     beforeEach(() => {
       vi.stubEnv("TVDB_API_KEY", process.env.TVDB_LIVE_API_KEY ?? "");
+      server.use(
+        http.all(/^https:\/\/[a-z0-9.-]*thetvdb\.com\//, () => passthrough()),
+      );
     });
     it("finds series and movie posters by IMDb ID, small for the preview", async () => {
-      vi.unstubAllGlobals();
       const titles = [
         { id: "tt1190634", type: "series" as const },
         { id: "tt0903747", type: "series" as const },
@@ -161,7 +169,6 @@ describe.runIf(process.env.TVDB_LIVE_API_KEY)(
     });
 
     it("finds no poster for an IMDb ID that TheTVDB does not know", async () => {
-      vi.unstubAllGlobals();
       const posters = await findPosters(
         "tvdb",
         [{ id: "tt99999999999", type: "movie" }],

@@ -6,6 +6,7 @@ import {
   it,
   vi,
 } from "vite-plus/test";
+import { useMswServer } from "../../../test/helpers/msw.test-utils";
 import { traktProvider } from "../../trakt";
 import {
   clerks,
@@ -28,13 +29,11 @@ import {
   route,
   status,
 } from "./harness";
+import { onFakeClock } from "../../../test/helpers/clock.test-utils";
 
-vi.mock("../../http", async (importOriginal) => {
-  const { httpModule } = await import("../oauth-harness");
-  return httpModule(await importOriginal());
-});
+const server = useMswServer();
 
-beforeEach(resetTraktTest);
+beforeEach(() => resetTraktTest(server));
 afterEach(restoreTraktTest);
 
 describe("Trakt reads", () => {
@@ -110,9 +109,11 @@ describe("Trakt reads", () => {
         { headers: { "X-Pagination-Page-Count": "100" } },
       ),
     );
-    const snapshot = await traktProvider.fetchSource("users/big/watchlist", {
-      connection: null,
-    });
+    const snapshot = await onFakeClock(() =>
+      traktProvider.fetchSource("users/big/watchlist", {
+        connection: null,
+      }),
+    );
     expect(snapshot.entries).toHaveLength(5000);
     expect(snapshot.complete).toBe(false);
     expect(callsTo("/users/big/watchlist")).toHaveLength(20);

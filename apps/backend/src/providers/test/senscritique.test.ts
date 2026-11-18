@@ -1,4 +1,5 @@
 import { parseSourceLink } from "@stremlist/shared/providers";
+import { http } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -8,6 +9,8 @@ import {
   vi,
 } from "vite-plus/test";
 import { z } from "zod";
+import { FakeJustWatch } from "../../test/helpers/justwatch.test-utils";
+import { useMswServer } from "../../test/helpers/msw.test-utils";
 import { justwatchPathStrategy } from "../../titles/justwatch-lookup";
 import {
   candidateMatches,
@@ -15,7 +18,6 @@ import {
   samePerson,
 } from "../../titles/tmdb-match";
 import { wikidataImdbIds } from "../../titles/wikidata";
-import type * as HttpModule from "../http";
 import type { SensCritiqueProduct } from "../senscritique";
 import {
   productToEntry,
@@ -25,17 +27,24 @@ import {
 import type { SourceEntry } from "../types";
 import { SourceUnavailableError } from "../types";
 
-vi.mock("../http", async (importOriginal) => {
-  const actual = await importOriginal<typeof HttpModule>();
-  class InstantLimiter {
-    acquire() {
-      return Promise.resolve();
-    }
-  }
-  return { ...actual, RateLimiter: InstantLimiter };
-});
+import { onFakeClock } from "../../test/helpers/clock.test-utils";
+import { useFreshLimiters } from "./oauth-harness";
+
+const server = useMswServer();
 
 const ctx = { connection: null };
+
+function timedOut() {
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.error(
+          new DOMException("The operation timed out.", "TimeoutError"),
+        );
+      },
+    }),
+  );
+}
 
 const graphQLRequest = z.object({
   query: z.string(),
@@ -49,14 +58,17 @@ interface RecordedRequest {
 }
 
 let requests: RecordedRequest[] = [];
+let handlerErrors: unknown[] = [];
 let handler: (request: RecordedRequest) => unknown;
 
 beforeEach(() => {
+  useFreshLimiters();
   requests = [];
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string, init: RequestInit) => {
-      const body = typeof init.body === "string" ? init.body : "";
+  handlerErrors = [];
+  server.use(
+    http.all(/^https:\/\//, async ({ request: sent }) => {
+      const url = sent.url;
+      const body = await sent.text();
       const request: RecordedRequest = {
         url,
         body,
@@ -65,17 +77,23 @@ beforeEach(() => {
           : { query: "", variables: {} },
       };
       requests.push(request);
-      const result = handler(request);
-      return Promise.resolve(
-        result instanceof Response ? result : Response.json(result),
-      );
+      try {
+        const result = handler(request);
+        return result instanceof Response ? result : Response.json(result);
+      } catch (error) {
+        handlerErrors.push(error);
+        return new Response("The test handler failed", { status: 599 });
+      }
     }),
   );
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
+  vi.useRealTimers();
   vi.unstubAllEnvs();
+  if (handlerErrors.length > 0) {
+    throw new AggregateError(handlerErrors, "A test handler failed");
+  }
 });
 
 function product(id: number, overrides: Partial<SensCritiqueProduct> = {}) {
@@ -303,7 +321,7 @@ describe("SensCritique fetchSource", () => {
     handler = () => {
       calls += 1;
       if (calls === 1) {
-        throw new DOMException("The operation timed out.", "TimeoutError");
+        return timedOut();
       }
       return listPage([product(1)], 1);
     };
@@ -316,7 +334,7 @@ describe("SensCritique fetchSource", () => {
 
   it("fails when the second try also times out", async () => {
     handler = () => {
-      throw new DOMException("The operation timed out.", "TimeoutError");
+      return timedOut();
     };
 
     const error = await senscritiqueProvider
@@ -370,9 +388,8 @@ describe("SensCritique fetchSource", () => {
       );
     };
 
-    const { entries, complete } = await senscritiqueProvider.fetchSource(
-      "lists/1",
-      ctx,
+    const { entries, complete } = await onFakeClock(() =>
+      senscritiqueProvider.fetchSource("lists/1", ctx),
     );
 
     expect(requests).toHaveLength(100);
@@ -579,27 +596,21 @@ describe("productToEntry", () => {
 
 describe("JustWatch path strategy", () => {
   it("resolves entries that carry a JustWatch path", async () => {
-    handler = ({ url, body }) => {
-      expect(url).toBe("https://apis.justwatch.com/graphql");
-      const { variables } = z
-        .object({ variables: z.object({ path: z.string() }) })
-        .parse(JSON.parse(body));
-      return {
-        data: {
-          urlV2:
-            variables.path === "/fr/film/pacific-rim"
-              ? { node: { content: { externalIds: { imdbId: "tt1663662" } } } }
-              : null,
-        },
-      };
-    };
+    const justwatch = new FakeJustWatch();
+    justwatch.paths.set("/fr/film/pacific-rim", "tt1663662");
+    server.use(justwatch.handler);
     const found = await justwatchPathStrategy.resolve([
       { externalIds: { justwatchPath: "/fr/film/unknown" } },
       { externalIds: { senscritique: 1 } },
       { externalIds: { justwatchPath: "/fr/film/pacific-rim" } },
     ]);
     expect([...found]).toEqual([[2, "tt1663662"]]);
-    expect(requests).toHaveLength(2);
+    expect(
+      justwatch
+        .requestsOf("StremlistTitleByPath")
+        .map(({ variables }) => variables.path),
+    ).toEqual(["/fr/film/unknown", "/fr/film/pacific-rim"]);
+    expect(requests).toHaveLength(0);
   });
 });
 
@@ -634,7 +645,7 @@ describe("Wikidata strategy", () => {
   it("splits large batches", async () => {
     handler = () => ({ results: { bindings: [] } });
     const ids = Array.from({ length: 450 }, (_, index) => String(index));
-    await wikidataImdbIds("P10100", ids);
+    await onFakeClock(() => wikidataImdbIds("P10100", ids));
     expect(requests).toHaveLength(3);
   });
 });

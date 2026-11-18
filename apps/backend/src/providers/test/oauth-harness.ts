@@ -1,5 +1,6 @@
+import { http } from "msw";
+import type { SetupServer } from "msw/node";
 import { expect, vi } from "vite-plus/test";
-import type * as Http from "../http";
 import type { ConnectionAccess } from "../types";
 import { SourceUnavailableError } from "../types";
 
@@ -11,6 +12,8 @@ export interface Call {
 }
 
 export const calls: Call[] = [];
+
+const handlerErrors: unknown[] = [];
 
 /** Forget the calls so far, to check only the ones that follow. */
 export function clearCalls() {
@@ -28,49 +31,73 @@ export function json(
   });
 }
 
-/** Record every fetch in `calls` and answer it with `respond`. */
-export function stubFetch(
+/**
+ * Serves the Provider API at `origins` through MSW: records every request in
+ * `calls` and answers it with `respond`.
+ */
+export function serveApi(
+  server: SetupServer,
+  origins: string[],
   respond: (call: Call) => Response | Promise<Response>,
 ) {
   clearCalls();
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((input: string | URL | Request, init: RequestInit = {}) => {
-      const call: Call = {
-        method: init.method ?? "GET",
-        url: new URL(input instanceof Request ? input.url : input),
-        headers: new Headers(init.headers),
-        body: typeof init.body === "string" ? init.body : undefined,
-      };
-      calls.push(call);
-      return Promise.resolve(respond(call));
-    }),
+  handlerErrors.length = 0;
+  server.use(
+    ...origins.map((origin) =>
+      http.all(`${origin}/*`, async ({ request }) => {
+        const text = await request.text();
+        const call: Call = {
+          method: request.method,
+          url: new URL(request.url),
+          headers: request.headers,
+          body: text === "" ? undefined : text,
+        };
+        calls.push(call);
+        try {
+          return await respond(call);
+        } catch (error) {
+          handlerErrors.push(error);
+          return new Response("The test handler failed", { status: 599 });
+        }
+      }),
+    ),
   );
 }
 
 export function restoreStubs() {
-  vi.unstubAllGlobals();
+  vi.useRealTimers();
   vi.unstubAllEnvs();
+  expect(handlerErrors).toEqual([]);
 }
 
-/** A Connection that hands out `tokens` in turn, then keeps the last one. */
+/**
+ * A Connection that hands out `tokens` in turn, then keeps the last one. It
+ * counts the access tokens asked and the refusals reported.
+ */
 export function connection(
   provider: ConnectionAccess["provider"],
   accountId: string,
   tokens: string[],
 ) {
   let index = 0;
-  return {
+  const access = {
     accountId,
     provider,
     username: "leo" as string | null,
     authorization: "authorization-1",
-    getAccessToken: vi.fn(() =>
-      Promise.resolve(tokens[Math.min(index++, tokens.length - 1)]),
-    ),
-    reportRefused: vi.fn(() => Promise.resolve()),
+    tokenRequests: 0,
+    refusals: 0,
+    getAccessToken: () => {
+      access.tokenRequests += 1;
+      return Promise.resolve(tokens[Math.min(index++, tokens.length - 1)]);
+    },
+    reportRefused: () => {
+      access.refusals += 1;
+      return Promise.resolve();
+    },
     reportWorking: () => Promise.resolve(),
-  } satisfies ConnectionAccess;
+  } satisfies ConnectionAccess & { tokenRequests: number; refusals: number };
+  return access;
 }
 
 export function required<T>(value: T | undefined) {
@@ -86,17 +113,16 @@ export async function unavailableReason(promise: Promise<unknown>) {
   return error.reason;
 }
 
-/** Limiters that never wait; `limiters` keeps the limits each was built with. */
-export const limiters: [number, number][] = [];
+const DAY = 24 * 60 * 60_000;
+let testTime = Date.now();
 
-export function httpModule(actual: typeof Http) {
-  class RateLimiter {
-    constructor(limit: number, windowMs: number) {
-      limiters.push([limit, windowMs]);
-    }
-    acquire() {
-      return Promise.resolve();
-    }
-  }
-  return { ...actual, RateLimiter };
+/**
+ * Moves the clock one day on for each test, so that the real rate limiters,
+ * which live across the tests of a file, start each test with free slots.
+ * The clock keeps running, so a limiter that waits inside a test resumes.
+ */
+export function useFreshLimiters() {
+  vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+  vi.setSystemTime(testTime);
+  testTime += DAY;
 }

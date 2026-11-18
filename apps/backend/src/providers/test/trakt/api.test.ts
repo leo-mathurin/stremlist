@@ -6,6 +6,7 @@ import {
   it,
   vi,
 } from "vite-plus/test";
+import { useMswServer } from "../../../test/helpers/msw.test-utils";
 import { traktProvider } from "../../trakt";
 import type { OAuthConfig } from "../../types";
 import { ConnectionExpiredError, SourceUnavailableError } from "../../types";
@@ -24,12 +25,9 @@ import {
   unavailableReason,
 } from "./harness";
 
-vi.mock("../../http", async (importOriginal) => {
-  const { httpModule } = await import("../oauth-harness");
-  return httpModule(await importOriginal());
-});
+const server = useMswServer();
 
-beforeEach(resetTraktTest);
+beforeEach(() => resetTraktTest(server));
 afterEach(restoreTraktTest);
 
 describe("Trakt read errors", () => {
@@ -78,7 +76,7 @@ describe("Trakt read errors", () => {
     );
     const conn = connection(["token-1", "token-2"]);
     await expect(fetchEntries("me/watchlist", conn)).resolves.toEqual([]);
-    expect(conn.getAccessToken).toHaveBeenCalledTimes(2);
+    expect(conn.tokenRequests).toBe(2);
   });
 
   it("a token that keeps being refused means needs_connection", async () => {
@@ -155,23 +153,21 @@ describe("Trakt read errors", () => {
     route("GET /users/sean/watchlist", (call) =>
       call.headers.has("Authorization") ? status(401) : json([]),
     );
-    const reportRefused = vi.fn(() => Promise.resolve());
-    const conn = Object.assign(connection(), { reportRefused });
+    const conn = connection();
 
     await fetchEntries("users/sean/watchlist", conn);
 
-    expect(reportRefused).toHaveBeenCalled();
+    expect(conn.refusals).toBeGreaterThan(0);
   });
 
   it("does not report the token for a private user's list", async () => {
     route("GET /users/hidden/watchlist", status(401));
-    const reportRefused = vi.fn(() => Promise.resolve());
-    const conn = Object.assign(connection(), { reportRefused });
+    const conn = connection();
 
     expect(
       await unavailableReason(fetchEntries("users/hidden/watchlist", conn)),
     ).toBe("private");
-    expect(reportRefused).not.toHaveBeenCalled();
+    expect(conn.refusals).toBe(0);
   });
 
   it("a private user stays private with a Connection", async () => {

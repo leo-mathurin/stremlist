@@ -12,8 +12,6 @@ import { FakeImdb, IMDB_GRAPHQL } from "../../test/helpers/imdb.test-utils";
 import { useMswServer } from "../../test/helpers/msw.test-utils";
 import { enrichTitles } from "../enrich";
 
-vi.mock("../../lib/supabase", () => import("../../test/helpers/mock-supabase"));
-
 let nextId = 1000000;
 function freshId() {
   nextId += 1;

@@ -1,4 +1,5 @@
 import { parseSourceLink } from "@stremlist/shared/providers";
+import { http } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -7,6 +8,7 @@ import {
   it,
   vi,
 } from "vite-plus/test";
+import { useMswServer } from "../../test/helpers/msw.test-utils";
 import { listMdblistUserSources, mdblistProvider } from "../mdblist";
 import type { ActionIntent, ActionTarget, ConnectionAccess } from "../types";
 import { ConnectionExpiredError, SourceUnavailableError } from "../types";
@@ -64,11 +66,12 @@ const RATED_BREAKING_BAD = {
 
 interface Call {
   url: URL;
-  init: RequestInit;
+  init: { method: string; headers: Headers; body: string | undefined };
 }
 
 let calls: Call[];
 let handler: (url: URL) => Response;
+let handlerErrors: unknown[] = [];
 
 function itemsPage(items: unknown[], nextCursor?: string) {
   return Response.json(items, {
@@ -108,22 +111,39 @@ function bodyOf(call: Call) {
   return body;
 }
 
+const server = useMswServer();
+
 beforeEach(() => {
   calls = [];
+  handlerErrors = [];
   handler = () => Response.json({ error: "unexpected" }, { status: 500 });
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((input: string, init: RequestInit = {}) => {
-      const url = new URL(input);
-      calls.push({ url, init });
-      return Promise.resolve(handler(url));
+  server.use(
+    http.all(/^https:\/\/(?:[a-z]+\.)?mdblist\.com\//, async ({ request }) => {
+      const url = new URL(request.url);
+      const text = await request.text();
+      calls.push({
+        url,
+        init: {
+          method: request.method,
+          headers: request.headers,
+          body: text === "" ? undefined : text,
+        },
+      });
+      try {
+        return handler(url);
+      } catch (error) {
+        handlerErrors.push(error);
+        return new Response("The test handler failed", { status: 599 });
+      }
     }),
   );
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  if (handlerErrors.length > 0) {
+    throw new AggregateError(handlerErrors, "A test handler failed");
+  }
 });
 
 describe("parseSourceLink (MDBList)", () => {

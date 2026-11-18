@@ -1,39 +1,21 @@
 import { Hono } from "hono";
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vite-plus/test";
-import type { waitUntil } from "@vercel/functions";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { useBackgroundTasks } from "../../test/helpers/background.test-utils";
 import { scheduleBackgroundTask } from "../background";
 
-const vercelMocks = vi.hoisted(() => ({
-  waitUntil: vi.fn<typeof waitUntil>(),
-}));
+const background = useBackgroundTasks();
 
-vi.mock("@vercel/functions", () => vercelMocks);
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
+
+function outsideVercel() {
+  vi.stubEnv("VERCEL", "");
+}
 
 describe("scheduleBackgroundTask", () => {
-  const originalVercel = process.env.VERCEL;
-
-  beforeEach(() => {
-    vercelMocks.waitUntil.mockReset();
-    delete process.env.VERCEL;
-  });
-
-  afterEach(() => {
-    if (originalVercel === undefined) {
-      delete process.env.VERCEL;
-    } else {
-      process.env.VERCEL = originalVercel;
-    }
-  });
-
   it("registers the task with Vercel so it can finish after the response", async () => {
-    process.env.VERCEL = "1";
     let runs = 0;
 
     scheduleBackgroundTask(() => {
@@ -41,13 +23,13 @@ describe("scheduleBackgroundTask", () => {
       return Promise.resolve();
     });
 
-    expect(vercelMocks.waitUntil).toHaveBeenCalledOnce();
-    const [promise] = vercelMocks.waitUntil.mock.calls[0];
-    await promise;
+    expect(background.scheduled).toBe(1);
+    await background.settle();
     expect(runs).toBe(1);
   });
 
   it("runs the task locally without registering it with Vercel", async () => {
+    outsideVercel();
     const ran = Promise.withResolvers<void>();
 
     scheduleBackgroundTask(() => {
@@ -56,17 +38,18 @@ describe("scheduleBackgroundTask", () => {
     });
     await ran.promise;
 
-    expect(vercelMocks.waitUntil).not.toHaveBeenCalled();
+    expect(background.scheduled).toBe(0);
   });
 
   it("does not delay the HTTP response while the task is pending", async () => {
-    let finishTask: (() => void) | undefined;
-    const pendingTask = new Promise<void>((resolve) => {
-      finishTask = resolve;
-    });
-    const task = vi.fn(() => pendingTask);
+    outsideVercel();
+    const pendingTask = Promise.withResolvers<void>();
+    let runs = 0;
     const app = new Hono().get("/probe", (c) => {
-      scheduleBackgroundTask(task);
+      scheduleBackgroundTask(() => {
+        runs++;
+        return pendingTask.promise;
+      });
       return c.json({ ok: true });
     });
 
@@ -74,11 +57,11 @@ describe("scheduleBackgroundTask", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ ok: true });
-    expect(task).toHaveBeenCalledOnce();
-    expect(vercelMocks.waitUntil).not.toHaveBeenCalled();
+    expect(runs).toBe(1);
+    expect(background.scheduled).toBe(0);
 
-    finishTask?.();
-    await pendingTask;
+    pendingTask.resolve();
+    await pendingTask.promise;
   });
 
   it.each([
@@ -92,13 +75,12 @@ describe("scheduleBackgroundTask", () => {
   ])(
     "logs a %s task failure without an unhandled rejection",
     async (_, task) => {
-      process.env.VERCEL = "1";
       const error = vi.spyOn(console, "error");
 
       scheduleBackgroundTask(task);
 
-      const [promise] = vercelMocks.waitUntil.mock.calls[0];
-      await expect(promise).resolves.toBeUndefined();
+      expect(background.scheduled).toBe(1);
+      await expect(background.settle()).resolves.toBeUndefined();
       expect(error).toHaveBeenCalledWith(
         "Background task failed:",
         expect.any(Error),
