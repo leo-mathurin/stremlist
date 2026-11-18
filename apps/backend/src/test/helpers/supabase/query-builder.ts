@@ -116,6 +116,12 @@ export class MockQueryBuilder {
     return this;
   }
 
+  /** A filter that the in-memory PostgREST parsed from a request. */
+  where(filter: (row: Row) => boolean) {
+    this.filters.push(filter);
+    return this;
+  }
+
   gte(col: string, val: unknown) {
     this.filters.push(
       (row) =>
@@ -293,6 +299,11 @@ export class MockQueryBuilder {
           this.db.delete(this.tableName, (r) => this.matchesFilters(r)),
         );
     }
+  }
+
+  /** Runs the query now, for the in-memory PostgREST. */
+  run() {
+    return Promise.resolve(this.execute());
   }
 
   then(

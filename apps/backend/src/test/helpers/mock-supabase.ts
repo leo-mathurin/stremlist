@@ -3,6 +3,7 @@ import { connectionRpcs } from "./supabase/connection-rpcs";
 import { letterboxdGateRpcs } from "./supabase/letterboxd-gate-rpcs";
 import { monitorRunRpcs } from "./supabase/monitor-run-rpcs";
 import { MockQueryBuilder } from "./supabase/query-builder";
+import type { RpcCall } from "./supabase/postgrest";
 import { providerOutageRpcs } from "./supabase/provider-outage-rpcs";
 import type { RpcArgs, RpcHandler } from "./supabase/rpc";
 import { rpcError } from "./supabase/rpc";
@@ -26,8 +27,12 @@ const defaultRpcHandlers = new Map<string, RpcHandler>(
 /** Per-test overrides; cleared by `resetRpc()`. */
 export const rpcHandlers = new Map<string, RpcHandler>();
 
+/** Every RPC call that the in-memory PostgREST received, in order. */
+export const rpcCalls: RpcCall[] = [];
+
 export function resetRpc() {
   rpcHandlers.clear();
+  rpcCalls.length = 0;
 }
 
 export function callRpc(name: string, args: RpcArgs = {}) {
@@ -38,6 +43,11 @@ export function callRpc(name: string, args: RpcArgs = {}) {
     return Promise.resolve(rpcError(`mock-supabase: unknown RPC ${name}`));
   }
   return Promise.resolve(handler(args));
+}
+
+/** The calls of the RPC `name`, with their arguments. */
+export function rpcCallsOf(name: string) {
+  return rpcCalls.filter((call) => call.name === name).map(({ args }) => args);
 }
 
 export const supabase = {

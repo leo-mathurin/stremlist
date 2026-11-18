@@ -529,3 +529,12 @@ export async function markCachedListStale(listId: string) {
   await writeJson(manifestKey(listId), stale);
   setMemoryManifest(listId, stale);
 }
+
+/**
+ * Forget the manifests and catalogs that this instance keeps in memory, so
+ * the next read goes to R2 like the first read of a new instance.
+ */
+export function forgetMemoryCache() {
+  manifestMemoryCache.clear();
+  catalogMemoryCache.clear();
+}
