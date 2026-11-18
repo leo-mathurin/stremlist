@@ -19,6 +19,7 @@ dist-ssr/
 .env.*
 !.env.example
 !.env.enc
+!.env.production.enc
 
 # Logs
 logs/
