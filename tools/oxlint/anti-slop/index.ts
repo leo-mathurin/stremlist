@@ -8,6 +8,7 @@ import { noReflectGetRule } from "./rules/no-reflect-get.ts";
 import { noUnknownTypeAliasesRule } from "./rules/no-unknown-type-aliases.ts";
 import { noWidenThenAssertRule } from "./rules/no-widen-then-assert.ts";
 import { noReduceAccumulatorCopyRule } from "./rules/no-reduce-accumulator-copy.ts";
+import { noVitePlusTestDoublesRule } from "./rules/no-vite-plus-test-doubles.ts";
 
 export default eslintCompatPlugin({
   meta: { name: "anti-slop" },
@@ -20,5 +21,6 @@ export default eslintCompatPlugin({
     "no-unknown-type-aliases": noUnknownTypeAliasesRule,
     "no-widen-then-assert": noWidenThenAssertRule,
     "no-reduce-accumulator-copy": noReduceAccumulatorCopyRule,
+    "no-vite-plus-test-doubles": noVitePlusTestDoublesRule,
   },
 });

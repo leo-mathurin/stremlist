@@ -108,6 +108,7 @@ export default defineConfig({
       "anti-slop/no-unknown-type-aliases": "error",
       "anti-slop/no-widen-then-assert": "error",
       "anti-slop/no-reduce-accumulator-copy": "error",
+      "anti-slop/no-vite-plus-test-doubles": "error",
       "import/no-cycle": "error",
       "import/no-duplicates": "error",
       "import/first": "error",
