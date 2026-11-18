@@ -533,12 +533,16 @@ function parseSensCritiqueLink(input: string): ParsedSourceLink | null {
   // senscritique.com/top/{slug}/{id}: the ranking of one member in a poll,
   // which the API reads as a list.
   if (first === "top") {
-    const results = parts[1]?.toLowerCase() === "resultats";
-    const id = parts.slice(results ? 2 : 1).find((part) => /^\d+$/.test(part));
-    if (!id) return null;
-    return results
+    if (parts[1]?.toLowerCase() !== "resultats") {
+      const id = parts[2];
+      return id && /^\d+$/.test(id)
+        ? { provider: "senscritique", sourceRef: `lists/${id}`, kind: "list" }
+        : null;
+    }
+    const id = parts.slice(2).find((part) => /^\d+$/.test(part));
+    return id
       ? { provider: "senscritique", sourceRef: `polls/${id}`, kind: "chart" }
-      : { provider: "senscritique", sourceRef: `lists/${id}`, kind: "list" };
+      : null;
   }
   // senscritique.com/films/tops/top111, /series/tops/top100-des-top10…
   if (

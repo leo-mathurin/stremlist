@@ -280,6 +280,8 @@ describe("parseSourceLink: SensCritique", () => {
     "https://www.senscritique.com/liste/top_10_films/3171742",
     // A member's ranking in a poll.
     "https://www.senscritique.com/top/les_meilleurs_films_de_2019/3171742",
+    // A slug of digits only is not the ID.
+    "https://www.senscritique.com/top/2019/3171742",
   ])("reads the list %s by its ID", (link) => {
     expect(parseSourceLink(link)).toEqual(
       parsed("senscritique", "lists/3171742", "list"),

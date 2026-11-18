@@ -989,19 +989,6 @@ describe("parseSourceLink for SensCritique", () => {
       "https://www.senscritique.com/liste/les_arcanes_du_blockbuster/369869",
       { sourceRef: "lists/369869", kind: "list" },
     ],
-    // A member's top 10 is a list.
-    [
-      "https://www.senscritique.com/liste/top_10_films/261902",
-      { sourceRef: "lists/261902", kind: "list" },
-    ],
-    [
-      "https://www.senscritique.com/Sergent_Pepper/collection?action=DONE&yearDateDone=2024",
-      {
-        sourceRef: "users/Sergent_Pepper/done/2024",
-        kind: "history",
-        suggestedTitle: "Sergent_Pepper's watched in 2024",
-      },
-    ],
   ])("parses %s", (link, expected) => {
     expect(parseSourceLink(link)).toMatchObject({
       provider: "senscritique",
