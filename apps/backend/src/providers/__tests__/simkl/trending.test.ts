@@ -189,8 +189,141 @@ describe("simkl trending charts", () => {
     expect(calls).toEqual([]);
   });
 
-  it("stay fresh for hours; the library for an hour", () => {
+  it("stay fresh for hours, today's for an hour, as the library", () => {
     expect(simklProvider.freshnessFor?.("trending/anime")).toBe(6 * 3_600_000);
+    expect(simklProvider.freshnessFor?.("trending/tv/month")).toBe(
+      6 * 3_600_000,
+    );
+    expect(simklProvider.freshnessFor?.("dvd/releases")).toBe(6 * 3_600_000);
+    expect(simklProvider.freshnessFor?.("trending/movies/today")).toBe(
+      3_600_000,
+    );
     expect(simklProvider.freshnessFor?.("me/ratings")).toBe(3_600_000);
+  });
+});
+
+describe("simkl charts of other periods, genres and DVD releases", () => {
+  const paths = () => calls.map((call) => call.url.pathname);
+
+  it("read today's and the month's files, named after Simkl", async () => {
+    routes.set("GET /discover/trending/movies/today_100.json", () => MOVIES);
+    routes.set("GET /discover/trending/anime/month_100.json", () => ANIME);
+    const today = await simklProvider.fetchSource("trending/movies/today", {
+      connection: null,
+    });
+    expect(today.entries.map((entry) => entry.imdbId)).toEqual(["tt33764258"]);
+    const month = await simklProvider.fetchSource("trending/anime/month", {
+      connection: null,
+    });
+    // The month's anime file also has seasons that share an IMDb ID.
+    expect(month.entries).toHaveLength(3);
+    expect(paths()).toEqual([
+      "/discover/trending/movies/today_100.json",
+      "/discover/trending/anime/month_100.json",
+    ]);
+    await expect(
+      simklProvider.validateSource("trending/tv/today", { connection: null }),
+    ).resolves.toEqual({
+      ok: true,
+      ref: "trending/tv/today",
+      suggestedTitle: "Simkl Trending TV Today",
+      defaultDisplayMode: "series",
+    });
+    await expect(
+      simklProvider.validateSource("trending/movies/year", {
+        connection: null,
+      }),
+    ).resolves.toEqual({ ok: false, reason: "not_found" });
+  });
+
+  it("read the DVD releases as movies", async () => {
+    routes.set("GET /discover/dvd/releases_100.json", () => [
+      {
+        title: "Heartland",
+        release_date: "11/13/2026",
+        dvd_date: "11/13/2026",
+        ids: { simkl_id: 2956225, imdb: "tt38213251", tmdb: "1543469" },
+      },
+    ]);
+    const { entries } = await simklProvider.fetchSource("dvd/releases", {
+      connection: null,
+    });
+    expect(entries).toEqual([
+      {
+        imdbId: "tt38213251",
+        externalIds: { simkl: 2956225, tmdb: { id: 1543469, type: "movie" } },
+        type: "movie",
+        title: "Heartland",
+        year: 2026,
+        sourceUrl: "https://simkl.com/movies/2956225/",
+      },
+    ]);
+    await expect(
+      simklProvider.validateSource("dvd/releases", { connection: null }),
+    ).resolves.toMatchObject({
+      ok: true,
+      suggestedTitle: "Simkl DVD Releases",
+      defaultDisplayMode: "movie",
+    });
+  });
+
+  it("validate a genre that Simkl's index lists, and read its month file", async () => {
+    routes.set("GET /discover/trending/movies/genre/index.json", () => [
+      { name: "Horror", slug: "horror", count: 500 },
+      { name: "Erotica", slug: "erotica", count: 181 },
+    ]);
+    routes.set(
+      "GET /discover/trending/movies/genre/horror_month_500.json",
+      () => MOVIES,
+    );
+    await expect(
+      simklProvider.validateSource("trending/movies/genre/horror", {
+        connection: null,
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      ref: "trending/movies/genre/horror",
+      suggestedTitle: "Simkl Trending Horror Movies",
+      defaultDisplayMode: "movie",
+    });
+    await expect(
+      simklProvider.validateSource("trending/movies/genre/western", {
+        connection: null,
+      }),
+    ).resolves.toEqual({ ok: false, reason: "not_found" });
+    // One read of the index serves both validations.
+    expect(paths()).toEqual(["/discover/trending/movies/genre/index.json"]);
+
+    const { entries } = await simklProvider.fetchSource(
+      "trending/movies/genre/horror",
+      { connection: null },
+    );
+    expect(entries.map((entry) => entry.title)).toEqual(["The Odyssey"]);
+    expect(paths()).toContain(
+      "/discover/trending/movies/genre/horror_month_500.json",
+    );
+  });
+
+  it("never offer or read an adult genre", async () => {
+    for (const ref of [
+      "trending/movies/genre/erotica",
+      "trending/anime/genre/hentai",
+    ]) {
+      await expect(
+        simklProvider.validateSource(ref, { connection: null }),
+      ).resolves.toEqual({ ok: false, reason: "not_found" });
+      await expect(
+        simklProvider.fetchSource(ref, { connection: null }),
+      ).rejects.toMatchObject({ reason: "not_found" });
+    }
+    expect(calls).toEqual([]);
+  });
+
+  it("report a genre file that Simkl dropped as not found", async () => {
+    await expect(
+      simklProvider.fetchSource("trending/tv/genre/podcast", {
+        connection: null,
+      }),
+    ).rejects.toMatchObject({ reason: "not_found" });
   });
 });

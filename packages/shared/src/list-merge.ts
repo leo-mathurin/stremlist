@@ -3,6 +3,7 @@ import { CHART_BY_ID, imdbChartOf } from "./imdb-charts";
 import type { ProviderId, SourceId } from "./providers";
 import { PROVIDERS, sourceRequiresConnection, staticSource } from "./providers";
 import { storedSourceNoun } from "./source-problems";
+import { SIMKL_CHART_TYPE_INFO, simklGenreChartOf } from "./simkl-charts";
 
 /**
  * Merged Lists: one List that reads several Source lists and shows their
@@ -92,13 +93,15 @@ export function sourceTitleType(
 ): TitleType | null {
   const mode = imdbChartOf({ provider, sourceRef: ref })?.defaultDisplayMode;
   if (mode === "movie" || mode === "series") return mode;
+  const genre = provider === "simkl" ? simklGenreChartOf(ref) : null;
+  if (genre) return SIMKL_CHART_TYPE_INFO[genre.type].titleType ?? null;
   return staticSource(provider, ref)?.titleType ?? null;
 }
 
 const TRAKT_DATED =
   /^(?:(?:me|users\/[^/]+)\/(?:watchlist|favorites|ratings|history|collection|lists\/[^/]+)|lists\/[^/]+)$/;
 const SIMKL_DATED =
-  /^me\/(?:plantowatch|watching|completed|hold|dropped|history|ratings)$/;
+  /^me\/(?:plantowatch|watching|completed|hold|dropped|history|ratings|continue-watching)$/;
 
 /**
  * Whether the Provider gives the date when each Title joined this Source

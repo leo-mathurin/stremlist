@@ -31,6 +31,12 @@ describe("listTypeOf", () => {
     ["trakt", "me/lists/weekend", "trakt:me/lists/{list}"],
     ["simkl", "me/plantowatch", "simkl:me/plantowatch"],
     ["simkl", "me/lists/12", "simkl:me/lists/{id}"],
+    ["simkl", "trending/tv/today", "simkl:trending/tv/today"],
+    [
+      "simkl",
+      "trending/anime/genre/isekai",
+      "simkl:trending/{type}/genre/{slug}",
+    ],
     ["mdblist", "lists/2194", "mdblist:lists/{id}"],
     ["mdblist", "me/external/77", "mdblist:me/external/{id}"],
     ["justwatch", "tl-us-1", "justwatch:{list}"],

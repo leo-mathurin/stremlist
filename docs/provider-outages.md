@@ -131,7 +131,8 @@ Canaries read through these references by default:
 | `senscritique:lists/{id}`                                        | `lists/369869`                                   |
 | `senscritique:users/{user}/done`, `rated`, `recommend`           | `users/Plume231/…`                               |
 | `senscritique:` charts and `polls/{id}`                          | The chart, `polls/3996052`                       |
-| `simkl:trending/*`                                               | The chart (Simkl's CDN)                          |
+| `simkl:trending/*`, `simkl:dvd/releases`                         | The chart (Simkl's CDN)                          |
+| `simkl:trending/{type}/genre/{slug}`                             | `trending/movies/genre/horror`                   |
 | `letterboxd:users/{user}/lists/{slug}`                           | `users/official/lists/letterboxds-top-500-films` |
 | `trakt:me/*`, `simkl:me/*`, `mdblist:me/*`, `mdblist:official/*` | The monitor Account's Connection                 |
 

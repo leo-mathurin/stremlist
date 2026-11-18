@@ -353,6 +353,21 @@ function simkl({ request, url, body }: FixtureRequest): Response {
       });
     case "/sync/all-items/anime":
       return json({});
+    // The shape of GET /sync/playback: a paused episode of the show.
+    case "/sync/playback":
+      return json([
+        {
+          id: 1,
+          progress: 40,
+          paused_at: "2026-01-04T00:00:00Z",
+          type: "episode",
+          episode: { season: 1, number: 2 },
+          show: {
+            title: BREAKING_BAD.title,
+            ids: { simkl: 2, imdb: "tt0903747" },
+          },
+        },
+      ]);
     case "/sync/add-to-list":
     case "/sync/history":
     case "/sync/history/remove":
@@ -380,6 +395,24 @@ function simklCdn({ request, url }: FixtureRequest): Response {
         { title: "Season 2", anime_type: "tv", ids: ids(3, "tt0903747") },
         { title: "Season 1", anime_type: "tv", ids: ids(4, "tt0903747") },
       ]);
+    case "/discover/trending/movies/today_100.json":
+    case "/discover/dvd/releases_100.json":
+      return json([{ title: SHAWSHANK.title, ids: ids(1, "tt0111161") }]);
+    case "/discover/trending/tv/genre/index.json":
+      return json([{ name: "Drama", slug: "drama", count: 500 }]);
+    case "/discover/trending/tv/genre/drama_month_500.json":
+      return json([{ title: BREAKING_BAD.title, ids: ids(2, "tt0903747") }]);
+    // The movie in the fixture library's Plan to watch comes out tomorrow.
+    case "/calendar/v2/movie_release.json":
+      return json({
+        calendar: [
+          {
+            simkl_id: 1,
+            date: new Date(Date.now() + 86_400_000).toISOString(),
+          },
+        ],
+        metadata: { "1": { title: SHAWSHANK.title, ids: ids(1, "tt0111161") } },
+      });
   }
   throw new Error(
     `Unexpected Simkl CDN request ${request.method} ${url.pathname}`,

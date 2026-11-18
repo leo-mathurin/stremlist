@@ -21,6 +21,10 @@ export function libraryKey(accountId: string): string {
   return `${connectionPrefix(accountId, "simkl")}library.json`;
 }
 
+export function playbackKey(accountId: string): string {
+  return `${connectionPrefix(accountId, "simkl")}playback.json`;
+}
+
 export function listKey(accountId: string, listId: string): string {
   return `${connectionPrefix(accountId, "simkl")}lists/${listId}.json`;
 }
