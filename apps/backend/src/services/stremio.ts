@@ -301,12 +301,17 @@ export type UpdateResult = "updated" | "unchanged" | "missing";
  * that writes the collection between the read and the write can still lose
  * its change: Stremio has no conditional write (ADR 0002).
  */
-export async function updateInstalledStremlist(
+export const updateInstalledStremlist: (
   authKey: string,
   addonUrl: string,
   built: BuiltManifest,
-  fetchImpl: Fetch = fetch,
-) {
+  fetchImpl?: Fetch,
+) => Promise<UpdateResult> = async (
+  authKey,
+  addonUrl,
+  built,
+  fetchImpl = fetch,
+) => {
   const manifest = built as CollectionManifest;
   const collection = await getCollection(authKey, fetchImpl);
   const index = collection.findIndex((addon) =>
@@ -332,7 +337,7 @@ export async function updateInstalledStremlist(
     throw new StremioUnavailableError("Stremio did not keep the update.");
   }
   return "updated";
-}
+};
 
 /**
  * Adds this Stremlist to the linked account after the member removed it and
