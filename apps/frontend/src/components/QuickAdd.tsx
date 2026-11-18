@@ -1,4 +1,5 @@
-import { Check, Plus } from "lucide-react";
+import { useState } from "react";
+import { Check, ChevronDown, ExternalLink } from "lucide-react";
 import { CHART_REGISTRY } from "@stremlist/shared/imdb-charts";
 import { sourceKey } from "@stremlist/shared/list-merge";
 import {
@@ -7,21 +8,50 @@ import {
   PUBLIC_SOURCES,
 } from "@stremlist/shared/providers";
 import type { ConnectionSource, ProviderId } from "@stremlist/shared/providers";
+import { sourcePageUrl } from "@stremlist/shared/source-pages";
 import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
 import type { ProviderStatus } from "@/hooks/useProviderStatus";
+import { PlusIcon } from "@/components/ui/plus-icon";
 import { cn } from "@/lib/utils";
-import BuiltInCatalogPicker from "./BuiltInCatalogPicker";
 import { ProviderMark } from "./brand";
 
-type SourceGroup = {
+type Chip = {
+  key: string;
+  label: string;
+  added: boolean;
+  onAdd: () => void;
+  /** The list's own page on the Provider. */
+  url?: string;
+  /** A longer description, shown on hover. */
+  hint?: string;
+};
+type Section = { title: string; chips: Chip[] };
+type ProviderEntry = {
   provider: ProviderId;
-  title: string;
-  sources: ConnectionSource[];
+  /** "@moviebuff, 28 lists" or "13 charts". */
+  summary: string;
+  added: number;
+  sections: Section[];
 };
 
+/** The IMDb charts in "Popular now"; the others sort by rating. */
+const IMDB_POPULAR = new Set([
+  "imdb:most-popular-movies",
+  "imdb:most-popular-tv",
+  "imdb:box-office",
+  "imdb:coming-soon-movies",
+  "imdb:coming-soon-tv",
+]);
+
+/** A list the user made, imported or follows, not one the Provider makes. */
+function isOwnList(ref: string) {
+  return /^(me\/(lists|smart-lists|external)\/|users\/|lists\/)/.test(ref);
+}
+
 /**
- * One-click additions: Source lists that a Connection unlocks, public charts
- * of other Providers, and the built-in IMDb charts.
+ * One-click additions, one Provider at a time: the Source lists that a
+ * Connection unlocks, the public charts of the Providers, and the built-in
+ * IMDb charts. Only one Provider is open, so the many list types stay calm.
  */
 export default function QuickAdd({
   connections,
@@ -42,83 +72,222 @@ export default function QuickAdd({
   onAdd: (provider: ProviderId, source: ConnectionSource) => void;
   onAddChart: (chartId: string) => void;
 }) {
-  const groups: SourceGroup[] = [];
+  const isAdded = (provider: ProviderId, sourceRef: string) =>
+    usedKeys.includes(sourceKey({ provider, sourceRef }));
+
+  const entries: ProviderEntry[] = [];
   for (const provider of PROVIDER_IDS) {
-    if (!providerStatus[provider].enabled) continue;
-    const label = PROVIDERS[provider].label;
+    if (provider === "imdb" || !providerStatus[provider].enabled) continue;
     const connection = connections.find((c) => c.provider === provider);
-    const fromConnection = connection ? connectionSources[provider] : null;
-    if (fromConnection?.length) {
-      groups.push({
-        provider,
-        title: connection?.username
-          ? `Your ${label} (@${connection.username})`
-          : `Your ${label}`,
-        sources: fromConnection,
-      });
-    }
-    const publicSources = PUBLIC_SOURCES[provider];
-    if (publicSources?.length) {
-      groups.push({
-        provider,
-        title: `${label} charts`,
-        sources: publicSources,
-      });
-    }
+    const mine = (connection && connectionSources[provider]) || [];
+    const charts = [
+      ...mine.filter((source) => source.kind === "chart"),
+      ...(PUBLIC_SOURCES[provider] ?? []),
+    ].filter(
+      (source, index, all) =>
+        all.findIndex((other) => other.ref === source.ref) === index,
+    );
+    const chip = (source: ConnectionSource): Chip => ({
+      key: source.ref,
+      label: source.label,
+      added: isAdded(provider, source.ref),
+      onAdd: () => onAdd(provider, source),
+      url:
+        source.url ?? sourcePageUrl(provider, source.ref, connection?.username),
+    });
+    const sections = [
+      {
+        title: "Follow what you watch",
+        chips: mine
+          .filter((s) => s.kind !== "chart" && !isOwnList(s.ref))
+          .map(chip),
+      },
+      {
+        title: "Your lists",
+        chips: mine.filter((s) => isOwnList(s.ref)).map(chip),
+      },
+      { title: "Charts", chips: charts.map(chip) },
+    ].filter((section) => section.chips.length > 0);
+    if (sections.length === 0) continue;
+    const count = sections.reduce((sum, s) => sum + s.chips.length, 0);
+    const counted = mine.length > 0 ? `${count} lists` : `${count} charts`;
+    entries.push({
+      provider,
+      summary: connection?.username
+        ? `@${connection.username}, ${counted}`
+        : counted,
+      added: sections.flatMap((s) => s.chips).filter((c) => c.added).length,
+      sections,
+    });
   }
-  const usedChartIds = CHART_REGISTRY.filter((chart) =>
-    usedKeys.includes(sourceKey({ provider: "imdb", sourceRef: chart.id })),
-  ).map((chart) => chart.id);
+
+  const imdbChips = CHART_REGISTRY.map((chart) => ({
+    popular: IMDB_POPULAR.has(chart.id),
+    chip: {
+      key: chart.id,
+      label: chart.label,
+      added: isAdded("imdb", chart.id),
+      onAdd: () => onAddChart(chart.id),
+      url: chart.url,
+      hint: chart.description,
+    } satisfies Chip,
+  }));
+  entries.push({
+    provider: "imdb",
+    summary: `${CHART_REGISTRY.length} charts`,
+    added: imdbChips.filter((c) => c.chip.added).length,
+    sections: [
+      {
+        title: "Popular now",
+        chips: imdbChips.filter((c) => c.popular).map((c) => c.chip),
+      },
+      {
+        title: "Ratings",
+        chips: imdbChips.filter((c) => !c.popular).map((c) => c.chip),
+      },
+    ],
+  });
+
+  // Until the user picks a row, open the newest Connection's Provider, so
+  // its lists show right after it connects. The lists of a Connection load
+  // after the first render, so this default is read again on each render.
+  const [picked, setPicked] = useState<ProviderId | null>();
+  const newest = connections
+    .filter((c) => entries.some((entry) => entry.provider === c.provider))
+    .reduce<ConnectionSummary | undefined>(
+      (latest, c) =>
+        !latest || c.connectedAt > latest.connectedAt ? c : latest,
+      undefined,
+    );
+  const open =
+    picked === undefined ? (newest?.provider ?? entries[0].provider) : picked;
 
   return (
-    <div className="space-y-4 rounded-3xl bg-white p-4 ring-1 ring-black/5 sm:p-5">
-      {groups.map((group) => (
-        <div key={group.title}>
-          <p className="mb-2 flex items-center gap-2 text-sm font-semibold">
-            <ProviderMark provider={group.provider} className="size-6" />
-            {group.title}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {group.sources.map((source) => {
-              const added = usedKeys.includes(
-                sourceKey({ provider: group.provider, sourceRef: source.ref }),
-              );
-              return (
-                <button
-                  key={source.ref}
-                  type="button"
-                  disabled={added || full}
-                  onClick={() => onAdd(group.provider, source)}
+    <div className="divide-y divide-black/5 rounded-3xl bg-white ring-1 ring-black/5">
+      {entries.map((entry) => {
+        const isOpen = open === entry.provider;
+        const label = PROVIDERS[entry.provider].label;
+        const panelId = `quick-add-${entry.provider}`;
+        return (
+          <div key={entry.provider}>
+            <button
+              type="button"
+              aria-expanded={isOpen}
+              aria-controls={panelId}
+              data-testid={`quick-add-${entry.provider}`}
+              onClick={() => setPicked(isOpen ? null : entry.provider)}
+              className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-150 outline-none first:rounded-t-3xl last:rounded-b-3xl hover:bg-black/[0.02] focus-visible:bg-black/[0.03] sm:px-5"
+            >
+              <ProviderMark provider={entry.provider} className="size-7" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold">{label}</span>
+                <span className="block truncate text-xs text-black/50 tabular-nums">
+                  {entry.summary}
+                  {entry.added > 0 ? `, ${entry.added} added` : ""}
+                </span>
+              </span>
+              <ChevronDown
+                aria-hidden
+                className={cn(
+                  "size-4 text-black/40 transition-transform duration-200 ease-[var(--ease-out-quint)] motion-reduce:transition-none",
+                  isOpen && "rotate-180",
+                )}
+              />
+            </button>
+            <div
+              id={panelId}
+              inert={!isOpen}
+              className={cn(
+                "grid transition-[grid-template-rows] ease-[var(--ease-out-quint)] motion-reduce:transition-none",
+                isOpen
+                  ? "grid-rows-[1fr] duration-[260ms]"
+                  : "grid-rows-[0fr] duration-200",
+              )}
+            >
+              <div className="overflow-hidden">
+                <div
                   className={cn(
-                    "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition-[background-color,scale] duration-150 active:scale-[0.96] disabled:cursor-not-allowed",
-                    added
-                      ? "bg-brand/20 text-black/70"
-                      : "bg-black/5 hover:bg-black/10 disabled:opacity-40",
+                    "space-y-4 px-4 pb-4 sm:px-5 sm:pb-5",
+                    isOpen ? "quick-add-reveal" : "quick-add-hide",
                   )}
                 >
-                  {added ? (
-                    <Check className="size-3.5" />
-                  ) : (
-                    <Plus className="size-3.5" />
-                  )}
-                  {source.label}
-                </button>
-              );
-            })}
+                  {entry.sections.map((section) => (
+                    <div key={section.title}>
+                      <p className="mb-2 text-sm font-medium text-black/50">
+                        {section.title}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {section.chips.map((chip) => (
+                          <SourceChip
+                            key={chip.key}
+                            chip={chip}
+                            full={full}
+                            provider={label}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      ))}
-      <div>
-        <p className="mb-2 flex items-center gap-2 text-sm font-semibold">
-          <ProviderMark provider="imdb" className="size-6" />
-          IMDb charts
-        </p>
-        <BuiltInCatalogPicker
-          usedIds={usedChartIds}
-          disabled={full}
-          onAdd={onAddChart}
-        />
-      </div>
+        );
+      })}
     </div>
+  );
+}
+
+/**
+ * A chip in two parts in one pill: the label adds the list, and the small
+ * arrow opens the list's own page in a new tab.
+ */
+function SourceChip({
+  chip: { label, added, onAdd, url, hint },
+  full,
+  provider,
+}: {
+  chip: Chip;
+  full: boolean;
+  provider: string;
+}) {
+  return (
+    <span
+      title={hint}
+      className={cn(
+        "inline-flex h-8 items-stretch overflow-hidden rounded-full text-xs font-semibold",
+        added ? "bg-brand/20 text-black/70" : "bg-black/5",
+      )}
+    >
+      <button
+        type="button"
+        disabled={added || full}
+        onClick={onAdd}
+        className={cn(
+          "inline-flex items-center gap-1.5 pl-3 transition-[background-color,scale] duration-150 active:scale-[0.96] disabled:cursor-not-allowed",
+          url ? "pr-2" : "pr-3",
+          !added && "hover:bg-black/5 disabled:opacity-40",
+        )}
+      >
+        {added ? (
+          <Check aria-hidden className="size-3.5" />
+        ) : (
+          <PlusIcon className="size-3.5" />
+        )}
+        {label}
+      </button>
+      {url && (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Open ${label} on ${provider}`}
+          title={`Open on ${provider}`}
+          className="inline-flex items-center border-l border-black/10 pr-2.5 pl-2 text-black/35 transition-colors duration-150 hover:bg-black/5 hover:text-black"
+        >
+          <ExternalLink aria-hidden className="size-3" />
+        </a>
+      )}
+    </span>
   );
 }

@@ -30,6 +30,7 @@ import {
   ago,
   routeConnectStart,
   routeConnectionSources,
+  addImdbChart,
 } from "./config-fixture";
 import type { PreviewRequest } from "./config-fixture";
 
@@ -217,8 +218,7 @@ test("a List added and saved waits for its first refresh, then shows it", async 
     connections: [],
   }));
   await app.open(`/configure?account=${accountId}`);
-  await screen.getByRole("button", "Add an IMDb chart").tap();
-  await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
+  await addImdbChart(screen, /^Top 250 Movies/);
 
   await expectTexts(screen, ["Not saved yet"]);
   await saveButton(screen).tap();
@@ -575,8 +575,7 @@ test("a new setup shows no sync status before its first save", async ({
 }) => {
   await baseRoutes(browser);
   await app.open("/configure");
-  await screen.getByRole("button", "Add an IMDb chart").tap();
-  await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
+  await addImdbChart(screen, /^Top 250 Movies/);
 
   await expect(saveButton(screen, SAVE_NEW)).toBeEnabled();
   await expect(screen.getByText("Not saved yet", { exact: true })).toHaveCount(

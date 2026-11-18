@@ -1,3 +1,4 @@
+import type { ProviderId } from "@stremlist/shared/providers";
 import { expect } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
 import { FRONTEND_URL } from "../env.js";
@@ -69,4 +70,16 @@ export async function fillRpdbKey(page: Page, key: string): Promise<void> {
     await page.getByRole("option", { name: /^RPDB/ }).click();
   }
   await field.fill(key);
+}
+
+/** Open the Quick add row of `provider`, unless it is already open. */
+async function openQuickAdd(page: Page, provider: ProviderId) {
+  const row = page.getByTestId(`quick-add-${provider}`);
+  if ((await row.getAttribute("aria-expanded")) !== "true") await row.click();
+}
+
+/** Add the built-in IMDb chart `name` from Quick add. */
+export async function addImdbChart(page: Page, name: string | RegExp) {
+  await openQuickAdd(page, "imdb");
+  await page.getByRole("button", { name }).click();
 }

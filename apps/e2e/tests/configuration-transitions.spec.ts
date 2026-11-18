@@ -16,6 +16,7 @@ import {
   openConfigure,
   saveButton,
   saveConfigure,
+  addImdbChart,
 } from "../helpers/configure.js";
 
 async function openSettings(page: Page, title: string) {
@@ -101,8 +102,7 @@ test(
   async ({ page }) => {
     const { accountId } = await seedCatalog();
     await openConfigure(page, accountId, "Release QA");
-    await page.getByRole("button", { name: "Add an IMDb chart" }).click();
-    await page.getByRole("menuitem", { name: /^Top 250 Movies/ }).click();
+    await addImdbChart(page, /^Top 250 Movies/);
     await saveConfigure(page);
     // The new List goes first.
     const before = (await getConfig(accountId)).body.lists[0];
@@ -252,10 +252,7 @@ test(
     // New Lists go first. The watchlist gets the name that the page shows,
     // never its position.
     for (const chart of ["Top 250 Movies", "Most Popular Movies"]) {
-      await page.getByRole("button", { name: "Add an IMDb chart" }).click();
-      await page
-        .getByRole("menuitem", { name: new RegExp(`^${chart}`) })
-        .click();
+      await addImdbChart(page, new RegExp(`^${chart}`));
       await saveConfigure(page);
       const names = await manifestCatalogNames(accountId);
       expect(names.at(-1)).toEqual([

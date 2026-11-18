@@ -36,6 +36,8 @@ import {
   routeConnectStart,
   routeConnectionSources,
   routePreview,
+  addImdbChart,
+  openQuickAdd,
 } from "./config-fixture";
 
 // Merged Lists (STR-59, ADR 0006): one List, several Source lists, one
@@ -430,12 +432,12 @@ test("an Account with 20 Source lists refuses one more, from Quick add or a link
   await app.open(`/configure?account=${accountId}`);
   await expect(screen.getByText(/^4 of 10 lists/)).toBeVisible();
 
-  await screen.getByRole("button", "Add an IMDb chart").tap();
-  await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
+  await addImdbChart(screen, /^Top 250 Movies/);
   await expect(screen.getByText(SOURCE_LIMIT)).toBeVisible();
   await expect(screen.getByText(/^4 of 10 lists/)).toBeVisible();
 
   // A Trakt chart is refused the same way: the message stays, no List.
+  await openQuickAdd(screen, "trakt");
   await screen.getByRole("button", "Trending").tap();
   await expect(screen.getByText(SOURCE_LIMIT)).toHaveCount(1);
   await expect(screen.getByText(/^4 of 10 lists/)).toBeVisible();
