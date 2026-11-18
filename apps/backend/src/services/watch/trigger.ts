@@ -15,7 +15,7 @@ import { diffItems, recordItems } from "./detect";
 import { isEpisodeWatched, movieWatched } from "./library";
 import { readLibraryItems } from "./pace";
 import { newCycle, planAfterRead } from "./schedule";
-import { linkOf, readState } from "./state";
+import { linkOf, readState, writeState } from "./state";
 import { destinationsNow } from "./sweep";
 
 interface WatchContext {
@@ -77,8 +77,13 @@ async function sendNewTitles(
   const version = await readState(accountId);
   if (version.state?.link !== link) return;
   // Most reads show nothing new: the Destinations are read only when needed.
-  const { titles } = await diffItems(version.state, [item]);
-  if (titles.length === 0) return;
+  const { titles, next } = await diffItems(version.state, [item]);
+  if (titles.length === 0) {
+    // A change with no title to send (a baseline that Cinemeta renumbered)
+    // is still saved; another run that saves first does it instead.
+    if (next) await writeState(accountId, next, version.etag);
+    return;
+  }
   const { data, error } = await supabase.rpc("watch_destination_list", {
     p_account_id: accountId,
   });

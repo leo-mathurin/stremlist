@@ -184,21 +184,41 @@ describe("a /stream request of a tracked Account", () => {
     mocks.state = sentUpTo();
     mocks.item = series([1, 2], 3);
 
+    try {
+      await onStreamRequest(account, "series", `${SHOW}:1:3`);
+
+      expect(calls("queue_watch_writes")).toHaveLength(1);
+      expect(calls("watch_restart")).toHaveLength(1);
+      expect(log).toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("saves a baseline that Cinemeta cannot place any more, sending nothing", async () => {
+    // The baseline's anchor episode is not in Cinemeta's list (renumbered).
+    mocks.state = {
+      ...sentUpTo(),
+      series: { [SHOW]: `${SHOW}:9:9:3:eJxjAAAAAQAB` },
+    };
+    mocks.item = series([1, 2], 3);
+
     await onStreamRequest(account, "series", `${SHOW}:1:3`);
 
-    expect(calls("queue_watch_writes")).toHaveLength(1);
-    expect(calls("watch_restart")).toHaveLength(1);
-    expect(log).toHaveBeenCalled();
-    log.mockRestore();
+    expect(queued()).toEqual([]);
+    expect(mocks.state.series[SHOW]).toEqual(["1:1", "1:2"]);
   });
 
   it("sends nothing before the Watched baseline", async () => {
-    mocks.rpc.mockImplementation((name: string) =>
-      Promise.resolve(
-        name === "watch_context"
-          ? { data: [{ auth_key: KEY, baseline_at: null }], error: null }
-          : { data: null, error: null },
-      ),
+    const answer = mocks.rpc.getMockImplementation();
+    mocks.rpc.mockImplementation((name, args) =>
+      name === "watch_context"
+        ? Promise.resolve({
+            data: [{ auth_key: KEY, baseline_at: null }],
+            error: null,
+          })
+        : (answer?.(name, args) ??
+          Promise.resolve({ data: null, error: null })),
     );
     mocks.state = sentUpTo();
     mocks.item = series([1, 2], 3);
