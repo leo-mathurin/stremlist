@@ -72,7 +72,7 @@ function parseArgs(argv: string[]) {
     limit,
     saveTo: getStringFlag("--save-to"),
     fromFile: getStringFlag("--from-file"),
-  };
+  } satisfies Args;
 }
 
 function sleep(ms: number) {
@@ -117,7 +117,11 @@ async function fetchAllUserIds(limit: number | null) {
 
 async function validateUserId(userId: string, timeoutMs: number) {
   if (!IMDB_USER_ID_PATTERN.test(userId)) {
-    return { userId, valid: false, reason: "bad_format" };
+    return {
+      userId,
+      valid: false,
+      reason: "bad_format",
+    } satisfies ValidationResult;
   }
 
   const timeoutPromise = new Promise<never>((_, reject) =>
@@ -126,12 +130,20 @@ async function validateUserId(userId: string, timeoutMs: number) {
 
   try {
     await Promise.race([getImdbWatchlist(userId), timeoutPromise]);
-    return { userId, valid: true };
+    return { userId, valid: true } satisfies ValidationResult;
   } catch (error) {
     if (error instanceof Error && error.message === "timeout") {
-      return { userId, valid: false, reason: "network_error" };
+      return {
+        userId,
+        valid: false,
+        reason: "network_error",
+      } satisfies ValidationResult;
     }
-    return { userId, valid: false, reason: "imdb_not_found" };
+    return {
+      userId,
+      valid: false,
+      reason: "imdb_not_found",
+    } satisfies ValidationResult;
   }
 }
 

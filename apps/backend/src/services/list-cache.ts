@@ -260,7 +260,7 @@ async function readCatalogWithManifestRefresh(
   manifest: CacheManifest,
 ) {
   const catalog = await readCatalog(manifest);
-  if (catalog) return { manifest, catalog };
+  if (catalog) return { manifest, catalog } satisfies CatalogRead;
 
   evictManifestGeneration(listId, manifest.generation);
   const refreshedManifest = await readManifest(listId);
@@ -273,7 +273,10 @@ async function readCatalogWithManifestRefresh(
 
   const refreshedCatalog = await readCatalog(refreshedManifest);
   if (!refreshedCatalog) return null;
-  return { manifest: refreshedManifest, catalog: refreshedCatalog };
+  return {
+    manifest: refreshedManifest,
+    catalog: refreshedCatalog,
+  } satisfies CatalogRead;
 }
 
 function collectGenres(metas: StremioMeta[], type: StremioMeta["type"]) {
@@ -373,7 +376,7 @@ export async function getCachedList(listId: string, source?: CacheSource) {
       data: { metas: current.catalog.metas },
       cachedAt: new Date(current.manifest.cachedAt),
       generation: current.manifest.generation,
-    };
+    } satisfies CachedList;
   } catch (error) {
     console.error(`Failed to read R2 cache for ${listId}:`, error);
     return null;

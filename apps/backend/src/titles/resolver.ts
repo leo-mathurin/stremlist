@@ -25,14 +25,8 @@ interface ResolvedEntry {
 }
 
 interface ResolutionResult {
-  /** Resolved entries, in Source list order. */
   resolved: ResolvedEntry[];
-  /** Entries without an IMDb ID yet (Unresolved entries, see CONTEXT.md). */
   unresolvedEntries: SourceEntry[];
-  /**
-   * Unresolved entries that no strategy tried yet (cap or time budget). The
-   * caller should refresh soon instead of waiting for the usual freshness.
-   */
   deferred: number;
 }
 
@@ -217,5 +211,5 @@ export async function resolveEntries(
     if (imdbId) resolved.push({ imdbId, entry });
     else unresolvedEntries.push(entry);
   });
-  return { resolved, unresolvedEntries, deferred };
+  return { resolved, unresolvedEntries, deferred } satisfies ResolutionResult;
 }

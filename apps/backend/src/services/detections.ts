@@ -188,7 +188,7 @@ async function loadHistories(accountId: string, sources: ListSource[]) {
       }
     }),
   );
-  return { histories, unreadable };
+  return { histories, unreadable } satisfies LoadedHistories;
 }
 
 function toDetections(

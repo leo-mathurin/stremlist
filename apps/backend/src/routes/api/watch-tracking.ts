@@ -31,7 +31,10 @@ const destinationsBody = z.object({
 
 type StremioUpdate = UpdateResult | "signed-out" | "unavailable";
 
-async function updateInstalled(c: Context, accountId: string) {
+const updateInstalled: (
+  c: Context,
+  accountId: string,
+) => Promise<StremioUpdate> = async (c, accountId) => {
   try {
     return await updateStremio(
       accountId,
@@ -49,7 +52,7 @@ async function updateInstalled(c: Context, accountId: string) {
     }
     return "unavailable";
   }
-}
+};
 
 /**
  * Watch tracking of an Account (ADR 0003). Private Account IDs only: it

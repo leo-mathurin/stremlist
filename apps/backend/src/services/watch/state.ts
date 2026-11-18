@@ -39,7 +39,7 @@ export async function readState(accountId: string) {
     state:
       version?.value == null ? null : watchStateSchema.parse(version.value),
     etag: version?.etag ?? null,
-  };
+  } satisfies Version;
 }
 
 export async function deleteState(accountId: string) {

@@ -68,7 +68,7 @@ async function buildWrite(
       return {
         path: "/sync/add-to-list",
         item: { ...item, to: "plantowatch" },
-      };
+      } satisfies WriteRequest;
     await markLibraryChanged(connection.accountId);
     const current = (await syncLibrary(connection)).items.filter(
       (entry) => entry.imdb === target.imdbId,
@@ -78,7 +78,7 @@ async function buildWrite(
       current.some((entry) => entry.status !== "plantowatch")
     )
       return null;
-    return { path: "/sync/history/remove", item };
+    return { path: "/sync/history/remove", item } satisfies WriteRequest;
   }
 
   if (intent.kind === "watched") {
@@ -91,7 +91,7 @@ async function buildWrite(
           ...episodeItem(target, episodes, watchedAtOf(intent).watched_at),
           use_tvdb_anime_seasons: true,
         },
-      };
+      } satisfies WriteRequest;
     }
     if (intent.add) {
       return {
@@ -99,7 +99,7 @@ async function buildWrite(
         item: series
           ? { ...item, status: "completed" }
           : { ...item, ...watchedAtOf(intent) },
-      };
+      } satisfies WriteRequest;
     }
     if (series) {
       const seasons = new Set<number>();
@@ -117,14 +117,18 @@ async function buildWrite(
               .sort((a, b) => a - b)
               .map((number) => ({ number })),
           },
-        };
+        } satisfies WriteRequest;
       }
     }
-    return { path, item };
+    return { path, item } satisfies WriteRequest;
   }
 
-  if (intent.rating === null) return { path: "/sync/ratings/remove", item };
-  return { path: "/sync/ratings", item: { ...item, rating: intent.rating } };
+  if (intent.rating === null)
+    return { path: "/sync/ratings/remove", item } satisfies WriteRequest;
+  return {
+    path: "/sync/ratings",
+    item: { ...item, rating: intent.rating },
+  } satisfies WriteRequest;
 }
 
 async function perform(

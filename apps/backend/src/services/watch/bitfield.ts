@@ -25,7 +25,7 @@ function parse(field: string) {
       anchorVideo: parts.join(":"),
       anchorLength,
       bits: inflateSync(Buffer.from(encoded, "base64")),
-    };
+    } satisfies WatchedField;
   } catch {
     return null;
   }
