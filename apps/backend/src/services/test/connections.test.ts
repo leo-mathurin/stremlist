@@ -15,7 +15,13 @@ import {
   seedList,
   useTestEncryptionKey,
 } from "../../test/helpers/account.fixture";
-import { db, resetRpc, rpcHandlers } from "../../test/helpers/mock-supabase";
+import {
+  db,
+  resetRpc,
+  rpcCallsOf,
+  rpcHandlers,
+} from "../../test/helpers/mock-supabase";
+import { connectionRpcs } from "../../test/helpers/supabase/connection-rpcs";
 import { useMswServer } from "../../test/helpers/msw.test-utils";
 import { decryptSecret, encryptSecret } from "../../lib/crypto";
 import { SIMKL_API } from "../../providers/simkl/api";
@@ -380,10 +386,16 @@ describe("getConnectionAccess", () => {
     });
     const requested = Promise.withResolvers<void>();
     const refreshed = Promise.withResolvers<void>();
+    const denied = Promise.withResolvers<void>();
     answerRefresh(async () => {
       requested.resolve();
       await refreshed.promise;
       return tokenResponse("new", { refreshToken: "rotated" });
+    });
+    rpcHandlers.set("claim_connection_refresh", (args) => {
+      const claim = connectionRpcs.claim_connection_refresh(args);
+      if (!claim.data) denied.resolve();
+      return claim;
     });
 
     const first = await getConnectionAccess(accountId, "trakt");
@@ -391,12 +403,13 @@ describe("getConnectionAccess", () => {
     const firstToken = first?.getAccessToken();
     await requested.promise;
     const secondToken = second?.getAccessToken();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await denied.promise;
     refreshed.resolve();
 
     await expect(firstToken).resolves.toBe("new");
     await expect(secondToken).resolves.toBe("new");
     expect(tokenRequests).toHaveLength(1);
+    expect(rpcCallsOf("claim_connection_refresh")).toHaveLength(2);
   });
 
   it("waits for the other refresher's token when it does not get the lease", async () => {

@@ -228,7 +228,7 @@ describe("simkl activities gating", () => {
 describe("simkl reconnect", () => {
   function authorization(id: string, token: string) {
     return {
-      ...oauthConnection("simkl", "acc-1", [token]),
+      ...oauthConnection("simkl", "acc-1", token),
       username: null,
       authorization: id,
     };

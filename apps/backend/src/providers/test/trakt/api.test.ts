@@ -1,3 +1,4 @@
+import { http, HttpResponse } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -6,13 +7,21 @@ import {
   it,
   vi,
 } from "vite-plus/test";
+import {
+  seedAccount,
+  seedConnection,
+} from "../../../test/helpers/account.fixture";
+import { db, resetRpc } from "../../../test/helpers/mock-supabase";
 import { useMswServer } from "../../../test/helpers/msw.test-utils";
+import { getConnectionAccess } from "../../../services/connections";
+import { TRAKT_AUTH } from "../../trakt/api";
 import { traktProvider } from "../../trakt";
 import type { OAuthConfig } from "../../types";
 import { ConnectionExpiredError, SourceUnavailableError } from "../../types";
 import { clerks, listed } from "./trakt.fixture";
 import {
   calls,
+  callsTo,
   connection,
   expiredConnection,
   fetchEntries,
@@ -26,8 +35,13 @@ import {
 } from "./harness";
 
 const server = useMswServer();
+const MINUTE = 60_000;
 
-beforeEach(() => resetTraktTest(server));
+beforeEach(() => {
+  db.reset();
+  resetRpc();
+  resetTraktTest(server);
+});
 afterEach(restoreTraktTest);
 
 describe("Trakt read errors", () => {
@@ -68,15 +82,49 @@ describe("Trakt read errors", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("retries a 401 once when the Connection gives a new token", async () => {
-    route("GET /users/me/watchlist", (call) =>
-      call.headers.get("Authorization") === "Bearer token-2"
-        ? json([])
-        : status(401),
+  it("retries a 401 once with the token that the Connection refreshes", async () => {
+    const account = seedAccount();
+    seedConnection(account.id, "trakt", {
+      accessToken: "old-token",
+      refreshToken: "old-refresh",
+      expiresAt: new Date(Date.now() + 11 * MINUTE),
+    });
+    const refreshes: Record<string, string>[] = [];
+    server.use(
+      http.post(`${TRAKT_AUTH}/oauth/token`, async ({ request }) => {
+        refreshes.push(
+          Object.fromEntries(new URLSearchParams(await request.text())),
+        );
+        return HttpResponse.json({
+          access_token: "new-token",
+          refresh_token: "new-refresh",
+          expires_in: 3600,
+        });
+      }),
     );
-    const conn = connection(["token-1", "token-2"]);
+    route("GET /users/me/watchlist", (call) => {
+      if (call.headers.get("Authorization") === "Bearer new-token")
+        return json([]);
+      vi.setSystemTime(Date.now() + 2 * MINUTE);
+      return status(401);
+    });
+    const conn = await getConnectionAccess(account.id, "trakt");
+    if (!conn) throw new Error("Expected the seeded Connection");
+
     await expect(fetchEntries("me/watchlist", conn)).resolves.toEqual([]);
-    expect(conn.tokenRequests).toBe(2);
+
+    expect(
+      callsTo("/users/me/watchlist").map((call) =>
+        call.headers.get("Authorization"),
+      ),
+    ).toEqual(["Bearer old-token", "Bearer new-token"]);
+    expect(refreshes).toEqual([
+      expect.objectContaining({
+        grant_type: "refresh_token",
+        refresh_token: "old-refresh",
+        client_id: "client-123",
+      }),
+    ]);
   });
 
   it("a token that keeps being refused means needs_connection", async () => {

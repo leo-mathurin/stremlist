@@ -9,6 +9,7 @@ import {
 } from "vite-plus/test";
 
 import app from "../index.js";
+import * as listPrewarm from "../services/list-prewarm";
 import {
   getConfig,
   getProvider,
@@ -74,6 +75,22 @@ function prewarmedAccounts() {
   return rpcCallsOf("request_list_prewarm").map((args) => args.p_account_id);
 }
 
+function watchPrewarm() {
+  return vi.spyOn(listPrewarm, "prewarmLists");
+}
+
+function expectRpdbPrewarm(
+  prewarm: ReturnType<typeof watchPrewarm>,
+  accountId: string,
+) {
+  expect(prewarm).toHaveBeenCalledWith(
+    accountId,
+    expect.any(Array),
+    true,
+    expect.objectContaining({ posterSource: "rpdb", rpdbApiKey: "rpdb" }),
+  );
+}
+
 function watchlistReads() {
   return imdb
     .requestsOf("WatchListPage")
@@ -93,6 +110,7 @@ function disconnect(accountId: string, provider: string) {
 describe("List CRUD via the config API", () => {
   describe("POST /accounts", () => {
     it("creates an Account with a private ID and its first Lists", async () => {
+      const prewarm = watchPrewarm();
       const res = await createAccount({
         rpdbApiKey: "rpdb",
         lists: [
@@ -128,6 +146,7 @@ describe("List CRUD via the config API", () => {
       await background.settle();
       expect(prewarmedAccounts()).toEqual([data.accountId]);
       expect(watchlistReads()).toEqual([OWNER]);
+      expectRpdbPrewarm(prewarm, data.accountId);
 
       const config = await readJson(
         await getConfig(data.accountId),
@@ -210,6 +229,7 @@ describe("a caller who knows only the Legacy alias", () => {
 
 describe("upgrading a legacy install", () => {
   it("creates a new private Account from the setup the legacy page shows", async () => {
+    const prewarm = watchPrewarm();
     db.getTable("accounts")[0].rpdb_api_key = "rpdb";
     seedWatchlist({ id: UUID_1, catalogTitle: "Mine" });
     seedWatchlist({ id: UUID_2, sourceRef: "ls123456789", position: 1 });
@@ -251,6 +271,7 @@ describe("upgrading a legacy install", () => {
     await background.settle();
     expect(prewarmedAccounts()).toEqual([accountId]);
     expect(watchlistReads()).toEqual([OWNER]);
+    expectRpdbPrewarm(prewarm, accountId);
   });
 
   it("has no route that changes the legacy install through its alias alone", async () => {

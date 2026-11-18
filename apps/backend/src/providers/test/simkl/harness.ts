@@ -33,7 +33,7 @@ export function apiCalls() {
   });
 }
 
-export const connection = oauthConnection("simkl", "acc-1", ["simkl_at_test"]);
+export const connection = oauthConnection("simkl", "acc-1", "simkl_at_test");
 
 export function ctx() {
   return { connection };

@@ -111,8 +111,8 @@ export function restoreTraktTest() {
   expect(unexpected).toEqual([]);
 }
 
-export function connection(tokens: string[] = ["token-1"]) {
-  return oauthConnection("trakt", "sl_testaccount0000000000", tokens);
+export function connection(token = "token-1") {
+  return oauthConnection("trakt", "sl_testaccount0000000000", token);
 }
 
 /** A Connection that lost its token: it cannot give an access token. */

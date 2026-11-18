@@ -71,32 +71,27 @@ export function restoreStubs() {
 }
 
 /**
- * A Connection that hands out `tokens` in turn, then keeps the last one. It
- * counts the access tokens asked and the refusals reported.
+ * A Connection that always hands out `token` and counts the refusals
+ * reported. It never refreshes: a test of a refresh seeds a real Connection.
  */
 export function connection(
   provider: ConnectionAccess["provider"],
   accountId: string,
-  tokens: string[],
+  token: string,
 ) {
-  let index = 0;
   const access = {
     accountId,
     provider,
     username: "leo" as string | null,
     authorization: "authorization-1",
-    tokenRequests: 0,
     refusals: 0,
-    getAccessToken: () => {
-      access.tokenRequests += 1;
-      return Promise.resolve(tokens[Math.min(index++, tokens.length - 1)]);
-    },
+    getAccessToken: () => Promise.resolve(token),
     reportRefused: () => {
       access.refusals += 1;
       return Promise.resolve();
     },
     reportWorking: () => Promise.resolve(),
-  } satisfies ConnectionAccess & { tokenRequests: number; refusals: number };
+  } satisfies ConnectionAccess & { refusals: number };
   return access;
 }
 

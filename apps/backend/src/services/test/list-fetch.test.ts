@@ -22,6 +22,7 @@ import { FakeImdb, IMDB_GRAPHQL } from "../../test/helpers/imdb.test-utils";
 import {
   FakeLetterboxd,
   LETTERBOXD,
+  letterboxdPage,
 } from "../../test/helpers/letterboxd.test-utils";
 import { useMswServer } from "../../test/helpers/msw.test-utils";
 import { resetR2 } from "../../test/helpers/r2.test-utils";
@@ -222,6 +223,33 @@ describe("getListCatalog", () => {
       expect(cached?.data.metas.map((item) => item.id)).toEqual([fresh.id]);
     },
   );
+  it("a manual refresh reads a Letterboxd list past its fresh page cache", async () => {
+    const fresh = meta("tt0068646");
+    serveTitles([MOVIE.id, fresh.id]);
+    wikidata.link("P6127", "film-1", MOVIE.id);
+    wikidata.link("P6127", "film-2", fresh.id);
+    const watchlist = `${LETTERBOXD}/leo/watchlist/`;
+    letterboxd.serve(watchlist, letterboxdPage([1]));
+    const request = config({
+      provider: "letterboxd",
+      sourceRef: "users/leo/watchlist",
+    });
+    const ids = async (read: TestRead) =>
+      (await readList(read)).metas.map((item) => item.id);
+    expect(await ids(request)).toEqual([MOVIE.id]);
+    letterboxd.serve(watchlist, letterboxdPage([2]));
+    cache.delete(LIST_ID);
+    vi.setSystemTime(Date.now() + 60_000);
+
+    expect(await ids(request)).toEqual([MOVIE.id]);
+    expect(letterboxd.urls).toEqual([watchlist]);
+
+    expect(await ids({ ...request, policy: "manual" })).toEqual([fresh.id]);
+    expect(letterboxd.urls).toEqual([watchlist, watchlist]);
+    expect(cache.get(LIST_ID)?.data.metas.map((item) => item.id)).toEqual([
+      fresh.id,
+    ]);
+  });
   it("coalesces concurrent cache misses for the same Source list", async () => {
     imdb.lists.set(SOURCE_REF, [MOVIE]);
     const requested = Promise.withResolvers<void>();
