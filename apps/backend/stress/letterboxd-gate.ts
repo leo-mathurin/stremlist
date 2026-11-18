@@ -73,7 +73,7 @@ function pgGate() {
       );
       await sql.close();
     },
-  };
+  } satisfies Gate;
 }
 
 function restGate() {
@@ -101,7 +101,7 @@ function restGate() {
         .eq("id", GATE)) as { error: { message: string } | null };
       if (error) throw new Error(`Deleting ${GATE}: ${error.message}`);
     },
-  };
+  } satisfies Gate;
 }
 
 const gate = values.target === "rest" ? restGate() : pgGate();

@@ -127,7 +127,7 @@ export async function psql(
     args.push("-v", `${name}=${String(value)}`);
   }
   args.push("-f", "-");
-  return new Promise((resolve, reject) => {
+  return new Promise<string>((resolve, reject) => {
     const child = spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";

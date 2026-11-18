@@ -140,7 +140,7 @@ function waitForExit(child: ChildProcess, timeoutMs: number) {
   if (child.exitCode !== null || child.signalCode !== null) {
     return Promise.resolve();
   }
-  return new Promise((resolve) => {
+  return new Promise<void>((resolve) => {
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       resolve();
