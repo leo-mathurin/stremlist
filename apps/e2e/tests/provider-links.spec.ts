@@ -236,12 +236,38 @@ test(
     const created = await api.createAccount([
       listInput("trakt", "trending", SPLIT),
       listInput("trakt", "popular", SPLIT),
+      listInput("trakt", "calendars/shows/premieres", {
+        displayMode: "series",
+      }),
+      listInput("trakt", "calendars/dvd", { displayMode: "movie" }),
     ]);
     expect(created.status).toBe(200);
     const publicId = present(created.body.accountId, "the new Account ID");
+    const shownCharts: Record<string, unknown> = {};
     for (const row of (await api.getConfig(publicId)).body.lists) {
-      expect(await catalogs(publicId, row.id)).toEqual(BOTH);
+      shownCharts[row.sourceRef] = await catalogs(publicId, row.id);
     }
+    expect(shownCharts).toEqual({
+      trending: BOTH,
+      popular: BOTH,
+      // A show of a calendar is one Title, however many episodes air.
+      "calendars/shows/premieres": { movie: [], series: BOTH.series },
+      "calendars/dvd": { movie: BOTH.movie, series: [] },
+    });
+    const calendars = backend.requests((url) =>
+      url.pathname.startsWith("/calendars/"),
+    );
+    expect(
+      calendars.map((entry) =>
+        new URL(entry.url).pathname.replace(/\d{4}-\d{2}-\d{2}/, "{today}"),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        "/calendars/all/shows/premieres/{today}/30",
+        "/calendars/all/dvd/{today}/30",
+      ]),
+    );
+    expect(calendars.every((entry) => entry.authorization === null)).toBe(true);
     const charts = backend.requests((url) =>
       /^\/(movies|shows)\/(trending|popular)$/.test(url.pathname),
     );
@@ -255,14 +281,16 @@ test(
     );
     expect(charts.every((entry) => entry.authorization === null)).toBe(true);
 
-    // Recommendations, Up Next, History and Collection read through the
-    // Connection, with the user's token.
+    // Recommendations, Up Next, Continue Watching, the Calendar, History and
+    // Collection read through the Connection, with the user's token.
     backend.clearRequests();
     const accountId = await seedAccount();
     await seedConnection(accountId, "trakt");
     const saved = await api.postConfig(accountId, [
       listInput("trakt", "me/recommendations", SPLIT),
       listInput("trakt", "me/up-next", { displayMode: "series" }),
+      listInput("trakt", "me/continue-watching", SPLIT),
+      listInput("trakt", "me/calendar", SPLIT),
       listInput("trakt", "me/history", SPLIT),
       listInput("trakt", "me/collection", SPLIT),
     ]);
@@ -271,6 +299,8 @@ test(
     expect(lists.map((row) => row.sourceRef)).toEqual([
       "me/recommendations",
       "me/up-next",
+      "me/continue-watching",
+      "me/calendar",
       "me/history",
       "me/collection",
     ]);
@@ -303,11 +333,11 @@ test(
     const personal = backend.requests(
       (url) =>
         url.host === "api.trakt.tv" &&
-        /^\/(recommendations|sync\/progress|users\/me\/watched|sync\/collection)\//.test(
+        /^\/(recommendations|sync\/progress|sync\/playback|calendars\/my|users\/me\/watched|sync\/collection)\//.test(
           url.pathname,
         ),
     );
-    expect(personal.length).toBeGreaterThanOrEqual(8);
+    expect(personal.length).toBeGreaterThanOrEqual(12);
     expect(
       personal.every((entry) => entry.authorization === "fixture-access-token"),
     ).toBe(true);

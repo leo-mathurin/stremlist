@@ -61,6 +61,12 @@ export const CANARIES = {
   "trakt:me/up-next": {
     none: "Up Next has only the series that the user is watching, which a monitor Account cannot keep.",
   },
+  "trakt:me/continue-watching": {
+    none: "Continue Watching has only the movies and episodes that the user paused and did not finish, which a monitor Account cannot keep.",
+  },
+  "trakt:me/calendar": {
+    none: "The Calendar has only what airs in the next 30 days for the user's shows and movies, which a monitor Account cannot keep. The public calendars check the same rows.",
+  },
   "trakt:me/history": { min: 1 },
   "trakt:me/collection": { min: 1 },
   "trakt:me/favorites": { min: 1 },
@@ -75,6 +81,12 @@ export const CANARIES = {
   "trakt:collected": { min: 50 },
   "trakt:favorited": { min: 50 },
   "trakt:recommended": { min: 50 },
+  // Calendars of the next 30 days. On 2026-11-17 they gave 9 new shows, 35
+  // season premieres, 28 movies and 40 DVD releases; they change a lot.
+  "trakt:calendars/shows/new": { min: 3 },
+  "trakt:calendars/shows/premieres": { min: 15 },
+  "trakt:calendars/movies": { min: 10 },
+  "trakt:calendars/dvd": { min: 15 },
   // A public user's history or collection costs up to about 20 calls of
   // the app-wide quota: give a small one in MONITOR_CANARY_REFS.
   "trakt:users/{user}/watchlist": { min: 1 },
