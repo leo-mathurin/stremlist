@@ -103,6 +103,25 @@ BEGIN
   ASSERT (r->>'recovered')::boolean, r::text;
   SELECT * INTO g FROM public.letterboxd_gate WHERE id = 'test';
   ASSERT g.halted_at IS NULL AND g.rate = 0.33 AND g.floor_slowdowns = 0, g::text;
+  -- The climb back from the floor is not a slow period: only a slowdown
+  -- starts one.
+  ASSERT g.slow_since IS NULL, g::text;
+  UPDATE public.letterboxd_gate
+  SET rate_changed_at = clock_timestamp() WHERE id = 'test';
+  r := public.letterboxd_report(10, 'ok', 0, false, 'test');
+  ASSERT NOT (r->>'slow')::boolean, r::text;
+  ASSERT (SELECT slow_since FROM public.letterboxd_gate WHERE id = 'test') IS NULL;
+  ASSERT (public.letterboxd_gate_status(10, 'test')->>'slow_ms')::bigint = 0;
+  DELETE FROM public.letterboxd_gate WHERE id = 'test';
+
+  -- A slowdown below half the target starts the slow window.
+  PERFORM public.letterboxd_take_turn(10, 'first', NULL, 'test');
+  PERFORM public.letterboxd_report(10, 'rate_limited', 0, false, 'test');
+  ASSERT (SELECT slow_since FROM public.letterboxd_gate WHERE id = 'test') IS NULL,
+    'A rate of half the target is not slow';
+  PERFORM public.letterboxd_report(10, 'rate_limited', 0, false, 'test');
+  SELECT * INTO g FROM public.letterboxd_gate WHERE id = 'test';
+  ASSERT g.rate = 2.5 AND g.slow_since IS NOT NULL, g::text;
   DELETE FROM public.letterboxd_gate WHERE id = 'test';
 
   -- A 403 or a challenge halts at once, and reports the edge once.
