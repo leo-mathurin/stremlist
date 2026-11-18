@@ -285,56 +285,99 @@ for (const viewport of [
   });
 }
 
-test("a mouse drags the example posters, which stop on a poster", async ({
-  app,
-  browser,
-  screen,
-}) => {
-  await browser.setViewport({ width: 1280, height: 800 });
+/** Drag the example posters with the mouse by `distance` px to the left. */
+async function dragExamples(browser: Browser, distance: number) {
+  // The point to press, once the row gets the mouse there: while the
+  // panel opens, the row is still clipped.
+  const point = () =>
+    browser.evaluate(() => {
+      const element = document.querySelector(
+        'ul[aria-label="Example posters"]',
+      );
+      element?.scrollIntoView({ block: "center" });
+      const box = element?.getBoundingClientRect();
+      if (!element || !box) return null;
+      const x = box.x + box.width - 20;
+      const y = box.y + box.height / 2;
+      return element.contains(document.elementFromPoint(x, y))
+        ? { x, y }
+        : null;
+    });
+  await expect.poll(point).not.toBeNull();
+  const strip = await point();
+  if (!strip) throw new Error("The example posters do not get the mouse");
+  await browser.mouse.move(strip.x, strip.y);
+  await browser.mouse.down();
+  for (let step = 1; step <= 10; step += 1) {
+    await browser.mouse.move(strip.x - (distance * step) / 10, strip.y);
+  }
+  await browser.mouse.up();
+}
+
+/** Where the example row rests after a drag. */
+function exampleRest(browser: Browser) {
+  return browser.evaluate(() => {
+    const element = document.querySelector<HTMLElement>(
+      'ul[aria-label="Example posters"]',
+    );
+    if (!element) return null;
+    const box = element.getBoundingClientRect();
+    const padding = Number.parseFloat(
+      getComputedStyle(element).scrollPaddingLeft,
+    );
+    return {
+      scrolled: element.scrollLeft > 0,
+      aligned: Array.from(element.children).some(
+        (item) =>
+          Math.abs(item.getBoundingClientRect().left - box.left - padding) <= 1,
+      ),
+      atEnd:
+        element.scrollLeft + element.clientWidth >= element.scrollWidth - 1,
+      snaps: element.style.scrollSnapType === "",
+    };
+  });
+}
+
+async function openExamples(
+  app: { open(path: string): Promise<unknown> },
+  browser: Browser,
+  screen: Screen,
+  width: number,
+) {
+  await browser.setViewport({ width, height: 800 });
   await captureConfig(browser);
   await routePosterImages(browser);
   await app.open(`/configure?account=${accountId}`);
   await screen.getByRole("button", "Examples").tap();
   await expect.poll(() => exampleHosts(browser)).toHaveLength(EXAMPLE_COUNT);
+}
 
-  const strip = await browser.evaluate(() => {
-    const element = document.querySelector('ul[aria-label="Example posters"]');
-    element?.scrollIntoView({ block: "center" });
-    const box = element?.getBoundingClientRect();
-    return box ? { x: box.x + box.width / 2, y: box.y + box.height / 2 } : null;
-  });
-  if (!strip) throw new Error("The example posters do not show");
-  await browser.mouse.move(strip.x, strip.y);
-  await browser.mouse.down();
-  for (let step = 1; step <= 10; step += 1) {
-    await browser.mouse.move(strip.x - 13 * step, strip.y);
-  }
-  await browser.mouse.up();
-
+test("a mouse drags the example posters, which stop on a poster", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await openExamples(app, browser, screen, 1280);
+  await dragExamples(browser, 130);
   // The row followed the mouse, then glided until a poster lines up with
   // its start, and snaps again.
   await expect
-    .poll(() =>
-      browser.evaluate(() => {
-        const element = document.querySelector<HTMLElement>(
-          'ul[aria-label="Example posters"]',
-        );
-        if (!element) return null;
-        const box = element.getBoundingClientRect();
-        const padding = Number.parseFloat(
-          getComputedStyle(element).scrollPaddingLeft,
-        );
-        const aligned = Array.from(element.children).some(
-          (item) =>
-            Math.abs(item.getBoundingClientRect().left - box.left - padding) <=
-            1,
-        );
-        return {
-          scrolled: element.scrollLeft > 0,
-          aligned,
-          snaps: element.style.scrollSnapType === "",
-        };
-      }),
-    )
-    .toEqual({ scrolled: true, aligned: true, snaps: true });
+    .poll(() => exampleRest(browser))
+    .toEqual({ scrolled: true, aligned: true, atEnd: false, snaps: true });
+});
+
+test("at 390 px, a drag past the end leaves the last poster whole", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await openExamples(app, browser, screen, 390);
+  // Two drags: the mouse stays on the page, and the second one starts
+  // while the row may still glide after the first.
+  await dragExamples(browser, 320);
+  await dragExamples(browser, 320);
+  // The last posters cannot line up with the start: the row stays at its end.
+  await expect
+    .poll(() => exampleRest(browser))
+    .toMatchObject({ scrolled: true, atEnd: true, snaps: true });
 });

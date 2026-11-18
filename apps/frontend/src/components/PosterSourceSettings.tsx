@@ -104,42 +104,66 @@ const EXAMPLES = [
   },
 ];
 
+interface RowDrag {
+  /** The drag in progress: where the mouse and the row started. */
+  start: { x: number; left: number } | null;
+  /** Stops the glide after the last drag, so it cannot snap a new drag. */
+  stopGlide: (() => void) | null;
+}
+
 /**
  * End a mouse drag of the example row: glide to the nearest poster, then
  * snap again.
  */
-function endDrag(
-  strip: HTMLElement,
-  drag: { current: { x: number; left: number } | null },
-) {
-  if (!drag.current) return;
-  drag.current = null;
+function endDrag(strip: HTMLElement, drag: RowDrag) {
+  if (!drag.start) return;
+  drag.start = null;
   const box = strip.getBoundingClientRect();
   const padding = Number.parseFloat(getComputedStyle(strip).scrollPaddingLeft);
-  const offsets = Array.from(
-    strip.children,
-    (item) => item.getBoundingClientRect().left - box.left - padding,
+  const max = strip.scrollWidth - strip.clientWidth;
+  // Where the row stops for each poster, within the range it can scroll:
+  // the last posters cannot reach the start, so they stop at the end.
+  const stops = Array.from(strip.children, (item) =>
+    Math.min(
+      Math.max(
+        strip.scrollLeft +
+          item.getBoundingClientRect().left -
+          box.left -
+          padding,
+        0,
+      ),
+      max,
+    ),
   );
-  const nearest = offsets.reduce(
-    (best, offset) => (Math.abs(offset) < Math.abs(best) ? offset : best),
-    Number.POSITIVE_INFINITY,
-  );
-  const target = Math.min(
-    Math.max(strip.scrollLeft + nearest, 0),
-    strip.scrollWidth - strip.clientWidth,
+  const target = stops.reduce(
+    (best, stop) =>
+      Math.abs(stop - strip.scrollLeft) < Math.abs(best - strip.scrollLeft)
+        ? stop
+        : best,
+    stops[0] ?? strip.scrollLeft,
   );
   const snap = () => {
-    if (!drag.current) strip.style.scrollSnapType = "";
+    strip.style.scrollSnapType = "";
   };
-  if (!Number.isFinite(target) || Math.abs(target - strip.scrollLeft) <= 1) {
+  if (Math.abs(target - strip.scrollLeft) <= 1) {
     snap();
     return;
   }
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
   strip.scrollTo({ left: target, behavior: reduce ? "auto" : "smooth" });
-  strip.addEventListener("scrollend", snap, { once: true });
+  const stop = () => {
+    clearTimeout(timer);
+    strip.removeEventListener("scrollend", done);
+    drag.stopGlide = null;
+  };
+  const done = () => {
+    stop();
+    snap();
+  };
+  strip.addEventListener("scrollend", done, { once: true });
   // For a browser without `scrollend`.
-  setTimeout(snap, 600);
+  const timer = setTimeout(done, 600);
+  drag.stopGlide = stop;
 }
 
 /** The widest fade on an edge of the example row. */
@@ -183,12 +207,9 @@ function Examples({
   source: PosterSource;
   rpdbApiKey: string;
 }) {
-  // Whether some posters are past an edge: only then can the mouse drag.
-  const [overflows, setOverflows] = useState(true);
+  // Set on the element, not through React: it changes on every scroll.
   const paint = useCallback((strip: HTMLElement) => {
-    // Set on the element, not through React: it changes on every scroll.
     strip.style.maskImage = fadeMask(strip);
-    setOverflows(strip.scrollWidth > strip.clientWidth + 1);
   }, []);
   // The width changes with the window, so the fades can change too.
   const measure = useCallback(
@@ -202,7 +223,7 @@ function Examples({
     [paint],
   );
   // A mouse drags the row; touch and trackpads scroll it natively.
-  const drag = useRef<{ x: number; left: number } | null>(null);
+  const drag = useRef<RowDrag>({ start: null, stopGlide: null }).current;
 
   if (source === "rpdb" && !rpdbApiKey.trim()) {
     return (
@@ -219,22 +240,20 @@ function Examples({
       onPointerDown={(event) => {
         if (event.pointerType !== "mouse" || event.button !== 0) return;
         const strip = event.currentTarget;
-        drag.current = { x: event.clientX, left: strip.scrollLeft };
+        drag.stopGlide?.();
+        drag.start = { x: event.clientX, left: strip.scrollLeft };
         strip.setPointerCapture(event.pointerId);
         // Snapping would hold the row in place while it follows the mouse.
         strip.style.scrollSnapType = "none";
       }}
       onPointerMove={(event) => {
-        if (!drag.current) return;
+        if (!drag.start) return;
         event.currentTarget.scrollLeft =
-          drag.current.left - (event.clientX - drag.current.x);
+          drag.start.left - (event.clientX - drag.start.x);
       }}
       onPointerUp={(event) => endDrag(event.currentTarget, drag)}
       onPointerCancel={(event) => endDrag(event.currentTarget, drag)}
-      className={cn(
-        "-mx-3 flex cursor-grab snap-x snap-mandatory scroll-px-3 gap-2 overflow-x-auto overscroll-x-contain px-3 select-none active:cursor-grabbing [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-        !overflows && "cursor-auto active:cursor-auto",
-      )}
+      className="-mx-3 flex cursor-grab snap-x snap-mandatory scroll-px-3 gap-2 overflow-x-auto overscroll-x-contain px-3 select-none active:cursor-grabbing [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
     >
       {EXAMPLES.map((example) => (
         <li key={example.id} className="w-[4.5rem] shrink-0 snap-start sm:w-20">
