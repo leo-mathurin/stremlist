@@ -8,7 +8,7 @@ import {
 } from "vite-plus/test";
 import { simklProvider } from "../../simkl";
 import { connection as oauthConnection } from "../oauth-harness";
-import { activities, ANIME, MOVIES, SHOWS } from "./fixtures";
+import { activities, ANIME, MOVIES, SHOWS } from "./simkl.fixture";
 import {
   ageLibrary,
   apiCalls,
@@ -274,8 +274,12 @@ describe("simkl reconnect", () => {
       token === "Bearer old_token"
         ? rows
         : { shows: [], movies: [], anime: [] };
+    const oldRequest = Promise.withResolvers<void>();
     routes.set("GET /sync/activities", async (call) => {
-      if (call.headers.get("Authorization") === "Bearer old_token") await held;
+      if (call.headers.get("Authorization") === "Bearer old_token") {
+        oldRequest.resolve();
+        await held;
+      }
       return activities({ all: "2026-10-01T10:00:00Z" });
     });
     for (const kind of ["shows", "movies", "anime"] as const) {
@@ -288,9 +292,8 @@ describe("simkl reconnect", () => {
     const old = simklProvider.fetchSource("me/plantowatch", {
       connection: authorization("auth-1", "old_token"),
     });
-    await vi.waitFor(() => {
-      expect(calls).toHaveLength(1);
-    });
+    await oldRequest.promise;
+    expect(calls).toHaveLength(1);
     const current = authorization("auth-2", "new_token");
     const reading = simklProvider.fetchSource("me/plantowatch", {
       connection: current,

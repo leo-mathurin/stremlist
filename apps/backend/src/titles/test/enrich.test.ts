@@ -1,4 +1,5 @@
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
+import { http, HttpResponse } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -7,18 +8,11 @@ import {
   it,
   vi,
 } from "vite-plus/test";
+import { FakeImdb, IMDB_GRAPHQL } from "../../test/helpers/imdb.test-utils";
+import { useMswServer } from "../../test/helpers/msw.test-utils";
 import { enrichTitles } from "../enrich";
 
-const scraperMocks = vi.hoisted(() => ({
-  fetchTitlesByIds:
-    vi.fn<(ids: string[]) => Promise<Map<string, StremioMeta>>>(),
-}));
-
-vi.mock("../../services/imdb-scraper", () => scraperMocks);
-vi.mock(
-  "../../lib/supabase",
-  () => import("../../__tests__/helpers/mock-supabase"),
-);
+vi.mock("../../lib/supabase", () => import("../../test/helpers/mock-supabase"));
 
 let nextId = 1000000;
 function freshId() {
@@ -27,7 +21,7 @@ function freshId() {
 }
 
 function meta(id: string, overrides: Partial<StremioMeta> = {}) {
-  return {
+  const value: StremioMeta = {
     id,
     type: "movie",
     name: `IMDb ${id}`,
@@ -37,41 +31,58 @@ function meta(id: string, overrides: Partial<StremioMeta> = {}) {
     description: "",
     ...overrides,
   };
+  return value;
 }
 
 function fresh(m: StremioMeta) {
-  return { ...m, enrichedAt: new Date().toISOString() };
+  const value: StremioMeta & { enrichedAt: string } = {
+    ...m,
+    enrichedAt: new Date().toISOString(),
+  };
+  return value;
 }
 
-const fetchMock = vi.fn<typeof fetch>();
+const imdb = new FakeImdb();
+const server = useMswServer();
+let cinemetaRequests: Request[];
 
 function cinemetaUrl(type: string, id: string) {
   return `https://v3-cinemeta.strem.io/meta/${type}/${id}.json`;
 }
 
-function urlOf(input: string | URL | Request) {
-  return typeof input === "string"
-    ? input
-    : input instanceof URL
-      ? input.href
-      : input.url;
+function serveCinemeta(respond: (url: string) => Response) {
+  server.use(
+    http.get("https://v3-cinemeta.strem.io/meta/:type/:id", ({ request }) => {
+      cinemetaRequests.push(request);
+      return respond(request.url);
+    }),
+  );
 }
 
 function requestedUrls() {
-  return fetchMock.mock.calls.map(([url]) => urlOf(url));
+  return cinemetaRequests.map((request) => request.url);
+}
+
+function imdbDown() {
+  server.use(
+    http.post(IMDB_GRAPHQL, () => new HttpResponse(null, { status: 503 })),
+  );
+}
+
+function titleBatches() {
+  return imdb.requestsOf("TitlesById").map(({ variables }) => variables.ids);
 }
 
 beforeEach(() => {
-  scraperMocks.fetchTitlesByIds.mockReset();
-  fetchMock.mockReset();
-  fetchMock.mockResolvedValue(new Response("not found", { status: 404 }));
-  vi.stubGlobal("fetch", fetchMock);
-  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  imdb.reset();
+  cinemetaRequests = [];
+  server.use(imdb.handler);
+  serveCinemeta(() => new HttpResponse("not found", { status: 404 }));
+  vi.spyOn(console, "error");
 });
 
 afterEach(() => {
   vi.useRealTimers();
-  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
@@ -81,7 +92,7 @@ describe("enrichTitles", () => {
     const id = freshId();
     const at = new Date("2026-02-01T00:00:00Z");
     vi.setSystemTime(at);
-    scraperMocks.fetchTitlesByIds.mockResolvedValue(new Map([[id, meta(id)]]));
+    imdb.titles.set(id, meta(id));
     await enrichTitles([{ imdbId: id }]);
     vi.setSystemTime(at.getTime() + 60 * 60_000);
     expect((await enrichTitles([{ imdbId: id }])).get(id)?.enrichedAt).toBe(
@@ -102,20 +113,15 @@ describe("enrichTitles", () => {
       [legacy, meta(legacy)],
       [recent, fresh(meta(recent))],
     ]);
-    scraperMocks.fetchTitlesByIds.mockImplementation((ids) =>
-      Promise.resolve(
-        new Map(ids.map((id) => [id, meta(id, { imdbRating: "9.0" })])),
-      ),
-    );
+    for (const id of [old, legacy, recent]) {
+      imdb.titles.set(id, meta(id, { imdbRating: "8.7" }));
+    }
     const result = await enrichTitles(
       [old, legacy, recent].map((imdbId) => ({ imdbId })),
       previous,
     );
-    expect(scraperMocks.fetchTitlesByIds).toHaveBeenCalledExactlyOnceWith([
-      old,
-      legacy,
-    ]);
-    expect(result.get(old)?.imdbRating).toBe("9.0");
+    expect(titleBatches()).toEqual([[old, legacy]]);
+    expect(result.get(old)?.imdbRating).toBe("8.7");
     expect(result.get(legacy)?.enrichedAt).toBeDefined();
     expect(result.get(recent)).toEqual(previous.get(recent));
   });
@@ -127,62 +133,55 @@ describe("enrichTitles", () => {
     const result = await enrichTitles([{ imdbId: id }], previous);
 
     expect(result.get(id)?.name).toBe("Cached");
-    expect(scraperMocks.fetchTitlesByIds).not.toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(imdb.requests).toEqual([]);
+    expect(requestedUrls()).toEqual([]);
   });
 
   it("asks IMDb in one batch for every unknown Title", async () => {
     const [a, b, known] = [freshId(), freshId(), freshId()];
-    scraperMocks.fetchTitlesByIds.mockImplementation((ids) =>
-      Promise.resolve(new Map(ids.map((id) => [id, meta(id)]))),
-    );
+    for (const id of [a, b, known]) imdb.titles.set(id, meta(id));
 
     const result = await enrichTitles(
       [{ imdbId: a }, { imdbId: known }, { imdbId: b }, { imdbId: a }],
       new Map([[known, fresh(meta(known, { name: "Known" }))]]),
     );
 
-    expect(scraperMocks.fetchTitlesByIds).toHaveBeenCalledExactlyOnceWith([
-      a,
-      b,
-    ]);
+    expect(titleBatches()).toEqual([[a, b]]);
     expect([...result.keys()].sort()).toEqual([a, b, known].sort());
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(requestedUrls()).toEqual([]);
   });
 
   it("remembers IMDb answers for the next refresh", async () => {
     const id = freshId();
-    scraperMocks.fetchTitlesByIds.mockResolvedValue(new Map([[id, meta(id)]]));
+    imdb.titles.set(id, meta(id));
 
     await enrichTitles([{ imdbId: id }]);
     const again = await enrichTitles([{ imdbId: id }]);
 
     expect(again.get(id)?.name).toBe(`IMDb ${id}`);
-    expect(scraperMocks.fetchTitlesByIds).toHaveBeenCalledOnce();
+    expect(titleBatches()).toHaveLength(1);
   });
 
   it("falls back to Cinemeta when IMDb throws", async () => {
     const id = freshId();
-    scraperMocks.fetchTitlesByIds.mockRejectedValue(new Error("IMDb 503"));
-    fetchMock.mockImplementation((url) =>
-      Promise.resolve(
-        urlOf(url) === cinemetaUrl("series", id)
-          ? Response.json({
-              meta: {
-                name: "From Cinemeta",
-                poster: "https://img.example/p.jpg",
-                genres: ["Drama"],
-                description: "A show.",
-                imdbRating: "8.1",
-                releaseInfo: "2019-2023",
-                runtime: "45 min",
-                released: "2019-01-01T00:00:00.000Z",
-                director: ["Someone"],
-                cast: ["A", "B", "C", "D", "E", "F"],
-              },
-            })
-          : new Response("not found", { status: 404 }),
-      ),
+    imdbDown();
+    serveCinemeta((url) =>
+      url === cinemetaUrl("series", id)
+        ? HttpResponse.json({
+            meta: {
+              name: "From Cinemeta",
+              poster: "https://img.example/p.jpg",
+              genres: ["Drama"],
+              description: "A show.",
+              imdbRating: "8.1",
+              releaseInfo: "2019-2023",
+              runtime: "45 min",
+              released: "2019-01-01T00:00:00.000Z",
+              director: ["Someone"],
+              cast: ["A", "B", "C", "D", "E", "F"],
+            },
+          })
+        : new HttpResponse("not found", { status: 404 }),
     );
 
     const result = await enrichTitles([{ imdbId: id, type: "series" }]);
@@ -203,8 +202,7 @@ describe("enrichTitles", () => {
       director: ["Someone"],
       cast: ["A", "B", "C", "D", "E"],
     });
-    const [, init] = fetchMock.mock.calls[0];
-    expect(new Headers(init?.headers).get("User-Agent")).toMatch(
+    expect(cinemetaRequests[0].headers.get("User-Agent")).toMatch(
       /^Stremlist\//,
     );
   });
@@ -218,18 +216,14 @@ describe("enrichTitles", () => {
       delete process.env.DISABLED_PROVIDERS;
     }
 
-    expect(scraperMocks.fetchTitlesByIds).not.toHaveBeenCalled();
+    expect(imdb.requests).toEqual([]);
     expect(requestedUrls()).toEqual([cinemetaUrl("movie", id)]);
   });
 
   it("asks Cinemeta only for Titles that IMDb did not answer", async () => {
     const [fromImdb, missing] = [freshId(), freshId()];
-    scraperMocks.fetchTitlesByIds.mockResolvedValue(
-      new Map([[fromImdb, meta(fromImdb)]]),
-    );
-    fetchMock.mockResolvedValue(
-      Response.json({ meta: { name: "From Cinemeta" } }),
-    );
+    imdb.titles.set(fromImdb, meta(fromImdb));
+    serveCinemeta(() => HttpResponse.json({ meta: { name: "From Cinemeta" } }));
 
     const result = await enrichTitles([
       { imdbId: fromImdb, type: "movie" },
@@ -242,13 +236,11 @@ describe("enrichTitles", () => {
 
   it("tries movie then series when the type is unknown", async () => {
     const id = freshId();
-    scraperMocks.fetchTitlesByIds.mockRejectedValue(new Error("IMDb 503"));
-    fetchMock.mockImplementation((url) =>
-      Promise.resolve(
-        urlOf(url) === cinemetaUrl("series", id)
-          ? Response.json({ meta: { name: "A series" } })
-          : Response.json({ meta: null }),
-      ),
+    imdbDown();
+    serveCinemeta((url) =>
+      url === cinemetaUrl("series", id)
+        ? HttpResponse.json({ meta: { name: "A series" } })
+        : HttpResponse.json({ meta: null }),
     );
 
     const result = await enrichTitles([{ imdbId: id }]);
@@ -262,8 +254,8 @@ describe("enrichTitles", () => {
 
   it("leaves a Title out when nobody knows it, without throwing", async () => {
     const id = freshId();
-    scraperMocks.fetchTitlesByIds.mockRejectedValue(new Error("IMDb 503"));
-    fetchMock.mockRejectedValue(new Error("network down"));
+    imdbDown();
+    serveCinemeta(() => HttpResponse.error());
 
     const result = await enrichTitles([{ imdbId: id, type: "movie" }]);
 

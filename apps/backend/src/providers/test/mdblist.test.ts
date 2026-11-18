@@ -8,7 +8,7 @@ import {
   vi,
 } from "vite-plus/test";
 import { listMdblistUserSources, mdblistProvider } from "../mdblist";
-import type { ActionIntent, ActionTarget } from "../types";
+import type { ActionIntent, ActionTarget, ConnectionAccess } from "../types";
 import { ConnectionExpiredError, SourceUnavailableError } from "../types";
 
 const SUPER_MARIO = {
@@ -79,7 +79,7 @@ function itemsPage(items: unknown[], nextCursor?: string) {
 }
 
 function connection(username: string | null = "leo") {
-  return {
+  const value: ConnectionAccess = {
     accountId: "sl_testaccount0000000000",
     provider: "mdblist",
     username,
@@ -88,6 +88,7 @@ function connection(username: string | null = "leo") {
     reportRefused: () => Promise.resolve(),
     reportWorking: () => Promise.resolve(),
   };
+  return value;
 }
 
 function defined<T>(value: T | undefined) {
@@ -103,7 +104,8 @@ function textBody(call: Call) {
 }
 
 function bodyOf(call: Call) {
-  return JSON.parse(textBody(call));
+  const body: unknown = JSON.parse(textBody(call));
+  return body;
 }
 
 beforeEach(() => {
@@ -600,11 +602,12 @@ describe("mdblistProvider.actions", () => {
     not_found: { movies: [], shows: [] },
   };
   const movie: ActionTarget = { imdbId: "tt0111161", type: "movie" };
-  const episode = (season: number, number: number) => ({
-    imdbId: "tt0903747",
-    type: "series",
-    episode: { season, episode: number },
-  });
+  const episode = (season: number, number: number) =>
+    ({
+      imdbId: "tt0903747",
+      type: "series",
+      episode: { season, episode: number },
+    }) satisfies ActionTarget;
   const movieBody = { movies: [{ ids: { imdb: "tt0111161" } }] };
   const episodeBody = {
     shows: [
@@ -880,7 +883,7 @@ describe("listMdblistUserSources", () => {
   });
 
   it("still offers the other lists when liked lists fail", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "error");
     handler = (url) => {
       if (url.pathname === "/lists/user") return Response.json([ownList]);
       if (url.pathname === "/lists/liked") {

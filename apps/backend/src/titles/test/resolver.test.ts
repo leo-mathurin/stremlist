@@ -1,17 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { fakeAdapter } from "../../__tests__/helpers/mock-registry";
-import { db } from "../../__tests__/helpers/mock-supabase";
+import { fakeAdapter } from "../../test/helpers/mock-registry";
+import { db } from "../../test/helpers/mock-supabase";
 import type { ResolverStrategy, SourceEntry } from "../../providers/types";
 import { resolveEntries } from "../resolver";
 
 vi.mock("../../lib/supabase", async () => {
-  return await import("../../__tests__/helpers/mock-supabase");
+  return await import("../../test/helpers/mock-supabase");
 });
 
 const DAY = 24 * 60 * 60_000;
 
 function tmdb(id: number) {
-  return { externalIds: { tmdb: { id, type: "movie" } }, type: "movie" };
+  const entry: SourceEntry = {
+    externalIds: { tmdb: { id, type: "movie" } },
+    type: "movie",
+  };
+  return entry;
 }
 
 function strategy(name: string, known: Record<number, string>) {
@@ -71,7 +75,7 @@ function cacheRow(externalId: string) {
 
 beforeEach(() => {
   db.reset();
-  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  vi.spyOn(console, "error");
 });
 
 describe("resolveEntries", () => {

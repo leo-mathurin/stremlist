@@ -6,8 +6,8 @@ import {
   it,
   vi,
 } from "vite-plus/test";
-import app from "../index.js";
-import { SourceUnavailableError } from "../providers/types";
+import app from "../../index.js";
+import { SourceUnavailableError } from "../types";
 import {
   completeOAuthBody,
   movie,
@@ -16,26 +16,26 @@ import {
   seedLegacyAccount,
   seedList,
   seedOAuthState,
-} from "./helpers/fixtures.js";
+} from "../../test/helpers/account.fixture.js";
 import {
   fakeAdapter,
   resetProviders,
   useFakeProvider,
-} from "./helpers/mock-registry.js";
-import { db, resetRpc } from "./helpers/mock-supabase.js";
-import { readJson, syncSnapshotBody } from "./helpers/json.js";
+} from "../../test/helpers/mock-registry.js";
+import { db, resetRpc } from "../../test/helpers/mock-supabase.js";
+import { readJson, syncSnapshotBody } from "../../test/helpers/json.js";
 import { z } from "zod";
 
-vi.mock("../lib/supabase", async () => {
-  return await import("./helpers/mock-supabase.js");
+vi.mock("../../lib/supabase", async () => {
+  return await import("../../test/helpers/mock-supabase.js");
 });
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
+vi.mock("../../services/list-cache", async () => {
+  return await import("../../test/helpers/mock-list-cache.js");
 });
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
+vi.mock("../registry", async () => {
+  return await import("../../test/helpers/mock-registry.js");
 });
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
+vi.mock("../../lib/resend", () => import("../../test/helpers/mock-resend"));
 
 const TEN_MINUTES_AGO = new Date(Date.now() - 10 * 60_000).toISOString();
 
@@ -60,8 +60,8 @@ beforeEach(() => {
   db.reset();
   resetRpc();
   resetProviders();
-  vi.spyOn(console, "log").mockImplementation(() => undefined);
-  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  vi.spyOn(console, "log");
+  vi.spyOn(console, "error");
 });
 
 afterEach(() => {

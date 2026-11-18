@@ -1,12 +1,8 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vite-plus/test";
+import { http, HttpResponse } from "msw";
+import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { IMDB_GRAPHQL } from "../../test/helpers/imdb.test-utils";
+import { useMswServer } from "../../test/helpers/msw.test-utils";
 import { imdbProvider } from "../imdb";
 import { SourceUnavailableError } from "../types";
 
@@ -18,12 +14,7 @@ const graphqlRequest = z.object({
   variables: z.record(z.string(), z.unknown()),
 });
 
-function json(body: unknown) {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  });
-}
+const server = useMswServer();
 
 function ratedTitle(id: string, date: string, type = "Movie") {
   return {
@@ -48,26 +39,18 @@ const FORBIDDEN = {
   ],
 };
 
-function serve(...responses: unknown[]) {
+function serve(...responses: Record<string, unknown>[]) {
   const requests: z.infer<typeof graphqlRequest>[] = [];
-  vi.mocked(globalThis.fetch).mockImplementation((_url, init) => {
-    const body = init?.body;
-    if (typeof body !== "string") throw new Error("Expected a JSON body");
-    requests.push(graphqlRequest.parse(JSON.parse(body)));
-    const next = responses.shift();
-    if (!next) throw new Error("Unexpected IMDb request");
-    return Promise.resolve(json(next));
-  });
+  server.use(
+    http.post(IMDB_GRAPHQL, async ({ request }) => {
+      requests.push(graphqlRequest.parse(await request.json()));
+      const next = responses.shift();
+      if (!next) throw new Error("Unexpected IMDb request");
+      return HttpResponse.json(next);
+    }),
+  );
   return requests;
 }
-
-beforeEach(() => {
-  vi.spyOn(globalThis, "fetch");
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 describe("imdbProvider ratings", () => {
   it("validates public ratings with one small page and keeps the suffix", async () => {

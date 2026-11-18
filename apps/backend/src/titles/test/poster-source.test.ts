@@ -7,24 +7,34 @@ import {
   it,
   vi,
 } from "vite-plus/test";
-import app from "../index.js";
-import { resetPosterMemory } from "../titles/title-posters";
-import { resetTvdbToken } from "../titles/tvdb";
-import { movie, seedAccount, seedList } from "./helpers/fixtures.js";
+import app from "../../index.js";
+import { resetPosterMemory } from "../title-posters";
+import { resetTvdbToken } from "../tvdb";
+import {
+  movie,
+  seedAccount,
+  seedList,
+} from "../../test/helpers/account.fixture.js";
 import {
   configBody,
   createdAccountBody,
   metaBody,
   metasBody,
   readJson,
-} from "./helpers/json.js";
-import { cache } from "./helpers/mock-list-cache.js";
-import { db, resetRpc } from "./helpers/mock-supabase.js";
+} from "../../test/helpers/json.js";
+import { cache } from "../../test/helpers/mock-list-cache.js";
+import { db, resetRpc } from "../../test/helpers/mock-supabase.js";
 
-vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
-vi.mock("../services/list-prewarm", () => ({ prewarmLists: vi.fn() }));
+vi.mock(
+  "../../lib/supabase",
+  () => import("../../test/helpers/mock-supabase.js"),
+);
+vi.mock(
+  "../../services/list-cache",
+  () => import("../../test/helpers/mock-list-cache.js"),
+);
+vi.mock("../../lib/resend", () => import("../../test/helpers/mock-resend"));
+vi.mock("../../services/list-prewarm", () => ({ prewarmLists: vi.fn() }));
 
 const LIST_ID = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
 const OTHER_LIST_ID = "0f4ef1b5-0a8c-4a4e-9f1e-3b2c1d0e9a87";
@@ -191,7 +201,7 @@ describe("poster source in Stremio responses", () => {
   });
 
   it("keeps IMDb posters while TMDB fails, and stores nothing", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(console, "warn");
     const fetch = tmdbFind(503);
     vi.stubGlobal("fetch", fetch);
     const accountId = seedWithList({ poster_source: "tmdb" });

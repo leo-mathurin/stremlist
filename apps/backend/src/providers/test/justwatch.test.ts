@@ -1,13 +1,8 @@
 import { parseSourceLink } from "@stremlist/shared/providers";
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vite-plus/test";
+import { http, HttpResponse } from "msw";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
+import { useMswServer } from "../../test/helpers/msw.test-utils";
 import { justwatchRecheckStrategy } from "../../titles/justwatch-lookup";
 import { justwatchProvider } from "../justwatch";
 import { SourceUnavailableError } from "../types";
@@ -68,7 +63,7 @@ function listPage(
   { endCursor = "", hasNextPage = false } = {},
   node: Record<string, unknown> = {},
 ) {
-  return Response.json({
+  return HttpResponse.json({
     data: {
       node: {
         __typename: "GenericTitleList",
@@ -111,40 +106,49 @@ const graphQLBody = z.object({
 
 type GraphQLBody = z.infer<typeof graphQLBody>;
 
-let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>;
+const JUSTWATCH_GRAPHQL = "https://apis.justwatch.com/graphql";
 
-function parseBody(init: RequestInit | undefined) {
-  if (typeof init?.body !== "string") {
-    throw new Error("Expected a JSON request body");
-  }
-  return graphQLBody.parse(JSON.parse(init.body));
+const server = useMswServer();
+
+let requests: { body: GraphQLBody; headers: Headers }[];
+
+function serveJustWatch(respond: (body: GraphQLBody) => Response) {
+  server.use(
+    http.post(JUSTWATCH_GRAPHQL, async ({ request }) => {
+      const body = graphQLBody.parse(await request.json());
+      requests.push({ body, headers: request.headers });
+      return respond(body);
+    }),
+  );
+}
+
+function serve(...responses: Response[]) {
+  serveJustWatch(() => {
+    const next = responses.shift();
+    if (!next) throw new Error("Unexpected JustWatch request");
+    return next;
+  });
 }
 
 function requestBodies() {
-  return fetchMock.mock.calls.map(([, init]) => parseBody(init));
+  return requests.map(({ body }) => body);
 }
 
 const ctx = { connection: null };
 
 beforeEach(() => {
-  fetchMock = vi.fn<typeof fetch>();
-  vi.stubGlobal("fetch", fetchMock);
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
+  requests = [];
 });
 
 describe("justwatchProvider.fetchSource", () => {
   it("reads every page and maps the titles", async () => {
-    fetchMock
-      .mockResolvedValueOnce(
-        listPage([HALO_4, TERMINATION_POINT], {
-          endCursor: "Mg==",
-          hasNextPage: true,
-        }),
-      )
-      .mockResolvedValueOnce(listPage([ROBOCOP, HALO], { endCursor: "NA==" }));
+    serve(
+      listPage([HALO_4, TERMINATION_POINT], {
+        endCursor: "Mg==",
+        hasNextPage: true,
+      }),
+      listPage([ROBOCOP, HALO], { endCursor: "NA==" }),
+    );
 
     const { entries, complete } = await justwatchProvider.fetchSource(
       PUBLIC_LIST_ID,
@@ -205,16 +209,11 @@ describe("justwatchProvider.fetchSource", () => {
     });
     expect(bodies[1].variables).toMatchObject({ after: "Mg==" });
     expect(bodies[0].query).toContain("includeTitlesWithoutUrl: true");
-    const [, init] = fetchMock.mock.calls[0];
-    expect(new Headers(init?.headers).get("User-Agent")).toMatch(
-      /^Stremlist\//,
-    );
+    expect(requests[0].headers.get("User-Agent")).toMatch(/^Stremlist\//);
   });
 
   it("keeps a custom list in the API order, which is oldest added first", async () => {
-    fetchMock.mockResolvedValueOnce(
-      listPage([HALO_4, TERMINATION_POINT, ROBOCOP], {}, CUSTOM_LIST),
-    );
+    serve(listPage([HALO_4, TERMINATION_POINT, ROBOCOP], {}, CUSTOM_LIST));
 
     const { entries } = await justwatchProvider.fetchSource(
       CUSTOM_LIST_ID,
@@ -230,16 +229,16 @@ describe("justwatchProvider.fetchSource", () => {
 
   it("stops at the entry cap", async () => {
     let served = 0;
-    fetchMock.mockImplementation((_url, init) => {
-      const { first } = parseBody(init).variables;
+    serveJustWatch(({ variables: { first } }) => {
       if (first === undefined) throw new Error("Expected a page size");
       const edges = Array.from({ length: first }, (_, index) => ({
         node: { ...TERMINATION_POINT.node, id: `tm${served + index + 1}` },
       }));
       served += edges.length;
-      return Promise.resolve(
-        listPage(edges, { endCursor: btoa(String(served)), hasNextPage: true }),
-      );
+      return listPage(edges, {
+        endCursor: btoa(String(served)),
+        hasNextPage: true,
+      });
     });
 
     const { entries, complete } = await justwatchProvider.fetchSource(
@@ -248,12 +247,12 @@ describe("justwatchProvider.fetchSource", () => {
     );
 
     expect(entries).toHaveLength(2_000);
-    expect(fetchMock).toHaveBeenCalledTimes(10);
+    expect(requests).toHaveLength(10);
     expect(complete).toBe(false);
   });
 
   it("keeps entries without content or a known type", async () => {
-    fetchMock.mockResolvedValueOnce(
+    serve(
       listPage([
         { node: { id: "tm1", objectType: "MOVIE", content: null } },
         { node: { id: "tse5", objectType: "SHOW_SEASON", content: null } },
@@ -285,7 +284,7 @@ describe("justwatchProvider.fetchSource", () => {
   });
 
   it("reports a deleted list as not found", async () => {
-    fetchMock.mockResolvedValueOnce(Response.json(NOT_FOUND));
+    serve(HttpResponse.json(NOT_FOUND));
     const error = await justwatchProvider
       .fetchSource(CUSTOM_LIST_ID, ctx)
       .catch((caught: unknown) => caught);
@@ -297,12 +296,12 @@ describe("justwatchProvider.fetchSource", () => {
     await expect(
       justwatchProvider.fetchSource("tm18591", ctx),
     ).rejects.toMatchObject({ reason: "not_found" });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(requests).toEqual([]);
   });
 
   it("treats other GraphQL errors as failures, not as a deleted list", async () => {
-    fetchMock.mockResolvedValueOnce(
-      Response.json({
+    serve(
+      HttpResponse.json({
         errors: [{ message: "upstream timeout" }],
         data: { node: null },
       }),
@@ -315,7 +314,7 @@ describe("justwatchProvider.fetchSource", () => {
   });
 
   it("fails on an HTTP error", async () => {
-    fetchMock.mockResolvedValueOnce(Response.json({}, { status: 503 }));
+    serve(HttpResponse.json({}, { status: 503 }));
     await expect(
       justwatchProvider.fetchSource(CUSTOM_LIST_ID, ctx),
     ).rejects.toThrow(/503/);
@@ -324,9 +323,7 @@ describe("justwatchProvider.fetchSource", () => {
 
 describe("justwatchProvider.validateSource", () => {
   it("returns the list name as the suggested title", async () => {
-    fetchMock.mockResolvedValueOnce(
-      listPage([HALO_4], { endCursor: "MQ==", hasNextPage: true }),
-    );
+    serve(listPage([HALO_4], { endCursor: "MQ==", hasNextPage: true }));
 
     const result = await justwatchProvider.validateSource(
       ` ${PUBLIC_LIST_ID.toUpperCase()} `,
@@ -339,21 +336,19 @@ describe("justwatchProvider.validateSource", () => {
       suggestedTitle: "Sci-Fi Military",
       defaultDisplayMode: "split",
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(requests).toHaveLength(1);
     expect(requestBodies()[0].variables).toMatchObject({ first: 1 });
   });
 
   it("falls back to a generic title when the list has no name", async () => {
-    fetchMock.mockResolvedValueOnce(
-      listPage([], {}, { ...CUSTOM_LIST, content: null }),
-    );
+    serve(listPage([], {}, { ...CUSTOM_LIST, content: null }));
     await expect(
       justwatchProvider.validateSource(CUSTOM_LIST_ID, ctx),
     ).resolves.toMatchObject({ ok: true, suggestedTitle: "JustWatch list" });
   });
 
   it("reports a deleted list as not found", async () => {
-    fetchMock.mockResolvedValueOnce(Response.json(NOT_FOUND));
+    serve(HttpResponse.json(NOT_FOUND));
     await expect(
       justwatchProvider.validateSource(CUSTOM_LIST_ID, ctx),
     ).rejects.toMatchObject({
@@ -366,7 +361,7 @@ describe("justwatchProvider.validateSource", () => {
     await expect(
       justwatchProvider.validateSource("not a list", ctx),
     ).resolves.toEqual({ ok: false, reason: "not_found" });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(requests).toEqual([]);
   });
 });
 
@@ -387,8 +382,8 @@ describe("JustWatch ID resolution", () => {
   });
 
   it("re-reads the IMDb IDs of the nodes", async () => {
-    fetchMock.mockResolvedValueOnce(
-      Response.json({
+    serve(
+      HttpResponse.json({
         errors: [
           {
             message:
@@ -424,9 +419,7 @@ describe("JustWatch ID resolution", () => {
   });
 
   it("asks in chunks of 50 node IDs", async () => {
-    fetchMock.mockImplementation(() =>
-      Promise.resolve(Response.json({ data: { nodes: [] } })),
-    );
+    serveJustWatch(() => HttpResponse.json({ data: { nodes: [] } }));
 
     await justwatchRecheckStrategy.resolve(
       Array.from({ length: 120 }, (_, index) => ({
@@ -443,7 +436,7 @@ describe("JustWatch ID resolution", () => {
     const found = await justwatchRecheckStrategy.resolve([{ title: "Halo" }]);
 
     expect(found.size).toBe(0);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(requests).toEqual([]);
   });
 });
 

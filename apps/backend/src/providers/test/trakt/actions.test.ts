@@ -16,7 +16,7 @@ import {
   mandalorian,
   noImdbShow,
   pitt,
-} from "./fixtures";
+} from "./trakt.fixture";
 import {
   calls,
   clearCalls,

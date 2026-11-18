@@ -14,7 +14,7 @@ import {
   mandalorian,
   noImdbShow,
   pitt,
-} from "./fixtures";
+} from "./trakt.fixture";
 import {
   calls,
   callsTo,
@@ -626,7 +626,7 @@ describe("Trakt Connection sources", () => {
   });
 
   it("still offers the lists when smart lists fail", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "error");
     route("GET /users/me/lists", [
       { name: "Favs", ids: { trakt: 7, slug: "favs" } },
     ]);

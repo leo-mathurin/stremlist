@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { http, HttpResponse } from "msw";
+import { describe, expect, it } from "vite-plus/test";
+import { useMswServer } from "../../test/helpers/msw.test-utils";
 import {
   HttpError,
   providerFetch,
@@ -7,46 +9,48 @@ import {
 } from "../http";
 import { SourceUnavailableError } from "../types";
 
-function mockFetch(response: () => Response) {
-  return vi
-    .spyOn(globalThis, "fetch")
-    .mockImplementation(() => Promise.resolve(response()));
-}
+const server = useMswServer();
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
+function serveItems(response: () => Response) {
+  const requests: Request[] = [];
+  server.use(
+    http.all("https://api.example.test/items", ({ request }) => {
+      requests.push(request);
+      return response();
+    }),
+  );
+  return requests;
+}
 
 describe("providerFetch", () => {
   it("sets the query, the JSON body and the bearer token", async () => {
-    const fetchMock = mockFetch(() => new Response("{}"));
+    const requests = serveItems(() => HttpResponse.json({}));
     await providerFetch("https://api.example.test/items?sort=asc", {
       method: "POST",
       query: { page: "2", sort: "desc" },
       json: { ids: [1] },
       bearer: "token-1",
     });
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("https://api.example.test/items?sort=desc&page=2");
-    const headers = new Headers(init?.headers);
-    expect(headers.get("Authorization")).toBe("Bearer token-1");
-    expect(headers.get("Content-Type")).toBe("application/json");
-    expect(headers.get("User-Agent")).toMatch(/^Stremlist\//);
-    expect(init?.body).toBe('{"ids":[1]}');
+    const [request] = requests;
+    expect(request.url).toBe("https://api.example.test/items?sort=desc&page=2");
+    expect(request.headers.get("Authorization")).toBe("Bearer token-1");
+    expect(request.headers.get("Content-Type")).toBe("application/json");
+    expect(request.headers.get("User-Agent")).toMatch(/^Stremlist\//);
+    expect(await request.text()).toBe('{"ids":[1]}');
   });
 
   it("sends no Authorization header without a token", async () => {
-    const fetchMock = mockFetch(() => new Response("{}"));
+    const requests = serveItems(() => HttpResponse.json({}));
     await providerFetch("https://api.example.test/items", { bearer: "" });
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("https://api.example.test/items");
-    expect(new Headers(init?.headers).has("Authorization")).toBe(false);
+    const [request] = requests;
+    expect(request.url).toBe("https://api.example.test/items");
+    expect(request.headers.has("Authorization")).toBe(false);
   });
 });
 
 describe("providerFetchJson", () => {
   it("throws HttpError with the body on non-2xx", async () => {
-    mockFetch(() => new Response("nope", { status: 503 }));
+    serveItems(() => new HttpResponse("nope", { status: 503 }));
     await expect(
       providerFetchJson("https://api.example.test/items", {
         retryOn429: false,

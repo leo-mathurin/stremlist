@@ -8,7 +8,7 @@ import {
   json,
   stubFetch,
 } from "../oauth-harness";
-import { activities, ANIME, MOVIES, SHOWS } from "./fixtures";
+import { activities, ANIME, MOVIES, SHOWS } from "./simkl.fixture";
 import { r2 } from "./mocks";
 
 export { calls, clearCalls, json, restoreStubs } from "../oauth-harness";

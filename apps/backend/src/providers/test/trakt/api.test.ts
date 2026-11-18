@@ -9,10 +9,11 @@ import {
 import { traktProvider } from "../../trakt";
 import type { OAuthConfig } from "../../types";
 import { ConnectionExpiredError, SourceUnavailableError } from "../../types";
-import { clerks, listed } from "./fixtures";
+import { clerks, listed } from "./trakt.fixture";
 import {
   calls,
   connection,
+  expiredConnection,
   fetchEntries,
   json,
   required,
@@ -88,8 +89,7 @@ describe("Trakt read errors", () => {
   });
 
   it("lets an expired Connection through, for the caller to ask for renewal", async () => {
-    const conn = connection();
-    conn.getAccessToken.mockRejectedValue(new ConnectionExpiredError("trakt"));
+    const conn = expiredConnection();
     await expect(fetchEntries("me/history", conn)).rejects.toBeInstanceOf(
       ConnectionExpiredError,
     );
@@ -111,8 +111,7 @@ describe("Trakt read errors", () => {
         ? status(500)
         : json([listed("movie", clerks, "2022-10-14T03:19:22.000Z", 1)]),
     );
-    const conn = connection();
-    conn.getAccessToken.mockRejectedValue(new ConnectionExpiredError("trakt"));
+    const conn = expiredConnection();
 
     const entries = await fetchEntries("users/sean/watchlist", conn);
 
@@ -129,15 +128,13 @@ describe("Trakt read errors", () => {
     route("GET /shows/trending", (call) =>
       call.headers.has("Authorization") ? status(500) : json([]),
     );
-    const conn = connection();
-    conn.getAccessToken.mockRejectedValue(new ConnectionExpiredError("trakt"));
+    const conn = expiredConnection();
 
     await expect(fetchEntries("trending", conn)).resolves.toEqual([]);
   });
 
   it("a private Source list with a Connection that lost its token still needs renewal", async () => {
-    const conn = connection();
-    conn.getAccessToken.mockRejectedValue(new ConnectionExpiredError("trakt"));
+    const conn = expiredConnection();
 
     await expect(fetchEntries("me/watchlist", conn)).rejects.toBeInstanceOf(
       ConnectionExpiredError,
@@ -147,8 +144,7 @@ describe("Trakt read errors", () => {
 
   it("a private user stays private with a Connection that lost its token", async () => {
     route("GET /users/hidden/watchlist", status(401));
-    const conn = connection();
-    conn.getAccessToken.mockRejectedValue(new ConnectionExpiredError("trakt"));
+    const conn = expiredConnection();
 
     expect(
       await unavailableReason(fetchEntries("users/hidden/watchlist", conn)),

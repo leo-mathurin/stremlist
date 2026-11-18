@@ -8,7 +8,7 @@ import {
 } from "vite-plus/test";
 import { simklProvider } from "../../simkl";
 import { SourceUnavailableError } from "../../types";
-import { activities } from "./fixtures";
+import { activities } from "./simkl.fixture";
 import {
   ageLibrary,
   apiCalls,

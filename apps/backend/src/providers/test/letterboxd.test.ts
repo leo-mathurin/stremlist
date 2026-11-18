@@ -1,3 +1,4 @@
+import { http, HttpResponse } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -7,20 +8,13 @@ import {
   vi,
 } from "vite-plus/test";
 import { z } from "zod";
-import {
-  r2Objects,
-  r2Puts,
-  r2Unreadable,
-} from "../../__tests__/helpers/mock-r2";
-import {
-  callRpc,
-  db,
-  rpcHandlers,
-} from "../../__tests__/helpers/mock-supabase";
+import { useMswServer } from "../../test/helpers/msw.test-utils";
+import { r2Objects, r2Puts, r2Unreadable } from "../../test/helpers/mock-r2";
+import { callRpc, db, rpcHandlers } from "../../test/helpers/mock-supabase";
 import {
   letterboxdGate,
   letterboxdWaiters,
-} from "../../__tests__/helpers/supabase/letterboxd-gate-rpcs";
+} from "../../test/helpers/supabase/letterboxd-gate-rpcs";
 import { resolveEntries } from "../../titles/resolver";
 import { letterboxdProvider } from "../letterboxd";
 import { letterboxdSnapshot } from "../letterboxd-cache";
@@ -29,12 +23,26 @@ import {
   letterboxdSnapshotSchema,
   parseLetterboxdPage,
 } from "../letterboxd-page";
+import {
+  recordLetterboxdRequest,
+  requestDetails,
+} from "../letterboxd-request-log";
 import { readQueue, withReadPriority } from "../read-priority";
-vi.mock("../../lib/r2", () => import("../../__tests__/helpers/mock-r2"));
-vi.mock(
-  "../../lib/supabase",
-  () => import("../../__tests__/helpers/mock-supabase"),
-);
+vi.mock("../../lib/r2", () => import("../../test/helpers/mock-r2"));
+vi.mock("../../lib/supabase", () => import("../../test/helpers/mock-supabase"));
+
+const server = useMswServer();
+
+function serveLetterboxd(body: () => string) {
+  const requests: Request[] = [];
+  server.use(
+    http.get("https://letterboxd.com/*", ({ request }) => {
+      requests.push(request);
+      return new HttpResponse(body());
+    }),
+  );
+  return requests;
+}
 
 const context = { connection: null };
 const ref = "users/alice/watchlist";
@@ -179,16 +187,12 @@ describe("Letterboxd public reads", () => {
   });
 
   it("a truncated manual refresh retains the populated page snapshot", async () => {
-    const send = vi.fn(() => Promise.resolve(new Response(page([1]))));
-    vi.stubGlobal("fetch", send);
+    serveLetterboxd(() => page([1]));
     await letterboxdProvider.fetchSource(ref, context);
     await vi.advanceTimersByTimeAsync(5000);
-    send.mockImplementation(() =>
-      Promise.resolve(
-        new Response(
-          '<html><head><title>List • Letterboxd</title></head><body><ul class="poster-list -grid">',
-        ),
-      ),
+    serveLetterboxd(
+      () =>
+        '<html><head><title>List • Letterboxd</title></head><body><ul class="poster-list -grid">',
     );
     await expect(
       letterboxdProvider.fetchSource(ref, { ...context, forceRefresh: true }),
@@ -258,11 +262,10 @@ describe("Letterboxd public reads", () => {
     expect((await pending).entries).toHaveLength(100);
   });
   it("a manual refresh revalidates shared pages instead of waiting six hours", async () => {
-    const send = vi.fn(() => Promise.resolve(new Response(page([1]))));
-    vi.stubGlobal("fetch", send);
+    const first = serveLetterboxd(() => page([1]));
     await letterboxdProvider.fetchSource(ref, context);
     await vi.advanceTimersByTimeAsync(5000);
-    send.mockImplementation(() => Promise.resolve(new Response(page([2, 1]))));
+    const second = serveLetterboxd(() => page([2, 1]));
     expect(
       (await letterboxdProvider.fetchSource(ref, context)).entries,
     ).toHaveLength(1);
@@ -274,7 +277,7 @@ describe("Letterboxd public reads", () => {
         })
       ).entries,
     ).toHaveLength(2);
-    expect(send).toHaveBeenCalledTimes(2);
+    expect([...first, ...second]).toHaveLength(2);
   });
 
   it("resolves an uncatalogued film only through an exact IMDb link", async () => {
@@ -1289,23 +1292,38 @@ describe("Letterboxd request log", () => {
       "fetch",
       vi.fn(() => Promise.resolve(new Response(page([1])))),
     );
-    const random = vi.spyOn(Math, "random").mockReturnValue(0.5);
     await letterboxdProvider.fetchSource(ref, context);
     await vi.advanceTimersByTimeAsync(0);
     expect(counted()).toHaveLength(1);
-    expect(kept()).toHaveLength(0);
 
-    random.mockReturnValue(0.001);
-    await letterboxdProvider.fetchSource("users/bob/watchlist", context);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(kept()).toEqual([
+    const url = "https://letterboxd.com/bob/watchlist/";
+    const keptForBob = () => kept().filter((row) => row.url === url);
+    const details = {
+      ...requestDetails("collection", url),
+      status: 200,
+      bytes: page([1]).length,
+      bodyExcerpt: page([1]),
+    };
+    const outcome = {
+      outcome: "ok",
+      durationMs: 10,
+      waitMs: 0,
+      priority: "interactive",
+      probe: false,
+    } as const;
+    await recordLetterboxdRequest(details, outcome, () => 0.5);
+    expect(counted()).toHaveLength(2);
+    expect(keptForBob()).toHaveLength(0);
+
+    await recordLetterboxdRequest(details, outcome, () => 0.001);
+    expect(keptForBob()).toEqual([
       expect.objectContaining({
         outcome: "ok",
         status: 200,
         body_excerpt: null,
       }),
     ]);
-    expect(kept()[0].bytes).toBeGreaterThan(0);
+    expect(keptForBob()[0].bytes).toBeGreaterThan(0);
   });
   it("reports a refusal to the gate at once, even when its body stalls", async () => {
     vi.stubGlobal(

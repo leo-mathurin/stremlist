@@ -34,23 +34,27 @@ describe("scheduleBackgroundTask", () => {
 
   it("registers the task with Vercel so it can finish after the response", async () => {
     process.env.VERCEL = "1";
-    const task = vi.fn().mockResolvedValue(undefined);
+    let runs = 0;
 
-    scheduleBackgroundTask(task);
+    scheduleBackgroundTask(() => {
+      runs++;
+      return Promise.resolve();
+    });
 
     expect(vercelMocks.waitUntil).toHaveBeenCalledOnce();
     const [promise] = vercelMocks.waitUntil.mock.calls[0];
     await promise;
-    expect(task).toHaveBeenCalledOnce();
+    expect(runs).toBe(1);
   });
 
   it("runs the task locally without registering it with Vercel", async () => {
-    const task = vi.fn().mockResolvedValue(undefined);
+    const ran = Promise.withResolvers<void>();
 
-    scheduleBackgroundTask(task);
-    await vi.waitFor(() => {
-      expect(task).toHaveBeenCalledOnce();
+    scheduleBackgroundTask(() => {
+      ran.resolve();
+      return Promise.resolve();
     });
+    await ran.promise;
 
     expect(vercelMocks.waitUntil).not.toHaveBeenCalled();
   });
@@ -88,18 +92,17 @@ describe("scheduleBackgroundTask", () => {
   ])(
     "logs a %s task failure without an unhandled rejection",
     async (_, task) => {
-      const error = vi
-        .spyOn(console, "error")
-        .mockImplementation(() => undefined);
+      process.env.VERCEL = "1";
+      const error = vi.spyOn(console, "error");
 
       scheduleBackgroundTask(task);
 
-      await vi.waitFor(() => {
-        expect(error).toHaveBeenCalledWith(
-          "Background task failed:",
-          expect.any(Error),
-        );
-      });
+      const [promise] = vercelMocks.waitUntil.mock.calls[0];
+      await expect(promise).resolves.toBeUndefined();
+      expect(error).toHaveBeenCalledWith(
+        "Background task failed:",
+        expect.any(Error),
+      );
     },
   );
 });

@@ -1,6 +1,7 @@
 import { vi } from "vite-plus/test";
 import { traktProvider } from "../../trakt";
 import type { ConnectionAccess } from "../../types";
+import { ConnectionExpiredError } from "../../types";
 import {
   clearCalls as clearRecordedCalls,
   connection as oauthConnection,
@@ -60,7 +61,7 @@ export function status(code: number) {
 
 /** One page of a paginated endpoint, chosen by the `page` query parameter. */
 export function pages(all: unknown[][]) {
-  return (call) => {
+  const handler: Handler = (call) => {
     const page = Number(call.url.searchParams.get("page") ?? "1");
     return json(all[page - 1] ?? [], {
       headers: {
@@ -69,6 +70,7 @@ export function pages(all: unknown[][]) {
       },
     });
   };
+  return handler;
 }
 
 export function callsTo(path: string) {
@@ -99,6 +101,14 @@ export function resetTraktTest() {
 
 export function connection(tokens: string[] = ["token-1"]) {
   return oauthConnection("trakt", "sl_testaccount0000000000", tokens);
+}
+
+/** A Connection that lost its token: it cannot give an access token. */
+export function expiredConnection() {
+  return {
+    ...connection(),
+    getAccessToken: () => Promise.reject(new ConnectionExpiredError("trakt")),
+  } satisfies ConnectionAccess;
 }
 
 export async function fetchEntries(

@@ -6,15 +6,11 @@ import {
   it,
   vi,
 } from "vite-plus/test";
-import { db } from "../../__tests__/helpers/mock-supabase";
-import { MockQueryBuilder } from "../../__tests__/helpers/supabase/query-builder";
+import { db } from "../../test/helpers/mock-supabase";
 import { findPosters, resetPosterMemory } from "../title-posters";
 import { resetTvdbToken } from "../tvdb";
 
-vi.mock(
-  "../../lib/supabase",
-  () => import("../../__tests__/helpers/mock-supabase"),
-);
+vi.mock("../../lib/supabase", () => import("../../test/helpers/mock-supabase"));
 
 const BOTH = {
   movie_results: [{ poster_path: "/as-movie.jpg" }],
@@ -77,9 +73,7 @@ describe("findPosters on TMDB", () => {
   it("keeps its budget when the stored posters are slow to read", async () => {
     const fetch = answer(BOTH);
     vi.stubGlobal("fetch", fetch);
-    const read = vi
-      .spyOn(MockQueryBuilder.prototype, "then")
-      .mockImplementationOnce(() => new Promise(() => {}));
+    db.stalledTables.add("title_posters");
     const started = Date.now();
     const posters = await findPosters(
       "tmdb",
@@ -89,7 +83,6 @@ describe("findPosters on TMDB", () => {
     expect(posters.size).toBe(0);
     expect(Date.now() - started).toBeLessThan(1000);
     expect(fetch).not.toHaveBeenCalled();
-    read.mockRestore();
   });
 
   it("asks TMDB once for a Title that concurrent requests need", async () => {
