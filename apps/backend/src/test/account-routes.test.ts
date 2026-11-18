@@ -18,7 +18,7 @@ import {
   seedAccount,
   seedConnection,
   seedList,
-} from "./helpers/fixtures.js";
+} from "./helpers/account.fixture.js";
 import { cache } from "./helpers/mock-list-cache.js";
 import { r2Objects, r2Undeletable } from "./helpers/mock-r2.js";
 import { fakeAdapter, useFakeProvider } from "./helpers/mock-registry.js";
@@ -305,7 +305,7 @@ describe("DELETE /:accountId/connections/:provider", () => {
     const key = `connections/${account.id}/trakt/membership.json`;
     r2Objects.set(key, "{}");
     r2Undeletable.add(key);
-    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const logged = vi.spyOn(console, "error");
 
     const res = await disconnect(account.id, "trakt");
 

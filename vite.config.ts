@@ -158,11 +158,11 @@ export default defineConfig({
       },
       {
         /** Mirrors the awaitable Supabase query builder, which has `then`. */
-        files: ["apps/backend/src/__tests__/helpers/supabase/query-builder.ts"],
+        files: ["apps/backend/src/test/helpers/supabase/query-builder.ts"],
         rules: { "unicorn/no-thenable": "off" },
       },
       {
-        files: ["**/__tests__/**/*.ts", "**/*.test.ts"],
+        files: ["**/test/**/*.ts", "**/*.test.ts"],
         plugins: ["vitest"],
         rules: {
           "vitest/no-focused-tests": "error",

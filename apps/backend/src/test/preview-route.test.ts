@@ -8,7 +8,7 @@ import {
   seedAccount,
   seedConnection,
   seedLegacyAccount,
-} from "./helpers/fixtures.js";
+} from "./helpers/account.fixture.js";
 import {
   fakeAdapter,
   resetProviders,
@@ -28,7 +28,7 @@ vi.mock("../providers/registry", async () => {
 vi.mock("../lib/r2", async () => {
   return await import("./helpers/mock-r2.js");
 });
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
+vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
 
 const TITLE = movie("tt0111161", { name: "The Shawshank Redemption" });
 
@@ -56,7 +56,6 @@ beforeEach(() => {
   resetProviders();
   resetPreviewReadings();
   vi.restoreAllMocks();
-  vi.spyOn(console, "log").mockImplementation(() => undefined);
 });
 
 describe("POST /lists/preview", () => {

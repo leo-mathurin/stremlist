@@ -16,7 +16,7 @@ import {
 import type { SourceSnapshot } from "../providers/types";
 import { SourceUnavailableError } from "../providers/types";
 import { getListCatalog } from "../services/lists";
-import { movie, seedAccount, seedList } from "./helpers/fixtures.js";
+import { movie, seedAccount, seedList } from "./helpers/account.fixture.js";
 import { cache } from "./helpers/mock-list-cache.js";
 import {
   fakeAdapter,
@@ -28,7 +28,7 @@ import { metasBody, readJson, syncSnapshotBody } from "./helpers/json.js";
 
 vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
 vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
+vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
 vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
 
 const LIST_ID = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
@@ -147,17 +147,21 @@ describe("a Stremio request for a busy Letterboxd", () => {
   });
 
   it("serves the pages read so far, comes back soon and completes them in the background", async () => {
-    const read = letterboxd(() => Promise.reject(new Error("No more reads")));
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => (release = resolve));
-    read.mockImplementationOnce(() =>
-      Promise.resolve(
-        snapshot(["tt0000001"], { complete: false, interrupted: true }),
-      ),
-    );
-    read.mockImplementationOnce(async () => {
-      await held;
-      return snapshot(["tt0000001", "tt0000002"]);
+    const read = letterboxd(async () => {
+      switch (read.mock.calls.length) {
+        case 1:
+          return snapshot(["tt0000001"], {
+            complete: false,
+            interrupted: true,
+          });
+        case 2:
+          await held;
+          return snapshot(["tt0000001", "tt0000002"]);
+        default:
+          throw new Error("No more reads");
+      }
     });
 
     const { body } = await catalog();

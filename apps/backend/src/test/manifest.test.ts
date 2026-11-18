@@ -7,7 +7,7 @@ import {
   seedConnection,
   seedLegacyAccount,
   seedList,
-} from "./helpers/fixtures.js";
+} from "./helpers/account.fixture.js";
 import { cache } from "./helpers/mock-list-cache.js";
 import {
   fakeActions,
@@ -21,7 +21,7 @@ import { readJson, stremioManifest } from "./helpers/json.js";
 vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
 vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
 vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
+vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
 
 const IMDB_USER = "ur12345678";
 const META_RESOURCE = { name: "meta", types: ["movie"], idPrefixes: ["tt"] };
@@ -46,7 +46,6 @@ beforeEach(() => {
   resetRpc();
   cache.reset();
   resetProviders();
-  vi.spyOn(console, "error").mockImplementation(() => undefined);
 });
 
 describe("private manifest", () => {

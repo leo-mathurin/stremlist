@@ -7,8 +7,10 @@ import {
   vi,
 } from "vite-plus/test";
 import { createHash } from "node:crypto";
+import { http, HttpResponse } from "msw";
 import app from "../index.js";
 import { decryptSecret } from "../lib/crypto";
+import { traktProvider } from "../providers/trakt";
 import type { OAuthConfig, ProviderAdapter } from "../providers/types";
 import { forgetConnectionObjects } from "../services/actions";
 import {
@@ -27,7 +29,7 @@ import {
   seedConnection,
   seedLegacyAccount,
   useTestEncryptionKey,
-} from "./helpers/fixtures.js";
+} from "./helpers/account.fixture.js";
 import { r2Objects } from "./helpers/mock-r2.js";
 import {
   fakeAdapter,
@@ -37,6 +39,8 @@ import {
 import { db, resetRpc } from "./helpers/mock-supabase.js";
 import { z } from "zod";
 import { accountIdBody, mustString, readJson } from "./helpers/json.js";
+import { useMswServer } from "./helpers/msw.test-utils.js";
+import { useTraktApp } from "./helpers/trakt.test-utils.js";
 
 const background = vi.hoisted(() => ({
   tasks: [] as (() => Promise<unknown>)[],
@@ -56,7 +60,7 @@ vi.mock("../services/list-cache", async () => {
 vi.mock("../providers/registry", async () => {
   return await import("./helpers/mock-registry.js");
 });
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
+vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
 
 const AUTHORIZE_URL = "https://trakt.example/oauth/authorize";
 const TOKEN_URL = "https://api.trakt.example/oauth/token";
@@ -65,7 +69,30 @@ type ListConnectionSources = NonNullable<
   ProviderAdapter["listConnectionSources"]
 >;
 
-const fetchUsername = vi.fn<(accessToken: string) => Promise<string | null>>();
+const TRAKT_SETTINGS = "https://api.trakt.tv/users/settings";
+
+function fetchUsername(accessToken: string) {
+  if (!traktProvider.oauth?.fetchUsername) {
+    throw new Error("The Trakt adapter looks up no username");
+  }
+  return traktProvider.oauth.fetchUsername(accessToken);
+}
+
+const server = useMswServer();
+const requests: Request[] = [];
+server.events.on("request:start", ({ request }) => {
+  requests.push(request.clone());
+});
+
+function serveToken(body: Record<string, unknown>, status = 200) {
+  server.use(http.post(TOKEN_URL, () => HttpResponse.json(body, { status })));
+}
+
+function serveTraktUser(username: string) {
+  server.use(
+    http.get(TRAKT_SETTINGS, () => HttpResponse.json({ user: { username } })),
+  );
+}
 
 function useOAuthProvider(overrides: Partial<OAuthConfig> = {}) {
   useFakeProvider(
@@ -151,7 +178,6 @@ function redirectParams(response: Response) {
   };
 }
 
-const fetchMock = vi.fn<typeof fetch>();
 let accountId = "";
 
 beforeEach(() => {
@@ -161,15 +187,15 @@ beforeEach(() => {
   resetRpc();
   resetProviders();
   useTestEncryptionKey();
-  fetchUsername.mockReset();
-  fetchMock.mockReset();
-  vi.stubGlobal("fetch", fetchMock);
+  requests.length = 0;
+  useTraktApp();
   accountId = seedAccount().id;
-  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  vi.spyOn(console, "error");
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -363,8 +389,8 @@ describe("OAuth login CSRF", () => {
       method: "POST",
     });
     const { authorizeUrl, browserKey } = await readJson(start, startBody);
-    fetchMock.mockResolvedValue(Response.json({ access_token: "victim" }));
-    fetchUsername.mockResolvedValue("victim");
+    serveToken({ access_token: "victim" });
+    serveTraktUser("victim");
     return {
       state: new URL(authorizeUrl).searchParams.get("state") ?? "",
       browserKey,
@@ -379,7 +405,7 @@ describe("OAuth login CSRF", () => {
     for (const task of background.tasks.splice(0)) await task();
 
     expect(redirectParams(res).params.connected).toBeUndefined();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(requests).toEqual([]);
     expect(db.getTable("connections")).toEqual([]);
   });
 
@@ -395,7 +421,7 @@ describe("OAuth login CSRF", () => {
 
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ reason: "expired" });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(requests).toEqual([]);
     expect(db.getTable("connections")).toEqual([]);
     expect(db.getTable("oauth_states")).toHaveLength(1);
   });
@@ -424,7 +450,7 @@ describe("GET /oauth/:provider/callback", () => {
       params: {},
       fragment: { oauth: "trakt", state: "state-abc", code: "code-1" },
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(requests).toEqual([]);
     expect(db.getTable("oauth_states")).toHaveLength(1);
   });
 
@@ -488,8 +514,8 @@ describe("POST /connections/:provider/complete", () => {
         r2Objects.set(prefix + name, "{}");
       const before = r2Objects.get(key);
       seedState(accountId);
-      fetchMock.mockResolvedValue(Response.json({ access_token: "renewed" }));
-      fetchUsername.mockResolvedValue(username);
+      serveToken({ access_token: "renewed" });
+      serveTraktUser(username);
 
       const response = await complete();
       expect(await response.json()).toMatchObject({ ok: true, accountId });
@@ -514,41 +540,41 @@ describe("POST /connections/:provider/complete", () => {
   it("exchanges the code and stores the encrypted Connection", async () => {
     useOAuthProvider();
     seedState(accountId);
-    fetchMock.mockResolvedValue(
-      Response.json({
-        access_token: "access-1",
-        refresh_token: "refresh-1",
-        expires_in: 7200,
-        scope: "public",
-      }),
-    );
-    fetchUsername.mockResolvedValue("leo");
+    serveToken({
+      access_token: "access-1",
+      refresh_token: "refresh-1",
+      expires_in: 7200,
+      scope: "public",
+    });
+    serveTraktUser("leo");
 
     const res = await complete();
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, accountId, created: false });
 
-    expect(fetchMock).toHaveBeenCalledOnce();
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe(TOKEN_URL);
-    expect(init?.method).toBe("POST");
-    expect(
-      Object.fromEntries(
-        new URLSearchParams(mustString(init?.body, "the token request body")),
-      ),
-    ).toEqual({
-      client_id: "client-123",
-      client_secret: "secret-456",
-      grant_type: "authorization_code",
-      code: "code-1",
-      code_verifier: "verifier-xyz",
-      redirect_uri: "http://localhost/oauth/trakt/callback",
-    });
-    expect(new Headers(init?.headers).get("User-Agent")).toMatch(
-      /^Stremlist\//,
+    const tokenRequests = requests.filter(
+      (request) => request.url === TOKEN_URL,
     );
-    expect(fetchUsername).toHaveBeenCalledWith("access-1");
+    expect(tokenRequests).toHaveLength(1);
+    const [token] = tokenRequests;
+    expect(token.method).toBe("POST");
+    expect(Object.fromEntries(new URLSearchParams(await token.text()))).toEqual(
+      {
+        client_id: "client-123",
+        client_secret: "secret-456",
+        grant_type: "authorization_code",
+        code: "code-1",
+        code_verifier: "verifier-xyz",
+        redirect_uri: "http://localhost/oauth/trakt/callback",
+      },
+    );
+    expect(token.headers.get("User-Agent")).toMatch(/^Stremlist\//);
+    expect(
+      requests
+        .find((request) => request.url === TRAKT_SETTINGS)
+        ?.headers.get("Authorization"),
+    ).toBe("Bearer access-1");
 
     const [row] = db.getTable("connections");
     expect(row).toMatchObject({
@@ -571,8 +597,10 @@ describe("POST /connections/:provider/complete", () => {
   it("still connects when the username cannot be fetched", async () => {
     useOAuthProvider();
     seedState(accountId);
-    fetchMock.mockResolvedValue(Response.json({ access_token: "access-1" }));
-    fetchUsername.mockRejectedValue(new Error("rate limited"));
+    serveToken({ access_token: "access-1" });
+    server.use(
+      http.get(TRAKT_SETTINGS, () => new HttpResponse(null, { status: 503 })),
+    );
 
     const res = await complete();
 
@@ -587,8 +615,8 @@ describe("POST /connections/:provider/complete", () => {
   it("creates the Account of a new setup only when the connection succeeds", async () => {
     useOAuthProvider();
     seedState(null);
-    fetchMock.mockResolvedValue(Response.json({ access_token: "access-1" }));
-    fetchUsername.mockResolvedValue("leo");
+    serveToken({ access_token: "access-1" });
+    serveTraktUser("leo");
     const before = db.getTable("accounts").length;
 
     const res = await complete({
@@ -647,7 +675,7 @@ describe("POST /connections/:provider/complete", () => {
 
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ reason: "expired" });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(requests).toEqual([]);
     expect(db.getTable("connections")).toEqual([]);
     expect(db.getTable("accounts")).toHaveLength(before);
   });
@@ -655,9 +683,7 @@ describe("POST /connections/:provider/complete", () => {
   it("creates no Account when the token exchange fails", async () => {
     useOAuthProvider();
     seedState(null);
-    fetchMock.mockResolvedValue(
-      Response.json({ error: "invalid_grant" }, { status: 400 }),
-    );
+    serveToken({ error: "invalid_grant" }, 400);
     const before = db.getTable("accounts").length;
 
     const res = await complete();
@@ -677,16 +703,14 @@ describe("POST /connections/:provider/complete", () => {
 
     expect(res.status).toBe(503);
     expect(await res.json()).toMatchObject({ reason: "unavailable" });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(requests).toEqual([]);
     expect(db.getTable("connections")).toEqual([]);
   });
 
   it("reports a failed token exchange", async () => {
     useOAuthProvider();
     seedState(accountId);
-    fetchMock.mockResolvedValue(
-      Response.json({ error: "invalid_grant" }, { status: 400 }),
-    );
+    serveToken({ error: "invalid_grant" }, 400);
 
     const res = await complete();
 

@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import app from "../index.js";
-import { movie, seedLegacyAccount, seedList } from "./helpers/fixtures.js";
+import {
+  movie,
+  seedLegacyAccount,
+  seedList,
+} from "./helpers/account.fixture.js";
 import { cache } from "./helpers/mock-list-cache.js";
 import { resetProviders } from "./helpers/mock-registry.js";
 import { db, resetRpc, supabase } from "./helpers/mock-supabase.js";
@@ -15,7 +19,7 @@ import {
 vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
 vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
 vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
+vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
 
 const LEGACY_KEYS = [
   ["an IMDb user ID", "ur12345678"],
@@ -43,8 +47,6 @@ beforeEach(() => {
   cache.reset();
   resetProviders();
   vi.restoreAllMocks();
-  vi.spyOn(console, "error").mockImplementation(() => undefined);
-  vi.spyOn(console, "warn").mockImplementation(() => undefined);
 });
 
 function seedInstall(key: string) {

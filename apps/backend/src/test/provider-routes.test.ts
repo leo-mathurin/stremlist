@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { PROVIDER_IDS } from "@stremlist/shared/providers";
+import { http, HttpResponse } from "msw";
 import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
 import { z } from "zod";
 
@@ -15,7 +16,8 @@ import {
   postJson,
   resetConfigTest,
 } from "./helpers/config-api.js";
-import { seedAccount, seedConnection } from "./helpers/fixtures.js";
+import { seedAccount, seedConnection } from "./helpers/account.fixture.js";
+import { FakeImdb, IMDB_GRAPHQL } from "./helpers/imdb.test-utils.js";
 import { fakeAdapter, useFakeProvider } from "./helpers/mock-registry.js";
 import { db } from "./helpers/mock-supabase.js";
 import {
@@ -23,6 +25,7 @@ import {
   letterboxdGate,
 } from "./helpers/supabase/letterboxd-gate-rpcs.js";
 import { readJson } from "./helpers/json.js";
+import { useMswServer } from "./helpers/msw.test-utils.js";
 
 const { backgroundMocks, prewarmMocks, supabaseMocks } = await vi.hoisted(
   () => import("./helpers/config-api-mocks.js"),
@@ -51,7 +54,14 @@ function haltLetterboxd() {
   haltLetterboxdGate();
 }
 
-beforeEach(resetConfigTest);
+const imdb = new FakeImdb();
+const server = useMswServer();
+
+beforeEach(() => {
+  resetConfigTest();
+  imdb.reset();
+  server.use(imdb.handler);
+});
 
 describe("POST /links/resolve", () => {
   function resolve(input: string, accountKey?: string) {
@@ -252,9 +262,13 @@ describe("POST /links/resolve", () => {
   });
 
   it("resolves an IMDb watchlist link (p. handle) to its user ID", async () => {
-    const validate = vi
-      .spyOn(scraper, "validateImdbWatchlist")
-      .mockResolvedValue({ valid: true, userId: OWNER });
+    server.use(
+      http.get("https://www.imdb.com/user/p.leo123/", () =>
+        HttpResponse.html(`<script>{"userId":"${OWNER}"}</script>`),
+      ),
+    );
+    imdb.watchlists.set(OWNER, []);
+    const validate = vi.spyOn(scraper, "validateImdbWatchlist");
 
     const res = await resolve("https://www.imdb.com/user/p.leo123/watchlist");
 
@@ -271,10 +285,7 @@ describe("POST /links/resolve", () => {
   });
 
   it("reports a private IMDb watchlist", async () => {
-    vi.spyOn(scraper, "validateImdbWatchlist").mockResolvedValue({
-      valid: false,
-      reason: "private",
-    });
+    imdb.watchlists.set(OWNER, "private");
 
     const res = await resolve(OWNER);
 
@@ -299,11 +310,9 @@ describe("POST /links/resolve", () => {
   });
 
   it("answers unavailable when validation throws", async () => {
-    vi.spyOn(scraper, "validateImdbList").mockRejectedValue(
-      new Error("socket hang up"),
-    );
+    server.use(http.post(IMDB_GRAPHQL, () => HttpResponse.error()));
 
-    const res = await resolve("https://www.imdb.com/list/ls123456789/");
+    const res = await resolve(`https://www.imdb.com/user/${OWNER}/ratings`);
 
     expect(await res.json()).toEqual({
       ok: false,

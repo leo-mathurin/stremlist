@@ -16,7 +16,7 @@ import {
   seedConnection,
   seedList,
   seedOAuthState,
-} from "./helpers/fixtures.js";
+} from "./helpers/account.fixture.js";
 import { fakeAdapter, useFakeProvider } from "./helpers/mock-registry.js";
 import { db } from "./helpers/mock-supabase.js";
 import {
@@ -46,7 +46,7 @@ vi.mock("../providers/registry", async () => {
 vi.mock("../lib/r2", async () => {
   return await import("./helpers/mock-r2.js");
 });
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
+vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
 
 beforeEach(resetNewTitlesTest);
 afterEach(restoreNewTitlesTest);

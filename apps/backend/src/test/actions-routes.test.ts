@@ -1,4 +1,5 @@
 import type { ProviderId } from "@stremlist/shared/providers";
+import { http, HttpResponse } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -9,7 +10,7 @@ import {
 } from "vite-plus/test";
 import app from "../index.js";
 import type { Membership, ProviderActions } from "../providers/types";
-import { seedAccount, seedConnection } from "./helpers/fixtures.js";
+import { seedAccount, seedConnection } from "./helpers/account.fixture.js";
 import { r2Objects } from "./helpers/mock-r2.js";
 import {
   fakeActions,
@@ -19,6 +20,8 @@ import {
 } from "./helpers/mock-registry.js";
 import { db, resetRpc } from "./helpers/mock-supabase.js";
 import { readJson, streamsBody } from "./helpers/json.js";
+import { useMswServer } from "./helpers/msw.test-utils.js";
+import { useTraktApp } from "./helpers/trakt.test-utils.js";
 
 vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
 vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
@@ -43,6 +46,8 @@ const MOVIE = "tt0111161";
 const SERIES = "tt0903747";
 
 const perform = vi.fn<ProviderActions["perform"]>();
+
+const server = useMswServer();
 
 function useActionProvider(id: ProviderId, kinds = fakeActions().kinds) {
   useFakeProvider(
@@ -102,13 +107,13 @@ beforeEach(() => {
   r2Objects.clear();
   resetProviders();
   perform.mockReset();
-  perform.mockResolvedValue(undefined);
   useActionProvider("trakt");
-  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  vi.spyOn(console, "error");
 });
 
 afterEach(() => {
   delete process.env.BACKEND_PUBLIC_URL;
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -246,7 +251,14 @@ describe("Action pages", () => {
   });
 
   it("says which Provider failed", async () => {
-    perform.mockRejectedValue(new Error("Trakt 502"));
+    useTraktApp();
+    resetProviders();
+    server.use(
+      http.post(
+        "https://api.trakt.tv/sync/history/remove",
+        () => new HttpResponse(null, { status: 502 }),
+      ),
+    );
     const account = seedActionAccount();
 
     const res = await app.request(

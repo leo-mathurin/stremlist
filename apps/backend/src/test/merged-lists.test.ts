@@ -14,14 +14,14 @@ import {
   seedConnection,
   seedLegacyAccount,
   seedList,
-} from "./helpers/fixtures.js";
+} from "./helpers/account.fixture.js";
 import { cache } from "./helpers/mock-list-cache.js";
 import {
   fakeAdapter,
   resetProviders,
   useFakeProvider,
 } from "./helpers/mock-registry.js";
-import { callRpc, db, resetRpc, supabase } from "./helpers/mock-supabase.js";
+import { callRpc, db, resetRpc, rpcHandlers } from "./helpers/mock-supabase.js";
 import {
   accountIdBody,
   configBody,
@@ -46,7 +46,7 @@ vi.mock("../lib/r2", async () => {
   return await import("./helpers/mock-r2.js");
 });
 vi.mock("../lib/background", () => ({ scheduleBackgroundTask: vi.fn() }));
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
+vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
 
 const [LIST_1] = LIST_IDS;
 const TRAKT_WATCHLIST: ListSource = {
@@ -370,10 +370,10 @@ describe("saving merged Lists", () => {
       { provider: "trakt", source_ref: TRAKT_LIST.sourceRef },
       { provider: "justwatch", source_ref: JUSTWATCH_LIST.sourceRef },
     ];
-    const rpc = vi.spyOn(supabase, "rpc");
-    rpc.mockImplementationOnce((name, args) => {
+    rpcHandlers.set("replace_account_config", (args) => {
+      rpcHandlers.delete("replace_account_config");
       db.getTable("lists")[0].merged_sources = concurrent;
-      return callRpc(name, args);
+      return callRpc("replace_account_config", args);
     });
 
     const res = await postConfig([

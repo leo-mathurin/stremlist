@@ -7,6 +7,7 @@ import {
   vi,
 } from "vite-plus/test";
 
+import { PROVIDER_IDS } from "@stremlist/shared/providers";
 import { z } from "zod";
 import app from "../index.js";
 import { HttpError } from "../providers/http";
@@ -14,6 +15,7 @@ import { LetterboxdBusyError } from "../providers/letterboxd-gate";
 import { OUTAGE_STALE_MS } from "../providers/outages";
 import { SourceUnavailableError } from "../providers/types";
 import type { CanaryResult } from "../services/monitor/canaries";
+import { runListChecks } from "../services/monitor/list-checks";
 import { resetConfigTest } from "./helpers/config-api.js";
 import { readJson } from "./helpers/json.js";
 import {
@@ -37,25 +39,36 @@ vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
 vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
 vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
 vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
-const { runCanaries } = vi.hoisted(() => ({
-  runCanaries: vi.fn<() => Promise<CanaryResult[]>>(),
-}));
-vi.mock("../services/monitor/canaries", () => ({ runCanaries }));
 
 const IMDB_BEAT = "https://beat.example/imdb";
 const LBX_BEAT = "https://beat.example/letterboxd";
 const SECRET = "cron-secret";
 
-async function monitor(secret = SECRET) {
-  const { calls } = backgroundMocks.scheduleBackgroundTask.mock;
+const probeOutcome = z.discriminatedUnion("ok", [
+  z.object({ provider: z.enum(PROVIDER_IDS), ok: z.literal(true) }),
+  z.object({
+    provider: z.enum(PROVIDER_IDS),
+    ok: z.literal(false),
+    error: z.string(),
+  }),
+]);
+
+const monitorAnswer = z
+  .object({
+    results: z.array(probeOutcome),
+    listChecks: z.object({ started: z.boolean() }),
+  })
+  .partial();
+
+async function monitor(secret = SECRET, canaries: CanaryResult[] = []) {
   const res = await app.request("/monitor", {
     headers: { Authorization: `Bearer ${secret}` },
   });
-  const started = await readJson(
-    res.clone(),
-    z.object({ listChecks: z.object({ started: z.boolean() }) }).partial(),
-  );
-  if (started.listChecks?.started) await calls.at(-1)?.[0]();
+  const answer = await readJson(res.clone(), monitorAnswer);
+  if (answer.listChecks?.started) {
+    expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalled();
+    await runListChecks(answer.results ?? [], () => Promise.resolve(canaries));
+  }
   return res;
 }
 
@@ -96,8 +109,6 @@ beforeEach(() => {
   ])
     vi.stubEnv(name, "");
   vi.stubEnv("CRON_SECRET", SECRET);
-  runCanaries.mockReset();
-  runCanaries.mockResolvedValue([]);
   useFakeProvider(fakeAdapter("letterboxd"));
   beats = [];
   failBodies = new Map();
@@ -123,7 +134,7 @@ beforeEach(() => {
       return Promise.resolve(new Response("ok", { status: status ?? 200 }));
     }),
   );
-  vi.spyOn(console, "error").mockImplementation(() => undefined);
+  vi.spyOn(console, "error");
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -688,9 +699,7 @@ describe("Provider outages", () => {
       outage_since: new Date().toISOString(),
       checked_at: new Date().toISOString(),
     });
-    vi.spyOn(supabaseMocks.supabase, "from").mockImplementation(() => {
-      throw new Error("database down");
-    });
+    db.unavailableTables.add("provider_outages");
     const res = await app.request("/providers");
     expect(res.status).toBe(200);
     expect(await outages()).toEqual([]);
@@ -707,17 +716,19 @@ describe("list checks", () => {
     entries: number,
     min = 1,
   ) {
-    return entries >= min
-      ? { type, provider, ref: type, status: "ok", entries, min }
-      : {
-          type,
-          provider,
-          ref: type,
-          status: "failed",
-          entries,
-          min,
-          error: `${entries} entries, expected at least ${min}`,
-        };
+    const result: CanaryResult =
+      entries >= min
+        ? { type, provider, ref: type, status: "ok", entries, min }
+        : {
+            type,
+            provider,
+            ref: type,
+            status: "failed",
+            entries,
+            min,
+            error: `${entries} entries, expected at least ${min}`,
+          };
+    return result;
   }
 
   it("runs at most once per interval, whatever the number of calls", async () => {
@@ -727,7 +738,7 @@ describe("list checks", () => {
       z.object({ listChecks: z.object({ started: z.boolean() }) }),
     );
     expect(first.listChecks.started).toBe(true);
-    expect(runCanaries).toHaveBeenCalledTimes(1);
+    expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledTimes(1);
     expect(beats).toEqual([{ url: LBX_BEAT, method: "GET" }]);
 
     beats = [];
@@ -739,13 +750,13 @@ describe("list checks", () => {
       },
     });
     await monitor();
-    expect(runCanaries).toHaveBeenCalledTimes(1);
+    expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledTimes(1);
     expect(beats).toEqual([]);
 
     const row = db.getTable("monitor_runs")[0];
     row.started_at = new Date(Date.now() - 601_000).toISOString();
     await monitor();
-    expect(runCanaries).toHaveBeenCalledTimes(2);
+    expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledTimes(2);
     expect(beats).toEqual([{ url: LBX_BEAT, method: "GET" }]);
   });
 
@@ -759,7 +770,7 @@ describe("list checks", () => {
     const res = await monitor();
 
     expect(res.status).toBe(200);
-    expect(runCanaries).not.toHaveBeenCalled();
+    expect(backgroundMocks.scheduleBackgroundTask).not.toHaveBeenCalled();
     expect(beats).toEqual([]);
   });
 
@@ -774,13 +785,11 @@ describe("list checks", () => {
         oauth: { authorizeUrl: "", tokenUrl: "", clientId: () => "trakt-app" },
       }),
     );
-    runCanaries.mockResolvedValue([
+    await monitor(SECRET, [
       canary("trakt", "trakt:me/watchlist", 40),
       canary("simkl", "simkl:me/history", 0),
       canary("mdblist", "mdblist:me/watchlist", 12),
     ]);
-
-    await monitor();
 
     expect(beats.filter((beat) => beat.url.startsWith(APPS_BEAT))).toEqual([
       { url: `${APPS_BEAT}/fail`, method: "POST" },
@@ -789,13 +798,12 @@ describe("list checks", () => {
       "simkl:me/history (simkl:me/history): 0 entries, expected at least 1",
     );
 
-    runCanaries.mockResolvedValue([
+    endListCheckInterval();
+    beats = [];
+    await monitor(SECRET, [
       canary("trakt", "trakt:me/watchlist", 40),
       canary("simkl", "simkl:me/history", 3),
     ]);
-    endListCheckInterval();
-    beats = [];
-    await monitor();
     expect(beats.filter((beat) => beat.url.startsWith(APPS_BEAT))).toEqual([
       { url: APPS_BEAT, method: "GET" },
     ]);
@@ -803,14 +811,14 @@ describe("list checks", () => {
 
   it("fails the Provider's heartbeat for a failed canary, but shows no outage", async () => {
     vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
-    runCanaries.mockResolvedValue([
+    const canaries = [
       canary("letterboxd", "letterboxd:users/{user}/diary", 3, 40),
-    ]);
+    ];
 
     for (let run = 0; run < 3; run++) {
       endListCheckInterval();
       beats = [];
-      const res = await monitor();
+      const res = await monitor(SECRET, canaries);
       expect(res.status).toBe(200);
       expect(beats).toEqual([{ url: `${LBX_BEAT}/fail`, method: "POST" }]);
     }

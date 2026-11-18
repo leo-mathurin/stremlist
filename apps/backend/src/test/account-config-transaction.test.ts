@@ -14,9 +14,10 @@ import {
   UUID_1,
   UUID_2,
 } from "./helpers/config-api.js";
-import { seedAccount } from "./helpers/fixtures.js";
+import { seedAccount } from "./helpers/account.fixture.js";
 import { cache } from "./helpers/mock-list-cache.js";
-import { db } from "./helpers/mock-supabase.js";
+import { db, rpcHandlers } from "./helpers/mock-supabase.js";
+import { rpcError } from "./helpers/supabase/rpc.js";
 
 const { backgroundMocks, prewarmMocks, rpcMocks, supabaseMocks } =
   await vi.hoisted(() => import("./helpers/config-api-mocks.js"));
@@ -49,7 +50,7 @@ describe("List CRUD via the config API", () => {
     };
 
     beforeEach(() => {
-      rpcMocks.rpc.mockResolvedValue({
+      rpcHandlers.set("replace_account_config", () => ({
         data: [
           {
             previous_lists: [{ ...savedRow, account_id: legacyAccountId }],
@@ -57,7 +58,7 @@ describe("List CRUD via the config API", () => {
           },
         ],
         error: null,
-      });
+      }));
     });
 
     it("sends normalized rows in one RPC and returns/prewarms the committed rows", async () => {
@@ -222,7 +223,7 @@ describe("List CRUD via the config API", () => {
     it("deletes only the caches that the committed transaction left unused", async () => {
       cache.seed(UUID_1, []);
       cache.seed(UUID_2, []);
-      rpcMocks.rpc.mockResolvedValueOnce({
+      rpcHandlers.set("replace_account_config", () => ({
         data: [
           {
             previous_lists: [
@@ -238,7 +239,7 @@ describe("List CRUD via the config API", () => {
           },
         ],
         error: null,
-      });
+      }));
       const response = await postConfig(OWNER, {
         lists: [{ id: UUID_1, sourceRef: OWNER, sortOption: "title-asc" }],
       });
@@ -249,10 +250,9 @@ describe("List CRUD via the config API", () => {
 
     it("keeps caches and skips prewarming when the RPC fails", async () => {
       cache.seed(UUID_2, []);
-      rpcMocks.rpc.mockResolvedValueOnce({
-        data: null,
-        error: new Error("Transaction rolled back"),
-      });
+      rpcHandlers.set("replace_account_config", () =>
+        rpcError("Transaction rolled back"),
+      );
       const response = await postConfig(OWNER, {
         rpdbApiKey: "new-key",
         lists: [{ id: UUID_1, sourceRef: OWNER, sortOption: "title-asc" }],

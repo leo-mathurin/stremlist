@@ -17,7 +17,7 @@ import {
   movie,
   seedLegacyAccount,
   seedList,
-} from "./helpers/fixtures.js";
+} from "./helpers/account.fixture.js";
 import { cache } from "./helpers/mock-list-cache.js";
 import { r2Unreadable } from "./helpers/mock-r2.js";
 import { db } from "./helpers/mock-supabase.js";
@@ -54,7 +54,7 @@ vi.mock("../providers/registry", async () => {
 vi.mock("../lib/r2", async () => {
   return await import("./helpers/mock-r2.js");
 });
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
+vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
 
 beforeEach(resetNewTitlesTest);
 afterEach(restoreNewTitlesTest);

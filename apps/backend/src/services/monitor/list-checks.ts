@@ -134,9 +134,12 @@ type ListCheckSummary = {
  * heartbeat with this call's probe. Canaries and the alarm never change a
  * Provider's outage state: only the probe does.
  */
-export async function runListChecks(probes: readonly ProbeOutcome[]) {
+export async function runListChecks(
+  probes: readonly ProbeOutcome[],
+  readCanaries = runCanaries,
+) {
   const [canaries, alarmRead] = await Promise.all([
-    runCanaries(),
+    readCanaries(),
     readListAlarms(),
   ]);
   const alarms = "alarms" in alarmRead ? alarmRead.alarms : [];

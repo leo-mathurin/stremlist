@@ -21,8 +21,8 @@ import {
   seedAccount,
   seedList,
   useTestEncryptionKey,
-} from "./helpers/fixtures.js";
-import { db } from "./helpers/mock-supabase.js";
+} from "./helpers/account.fixture.js";
+import { callRpc, db, rpcHandlers } from "./helpers/mock-supabase.js";
 import {
   configBody,
   mustString,
@@ -144,6 +144,17 @@ function fakeStremio(collection: Addon[]) {
 
 let accountId = "";
 
+function refusedUpdateClaim() {
+  const refused = Promise.withResolvers<unknown>();
+  rpcHandlers.set("claim_stremio_update", async (args) => {
+    rpcHandlers.delete("claim_stremio_update");
+    const result = await callRpc("claim_stremio_update", args);
+    refused.resolve(result.data);
+    return result;
+  });
+  return refused.promise;
+}
+
 function addonUrl() {
   return `${ORIGIN}/${accountId}/manifest.json`;
 }
@@ -187,6 +198,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -233,10 +245,10 @@ describe("linking a Stremio account", () => {
     const stremio = fakeStremio([]);
     const { token } = await startLink();
     stremio.approved = true;
-    const later = Date.now() + 11 * 60_000;
-    vi.spyOn(Date, "now").mockReturnValue(later);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 11 * 60_000);
     const res = await confirmLink(token);
-    vi.restoreAllMocks();
+    vi.useRealTimers();
     expect(res.status).toBe(410);
     expect(db.getTable("stremio_connections")).toHaveLength(0);
   });
@@ -325,8 +337,9 @@ describe("updating the installed Stremlist", () => {
       expect(stremio.held).toBe(1);
     });
     await rename("Second");
+    const refused = refusedUpdateClaim();
     const second = update();
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(await refused).toBe("busy");
     release();
 
     const results = await Promise.all(
@@ -349,8 +362,9 @@ describe("updating the installed Stremlist", () => {
     await vi.waitFor(() => {
       expect(stremio.held).toBe(1);
     });
+    const refused = refusedUpdateClaim();
     const second = update();
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(await refused).toBe("busy");
     for (const row of db.getTable("accounts")) {
       if (row.id === accountId) row.new_titles_catalog = true;
     }
@@ -373,10 +387,11 @@ describe("updating the installed Stremlist", () => {
     await vi.waitFor(() => {
       expect(stremio.held).toBe(1);
     });
+    const refused = refusedUpdateClaim();
     const disconnect = app.request(`/${accountId}/stremio`, {
       method: "DELETE",
     });
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(await refused).toBe("busy");
     expect(db.getTable("stremio_connections")).toHaveLength(1);
     release();
 
@@ -390,13 +405,13 @@ describe("updating the installed Stremlist", () => {
     for (const row of db.getTable("stremio_connections")) {
       row.update_locked_until = "2100-01-01T00:00:00.000Z";
     }
-    const start = Date.now();
-    let calls = 0;
-    vi.spyOn(Date, "now").mockImplementation(() => start + calls++ * 10_000);
-    const res = await app.request(`/${accountId}/stremio`, {
+    vi.useFakeTimers();
+    const disconnect = app.request(`/${accountId}/stremio`, {
       method: "DELETE",
     });
-    vi.restoreAllMocks();
+    await vi.advanceTimersByTimeAsync(26_000);
+    const res = await disconnect;
+    vi.useRealTimers();
     expect(res.status).toBe(200);
     expect(db.getTable("stremio_connections")).toHaveLength(0);
   });

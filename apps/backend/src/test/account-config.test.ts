@@ -1,3 +1,4 @@
+import { http, HttpResponse } from "msw";
 import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
 import * as scraper from "../services/imdb-scraper";
 import {
@@ -14,7 +15,11 @@ import {
   UUID_1,
   UUID_2,
 } from "./helpers/config-api.js";
-import { seedAccount, seedConnection, seedList } from "./helpers/fixtures.js";
+import {
+  seedAccount,
+  seedConnection,
+  seedList,
+} from "./helpers/account.fixture.js";
 import {
   fakeActions,
   fakeAdapter,
@@ -22,6 +27,7 @@ import {
 } from "./helpers/mock-registry.js";
 import { db } from "./helpers/mock-supabase.js";
 import { configBody, errorBody, readJson } from "./helpers/json.js";
+import { useMswServer } from "./helpers/msw.test-utils.js";
 
 const { backgroundMocks, prewarmMocks, rpcMocks, supabaseMocks } =
   await vi.hoisted(() => import("./helpers/config-api-mocks.js"));
@@ -34,6 +40,19 @@ vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
 vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
 
 beforeEach(resetConfigTest);
+
+const server = useMswServer();
+
+function serveImdbProfiles(userIds: Record<string, string>) {
+  server.use(
+    http.get("https://www.imdb.com/user/:handle/", ({ params }) => {
+      const userId = userIds[String(params.handle)];
+      return userId
+        ? HttpResponse.html(`<script>{"userId":"${userId}"}</script>`)
+        : new HttpResponse("Not Found", { status: 404 });
+    }),
+  );
+}
 
 describe("List CRUD via the config API", () => {
   it.each([
@@ -278,11 +297,8 @@ describe("List CRUD via the config API", () => {
     );
 
     it("turns IMDb p. handles into user IDs before saving", async () => {
-      const normalize = vi
-        .spyOn(scraper, "normalizeImdbUserId")
-        .mockImplementation((input) =>
-          Promise.resolve(input === "p.leo123" ? OTHER_IMDB : input),
-        );
+      serveImdbProfiles({ "p.leo123": OTHER_IMDB });
+      const normalize = vi.spyOn(scraper, "normalizeImdbUserId");
 
       const res = await postConfig(OWNER, {
         lists: [{ sourceRef: "p.leo123", sortOption: "added_at-asc" }],
@@ -296,14 +312,12 @@ describe("List CRUD via the config API", () => {
     });
 
     it("rejects a p. handle that resolves to a list already added", async () => {
-      vi.spyOn(scraper, "normalizeImdbUserId").mockImplementation((input) =>
-        Promise.resolve(input === "p.leo123" ? OWNER : input),
-      );
+      serveImdbProfiles({ "p.owner": OWNER });
 
       const res = await postConfig(OWNER, {
         lists: [
           { sourceRef: OWNER, sortOption: "added_at-asc" },
-          { sourceRef: "p.leo123", sortOption: "added_at-asc" },
+          { sourceRef: "p.owner", sortOption: "added_at-asc" },
         ],
       });
 
@@ -314,9 +328,7 @@ describe("List CRUD via the config API", () => {
     });
 
     it("rejects a p. handle that IMDb cannot resolve", async () => {
-      vi.spyOn(scraper, "normalizeImdbUserId").mockRejectedValue(
-        new Error("not found"),
-      );
+      serveImdbProfiles({});
 
       const res = await postConfig(OWNER, {
         lists: [{ sourceRef: "p.nobody", sortOption: "added_at-asc" }],

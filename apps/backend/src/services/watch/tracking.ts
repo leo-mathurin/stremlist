@@ -167,16 +167,14 @@ export async function setWatchDestinations(
 
   const started = !(await isTrackedNow(accountId));
   if (started) {
-    const { error } = await supabase
-      .from("watch_tracking")
-      .upsert(
-        {
-          account_id: accountId,
-          sweep_slot: randomInt(360),
-          baseline_at: null,
-        },
-        { onConflict: "account_id", ignoreDuplicates: true },
-      );
+    const { error } = await supabase.from("watch_tracking").upsert(
+      {
+        account_id: accountId,
+        sweep_slot: randomInt(360),
+        baseline_at: null,
+      },
+      { onConflict: "account_id", ignoreDuplicates: true },
+    );
     if (error) throw error;
   }
   const { error: addError } = await supabase.from("watch_destinations").upsert(

@@ -15,7 +15,7 @@ import {
   movie,
   seedConnection,
   seedList,
-} from "./helpers/fixtures.js";
+} from "./helpers/account.fixture.js";
 import { fakeAdapter, useFakeProvider } from "./helpers/mock-registry.js";
 import { db } from "./helpers/mock-supabase.js";
 import {
@@ -48,7 +48,7 @@ vi.mock("../providers/registry", async () => {
 vi.mock("../lib/r2", async () => {
   return await import("./helpers/mock-r2.js");
 });
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
+vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
 
 beforeEach(resetNewTitlesTest);
 afterEach(restoreNewTitlesTest);
@@ -216,12 +216,13 @@ function resolvingSourceList() {
 }
 
 function providerEntry(trakt: number, imdbId: string) {
-  return {
+  const entry: SourceEntry = {
     externalIds: { trakt },
     type: "movie",
     title: `Entry ${trakt}`,
     meta: movie(imdbId),
   };
+  return entry;
 }
 
 const NEVER_RESOLVED: SourceEntry = {

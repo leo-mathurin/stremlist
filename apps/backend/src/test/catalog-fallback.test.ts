@@ -1,4 +1,5 @@
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
+import { http, HttpResponse } from "msw";
 import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
 import app from "../index.js";
 import { SourceUnavailableError } from "../providers/types";
@@ -9,7 +10,8 @@ import {
   seedConnection,
   seedLegacyAccount,
   seedList,
-} from "./helpers/fixtures.js";
+} from "./helpers/account.fixture.js";
+import { FakeImdb, IMDB_GRAPHQL } from "./helpers/imdb.test-utils.js";
 import { cache } from "./helpers/mock-list-cache.js";
 import {
   fakeAdapter,
@@ -18,10 +20,11 @@ import {
 } from "./helpers/mock-registry.js";
 import { db, resetRpc } from "./helpers/mock-supabase.js";
 import { metasBody, readJson } from "./helpers/json.js";
+import { useMswServer } from "./helpers/msw.test-utils.js";
 
 vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
 vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../lib/resend", () => import("../__tests__/helpers/mock-resend"));
+vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
 vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
 
 const OWNER = "ur216216210";
@@ -41,8 +44,19 @@ function seedWatchlist(sortOption = "added_at-asc") {
   });
 }
 
-function failWatchlist(message: string) {
-  vi.spyOn(scraper, "fetchWatchlist").mockRejectedValue(new Error(message));
+const imdb = new FakeImdb();
+const server = useMswServer();
+
+function privateWatchlist() {
+  imdb.watchlists.set(OWNER, "private");
+}
+
+function missingWatchlist() {
+  imdb.watchlists.delete(OWNER);
+}
+
+function imdbUnreachable() {
+  server.use(http.post(IMDB_GRAPHQL, () => HttpResponse.error()));
 }
 
 function numberedMovies(
@@ -74,28 +88,30 @@ beforeEach(() => {
   cache.reset();
   resetProviders();
   vi.restoreAllMocks();
+  imdb.reset();
+  server.use(imdb.handler);
 });
 
 describe("catalog route degrades gracefully on fetch failure", () => {
-  describe.each([scraper.ERROR_PRIVATE, scraper.ERROR_NOT_FOUND])(
-    "search when IMDb returns %s",
-    (error) => {
-      it.each([
-        "/search=alien.json",
-        ".json?search=alien",
-        "/search=.json",
-        ".json?search=",
-      ])("returns no informational cards for %s", async (suffix) => {
-        seedWatchlist();
-        failWatchlist(error);
+  describe.each([
+    [scraper.ERROR_PRIVATE, privateWatchlist],
+    [scraper.ERROR_NOT_FOUND, missingWatchlist],
+  ])("search when IMDb returns %s", (_error, failWatchlist) => {
+    it.each([
+      "/search=alien.json",
+      ".json?search=alien",
+      "/search=.json",
+      ".json?search=",
+    ])("returns no informational cards for %s", async (suffix) => {
+      seedWatchlist();
+      failWatchlist();
 
-        const { res, body } = await catalog(suffix);
+      const { res, body } = await catalog(suffix);
 
-        expect(res.status).toBe(200);
-        expect(body).toEqual({ metas: [] });
-      });
-    },
-  );
+      expect(res.status).toBe(200);
+      expect(body).toEqual({ metas: [] });
+    });
+  });
 
   it("searches stale cached titles when the IMDb list becomes private", async () => {
     seedWatchlist();
@@ -104,7 +120,7 @@ describe("catalog route degrades gracefully on fetch failure", () => {
       [CACHED_MOVIE, { ...CACHED_MOVIE, id: "tt0078748", name: "Alien" }],
       twoDaysAgo(),
     );
-    failWatchlist(scraper.ERROR_PRIVATE);
+    privateWatchlist();
 
     const { res, body } = await catalog("/search=alien.json");
 
@@ -115,10 +131,8 @@ describe("catalog route degrades gracefully on fetch failure", () => {
   it("returns a 200 'private' card naming a watchlist or a list when there is no cache", async () => {
     seedWatchlist();
     seedList(accountId, { id: UUID_2, source_ref: "ls012345678", position: 1 });
-    failWatchlist(scraper.ERROR_PRIVATE);
-    vi.spyOn(scraper, "fetchList").mockRejectedValue(
-      new Error(scraper.ERROR_PRIVATE),
-    );
+    privateWatchlist();
+    imdb.lists.set("ls012345678", "private");
 
     const watchlist = await catalog();
     const list = await catalog(".json", { list: UUID_2 });
@@ -136,7 +150,7 @@ describe("catalog route degrades gracefully on fetch failure", () => {
 
   it("returns a 200 'not found' card when the IMDb list does not exist", async () => {
     seedWatchlist();
-    failWatchlist(scraper.ERROR_NOT_FOUND);
+    missingWatchlist();
 
     const { res, body } = await catalog();
 
@@ -147,7 +161,7 @@ describe("catalog route degrades gracefully on fetch failure", () => {
   it("still serves a NON-empty stale cache as a graceful fallback when fetch fails", async () => {
     seedWatchlist();
     cache.seed(UUID_1, [CACHED_MOVIE], twoDaysAgo());
-    failWatchlist(scraper.ERROR_PRIVATE);
+    privateWatchlist();
 
     const { res, body } = await catalog();
 
@@ -159,7 +173,7 @@ describe("catalog route degrades gracefully on fetch failure", () => {
     "keeps the 500 for an unexpected/transient server error at %s",
     async (suffix) => {
       seedWatchlist();
-      failWatchlist("ECONNRESET while talking to IMDb");
+      imdbUnreachable();
 
       const { res, body } = await catalog(suffix);
 
