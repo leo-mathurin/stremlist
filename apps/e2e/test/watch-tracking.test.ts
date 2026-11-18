@@ -155,9 +155,9 @@ async function runCron() {
   return parsed(run.body, isCronReport, "cron report");
 }
 
-function watchedWrites(host: string) {
+function watchedWrites(host: string, path = "/sync/history") {
   return backend
-    .requests((url) => url.host === host && url.pathname === "/sync/history")
+    .requests((url) => url.host === host && url.pathname === path)
     .filter((request) => request.method === "POST")
     .map((request) => request.body);
 }
@@ -330,6 +330,60 @@ test(
     });
     expect(off.status).toBe(200);
     expect((await getWatchRows(accountId)).tracking).toBeNull();
+  },
+);
+
+test(
+  "an episode that turns watched as the next one starts is sent to MDBList",
+  { tag: "@local" },
+  async () => {
+    const accountId = await seedAccount();
+    await seedConnection(accountId, "mdblist");
+    await seedStremioLink(accountId, AUTH_KEY);
+    writeStremio({
+      authKey: AUTH_KEY,
+      trakt: false,
+      library: [series([1], "2026-11-01T00:00:00.000Z")],
+      addons: [],
+    });
+    const on = await call(`/${accountId}/watch-tracking`, {
+      method: "PUT",
+      json: { destinations: ["mdblist"] },
+    });
+    expect(on.status).toBe(200);
+
+    await call(`/${accountId}/stream/series/${SHOW}:1:2.json`);
+    await expect
+      .poll(async () => (await getWatchRows(accountId)).reads.length)
+      .toBe(1);
+    writeStremio({
+      ...readStremio(),
+      library: [series([1, 2], "2026-11-12T20:41:00.000Z")],
+    });
+    await call(`/${accountId}/stream/series/${SHOW}:1:3.json`);
+    await expect
+      .poll(async () => (await getWatchRows(accountId)).writes.length, {
+        timeout: 10_000,
+      })
+      .toBe(1);
+
+    await runCron();
+    expect(watchedWrites("api.mdblist.com", "/sync/watched")).toEqual([
+      {
+        shows: [
+          expect.objectContaining({
+            ids: expect.objectContaining({ imdb: SHOW }),
+            seasons: [
+              {
+                number: 1,
+                episodes: [{ number: 2, watched_at: LAST_WATCHED }],
+              },
+            ],
+          }),
+        ],
+      },
+    ]);
+    expect((await getWatchRows(accountId)).writes).toEqual([]);
   },
 );
 

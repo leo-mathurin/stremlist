@@ -1,7 +1,7 @@
 import type { StremioManifest } from "./stremio.types";
 
 export const APP_NAME = "Stremlist";
-export const ADDON_VERSION = "2.9.0";
+export const ADDON_VERSION = "2.9.3";
 export const APP_DESCRIPTION = "Your watchlists and lists, all in Stremio";
 
 export const SORT_OPTIONS = [

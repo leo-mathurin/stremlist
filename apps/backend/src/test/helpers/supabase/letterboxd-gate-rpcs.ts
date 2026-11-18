@@ -45,9 +45,7 @@ function settle(g: Gate, t: number, target: number) {
     );
     g.refilledAt = t;
   }
-  if (g.haltedAt === null && g.rate < 0.5 * target) {
-    g.slowSince ??= t;
-  } else {
+  if (g.haltedAt !== null || g.rate >= 0.5 * target) {
     g.slowSince = null;
     g.slowAlerted = false;
   }
@@ -302,6 +300,7 @@ function report(args: RpcArgs) {
         g.rateChangedAt = g.pausedUntil;
         g.tokens = 0;
         g.refilledAt = g.pausedUntil;
+        if (g.rate < 0.5 * target) g.slowSince ??= t;
       }
     }
   }

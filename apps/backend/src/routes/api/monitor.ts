@@ -121,7 +121,13 @@ const PROBES: {
 
 type ProbeResult =
   | { provider: ProviderId; ok: true; entries: number }
-  | { provider: ProviderId; ok: false; outage: boolean; error: string };
+  | {
+      provider: ProviderId;
+      ok: false;
+      outage: boolean;
+      unavailable: boolean;
+      error: string;
+    };
 
 async function runProbe(provider: ProviderId, read: ProbeRead) {
   try {
@@ -133,10 +139,12 @@ async function runProbe(provider: ProviderId, read: ProbeRead) {
   } catch (err) {
     const error = err instanceof Error ? err.message : "Unknown error";
     console.error(`${provider} monitor check failed:`, error);
+    const unavailable = !(await mayReadProvider(provider));
     return {
       provider,
       ok: false,
       outage: isOutageFailure(err),
+      unavailable,
       error,
     } satisfies ProbeResult;
   }
@@ -197,7 +205,7 @@ const monitor = new Hono().get("/monitor", async (c) => {
       .filter(({ provider }) => STATUS_PAGE_PROVIDERS.includes(provider))
       .map(({ provider, page }) => [provider, page]),
   );
-  const ok = results.every((result) => result.ok);
+  const ok = results.every((result) => result.ok || result.unavailable);
   const listChecks = { started: claimed, last: await lastListChecks() };
   return c.json({ ok, results, statusPages, listChecks }, ok ? 200 : 502);
 });

@@ -85,6 +85,16 @@ function provider({ request, url }: FixtureRequest) {
   return json({ error: "not found" }, 404);
 }
 
+function mdblist({ request, url }: FixtureRequest) {
+  if (bearer(request) !== "fixture-access-token") {
+    return json({ error: "Invalid OAuth token" }, 403);
+  }
+  if (request.method === "POST" && url.pathname === "/sync/watched") {
+    return json({ added: { movies: 0, episodes: 1 }, not_found: {} });
+  }
+  return json({ error: "not found" }, 404);
+}
+
 installFetchFixture({
   log: process.env.E2E_PROVIDER_LOG,
   hosts: {
@@ -92,5 +102,6 @@ installFetchFixture({
     "v3-cinemeta.strem.io": cinemeta,
     "api.trakt.tv": provider,
     "api.simkl.com": provider,
+    "api.mdblist.com": mdblist,
   },
 });

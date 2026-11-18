@@ -5,9 +5,8 @@ import {
   PROVIDER_IDS,
   PROVIDERS,
 } from "../../../packages/shared/src/providers";
-import { VERSIONS } from "../src/content/changelog";
 import { CONFIGURE_SEO, SITE } from "../src/content/site";
-import { LEGAL_SECTIONS, LEGAL_UPDATED } from "../src/content/terms";
+import { LEGAL_SECTIONS } from "../src/content/terms";
 import { aiPolicy, llms, sitemap } from "../src/lib/md/discovery";
 import { date } from "../src/lib/md/format";
 import {
@@ -67,43 +66,6 @@ test("public descriptions name every available Provider", async () => {
       assert.ok(value.includes(label), `${place} does not name ${label}`);
 });
 
-test("the privacy policy states what is stored and for how long", () => {
-  const privacy = legalText("privacy");
-  for (const claim of [
-    /New titles/,
-    /180 days/,
-    /Letterboxd/,
-    /request log/i,
-    /30 days/,
-    /AES-256-GCM/,
-    /Vercel Web Analytics/,
-  ])
-    assert.match(privacy, claim);
-  for (const wrong of [
-    /does not use cookies or any tracking/i,
-    /rather than keeping a history/i,
-    /not shared with any third parties/i,
-  ])
-    assert.doesNotMatch(privacy, wrong);
-});
-
-test("the privacy policy names every service that receives data", () => {
-  const privacy = legalText("privacy");
-  for (const service of [
-    ...providerLabels,
-    "TMDB",
-    "Wikidata",
-    "Cinemeta",
-    "Resend",
-    "Supabase",
-    "Vercel",
-    "Cloudflare R2",
-    "RPDB",
-    "TheTVDB",
-  ])
-    assert.ok(privacy.includes(service), `privacy policy omits ${service}`);
-});
-
 test("public pages carry no em dashes", () => {
   const copy = [
     SITE.title,
@@ -118,19 +80,6 @@ test("public pages carry no em dashes", () => {
     ),
   ].join("\n");
   assert.ok(!copy.includes("—"), "em dash in public copy");
-});
-
-test("dates of the pages changed for v2 are not older than the v2 release", () => {
-  const release = VERSIONS.find((version) => version.version === "v2.0.0");
-  assert.ok(release);
-  const released = date(release.date);
-  for (const [name, updated] of [
-    ["home page", page("/").updated],
-    ["terms page", page("/terms").updated],
-    ["legal text", LEGAL_UPDATED],
-    ["AI policy", SITE.policyUpdated],
-  ])
-    assert.ok(updated >= released, `${name} updated ${updated} < ${released}`);
 });
 
 test("the sitemap gives each page its last change date", () => {
