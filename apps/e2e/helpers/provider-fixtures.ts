@@ -364,6 +364,17 @@ function mdblist({ request, url, body }: FixtureRequest): Response {
       });
     case "/external/lists/user":
       return json([]);
+    // A free account: only the global section.
+    case "/lists/recommended":
+      return json({
+        sections: [
+          {
+            slug: "rising",
+            label: "Rising Fast",
+            items_url: "/lists/recommended/rising/items",
+          },
+        ],
+      });
   }
   throw new Error(`Unexpected MDBList request ${request.method} ${path}`);
 }

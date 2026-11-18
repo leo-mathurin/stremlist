@@ -897,9 +897,11 @@ export const CONNECTION_SOURCES: Partial<
     },
   ],
   // The user's own lists (`me/lists/{id}`), external lists
-  // (`me/external/{id}`) and liked lists (`lists/{id}`) depend on the
+  // (`me/external/{id}`), liked lists (`lists/{id}`) and the recommendation
+  // sections of a supporter plan (`recommended/{section}`) depend on the
   // account; the backend lists them. Every MDBList read needs the
-  // Connection, so its official charts are here too.
+  // Connection, so its official charts and its `rising` section, which
+  // every account can read, are here too.
   mdblist: [
     {
       ref: "me/watchlist",
@@ -917,6 +919,26 @@ export const CONNECTION_SOURCES: Partial<
       ref: "me/history",
       kind: "history",
       label: "History",
+      defaultDisplayMode: "split",
+    },
+    // Up Next lists the series in progress, as on Trakt.
+    {
+      ref: "me/up-next",
+      kind: "up_next",
+      label: "Up Next",
+      defaultDisplayMode: "series",
+      titleType: "series",
+    },
+    {
+      ref: "me/collection",
+      kind: "collection",
+      label: "Collection",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "recommended/rising",
+      kind: "chart",
+      label: "Rising Fast",
       defaultDisplayMode: "split",
     },
     {
@@ -941,6 +963,24 @@ export const CONNECTION_SOURCES: Partial<
       ref: "official/most-watched",
       kind: "chart",
       label: "Most Watched (Past Year)",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "official/most-watched-week",
+      kind: "chart",
+      label: "Most Watched (Past Week)",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "official/moviemeter",
+      kind: "chart",
+      label: "IMDb MovieMeter",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "official/justwatch-streaming-charts",
+      kind: "chart",
+      label: "JustWatch Streaming Charts",
       defaultDisplayMode: "split",
     },
   ],
@@ -1309,6 +1349,16 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
         pattern: /^official\/([^/]+)$/,
         type: "official/{slug}",
         describe: ([, slug]) => ({ kind: "chart", detail: slug, url: null }),
+      },
+      // A recommendation section of a supporter plan.
+      {
+        pattern: /^recommended\/([^/]+)$/,
+        type: "recommended/{section}",
+        describe: ([, section]) => ({
+          kind: "recommendations",
+          detail: section,
+          url: null,
+        }),
       },
     ],
     justwatch: [

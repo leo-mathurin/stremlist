@@ -140,6 +140,11 @@ test(
       suggestedTitle: "Weekend",
     });
     const sources = await api.getConnectionSources(accountId, "mdblist");
+    expect(
+      sources.body.sources.filter(
+        (source: { ref: string }) => source.ref === "recommended/rising",
+      ),
+    ).toHaveLength(1);
     expect(sources.body.sources).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ ref: "me/watchlist" }),
@@ -148,6 +153,13 @@ test(
         expect.objectContaining({
           ref: "official/trending",
           label: "Trending",
+        }),
+        expect.objectContaining({ ref: "me/up-next", label: "Up Next" }),
+        expect.objectContaining({ ref: "me/collection", label: "Collection" }),
+        // The account's sections give rising again: it is offered once.
+        expect.objectContaining({
+          ref: "recommended/rising",
+          label: "Rising Fast",
         }),
         expect.objectContaining({ ref: "me/lists/77", label: "Horror nights" }),
         // A liked list reads by its ID.

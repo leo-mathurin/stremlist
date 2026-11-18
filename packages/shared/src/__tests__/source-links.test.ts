@@ -1,6 +1,7 @@
 import type { ParsedSourceLink } from "../providers";
 import {
   describeSourceRef,
+  listTypeOf,
   parseSourceLink,
   sourceRequiresConnection,
   sourceTitle,
@@ -698,12 +699,43 @@ describe("describeSourceRef", () => {
       url: null,
       title: "MDBList Trending",
     });
-    // An official chart that the configure page does not offer.
-    expect(describeSourceRef("mdblist", "official/moviemeter")).toEqual({
+    expect(describeSourceRef("mdblist", "official/moviemeter")).toMatchObject({
       kind: "chart",
-      detail: "moviemeter",
+      title: "MDBList IMDb MovieMeter",
+    });
+    // An official chart that the configure page does not offer.
+    expect(describeSourceRef("mdblist", "official/top-new-chart")).toEqual({
+      kind: "chart",
+      detail: "top-new-chart",
       url: null,
     });
+  });
+
+  it("names the MDBList Up Next, collection and recommendations", () => {
+    expect(describeSourceRef("mdblist", "me/up-next")).toMatchObject({
+      kind: "up_next",
+      title: "MDBList Up Next",
+    });
+    expect(describeSourceRef("mdblist", "me/collection")).toMatchObject({
+      kind: "collection",
+      title: "MDBList Collection",
+    });
+    expect(describeSourceRef("mdblist", "recommended/rising")).toMatchObject({
+      kind: "chart",
+      title: "MDBList Rising Fast",
+    });
+    // A supporter section, which the backend lists for the account.
+    expect(describeSourceRef("mdblist", "recommended/because-watched")).toEqual(
+      {
+        kind: "recommendations",
+        detail: "because-watched",
+        url: null,
+      },
+    );
+    expect(listTypeOf("mdblist", "recommended/because-watched")).toBe(
+      "mdblist:recommended/{section}",
+    );
+    expect(sourceTitleType("mdblist", "me/up-next")).toBe("series");
   });
 
   it("keeps an unknown reference as a list", () => {
@@ -813,10 +845,21 @@ describe("Simkl Source lists", () => {
 });
 
 describe("sourceHasAddedDates: MDBList", () => {
-  it("dates the watchlist, ratings and history, not lists or charts", () => {
-    for (const ref of ["me/watchlist", "me/ratings", "me/history"])
+  it("dates the watchlist, ratings, history and collection, not lists or charts", () => {
+    for (const ref of [
+      "me/watchlist",
+      "me/ratings",
+      "me/history",
+      "me/collection",
+    ])
       expect(sourceHasAddedDates("mdblist", ref)).toBe(true);
-    for (const ref of ["lists/14", "me/lists/42", "official/trending"])
+    for (const ref of [
+      "lists/14",
+      "me/lists/42",
+      "official/trending",
+      "me/up-next",
+      "recommended/rising",
+    ])
       expect(sourceHasAddedDates("mdblist", ref)).toBe(false);
   });
 });
