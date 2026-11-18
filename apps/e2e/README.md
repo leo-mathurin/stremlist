@@ -39,8 +39,10 @@ UI behavior and requests; Playwright verifies handlers and storage.
 - `bun run --cwd apps/e2e test:toolkit:check` checks the last report and recordings;
   add `--prune` after a full replay to delete orphaned entries.
 - AI goals use unique accessible names. Configure-page goals call
-  `fitConfigurePage` to avoid duplicate Save controls. Toast checks use
-  `holdToasts`; it hides the document and suppresses sync-status polling.
+  `fitConfigurePage` to avoid duplicate Save controls. A toast closes after 6
+  to 10 seconds, and an AI goal can end later than that: end the goal before
+  the action that opens the toast, then do that action in the test and check
+  the toast right after it.
 
 ## Running locally
 

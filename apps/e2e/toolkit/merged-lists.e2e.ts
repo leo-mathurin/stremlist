@@ -18,7 +18,6 @@ import {
   configuration,
   connected,
   fitConfigurePage,
-  holdToasts,
   imdbUser,
   parseBody,
   isConfigInput,
@@ -132,13 +131,13 @@ test(
       withLists([watchlist, favourites, top250, trending]),
     );
     await fitConfigurePage(browser);
-    await holdToasts(browser);
     await app.open(`/configure?account=${accountId}`);
     await expect(screen.getByText("Favourite films")).toBeVisible();
     await agent.act(
-      "In the settings of the List IMDb Watchlist, merge the List Favourite films into it, so both show in one catalog. Then save.",
+      "In the settings of the List IMDb Watchlist, merge the List Favourite films into it, so both show in one catalog.",
       { maxModelCalls: 8 },
     );
+    await saveButton(screen).tap();
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(screen.getByText("2 lists · IMDb")).toBeVisible();
     await expect(screen.getByText(/^3 of 10 lists/)).toBeVisible();
@@ -755,7 +754,6 @@ test("removing a merged Source list asks for a reinstall only when it takes genr
   } satisfies ConfigList;
   const submissions = await captureConfig(browser, withLists([merged]));
   await fitConfigurePage(browser);
-  await holdToasts(browser);
   await app.open(`/configure?account=${accountId}`);
   await openSettings(screen, "IMDb Watchlist");
 

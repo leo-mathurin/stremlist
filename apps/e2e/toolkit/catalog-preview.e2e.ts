@@ -12,7 +12,6 @@ import {
   captureConfig,
   configuration,
   connected,
-  holdToasts,
   fitConfigurePage,
   imdbUser,
   legacyConfiguration,
@@ -26,6 +25,7 @@ import {
   toJson,
   routeConnectionSources,
   routePreview,
+  saveButton,
 } from "./config.fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
@@ -454,7 +454,6 @@ test(
   "the empty Catalog hint leads the user to the Show setting",
   { tags: ["agent"] },
   async ({ app, agent, browser, screen }) => {
-    await holdToasts(browser);
     await fitConfigurePage(browser);
     const submissions = await captureConfig(browser);
     const requests = await routePreview(browser, (request) =>
@@ -462,9 +461,10 @@ test(
     );
     await app.open(`/configure?account=${accountId}`);
     await agent.act(
-      "Open the preview of Test catalog. Its TV shows catalog stays empty: do what the preview says to remove that catalog, then save.",
+      "Open the preview of Test catalog. Its TV shows catalog stays empty: do what the preview says to remove that catalog.",
       { maxModelCalls: 9 },
     );
+    await saveButton(screen).tap();
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(
       screen.getByText("Update Stremio with your changes"),

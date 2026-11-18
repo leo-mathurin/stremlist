@@ -45,19 +45,6 @@ export function saveButton(screen: Screen, name = "Save") {
 }
 
 /**
- * Keeps toasts on screen until they are replaced or closed. Save and
- * newsletter results are toasts that close after 6 to 10 seconds, and an AI
- * goal can take longer than that to finish, so a check of the toast after the
- * goal could find it gone. The frontend keeps every toast open while the
- * session has its `stremlist:hold-toasts` flag (`lib/toast-duration.ts`).
- */
-export async function holdToasts(browser: Browser) {
-  await browser.addInitScript(() => {
-    sessionStorage.setItem("stremlist:hold-toasts", "1");
-  });
-}
-
-/**
  * Makes the viewport taller than the configure page, also with the filters,
  * a Select or a Catalog preview open, so the page cannot scroll. The Save
  * button at the top then stays in view and the floating Save button, which

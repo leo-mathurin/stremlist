@@ -12,7 +12,6 @@ import {
   baseRoutes,
   configuration,
   dragSecondAboveFirst,
-  holdToasts,
   imdbUser,
   legacyConfiguration,
   routeConfig,
@@ -203,7 +202,6 @@ async function preparePage(
   browser: Browser,
   start: { manual?: boolean; blockTabs?: boolean } = {},
 ) {
-  await holdToasts(browser);
   await browser.addInitScript(
     ({ manual, manualKey, blockTabs }) => {
       const page = window;

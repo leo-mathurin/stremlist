@@ -20,7 +20,6 @@ import {
   toJson,
   saveButton,
   SAVE_NEW,
-  holdToasts,
   fitConfigurePage,
   openFilters,
 } from "./config.fixture";
@@ -154,7 +153,6 @@ test(
   "an unrecognized link adds nothing, then a pasted list URL is added and saved",
   { tags: ["agent", "new-journeys"] },
   async ({ app, agent, browser, screen }) => {
-    await holdToasts(browser);
     await fitConfigurePage(browser);
     const submissions = await captureConfig(browser, {
       ...configuration,
@@ -175,12 +173,13 @@ test(
     await expect(saveButton(screen)).toBeDisabled();
     expect(inputs).toHaveLength(0);
     await agent.act(
-      "Replace the unrecognized link with {url} and add it, name its catalog Weekend films, and save.",
+      "Replace the unrecognized link with {url} and add it, then name its catalog Weekend films.",
       {
         params: { url: "https://www.imdb.com/list/ls99123456/" },
         maxModelCalls: 9,
       },
     );
+    await saveButton(screen).tap();
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(screen.getByText("IMDb · List · ls99123456")).toBeVisible();
     expect(submissions).toHaveLength(1);
@@ -271,7 +270,6 @@ test(
   "a saved genre missing from refreshed choices can still be cleared",
   { tags: ["agent", "new-journeys"] },
   async ({ app, agent, browser, screen }) => {
-    await holdToasts(browser);
     await fitConfigurePage(browser);
     const submissions = await captureConfig(browser, {
       ...configuration,
@@ -289,14 +287,15 @@ test(
     await expect(genre).toHaveText("Western");
     await expect(genre).toBeEnabled();
     await agent.act(
-      "Remove the Western genre restriction by selecting All genres. Keep the Top rated extra catalog enabled, and save.",
+      "Remove the Western genre restriction by selecting All genres. Keep the Top rated extra catalog enabled.",
       { maxModelCalls: 6 },
     );
+    await saveButton(screen).tap();
+    await expect(screen.getByText(SAVED)).toBeVisible();
     await expect(genre).toHaveText("All genres");
     await expect(
       screen.getByRole("checkbox", "Top rated", { exact: true }),
     ).toBeChecked();
-    await expect(screen.getByText(SAVED)).toBeVisible();
     expect(submissions[0].lists[0].catalogSettings).toEqual({
       presets: ["rated"],
     });

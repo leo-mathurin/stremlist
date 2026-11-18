@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import {
   BACKEND_URL,
@@ -12,8 +15,13 @@ import type { ProviderBackend } from "../helpers/provider-backend.js";
 import { startProviderBackend } from "../helpers/provider-backend.js";
 
 let backend: ProviderBackend;
+let logDir: string;
+let unexpectedRequests: string;
 
 test.beforeAll(async () => {
+  logDir = mkdtempSync(join(tmpdir(), "stremlist-provider-contract-"));
+  unexpectedRequests = join(logDir, "unexpected.jsonl");
+  writeFileSync(unexpectedRequests, "");
   backend = await startProviderBackend("./provider-transport.ts", {
     SUPABASE_URL: "http://127.0.0.1:1",
     SUPABASE_SERVICE_ROLE_KEY: "fixture-only",
@@ -24,10 +32,20 @@ test.beforeAll(async () => {
     CONNECTION_ENCRYPTION_KEY,
     RESEND_API_KEY: "re_fixture_only",
     RESEND_AUDIENCE_ID: "fixture-audience",
+    E2E_UNEXPECTED_REQUEST_LOG: unexpectedRequests,
   });
 });
+test.afterEach(() => {
+  const refused = readFileSync(unexpectedRequests, "utf8");
+  writeFileSync(unexpectedRequests, "");
+  expect(refused.split("\n").filter(Boolean)).toEqual([]);
+});
 test.afterAll(async () => {
-  await backend?.stop();
+  try {
+    await backend?.stop();
+  } finally {
+    rmSync(logDir, { recursive: true, force: true });
+  }
 });
 
 for (const [scenario, status, expected] of [

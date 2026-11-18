@@ -19,7 +19,6 @@ import {
   connected,
   fitConfigurePage,
   gatedSaves,
-  holdToasts,
   imdbUser,
   legacyConfiguration,
   MINUTE,
@@ -55,16 +54,15 @@ test(
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
     await fitConfigurePage(browser);
-    await holdToasts(browser);
     const submissions = await captureConfig(browser);
     await app.open(`/configure?account=${accountId}`);
     await expect(screen.getByRole("checkbox", TOGGLE)).not.toBeChecked();
     await expect(screen.getByText("No new titles detected yet.")).toBeVisible();
 
-    await agent.act(
-      "Turn on the catalog of newly detected titles, then save.",
-      { maxModelCalls: 5 },
-    );
+    await agent.act("Turn on the catalog of newly detected titles.", {
+      maxModelCalls: 5,
+    });
+    await saveButton(screen).tap();
 
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(screen.getByRole("checkbox", TOGGLE)).toBeChecked();
