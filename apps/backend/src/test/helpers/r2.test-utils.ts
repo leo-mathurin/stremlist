@@ -111,6 +111,7 @@ function keyOf(request: Request, bucket: string) {
 async function putObject(request: Request, key: string) {
   r2Puts.count += 1;
   await r2Puts.before?.(key);
+  const bytes = Buffer.from(await request.arrayBuffer());
   if ([...r2Unwritable].some((prefix) => key.startsWith(prefix))) {
     return s3Error("AccessDenied", 403);
   }
@@ -126,7 +127,6 @@ async function putObject(request: Request, key: string) {
   ) {
     return s3Error("PreconditionFailed", 412);
   }
-  const bytes = Buffer.from(await request.arrayBuffer());
   putR2Bytes(key, bytes);
   return new HttpResponse(null, {
     status: 200,

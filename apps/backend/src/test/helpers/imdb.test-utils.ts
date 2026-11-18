@@ -18,6 +18,12 @@ const imdbRequest = z.object({
 /** One GraphQL request that the IMDb API received. */
 export type ImdbRequest = z.infer<typeof imdbRequest>;
 
+function runtimeSeconds(runtime: string) {
+  const match = /^(?:(\d+)h\s*)?(?:(\d+)m)?$/.exec(runtime);
+  if (!match) throw new Error(`FakeImdb cannot serve the runtime ${runtime}`);
+  return (Number(match[1] ?? 0) * 60 + Number(match[2] ?? 0)) * 60;
+}
+
 /** An IMDb title node that the scraper turns back into `meta`. */
 export function imdbTitle(meta: StremioMeta) {
   return {
@@ -33,6 +39,7 @@ export function imdbTitle(meta: StremioMeta) {
       ? { plotText: { plainText: meta.description } }
       : null,
     primaryImage: meta.poster ? { url: meta.poster } : null,
+    runtime: meta.runtime ? { seconds: runtimeSeconds(meta.runtime) } : null,
     principalCredits: [
       ["director", meta.director ?? []] as const,
       ["cast", meta.cast ?? []] as const,

@@ -55,6 +55,19 @@ export class FakeTrakt {
     this.paths.set(path, traktItems(metas));
   }
 
+  /**
+   * Serves these raw Trakt items as `path`, for items that `serve` cannot
+   * make: no IMDb ID, dates, ratings.
+   */
+  serveItems(path: string, items: unknown[]) {
+    this.paths.set(path, structuredClone(items));
+  }
+
+  /** Answers `path` with this JSON body (not paged), for example a sync result. */
+  reply(path: string, body: unknown, status = 200) {
+    this.paths.set(path, { status, body });
+  }
+
   /** Answers `path` with this status, and optionally this JSON body. */
   fail(path: string, status: number, body?: unknown) {
     this.paths.set(path, { status, body });

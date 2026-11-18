@@ -24,6 +24,19 @@ export default defineConfig({
      * Tests never reach TheTVDB with a key from the shell or a .env file.
      * The live TheTVDB tests use TVDB_LIVE_API_KEY and set the key themselves.
      */
-    env: { TVDB_API_KEY: "" },
+    env: {
+      TVDB_API_KEY: "",
+      /**
+       * The real Supabase, R2 and Resend clients run in tests. Their hosts
+       * are reserved test names that MSW answers from in-memory stores.
+       */
+      SUPABASE_URL: "http://supabase.test",
+      SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key",
+      R2_ENDPOINT: "http://r2.test",
+      R2_ACCESS_KEY_ID: "test-access-key",
+      R2_SECRET_ACCESS_KEY: "test-secret-key",
+      R2_BUCKET: "test-bucket",
+      RESEND_API_KEY: "re_test",
+    },
   },
 });
