@@ -60,7 +60,8 @@ Then:
    heartbeats.
 4. Merge `main` into `staging`, so that staging runs v2.
 5. Later, when no v1 deployment uses the database, drop the v1 shape (see
-   [After v2.0.0](#after-v200)).
+   [After v2.0.0](#after-v200)). Done in
+   `20261118193000_drop_v1_compatibility.sql`.
 
 ### v1 keeps working during the release
 
@@ -69,9 +70,7 @@ Then:
 `users` and `user_watchlists` and the three v1 RPCs (`replace_user_config`,
 `request_watchlist_prewarm`, `finish_watchlist_prewarm`) on the new tables. The
 v1 backend, and old staging and preview deployments, keep reading and writing
-until v2 is promoted. `supabase/tests/v1_compatibility.sql` runs the v1
-queries on the new schema, and the CI upgrade test migrates v1 data with
-non-`ur` Legacy IDs.
+until v2 is promoted.
 
 | Failure point                                   | Result                                                                                     |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------ |
@@ -87,12 +86,10 @@ Previews of v2 branches that are built before the release fail: the
 
 ### After v2.0.0
 
-[`supabase/contract/drop_v1_compatibility.sql`](../supabase/contract/drop_v1_compatibility.sql)
-drops the v1 views and RPCs. It is not in `supabase/migrations`, so no deploy
-applies it. CI applies it in a rolled-back transaction to prove that it still
-runs. When v2 serves production and staging, and no one uses an older
-preview, move it to `supabase/migrations/<YYYYMMDDHHMMSS>_drop_v1_compatibility.sql`
-in a new PR. Its header lists the other files to delete.
+[`20261118193000_drop_v1_compatibility.sql`](../supabase/migrations/20261118193000_drop_v1_compatibility.sql)
+drops the v1 views and RPCs. It was released when v2 served production and
+staging and the production database had no v1 queries. Since then, a rollback
+to a v1 deployment does not work.
 
 ## Sequence
 

@@ -12,7 +12,7 @@ export type ChartKind =
   | { kind: "comingSoon"; comingSoonType: "MOVIE" | "TV" };
 
 export interface ChartEntry {
-  /** Stored in `user_watchlists.imdb_user_id`, e.g. "imdb:most-popular-movies". */
+  /** Stored in `lists.source_ref`, e.g. "imdb:most-popular-movies". */
   id: string;
   /** Dropdown label + default catalog title. */
   label: string;
@@ -32,7 +32,7 @@ export interface ChartEntry {
 
 /**
  * Built-in IMDb editorial charts, exposed as opt-in catalogs. A chart is just a
- * `user_watchlists` row whose `imdb_user_id` holds the synthetic id below, so no
+ * `lists` row whose `source_ref` holds the synthetic id below, so no
  * table/migration/cache/catalog-id changes are needed.
  *
  * The `imdb:` prefix (colon) guarantees no collision with `ur…`/`ls…`/`p.…`
