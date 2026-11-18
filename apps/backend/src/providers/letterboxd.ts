@@ -43,6 +43,9 @@ const SOURCE =
 // Public member collections: watched films, rating-filtered films, diary, likes.
 const COLLECTION =
   /^users\/([a-z0-9_]{1,40})\/(films(?:\/rated\/\d(?:\.\d)?(?:-\d(?:\.\d)?)?)?|diary|likes\/films)$/;
+/** A member film page (films, rated films, diary, likes), any page. */
+const MEMBER_PAGE =
+  /^https:\/\/letterboxd\.com\/[a-z0-9_]{1,40}\/(?:films|diary|likes\/films)\//;
 const MAX_PAGES = 100;
 /** About how long one more page of a read takes, for the queue estimate. */
 const PAGE_ESTIMATE_MS = 400;
@@ -315,6 +318,20 @@ async function readHtml(
           return {
             value: { ok: false, reason: "private" },
             result: "ok",
+            details,
+          };
+        // Letterboxd's Cloudflare challenges member film pages by itself, at
+        // any rate, while lists still read. Only that list fails; the gate
+        // counts a failed read, like a timeout, instead of halting at once.
+        if (
+          kind === "collection" &&
+          details.cfMitigated === "challenge" &&
+          MEMBER_PAGE.test(url)
+        )
+          return {
+            value: { ok: false, reason: "unavailable" },
+            result: "failed",
+            retryAfterMs,
             details,
           };
         const location = response.headers.get("location");
