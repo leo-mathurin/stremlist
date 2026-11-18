@@ -65,6 +65,14 @@ const RATED_BREAKING_BAD = {
   ids: { imdb: "tt0903747", tmdb: 1396, tvdb: 81189, mdblist: "8plj" },
 };
 
+// MDBList's answer to a supporter section for a free account (live read
+// of /lists/recommended/because-watched/items, 2026-11-17).
+const SUPPORTER_ONLY = () =>
+  Response.json(
+    { error: "This section requires a supporter subscription." },
+    { status: 403 },
+  );
+
 interface Call {
   url: URL;
   init: RequestInit;
@@ -297,6 +305,53 @@ describe("mdblistProvider.validateSource", () => {
       defaultDisplayMode: "split",
     });
     expect(calls[0].url.pathname).toBe("/lists/official/trending");
+  });
+
+  it("accepts Up Next and the collection with no read", async () => {
+    const ctx = { connection: connection() };
+    await expect(
+      mdblistProvider.validateSource("me/up-next", ctx),
+    ).resolves.toEqual({
+      ok: true,
+      ref: "me/up-next",
+      suggestedTitle: "MDBList Up Next",
+      defaultDisplayMode: "series",
+    });
+    await expect(
+      mdblistProvider.validateSource("me/collection", ctx),
+    ).resolves.toMatchObject({ ok: true, ref: "me/collection" });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("names a recommendation section from its info", async () => {
+    // Shape of /lists/recommended/rising (live read, 2026-11-17).
+    handler = () =>
+      Response.json({
+        slug: "rising",
+        label: "Rising Fast",
+        description: "Accelerating in popularity right now",
+        items_url: "/lists/recommended/rising/items",
+      });
+    await expect(
+      mdblistProvider.validateSource("recommended/rising", {
+        connection: connection(),
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      ref: "recommended/rising",
+      suggestedTitle: "Rising Fast",
+      defaultDisplayMode: "split",
+    });
+    expect(calls[0].url.pathname).toBe("/lists/recommended/rising");
+  });
+
+  it("says that a supporter section needs a paid plan", async () => {
+    handler = SUPPORTER_ONLY;
+    await expect(
+      mdblistProvider.validateSource("recommended/because-watched", {
+        connection: connection(),
+      }),
+    ).rejects.toMatchObject({ reason: "premium_only" });
   });
 
   it("rejects unknown refs", async () => {
@@ -583,6 +638,177 @@ describe("mdblistProvider.fetchSource", () => {
       ["tt0903747", undefined],
     ]);
   });
+
+  it("reads a recommendation section as a list, undated", async () => {
+    // With unified=true, /lists/recommended/{section}/items answers a bare
+    // array with the list headers (live read of `rising`, 2026-11-17).
+    handler = () => itemsPage([BREAKING_BAD, SUPER_MARIO]);
+    const snapshot = await mdblistProvider.fetchSource(
+      "recommended/rising",
+      ctx(),
+    );
+    expect(calls[0].url.pathname).toBe("/lists/recommended/rising/items");
+    expect(calls[0].url.searchParams.get("unified")).toBe("true");
+    expect(
+      snapshot.entries.map((entry) => [entry.imdbId, entry.addedAt]),
+    ).toEqual([
+      ["tt0903747", undefined],
+      ["tt6718170", undefined],
+    ]);
+  });
+
+  it("gives premium_only, not a server error, for a supporter section", async () => {
+    handler = SUPPORTER_ONLY;
+    const error: unknown = await mdblistProvider
+      .fetchSource("recommended/because-watched", ctx())
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(SourceUnavailableError);
+    expect(error).toMatchObject({ reason: "premium_only" });
+  });
+
+  it("reads Up Next by offset, oldest watched first, undated", async () => {
+    // Shape of /upnext (live read with a test account, 2026-11-17).
+    const row = (show: unknown, at: string | null) => ({
+      show,
+      next_episode: { season: 1, episode: 2, display_code: "S01E02" },
+      progress: { watched_episode_count: 1, total_episode_count: 62 },
+      last_watched_at: at,
+      is_newly_aired: false,
+    });
+    handler = (url) =>
+      Response.json(
+        url.searchParams.get("offset") === "0"
+          ? {
+              items: [
+                row(
+                  { ...RATED_BREAKING_BAD, year: 2008 },
+                  "2026-11-10T20:00:00.000Z",
+                ),
+              ],
+              limit: 100,
+              has_more: true,
+            }
+          : {
+              items: [
+                row(
+                  {
+                    title: "Severance",
+                    year: 2022,
+                    ids: { imdb: "tt11280740", tmdb: 95396 },
+                  },
+                  "2026-11-01T20:00:00.000Z",
+                ),
+              ],
+              limit: 100,
+              has_more: false,
+            },
+      );
+    const snapshot = await mdblistProvider.fetchSource("me/up-next", ctx());
+    expect(
+      calls.map((call) => [
+        call.url.pathname,
+        call.url.searchParams.get("limit"),
+        call.url.searchParams.get("offset"),
+      ]),
+    ).toEqual([
+      ["/upnext", "100", "0"],
+      ["/upnext", "100", "1"],
+    ]);
+    expect(snapshot.entries).toEqual([
+      {
+        type: "series",
+        imdbId: "tt11280740",
+        externalIds: { tmdb: { id: 95396, type: "series" } },
+        title: "Severance",
+        year: 2022,
+      },
+      {
+        type: "series",
+        imdbId: "tt0903747",
+        externalIds: { tmdb: { id: 1396, type: "series" } },
+        title: "Breaking Bad",
+        year: 2008,
+      },
+    ]);
+    expect(snapshot.complete).toBe(true);
+  });
+
+  it("reads the collection, with partly collected shows from their episodes", async () => {
+    // Recorded shapes of /sync/collection?mediatype=movie|show|episode (live
+    // read with a test account, 2026-11-17). MDBList gives a `shows` row
+    // only for a fully collected show.
+    const GAME_OF_THRONES = {
+      title: "Game of Thrones",
+      year: 2011,
+      ids: { imdb: "tt0944947", tmdb: 1399, tvdb: 121361, mdblist: "8pll" },
+    };
+    const empty = { movies: [], shows: [], seasons: [], episodes: [] };
+    const pagination = { offset: 0, limit: 1000, has_more: false };
+    const episode = (show: unknown, number: number, collectedAt: string) => ({
+      collected_at: collectedAt,
+      episode: { season: 1, number, ids: { tmdb: number }, show },
+    });
+    handler = (url) => {
+      switch (url.searchParams.get("mediatype") ?? "") {
+        case "movie":
+          return Response.json({
+            ...empty,
+            movies: [
+              {
+                collected_at: "2026-11-03T10:00:00.000Z",
+                movie: RATED_SHAWSHANK,
+              },
+            ],
+            pagination,
+          });
+        case "show":
+          return Response.json({
+            ...empty,
+            shows: [
+              {
+                collected_at: "2026-11-05T10:00:00.000Z",
+                show: GAME_OF_THRONES,
+              },
+            ],
+            pagination,
+          });
+        default:
+          return Response.json({
+            ...empty,
+            episodes: [
+              episode(GAME_OF_THRONES, 1, "2026-11-05T10:00:00.000Z"),
+              episode(RATED_BREAKING_BAD, 2, "2026-11-02T10:00:00.000Z"),
+              episode(RATED_BREAKING_BAD, 1, "2026-11-01T10:00:00.000Z"),
+            ],
+            pagination,
+          });
+      }
+    };
+    const snapshot = await mdblistProvider.fetchSource("me/collection", ctx());
+    expect(
+      calls.map((call) => [
+        call.url.pathname,
+        call.url.searchParams.get("mediatype"),
+      ]),
+    ).toEqual([
+      ["/sync/collection", "movie"],
+      ["/sync/collection", "show"],
+      ["/sync/collection", "episode"],
+    ]);
+    // A show is dated by its first collected episode.
+    expect(
+      snapshot.entries.map((entry) => [
+        entry.imdbId,
+        entry.type,
+        entry.addedAt,
+      ]),
+    ).toEqual([
+      ["tt0903747", "series", "2026-11-01T10:00:00.000Z"],
+      ["tt0111161", "movie", "2026-11-03T10:00:00.000Z"],
+      ["tt0944947", "series", "2026-11-05T10:00:00.000Z"],
+    ]);
+    expect(snapshot.complete).toBe(true);
+  });
 });
 
 describe("mdblistProvider.resolutionKey", () => {
@@ -732,6 +958,7 @@ describe("mdblistProvider.actions", () => {
     ]);
     expect(actions.affectedSources({ kind: "watched", add: true })).toEqual([
       "me/history",
+      "me/up-next",
     ]);
     expect(actions.affectedSources({ kind: "rating", rating: 5 })).toEqual([
       "me/ratings",
@@ -857,9 +1084,29 @@ describe("listMdblistUserSources", () => {
     });
   }
 
-  it("offers the user's own, external and liked lists", async () => {
+  it("offers the user's own, external and liked lists, and recommendations", async () => {
     handler = (url) => {
       if (url.pathname === "/lists/user") return Response.json([ownList]);
+      // A supporter gets more sections than `rising` (shape of a live read
+      // with a free account, 2026-11-17).
+      if (url.pathname === "/lists/recommended") {
+        return Response.json({
+          sections: [
+            {
+              slug: "because-watched",
+              label: "Because You Watched",
+              description: "",
+              items_url: "/lists/recommended/because-watched/items",
+            },
+            {
+              slug: "rising",
+              label: "Rising Fast",
+              description: "Accelerating in popularity right now",
+              items_url: "/lists/recommended/rising/items",
+            },
+          ],
+        });
+      }
       if (url.pathname === "/lists/liked") {
         return url.searchParams.get("offset") === "0"
           ? likedPage([likedList], true)
@@ -887,6 +1134,19 @@ describe("listMdblistUserSources", () => {
         label: "Top Watched Movies of The Week / >60",
         defaultDisplayMode: "movie",
       },
+      {
+        ref: "recommended/because-watched",
+        kind: "recommendations",
+        label: "Because You Watched",
+        defaultDisplayMode: "split",
+      },
+      // connectionSources drops it: the static sources offer it first.
+      {
+        ref: "recommended/rising",
+        kind: "recommendations",
+        label: "Rising Fast",
+        defaultDisplayMode: "split",
+      },
     ]);
     const liked = calls.filter((call) => call.url.pathname === "/lists/liked");
     expect(
@@ -897,11 +1157,14 @@ describe("listMdblistUserSources", () => {
     ]);
   });
 
-  it("still offers the other lists when liked lists fail", async () => {
+  it("still offers the other lists when liked lists and recommendations fail", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     handler = (url) => {
       if (url.pathname === "/lists/user") return Response.json([ownList]);
-      if (url.pathname === "/lists/liked") {
+      if (
+        url.pathname === "/lists/liked" ||
+        url.pathname === "/lists/recommended"
+      ) {
         return Response.json({ error: "boom" }, { status: 500 });
       }
       return Response.json([externalList]);

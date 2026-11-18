@@ -44,6 +44,10 @@ A Better Stack heartbeat (`BETTERSTACK_HEARTBEAT_URL_<PROVIDER>`) is optional.
 When it is set, every failed probe alerts. The list checks below send the
 pings.
 
+A failed probe also makes `/monitor` answer HTTP 502, except when the Provider
+is turned off or halted (`unavailable: true` in its result). Then only its
+heartbeat alerts, so a Letterboxd halt gives one alert, not two.
+
 Only some failures count toward an outage: a server error (5xx), a timeout, or
 a network failure, also when an adapter wraps it in an "unavailable" error.
 These do not count, so they never show a banner:
@@ -119,22 +123,24 @@ entry to `CANARIES`.
 
 Canaries read through these references by default:
 
-| List type                                                        | Source list                                      |
-| ---------------------------------------------------------------- | ------------------------------------------------ |
-| `imdb:chart/*`                                                   | The chart                                        |
-| `imdb:ls/list`                                                   | `ls055592025`                                    |
-| `imdb:ur/watchlist`                                              | `ur195879360`                                    |
-| `imdb:ur/ratings`                                                | `ur102185135/ratings`                            |
-| `trakt:` charts (`trending`, `boxoffice`…)                       | The chart (needs `TRAKT_CLIENT_ID`)              |
-| `justwatch:{list}`                                               | `tl-tu-12653`                                    |
-| `senscritique:users/{user}/wishes`                               | `users/Sergent_Pepper/wishes`                    |
-| `senscritique:lists/{id}`                                        | `lists/369869`                                   |
-| `senscritique:users/{user}/done`, `rated`, `recommend`           | `users/Plume231/…`                               |
-| `senscritique:` charts and `polls/{id}`                          | The chart, `polls/3996052`                       |
-| `simkl:trending/*`, `simkl:dvd/releases`                         | The chart (Simkl's CDN)                          |
-| `simkl:trending/{type}/genre/{slug}`                             | `trending/movies/genre/horror`                   |
-| `letterboxd:users/{user}/lists/{slug}`                           | `users/official/lists/letterboxds-top-500-films` |
-| `trakt:me/*`, `simkl:me/*`, `mdblist:me/*`, `mdblist:official/*` | The monitor Account's Connection                 |
+| List type                                                                                      | Source list                                      |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `imdb:chart/*`                                                                                 | The chart                                        |
+| `imdb:ls/list`                                                                                 | `ls055592025`                                    |
+| `imdb:ur/watchlist`                                                                            | `ur195879360`                                    |
+| `imdb:ur/ratings`                                                                              | `ur102185135/ratings`                            |
+| `trakt:` charts (`trending`, `boxoffice`…)                                                     | The chart (needs `TRAKT_CLIENT_ID`)              |
+| `justwatch:{list}`                                                                             | `tl-tu-12653`                                    |
+| `senscritique:users/{user}/wishes`                                                             | `users/Sergent_Pepper/wishes`                    |
+| `senscritique:lists/{id}`                                                                      | `lists/369869`                                   |
+| `senscritique:users/{user}/done`, `rated`, `recommend`, `liked`                                | `users/Plume231/…`                               |
+| `senscritique:users/{user}/current`                                                            | `users/kYrios/current`                           |
+| `senscritique:users/{user}/done/{year}`                                                        | `users/Sergent_Pepper/done/2024`                 |
+| `senscritique:` charts and `polls/{id}`                                                        | The chart, `polls/3996052`                       |
+| `simkl:trending/*`, `simkl:dvd/releases`                                                       | The chart (Simkl's CDN)                          |
+| `simkl:trending/{type}/genre/{slug}`                                                           | `trending/movies/genre/horror`                   |
+| `letterboxd:users/{user}/lists/{slug}`                                                         | `users/official/lists/letterboxds-top-500-films` |
+| `trakt:me/*`, `simkl:me/*`, `mdblist:me/*`, `mdblist:official/*`, `mdblist:recommended/rising` | The monitor Account's Connection                 |
 
 The other types with variable parts (Trakt user lists, smart lists, MDBList
 lists, Letterboxd member pages) need an entry in `MONITOR_CANARY_REFS`. Pick

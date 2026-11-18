@@ -99,14 +99,14 @@ export function sourceTitleType(
 }
 
 const TRAKT_DATED =
-  /^(?:(?:me|users\/[^/]+)\/(?:watchlist|favorites|ratings|history|collection|lists\/[^/]+)|lists\/[^/]+)$/;
+  /^(?:(?:me|users\/[^/]+)\/(?:watchlist|favorites|ratings|history|collection|lists\/[^/]+)|lists\/[^/]+|me\/continue-watching)$/;
 const SIMKL_DATED =
   /^me\/(?:plantowatch|watching|completed|hold|dropped|history|ratings|continue-watching)$/;
 
 /**
  * Whether the Provider gives the date when each Title joined this Source
- * list (added, watched or collected). Charts, recommendations and lists in
- * the owner's order have no date.
+ * list (added, watched, collected or paused). Charts, calendars,
+ * recommendations and lists in the owner's order have no date.
  */
 export function sourceHasAddedDates(
   provider: ProviderId,
@@ -120,7 +120,7 @@ export function sourceHasAddedDates(
     case "simkl":
       return SIMKL_DATED.test(ref);
     case "mdblist":
-      return /^me\/(?:watchlist|ratings|history)$/.test(ref);
+      return /^me\/(?:watchlist|ratings|history|collection)$/.test(ref);
     case "letterboxd":
       // Only the diary carries per-entry dates (the watch date).
       return /^users\/[^/]+\/diary$/.test(ref);

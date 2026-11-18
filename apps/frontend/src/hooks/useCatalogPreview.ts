@@ -35,7 +35,7 @@ type CatalogPreviewState =
 /** Wait this long after the last settings change before asking again. */
 const SETTINGS_DEBOUNCE_MS = 300;
 
-function previewBody(
+export function previewBody(
   list: ListFormRow,
   accountKey: string | null,
 ): PreviewBody {

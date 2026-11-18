@@ -150,7 +150,11 @@ export async function recordLetterboxdRequest(
     ]);
   const entry = { ...details, ...outcome };
   const secrets = secretsOf(entry.url);
-  const keep = entry.outcome !== "ok" || Math.random() < SUCCESS_SAMPLE;
+  // A private watchlist answers 403 with outcome "ok". Always keep its row,
+  // so the log shows each 403 that did not halt the gate.
+  const forbidden = entry.status === 403;
+  const keep =
+    entry.outcome !== "ok" || forbidden || Math.random() < SUCCESS_SAMPLE;
   const { error } = await supabase.rpc("letterboxd_record", {
     p_request: {
       outcome: entry.outcome,

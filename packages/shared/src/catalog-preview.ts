@@ -86,3 +86,20 @@ export type CatalogPreviewResponse =
   | CatalogPreview
   | CatalogPreviewProblem
   | QueuedAnswer;
+
+/** Most Titles in one page of the full preview of a Catalog. */
+export const CATALOG_TITLES_PAGE_SIZE = 60;
+
+/** One page of the Titles of one Catalog, from an offset. */
+export interface CatalogTitlesPage {
+  ok: true;
+  /** Titles in this Catalog, after the List's filters. */
+  total: number;
+  /** At most `CATALOG_TITLES_PAGE_SIZE` Titles, in the order of Stremio. */
+  titles: PreviewTitle[];
+}
+
+export type CatalogTitlesResponse =
+  | CatalogTitlesPage
+  | CatalogPreviewProblem
+  | QueuedAnswer;
