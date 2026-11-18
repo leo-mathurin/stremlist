@@ -16,6 +16,7 @@ import Configure from "./pages/Configure";
 import ConnectReturn from "./pages/ConnectReturn";
 import NotFound from "./pages/NotFound";
 import { parseConnectAnswer } from "./lib/connections";
+import { toastDuration } from "./lib/toast-duration";
 
 function ConfigureRoute() {
   const { hash } = useLocation();
@@ -42,7 +43,7 @@ export default function App() {
       <Toaster
         position="bottom-left"
         closeButton
-        duration={6000}
+        duration={toastDuration(6000)}
         icons={{
           success: <CircleCheck className="size-4 text-emerald-600" />,
           error: <CircleX className="size-4 text-red-600" />,

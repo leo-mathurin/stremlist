@@ -23,6 +23,7 @@ import {
   toJson,
   saveButton,
   SAVE_NEW,
+  holdToasts,
   fitConfigurePage,
 } from "./config.fixture";
 
@@ -279,6 +280,7 @@ for (const result of ["success", "server-error", "offline"] as const) {
     `newsletter validates email and handles ${result}`,
     { tags: result === "success" ? ["agent"] : [] },
     async ({ app, agent, screen, browser }) => {
+      await holdToasts(browser);
       let submissions = 0;
       await browser.route(`${backend}/newsletter/subscribe`, async (route) => {
         submissions += 1;
@@ -301,7 +303,7 @@ for (const result of ["success", "server-error", "offline"] as const) {
       ).toBeVisible();
       expect(submissions).toBe(0);
       if (result === "success") {
-        await agent.act("Enter {email} in the newsletter form.", {
+        await agent.act("Subscribe {email} to the newsletter.", {
           params: { email: "e2e@example.test" },
           maxModelCalls: 5,
         });
@@ -309,8 +311,8 @@ for (const result of ["success", "server-error", "offline"] as const) {
         await screen
           .getByPlaceholder("your@email.com")
           .fill("e2e@example.test");
+        await screen.getByRole("button", "Subscribe", { exact: true }).tap();
       }
-      await screen.getByRole("button", "Subscribe", { exact: true }).tap();
       await expect(
         screen.getByText(
           result === "success"
@@ -541,30 +543,29 @@ test(
   "catalog filters and extra presets survive save and clear",
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
+    await holdToasts(browser);
     const submissions = await captureConfig(browser);
     await fitConfigurePage(browser);
     await app.open(`/configure?account=${accountId}`);
     await agent.act(
-      "For the Test catalog, select the Drama genre filter and enable the Top rated extra catalog.",
+      "For the Test catalog, select the Drama genre filter and enable the Top rated extra catalog, then save these settings.",
       { maxModelCalls: 12 },
     );
-    await saveButton(screen).tap();
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     expect(submissions.at(-1)?.lists[0].catalogSettings).toEqual({
       genre: "Drama",
       presets: ["rated"],
     });
     await agent.act(
-      "Clear this catalog's filters while keeping the Top rated extra catalog enabled.",
+      "Clear this catalog's filters while keeping the Top rated extra catalog enabled, then save.",
       { maxModelCalls: 6 },
     );
-    await saveButton(screen).tap();
-    await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(saveButton(screen)).toHaveAttribute(
       "title",
       "No changes to save",
     );
     expect(submissions).toHaveLength(2);
+    await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     expect(submissions.at(-1)?.lists[0].catalogSettings).toEqual({
       presets: ["rated"],
     });

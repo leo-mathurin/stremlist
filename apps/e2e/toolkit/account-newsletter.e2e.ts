@@ -6,6 +6,7 @@ import {
   baseRoutes,
   configuration,
   fitConfigurePage,
+  holdToasts,
   openFilters,
   routeConfig,
   row,
@@ -62,8 +63,9 @@ test(
 
 test(
   "newsletter retry keeps the email and accepts already-subscribed confirmation",
-  { tags: ["new-journeys"] },
-  async ({ app, browser, screen }) => {
+  { tags: ["agent", "new-journeys"] },
+  async ({ app, agent, browser, screen }) => {
+    await holdToasts(browser);
     let attempts = 0;
     await browser.route(`${backend}/newsletter/subscribe`, async (route) => {
       expect(JSON.parse(route.request.postData ?? "{}")).toEqual({
@@ -90,7 +92,10 @@ test(
       screen.getByText("Newsletter temporarily unavailable"),
     ).toBeVisible();
     await expect(email).toHaveValue("retry@example.test");
-    await screen.getByRole("button", "Subscribe", { exact: true }).tap();
+    await agent.act(
+      "Retry the newsletter subscription using the email already in the form.",
+      { maxModelCalls: 4 },
+    );
     await expect(screen.getByText(/You're already subscribed!/)).toBeVisible();
     await expect(
       screen.getByText("Newsletter temporarily unavailable"),

@@ -638,5 +638,6 @@ installFetchFixture({
     "query.wikidata.org": wikidata,
     "api.graphql.imdb.com": imdb,
     "api.themoviedb.org": tmdb,
+    "v3-cinemeta.strem.io": () => new Response("Not found", { status: 404 }),
   },
 });

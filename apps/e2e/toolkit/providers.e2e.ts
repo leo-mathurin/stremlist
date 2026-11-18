@@ -19,6 +19,7 @@ import {
   toJson,
   saveButton,
   SAVE_NEW,
+  holdToasts,
   fitConfigurePage,
   routeConfig,
   routeConnectionSources,
@@ -179,13 +180,13 @@ test(
   "a Provider chart is added from Quick add",
   { tags: ["agent"] },
   async ({ app, agent, browser, screen }) => {
+    await holdToasts(browser);
     await fitConfigurePage(browser);
     const submissions = await captureConfig(browser);
     await app.open(`/configure?account=${accountId}`);
-    await agent.act("Add the Trakt Trending chart to my Lists.", {
+    await agent.act("Add the Trakt Trending chart to my Lists, then save.", {
       maxModelCalls: 5,
     });
-    await saveButton(screen).tap();
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(screen.getByRole("button", "Trending")).toBeDisabled();
     expect(submissions.at(-1)?.lists).toMatchObject([
@@ -289,6 +290,7 @@ test(
   { tags: ["agent"] },
   async ({ app, agent, browser, screen }) => {
     await fitConfigurePage(browser);
+    await holdToasts(browser);
     await baseRoutes(browser);
     const { state, submissions } = await routeConfig(browser);
     const { starts, authorized } = await routeOAuth(
@@ -316,10 +318,9 @@ test(
     expect(starts).toEqual(["POST"]);
     expect(authorized).toHaveLength(1);
 
-    await agent.act("Add my Simkl Plan to watch list.", {
+    await agent.act("Add my Simkl Plan to watch list, then save.", {
       maxModelCalls: 6,
     });
-    await saveButton(screen).tap();
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(screen.getByRole("button", "Plan to watch")).toBeDisabled();
     expect(submissions).toHaveLength(1);
@@ -361,6 +362,7 @@ test(
   "disconnecting a Provider asks first, then its Lists offer to connect again",
   { tags: ["agent"] },
   async ({ app, agent, browser, screen }) => {
+    await holdToasts(browser);
     await fitConfigurePage(browser);
     await baseRoutes(
       browser,
@@ -404,11 +406,7 @@ test(
     await confirm.getByRole("button", "Cancel").tap();
     await expect(confirm).not.toBeVisible();
     expect(deletes).toEqual([]);
-    await agent.act(
-      "Start to disconnect Trakt, and stop when it asks you to confirm.",
-      { maxModelCalls: 5 },
-    );
-    await confirm.getByRole("button", "Disconnect", { exact: true }).tap();
+    await agent.act("Disconnect Trakt and confirm it.", { maxModelCalls: 5 });
     await expect(
       screen.getByText(
         "Trakt is disconnected. Lists read through Trakt stop showing in Stremio until you connect it again.",

@@ -1,5 +1,5 @@
 import { appendFileSync } from "node:fs";
-import { http, passthrough } from "msw";
+import { http, HttpResponse, passthrough } from "msw";
 import { setupServer } from "msw/node";
 import { type Guard, isRecord, isString, parsed } from "./json.js";
 
@@ -56,7 +56,11 @@ function hostPattern(host: string) {
  * Answer the outbound requests of this process with MSW. `hosts` maps a host
  * (`api.trakt.tv`) to its handler. `passthrough` hosts reach the real service
  * (a test that runs with a real key). Loopback requests always pass through,
- * and a request to any other host fails. With `log`, each request to a
+ * and a request to any other host fails: a final catch-all handler answers
+ * it with a network error and appends its method and URL to the
+ * `E2E_UNEXPECTED_REQUEST_LOG` file, so the suite can fail on it. MSW's own
+ * "error" strategy lets some file types (.json, .html) through, so it alone
+ * cannot keep a fixture off the real network. With `log`, each request to a
  * non-loopback host is appended to that file as one JSON line: method, URL,
  * bearer token and body; requests that pass through log only their method and
  * URL, never their credentials.
@@ -92,6 +96,13 @@ export function installFetchFixture(options: {
         return handler({ request, url, body });
       }),
     ),
+    http.all("*", ({ request }) => {
+      const entry = `${JSON.stringify({ method: request.method, url: request.url })}\n`;
+      const file = process.env.E2E_UNEXPECTED_REQUEST_LOG;
+      if (file) appendFileSync(file, entry);
+      else console.error(`Unexpected fixture request: ${entry}`);
+      return HttpResponse.error();
+    }),
   );
   server.listen({ onUnhandledRequest: "error" });
   return server;

@@ -73,7 +73,9 @@ export async function startFixtureBackend(
 ) {
   const logDir = mkdtempSync(join(tmpdir(), "stremlist-provider-log-"));
   const logFile = join(logDir, "requests.jsonl");
+  const unexpectedFile = join(logDir, "unexpected.jsonl");
   writeFileSync(logFile, "");
+  writeFileSync(unexpectedFile, "");
   const child = await startProviderBackend(preload, {
     SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY,
@@ -89,6 +91,7 @@ export async function startFixtureBackend(
     SIMKL_CLIENT_ID: "fixture-simkl-client",
     MDBLIST_CLIENT_ID: "fixture-mdblist-client",
     E2E_PROVIDER_LOG: logFile,
+    E2E_UNEXPECTED_REQUEST_LOG: unexpectedFile,
     ...extraEnv,
   }).catch((error: unknown) => {
     rmSync(logDir, { recursive: true, force: true });
@@ -132,10 +135,19 @@ export async function startFixtureBackend(
       };
     },
     async stop() {
+      let unexpected: string[] = [];
       try {
         await child.stop();
+        unexpected = readFileSync(unexpectedFile, "utf8")
+          .split("\n")
+          .filter(Boolean);
       } finally {
         rmSync(logDir, { recursive: true, force: true });
+      }
+      if (unexpected.length > 0) {
+        throw new Error(
+          `The fixture backend got requests that no handler covers:\n${unexpected.join("\n")}`,
+        );
       }
     },
   } satisfies FixtureBackend;

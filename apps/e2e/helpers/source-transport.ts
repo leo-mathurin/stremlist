@@ -143,5 +143,9 @@ installFetchFixture({
     "api.graphql.imdb.com": imdb,
     "api.trakt.tv": trakt,
     "v3-cinemeta.strem.io": () => new Response("Not found", { status: 404 }),
+    "auth.trakt.tv": ({ request, url }) =>
+      request.method === "POST" && url.pathname === "/oauth/revoke"
+        ? Response.json({})
+        : new Response("Not found", { status: 404 }),
   },
 });
