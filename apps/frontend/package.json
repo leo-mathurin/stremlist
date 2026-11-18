@@ -10,7 +10,7 @@
     "preview": "vp preview",
     "dev:app": "vp dev",
     "dev:tailnet": "portless --tailscale",
-    "test": "node --test --test-timeout=60000 scripts/dev-proxy.test.mjs && bun test ./scripts/*.test.ts"
+    "test": "node --test --test-timeout=60000 scripts/dev-proxy.test.mjs && bun test ./scripts/*.test.ts ./src/lib/test/*.test.ts"
   },
   "dependencies": {
     "@dnd-kit/dom": "^0.3.2",

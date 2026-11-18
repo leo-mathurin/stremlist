@@ -7,7 +7,7 @@ import {
   outageProviders,
   recoveredCopy,
   recoveredProviders,
-} from "../src/lib/provider-outages.ts";
+} from "../provider-outages.ts";
 
 type Status = Record<
   ProviderId,
@@ -25,7 +25,7 @@ function status(overrides: Partial<Status> = {}) {
     senscritique: up,
     letterboxd: up,
     ...overrides,
-  };
+  } satisfies Status;
 }
 
 const EARLY = "2026-11-16T10:00:00.000Z";

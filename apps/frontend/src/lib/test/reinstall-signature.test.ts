@@ -4,11 +4,11 @@ import type { ListSource } from "@stremlist/shared/list-merge";
 import {
   getListReinstallSignature,
   learnSourceGenres,
-} from "../src/lib/reinstall-signature.ts";
+} from "../reinstall-signature.ts";
 import type {
   KnownSourceGenres,
   SignatureRow,
-} from "../src/lib/reinstall-signature.ts";
+} from "../reinstall-signature.ts";
 import { z } from "zod";
 
 const signatureEntries = z.array(
@@ -41,7 +41,7 @@ function list(
     displayMode: "split",
     catalogSettings: {},
     ...overrides,
-  };
+  } satisfies SignatureRow;
 }
 
 function signature(

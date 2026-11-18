@@ -7,17 +7,10 @@ import {
   configBody,
   hasUnsavedChanges,
   reconcileActionProviders,
-} from "../src/lib/account-config.ts";
-import type { AccountForm } from "../src/lib/account-config.ts";
-import {
-  createListRow,
-  listPayload,
-  rowsFromLists,
-} from "../src/lib/list-form.ts";
-import {
-  ACTION_PROVIDERS,
-  CONNECTABLE_PROVIDERS,
-} from "../src/lib/provider-groups.ts";
+} from "../account-config.ts";
+import type { AccountForm } from "../account-config.ts";
+import { createListRow, listPayload, rowsFromLists } from "../list-form.ts";
+import { ACTION_PROVIDERS, CONNECTABLE_PROVIDERS } from "../provider-groups.ts";
 
 test("names the Providers with Connections and with Actions", () => {
   assert.equal(

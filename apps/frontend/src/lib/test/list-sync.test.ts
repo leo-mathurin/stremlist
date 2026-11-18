@@ -7,8 +7,8 @@ import {
   mergedListSyncState,
   statusOfSource,
   syncLineTone,
-} from "../src/lib/list-sync.ts";
-import type { ListSyncState } from "../src/lib/list-sync.ts";
+} from "../list-sync.ts";
+import type { ListSyncState } from "../list-sync.ts";
 
 function assertFields(actual: ListSyncState, expected: Partial<ListSyncState>) {
   const values = new Map<string, unknown>(Object.entries(actual));
@@ -31,13 +31,14 @@ describe("listSyncState", () => {
   const failing = (
     problem: ListSyncStatus["problem"],
     overrides: Partial<ListSyncStatus> = {},
-  ) => ({
-    ...ok,
-    lastAttemptAt: "2026-10-06T13:00:00.000Z",
-    problem,
-    failingSince: "2026-10-06T13:00:00.000Z",
-    ...overrides,
-  });
+  ) =>
+    ({
+      ...ok,
+      lastAttemptAt: "2026-10-06T13:00:00.000Z",
+      problem,
+      failingSince: "2026-10-06T13:00:00.000Z",
+      ...overrides,
+    }) satisfies ListSyncStatus;
 
   test("waits for the first refresh of a new List", () => {
     assert.deepEqual(listSyncState(undefined, "none", false), {
@@ -127,11 +128,12 @@ describe("listSyncState", () => {
 describe("mergedListSyncState", () => {
   const IMDB = { provider: "imdb", sourceRef: "ur1000001" } as const;
   const TRAKT = { provider: "trakt", sourceRef: "me/watchlist" } as const;
-  const synced = (at: string) => ({
-    kind: "synced",
-    at,
-    titleCount: 3,
-  });
+  const synced = (at: string) =>
+    ({
+      kind: "synced",
+      at,
+      titleCount: 3,
+    }) satisfies ListSyncState;
   const failing: ListSyncState = {
     kind: "failing",
     problem: "private",
@@ -229,12 +231,13 @@ describe("mergedListSyncState", () => {
 });
 
 describe("syncLineTone", () => {
-  const renew = (stillShown: boolean, othersShown?: boolean) => ({
-    kind: "connection",
-    renew: true,
-    stillShown,
-    ...(othersShown === undefined ? {} : { othersShown }),
-  });
+  const renew = (stillShown: boolean, othersShown?: boolean) =>
+    ({
+      kind: "connection",
+      renew: true,
+      stillShown,
+      ...(othersShown === undefined ? {} : { othersShown }),
+    }) satisfies ListSyncState;
 
   test("agrees with the row when Stremio still shows a refused List", () => {
     assert.equal(attentionTone(renew(true)), "warn");
@@ -256,12 +259,13 @@ describe("syncLineTone", () => {
   });
 
   test("follows the attention tone of a failed refresh", () => {
-    const failing = (olderTitlesFrom: string | null) => ({
-      kind: "failing",
-      problem: "unavailable",
-      since: "2026-10-06T13:00:00.000Z",
-      olderTitlesFrom,
-    });
+    const failing = (olderTitlesFrom: string | null) =>
+      ({
+        kind: "failing",
+        problem: "unavailable",
+        since: "2026-10-06T13:00:00.000Z",
+        olderTitlesFrom,
+      }) satisfies ListSyncState;
     assert.equal(
       syncLineTone(failing("2026-10-06T12:00:00.000Z"), true),
       "warn",

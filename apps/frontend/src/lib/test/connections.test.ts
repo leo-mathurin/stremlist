@@ -6,7 +6,7 @@ import {
   connectProviderOf,
   missingConnections,
   previewConnectionKey,
-} from "../src/lib/connections.ts";
+} from "../connections.ts";
 
 const trakt: ConnectionSummary = {
   provider: "trakt",

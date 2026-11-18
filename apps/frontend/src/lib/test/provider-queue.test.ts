@@ -6,7 +6,7 @@ import {
   queueProgress,
   queueWait,
   retryDelay,
-} from "../src/lib/provider-queue.ts";
+} from "../provider-queue.ts";
 
 const T = 1_800_000_000_000;
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseSourceLink } from "@stremlist/shared/providers";
-import { findLegacyInstall } from "../src/lib/legacy-install.ts";
+import { findLegacyInstall } from "../legacy-install.ts";
 
 function lookupOver(
   installs: string[],

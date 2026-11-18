@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { stremioDeepLink } from "../src/lib/stremio-links.ts";
+import { stremioDeepLink } from "../stremio-links.ts";
 
 test("an HTTPS Addon URL gets a deep link", () => {
   assert.equal(

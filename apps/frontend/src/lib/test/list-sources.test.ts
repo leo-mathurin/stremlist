@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { extractAccountKey } from "../src/lib/list-sources.ts";
+import { extractAccountKey } from "../list-sources.ts";
 
 const ACCOUNT = "sl_E2eFixtureAccount00001";
 const HANDLE = "p.Ab3dEf9hIjkLmn0pQrStuvWxyz";

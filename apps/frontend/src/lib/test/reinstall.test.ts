@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { reinstallState, requiresReinstall } from "../src/lib/reinstall.ts";
+import { reinstallState, requiresReinstall } from "../reinstall.ts";
 
 const unchanged = { signature: "0|a|imdb|ur1||split|", actionsLive: false };
 
