@@ -240,7 +240,12 @@ function Examples({
       onPointerDown={(event) => {
         if (event.pointerType !== "mouse" || event.button !== 0) return;
         const strip = event.currentTarget;
-        drag.stopGlide?.();
+        if (drag.stopGlide) {
+          // Stop the glide where it is, so the row does not move under the
+          // new drag before the mouse does.
+          drag.stopGlide();
+          strip.scrollTo({ left: strip.scrollLeft, behavior: "instant" });
+        }
         drag.start = { x: event.clientX, left: strip.scrollLeft };
         strip.setPointerCapture(event.pointerId);
         // Snapping would hold the row in place while it follows the mouse.
