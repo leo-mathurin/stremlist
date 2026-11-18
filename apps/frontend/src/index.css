@@ -188,6 +188,13 @@
   }
 }
 
+@keyframes quick-add-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.97);
+  }
+}
+
 @keyframes checklist-check {
   from {
     opacity: 0;
@@ -211,7 +218,19 @@
     animation-delay: calc(var(--i, 0) * 45ms);
   }
 
+  /* The lists of the Quick add row that opens, and of the row that closes. */
+  .quick-add-reveal {
+    animation: quick-add-reveal 220ms var(--ease-out-quint) both;
+  }
+  .quick-add-hide {
+    opacity: 0;
+    transition: opacity 120ms ease-out;
+  }
+
   @media (prefers-reduced-motion: reduce) {
+    .quick-add-reveal {
+      animation-name: checklist-fade-in;
+    }
     .checklist-rise,
     .checklist-check,
     .checklist-stagger > * {

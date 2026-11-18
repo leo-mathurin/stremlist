@@ -14,6 +14,7 @@
     "./provider-queue": "./src/provider-queue.ts",
     "./providers": "./src/providers.ts",
     "./simkl-charts": "./src/simkl-charts.ts",
+    "./source-pages": "./src/source-pages.ts",
     "./source-problems": "./src/source-problems.ts",
     "./stremio.types": "./src/stremio.types.ts",
     "./sync-status": "./src/sync-status.ts",

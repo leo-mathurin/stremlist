@@ -39,6 +39,18 @@ export const SAVED_WITH_CHANGES =
 /** The label of the Save button before the first save creates the Account. */
 export const SAVE_NEW = "Save";
 
+/** Open the Quick add row of `provider`, unless it is already open. */
+export async function openQuickAdd(screen: Screen, provider: ProviderId) {
+  const row = screen.getByTestId(`quick-add-${provider}`);
+  if ((await row.getAttribute("aria-expanded")) !== "true") await row.tap();
+}
+
+/** Add the built-in IMDb chart `name` from Quick add. */
+export async function addImdbChart(screen: Screen, name: string | RegExp) {
+  await openQuickAdd(screen, "imdb");
+  await screen.getByRole("button", name).tap();
+}
+
 /**
  * The Save button at the top of the Lists column. The floating Save button
  * at the bottom has the same name and stays in the page while it is hidden,

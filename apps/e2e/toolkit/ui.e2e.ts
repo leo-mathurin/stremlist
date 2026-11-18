@@ -25,6 +25,8 @@ import {
   SAVE_NEW,
   holdToasts,
   fitConfigurePage,
+  addImdbChart,
+  openQuickAdd,
 } from "./config-fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
@@ -394,11 +396,8 @@ test(
       screen.getByRole("button", "Remove Top 250 Movies"),
     ).toBeVisible();
     await expect(screen.getByText(/^2 of 10 lists/)).toBeVisible();
-    await screen.getByRole("button", "Add an IMDb chart").tap();
-    await expect(
-      screen.getByRole("menuitem", /^Top 250 Movies/),
-    ).toBeDisabled();
-    await browser.keyboard.press("Escape");
+    await openQuickAdd(screen, "imdb");
+    await expect(screen.getByRole("button", "Top 250 Movies")).toBeDisabled();
     for (const chart of [
       "Most Popular Movies",
       "Most Popular TV Shows",
@@ -407,14 +406,14 @@ test(
       "Coming Soon \\(Movies\\)",
       "Coming Soon \\(TV\\)",
     ]) {
-      await screen.getByRole("button", "Add an IMDb chart").tap();
-      await screen.getByRole("menuitem", new RegExp(`^${chart}`)).tap();
+      await addImdbChart(screen, new RegExp(`^${chart}`));
     }
+    await openQuickAdd(screen, "trakt");
     await screen.getByRole("button", "Trending").tap();
     await screen.getByRole("button", "Popular").tap();
     await expect(screen.getByText(/^10 of 10 lists/)).toBeVisible();
     await expect(
-      screen.getByRole("button", "Add an IMDb chart"),
+      screen.getByRole("button", "Bottom 100 Movies"),
     ).toBeDisabled();
     await expect(screen.getByRole("button", "Anticipated")).toBeDisabled();
     await expect(screen.getByLabel(PASTE)).toBeDisabled();

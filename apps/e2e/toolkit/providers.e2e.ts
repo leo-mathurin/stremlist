@@ -277,7 +277,10 @@ test("a link that needs a Connection saves the setup, connects, then adds the li
   // The link waited during the round trip and is added with the Connection.
   await expect(screen.getByText("Weekend")).toBeVisible();
   await expect(screen.getByText("@someone")).toBeVisible();
-  await expect(screen.getByText("Your MDBList (@someone)")).toBeVisible();
+  await expect(screen.getByTestId("quick-add-mdblist")).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
   await expect(screen.getByRole("button", "Horror nights")).toBeVisible();
   // The Account is created only once the connection succeeds, with the setup.
   expect(created).toEqual([]);
@@ -333,7 +336,10 @@ test(
       screen.getByText("Simkl is connected. You can now add its lists."),
     ).toBeVisible();
     await expect(browser).toHaveURL(`/configure?account=${accountId}`);
-    await expect(screen.getByText("Your Simkl (@someone)")).toBeVisible();
+    await expect(screen.getByTestId("quick-add-simkl")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
     expect(starts).toEqual(["POST"]);
     expect(authorized).toHaveLength(1);
 
@@ -564,7 +570,7 @@ test("a Provider turned off is unavailable to connect, link or add", async ({
   await expect(off.getByText("Trakt", { exact: true })).toBeVisible();
   // Simkl and MDBList can still connect; Trakt cannot.
   await expect(screen.getByRole("button", "Connect")).toHaveCount(2);
-  await expect(screen.getByText("Trakt charts")).toHaveCount(0);
+  await expect(screen.getByTestId("quick-add-trakt")).toHaveCount(0);
   await expect(screen.getByRole("button", "Trending")).toHaveCount(0);
 
   await screen.getByLabel(PASTE).fill(link);

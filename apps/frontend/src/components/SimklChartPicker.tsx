@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Check, Plus } from "lucide-react";
+import { Check } from "lucide-react";
+import { PlusIcon } from "@/components/ui/plus-icon";
 import { sourceKey } from "@stremlist/shared/list-merge";
 import { sourceTitle, staticSource } from "@stremlist/shared/providers";
 import type { ConnectionSource } from "@stremlist/shared/providers";
@@ -150,7 +151,11 @@ export default function SimklChartPicker({
             : "bg-black/5 hover:bg-black/10 disabled:opacity-40",
         )}
       >
-        {added ? <Check className="size-3.5" /> : <Plus className="size-3.5" />}
+        {added ? (
+          <Check className="size-3.5" />
+        ) : (
+          <PlusIcon className="size-3.5" />
+        )}
         {added ? "Added" : "Add chart"}
       </button>
     </div>

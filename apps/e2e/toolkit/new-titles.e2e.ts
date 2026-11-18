@@ -33,6 +33,7 @@ import {
   syncedStatus,
   toJson,
   routeConnectionSources,
+  addImdbChart,
 } from "./config-fixture";
 
 // The "New titles" catalog setting (ADR 0007). Detection itself runs in the
@@ -138,8 +139,7 @@ test("a new setup sends the setting with its first save", async ({
   await app.open("/configure");
   // A new setup has no history yet, so there is no summary.
   await expect(screen.getByText(/new titles? detected/)).toHaveCount(0);
-  await screen.getByRole("button", "Add an IMDb chart").tap();
-  await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
+  await addImdbChart(screen, /^Top 250 Movies/);
   await screen.getByRole("checkbox", TOGGLE).tap();
   await saveButton(screen, SAVE_NEW).tap();
 
