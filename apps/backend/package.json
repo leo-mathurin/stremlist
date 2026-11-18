@@ -18,7 +18,7 @@
     "build": "vp pack && tsc --emitDeclarationOnly",
     "start": "bun dist/index.js",
     "test": "vp test run --exclude '**/*.stress.test.ts'",
-    "test:stress": "vp test run src/services/__tests__/imdb-scraper.stress.test.ts",
+    "test:stress": "vp test run --testTimeout=300000 src/services/test/imdb-scraper.stress.test.ts",
     "stress:load": "bun stress/run.ts",
     "stress:letterboxd-gate": "bun stress/letterboxd-gate.ts",
     "cleanup:invalid-users": "bun src/scripts/cleanup-invalid-users.ts",
@@ -42,6 +42,7 @@
     "@hono/node-server": "^1.19.19",
     "@types/node": "^24.19.2",
     "dotenv": "^17.4.2",
+    "msw": "^2.15.0",
     "typescript": "7.0.2",
     "vite-plus": "catalog:"
   },

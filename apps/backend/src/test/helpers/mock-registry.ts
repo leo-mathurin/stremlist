@@ -1,0 +1,85 @@
+import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
+import { imdbProvider } from "../../providers/imdb";
+import { justwatchProvider } from "../../providers/justwatch";
+import { letterboxdProvider } from "../../providers/letterboxd";
+import { mdblistProvider } from "../../providers/mdblist";
+import { senscritiqueProvider } from "../../providers/senscritique";
+import { simklProvider } from "../../providers/simkl";
+import { traktProvider } from "../../providers/trakt";
+import type {
+  ProviderAdapter,
+  ProviderActions,
+  SourceEntry,
+} from "../../providers/types";
+
+const REAL: Record<ProviderId, ProviderAdapter> = {
+  imdb: imdbProvider,
+  trakt: traktProvider,
+  simkl: simklProvider,
+  mdblist: mdblistProvider,
+  justwatch: justwatchProvider,
+  senscritique: senscritiqueProvider,
+  letterboxd: letterboxdProvider,
+};
+
+const providerOverrides = new Map<ProviderId, ProviderAdapter>();
+
+export function useFakeProvider(adapter: ProviderAdapter) {
+  providerOverrides.set(adapter.id, adapter);
+  return adapter;
+}
+
+export function resetProviders() {
+  providerOverrides.clear();
+  delete process.env.DISABLED_PROVIDERS;
+}
+
+export function getProvider(id: ProviderId) {
+  return providerOverrides.get(id) ?? REAL[id];
+}
+
+export function supportsAction(id: ProviderId, kind: ActionKind) {
+  return getProvider(id).actions?.kinds.includes(kind) ?? false;
+}
+
+export { isProviderEnabled } from "../../providers/kill-switch";
+
+/** A Provider adapter that serves fixed entries and accepts every ref. */
+export function fakeAdapter(
+  id: ProviderId,
+  overrides: Partial<ProviderAdapter> & { entries?: SourceEntry[] } = {},
+) {
+  const { entries = [], ...rest } = overrides;
+  const adapter: ProviderAdapter = {
+    id,
+    freshnessMs: 30 * 60_000,
+    validateSource: (ref) => Promise.resolve({ ok: true, ref }),
+    fetchSource: () =>
+      Promise.resolve({ entries: structuredClone(entries), complete: true }),
+    ...rest,
+  };
+  return adapter;
+}
+
+/** Actions that record every call and never touch a network. */
+export function fakeActions(overrides: Partial<ProviderActions> = {}) {
+  const actions: ProviderActions = {
+    kinds: ["watchlist", "watched", "rating"],
+    getMembership: () =>
+      Promise.resolve({
+        watchlist: [],
+        watched: [],
+        watchedEpisodes: [],
+        ratings: {},
+      }),
+    perform: () => Promise.resolve(),
+    affectedSources: (intent) =>
+      intent.kind === "watchlist"
+        ? ["me/watchlist"]
+        : intent.kind === "watched"
+          ? ["me/history", "me/up-next"]
+          : [],
+    ...overrides,
+  };
+  return actions;
+}
