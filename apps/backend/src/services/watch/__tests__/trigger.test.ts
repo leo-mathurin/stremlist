@@ -24,7 +24,8 @@ const mocks = vi.hoisted(() => ({
   >(),
   item: undefined as LibraryItem | undefined,
   state: null as WatchState | null,
-  /** Saves refused as if another run saved first. */
+  etag: "v1",
+  /** Saves refused because another run saved this many times first. */
   conflicts: 0,
 }));
 
@@ -37,13 +38,17 @@ vi.mock("../pace", () => ({
 }));
 vi.mock("../state", async (importOriginal) => ({
   ...(await importOriginal<typeof StateModule>()),
-  readState: () => Promise.resolve({ state: mocks.state, etag: "v1" }),
-  writeState: (_: string, next: WatchState) => {
-    if (mocks.conflicts > 0) {
+  readState: () => Promise.resolve({ state: mocks.state, etag: mocks.etag }),
+  writeState: (_: string, next: WatchState, etag: string | null) => {
+    if (mocks.conflicts > 0 && mocks.state) {
+      // Another run (a sweep) saves first, over the version read.
       mocks.conflicts -= 1;
-      return Promise.resolve(false);
+      mocks.state = { ...mocks.state, checkedAt: 99 };
+      mocks.etag = `${mocks.etag}+`;
     }
+    if (etag !== mocks.etag) return Promise.resolve(false);
     mocks.state = next;
+    mocks.etag = `${mocks.etag}+`;
     return Promise.resolve(true);
   },
 }));
@@ -123,6 +128,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   mocks.conflicts = 0;
+  mocks.etag = "v1";
   mocks.rpc.mockReset();
 });
 
@@ -217,7 +223,34 @@ describe("a /stream request of a tracked Account", () => {
     expect(queued()).toEqual([]);
     expect(calls("watch_destination_list")).toEqual([]);
     expect(mocks.conflicts).toBe(0);
+    // The retry starts from the other run's save and keeps it.
+    expect(mocks.state.checkedAt).toBe(99);
     expect(mocks.state.series[SHOW]).toEqual(["1:1", "1:2"]);
+  });
+
+  it("saves nothing when the Destinations cannot be read", async () => {
+    const answer = mocks.rpc.getMockImplementation();
+    mocks.rpc.mockImplementation((name, args) =>
+      name === "watch_destination_list"
+        ? Promise.resolve({ data: null, error: { message: "db is down" } })
+        : (answer?.(name, args) ??
+          Promise.resolve({ data: null, error: null })),
+    );
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const before = sentUpTo();
+    mocks.state = before;
+    mocks.item = series([1, 2], 3);
+
+    try {
+      await onStreamRequest(account, "series", `${SHOW}:1:3`);
+
+      // Episode 2 is not marked as sent: a later read still finds it.
+      expect(mocks.state).toBe(before);
+      expect(calls("queue_watch_writes")).toEqual([]);
+      expect(calls("watch_restart")).toHaveLength(1);
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it("sends nothing before the Watched baseline", async () => {
