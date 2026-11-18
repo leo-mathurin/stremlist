@@ -450,6 +450,10 @@ export const SENSCRITIQUE_COLLECTIONS = {
   done: { action: "DONE", kind: "history", noun: "watched" },
   rated: { action: "RATING", kind: "list", noun: "ratings" },
   recommend: { action: "RECOMMEND", kind: "list", noun: "favorites" },
+  // "En cours": the series (and a few films) that the user is watching now.
+  current: { action: "CURRENT", kind: "status", noun: "in progress" },
+  // "Il a récemment aimé": the titles that the user rated 7 or more.
+  liked: { action: "RECENT", kind: "list", noun: "likes" },
 } as const satisfies Record<
   string,
   { action: string; kind: SourceKind; noun: string }
@@ -487,16 +491,30 @@ const SENSCRITIQUE_COLLECTION_FILTERS = [
   "maxPeriod",
   "minPeriod",
   "releaseDate",
-  "yearDateDone",
 ];
+
+/**
+ * The year of a `yearDateDone` link filter: the watched collection of one
+ * year reads as `users/{user}/done/{year}`.
+ */
+const SENSCRITIQUE_YEAR = /^(?:19|20)\d{2}$/;
+
+/** The suggested title of the watched collection of one year. */
+function sensCritiqueYearTitle(username: string, year: string): string {
+  return `${username}'s watched in ${year}`;
+}
 
 /** SensCritique universes in collection links: 1 for films, 4 for series. */
 const SENSCRITIQUE_FILM_SERIES_UNIVERSES = new Set(["1", "4"]);
 
 /** The SensCritique charts at senscritique.com/{films|series}/tops/{page}. */
 const SENSCRITIQUE_CHART_PAGES = new Map([
-  ["top111", "top111"],
-  ["top100-des-top10", "top100"],
+  ["films/top111", "top111-movies"],
+  ["series/top111", "top111-series"],
+  ["films/top100-des-top10", "top100-movies"],
+  ["series/top100-des-top10", "top100-series"],
+  // Only series: the films page of this chart is empty.
+  ["series/top111anime", "top111-anime"],
 ]);
 
 function parseSensCritiqueLink(input: string): ParsedSourceLink | null {
@@ -512,11 +530,16 @@ function parseSensCritiqueLink(input: string): ParsedSourceLink | null {
       : null;
   }
   // senscritique.com/top/resultats/{slug}/{id}: the results of a poll.
+  // senscritique.com/top/{slug}/{id}: the ranking of one member in a poll,
+  // which the API reads as a list.
   if (first === "top") {
-    const id =
-      parts[1]?.toLowerCase() === "resultats"
-        ? parts.slice(2).find((part) => /^\d+$/.test(part))
-        : undefined;
+    if (parts[1]?.toLowerCase() !== "resultats") {
+      const id = parts[2];
+      return id && /^\d+$/.test(id)
+        ? { provider: "senscritique", sourceRef: `lists/${id}`, kind: "list" }
+        : null;
+    }
+    const id = parts.slice(2).find((part) => /^\d+$/.test(part));
     return id
       ? { provider: "senscritique", sourceRef: `polls/${id}`, kind: "chart" }
       : null;
@@ -527,13 +550,12 @@ function parseSensCritiqueLink(input: string): ParsedSourceLink | null {
     parts[1]?.toLowerCase() === "tops" &&
     parts.length === 3
   ) {
-    const chart = SENSCRITIQUE_CHART_PAGES.get(parts[2].toLowerCase());
-    if (!chart) return null;
-    return {
-      provider: "senscritique",
-      sourceRef: `${chart}-${first === "films" ? "movies" : "series"}`,
-      kind: "chart",
-    };
+    const chart = SENSCRITIQUE_CHART_PAGES.get(
+      `${first}/${parts[2].toLowerCase()}`,
+    );
+    return chart
+      ? { provider: "senscritique", sourceRef: chart, kind: "chart" }
+      : null;
   }
   // Top-level paths of senscritique.com that are not user profiles.
   const reserved = new Set([
@@ -597,6 +619,18 @@ function parseSensCritiqueLink(input: string): ParsedSourceLink | null {
     }
     if (SENSCRITIQUE_COLLECTION_FILTERS.some((key) => searchParams.get(key))) {
       return null;
+    }
+    // /{username}/collection?action=DONE&yearDateDone=2024: what the user
+    // watched in 2024. The other collections are not read for one year.
+    const year = searchParams.get("yearDateDone");
+    if (year) {
+      if (collection !== "done" || !SENSCRITIQUE_YEAR.test(year)) return null;
+      return {
+        provider: "senscritique",
+        sourceRef: `users/${username}/done/${year}`,
+        kind: SENSCRITIQUE_COLLECTIONS.done.kind,
+        suggestedTitle: sensCritiqueYearTitle(username, year),
+      };
     }
   }
   const { kind, noun } = SENSCRITIQUE_COLLECTIONS[collection];
@@ -789,6 +823,21 @@ export const CONNECTION_SOURCES: Partial<
       label: "Up Next",
       defaultDisplayMode: "series",
       titleType: "series",
+    },
+    // Movies and episodes that the user paused, as movies and series.
+    {
+      ref: "me/continue-watching",
+      kind: "status",
+      label: "Continue Watching",
+      defaultDisplayMode: "split",
+    },
+    // What airs or comes out in the next 30 days for the user's shows and
+    // movies.
+    {
+      ref: "me/calendar",
+      kind: "list",
+      label: "Calendar",
+      defaultDisplayMode: "split",
     },
     {
       ref: "me/history",
@@ -1004,6 +1053,36 @@ export const PUBLIC_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>> = {
       defaultDisplayMode: "split",
       url: "https://trakt.tv/movies/recommended/weekly",
     },
+    // Trakt's calendars for the next 30 days. The Trakt site has no page
+    // for them any more.
+    {
+      ref: "calendars/shows/new",
+      kind: "chart",
+      label: "New Shows",
+      defaultDisplayMode: "series",
+      titleType: "series",
+    },
+    {
+      ref: "calendars/shows/premieres",
+      kind: "chart",
+      label: "Season Premieres",
+      defaultDisplayMode: "series",
+      titleType: "series",
+    },
+    {
+      ref: "calendars/movies",
+      kind: "chart",
+      label: "Upcoming Movies",
+      defaultDisplayMode: "movie",
+      titleType: "movie",
+    },
+    {
+      ref: "calendars/dvd",
+      kind: "chart",
+      label: "DVD Releases",
+      defaultDisplayMode: "movie",
+      titleType: "movie",
+    },
   ],
   senscritique: [
     {
@@ -1038,6 +1117,14 @@ export const PUBLIC_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>> = {
       defaultDisplayMode: "series",
       titleType: "series",
       url: "https://www.senscritique.com/series/tops/top100-des-top10",
+    },
+    {
+      ref: "top111-anime",
+      kind: "chart",
+      label: "Top 111 Anime",
+      defaultDisplayMode: "series",
+      titleType: "series",
+      url: "https://www.senscritique.com/series/tops/top111anime",
     },
   ],
   // Simkl's trending files for the week. Simkl's API rules ask that a
@@ -1294,6 +1381,16 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
           }),
         }),
       ),
+      {
+        pattern: /^users\/([^/]+)\/done\/(\d{4})$/,
+        type: "users/{user}/done/{year}",
+        describe: ([, user, year]) => ({
+          kind: SENSCRITIQUE_COLLECTIONS.done.kind,
+          detail: `${user} ${year}`,
+          url: `https://www.senscritique.com/${user}/collection?action=DONE&yearDateDone=${year}`,
+          title: sensCritiqueYearTitle(user, year),
+        }),
+      },
       {
         pattern: /^lists\/([^/]+)$/,
         type: "lists/{id}",

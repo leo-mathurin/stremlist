@@ -17,7 +17,10 @@ import {
   withLetterboxdPermit,
 } from "./letterboxd-gate";
 import type { PermitOptions } from "./letterboxd-gate";
-import { parseLetterboxdPage } from "./letterboxd-page";
+import {
+  isLetterboxdForbiddenPage,
+  parseLetterboxdPage,
+} from "./letterboxd-page";
 import type { LetterboxdFilm } from "./letterboxd-page";
 import {
   excerpt,
@@ -25,6 +28,7 @@ import {
   noteResponse,
   requestDetails,
 } from "./letterboxd-request-log";
+import type { LetterboxdRequestDetails } from "./letterboxd-request-log";
 import { currentReadQueue } from "./read-priority";
 import type {
   ProviderAdapter,
@@ -39,6 +43,9 @@ const SOURCE =
 // Public member collections: watched films, rating-filtered films, diary, likes.
 const COLLECTION =
   /^users\/([a-z0-9_]{1,40})\/(films(?:\/rated\/\d(?:\.\d)?(?:-\d(?:\.\d)?)?)?|diary|likes\/films)$/;
+/** A member film page (films, rated films, diary, likes), any page. */
+const MEMBER_PAGE =
+  /^https:\/\/letterboxd\.com\/[a-z0-9_]{1,40}\/(?:films|diary|likes\/films)\//;
 const MAX_PAGES = 100;
 /** About how long one more page of a read takes, for the queue estimate. */
 const PAGE_ESTIMATE_MS = 400;
@@ -250,6 +257,26 @@ function retryAfterOf(response: Response): number {
   return Math.max(0, Date.parse(retryAfter ?? "") - Date.now()) || 0;
 }
 
+/** How long a 403 waits for the first bytes of its body before it counts as a refusal. */
+const FORBIDDEN_WAIT_MS = 2000;
+
+/**
+ * Whether a 403 is Letterboxd's own Forbidden page (a private watchlist), not
+ * a refusal of Stremlist. The status alone cannot tell them apart. A body that
+ * does not arrive in time counts as a refusal.
+ */
+async function isForbiddenPage(details: LetterboxdRequestDetails) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    details.pendingExcerpt,
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, FORBIDDEN_WAIT_MS);
+    }),
+  ]);
+  clearTimeout(timer);
+  return isLetterboxdForbiddenPage(details.bodyExcerpt ?? "");
+}
+
 async function readHtml(
   url: string,
   kind: "collection" | "film" = "collection",
@@ -282,6 +309,31 @@ async function readHtml(
       if (blocked || (response.status !== 200 && response.status < 500)) {
         if (blocked || response.status === 429) noteExcerpt(details, response);
         else await response.body?.cancel();
+        if (
+          kind === "collection" &&
+          response.status === 403 &&
+          details.cfMitigated === null &&
+          (await isForbiddenPage(details))
+        )
+          return {
+            value: { ok: false, reason: "private" },
+            result: "ok",
+            details,
+          };
+        // Letterboxd's Cloudflare challenges member film pages by itself, at
+        // any rate, while lists still read. Only that list fails; the gate
+        // counts a failed read, like a timeout, instead of halting at once.
+        if (
+          kind === "collection" &&
+          details.cfMitigated === "challenge" &&
+          MEMBER_PAGE.test(url)
+        )
+          return {
+            value: { ok: false, reason: "unavailable" },
+            result: "failed",
+            retryAfterMs,
+            details,
+          };
         const location = response.headers.get("location");
         const moved =
           kind === "collection" &&

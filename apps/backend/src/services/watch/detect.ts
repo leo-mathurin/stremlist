@@ -246,15 +246,20 @@ async function forgetTitles(
  * happens without a Watched baseline of the same Stremio link (`link`, the
  * `linkOf` the sealed key that read `items`). The state is saved first,
  * over the version this run compared: of two runs that see the same title,
- * only the one whose save lands queues it.
+ * only the one whose save lands queues it. `destinationsOf` can be a
+ * function, called only when there is a title to send.
  */
 export async function recordItems(
   accountId: string,
-  destinations: readonly ProviderId[],
+  destinationsOf:
+    | readonly ProviderId[]
+    | (() => Promise<readonly ProviderId[]>),
   items: LibraryItem[],
   options: { link: string; version?: Version; checkedAt?: number },
 ): Promise<WatchedTitle[]> {
   let version = options.version ?? (await readState(accountId));
+  let destinations: readonly ProviderId[] = [];
+  let resolved = false;
   for (let attempt = 0; attempt < SAVE_TRIES; attempt++) {
     if (version.state?.link !== options.link) return [];
     const { titles, next } = await diffItems(
@@ -263,6 +268,13 @@ export async function recordItems(
       options.checkedAt,
     );
     if (!next) return [];
+    if (titles.length > 0 && !resolved) {
+      destinations =
+        typeof destinationsOf === "function"
+          ? await destinationsOf()
+          : destinationsOf;
+      resolved = true;
+    }
     if (await writeState(accountId, next, version.etag)) {
       try {
         await queueWrites(accountId, destinations, titles);

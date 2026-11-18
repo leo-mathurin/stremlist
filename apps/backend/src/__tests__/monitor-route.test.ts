@@ -268,6 +268,38 @@ describe("GET /monitor", () => {
     expect(beats).toEqual([{ url: `${LBX_BEAT}/fail`, method: "POST" }]);
   });
 
+  it("does not report Letterboxd as slow while its rate climbs back after a halt", async () => {
+    vi.stubEnv("LETTERBOXD_MAX_RPS", "40");
+    vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
+    try {
+      const report = (probe: boolean) =>
+        callRpc("letterboxd_report", {
+          p_target: 40,
+          p_outcome: "ok",
+          p_retry_after_ms: 0,
+          p_probe: probe,
+        });
+      haltLetterboxdGate();
+      // A probe that works resumes sends at the floor rate; reads go on.
+      await report(true);
+      await report(false);
+      expect(letterboxdGate()?.rate).toBe(0.33);
+      expect((await monitor()).status).toBe(200);
+
+      // 31 minutes later the rate is still below half of 40 request/s.
+      vi.setSystemTime(Date.now() + 31 * 60_000);
+      endListCheckInterval();
+      beats = [];
+      expect((await monitor()).status).toBe(200);
+      await report(false);
+      expect(letterboxdGate()?.rate).toBeLessThan(20);
+      expect(beats).toEqual([{ url: LBX_BEAT, method: "GET" }]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("probes a halted Letterboxd once its recovery probe is due", async () => {
     vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
     const letterboxdRead = vi.fn(() =>
@@ -275,8 +307,10 @@ describe("GET /monitor", () => {
     );
     useFakeProvider(fakeAdapter("letterboxd", { fetchSource: letterboxdRead }));
     haltLetterboxdGate();
-    expect((await monitor()).status).toBe(502);
+    // The halt alerts through the heartbeat only, not through the answer.
+    expect((await monitor()).status).toBe(200);
     expect(letterboxdRead).not.toHaveBeenCalled();
+    expect(beats).toEqual([{ url: `${LBX_BEAT}/fail`, method: "POST" }]);
 
     Object.assign(letterboxdGate() ?? {}, { nextProbeAt: Date.now() - 1 });
     endListCheckInterval();
@@ -301,7 +335,13 @@ describe("GET /monitor", () => {
 
     const res = await monitor();
 
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      results: [
+        { provider: "letterboxd", ok: true },
+        { provider: "justwatch", ok: false, unavailable: true },
+      ],
+    });
     expect(justwatchRead).not.toHaveBeenCalled();
     expect(beats).toEqual([
       { url: "https://beat.example/jw/fail", method: "POST" },

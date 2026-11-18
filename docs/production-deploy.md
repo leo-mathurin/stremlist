@@ -6,6 +6,25 @@ the database migrations and `supabase/config.toml`, then publishes the backend a
 from the same commit. Nobody deploys from a laptop, and nobody runs SQL by hand
 in the production dashboard.
 
+## Connection encryption key
+
+Vercel stores `CONNECTION_ENCRYPTION_KEY` as a Sensitive variable, so nobody
+can read it back from Vercel. Its only copy outside Vercel is
+`apps/backend/.env.production.enc` (SOPS, the same age recipients as
+`.env.enc`). The key decrypts every stored OAuth token: if it is lost, every
+user must connect Trakt, Simkl and MDBList again. The local
+`apps/backend/.env.enc` has a different key, so a local backend cannot read
+production Connections.
+
+To use it, for example to test production Connections with a local build:
+
+```bash
+sops decrypt apps/backend/.env.production.enc > apps/backend/.env.production
+```
+
+When you set or change the key in Vercel, update this file in the same pull
+request. Production and Preview use the same value.
+
 ## Release v2.0.0
 
 PR #74 contains PR #73 (this workflow and the baseline). Merge #74 only. If
@@ -16,7 +35,8 @@ The deployment reads these values when the workflow builds it:
 
 - [ ] `CONNECTION_ENCRYPTION_KEY`: 32 random bytes in base64
       (`openssl rand -base64 32`). Required: Connections fail without it.
-      Never change it later: it decrypts the stored tokens.
+      Never change it later: it decrypts the stored tokens. Keep a copy in
+      `apps/backend/.env.production.enc` (see "Connection encryption key").
 - [ ] `TRAKT_CLIENT_ID` (`TRAKT_CLIENT_SECRET` only for a Trakt app created
       before 2026-10-01), `SIMKL_CLIENT_ID`, `SIMKL_CLIENT_SECRET`,
       `MDBLIST_CLIENT_ID`, `MDBLIST_CLIENT_SECRET`.

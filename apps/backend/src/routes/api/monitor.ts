@@ -140,10 +140,18 @@ const PROBES: {
 /**
  * A failed probe. `outage` says whether the failure counts toward an outage
  * of the Provider (see isOutageFailure); other failures still alert.
+ * `unavailable` says that the Provider is turned off or halted: its heartbeat
+ * alerts, but the answer of /monitor does not fail.
  */
 type ProbeResult =
   | { provider: ProviderId; ok: true; entries: number }
-  | { provider: ProviderId; ok: false; outage: boolean; error: string };
+  | {
+      provider: ProviderId;
+      ok: false;
+      outage: boolean;
+      unavailable: boolean;
+      error: string;
+    };
 
 async function runProbe(
   provider: ProviderId,
@@ -160,7 +168,15 @@ async function runProbe(
   } catch (err) {
     const error = err instanceof Error ? err.message : "Unknown error";
     console.error(`${provider} monitor check failed:`, error);
-    return { provider, ok: false, outage: isOutageFailure(err), error };
+    // Checked after the read: a halt can start during it.
+    const unavailable = !(await mayReadProvider(provider));
+    return {
+      provider,
+      ok: false,
+      outage: isOutageFailure(err),
+      unavailable,
+      error,
+    };
   }
 }
 
@@ -229,8 +245,10 @@ const monitor = new Hono().get("/monitor", async (c) => {
       .map(({ provider, page }) => [provider, page]),
   );
   // Only the probes fail the answer: a status page is an extra signal, and
-  // the list checks alert through the heartbeats after the answer.
-  const ok = results.every((result) => result.ok);
+  // the list checks alert through the heartbeats after the answer. A turned-off
+  // or halted Provider alerts only through its heartbeat, so a Letterboxd halt
+  // is one alert, not two.
+  const ok = results.every((result) => result.ok || result.unavailable);
   const listChecks = { started: claimed, last: await lastListChecks() };
   return c.json({ ok, results, statusPages, listChecks }, ok ? 200 : 502);
 });

@@ -52,9 +52,8 @@ function settle(g: Gate, t: number, target: number) {
     );
     g.refilledAt = t;
   }
-  if (g.haltedAt === null && g.rate < 0.5 * target) {
-    g.slowSince ??= t;
-  } else {
+  // letterboxd_report starts the slow window at a slowdown.
+  if (g.haltedAt !== null || g.rate >= 0.5 * target) {
     g.slowSince = null;
     g.slowAlerted = false;
   }
@@ -313,6 +312,7 @@ function report(args: RpcArgs): Result {
         g.rateChangedAt = g.pausedUntil;
         g.tokens = 0;
         g.refilledAt = g.pausedUntil;
+        if (g.rate < 0.5 * target) g.slowSince ??= t;
       }
     }
   }

@@ -61,6 +61,12 @@ export const CANARIES = {
   "trakt:me/up-next": {
     none: "Up Next has only the series that the user is watching, which a monitor Account cannot keep.",
   },
+  "trakt:me/continue-watching": {
+    none: "Continue Watching has only the movies and episodes that the user paused and did not finish, which a monitor Account cannot keep.",
+  },
+  "trakt:me/calendar": {
+    none: "The Calendar has only what airs in the next 30 days for the user's shows and movies, which a monitor Account cannot keep. The public calendars check the same rows.",
+  },
   "trakt:me/history": { min: 1 },
   "trakt:me/collection": { min: 1 },
   "trakt:me/favorites": { min: 1 },
@@ -75,6 +81,12 @@ export const CANARIES = {
   "trakt:collected": { min: 50 },
   "trakt:favorited": { min: 50 },
   "trakt:recommended": { min: 50 },
+  // Calendars of the next 30 days. On 2026-11-17 they gave 9 new shows, 35
+  // season premieres, 28 movies and 40 DVD releases; they change a lot.
+  "trakt:calendars/shows/new": { min: 3 },
+  "trakt:calendars/shows/premieres": { min: 15 },
+  "trakt:calendars/movies": { min: 10 },
+  "trakt:calendars/dvd": { min: 15 },
   // A public user's history or collection costs up to about 20 calls of
   // the app-wide quota: give a small one in MONITOR_CANARY_REFS.
   "trakt:users/{user}/watchlist": { min: 1 },
@@ -147,7 +159,7 @@ export const CANARIES = {
     min: 700,
   },
   "senscritique:lists/{id}": { ref: "lists/369869", min: 35 },
-  // The same public user for the three collections. A first read resolves
+  // The same public user for the collections. A first read resolves
   // the Titles slowly, so the counts grow over the first runs.
   "senscritique:users/{user}/done": { ref: "users/Plume231/done", min: 320 },
   "senscritique:users/{user}/rated": { ref: "users/Plume231/rated", min: 400 },
@@ -155,10 +167,24 @@ export const CANARIES = {
     ref: "users/Plume231/recommend",
     min: 100,
   },
+  // 744 of 762 resolved on 2026-11-17.
+  "senscritique:users/{user}/liked": { ref: "users/Plume231/liked", min: 595 },
+  // Plume231 has nothing in progress. kYrios had 72 of 75 resolved.
+  "senscritique:users/{user}/current": {
+    ref: "users/kYrios/current",
+    min: 55,
+  },
+  // A past year does not change: 244 of 253 resolved.
+  "senscritique:users/{user}/done/{year}": {
+    ref: "users/Sergent_Pepper/done/2024",
+    min: 195,
+  },
   "senscritique:top111-movies": { min: 80 },
   "senscritique:top111-series": { min: 75 },
   "senscritique:top100-movies": { min: 80 },
   "senscritique:top100-series": { min: 75 },
+  // Anime titles resolve less well: 76 of 150 resolved.
+  "senscritique:top111-anime": { min: 60 },
   "senscritique:polls/{id}": { ref: "polls/3996052", min: 80 },
 
   "letterboxd:share/{token}": {

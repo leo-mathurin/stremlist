@@ -376,7 +376,7 @@ export default function Home() {
 
   return (
     <SplitLayout panel={panel} siteLinksBelow={false}>
-      <div className="space-y-16 p-5 pb-12 sm:space-y-20 sm:p-8 lg:p-14">
+      <div className="mx-auto max-w-6xl space-y-16 p-5 pb-12 sm:space-y-20 sm:p-8 lg:p-14">
         <ProvidersDiagram />
 
         <section className="grid gap-4 md:grid-cols-2">

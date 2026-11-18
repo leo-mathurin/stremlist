@@ -44,6 +44,10 @@ A Better Stack heartbeat (`BETTERSTACK_HEARTBEAT_URL_<PROVIDER>`) is optional.
 When it is set, every failed probe alerts. The list checks below send the
 pings.
 
+A failed probe also makes `/monitor` answer HTTP 502, except when the Provider
+is turned off or halted (`unavailable: true` in its result). Then only its
+heartbeat alerts, so a Letterboxd halt gives one alert, not two.
+
 Only some failures count toward an outage: a server error (5xx), a timeout, or
 a network failure, also when an adapter wraps it in an "unavailable" error.
 These do not count, so they never show a banner:
@@ -129,7 +133,9 @@ Canaries read through these references by default:
 | `justwatch:{list}`                                                                             | `tl-tu-12653`                                    |
 | `senscritique:users/{user}/wishes`                                                             | `users/Sergent_Pepper/wishes`                    |
 | `senscritique:lists/{id}`                                                                      | `lists/369869`                                   |
-| `senscritique:users/{user}/done`, `rated`, `recommend`                                         | `users/Plume231/…`                               |
+| `senscritique:users/{user}/done`, `rated`, `recommend`, `liked`                                | `users/Plume231/…`                               |
+| `senscritique:users/{user}/current`                                                            | `users/kYrios/current`                           |
+| `senscritique:users/{user}/done/{year}`                                                        | `users/Sergent_Pepper/done/2024`                 |
 | `senscritique:` charts and `polls/{id}`                                                        | The chart, `polls/3996052`                       |
 | `simkl:trending/*`                                                                             | The chart (Simkl's CDN)                          |
 | `letterboxd:users/{user}/lists/{slug}`                                                         | `users/official/lists/letterboxds-top-500-films` |

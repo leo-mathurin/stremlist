@@ -1,5 +1,6 @@
-import { useId, useState } from "react";
-import { Clapperboard, ExternalLink, Loader2, RotateCw } from "lucide-react";
+import { memo, useEffect, useId, useRef, useState } from "react";
+import { Clapperboard, ExternalLink, Loader2, RotateCw, X } from "lucide-react";
+import { CATALOG_TITLES_PAGE_SIZE } from "@stremlist/shared/catalog-preview";
 import type {
   CatalogPreview as CatalogPreviewData,
   CatalogPreviewRow,
@@ -24,7 +25,9 @@ import {
 } from "@stremlist/shared/source-problems";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { useCatalogPreview } from "@/hooks/useCatalogPreview";
+import { useCatalogTitles } from "@/hooks/useCatalogTitles";
 import { useNow } from "@/hooks/useNow";
+import { rowTitle } from "@/lib/list-form";
 import type { ListFormRow } from "@/lib/list-form";
 import { previewQueueMessage, queueProgress } from "@/lib/provider-queue";
 import type { QueueWait } from "@/lib/provider-queue";
@@ -32,6 +35,8 @@ import { cn } from "@/lib/utils";
 
 /** Unresolved entries shown before "Show all". */
 const UNRESOLVED_COLLAPSED = 5;
+/** Titles in one block of the dialog grid (see `CatalogTitlesDialog`). */
+const DIALOG_CHUNK = 60;
 
 const TYPE_LABELS = { movie: "Movies", series: "TV shows" } as const;
 const TYPE_NOUNS = {
@@ -81,6 +86,10 @@ export default function CatalogPreview({
     accountKey,
     enabled: open,
   });
+  /** The Catalog whose Titles the dialog shows, if any. */
+  const [allTitlesOf, setAllTitlesOf] = useState<CatalogPreviewRow | null>(
+    null,
+  );
 
   return (
     <div className="space-y-4 border-t border-black/5 px-4 pt-4 pb-4 sm:px-5">
@@ -131,8 +140,22 @@ export default function CatalogPreview({
             settings={list.catalogSettings}
             rpdbApiKey={rpdbApiKey}
             posterSource={posterSource}
+            // The rows on screen are from the last settings until the new
+            // preview comes: their pages would not follow on.
+            onShowAll={state.updating ? null : setAllTitlesOf}
           />
         </div>
+      )}
+
+      {allTitlesOf && (
+        <CatalogTitlesDialog
+          list={list}
+          accountKey={accountKey}
+          row={allTitlesOf}
+          rpdbApiKey={rpdbApiKey}
+          posterSource={posterSource}
+          onClose={() => setAllTitlesOf(null)}
+        />
       )}
     </div>
   );
@@ -248,12 +271,15 @@ function PreviewBody({
   settings,
   rpdbApiKey,
   posterSource,
+  onShowAll,
 }: {
   preview: CatalogPreviewData;
   displayMode: DisplayMode;
   settings: CatalogSettings;
   rpdbApiKey: string;
   posterSource: PosterSource;
+  /** Null while the preview updates. */
+  onShowAll: ((row: CatalogPreviewRow) => void) | null;
 }) {
   const shownType = displayMode === "split" ? null : displayMode;
   const hiddenType = shownType && OTHER_TYPE[shownType];
@@ -270,6 +296,7 @@ function PreviewBody({
           filtered={filtered}
           rpdbApiKey={rpdbApiKey}
           posterSource={posterSource}
+          onShowAll={onShowAll && (() => onShowAll(row))}
         />
       ))}
 
@@ -320,12 +347,14 @@ function CatalogRow({
   filtered,
   rpdbApiKey,
   posterSource,
+  onShowAll,
 }: {
   row: CatalogPreviewRow;
   typeCounts: CatalogPreviewData["typeCounts"];
   filtered: boolean;
   rpdbApiKey: string;
   posterSource: PosterSource;
+  onShowAll: (() => void) | null;
 }) {
   const headingId = useId();
   const more = row.total - row.titles.length;
@@ -362,20 +391,10 @@ function CatalogRow({
           className="-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 sm:-mx-5 sm:scroll-px-5 sm:px-5"
         >
           {row.titles.map((title) => {
-            const posters = {
-              imdb: title.poster,
-              tmdb: title.tmdbPoster,
-              tvdb: title.tvdbPoster,
-            };
-            // What Stremio shows, then what shows when an image fails: the
-            // chosen source without RPDB, then the IMDb poster.
-            const candidates = [
-              ...new Set([
-                choosePoster(title.id, posters, { posterSource, rpdbApiKey }),
-                choosePoster(title.id, posters, { posterSource }),
-                title.poster,
-              ]),
-            ].filter((poster): poster is string => poster !== null);
+            const candidates = posterCandidates(title, {
+              posterSource,
+              rpdbApiKey,
+            });
             return (
               <li key={title.id} className="snap-start">
                 <PosterTile
@@ -388,12 +407,19 @@ function CatalogRow({
           })}
           {more > 0 && (
             <li className="snap-start">
-              <div className="flex aspect-[2/3] w-[4.5rem] shrink-0 flex-col items-center justify-center rounded-xl bg-black/5 text-center sm:w-20">
+              <button
+                type="button"
+                onClick={onShowAll ?? undefined}
+                disabled={!onShowAll}
+                aria-haspopup="dialog"
+                aria-label={`Show all ${count(row.total, nouns.one, nouns.other)} of this catalog`}
+                className="flex aspect-[2/3] w-[4.5rem] shrink-0 flex-col items-center justify-center rounded-xl bg-black/5 text-center outline-none ring-brand/60 transition-[background-color,scale] duration-150 ease-out focus-visible:ring-2 enabled:cursor-pointer enabled:hover:bg-black/10 enabled:active:scale-[0.96] sm:w-20"
+              >
                 <span className="text-sm font-bold tabular-nums">
                   +{more.toLocaleString("en")}
                 </span>
                 <span className="text-[11px] text-black/50">more</span>
-              </div>
+              </button>
             </li>
           )}
         </ul>
@@ -402,13 +428,42 @@ function CatalogRow({
   );
 }
 
+/**
+ * The posters of a Title, in the order to try: what Stremio shows, then what
+ * shows when an image fails: the chosen source without RPDB, then the IMDb
+ * poster.
+ */
+function posterCandidates(
+  title: PreviewTitle,
+  {
+    posterSource,
+    rpdbApiKey,
+  }: { posterSource: PosterSource; rpdbApiKey: string },
+): string[] {
+  const posters = {
+    imdb: title.poster,
+    tmdb: title.tmdbPoster,
+    tvdb: title.tvdbPoster,
+  };
+  return [
+    ...new Set([
+      choosePoster(title.id, posters, { posterSource, rpdbApiKey }),
+      choosePoster(title.id, posters, { posterSource }),
+      title.poster,
+    ]),
+  ].filter((poster): poster is string => poster !== null);
+}
+
 function PosterTile({
   title,
   posters,
+  fill = false,
 }: {
   title: PreviewTitle;
   /** The poster to show, then the ones to try when an image fails. */
   posters: string[];
+  /** Take the width of its grid cell instead of a fixed width. */
+  fill?: boolean;
 }) {
   const [attempt, setAttempt] = useState(0);
   const poster = posters.at(attempt) ?? null;
@@ -424,7 +479,10 @@ function PosterTile({
       rel="noopener noreferrer"
       aria-label={`${label}, on IMDb`}
       title={label}
-      className="group block w-[4.5rem] shrink-0 rounded-xl outline-none sm:w-20"
+      className={cn(
+        "group block shrink-0 rounded-xl outline-none",
+        fill ? "w-full" : "w-[4.5rem] sm:w-20",
+      )}
     >
       <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-black/5 ring-brand/60 transition-shadow duration-150 group-focus-visible:ring-2">
         {poster ? (
@@ -463,6 +521,194 @@ function PosterTile({
         </p>
       )}
     </a>
+  );
+}
+
+/**
+ * Every Title of one Catalog, in a grid that loads the next page when the
+ * user scrolls near its end. Escape, the close button and a click outside
+ * close it.
+ */
+function CatalogTitlesDialog({
+  list,
+  accountKey,
+  row,
+  rpdbApiKey,
+  posterSource,
+  onClose,
+}: {
+  list: ListFormRow;
+  accountKey: string | null;
+  row: CatalogPreviewRow;
+  rpdbApiKey: string;
+  posterSource: PosterSource;
+  onClose: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  const sentinel = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const { titles, total, status, hasMore, loadMore } = useCatalogTitles({
+    list,
+    accountKey,
+    row,
+  });
+
+  useEffect(() => {
+    const element = dialog.current;
+    if (!element) return;
+    if (!element.open) element.showModal();
+    // A click on the backdrop lands on the dialog element itself. It is a
+    // pointer shortcut only: Escape and the close button do the same.
+    const onClick = (event: MouseEvent) => {
+      if (event.target === element) element.close();
+    };
+    element.addEventListener("click", onClick);
+    return () => element.removeEventListener("click", onClick);
+  }, []);
+
+  // Placeholder tiles stand for the page that loads, so the grid keeps its
+  // shape: on a tall screen the first page loads as the dialog opens.
+  const placeholders =
+    status === "loading"
+      ? Math.max(0, Math.min(CATALOG_TITLES_PAGE_SIZE, total - titles.length))
+      : 0;
+  const shown = titles.length + placeholders;
+
+  // Load the next page when the end of the grid comes near. A failed page
+  // waits for "Try again" instead.
+  useEffect(() => {
+    const target = sentinel.current;
+    if (!target || !hasMore || status !== "idle") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMore();
+      },
+      { root: scroller.current, rootMargin: "0px 0px 600px 0px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, status, loadMore]);
+
+  return (
+    <dialog
+      ref={dialog}
+      aria-labelledby={titleId}
+      onClose={onClose}
+      className={
+        "m-auto max-h-[min(48rem,calc(100dvh-2rem))] open:flex w-[calc(100%-2rem)] max-w-3xl flex-col overflow-hidden rounded-3xl bg-white p-0 font-rounded text-ink shadow-xl ring-1 ring-black/5 " +
+        "transition-[opacity,scale] duration-200 ease-out-quint starting:scale-[0.96] starting:opacity-0 motion-reduce:starting:scale-100 " +
+        "backdrop:bg-black/40 backdrop:transition-opacity backdrop:duration-200 starting:backdrop:opacity-0"
+      }
+    >
+      <div className="flex items-start justify-between gap-3 border-b border-black/5 px-4 py-3 sm:px-5">
+        <div className="min-w-0">
+          <h2 id={titleId} className="truncate text-base font-bold">
+            {rowTitle(list)}
+          </h2>
+          <p className="text-xs text-black/50 tabular-nums">
+            {catalogLabel(row)} · {count(total, "title", "titles")}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => dialog.current?.close()}
+          aria-label="Close"
+          className="-mr-1.5 inline-flex size-9 shrink-0 items-center justify-center rounded-full text-black/50 transition-[background-color,color,scale] duration-150 ease-out hover:bg-black/5 hover:text-ink active:scale-[0.96]"
+        >
+          <X className="size-4" aria-hidden="true" />
+        </button>
+      </div>
+      <div
+        ref={scroller}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5"
+      >
+        <div className="flex flex-col gap-4">
+          {Array.from(
+            { length: Math.ceil(shown / DIALOG_CHUNK) },
+            (_, chunk) => (
+              // The browser skips the blocks far from view, so a list of
+              // thousands of titles stays fast. The dialog has at most six
+              // columns, and each column count divides a block: the rows of
+              // the blocks line up. The padding keeps the focus ring of an edge
+              // tile inside the block, which clips what it paints.
+              <ul
+                key={chunk}
+                className="-m-0.5 grid grid-cols-[repeat(auto-fill,minmax(5.25rem,1fr))] gap-x-3 gap-y-4 [contain-intrinsic-block-size:auto_130rem] p-0.5 [content-visibility:auto] sm:grid-cols-[repeat(auto-fill,minmax(6.5rem,1fr))]"
+              >
+                {titles
+                  .slice(chunk * DIALOG_CHUNK, (chunk + 1) * DIALOG_CHUNK)
+                  .map((title) => (
+                    <DialogTile
+                      key={title.id}
+                      title={title}
+                      posterSource={posterSource}
+                      rpdbApiKey={rpdbApiKey}
+                    />
+                  ))}
+                {Array.from(
+                  {
+                    length: Math.max(
+                      0,
+                      Math.min(shown, (chunk + 1) * DIALOG_CHUNK) -
+                        Math.max(titles.length, chunk * DIALOG_CHUNK),
+                    ),
+                  },
+                  (_, index) => (
+                    <DialogTilePlaceholder key={`placeholder-${index}`} />
+                  ),
+                )}
+              </ul>
+            ),
+          )}
+        </div>
+        <div ref={sentinel} aria-live="polite" className="pt-4">
+          {status === "loading" && (
+            <p role="status" className="sr-only">
+              Loading more titles
+            </p>
+          )}
+          {status === "error" && (
+            <PreviewMessage tone="error" onRetry={loadMore}>
+              Could not load more titles. Check your connection and try again.
+            </PreviewMessage>
+          )}
+        </div>
+      </div>
+    </dialog>
+  );
+}
+
+/** One Title of the dialog. A new page leaves the shown Titles as they are. */
+const DialogTile = memo(function DialogTile({
+  title,
+  posterSource,
+  rpdbApiKey,
+}: {
+  title: PreviewTitle;
+  posterSource: PosterSource;
+  rpdbApiKey: string;
+}) {
+  const candidates = posterCandidates(title, { posterSource, rpdbApiKey });
+  return (
+    <li>
+      <PosterTile
+        key={candidates.join(" ")}
+        title={title}
+        posters={candidates}
+        fill
+      />
+    </li>
+  );
+});
+
+/** A tile of the dialog while its Title loads. */
+function DialogTilePlaceholder() {
+  return (
+    <li aria-hidden="true">
+      <div className="aspect-[2/3] animate-pulse rounded-xl bg-black/5 motion-reduce:animate-none" />
+      <div className="mt-1.5 h-2.5 w-4/5 animate-pulse rounded bg-black/5 motion-reduce:animate-none" />
+    </li>
   );
 }
 
