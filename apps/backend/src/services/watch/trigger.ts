@@ -1,8 +1,8 @@
 /**
  * What a member's Stremio app tells Stremlist (ADR 0003):
  *
- * - a `/stream` request, sent before every play: read the item at once and
- *   start its read cycle;
+ * - a `/stream` request, sent before every play: read the item at once, send
+ *   what it shows as newly watched, and start its read cycle;
  * - a Stremio Web `pause` or `stop` player event: read it at the next run;
  * - a Stremio Web `library` event for a manual mark: read it at once.
  */
@@ -11,11 +11,11 @@ import { decryptSecret } from "../../lib/crypto";
 import { LruCache } from "../../lib/lru";
 import { supabase } from "../../lib/supabase";
 import type { LibraryItem } from "../stremio";
-import { recordItems } from "./detect";
+import { diffItems, recordItems } from "./detect";
 import { isEpisodeWatched, movieWatched } from "./library";
 import { readLibraryItems } from "./pace";
 import { newCycle, planAfterRead } from "./schedule";
-import { linkOf } from "./state";
+import { linkOf, readState } from "./state";
 import { destinationsNow } from "./sweep";
 
 interface WatchContext {
@@ -73,6 +73,12 @@ async function sendNewTitles(
   context: WatchContext,
   item: LibraryItem,
 ): Promise<void> {
+  const link = linkOf(context.authKey);
+  const version = await readState(accountId);
+  if (version.state?.link !== link) return;
+  // Most reads show nothing new: the Destinations are read only when needed.
+  const { titles } = await diffItems(version.state, [item]);
+  if (titles.length === 0) return;
   const { data, error } = await supabase.rpc("watch_destination_list", {
     p_account_id: accountId,
   });
@@ -82,9 +88,7 @@ async function sendNewTitles(
     decryptSecret(context.authKey),
     data.filter(isProviderId),
   );
-  await recordItems(accountId, destinations, [item], {
-    link: linkOf(context.authKey),
-  });
+  await recordItems(accountId, destinations, [item], { link, version });
 }
 
 /**

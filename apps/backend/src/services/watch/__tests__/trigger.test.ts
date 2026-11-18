@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
     (
       name: string,
       args?: { p_rows?: unknown[] },
-    ) => Promise<{ data: unknown; error: null }>
+    ) => Promise<{ data: unknown; error: unknown }>
   >(),
   item: undefined as LibraryItem | undefined,
   state: null as WatchState | null,
@@ -166,7 +166,30 @@ describe("a /stream request of a tracked Account", () => {
     await onStreamRequest(account, "series", `${SHOW}:1:3`);
 
     expect(queued()).toEqual([]);
+    // Nothing new: the Destinations are not even read.
+    expect(calls("watch_destination_list")).toEqual([]);
     expect(calls("watch_restart")).toHaveLength(1);
+  });
+
+  it("still starts the cycle when the send fails", async () => {
+    const queue = { data: null, error: { message: "queue is down" } };
+    const answer = mocks.rpc.getMockImplementation();
+    mocks.rpc.mockImplementation((name, args) =>
+      name === "queue_watch_writes"
+        ? Promise.resolve(queue)
+        : (answer?.(name, args) ??
+          Promise.resolve({ data: null, error: null })),
+    );
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.state = sentUpTo();
+    mocks.item = series([1, 2], 3);
+
+    await onStreamRequest(account, "series", `${SHOW}:1:3`);
+
+    expect(calls("queue_watch_writes")).toHaveLength(1);
+    expect(calls("watch_restart")).toHaveLength(1);
+    expect(log).toHaveBeenCalled();
+    log.mockRestore();
   });
 
   it("sends nothing before the Watched baseline", async () => {
