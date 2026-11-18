@@ -254,6 +254,11 @@ export class MockQueryBuilder {
           batchKeys.add(key);
         }
 
+        const before = table.slice();
+        const rollBack = (constraint: string) => {
+          table.splice(0, table.length, ...before);
+          return { data: null, error: uniqueError(constraint) };
+        };
         const results: Row[] = [];
         for (const record of items) {
           const idx = table.findIndex((r) =>
@@ -266,13 +271,13 @@ export class MockQueryBuilder {
               next,
               table[idx],
             );
-            if (conflict) return { data: null, error: uniqueError(conflict) };
+            if (conflict) return rollBack(conflict);
             table[idx] = next;
             results.push({ ...next });
           } else {
             const row = this.db.withDefaults(this.tableName, record);
             const conflict = this.db.uniqueViolation(this.tableName, row);
-            if (conflict) return { data: null, error: uniqueError(conflict) };
+            if (conflict) return rollBack(conflict);
             table.push(row);
             results.push({ ...row });
           }

@@ -1,4 +1,5 @@
 import { defineConfig } from "vite-plus";
+import { configDefaults } from "vite-plus/test/config";
 
 export default defineConfig({
   pack: {
@@ -20,6 +21,14 @@ export default defineConfig({
   test: {
     environment: "node",
     testTimeout: 30000,
+    /**
+     * The live suites call real services. Only `test:live` runs them, with
+     * STREMLIST_LIVE_TESTS set, so a plain `vp test run` never finds them.
+     */
+    exclude: [
+      ...configDefaults.exclude,
+      ...(process.env.STREMLIST_LIVE_TESTS ? [] : ["**/*.live.test.ts"]),
+    ],
     /**
      * Tests never reach TheTVDB with a key from the shell or a .env file.
      * The live TheTVDB tests use TVDB_LIVE_API_KEY and set the key themselves.

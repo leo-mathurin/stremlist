@@ -120,9 +120,19 @@ function respond(result: Result, request: Request) {
   return HttpResponse.json(result.data, { headers });
 }
 
-function stalled(request: Request) {
-  return new Promise<never>((_, reject) => {
+function stalled(db: InMemoryDB, table: string, request: Request) {
+  return new Promise<Response>((resolve, reject) => {
+    const release = () => {
+      resolve(
+        HttpResponse.json(
+          { message: `${table} stalled until the test ended` },
+          { status: 500 },
+        ),
+      );
+    };
+    db.stalls.add(release);
     request.signal.addEventListener("abort", () => {
+      db.stalls.delete(release);
       reject(new Error("The request was aborted"));
     });
   });
@@ -199,7 +209,7 @@ async function tableQuery(db: InMemoryDB, table: string, request: Request) {
   }
   if (request.headers.get("Accept")?.startsWith(SINGLE)) builder.single();
 
-  if (db.stalledTables.has(table)) return stalled(request);
+  if (db.stalledTables.has(table)) return stalled(db, table, request);
   return respond(await builder.run(), request);
 }
 

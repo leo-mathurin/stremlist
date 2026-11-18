@@ -125,6 +125,15 @@ export class InMemoryDB {
   unavailableTables = new Set<string>();
   /** Tables whose queries never answer, like a database that hangs. */
   stalledTables = new Set<string>();
+  /** Ends each stalled query; see `releaseStalls`. */
+  readonly stalls = new Set<() => void>();
+
+  /** Ends the stall: stalled queries answer with an error, new ones run. */
+  releaseStalls() {
+    this.stalledTables.clear();
+    for (const release of this.stalls) release();
+    this.stalls.clear();
+  }
 
   /** The error of a query on `table` during an outage, or null. */
   outageError(table: string | null) {
@@ -146,7 +155,7 @@ export class InMemoryDB {
     this.letterboxdWaiters = [];
     this.unavailable = false;
     this.unavailableTables.clear();
-    this.stalledTables.clear();
+    this.releaseStalls();
   }
 
   withDefaults(table: string, row: Row) {
