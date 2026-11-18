@@ -44,6 +44,10 @@ A Better Stack heartbeat (`BETTERSTACK_HEARTBEAT_URL_<PROVIDER>`) is optional.
 When it is set, every failed probe alerts. The list checks below send the
 pings.
 
+A failed probe also makes `/monitor` answer HTTP 502, except when the Provider
+is turned off or halted (`unavailable: true` in its result). Then only its
+heartbeat alerts, so a Letterboxd halt gives one alert, not two.
+
 Only some failures count toward an outage: a server error (5xx), a timeout, or
 a network failure, also when an adapter wraps it in an "unavailable" error.
 These do not count, so they never show a banner:
