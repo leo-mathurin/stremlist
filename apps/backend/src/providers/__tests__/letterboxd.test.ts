@@ -413,6 +413,69 @@ describe("Letterboxd public reads", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(gate().haltReason).toBe("blocked");
   });
+  it("reads a 403 with Letterboxd's Forbidden page as a private watchlist, not a refusal", async () => {
+    // The start of what Letterboxd sends for a private watchlist.
+    const forbidden = `\n\n<!DOCTYPE html>\n<html>\n<head>\n\t<title>Letterboxd - Forbidden</title>\n\t<style>${" ".repeat(1200)}</style>\n\t<script>\n\t\tvar analytic_params = {};\n\t\tanalytic_params['template'] = '/errors/forbidden';\n\t</script>${" ".repeat(4000)}</head><body></body></html>`;
+    let hidden = false;
+    const fetch = vi.fn((url: string) =>
+      Promise.resolve(
+        hidden && url.includes("/alice/")
+          ? new Response(forbidden, {
+              status: 403,
+              headers: { server: "cloudflare", "cf-cache-status": "DYNAMIC" },
+            })
+          : new Response(page([1])),
+      ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    await letterboxdProvider.fetchSource(ref, context);
+    // Alice turns her watchlist private: its cached Titles are dropped.
+    hidden = true;
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(
+      letterboxdProvider.fetchSource(ref, { ...context, forceRefresh: true }),
+    ).rejects.toMatchObject({ reason: "private" });
+    await expect(
+      letterboxdProvider.fetchSource(ref, context),
+    ).rejects.toMatchObject({ reason: "private" });
+    await expect(
+      letterboxdProvider.validateSource(ref, context),
+    ).rejects.toMatchObject({ reason: "private" });
+    await vi.advanceTimersByTimeAsync(0);
+    // Other Accounts still read Letterboxd.
+    expect(gate().haltedAt).toBeNull();
+    expect(
+      (await letterboxdProvider.fetchSource("users/bob/watchlist", context))
+        .entries,
+    ).toHaveLength(1);
+    // The log always keeps the 403, to check the verdict.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(db.getTable("letterboxd_requests")).toContainEqual(
+      expect.objectContaining({
+        outcome: "ok",
+        status: 403,
+        url: "https://letterboxd.com/alice/watchlist/",
+      }),
+    );
+  });
+  it("still stops after a Cloudflare challenge on Letterboxd's Forbidden page", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response("<title>Letterboxd - Forbidden</title>", {
+            status: 403,
+            headers: { "cf-mitigated": "challenge" },
+          }),
+        ),
+      ),
+    );
+    await expect(
+      letterboxdProvider.fetchSource(ref, context),
+    ).rejects.toMatchObject({ reason: "unavailable" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(gate().haltReason).toBe("blocked");
+  });
   it("slows every instance down after HTTP 429, for at least Retry-After", async () => {
     const fetch = vi.fn(() =>
       Promise.resolve(
@@ -1344,7 +1407,7 @@ describe("Letterboxd request log", () => {
     ]);
     expect(kept()[0].bytes).toBeGreaterThan(0);
   });
-  it("reports a refusal to the gate at once, even when its body stalls", async () => {
+  it("reports a refusal to the gate within 2 s, even when its body stalls", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(() =>
@@ -1360,10 +1423,12 @@ describe("Letterboxd request log", () => {
         ),
       ),
     );
-    await expect(
-      letterboxdProvider.fetchSource(ref, context),
-    ).rejects.toMatchObject({ reason: "unavailable" });
-    await vi.advanceTimersByTimeAsync(0);
+    // The first bytes do not show Letterboxd's Forbidden page.
+    const read = letterboxdProvider
+      .fetchSource(ref, context)
+      .catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(await read).toMatchObject({ reason: "unavailable" });
     expect(gate().haltReason).toBe("blocked");
     expect(kept()).toHaveLength(0);
     // The log waits 3 s for the body, then keeps what arrived.
