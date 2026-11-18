@@ -1,5 +1,6 @@
 import { memo, useEffect, useId, useRef, useState } from "react";
 import { Clapperboard, ExternalLink, Loader2, RotateCw, X } from "lucide-react";
+import { CATALOG_TITLES_PAGE_SIZE } from "@stremlist/shared/catalog-preview";
 import type {
   CatalogPreview as CatalogPreviewData,
   CatalogPreviewRow,
@@ -412,7 +413,7 @@ function CatalogRow({
                 disabled={!onShowAll}
                 aria-haspopup="dialog"
                 aria-label={`Show all ${count(row.total, nouns.one, nouns.other)} of this catalog`}
-                className="flex aspect-[2/3] w-[4.5rem] shrink-0 flex-col items-center justify-center rounded-xl bg-black/5 text-center outline-none ring-brand/60 transition-[background-color,scale] duration-150 ease-out focus-visible:ring-2 enabled:hover:bg-black/10 enabled:active:scale-[0.96] sm:w-20"
+                className="flex aspect-[2/3] w-[4.5rem] shrink-0 flex-col items-center justify-center rounded-xl bg-black/5 text-center outline-none ring-brand/60 transition-[background-color,scale] duration-150 ease-out focus-visible:ring-2 enabled:cursor-pointer enabled:hover:bg-black/10 enabled:active:scale-[0.96] sm:w-20"
               >
                 <span className="text-sm font-bold tabular-nums">
                   +{more.toLocaleString("en")}
@@ -566,6 +567,14 @@ function CatalogTitlesDialog({
     return () => element.removeEventListener("click", onClick);
   }, []);
 
+  // Placeholder tiles stand for the page that loads, so the grid keeps its
+  // shape: on a tall screen the first page loads as the dialog opens.
+  const placeholders =
+    status === "loading"
+      ? Math.max(0, Math.min(CATALOG_TITLES_PAGE_SIZE, total - titles.length))
+      : 0;
+  const shown = titles.length + placeholders;
+
   // Load the next page when the end of the grid comes near. A failed page
   // waits for "Try again" instead.
   useEffect(() => {
@@ -616,7 +625,7 @@ function CatalogTitlesDialog({
       >
         <div className="flex flex-col gap-4">
           {Array.from(
-            { length: Math.ceil(titles.length / DIALOG_CHUNK) },
+            { length: Math.ceil(shown / DIALOG_CHUNK) },
             (_, chunk) => (
               // The browser skips the blocks far from view, so a list of
               // thousands of titles stays fast. The dialog has at most six
@@ -637,17 +646,25 @@ function CatalogTitlesDialog({
                       rpdbApiKey={rpdbApiKey}
                     />
                   ))}
+                {Array.from(
+                  {
+                    length: Math.max(
+                      0,
+                      Math.min(shown, (chunk + 1) * DIALOG_CHUNK) -
+                        Math.max(titles.length, chunk * DIALOG_CHUNK),
+                    ),
+                  },
+                  (_, index) => (
+                    <DialogTilePlaceholder key={`placeholder-${index}`} />
+                  ),
+                )}
               </ul>
             ),
           )}
         </div>
         <div ref={sentinel} aria-live="polite" className="pt-4">
           {status === "loading" && (
-            <p
-              role="status"
-              className="flex items-center justify-center gap-2 text-xs text-black/50"
-            >
-              <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+            <p role="status" className="sr-only">
               Loading more titles
             </p>
           )}
@@ -684,6 +701,16 @@ const DialogTile = memo(function DialogTile({
     </li>
   );
 });
+
+/** A tile of the dialog while its Title loads. */
+function DialogTilePlaceholder() {
+  return (
+    <li aria-hidden="true">
+      <div className="aspect-[2/3] animate-pulse rounded-xl bg-black/5 motion-reduce:animate-none" />
+      <div className="mt-1.5 h-2.5 w-4/5 animate-pulse rounded bg-black/5 motion-reduce:animate-none" />
+    </li>
+  );
+}
 
 function UnresolvedEntries({
   unresolved,
