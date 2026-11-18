@@ -1,6 +1,12 @@
+import type { DisplayMode } from "@stremlist/shared/constants";
 import { z } from "zod";
 import { HttpError } from "../http";
-import type { ConnectionAccess, PagedRead, SourceSnapshot } from "../types";
+import type {
+  ConnectionAccess,
+  PagedRead,
+  SourceSnapshot,
+  SourceValidation,
+} from "../types";
 import { SourceUnavailableError } from "../types";
 import type { TraktReadOptions } from "./api";
 import {
@@ -93,48 +99,63 @@ const SEGMENT = /^[a-z0-9][a-z0-9._-]*$/i;
 export function parseTraktRef(ref: string) {
   const parts = ref.split("/");
   const chart = TRAKT_CHARTS.find((name) => name === ref);
-  if (chart) return { kind: "chart", chart };
+  if (chart) return { kind: "chart", chart } satisfies TraktSource;
   if (parts[0] === "me") {
     if (parts.length === 2) {
       const kind = userSourceKind(parts[1]);
-      if (kind) return { kind, user: "me" };
+      if (kind) return { kind, user: "me" } satisfies TraktSource;
       switch (parts[1]) {
         case "recommendations":
-          return { kind: "recommendations" };
+          return { kind: "recommendations" } satisfies TraktSource;
         case "up-next":
-          return { kind: "up_next" };
+          return { kind: "up_next" } satisfies TraktSource;
       }
     }
     if (parts.length === 3 && parts[1] === "lists" && SEGMENT.test(parts[2])) {
-      return { kind: "list", user: "me", list: parts[2] };
+      return { kind: "list", user: "me", list: parts[2] } satisfies TraktSource;
     }
     if (
       parts.length === 3 &&
       parts[1] === "smart-lists" &&
       SEGMENT.test(parts[2])
     ) {
-      return { kind: "smart_list", user: "me", slug: parts[2].toLowerCase() };
+      return {
+        kind: "smart_list",
+        user: "me",
+        slug: parts[2].toLowerCase(),
+      } satisfies TraktSource;
     }
     return null;
   }
   if (parts[0] === "users" && parts[1] && SEGMENT.test(parts[1])) {
     const user = parts[1].toLowerCase();
     const kind = userSourceKind(parts[2]);
-    if (parts.length === 3 && kind) return { kind, user };
+    if (parts.length === 3 && kind) return { kind, user } satisfies TraktSource;
     if (parts.length === 4 && parts[2] === "lists" && SEGMENT.test(parts[3])) {
-      return { kind: "list", user, list: parts[3].toLowerCase() };
+      return {
+        kind: "list",
+        user,
+        list: parts[3].toLowerCase(),
+      } satisfies TraktSource;
     }
     return null;
   }
   if (parts.length === 2 && parts[0] === "lists" && SEGMENT.test(parts[1])) {
-    return { kind: "shared_list", id: parts[1].toLowerCase() };
+    return {
+      kind: "shared_list",
+      id: parts[1].toLowerCase(),
+    } satisfies TraktSource;
   }
   if (
     parts.length === 2 &&
     parts[0] === "smart-lists" &&
     SEGMENT.test(parts[1])
   ) {
-    return { kind: "smart_list", user: null, slug: parts[1].toLowerCase() };
+    return {
+      kind: "smart_list",
+      user: null,
+      slug: parts[1].toLowerCase(),
+    } satisfies TraktSource;
   }
   return null;
 }
@@ -461,9 +482,13 @@ const traktSmartListSummarySchema = z.object({
 
 /** A smart list of only movies or only shows starts with that one Catalog. */
 export function smartListDisplayMode(mediaType: string | null | undefined) {
-  if (mediaType === "movies") return "movie";
-  if (mediaType === "shows") return "series";
-  return "split";
+  const mode: DisplayMode =
+    mediaType === "movies"
+      ? "movie"
+      : mediaType === "shows"
+        ? "series"
+        : "split";
+  return mode;
 }
 
 const traktUserSchema = z.object({
@@ -498,7 +523,8 @@ export async function validateTraktSource(
   ctx: { connection: ConnectionAccess | null },
 ) {
   const source = parseTraktRef(ref);
-  if (!source) return { ok: false, reason: "not_found" };
+  if (!source)
+    return { ok: false, reason: "not_found" } satisfies SourceValidation;
   const displayMode =
     source.kind === "up_next"
       ? "series"
@@ -516,7 +542,7 @@ export async function validateTraktSource(
           ref: sourceToRef(source),
           suggestedTitle: CHARTS[source.chart],
           defaultDisplayMode: displayMode,
-        };
+        } satisfies SourceValidation;
       case "watchlist":
       case "favorites":
       case "ratings":
@@ -529,7 +555,8 @@ export async function validateTraktSource(
           connection,
           options,
         );
-        if (!user) return { ok: false, reason: "not_found" };
+        if (!user)
+          return { ok: false, reason: "not_found" } satisfies SourceValidation;
         await traktGetJson(
           `${userPath(source.user)}/${USER_PROBES[source.kind]}?limit=1`,
           connection,
@@ -541,7 +568,7 @@ export async function validateTraktSource(
           ref: sourceToRef({ kind: source.kind, user: slug }),
           suggestedTitle: `${nonEmpty(user.username) ?? slug}'s ${source.kind}`,
           defaultDisplayMode: displayMode,
-        };
+        } satisfies SourceValidation;
       }
       case "list":
       case "shared_list": {
@@ -551,7 +578,8 @@ export async function validateTraktSource(
           connection,
           options,
         );
-        if (!list) return { ok: false, reason: "not_found" };
+        if (!list)
+          return { ok: false, reason: "not_found" } satisfies SourceValidation;
         const normalized: TraktSource =
           source.kind === "shared_list" && typeof list.ids?.trakt === "number"
             ? { kind: "shared_list", id: String(list.ids.trakt) }
@@ -561,7 +589,7 @@ export async function validateTraktSource(
           ref: sourceToRef(normalized),
           suggestedTitle: nonEmpty(list.name) ?? undefined,
           defaultDisplayMode: displayMode,
-        };
+        } satisfies SourceValidation;
       }
       case "smart_list": {
         const list = await traktGetParsed(
@@ -570,14 +598,15 @@ export async function validateTraktSource(
           connection,
           options,
         );
-        if (!list) return { ok: false, reason: "not_found" };
+        if (!list)
+          return { ok: false, reason: "not_found" } satisfies SourceValidation;
         const slug = nonEmpty(list.ids?.slug)?.toLowerCase() ?? source.slug;
         return {
           ok: true,
           ref: sourceToRef({ ...source, slug }),
           suggestedTitle: nonEmpty(list.name) ?? undefined,
           defaultDisplayMode: smartListDisplayMode(list.media_type),
-        };
+        } satisfies SourceValidation;
       }
       case "recommendations":
       case "up_next":
@@ -589,7 +618,7 @@ export async function validateTraktSource(
       ref: sourceToRef(source),
       suggestedTitle: PERSONAL_TITLES[source.kind],
       defaultDisplayMode: displayMode,
-    };
+    } satisfies SourceValidation;
   } catch (error) {
     throw toSourceError(error);
   }

@@ -31,9 +31,7 @@ export function storedSourceNoun(provider: ProviderId, ref: string) {
 }
 
 interface SourceProblemCopy {
-  /** The problem, in a few words, without a final period. */
   title: string;
-  /** What the user can do about it. */
   fix: string;
 }
 
@@ -42,7 +40,7 @@ function letterboxdNotFound(ref: string) {
     return {
       title: "This Letterboxd share link no longer works",
       fix: "Its owner turned off sharing or deleted the list. Ask them for a new share link.",
-    };
+    } satisfies SourceProblemCopy;
   const member =
     /^users\/[^/]+\/(watchlist|diary|films|likes\/films)(?:\/|$)/.exec(
       ref,
@@ -57,13 +55,13 @@ function letterboxdNotFound(ref: string) {
             : "these films"
       }`,
       fix: "Check the username in the link.",
-    };
+    } satisfies SourceProblemCopy;
   return {
     title: "Letterboxd could not find this list",
     fix: ref.startsWith("lbxshort/")
       ? "Check the link."
       : "Check the link. For a private list, set it to Anyone with share link on Letterboxd and paste the share link.",
-  };
+  } satisfies SourceProblemCopy;
 }
 
 /**
@@ -85,17 +83,17 @@ export function sourceProblemCopy(
           return {
             title: `This IMDb ${noun} is private`,
             fix: `Make your ${noun} public in your IMDb account settings.`,
-          };
+          } satisfies SourceProblemCopy;
         case "trakt":
           return {
             title: `This Trakt ${noun} is private`,
             fix: "Set its privacy to Public on Trakt, or connect Trakt to read your private lists.",
-          };
+          } satisfies SourceProblemCopy;
         case "justwatch":
           return {
             title: "This JustWatch list is not shared",
             fix: "In JustWatch, open the list and choose Share to get its link.",
-          };
+          } satisfies SourceProblemCopy;
         case "letterboxd":
         case "mdblist":
         case "senscritique":
@@ -103,38 +101,38 @@ export function sourceProblemCopy(
           return {
             title: `This ${label} ${noun} is private`,
             fix: `Make it public on ${label}.`,
-          };
+          } satisfies SourceProblemCopy;
       }
     case "not_found":
       if (provider === "letterboxd") return letterboxdNotFound(sourceRef ?? "");
       return {
         title: `${label} could not find this ${noun}`,
         fix: "Check the link. The list may have been deleted.",
-      };
+      } satisfies SourceProblemCopy;
     case "needs_connection":
       return {
         title: `This ${noun} needs your ${label} account`,
         fix: `Connect ${label} on the Stremlist configure page.`,
-      };
+      } satisfies SourceProblemCopy;
     case "disabled":
       return {
         title: `${label} is temporarily unavailable`,
         fix: "Please try again later.",
-      };
+      } satisfies SourceProblemCopy;
     case "premium_only":
       return {
         title: `This ${noun} needs a paid ${label} plan`,
         fix: `${label} only shares it with paid accounts.`,
-      };
+      } satisfies SourceProblemCopy;
     case "coming_soon":
       return {
         title: `${label} is coming soon`,
         fix: `Stremlist cannot read ${label} lists yet.`,
-      };
+      } satisfies SourceProblemCopy;
     case "unavailable":
       return {
         title: `${label} did not answer`,
         fix: "Please try again in a moment.",
-      };
+      } satisfies SourceProblemCopy;
   }
 }

@@ -3,6 +3,7 @@ import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { z } from "zod";
 import { LruCache } from "../lib/lru";
 import { SourceUnavailableError } from "./types";
+import type { ConnectionAccess } from "./types";
 
 const STREMLIST_USER_AGENT = `Stremlist/${ADDON_VERSION} (+https://stremlist.com)`;
 
@@ -69,7 +70,7 @@ function sleep(ms: number) {
  */
 export function limitersByKey<T>(create: () => T, maxKeys = 1000) {
   const byKey = new LruCache<string, T>({ maxEntries: maxKeys });
-  return (key) => {
+  return (key: string) => {
     let limiters = byKey.get(key);
     if (!limiters) {
       limiters = create();
@@ -86,7 +87,7 @@ export function limitersByKey<T>(create: () => T, maxKeys = 1000) {
  */
 export function limitersPerUser<T>(create: () => T, maxUsers = 1000) {
   const forKey = limitersByKey(create, maxUsers);
-  return (connection) =>
+  return (connection: Pick<ConnectionAccess, "accountId" | "username">) =>
     forKey(
       connection.username
         ? `user:${connection.username.toLowerCase()}`

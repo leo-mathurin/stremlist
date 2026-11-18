@@ -221,7 +221,6 @@ export function canaryRefsFromEnv(value = env("MONITOR_CANARY_REFS")) {
   return refs;
 }
 
-/** A canary that is ready to read. */
 interface Canary {
   type: string;
   provider: ProviderId;
@@ -231,21 +230,23 @@ interface Canary {
 
 /** The canaries to read, and the list types that none reads. */
 export function plannedCanaries(refs = canaryRefsFromEnv()) {
-  return Object.entries<CanarySpec>(CANARIES).map(([type, spec]) => {
-    const provider = providerOf(type);
-    if ("none" in spec)
-      return { type, provider, status: "not_covered", reason: spec.none };
-    const set = refs.get(type);
-    const ref = set?.ref ?? spec.ref ?? fixedRef(type);
-    if (!ref)
-      return {
-        type,
-        provider,
-        status: "not_covered",
-        reason: "No Source list: add one to MONITOR_CANARY_REFS",
-      };
-    return { type, provider, ref, min: set?.min ?? spec.min };
-  });
+  const planned: (Canary | Extract<CanaryResult, { status: "not_covered" }>)[] =
+    Object.entries<CanarySpec>(CANARIES).map(([type, spec]) => {
+      const provider = providerOf(type);
+      if ("none" in spec)
+        return { type, provider, status: "not_covered", reason: spec.none };
+      const set = refs.get(type);
+      const ref = set?.ref ?? spec.ref ?? fixedRef(type);
+      if (!ref)
+        return {
+          type,
+          provider,
+          status: "not_covered",
+          reason: "No Source list: add one to MONITOR_CANARY_REFS",
+        };
+      return { type, provider, ref, min: set?.min ?? spec.min };
+    });
+  return planned;
 }
 
 async function providerBlocker(provider: ProviderId) {
@@ -287,7 +288,7 @@ async function readCanary(canary: Canary, connection: ConnectionAccess | null) {
         ref,
         status: "skipped",
         reason: "The read waited for the Provider's queue",
-      };
+      } satisfies CanaryResult;
     const entries = snapshot.entries.length;
     if (entries < min)
       return {
@@ -298,11 +299,24 @@ async function readCanary(canary: Canary, connection: ConnectionAccess | null) {
         entries,
         min,
         error: `${entries} entries, expected at least ${min}`,
-      };
-    return { type, provider, ref, status: "ok", entries, min };
+      } satisfies CanaryResult;
+    return {
+      type,
+      provider,
+      ref,
+      status: "ok",
+      entries,
+      min,
+    } satisfies CanaryResult;
   } catch (error) {
     if (error instanceof SourceBusyError)
-      return { type, provider, ref, status: "skipped", reason: error.message };
+      return {
+        type,
+        provider,
+        ref,
+        status: "skipped",
+        reason: error.message,
+      } satisfies CanaryResult;
     return {
       type,
       provider,
@@ -310,7 +324,7 @@ async function readCanary(canary: Canary, connection: ConnectionAccess | null) {
       status: "failed",
       min,
       error: error instanceof Error ? error.message : "Unknown error",
-    };
+    } satisfies CanaryResult;
   }
 }
 

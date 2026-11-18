@@ -21,10 +21,14 @@ export const OUTAGE_STALE_MS = 60 * 60_000;
  * Stremlist's problems or the monitor's, and the user must not read them as
  * a Provider outage.
  */
-export function isOutageFailure(error: unknown) {
-  if (error instanceof SourceBusyError) return false;
-  if (error instanceof SourceUnavailableError)
-    return error.reason === "unavailable" && isOutageFailure(error.cause);
+export function isOutageFailure(failure: unknown) {
+  let error = failure;
+  while (error instanceof SourceUnavailableError) {
+    if (error instanceof SourceBusyError || error.reason !== "unavailable") {
+      return false;
+    }
+    error = error.cause;
+  }
   if (error instanceof HttpError) return error.status >= 500;
   if (!(error instanceof Error)) return false;
   if (error.name === "TimeoutError" || error.name === "AbortError") return true;

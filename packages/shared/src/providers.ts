@@ -220,7 +220,11 @@ const IMDB_P_HANDLE = new RegExp(
 function parseImdbLink(input: string) {
   const trimmed = input.trim();
   if (isChartId(trimmed)) {
-    return { provider: "imdb", sourceRef: trimmed, kind: "chart" };
+    return {
+      provider: "imdb",
+      sourceRef: trimmed,
+      kind: "chart",
+    } satisfies ParsedSourceLink;
   }
   const url = toUrl(trimmed);
   const isImdbUrl = url !== null && hostIs(url, "imdb.com");
@@ -237,13 +241,21 @@ function parseImdbLink(input: string) {
     const user = parts[1].startsWith("p.") ? parts[1] : parts[1].toLowerCase();
     const sourceRef = `${user}/ratings`;
     return parts.length === 3 && IMDB_RATINGS_REF_PATTERN.test(sourceRef)
-      ? { provider: "imdb", sourceRef, kind: "list" }
+      ? ({
+          provider: "imdb",
+          sourceRef,
+          kind: "list",
+        } satisfies ParsedSourceLink)
       : null;
   }
 
   const list = IMDB_LS.exec(trimmed);
   if (list) {
-    return { provider: "imdb", sourceRef: list[1].toLowerCase(), kind: "list" };
+    return {
+      provider: "imdb",
+      sourceRef: list[1].toLowerCase(),
+      kind: "list",
+    } satisfies ParsedSourceLink;
   }
   const user = IMDB_UR.exec(trimmed);
   if (user) {
@@ -251,11 +263,15 @@ function parseImdbLink(input: string) {
       provider: "imdb",
       sourceRef: user[1].toLowerCase(),
       kind: "watchlist",
-    };
+    } satisfies ParsedSourceLink;
   }
   const handle = IMDB_P_HANDLE.exec(trimmed);
   if (handle) {
-    return { provider: "imdb", sourceRef: handle[1], kind: "watchlist" };
+    return {
+      provider: "imdb",
+      sourceRef: handle[1],
+      kind: "watchlist",
+    } satisfies ParsedSourceLink;
   }
   return null;
 }
@@ -306,14 +322,14 @@ function parseTraktLink(input: string) {
         sourceRef: `${owner}/watchlist`,
         kind: "watchlist",
         suggestedTitle: user === "me" ? undefined : `${parts[1]}'s watchlist`,
-      };
+      } satisfies ParsedSourceLink;
     }
     if (parts[2] === "lists" && parts[3]) {
       return {
         provider: "trakt",
         sourceRef: `${owner}/lists/${parts[3].toLowerCase()}`,
         kind: "list",
-      };
+      } satisfies ParsedSourceLink;
     }
     const userKind =
       parts.length === 3 ? TRAKT_USER_SOURCES.get(parts[2]) : undefined;
@@ -323,7 +339,7 @@ function parseTraktLink(input: string) {
         sourceRef: `${owner}/${parts[2]}`,
         kind: userKind,
         suggestedTitle: user === "me" ? undefined : `${parts[1]}'s ${parts[2]}`,
-      };
+      } satisfies ParsedSourceLink;
     }
   }
   if (
@@ -336,7 +352,7 @@ function parseTraktLink(input: string) {
       provider: "trakt",
       sourceRef: `smart-lists/${parts[3].toLowerCase()}`,
       kind: "list",
-    };
+    } satisfies ParsedSourceLink;
   }
   if (
     parts[0] === "lists" &&
@@ -347,7 +363,7 @@ function parseTraktLink(input: string) {
       provider: "trakt",
       sourceRef: `lists/${parts[2].toLowerCase()}`,
       kind: "list",
-    };
+    } satisfies ParsedSourceLink;
   }
   if (
     parts[0] === "lists" &&
@@ -358,7 +374,7 @@ function parseTraktLink(input: string) {
       provider: "trakt",
       sourceRef: `lists/${parts[1].toLowerCase()}`,
       kind: "list",
-    };
+    } satisfies ParsedSourceLink;
   }
   if (parts[0] === "movies" || parts[0] === "shows") {
     const chart = TRAKT_CHARTS.find((name) => name === parts[1]?.toLowerCase());
@@ -368,7 +384,11 @@ function parseTraktLink(input: string) {
       !!chart &&
       TRAKT_WEEKLY_CHARTS.has(chart);
     if (chart && (parts.length === 2 || weekly)) {
-      return { provider: "trakt", sourceRef: chart, kind: "chart" };
+      return {
+        provider: "trakt",
+        sourceRef: chart,
+        kind: "chart",
+      } satisfies ParsedSourceLink;
     }
   }
   return null;
@@ -383,7 +403,7 @@ function parseMdblistLink(input: string) {
       provider: "mdblist",
       sourceRef: `lists/${parts[1]}/${parts[2]}`,
       kind: "list",
-    };
+    } satisfies ParsedSourceLink;
   }
   if (parts[0] === "watchlist" && parts[1] && parts.length === 2) {
     return {
@@ -391,7 +411,7 @@ function parseMdblistLink(input: string) {
       sourceRef: `watchlist/${parts[1]}`,
       kind: "watchlist",
       suggestedTitle: "MDBList watchlist",
-    };
+    } satisfies ParsedSourceLink;
   }
   return null;
 }
@@ -410,7 +430,7 @@ function parseJustwatchLink(input: string) {
     provider: "justwatch",
     sourceRef: match[1].toLowerCase(),
     kind: "list",
-  };
+  } satisfies ParsedSourceLink;
 }
 
 /**
@@ -471,7 +491,11 @@ function parseSensCritiqueLink(input: string) {
   if (first === "liste") {
     const id = parts.slice(1).find((part) => /^\d+$/.test(part));
     return id
-      ? { provider: "senscritique", sourceRef: `lists/${id}`, kind: "list" }
+      ? ({
+          provider: "senscritique",
+          sourceRef: `lists/${id}`,
+          kind: "list",
+        } satisfies ParsedSourceLink)
       : null;
   }
   if (first === "top") {
@@ -480,7 +504,11 @@ function parseSensCritiqueLink(input: string) {
         ? parts.slice(2).find((part) => /^\d+$/.test(part))
         : undefined;
     return id
-      ? { provider: "senscritique", sourceRef: `polls/${id}`, kind: "chart" }
+      ? ({
+          provider: "senscritique",
+          sourceRef: `polls/${id}`,
+          kind: "chart",
+        } satisfies ParsedSourceLink)
       : null;
   }
   if (
@@ -494,7 +522,7 @@ function parseSensCritiqueLink(input: string) {
       provider: "senscritique",
       sourceRef: `${chart}-${first === "films" ? "movies" : "series"}`,
       kind: "chart",
-    };
+    } satisfies ParsedSourceLink;
   }
   const reserved = new Set([
     "_next",
@@ -562,7 +590,7 @@ function parseSensCritiqueLink(input: string) {
     sourceRef: `users/${username}/${collection}`,
     kind,
     suggestedTitle: `${username}'s ${noun}`,
-  };
+  } satisfies ParsedSourceLink;
 }
 
 function parseLetterboxdLink(input: string) {
@@ -582,7 +610,7 @@ function parseLetterboxdLink(input: string) {
       provider: "letterboxd",
       sourceRef: `lbxshort/${code}`,
       kind: "list",
-    };
+    } satisfies ParsedSourceLink;
   }
 
   if (
@@ -600,7 +628,7 @@ function parseLetterboxdLink(input: string) {
       sourceRef: `users/${user}/watchlist`,
       kind: "watchlist",
       suggestedTitle: `${user}'s watchlist`,
-    };
+    } satisfies ParsedSourceLink;
   }
   const diary =
     (parts[1] === "diary" && parts.length === 2) ||
@@ -611,7 +639,7 @@ function parseLetterboxdLink(input: string) {
       sourceRef: `users/${user}/diary`,
       kind: "history",
       suggestedTitle: `${user}'s diary`,
-    };
+    } satisfies ParsedSourceLink;
   }
   if (parts[1] === "films") {
     if (
@@ -629,7 +657,7 @@ function parseLetterboxdLink(input: string) {
         sourceRef: `users/${user}/films/rated/${range}`,
         kind: "list",
         suggestedTitle: `${user}'s films rated ${range}`,
-      };
+      } satisfies ParsedSourceLink;
     }
     if (parts.length === 2) {
       return {
@@ -637,7 +665,7 @@ function parseLetterboxdLink(input: string) {
         sourceRef: `users/${user}/films`,
         kind: "list",
         suggestedTitle: `${user}'s films`,
-      };
+      } satisfies ParsedSourceLink;
     }
   }
   if (parts[1] === "likes" && parts[2] === "films" && parts.length === 3) {
@@ -646,7 +674,7 @@ function parseLetterboxdLink(input: string) {
       sourceRef: `users/${user}/likes/films`,
       kind: "list",
       suggestedTitle: `${user}'s liked films`,
-    };
+    } satisfies ParsedSourceLink;
   }
   const slug = parts[2]?.toLowerCase();
   if (
@@ -661,14 +689,14 @@ function parseLetterboxdLink(input: string) {
         provider: "letterboxd",
         sourceRef: `lbxshare/${user}/list/${slug}/share/${token}`,
         kind: "list",
-      };
+      } satisfies ParsedSourceLink;
     }
     if (parts.length === 3) {
       return {
         provider: "letterboxd",
         sourceRef: `users/${user}/lists/${slug}`,
         kind: "list",
-      };
+      } satisfies ParsedSourceLink;
     }
   }
   return null;
@@ -994,14 +1022,10 @@ export function staticSource(provider: ProviderId, ref: string) {
   );
 }
 
-/** What a stored Source list reference tells without reading the Source list. */
 interface SourceRefDescription {
   kind: SourceKind;
-  /** Short human reference, such as a username or a list ID. */
   detail: string | null;
-  /** The Source list page on its Provider, when Stremlist can build it. */
   url: string | null;
-  /** A title that the reference suggests, such as a chart name. */
   title?: string;
 }
 
@@ -1017,7 +1041,7 @@ function accountListForm(type: string) {
     pattern: new RegExp(`^${prefix}[^/]+$`),
     type,
     describe: ([ref]) => ({ kind: "list", detail: ref, url: null }),
-  };
+  } satisfies StoredRefForm;
 }
 
 const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
@@ -1072,16 +1096,19 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
           url: `https://trakt.tv/users/${user}/lists/${list}`,
         }),
       },
-      ...[...TRAKT_USER_SOURCES].map(([source, kind]) => ({
-        pattern: new RegExp(`^users/([^/]+)/${source}$`),
-        type: `users/{user}/${source}`,
-        describe: ([, user]) => ({
-          kind,
-          detail: user,
-          url: `https://trakt.tv/users/${user}/${source}`,
-          title: `${user}'s ${source}`,
-        }),
-      })),
+      ...[...TRAKT_USER_SOURCES].map(
+        ([source, kind]) =>
+          ({
+            pattern: new RegExp(`^users/([^/]+)/${source}$`),
+            type: `users/{user}/${source}`,
+            describe: ([, user]) => ({
+              kind,
+              detail: user,
+              url: `https://trakt.tv/users/${user}/${source}`,
+              title: `${user}'s ${source}`,
+            }),
+          }) satisfies StoredRefForm,
+      ),
       {
         pattern: /^lists\/([^/]+)$/,
         type: "lists/{list}",
@@ -1157,16 +1184,17 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
     ],
     senscritique: [
       ...Object.entries(SENSCRITIQUE_COLLECTIONS).map(
-        ([name, { action, kind, noun }]) => ({
-          pattern: new RegExp(`^users/([^/]+)/${name}$`),
-          type: `users/{user}/${name}`,
-          describe: ([, user]) => ({
-            kind,
-            detail: user,
-            url: `https://www.senscritique.com/${user}/collection?action=${action}`,
-            title: `${user}'s ${noun}`,
-          }),
-        }),
+        ([name, { action, kind, noun }]) =>
+          ({
+            pattern: new RegExp(`^users/([^/]+)/${name}$`),
+            type: `users/{user}/${name}`,
+            describe: ([, user]) => ({
+              kind,
+              detail: user,
+              url: `https://www.senscritique.com/${user}/collection?action=${action}`,
+              title: `${user}'s ${noun}`,
+            }),
+          }) satisfies StoredRefForm,
       ),
       {
         pattern: /^lists\/([^/]+)$/,
@@ -1255,7 +1283,12 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
 export function describeSourceRef(provider: ProviderId, ref: string) {
   const chart = imdbChartOf({ provider, sourceRef: ref });
   if (chart) {
-    return { kind: "chart", detail: null, url: chart.url, title: chart.label };
+    return {
+      kind: "chart",
+      detail: null,
+      url: chart.url,
+      title: chart.label,
+    } satisfies SourceRefDescription;
   }
   const known = staticSource(provider, ref);
   if (known) {
@@ -1264,13 +1297,17 @@ export function describeSourceRef(provider: ProviderId, ref: string) {
       detail: sourceRequiresConnection(provider, ref) ? "Your account" : null,
       url: known.url ?? null,
       title: `${PROVIDERS[provider].label} ${known.label}`,
-    };
+    } satisfies SourceRefDescription;
   }
   for (const form of STORED_REF_FORMS[provider] ?? []) {
     const match = form.pattern.exec(ref);
     if (match) return form.describe(match);
   }
-  return { kind: "list", detail: ref, url: null };
+  return {
+    kind: "list",
+    detail: ref,
+    url: null,
+  } satisfies SourceRefDescription;
 }
 
 /**

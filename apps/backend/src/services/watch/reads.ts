@@ -70,7 +70,7 @@ function toRow(claimed: ClaimedRead) {
     lastMovedAt: time(claimed.last_moved_at),
     reads: claimed.reads,
     failures: claimed.failures,
-  };
+  } satisfies ReadRow;
 }
 
 function changedSinceStart(row: ReadRow, item: LibraryItem | undefined) {

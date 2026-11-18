@@ -53,7 +53,7 @@ function uptimeRobot(
           ),
       );
     },
-  };
+  } satisfies StatusPage;
 }
 
 const betterStackSchema = z.object({

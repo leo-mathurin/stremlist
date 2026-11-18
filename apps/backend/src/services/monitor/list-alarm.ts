@@ -77,13 +77,19 @@ async function recentStatusRows(now: number) {
   }
 }
 
+type ListAlarmRead = { alarms: ListAlarm[] } | { error: string };
+
 /** The list types to alarm on now, or the reason they cannot be read. */
 export async function readListAlarms(now = Date.now()) {
   try {
-    return { alarms: listAlarms(await recentStatusRows(now)) };
+    const read: ListAlarmRead = {
+      alarms: listAlarms(await recentStatusRows(now)),
+    };
+    return read;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Could not read the sync statuses for the alarm:", message);
-    return { error: message };
+    const read: ListAlarmRead = { error: message };
+    return read;
   }
 }

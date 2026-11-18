@@ -5,6 +5,7 @@ import type { ConnectionAccess, PagedRead, SourceEntry } from "../types";
 import { SourceUnavailableError } from "../types";
 import { simklRequest } from "./api";
 import { toEntry } from "./entries";
+import type { SimklTitle } from "./library";
 import { parseIds, rawIdsSchema, syncLibrary, toInt } from "./library";
 import { listKey, readState, STATE_VERSION, writeState } from "./state";
 
@@ -123,7 +124,7 @@ function parseListItem(item: RawListItem) {
     title: item.title ?? undefined,
     year: toInt(item.year),
     animeType: item.anime_type ?? undefined,
-  };
+  } satisfies SimklTitle;
 }
 
 /** A custom list in the owner's order, re-read only when activities say so. */

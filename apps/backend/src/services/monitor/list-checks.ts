@@ -121,13 +121,11 @@ export async function claimListChecks() {
   return data;
 }
 
-/** A type, not an interface, so that it fits the Json column. */
-export type ListCheckSummary = {
+// WARNING: Keep this a type alias. An interface does not fit the Json column.
+type ListCheckSummary = {
   canaries: CanaryResult[];
   alarms: ListAlarm[];
-  /** Why the sync statuses could not be read for the alarm, if they could not. */
   alarmError?: string;
-  /** The failures that the run reported, per Provider. */
   failures: Partial<Record<ProviderId, string[]>>;
 };
 

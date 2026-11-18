@@ -36,8 +36,7 @@ export interface ReadRow {
 
 type StopReason = "detected" | "never_started" | "stalled_end" | "after_end";
 
-export interface Plan {
-  /** The next read, or null when the cycle ends. */
+interface Plan {
   next: number | null;
   row: ReadRow;
   stopReason?: StopReason;
@@ -57,7 +56,7 @@ export function newCycle(
   item: LibraryItem | undefined,
   now: number,
 ) {
-  return {
+  const row: ReadRow = {
     itemType,
     videoId,
     phase: "warmup",
@@ -70,6 +69,7 @@ export function newCycle(
     reads: 0,
     failures: 0,
   };
+  return row;
 }
 
 /**
@@ -84,7 +84,8 @@ export function planAfterRead(
   now: number,
 ) {
   const row: ReadRow = { ...input, reads: input.reads + 1, failures: 0 };
-  if (detected) return { next: null, row, stopReason: "detected" };
+  if (detected)
+    return { next: null, row, stopReason: "detected" } satisfies Plan;
 
   const state = item?.state ?? {};
   const timeWatched = state.timeWatched ?? 0;
@@ -104,9 +105,9 @@ export function planAfterRead(
 
   if (!playing && row.phase === "warmup") {
     if (now - row.cycleStartedAt < WARMUP_MS) {
-      return { next: now + 2 * MINUTE, row };
+      return { next: now + 2 * MINUTE, row } satisfies Plan;
     }
-    return { next: null, row, stopReason: "never_started" };
+    return { next: null, row, stopReason: "never_started" } satisfies Plan;
   }
   if (row.expectedEndAt === null) {
     const duration = DEFAULT_DURATION_MS[row.itemType];
@@ -118,28 +119,29 @@ export function planAfterRead(
 
   if (!moved && now - (row.lastMovedAt ?? now) >= STALL_MS) {
     row.phase = "stalled";
-    if (now >= endAt) return { next: null, row, stopReason: "stalled_end" };
-    return { next: Math.min(now + 30 * MINUTE, endAt), row };
+    if (now >= endAt)
+      return { next: null, row, stopReason: "stalled_end" } satisfies Plan;
+    return { next: Math.min(now + 30 * MINUTE, endAt), row } satisfies Plan;
   }
   if (now > endAt + AFTER_END_MS) {
-    return { next: null, row, stopReason: "after_end" };
+    return { next: null, row, stopReason: "after_end" } satisfies Plan;
   }
   if (now < flipAt - 2 * MINUTE) {
     row.phase = "wait";
-    return { next: flipAt, row };
+    return { next: flipAt, row } satisfies Plan;
   }
   row.phase = "flip";
   const step = now < flipAt + 30 * MINUTE ? 2 * MINUTE : 5 * MINUTE;
-  return { next: now + step, row };
+  return { next: now + step, row } satisfies Plan;
 }
 
 /** After a failed read: again in 1 minute, for at most 3 hours. */
 export function planAfterFailure(input: ReadRow, now: number) {
   const row = { ...input, failures: input.failures + 1 };
   if (now - row.cycleStartedAt > AFTER_END_MS + DEFAULT_DURATION_MS.movie) {
-    return { next: null, row, stopReason: "after_end" };
+    return { next: null, row, stopReason: "after_end" } satisfies Plan;
   }
-  return { next: now + MINUTE, row };
+  return { next: now + MINUTE, row } satisfies Plan;
 }
 
 /** When to try a failed Destination write again; null after 72 hours. */

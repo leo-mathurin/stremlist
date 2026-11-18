@@ -1,8 +1,7 @@
 import { z } from "zod";
 import type { ActionIntent, ActionTarget } from "./types";
 
-/** The IDs object that names a Title. */
-export interface SyncIds {
+interface SyncIds {
   imdb: string;
 }
 
@@ -16,7 +15,7 @@ export interface SyncWrite {
 }
 
 export function syncIds(target: ActionTarget) {
-  return { imdb: target.imdbId };
+  return { imdb: target.imdbId } satisfies SyncIds;
 }
 
 /** Where a Title goes in a /sync body (anime and series go under "shows"). */

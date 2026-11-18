@@ -68,10 +68,10 @@ export function parseSortOption(sortOption: string | null | undefined) {
     return DEFAULT_SORT_OPTIONS;
   }
   if (!isSortOrder(order)) {
-    return { by, order: "asc" };
+    return { by, order: "asc" } satisfies SortOptions;
   }
 
-  return { by, order };
+  return { by, order } satisfies SortOptions;
 }
 
 const ACCOUNT_ID_SOURCE = String.raw`sl_[0-9A-Za-z]{22}`;

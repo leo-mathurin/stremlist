@@ -1,7 +1,7 @@
 import { IMDB_TITLE_ID_PATTERN } from "@stremlist/shared/constants";
 import { z } from "zod";
 import { providerFetchJson, RateLimiter } from "../providers/http";
-import type { SourceEntry } from "../providers/types";
+import type { ResolverStrategy, SourceEntry } from "../providers/types";
 
 const WIKIDATA_SPARQL = "https://query.wikidata.org/sparql";
 const IMDB_PROPERTY = "P345";
@@ -94,5 +94,5 @@ export function wikidataStrategy(
       });
       return found;
     },
-  };
+  } satisfies ResolverStrategy;
 }

@@ -1,4 +1,4 @@
-import type { ExternalIds } from "../types";
+import type { ExternalIds, SourceEntry } from "../types";
 import type {
   LibraryItem,
   SimklKind,
@@ -41,11 +41,11 @@ export function toEntry(item: SimklTitle, addedAt?: string) {
     year: item.year,
     sourceUrl: simklItemUrl(item),
     ...(addedAt ? { addedAt } : {}),
-  };
+  } satisfies SourceEntry;
 }
 
 function byDate(date: (item: LibraryItem) => string | undefined) {
-  return (a, b) => {
+  return (a: LibraryItem, b: LibraryItem) => {
     const left = date(a) ?? "";
     const right = date(b) ?? "";
     if (left !== right) return left < right ? -1 : 1;

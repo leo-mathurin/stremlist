@@ -54,16 +54,10 @@ interface ManifestList extends TitledList {
   availableGenres?: string[];
 }
 
-/**
- * What the manifest says about one Catalog. The backend adds the Catalog ID
- * prefix and the filter options, which are the same for every Catalog.
- */
 interface ManifestCatalogEntry extends ListCatalog {
   listId: string;
   name: string;
-  /** Whether the Catalog offers search (main Catalogs only). */
   search: boolean;
-  /** Genre options, after the filter options. */
   genres: string[];
 }
 
@@ -97,12 +91,11 @@ function manifestCatalogEntries(lists: ManifestList[]) {
         name: label ? `${name} · ${label}` : name,
         search: !preset,
         genres,
-      };
+      } satisfies ManifestCatalogEntry;
     });
   });
 }
 
-/** What the manifest says about one "New titles" Catalog (ADR 0007). */
 interface NewTitlesCatalogEntry {
   newTitles: true;
   type: TitleType;
@@ -115,7 +108,14 @@ function newTitlesCatalogEntries(lists: ManifestList[]) {
   );
   return (["movie", "series"] as const)
     .filter((type) => types.has(type))
-    .map((type) => ({ newTitles: true, type, name: "Stremlist New titles" }));
+    .map(
+      (type) =>
+        ({
+          newTitles: true,
+          type,
+          name: "Stremlist New titles",
+        }) satisfies NewTitlesCatalogEntry,
+    );
 }
 
 /**
@@ -127,8 +127,9 @@ export function addonCatalogEntries(
   lists: ManifestList[],
   options: { newTitles: boolean },
 ) {
-  return [
+  const entries: (NewTitlesCatalogEntry | ManifestCatalogEntry)[] = [
     ...(options.newTitles ? newTitlesCatalogEntries(lists) : []),
     ...manifestCatalogEntries(lists),
   ];
+  return entries;
 }

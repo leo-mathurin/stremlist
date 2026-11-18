@@ -21,20 +21,26 @@ interface ListCatalogId {
   preset?: CatalogPreset;
 }
 
-/** A catalog of the manifest: one of a List, or a "New titles" one. */
 type ParsedCatalogId =
   | ({ kind: "list" } & ListCatalogId)
   | { kind: "new-titles"; type: TitleType };
 
 function parseListCatalogId(catalogId: string) {
   const separator = catalogId.indexOf("--");
-  if (separator !== -1) {
-    const preset = CATALOG_PRESETS.find(
-      (option) => option.id === catalogId.slice(separator + 2),
-    );
-    const base = parseListCatalogId(catalogId.slice(0, separator));
-    return preset && base ? { ...base, preset: preset.id } : null;
+  if (separator === -1) {
+    const parsed: ListCatalogId | null = parseBaseListCatalogId(catalogId);
+    return parsed;
   }
+  const preset = CATALOG_PRESETS.find(
+    (option) => option.id === catalogId.slice(separator + 2),
+  );
+  const base = parseBaseListCatalogId(catalogId.slice(0, separator));
+  return preset && base
+    ? ({ ...base, preset: preset.id } satisfies ListCatalogId)
+    : null;
+}
+
+function parseBaseListCatalogId(catalogId: string) {
   if (!catalogId.startsWith(`${CATALOG_ID_PREFIX}${CATALOG_ID_SEPARATOR}`)) {
     return null;
   }
@@ -61,9 +67,9 @@ export function parseCatalogId(catalogId: string) {
   if (catalogId.startsWith(NEW_TITLES_PREFIX)) {
     const type = catalogId.slice(NEW_TITLES_PREFIX.length);
     return type === "movie" || type === "series"
-      ? { kind: "new-titles", type }
+      ? ({ kind: "new-titles", type } satisfies ParsedCatalogId)
       : null;
   }
   const list = parseListCatalogId(catalogId);
-  return list && { kind: "list", ...list };
+  return list && ({ kind: "list", ...list } satisfies ParsedCatalogId);
 }

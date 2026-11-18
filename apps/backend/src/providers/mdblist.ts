@@ -1,4 +1,6 @@
 import { asImdbId } from "@stremlist/shared/constants";
+import type { DisplayMode } from "@stremlist/shared/constants";
+import type { ConnectionSource } from "@stremlist/shared/providers";
 import { z } from "zod";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
 import {
@@ -23,7 +25,6 @@ import type {
   ActionIntent,
   ActionTarget,
   ConnectionAccess,
-  PagedRead,
   ProviderAdapter,
   ProviderContext,
   SourceEntry,
@@ -270,24 +271,30 @@ const SLUG = /^[a-z0-9][a-z0-9-]*$/;
 
 function parseRef(ref: string) {
   const parts = ref.split("/");
-  if (ref === "me/watchlist") return { kind: "watchlist" };
-  if (ref === "me/ratings") return { kind: "ratings" };
-  if (ref === "me/history") return { kind: "history" };
+  if (ref === "me/watchlist") return { kind: "watchlist" } satisfies ParsedRef;
+  if (ref === "me/ratings") return { kind: "ratings" } satisfies ParsedRef;
+  if (ref === "me/history") return { kind: "history" } satisfies ParsedRef;
   if (parts[0] === "official" && parts.length === 2 && SLUG.test(parts[1])) {
-    return { kind: "official", slug: parts[1] };
+    return { kind: "official", slug: parts[1] } satisfies ParsedRef;
   }
   if (parts[0] === "me" && parts.length === 3 && NUMERIC.test(parts[2])) {
-    if (parts[1] === "lists") return { kind: "list", id: parts[2] };
-    if (parts[1] === "external") return { kind: "external", id: parts[2] };
+    if (parts[1] === "lists")
+      return { kind: "list", id: parts[2] } satisfies ParsedRef;
+    if (parts[1] === "external")
+      return { kind: "external", id: parts[2] } satisfies ParsedRef;
   }
   if (parts[0] === "lists" && parts.length === 2 && NUMERIC.test(parts[1])) {
-    return { kind: "list", id: parts[1] };
+    return { kind: "list", id: parts[1] } satisfies ParsedRef;
   }
   if (parts[0] === "lists" && parts.length === 3 && parts[1] && parts[2]) {
-    return { kind: "list-by-slug", user: parts[1], slug: parts[2] };
+    return {
+      kind: "list-by-slug",
+      user: parts[1],
+      slug: parts[2],
+    } satisfies ParsedRef;
   }
   if (parts[0] === "watchlist" && parts.length === 2 && parts[1]) {
-    return { kind: "user-watchlist", user: parts[1] };
+    return { kind: "user-watchlist", user: parts[1] } satisfies ParsedRef;
   }
   return null;
 }
@@ -311,9 +318,9 @@ function itemsPath(parsed: ItemsRef) {
 }
 
 function displayModeFor(mediatype: string | null | undefined) {
-  if (mediatype === "movie") return "movie";
-  if (mediatype === "show") return "series";
-  return "split";
+  const mode: DisplayMode =
+    mediatype === "movie" ? "movie" : mediatype === "show" ? "series" : "split";
+  return mode;
 }
 
 function firstInfo<T>(data: T | T[] | null) {
@@ -577,9 +584,11 @@ async function fetchUsername(token: string) {
 
 async function validateSource(ref: string, ctx: ProviderContext) {
   const parsed = parseRef(ref);
-  if (!parsed) return { ok: false, reason: "not_found" };
+  if (!parsed)
+    return { ok: false, reason: "not_found" } satisfies SourceValidation;
   const connection = ctx.connection;
-  if (!connection) return { ok: false, reason: "needs_connection" };
+  if (!connection)
+    return { ok: false, reason: "needs_connection" } satisfies SourceValidation;
 
   switch (parsed.kind) {
     case "watchlist":
@@ -588,14 +597,14 @@ async function validateSource(ref: string, ctx: ProviderContext) {
         parsed.kind === "user-watchlist" &&
         !isSameUser(connection.username, parsed.user)
       ) {
-        return { ok: false, reason: "private" };
+        return { ok: false, reason: "private" } satisfies SourceValidation;
       }
       return {
         ok: true,
         ref: "me/watchlist",
         suggestedTitle: "MDBList watchlist",
         defaultDisplayMode: "split",
-      };
+      } satisfies SourceValidation;
     case "ratings":
     case "history":
       return {
@@ -603,20 +612,21 @@ async function validateSource(ref: string, ctx: ProviderContext) {
         ref,
         suggestedTitle: `MDBList ${parsed.kind}`,
         defaultDisplayMode: "split",
-      };
+      } satisfies SourceValidation;
     case "official": {
       const { data } = await mdblistRequest(
         connection,
         `/lists/official/${parsed.slug}`,
       );
       const info = firstInfo(listInfoResponseSchema.parse(data));
-      if (!info) return { ok: false, reason: "not_found" };
+      if (!info)
+        return { ok: false, reason: "not_found" } satisfies SourceValidation;
       return {
         ok: true,
         ref,
         suggestedTitle: info.name,
         defaultDisplayMode: displayModeFor(info.mediatype),
-      };
+      } satisfies SourceValidation;
     }
     case "external": {
       const { data } = await mdblistRequest(
@@ -624,13 +634,14 @@ async function validateSource(ref: string, ctx: ProviderContext) {
         `/external/lists/${parsed.id}`,
       );
       const info = firstInfo(listInfoResponseSchema.parse(data));
-      if (!info) return { ok: false, reason: "not_found" };
+      if (!info)
+        return { ok: false, reason: "not_found" } satisfies SourceValidation;
       return {
         ok: true,
         ref: `me/external/${parsed.id}`,
         suggestedTitle: info.name,
         defaultDisplayMode: displayModeFor(info.mediatype),
-      };
+      } satisfies SourceValidation;
     }
     case "list":
     case "list-by-slug": {
@@ -641,7 +652,7 @@ async function validateSource(ref: string, ctx: ProviderContext) {
       const { data } = await mdblistRequest(connection, path);
       const info = firstInfo(listInfoResponseSchema.parse(data));
       if (!info || typeof info.id !== "number") {
-        return { ok: false, reason: "not_found" };
+        return { ok: false, reason: "not_found" } satisfies SourceValidation;
       }
       const normalized =
         parsed.kind === "list" && ref.startsWith("me/")
@@ -652,7 +663,7 @@ async function validateSource(ref: string, ctx: ProviderContext) {
         ref: normalized,
         suggestedTitle: info.name,
         defaultDisplayMode: displayModeFor(info.mediatype),
-      };
+      } satisfies SourceValidation;
     }
   }
 }
@@ -758,7 +769,7 @@ export async function listMdblistUserSources(connection: ConnectionAccess) {
             kind: "list",
             label: list.name?.trim() ? list.name.trim() : `List ${list.id}`,
             defaultDisplayMode: displayModeFor(list.mediatype),
-          },
+          } satisfies ConnectionSource,
         ]
       : [];
   return [

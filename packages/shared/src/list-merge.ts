@@ -205,10 +205,8 @@ export function isSortAllowed(list: MergeableList, sortOption: string) {
   );
 }
 
-/** Why the Lists of one Account cannot be saved together. */
 interface AccountListsProblem {
   reason: "too_many_lists" | "duplicate_source" | "too_many_sources";
-  /** The message for the user. */
   message: string;
 }
 
@@ -222,20 +220,20 @@ export function accountListsProblem(lists: readonly MergeableList[]) {
     return {
       reason: "too_many_lists",
       message: `You can have at most ${MAX_LISTS} lists.`,
-    };
+    } satisfies AccountListsProblem;
   }
   const keys = lists.flatMap((list) => listSources(list).map(sourceKey));
   if (new Set(keys).size !== keys.length) {
     return {
       reason: "duplicate_source",
       message: "Each list can only be added once.",
-    };
+    } satisfies AccountListsProblem;
   }
   if (keys.length > MAX_SOURCES_PER_ACCOUNT) {
     return {
       reason: "too_many_sources",
       message: `You can have at most ${MAX_SOURCES_PER_ACCOUNT} lists in total, merged lists included.`,
-    };
+    } satisfies AccountListsProblem;
   }
   return null;
 }

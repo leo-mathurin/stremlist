@@ -69,7 +69,7 @@ export interface Check {
   pass: boolean;
 }
 
-export type RunSummary = Pick<
+type RunSummary = Pick<
   ScenarioResult,
   "durationS" | "routes" | "unavailableCards"
 >;
@@ -99,10 +99,10 @@ export function readSummary(path: string) {
     durationS: (summary.state?.testRunDurationMs ?? 0) / 1000,
     routes,
     unavailableCards: value("unavailable_cards", "count"),
-  };
+  } satisfies RunSummary;
 }
 
-export type Totals = Pick<RouteResult, "requests" | "ok" | "errors5xx">;
+type Totals = Pick<RouteResult, "requests" | "ok" | "errors5xx">;
 
 export function totals(result: ScenarioResult) {
   const all = Object.values(result.routes);
@@ -110,7 +110,7 @@ export function totals(result: ScenarioResult) {
     requests: all.reduce((sum, route) => sum + route.requests, 0),
     ok: all.reduce((sum, route) => sum + route.ok, 0),
     errors5xx: all.reduce((sum, route) => sum + route.errors5xx, 0),
-  };
+  } satisfies Totals;
 }
 
 const integer = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });

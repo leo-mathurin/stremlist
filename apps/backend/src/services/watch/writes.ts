@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { mapWithConcurrency } from "../../lib/concurrency";
 import { supabase } from "../../lib/supabase";
 import { HttpError } from "../../providers/http";
+import type { ActionTarget } from "../../providers/types";
 import { isProviderEnabled } from "../../providers/registry";
 import { traktPlays } from "../../providers/trakt/actions";
 import {
@@ -95,7 +96,6 @@ function groupSends(writes: ClaimedWrite[]) {
 
 interface CappedSends {
   kept: ClaimedWrite[][];
-  /** Write IDs by the minutes they wait. */
   later: Map<number, number[]>;
 }
 
@@ -126,7 +126,7 @@ export function capPerDestination(sends: ClaimedWrite[][]) {
     if (n < SENDS_PER_DESTINATION) kept.push(group);
     else wait(Math.floor(n / SENDS_PER_DESTINATION), group);
   }
-  return { kept, later };
+  return { kept, later } satisfies CappedSends;
 }
 
 function targetOf(writes: ClaimedWrite[]) {
@@ -142,7 +142,7 @@ function targetOf(writes: ClaimedWrite[]) {
           })),
         }
       : {}),
-  };
+  } satisfies ActionTarget;
 }
 
 function isUncertain(error: unknown) {

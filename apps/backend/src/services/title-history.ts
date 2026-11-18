@@ -106,11 +106,9 @@ function uniqueEntries(entries: KeyedEntry[]) {
   return unique;
 }
 
-export interface SynchronizationResult {
+interface SynchronizationResult {
   history: SourceHistory;
-  /** New entries: 0 for the Baseline. */
   added: number;
-  /** Whether anything but the synchronization date changed. */
   changed: boolean;
 }
 
@@ -144,7 +142,7 @@ export function applySynchronization(
       },
       added: 0,
       changed: true,
-    };
+    } satisfies SynchronizationResult;
   }
   if (syncedAt.getTime() <= Date.parse(previous.lastSyncAt)) return null;
 
@@ -179,11 +177,10 @@ export function applySynchronization(
     history: { ...previous, lastSyncAt: at, entries: next },
     added,
     changed,
-  };
+  } satisfies SynchronizationResult;
 }
 
-/** A Title of the "New titles" catalog, with the Source list that has it. */
-export interface NewTitle {
+interface NewTitle {
   imdbId: string;
   source: SourceId;
   detectedAt: string;
@@ -271,12 +268,12 @@ interface StoredVersion {
 
 async function readStored(key: string) {
   const stored = await readJsonVersion(key);
-  if (!stored) return { history: null, etag: null };
+  if (!stored) return { history: null, etag: null } satisfies StoredVersion;
   const parsed = historySchema.safeParse(stored.value);
   return {
     history: parsed.success ? parsed.data : null,
     etag: stored.etag ?? null,
-  };
+  } satisfies StoredVersion;
 }
 
 /** The stored history of a Source list, or null. Errors throw. */

@@ -113,7 +113,7 @@ export async function resolveAccountKey(key: string) {
   if (error || !data || (via === "private" && data.legacy_imdb_user_id)) {
     return null;
   }
-  return { account: mapAccount(data), via };
+  return { account: mapAccount(data), via } satisfies AccountAccess;
 }
 
 /**
@@ -164,7 +164,7 @@ export async function ensureLegacyAccount(imdbUserId: string) {
     throw listError;
   }
 
-  return { account: mapAccount(data), via: "legacy" };
+  return { account: mapAccount(data), via: "legacy" } satisfies AccountAccess;
 }
 
 export async function getAccountLists(accountId: string) {

@@ -44,7 +44,8 @@ type Fetch = typeof fetch;
 
 async function readJson(response: Response) {
   try {
-    return await response.json();
+    const json: unknown = await response.json();
+    return json;
   } catch {
     throw new StremioUnavailableError();
   }
@@ -97,9 +98,8 @@ async function callStremio(
   return answer.result;
 }
 
-export interface LinkCode {
+interface LinkCode {
   code: string;
-  /** The Stremio page where the member confirms the code. */
   link: string;
 }
 
@@ -119,7 +119,7 @@ export async function createLinkCode(fetchImpl: Fetch = fetch) {
   if (typeof link !== "string" || !link.startsWith("https://")) {
     throw new StremioUnavailableError();
   }
-  return { code, link };
+  return { code, link } satisfies LinkCode;
 }
 
 /**

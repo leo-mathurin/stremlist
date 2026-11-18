@@ -95,8 +95,7 @@ export function toInt(value: unknown) {
     : undefined;
 }
 
-/** The IDs that Simkl gives for a title, wherever the title comes from. */
-export interface SimklIds {
+interface SimklIds {
   simkl?: number;
   slug?: string;
   imdb?: string;

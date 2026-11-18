@@ -92,7 +92,7 @@ async function fetchCinemeta(imdbId: string, typeHint?: "movie" | "series") {
       ...(released ? { released } : {}),
       ...(meta.director?.length ? { director: meta.director } : {}),
       ...(meta.cast?.length ? { cast: meta.cast.slice(0, 5) } : {}),
-    };
+    } satisfies StremioMeta;
   }
   return null;
 }

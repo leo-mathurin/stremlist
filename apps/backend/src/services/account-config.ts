@@ -200,7 +200,7 @@ function submittedSources(list: ListBody, saved: ConfigList | undefined) {
       ...(list.mergedSources ?? saved?.mergedSources ?? []),
     ],
     kept: !list.mergedSources && !!list.id,
-  };
+  } satisfies SubmittedSources;
 }
 
 /**
@@ -259,7 +259,7 @@ export async function normalizeLists(
 
 /** The Providers that the Account has a Connection with. */
 export async function connectedProviders(access: AccountAccess) {
-  if (access.via !== "private") return new Set();
+  if (access.via !== "private") return new Set<ProviderId>();
   return new Set(
     (await listConnections(access.account.id)).map((c) => c.provider),
   );

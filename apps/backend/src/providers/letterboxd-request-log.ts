@@ -37,7 +37,7 @@ export function requestDetails(
   kind: LetterboxdRequestDetails["kind"],
   url: string,
 ) {
-  return {
+  const details: LetterboxdRequestDetails = {
     kind,
     url,
     status: null,
@@ -50,6 +50,7 @@ export function requestDetails(
     server: null,
     bodyExcerpt: null,
   };
+  return details;
 }
 
 /** Copy the status and the headers that explain a refusal. */

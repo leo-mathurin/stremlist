@@ -6,6 +6,7 @@ import {
   syncIds,
   watchedAtOf,
 } from "../sync-payload";
+import type { SyncWrite } from "../sync-payload";
 import type {
   ActionIntent,
   ActionTarget,
@@ -114,7 +115,7 @@ function syncBody(intent: ActionIntent, target: ActionTarget) {
       return {
         path: intent.add ? "/sync/watchlist" : "/sync/watchlist/remove",
         body: { [key]: [{ ids }] },
-      };
+      } satisfies SyncWrite;
     case "watched": {
       const path = intent.add ? "/sync/history" : "/sync/history/remove";
       const at = watchedAtOf(intent);
@@ -123,17 +124,20 @@ function syncBody(intent: ActionIntent, target: ActionTarget) {
         return {
           path,
           body: { shows: [episodeItem(target, episodes, at.watched_at)] },
-        };
+        } satisfies SyncWrite;
       }
-      return { path, body: { [key]: [{ ids, ...at }] } };
+      return { path, body: { [key]: [{ ids, ...at }] } } satisfies SyncWrite;
     }
     case "rating":
       return intent.rating === null
-        ? { path: "/sync/ratings/remove", body: { [key]: [{ ids }] } }
-        : {
+        ? ({
+            path: "/sync/ratings/remove",
+            body: { [key]: [{ ids }] },
+          } satisfies SyncWrite)
+        : ({
             path: "/sync/ratings",
             body: { [key]: [{ ids, rating: intent.rating }] },
-          };
+          } satisfies SyncWrite);
   }
 }
 

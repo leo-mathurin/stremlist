@@ -66,6 +66,11 @@ async function knownEpisodes(
 
 const isTitle = (item: LibraryItem) => IMDB_TITLE_ID_PATTERN.test(item._id);
 
+interface ItemsDiff {
+  titles: WatchedTitle[];
+  next: WatchState | false;
+}
+
 /**
  * The titles of `items` that `state` does not have, and the state with
  * them. Series keep every episode ever seen watched.
@@ -130,9 +135,9 @@ export async function diffItems(
       changed = true;
     }
   }
-  if (!changed) return { titles, next: false };
+  if (!changed) return { titles, next: false } satisfies ItemsDiff;
   next.savedAt = Date.now();
-  return { titles, next };
+  return { titles, next } satisfies ItemsDiff;
 }
 
 async function queueWrites(

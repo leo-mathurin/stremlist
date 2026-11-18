@@ -23,7 +23,10 @@ const OPTIONS = new Map<string, Selection>([
     ["IMDb Rating (Highest)", "rating-desc"],
     ["IMDb Rating (Lowest)", "rating-asc"],
     ["Shuffle", "random"],
-  ].map(([label, sort]) => [label, { sort: parseSortOption(sort) }]),
+  ].map(
+    ([label, sort]) =>
+      [label, { sort: parseSortOption(sort) }] satisfies [string, Selection],
+  ),
   ["Shortest", { sort: { by: "runtime", order: "asc" } }],
   ["Longest", { sort: { by: "runtime", order: "desc" } }],
   ["90 min or less", { filters: { maxRuntime: 90 } }],
@@ -32,10 +35,13 @@ const OPTIONS = new Map<string, Selection>([
   ["IMDb Rating 8+", { filters: { minRating: 8 } }],
   ["Release Date (Newest)", { sort: { by: "released", order: "desc" } }],
   ["Release Date (Oldest)", { sort: { by: "released", order: "asc" } }],
-  ...CATALOG_DECADES.map((decade) => [
-    decade,
-    { filters: { decade: Number.parseInt(decade, 10) } },
-  ]),
+  ...CATALOG_DECADES.map(
+    (decade) =>
+      [decade, { filters: { decade: Number.parseInt(decade, 10) } }] satisfies [
+        string,
+        Selection,
+      ],
+  ),
 ]);
 const PRESETS = {
   short: { filters: { maxRuntime: 90 } },

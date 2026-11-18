@@ -74,7 +74,7 @@ export async function watchedEpisodes(
   imdbId: string,
   field: string | undefined,
 ) {
-  if (!field) return new Set();
+  if (!field) return new Set<string>();
   const decode = (videos: SeriesVideo[]) => {
     const ids = watchedVideos(field, videos);
     return {
@@ -124,7 +124,13 @@ function watchedAt(item: LibraryItem) {
 /** The movie, when it turned watched since `before`. */
 export function newMovie(item: LibraryItem, watchedBefore: boolean) {
   return !watchedBefore && movieWatched(item)
-    ? [{ imdbId: item._id, type: "movie", watchedAt: watchedAt(item) }]
+    ? [
+        {
+          imdbId: item._id,
+          type: "movie",
+          watchedAt: watchedAt(item),
+        } satisfies WatchedTitle,
+      ]
     : [];
 }
 

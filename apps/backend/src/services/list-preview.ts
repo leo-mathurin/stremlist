@@ -1,6 +1,9 @@
 import type {
+  CatalogPreview,
   CatalogPreviewResponse,
+  CatalogPreviewRow,
   PreviewSourceProblem,
+  PreviewUnresolvedEntry,
 } from "@stremlist/shared/catalog-preview";
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { DisplayMode } from "@stremlist/shared/constants";
@@ -168,7 +171,7 @@ function toUnresolvedEntry(entry: SourceEntry) {
     year: entry.year ?? null,
     type: entry.type ?? entry.externalIds?.tmdb?.type ?? null,
     url: entryUrl(entry),
-  };
+  } satisfies PreviewUnresolvedEntry;
 }
 
 async function presentPreview(
@@ -183,32 +186,34 @@ async function presentPreview(
   const unresolvedEntries = read.flatMap((built) => built.unresolvedEntries);
   const generation = `preview:${listSources(request).map(sourceKey).join(",")}`;
 
-  const catalogs = listCatalogs(request).map(({ type, preset }) => {
-    const selection = resolveCatalogSelection(
-      request.sortOption,
-      request.catalogSettings,
-      null,
-      preset ?? undefined,
-    );
-    const matching = filterCatalog(
-      sortCatalog(metas, selection.sort, generation).filter(
-        (meta) => meta.type === type,
-      ),
-      selection.filters,
-    );
-    return {
-      type,
-      preset,
-      total: matching.length,
-      titles: matching.slice(0, TITLES_PER_CATALOG).map((meta) => ({
-        id: meta.id,
-        type: meta.type,
-        name: meta.name,
-        poster: previewPoster(meta.poster),
-        releaseInfo: meta.releaseInfo ?? null,
-      })),
-    };
-  });
+  const catalogs: CatalogPreviewRow[] = listCatalogs(request).map(
+    ({ type, preset }) => {
+      const selection = resolveCatalogSelection(
+        request.sortOption,
+        request.catalogSettings,
+        null,
+        preset ?? undefined,
+      );
+      const matching = filterCatalog(
+        sortCatalog(metas, selection.sort, generation).filter(
+          (meta) => meta.type === type,
+        ),
+        selection.filters,
+      );
+      return {
+        type,
+        preset,
+        total: matching.length,
+        titles: matching.slice(0, TITLES_PER_CATALOG).map((meta) => ({
+          id: meta.id,
+          type: meta.type,
+          name: meta.name,
+          poster: previewPoster(meta.poster),
+          releaseInfo: meta.releaseInfo ?? null,
+        })),
+      };
+    },
+  );
   const shown = catalogs.flatMap((row) => row.titles);
   const options = {
     budgetMs: PREVIEW_POSTER_BUDGET_MS,
@@ -240,7 +245,7 @@ async function presentPreview(
     },
     withoutDetails: read.reduce((sum, built) => sum + built.withoutMetadata, 0),
     ...(sourceProblems.length > 0 ? { sourceProblems } : {}),
-  };
+  } satisfies CatalogPreview;
 }
 
 /**
@@ -283,7 +288,7 @@ export async function previewList(request: PreviewRequest) {
     return {
       ...queuedAnswer(longest.error, longest.provider),
       ticket: longest.error.ticket ?? queue.ticket,
-    };
+    } satisfies CatalogPreviewResponse;
   }
   const read: BuiltCatalog[] = [];
   const problems: PreviewSourceProblem[] = [];
@@ -311,7 +316,7 @@ export async function previewList(request: PreviewRequest) {
       ...(sources.length > 1
         ? { source: { provider: first.provider, sourceRef: first.sourceRef } }
         : {}),
-    };
+    } satisfies CatalogPreviewResponse;
   }
   return presentPreview(request, read, problems);
 }

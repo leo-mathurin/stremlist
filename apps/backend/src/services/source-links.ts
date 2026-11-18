@@ -2,6 +2,7 @@ import {
   SOURCE_LINK_MAX_LENGTH,
   SOURCE_REF_MAX_LENGTH,
 } from "@stremlist/shared/constants";
+import type { QueuedAnswer } from "@stremlist/shared/provider-queue";
 import { QUEUE_STATE_MIN_MS } from "@stremlist/shared/provider-queue";
 import {
   PROVIDERS,
@@ -31,7 +32,7 @@ export function queuedAnswer(error: SourceBusyError, provider: ProviderId) {
     waitMs: error.waitMs,
     retryMs: error.retryMs ?? Math.min(error.waitMs, 5_000),
     ticket: error.ticket,
-  };
+  } satisfies QueuedAnswer;
 }
 
 /**

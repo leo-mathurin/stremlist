@@ -66,7 +66,6 @@ const statusSchema = z.object({
   rate: z.number(),
   slow_ms: z.number(),
 });
-export type LetterboxdGateStatus = z.infer<typeof statusSchema>;
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));

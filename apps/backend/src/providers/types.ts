@@ -218,8 +218,7 @@ export interface Membership {
 
 const RATINGS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
-/** A rating from 1 to 10, the scale of every Provider with ratings. */
-export type Rating = (typeof RATINGS)[number];
+type Rating = (typeof RATINGS)[number];
 
 /** The value as a Rating, or null when it is not an integer from 1 to 10. */
 export function toRating(value: unknown) {

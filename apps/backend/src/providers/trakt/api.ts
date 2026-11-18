@@ -138,7 +138,8 @@ export async function traktGetParsed<T>(
 }
 
 function parseJsonText(text: string) {
-  return text ? JSON.parse(text) : null;
+  const parsed: unknown = text ? JSON.parse(text) : null;
+  return parsed;
 }
 
 interface PaginateOptions extends TraktReadOptions {

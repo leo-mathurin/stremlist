@@ -6,7 +6,7 @@ import {
 } from "../titles/justwatch-lookup";
 import { tmdbExternalIdsStrategy } from "../titles/tmdb";
 import { readPages } from "./paging";
-import type { ProviderAdapter, SourceValidation } from "./types";
+import type { ProviderAdapter, SourceEntry } from "./types";
 import { SourceUnavailableError } from "./types";
 
 const LIST_ID = /^tl-[a-z]{2}-[0-9a-z-]+$/;
@@ -147,7 +147,7 @@ function toEntry(node: JustwatchTitleNode) {
     type,
     title: content.title ?? undefined,
     year: content.originalReleaseYear ?? undefined,
-  };
+  } satisfies SourceEntry;
 }
 
 function listName(list: JustwatchList) {

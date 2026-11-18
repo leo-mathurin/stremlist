@@ -340,8 +340,6 @@ const ERROR_RATINGS_NOT_FOUND =
 const ERROR_RATINGS_PRIVATE =
   "These IMDb ratings are private. Please make your ratings public in your IMDb settings.";
 
-export type WatchlistErrorReason = "private" | "not_found";
-
 /**
  * Classify a thrown fetch error as an expected user-state (private list /
  * not-found) vs. something else (transient/unknown → null). Kept next to the
@@ -394,11 +392,11 @@ async function queryImdbGraphQL(
   return graphqlResponseSchema.parse(await response.json());
 }
 
-export type ValidationResult =
+type ValidationResult =
   | { valid: true; userId: string }
   | { valid: false; reason: "not_found" | "private" };
 
-export type ListValidationResult =
+type ListValidationResult =
   | { valid: true }
   | { valid: false; reason: "not_found" | "private" };
 
@@ -442,7 +440,8 @@ export async function normalizeImdbUserId(input: string) {
   }
   const ratings = IMDB_RATINGS_REF_PATTERN.exec(input);
   if (ratings) {
-    return `${await normalizeImdbUserId(ratings[1])}/ratings`;
+    const userId: string = await normalizeImdbUserId(ratings[1]);
+    return `${userId}/ratings`;
   }
   if (!input.startsWith("p.")) {
     return input;
@@ -466,12 +465,14 @@ function validationResult(json: GraphQLResponse, list: ImdbList) {
     return {
       valid: false,
       reason: hasForbiddenError(json.errors) ? "private" : "not_found",
-    };
+    } satisfies ListValidationResult;
   }
-  if (!list) return { valid: false, reason: "not_found" };
+  if (!list) {
+    return { valid: false, reason: "not_found" } satisfies ListValidationResult;
+  }
   return list.visibility?.id === "PUBLIC"
-    ? { valid: true }
-    : { valid: false, reason: "private" };
+    ? ({ valid: true } satisfies ListValidationResult)
+    : ({ valid: false, reason: "private" } satisfies ListValidationResult);
 }
 
 export async function validateImdbWatchlist(input: string) {
@@ -479,7 +480,7 @@ export async function validateImdbWatchlist(input: string) {
   try {
     userId = await normalizeImdbUserId(input);
   } catch {
-    return { valid: false, reason: "not_found" };
+    return { valid: false, reason: "not_found" } satisfies ValidationResult;
   }
 
   try {
@@ -487,9 +488,11 @@ export async function validateImdbWatchlist(input: string) {
       urConst: userId,
     });
     const result = validationResult(json, json.data?.predefinedList);
-    return result.valid ? { valid: true, userId } : result;
+    return result.valid
+      ? ({ valid: true, userId } satisfies ValidationResult)
+      : result;
   } catch {
-    return { valid: false, reason: "not_found" };
+    return { valid: false, reason: "not_found" } satisfies ValidationResult;
   }
 }
 
@@ -700,11 +703,8 @@ function convertToStremioFormat(items: ProcessedItem[]) {
   return metas;
 }
 
-/** A watchlist, list or chart: its Titles and when each one was added. */
-export interface ImdbListData extends CatalogData {
-  /** False when the read stopped before the last page. */
+interface ImdbListData extends CatalogData {
   complete: boolean;
-  /** IMDb ID to the date the Title was added to the list. */
   addedAt?: Map<string, string>;
 }
 
@@ -735,7 +735,12 @@ export async function fetchWatchlist(imdbUserId: string) {
     items,
     `watchlist data received from IMDb for user ${imdbUserId}`,
   );
-  return { metas, complete, addedAt: addedDates(items) };
+  const data: ImdbListData = {
+    metas,
+    complete,
+    addedAt: addedDates(items),
+  };
+  return data;
 }
 
 async function getChartEdges(entry: ChartEntry) {
@@ -829,7 +834,8 @@ export async function fetchChart(sourceId: string) {
   console.log(`Fetching IMDb chart ${sourceId}...`);
   const edges = await getChartEdges(entry);
   const metas = toMetas(edges, `chart data received from IMDb for ${sourceId}`);
-  return { metas, complete: true };
+  const data: ImdbListData = { metas, complete: true };
+  return data;
 }
 
 export async function validateImdbList(listId: string) {
@@ -839,7 +845,7 @@ export async function validateImdbList(listId: string) {
     });
     return validationResult(json, json.data?.list);
   } catch {
-    return { valid: false, reason: "not_found" };
+    return { valid: false, reason: "not_found" } satisfies ListValidationResult;
   }
 }
 
@@ -862,7 +868,12 @@ export async function fetchList(listId: string) {
   console.log(`Fetching IMDb list ${listId}...`);
   const { items, complete } = await getImdbList(listId);
   const metas = toMetas(items, `list data received from IMDb for ${listId}`);
-  return { metas, complete, addedAt: addedDates(items) };
+  const data: ImdbListData = {
+    metas,
+    complete,
+    addedAt: addedDates(items),
+  };
+  return data;
 }
 
 /**
@@ -875,7 +886,7 @@ export async function validateImdbRatings(input: string) {
   try {
     userId = await normalizeImdbUserId(input);
   } catch {
-    return { valid: false, reason: "not_found" };
+    return { valid: false, reason: "not_found" } satisfies ValidationResult;
   }
 
   const json = await queryImdbGraphQL(
@@ -884,7 +895,7 @@ export async function validateImdbRatings(input: string) {
     { userId },
   );
   if (!json.errors?.length && json.data?.advancedTitleSearch) {
-    return { valid: true, userId };
+    return { valid: true, userId } satisfies ValidationResult;
   }
   if (!hasForbiddenError(json.errors)) {
     throw new Error(`IMDb could not check the ratings of ${userId}`);
@@ -894,7 +905,10 @@ export async function validateImdbRatings(input: string) {
   });
   const exists =
     !!owner.data?.predefinedList || hasForbiddenError(owner.errors);
-  return { valid: false, reason: exists ? "private" : "not_found" };
+  return {
+    valid: false,
+    reason: exists ? "private" : "not_found",
+  } satisfies ValidationResult;
 }
 
 /** The newest MAX_RATINGS ratings of a user, newest first. */
@@ -947,7 +961,12 @@ export async function fetchRatings(userId: string) {
     oldestFirst,
     `ratings received from IMDb for ${userId}`,
   );
-  return { metas, complete, addedAt: addedDates(oldestFirst) };
+  const data: ImdbListData = {
+    metas,
+    complete,
+    addedAt: addedDates(oldestFirst),
+  };
+  return data;
 }
 
 const TITLES_BY_ID_QUERY = `

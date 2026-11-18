@@ -144,7 +144,7 @@ export async function findPosters(
       unique.set(title.id, title);
     }
   }
-  if (unique.size === 0 || !spec.configured()) return new Map();
+  if (unique.size === 0 || !spec.configured()) return new Map<string, string>();
 
   const unknown = [...unique.values()].filter(
     ({ id }) => !memory.has(memoryKey(source, id)),

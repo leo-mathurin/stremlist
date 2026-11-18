@@ -56,9 +56,9 @@ function collectionReads(collection: SensCritiqueCollection) {
 
 function userRef(ref: string) {
   const match = USER_REF.exec(ref);
-  return match && isSensCritiqueCollection(match[2])
-    ? [match[1], match[2]]
-    : null;
+  if (!match || !isSensCritiqueCollection(match[2])) return null;
+  const user: [string, SensCritiqueCollection] = [match[1], match[2]];
+  return user;
 }
 
 const personSchema = z.object({ name: z.string().nullish() });
@@ -308,7 +308,7 @@ export function productToEntry(product: SensCritiqueProduct) {
       senscritique: product.id,
       justwatchPath: justwatchPath(product),
     },
-  };
+  } satisfies SourceEntry;
 }
 
 function mergeByActionId(a: SensCritiqueProduct[], b: SensCritiqueProduct[]) {

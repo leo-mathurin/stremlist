@@ -129,11 +129,16 @@ async function runProbe(provider: ProviderId, read: ProbeRead) {
       throw new Error(`${provider} is unavailable (turned off or halted)`);
     const degraded = await providerDegradation(provider);
     if (degraded) throw new Error(degraded);
-    return { provider, ok: true, entries: await read() };
+    return { provider, ok: true, entries: await read() } satisfies ProbeResult;
   } catch (err) {
     const error = err instanceof Error ? err.message : "Unknown error";
     console.error(`${provider} monitor check failed:`, error);
-    return { provider, ok: false, outage: isOutageFailure(err), error };
+    return {
+      provider,
+      ok: false,
+      outage: isOutageFailure(err),
+      error,
+    } satisfies ProbeResult;
   }
 }
 
