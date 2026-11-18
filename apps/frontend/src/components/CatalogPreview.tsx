@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { memo, useEffect, useId, useRef, useState } from "react";
 import { Clapperboard, ExternalLink, Loader2, RotateCw, X } from "lucide-react";
 import type {
   CatalogPreview as CatalogPreviewData,
@@ -34,6 +34,8 @@ import { cn } from "@/lib/utils";
 
 /** Unresolved entries shown before "Show all". */
 const UNRESOLVED_COLLAPSED = 5;
+/** Titles in one block of the dialog grid (see `CatalogTitlesDialog`). */
+const DIALOG_CHUNK = 60;
 
 const TYPE_LABELS = { movie: "Movies", series: "TV shows" } as const;
 const TYPE_NOUNS = {
@@ -612,24 +614,33 @@ function CatalogTitlesDialog({
         ref={scroller}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5"
       >
-        <ul className="grid grid-cols-[repeat(auto-fill,minmax(5.25rem,1fr))] gap-x-3 gap-y-4 sm:grid-cols-[repeat(auto-fill,minmax(6.5rem,1fr))]">
-          {titles.map((title) => {
-            const candidates = posterCandidates(title, {
-              posterSource,
-              rpdbApiKey,
-            });
-            return (
-              <li key={title.id}>
-                <PosterTile
-                  key={candidates.join(" ")}
-                  title={title}
-                  posters={candidates}
-                  fill
-                />
-              </li>
-            );
-          })}
-        </ul>
+        <div className="flex flex-col gap-4">
+          {Array.from(
+            { length: Math.ceil(titles.length / DIALOG_CHUNK) },
+            (_, chunk) => (
+              // The browser skips the blocks far from view, so a list of
+              // thousands of titles stays fast. The dialog has at most six
+              // columns, and each column count divides a block: the rows of
+              // the blocks line up. The padding keeps the focus ring of an edge
+              // tile inside the block, which clips what it paints.
+              <ul
+                key={chunk}
+                className="-m-0.5 grid grid-cols-[repeat(auto-fill,minmax(5.25rem,1fr))] gap-x-3 gap-y-4 [contain-intrinsic-block-size:auto_130rem] p-0.5 [content-visibility:auto] sm:grid-cols-[repeat(auto-fill,minmax(6.5rem,1fr))]"
+              >
+                {titles
+                  .slice(chunk * DIALOG_CHUNK, (chunk + 1) * DIALOG_CHUNK)
+                  .map((title) => (
+                    <DialogTile
+                      key={title.id}
+                      title={title}
+                      posterSource={posterSource}
+                      rpdbApiKey={rpdbApiKey}
+                    />
+                  ))}
+              </ul>
+            ),
+          )}
+        </div>
         <div ref={sentinel} aria-live="polite" className="pt-4">
           {status === "loading" && (
             <p
@@ -650,6 +661,29 @@ function CatalogTitlesDialog({
     </dialog>
   );
 }
+
+/** One Title of the dialog. A new page leaves the shown Titles as they are. */
+const DialogTile = memo(function DialogTile({
+  title,
+  posterSource,
+  rpdbApiKey,
+}: {
+  title: PreviewTitle;
+  posterSource: PosterSource;
+  rpdbApiKey: string;
+}) {
+  const candidates = posterCandidates(title, { posterSource, rpdbApiKey });
+  return (
+    <li>
+      <PosterTile
+        key={candidates.join(" ")}
+        title={title}
+        posters={candidates}
+        fill
+      />
+    </li>
+  );
+});
 
 function UnresolvedEntries({
   unresolved,
