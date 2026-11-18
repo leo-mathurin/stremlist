@@ -114,6 +114,10 @@ sops decrypt apps/frontend/.env.enc > apps/frontend/.env
 
 Do not commit the decrypted `.env` files.
 
+`apps/backend/.env.production.enc` keeps the production
+`CONNECTION_ENCRYPTION_KEY`, which Vercel cannot show. See
+[Production deploy](docs/production-deploy.md#connection-encryption-key).
+
 ## Build and Quality Commands
 
 From repository root:
