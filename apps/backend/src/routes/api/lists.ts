@@ -3,13 +3,41 @@ import {
   ACCOUNT_KEY_PATTERN,
   SOURCE_LINK_MAX_LENGTH,
 } from "@stremlist/shared/constants";
+import { CATALOG_PRESETS } from "@stremlist/shared/catalog-settings";
 import { Hono } from "hono";
 import { z } from "zod";
 import { listBody } from "../../services/account-config";
 import { resolveAccountKey } from "../../services/accounts";
-import { previewList } from "../../services/list-preview";
+import { previewCatalogTitles, previewList } from "../../services/list-preview";
 import { resolveSourceLink } from "../../services/source-links";
 import { accountKeyParam } from "./access";
+
+const previewBody = listBody
+  .pick({
+    provider: true,
+    sourceRef: true,
+    mergedSources: true,
+    sortOption: true,
+    displayMode: true,
+    catalogSettings: true,
+  })
+  .extend({
+    accountKey: accountKeyParam.shape.accountKey.optional(),
+    // The place in the Provider's queue from a queued answer.
+    ticket: z.guid().optional(),
+  });
+
+/**
+ * The Account whose Connection a preview may read through. Like
+ * `/links/resolve`, an unknown key previews public lists only. A Legacy alias
+ * can be guessed: it never reads through a Connection.
+ */
+async function previewConnection(
+  accountKey: string | undefined,
+): Promise<string | null> {
+  const access = accountKey ? await resolveAccountKey(accountKey) : null;
+  return access?.via === "private" ? access.account.id : null;
+}
 
 /** Source lists and Lists before they are saved. */
 const lists = new Hono()
@@ -40,35 +68,37 @@ const lists = new Hono()
 
   // Preview the Catalogs of a List, saved or not: a sample of Titles for each
   // Catalog and the Unresolved entries of its Source lists. Writes nothing.
+  .post("/lists/preview", zValidator("json", previewBody), async (c) => {
+    const { accountKey, ticket, ...list } = c.req.valid("json");
+    return c.json(
+      await previewList({
+        ...list,
+        connectionAccountId: await previewConnection(accountKey),
+        ticket: ticket ?? null,
+      }),
+    );
+  })
+
+  // One page of the Titles of one Catalog of a List, from an offset, for the
+  // full preview of that Catalog. Writes nothing.
   .post(
-    "/lists/preview",
+    "/lists/preview/titles",
     zValidator(
       "json",
-      listBody
-        .pick({
-          provider: true,
-          sourceRef: true,
-          mergedSources: true,
-          sortOption: true,
-          displayMode: true,
-          catalogSettings: true,
-        })
-        .extend({
-          accountKey: accountKeyParam.shape.accountKey.optional(),
-          // The place in the Provider's queue from a queued answer.
-          ticket: z.guid().optional(),
+      previewBody.extend({
+        catalog: z.object({
+          type: z.enum(["movie", "series"]),
+          preset: z.enum(CATALOG_PRESETS.map((preset) => preset.id)).nullable(),
         }),
+        offset: z.number().int().min(0).max(100_000),
+      }),
     ),
     async (c) => {
-      const { accountKey, ticket, ...list } = c.req.valid("json");
-      // Like `/links/resolve`, an unknown key previews public lists only. A
-      // Legacy alias can be guessed: it never reads through a Connection.
-      const access = accountKey ? await resolveAccountKey(accountKey) : null;
+      const { accountKey, ticket, ...request } = c.req.valid("json");
       return c.json(
-        await previewList({
-          ...list,
-          connectionAccountId:
-            access?.via === "private" ? access.account.id : null,
+        await previewCatalogTitles({
+          ...request,
+          connectionAccountId: await previewConnection(accountKey),
           ticket: ticket ?? null,
         }),
       );
