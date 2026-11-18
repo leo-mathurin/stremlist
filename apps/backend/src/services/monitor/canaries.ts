@@ -106,13 +106,29 @@ export const CANARIES = {
   "mdblist:me/watchlist": { min: 1 },
   "mdblist:me/ratings": { min: 1 },
   "mdblist:me/history": { min: 1 },
-  // MDBList reads its official charts through the Connection too.
-  "mdblist:official/trending": { min: 20 },
-  "mdblist:official/popular": { min: 20 },
-  "mdblist:official/anticipated": { min: 20 },
-  "mdblist:official/most-watched": { min: 20 },
+  "mdblist:me/up-next": {
+    none: "Up Next has only the series that the user is watching, which a monitor Account cannot keep.",
+  },
+  "mdblist:me/collection": {
+    none: "The monitor Account keeps no Title in its MDBList collection. Add one, then give this type min: 1.",
+  },
+  // MDBList reads its official charts and recommendations through the
+  // Connection too. Each chart gives the same count every day (100 or 200
+  // Titles; about 300 for JustWatch), so the minimums are about 80% of a
+  // read on 2026-11-17.
+  "mdblist:official/trending": { min: 160 },
+  "mdblist:official/popular": { min: 160 },
+  "mdblist:official/anticipated": { min: 80 },
+  "mdblist:official/most-watched": { min: 160 },
+  "mdblist:official/most-watched-week": { min: 80 },
+  "mdblist:official/moviemeter": { min: 160 },
+  "mdblist:official/justwatch-streaming-charts": { min: 240 },
   "mdblist:official/{slug}": {
-    none: "Another official chart reads the same endpoint as the four official charts, which have their canaries.",
+    none: "Another official chart reads the same endpoint as the official charts that have their canaries.",
+  },
+  "mdblist:recommended/rising": { min: 80 },
+  "mdblist:recommended/{section}": {
+    none: "The other sections need an MDBList supporter plan, and they read the same endpoint as recommended/rising.",
   },
   "mdblist:lists/{id}": { min: 1 },
   "mdblist:lists/{user}/{slug}": {

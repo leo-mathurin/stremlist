@@ -119,21 +119,21 @@ entry to `CANARIES`.
 
 Canaries read through these references by default:
 
-| List type                                                        | Source list                                      |
-| ---------------------------------------------------------------- | ------------------------------------------------ |
-| `imdb:chart/*`                                                   | The chart                                        |
-| `imdb:ls/list`                                                   | `ls055592025`                                    |
-| `imdb:ur/watchlist`                                              | `ur195879360`                                    |
-| `imdb:ur/ratings`                                                | `ur102185135/ratings`                            |
-| `trakt:` charts (`trending`, `boxoffice`…)                       | The chart (needs `TRAKT_CLIENT_ID`)              |
-| `justwatch:{list}`                                               | `tl-tu-12653`                                    |
-| `senscritique:users/{user}/wishes`                               | `users/Sergent_Pepper/wishes`                    |
-| `senscritique:lists/{id}`                                        | `lists/369869`                                   |
-| `senscritique:users/{user}/done`, `rated`, `recommend`           | `users/Plume231/…`                               |
-| `senscritique:` charts and `polls/{id}`                          | The chart, `polls/3996052`                       |
-| `simkl:trending/*`                                               | The chart (Simkl's CDN)                          |
-| `letterboxd:users/{user}/lists/{slug}`                           | `users/official/lists/letterboxds-top-500-films` |
-| `trakt:me/*`, `simkl:me/*`, `mdblist:me/*`, `mdblist:official/*` | The monitor Account's Connection                 |
+| List type                                                                                      | Source list                                      |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `imdb:chart/*`                                                                                 | The chart                                        |
+| `imdb:ls/list`                                                                                 | `ls055592025`                                    |
+| `imdb:ur/watchlist`                                                                            | `ur195879360`                                    |
+| `imdb:ur/ratings`                                                                              | `ur102185135/ratings`                            |
+| `trakt:` charts (`trending`, `boxoffice`…)                                                     | The chart (needs `TRAKT_CLIENT_ID`)              |
+| `justwatch:{list}`                                                                             | `tl-tu-12653`                                    |
+| `senscritique:users/{user}/wishes`                                                             | `users/Sergent_Pepper/wishes`                    |
+| `senscritique:lists/{id}`                                                                      | `lists/369869`                                   |
+| `senscritique:users/{user}/done`, `rated`, `recommend`                                         | `users/Plume231/…`                               |
+| `senscritique:` charts and `polls/{id}`                                                        | The chart, `polls/3996052`                       |
+| `simkl:trending/*`                                                                             | The chart (Simkl's CDN)                          |
+| `letterboxd:users/{user}/lists/{slug}`                                                         | `users/official/lists/letterboxds-top-500-films` |
+| `trakt:me/*`, `simkl:me/*`, `mdblist:me/*`, `mdblist:official/*`, `mdblist:recommended/rising` | The monitor Account's Connection                 |
 
 The other types with variable parts (Trakt user lists, smart lists, MDBList
 lists, Letterboxd member pages) need an entry in `MONITOR_CANARY_REFS`. Pick
