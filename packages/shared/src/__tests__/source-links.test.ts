@@ -4,8 +4,10 @@ import {
   listTypeOf,
   parseSourceLink,
   sourceRequiresConnection,
+  PUBLIC_SOURCES,
   sourceTitle,
 } from "../providers";
+import { SIMKL_ADULT_GENRES, SIMKL_GENRES } from "../simkl-charts";
 import { sourceHasAddedDates, sourceTitleType } from "../list-merge";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -841,6 +843,63 @@ describe("Simkl Source lists", () => {
     expect(sourceTitleType("simkl", "trending/movies")).toBe("movie");
     expect(sourceTitleType("simkl", "trending/tv")).toBe("series");
     expect(sourceTitleType("simkl", "trending/anime")).toBeNull();
+    expect(sourceTitleType("simkl", "trending/movies/today")).toBe("movie");
+    expect(sourceTitleType("simkl", "trending/tv/genre/drama")).toBe("series");
+    expect(sourceTitleType("simkl", "trending/anime/genre/isekai")).toBeNull();
+    expect(sourceTitleType("simkl", "dvd/releases")).toBe("movie");
+  });
+
+  it("names every trending chart after Simkl, with its period or genre", () => {
+    expect(sourceTitle("simkl", "trending/movies/today")).toBe(
+      "Simkl Trending Movies Today",
+    );
+    expect(sourceTitle("simkl", "trending/anime/month")).toBe(
+      "Simkl Trending Anime This Month",
+    );
+    expect(
+      describeSourceRef("simkl", "trending/tv/genre/korean-drama"),
+    ).toEqual({
+      kind: "chart",
+      detail: null,
+      url: "https://simkl.com/tv/best-shows/most-watched/",
+      title: "Simkl Trending Korean Drama TV",
+    });
+    // A genre that Stremlist does not know yet keeps a readable name.
+    expect(sourceTitle("simkl", "trending/movies/genre/space-opera")).toBe(
+      "Simkl Trending Space Opera Movies",
+    );
+    expect(sourceTitle("simkl", "dvd/releases")).toBe("Simkl DVD Releases");
+    for (const ref of PUBLIC_SOURCES.simkl ?? [])
+      expect(sourceTitle("simkl", ref.ref)).toMatch(/^Simkl /);
+  });
+
+  it("offers no adult genre", () => {
+    for (const genres of Object.values(SIMKL_GENRES))
+      for (const [slug] of genres)
+        expect(SIMKL_ADULT_GENRES.has(slug)).toBe(false);
+  });
+
+  it("offers the week's charts and DVD releases as buttons, the other periods in a menu", () => {
+    const buttons = (PUBLIC_SOURCES.simkl ?? []).filter(
+      (source) => !source.menu,
+    );
+    expect(buttons.map((source) => source.ref)).toEqual([
+      "trending/movies",
+      "trending/tv",
+      "trending/anime",
+      "dvd/releases",
+    ]);
+  });
+
+  it("dates Continue Watching by the pause, not Airing Soon or the charts", () => {
+    expect(sourceHasAddedDates("simkl", "me/continue-watching")).toBe(true);
+    expect(sourceHasAddedDates("simkl", "me/airing-soon")).toBe(false);
+    expect(sourceHasAddedDates("simkl", "dvd/releases")).toBe(false);
+    expect(sourceHasAddedDates("simkl", "trending/tv/genre/drama")).toBe(false);
+    expect(sourceRequiresConnection("simkl", "me/airing-soon")).toBe(true);
+    expect(sourceRequiresConnection("simkl", "trending/tv/genre/drama")).toBe(
+      false,
+    );
   });
 });
 

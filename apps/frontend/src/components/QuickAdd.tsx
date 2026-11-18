@@ -11,12 +11,15 @@ import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
 import type { ProviderStatus } from "@/hooks/useProviderStatus";
 import { cn } from "@/lib/utils";
 import BuiltInCatalogPicker from "./BuiltInCatalogPicker";
+import SimklChartPicker from "./SimklChartPicker";
 import { ProviderMark } from "./brand";
 
 type SourceGroup = {
   provider: ProviderId;
   title: string;
   sources: ConnectionSource[];
+  /** Public charts: a Provider may offer more of them in a menu. */
+  charts?: boolean;
 };
 
 /**
@@ -62,7 +65,9 @@ export default function QuickAdd({
       groups.push({
         provider,
         title: `${label} charts`,
-        sources: publicSources,
+        // The other charts are in the Provider's chart menu.
+        sources: publicSources.filter((source) => !source.menu),
+        charts: true,
       });
     }
   }
@@ -106,6 +111,13 @@ export default function QuickAdd({
               );
             })}
           </div>
+          {group.charts && group.provider === "simkl" && (
+            <SimklChartPicker
+              usedKeys={usedKeys}
+              disabled={full}
+              onAdd={(source) => onAdd("simkl", source)}
+            />
+          )}
         </div>
       ))}
       <div>

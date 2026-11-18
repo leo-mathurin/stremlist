@@ -107,12 +107,31 @@ export const CANARIES = {
   "simkl:me/dropped": { min: 1 },
   "simkl:me/history": { min: 1 },
   "simkl:me/ratings": { min: 1 },
-  // Simkl's CDN files list 100 Titles each.
+  "simkl:me/airing-soon": {
+    none: "Airing soon has only the Titles of the library that air in the next weeks, which a monitor Account cannot keep. It reads the same library as the statuses.",
+  },
+  "simkl:me/continue-watching": {
+    none: "Simkl drops a paused playback session after 7 days on a free account, so a monitor Account cannot keep one.",
+  },
+  // Simkl's CDN files list 100 Titles each. In the anime files, seasons
+  // share the series' IMDb ID: about 80 Titles stay (2026-11-17).
+  "simkl:trending/movies/today": { min: 80 },
+  "simkl:trending/tv/today": { min: 80 },
+  "simkl:trending/anime/today": { min: 64 },
   "simkl:trending/movies": { min: 50 },
   "simkl:trending/tv": { min: 50 },
   "simkl:trending/anime": { min: 50 },
+  "simkl:trending/movies/month": { min: 80 },
+  "simkl:trending/tv/month": { min: 80 },
+  "simkl:trending/anime/month": { min: 64 },
+  "simkl:dvd/releases": { min: 80 },
   "simkl:me/lists/{id}": {
     none: "Custom lists need Simkl PRO or VIP, and they read the same library as the statuses.",
+  },
+  // A genre's file has the 500 trending Titles of the month.
+  "simkl:trending/{type}/genre/{slug}": {
+    ref: "trending/movies/genre/horror",
+    min: 400,
   },
 
   "mdblist:me/watchlist": { min: 1 },

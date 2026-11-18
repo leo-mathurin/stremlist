@@ -8,6 +8,15 @@ import {
   IMDB_USER_ID_PATTERN,
 } from "./constants";
 import { CHART_REGISTRY, imdbChartOf, isChartId } from "./imdb-charts";
+import {
+  SIMKL_CHART_PERIODS,
+  SIMKL_CHART_TYPE_INFO,
+  SIMKL_CHART_TYPES,
+  SIMKL_GENRE_REF_PATTERN,
+  SIMKL_PERIOD_SUFFIX,
+  simklGenreChartOf,
+  simklTrendingRef,
+} from "./simkl-charts";
 
 /**
  * Providers: the external services that keep lists of Titles. See CONTEXT.md.
@@ -173,6 +182,11 @@ export interface ConnectionSource {
   titleType?: TitleType;
   /** The Source list page on its Provider, for a public one. */
   url?: string;
+  /**
+   * Quick add offers it in the Provider's chart menu, not as a button of
+   * its own.
+   */
+  menu?: boolean;
 }
 
 function toUrl(input: string): URL | null {
@@ -895,6 +909,21 @@ export const CONNECTION_SOURCES: Partial<
       label: "Ratings",
       defaultDisplayMode: "split",
     },
+    // The next episodes of the series in Watching, and the movies in Plan to
+    // watch that come out, from Simkl's airing calendar.
+    {
+      ref: "me/airing-soon",
+      kind: "up_next",
+      label: "Airing Soon",
+      defaultDisplayMode: "split",
+    },
+    // Paused playback sessions, dated by the pause.
+    {
+      ref: "me/continue-watching",
+      kind: "up_next",
+      label: "Continue Watching",
+      defaultDisplayMode: "split",
+    },
   ],
   // The user's own lists (`me/lists/{id}`), external lists
   // (`me/external/{id}`), liked lists (`lists/{id}`) and the recommendation
@@ -1127,32 +1156,33 @@ export const PUBLIC_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>> = {
       url: "https://www.senscritique.com/series/tops/top111anime",
     },
   ],
-  // Simkl's trending files for the week. Simkl's API rules ask that a
-  // trending section names Simkl: the Catalogs are "Simkl Trending Movies"…
+  // Simkl's trending and DVD files. Simkl's API rules ask that a trending
+  // section names Simkl: the Catalogs are "Simkl Trending Movies"… The
+  // week's charts have buttons; the other periods are in the chart menu.
   simkl: [
+    ...SIMKL_CHART_PERIODS.flatMap((period) =>
+      SIMKL_CHART_TYPES.map((type): ConnectionSource => {
+        const { noun, defaultDisplayMode, titleType, url } =
+          SIMKL_CHART_TYPE_INFO[type];
+        return {
+          ref: simklTrendingRef(type, period),
+          kind: "chart",
+          label: `Trending ${noun}${SIMKL_PERIOD_SUFFIX[period]}`,
+          defaultDisplayMode,
+          ...(titleType ? { titleType } : {}),
+          url,
+          ...(period === "week" ? {} : { menu: true }),
+        };
+      }),
+    ),
+    // The most watched new DVD and Blu-ray releases: movies only.
     {
-      ref: "trending/movies",
+      ref: "dvd/releases",
       kind: "chart",
-      label: "Trending Movies",
+      label: "DVD Releases",
       defaultDisplayMode: "movie",
       titleType: "movie",
-      url: "https://simkl.com/movies/best-movies/most-watched/",
-    },
-    {
-      ref: "trending/tv",
-      kind: "chart",
-      label: "Trending TV",
-      defaultDisplayMode: "series",
-      titleType: "series",
-      url: "https://simkl.com/tv/best-shows/most-watched/",
-    },
-    // Mostly series, but anime films trend too.
-    {
-      ref: "trending/anime",
-      kind: "chart",
-      label: "Trending Anime",
-      defaultDisplayMode: "series",
-      url: "https://simkl.com/anime/best-anime/most-watched/",
+      url: "https://simkl.com/movies/dvd-releases/",
     },
   ],
 };
@@ -1311,7 +1341,23 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
       },
       accountListForm("me/lists/{list}"),
     ],
-    simkl: [accountListForm("me/lists/{id}")],
+    simkl: [
+      accountListForm("me/lists/{id}"),
+      // The month's trending Titles of one genre.
+      {
+        pattern: SIMKL_GENRE_REF_PATTERN,
+        type: "trending/{type}/genre/{slug}",
+        describe: ([ref]) => {
+          const chart = simklGenreChartOf(ref);
+          return {
+            kind: "chart",
+            detail: null,
+            url: chart ? SIMKL_CHART_TYPE_INFO[chart.type].url : null,
+            title: chart?.title,
+          };
+        },
+      },
+    ],
     mdblist: [
       // Validation stores pasted links as `lists/{id}`, which has no public
       // page; only `lists/{user}/{slug}` maps back to one.
