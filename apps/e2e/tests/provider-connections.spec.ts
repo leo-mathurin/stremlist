@@ -4,6 +4,7 @@ import type { Page } from "@playwright/test";
 import { BACKEND_URL, FRONTEND_URL } from "../env.js";
 import { listInput } from "../helpers/api.js";
 import {
+  fillRpdbKey,
   configureUrl,
   openConfigure,
   saveConfigure,
@@ -581,7 +582,7 @@ test(
     await page
       .getByLabel("Catalog title", { exact: true })
       .fill("Renamed before connecting");
-    await page.locator("#rpdb-api-key").fill("draft-rpdb-key");
+    await fillRpdbKey(page, "draft-rpdb-key");
 
     const comeBack = await connectFromPage(page, "Trakt", "auth.trakt.tv");
     await comeBack(backend.url);
@@ -658,7 +659,7 @@ test(
     const accountId = await seedTraktAccount();
     await routePageTo(page, backend.url);
     await openConfigure(page, accountId, "Fixture watchlist");
-    await page.locator("#rpdb-api-key").fill("draft-rpdb-key");
+    await fillRpdbKey(page, "draft-rpdb-key");
 
     const comeBack = await connectFromPage(page, "Trakt", "auth.trakt.tv");
     // The kill switch turns Trakt off before the user comes back.

@@ -1,6 +1,7 @@
 import type { CatalogSettings } from "./catalog-settings";
 import type { DisplayMode, TitleType } from "./constants";
 import type { ListSource } from "./list-merge";
+import type { PosterSource } from "./poster";
 import type { ProviderId } from "./providers";
 import type { ListSyncStatuses } from "./sync-status";
 
@@ -93,6 +94,8 @@ export interface AccountConfigResponse extends AccountSyncSnapshot {
   /** The Account ID; only returned for private access. */
   accountId: string | null;
   rpdbApiKey: string | null;
+  /** Absent in an answer of an older backend: IMDb. */
+  posterSource?: PosterSource;
   lists: ConfigList[];
   actions: { enabled: boolean; providers: ProviderId[] };
   newTitles: {
@@ -121,6 +124,8 @@ export interface ConfigListInput {
 
 export interface AccountConfigInput {
   rpdbApiKey?: string;
+  /** Omitted: keep the saved source (IMDb for a new Account). */
+  posterSource?: PosterSource;
   lists: ConfigListInput[];
   actions?: { enabled: boolean; providers: ProviderId[] };
   newTitles?: { enabled: boolean };

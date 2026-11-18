@@ -20,5 +20,8 @@ export default defineConfig({
   test: {
     environment: "node",
     testTimeout: 30000,
+    // Tests never reach TheTVDB with a key from the shell or a .env file.
+    // The live TheTVDB tests use TVDB_LIVE_API_KEY and set the key themselves.
+    env: { TVDB_API_KEY: "" },
   },
 });

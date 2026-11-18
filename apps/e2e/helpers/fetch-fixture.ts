@@ -37,11 +37,14 @@ export function bearer(request: Request): string | null {
 
 /**
  * Replace `fetch` in this process. `hosts` maps a host (`api.trakt.tv`) to its
- * handler. With `log`, each request to a non-loopback host is appended to
- * that file as one JSON line: method, URL, bearer token and body.
+ * handler. `passthrough` hosts reach the real service (a test that runs with
+ * a real key). With `log`, each request to a non-loopback host is appended to
+ * that file as one JSON line: method, URL, bearer token and body; requests
+ * that pass through log only their method and URL, never their credentials.
  */
 export function installFetchFixture(options: {
   hosts: Record<string, FixtureHandler>;
+  passthrough?: string[];
   log?: string;
 }): void {
   const realFetch = globalThis.fetch;
@@ -50,6 +53,20 @@ export function installFetchFixture(options: {
       const request = new Request(input, init);
       const url = new URL(request.url);
       if (LOOPBACK.has(url.hostname)) return realFetch(input, init);
+      if (options.passthrough?.includes(url.host)) {
+        if (options.log) {
+          appendFileSync(
+            options.log,
+            `${JSON.stringify({
+              method: request.method,
+              url: request.url,
+              authorization: null,
+              body: null,
+            })}\n`,
+          );
+        }
+        return realFetch(input, init);
+      }
       const text = request.method === "GET" ? "" : await request.text();
       const body = text
         ? parseBody(text, request.headers.get("content-type"))

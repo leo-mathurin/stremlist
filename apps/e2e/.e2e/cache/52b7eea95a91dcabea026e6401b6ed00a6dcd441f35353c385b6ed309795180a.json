@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-06T19:47:33.405Z",
+  "createdAt": "2026-11-17T15:25:33.393Z",
   "payload": {
     "actions": [
       {
@@ -24,13 +24,13 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Tapped the RPDB API key visibility control; it now reads “Hide RPDB API key,” confirming the key is revealed.",
+    "summary": "The RPDB API key visibility control is active: the button now reads “Hide RPDB API key,” confirming the key is revealed.",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "textbox",
-        "name": "RPDB API key (optional)",
+        "name": "RPDB API key",
         "placeholder": "Paste your RPDB API key"
       },
       {
@@ -41,7 +41,7 @@
     "goneAnchors": [
       {
         "role": "textbox",
-        "name": "RPDB API key (optional)",
+        "name": "RPDB API key",
         "placeholder": "Paste your RPDB API key",
         "inputPurpose": "password"
       },
@@ -50,6 +50,6 @@
         "name": "Show RPDB API key"
       }
     ],
-    "endWaitMs": 11816
+    "endWaitMs": 27420
   }
 }

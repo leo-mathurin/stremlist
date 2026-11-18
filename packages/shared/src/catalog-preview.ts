@@ -9,7 +9,16 @@ export interface PreviewTitle {
   id: string;
   type: TitleType;
   name: string;
+  /** The IMDb poster (Cinemeta's when IMDb has none). */
   poster: string | null;
+  /**
+   * The TMDB poster, so the page can show either source without a new
+   * preview. Null when TMDB has none or did not answer in time; absent from
+   * an older backend.
+   */
+  tmdbPoster?: string | null;
+  /** The TheTVDB poster, with the same rules as `tmdbPoster`. */
+  tvdbPoster?: string | null;
   releaseInfo: string | null;
 }
 

@@ -358,6 +358,41 @@ export async function clearResolverCache(
   if (error) throw error;
 }
 
+/** The saved poster source of an Account. */
+export async function getPosterSource(accountId: string): Promise<string> {
+  const { data, error } = await db
+    .from("accounts")
+    .select("poster_source")
+    .eq("id", accountId)
+    .single();
+  if (error) throw error;
+  return data.poster_source;
+}
+
+/** Forget the TMDB and TheTVDB posters cached for these Titles. */
+export async function clearTitlePosters(imdbIds: string[]): Promise<void> {
+  const { error } = await db
+    .from("title_posters")
+    .delete()
+    .in("imdb_id", imdbIds);
+  if (error) throw error;
+}
+
+/** The posters of `source` cached for these Titles, by IMDb ID. */
+export async function getTitlePosterRows(
+  source: "tmdb" | "tvdb",
+  imdbIds: string[],
+) {
+  const { data, error } = await db
+    .from("title_posters")
+    .select("imdb_id, poster")
+    .eq("source", source)
+    .in("imdb_id", imdbIds)
+    .order("imdb_id");
+  if (error) throw error;
+  return data;
+}
+
 /** What the ID resolver cached for these external IDs, by external ID. */
 export async function getResolverRows(
   namespace: string,

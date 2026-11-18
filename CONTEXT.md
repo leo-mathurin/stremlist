@@ -70,6 +70,10 @@ _Avoid_: Sample, dry run
 A movie or a series, always identified by its IMDb ID (`tt…`). Everything that Stremlist shows or acts on is a Title.
 _Avoid_: Item, media, product, film (for both kinds)
 
+**Poster source**:
+Where the posters of an Account come from: IMDb (the default), TMDB, TheTVDB, or RPDB with the Account's RPDB key. It applies to every Catalog of the Account, whatever the Provider of each List. The RPDB key stays saved when another source is chosen. When TMDB or TheTVDB has no poster for a Title, or does not answer, and when RPDB has no key, the Title shows its IMDb poster. Any source can show posters with logos of streaming services.
+_Avoid_: Artwork provider, image source
+
 **Unresolved entry**:
 An entry of a Source list for which no IMDb ID is known yet. It is not shown, and Stremlist tries again to resolve it on later refreshes.
 _Avoid_: Missing item, dropped item

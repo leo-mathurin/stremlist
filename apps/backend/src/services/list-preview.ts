@@ -20,6 +20,7 @@ import { readQueue, withReadPriority } from "../providers/read-priority";
 import { getProvider, isProviderEnabled } from "../providers/registry";
 import type { ConnectionAccess, SourceEntry } from "../providers/types";
 import { SourceBusyError, SourceUnavailableError } from "../providers/types";
+import { findPosters } from "../titles/title-posters";
 import { filterCatalog, resolveCatalogSelection } from "./catalog-filters";
 import { sortCatalog } from "./catalog-sort";
 import type { BuiltCatalog } from "./lists";
@@ -48,6 +49,12 @@ const TITLES_PER_CATALOG = 12;
 const UNRESOLVED_LIMIT = 50;
 /** A preview request waits this long at most in a Provider's queue. */
 const PREVIEW_WAIT_MS = 10_000;
+/**
+ * How long a preview waits for TMDB and TheTVDB posters that are not cached
+ * (both sources at once). The others show their IMDb poster until the next
+ * preview.
+ */
+const PREVIEW_POSTER_BUDGET_MS = 3_000;
 
 export interface PreviewRequest {
   provider: ProviderId;
@@ -203,16 +210,17 @@ function toUnresolvedEntry(entry: SourceEntry): PreviewUnresolvedEntry {
 /**
  * The Catalogs that a List adds to Stremio, each with its first Titles. Uses
  * the same Catalogs, sort and filters as the manifest and the catalog route,
- * so the preview matches what Stremio shows. The configure page applies RPDB
- * posters using its current key. A merged
+ * so the preview matches what Stremio shows. Each Title has its IMDb, TMDB
+ * and TheTVDB posters: the configure page applies its current poster source and
+ * RPDB key, which may not be saved yet. A merged
  * List shows the Titles of the Source lists it could read once each, like
  * its Catalog.
  */
-function presentPreview(
+async function presentPreview(
   request: PreviewRequest,
   read: BuiltCatalog[],
   sourceProblems: PreviewSourceProblem[],
-): CatalogPreview {
+): Promise<CatalogPreview> {
   const metas = mergeListCatalogs(
     request,
     read.map((built) => built.data.metas),
@@ -250,6 +258,19 @@ function presentPreview(
       };
     },
   );
+  const shown = catalogs.flatMap((row) => row.titles);
+  const options = {
+    budgetMs: PREVIEW_POSTER_BUDGET_MS,
+    size: "preview",
+  } as const;
+  const [tmdbPosters, tvdbPosters] = await Promise.all([
+    findPosters("tmdb", shown, options),
+    findPosters("tvdb", shown, options),
+  ]);
+  for (const title of shown) {
+    title.tmdbPoster = tmdbPosters.get(title.id) ?? null;
+    title.tvdbPoster = tvdbPosters.get(title.id) ?? null;
+  }
 
   return {
     ok: true,

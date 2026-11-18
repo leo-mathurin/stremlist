@@ -6,7 +6,7 @@ interface LegalSection {
   label: string;
   clauses: { title: string; blocks: LegalBlock[] }[];
 }
-export const LEGAL_UPDATED = "2026-11-09";
+export const LEGAL_UPDATED = "2026-11-17";
 export const LEGAL_SECTIONS: LegalSection[] = [
   {
     id: "terms",
@@ -79,7 +79,7 @@ export const LEGAL_SECTIONS: LegalSection[] = [
           [
             {
               label: "Account records:",
-              text: "a random Account ID (the secret part of your Addon URL), the IMDb user ID of installs made before Account IDs existed, creation date, last activity and refresh times, your lists and their settings (titles, sort, filters), your RPDB key if you add one, and your Actions and New titles settings.",
+              text: "a random Account ID (the secret part of your Addon URL), the IMDb user ID of installs made before Account IDs existed, creation date, last activity and refresh times, your lists and their settings (titles, sort, filters), your poster source and your RPDB key if you add one, and your Actions and New titles settings.",
             },
             {
               label: "Connections:",
@@ -132,7 +132,7 @@ export const LEGAL_SECTIONS: LegalSection[] = [
             },
             {
               label: "Title data:",
-              text: "TMDB, Wikidata, JustWatch and Cinemeta (from Stremio) receive title IDs only, to match titles and fill in missing details.",
+              text: "TMDB, TheTVDB, Wikidata, JustWatch and Cinemeta (from Stremio) receive title IDs only, to match titles, fill in missing details and find TMDB and TheTVDB posters.",
             },
             {
               label: "Email:",
@@ -140,7 +140,7 @@ export const LEGAL_SECTIONS: LegalSection[] = [
             },
             {
               label: "Posters:",
-              text: "if you add an RPDB key, Stremio and the configure page send your key and title IDs to RPDB to load poster images. The configure page preview also loads posters from Stremio's image service.",
+              text: "if you choose RPDB posters, Stremio and the configure page send your RPDB key and title IDs to RPDB to load poster images. If you choose TMDB or TheTVDB posters, Stremio and the configure page load poster images from that service. The configure page preview also loads posters from Stremio's image service, and the example posters, when you open them, load from IMDb, TMDB, TheTVDB or RPDB.",
             },
           ],
           "We do not control and are not responsible for the privacy practices of these services. We encourage you to review their privacy policies.",

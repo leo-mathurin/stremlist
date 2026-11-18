@@ -46,7 +46,6 @@ vi.mock("../../lib/supabase", async () => {
 });
 vi.mock("../imdb-scraper", () => ({
   ...scraperMocks,
-  buildPosterUrl: vi.fn((_id: string, poster: string | null) => poster),
   classifyImdbError: vi.fn(() => null),
   isListId: vi.fn((id: string) => id.startsWith("ls")),
 }));
@@ -106,7 +105,6 @@ function config(overrides: Partial<TestRead> = {}): TestRead {
     provider: "imdb",
     sourceRef: "ls123456789",
     sort: { by: "added_at", order: "asc" },
-    rpdbApiKey: null,
     allowConnection: false,
     policy: "catalog",
     ...overrides,

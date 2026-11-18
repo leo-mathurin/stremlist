@@ -81,7 +81,6 @@ function read(overrides: Partial<TestRead> = {}): Promise<CatalogData> {
     provider: "trakt",
     sourceRef: "users/leo/lists/horror",
     sort: { by: "added_at", order: "asc" },
-    rpdbApiKey: null,
     allowConnection: true,
     policy: "catalog",
     ...overrides,

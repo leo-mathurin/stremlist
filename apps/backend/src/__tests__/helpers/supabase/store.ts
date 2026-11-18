@@ -41,6 +41,7 @@ const TABLE_DEFAULTS = new Map<string, () => Row>(
       actions_enabled: false,
       action_providers: [],
       new_titles_catalog: false,
+      poster_source: "imdb",
       prewarm_lease_token: null,
       prewarm_locked_until: EPOCH,
       prewarm_request_generation: 0,
@@ -84,6 +85,7 @@ const TABLE_DEFAULTS = new Map<string, () => Row>(
       created_at: now(),
       updated_at: now(),
     }),
+    title_posters: () => ({ poster: null, checked_at: now() }),
     title_id_map: () => ({
       imdb_id: null,
       strategy: null,
@@ -103,6 +105,7 @@ const UNIQUE_KEYS = new Map<string, string[][]>(
     oauth_states: [["state"]],
     stremio_connections: [["account_id"]],
     title_id_map: [["namespace", "external_id"]],
+    title_posters: [["source", "imdb_id"]],
   }),
 );
 

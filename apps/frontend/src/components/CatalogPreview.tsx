@@ -16,7 +16,8 @@ import type { DisplayMode, TitleType } from "@stremlist/shared/constants";
 import { isMergedList, listSources } from "@stremlist/shared/list-merge";
 import { joinProviderLabels } from "@stremlist/shared/providers";
 import type { SourceId } from "@stremlist/shared/providers";
-import { buildPosterUrl } from "@stremlist/shared/poster";
+import { choosePoster } from "@stremlist/shared/poster";
+import type { PosterSource } from "@stremlist/shared/poster";
 import {
   sourceProblemCopy,
   storedSourceNoun,
@@ -65,11 +66,13 @@ export default function CatalogPreview({
   list,
   accountKey,
   rpdbApiKey,
+  posterSource,
   open,
 }: {
   list: ListFormRow;
   accountKey: string | null;
   rpdbApiKey: string;
+  posterSource: PosterSource;
   /** The panel is visible: only then the preview is read. */
   open: boolean;
 }) {
@@ -127,6 +130,7 @@ export default function CatalogPreview({
             displayMode={list.displayMode}
             settings={list.catalogSettings}
             rpdbApiKey={rpdbApiKey}
+            posterSource={posterSource}
           />
         </div>
       )}
@@ -243,11 +247,13 @@ function PreviewBody({
   displayMode,
   settings,
   rpdbApiKey,
+  posterSource,
 }: {
   preview: CatalogPreviewData;
   displayMode: DisplayMode;
   settings: CatalogSettings;
   rpdbApiKey: string;
+  posterSource: PosterSource;
 }) {
   const shownType = displayMode === "split" ? null : displayMode;
   const hiddenType = shownType && OTHER_TYPE[shownType];
@@ -263,6 +269,7 @@ function PreviewBody({
           typeCounts={preview.typeCounts}
           filtered={filtered}
           rpdbApiKey={rpdbApiKey}
+          posterSource={posterSource}
         />
       ))}
 
@@ -312,11 +319,13 @@ function CatalogRow({
   typeCounts,
   filtered,
   rpdbApiKey,
+  posterSource,
 }: {
   row: CatalogPreviewRow;
   typeCounts: CatalogPreviewData["typeCounts"];
   filtered: boolean;
   rpdbApiKey: string;
+  posterSource: PosterSource;
 }) {
   const headingId = useId();
   const more = row.total - row.titles.length;
@@ -353,13 +362,26 @@ function CatalogRow({
           className="-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 sm:-mx-5 sm:scroll-px-5 sm:px-5"
         >
           {row.titles.map((title) => {
-            const poster = buildPosterUrl(title.id, title.poster, rpdbApiKey);
+            const posters = {
+              imdb: title.poster,
+              tmdb: title.tmdbPoster,
+              tvdb: title.tvdbPoster,
+            };
+            // What Stremio shows, then what shows when an image fails: the
+            // chosen source without RPDB, then the IMDb poster.
+            const candidates = [
+              ...new Set([
+                choosePoster(title.id, posters, { posterSource, rpdbApiKey }),
+                choosePoster(title.id, posters, { posterSource }),
+                title.poster,
+              ]),
+            ].filter((poster): poster is string => poster !== null);
             return (
               <li key={title.id} className="snap-start">
                 <PosterTile
-                  key={`${poster}:${title.poster}`}
+                  key={candidates.join(" ")}
                   title={title}
-                  poster={poster}
+                  posters={candidates}
                 />
               </li>
             );
@@ -382,12 +404,14 @@ function CatalogRow({
 
 function PosterTile({
   title,
-  poster: initialPoster,
+  posters,
 }: {
   title: PreviewTitle;
-  poster: string | null;
+  /** The poster to show, then the ones to try when an image fails. */
+  posters: string[];
 }) {
-  const [poster, setPoster] = useState(initialPoster);
+  const [attempt, setAttempt] = useState(0);
+  const poster = posters.at(attempt) ?? null;
   const [loaded, setLoaded] = useState(false);
   const label = title.releaseInfo
     ? `${title.name} (${title.releaseInfo})`
@@ -413,7 +437,7 @@ function PosterTile({
             onLoad={() => setLoaded(true)}
             onError={() => {
               setLoaded(false);
-              setPoster(poster !== title.poster ? title.poster : null);
+              setAttempt((current) => current + 1);
             }}
             className={cn(
               "size-full object-cover transition-opacity duration-200 ease-out",

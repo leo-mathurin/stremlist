@@ -5,6 +5,11 @@ import {
   LEGACY_ALIAS_PATTERN,
 } from "@stremlist/shared/constants";
 import type { DisplayMode } from "@stremlist/shared/constants";
+import type { PosterSource } from "@stremlist/shared/poster";
+import {
+  DEFAULT_POSTER_SOURCE,
+  isPosterSource,
+} from "@stremlist/shared/poster";
 import type { Tables } from "@stremlist/shared/database";
 import { listRequiresConnection } from "@stremlist/shared/list-merge";
 import type { ListSource } from "@stremlist/shared/list-merge";
@@ -23,6 +28,8 @@ export interface Account {
   id: string;
   legacyImdbUserId: string | null;
   rpdbApiKey: string | null;
+  /** Where its posters come from (see `choosePoster`). */
+  posterSource: PosterSource;
   actionsEnabled: boolean;
   actionProviders: ProviderId[];
   /** Whether the manifest offers the "New titles" catalog (ADR 0007). */
@@ -79,6 +86,9 @@ function mapAccount(row: AccountRow): Account {
     id: row.id,
     legacyImdbUserId: row.legacy_imdb_user_id,
     rpdbApiKey: row.rpdb_api_key,
+    posterSource: isPosterSource(row.poster_source)
+      ? row.poster_source
+      : DEFAULT_POSTER_SOURCE,
     actionsEnabled: row.actions_enabled,
     actionProviders: row.action_providers.filter(isProviderId),
     newTitlesCatalog: row.new_titles_catalog,
@@ -238,12 +248,13 @@ function mapLists(rows: unknown): ConfigList[] {
 export async function createAccountWithConfig(
   lists: ListInput[],
   rpdbApiKey: string | null,
-  settings: { newTitlesCatalog?: boolean } = {},
+  settings: { newTitlesCatalog?: boolean; posterSource?: PosterSource } = {},
 ): Promise<{ accountId: string; lists: ConfigList[] }> {
   const { data, error } = await supabase.rpc("create_account_with_config", {
     p_rpdb_api_key: rpdbApiKey,
     p_lists: toStoredLists(lists),
     p_new_titles_catalog: settings.newTitlesCatalog ?? null,
+    p_poster_source: settings.posterSource ?? null,
   });
   if (error) {
     console.error("Failed to create an account:", error.message);
@@ -266,9 +277,10 @@ export async function replaceAccountConfig(
   settings: {
     actions?: { enabled: boolean; providers: ProviderId[] };
     newTitlesCatalog?: boolean;
+    posterSource?: PosterSource;
   } = {},
 ): Promise<ConfigList[]> {
-  const { actions, newTitlesCatalog } = settings;
+  const { actions, newTitlesCatalog, posterSource } = settings;
   const { data, error } = await supabase.rpc("replace_account_config", {
     p_account_id: accountId,
     p_rpdb_api_key: rpdbApiKey,
@@ -276,6 +288,7 @@ export async function replaceAccountConfig(
     p_actions_enabled: actions?.enabled ?? null,
     p_action_providers: actions?.providers ?? null,
     p_new_titles_catalog: newTitlesCatalog ?? null,
+    p_poster_source: posterSource ?? null,
   });
   if (error) {
     // Raised by `replace_account_config` when kept Source lists changed.

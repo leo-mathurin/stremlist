@@ -626,6 +626,10 @@ function imdb({ body }: FixtureRequest): Response {
               ...(title.rating && {
                 ratingsSummary: { aggregateRating: title.rating },
               }),
+              // Only tests/poster-source.spec.ts asks for IMDb posters.
+              ...(process.env.E2E_IMDB_POSTERS && {
+                primaryImage: { url: imdbPosterOf(id) },
+              }),
             }
           : null;
       }),
@@ -633,8 +637,38 @@ function imdb({ body }: FixtureRequest): Response {
   });
 }
 
+/** The fixture IMDb poster of a Title (E2E_IMDB_POSTERS). */
+function imdbPosterOf(imdbId: string): string {
+  return `https://m.media-amazon.com/images/M/fixture-${imdbId}.jpg`;
+}
+
+/** The TMDB poster that the fixture gives: Shawshank only. */
+const TMDB_POSTER_PATHS = new Map([["tt0111161", "/fixture-shawshank.jpg"]]);
+
+/**
+ * TMDB /find by IMDb ID (poster source, STR-106). Breaking Bad has no
+ * poster on TMDB. With E2E_TMDB_STATUS, every request fails with that status
+ * (an outage).
+ */
+function tmdb({ url }: FixtureRequest): Response {
+  const status = Number(process.env.E2E_TMDB_STATUS);
+  if (status) return json({ status_message: "fixture outage" }, status);
+  const found = /^\/3\/find\/(tt\d+)$/u.exec(url.pathname);
+  if (!found || url.searchParams.get("external_source") !== "imdb_id") {
+    return json({ status_message: "not found" }, 404);
+  }
+  const path = TMDB_POSTER_PATHS.get(found[1]);
+  return json({
+    movie_results: path ? [{ id: 278, poster_path: path }] : [],
+    tv_results:
+      found[1] === "tt0903747" ? [{ id: 1396, poster_path: null }] : [],
+  });
+}
+
 installFetchFixture({
   log: process.env.E2E_PROVIDER_LOG,
+  // Only a backend started with a real TheTVDB key reaches TheTVDB.
+  passthrough: process.env.TVDB_API_KEY ? ["api4.thetvdb.com"] : [],
   hosts: {
     "letterboxd.com": letterboxd,
     "api.trakt.tv": trakt,
@@ -646,5 +680,6 @@ installFetchFixture({
     "apollo.senscritique.com": senscritique,
     "query.wikidata.org": wikidata,
     "api.graphql.imdb.com": imdb,
+    "api.themoviedb.org": tmdb,
   },
 });

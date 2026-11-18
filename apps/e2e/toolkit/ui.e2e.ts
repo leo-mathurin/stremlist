@@ -1,6 +1,7 @@
 import { test, type Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
 import {
+  chooseRpdb,
   SAVED_REINSTALL,
   SAVED_WITH_CHANGES,
   accountId,
@@ -488,7 +489,8 @@ test(
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
     await fitConfigurePage(browser);
-    await captureConfig(browser);
+    // The key field shows for RPDB posters only.
+    await captureConfig(browser, { ...configuration, posterSource: "rpdb" });
     await app.open(`/configure?account=${accountId}`);
     await expect(screen.getByRole("button", "Show RPDB API key")).toBeVisible();
     await agent.act("Reveal the RPDB API key using its visibility control.", {
@@ -598,6 +600,7 @@ test("edits made while saving remain available for the next save", async ({
   await screen.getByLabel(PASTE).fill(listLink);
   await screen.getByRole("button", "Add", { exact: true }).tap();
   await expect(screen.getByText("IMDb · List · ls99123456")).toBeVisible();
+  await chooseRpdb(screen);
   await screen.getByLabel(/^RPDB API key/).fill("e2e-synthetic-rpdb");
   release();
   await expect(screen.getByText(SAVED_WITH_CHANGES)).toBeVisible();
@@ -629,6 +632,7 @@ for (const edit of ["remove", "reorder"] as const) {
     const { submissions, release } = await gatedSaves(browser, twoLists);
     await browser.setViewport({ width: 1280, height: 1800 });
     await app.open(`/configure?account=${accountId}`);
+    await chooseRpdb(screen);
     await screen.getByLabel(/^RPDB API key/).fill("e2e-synthetic-rpdb");
     await saveButton(screen).tap();
     await expect(saveButton(screen, "Saving")).toBeVisible();

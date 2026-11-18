@@ -3,8 +3,11 @@ import type { ConfigList } from "@stremlist/shared/stremio.types";
 import { randomUUID } from "node:crypto";
 import { mapWithConcurrency } from "../lib/concurrency";
 import { supabase } from "../lib/supabase";
+import { findPosters } from "../titles/title-posters";
 import { getAccountLists } from "./accounts";
 import { getListCatalog } from "./lists";
+import type { PosterSettings } from "./posters";
+import { lookupSourceOf } from "./posters";
 
 const PREWARM_CONCURRENCY = 2;
 /**
@@ -12,6 +15,8 @@ const PREWARM_CONCURRENCY = 2;
  * (Letterboxd), within the 300 s that a function may run.
  */
 const PREWARM_QUEUE_MS = 200_000;
+/** TMDB posters looked up per Catalog: the first page that Stremio asks for. */
+const PREWARM_POSTERS_PER_CATALOG = 100;
 const leaseSeconds = Number(process.env.PREWARM_LEASE_SECONDS);
 const PREWARM_LEASE_SECONDS =
   Number.isFinite(leaseSeconds) && leaseSeconds > 0 ? leaseSeconds : 600;
@@ -54,6 +59,7 @@ async function runPrewarmBatch(
   accountId: string,
   lists: ConfigList[],
   allowConnection: boolean,
+  posters: PosterSettings | null,
 ): Promise<void> {
   const startedAt = performance.now();
   const queueDeadline = Date.now() + PREWARM_QUEUE_MS;
@@ -61,17 +67,34 @@ async function runPrewarmBatch(
 
   await mapWithConcurrency(lists, PREWARM_CONCURRENCY, async (list) => {
     try {
-      await getListCatalog(list, {
+      const { metas } = await getListCatalog(list, {
         accountId,
         sort: parseSortOption(list.sortOption),
-        // Prewarming only needs the canonical cache. Poster customization is
-        // applied later when Stremio requests the catalog.
-        rpdbApiKey: null,
         allowConnection,
         policy: "prewarm",
         queueDeadline,
       });
       prewarmed += 1;
+      // Posters are applied when Stremio requests the Catalog. Looking up
+      // the TMDB or TheTVDB ones of its first page now lets that request
+      // find them.
+      const source = posters && lookupSourceOf(posters);
+      if (source) {
+        const types =
+          list.displayMode === "split"
+            ? (["movie", "series"] as const)
+            : [list.displayMode];
+        // One call per Catalog: each call looks up at most one page.
+        for (const type of types) {
+          await findPosters(
+            source,
+            metas
+              .filter((meta) => meta.type === type)
+              .slice(0, PREWARM_POSTERS_PER_CATALOG),
+            { budgetMs: Infinity, size: "stremio" },
+          );
+        }
+      }
     } catch (error) {
       console.error(`Failed to prewarm list ${list.id}:`, error);
     }
@@ -91,13 +114,15 @@ export async function prewarmLists(
   accountId: string,
   lists: ConfigList[],
   allowConnection: boolean,
+  /** The poster settings of the save; null looks up no TMDB poster. */
+  posters: PosterSettings | null = null,
 ): Promise<void> {
   const leaseToken = randomUUID();
   let generation = await requestPrewarm(accountId, leaseToken);
   if (generation === null) return;
 
   for (;;) {
-    await runPrewarmBatch(accountId, lists, allowConnection);
+    await runPrewarmBatch(accountId, lists, allowConnection, posters);
     const nextGeneration = await finishPrewarm(
       accountId,
       leaseToken,

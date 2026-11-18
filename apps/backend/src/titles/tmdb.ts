@@ -1,4 +1,5 @@
 import { asImdbId } from "@stremlist/shared/constants";
+import type { TitleType } from "@stremlist/shared/constants";
 import { z } from "zod";
 import { mapWithConcurrency } from "../lib/concurrency";
 import { HttpError, providerFetchJson, RateLimiter } from "../providers/http";
@@ -71,3 +72,38 @@ export const tmdbExternalIdsStrategy: ResolverStrategy = {
     return found;
   },
 };
+
+const findResultSchema = z.object({ poster_path: z.string().nullish() });
+const findSchema = z.object({
+  movie_results: z.array(findResultSchema).nullish(),
+  tv_results: z.array(findResultSchema).nullish(),
+});
+const POSTER_PATH = /^\/[\w.-]+$/u;
+
+/** Whether `value` is a TMDB image path that is safe to put in a URL. */
+export function isTmdbPosterPath(value: string): boolean {
+  return POSTER_PATH.test(value);
+}
+
+/**
+ * The TMDB poster path of one Title, found by its IMDb ID, or null when TMDB
+ * has none. Throws when TMDB fails.
+ */
+export async function findTmdbPosterPath(title: {
+  id: string;
+  type: TitleType;
+}): Promise<string | null> {
+  const data = await tmdbGet(`/find/${title.id}`, findSchema, {
+    external_source: "imdb_id",
+  });
+  const movies = data?.movie_results ?? [];
+  const shows = data?.tv_results ?? [];
+  // An IMDb ID is one Title, but TMDB can list it as a movie and a show.
+  const ordered =
+    title.type === "series" ? [...shows, ...movies] : [...movies, ...shows];
+  return (
+    ordered
+      .map((result) => result.poster_path)
+      .find((path): path is string => !!path && isTmdbPosterPath(path)) ?? null
+  );
+}

@@ -5,6 +5,7 @@ import type {
   AccountConfigResponse,
 } from "@stremlist/shared/stremio.types";
 import {
+  chooseRpdb,
   SAVED,
   SAVED_REINSTALL,
   SAVED_WITH_CHANGES,
@@ -116,6 +117,7 @@ test("an unreadable history hides the summary, and a save that keeps the catalog
   await expect(screen.getByText(/new titles? detected/)).toHaveCount(0);
 
   // An RPDB key changes the posters, not the Catalogs that Stremio reads.
+  await chooseRpdb(screen);
   await screen.getByLabel(/^RPDB API key/).fill("e2e-synthetic-rpdb");
   await saveButton(screen).tap();
   await expect(screen.getByText(SAVED)).toBeVisible();
@@ -173,6 +175,7 @@ test("changing the setting while a save runs keeps it as an unsaved change", asy
   const { submissions, release } = await gatedSaves(browser, configuration);
 
   await app.open(`/configure?account=${accountId}`);
+  await chooseRpdb(screen);
   await screen.getByLabel(/^RPDB API key/).fill("e2e-synthetic-rpdb");
   await saveButton(screen).tap();
   await expect(saveButton(screen, "Saving")).toBeVisible();

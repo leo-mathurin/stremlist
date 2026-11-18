@@ -15,6 +15,7 @@ import {
 import { parseCatalogId } from "../services/catalog-id";
 import { getNewTitlesCatalog } from "../services/detections";
 import { getListCatalog, ListUnavailableError } from "../services/lists";
+import { withAccountPosters } from "../services/posters";
 
 const catalog = new Hono();
 const CATALOG_PAGE_SIZE = 100;
@@ -136,7 +137,12 @@ async function serveCatalog(c: Context) {
         return c.json({ metas: [] });
       }
       const metas = await getNewTitlesCatalog(access, parsedCatalog.type);
-      return c.json({ metas: metas.slice(skip, skip + CATALOG_PAGE_SIZE) });
+      return c.json({
+        metas: await withAccountPosters(
+          metas.slice(skip, skip + CATALOG_PAGE_SIZE),
+          access.account,
+        ),
+      });
     }
 
     // Lists read through a Connection never answer through a Legacy alias.
@@ -160,7 +166,6 @@ async function serveCatalog(c: Context) {
     const listData = await getListCatalog(list, {
       accountId: access.account.id,
       sort: selection.sort,
-      rpdbApiKey: access.account.rpdbApiKey,
       allowConnection: access.via === "private",
       policy: "catalog",
     });
@@ -170,7 +175,10 @@ async function serveCatalog(c: Context) {
       selection.filters,
       extra.get("search"),
     );
-    const metas = matchingMetas.slice(skip, skip + CATALOG_PAGE_SIZE);
+    const metas = await withAccountPosters(
+      matchingMetas.slice(skip, skip + CATALOG_PAGE_SIZE),
+      access.account,
+    );
 
     console.log(
       `Serving catalog for user ${accountKey}, type: ${requestedType}, list: ${list.id}, skip: ${skip}, page items: ${metas.length}, total items: ${matchingMetas.length}`,
