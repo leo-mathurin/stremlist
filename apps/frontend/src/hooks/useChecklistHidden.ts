@@ -37,5 +37,5 @@ export function useChecklistHidden(legacyKey: string | null) {
     },
     [legacyKey],
   );
-  return [hidden, setHidden];
+  return [hidden, setHidden] as const;
 }

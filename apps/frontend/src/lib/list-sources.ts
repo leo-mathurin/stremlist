@@ -43,11 +43,8 @@ export function detectedLinkHint(parsed: ParsedSourceLink) {
 
 interface SourceDescription {
   kindLabel: string;
-  /** Short human reference, such as a username or a list ID. */
   detail: string | null;
-  /** The Source list page on its Provider, when Stremlist can build it. */
   url: string | null;
-  /** A title to suggest when the user has not set one. */
   suggestedTitle: string;
 }
 
@@ -62,7 +59,7 @@ export function describeSource(provider: ProviderId, ref: string) {
     detail,
     url,
     suggestedTitle: sourceTitle(provider, ref),
-  };
+  } satisfies SourceDescription;
 }
 
 function keyInPath(url: URL) {

@@ -44,10 +44,11 @@ export function reinstallState(
       actionsLive: saved.actionsLive,
     })
   ) {
-    return "required";
+    return "required" as const;
   }
-  return requiresReinstall(installed, current) &&
-    requiresReinstall(saved, current)
-    ? "after-save"
-    : "none";
+  const state: ReinstallState =
+    requiresReinstall(installed, current) && requiresReinstall(saved, current)
+      ? "after-save"
+      : "none";
+  return state;
 }

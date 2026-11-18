@@ -32,7 +32,7 @@ import LegacyChecklist, { WhatsNewButton } from "../components/LegacyChecklist";
 import LinkPaste from "../components/LinkPaste";
 import NewTitlesSettings from "../components/NewTitlesSettings";
 import PosterSourceSettings from "../components/PosterSourceSettings";
-import type { ResolvedLink } from "../components/LinkPaste";
+import type { LinkProblem, ResolvedLink } from "../components/LinkPaste";
 import ProviderList from "../components/ProviderList";
 import ProviderOutageBanner from "../components/ProviderOutageBanner";
 import QuickAdd from "../components/QuickAdd";
@@ -99,7 +99,7 @@ function connectionNotice(
     return {
       type: "success",
       message: `${PROVIDERS[connected].label} is connected. You can now add its lists.`,
-    };
+    } satisfies Notice;
   }
   if (error === null) return null;
   const label =
@@ -126,7 +126,7 @@ function connectionNotice(
     type: "error",
     message:
       messages.get(error) ?? `Could not connect ${label}. Please try again.`,
-  };
+  } satisfies Notice;
 }
 
 const homeState = z
@@ -266,12 +266,12 @@ export default function Configure() {
   const describeAddProblem = (problem: AddListProblem | null) => {
     if (!problem) return null;
     return problem.kind === "duplicate"
-      ? {
+      ? ({
           message: "This list is already in your Stremlist.",
           tone: "info",
           showList: () => showListRow(problem.localId),
-        }
-      : { message: problem.message };
+        } satisfies LinkProblem)
+      : ({ message: problem.message } satisfies LinkProblem);
   };
 
   const notifyAddProblem = (problem: AddListProblem | null) => {
@@ -777,13 +777,18 @@ export default function Configure() {
 }
 
 function scrollBehavior() {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  const behavior: ScrollBehavior = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  ).matches
     ? "auto"
     : "smooth";
+  return behavior;
 }
 
 function listRowElement(localId: string) {
-  return document.querySelector(`[data-list-row="${CSS.escape(localId)}"]`);
+  return document.querySelector<HTMLElement>(
+    `[data-list-row="${CSS.escape(localId)}"]`,
+  );
 }
 
 function showListRow(localId: string) {

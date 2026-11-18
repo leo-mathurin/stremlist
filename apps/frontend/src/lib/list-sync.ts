@@ -80,28 +80,33 @@ export function listSyncState(
       kind: "connection",
       renew: true,
       stillShown: servedSince(status) !== null,
-    };
+    } satisfies ListSyncState;
   }
   if (connection === "none" && requiresConnection) {
-    return { kind: "connection", renew: false, stillShown: false };
+    return {
+      kind: "connection",
+      renew: false,
+      stillShown: false,
+    } satisfies ListSyncState;
   }
-  if (!status) return { kind: "waiting", reconnected: false };
+  if (!status)
+    return { kind: "waiting", reconnected: false } satisfies ListSyncState;
   if (status.problem === null) {
     return {
       kind: "synced",
       at: status.lastSuccessAt ?? status.lastAttemptAt,
       titleCount: status.titleCount,
-    };
+    } satisfies ListSyncState;
   }
   if (refused && connection === "ok") {
-    return { kind: "waiting", reconnected: true };
+    return { kind: "waiting", reconnected: true } satisfies ListSyncState;
   }
   return {
     kind: "failing",
     problem: status.problem,
     since: status.failingSince ?? status.lastAttemptAt,
     olderTitlesFrom: servedSince(status),
-  };
+  } satisfies ListSyncState;
 }
 
 function isShown(state: ListSyncState) {
@@ -149,7 +154,7 @@ export function mergedListSyncState(
       othersShown: parts.some(
         (part) => part !== problem && isShown(part.state),
       ),
-    };
+    } satisfies ListSyncState;
   }
   const waiting = parts.flatMap(({ state }) =>
     state.kind === "waiting" ? [state] : [],
@@ -158,7 +163,7 @@ export function mergedListSyncState(
     return {
       kind: "waiting",
       reconnected: waiting.some((state) => state.reconnected),
-    };
+    } satisfies ListSyncState;
   }
   const times = parts.flatMap(({ state }) =>
     state.kind === "synced" ? [state.at] : [],
@@ -166,7 +171,11 @@ export function mergedListSyncState(
   const oldest = times.reduce((first, at) =>
     Date.parse(at) < Date.parse(first) ? at : first,
   );
-  return { kind: "synced", at: oldest, titleCount: null };
+  return {
+    kind: "synced",
+    at: oldest,
+    titleCount: null,
+  } satisfies ListSyncState;
 }
 
 /**

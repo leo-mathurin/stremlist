@@ -9,28 +9,11 @@ import { ACTION_PROVIDERS } from "./provider-groups";
 /** "new" until the first save creates the Account. */
 export type AccountAccess = "new" | AddonAccess;
 
-/** What the configure page lets the user do for an access mode. */
 interface AccountEditPolicy {
-  /**
-   * Why the Lists and settings cannot change here, if they cannot: a Legacy
-   * alias install that this page just copied to a private Addon URL. The
-   * user moves to the new install, so this page stops saving into the old
-   * one. Nothing locks the legacy install itself: its `ur…` ID is public.
-   */
   editLock?: string;
-  /** Why Actions cannot be turned on here, if they cannot. */
   actionsLock?: string;
-  /** Why automatic watched marks cannot be turned on here, if they cannot. */
   watchLock?: string;
-  /**
-   * Connecting a Provider needs a private Addon URL: a Legacy alias install
-   * upgrades first.
-   */
   upgradeToConnect: boolean;
-  /**
-   * What the Providers panel says about connecting: a new setup is saved
-   * first, a Legacy alias install upgrades first.
-   */
   connectHint: "save-first" | "upgrade" | null;
 }
 
@@ -65,7 +48,7 @@ export function accountEditPolicy(
         : access === "legacy" && !moved
           ? "upgrade"
           : null,
-  };
+  } satisfies AccountEditPolicy;
 }
 
 /**

@@ -47,7 +47,7 @@ function previewBody(list: ListFormRow, accountKey: string | null) {
     sortOption: list.sortOption,
     displayMode: list.displayMode,
     catalogSettings: list.catalogSettings,
-  };
+  } satisfies PreviewBody;
 }
 
 /**

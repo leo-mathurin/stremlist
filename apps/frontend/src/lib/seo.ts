@@ -11,10 +11,11 @@ type HeadTag =
   | { tag: "title" | "script"; attrs: Record<string, string>; content: string };
 
 function meta(attr: "name" | "property", values: Record<string, string>) {
-  return Object.entries(values).map(([key, content]) => ({
+  const tags: HeadTag[] = Object.entries(values).map(([key, content]) => ({
     tag: "meta",
     attrs: { [attr]: key, content },
   }));
+  return tags;
 }
 
 export function headTags(path: string) {
@@ -33,7 +34,7 @@ export function headTags(path: string) {
           robots: "noindex, nofollow",
         };
   const canonical = absoluteUrl(page?.path ?? "/");
-  return [
+  const tags: HeadTag[] = [
     { tag: "title", attrs: {}, content: title },
     ...meta("name", { description, robots }),
     ...["og", "twitter"].flatMap((prefix) =>
@@ -68,4 +69,5 @@ export function headTags(path: string) {
         ]
       : []),
   ];
+  return tags;
 }

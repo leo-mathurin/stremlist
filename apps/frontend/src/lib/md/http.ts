@@ -95,9 +95,10 @@ export function aiRequestPath(request: Request) {
 }
 
 export function htmlHeaders(path: string) {
-  return getMarkdownPage(path)
+  const headers: Record<string, string> = getMarkdownPage(path)
     ? { Link: discoveryLinks(), Vary: "Accept" }
     : { Link: discoveryLinks(), "X-Robots-Tag": "noindex, nofollow" };
+  return headers;
 }
 
 const CORS_HEADERS = {

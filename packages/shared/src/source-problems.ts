@@ -22,7 +22,8 @@ export type SourceProblemReason = (typeof SOURCE_PROBLEM_REASONS)[number];
 export type SourceNoun = "watchlist" | "list";
 
 export function sourceNoun(kind: SourceKind) {
-  return kind === "watchlist" ? "watchlist" : "list";
+  const noun: SourceNoun = kind === "watchlist" ? "watchlist" : "list";
+  return noun;
 }
 
 /** The noun for a stored Source list, from its kind. */

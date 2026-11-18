@@ -1,5 +1,5 @@
 import type { ServerResponse } from "node:http";
-import type { ViteDevServer } from "vite";
+import type { Plugin, ViteDevServer } from "vite";
 import { SITE } from "../src/content/site";
 import { headTags } from "../src/lib/seo";
 import {
@@ -126,5 +126,5 @@ export function aiPages(backendUrl: string) {
         });
       },
     },
-  };
+  } satisfies Plugin;
 }

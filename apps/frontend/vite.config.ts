@@ -1,7 +1,7 @@
 import { aiPages } from "./scripts/ai-pages";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { defineConfig, lazyPlugins, loadEnv } from "vite-plus";
+import { defineConfig, lazyPlugins, loadEnv, type Plugin } from "vite-plus";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { withRelatedProject } from "@vercel/related-projects";
@@ -35,7 +35,7 @@ function reactCompilerGuard() {
         );
       }
     },
-  };
+  } satisfies Plugin;
 }
 
 const CONFIGURE_PATH = new RegExp(

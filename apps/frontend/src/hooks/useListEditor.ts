@@ -36,9 +36,17 @@ export function useListEditor() {
         (source) => sourceKey(source) === sourceKey(partial),
       ),
     );
-    if (existing) return { kind: "duplicate", localId: existing.localId };
+    if (existing)
+      return {
+        kind: "duplicate",
+        localId: existing.localId,
+      } satisfies AddListProblem;
     const problem = accountListsProblem([partial, ...lists]);
-    if (problem) return { kind: "error", message: problem.message };
+    if (problem)
+      return {
+        kind: "error",
+        message: problem.message,
+      } satisfies AddListProblem;
     const row = createListRow(partial);
     setLists((rows) => [row, ...rows]);
     setLastAdded(row);

@@ -17,11 +17,11 @@ function defaultStatus(id: ProviderId) {
     enabled: true,
     connectable: PROVIDERS[id].connection !== "none",
     outageSince: null,
-  };
+  } satisfies ProviderStatus;
 }
 
 function defaultProviderStatus() {
-  return {
+  const statuses: Record<ProviderId, ProviderStatus> = {
     imdb: defaultStatus("imdb"),
     trakt: defaultStatus("trakt"),
     simkl: defaultStatus("simkl"),
@@ -30,6 +30,7 @@ function defaultProviderStatus() {
     senscritique: defaultStatus("senscritique"),
     letterboxd: defaultStatus("letterboxd"),
   };
+  return statuses;
 }
 
 /**

@@ -43,15 +43,16 @@ function statusLine(
       text: change.starting
         ? "Reading what you watched in Stremio…"
         : "Saving…",
-    };
+    } satisfies StatusLine;
   }
-  if (!destination.enabled) return { key: "off", text: "Off" };
+  if (!destination.enabled)
+    return { key: "off", text: "Off" } satisfies StatusLine;
   if (destination.paused) {
     return {
       key: "paused",
       icon: "pause",
       text: "Paused while Stremio's own Trakt is connected",
-    };
+    } satisfies StatusLine;
   }
   switch (destination.lastError) {
     case "needs_renewal":
@@ -59,19 +60,19 @@ function statusLine(
         key: "renew",
         icon: "alert",
         text: `Connect ${label} again to send the titles waiting`,
-      };
+      } satisfies StatusLine;
     case "gave_up":
       return {
         key: "gave-up",
         icon: "alert",
         text: `${label} refused some titles for 3 days. They were not sent.`,
-      };
+      } satisfies StatusLine;
     case "not_found":
       return {
         key: "not-found",
         icon: "alert",
         text: `${label} could not find the last title`,
-      };
+      } satisfies StatusLine;
     case null:
       break;
   }
@@ -83,7 +84,7 @@ function statusLine(
         destination.pending === 1
           ? "1 title on its way"
           : `${destination.pending} titles on their way`,
-    };
+    } satisfies StatusLine;
   }
   if (destination.lastSuccessAt && lastTitle) {
     const episode =
@@ -98,9 +99,12 @@ function statusLine(
           <RelativeTime iso={destination.lastSuccessAt} />
         </>
       ),
-    };
+    } satisfies StatusLine;
   }
-  return { key: "on", text: "On. Titles you finish from now on are marked." };
+  return {
+    key: "on",
+    text: "On. Titles you finish from now on are marked.",
+  } satisfies StatusLine;
 }
 
 /**

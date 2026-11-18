@@ -53,11 +53,13 @@ export type LinkProblem = {
 function addonUrlProblem(key: string, accountKey: string | null) {
   const fix = `It is not a list. ${PASTE_LINK_PROMPT}.`;
   return key === accountKey
-    ? { message: `This is the Addon URL of this Stremlist. ${fix}` }
-    : {
+    ? ({
+        message: `This is the Addon URL of this Stremlist. ${fix}`,
+      } satisfies LinkProblem)
+    : ({
         message: `This is the Addon URL of a different Stremlist. ${fix}`,
         openAccount: key,
-      };
+      } satisfies LinkProblem);
 }
 
 type LinkProblemReason = SourceProblemReason | "unrecognized" | "too_long";
@@ -75,12 +77,12 @@ function describeLinkProblem(
   if (reason === "too_long") {
     return {
       message: `This link is too long. Paste a link of at most ${SOURCE_LINK_MAX_LENGTH} characters.`,
-    };
+    } satisfies LinkProblem;
   }
   if (reason === "unrecognized" || !provider) {
     return {
       message: `We do not recognize this link. ${PASTE_LINK_PROMPT} on ${joinProviderLabels(LINK_PROVIDERS, "or")}.`,
-    };
+    } satisfies LinkProblem;
   }
   const label = PROVIDERS[provider].label;
   const { title, fix } = sourceProblemCopy(
@@ -91,30 +93,34 @@ function describeLinkProblem(
   );
   switch (reason) {
     case "coming_soon":
-      return { provider, tone: "info", message: `${title}. ${fix}` };
+      return {
+        provider,
+        tone: "info",
+        message: `${title}. ${fix}`,
+      } satisfies LinkProblem;
     case "needs_connection":
       return access === "legacy"
-        ? {
+        ? ({
             provider,
             action: "upgrade",
             message: `${title}. To connect an account, you need a private Addon URL. Upgrade this install first.`,
-          }
-        : {
+          } satisfies LinkProblem)
+        : ({
             provider,
             action: "connect",
             message:
               access === "new"
                 ? `${title}. Connect ${label} to add it. When it connects, Stremlist saves your setup and gives you a private Addon URL.`
                 : `${title}. Connect ${label} to add it.`,
-          };
+          } satisfies LinkProblem);
     case "private":
     case "not_found":
     case "disabled":
     case "premium_only":
     case "unavailable":
-      return { provider, message: `${title}. ${fix}` };
+      return { provider, message: `${title}. ${fix}` } satisfies LinkProblem;
   }
-  return { provider, message: `${title}. ${fix}` };
+  return { provider, message: `${title}. ${fix}` } satisfies LinkProblem;
 }
 
 async function resolveLink(
@@ -132,7 +138,10 @@ async function resolveLink(
       });
       if (!res.ok) return "failed";
       const body = await res.json();
-      if (body.ok || body.reason !== "queued") return body;
+      if (body.ok || body.reason !== "queued") {
+        const settled: SettledAnswer = body;
+        return settled;
+      }
       wait = queueWait(body, Date.now(), wait);
       onQueue(wait);
       ticket = body.ticket ?? undefined;
