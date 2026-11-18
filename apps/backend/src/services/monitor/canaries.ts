@@ -131,7 +131,7 @@ export const CANARIES = {
     min: 700,
   },
   "senscritique:lists/{id}": { ref: "lists/369869", min: 35 },
-  // The same public user for the three collections. A first read resolves
+  // The same public user for the collections. A first read resolves
   // the Titles slowly, so the counts grow over the first runs.
   "senscritique:users/{user}/done": { ref: "users/Plume231/done", min: 320 },
   "senscritique:users/{user}/rated": { ref: "users/Plume231/rated", min: 400 },
@@ -139,10 +139,24 @@ export const CANARIES = {
     ref: "users/Plume231/recommend",
     min: 100,
   },
+  // 744 of 762 resolved on 2026-11-17.
+  "senscritique:users/{user}/liked": { ref: "users/Plume231/liked", min: 595 },
+  // Plume231 has nothing in progress. kYrios had 72 of 75 resolved.
+  "senscritique:users/{user}/current": {
+    ref: "users/kYrios/current",
+    min: 55,
+  },
+  // A past year does not change: 244 of 253 resolved.
+  "senscritique:users/{user}/done/{year}": {
+    ref: "users/Sergent_Pepper/done/2024",
+    min: 195,
+  },
   "senscritique:top111-movies": { min: 80 },
   "senscritique:top111-series": { min: 75 },
   "senscritique:top100-movies": { min: 80 },
   "senscritique:top100-series": { min: 75 },
+  // Anime titles resolve less well: 76 of 150 resolved.
+  "senscritique:top111-anime": { min: 60 },
   "senscritique:polls/{id}": { ref: "polls/3996052", min: 80 },
 
   "letterboxd:share/{token}": {

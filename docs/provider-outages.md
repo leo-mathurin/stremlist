@@ -129,7 +129,9 @@ Canaries read through these references by default:
 | `justwatch:{list}`                                               | `tl-tu-12653`                                    |
 | `senscritique:users/{user}/wishes`                               | `users/Sergent_Pepper/wishes`                    |
 | `senscritique:lists/{id}`                                        | `lists/369869`                                   |
-| `senscritique:users/{user}/done`, `rated`, `recommend`           | `users/Plume231/…`                               |
+| `senscritique:users/{user}/done`, `rated`, `recommend`, `liked`  | `users/Plume231/…`                               |
+| `senscritique:users/{user}/current`                              | `users/kYrios/current`                           |
+| `senscritique:users/{user}/done/{year}`                          | `users/Sergent_Pepper/done/2024`                 |
 | `senscritique:` charts and `polls/{id}`                          | The chart, `polls/3996052`                       |
 | `simkl:trending/*`                                               | The chart (Simkl's CDN)                          |
 | `letterboxd:users/{user}/lists/{slug}`                           | `users/official/lists/letterboxds-top-500-films` |
