@@ -10,7 +10,11 @@ import {
 import { deflateSync } from "node:zlib";
 import { encryptSecret } from "../../../lib/crypto";
 import { useTestEncryptionKey } from "../../../test/helpers/account.fixture";
-import { r2Objects, r2Puts } from "../../../test/helpers/mock-r2";
+import {
+  r2Objects,
+  r2Puts,
+  resetR2,
+} from "../../../test/helpers/r2.test-utils";
 import { resetRpc, rpcHandlers } from "../../../test/helpers/mock-supabase";
 import { useMswServer } from "../../../test/helpers/msw.test-utils";
 import type { RpcArgs } from "../../../test/helpers/supabase/rpc";
@@ -20,13 +24,6 @@ import type { LibraryItem } from "../../stremio";
 import type { WatchState } from "../state";
 import { linkOf, readState } from "../state";
 import { onStreamRequest } from "../trigger";
-
-vi.mock("../../../lib/supabase", async () => {
-  return await import("../../../test/helpers/mock-supabase");
-});
-vi.mock("../../../lib/r2", async () => {
-  return await import("../../../test/helpers/mock-r2");
-});
 
 const SHOW = "tt0903747";
 const AUTH_KEY = "stremio-auth-key";
@@ -136,8 +133,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   resetRpc();
-  r2Objects.clear();
-  r2Puts.before = null;
+  resetR2();
 });
 
 const callsTo = (name: string) => calls.filter((call) => call.name === name);

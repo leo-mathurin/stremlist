@@ -1,12 +1,10 @@
 import { http, HttpResponse } from "msw";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { deflateSync } from "node:zlib";
 import { useMswServer } from "../../../test/helpers/msw.test-utils";
 import type { LibraryItem } from "../../stremio";
 import { diffItems, withItems } from "../detect";
 import type { WatchState } from "../state";
-
-vi.mock("../../../lib/supabase", () => ({ supabase: {} }));
 
 const SERIES_META = "https://v3-cinemeta.strem.io/meta/series/:file";
 const server = useMswServer();

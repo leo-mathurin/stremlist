@@ -1,23 +1,19 @@
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import {
   seedAccount,
   seedLegacyAccount,
   seedList,
 } from "../../test/helpers/account.fixture";
-import { cache } from "../../test/helpers/mock-list-cache";
+import { cache } from "../../test/helpers/list-cache.test-utils";
 import { db, resetRpc } from "../../test/helpers/mock-supabase";
+import { useMswServer } from "../../test/helpers/msw.test-utils";
 import {
   ensureLegacyAccount,
   getAccountLists,
   resolveAccountKey,
 } from "../accounts";
 
-vi.mock("../../lib/supabase", async () => {
-  return await import("../../test/helpers/mock-supabase");
-});
-vi.mock("../list-cache", async () => {
-  return await import("../../test/helpers/mock-list-cache");
-});
+useMswServer();
 
 const IMDB_USER = "ur12345678";
 

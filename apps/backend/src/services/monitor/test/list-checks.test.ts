@@ -1,13 +1,11 @@
 import type { ProviderId } from "@stremlist/shared/providers";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import { db } from "../../../test/helpers/mock-supabase";
+import { useMswServer } from "../../../test/helpers/msw.test-utils";
 import { ALARM_ACTIVE_MS, listAlarms, readListAlarms } from "../list-alarm";
 import { heartbeatPings } from "../list-checks";
 
-vi.mock(
-  "../../../lib/supabase",
-  () => import("../../../test/helpers/mock-supabase"),
-);
+useMswServer();
 
 function rows(
   ref: (index: number) => string,

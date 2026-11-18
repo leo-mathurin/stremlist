@@ -15,25 +15,25 @@ import {
   seedConnection,
   seedList,
 } from "../../test/helpers/account.fixture";
-import { cache } from "../../test/helpers/mock-list-cache";
-import {
-  fakeAdapter,
-  resetProviders,
-  useFakeProvider,
-} from "../../test/helpers/mock-registry";
+import { cache } from "../../test/helpers/list-cache.test-utils";
 import {
   cinemetaWithoutTitles,
   FakeImdb,
 } from "../../test/helpers/imdb.test-utils";
-import { db, resetRpc, rpcHandlers } from "../../test/helpers/mock-supabase";
-import { useMswServer } from "../../test/helpers/msw.test-utils";
-import { traktItems, useTraktApp } from "../../test/helpers/trakt.test-utils";
-import { TRAKT_API, TRAKT_AUTH } from "../../providers/trakt/api";
-import type { ProviderAdapter } from "../../providers/types";
 import {
-  ConnectionExpiredError,
-  SourceUnavailableError,
-} from "../../providers/types";
+  db,
+  resetRpc,
+  rpcCallsOf,
+  rpcHandlers,
+} from "../../test/helpers/mock-supabase";
+import { useMswServer } from "../../test/helpers/msw.test-utils";
+import { resetR2 } from "../../test/helpers/r2.test-utils";
+import {
+  FakeTrakt,
+  traktItems,
+  useTraktApp,
+} from "../../test/helpers/trakt.test-utils";
+import { TRAKT_API, TRAKT_AUTH } from "../../providers/trakt/api";
 import { getAccountLists } from "../accounts";
 import { listConnections, saveConnection } from "../connections";
 import type { ListRead } from "../lists";
@@ -45,26 +45,20 @@ import {
 import { sourceCaches } from "../merged-lists";
 import { getListSyncStatuses } from "../sync-status";
 
-vi.mock("../../lib/supabase", async () => {
-  return await import("../../test/helpers/mock-supabase");
-});
-vi.mock("../list-cache", () => import("../../test/helpers/mock-list-cache"));
-vi.mock("../../lib/r2", () => import("../../test/helpers/mock-r2"));
-vi.mock("../../providers/registry", async () => {
-  return await import("../../test/helpers/mock-registry");
-});
-
 const HOUR = 60 * 60_000;
 const WATCHLIST_READ = { sourceRef: "me/watchlist" } as const;
 
 let accountId = "";
 let listId = "";
 
-const HORROR_ITEMS = `${TRAKT_API}/users/leo/lists/horror/items`;
-const WATCHLIST_ITEMS = `${TRAKT_API}/users/me/watchlist`;
+const HORROR = "/users/leo/lists/horror/items";
+const WATCHLIST_PATH = "/users/me/watchlist";
+const HORROR_ITEMS = `${TRAKT_API}${HORROR}`;
+const WATCHLIST_ITEMS = `${TRAKT_API}${WATCHLIST_PATH}`;
 const TOKEN_URL = `${TRAKT_AUTH}/oauth/token`;
 
 const imdb = new FakeImdb();
+const trakt = new FakeTrakt();
 const server = useMswServer();
 
 function traktList(...ids: string[]) {
@@ -109,23 +103,15 @@ function tryRead(overrides: Partial<TestRead> = {}) {
   return read(overrides).catch(() => undefined);
 }
 
-type FetchSource = ProviderAdapter["fetchSource"];
-
-function useSource(fetchSource: FetchSource, id: ProviderId = "trakt") {
-  useFakeProvider(fakeAdapter(id, { freshnessMs: 0, fetchSource }));
+function serving(path: string, ...ids: string[]) {
+  const metas = ids.map((id) => movie(id));
+  for (const meta of metas) imdb.titles.set(meta.id, meta);
+  trakt.serve(path, metas);
 }
 
-function entries(...ids: string[]) {
-  return {
-    entries: ids.map((id) => ({ imdbId: id, meta: movie(id) })),
-    complete: false,
-  };
+function failing(path: string) {
+  server.use(http.get(`${TRAKT_API}${path}`, () => HttpResponse.error()));
 }
-
-const serving = (...ids: string[]) =>
-  vi.fn<FetchSource>(() => Promise.resolve(entries(...ids)));
-const failing = (error: Error) =>
-  vi.fn<FetchSource>(() => Promise.reject(error));
 
 function seedWatchlist() {
   return seedList(accountId, {
@@ -148,11 +134,17 @@ async function needsRenewalSince() {
   )?.needsRenewalSince;
 }
 
+let clock = Date.now();
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  clock += 24 * HOUR;
+  vi.setSystemTime(clock);
   db.reset();
   resetRpc();
+  resetR2();
   cache.reset();
-  resetProviders();
+  trakt.reset();
   accountId = seedAccount().id;
   listId = seedList(accountId, {
     provider: "trakt",
@@ -160,11 +152,12 @@ beforeEach(() => {
   }).id;
   imdb.reset();
   imdb.titles.set("tt0000001", movie("tt0000001"));
-  server.use(imdb.handler, cinemetaWithoutTitles);
+  server.use(imdb.handler, trakt.handler, cinemetaWithoutTitles);
   useTraktApp();
 });
 
 afterEach(() => {
+  clock = Date.now();
   vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
@@ -172,7 +165,7 @@ afterEach(() => {
 
 describe("recording refreshes", () => {
   it("stores the time and Title count of a successful refresh", async () => {
-    useSource(serving("tt0000001", "tt0000002"));
+    serving(HORROR, "tt0000001", "tt0000002");
 
     await read();
 
@@ -193,22 +186,19 @@ describe("recording refreshes", () => {
       http.get(HORROR_ITEMS, () => traktList("tt0000001"), { once: true }),
       http.get(HORROR_ITEMS, () => HttpResponse.error()),
     );
-    vi.useFakeTimers({
-      now: new Date("2026-10-06T10:00:00Z"),
-      toFake: ["Date"],
-    });
+    const start = Date.now();
     await read();
 
-    vi.setSystemTime(new Date("2026-10-06T17:00:00Z"));
+    vi.setSystemTime(start + 7 * HOUR);
     await expect(read()).resolves.toMatchObject({
       metas: [{ id: "tt0000001" }],
     });
 
     expect(await statusOf()).toMatchObject({
-      lastSuccessAt: "2026-10-06T10:00:00.000Z",
+      lastSuccessAt: new Date(start).toISOString(),
       titleCount: 1,
       problem: "unavailable",
-      failingSince: "2026-10-06T17:00:00.000Z",
+      failingSince: new Date(start + 7 * HOUR).toISOString(),
     });
   });
 
@@ -218,52 +208,46 @@ describe("recording refreshes", () => {
       http.get(HORROR_ITEMS, () => traktStatus(404), { once: true }),
       http.get(HORROR_ITEMS, () => traktList()),
     );
-    vi.useFakeTimers({
-      now: new Date("2026-10-06T10:00:00Z"),
-      toFake: ["Date"],
-    });
+    const start = Date.now();
 
     await tryRead();
-    vi.setSystemTime(new Date("2026-10-06T11:00:00Z"));
+    vi.setSystemTime(start + HOUR);
     await tryRead();
 
     expect(await statusOf()).toMatchObject({
       problem: "not_found",
-      failingSince: "2026-10-06T10:00:00.000Z",
-      lastAttemptAt: "2026-10-06T11:00:00.000Z",
+      failingSince: new Date(start).toISOString(),
+      lastAttemptAt: new Date(start + HOUR).toISOString(),
       lastSuccessAt: null,
     });
 
-    vi.setSystemTime(new Date("2026-10-06T12:00:00Z"));
+    vi.setSystemTime(start + 2 * HOUR);
     await read();
 
     expect(await statusOf()).toMatchObject({
       problem: null,
       failingSince: null,
       titleCount: 0,
-      lastSuccessAt: "2026-10-06T12:00:00.000Z",
+      lastSuccessAt: new Date(start + 2 * HOUR).toISOString(),
     });
   });
 
   it("records a turned-off Provider without reading it", async () => {
-    const fetchSource = vi.fn<FetchSource>();
-    useSource(fetchSource);
-    process.env.DISABLED_PROVIDERS = "trakt";
+    serving(HORROR, "tt0000001");
+    vi.stubEnv("DISABLED_PROVIDERS", "trakt");
 
     await tryRead();
 
-    expect(fetchSource).not.toHaveBeenCalled();
+    expect(trakt.requests).toEqual([]);
     expect(await statusOf()).toMatchObject({ problem: "disabled" });
   });
 
   it("records one outcome for concurrent reads of the same List", async () => {
-    const record = vi.fn(() => ({ data: true, error: null }));
-    rpcHandlers.set("record_list_refresh", record);
-    useSource(serving("tt0000001"));
+    serving(HORROR, "tt0000001");
 
     await Promise.all([read(), read()]);
 
-    expect(record).toHaveBeenCalledOnce();
+    expect(rpcCallsOf("record_list_refresh")).toHaveLength(1);
   });
 
   it("still serves the Catalog when the status cannot be written", async () => {
@@ -271,7 +255,7 @@ describe("recording refreshes", () => {
       data: null,
       error: { message: "database is down" },
     }));
-    useSource(serving("tt0000001"));
+    serving(HORROR, "tt0000001");
 
     await expect(read()).resolves.toMatchObject({
       metas: [{ id: "tt0000001" }],
@@ -280,7 +264,7 @@ describe("recording refreshes", () => {
 
   it("does not report an update whose Catalog could not be saved", async () => {
     cache.unwritable.add(listId);
-    useSource(serving("tt0000001"));
+    serving(HORROR, "tt0000001");
 
     await expect(read()).resolves.toMatchObject({
       metas: [{ id: "tt0000001" }],
@@ -290,7 +274,7 @@ describe("recording refreshes", () => {
   });
 
   it("ignores the status of a Source list that the List no longer reads", async () => {
-    useSource(serving("tt0000001"));
+    serving(HORROR, "tt0000001");
     await read();
 
     const [list] = await getAccountLists(accountId);
@@ -338,9 +322,9 @@ describe("Lists without a recorded status", () => {
   });
 
   it("keep their cached last refresh when their first recorded refresh fails", async () => {
-    const cachedAt = new Date(Date.now() - 2 * HOUR);
+    const cachedAt = new Date(Date.now() - 7 * HOUR);
     cache.seed(listId, [movie("tt0000001"), movie("tt0000002")], cachedAt);
-    useSource(failing(new Error("socket hang up")));
+    failing(HORROR);
 
     await expect(read()).resolves.toMatchObject({
       metas: [{ id: "tt0000001" }, { id: "tt0000002" }],
@@ -364,7 +348,7 @@ describe("Lists without a recorded status", () => {
       title_count: 9,
     });
     cache.seed(listId, [movie("tt0000001")], hourAgo);
-    useSource(failing(new SourceUnavailableError("private", "no")));
+    trakt.fail(HORROR, 401);
 
     await tryRead({ policy: "manual" });
 
@@ -459,41 +443,46 @@ describe("Connections that need to be renewed", () => {
   it.each([
     [
       "marks the Connection when the Provider refuses it",
-      new SourceUnavailableError("needs_connection", "token refused"),
+      () => trakt.fail(WATCHLIST_PATH, 401),
       {},
       true,
       "needs_connection",
     ],
     [
       "marks the Connection when its token cannot be refreshed",
-      new ConnectionExpiredError("trakt"),
+      () => {
+        expireConnection();
+        server.use(http.post(TOKEN_URL, refusedRefresh));
+        serving(WATCHLIST_PATH, "tt0000001");
+      },
       {},
       true,
       "needs_connection",
     ],
     [
       "does not mark the Connection for other failures",
-      new Error("timeout"),
+      () => failing(WATCHLIST_PATH),
       {},
       false,
       "unavailable",
     ],
     [
       "does not mark anything for a read without a Connection",
-      new SourceUnavailableError("needs_connection", "no"),
+      () => serving(WATCHLIST_PATH, "tt0000001"),
       { allowConnection: false },
       false,
       "needs_connection",
     ],
-  ])("%s", async (_, error, overrides, marked, problem) => {
-    useSource(failing(error));
+  ])("%s", async (_, prepare, overrides, marked, problem) => {
+    prepare();
+    const watchlist = { listId: seedWatchlist(), ...WATCHLIST_READ };
 
-    await tryRead(overrides);
+    await tryRead({ ...watchlist, ...overrides });
 
     expect(await needsRenewalSince()).toEqual(
       marked ? expect.any(String) : null,
     );
-    expect(await statusOf()).toMatchObject({ problem });
+    expect(await statusOf(watchlist.listId)).toMatchObject({ problem });
   });
 
   it("clears the mark when a private Source list reads through the Connection again", async () => {
@@ -514,7 +503,7 @@ describe("Connections that need to be renewed", () => {
   });
 
   it("clears the mark after a private read whose Catalog could not be saved", async () => {
-    useSource(serving("tt0000001"));
+    serving(WATCHLIST_PATH, "tt0000001");
     const watchlistId = seedWatchlist();
     cache.unwritable.add(watchlistId);
     db.getTable("connections")[0].needs_renewal_since =
@@ -541,8 +530,11 @@ describe("Connections that need to be renewed", () => {
   });
 
   it("clears the mark when the user connects again", async () => {
-    useSource(failing(new ConnectionExpiredError("trakt")));
-    await tryRead();
+    expireConnection();
+    server.use(http.post(TOKEN_URL, refusedRefresh));
+    serving(WATCHLIST_PATH, "tt0000001");
+    await tryRead({ listId: seedWatchlist(), ...WATCHLIST_READ });
+    expect(await needsRenewalSince()).toEqual(expect.any(String));
 
     await saveConnection(
       accountId,
@@ -587,10 +579,9 @@ describe("merged Lists", () => {
 
   it("record each Source list under the List, in the List's order", async () => {
     seedConnection(accountId, "trakt");
-    useSource(serving("tt0000001", "tt0000002"), "imdb");
-    useSource(
-      failing(new SourceUnavailableError("needs_connection", "token refused")),
-    );
+    imdb.watchlists.set("ur1000001", [movie("tt0000001"), movie("tt0000002")]);
+    imdb.titles.set("tt0000002", movie("tt0000002"));
+    trakt.fail(WATCHLIST_PATH, 401);
 
     await expect(
       read({
@@ -682,10 +673,18 @@ describe("merged Lists", () => {
         title_count: 1,
       });
     }
-    seedConnection(accountId, "trakt");
+    seedConnection(accountId, "trakt", { accessToken: "leo-token" });
+    const revoked: unknown[] = [];
+    server.use(
+      http.post("https://auth.trakt.tv/oauth/revoke", async ({ request }) => {
+        revoked.push(await request.json());
+        return HttpResponse.json({});
+      }),
+    );
 
     await disconnectProvider(accountId, "trakt");
 
+    expect(revoked).toEqual([expect.objectContaining({ token: "leo-token" })]);
     expect(cache.get(keys.imdb)).not.toBeNull();
     expect(cache.get(keys.trakt)).toBeNull();
     expect(db.getTable("list_sync_status").map((row) => row.provider)).toEqual([
@@ -694,16 +693,17 @@ describe("merged Lists", () => {
   });
 
   it("read the merged Source lists of a new Connection again, in their own cache", async () => {
-    seedConnection(accountId, "trakt");
-    const imdbRead = serving("tt0000009");
-    useSource(imdbRead, "imdb");
-    const traktRead = serving("tt0000002");
-    useSource(traktRead);
+    seedConnection(accountId, "trakt", { accessToken: "leo-token" });
+    imdb.watchlists.set("ur1000001", [movie("tt0000009")]);
+    serving(WATCHLIST_PATH, "tt0000002");
+    serving(HORROR, "tt0000002");
 
     await rereadConnectionLists(accountId, "trakt");
 
-    expect(imdbRead).not.toHaveBeenCalled();
-    expect(traktRead).toHaveBeenCalledWith("me/watchlist", expect.anything());
+    expect(imdb.requestsOf("WatchListPage")).toEqual([]);
+    expect(
+      trakt.requestsOf(WATCHLIST_PATH).map((request) => request.token),
+    ).toEqual(["leo-token"]);
     expect(cache.get(keys.trakt)?.data.metas).toHaveLength(1);
     expect((await mergedStatus())[1]).toEqual(
       expect.objectContaining({ provider: "trakt", titleCount: 1 }),

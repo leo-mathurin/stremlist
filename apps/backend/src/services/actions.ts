@@ -167,6 +167,7 @@ export async function buildActionStreams(
   account: Account,
   target: ActionTarget,
   link: ActionLinkBuilder,
+  supports: typeof supportsAction = supportsAction,
 ) {
   const connections = await actionConnections(account);
   if (connections.length === 0) return [];
@@ -185,7 +186,7 @@ export async function buildActionStreams(
   );
 
   const supporting = (kind: ActionKind) =>
-    memberships.filter(({ provider }) => supportsAction(provider, kind));
+    memberships.filter(({ provider }) => supports(provider, kind));
 
   const streams: StremioStream[] = [];
   const { imdbId, episode } = target;
@@ -349,6 +350,7 @@ export async function performAction(
   providers: ProviderId[],
   intent: ActionIntent,
   target: ActionTarget,
+  supports: typeof supportsAction = supportsAction,
 ) {
   const allowed = new Set(await actionProviders(account));
   const lists = await getAccountLists(account.id);
@@ -359,7 +361,7 @@ export async function performAction(
       if (
         !actions ||
         !allowed.has(provider) ||
-        !supportsAction(provider, intent.kind)
+        !supports(provider, intent.kind)
       ) {
         return { provider, ok: false, error: "not_available" };
       }

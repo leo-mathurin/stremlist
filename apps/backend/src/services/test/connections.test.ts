@@ -8,17 +8,13 @@ import {
   it,
   vi,
 } from "vite-plus/test";
+import { z } from "zod";
 import {
   seedAccount,
   seedConnection,
   seedList,
   useTestEncryptionKey,
 } from "../../test/helpers/account.fixture";
-import {
-  fakeAdapter,
-  resetProviders,
-  useFakeProvider,
-} from "../../test/helpers/mock-registry";
 import { db, resetRpc, rpcHandlers } from "../../test/helpers/mock-supabase";
 import { useMswServer } from "../../test/helpers/msw.test-utils";
 import { decryptSecret, encryptSecret } from "../../lib/crypto";
@@ -33,13 +29,6 @@ import {
   saveConnection,
 } from "../connections";
 import type { OAuthTokens } from "../oauth";
-
-vi.mock("../../lib/supabase", async () => {
-  return await import("../../test/helpers/mock-supabase");
-});
-vi.mock("../../providers/registry", async () => {
-  return await import("../../test/helpers/mock-registry");
-});
 
 const MINUTE = 60_000;
 const inAnHour = () => new Date(Date.now() + 60 * MINUTE);
@@ -134,17 +123,17 @@ function leaseTaken(onClaim: () => void = () => undefined) {
   });
 }
 
-function useRevokingTrakt(revoke: (token: string) => Promise<void>) {
-  useFakeProvider(
-    fakeAdapter("trakt", {
-      oauth: {
-        authorizeUrl: "https://trakt.example/authorize",
-        tokenUrl: "https://trakt.example/token",
-        clientId: () => "id",
-        revoke,
-      },
+const revokeBody = z.object({ token: z.string(), client_id: z.string() });
+
+function revokedTokens() {
+  const revoked: z.infer<typeof revokeBody>[] = [];
+  server.use(
+    http.post(`${TRAKT_AUTH}/oauth/revoke`, async ({ request }) => {
+      revoked.push(revokeBody.parse(await request.json()));
+      return HttpResponse.error();
     }),
   );
+  return revoked;
 }
 
 let accountId = "";
@@ -152,7 +141,6 @@ let accountId = "";
 beforeEach(() => {
   db.reset();
   resetRpc();
-  resetProviders();
   tokenRequests.length = 0;
   vi.stubEnv("TRAKT_CLIENT_ID", "trakt-app");
   vi.stubEnv("SIMKL_CLIENT_ID", "simkl-app");
@@ -218,8 +206,7 @@ describe("listConnections and deleteConnection", () => {
   });
 
   it("revokes the token (best effort) and deletes the Connection with what it read", async () => {
-    const revoke = vi.fn(() => Promise.reject(new Error("revoke failed")));
-    useRevokingTrakt(revoke);
+    const revoked = revokedTokens();
     seedConnection(accountId, "trakt", { accessToken: "to-revoke" });
     const list = seedList(accountId, {
       provider: "trakt",
@@ -249,7 +236,7 @@ describe("listConnections and deleteConnection", () => {
       { listId: otherList.id, sourceRef: "me/watchlist" },
     ]);
 
-    expect(revoke).toHaveBeenCalledWith("to-revoke");
+    expect(revoked).toEqual([{ token: "to-revoke", client_id: "trakt-app" }]);
     expect(db.getTable("connections")).toEqual([]);
     expect(
       db
@@ -262,14 +249,13 @@ describe("listConnections and deleteConnection", () => {
   });
 
   it("deletes the Connection of a turned-off Provider without calling it", async () => {
-    const revoke = vi.fn(() => Promise.resolve());
-    useRevokingTrakt(revoke);
+    const revoked = revokedTokens();
     seedConnection(accountId, "trakt");
-    process.env.DISABLED_PROVIDERS = "trakt";
+    vi.stubEnv("DISABLED_PROVIDERS", "trakt");
 
     await deleteConnection(accountId, "trakt", []);
 
-    expect(revoke).not.toHaveBeenCalled();
+    expect(revoked).toEqual([]);
     expect(db.getTable("connections")).toEqual([]);
   });
 });

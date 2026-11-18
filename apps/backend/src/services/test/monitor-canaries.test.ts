@@ -1,11 +1,11 @@
-import type { ProviderId } from "@stremlist/shared/providers";
 import {
   isProviderId,
   listTypeOf,
   listTypes,
   PROVIDER_IDS,
-  sourceRequiresConnection,
 } from "@stremlist/shared/providers";
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
+import { http, HttpResponse } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -14,16 +14,27 @@ import {
   it,
   vi,
 } from "vite-plus/test";
-import { seedConnection } from "../../test/helpers/account.fixture";
+import { z } from "zod";
+import { movie, seedConnection } from "../../test/helpers/account.fixture";
+import { onFakeClock } from "../../test/helpers/clock.test-utils";
 import {
-  fakeAdapter,
-  resetProviders,
-  useFakeProvider,
-} from "../../test/helpers/mock-registry";
-import { db } from "../../test/helpers/mock-supabase";
-import { SourceBusyError } from "../../providers/types";
-import type * as Connections from "../connections";
-import { getConnectionAccess } from "../connections";
+  cinemetaWithoutTitles,
+  FakeImdb,
+  imdbTitle,
+} from "../../test/helpers/imdb.test-utils";
+import { FakeLetterboxd } from "../../test/helpers/letterboxd.test-utils";
+import { FakeMdblist } from "../../test/helpers/mdblist.test-utils";
+import { db, resetRpc, rpcHandlers } from "../../test/helpers/mock-supabase";
+import { useMswServer } from "../../test/helpers/msw.test-utils";
+import { resetR2 } from "../../test/helpers/r2.test-utils";
+import { FakeSensCritique } from "../../test/helpers/senscritique.test-utils";
+import { FakeSimkl, useSimklApp } from "../../test/helpers/simkl.test-utils";
+import { FakeTrakt, useTraktApp } from "../../test/helpers/trakt.test-utils";
+import {
+  clearTrendingReads,
+  readTrending,
+} from "../../providers/simkl/trending";
+import * as Connections from "../connections";
 import type { CanaryResult, CanarySpec } from "../monitor/canaries";
 import {
   CANARIES,
@@ -32,42 +43,44 @@ import {
   runCanaries,
 } from "../monitor/canaries";
 
-vi.mock("../../lib/supabase", () => import("../../test/helpers/mock-supabase"));
-vi.mock(
-  "../../providers/registry",
-  () => import("../../test/helpers/mock-registry"),
-);
-vi.mock("../connections", async (importOriginal) => {
-  const connections = await importOriginal<typeof Connections>();
-  return {
-    ...connections,
-    getConnectionAccess: vi.fn(connections.getConnectionAccess),
-  };
-});
+const JUSTWATCH = "https://apis.justwatch.com/*";
 
-const MONITOR_ACCOUNT = "sl_monitor";
+const operation = z.object({ operationName: z.string() });
 
-function entries(count: number) {
-  return Array.from({ length: count }, (_, index) => ({
-    imdbId: `tt${String(index).padStart(7, "0")}`,
-  }));
+class ImdbWithCharts extends FakeImdb {
+  chart: StremioMeta[] = [];
+
+  override async answer(request: Request) {
+    const { operationName } = operation.parse(await request.clone().json());
+    if (operationName !== "ChartTitles") return super.answer(request);
+    this.requests.push({ operationName, variables: {} });
+    return HttpResponse.json({
+      data: {
+        chartTitles: {
+          edges: this.chart.map((meta) => ({ node: imdbTitle(meta) })),
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      },
+    });
+  }
 }
 
-let reads: { provider: ProviderId; ref: string; connection: boolean }[];
-function fakeEveryProvider(count: (ref: string) => number = () => 1000) {
-  for (const provider of PROVIDER_IDS)
-    useFakeProvider(
-      fakeAdapter(provider, {
-        fetchSource: (ref, ctx) => {
-          reads.push({ provider, ref, connection: ctx.connection !== null });
-          return Promise.resolve({
-            entries: entries(count(ref)),
-            complete: true,
-          });
-        },
-        oauth: { authorizeUrl: "", tokenUrl: "", clientId: () => "app" },
-      }),
-    );
+const imdb = new ImdbWithCharts();
+const trakt = new FakeTrakt();
+const simkl = new FakeSimkl();
+const mdblist = new FakeMdblist();
+const senscritique = new FakeSensCritique();
+const letterboxd = new FakeLetterboxd();
+const server = useMswServer();
+const getConnectionAccess = vi.spyOn(Connections, "getConnectionAccess");
+
+const MONITOR_ACCOUNT = "sl_monitor";
+const justwatchRequests: string[] = [];
+
+function titles(count: number) {
+  return Array.from({ length: count }, (_, index) =>
+    movie(`tt${String(index + 1).padStart(7, "0")}`),
+  );
 }
 
 function resultOf(results: CanaryResult[], type: string) {
@@ -76,20 +89,63 @@ function resultOf(results: CanaryResult[], type: string) {
   return result;
 }
 
+function personalTraktPath(path: string) {
+  return /^\/(users\/me|sync|recommendations)\//.test(path);
+}
+
+let clock = Date.now();
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+  clock += 60 * 60_000;
+  vi.setSystemTime(clock);
   db.reset();
-  resetProviders();
-  reads = [];
+  resetRpc();
+  resetR2();
+  clearTrendingReads();
+  vi.clearAllMocks();
   vi.stubEnv("MONITOR_ACCOUNT_ID", "");
   vi.stubEnv("MONITOR_CANARY_REFS", "");
-  vi.mocked(getConnectionAccess).mockClear();
+  vi.stubEnv("TMDB_READ_ACCESS_TOKEN", "");
+  vi.stubEnv("TMDB_API_KEY", "");
+  for (const app of ["TRAKT", "SIMKL", "MDBLIST"]) {
+    vi.stubEnv(`${app}_CLIENT_ID`, "");
+  }
+  for (const fake of [imdb, trakt, simkl, mdblist, senscritique, letterboxd]) {
+    fake.reset();
+  }
+  imdb.chart = titles(1000);
+  imdb.watchlists.set("ur195879360", titles(1000));
+  imdb.lists.set("ls055592025", titles(1000));
+  justwatchRequests.length = 0;
+  rpcHandlers.set("letterboxd_take_turn", () => ({
+    data: { status: "paused", wait_ms: 60_000, probe: false, ticket: null },
+    error: null,
+  }));
+  server.use(
+    imdb.handler,
+    cinemetaWithoutTitles,
+    trakt.handler,
+    ...simkl.handlers,
+    mdblist.handler,
+    senscritique.handler,
+    ...letterboxd.handlers,
+    http.all(JUSTWATCH, ({ request }) => {
+      justwatchRequests.push(request.url);
+      return new HttpResponse(null, { status: 503 });
+    }),
+  );
   for (const provider of PROVIDER_IDS) {
-    seedConnection(MONITOR_ACCOUNT, provider, { username: "monitor" });
+    seedConnection(MONITOR_ACCOUNT, provider, {
+      username: "monitor",
+      accessToken: `${provider}-token`,
+    });
   }
 });
 afterEach(() => {
+  clock = Date.now();
+  vi.useRealTimers();
   vi.unstubAllEnvs();
-  vi.restoreAllMocks();
 });
 
 describe("canary coverage", () => {
@@ -135,13 +191,12 @@ describe("MONITOR_CANARY_REFS", () => {
 
 describe("runCanaries", () => {
   it("reads each covered list type once through the adapter, with forceRefresh", async () => {
-    fakeEveryProvider();
-    const fetchSource = vi.fn(() =>
-      Promise.resolve({ entries: entries(300), complete: true }),
-    );
-    useFakeProvider(fakeAdapter("imdb", { fetchSource }));
+    useSimklApp();
+    imdb.chart = titles(300);
+    simkl.trending.set("movies/week_100.json", titles(100));
+    await readTrending("trending/movies");
 
-    const results = await runCanaries();
+    const results = await onFakeClock(() => runCanaries());
 
     expect(resultOf(results, "imdb:chart/top-rated-movies")).toEqual({
       type: "imdb:chart/top-rated-movies",
@@ -151,19 +206,23 @@ describe("runCanaries", () => {
       entries: 300,
       min: 200,
     });
-    expect(fetchSource).toHaveBeenCalledWith("imdb:top-rated-movies", {
-      connection: null,
-      forceRefresh: true,
+    expect(resultOf(results, "simkl:trending/movies")).toMatchObject({
+      status: "ok",
+      entries: 100,
     });
+    expect(simkl.requestsOf("movies/week_100.json")).toHaveLength(2);
+    expect(simkl.requests.every((request) => request.token === null)).toBe(
+      true,
+    );
     expect(results.map((result) => result.type).sort()).toEqual(
       listTypes().sort(),
     );
   });
 
   it("fails a canary that gives fewer entries than its minimum, and names the list type", async () => {
-    fakeEveryProvider((ref) => (ref === "ls055592025" ? 12 : 1000));
+    imdb.lists.set("ls055592025", titles(12));
 
-    const results = await runCanaries();
+    const results = await onFakeClock(() => runCanaries());
 
     expect(resultOf(results, "imdb:ls/list")).toEqual({
       type: "imdb:ls/list",
@@ -178,33 +237,24 @@ describe("runCanaries", () => {
   });
 
   it("fails a canary whose read throws, and skips one that waits for a busy queue", async () => {
-    fakeEveryProvider();
-    useFakeProvider(
-      fakeAdapter("senscritique", {
-        fetchSource: () => Promise.reject(new Error("GraphQL changed")),
-      }),
-    );
-    useFakeProvider(
-      fakeAdapter("letterboxd", {
-        fetchSource: () => Promise.reject(new SourceBusyError(60_000)),
-      }),
-    );
+    senscritique.error = "GraphQL changed";
 
-    const results = await runCanaries();
+    const results = await onFakeClock(() => runCanaries());
 
     expect(resultOf(results, "senscritique:lists/{id}")).toMatchObject({
       status: "failed",
-      error: "GraphQL changed",
+      error: "SensCritique GraphQL error: GraphQL changed",
     });
     expect(
       resultOf(results, "letterboxd:users/{user}/lists/{slug}").status,
     ).toBe("skipped");
+    expect(letterboxd.requests).toEqual([]);
   });
 
   it("lists Connection types as not covered without MONITOR_ACCOUNT_ID, and never reads them", async () => {
-    fakeEveryProvider();
+    useTraktApp();
 
-    const results = await runCanaries();
+    const results = await onFakeClock(() => runCanaries());
 
     expect(resultOf(results, "trakt:me/history")).toEqual({
       type: "trakt:me/history",
@@ -212,16 +262,24 @@ describe("runCanaries", () => {
       status: "not_covered",
       reason: "MONITOR_ACCOUNT_ID is not set",
     });
-    expect(reads.filter((read) => read.connection)).toEqual([]);
+    expect(trakt.requests).not.toEqual([]);
+    expect(trakt.requests.filter((request) => request.token)).toEqual([]);
+    expect(
+      trakt.requests.filter((request) => personalTraktPath(request.path)),
+    ).toEqual([]);
     expect(getConnectionAccess).not.toHaveBeenCalled();
   });
 
   it("reads Connection types through the monitor Account's Connection", async () => {
+    useTraktApp();
+    useSimklApp();
     vi.stubEnv("MONITOR_ACCOUNT_ID", MONITOR_ACCOUNT);
     db.delete("connections", (row) => row.provider === "simkl");
-    fakeEveryProvider((ref) => (ref === "me/history" ? 0 : 1000));
+    trakt.serve("/users/me/watchlist", titles(3));
+    trakt.serve("/users/me/watched/movies", []);
+    trakt.serve("/users/me/watched/shows", []);
 
-    const results = await runCanaries();
+    const results = await onFakeClock(() => runCanaries());
 
     expect(resultOf(results, "trakt:me/watchlist").status).toBe("ok");
     expect(resultOf(results, "trakt:me/history")).toMatchObject({
@@ -232,27 +290,23 @@ describe("runCanaries", () => {
       status: "not_covered",
       reason: "The monitor Account has no simkl Connection",
     });
-    for (const read of reads)
-      expect(read.connection).toBe(
-        sourceRequiresConnection(read.provider, read.ref),
-      );
+    expect(trakt.requests.some((request) => request.token === null)).toBe(true);
+    for (const request of trakt.requests)
+      expect([request.path, request.token]).toEqual([
+        request.path,
+        personalTraktPath(request.path) ? "trakt-token" : null,
+      ]);
     expect(
-      vi
-        .mocked(getConnectionAccess)
-        .mock.calls.filter(([, provider]) => provider === "trakt"),
+      getConnectionAccess.mock.calls.filter(
+        ([, provider]) => provider === "trakt",
+      ),
     ).toHaveLength(1);
   });
 
   it("does not read a Provider that is turned off or whose app is not set", async () => {
     vi.stubEnv("DISABLED_PROVIDERS", "justwatch");
-    fakeEveryProvider();
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        oauth: { authorizeUrl: "", tokenUrl: "", clientId: () => undefined },
-      }),
-    );
 
-    const results = await runCanaries();
+    const results = await onFakeClock(() => runCanaries());
 
     expect(resultOf(results, "justwatch:{list}")).toMatchObject({
       status: "not_covered",
@@ -262,7 +316,7 @@ describe("runCanaries", () => {
       status: "not_covered",
       reason: "The trakt app is not set",
     });
-    expect(reads.map((read) => read.provider)).not.toContain("justwatch");
-    expect(reads.map((read) => read.provider)).not.toContain("trakt");
+    expect(justwatchRequests).toEqual([]);
+    expect(trakt.requests).toEqual([]);
   });
 });

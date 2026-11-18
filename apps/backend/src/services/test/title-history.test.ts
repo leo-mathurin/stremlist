@@ -1,13 +1,7 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
-import { r2Objects, r2Puts } from "../../test/helpers/mock-r2.js";
+import { useMswServer } from "../../test/helpers/msw.test-utils";
+import { r2Objects, r2Puts, resetR2 } from "../../test/helpers/r2.test-utils";
 import type { SourceHistory } from "../title-history";
 import {
   applySynchronization,
@@ -19,9 +13,7 @@ import {
   REMOVED_ENTRY_RETENTION_MS,
 } from "../title-history";
 
-vi.mock("../../lib/r2", async () => {
-  return await import("../../test/helpers/mock-r2.js");
-});
+useMswServer();
 
 const SOURCE = { provider: "imdb" as const, sourceRef: "ur1" };
 const PRIVATE = { provider: "trakt" as const, sourceRef: "me/history" };
@@ -232,11 +224,10 @@ describe("listNewTitles", () => {
 
 describe("recordHistory", () => {
   beforeEach(() => {
-    r2Objects.clear();
-    r2Puts.count = 0;
+    resetR2();
   });
   afterEach(() => {
-    r2Puts.before = null;
+    resetR2();
   });
 
   it("stores the Baseline, then the new entries", async () => {

@@ -14,19 +14,32 @@ import {
   seedAccount,
   seedConnection,
   seedList,
+  useTestEncryptionKey,
 } from "../../test/helpers/account.fixture";
-import { cache } from "../../test/helpers/mock-list-cache";
-import {
-  fakeAdapter,
-  resetProviders,
-  useFakeProvider,
-} from "../../test/helpers/mock-registry";
+import { cache } from "../../test/helpers/list-cache.test-utils";
 import { db, resetRpc } from "../../test/helpers/mock-supabase";
 import { FakeImdb, IMDB_GRAPHQL } from "../../test/helpers/imdb.test-utils";
+import {
+  FakeLetterboxd,
+  LETTERBOXD,
+} from "../../test/helpers/letterboxd.test-utils";
 import { useMswServer } from "../../test/helpers/msw.test-utils";
+import { resetR2 } from "../../test/helpers/r2.test-utils";
+import {
+  FakeSensCritique,
+  senscritiqueProduct,
+} from "../../test/helpers/senscritique.test-utils";
+import {
+  FakeSimkl,
+  simklPageOf,
+  useSimklApp,
+} from "../../test/helpers/simkl.test-utils";
+import { FakeTrakt, useTraktApp } from "../../test/helpers/trakt.test-utils";
+import { FakeWikidata } from "../../test/helpers/wikidata.test-utils";
+import { encryptSecret } from "../../lib/crypto";
 import { currentReadPriority } from "../../providers/read-priority";
-import type { SourceEntry, SourceSnapshot } from "../../providers/types";
-import { SourceUnavailableError } from "../../providers/types";
+import { clearTrendingReads } from "../../providers/simkl/trending";
+import { TRAKT_API, TRAKT_AUTH } from "../../providers/trakt/api";
 import * as listCache from "../list-cache";
 import type { ListRead } from "../lists";
 import {
@@ -35,28 +48,22 @@ import {
   disconnectProvider,
 } from "../lists";
 
-vi.mock("../../lib/r2", () => import("../../test/helpers/mock-r2"));
-
-vi.mock("../../lib/supabase", async () => {
-  return await import("../../test/helpers/mock-supabase");
-});
-vi.mock("../list-cache", async () => {
-  const cache = await import("../../test/helpers/mock-list-cache");
-  return {
-    ...cache,
-    getCachedList: vi.fn(cache.getCachedList),
-    writeCachedList: vi.fn(cache.writeCachedList),
-  };
-});
-vi.mock("../../providers/registry", async () => {
-  return await import("../../test/helpers/mock-registry");
-});
-
 const LIST_ID = "22222222-2222-4222-8222-222222222222";
+const OTHER_LIST_ID = "33333333-3333-4333-8333-333333333333";
 const SOURCE_REF = "ls123456789";
+const TRENDING = "movies/week_100.json";
+const WATCHLIST = "/users/leo/watchlist";
 
 const imdb = new FakeImdb();
+const trakt = new FakeTrakt();
+const simkl = new FakeSimkl();
+const senscritique = new FakeSensCritique();
+const wikidata = new FakeWikidata();
+const letterboxd = new FakeLetterboxd();
 const server = useMswServer();
+
+vi.spyOn(listCache, "getCachedList");
+vi.spyOn(listCache, "writeCachedList");
 
 function imdbDown() {
   server.use(
@@ -70,6 +77,11 @@ function titleBatches() {
 
 function serveTitles(ids: string[]) {
   for (const id of ids) imdb.titles.set(id, meta(id));
+}
+
+function serveTrakt(path: string, metas: StremioMeta[]) {
+  trakt.serve(path, metas);
+  for (const item of metas) imdb.titles.set(item.id, item);
 }
 
 const MOVIE: StremioMeta = {
@@ -126,14 +138,47 @@ function config(overrides: Partial<TestRead> = {}) {
   return read;
 }
 
+function revokedLetterboxdShare(path: string) {
+  return `share/${encryptSecret(path)}`;
+}
+
+let clock = Date.now();
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+  clock += 60 * 60_000;
+  vi.setSystemTime(clock);
   vi.clearAllMocks();
+  vi.stubEnv("TMDB_READ_ACCESS_TOKEN", "");
+  vi.stubEnv("TMDB_API_KEY", "");
+  useTraktApp();
+  useSimklApp();
+  useTestEncryptionKey();
   db.reset();
   resetRpc();
+  resetR2();
   cache.reset();
-  resetProviders();
+  clearTrendingReads();
   imdb.reset();
-  server.use(imdb.handler);
+  trakt.reset();
+  simkl.reset();
+  senscritique.reset();
+  wikidata.reset();
+  letterboxd.reset();
+  server.use(
+    imdb.handler,
+    trakt.handler,
+    ...simkl.handlers,
+    senscritique.handler,
+    wikidata.handler,
+    ...letterboxd.handlers,
+  );
+});
+
+afterEach(() => {
+  clock = Date.now();
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 describe("getListCatalog", () => {
@@ -151,41 +196,28 @@ describe("getListCatalog", () => {
         return blocked.promise;
       };
       const fresh = meta("tt0068646");
-      const fetchSource = vi.fn(
-        (_ref: string, ctx: { forceRefresh?: boolean }) =>
-          Promise.resolve({
-            entries: [
-              {
-                imdbId: ctx.forceRefresh ? fresh.id : MOVIE.id,
-                meta: ctx.forceRefresh ? fresh : MOVIE,
-              },
-            ],
-            complete: true,
-          }),
-      );
-      useFakeProvider(fakeAdapter("letterboxd", { fetchSource }));
+      serveTitles([MOVIE.id, fresh.id]);
+      simkl.trending.set(TRENDING, [MOVIE]);
       const request = config({
-        provider: "letterboxd",
-        sourceRef: "users/leo/watchlist",
+        provider: "simkl",
+        sourceRef: "trending/movies",
         policy,
       });
       const earlier = readList(request);
       await writing.promise;
+      simkl.trending.set(TRENDING, [fresh]);
       const manual = readList({ ...request, policy: "manual" });
       try {
-        expect(fetchSource).toHaveBeenCalledTimes(1);
+        expect(simkl.requestsOf(TRENDING)).toHaveLength(1);
       } finally {
         release();
       }
       await earlier;
       expect((await manual).metas.map((item) => item.id)).toEqual([fresh.id]);
-      expect(fetchSource).toHaveBeenLastCalledWith("users/leo/watchlist", {
-        connection: null,
-        forceRefresh: true,
-      });
+      expect(simkl.requestsOf(TRENDING)).toHaveLength(2);
       const cached = await listCache.getCachedList(LIST_ID, {
-        provider: "letterboxd",
-        sourceRef: "users/leo/watchlist",
+        provider: "simkl",
+        sourceRef: "trending/movies",
       });
       expect(cached?.data.metas.map((item) => item.id)).toEqual([fresh.id]);
     },
@@ -218,15 +250,9 @@ describe("getListCatalog", () => {
   });
 
   it("does not share a read between a Connection request and a public one", async () => {
-    const fetchSource = vi.fn(() =>
-      Promise.resolve({
-        entries: [{ imdbId: MOVIE.id, meta: MOVIE }],
-        complete: true,
-      }),
-    );
-    useFakeProvider(fakeAdapter("trakt", { fetchSource }));
+    serveTrakt(WATCHLIST, [MOVIE]);
     const account = seedAccount();
-    seedConnection(account.id, "trakt");
+    seedConnection(account.id, "trakt", { accessToken: "leo-token" });
     const base = config({
       accountId: account.id,
       provider: "trakt",
@@ -238,13 +264,9 @@ describe("getListCatalog", () => {
       readList({ ...base, allowConnection: false }),
     ]);
 
-    expect(fetchSource).toHaveBeenCalledTimes(2);
-    expect(fetchSource).toHaveBeenCalledWith("users/leo/watchlist", {
-      connection: null,
-    });
-    expect(fetchSource).toHaveBeenCalledWith("users/leo/watchlist", {
-      connection: expect.objectContaining({ provider: "trakt" }) as unknown,
-    });
+    const tokens = trakt.requestsOf(WATCHLIST).map((read) => read.token);
+    expect(tokens).toHaveLength(2);
+    expect(tokens).toEqual(expect.arrayContaining([null, "leo-token"]));
   });
 
   it("serves a fresh non-empty cache without reading the Provider", async () => {
@@ -337,14 +359,10 @@ describe("getListCatalog", () => {
 });
 
 describe("Provider pipeline: resolve, enrich, cache", () => {
-  afterEach(() => vi.useRealTimers());
-
   it("refreshes metadata after seven days despite daily catalog refreshes", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    const origin = new Date("2026-01-01T00:00:00Z");
-    vi.setSystemTime(origin);
+    const origin = Date.now();
     const id = "tt8800001";
-    useFakeProvider(fakeAdapter("trakt", { entries: [{ imdbId: id }] }));
+    serveTrakt(WATCHLIST, [meta(id)]);
     imdb.titles.set(id, meta(id, { imdbRating: "7.5" }));
     const source = config({
       provider: "trakt",
@@ -353,46 +371,39 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
     });
     await readList(source);
     for (let day = 1; day < 7; day++) {
-      vi.setSystemTime(origin.getTime() + day * 24 * 60 * 60_000);
+      vi.setSystemTime(origin + day * 24 * 60 * 60_000);
       expect((await readList(source)).metas[0].imdbRating).toBe("7.5");
     }
     expect(titleBatches()).toHaveLength(1);
-    vi.setSystemTime(origin.getTime() + 7 * 24 * 60 * 60_000);
+    vi.setSystemTime(origin + 7 * 24 * 60 * 60_000);
     imdb.titles.set(id, meta(id, { imdbRating: "8.5" }));
     const refreshed = await readList(source);
     expect(refreshed.metas[0].imdbRating).toBe("8.5");
     expect(titleBatches()).toHaveLength(2);
     expect(refreshed.metas[0]).not.toHaveProperty("enrichedAt");
   });
+
   it("resolves and enriches the entries of an adapter that only returns IDs", async () => {
-    const entries: SourceEntry[] = [
-      { imdbId: "tt0000001", type: "movie" },
-      { externalIds: { tmdb: { id: 550, type: "movie" } }, type: "movie" },
-      { externalIds: { tmdb: { id: 999, type: "movie" } }, type: "movie" },
-      { imdbId: "tt0000001", type: "movie" },
-    ];
-    const strategy = vi.fn((pending: SourceEntry[]) =>
-      Promise.resolve(
-        new Map(
-          pending.flatMap((entry, index) =>
-            entry.externalIds?.tmdb?.id === 550 ? [[index, "tt0137523"]] : [],
-          ),
-        ),
+    vi.stubEnv("TMDB_API_KEY", "tmdb-key");
+    const lookups: string[] = [];
+    server.use(
+      http.get(
+        "https://api.themoviedb.org/3/movie/:id/external_ids",
+        ({ params }) => {
+          const tmdbId = String(params.id);
+          lookups.push(tmdbId);
+          return HttpResponse.json({
+            imdb_id: tmdbId === "550" ? "tt0137523" : null,
+          });
+        },
       ),
     );
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        entries,
-        resolutionKey: (entry) =>
-          entry.externalIds?.tmdb
-            ? {
-                namespace: `tmdb:${entry.externalIds.tmdb.type}`,
-                externalId: String(entry.externalIds.tmdb.id),
-              }
-            : null,
-        resolverStrategies: [{ name: "tmdb", resolve: strategy }],
-      }),
-    );
+    trakt.serveItems(WATCHLIST, [
+      { type: "movie", movie: { ids: { imdb: "tt0000001" } } },
+      { type: "movie", movie: { ids: { trakt: 550, tmdb: 550 } } },
+      { type: "movie", movie: { ids: { trakt: 999, tmdb: 999 } } },
+      { type: "movie", movie: { ids: { imdb: "tt0000001" } } },
+    ]);
     serveTitles(["tt0000001", "tt0137523"]);
 
     const result = await readList(
@@ -403,16 +414,17 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
       "tt0000001",
       "tt0137523",
     ]);
+    expect(lookups.sort()).toEqual(["550", "999"]);
     expect(titleBatches()).toEqual([["tt0000001", "tt0137523"]]);
     expect(db.getTable("title_id_map")).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          namespace: "tmdb:movie",
+          namespace: "trakt-movie",
           external_id: "550",
           imdb_id: "tt0137523",
         }),
         expect.objectContaining({
-          namespace: "tmdb:movie",
+          namespace: "trakt-movie",
           external_id: "999",
           imdb_id: null,
         }),
@@ -422,39 +434,17 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
   });
 
   it("asks for a new read soon when the resolver left entries untried", async () => {
-    const entries: SourceEntry[] = Array.from({ length: 350 }, (_, index) => ({
-      externalIds: { tmdb: { id: 5000 + index, type: "movie" } },
-      type: "movie",
-    }));
-    useFakeProvider(
-      fakeAdapter("senscritique", {
-        entries,
-        freshnessMs: 6 * 60 * 60_000,
-        resolutionKey: (entry) => ({
-          namespace: "test",
-          externalId: String(entry.externalIds?.tmdb?.id),
-        }),
-        resolverStrategies: [
-          {
-            name: "all",
-            resolve: (pending) =>
-              Promise.resolve(
-                new Map(
-                  pending.map((entry, index) => [
-                    index,
-                    `tt${String(entry.externalIds?.tmdb?.id).padStart(7, "0")}`,
-                  ]),
-                ),
-              ),
-          },
-        ],
-      }),
+    const products = Array.from({ length: 350 }, (_, index) =>
+      senscritiqueProduct(5000 + index),
     );
-    serveTitles(
-      entries.map(
-        (entry) => `tt${String(entry.externalIds?.tmdb?.id).padStart(7, "0")}`,
-      ),
+    const imdbIds = products.map(
+      (product) => `tt${String(product.id).padStart(7, "0")}`,
     );
+    senscritique.collections.set("leo:WISH:movie", products);
+    products.forEach((product, index) => {
+      wikidata.link("P10100", String(product.id), imdbIds[index]);
+    });
+    serveTitles(imdbIds);
 
     await readList(
       config({ provider: "senscritique", sourceRef: "users/leo/wishes" }),
@@ -468,7 +458,7 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
   });
 
   it("reuses metadata from the previous cache generation", async () => {
-    const cachedAt = new Date(Date.now() - 2 * 60 * 60_000);
+    const cachedAt = new Date(Date.now() - 7 * 60 * 60_000);
     cache.seed(
       LIST_ID,
       [
@@ -479,11 +469,7 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
       ],
       cachedAt,
     );
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        entries: [{ imdbId: "tt0000001" }, { imdbId: "tt0000002" }],
-      }),
-    );
+    trakt.serve(WATCHLIST, [meta("tt0000001"), meta("tt0000002")]);
     serveTitles(["tt0000001", "tt0000002"]);
 
     const result = await readList(
@@ -498,46 +484,48 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
   });
 
   it("links each item back to its page on the Provider, once", async () => {
-    const url = "https://trakt.tv/movies/the-shawshank-redemption-1994";
-    const cachedAt = new Date(Date.now() - 2 * 60 * 60_000);
+    const [first, second] = [meta("tt0000001"), meta("tt0000002")];
+    const url = simklPageOf(first);
+    const cachedAt = new Date(Date.now() - 7 * 60 * 60_000);
     cache.seed(
       LIST_ID,
       [
         {
           ...meta("tt0000001", {
-            description: `A banker.\n\nMore on Trakt: ${url}`,
+            description: `A banker.\n\nMore on Simkl: ${url}`,
           }),
           enrichedAt: cachedAt.toISOString(),
         },
       ],
       cachedAt,
     );
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        entries: [
-          { imdbId: "tt0000001", sourceUrl: url },
-          { imdbId: "tt0000002", sourceUrl: `${url}-2` },
-          { imdbId: "tt0000003" },
-        ],
-      }),
-    );
+    simkl.trending.set(TRENDING, [first, second]);
+    trakt.serve(WATCHLIST, [meta("tt0000003")]);
     serveTitles(["tt0000001", "tt0000002", "tt0000003"]);
 
-    const result = await readList(
-      config({ provider: "trakt", sourceRef: "users/leo/watchlist" }),
+    const linked = await readList(
+      config({ provider: "simkl", sourceRef: "trending/movies" }),
+    );
+    const unlinked = await readList(
+      config({
+        listId: OTHER_LIST_ID,
+        provider: "trakt",
+        sourceRef: "users/leo/watchlist",
+      }),
     );
 
-    expect(result.metas.map((item) => item.description)).toEqual([
-      `A banker.\n\nMore on Trakt: ${url}`,
-      `More on Trakt: ${url}-2`,
+    expect(
+      [...linked.metas, ...unlinked.metas].map((item) => item.description),
+    ).toEqual([
+      `A banker.\n\nMore on Simkl: ${url}`,
+      `More on Simkl: ${simklPageOf(second)}`,
       "",
     ]);
   });
 
   it("answers `disabled` when the Provider is turned off and nothing is cached", async () => {
-    const fetchSource = vi.fn();
-    useFakeProvider(fakeAdapter("trakt", { fetchSource }));
-    process.env.DISABLED_PROVIDERS = "trakt";
+    serveTrakt(WATCHLIST, [MOVIE]);
+    vi.stubEnv("DISABLED_PROVIDERS", "trakt");
 
     const error = await readList(
       config({ provider: "trakt", sourceRef: "users/leo/watchlist" }),
@@ -545,12 +533,11 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
 
     expect(error).toBeInstanceOf(ListUnavailableError);
     expect(error).toMatchObject({ reason: "disabled", provider: "trakt" });
-    expect(fetchSource).not.toHaveBeenCalled();
+    expect(trakt.requests).toEqual([]);
   });
 
   it("answers `needs_connection` for a Connection list read through a Legacy alias", async () => {
-    const fetchSource = vi.fn();
-    useFakeProvider(fakeAdapter("trakt", { fetchSource }));
+    serveTrakt("/users/me/watchlist", [MOVIE]);
     const account = seedAccount();
     seedConnection(account.id, "trakt");
 
@@ -564,11 +551,10 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
     ).catch((caught: unknown) => caught);
 
     expect(error).toMatchObject({ reason: "needs_connection" });
-    expect(fetchSource).not.toHaveBeenCalled();
+    expect(trakt.requests).toEqual([]);
   });
 
   it("answers `needs_connection` when a private Account has no Connection", async () => {
-    useFakeProvider(fakeAdapter("simkl"));
     const account = seedAccount();
 
     const error = await readList(
@@ -584,7 +570,6 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
   });
 
   it("does not serve the cache of a List whose Connection is gone", async () => {
-    useFakeProvider(fakeAdapter("simkl"));
     const account = seedAccount();
     cache.seed(LIST_ID, [MOVIE], new Date(Date.now() - 2 * 60 * 60_000));
 
@@ -601,39 +586,27 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
   });
 
   it("does not serve the cache of a Letterboxd list that the Provider no longer shows", async () => {
-    useFakeProvider(
-      fakeAdapter("letterboxd", {
-        fetchSource: () =>
-          Promise.reject(
-            new SourceUnavailableError("not_found", "revoked share link"),
-          ),
-      }),
-    );
-    cache.seed(LIST_ID, [MOVIE], new Date(Date.now() - 2 * 60 * 60_000));
+    const share = revokedLetterboxdShare("alice/list/secret");
+    cache.seed(LIST_ID, [MOVIE], new Date(Date.now() - 7 * 60 * 60_000));
 
     const error = await readList(
-      config({ provider: "letterboxd", sourceRef: "share/v1:ciphertext" }),
+      config({ provider: "letterboxd", sourceRef: share, policy: "prewarm" }),
     ).catch((caught: unknown) => caught);
 
     expect(error).toMatchObject({ reason: "not_found" });
+    expect(letterboxd.urls).toEqual([`${LETTERBOXD}/alice/list/secret/`]);
+    expect(cache.get(LIST_ID)).toBeNull();
   });
 
   it("a manual refresh on a revoked Letterboxd list drops the fresh cache so Titles cannot return", async () => {
-    useFakeProvider(
-      fakeAdapter("letterboxd", {
-        fetchSource: () =>
-          Promise.reject(
-            new SourceUnavailableError("not_found", "revoked share link"),
-          ),
-      }),
-    );
+    const share = revokedLetterboxdShare("alice/list/secret");
     cache.seed(LIST_ID, [MOVIE], new Date());
 
     await expect(
       readList(
         config({
           provider: "letterboxd",
-          sourceRef: "share/v1:ciphertext",
+          sourceRef: share,
           policy: "manual",
         }),
       ),
@@ -641,28 +614,26 @@ describe("Provider pipeline: resolve, enrich, cache", () => {
     expect(cache.get(LIST_ID)).toBeNull();
 
     await expect(
-      readList(
-        config({ provider: "letterboxd", sourceRef: "share/v1:ciphertext" }),
-      ),
+      readList(config({ provider: "letterboxd", sourceRef: share })),
     ).rejects.toMatchObject({ reason: "not_found" });
   });
 
   it("keeps serving the cache of a Letterboxd list on a transient failure", async () => {
-    useFakeProvider(
-      fakeAdapter("letterboxd", {
-        fetchSource: () =>
-          Promise.reject(
-            new SourceUnavailableError("unavailable", "Letterboxd timed out"),
-          ),
-      }),
+    letterboxd.serveAll(
+      () => new HttpResponse("Letterboxd is down", { status: 503 }),
     );
-    cache.seed(LIST_ID, [MOVIE], new Date(Date.now() - 2 * 60 * 60_000));
+    cache.seed(LIST_ID, [MOVIE], new Date(Date.now() - 7 * 60 * 60_000));
 
     await expect(
       readList(
-        config({ provider: "letterboxd", sourceRef: "users/leo/lists/x" }),
+        config({
+          provider: "letterboxd",
+          sourceRef: "users/leo/lists/x",
+          policy: "prewarm",
+        }),
       ),
     ).resolves.toEqual({ metas: [MOVIE] });
+    expect(letterboxd.urls).not.toEqual([]);
   });
 
   it("reports an honest failure when asked not to fall back on the cache", async () => {
@@ -686,21 +657,19 @@ it("rejects a read that finishes after its Connection was disconnected", async (
     provider: "trakt",
     source_ref: "me/watchlist",
   });
-  let started!: () => void;
-  const began = new Promise<void>((resolve) => {
-    started = resolve;
-  });
-  let finish!: (snapshot: SourceSnapshot) => void;
-  const snapshot = new Promise<SourceSnapshot>((resolve) => {
-    finish = resolve;
-  });
-  useFakeProvider(
-    fakeAdapter("trakt", {
-      fetchSource: () => {
-        started();
-        return snapshot;
-      },
+  serveTrakt("/users/me/watchlist", [MOVIE]);
+  const began = Promise.withResolvers<void>();
+  const finish = Promise.withResolvers<void>();
+  server.use(
+    http.get(`${TRAKT_API}/users/me/watchlist`, async ({ request }) => {
+      began.resolve();
+      await finish.promise;
+      return trakt.answer(request);
     }),
+    http.post(
+      `${TRAKT_AUTH}/oauth/revoke`,
+      () => new HttpResponse(null, { status: 200 }),
+    ),
   );
   const read = config({
     accountId: account.id,
@@ -710,9 +679,9 @@ it("rejects a read that finishes after its Connection was disconnected", async (
   });
   const pending = readList(read);
   pending.catch(() => {});
-  await began;
+  await began.promise;
   await disconnectProvider(account.id, "trakt");
-  finish({ entries: [{ imdbId: MOVIE.id, meta: MOVIE }], complete: true });
+  finish.resolve();
   await expect(pending).rejects.toMatchObject({
     reason: "needs_connection",
   });

@@ -1,5 +1,6 @@
 import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
+import { http } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -15,22 +16,24 @@ import {
   seedConnection,
   seedList,
 } from "../../test/helpers/account.fixture";
-import { cache } from "../../test/helpers/mock-list-cache";
-import { r2Objects, r2Puts, r2Unreadable } from "../../test/helpers/mock-r2";
-import {
-  fakeActions,
-  fakeAdapter,
-  resetProviders,
-  useFakeProvider,
-} from "../../test/helpers/mock-registry";
+import { useBackgroundTasks } from "../../test/helpers/background.test-utils";
+import { onFakeClock } from "../../test/helpers/clock.test-utils";
+import { cache } from "../../test/helpers/list-cache.test-utils";
 import { db, resetRpc } from "../../test/helpers/mock-supabase";
+import { useMswServer } from "../../test/helpers/msw.test-utils";
+import {
+  r2Objects,
+  r2Unreadable,
+  resetR2,
+} from "../../test/helpers/r2.test-utils";
+import { FakeSimkl, useSimklApp } from "../../test/helpers/simkl.test-utils";
+import { FakeTrakt, useTraktApp } from "../../test/helpers/trakt.test-utils";
+import { TRAKT_API } from "../../providers/trakt/api";
 import type {
   ActionIntent,
   ActionTarget,
   Membership,
-  ProviderActions,
 } from "../../providers/types";
-import type * as Background from "../../lib/background";
 import type { Account } from "../accounts";
 import { resolveAccountKey } from "../accounts";
 import {
@@ -41,28 +44,26 @@ import {
   performAction,
 } from "../actions";
 
-const backgroundMocks = vi.hoisted(() => ({
-  scheduleBackgroundTask: vi.fn<typeof Background.scheduleBackgroundTask>(),
-}));
-
-vi.mock("../../lib/supabase", async () => {
-  return await import("../../test/helpers/mock-supabase");
-});
-vi.mock("../../lib/r2", async () => {
-  return await import("../../test/helpers/mock-r2");
-});
-vi.mock("../../lib/background", () => backgroundMocks);
-vi.mock("../list-cache", async () => {
-  return await import("../../test/helpers/mock-list-cache");
-});
-vi.mock("../../providers/registry", async () => {
-  return await import("../../test/helpers/mock-registry");
-});
+const trakt = new FakeTrakt();
+const simkl = new FakeSimkl();
+const server = useMswServer();
+const background = useBackgroundTasks();
 
 const MOVIE = "tt0111161";
 const SERIES = "tt0903747";
 const MOVIE_TARGET = { imdbId: MOVIE, type: "movie" } as const;
 const ADD_TO_WATCHLIST = { kind: "watchlist", add: true } as const;
+const TRAKT_WATCHLIST = "/users/me/watchlist";
+const TRAKT_SYNC_WRITES = [
+  "/sync/watchlist",
+  "/sync/watchlist/remove",
+  "/sync/history",
+  "/sync/history/remove",
+  "/sync/ratings",
+  "/sync/ratings/remove",
+];
+
+type Supports = (provider: ProviderId, kind: ActionKind) => boolean;
 
 const link = (kind: ActionKind, op: string) => `${kind}/${op}`;
 
@@ -110,20 +111,51 @@ function storedMembership(accountId: string, provider: ProviderId) {
   return raw ? storedMembershipSchema.parse(JSON.parse(raw)).membership : null;
 }
 
-const performMocks = new Map<ProviderId, ReturnType<typeof vi.fn>>();
+function serveTraktMembership(value: Membership) {
+  trakt.serve(
+    TRAKT_WATCHLIST,
+    value.watchlist.map((id) => movie(id)),
+  );
+  trakt.serve(
+    "/sync/watched/movies",
+    value.watched.map((id) => movie(id)),
+  );
+  trakt.serve("/sync/watched/shows", []);
+  trakt.serveItems(
+    "/sync/ratings/movies",
+    Object.entries(value.ratings).map(([id, rating]) => ({
+      type: "movie",
+      movie: { ids: { imdb: id } },
+      rating,
+    })),
+  );
+  trakt.serve("/sync/ratings/shows", []);
+}
 
-function useActionProvider(
-  id: ProviderId,
-  overrides: Partial<ProviderActions> = {},
-) {
-  const perform = vi.fn(overrides.perform ?? (() => Promise.resolve()));
-  performMocks.set(id, perform);
-  const actions = fakeActions({
-    getMembership: () => Promise.resolve(membership()),
-    ...overrides,
-    perform,
-  });
-  useFakeProvider(fakeAdapter(id, { actions }));
+function holdTraktMembership(before: () => void = () => undefined) {
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  server.use(
+    http.get(
+      `${TRAKT_API}${TRAKT_WATCHLIST}`,
+      async ({ request }) => {
+        before();
+        started.resolve();
+        await release.promise;
+        return trakt.answer(request);
+      },
+      { once: true },
+    ),
+  );
+  return { started: started.promise, release: () => release.resolve() };
+}
+
+function traktMembershipReads() {
+  return trakt.requestsOf(TRAKT_WATCHLIST);
+}
+
+function traktWrites() {
+  return trakt.requests.filter((request) => request.method === "POST");
 }
 
 async function accountOf(id: string) {
@@ -147,7 +179,6 @@ function setup(
     action_providers: ids,
   });
   for (const id of ids) {
-    if (!performMocks.has(id)) useActionProvider(id);
     seedConnection(row.id, id, { username: options.connectedAs });
     const value = providers[id];
     const fetchedAt = new Date(Date.now() - (options.stale ? 60 * 60_000 : 0));
@@ -156,51 +187,56 @@ function setup(
   return accountOf(row.id);
 }
 
-function staleAccount(
-  getMembership: ProviderActions["getMembership"],
-  stored: Membership | null = membership(),
-) {
-  useActionProvider("trakt", { getMembership });
+function staleAccount(stored: Membership | null = membership()) {
   return setup({ trakt: stored }, { stale: true });
 }
 
-async function runScheduled() {
-  const tasks = backgroundMocks.scheduleBackgroundTask.mock.calls.map(
-    ([task]) => task,
-  );
-  backgroundMocks.scheduleBackgroundTask.mockClear();
-  await Promise.all(tasks.map((task) => task()));
-}
-
-const open = (account: Account, target: ActionTarget = MOVIE_TARGET) =>
-  buildActionStreams(account, target, link);
+const open = (
+  account: Account,
+  target: ActionTarget = MOVIE_TARGET,
+  supports?: Supports,
+) => buildActionStreams(account, target, link, supports);
 
 const act = (
   account: Account,
   intent: ActionIntent,
   target: ActionTarget = MOVIE_TARGET,
   providers: ProviderId[] = ["trakt"],
-) => performAction(account, providers, intent, target);
+  supports?: Supports,
+) =>
+  onFakeClock(() =>
+    performAction(account, providers, intent, target, supports),
+  );
 
 function titles(streams: { title?: string; externalUrl?: string }[]) {
   return streams.map((stream) => [stream.title, stream.externalUrl]);
 }
 
 beforeEach(() => {
+  useTraktApp();
+  useSimklApp();
   db.reset();
   resetRpc();
+  resetR2();
   cache.reset();
-  r2Objects.clear();
-  r2Unreadable.clear();
-  r2Puts.before = null;
-  resetProviders();
-  performMocks.clear();
-  backgroundMocks.scheduleBackgroundTask.mockReset();
+  trakt.reset();
+  simkl.reset();
+  serveTraktMembership(membership());
+  for (const path of TRAKT_SYNC_WRITES) {
+    trakt.reply(
+      path,
+      { added: {}, not_found: { movies: [], shows: [], episodes: [] } },
+      201,
+    );
+  }
+  server.use(trakt.handler, ...simkl.handlers);
   vi.spyOn(console, "error");
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await background.settle();
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 describe("parseStreamId", () => {
@@ -223,21 +259,18 @@ describe("parseStreamId", () => {
 
 describe("actionProviders", () => {
   it("keeps the user's order and drops Providers that cannot act now", async () => {
-    useActionProvider("trakt");
-    useActionProvider("simkl");
-    useFakeProvider(fakeAdapter("mdblist"));
     const row = seedAccount({
       actions_enabled: true,
       action_providers: ["simkl", "mdblist", "imdb", "trakt"],
     });
-    for (const id of ["trakt", "simkl", "mdblist"] as const) {
+    for (const id of ["trakt", "simkl", "imdb"] as const) {
       seedConnection(row.id, id);
     }
     const account = await accountOf(row.id);
 
     expect(await actionProviders(account)).toEqual(["simkl", "trakt"]);
 
-    process.env.DISABLED_PROVIDERS = "simkl";
+    vi.stubEnv("DISABLED_PROVIDERS", "simkl");
     expect(await actionProviders(account)).toEqual(["trakt"]);
   });
 
@@ -375,12 +408,13 @@ describe("buildActionStreams", () => {
   });
 
   it("only shows the kinds of Action each Provider supports", async () => {
-    useActionProvider("trakt", { kinds: ["watchlist"] });
     const account = await setup({ trakt: membership() });
+    const watchlistOnTrakt: Supports = (provider, kind) =>
+      provider !== "trakt" || kind === "watchlist";
 
-    expect(titles(await open(account))).toEqual([
-      ["🔖 Add to Trakt watchlist", "watchlist/add"],
-    ]);
+    expect(titles(await open(account, MOVIE_TARGET, watchlistOnTrakt))).toEqual(
+      [["🔖 Add to Trakt watchlist", "watchlist/add"]],
+    );
   });
 
   it("returns nothing when Actions are off", async () => {
@@ -390,17 +424,17 @@ describe("buildActionStreams", () => {
   });
 
   it("never waits for the Provider: stale membership refreshes in the background", async () => {
-    const getMembership = vi.fn(() =>
-      Promise.resolve(membership({ watchlist: [MOVIE] })),
-    );
-    const account = await staleAccount(getMembership);
+    serveTraktMembership(membership({ watchlist: [MOVIE] }));
+    const refresh = holdTraktMembership();
+    const account = await staleAccount();
 
     expect((await open(account))[0].title).toBe("🔖 Add to Trakt watchlist");
-    expect(getMembership).not.toHaveBeenCalled();
-    expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledOnce();
+    expect(background.scheduled).toBe(1);
 
-    await runScheduled();
-    expect(getMembership).toHaveBeenCalledOnce();
+    await refresh.started;
+    refresh.release();
+    await background.settle();
+    expect(traktMembershipReads()).toHaveLength(1);
     expect(storedMembership(account.id, "trakt")?.watchlist).toEqual([MOVIE]);
     expect((await open(account))[0].title).toBe(
       "🔖 In your Trakt watchlist\nSelect to remove",
@@ -414,7 +448,7 @@ describe("buildActionStreams", () => {
     );
 
     expect((await open(account))[0].title).toBe("🔖 Add to Trakt watchlist");
-    expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledOnce();
+    expect(background.scheduled).toBe(1);
   });
 
   it("ignores a refresh of the previous authorization, also without a username", async () => {
@@ -423,17 +457,17 @@ describe("buildActionStreams", () => {
       action_providers: ["trakt"],
     });
     seedConnection(row.id, "trakt", { username: null });
-    useActionProvider("trakt", {
-      getMembership: () => {
-        db.delete("connections", (c) => c.account_id === row.id);
-        seedConnection(row.id, "trakt", { username: null });
-        return Promise.resolve(membership({ watchlist: [MOVIE] }));
-      },
+    serveTraktMembership(membership({ watchlist: [MOVIE] }));
+    const refresh = holdTraktMembership(() => {
+      db.delete("connections", (c) => c.account_id === row.id);
+      seedConnection(row.id, "trakt", { username: null });
     });
     const account = await accountOf(row.id);
 
     await open(account);
-    await runScheduled();
+    refresh.release();
+    await background.settle();
+    expect(traktMembershipReads()).toHaveLength(1);
 
     expect((await open(account))[0].title).toBe("🔖 Add to Trakt watchlist");
   });
@@ -441,44 +475,40 @@ describe("buildActionStreams", () => {
   it("does not refresh fresh membership", async () => {
     await open(await setup({ trakt: membership() }));
 
-    expect(backgroundMocks.scheduleBackgroundTask).not.toHaveBeenCalled();
+    expect(background.scheduled).toBe(0);
+    expect(traktMembershipReads()).toEqual([]);
   });
 });
 
 describe("background membership refresh", () => {
   it("runs one refresh for many concurrent stream requests", async () => {
-    const snapshot = Promise.withResolvers<Membership>();
-    const getMembership = vi.fn(() => snapshot.promise);
-    const account = await staleAccount(getMembership);
+    serveTraktMembership(membership({ watchlist: [MOVIE] }));
+    const refresh = holdTraktMembership();
+    const account = await staleAccount();
 
     await Promise.all(Array.from({ length: 20 }, () => open(account)));
-    expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledOnce();
+    expect(background.scheduled).toBe(1);
 
-    const running = runScheduled();
+    await refresh.started;
     await Promise.all(Array.from({ length: 5 }, () => open(account)));
-    expect(backgroundMocks.scheduleBackgroundTask).not.toHaveBeenCalled();
+    expect(background.scheduled).toBe(1);
 
-    snapshot.resolve(membership({ watchlist: [MOVIE] }));
-    await running;
-    expect(getMembership).toHaveBeenCalledOnce();
+    refresh.release();
+    await background.settle();
+    expect(traktMembershipReads()).toHaveLength(1);
     expect(storedMembership(account.id, "trakt")?.watchlist).toEqual([MOVIE]);
   });
 
   it.each([{ watchlist: [] }, { watchlist: [MOVIE] }])(
     "discards a background snapshot overtaken by an Action ($watchlist)",
     async ({ watchlist }) => {
-      const started = Promise.withResolvers<undefined>();
-      const snapshot = Promise.withResolvers<Membership>();
-      const account = await staleAccount(() => {
-        started.resolve(undefined);
-        return snapshot.promise;
-      }, membership({ watchlist }));
+      const refresh = holdTraktMembership();
+      const account = await staleAccount(membership({ watchlist }));
       await open(account);
-      const refreshing = runScheduled();
-      await started.promise;
+      await refresh.started;
       await act(account, ADD_TO_WATCHLIST);
-      snapshot.resolve(membership());
-      await refreshing;
+      refresh.release();
+      await background.settle();
       expect(storedMembership(account.id, "trakt")?.watchlist).toEqual([MOVIE]);
       expect((await open(account))[0].title).toContain(
         "In your Trakt watchlist",
@@ -488,33 +518,29 @@ describe("background membership refresh", () => {
 
   it("waits for a cooldown after a failed refresh, and logs once", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    const getMembership = vi.fn(() =>
-      Promise.reject(new Error("Trakt is down")),
-    );
-    const account = await staleAccount(getMembership);
+    trakt.fail(TRAKT_WATCHLIST, 500);
+    const account = await staleAccount();
 
     await open(account);
-    await runScheduled();
-    expect(getMembership).toHaveBeenCalledOnce();
+    await background.settle();
+    expect(traktMembershipReads()).toHaveLength(1);
 
     for (let i = 0; i < 10; i++) await open(account);
-    expect(backgroundMocks.scheduleBackgroundTask).not.toHaveBeenCalled();
+    expect(background.scheduled).toBe(1);
     expect(console.error).toHaveBeenCalledOnce();
 
     vi.setSystemTime(Date.now() + 5 * 60_000 + 1);
     await open(account);
-    expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledOnce();
+    expect(background.scheduled).toBe(2);
   });
 
   it("remembers a missing membership for a while, then reads R2 again", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    const account = await staleAccount(
-      () => Promise.reject(new Error("Trakt is down")),
-      null,
-    );
+    trakt.fail(TRAKT_WATCHLIST, 500);
+    const account = await staleAccount(null);
 
     expect((await open(account))[0].title).toBe("🔖 Add to Trakt watchlist");
-    await runScheduled();
+    await background.settle();
 
     seedMembership(account.id, "trakt", membership({ watchlist: [MOVIE] }));
     expect((await open(account))[0].title).toBe("🔖 Add to Trakt watchlist");
@@ -588,12 +614,15 @@ describe("performAction", () => {
     expect(await act(account, ADD_TO_WATCHLIST)).toEqual([
       { provider: "trakt", ok: true },
     ]);
-    expect(performMocks.get("trakt")).toHaveBeenCalledWith(
-      expect.objectContaining({ provider: "trakt" }),
-      ADD_TO_WATCHLIST,
-      MOVIE_TARGET,
-    );
-    expect(performMocks.get("simkl")).not.toHaveBeenCalled();
+    expect(traktWrites()).toEqual([
+      expect.objectContaining({
+        method: "POST",
+        path: "/sync/watchlist",
+        token: "access-token",
+        body: { movies: [{ ids: { imdb: MOVIE } }] },
+      }),
+    ]);
+    expect(simkl.requests).toEqual([]);
     expect(storedMembership(account.id, "trakt")?.watchlist).toEqual([MOVIE]);
     expect(cache.get(watchlist.id)?.cachedAt.getTime()).toBe(0);
     expect(cache.get(history.id)?.cachedAt.getTime()).not.toBe(0);
@@ -642,9 +671,7 @@ describe("performAction", () => {
   });
 
   it("reports each Provider's outcome on its own", async () => {
-    useActionProvider("simkl", {
-      perform: () => Promise.reject(new Error("Simkl 500")),
-    });
+    simkl.reply("/sync/add-to-list", 500);
     const account = await setup({ trakt: membership(), simkl: membership() });
 
     expect(
@@ -659,23 +686,23 @@ describe("performAction", () => {
       { provider: "mdblist", ok: false, error: "not_available" },
     ]);
     expect(storedMembership(account.id, "simkl")?.watchlist).toEqual([]);
+    expect(simkl.apiRequestsOf("/sync/add-to-list")).toHaveLength(1);
   });
 
-  it.each<[string, ActionKind[] | undefined, boolean, ActionIntent]>([
+  it.each<[string, Supports | undefined, boolean, ActionIntent]>([
     [
       "an Action kind the Provider does not support",
-      ["watchlist"],
+      (provider, kind) => provider !== "trakt" || kind === "watchlist",
       true,
       { kind: "rating", rating: 5 },
     ],
     ["everything when Actions are off", undefined, false, ADD_TO_WATCHLIST],
-  ])("refuses %s", async (_, kinds, enabled, intent) => {
-    useActionProvider("trakt", kinds ? { kinds } : {});
+  ])("refuses %s", async (_, supports, enabled, intent) => {
     const account = await setup({ trakt: membership() }, { enabled });
 
-    expect(await act(account, intent)).toEqual([
-      { provider: "trakt", ok: false, error: "not_available" },
-    ]);
-    expect(performMocks.get("trakt")).not.toHaveBeenCalled();
+    expect(
+      await act(account, intent, MOVIE_TARGET, ["trakt"], supports),
+    ).toEqual([{ provider: "trakt", ok: false, error: "not_available" }]);
+    expect(traktWrites()).toEqual([]);
   });
 });

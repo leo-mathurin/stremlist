@@ -165,7 +165,8 @@ export function previewPoster(poster: string | null) {
   return match ? `${match[1]}._V1_QL75_UX240_.${match[2]}` : poster;
 }
 
-function toUnresolvedEntry(entry: SourceEntry) {
+/** What the preview shows of an entry that has no IMDb ID. */
+export function toUnresolvedEntry(entry: SourceEntry) {
   return {
     title: entry.title ?? entry.originalTitle ?? null,
     year: entry.year ?? null,

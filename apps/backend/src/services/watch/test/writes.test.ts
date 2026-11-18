@@ -1,10 +1,20 @@
-import { describe, expect, it, vi } from "vite-plus/test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import { capPerDestination } from "../writes";
 
-vi.mock("../../../lib/supabase", () => ({ supabase: {} }));
-vi.mock("../../../providers/registry", () => ({
-  isProviderEnabled: (provider: string) => provider !== "mdblist",
-}));
+beforeEach(() => {
+  vi.stubEnv("DISABLED_PROVIDERS", "mdblist");
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 let next = 0;
 function write(account: string, provider: string) {

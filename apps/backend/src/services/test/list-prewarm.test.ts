@@ -1,6 +1,13 @@
 import type { ConfigList, StremioMeta } from "@stremlist/shared/stremio.types";
 import { http } from "msw";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import { z } from "zod";
 import {
   LIST_IDS,
@@ -9,28 +16,15 @@ import {
   seedList,
 } from "../../test/helpers/account.fixture";
 import { FakeImdb, IMDB_GRAPHQL } from "../../test/helpers/imdb.test-utils";
-import { cache } from "../../test/helpers/mock-list-cache";
-import { db, resetRpc } from "../../test/helpers/mock-supabase";
+import { cache } from "../../test/helpers/list-cache.test-utils";
+import { db, resetRpc, rpcCalls } from "../../test/helpers/mock-supabase";
 import { useMswServer } from "../../test/helpers/msw.test-utils";
-import { supabase } from "../../lib/supabase";
-import type { findPosters } from "../../titles/title-posters";
-import type * as Lists from "../lists";
-import { getListCatalog } from "../lists";
+import * as TitlePosters from "../../titles/title-posters";
+import * as Lists from "../lists";
 import { prewarmLists } from "../list-prewarm";
 
-const posterMocks = vi.hoisted(() => ({
-  findPosters: vi.fn<typeof findPosters>(() =>
-    Promise.resolve(new Map<string, string>()),
-  ),
-}));
-
-vi.mock("../lists", async (importOriginal) => {
-  const lists = await importOriginal<typeof Lists>();
-  return { ...lists, getListCatalog: vi.fn(lists.getListCatalog) };
-});
-vi.mock("../list-cache", () => import("../../test/helpers/mock-list-cache"));
-vi.mock("../../titles/title-posters", () => posterMocks);
-vi.mock("../../lib/supabase", () => import("../../test/helpers/mock-supabase"));
+const getListCatalog = vi.spyOn(Lists, "getListCatalog");
+const findPosters = vi.spyOn(TitlePosters, "findPosters");
 
 const imdb = new FakeImdb();
 const server = useMswServer();
@@ -43,16 +37,14 @@ const requestPrewarmArgs = z
   })
   .loose();
 
-const rpc = vi.spyOn(supabase, "rpc");
-
 function prewarmCalls() {
-  return rpc.mock.calls.filter(([functionName]) =>
-    functionName.endsWith("_list_prewarm"),
-  );
+  return rpcCalls
+    .filter(({ name }) => name.endsWith("_list_prewarm"))
+    .map(({ name, args }) => [name, args] as const);
 }
 
 function readListIds() {
-  return vi.mocked(getListCatalog).mock.calls.map(([list]) => list.id);
+  return getListCatalog.mock.calls.map(([list]) => list.id);
 }
 
 interface HeldRead {
@@ -138,6 +130,8 @@ function expectRequest(args: unknown) {
 describe("prewarmLists", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("TMDB_READ_ACCESS_TOKEN", "");
+    vi.stubEnv("TMDB_API_KEY", "");
     db.reset();
     resetRpc();
     cache.reset();
@@ -151,6 +145,10 @@ describe("prewarmLists", () => {
     vi.spyOn(console, "log");
   });
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("looks up the TMDB posters of the first page of each shown Catalog", async () => {
     const metas: StremioMeta[] = [
       ...titles("movie", 150),
@@ -159,7 +157,7 @@ describe("prewarmLists", () => {
     for (const position of [0, 1]) {
       imdb.watchlists.set(savedList(position).sourceRef, metas);
     }
-    posterMocks.findPosters.mockClear();
+    findPosters.mockClear();
 
     await prewarmLists(
       ACCOUNT_ID,
@@ -168,7 +166,7 @@ describe("prewarmLists", () => {
       { posterSource: "tmdb", rpdbApiKey: null },
     );
 
-    const calls = posterMocks.findPosters.mock.calls.map(([source, metas]) => {
+    const calls = findPosters.mock.calls.map(([source, metas]) => {
       expect(source).toBe("tmdb");
       return metas.map((meta) => meta.type);
     });
@@ -179,7 +177,7 @@ describe("prewarmLists", () => {
     ]);
     expect(calls.every((types) => new Set(types).size === 1)).toBe(true);
 
-    posterMocks.findPosters.mockClear();
+    findPosters.mockClear();
     await prewarmLists(ACCOUNT_ID, SAVED_LISTS, true, {
       posterSource: "rpdb",
       rpdbApiKey: "key",
@@ -188,7 +186,7 @@ describe("prewarmLists", () => {
       posterSource: "imdb",
       rpdbApiKey: null,
     });
-    expect(posterMocks.findPosters).not.toHaveBeenCalled();
+    expect(findPosters).not.toHaveBeenCalled();
   });
 
   it("uses the cache-first fetch path for every saved List", async () => {

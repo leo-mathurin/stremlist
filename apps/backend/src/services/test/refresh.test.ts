@@ -1,5 +1,5 @@
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
-import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
+import { describe, it, expect, beforeEach } from "vite-plus/test";
 import app from "../../index.js";
 import {
   movie,
@@ -7,18 +7,11 @@ import {
   seedLegacyAccount,
   seedList,
 } from "../../test/helpers/account.fixture.js";
-import { cache } from "../../test/helpers/mock-list-cache.js";
+import { cache } from "../../test/helpers/list-cache.test-utils";
 import { db, resetRpc } from "../../test/helpers/mock-supabase.js";
 import { readJson, refreshBody } from "../../test/helpers/json.js";
 import { FakeImdb } from "../../test/helpers/imdb.test-utils.js";
 import { useMswServer } from "../../test/helpers/msw.test-utils.js";
-
-vi.mock(
-  "../../lib/supabase",
-  () => import("../../test/helpers/mock-supabase.js"),
-);
-vi.mock("../list-cache", () => import("../../test/helpers/mock-list-cache.js"));
-vi.mock("../../lib/resend", () => import("../../test/helpers/mock-resend"));
 
 const OWNER = "ur216216210";
 const UUID_1 = "6bde5e3d-617f-4912-950a-2f9acf815b7e";

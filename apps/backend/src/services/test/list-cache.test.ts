@@ -1,9 +1,5 @@
-import {
-  DeleteObjectCommand,
-  GetObjectCommand,
-  PutObjectCommand,
-} from "@aws-sdk/client-s3";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
+import { http, HttpResponse } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -13,114 +9,106 @@ import {
   vi,
 } from "vite-plus/test";
 import { z } from "zod";
+import { createHash } from "node:crypto";
 import {
   seedAccount,
   seedConnection,
 } from "../../test/helpers/account.fixture";
 import { db } from "../../test/helpers/mock-supabase";
+import { useMswServer } from "../../test/helpers/msw.test-utils";
+import {
+  putR2Bytes,
+  r2Bytes,
+  r2Objects,
+  r2Puts,
+  r2Unreadable,
+  r2Unwritable,
+  resetR2,
+} from "../../test/helpers/r2.test-utils";
 import { encryptSecret } from "../../lib/crypto";
 import { getConnectionAccess, saveConnection } from "../connections";
 import {
   deleteCachedList,
   findCachedMeta,
+  forgetMemoryCache,
   getCachedList,
   getCachedListSummary,
   writeCachedList,
 } from "../list-cache";
 
-vi.mock("../../lib/supabase", () => import("../../test/helpers/mock-supabase"));
+const BUCKET = "http://r2.test/test-bucket";
+const server = useMswServer();
 
-const r2 = vi.hoisted(() => ({
-  objects: new Map<string, Uint8Array>(),
-  failGetContaining: null as string | null,
-  failPutContaining: null as string | null,
-  beforeConditionalPut: null as (() => void) | null,
-  afterConditionalPut: null as (() => Promise<void>) | null,
-  sent: [] as unknown[],
-}));
+interface SentRequest {
+  method: string;
+  key: string;
+}
+
+const sent: SentRequest[] = [];
+
+server.events.on("request:start", ({ request }) => {
+  if (!request.url.startsWith(`${BUCKET}/`)) return;
+  sent.push({
+    method: request.method,
+    key: decodeURIComponent(new URL(request.url).pathname).slice(
+      "/test-bucket/".length,
+    ),
+  });
+});
 
 function requiredKey(key: string | undefined) {
-  if (!key) throw new Error("R2 test command is missing a key");
+  if (!key) throw new Error("R2 test is missing a key");
   return key;
 }
 
-function etagFor(body: Uint8Array) {
-  return `"${Buffer.from(body).toString("base64")}"`;
+function manifestKeyOf(id: string) {
+  return `watchlists/${id}/manifest.json`;
 }
 
-function stored(objects: Map<string, Uint8Array>, key: string) {
-  const body = objects.get(key);
-  if (!body) throw new Error(`Missing R2 test object: ${key}`);
-  return body;
+function keysContaining(text: string) {
+  return [...r2Objects.keys()].filter((key) => key.includes(text));
 }
 
-function handleCommand(command: unknown) {
-  if (command instanceof PutObjectCommand) {
-    const key = requiredKey(command.input.Key);
-    let afterConditionalPut: (() => Promise<void>) | null = null;
-    if (r2.failPutContaining && key.includes(r2.failPutContaining)) {
-      throw new Error("simulated R2 write failure");
-    }
-    if (!(command.input.Body instanceof Uint8Array)) {
-      throw new Error("R2 test expects a Uint8Array body");
-    }
-    if (command.input.IfMatch) {
-      const beforeConditionalPut = r2.beforeConditionalPut;
-      r2.beforeConditionalPut = null;
-      afterConditionalPut = r2.afterConditionalPut;
-      r2.afterConditionalPut = null;
-      beforeConditionalPut?.();
-      const current = r2.objects.get(key);
-      if (!current || etagFor(current) !== command.input.IfMatch) {
-        throw Object.assign(new Error("precondition failed"), {
-          name: "PreconditionFailed",
-          $metadata: { httpStatusCode: 412 },
+function snapshot() {
+  return new Map(
+    [...r2Objects.keys()].map((key) => [key, r2Bytes(key) ?? Buffer.alloc(0)]),
+  );
+}
+
+function restore(objects: Map<string, Buffer>) {
+  r2Objects.clear();
+  for (const [key, bytes] of objects) putR2Bytes(key, bytes);
+}
+
+function etagOf(bytes: Buffer) {
+  return `"${createHash("md5").update(bytes).digest("hex")}"`;
+}
+
+function afterNextManifestWrite(id: string, then: () => Promise<void>) {
+  const key = manifestKeyOf(id);
+  server.use(
+    http.put(
+      `${BUCKET}/${key}`,
+      async ({ request }) => {
+        const current = r2Bytes(key);
+        if (
+          current === undefined ||
+          etagOf(current) !== request.headers.get("If-Match")
+        ) {
+          return new HttpResponse(null, { status: 412 });
+        }
+        const bytes = Buffer.from(await request.arrayBuffer());
+        putR2Bytes(key, bytes);
+        await then();
+        return new HttpResponse(null, {
+          status: 200,
+          headers: { ETag: etagOf(bytes) },
         });
-      }
-    }
-    r2.objects.set(key, Uint8Array.from(command.input.Body));
-    return afterConditionalPut ? afterConditionalPut().then(() => ({})) : {};
-  }
-
-  if (command instanceof GetObjectCommand) {
-    const key = requiredKey(command.input.Key);
-    if (r2.failGetContaining && key.includes(r2.failGetContaining)) {
-      throw new Error("simulated R2 read failure");
-    }
-    const body = r2.objects.get(key);
-    if (!body) {
-      throw Object.assign(new Error("missing"), {
-        name: "NoSuchKey",
-        $metadata: { httpStatusCode: 404 },
-      });
-    }
-    return {
-      ETag: etagFor(body),
-      Body: {
-        transformToByteArray: () => Promise.resolve(body),
-        transformToString: () =>
-          Promise.resolve(Buffer.from(body).toString("utf8")),
       },
-    };
-  }
-
-  if (command instanceof DeleteObjectCommand) {
-    r2.objects.delete(requiredKey(command.input.Key));
-    return {};
-  }
-
-  throw new Error("Unsupported R2 command");
+      { once: true },
+    ),
+  );
 }
-
-function send(command: unknown) {
-  r2.sent.push(command);
-  return Promise.resolve(handleCommand(command));
-}
-
-vi.mock("../../lib/r2", () => ({
-  getR2Bucket: () => "test-bucket",
-  getR2Client: () => ({ send }),
-}));
 
 const MOVIE: StremioMeta = {
   id: "tt0111161",
@@ -142,30 +130,20 @@ function watchlistId() {
   return `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`;
 }
 
-async function evictMemoryCaches() {
-  for (let index = 0; index <= 100; index += 1) {
-    await writeCachedList(watchlistId(), { metas: [MOVIE] });
-  }
-}
-
 function expectOnlyManifestRead(id: string) {
-  expect(r2.sent).toHaveLength(1);
-  const [command] = r2.sent;
-  expect(command).toBeInstanceOf(GetObjectCommand);
-  if (!(command instanceof GetObjectCommand)) throw new Error("not a read");
-  expect(command.input.Key).toBe(`watchlists/${id}/manifest.json`);
+  expect(sent).toEqual([{ method: "GET", key: manifestKeyOf(id) }]);
 }
 
 beforeEach(() => {
-  r2.objects.clear();
-  r2.failGetContaining = null;
-  r2.failPutContaining = null;
-  r2.beforeConditionalPut = null;
-  r2.afterConditionalPut = null;
-  r2.sent.length = 0;
+  resetR2();
+  forgetMemoryCache();
+  sent.length = 0;
 });
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  resetR2();
+});
 
 describe("R2 watchlist cache", () => {
   it("round-trips a compressed catalog and de-duplicates repeated items", async () => {
@@ -182,8 +160,8 @@ describe("R2 watchlist cache", () => {
     expect(cached?.generation).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
     );
-    expect(r2.objects.size).toBe(2);
-    expect([...r2.objects.keys()]).toEqual(
+    expect(r2Objects.size).toBe(2);
+    expect([...r2Objects.keys()]).toEqual(
       expect.arrayContaining([
         expect.stringMatching(/manifest\.json$/u),
         expect.stringMatching(/generations\/.+\.json\.gz$/u),
@@ -199,9 +177,9 @@ describe("R2 watchlist cache", () => {
         { ...MOVIE, type: "series", genres: ["Comedy", "Drama"] },
       ],
     });
-    await evictMemoryCaches();
-    r2.sent.length = 0;
-    r2.failGetContaining = "/generations/";
+    forgetMemoryCache();
+    sent.length = 0;
+    for (const key of keysContaining("/generations/")) r2Unreadable.add(key);
 
     expect(await getCachedListSummary(id)).toEqual({
       movie: ["Action", "Drama"],
@@ -216,13 +194,13 @@ describe("R2 watchlist cache", () => {
     const key = `watchlists/${id}/manifest.json`;
     const manifest = z
       .record(z.string(), z.unknown())
-      .parse(JSON.parse(Buffer.from(stored(r2.objects, key)).toString()));
+      .parse(JSON.parse(r2Objects.get(key) ?? ""));
     delete manifest.genres;
-    r2.objects.set(key, Buffer.from(JSON.stringify(manifest)));
-    await evictMemoryCaches();
-    r2.sent.length = 0;
+    r2Objects.set(key, JSON.stringify(manifest));
+    forgetMemoryCache();
+    sent.length = 0;
     expect(await getCachedListSummary(id)).toBeNull();
-    expect(r2.sent).toHaveLength(1);
+    expect(sent).toHaveLength(1);
     expect((await getCachedList(id))?.data.metas).toEqual([MOVIE]);
     await writeCachedList(id, { metas: [MOVIE] });
     expect(await getCachedListSummary(id)).toEqual(DRAMA_SUMMARY);
@@ -234,9 +212,10 @@ describe("R2 watchlist cache", () => {
     await writeCachedList(id, { metas: [MOVIE] });
     await deleteCachedList(id);
     expect(await getCachedListSummary(id)).toBeNull();
-    r2.failGetContaining = "manifest.json";
+    const unreadable = watchlistId();
+    r2Unreadable.add(manifestKeyOf(unreadable));
     const errorSpy = vi.spyOn(console, "error");
-    expect(await getCachedListSummary(watchlistId())).toBeNull();
+    expect(await getCachedListSummary(unreadable)).toBeNull();
     errorSpy.mockRestore();
   });
 
@@ -253,8 +232,8 @@ describe("R2 watchlist cache", () => {
   it("uses the manifest index to avoid reading catalog blobs on a meta miss", async () => {
     const id = watchlistId();
     await writeCachedList(id, { metas: [MOVIE] });
-    await evictMemoryCaches();
-    r2.sent.length = 0;
+    forgetMemoryCache();
+    sent.length = 0;
 
     expect(await findCachedMeta(id, "movie", "tt9999999")).toBeNull();
     expectOnlyManifestRead(id);
@@ -263,7 +242,7 @@ describe("R2 watchlist cache", () => {
   it("treats R2 read failures as cache misses", async () => {
     const id = watchlistId();
     const errorSpy = vi.spyOn(console, "error");
-    r2.failGetContaining = "manifest.json";
+    r2Unreadable.add(manifestKeyOf(id));
 
     expect(await getCachedList(id)).toBeNull();
     expect(errorSpy).toHaveBeenCalledWith(
@@ -275,51 +254,51 @@ describe("R2 watchlist cache", () => {
   it("keeps the previous object when an overwrite fails", async () => {
     const id = watchlistId();
     await writeCachedList(id, { metas: [MOVIE] });
-    r2.failPutContaining = "/generations/";
+    r2Unwritable.add(`watchlists/${id}/generations/`);
 
     await expect(writeCachedList(id, { metas: [GODFATHER] })).rejects.toThrow(
-      "simulated R2 write failure",
+      "AccessDenied",
     );
 
-    r2.failPutContaining = null;
+    r2Unwritable.clear();
     expect((await getCachedList(id))?.data.metas).toEqual([MOVIE]);
   });
 
   it("keeps the previous manifest when the atomic switch fails", async () => {
     const id = watchlistId();
     await writeCachedList(id, { metas: [MOVIE] });
-    r2.failPutContaining = "manifest.json";
+    r2Unwritable.add(manifestKeyOf(id));
 
     await expect(writeCachedList(id, { metas: [GODFATHER] })).rejects.toThrow(
-      "simulated R2 write failure",
+      "AccessDenied",
     );
 
-    r2.failPutContaining = null;
+    r2Unwritable.clear();
     expect((await getCachedList(id))?.data.metas).toEqual([MOVIE]);
-    expect(r2.objects.size).toBe(3);
+    expect(r2Objects.size).toBe(3);
     expect(await getCachedListSummary(id)).toEqual(DRAMA_SUMMARY);
   });
 
   it("keeps the previous generation readable after replacement", async () => {
     const id = watchlistId();
     await writeCachedList(id, { metas: [MOVIE] });
-    const previousCatalogKey = [...r2.objects.keys()].find((key) =>
+    const previousCatalogKey = [...r2Objects.keys()].find((key) =>
       key.includes("/generations/"),
     );
 
     await writeCachedList(id, { metas: [GODFATHER] });
 
     expect(previousCatalogKey).toBeDefined();
-    expect(r2.objects.has(requiredKey(previousCatalogKey))).toBe(true);
-    expect(r2.objects.size).toBe(3);
+    expect(r2Objects.has(requiredKey(previousCatalogKey))).toBe(true);
+    expect(r2Objects.size).toBe(3);
   });
 
   it("does not delete a concurrently replaced manifest", async () => {
     const id = watchlistId();
     await writeCachedList(id, { metas: [MOVIE] });
-    const previousObjects = new Map(r2.objects);
+    const previousObjects = snapshot();
     await writeCachedList(id, { metas: [GODFATHER] });
-    const replacementObjects = new Map(r2.objects);
+    const replacementObjects = snapshot();
     const replaced = [...replacementObjects.keys()].filter(
       (key) =>
         key.endsWith("/manifest.json") ||
@@ -327,27 +306,32 @@ describe("R2 watchlist cache", () => {
     );
     expect(replaced).toHaveLength(2);
 
-    r2.objects = new Map(previousObjects);
-    r2.beforeConditionalPut = () => {
-      for (const key of replaced) {
-        r2.objects.set(key, stored(replacementObjects, key));
+    restore(previousObjects);
+    forgetMemoryCache();
+    r2Puts.before = (key) => {
+      if (key !== manifestKeyOf(id)) return;
+      r2Puts.before = null;
+      for (const replacedKey of replaced) {
+        const bytes = replacementObjects.get(replacedKey);
+        if (bytes) putR2Bytes(replacedKey, bytes);
       }
     };
 
     await deleteCachedList(id);
 
     expect((await getCachedList(id))?.data.metas).toEqual([GODFATHER]);
-    expect(r2.objects.size).toBe(3);
+    expect(r2Objects.size).toBe(3);
   });
 
   it("keeps a local replacement cached when it follows the tombstone", async () => {
     const id = watchlistId();
     await writeCachedList(id, { metas: [MOVIE] });
-    r2.afterConditionalPut = () =>
-      writeCachedList(id, { metas: [GODFATHER] }).then(() => undefined);
+    afterNextManifestWrite(id, () =>
+      writeCachedList(id, { metas: [GODFATHER] }).then(() => undefined),
+    );
 
     await deleteCachedList(id);
-    r2.failGetContaining = "manifest.json";
+    r2Unreadable.add(manifestKeyOf(id));
 
     expect((await getCachedList(id))?.data.metas).toEqual([GODFATHER]);
   });
@@ -355,17 +339,17 @@ describe("R2 watchlist cache", () => {
   it("refreshes a stale manifest when its generation is missing", async () => {
     const id = watchlistId();
     await writeCachedList(id, { metas: [MOVIE] });
-    const staleObjects = new Map(r2.objects);
+    const staleObjects = snapshot();
 
-    r2.objects.clear();
+    r2Objects.clear();
     await writeCachedList(id, { metas: [GODFATHER] });
-    const replacementObjects = new Map(r2.objects);
-    await evictMemoryCaches();
+    const replacementObjects = snapshot();
+    forgetMemoryCache();
 
-    r2.objects = new Map(staleObjects);
+    restore(staleObjects);
     expect(await findCachedMeta(id, "movie", "tt9999999")).toBeNull();
 
-    r2.objects = new Map(replacementObjects);
+    restore(replacementObjects);
     expect((await getCachedList(id))?.data.metas).toEqual([GODFATHER]);
   });
 
@@ -399,7 +383,7 @@ describe("R2 watchlist cache", () => {
 
     expect(await getCachedList(id)).toBeNull();
     expect(
-      [...r2.objects.keys()].filter((key) =>
+      [...r2Objects.keys()].filter((key) =>
         key.startsWith(`watchlists/${id}/`),
       ),
     ).toEqual([`watchlists/${id}/manifest.json`]);

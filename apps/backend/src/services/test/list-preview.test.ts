@@ -1,3 +1,4 @@
+import type { ListSource } from "@stremlist/shared/list-merge";
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { http, HttpResponse } from "msw";
 import {
@@ -13,83 +14,100 @@ import {
   seedAccount,
   seedConnection,
 } from "../../test/helpers/account.fixture";
-import { cache } from "../../test/helpers/mock-list-cache";
-import {
-  fakeAdapter,
-  resetProviders,
-  useFakeProvider,
-} from "../../test/helpers/mock-registry";
-import { db } from "../../test/helpers/mock-supabase";
+import { cache } from "../../test/helpers/list-cache.test-utils";
+import { db, resetRpc } from "../../test/helpers/mock-supabase";
 import {
   cinemetaWithoutTitles,
   FakeImdb,
 } from "../../test/helpers/imdb.test-utils";
 import { useMswServer } from "../../test/helpers/msw.test-utils";
-import { traktItems, useTraktApp } from "../../test/helpers/trakt.test-utils";
-import { TRAKT_API } from "../../providers/trakt/api";
+import { r2Objects, resetR2 } from "../../test/helpers/r2.test-utils";
 import {
-  ConnectionExpiredError,
-  SourceUnavailableError,
-} from "../../providers/types";
-import * as listCache from "../list-cache";
+  FakeSensCritique,
+  senscritiqueProduct,
+} from "../../test/helpers/senscritique.test-utils";
+import {
+  FakeTrakt,
+  traktItems,
+  useTraktApp,
+} from "../../test/helpers/trakt.test-utils";
+import { TRAKT_API } from "../../providers/trakt/api";
 import type { SourceEntry } from "../../providers/types";
+import * as listCache from "../list-cache";
 import type { PreviewRequest } from "../list-preview";
 import {
   previewList,
   previewPoster,
   resetPreviewReadings,
+  toUnresolvedEntry,
 } from "../list-preview";
 
-vi.mock("../../lib/supabase", async () => {
-  return await import("../../test/helpers/mock-supabase");
-});
-vi.mock("../list-cache", async () => {
-  const cache = await import("../../test/helpers/mock-list-cache");
-  return { ...cache, writeCachedList: vi.fn(cache.writeCachedList) };
-});
-vi.mock("../../providers/registry", async () => {
-  return await import("../../test/helpers/mock-registry");
-});
-
 const imdb = new FakeImdb();
+const trakt = new FakeTrakt();
+const senscritique = new FakeSensCritique();
 const server = useMswServer();
+const writeCachedList = vi.spyOn(listCache, "writeCachedList");
+
+const FAVORITES = "users/someone/lists/favorites";
+const ITEMS = `/${FAVORITES}/items`;
+const HISTORY = ["/users/me/watched/movies", "/users/me/watched/shows"];
 
 const MOVIES = [
   movie("tt0000001", {
     name: "Charlie",
     imdbRating: "6.1",
-    runtime: "1h 50min",
     releaseInfo: "1999",
+    runtime: "1h 50m",
   }),
   movie("tt0000002", {
     name: "Alpha",
     imdbRating: "8.4",
-    runtime: "85min",
     releaseInfo: "2004",
+    runtime: "1h 25m",
   }),
   movie("tt0000003", {
     name: "Bravo",
     imdbRating: "7.2",
-    runtime: "1h 20min",
     releaseInfo: "2012",
+    runtime: "1h 20m",
   }),
 ];
 const SERIES = [movie("tt0000004", { type: "series", name: "Delta" })];
 
-function entries(metas: StremioMeta[]) {
-  const result: SourceEntry[] = metas.map((item) => ({
-    imdbId: item.id,
-    type: item.type,
-    meta: item,
-  }));
-  return result;
+function knownTitles(metas: StremioMeta[]) {
+  for (const meta of metas) imdb.titles.set(meta.id, meta);
+}
+
+function serveTrakt(metas: StremioMeta[], path = ITEMS) {
+  trakt.serve(path, metas);
+  knownTitles(metas);
+}
+
+function serveHistory(metas: StremioMeta[]) {
+  serveTrakt(metas, HISTORY[0]);
+  trakt.serve(HISTORY[1], []);
+}
+
+function reads(path = ITEMS) {
+  return trakt
+    .requestsOf(path)
+    .filter((request) => request.query.get("page") === "1");
+}
+
+function unresolvedTitle(namespace: string, externalId: number) {
+  db.insert("title_id_map", {
+    namespace,
+    external_id: String(externalId),
+    imdb_id: null,
+    retry_after: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
+  });
 }
 
 function request(overrides: Partial<PreviewRequest> = {}) {
   const value: PreviewRequest = {
     connectionAccountId: null,
     provider: "trakt",
-    sourceRef: "users/someone/lists/favorites",
+    sourceRef: FAVORITES,
     sortOption: "added_at-asc",
     displayMode: "split",
     ...overrides,
@@ -103,25 +121,40 @@ async function previewOk(req: PreviewRequest) {
   return preview;
 }
 
+let clock = Date.now();
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  clock += 10 * 60_000;
+  vi.setSystemTime(clock);
   vi.clearAllMocks();
+  vi.stubEnv("TMDB_READ_ACCESS_TOKEN", "");
+  vi.stubEnv("TMDB_API_KEY", "");
+  useTraktApp();
   db.reset();
+  resetRpc();
+  resetR2();
   cache.reset();
-  resetProviders();
   resetPreviewReadings();
   imdb.reset();
-  server.use(imdb.handler, cinemetaWithoutTitles);
+  trakt.reset();
+  senscritique.reset();
+  server.use(
+    imdb.handler,
+    trakt.handler,
+    senscritique.handler,
+    cinemetaWithoutTitles,
+  );
 });
 afterEach(() => {
+  clock = Date.now();
   vi.useRealTimers();
   vi.unstubAllEnvs();
 });
 
 describe("previewList: Catalogs", () => {
   it("shows one Catalog per type for a split List, in the saved sort", async () => {
-    useFakeProvider(
-      fakeAdapter("trakt", { entries: entries([...MOVIES, ...SERIES]) }),
-    );
+    serveTrakt([...MOVIES, ...SERIES]);
 
     const preview = await previewOk(request({ sortOption: "title-asc" }));
 
@@ -149,7 +182,7 @@ describe("previewList: Catalogs", () => {
   });
 
   it("applies the List's filters and adds a Catalog for each preset", async () => {
-    useFakeProvider(fakeAdapter("trakt", { entries: entries(MOVIES) }));
+    serveTrakt(MOVIES);
 
     const preview = await previewOk(
       request({
@@ -171,7 +204,7 @@ describe("previewList: Catalogs", () => {
   });
 
   it("shows only the Catalog of the chosen type, empty when no Title matches, and counts the other type", async () => {
-    useFakeProvider(fakeAdapter("trakt", { entries: entries(MOVIES) }));
+    serveTrakt(MOVIES);
 
     const preview = await previewOk(request({ displayMode: "series" }));
     expect(preview.catalogs).toEqual([
@@ -182,17 +215,17 @@ describe("previewList: Catalogs", () => {
 
   it("shows at most 12 Titles per Catalog, with the full count", async () => {
     const many = Array.from({ length: 30 }, (_, index) =>
-      movie(`tt${String(index + 1).padStart(7, "0")}`),
+      movie(`tt${String(index + 1001).padStart(7, "0")}`),
     );
-    useFakeProvider(fakeAdapter("trakt", { entries: entries(many) }));
+    serveTrakt(many);
 
     const preview = await previewOk(request({ displayMode: "movie" }));
     expect(preview.catalogs[0].total).toBe(30);
     expect(preview.catalogs[0].titles).toHaveLength(12);
     expect(preview.catalogs[0].titles[0]).toEqual({
-      id: "tt0000001",
+      id: "tt0001001",
       type: "movie",
-      name: "Movie tt0000001",
+      name: "Movie tt0001001",
       poster: null,
       tmdbPoster: null,
       tvdbPoster: null,
@@ -201,45 +234,63 @@ describe("previewList: Catalogs", () => {
   });
 
   it("writes no Catalog cache", async () => {
-    useFakeProvider(fakeAdapter("trakt", { entries: entries(MOVIES) }));
+    serveTrakt(MOVIES);
 
-    await previewList(request());
+    await previewOk(request());
 
-    expect(listCache.writeCachedList).not.toHaveBeenCalled();
+    expect(writeCachedList).not.toHaveBeenCalled();
+    expect(
+      [...r2Objects.keys()].filter((key) => key.startsWith("watchlists/")),
+    ).toEqual([]);
   });
 });
 
 describe("previewList: Unresolved entries", () => {
   it("lists the entries without an IMDb ID, with a page about each when known", async () => {
     const resolvedMeta = movie("tt0137523", { name: "Fight Club" });
-    imdb.titles.set(resolvedMeta.id, resolvedMeta);
-    useFakeProvider(
-      fakeAdapter("senscritique", {
-        entries: [
-          { imdbId: "tt0137523", type: "movie" },
-          {
-            type: "movie",
-            title: "Le Film Inconnu",
-            year: 2004,
-            externalIds: { justwatchPath: "/fr/film/le-film-inconnu" },
-          },
-          {
-            type: "series",
-            originalTitle: "Original Only",
-            externalIds: { tmdb: { id: 42, type: "series" } },
-          },
-          {
-            title: "On Simkl",
-            sourceUrl: "https://simkl.com/movies/1/on-simkl",
-            externalIds: { tmdb: { id: 1, type: "movie" } },
-          },
-          { title: "Nothing known" },
+    knownTitles([resolvedMeta]);
+    db.insert("title_id_map", {
+      namespace: "senscritique",
+      external_id: "1001",
+      imdb_id: resolvedMeta.id,
+    });
+    for (const id of [1002, 1003, 1004]) unresolvedTitle("senscritique", id);
+    senscritique.lists.set(1, [
+      senscritiqueProduct(1001, { title: "Fight Club" }),
+      senscritiqueProduct(1002, {
+        title: "Le Film Inconnu",
+        yearOfProduction: 2004,
+        dateRelease: null,
+        providers: [
+          { justwatchUrl: "https://www.justwatch.com/fr/film/le-film-inconnu" },
         ],
       }),
-    );
+      senscritiqueProduct(1003, {
+        type: "series",
+        title: null,
+        originalTitle: "Original Only",
+        yearOfProduction: null,
+        dateRelease: null,
+      }),
+      senscritiqueProduct(1004, {
+        title: "Nothing known",
+        yearOfProduction: null,
+        dateRelease: null,
+      }),
+    ]);
+    trakt.serveItems(ITEMS, [
+      {
+        type: "show",
+        show: { title: "On TMDB", year: 2010, ids: { tmdb: 42 } },
+      },
+    ]);
 
     const preview = await previewOk(
-      request({ provider: "senscritique", sourceRef: "lists/1" }),
+      request({
+        provider: "senscritique",
+        sourceRef: "lists/1",
+        mergedSources: [{ provider: "trakt", sourceRef: FAVORITES }],
+      }),
     );
     expect(preview.titleCount).toBe(1);
     expect(preview.unresolved).toEqual({
@@ -252,31 +303,68 @@ describe("previewList: Unresolved entries", () => {
           type: "movie",
           url: "https://www.justwatch.com/fr/film/le-film-inconnu",
         },
+        { title: "Original Only", year: null, type: "series", url: null },
+        { title: "Nothing known", year: null, type: "movie", url: null },
         {
-          title: "Original Only",
-          year: null,
+          title: "On TMDB",
+          year: 2010,
           type: "series",
           url: "https://www.themoviedb.org/tv/42",
         },
-        {
-          title: "On Simkl",
-          year: null,
-          type: "movie",
-          url: "https://simkl.com/movies/1/on-simkl",
-        },
-        { title: "Nothing known", year: null, type: null, url: null },
       ],
     });
   });
 
+  it("shows each kind of Unresolved entry with the best page about it", () => {
+    const entries: SourceEntry[] = [
+      {
+        type: "movie",
+        title: "Le Film Inconnu",
+        year: 2004,
+        externalIds: { justwatchPath: "/fr/film/le-film-inconnu" },
+      },
+      {
+        type: "series",
+        originalTitle: "Original Only",
+        externalIds: { tmdb: { id: 42, type: "series" } },
+      },
+      {
+        title: "On Simkl",
+        sourceUrl: "https://simkl.com/movies/1/on-simkl",
+        externalIds: { tmdb: { id: 1, type: "movie" } },
+      },
+      { title: "Nothing known" },
+    ];
+
+    expect(entries.map(toUnresolvedEntry)).toEqual([
+      {
+        title: "Le Film Inconnu",
+        year: 2004,
+        type: "movie",
+        url: "https://www.justwatch.com/fr/film/le-film-inconnu",
+      },
+      {
+        title: "Original Only",
+        year: null,
+        type: "series",
+        url: "https://www.themoviedb.org/tv/42",
+      },
+      {
+        title: "On Simkl",
+        year: null,
+        type: "movie",
+        url: "https://simkl.com/movies/1/on-simkl",
+      },
+      { title: "Nothing known", year: null, type: null, url: null },
+    ]);
+  });
+
   it("lists at most 50 Unresolved entries, with the full count", async () => {
-    useFakeProvider(
-      fakeAdapter("senscritique", {
-        entries: Array.from({ length: 60 }, (_, index) => ({
-          title: `Entry ${index}`,
-        })),
-      }),
-    );
+    const products = Array.from({ length: 60 }, (_, index) => {
+      unresolvedTitle("senscritique", 2000 + index);
+      return senscritiqueProduct(2000 + index, { title: `Entry ${index}` });
+    });
+    senscritique.lists.set(2, products);
 
     const preview = await previewOk(
       request({ provider: "senscritique", sourceRef: "lists/2" }),
@@ -287,11 +375,7 @@ describe("previewList: Unresolved entries", () => {
   });
 
   it("counts Titles that have an IMDb ID but no details", async () => {
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        entries: [{ imdbId: "tt0000009", type: "movie" }],
-      }),
-    );
+    trakt.serve(ITEMS, [movie("tt0000009")]);
 
     const preview = await previewOk(request());
     expect(preview.titleCount).toBe(0);
@@ -301,12 +385,7 @@ describe("previewList: Unresolved entries", () => {
 
 describe("previewList: problems", () => {
   it("explains a private Source list", async () => {
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        fetchSource: () =>
-          Promise.reject(new SourceUnavailableError("private", "private")),
-      }),
-    );
+    trakt.fail(ITEMS, 401);
 
     await expect(previewList(request())).resolves.toEqual({
       ok: false,
@@ -315,56 +394,59 @@ describe("previewList: problems", () => {
   });
 
   it("asks for a Connection without reading when the request may not use one", async () => {
-    const fetchSource = vi.fn();
-    useFakeProvider(fakeAdapter("trakt", { fetchSource }));
+    serveHistory(MOVIES);
 
     await expect(
       previewList(request({ sourceRef: "me/history" })),
     ).resolves.toEqual({ ok: false, reason: "needs_connection" });
-    expect(fetchSource).not.toHaveBeenCalled();
+    expect(trakt.requests).toEqual([]);
   });
 
   it("asks to connect again when the Connection expired", async () => {
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        fetchSource: () => Promise.reject(new ConnectionExpiredError("trakt")),
-      }),
-    );
+    const account = seedAccount();
+    seedConnection(account.id, "trakt", {
+      refreshToken: null,
+      expiresAt: new Date(Date.now() - 60_000),
+    });
+    serveHistory(MOVIES);
 
-    await expect(previewList(request())).resolves.toEqual({
+    await expect(
+      previewList(
+        request({ sourceRef: "me/history", connectionAccountId: account.id }),
+      ),
+    ).resolves.toEqual({
       ok: false,
       reason: "needs_connection",
     });
+    expect(trakt.requests).toEqual([]);
   });
 
   it("reads nothing from a Provider that is turned off", async () => {
-    process.env.DISABLED_PROVIDERS = "trakt";
-    const fetchSource = vi.fn();
-    useFakeProvider(fakeAdapter("trakt", { fetchSource }));
+    vi.stubEnv("DISABLED_PROVIDERS", "trakt");
+    serveTrakt(MOVIES);
 
     await expect(previewList(request())).resolves.toEqual({
       ok: false,
       reason: "disabled",
     });
-    expect(fetchSource).not.toHaveBeenCalled();
+    expect(trakt.requests).toEqual([]);
   });
 
   it("reports an unexpected failure as unavailable, and reads again next time", async () => {
-    useTraktApp();
-    for (const meta of MOVIES) imdb.titles.set(meta.id, meta);
-    const items = `${TRAKT_API}/users/someone/lists/favorites/items`;
-    let reads = 0;
+    knownTitles(MOVIES);
+    const items = `${TRAKT_API}${ITEMS}`;
+    let count = 0;
     server.use(
       http.get(
         items,
         () => {
-          reads += 1;
+          count += 1;
           return HttpResponse.error();
         },
         { once: true },
       ),
       http.get(items, () => {
-        reads += 1;
+        count += 1;
         return HttpResponse.json(traktItems(MOVIES));
       }),
     );
@@ -377,23 +459,20 @@ describe("previewList: problems", () => {
       ok: true,
       titleCount: 3,
     });
-    expect(reads).toBe(2);
+    expect(count).toBe(2);
   });
 });
 
 describe("previewList: reads", () => {
   it("reuses one read when only the sort or the filters change", async () => {
-    const fetchSource = vi.fn(() =>
-      Promise.resolve({ entries: entries(MOVIES), complete: true }),
-    );
-    useFakeProvider(fakeAdapter("trakt", { fetchSource }));
+    serveTrakt(MOVIES);
 
     await previewList(request());
     const sorted = await previewOk(
       request({ sortOption: "rating-desc", catalogSettings: { minRating: 7 } }),
     );
 
-    expect(fetchSource).toHaveBeenCalledOnce();
+    expect(reads()).toHaveLength(1);
     expect(sorted.catalogs[0].titles.map((title) => title.name)).toEqual([
       "Alpha",
       "Bravo",
@@ -401,31 +480,27 @@ describe("previewList: reads", () => {
   });
 
   it("never shares a read through a Connection with another Account or a public request", async () => {
-    const fetchSource = vi.fn(() =>
-      Promise.resolve({ entries: entries(MOVIES), complete: true }),
-    );
-    useFakeProvider(fakeAdapter("trakt", { fetchSource }));
+    const path = "/users/owner/lists/private-list/items";
+    serveTrakt(MOVIES, path);
     const owner = seedAccount();
-    seedConnection(owner.id, "trakt");
+    seedConnection(owner.id, "trakt", { accessToken: "owner-token" });
     const other = seedAccount();
-    seedConnection(other.id, "trakt");
+    seedConnection(other.id, "trakt", { accessToken: "other-token" });
     const ref = { sourceRef: "users/owner/lists/private-list" };
 
     await previewList(request({ ...ref, connectionAccountId: owner.id }));
     await previewList(request({ ...ref, connectionAccountId: other.id }));
     await previewList(request(ref));
 
-    expect(fetchSource).toHaveBeenCalledTimes(3);
-    expect(fetchSource).toHaveBeenLastCalledWith(ref.sourceRef, {
-      connection: null,
-    });
+    expect(reads(path).map((read) => read.token)).toEqual([
+      "owner-token",
+      "other-token",
+      null,
+    ]);
   });
 
   it("reads again after the Account connects the Provider again", async () => {
-    const fetchSource = vi.fn(() =>
-      Promise.resolve({ entries: entries(MOVIES), complete: true }),
-    );
-    useFakeProvider(fakeAdapter("trakt", { fetchSource }));
+    serveHistory(MOVIES);
     const account = seedAccount();
     seedConnection(account.id, "trakt", { accessToken: "first-user" });
     const history = request({
@@ -435,57 +510,39 @@ describe("previewList: reads", () => {
 
     await previewList(history);
     await previewList(history);
-    expect(fetchSource).toHaveBeenCalledOnce();
+    expect(reads(HISTORY[0]).map((read) => read.token)).toEqual(["first-user"]);
 
     const connections = db.getTable("connections");
     connections.splice(0, connections.length);
     seedConnection(account.id, "trakt", { accessToken: "second-user" });
     await previewList(history);
 
-    expect(fetchSource).toHaveBeenCalledTimes(2);
+    expect(reads(HISTORY[0]).map((read) => read.token)).toEqual([
+      "first-user",
+      "second-user",
+    ]);
   });
 
   it("reads the Source list again after five minutes", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    const fetchSource = vi.fn(() =>
-      Promise.resolve({ entries: entries(MOVIES), complete: true }),
-    );
-    useFakeProvider(fakeAdapter("trakt", { fetchSource }));
+    serveTrakt(MOVIES);
 
     await previewList(request());
     vi.advanceTimersByTime(60_000);
     await previewList(request());
-    expect(fetchSource).toHaveBeenCalledOnce();
+    expect(reads()).toHaveLength(1);
 
     vi.advanceTimersByTime(5 * 60_000);
     await previewList(request());
-    expect(fetchSource).toHaveBeenCalledTimes(2);
+    expect(reads()).toHaveLength(2);
   });
 
   it("reads again after 30 seconds when entries were not checked yet", async () => {
-    vi.useFakeTimers({ toFake: ["Date"] });
-    const unknown = Array.from(
-      { length: 301 },
-      (_, index) =>
-        ({
-          type: "movie",
-          externalIds: { tmdb: { id: index + 1, type: "movie" } },
-        }) satisfies SourceEntry,
-    );
-    const fetchSource = vi.fn(() =>
-      Promise.resolve({ entries: unknown, complete: true }),
-    );
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        fetchSource,
-        resolutionKey: (entry) => ({
-          namespace: "tmdb:movie",
-          externalId: String(entry.externalIds?.tmdb?.id),
-        }),
-        resolverStrategies: [
-          { name: "none", resolve: () => Promise.resolve(new Map()) },
-        ],
-      }),
+    trakt.serveItems(
+      ITEMS,
+      Array.from({ length: 301 }, (_, index) => ({
+        type: "movie",
+        movie: { ids: { trakt: index + 1, tmdb: index + 1 } },
+      })),
     );
 
     const first = await previewOk(request());
@@ -493,40 +550,50 @@ describe("previewList: reads", () => {
 
     vi.advanceTimersByTime(31_000);
     await previewList(request());
-    expect(fetchSource).toHaveBeenCalledTimes(2);
+    expect(reads()).toHaveLength(2);
   });
 });
 
 describe("previewList: merged Lists", () => {
   const IMDB = { provider: "imdb", sourceRef: "ur1000001" } as const;
+  const OTHER: ListSource = {
+    provider: "trakt",
+    sourceRef: "users/someone/lists/other",
+  };
 
   function dated(metas: StremioMeta[], dates: string[]) {
-    return entries(metas).map((entry, index) => ({
-      ...entry,
-      addedAt: dates[index],
+    knownTitles(metas);
+    return traktItems(metas).map((item, index) => ({
+      ...item,
+      listed_at: dates[index],
     }));
   }
 
   it("shows the Titles of every Source list once, with all their Unresolved entries", async () => {
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        entries: [
-          ...entries([MOVIES[0], MOVIES[1]]),
-          { title: "Lost film", year: 1970, type: "movie" },
-        ],
+    knownTitles([...MOVIES, ...SERIES]);
+    trakt.serveItems(ITEMS, [
+      ...traktItems([MOVIES[0], MOVIES[1]]),
+      { type: "movie", movie: { title: "Lost film", year: 1970, ids: {} } },
+    ]);
+    imdb.watchlists.set(IMDB.sourceRef, [MOVIES[1], MOVIES[2], ...SERIES]);
+    unresolvedTitle("senscritique", 3001);
+    senscritique.lists.set(3, [
+      senscritiqueProduct(3001, {
+        type: "series",
+        title: "Lost show",
+        yearOfProduction: 1980,
+        dateRelease: null,
       }),
-    );
-    useFakeProvider(
-      fakeAdapter("imdb", {
-        entries: [
-          ...entries([MOVIES[1], MOVIES[2], ...SERIES]),
-          { title: "Lost show", year: 1980, type: "series" },
-        ],
-      }),
-    );
+    ]);
 
     const preview = await previewOk(
-      request({ mergedSources: [IMDB], sortOption: "title-asc" }),
+      request({
+        mergedSources: [
+          IMDB,
+          { provider: "senscritique", sourceRef: "lists/3" },
+        ],
+        sortOption: "title-asc",
+      }),
     );
 
     expect(preview.titleCount).toBe(4);
@@ -548,25 +615,23 @@ describe("previewList: merged Lists", () => {
   });
 
   it("sorts the Source lists together by date added, like the Catalog", async () => {
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        entries: dated(
-          [MOVIES[0], MOVIES[1]],
-          ["2021-01-01T00:00:00.000Z", "2023-01-01T00:00:00.000Z"],
-        ),
-      }),
+    trakt.serveItems(
+      ITEMS,
+      dated(
+        [MOVIES[0], MOVIES[1]],
+        ["2021-01-01T00:00:00.000Z", "2023-01-01T00:00:00.000Z"],
+      ),
     );
-    useFakeProvider(
-      fakeAdapter("imdb", {
-        entries: dated(
-          [MOVIES[2], MOVIES[0]],
-          ["2022-01-01T00:00:00.000Z", "2024-01-01T00:00:00.000Z"],
-        ),
-      }),
+    trakt.serveItems(
+      `/${OTHER.sourceRef}/items`,
+      dated(
+        [MOVIES[2], MOVIES[0]],
+        ["2022-01-01T00:00:00.000Z", "2024-01-01T00:00:00.000Z"],
+      ),
     );
 
     const preview = await previewOk(
-      request({ mergedSources: [IMDB], sortOption: "added_at-asc" }),
+      request({ mergedSources: [OTHER], sortOption: "added_at-asc" }),
     );
 
     expect(preview.catalogs[0].titles.map((title) => title.name)).toEqual([
@@ -577,13 +642,9 @@ describe("previewList: merged Lists", () => {
   });
 
   it("leaves out a Source list that cannot be read and says why", async () => {
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        fetchSource: () =>
-          Promise.reject(new SourceUnavailableError("private", "private")),
-      }),
-    );
-    useFakeProvider(fakeAdapter("imdb", { entries: entries([MOVIES[2]]) }));
+    trakt.fail(ITEMS, 401);
+    imdb.watchlists.set(IMDB.sourceRef, [MOVIES[2]]);
+    knownTitles([MOVIES[2]]);
 
     const preview = await previewOk(request({ mergedSources: [IMDB] }));
 
@@ -591,16 +652,16 @@ describe("previewList: merged Lists", () => {
     expect(preview.sourceProblems).toEqual([
       {
         provider: "trakt",
-        sourceRef: "users/someone/lists/favorites",
+        sourceRef: FAVORITES,
         reason: "private",
       },
     ]);
   });
 
   it("does not read a merged Source list that needs a Connection the request may not use", async () => {
-    const traktRead = vi.fn();
-    useFakeProvider(fakeAdapter("trakt", { fetchSource: traktRead }));
-    useFakeProvider(fakeAdapter("imdb", { entries: entries([MOVIES[2]]) }));
+    serveHistory(MOVIES);
+    imdb.watchlists.set(IMDB.sourceRef, [MOVIES[2]]);
+    knownTitles([MOVIES[2]]);
 
     const preview = await previewOk(
       request({
@@ -609,7 +670,7 @@ describe("previewList: merged Lists", () => {
       }),
     );
 
-    expect(traktRead).not.toHaveBeenCalled();
+    expect(trakt.requests).toEqual([]);
     expect(preview.sourceProblems).toEqual([
       {
         provider: "trakt",
@@ -620,13 +681,8 @@ describe("previewList: merged Lists", () => {
   });
 
   it("fails when no Source list can be read, naming the first one that failed", async () => {
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        fetchSource: () =>
-          Promise.reject(new SourceUnavailableError("not_found", "gone")),
-      }),
-    );
-    process.env.DISABLED_PROVIDERS = "imdb";
+    trakt.fail(ITEMS, 404);
+    vi.stubEnv("DISABLED_PROVIDERS", "imdb");
 
     await expect(
       previewList(request({ mergedSources: [IMDB] })),
@@ -635,7 +691,7 @@ describe("previewList: merged Lists", () => {
       reason: "not_found",
       source: {
         provider: "trakt",
-        sourceRef: "users/someone/lists/favorites",
+        sourceRef: FAVORITES,
       },
     });
   });

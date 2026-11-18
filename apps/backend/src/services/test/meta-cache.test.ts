@@ -11,16 +11,12 @@ import {
   seedLegacyAccount,
   seedList,
 } from "../../test/helpers/account.fixture.js";
-import { cache } from "../../test/helpers/mock-list-cache.js";
+import { cache } from "../../test/helpers/list-cache.test-utils";
 import { db, resetRpc } from "../../test/helpers/mock-supabase.js";
 import { readJson, stremioManifest } from "../../test/helpers/json.js";
+import { useMswServer } from "../../test/helpers/msw.test-utils";
 
-vi.mock(
-  "../../lib/supabase",
-  () => import("../../test/helpers/mock-supabase.js"),
-);
-vi.mock("../list-cache", () => import("../../test/helpers/mock-list-cache.js"));
-vi.mock("../../lib/resend", () => import("../../test/helpers/mock-resend"));
+useMswServer();
 
 const anyMetaBody = z.object({
   meta: z.record(z.string(), z.unknown()).nullable(),
