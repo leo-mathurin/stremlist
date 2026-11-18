@@ -10,6 +10,7 @@ import { isProviderId } from "@stremlist/shared/providers";
 import { decryptSecret } from "../../lib/crypto";
 import { LruCache } from "../../lib/lru";
 import { supabase } from "../../lib/supabase";
+import type { LibraryItem } from "../stremio";
 import { recordItems } from "./detect";
 import { isEpisodeWatched, movieWatched } from "./library";
 import { readLibraryItems } from "./pace";
@@ -52,14 +53,49 @@ export function forgetWatchContext(accountId: string): void {
   contexts.delete(accountId);
 }
 
+/** Whether Stremio shows anything of the item as watched. */
+function hasWatched(item: LibraryItem): boolean {
+  return item.type === "movie"
+    ? movieWatched(item)
+    : Boolean(item.state?.watched);
+}
+
 async function isTracked(accountId: string): Promise<boolean> {
   return (await watchContext(accountId)) !== null;
 }
 
 /**
- * A /stream request of a tracked Account: read the item, then start its
- * cycle. A title that Stremio already shows as watched has no cycle: a
- * replay is never sent.
+ * Sends what `item` shows as newly watched against the Account's watch
+ * state. Nothing is sent before the Watched baseline.
+ */
+async function sendNewTitles(
+  accountId: string,
+  context: WatchContext,
+  item: LibraryItem,
+): Promise<void> {
+  if (!context.hasBaseline) return;
+  const { data, error } = await supabase.rpc("watch_destination_list", {
+    p_account_id: accountId,
+  });
+  if (error) throw error;
+  const destinations = await destinationsNow(
+    accountId,
+    decryptSecret(context.authKey),
+    data.filter(isProviderId),
+  );
+  await recordItems(accountId, destinations, [item], {
+    link: linkOf(context.authKey),
+  });
+}
+
+/**
+ * A /stream request of a tracked Account: read the item, send what it
+ * shows as newly watched, then start its cycle. The cycle of a series is
+ * shared by its episodes and starts from what is watched now, so an
+ * episode that turned watched since the last read must be sent first: the
+ * app asks for the streams of the next episode as the previous one ends.
+ * A title that Stremio already shows as watched has no cycle: a replay is
+ * never sent.
  */
 export async function onStreamRequest(
   accountId: string,
@@ -72,6 +108,17 @@ export async function onStreamRequest(
   const [item] = await readLibraryItems(decryptSecret(context.authKey), [
     itemId,
   ]);
+  if (item && hasWatched(item)) {
+    try {
+      await sendNewTitles(accountId, context, item);
+    } catch (error) {
+      // The cycle still starts; the sweep sends what this missed.
+      console.error(
+        `Watch tracking send on /stream failed for ${accountId}:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  }
   const watched =
     type === "movie"
       ? movieWatched(item)
@@ -132,16 +179,5 @@ export async function onLibraryWatchedEvent(
     await readLibraryItems(decryptSecret(context.authKey), [itemId])
   ).at(0);
   if (!item) return;
-  const { data, error } = await supabase.rpc("watch_destination_list", {
-    p_account_id: accountId,
-  });
-  if (error) throw error;
-  const destinations = await destinationsNow(
-    accountId,
-    decryptSecret(context.authKey),
-    data.filter(isProviderId),
-  );
-  await recordItems(accountId, destinations, [item], {
-    link: linkOf(context.authKey),
-  });
+  await sendNewTitles(accountId, context, item);
 }
