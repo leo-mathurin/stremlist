@@ -8,9 +8,6 @@ import {
   vi,
 } from "vite-plus/test";
 import app from "../index.js";
-import { SourceUnavailableError } from "../providers/types";
-import { resetPreviewReadings } from "../services/list-preview";
-import { sourceCaches } from "../services/merged-lists";
 import { historyKey } from "../services/title-history";
 import {
   LIST_IDS,
@@ -18,46 +15,46 @@ import {
   seedLegacyAccount,
   seedList,
 } from "./helpers/account.fixture.js";
-import { cache } from "./helpers/mock-list-cache.js";
-import { r2Unreadable } from "./helpers/mock-r2.js";
+import { useBackgroundTasks } from "./helpers/background.test-utils.js";
+import { sourceCacheKeys } from "./helpers/config-api.js";
+import { cache } from "./helpers/list-cache.test-utils.js";
 import { db } from "./helpers/mock-supabase.js";
+import { useMswServer } from "./helpers/msw.test-utils.js";
+import { r2Unreadable } from "./helpers/r2.test-utils.js";
 import {
   accountId,
   DAY_MS,
   detectionRows,
-  entry,
   ids,
   newTitles,
+  newTitlesHandlers,
   resetNewTitlesTest,
   restoreNewTitlesTest,
   seedHistory,
   seedImdbList,
   seedNewTitlesAccount,
+  serveCutSmartList,
   series,
   setAccountId,
   sourceList,
   summary,
   sync,
   syncRows,
+  testDay,
 } from "./helpers/new-titles.js";
 import { metasBody, readJson, stremioManifest } from "./helpers/json.js";
 
-vi.mock("../lib/supabase", async () => {
-  return await import("./helpers/mock-supabase.js");
-});
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-vi.mock("../lib/r2", async () => {
-  return await import("./helpers/mock-r2.js");
-});
-vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
+const server = useMswServer();
+const background = useBackgroundTasks();
 
-beforeEach(resetNewTitlesTest);
-afterEach(restoreNewTitlesTest);
+beforeEach(() => {
+  resetNewTitlesTest();
+  server.use(...newTitlesHandlers());
+});
+afterEach(async () => {
+  await background.settle();
+  restoreNewTitlesTest();
+});
 
 describe("New titles catalog", () => {
   async function seedImdbAndTraktLists(traktTitle: string) {
@@ -94,10 +91,10 @@ describe("New titles catalog", () => {
     const metas = await newTitles();
     expect(ids(metas)).toEqual(["tt0000003", "tt0000002"]);
     expect(metas[0].description).toBe(
-      "Detected by Stremlist on 3 Oct 2026 in your Trakt watchlist.",
+      `Detected by Stremlist on ${testDay(2)} in your Trakt watchlist.`,
     );
     expect(metas[1].description).toBe(
-      "Detected by Stremlist on 2 Oct 2026 in IMDb picks.",
+      `Detected by Stremlist on ${testDay(1)} in IMDb picks.`,
     );
     expect((await summary()).summary?.detected).toBe(2);
   });
@@ -117,7 +114,7 @@ describe("New titles catalog", () => {
     const metas = await newTitles();
     expect(ids(metas)).toEqual(["tt0000002"]);
     expect(metas[0].description).toBe(
-      "Detected by Stremlist on 2 Oct 2026 in IMDb picks.",
+      `Detected by Stremlist on ${testDay(1)} in IMDb picks.`,
     );
 
     trakt.metas = [movie("tt0000001")];
@@ -208,18 +205,19 @@ describe("merged Lists", () => {
     sourceRef: "users/leo/watchlist",
   };
 
-  async function seedMergedList(catalogTitle = "Merged picks") {
+  async function seedMergedList(
+    catalogTitle = "Merged picks",
+    traktRef = TRAKT_WATCHLIST.sourceRef,
+  ) {
     seedNewTitlesAccount();
     seedList(accountId, {
       id: LIST_IDS[0],
       source_ref: "ur1",
       catalog_title: catalogTitle,
-      merged_sources: [
-        { provider: "trakt", source_ref: TRAKT_WATCHLIST.sourceRef },
-      ],
+      merged_sources: [{ provider: "trakt", source_ref: traktRef }],
     });
     const imdb = sourceList("imdb", [movie("tt0000001")]);
-    const trakt = sourceList("trakt", [movie("tt0000005")]);
+    const trakt = sourceList("trakt", [movie("tt0000005")], traktRef);
     await sync(LIST_IDS[0]);
     return { imdb, trakt };
   }
@@ -239,7 +237,7 @@ describe("merged Lists", () => {
     const metas = await newTitles();
     expect(ids(metas)).toEqual(["tt0000002"]);
     expect(metas[0].description).toBe(
-      "Detected by Stremlist on 2 Oct 2026 in Merged picks.",
+      `Detected by Stremlist on ${testDay(1)} in Merged picks.`,
     );
     expect((await summary()).summary).toMatchObject({
       detected: 1,
@@ -257,7 +255,7 @@ describe("merged Lists", () => {
     const metas = await newTitles();
     expect(ids(metas)).toEqual(["tt0000003"]);
     expect(metas[0].description).toBe(
-      "Detected by Stremlist on 2 Oct 2026 in your Trakt watchlist.",
+      `Detected by Stremlist on ${testDay(1)} in your Trakt watchlist.`,
     );
   });
 
@@ -273,9 +271,7 @@ describe("merged Lists", () => {
     });
     const imdb = sourceList("imdb", [movie("tt0000001")]);
     const trakt = sourceList("trakt", [movie("tt0000005")]);
-    trakt.read = () => {
-      throw new SourceUnavailableError("unavailable", "Trakt is down");
-    };
+    trakt.down = true;
     await sync(LIST_IDS[0]);
 
     expect((await summary()).summary).toMatchObject({ waitingLists: 1 });
@@ -285,7 +281,7 @@ describe("merged Lists", () => {
     await sync(LIST_IDS[0]);
     expect(ids(await newTitles())).toEqual(["tt0000002"]);
 
-    trakt.read = null;
+    trakt.down = false;
     trakt.metas = [movie("tt0000005"), movie("tt0000006")];
     await sync(LIST_IDS[0]);
     expect(ids(await newTitles())).toEqual(["tt0000002"]);
@@ -297,13 +293,10 @@ describe("merged Lists", () => {
   });
 
   it("do not compare a Source list whose read is cut short", async () => {
-    const { imdb, trakt } = await seedMergedList();
+    const { imdb } = await seedMergedList("Merged picks", "smart-lists/picks");
 
     imdb.metas = [movie("tt0000001"), movie("tt0000002")];
-    trakt.read = () => ({
-      entries: [entry(movie("tt0000007"))],
-      complete: false,
-    });
+    serveCutSmartList("smart-lists/picks", [movie("tt0000007")]);
     await sync(LIST_IDS[0]);
 
     expect(ids(await newTitles())).toEqual(["tt0000002"]);
@@ -349,9 +342,12 @@ describe("merged Lists", () => {
     seedHistory("imdb", "ur7654321", "tt0000001");
     seedHistory("trakt", "me/history", "tt0000002");
     seedHistory("imdb", "ls1", "tt0000003");
-    const [imdbCache, traktCache] = sourceCaches(merged);
-    cache.seed(imdbCache.cacheKey, [movie("tt0000001")]);
-    cache.seed(traktCache.cacheKey, [movie("tt0000002")]);
+    const [imdbCache, traktCache] = sourceCacheKeys(merged.id, [
+      merged,
+      ...merged.mergedSources,
+    ]);
+    cache.seed(imdbCache, [movie("tt0000001")]);
+    cache.seed(traktCache, [movie("tt0000002")]);
     cache.seed(LIST_IDS[1], [movie("tt0000003")]);
 
     expect(ids(await newTitles("movie", "ur7654321"))).toEqual(["tt0000003"]);
@@ -361,7 +357,6 @@ describe("merged Lists", () => {
     seedNewTitlesAccount();
     sourceList("imdb", [movie("tt0000001")]);
     sourceList("trakt", [movie("tt0000005")]);
-    resetPreviewReadings();
 
     const res = await app.request("/lists/preview", {
       method: "POST",

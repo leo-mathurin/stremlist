@@ -6,9 +6,9 @@ import {
   it,
   vi,
 } from "vite-plus/test";
+import { http, HttpResponse } from "msw";
 import app from "../index.js";
-import type { SourceEntry } from "../providers/types";
-import { SourceUnavailableError } from "../providers/types";
+import { getProvider } from "./helpers/config-api.js";
 import { entryKey } from "../services/detections";
 import {
   LIST_IDS,
@@ -16,42 +16,43 @@ import {
   seedConnection,
   seedList,
 } from "./helpers/account.fixture.js";
-import { fakeAdapter, useFakeProvider } from "./helpers/mock-registry.js";
+import { useBackgroundTasks } from "./helpers/background.test-utils.js";
 import { db } from "./helpers/mock-supabase.js";
+import { useMswServer } from "./helpers/msw.test-utils.js";
 import {
   accountId,
   DAY_MS,
   detectionRows,
-  entry,
+  duringNextRead,
   ids,
+  imdb,
   newTitles,
+  newTitlesHandlers,
   NEXT_SYNC_MS,
   resetNewTitlesTest,
   restoreNewTitlesTest,
   seedImdbList,
   seedNewTitlesAccount,
+  serveCutSmartList,
   sourceList,
   summary,
   sync,
   syncRows,
+  testDay,
+  trakt,
 } from "./helpers/new-titles.js";
 
-vi.mock("../lib/supabase", async () => {
-  return await import("./helpers/mock-supabase.js");
-});
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-vi.mock("../lib/r2", async () => {
-  return await import("./helpers/mock-r2.js");
-});
-vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
+const server = useMswServer();
+const background = useBackgroundTasks();
 
-beforeEach(resetNewTitlesTest);
-afterEach(restoreNewTitlesTest);
+beforeEach(() => {
+  resetNewTitlesTest();
+  server.use(...newTitlesHandlers());
+});
+afterEach(async () => {
+  await background.settle();
+  restoreNewTitlesTest();
+});
 
 describe("detection", () => {
   it("uses the first complete synchronization as the Baseline", async () => {
@@ -91,7 +92,7 @@ describe("detection", () => {
     const metas = await newTitles();
     expect(ids(metas)).toEqual(["tt0000002"]);
     expect(metas[0].description).toBe(
-      "Detected by Stremlist on 3 Oct 2026 in Watchlist.\n\nA plot.",
+      `Detected by Stremlist on ${testDay(2)} in Watchlist.\n\nA plot.`,
     );
     expect((await summary()).summary).toEqual({
       detected: 1,
@@ -107,15 +108,13 @@ describe("detection", () => {
     source.metas = [movie("tt0000001"), movie("tt0000002")];
     await sync(LIST_IDS[0]);
 
-    source.read = () => {
-      throw new SourceUnavailableError("unavailable", "Provider is down");
-    };
+    source.down = true;
     await sync(LIST_IDS[0]);
 
     expect(ids(await newTitles())).toEqual(["tt0000002"]);
     expect(detectionRows().every((row) => row.removed_at === null)).toBe(true);
 
-    source.read = null;
+    source.down = false;
     await sync(LIST_IDS[0]);
     expect(ids(await newTitles())).toEqual(["tt0000002"]);
     expect(detectionRows()).toHaveLength(2);
@@ -123,20 +122,28 @@ describe("detection", () => {
   });
 
   it("does not compare a read cut by a page cap", async () => {
-    seedImdbList();
-    const source = sourceList("imdb", [movie("tt0000001"), movie("tt0000002")]);
+    seedNewTitlesAccount();
+    seedList(accountId, {
+      id: LIST_IDS[0],
+      provider: "trakt",
+      source_ref: "smart-lists/picks",
+    });
+    const source = sourceList(
+      "trakt",
+      [movie("tt0000001"), movie("tt0000002")],
+      "smart-lists/picks",
+    );
     await sync(LIST_IDS[0]);
 
-    source.read = () => ({
-      entries: [entry(movie("tt0000001")), entry(movie("tt0000003"))],
-      complete: false,
-    });
+    serveCutSmartList("smart-lists/picks", [
+      movie("tt0000001"),
+      movie("tt0000003"),
+    ]);
     await sync(LIST_IDS[0]);
 
     expect(await newTitles()).toEqual([]);
     expect(detectionRows().every((row) => row.removed_at === null)).toBe(true);
 
-    source.read = null;
     source.metas = [movie("tt0000001"), movie("tt0000002"), movie("tt0000003")];
     vi.setSystemTime(Date.now() + DAY_MS);
     await sync(LIST_IDS[0]);
@@ -180,56 +187,54 @@ describe("detection", () => {
   });
 });
 
+const TMDB_API = "https://api.themoviedb.org/3";
+
 function resolvingSourceList() {
+  vi.stubEnv("TMDB_API_KEY", "tmdb-key");
   const state = {
-    entries: [] as SourceEntry[],
+    entries: [] as TraktEntry[],
     known: new Map<number, string>(),
   };
-  useFakeProvider(
-    fakeAdapter("trakt", {
-      fetchSource: () =>
-        Promise.resolve({
-          entries: structuredClone(state.entries),
-          complete: true,
-        }),
-      resolutionKey: (item) =>
-        item.externalIds?.trakt === undefined
-          ? null
-          : { namespace: "fake", externalId: String(item.externalIds.trakt) },
-      resolverStrategies: [
-        {
-          name: "fake",
-          resolve: (items) =>
-            Promise.resolve(
-              new Map(
-                items.flatMap((item, index) => {
-                  const imdbId = state.known.get(item.externalIds?.trakt ?? -1);
-                  return imdbId ? [[index, imdbId] as const] : [];
-                }),
-              ),
-            ),
-        },
-      ],
+  const serve = () => {
+    trakt.paths.set(
+      "/users/leo/watchlist",
+      state.entries.map(({ trakt: id, tmdb, title }) => ({
+        type: "movie",
+        movie: { title, ids: { trakt: id, ...(tmdb ? { tmdb } : {}) } },
+      })),
+    );
+  };
+  server.use(
+    http.get(`${TMDB_API}/movie/:id/external_ids`, ({ params }) => {
+      const imdbId = state.known.get(Number(params.id));
+      return HttpResponse.json({ imdb_id: imdbId ?? null });
     }),
   );
-  return state;
+  return {
+    get entries() {
+      return state.entries;
+    },
+    set entries(next: TraktEntry[]) {
+      state.entries = next;
+      serve();
+    },
+    known: state.known,
+  };
 }
 
-function providerEntry(trakt: number, imdbId: string) {
-  const entry: SourceEntry = {
-    externalIds: { trakt },
-    type: "movie",
-    title: `Entry ${trakt}`,
-    meta: movie(imdbId),
-  };
+interface TraktEntry {
+  trakt: number;
+  tmdb?: number;
+  title: string;
+}
+
+function providerEntry(id: number, imdbId: string) {
+  imdb.titles.set(imdbId, movie(imdbId));
+  const entry: TraktEntry = { trakt: id, tmdb: id, title: `Entry ${id}` };
   return entry;
 }
 
-const NEVER_RESOLVED: SourceEntry = {
-  externalIds: { trakt: 999 },
-  type: "movie",
-  title: "Never on IMDb",
-};
+const NEVER_RESOLVED: TraktEntry = { trakt: 999, title: "Never on IMDb" };
 
 describe("Unresolved entries", () => {
   const AFTER_RETRY_MS = 25 * 60 * 60_000;
@@ -258,7 +263,9 @@ describe("Unresolved entries", () => {
     await sync(LIST_IDS[0]);
 
     expect(ids(await newTitles())).toEqual(["tt0000002"]);
-    const never = detectionRows().find((row) => row.entry_key === "fake:999");
+    const never = detectionRows().find(
+      (row) => row.entry_key === "trakt-movie:999",
+    );
     expect(never).toMatchObject({ imdb_id: null, removed_at: null });
   });
 
@@ -278,7 +285,7 @@ describe("Unresolved entries", () => {
     await sync(LIST_IDS[0]);
 
     expect(await newTitles()).toEqual([]);
-    const row = detectionRows().find((r) => r.entry_key === "fake:3");
+    const row = detectionRows().find((r) => r.entry_key === "trakt-movie:3");
     expect(row).toMatchObject({ imdb_id: "tt0000003", detected_at: null });
   });
 
@@ -301,14 +308,14 @@ describe("Unresolved entries", () => {
     const metas = await newTitles();
     expect(ids(metas)).toEqual(["tt0000004"]);
     expect(metas[0].description).toBe(
-      "Detected by Stremlist on 1 Oct 2026 in Trakt watchlist.",
+      `Detected by Stremlist on ${testDay(0)} in Trakt watchlist.`,
     );
-    const row = detectionRows().find((r) => r.entry_key === "fake:4");
+    const row = detectionRows().find((r) => r.entry_key === "trakt-movie:4");
     expect(row).toMatchObject({ imdb_id: "tt0000004", detected_at: firstSeen });
   });
 
   it("are followed by title and year when the Provider gives no ID", () => {
-    const adapter = fakeAdapter("imdb");
+    const adapter = getProvider("imdb");
     expect(entryKey(adapter, { title: "Amélie!", year: 2001 })).toBe(
       "title:amelie:2001",
     );
@@ -322,17 +329,10 @@ describe("Unresolved entries", () => {
 describe("overlapping reads and Connections", () => {
   it("dates a synchronization by the start of its read", async () => {
     seedImdbList();
-    useFakeProvider(
-      fakeAdapter("imdb", {
-        fetchSource: () => {
-          vi.setSystemTime(Date.now() + 10 * 60_000);
-          return Promise.resolve({
-            entries: [entry(movie("tt0000001"))],
-            complete: true,
-          });
-        },
-      }),
-    );
+    sourceList("imdb", [movie("tt0000001")]);
+    duringNextRead(() => {
+      vi.setSystemTime(Date.now() + 10 * 60_000);
+    });
     vi.setSystemTime(Date.now() + NEXT_SYNC_MS);
     const startedAt = new Date().toISOString();
     await app.request(
@@ -352,17 +352,10 @@ describe("overlapping reads and Connections", () => {
       provider: "trakt",
       source_ref: "me/history",
     });
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        fetchSource: () => {
-          db.tables.connections = [];
-          return Promise.resolve({
-            entries: [entry(movie("tt0000001"))],
-            complete: true,
-          });
-        },
-      }),
-    );
+    sourceList("trakt", [movie("tt0000001")], "me/history");
+    duringNextRead(() => {
+      db.tables.connections = [];
+    });
 
     await sync(LIST_IDS[0]);
 
@@ -379,7 +372,7 @@ describe("overlapping reads and Connections", () => {
       source_ref: "me/history",
       catalog_title: "History",
     });
-    const source = sourceList("trakt", [movie("tt0000001")]);
+    const source = sourceList("trakt", [movie("tt0000001")], "me/history");
     await sync(LIST_IDS[0]);
     source.metas = [movie("tt0000001"), movie("tt0000002")];
     await sync(LIST_IDS[0]);

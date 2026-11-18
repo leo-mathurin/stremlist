@@ -1,13 +1,21 @@
-import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
+import { http, HttpResponse } from "msw";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 
 import app from "../index.js";
 import {
   getConfig,
+  getProvider,
   legacyAccountId,
   OWNER,
   postJson,
   resetConfigTest,
-  runScheduledTasks,
   seedWatchlist,
   UUID_1,
   UUID_2,
@@ -19,10 +27,13 @@ import {
   seedConnection,
   seedList,
 } from "./helpers/account.fixture.js";
-import { cache } from "./helpers/mock-list-cache.js";
-import { r2Objects, r2Undeletable } from "./helpers/mock-r2.js";
-import { fakeAdapter, useFakeProvider } from "./helpers/mock-registry.js";
-import { db } from "./helpers/mock-supabase.js";
+import { useBackgroundTasks } from "./helpers/background.test-utils.js";
+import { cinemetaWithoutTitles, FakeImdb } from "./helpers/imdb.test-utils.js";
+import { cache } from "./helpers/list-cache.test-utils.js";
+import { db, rpcCallsOf } from "./helpers/mock-supabase.js";
+import { useMswServer } from "./helpers/msw.test-utils.js";
+import { r2Objects, r2Undeletable } from "./helpers/r2.test-utils.js";
+import { FakeTrakt, useTraktApp } from "./helpers/trakt.test-utils.js";
 import {
   accountIdBody,
   configBody,
@@ -31,18 +42,43 @@ import {
   stremioManifest,
 } from "./helpers/json.js";
 
-const { backgroundMocks, prewarmMocks, supabaseMocks } = await vi.hoisted(
-  () => import("./helpers/config-api-mocks.js"),
-);
-vi.mock("../lib/background", () => backgroundMocks);
-vi.mock("../services/list-prewarm", () => prewarmMocks);
-vi.mock("../lib/supabase", () => supabaseMocks);
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
-vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
+const server = useMswServer();
+const background = useBackgroundTasks();
+const imdb = new FakeImdb();
+const trakt = new FakeTrakt();
 
-beforeEach(resetConfigTest);
+beforeEach(() => {
+  useTraktApp();
+  resetConfigTest();
+  imdb.reset();
+  trakt.reset();
+  server.use(
+    imdb.handler,
+    trakt.handler,
+    cinemetaWithoutTitles,
+    http.post("https://auth.trakt.tv/oauth/revoke", () =>
+      HttpResponse.json({}),
+    ),
+    http.post("https://api.simkl.com/oauth2/revoke", () =>
+      HttpResponse.json({}),
+    ),
+  );
+});
+
+afterEach(async () => {
+  await background.settle();
+  vi.unstubAllEnvs();
+});
+
+function prewarmedAccounts() {
+  return rpcCallsOf("request_list_prewarm").map((args) => args.p_account_id);
+}
+
+function watchlistReads() {
+  return imdb
+    .requestsOf("WatchListPage")
+    .map(({ variables }) => variables.urConst);
+}
 
 function createAccount(body: Parameters<typeof withProviders>[0]) {
   return postJson("/accounts", withProviders(body));
@@ -89,13 +125,9 @@ describe("List CRUD via the config API", () => {
         db.getTable("lists").filter((row) => row.account_id === data.accountId),
       ).toHaveLength(2);
 
-      await runScheduledTasks();
-      expect(prewarmMocks.prewarmLists).toHaveBeenCalledWith(
-        data.accountId,
-        expect.any(Array),
-        true,
-        expect.objectContaining({ posterSource: "rpdb" }),
-      );
+      await background.settle();
+      expect(prewarmedAccounts()).toEqual([data.accountId]);
+      expect(watchlistReads()).toEqual([OWNER]);
 
       const config = await readJson(
         await getConfig(data.accountId),
@@ -216,13 +248,9 @@ describe("upgrading a legacy install", () => {
     ).toEqual(["Mine", ""]);
     expect(after).not.toHaveProperty("movedAt");
 
-    await runScheduledTasks();
-    expect(prewarmMocks.prewarmLists).toHaveBeenCalledWith(
-      accountId,
-      expect.any(Array),
-      true,
-      expect.objectContaining({ posterSource: "rpdb" }),
-    );
+    await background.settle();
+    expect(prewarmedAccounts()).toEqual([accountId]);
+    expect(watchlistReads()).toEqual([OWNER]);
   });
 
   it("has no route that changes the legacy install through its alias alone", async () => {
@@ -273,8 +301,7 @@ describe("DELETE /:accountId/connections/:provider", () => {
   });
 
   it("deletes every object the Connection stored, also private list snapshots", async () => {
-    const forgetConnection = vi.fn();
-    useFakeProvider(fakeAdapter("simkl", { forgetConnection }));
+    const forgetConnection = vi.spyOn(getProvider("simkl"), "forgetConnection");
     const account = seedAccount();
     const other = seedAccount();
     seedConnection(account.id, "simkl");

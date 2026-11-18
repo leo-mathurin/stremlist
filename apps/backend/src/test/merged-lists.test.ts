@@ -1,12 +1,16 @@
 import type { TitleType } from "@stremlist/shared/constants";
 import type { Tables } from "@stremlist/shared/database";
 import type { ListSource } from "@stremlist/shared/list-merge";
-import type { ProviderId } from "@stremlist/shared/providers";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { http, HttpResponse } from "msw";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import app from "../index.js";
-import type { SourceEntry } from "../providers/types";
-import { SourceUnavailableError } from "../providers/types";
-import { sourceCaches } from "../services/merged-lists";
 import {
   LIST_IDS,
   movie,
@@ -15,13 +19,15 @@ import {
   seedLegacyAccount,
   seedList,
 } from "./helpers/account.fixture.js";
-import { cache } from "./helpers/mock-list-cache.js";
-import {
-  fakeAdapter,
-  resetProviders,
-  useFakeProvider,
-} from "./helpers/mock-registry.js";
-import { callRpc, db, resetRpc, rpcHandlers } from "./helpers/mock-supabase.js";
+import { sourceCacheKeys } from "./helpers/config-api.js";
+import { useBackgroundTasks } from "./helpers/background.test-utils.js";
+import { cinemetaWithoutTitles, FakeImdb } from "./helpers/imdb.test-utils.js";
+import { FakeJustWatch } from "./helpers/justwatch.test-utils.js";
+import { cache } from "./helpers/list-cache.test-utils.js";
+import { db, resetRpc } from "./helpers/mock-supabase.js";
+import { useMswServer } from "./helpers/msw.test-utils.js";
+import { resetR2 } from "./helpers/r2.test-utils.js";
+import { FakeTrakt, useTraktApp } from "./helpers/trakt.test-utils.js";
 import {
   accountIdBody,
   configBody,
@@ -33,20 +39,11 @@ import {
   stremioManifest,
 } from "./helpers/json.js";
 
-vi.mock("../lib/supabase", async () => {
-  return await import("./helpers/mock-supabase.js");
-});
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-vi.mock("../lib/r2", async () => {
-  return await import("./helpers/mock-r2.js");
-});
-vi.mock("../lib/background", () => ({ scheduleBackgroundTask: vi.fn() }));
-vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
+const server = useMswServer();
+const background = useBackgroundTasks();
+const imdb = new FakeImdb();
+const trakt = new FakeTrakt();
+const justwatch = new FakeJustWatch();
 
 const [LIST_1] = LIST_IDS;
 const TRAKT_WATCHLIST: ListSource = {
@@ -64,31 +61,60 @@ const TRAKT_LIST: ListSource = {
 
 let accountId = "";
 
-function entry(id: string, addedAt?: string, type: TitleType = "movie") {
-  return {
-    imdbId: id,
-    type,
-    meta: movie(id, { type, name: `Title ${id}` }),
-    ...(addedAt ? { addedAt } : {}),
-  };
+interface Entry {
+  id: string;
+  type: TitleType;
+  addedAt?: string;
 }
 
-function fakeSources(
-  provider: ProviderId,
-  sources: Partial<Record<string, SourceEntry[] | Error>>,
-) {
-  useFakeProvider(
-    fakeAdapter(provider, {
-      fetchSource: (ref) => {
-        const value = sources[ref];
-        if (value instanceof Error) return Promise.reject(value);
-        return Promise.resolve({
-          entries: structuredClone(value ?? []),
-          complete: true,
-        });
-      },
-    }),
-  );
+function entry(id: string, addedAt?: string, type: TitleType = "movie") {
+  imdb.titles.set(id, movie(id, { type, name: `Title ${id}` }));
+  const value: Entry = { id, type, ...(addedAt ? { addedAt } : {}) };
+  return value;
+}
+
+function traktPath(sourceRef: string) {
+  const path = `/${sourceRef.replace(/^me\//, "users/me/")}`;
+  return path.includes("/lists/") ? `${path}/items` : path;
+}
+
+function traktSources(sources: Record<string, Entry[] | number>) {
+  for (const [sourceRef, value] of Object.entries(sources)) {
+    if (typeof value === "number") {
+      trakt.fail(traktPath(sourceRef), value);
+      continue;
+    }
+    trakt.paths.set(
+      traktPath(sourceRef),
+      value.map(({ id, type, addedAt }) => {
+        const media = { title: `Title ${id}`, ids: { imdb: id } };
+        return {
+          ...(type === "series"
+            ? { type: "show", show: media }
+            : { type: "movie", movie: media }),
+          listed_at: addedAt ?? null,
+        };
+      }),
+    );
+  }
+}
+
+function justwatchSources(sources: Record<string, Entry[]>) {
+  justwatch.reset();
+  for (const [id, entries] of Object.entries(sources)) {
+    justwatch.serveList(id, {
+      type: "USER_LIST",
+      name: "Picks",
+      titles: entries.map(({ id: imdbId, type }) => ({
+        id: `tm${imdbId.slice(2)}`,
+        objectType: type === "series" ? "SHOW" : "MOVIE",
+        title: `Title ${imdbId}`,
+        originalReleaseYear: 2000,
+        imdbId,
+        tmdbId: imdbId.slice(2),
+      })),
+    });
+  }
 }
 
 function seedMergedList(
@@ -105,11 +131,7 @@ function seedMergedList(
     })),
     ...rest,
   });
-  return sourceCaches({
-    id: LIST_1,
-    ...TRAKT_WATCHLIST,
-    mergedSources: merged,
-  }).map(({ cacheKey }) => cacheKey);
+  return sourceCacheKeys(LIST_1, [TRAKT_WATCHLIST, ...merged]);
 }
 
 async function catalog(
@@ -148,18 +170,41 @@ function listBody(
   };
 }
 
+let now = Date.parse("2026-11-01T12:00:00Z");
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  now += 24 * 60 * 60_000;
+  vi.setSystemTime(now);
+  useTraktApp();
   db.reset();
   resetRpc();
+  resetR2();
   cache.reset();
-  resetProviders();
-  vi.restoreAllMocks();
+  imdb.reset();
+  trakt.reset();
+  server.use(
+    imdb.handler,
+    trakt.handler,
+    justwatch.handler,
+    cinemetaWithoutTitles,
+    http.post("https://auth.trakt.tv/oauth/revoke", () =>
+      HttpResponse.json({}),
+    ),
+  );
+  justwatchSources({});
   accountId = seedAccount().id;
+});
+
+afterEach(async () => {
+  await background.settle();
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 describe("merged Catalog", () => {
   it("shows each Title once and sorts the Source lists together by date added", async () => {
-    fakeSources("trakt", {
+    traktSources({
       [TRAKT_WATCHLIST.sourceRef]: [
         entry("tt1", "2020-01-01T00:00:00Z"),
         entry("tt2", "2024-01-01T00:00:00Z"),
@@ -179,7 +224,7 @@ describe("merged Catalog", () => {
   });
 
   it("caches each Source list on its own key", async () => {
-    fakeSources("trakt", {
+    traktSources({
       [TRAKT_WATCHLIST.sourceRef]: [entry("tt1")],
       [TRAKT_LIST.sourceRef]: [entry("tt2")],
     });
@@ -193,13 +238,13 @@ describe("merged Catalog", () => {
   });
 
   it("follows the List's order when a Source list has no dates", async () => {
-    fakeSources("trakt", {
+    traktSources({
       [TRAKT_WATCHLIST.sourceRef]: [
         entry("tt1", "2025-01-01T00:00:00Z"),
         entry("tt2", "2026-01-01T00:00:00Z"),
       ],
     });
-    fakeSources("justwatch", {
+    justwatchSources({
       [JUSTWATCH_LIST.sourceRef]: [entry("tt3"), entry("tt2"), entry("tt0")],
     });
     seedMergedList({ merged: [JUSTWATCH_LIST], sort_option: "rating-desc" });
@@ -215,11 +260,8 @@ describe("merged Catalog", () => {
   });
 
   it("still shows the other Source lists when one cannot be read", async () => {
-    fakeSources("trakt", {
-      [TRAKT_WATCHLIST.sourceRef]: new SourceUnavailableError(
-        "private",
-        "private",
-      ),
+    traktSources({
+      [TRAKT_WATCHLIST.sourceRef]: 401,
       [TRAKT_LIST.sourceRef]: [entry("tt2")],
     });
     seedMergedList();
@@ -231,12 +273,9 @@ describe("merged Catalog", () => {
   });
 
   it("explains the first problem when no Source list can be read", async () => {
-    fakeSources("trakt", {
-      [TRAKT_WATCHLIST.sourceRef]: new SourceUnavailableError(
-        "private",
-        "private",
-      ),
-      [TRAKT_LIST.sourceRef]: new SourceUnavailableError("not_found", "gone"),
+    traktSources({
+      [TRAKT_WATCHLIST.sourceRef]: 401,
+      [TRAKT_LIST.sourceRef]: 404,
     });
     seedMergedList();
 
@@ -250,13 +289,17 @@ describe("merged Catalog", () => {
 
   it("never answers a merged List with a Connection Source list through a Legacy alias", async () => {
     accountId = seedLegacyAccount("ur12345678").id;
-    fakeSources("trakt", { [TRAKT_WATCHLIST.sourceRef]: [entry("tt1")] });
+    traktSources({
+      [TRAKT_WATCHLIST.sourceRef]: [entry("tt1")],
+      "me/history": [entry("tt2")],
+    });
     seedMergedList({
       merged: [{ provider: "trakt", sourceRef: "me/history" }],
     });
 
     const { body } = await catalog("ur12345678");
     expect(body.metas).toEqual([]);
+    expect(trakt.requests).toEqual([]);
 
     const manifest = await app.request("/ur12345678/manifest.json");
     const json = await readJson(manifest, stremioManifest);
@@ -298,9 +341,9 @@ describe("merged Catalog", () => {
 
   it("counts a merged List as failed on refresh when one Source list fails", async () => {
     db.getTable("accounts")[0].last_fetched_at = new Date(0).toISOString();
-    fakeSources("trakt", {
+    traktSources({
       [TRAKT_WATCHLIST.sourceRef]: [entry("tt1")],
-      [TRAKT_LIST.sourceRef]: new SourceUnavailableError("unavailable", "503"),
+      [TRAKT_LIST.sourceRef]: 503,
     });
     seedMergedList();
 
@@ -370,11 +413,16 @@ describe("saving merged Lists", () => {
       { provider: "trakt", source_ref: TRAKT_LIST.sourceRef },
       { provider: "justwatch", source_ref: JUSTWATCH_LIST.sourceRef },
     ];
-    rpcHandlers.set("replace_account_config", (args) => {
-      rpcHandlers.delete("replace_account_config");
-      db.getTable("lists")[0].merged_sources = concurrent;
-      return callRpc("replace_account_config", args);
-    });
+    server.use(
+      http.post(
+        new URL("/rest/v1/rpc/replace_account_config", process.env.SUPABASE_URL)
+          .href,
+        () => {
+          db.getTable("lists")[0].merged_sources = concurrent;
+        },
+        { once: true },
+      ),
+    );
 
     const res = await postConfig([
       { ...listBody(TRAKT_WATCHLIST), id: LIST_1, sortOption: "year-desc" },

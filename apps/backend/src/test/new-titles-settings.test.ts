@@ -1,11 +1,4 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import app from "../index.js";
 import { saveConnection } from "../services/connections";
 import { disconnectProvider } from "../services/lists";
@@ -17,39 +10,38 @@ import {
   seedList,
   seedOAuthState,
 } from "./helpers/account.fixture.js";
-import { fakeAdapter, useFakeProvider } from "./helpers/mock-registry.js";
+import { http, HttpResponse } from "msw";
+import { useBackgroundTasks } from "./helpers/background.test-utils.js";
 import { db } from "./helpers/mock-supabase.js";
+import { useMswServer } from "./helpers/msw.test-utils.js";
 import {
   accountId,
   detectionRows,
-  entry,
   newTitles,
+  newTitlesHandlers,
   resetNewTitlesTest,
   restoreNewTitlesTest,
   seedHistory,
   seedNewTitlesAccount,
   setAccountId,
+  sourceList,
   summary,
   syncRows,
+  trakt,
 } from "./helpers/new-titles.js";
 import { accountIdBody, readJson } from "./helpers/json.js";
 
-vi.mock("../lib/supabase", async () => {
-  return await import("./helpers/mock-supabase.js");
-});
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-vi.mock("../lib/r2", async () => {
-  return await import("./helpers/mock-r2.js");
-});
-vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
+const server = useMswServer();
+const background = useBackgroundTasks();
 
-beforeEach(resetNewTitlesTest);
-afterEach(restoreNewTitlesTest);
+beforeEach(() => {
+  resetNewTitlesTest();
+  server.use(...newTitlesHandlers());
+});
+afterEach(async () => {
+  await background.settle();
+  restoreNewTitlesTest();
+});
 
 describe("settings", () => {
   const LIST = {
@@ -151,27 +143,17 @@ describe("Connection cleanup", () => {
       source_ref: "me/history",
     });
     seedHistory("trakt", "me/history", "tt0000001", "leo");
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        entries: [entry(movie("tt0000002"))],
-        oauth: {
-          authorizeUrl: "https://trakt.example/oauth/authorize",
-          tokenUrl: "https://api.trakt.example/oauth/token",
-          clientId: () => "client-123",
-          scopes: [],
-          fetchUsername: () => Promise.resolve("sam"),
-        },
-      }),
-    );
-    seedOAuthState(accountId);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() =>
-        Promise.resolve(
-          Response.json({ access_token: "access-1", expires_in: 7200 }),
-        ),
+    sourceList("trakt", [movie("tt0000002")], "me/history");
+    trakt.paths.set("/users/settings", {
+      status: 200,
+      body: { user: { username: "sam" } },
+    });
+    server.use(
+      http.post("https://auth.trakt.tv/oauth/token", () =>
+        HttpResponse.json({ access_token: "access-1", expires_in: 7200 }),
       ),
     );
+    seedOAuthState(accountId);
 
     const res = await app.request(
       "/connections/trakt/complete",
@@ -179,11 +161,10 @@ describe("Connection cleanup", () => {
     );
 
     expect(res.status).toBe(200);
-    await vi.waitFor(() => {
-      expect(syncRows()).toMatchObject([
-        { source_ref: "me/history", connection_user: "sam" },
-      ]);
-    });
+    await background.settle();
+    expect(syncRows()).toMatchObject([
+      { source_ref: "me/history", connection_user: "sam" },
+    ]);
     expect(detectionRows()).toMatchObject([
       { imdb_id: "tt0000002", detected_at: null },
     ]);

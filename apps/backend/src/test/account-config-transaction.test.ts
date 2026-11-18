@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { Tables } from "@stremlist/shared/database";
-import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 import {
   legacyAccountId,
   OTHER_IMDB,
@@ -9,27 +9,33 @@ import {
   postConfig,
   resetConfigTest,
   rpcArgs,
-  runScheduledTasks,
   seedWatchlist,
   UUID_1,
   UUID_2,
 } from "./helpers/config-api.js";
-import { seedAccount } from "./helpers/account.fixture.js";
-import { cache } from "./helpers/mock-list-cache.js";
-import { db, rpcHandlers } from "./helpers/mock-supabase.js";
+import { movie, seedAccount } from "./helpers/account.fixture.js";
+import { useBackgroundTasks } from "./helpers/background.test-utils.js";
+import { cinemetaWithoutTitles, FakeImdb } from "./helpers/imdb.test-utils.js";
+import { cache } from "./helpers/list-cache.test-utils.js";
+import { db, rpcCallsOf, rpcHandlers } from "./helpers/mock-supabase.js";
+import { useMswServer } from "./helpers/msw.test-utils.js";
 import { rpcError } from "./helpers/supabase/rpc.js";
 
-const { backgroundMocks, prewarmMocks, rpcMocks, supabaseMocks } =
-  await vi.hoisted(() => import("./helpers/config-api-mocks.js"));
-vi.mock("../lib/background", () => backgroundMocks);
-vi.mock("../services/list-prewarm", () => prewarmMocks);
-vi.mock("../lib/supabase", () => supabaseMocks);
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
-vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
+const server = useMswServer();
+const background = useBackgroundTasks();
+const imdb = new FakeImdb();
 
-beforeEach(resetConfigTest);
+beforeEach(() => {
+  resetConfigTest();
+  imdb.reset();
+  server.use(imdb.handler, cinemetaWithoutTitles);
+});
+
+afterEach(async () => {
+  await background.settle();
+});
+
+const SAVED_TITLE = movie("tt0000001", { name: "Saved title" });
 
 describe("List CRUD via the config API", () => {
   describe("configuration RPC boundary", () => {
@@ -50,6 +56,9 @@ describe("List CRUD via the config API", () => {
     };
 
     beforeEach(() => {
+      imdb.watchlists.set(OWNER, [SAVED_TITLE]);
+      imdb.titles.set(SAVED_TITLE.id, SAVED_TITLE);
+      imdb.watchlists.set(OTHER_IMDB, [movie("tt0000002")]);
       rpcHandlers.set("replace_account_config", () => ({
         data: [
           {
@@ -76,42 +85,39 @@ describe("List CRUD via the config API", () => {
         ],
       });
       expect(response.status).toBe(200);
-      expect(
-        rpcMocks.rpc.mock.calls.filter(
-          ([name]) => name === "replace_account_config",
-        ),
-      ).toHaveLength(1);
-      expect(rpcMocks.rpc).toHaveBeenCalledWith("replace_account_config", {
-        p_account_id: legacyAccountId,
-        p_rpdb_api_key: "secret-key",
-        p_lists: [
-          {
-            id: UUID_1,
-            provider: "imdb",
-            source_ref: OWNER,
-            catalog_title: "Updated",
-            sort_option: "title-asc",
-            display_mode: "split",
-            position: 0,
-            expected_merged_sources: [],
-            source_label: null,
-          },
-          {
-            provider: "imdb",
-            source_ref: OTHER_IMDB,
-            catalog_title: "",
-            sort_option: "year-desc",
-            display_mode: "split",
-            position: 1,
-            merged_sources: [],
-            source_label: null,
-          },
-        ],
-        p_actions_enabled: null,
-        p_action_providers: null,
-        p_new_titles_catalog: null,
-        p_poster_source: "rpdb",
-      });
+      expect(rpcCallsOf("replace_account_config")).toEqual([
+        {
+          p_account_id: legacyAccountId,
+          p_rpdb_api_key: "secret-key",
+          p_lists: [
+            {
+              id: UUID_1,
+              provider: "imdb",
+              source_ref: OWNER,
+              catalog_title: "Updated",
+              sort_option: "title-asc",
+              display_mode: "split",
+              position: 0,
+              expected_merged_sources: [],
+              source_label: null,
+            },
+            {
+              provider: "imdb",
+              source_ref: OTHER_IMDB,
+              catalog_title: "",
+              sort_option: "year-desc",
+              display_mode: "split",
+              position: 1,
+              merged_sources: [],
+              source_label: null,
+            },
+          ],
+          p_actions_enabled: null,
+          p_action_providers: null,
+          p_new_titles_catalog: null,
+          p_poster_source: "rpdb",
+        },
+      ]);
       const expected = [
         {
           id: UUID_1,
@@ -133,14 +139,17 @@ describe("List CRUD via the config API", () => {
         })),
         newTitles: expect.objectContaining({ detected: 0 }) as unknown,
       });
-      expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledOnce();
-      await runScheduledTasks();
-      expect(prewarmMocks.prewarmLists).toHaveBeenCalledExactlyOnceWith(
-        legacyAccountId,
-        expected,
-        false,
-        { posterSource: "rpdb", rpdbApiKey: "secret-key" },
-      );
+      await background.settle();
+      expect(
+        rpcCallsOf("request_list_prewarm").map((args) => args.p_account_id),
+      ).toEqual([legacyAccountId]);
+      expect(
+        imdb
+          .requestsOf("WatchListPage")
+          .map(({ variables }) => variables.urConst),
+      ).toEqual([OWNER]);
+      expect(cache.get(UUID_1)?.data.metas).toMatchObject([SAVED_TITLE]);
+      expect(cache.get(UUID_2)).toBeNull();
     });
 
     it("keeps omitted settings distinct from an explicit clear in the RPC payload", async () => {
@@ -244,6 +253,7 @@ describe("List CRUD via the config API", () => {
         lists: [{ id: UUID_1, sourceRef: OWNER, sortOption: "title-asc" }],
       });
       expect(response.status).toBe(200);
+      await background.settle();
       expect(cache.get(UUID_1)).not.toBeNull();
       expect(cache.get(UUID_2)).toBeNull();
     });
@@ -259,7 +269,7 @@ describe("List CRUD via the config API", () => {
       });
       expect(response.status).toBe(500);
       expect(cache.get(UUID_2)).not.toBeNull();
-      expect(backgroundMocks.scheduleBackgroundTask).not.toHaveBeenCalled();
+      expect(background.scheduled).toBe(0);
     });
   });
 
@@ -282,6 +292,7 @@ describe("List CRUD via the config API", () => {
       });
 
       expect(res.status).toBe(200);
+      await background.settle();
       const rows = db.getTable("lists");
       expect(rows.map((row) => [row.source_ref, row.catalog_title])).toEqual([
         [OWNER, "New"],
@@ -313,6 +324,7 @@ describe("List CRUD via the config API", () => {
       });
 
       expect(res.status).toBe(200);
+      await background.settle();
       expect(cache.get(UUID_1)).toBeNull();
       expect(cache.get(UUID_2)).not.toBeNull();
     });

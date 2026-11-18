@@ -1,5 +1,4 @@
 import type { ProviderId } from "@stremlist/shared/providers";
-import { http, HttpResponse } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -9,50 +8,49 @@ import {
   vi,
 } from "vite-plus/test";
 import app from "../index.js";
-import type { Membership, ProviderActions } from "../providers/types";
-import { seedAccount, seedConnection } from "./helpers/account.fixture.js";
-import { r2Objects } from "./helpers/mock-r2.js";
 import {
-  fakeActions,
-  fakeAdapter,
-  resetProviders,
-  useFakeProvider,
-} from "./helpers/mock-registry.js";
+  movie,
+  seedAccount,
+  seedConnection,
+} from "./helpers/account.fixture.js";
+import { useBackgroundTasks } from "./helpers/background.test-utils.js";
+import { cinemetaWithoutTitles, FakeImdb } from "./helpers/imdb.test-utils.js";
+import { cache } from "./helpers/list-cache.test-utils.js";
 import { db, resetRpc } from "./helpers/mock-supabase.js";
 import { readJson, streamsBody } from "./helpers/json.js";
 import { useMswServer } from "./helpers/msw.test-utils.js";
-import { useTraktApp } from "./helpers/trakt.test-utils.js";
-
-vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
-vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
-vi.mock("../lib/background", () => ({ scheduleBackgroundTask: vi.fn() }));
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
-vi.mock("../titles/enrich", () => ({
-  enrichTitles: vi.fn((titles: { imdbId: string; type?: string }[]) =>
-    Promise.resolve(
-      new Map(
-        titles.map(({ imdbId, type }) => [
-          imdbId,
-          { id: imdbId, type: type ?? "movie", name: "The Title" },
-        ]),
-      ),
-    ),
-  ),
-}));
+import { r2Objects, resetR2 } from "./helpers/r2.test-utils.js";
+import { FakeSimkl } from "./helpers/simkl.test-utils.js";
+import { FakeTrakt, useTraktApp } from "./helpers/trakt.test-utils.js";
 
 const MOVIE = "tt0111161";
 const SERIES = "tt0903747";
 
-const perform = vi.fn<ProviderActions["perform"]>();
-
 const server = useMswServer();
+const background = useBackgroundTasks();
+const imdb = new FakeImdb();
+const trakt = new FakeTrakt();
+const simkl = new FakeSimkl();
 
-function useActionProvider(id: ProviderId, kinds = fakeActions().kinds) {
-  useFakeProvider(
-    fakeAdapter(id, { actions: fakeActions({ kinds, perform }) }),
-  );
+const SYNCED = { status: 201, body: { not_found: { movies: [], shows: [] } } };
+
+function traktWrites() {
+  return trakt.requests
+    .filter((request) => request.method === "POST")
+    .map(({ path, body, token }) => ({ path, body, token }));
+}
+
+function simklWrites() {
+  return simkl.requests
+    .filter((request) => request.method === "POST")
+    .map(({ method, url }) => ({ method, path: url.pathname }));
+}
+
+interface Membership {
+  watchlist: string[];
+  watched: string[];
+  watchedEpisodes: string[];
+  ratings: Record<string, number>;
 }
 
 function seedMembership(
@@ -101,18 +99,45 @@ function postForm(path: string, form: [string, string][]) {
   });
 }
 
+let now = Date.parse("2026-11-01T12:00:00Z");
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  now += 24 * 60 * 60_000;
+  vi.setSystemTime(now);
+  useTraktApp();
+  vi.stubEnv("SIMKL_CLIENT_ID", "simkl-app");
   db.reset();
   resetRpc();
-  r2Objects.clear();
-  resetProviders();
-  perform.mockReset();
-  useActionProvider("trakt");
+  resetR2();
+  cache.reset();
+  imdb.reset();
+  trakt.reset();
+  simkl.reset();
+  imdb.titles.set(MOVIE, movie(MOVIE, { name: "The Title" }));
+  imdb.titles.set(SERIES, movie(SERIES, { type: "series", name: "The Title" }));
+  for (const path of [
+    "/sync/watchlist",
+    "/sync/watchlist/remove",
+    "/sync/history",
+    "/sync/history/remove",
+    "/sync/ratings",
+    "/sync/ratings/remove",
+  ]) {
+    trakt.paths.set(path, SYNCED);
+  }
+  server.use(
+    imdb.handler,
+    trakt.handler,
+    cinemetaWithoutTitles,
+    ...simkl.handlers,
+  );
   vi.spyOn(console, "error");
 });
 
-afterEach(() => {
-  delete process.env.BACKEND_PUBLIC_URL;
+afterEach(async () => {
+  await background.settle();
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
@@ -139,7 +164,7 @@ describe("GET /:accountKey/stream/:type/:id.json", () => {
   });
 
   it("keeps the episode in the Action link and uses the public origin", async () => {
-    process.env.BACKEND_PUBLIC_URL = "https://api.stremlist.test/";
+    vi.stubEnv("BACKEND_PUBLIC_URL", "https://api.stremlist.test/");
     const account = seedActionAccount();
 
     const res = await app.request(
@@ -201,11 +226,13 @@ describe("Action pages", () => {
     const html = await res.text();
     expect(html).toContain("The Title is in your watchlist on Trakt");
     expect(html).toContain('name="robots" content="noindex, nofollow"');
-    expect(perform).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ provider: "trakt" }),
-      { kind: "watchlist", add: true },
-      { imdbId: MOVIE, type: "movie" },
-    );
+    expect(traktWrites()).toEqual([
+      {
+        path: "/sync/watchlist",
+        body: { movies: [{ ids: { imdb: MOVIE } }] },
+        token: "access-token",
+      },
+    ]);
   });
 
   it("removes from the watchlist", async () => {
@@ -218,7 +245,13 @@ describe("Action pages", () => {
     expect(await res.text()).toContain(
       "The Title is out of your watchlist on Trakt",
     );
-    expect(perform.mock.calls[0][1]).toEqual({ kind: "watchlist", add: false });
+    expect(traktWrites()).toEqual([
+      {
+        path: "/sync/watchlist/remove",
+        body: { movies: [{ ids: { imdb: MOVIE } }] },
+        token: "access-token",
+      },
+    ]);
   });
 
   it("adds the whole series to the watchlist from an episode", async () => {
@@ -228,10 +261,13 @@ describe("Action pages", () => {
       `/${account.id}/actions/watchlist/add/series/${SERIES}%3A2%3A5`,
     );
 
-    expect(perform.mock.calls[0][2]).toEqual({
-      imdbId: SERIES,
-      type: "series",
-    });
+    expect(traktWrites()).toEqual([
+      {
+        path: "/sync/watchlist",
+        body: { shows: [{ ids: { imdb: SERIES } }] },
+        token: "access-token",
+      },
+    ]);
   });
 
   it("marks one episode as watched", async () => {
@@ -244,21 +280,24 @@ describe("Action pages", () => {
     expect(await res.text()).toContain(
       "The Title S02E05 is marked as watched on Trakt",
     );
-    expect(perform.mock.calls[0].slice(1)).toEqual([
-      { kind: "watched", add: true },
-      { imdbId: SERIES, type: "series", episode: { season: 2, episode: 5 } },
+    expect(traktWrites()).toEqual([
+      {
+        path: "/sync/history",
+        body: {
+          shows: [
+            {
+              ids: { imdb: SERIES },
+              seasons: [{ number: 2, episodes: [{ number: 5 }] }],
+            },
+          ],
+        },
+        token: "access-token",
+      },
     ]);
   });
 
   it("says which Provider failed", async () => {
-    useTraktApp();
-    resetProviders();
-    server.use(
-      http.post(
-        "https://api.trakt.tv/sync/history/remove",
-        () => new HttpResponse(null, { status: 502 }),
-      ),
-    );
+    trakt.fail("/sync/history/remove", 502);
     const account = seedActionAccount();
 
     const res = await app.request(
@@ -281,7 +320,7 @@ describe("Action pages", () => {
     expect(html).not.toContain("Something went wrong");
     expect(html).toContain("No connected account can do this");
     expect(html).toContain("Stremlist configure page");
-    expect(perform).not.toHaveBeenCalled();
+    expect(traktWrites()).toEqual([]);
   });
 
   it.each([
@@ -295,7 +334,7 @@ describe("Action pages", () => {
     const res = await app.request(`/${account.id}/actions/${path}`);
 
     expect(res.status).toBe(404);
-    expect(perform).not.toHaveBeenCalled();
+    expect(traktWrites()).toEqual([]);
   });
 
   it("refuses a Legacy alias", async () => {
@@ -308,12 +347,11 @@ describe("Action pages", () => {
       expect(res.status).toBe(404);
       expect(await res.text()).toContain("This link does not work");
     }
-    expect(perform).not.toHaveBeenCalled();
+    expect(traktWrites()).toEqual([]);
   });
 
   describe("rating", () => {
     it("shows a form with the current rating and each Provider", async () => {
-      useActionProvider("simkl");
       const account = seedActionAccount({ providers: ["trakt", "simkl"] });
       seedMembership(account.id, "trakt", { ratings: { [MOVIE]: 7 } });
 
@@ -331,7 +369,8 @@ describe("Action pages", () => {
       expect(html).toContain("Now 7/10");
       expect(html).toContain("Not rated");
       expect(html).toContain("Remove rating");
-      expect(perform).not.toHaveBeenCalled();
+      expect(traktWrites()).toEqual([]);
+      expect(simklWrites()).toEqual([]);
     });
 
     it("hides the remove button when nothing is rated", async () => {
@@ -346,8 +385,7 @@ describe("Action pages", () => {
     });
 
     it("answers 404 when no Provider can rate", async () => {
-      useActionProvider("trakt", ["watchlist"]);
-      const account = seedActionAccount();
+      const account = seedActionAccount({ providers: ["justwatch"] });
 
       const res = await app.request(
         `/${account.id}/actions/rating/rate/movie/${MOVIE}`,
@@ -357,7 +395,6 @@ describe("Action pages", () => {
     });
 
     it("sends the rating to the chosen Providers only", async () => {
-      useActionProvider("simkl");
       const account = seedActionAccount({ providers: ["trakt", "simkl"] });
 
       const res = await postForm(
@@ -370,15 +407,17 @@ describe("Action pages", () => {
       );
 
       expect(await res.text()).toContain("The Title is rated 8/10 on Trakt");
-      expect(perform).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ provider: "trakt" }),
-        { kind: "rating", rating: 8 },
-        { imdbId: MOVIE, type: "movie" },
-      );
+      expect(traktWrites()).toEqual([
+        {
+          path: "/sync/ratings",
+          body: { movies: [{ ids: { imdb: MOVIE }, rating: 8 }] },
+          token: "access-token",
+        },
+      ]);
+      expect(simklWrites()).toEqual([]);
     });
 
     it("asks again for an account when none is ticked, and keeps the rating", async () => {
-      useActionProvider("simkl");
       const account = seedActionAccount({ providers: ["trakt", "simkl"] });
 
       const res = await postForm(
@@ -393,7 +432,8 @@ describe("Action pages", () => {
       expect(html).toContain("Choose at least one account");
       expect(html).toMatch(/value="8"[^>]*checked/);
       expect(html).not.toMatch(/value="trakt"[^>]*checked/);
-      expect(perform).not.toHaveBeenCalled();
+      expect(traktWrites()).toEqual([]);
+      expect(simklWrites()).toEqual([]);
     });
 
     it("removes the rating", async () => {
@@ -410,10 +450,13 @@ describe("Action pages", () => {
       expect(await res.text()).toContain(
         "The Title has no rating on Trakt now",
       );
-      expect(perform.mock.calls[0][1]).toEqual({
-        kind: "rating",
-        rating: null,
-      });
+      expect(traktWrites()).toEqual([
+        {
+          path: "/sync/ratings/remove",
+          body: { movies: [{ ids: { imdb: MOVIE } }] },
+          token: "access-token",
+        },
+      ]);
     });
 
     it.each(["0", "11", "7.5", "abc"])(
@@ -430,7 +473,7 @@ describe("Action pages", () => {
         );
 
         expect(await res.text()).toContain("Rate The Title");
-        expect(perform).not.toHaveBeenCalled();
+        expect(traktWrites()).toEqual([]);
       },
     );
 
@@ -446,7 +489,7 @@ describe("Action pages", () => {
       );
 
       expect(res.status).toBe(404);
-      expect(perform).not.toHaveBeenCalled();
+      expect(traktWrites()).toEqual([]);
     });
   });
 });

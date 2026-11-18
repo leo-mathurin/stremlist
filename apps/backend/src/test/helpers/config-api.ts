@@ -5,14 +5,14 @@ import type { ProviderId } from "@stremlist/shared/providers";
 import { vi } from "vite-plus/test";
 import { z } from "zod";
 
+import type { ListSource } from "@stremlist/shared/list-merge";
 import app from "../../index.js";
-import { backgroundMocks, prewarmMocks, rpcMocks } from "./config-api-mocks.js";
+import { sourceCaches } from "../../services/merged-lists";
 import { LIST_IDS, seedLegacyAccount, seedList } from "./account.fixture.js";
-import { cache } from "./mock-list-cache.js";
-import { r2Objects, r2Undeletable } from "./mock-r2.js";
+import { cache } from "./list-cache.test-utils.js";
 import { json } from "./json.js";
-import { resetProviders } from "./mock-registry.js";
-import { db, resetRpc } from "./mock-supabase.js";
+import { db, resetRpc, rpcCallsOf } from "./mock-supabase.js";
+import { resetR2 } from "./r2.test-utils.js";
 
 type ReplaceConfig = Database["public"]["Functions"]["replace_account_config"];
 
@@ -24,6 +24,9 @@ const replaceConfigArgs = z.object({
   p_new_titles_catalog: z.boolean().nullable().optional(),
   p_rpdb_api_key: z.string().nullable(),
 }) satisfies z.ZodType<ReplaceConfig["Args"]>;
+
+/** The real Provider adapters of the app, for spies that only observe them. */
+export { getProvider } from "../../providers/registry";
 
 /** The legacy install of OWNER reaches its Account through the Legacy alias. */
 export const OWNER = "ur12345678";
@@ -92,26 +95,24 @@ export function postConfig(accountKey: string, body: ConfigBody) {
   return postJson(`/${accountKey}/config`, withProviders(body));
 }
 
+/** The arguments of the `call`-th `replace_account_config` RPC. */
 export function rpcArgs(call = 0) {
-  return replaceConfigArgs.parse(rpcMocks.rpc.mock.calls[call][1]);
-}
-
-export async function runScheduledTasks() {
-  for (const [task] of backgroundMocks.scheduleBackgroundTask.mock.calls) {
-    await task();
-  }
+  return replaceConfigArgs.parse(rpcCallsOf("replace_account_config")[call]);
 }
 
 export function resetConfigTest() {
   db.reset();
   resetRpc();
-  rpcMocks.rpc.mockClear();
+  resetR2();
   cache.reset();
-  r2Objects.clear();
-  r2Undeletable.clear();
-  resetProviders();
   vi.restoreAllMocks();
   legacyAccountId = seedLegacyAccount(OWNER).id;
-  backgroundMocks.scheduleBackgroundTask.mockReset();
-  prewarmMocks.prewarmLists.mockReset();
+}
+
+/** The cache keys of a List's Source lists, the first Source list first. */
+export function sourceCacheKeys(listId: string, sources: ListSource[]) {
+  const [first, ...merged] = sources;
+  return sourceCaches({ id: listId, ...first, mergedSources: merged }).map(
+    ({ cacheKey }) => cacheKey,
+  );
 }

@@ -1,3 +1,4 @@
+import { http, HttpResponse } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -10,39 +11,37 @@ import {
 import { PROVIDER_IDS } from "@stremlist/shared/providers";
 import { z } from "zod";
 import app from "../index.js";
-import { HttpError } from "../providers/http";
-import { LetterboxdBusyError } from "../providers/letterboxd-gate";
 import { OUTAGE_STALE_MS } from "../providers/outages";
-import { SourceUnavailableError } from "../providers/types";
-import type { CanaryResult } from "../services/monitor/canaries";
-import { runListChecks } from "../services/monitor/list-checks";
+import { movie } from "./helpers/account.fixture.js";
+import { useBackgroundTasks } from "./helpers/background.test-utils.js";
 import { resetConfigTest } from "./helpers/config-api.js";
-import { readJson } from "./helpers/json.js";
 import {
-  fakeAdapter,
-  resetProviders,
-  useFakeProvider,
-} from "./helpers/mock-registry.js";
-import { callRpc, db, rpcHandlers } from "./helpers/mock-supabase.js";
+  FakeImdb,
+  IMDB_GRAPHQL,
+  imdbTitle,
+} from "./helpers/imdb.test-utils.js";
+import { readJson } from "./helpers/json.js";
+import { letterboxdPage } from "./helpers/letterboxd.test-utils.js";
+import { callRpc, db } from "./helpers/mock-supabase.js";
+import { useMswServer } from "./helpers/msw.test-utils.js";
 import {
   haltLetterboxdGate,
   letterboxdGate,
 } from "./helpers/supabase/letterboxd-gate-rpcs.js";
 
-const { backgroundMocks, prewarmMocks, supabaseMocks } = await vi.hoisted(
-  () => import("./helpers/config-api-mocks.js"),
-);
-vi.mock("../lib/background", () => backgroundMocks);
-vi.mock("../services/list-prewarm", () => prewarmMocks);
-vi.mock("../lib/supabase", () => supabaseMocks);
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
-vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
-
 const IMDB_BEAT = "https://beat.example/imdb";
 const LBX_BEAT = "https://beat.example/letterboxd";
 const SECRET = "cron-secret";
+const SUPABASE_REST = new URL("/rest/v1/", process.env.SUPABASE_URL).href;
+const OFFICIAL_LIST =
+  "https://letterboxd.com/official/list/letterboxds-top-500-films/";
+const JUSTWATCH_GRAPHQL = "https://apis.justwatch.com/graphql";
+const SENSCRITIQUE_GRAPHQL = "https://apollo.senscritique.com/";
+const TRAKT_API = "https://api.trakt.tv";
+
+const server = useMswServer();
+const background = useBackgroundTasks();
+const imdb = new FakeImdb();
 
 const probeOutcome = z.discriminatedUnion("ok", [
   z.object({ provider: z.enum(PROVIDER_IDS), ok: z.literal(true) }),
@@ -60,15 +59,24 @@ const monitorAnswer = z
   })
   .partial();
 
-async function monitor(secret = SECRET, canaries: CanaryResult[] = []) {
+let listCheckRuns = 0;
+let answered = Promise.withResolvers<void>();
+
+function listCheckHold() {
+  return http.patch(`${SUPABASE_REST}monitor_runs`, async () => {
+    listCheckRuns += 1;
+    await answered.promise;
+  });
+}
+
+async function monitor(secret = SECRET) {
+  answered = Promise.withResolvers<void>();
   const res = await app.request("/monitor", {
     headers: { Authorization: `Bearer ${secret}` },
   });
-  const answer = await readJson(res.clone(), monitorAnswer);
-  if (answer.listChecks?.started) {
-    expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalled();
-    await runListChecks(answer.results ?? [], () => Promise.resolve(canaries));
-  }
+  await readJson(res.clone(), monitorAnswer);
+  answered.resolve();
+  await background.settle();
   return res;
 }
 
@@ -76,19 +84,216 @@ function endListCheckInterval() {
   db.getTable("monitor_runs").length = 0;
 }
 
+function tick() {
+  vi.setSystemTime(Date.now() + 1_000);
+}
+
+function statusOf(url: string) {
+  return [...statuses].find(([prefix]) => url.startsWith(prefix))?.[1];
+}
+
+const TITLES = Array.from({ length: 250 }, (_, index) =>
+  imdbTitle(movie(`tt${String(1_000_000 + index)}`)),
+);
+
+const imdbBody = z.object({ operationName: z.string() }).loose();
+
+function imdbWorld() {
+  return http.post(IMDB_GRAPHQL, async ({ request }) => {
+    tick();
+    const status = statusOf(request.url);
+    if (status) return new HttpResponse(null, { status });
+    const { operationName } = imdbBody.parse(await request.clone().json());
+    const page = { hasNextPage: false, endCursor: null };
+    switch (operationName) {
+      case "ChartTitles":
+        return HttpResponse.json({
+          data: {
+            chartTitles: {
+              edges: TITLES.map((node) => ({ node })),
+              pageInfo: page,
+            },
+          },
+        });
+      case "BoxOffice":
+        return HttpResponse.json({
+          data: {
+            topGrossingReleases: {
+              edges: TITLES.slice(0, 10).map((title) => ({
+                node: { release: { titles: [title] } },
+              })),
+            },
+          },
+        });
+      case "ComingSoon":
+        return HttpResponse.json({
+          data: { comingSoon: { edges: TITLES.map((node) => ({ node })) } },
+        });
+      case "UserRatings":
+        return HttpResponse.json({
+          data: {
+            advancedTitleSearch: {
+              total: TITLES.length,
+              pageInfo: page,
+              edges: TITLES.map((title) => ({
+                node: {
+                  title: { ...title, userRating: { date: "2026-01-01" } },
+                },
+              })),
+            },
+          },
+        });
+      default:
+        return imdb.answer(request);
+    }
+  });
+}
+
+type Answer = (request: Request) => Response | Promise<Response>;
+
+const healthyLetterboxd: Answer = (request) =>
+  request.url === OFFICIAL_LIST
+    ? new HttpResponse(
+        letterboxdPage(Array.from({ length: 450 }, (_, index) => index + 1)),
+      )
+    : new HttpResponse(null, { status: 404 });
+
+function justwatchList(titles: number) {
+  return HttpResponse.json({
+    data: {
+      node: {
+        __typename: "GenericTitleList",
+        id: "tl-us-list",
+        type: "USER_LIST",
+        visibility: "PUBLIC",
+        name: "Monitor",
+        content: { name: "Monitor" },
+        titles: {
+          totalCount: titles,
+          pageInfo: { hasNextPage: false, endCursor: "" },
+          edges: Array.from({ length: titles }, (_, index) => ({
+            node: {
+              id: `tm${index + 1}`,
+              objectType: "MOVIE",
+              content: {
+                title: `Movie ${index + 1}`,
+                originalReleaseYear: 2000,
+                externalIds: { imdbId: `tt${2_000_000 + index}`, tmdbId: null },
+              },
+            },
+          })),
+        },
+      },
+    },
+  });
+}
+
 let beats: { url: string; method: string }[];
 let failBodies: Map<string, string>;
 let statuses: Map<string, number>;
 let pages: Map<string, unknown>;
+let requests: string[];
+let letterboxd: Answer;
+let justwatch: Answer;
+let senscritique: Answer;
+let simklTrending: Map<string, number>;
+
+function worldHandlers() {
+  const own = new Set(
+    [process.env.SUPABASE_URL, process.env.R2_ENDPOINT].map(
+      (url) => new URL(url ?? "http://localhost").host,
+    ),
+  );
+  server.events.on("request:start", ({ request }) => {
+    if (!own.has(new URL(request.url).host)) requests.push(request.url);
+  });
+  return [
+    http.all("https://beat.example/*", async ({ request }) => {
+      beats.push({ url: request.url, method: request.method });
+      if (request.method === "POST") {
+        failBodies.set(request.url, await request.text());
+      }
+      return new HttpResponse("ok", { status: statusOf(request.url) ?? 200 });
+    }),
+    http.get(
+      /^https:\/\/(status\.(trakt\.tv|simkl\.com|mdblist\.com)|senscritique\.instatus\.com)\//,
+      ({ request }) => {
+        const page = [...pages].find(([prefix]) =>
+          request.url.startsWith(prefix),
+        );
+        return page
+          ? new HttpResponse(JSON.stringify(page[1]), {
+              headers: { "Content-Type": "application/json" },
+            })
+          : new HttpResponse("", { status: 503 });
+      },
+    ),
+    imdbWorld(),
+    http.all("https://letterboxd.com/*", ({ request }) => {
+      tick();
+      const status = statusOf(request.url);
+      return status ? new HttpResponse(null, { status }) : letterboxd(request);
+    }),
+    http.post(JUSTWATCH_GRAPHQL, ({ request }) => {
+      tick();
+      return justwatch(request);
+    }),
+    http.post(SENSCRITIQUE_GRAPHQL, ({ request }) => {
+      tick();
+      return senscritique(request);
+    }),
+    http.get(`${TRAKT_API}/*`, ({ request }) => {
+      tick();
+      const status = statusOf(request.url);
+      if (status) return new HttpResponse(null, { status });
+      const path = new URL(request.url).pathname;
+      if (!/^\/(movies|shows)\//.test(path)) {
+        return new HttpResponse(null, { status: 404 });
+      }
+      return HttpResponse.json(
+        Array.from({ length: 30 }, (_, index) => ({
+          title: `Title ${index}`,
+          ids: { trakt: index + 1, imdb: `tt${3_000_000 + index}` },
+        })),
+      );
+    }),
+    http.all("https://api.simkl.com/*", ({ request }) => {
+      tick();
+      return HttpResponse.json([], { status: statusOf(request.url) ?? 200 });
+    }),
+    http.get("https://data.simkl.in/discover/trending/*", ({ request }) => {
+      tick();
+      const file = new URL(request.url).pathname.split("/").slice(-2)[0];
+      return HttpResponse.json(
+        Array.from({ length: simklTrending.get(file) ?? 60 }, (_, index) => ({
+          title: `Title ${index}`,
+          ids: { simkl: index + 1, imdb: `tt${4_000_000 + index}` },
+        })),
+      );
+    }),
+    http.all("https://api.mdblist.com/*", ({ request }) => {
+      tick();
+      return HttpResponse.json({}, { status: statusOf(request.url) ?? 200 });
+    }),
+  ];
+}
+
 const NO_PAGES = {
   trakt: null,
   simkl: null,
   mdblist: null,
   senscritique: null,
 };
+
+let now = Date.parse("2026-11-01T12:00:00Z");
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  now += 24 * 60 * 60_000;
+  vi.setSystemTime(now);
   resetConfigTest();
-  resetProviders();
+  imdb.reset();
+  listCheckRuns = 0;
   for (const name of [
     "BETTERSTACK_HEARTBEAT_URL",
     "BETTERSTACK_HEARTBEAT_URL_IMDB",
@@ -100,6 +305,8 @@ beforeEach(() => {
     "MONITOR_JUSTWATCH_REF",
     "MONITOR_SENSCRITIQUE_REF",
     "MONITOR_TRAKT_REF",
+    "MONITOR_ACCOUNT_ID",
+    "MONITOR_CANARY_REFS",
     "BETTERSTACK_HEARTBEAT_URL_TRAKT",
     "BETTERSTACK_HEARTBEAT_URL_SIMKL",
     "BETTERSTACK_HEARTBEAT_URL_MDBLIST",
@@ -109,36 +316,37 @@ beforeEach(() => {
   ])
     vi.stubEnv(name, "");
   vi.stubEnv("CRON_SECRET", SECRET);
-  useFakeProvider(fakeAdapter("letterboxd"));
   beats = [];
   failBodies = new Map();
   statuses = new Map();
   pages = new Map();
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string, init?: RequestInit) => {
-      if (
-        url.startsWith("https://status.") ||
-        url.startsWith("https://senscritique.instatus.com/")
-      ) {
-        const page = [...pages].find(([prefix]) => url.startsWith(prefix));
-        return Promise.resolve(
-          page ? Response.json(page[1]) : new Response("", { status: 503 }),
-        );
-      }
-      beats.push({ url, method: init?.method ?? "GET" });
-      if (typeof init?.body === "string") failBodies.set(url, init.body);
-      const status = [...statuses].find(([prefix]) =>
-        url.startsWith(prefix),
-      )?.[1];
-      return Promise.resolve(new Response("ok", { status: status ?? 200 }));
-    }),
+  requests = [];
+  letterboxd = healthyLetterboxd;
+  justwatch = () => justwatchList(5);
+  senscritique = () =>
+    HttpResponse.json({ errors: [{ message: "Unknown query" }] });
+  simklTrending = new Map();
+  imdb.watchlists.set("ur12345678", [movie("tt0111161")]);
+  imdb.watchlists.set(
+    "ur195879360",
+    Array.from({ length: 70 }, (_, index) =>
+      movie(`tt${String(5_000_000 + index)}`),
+    ),
   );
+  imdb.lists.set(
+    "ls055592025",
+    Array.from({ length: 90 }, (_, index) =>
+      movie(`tt${String(6_000_000 + index)}`),
+    ),
+  );
+  server.events.removeAllListeners();
+  server.use(listCheckHold(), ...worldHandlers());
   vi.spyOn(console, "error");
 });
-afterEach(() => {
+afterEach(async () => {
+  await background.settle();
+  vi.useRealTimers();
   vi.unstubAllEnvs();
-  vi.unstubAllGlobals();
 });
 
 describe("GET /monitor", () => {
@@ -149,15 +357,16 @@ describe("GET /monitor", () => {
   });
 
   it("probes Letterboxd's default list even with no heartbeat", async () => {
-    const letterboxdRead = vi.fn(() =>
-      Promise.resolve({ entries: [], complete: true }),
-    );
-    useFakeProvider(fakeAdapter("letterboxd", { fetchSource: letterboxdRead }));
-
     const res = await monitor();
 
     expect(res.status).toBe(200);
-    expect(letterboxdRead).toHaveBeenCalledTimes(1);
+    expect(await res.json()).toMatchObject({
+      results: [{ provider: "letterboxd", ok: true, entries: 450 }],
+    });
+    expect(requests.filter((url) => url === OFFICIAL_LIST)).toEqual([
+      OFFICIAL_LIST,
+      OFFICIAL_LIST,
+    ]);
     expect(beats).toEqual([]);
   });
 
@@ -165,14 +374,7 @@ describe("GET /monitor", () => {
     vi.stubEnv("MONITOR_IMDB_USER_ID", "ur12345678");
     vi.stubEnv("BETTERSTACK_HEARTBEAT_URL", IMDB_BEAT);
     vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
-    const imdbRead = vi.fn(() =>
-      Promise.resolve({ entries: [{ imdbId: "tt0111161" }], complete: true }),
-    );
-    const letterboxdRead = vi.fn(() =>
-      Promise.reject(new SourceUnavailableError("disabled", "halted")),
-    );
-    useFakeProvider(fakeAdapter("imdb", { fetchSource: imdbRead }));
-    useFakeProvider(fakeAdapter("letterboxd", { fetchSource: letterboxdRead }));
+    letterboxd = () => new HttpResponse(null, { status: 404 });
 
     const res = await monitor();
 
@@ -185,7 +387,7 @@ describe("GET /monitor", () => {
           provider: "letterboxd",
           ok: false,
           outage: false,
-          error: "halted",
+          error: "Letterboxd could not read this public list",
         },
       ],
       statusPages: NO_PAGES,
@@ -194,17 +396,12 @@ describe("GET /monitor", () => {
         last: { finishedAt: null },
       },
     });
-    expect(imdbRead).toHaveBeenCalledWith("ur12345678", {
-      connection: null,
-      forceRefresh: true,
-    });
-    expect(letterboxdRead).toHaveBeenCalledWith(
-      "users/official/lists/letterboxds-top-500-films",
-      {
-        connection: null,
-        forceRefresh: true,
-      },
-    );
+    expect(
+      imdb
+        .requestsOf("WatchListPage")
+        .map(({ variables }) => variables.urConst),
+    ).toContain("ur12345678");
+    expect(requests).toContain(OFFICIAL_LIST);
     expect(beats).toEqual(
       expect.arrayContaining([
         { url: IMDB_BEAT, method: "GET" },
@@ -220,23 +417,29 @@ describe("GET /monitor", () => {
       "BETTERSTACK_HEARTBEAT_URL_JUSTWATCH",
       "https://beat.example/jw",
     );
-    const justwatchRead = vi.fn();
-    useFakeProvider(fakeAdapter("justwatch", { fetchSource: justwatchRead }));
 
     const res = await monitor();
 
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
       ok: true,
-      results: [{ provider: "letterboxd", ok: true, entries: 0 }],
+      results: [{ provider: "letterboxd", ok: true, entries: 450 }],
       statusPages: NO_PAGES,
       listChecks: {
         started: true,
         last: { finishedAt: null },
       },
     });
-    expect(beats).toEqual([{ url: LBX_BEAT, method: "GET" }]);
-    expect(justwatchRead).not.toHaveBeenCalled();
+    expect(beats).toEqual(
+      expect.arrayContaining([
+        { url: LBX_BEAT, method: "GET" },
+        { url: "https://beat.example/jw", method: "GET" },
+      ]),
+    );
+    expect(beats).toHaveLength(2);
+    expect(
+      requests.filter((url) => url.startsWith(JUSTWATCH_GRAPHQL)),
+    ).toHaveLength(1);
   });
 
   it("reports Letterboxd when 429 responses kept its rate below half for 30 minutes", async () => {
@@ -245,8 +448,6 @@ describe("GET /monitor", () => {
       "users/official/lists/letterboxds-top-500-films",
     );
     vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
-    const letterboxdRead = vi.fn();
-    useFakeProvider(fakeAdapter("letterboxd", { fetchSource: letterboxdRead }));
     await callRpc("letterboxd_take_turn", {
       p_target: 10,
       p_priority: "first",
@@ -259,57 +460,59 @@ describe("GET /monitor", () => {
     const res = await monitor();
 
     expect(res.status).toBe(502);
-    expect(letterboxdRead).not.toHaveBeenCalled();
+    expect(
+      requests.filter((url) => url.startsWith("https://letterboxd.com/")),
+    ).toEqual([]);
     expect(beats).toEqual([{ url: `${LBX_BEAT}/fail`, method: "POST" }]);
   });
 
   it("does not report Letterboxd as slow while its rate climbs back after a halt", async () => {
     vi.stubEnv("LETTERBOXD_MAX_RPS", "40");
     vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
-    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
-    try {
-      const report = (probe: boolean) =>
-        callRpc("letterboxd_report", {
-          p_target: 40,
-          p_outcome: "ok",
-          p_retry_after_ms: 0,
-          p_probe: probe,
-        });
-      haltLetterboxdGate();
-      await report(true);
-      await report(false);
-      expect(letterboxdGate()?.rate).toBe(0.33);
-      expect((await monitor()).status).toBe(200);
+    const report = (probe: boolean) =>
+      callRpc("letterboxd_report", {
+        p_target: 40,
+        p_outcome: "ok",
+        p_retry_after_ms: 0,
+        p_probe: probe,
+      });
+    haltLetterboxdGate();
+    await report(true);
+    await report(false);
+    expect(letterboxdGate()?.rate).toBe(0.33);
+    vi.setSystemTime(Date.now() + 10_000);
+    expect((await monitor()).status).toBe(200);
 
-      vi.setSystemTime(Date.now() + 31 * 60_000);
-      endListCheckInterval();
-      beats = [];
-      expect((await monitor()).status).toBe(200);
-      await report(false);
-      expect(letterboxdGate()?.rate).toBeLessThan(20);
-      expect(beats).toEqual([{ url: LBX_BEAT, method: "GET" }]);
-    } finally {
-      vi.useRealTimers();
-    }
+    vi.setSystemTime(Date.now() + 31 * 60_000);
+    endListCheckInterval();
+    beats = [];
+    expect((await monitor()).status).toBe(200);
+    await report(false);
+    expect(letterboxdGate()?.rate).toBeLessThan(20);
+    expect(beats).toEqual([{ url: LBX_BEAT, method: "GET" }]);
   });
 
   it("probes a halted Letterboxd once its recovery probe is due", async () => {
     vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
-    const letterboxdRead = vi.fn(() =>
-      Promise.resolve({ complete: true, entries: [] }),
-    );
-    useFakeProvider(fakeAdapter("letterboxd", { fetchSource: letterboxdRead }));
     haltLetterboxdGate();
     expect((await monitor()).status).toBe(200);
-    expect(letterboxdRead).not.toHaveBeenCalled();
+    expect(requests.filter((url) => url === OFFICIAL_LIST)).toEqual([]);
     expect(beats).toEqual([{ url: `${LBX_BEAT}/fail`, method: "POST" }]);
 
     Object.assign(letterboxdGate() ?? {}, { nextProbeAt: Date.now() - 1 });
     endListCheckInterval();
     beats = [];
+    requests = [];
     expect((await monitor()).status).toBe(200);
-    expect(letterboxdRead).toHaveBeenCalledTimes(1);
-    expect(beats).toEqual([{ url: LBX_BEAT, method: "GET" }]);
+    expect(requests.filter((url) => url === OFFICIAL_LIST)).toEqual([
+      OFFICIAL_LIST,
+      OFFICIAL_LIST,
+    ]);
+    expect(letterboxdGate()?.haltedAt).toBeNull();
+    expect(beats).toEqual([
+      { url: LBX_BEAT, method: "GET" },
+      { url: LBX_BEAT, method: "GET" },
+    ]);
   });
 
   it("never contacts a Provider turned off with the kill switch, and reports it", async () => {
@@ -322,8 +525,6 @@ describe("GET /monitor", () => {
       "BETTERSTACK_HEARTBEAT_URL_JUSTWATCH",
       "https://beat.example/jw",
     );
-    const justwatchRead = vi.fn();
-    useFakeProvider(fakeAdapter("justwatch", { fetchSource: justwatchRead }));
 
     const res = await monitor();
 
@@ -334,7 +535,9 @@ describe("GET /monitor", () => {
         { provider: "justwatch", ok: false, unavailable: true },
       ],
     });
-    expect(justwatchRead).not.toHaveBeenCalled();
+    expect(requests.filter((url) => url.startsWith(JUSTWATCH_GRAPHQL))).toEqual(
+      [],
+    );
     expect(beats).toEqual([
       { url: "https://beat.example/jw/fail", method: "POST" },
     ]);
@@ -357,10 +560,6 @@ async function outages() {
     .map((provider) => provider.id);
 }
 
-function failingRead(error: unknown) {
-  return vi.fn(() => Promise.reject(error));
-}
-
 describe("Provider outages", () => {
   it("probes Trakt's public chart and the Simkl and MDBList APIs once their apps are set", async () => {
     vi.stubEnv("TRAKT_CLIENT_ID", "trakt-app");
@@ -369,45 +568,28 @@ describe("Provider outages", () => {
     vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_TRAKT", "https://beat.example/trakt");
     vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_SIMKL", "https://beat.example/simkl");
     statuses.set("https://api.mdblist.com/", 401);
-    const traktRead = vi.fn(() =>
-      Promise.resolve({ entries: [{ imdbId: "tt0111161" }], complete: true }),
-    );
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        fetchSource: traktRead,
-        oauth: {
-          authorizeUrl: "",
-          tokenUrl: "",
-          clientId: () => "trakt-app",
-        },
-      }),
-    );
 
     const res = await monitor();
 
     expect(res.status).toBe(200);
-    expect(traktRead).toHaveBeenCalledWith("trending", {
-      connection: null,
-      forceRefresh: true,
+    expect(await res.json()).toMatchObject({
+      results: expect.arrayContaining([
+        { provider: "trakt", ok: true, entries: 60 },
+      ]) as unknown,
     });
-    const urls = beats.map((beat) => beat.url);
-    expect(urls).toContain(
+    expect(requests).toContain(`${TRAKT_API}/movies/trending?limit=100`);
+    expect(requests).toContain(
       "https://api.simkl.com/search/id?imdb=tt0111161&client_id=simkl-app",
     );
-    expect(urls).toContain("https://api.mdblist.com/lists/top");
+    expect(requests).toContain("https://api.mdblist.com/lists/top");
+    const urls = beats.map((beat) => beat.url);
     expect(urls).toContain("https://beat.example/trakt");
     expect(urls).toContain("https://beat.example/simkl");
   });
 
   it("shows an outage after two failed probes in a row, and ends it on the next success", async () => {
     vi.stubEnv("MONITOR_JUSTWATCH_REF", "tl-us-list");
-    const justwatch = useFakeProvider(
-      fakeAdapter("justwatch", {
-        fetchSource: failingRead(
-          new HttpError(503, "", "https://apis.justwatch.com/"),
-        ),
-      }),
-    );
+    justwatch = () => new HttpResponse(null, { status: 503 });
 
     await monitor();
     expect(await outages()).toEqual([]);
@@ -424,69 +606,107 @@ describe("Provider outages", () => {
     expect(results.find((r) => r.provider === "justwatch")?.outage).toBe(true);
     expect(await outages()).toEqual(["justwatch"]);
 
-    justwatch.fetchSource = () =>
-      Promise.resolve({ entries: [], complete: true });
+    justwatch = () => justwatchList(5);
     await monitor();
     expect(await outages()).toEqual([]);
   });
 
   it("reports several Providers at once, each recovering on its own", async () => {
     vi.stubEnv("MONITOR_JUSTWATCH_REF", "tl-us-list");
-    vi.stubEnv("MONITOR_SENSCRITIQUE_REF", "users/x/wishes");
+    vi.stubEnv("MONITOR_SENSCRITIQUE_REF", "top111-movies");
     vi.stubEnv("SIMKL_CLIENT_ID", "simkl-app");
     statuses.set("https://api.simkl.com/", 502);
-    const timeout = new DOMException(
-      "The operation timed out.",
-      "TimeoutError",
-    );
-    const network = Object.assign(new TypeError("Unable to connect"), {
-      code: "ECONNREFUSED",
-    });
-    useFakeProvider(
-      fakeAdapter("justwatch", { fetchSource: failingRead(timeout) }),
-    );
-    const senscritique = useFakeProvider(
-      fakeAdapter("senscritique", { fetchSource: failingRead(network) }),
-    );
+    justwatch = () => new HttpResponse(null, { status: 504 });
+    senscritique = () => HttpResponse.error();
 
     await monitor();
     await monitor();
     expect(await outages()).toEqual(["simkl", "justwatch", "senscritique"]);
 
-    senscritique.fetchSource = () =>
-      Promise.resolve({ entries: [], complete: true });
+    senscritique = () => HttpResponse.json({ data: { top: [] } });
     statuses.delete("https://api.simkl.com/");
     await monitor();
     expect(await outages()).toEqual(["justwatch"]);
   });
 
-  it.each([
+  const JUSTWATCH_PROBE = { MONITOR_JUSTWATCH_REF: "tl-us-list" };
+
+  it.each<[string, Record<string, string>, () => void]>([
     [
       "a private monitor list",
-      new SourceUnavailableError("private", "private"),
+      JUSTWATCH_PROBE,
+      () => {
+        justwatch = () =>
+          HttpResponse.json({
+            errors: [{ message: "permission denied" }],
+            data: { node: null },
+          });
+      },
     ],
-    ["a missing monitor list", new SourceUnavailableError("not_found", "gone")],
+    [
+      "a missing monitor list",
+      JUSTWATCH_PROBE,
+      () => {
+        justwatch = () => HttpResponse.json({ data: { node: null } });
+      },
+    ],
     [
       "a refused Connection",
-      new SourceUnavailableError("needs_connection", "expired"),
+      { TRAKT_CLIENT_ID: "trakt-app", MONITOR_TRAKT_REF: "me/watchlist" },
+      () => undefined,
     ],
     [
-      "a Provider app that is not configured",
-      new SourceUnavailableError("disabled", "Trakt is not configured"),
+      "a GraphQL error that names no outage",
+      JUSTWATCH_PROBE,
+      () => {
+        justwatch = () =>
+          HttpResponse.json({ errors: [{ message: "internal" }] });
+      },
     ],
-    ["a rate limit", new HttpError(429, "", "https://apis.justwatch.com/")],
-    ["a busy queue", new LetterboxdBusyError(60_000)],
-    ["a response Stremlist cannot read", new Error("Unexpected token <")],
+    [
+      "a rate limit",
+      JUSTWATCH_PROBE,
+      () => {
+        justwatch = () => new HttpResponse(null, { status: 429 });
+      },
+    ],
+    [
+      "a busy queue",
+      {},
+      () => {
+        void callRpc("letterboxd_report", {
+          p_target: 10,
+          p_outcome: "rate_limited",
+          p_retry_after_ms: 10 * 60_000,
+          p_probe: false,
+        });
+      },
+    ],
+    [
+      "a response Stremlist cannot read",
+      JUSTWATCH_PROBE,
+      () => {
+        justwatch = () => HttpResponse.html("<html>Maintenance</html>");
+      },
+    ],
     [
       "an unavailable read without a Provider failure behind it",
-      new SourceUnavailableError("unavailable", "Simkl is not configured"),
+      {},
+      () => {
+        letterboxd = () => HttpResponse.html("<html>No list here</html>");
+      },
     ],
-    ["a bug in Stremlist", new TypeError("x is undefined")],
-  ])("never reports an outage for %s", async (_name, error) => {
-    vi.stubEnv("MONITOR_JUSTWATCH_REF", "tl-us-list");
-    useFakeProvider(
-      fakeAdapter("justwatch", { fetchSource: failingRead(error) }),
-    );
+    [
+      "an answer in a shape Stremlist does not know",
+      JUSTWATCH_PROBE,
+      () => {
+        justwatch = () =>
+          HttpResponse.json({ data: { node: { titles: "changed" } } });
+      },
+    ],
+  ])("never reports an outage for %s", async (_name, env, fail) => {
+    for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
+    fail();
 
     for (let run = 0; run < 3; run++) {
       expect((await monitor()).status).toBe(502);
@@ -504,29 +724,15 @@ describe("Provider outages", () => {
 
   it("keeps an outage through an inconclusive probe", async () => {
     vi.stubEnv("MONITOR_JUSTWATCH_REF", "tl-us-list");
-    const justwatch = useFakeProvider(
-      fakeAdapter("justwatch", {
-        fetchSource: failingRead(
-          new SourceUnavailableError("unavailable", "did not answer", {
-            cause: new HttpError(503, "", "https://apis.justwatch.com/"),
-          }),
-        ),
-      }),
-    );
+    justwatch = () => new HttpResponse(null, { status: 503 });
     await monitor();
     await monitor();
-    justwatch.fetchSource = failingRead(
-      new HttpError(429, "", "https://apis.justwatch.com/"),
-    );
+    justwatch = () => new HttpResponse(null, { status: 429 });
     await monitor();
     expect(await outages()).toEqual(["justwatch"]);
   });
 
   describe("through the real adapters", () => {
-    beforeEach(() => {
-      resetProviders();
-    });
-
     it("reports an IMDb outage when IMDb answers 5xx", async () => {
       vi.stubEnv("MONITOR_IMDB_USER_ID", "ur12345678");
       statuses.set("https://api.graphql.imdb.com/", 503);
@@ -543,45 +749,61 @@ describe("Provider outages", () => {
       expect(await outages()).toEqual(["letterboxd"]);
     });
 
+    const letterboxdProbe = z.object({
+      results: z.array(
+        z.object({ provider: z.string(), outage: z.boolean().optional() }),
+      ),
+    });
+
     it.each([
       [
         "a Cloudflare error page",
         502,
         '<div class="cf-error-details">Bad gateway</div>',
         {},
+        true,
       ],
-      ["no body", 503, null, {}],
-      ["a Cloudflare challenge", 503, null, { "cf-mitigated": "challenge" }],
+      ["no body", 503, null, {}, false],
+      [
+        "a Cloudflare challenge",
+        503,
+        null,
+        { "cf-mitigated": "challenge" },
+        true,
+      ],
     ])(
       "reports a Letterboxd outage for a 5xx answer with %s",
-      async (_name, status, body, headers: Record<string, string>) => {
-        vi.stubGlobal(
-          "fetch",
-          vi.fn((url: string) =>
-            Promise.resolve(
-              url.startsWith("https://letterboxd.com/")
-                ? new Response(body, { status, headers })
-                : new Response("ok"),
-            ),
-          ),
-        );
+      async (_name, status, body, headers: Record<string, string>, halts) => {
+        letterboxd = () => new HttpResponse(body, { status, headers });
+        const { results } = await readJson(await monitor(), letterboxdProbe);
+        expect(
+          results.find((result) => result.provider === "letterboxd")?.outage,
+        ).toBe(true);
+        expect(
+          db.getTable("provider_outages").map(({ provider, failures }) => ({
+            provider,
+            failures,
+          })),
+        ).toEqual([{ provider: "letterboxd", failures: 1 }]);
+        expect(letterboxdGate()?.haltedAt != null).toBe(halts);
         await monitor();
-        await monitor();
-        expect(await outages()).toEqual(["letterboxd"]);
+        expect(await outages()).toEqual(halts ? [] : ["letterboxd"]);
       },
     );
 
     it("reports no Letterboxd outage for a page it cannot read", async () => {
+      letterboxd = () => HttpResponse.html("<html>No list here</html>");
       await monitor();
       await monitor();
       expect(await outages()).toEqual([]);
     });
 
     it("reports no Letterboxd outage when its gate cannot be read", async () => {
-      rpcHandlers.set("letterboxd_take_turn", () => ({
-        data: null,
-        error: { message: "database down" },
-      }));
+      server.use(
+        http.post(`${SUPABASE_REST}rpc/letterboxd_take_turn`, () =>
+          HttpResponse.json({ message: "database down" }, { status: 500 }),
+        ),
+      );
       await monitor();
       await monitor();
       expect(await outages()).toEqual([]);
@@ -607,15 +829,6 @@ describe("Provider outages", () => {
 
     it("keeps the outage while the page says down, even when Stremlist's probe works", async () => {
       vi.stubEnv("TRAKT_CLIENT_ID", "trakt-app");
-      useFakeProvider(
-        fakeAdapter("trakt", {
-          oauth: {
-            authorizeUrl: "",
-            tokenUrl: "",
-            clientId: () => "trakt-app",
-          },
-        }),
-      );
       pages.set("https://status.trakt.tv/", traktPage("danger"));
       await monitor();
       await monitor();
@@ -704,6 +917,9 @@ describe("Provider outages", () => {
       expect(
         db.getTable("provider_outages").map((row) => row.provider),
       ).not.toContain("trakt");
+      expect(
+        requests.filter((url) => url.startsWith("https://status.trakt.tv/")),
+      ).toEqual([]);
     });
   });
 
@@ -745,28 +961,6 @@ describe("Provider outages", () => {
 
 describe("list checks", () => {
   const APPS_BEAT = "https://beat.example/apps";
-  beforeEach(() => rpcHandlers.clear());
-
-  function canary(
-    provider: CanaryResult["provider"],
-    type: string,
-    entries: number,
-    min = 1,
-  ) {
-    const result: CanaryResult =
-      entries >= min
-        ? { type, provider, ref: type, status: "ok", entries, min }
-        : {
-            type,
-            provider,
-            ref: type,
-            status: "failed",
-            entries,
-            min,
-            error: `${entries} entries, expected at least ${min}`,
-          };
-    return result;
-  }
 
   it("runs at most once per interval, whatever the number of calls", async () => {
     vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
@@ -775,7 +969,7 @@ describe("list checks", () => {
       z.object({ listChecks: z.object({ started: z.boolean() }) }),
     );
     expect(first.listChecks.started).toBe(true);
-    expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledTimes(1);
+    expect(listCheckRuns).toBe(1);
     expect(beats).toEqual([{ url: LBX_BEAT, method: "GET" }]);
 
     beats = [];
@@ -783,31 +977,32 @@ describe("list checks", () => {
     expect(await second.json()).toMatchObject({
       listChecks: {
         started: false,
-        last: { summary: { canaries: [], alarms: [], failures: {} } },
+        last: { summary: { alarms: [], failures: {} } },
       },
     });
     await monitor();
-    expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledTimes(1);
+    expect(listCheckRuns).toBe(1);
     expect(beats).toEqual([]);
 
     const row = db.getTable("monitor_runs")[0];
     row.started_at = new Date(Date.now() - 601_000).toISOString();
     await monitor();
-    expect(backgroundMocks.scheduleBackgroundTask).toHaveBeenCalledTimes(2);
+    expect(listCheckRuns).toBe(2);
     expect(beats).toEqual([{ url: LBX_BEAT, method: "GET" }]);
   });
 
   it("starts no list checks when the run cannot be claimed", async () => {
     vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
-    rpcHandlers.set("claim_monitor_run", () => ({
-      data: null,
-      error: { message: "database down" },
-    }));
+    server.use(
+      http.post(`${SUPABASE_REST}rpc/claim_monitor_run`, () =>
+        HttpResponse.json({ message: "database down" }, { status: 500 }),
+      ),
+    );
 
     const res = await monitor();
 
     expect(res.status).toBe(200);
-    expect(backgroundMocks.scheduleBackgroundTask).not.toHaveBeenCalled();
+    expect(listCheckRuns).toBe(0);
     expect(beats).toEqual([]);
   });
 
@@ -817,30 +1012,21 @@ describe("list checks", () => {
     vi.stubEnv("MDBLIST_CLIENT_ID", "mdblist-app");
     for (const provider of ["TRAKT", "SIMKL", "MDBLIST"])
       vi.stubEnv(`BETTERSTACK_HEARTBEAT_URL_${provider}`, APPS_BEAT);
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        oauth: { authorizeUrl: "", tokenUrl: "", clientId: () => "trakt-app" },
-      }),
-    );
-    await monitor(SECRET, [
-      canary("trakt", "trakt:me/watchlist", 40),
-      canary("simkl", "simkl:me/history", 0),
-      canary("mdblist", "mdblist:me/watchlist", 12),
-    ]);
+    simklTrending.set("tv", 0);
+
+    await monitor();
 
     expect(beats.filter((beat) => beat.url.startsWith(APPS_BEAT))).toEqual([
       { url: `${APPS_BEAT}/fail`, method: "POST" },
     ]);
     expect(failBodies.get(`${APPS_BEAT}/fail`)).toBe(
-      "simkl:me/history (simkl:me/history): 0 entries, expected at least 1",
+      "simkl:trending/tv (trending/tv): 0 entries, expected at least 50",
     );
 
     endListCheckInterval();
     beats = [];
-    await monitor(SECRET, [
-      canary("trakt", "trakt:me/watchlist", 40),
-      canary("simkl", "simkl:me/history", 3),
-    ]);
+    simklTrending.delete("tv");
+    await monitor();
     expect(beats.filter((beat) => beat.url.startsWith(APPS_BEAT))).toEqual([
       { url: APPS_BEAT, method: "GET" },
     ]);
@@ -848,19 +1034,20 @@ describe("list checks", () => {
 
   it("fails the Provider's heartbeat for a failed canary, but shows no outage", async () => {
     vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_LETTERBOXD", LBX_BEAT);
-    const canaries = [
-      canary("letterboxd", "letterboxd:users/{user}/diary", 3, 40),
-    ];
+    letterboxd = (request) =>
+      request.url === OFFICIAL_LIST
+        ? new HttpResponse(letterboxdPage([1, 2, 3]))
+        : new HttpResponse(null, { status: 404 });
 
     for (let run = 0; run < 3; run++) {
       endListCheckInterval();
       beats = [];
-      const res = await monitor(SECRET, canaries);
+      const res = await monitor();
       expect(res.status).toBe(200);
       expect(beats).toEqual([{ url: `${LBX_BEAT}/fail`, method: "POST" }]);
     }
     expect(failBodies.get(`${LBX_BEAT}/fail`)).toContain(
-      "letterboxd:users/{user}/diary",
+      "letterboxd:users/{user}/lists/{slug}",
     );
     expect(await outages()).toEqual([]);
   });

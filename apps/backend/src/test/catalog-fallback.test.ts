@@ -1,9 +1,14 @@
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { http, HttpResponse } from "msw";
-import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import app from "../index.js";
-import { SourceUnavailableError } from "../providers/types";
-import * as scraper from "../services/imdb-scraper";
 import {
   movie,
   seedAccount,
@@ -11,21 +16,18 @@ import {
   seedLegacyAccount,
   seedList,
 } from "./helpers/account.fixture.js";
-import { FakeImdb, IMDB_GRAPHQL } from "./helpers/imdb.test-utils.js";
-import { cache } from "./helpers/mock-list-cache.js";
+import { useBackgroundTasks } from "./helpers/background.test-utils.js";
 import {
-  fakeAdapter,
-  resetProviders,
-  useFakeProvider,
-} from "./helpers/mock-registry.js";
+  cinemetaWithoutTitles,
+  FakeImdb,
+  IMDB_GRAPHQL,
+} from "./helpers/imdb.test-utils.js";
+import { cache } from "./helpers/list-cache.test-utils.js";
 import { db, resetRpc } from "./helpers/mock-supabase.js";
 import { metasBody, readJson } from "./helpers/json.js";
 import { useMswServer } from "./helpers/msw.test-utils.js";
-
-vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
+import { resetR2 } from "./helpers/r2.test-utils.js";
+import { FakeTrakt, useTraktApp } from "./helpers/trakt.test-utils.js";
 
 const OWNER = "ur216216210";
 const UUID_1 = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
@@ -45,7 +47,9 @@ function seedWatchlist(sortOption = "added_at-asc") {
 }
 
 const imdb = new FakeImdb();
+const trakt = new FakeTrakt();
 const server = useMswServer();
+const background = useBackgroundTasks();
 
 function privateWatchlist() {
   imdb.watchlists.set(OWNER, "private");
@@ -83,19 +87,25 @@ function ids(body: { metas: StremioMeta[] }) {
 }
 
 beforeEach(() => {
+  useTraktApp();
   db.reset();
   resetRpc();
+  resetR2();
   cache.reset();
-  resetProviders();
-  vi.restoreAllMocks();
   imdb.reset();
-  server.use(imdb.handler);
+  trakt.reset();
+  server.use(imdb.handler, trakt.handler, cinemetaWithoutTitles);
+});
+
+afterEach(async () => {
+  await background.settle();
+  vi.unstubAllEnvs();
 });
 
 describe("catalog route degrades gracefully on fetch failure", () => {
   describe.each([
-    [scraper.ERROR_PRIVATE, privateWatchlist],
-    [scraper.ERROR_NOT_FOUND, missingWatchlist],
+    ["a private watchlist", privateWatchlist],
+    ["no watchlist", missingWatchlist],
   ])("search when IMDb returns %s", (_error, failWatchlist) => {
     it.each([
       "/search=alien.json",
@@ -438,35 +448,34 @@ describe("information cards for Lists that cannot be read", () => {
       card: ["disabled", "⚠️ Trakt is temporarily unavailable"],
     },
   ])("$name", async ({ sourceRef, disabled, card: [reason, name] }) => {
-    const fetchSource = vi.fn();
-    useFakeProvider(fakeAdapter("trakt", { fetchSource }));
-    if (disabled) process.env.DISABLED_PROVIDERS = "trakt";
+    trakt.serve(`/${sourceRef.replace(/^me\//, "users/me/")}`, [CACHED_MOVIE]);
+    if (disabled) vi.stubEnv("DISABLED_PROVIDERS", "trakt");
 
     const body = await traktCatalog(sourceRef);
 
     expect(body.metas).toMatchObject([
       { id: `stremlist:unavailable:${reason}`, name },
     ]);
-    expect(fetchSource).not.toHaveBeenCalled();
+    expect(trakt.requests).toEqual([]);
   });
 
   it.each([
     {
       name: "explains that a list needs a paid plan",
       sourceRef: "lists/123",
-      error: new SourceUnavailableError("premium_only", "VIP only"),
+      path: "/lists/123/items",
+      status: 420,
       card: ["premium_only", "⚠️ This list needs a paid Trakt plan"],
     },
     {
       name: "uses Provider-neutral copy for private lists of other Providers",
       sourceRef: "users/leo/lists/secret",
-      error: new SourceUnavailableError("private", "private"),
+      path: "/users/leo/lists/secret/items",
+      status: 401,
       card: ["private", "⚠️ This Trakt list is private"],
     },
-  ])("$name", async ({ sourceRef, error, card: [reason, name] }) => {
-    useFakeProvider(
-      fakeAdapter("trakt", { fetchSource: () => Promise.reject(error) }),
-    );
+  ])("$name", async ({ sourceRef, path, status, card: [reason, name] }) => {
+    trakt.fail(path, status);
 
     const body = await traktCatalog(sourceRef);
 
@@ -476,44 +485,32 @@ describe("information cards for Lists that cannot be read", () => {
   });
 
   it("reads a Connection list once the Account has a Connection", async () => {
-    const fetchSource = vi.fn(() =>
-      Promise.resolve({
-        entries: [{ imdbId: CACHED_MOVIE.id, meta: CACHED_MOVIE }],
-        complete: true,
-      }),
-    );
-    useFakeProvider(fakeAdapter("trakt", { fetchSource }));
+    trakt.serve("/users/me/watchlist", [CACHED_MOVIE]);
+    imdb.titles.set(CACHED_MOVIE.id, CACHED_MOVIE);
 
-    expect(ids(await traktCatalog("me/watchlist", {}))).toEqual([
-      CACHED_MOVIE.id,
-    ]);
-    expect(fetchSource).toHaveBeenCalledWith(
-      "me/watchlist",
-      expect.objectContaining({
-        connection: expect.objectContaining({ provider: "trakt" }) as unknown,
-      }),
-    );
+    expect(
+      ids(
+        await traktCatalog("me/watchlist", { accessToken: "token-of-account" }),
+      ),
+    ).toEqual([CACHED_MOVIE.id]);
+    expect(
+      trakt.requestsOf("/users/me/watchlist").map((request) => request.token),
+    ).toEqual(["token-of-account"]);
   });
 
   it("keeps serving the last cached Catalog of a turned-off Provider", async () => {
-    useFakeProvider(fakeAdapter("trakt"));
-    process.env.DISABLED_PROVIDERS = "trakt";
+    trakt.serve("/users/leo/watchlist", []);
+    vi.stubEnv("DISABLED_PROVIDERS", "trakt");
     cache.seed(UUID_1, [CACHED_MOVIE], new Date(0));
 
     expect(ids(await traktCatalog("users/leo/watchlist"))).toEqual([
       CACHED_MOVIE.id,
     ]);
+    expect(trakt.requests).toEqual([]);
   });
 
   it("asks to connect again when a Connection expired, instead of failing with a 500", async () => {
-    useFakeProvider(
-      fakeAdapter("trakt", {
-        fetchSource: async (_ref, ctx) => {
-          await ctx.connection?.getAccessToken();
-          return { entries: [], complete: true };
-        },
-      }),
-    );
+    trakt.serve("/users/me/watchlist", []);
 
     const body = await traktCatalog("me/watchlist", {
       refreshToken: null,

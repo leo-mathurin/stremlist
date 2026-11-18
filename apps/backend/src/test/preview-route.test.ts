@@ -1,36 +1,36 @@
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { http, HttpResponse } from "msw";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
+import { z } from "zod";
 import app from "../index.js";
-import { LetterboxdBusyError } from "../providers/letterboxd-gate";
-import { currentReadQueue } from "../providers/read-priority";
-import { resetPreviewReadings } from "../services/list-preview";
 import {
   movie,
   seedAccount,
   seedConnection,
   seedLegacyAccount,
 } from "./helpers/account.fixture.js";
-import {
-  fakeAdapter,
-  resetProviders,
-  useFakeProvider,
-} from "./helpers/mock-registry.js";
-import { db } from "./helpers/mock-supabase.js";
+import { useBackgroundTasks } from "./helpers/background.test-utils.js";
+import { cinemetaWithoutTitles, FakeImdb } from "./helpers/imdb.test-utils.js";
+import { readJson } from "./helpers/json.js";
+import { cache } from "./helpers/list-cache.test-utils.js";
+import { db, resetRpc, rpcCallsOf } from "./helpers/mock-supabase.js";
+import { useMswServer } from "./helpers/msw.test-utils.js";
+import { resetR2 } from "./helpers/r2.test-utils.js";
+import { FakeTrakt, useTraktApp } from "./helpers/trakt.test-utils.js";
 
-vi.mock("../lib/supabase", async () => {
-  return await import("./helpers/mock-supabase.js");
-});
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-vi.mock("../lib/r2", async () => {
-  return await import("./helpers/mock-r2.js");
-});
-vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
+const server = useMswServer();
+const background = useBackgroundTasks();
+const imdb = new FakeImdb();
+const trakt = new FakeTrakt();
 
 const TITLE = movie("tt0111161", { name: "The Shawshank Redemption" });
+const GODFATHER = movie("tt0068646", { name: "The Godfather" });
 
 function preview(body: Record<string, unknown>) {
   return app.request("/lists/preview", {
@@ -40,41 +40,53 @@ function preview(body: Record<string, unknown>) {
   });
 }
 
-function traktReader() {
-  const fetchSource = vi.fn(() =>
-    Promise.resolve({
-      entries: [{ imdbId: TITLE.id, type: "movie" as const, meta: TITLE }],
-      complete: true,
-    }),
-  );
-  useFakeProvider(fakeAdapter("trakt", { fetchSource }));
-  return fetchSource;
+function letterboxdPage(ids: number[]) {
+  return `<html><head><title>A list • Letterboxd</title></head><body><h1>A list</h1><ul class="poster-list -grid">${ids.map((id) => `<li data-postered-identifier='{"uid":"film:${id}"}' data-item-slug="film-${id}" data-item-name="Film ${id} (2000)"></li>`).join("")}</ul></body></html>`;
 }
 
+const queuedBody = z.object({
+  ok: z.literal(false),
+  reason: z.literal("queued"),
+  provider: z.literal("letterboxd"),
+  waitMs: z.number(),
+  retryMs: z.number(),
+  ticket: z.string(),
+});
+
+let now = Date.parse("2026-11-01T12:00:00Z");
+
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  now += 24 * 60 * 60_000;
+  vi.setSystemTime(now);
+  useTraktApp();
   db.reset();
-  resetProviders();
-  resetPreviewReadings();
-  vi.restoreAllMocks();
+  resetRpc();
+  resetR2();
+  cache.reset();
+  imdb.reset();
+  trakt.reset();
+  server.use(imdb.handler, trakt.handler, cinemetaWithoutTitles);
+  imdb.titles.set(TITLE.id, TITLE);
+  imdb.titles.set(GODFATHER.id, GODFATHER);
+  trakt.serve("/users/me/watchlist", [TITLE]);
+  trakt.serve("/users/someone/watchlist", [TITLE]);
+  trakt.serve("/users/a/watchlist", [TITLE]);
+  trakt.serve("/users/me/watched/movies", [TITLE]);
+  trakt.serve("/users/me/watched/shows", []);
+});
+
+afterEach(async () => {
+  await background.settle();
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 describe("POST /lists/preview", () => {
   it("previews every Source list of a merged List, through the Account's Connection", async () => {
     const account = seedAccount();
-    seedConnection(account.id, "trakt");
-    const fetchSource = traktReader();
-    useFakeProvider(
-      fakeAdapter("imdb", {
-        entries: [
-          { imdbId: TITLE.id, type: "movie", meta: TITLE },
-          {
-            imdbId: "tt0068646",
-            type: "movie",
-            meta: movie("tt0068646", { name: "The Godfather" }),
-          },
-        ],
-      }),
-    );
+    seedConnection(account.id, "trakt", { accessToken: "token-of-account" });
+    imdb.watchlists.set("ur1000001", [TITLE, GODFATHER]);
 
     const res = await preview({
       accountKey: account.id,
@@ -86,53 +98,58 @@ describe("POST /lists/preview", () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, titleCount: 2 });
-    expect(fetchSource).toHaveBeenCalledWith(
-      "me/watchlist",
-      expect.objectContaining({
-        connection: expect.objectContaining({
-          accountId: account.id,
-        }) as unknown,
-      }),
-    );
+    expect(
+      trakt.requestsOf("/users/me/watchlist").map((request) => request.token),
+    ).toEqual(["token-of-account"]);
   });
 
   it("answers with the queue state while a Source list waits for Letterboxd, then previews with the same ticket", async () => {
-    const ticket = "6bde5e3d-617f-4912-950a-2f9acf815b7e";
-    const tickets: (string | null)[] = [];
-    const fetchSource = vi.fn(() => {
-      tickets.push(currentReadQueue().ticket);
-      return tickets.length === 1
-        ? Promise.reject(
-            new LetterboxdBusyError(40_000, { retryMs: 15_000, ticket }),
-          )
-        : Promise.resolve({
-            entries: [
-              { imdbId: TITLE.id, type: "movie" as const, meta: TITLE },
+    vi.stubEnv("LETTERBOXD_MAX_RPS", "0.025");
+    server.use(
+      http.get("https://letterboxd.com/:user/watchlist/", () =>
+        HttpResponse.text(letterboxdPage([1])),
+      ),
+      http.post("https://query.wikidata.org/sparql", () =>
+        HttpResponse.json({
+          results: {
+            bindings: [
+              { external: { value: "film-1" }, imdb: { value: TITLE.id } },
             ],
-            complete: true,
-          });
+          },
+        }),
+      ),
+    );
+    const first = await preview({
+      provider: "letterboxd",
+      sourceRef: "users/bob/watchlist",
     });
-    useFakeProvider(fakeAdapter("letterboxd", { fetchSource }));
-    const trakt = traktReader();
+    expect(first.status).toBe(200);
+    const turnsBefore = rpcCallsOf("letterboxd_take_turn").length;
     const list = {
       provider: "letterboxd",
       sourceRef: "users/alice/watchlist",
       mergedSources: [{ provider: "trakt", sourceRef: "users/a/watchlist" }],
     };
 
-    const queued = await preview(list);
-    expect(await queued.json()).toEqual({
+    const queued = await readJson(await preview(list), queuedBody);
+    expect(queued).toEqual({
       ok: false,
       reason: "queued",
       provider: "letterboxd",
       waitMs: 40_000,
       retryMs: 15_000,
-      ticket,
+      ticket: queued.ticket,
     });
-    const ready = await preview({ ...list, ticket });
+    vi.setSystemTime(Date.now() + 40_000);
+    const ready = await preview({ ...list, ticket: queued.ticket });
     expect(await ready.json()).toMatchObject({ ok: true, titleCount: 1 });
-    expect(tickets).toEqual([null, ticket]);
-    expect(trakt).toHaveBeenCalledTimes(1);
+    expect(
+      rpcCallsOf("letterboxd_take_turn")
+        .slice(turnsBefore)
+        .filter((args) => args.p_priority === "first")
+        .map((args) => args.p_ticket),
+    ).toEqual([null, queued.ticket]);
+    expect(trakt.requestsOf("/users/a/watchlist")).toHaveLength(1);
   });
 
   it("refuses more than five Source lists, like a save", async () => {
@@ -149,8 +166,6 @@ describe("POST /lists/preview", () => {
   });
 
   it("previews a public Source list without an Account", async () => {
-    const fetchSource = traktReader();
-
     const res = await preview({
       provider: "trakt",
       sourceRef: "users/someone/watchlist",
@@ -171,15 +186,14 @@ describe("POST /lists/preview", () => {
       ],
       unresolved: { count: 0, notCheckedYet: 0, entries: [] },
     });
-    expect(fetchSource).toHaveBeenCalledWith("users/someone/watchlist", {
-      connection: null,
-    });
+    expect(trakt.requests.map(({ path, token }) => ({ path, token }))).toEqual([
+      { path: "/users/someone/watchlist", token: null },
+    ]);
   });
 
   it("reads through the Connection of a private Account", async () => {
-    const fetchSource = traktReader();
     const account = seedAccount();
-    seedConnection(account.id, "trakt");
+    seedConnection(account.id, "trakt", { accessToken: "token-of-account" });
 
     const res = await preview({
       accountKey: account.id,
@@ -188,13 +202,16 @@ describe("POST /lists/preview", () => {
     });
 
     expect(await res.json()).toMatchObject({ ok: true, titleCount: 1 });
-    expect(fetchSource).toHaveBeenCalledWith("me/history", {
-      connection: expect.objectContaining({ provider: "trakt" }) as unknown,
-    });
+    expect(trakt.requests.map(({ path, token }) => ({ path, token }))).toEqual(
+      expect.arrayContaining([
+        { path: "/users/me/watched/movies", token: "token-of-account" },
+        { path: "/users/me/watched/shows", token: "token-of-account" },
+      ]),
+    );
+    expect(trakt.requests).toHaveLength(2);
   });
 
   it("never reads through a Connection for a Legacy alias", async () => {
-    const fetchSource = traktReader();
     const account = seedLegacyAccount("ur12345678");
     seedConnection(account.id, "trakt");
 
@@ -208,12 +225,10 @@ describe("POST /lists/preview", () => {
       ok: false,
       reason: "needs_connection",
     });
-    expect(fetchSource).not.toHaveBeenCalled();
+    expect(trakt.requests).toEqual([]);
   });
 
   it("treats an unknown Account key like a new setup", async () => {
-    const fetchSource = traktReader();
-
     const res = await preview({
       accountKey: "sl_0000000000000000000000",
       provider: "trakt",
@@ -221,9 +236,9 @@ describe("POST /lists/preview", () => {
     });
 
     expect(await res.json()).toMatchObject({ ok: true });
-    expect(fetchSource).toHaveBeenCalledWith("users/someone/watchlist", {
-      connection: null,
-    });
+    expect(trakt.requests.map(({ path, token }) => ({ path, token }))).toEqual([
+      { path: "/users/someone/watchlist", token: null },
+    ]);
   });
 
   it("refuses a malformed request", async () => {

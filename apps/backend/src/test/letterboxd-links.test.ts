@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { SOURCE_LINK_MAX_LENGTH } from "@stremlist/shared/constants";
+import { http, HttpResponse } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -17,20 +18,44 @@ import {
   postJson,
   resetConfigTest,
 } from "./helpers/config-api.js";
-import { fakeAdapter, useFakeProvider } from "./helpers/mock-registry.js";
+import { useBackgroundTasks } from "./helpers/background.test-utils.js";
 import { readJson } from "./helpers/json.js";
+import { useMswServer } from "./helpers/msw.test-utils.js";
 import { z } from "zod";
 
-const { backgroundMocks, prewarmMocks, supabaseMocks } = await vi.hoisted(
-  () => import("./helpers/config-api-mocks.js"),
-);
-vi.mock("../lib/background", () => backgroundMocks);
-vi.mock("../services/list-prewarm", () => prewarmMocks);
-vi.mock("../lib/supabase", () => supabaseMocks);
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
-vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
+const server = useMswServer();
+const background = useBackgroundTasks();
+
+function outsideRequests() {
+  const urls: string[] = [];
+  const own = new Set(
+    [process.env.SUPABASE_URL, process.env.R2_ENDPOINT].map(
+      (url) => new URL(url ?? "http://localhost").host,
+    ),
+  );
+  server.events.on("request:start", ({ request }) => {
+    if (!own.has(new URL(request.url).host)) urls.push(request.url);
+  });
+  return urls;
+}
+
+function serveLetterboxd(answer: (url: string) => Response | undefined) {
+  server.use(
+    http.get("https://letterboxd.com/*", ({ request }) => {
+      return (
+        answer(request.url) ?? new HttpResponse("Not found", { status: 404 })
+      );
+    }),
+    http.get("https://boxd.it/*", ({ request }) => {
+      return (
+        answer(request.url) ?? new HttpResponse("Not found", { status: 404 })
+      );
+    }),
+    http.post("https://query.wikidata.org/sparql", () =>
+      HttpResponse.json({ results: { bindings: [] } }),
+    ),
+  );
+}
 
 const sourceRefBody = z.object({ sourceRef: z.string() }).loose();
 
@@ -54,10 +79,11 @@ function resolve(input: string, ticket?: string) {
 
 beforeEach(() => {
   resetConfigTest();
+  server.events.removeAllListeners();
   vi.stubEnv("CONNECTION_ENCRYPTION_KEY", key);
 });
-afterEach(() => {
-  vi.unstubAllGlobals();
+afterEach(async () => {
+  await background.settle();
   vi.unstubAllEnvs();
 });
 
@@ -65,16 +91,12 @@ describe("long Letterboxd share links", () => {
   it("previews and saves the longest share link that the link check accepts", async () => {
     const link = shareLink(SOURCE_LINK_MAX_LENGTH);
     expect(link).toHaveLength(SOURCE_LINK_MAX_LENGTH);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => Promise.resolve(new Response(page([1])))),
-    );
+    serveLetterboxd(() => new HttpResponse(page([1])));
     const checked = await readJson(await resolve(link), sourceRefBody);
     expect(checked).toMatchObject({ ok: true, provider: "letterboxd" });
     const { sourceRef } = checked;
     expect(sourceRef.startsWith("share/v1:")).toBe(true);
 
-    useFakeProvider(fakeAdapter("letterboxd"));
     const preview = await app.request("/lists/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -95,30 +117,25 @@ describe("long Letterboxd share links", () => {
   });
 
   it("refuses a longer link with a clear reason, before it reads Letterboxd", async () => {
-    const send = vi.fn(() => Promise.resolve(new Response(page([1]))));
-    vi.stubGlobal("fetch", send);
+    serveLetterboxd(() => new HttpResponse(page([1])));
+    const sent = outsideRequests();
     const res = await resolve(shareLink(SOURCE_LINK_MAX_LENGTH + 1));
     expect(await res.json()).toEqual({ ok: false, reason: "too_long" });
-    expect(send).not.toHaveBeenCalled();
+    expect(sent).toEqual([]);
   });
 });
 
 describe("renamed Letterboxd members", () => {
   it("follows a 301 to the new username and stores the new reference", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string) =>
-        Promise.resolve(
-          url === "https://letterboxd.com/oldname/watchlist/"
-            ? new Response(null, {
-                status: 301,
-                headers: { location: "/newname/watchlist/" },
-              })
-            : url === "https://letterboxd.com/newname/watchlist/"
-              ? new Response(page([1]))
-              : new Response("Not found", { status: 404 }),
-        ),
-      ),
+    serveLetterboxd((url) =>
+      url === "https://letterboxd.com/oldname/watchlist/"
+        ? new HttpResponse(null, {
+            status: 301,
+            headers: { location: "/newname/watchlist/" },
+          })
+        : url === "https://letterboxd.com/newname/watchlist/"
+          ? new HttpResponse(page([1]))
+          : undefined,
     );
     const res = await resolve("https://letterboxd.com/oldname/watchlist/");
     expect(await res.json()).toMatchObject({
@@ -129,21 +146,18 @@ describe("renamed Letterboxd members", () => {
   });
 
   it("reads a stored List at the new address of a renamed member", async () => {
-    const send = vi.fn((url: string) =>
-      Promise.resolve(
-        url === "https://letterboxd.com/oldname/list/top-10/"
-          ? new Response(null, {
-              status: 301,
-              headers: {
-                location: "https://letterboxd.com/newname/list/top-10/",
-              },
-            })
-          : url === "https://letterboxd.com/newname/list/top-10/"
-            ? new Response(page([1, 2]))
-            : new Response("Not found", { status: 404 }),
-      ),
+    serveLetterboxd((url) =>
+      url === "https://letterboxd.com/oldname/list/top-10/"
+        ? new HttpResponse(null, {
+            status: 301,
+            headers: {
+              location: "https://letterboxd.com/newname/list/top-10/",
+            },
+          })
+        : url === "https://letterboxd.com/newname/list/top-10/"
+          ? new HttpResponse(page([1, 2]))
+          : undefined,
     );
-    vi.stubGlobal("fetch", send);
     const snapshot = await letterboxdProvider.fetchSource(
       "users/oldname/lists/top-10",
       { connection: null },
@@ -157,21 +171,15 @@ describe("renamed Letterboxd members", () => {
 
   it("follows a renamed member's share link and keeps its token encrypted", async () => {
     const token = "2OS5xaC1fJOBBvGv";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((url: string) =>
-        Promise.resolve(
-          url === `https://letterboxd.com/oldname/list/top-10/share/${token}/`
-            ? new Response(null, {
-                status: 301,
-                headers: { location: `/newname/list/top-10/share/${token}/` },
-              })
-            : url ===
-                `https://letterboxd.com/newname/list/top-10/share/${token}/`
-              ? new Response(page([1]))
-              : new Response("Not found", { status: 404 }),
-        ),
-      ),
+    serveLetterboxd((url) =>
+      url === `https://letterboxd.com/oldname/list/top-10/share/${token}/`
+        ? new HttpResponse(null, {
+            status: 301,
+            headers: { location: `/newname/list/top-10/share/${token}/` },
+          })
+        : url === `https://letterboxd.com/newname/list/top-10/share/${token}/`
+          ? new HttpResponse(page([1]))
+          : undefined,
     );
     const res = await resolve(
       `https://letterboxd.com/oldname/list/top-10/share/${token}/`,
@@ -191,34 +199,28 @@ describe("renamed Letterboxd members", () => {
     ["another kind of page", "/newname/films/"],
     ["another site", "https://example.com/newname/watchlist/"],
   ])("does not follow a redirect to %s", async (_, location) => {
-    const send = vi.fn(() =>
-      Promise.resolve(
-        new Response(null, { status: 301, headers: { location } }),
-      ),
+    serveLetterboxd(
+      () => new HttpResponse(null, { status: 301, headers: { location } }),
     );
-    vi.stubGlobal("fetch", send);
+    const sent = outsideRequests();
     const res = await resolve("https://letterboxd.com/oldname/watchlist/");
     expect(await res.json()).toEqual({
       ok: false,
       reason: "unavailable",
       provider: "letterboxd",
     });
-    expect(send).toHaveBeenCalledTimes(1);
+    expect(sent).toEqual(["https://letterboxd.com/oldname/watchlist/"]);
   });
 });
 
 describe("a busy Letterboxd", () => {
   it("answers a 429 with the queue state and the wait, not with try again", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() =>
-        Promise.resolve(
-          new Response("slow down", {
-            status: 429,
-            headers: { "Retry-After": "120" },
-          }),
-        ),
-      ),
+    serveLetterboxd(
+      () =>
+        new HttpResponse("slow down", {
+          status: 429,
+          headers: { "Retry-After": "120" },
+        }),
     );
     const res = await resolve("https://letterboxd.com/leo/watchlist/");
     expect(await res.json()).toMatchObject({
@@ -230,10 +232,7 @@ describe("a busy Letterboxd", () => {
   });
 
   it("waits at least the 60 s pause after a 429 without Retry-After", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => Promise.resolve(new Response("slow down", { status: 429 }))),
-    );
+    serveLetterboxd(() => new HttpResponse("slow down", { status: 429 }));
     const res = await resolve("https://boxd.it/YtpP8");
     expect(await res.json()).toMatchObject({
       ok: false,
@@ -244,16 +243,12 @@ describe("a busy Letterboxd", () => {
   });
 
   it("previews a List with the queue state after a 429", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() =>
-        Promise.resolve(
-          new Response("slow down", {
-            status: 429,
-            headers: { "Retry-After": "90" },
-          }),
-        ),
-      ),
+    serveLetterboxd(
+      () =>
+        new HttpResponse("slow down", {
+          status: 429,
+          headers: { "Retry-After": "90" },
+        }),
     );
     const preview = await app.request("/lists/preview", {
       method: "POST",

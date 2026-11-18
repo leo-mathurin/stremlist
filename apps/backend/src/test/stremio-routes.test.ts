@@ -1,3 +1,4 @@
+import { http, HttpResponse } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -22,26 +23,21 @@ import {
   seedList,
   useTestEncryptionKey,
 } from "./helpers/account.fixture.js";
-import { callRpc, db, rpcHandlers } from "./helpers/mock-supabase.js";
+import { useBackgroundTasks } from "./helpers/background.test-utils.js";
+import { cinemetaWithoutTitles, FakeImdb } from "./helpers/imdb.test-utils.js";
+import { db } from "./helpers/mock-supabase.js";
+import { useMswServer } from "./helpers/msw.test-utils.js";
 import {
   configBody,
   mustString,
-  parseJson,
   readJson,
   stremioManifest,
   unchanged,
 } from "./helpers/json.js";
 
-const { backgroundMocks, prewarmMocks, supabaseMocks } = await vi.hoisted(
-  () => import("./helpers/config-api-mocks.js"),
-);
-vi.mock("../lib/background", () => backgroundMocks);
-vi.mock("../services/list-prewarm", () => prewarmMocks);
-vi.mock("../lib/supabase", () => supabaseMocks);
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
-vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
+const server = useMswServer();
+const background = useBackgroundTasks();
+const imdb = new FakeImdb();
 
 const SESSION = "stremio-session-key";
 const EMAIL = "member@example.com";
@@ -90,55 +86,55 @@ function fakeStremio(collection: Addon[]) {
     calls: [] as string[],
     meanwhile: () => {},
     hold: null as Promise<void> | null,
-    held: 0,
+    held: Promise.withResolvers<void>(),
   };
-  const respond = (input: string | URL, init?: RequestInit) => {
-    const url = new URL(String(input));
-    const method = url.pathname.split("/").at(-1) ?? "";
-    stremio.calls.push(method);
-    if (url.host === "link.stremio.com") {
+  server.use(
+    http.get("https://link.stremio.com/api/v2/:method", ({ params }) => {
+      const method = String(params.method);
+      stremio.calls.push(method);
       if (method === "create") {
-        return Response.json({
+        return HttpResponse.json({
           result: { code: "AB12", link: "https://link.stremio.com/AB12" },
         });
       }
-      return Response.json(
+      return HttpResponse.json(
         stremio.approved
           ? { result: { authKey: SESSION } }
           : { error: { code: 101, message: "Invalid or expired token" } },
       );
-    }
-    stremio.meanwhile();
-    if (stremio.failure === "down") throw new TypeError("fetch failed");
-    const body = parseJson(
-      mustString(init?.body, "the Stremio API request body"),
-      apiRequest,
-    );
-    if (stremio.failure === "signed-out" || body.authKey !== SESSION) {
-      return Response.json({
-        error: { code: 1, message: "Session does not exist" },
-      });
-    }
-    if (method === "getUser")
-      return Response.json({ result: { email: EMAIL } });
-    if (method === "addonCollectionGet") {
-      return Response.json({ result: { addons: stremio.collection } });
-    }
-    if (method === "addonCollectionSet") {
-      stremio.collection = structuredClone(body.addons ?? []);
-      return Response.json({ result: { success: true } });
-    }
-    throw new Error(`Unexpected Stremio call ${method}`);
-  };
-  vi.stubGlobal("fetch", async (input: string | URL, init?: RequestInit) => {
-    if (stremio.hold && new URL(String(input)).host === "api.strem.io") {
-      const hold = stremio.hold;
-      stremio.hold = null;
-      stremio.held++;
-      await hold;
-    }
-    return respond(input, init);
-  });
+    }),
+    http.post(
+      "https://api.strem.io/api/:method",
+      async ({ request, params }) => {
+        if (stremio.hold) {
+          const hold = stremio.hold;
+          stremio.hold = null;
+          stremio.held.resolve();
+          await hold;
+        }
+        const method = String(params.method);
+        stremio.calls.push(method);
+        stremio.meanwhile();
+        if (stremio.failure === "down") return HttpResponse.error();
+        const body = apiRequest.parse(await request.json());
+        if (stremio.failure === "signed-out" || body.authKey !== SESSION) {
+          return HttpResponse.json({
+            error: { code: 1, message: "Session does not exist" },
+          });
+        }
+        if (method === "getUser")
+          return HttpResponse.json({ result: { email: EMAIL } });
+        if (method === "addonCollectionGet") {
+          return HttpResponse.json({ result: { addons: stremio.collection } });
+        }
+        if (method === "addonCollectionSet") {
+          stremio.collection = structuredClone(body.addons ?? []);
+          return HttpResponse.json({ result: { success: true } });
+        }
+        throw new Error(`Unexpected Stremio call ${method}`);
+      },
+    ),
+  );
   return stremio;
 }
 
@@ -146,12 +142,22 @@ let accountId = "";
 
 function refusedUpdateClaim() {
   const refused = Promise.withResolvers<unknown>();
-  rpcHandlers.set("claim_stremio_update", async (args) => {
-    rpcHandlers.delete("claim_stremio_update");
-    const result = await callRpc("claim_stremio_update", args);
-    refused.resolve(result.data);
-    return result;
-  });
+  const claim = new URL(
+    "/rest/v1/rpc/claim_stremio_update",
+    process.env.SUPABASE_URL,
+  ).href;
+  const answered = ({
+    request,
+    response,
+  }: {
+    request: Request;
+    response: Response;
+  }) => {
+    if (request.url !== claim) return;
+    server.events.removeListener("response:mocked", answered);
+    response.clone().json().then(refused.resolve, refused.reject);
+  };
+  server.events.on("response:mocked", answered);
   return refused.promise;
 }
 
@@ -183,11 +189,15 @@ async function seedStremioLink() {
   const { token } = await startLink();
   stremio.approved = true;
   await confirmLink(token);
-  vi.unstubAllGlobals();
+  server.resetHandlers();
+  server.use(imdb.handler, cinemetaWithoutTitles);
 }
 
 beforeEach(() => {
   resetConfigTest();
+  imdb.reset();
+  server.events.removeAllListeners();
+  server.use(imdb.handler, cinemetaWithoutTitles);
   useTestEncryptionKey();
   accountId = seedAccount().id;
   seedList(accountId, {
@@ -197,9 +207,9 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await background.settle();
   vi.useRealTimers();
-  vi.unstubAllGlobals();
 });
 
 describe("linking a Stremio account", () => {
@@ -333,9 +343,7 @@ describe("updating the installed Stremlist", () => {
 
     await rename("First");
     const first = update();
-    await vi.waitFor(() => {
-      expect(stremio.held).toBe(1);
-    });
+    await stremio.held.promise;
     await rename("Second");
     const refused = refusedUpdateClaim();
     const second = update();
@@ -359,9 +367,7 @@ describe("updating the installed Stremlist", () => {
       release = resolve;
     });
     const first = update();
-    await vi.waitFor(() => {
-      expect(stremio.held).toBe(1);
-    });
+    await stremio.held.promise;
     const refused = refusedUpdateClaim();
     const second = update();
     expect(await refused).toBe("busy");
@@ -384,9 +390,7 @@ describe("updating the installed Stremlist", () => {
       release = resolve;
     });
     const running = update();
-    await vi.waitFor(() => {
-      expect(stremio.held).toBe(1);
-    });
+    await stremio.held.promise;
     const refused = refusedUpdateClaim();
     const disconnect = app.request(`/${accountId}/stremio`, {
       method: "DELETE",

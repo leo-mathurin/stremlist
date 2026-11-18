@@ -1,13 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import app from "../index.js";
 import {
   movie,
   seedLegacyAccount,
   seedList,
 } from "./helpers/account.fixture.js";
-import { cache } from "./helpers/mock-list-cache.js";
-import { resetProviders } from "./helpers/mock-registry.js";
-import { db, resetRpc, supabase } from "./helpers/mock-supabase.js";
+import { cache } from "./helpers/list-cache.test-utils.js";
+import { db, resetRpc } from "./helpers/mock-supabase.js";
+import { useMswServer } from "./helpers/msw.test-utils.js";
+import { resetR2 } from "./helpers/r2.test-utils.js";
 import {
   configBody,
   metaBody,
@@ -16,10 +17,23 @@ import {
   stremioManifest,
 } from "./helpers/json.js";
 
-vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
+const server = useMswServer();
+
+function tableRequests() {
+  const tables: string[] = [];
+  const supabaseRest = new URL("/rest/v1/", process.env.SUPABASE_URL).href;
+  const record = ({ request }: { request: Request }) => {
+    const url = request.url;
+    if (
+      url.startsWith(supabaseRest) &&
+      !url.startsWith(`${supabaseRest}rpc/`)
+    ) {
+      tables.push(url);
+    }
+  };
+  server.events.on("request:start", record);
+  return tables;
+}
 
 const LEGACY_KEYS = [
   ["an IMDb user ID", "ur12345678"],
@@ -44,9 +58,9 @@ const SHAWSHANK = movie("tt0111161", { name: "The Shawshank Redemption" });
 beforeEach(() => {
   db.reset();
   resetRpc();
+  resetR2();
   cache.reset();
-  resetProviders();
-  vi.restoreAllMocks();
+  server.events.removeAllListeners();
 });
 
 function seedInstall(key: string) {
@@ -163,20 +177,20 @@ describe.each(JUNK_KEYS)("the junk key %j", (key) => {
 
   it("is not found as a manifest and reaches no table", async () => {
     seedLegacyAccount(key);
-    const from = vi.spyOn(supabase, "from");
+    const tables = tableRequests();
 
     const res = await app.request(path("/manifest.json"));
 
     expect(res.status).toBe(404);
     const value = await readJson(res, stremioManifest);
     expect(value.behaviorHints.configurationRequired).toBe(true);
-    expect(from).not.toHaveBeenCalled();
+    expect(tables).toEqual([]);
     expect(db.getTable("accounts")).toHaveLength(1);
   });
 
   it("answers catalog, meta and stream requests empty, without a lookup", async () => {
     seedLegacyAccount(key);
-    const from = vi.spyOn(supabase, "from");
+    const tables = tableRequests();
 
     const answers = await Promise.all(
       [
@@ -194,16 +208,16 @@ describe.each(JUNK_KEYS)("the junk key %j", (key) => {
       [200, { meta: null }],
       [200, { streams: [], cacheMaxAge: 0 }],
     ]);
-    expect(from).not.toHaveBeenCalled();
+    expect(tables).toEqual([]);
   });
 
   it("is refused by the configuration API", async () => {
     seedLegacyAccount(key);
-    const from = vi.spyOn(supabase, "from");
+    const tables = tableRequests();
 
     const res = await app.request(path("/config"));
 
     expect(res.status).toBe(400);
-    expect(from).not.toHaveBeenCalled();
+    expect(tables).toEqual([]);
   });
 });

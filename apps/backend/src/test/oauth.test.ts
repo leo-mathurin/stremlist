@@ -10,8 +10,6 @@ import { createHash } from "node:crypto";
 import { http, HttpResponse } from "msw";
 import app from "../index.js";
 import { decryptSecret } from "../lib/crypto";
-import { traktProvider } from "../providers/trakt";
-import type { OAuthConfig, ProviderAdapter } from "../providers/types";
 import { forgetConnectionObjects } from "../services/actions";
 import {
   OAuthNotConfiguredError,
@@ -30,58 +28,35 @@ import {
   seedLegacyAccount,
   useTestEncryptionKey,
 } from "./helpers/account.fixture.js";
-import { r2Objects } from "./helpers/mock-r2.js";
-import {
-  fakeAdapter,
-  resetProviders,
-  useFakeProvider,
-} from "./helpers/mock-registry.js";
+import { useBackgroundTasks } from "./helpers/background.test-utils.js";
+import { cinemetaWithoutTitles, FakeImdb } from "./helpers/imdb.test-utils.js";
+import { cache } from "./helpers/list-cache.test-utils.js";
 import { db, resetRpc } from "./helpers/mock-supabase.js";
 import { z } from "zod";
 import { accountIdBody, mustString, readJson } from "./helpers/json.js";
 import { useMswServer } from "./helpers/msw.test-utils.js";
+import { r2Objects, resetR2 } from "./helpers/r2.test-utils.js";
 import { useTraktApp } from "./helpers/trakt.test-utils.js";
 
-const background = vi.hoisted(() => ({
-  tasks: [] as (() => Promise<unknown>)[],
-}));
-vi.mock("../lib/background", () => ({
-  scheduleBackgroundTask: (task: () => Promise<unknown>) =>
-    background.tasks.push(task),
-}));
-vi.mock("../lib/r2", async () => await import("./helpers/mock-r2.js"));
-
-vi.mock("../lib/supabase", async () => {
-  return await import("./helpers/mock-supabase.js");
-});
-vi.mock("../services/list-cache", async () => {
-  return await import("./helpers/mock-list-cache.js");
-});
-vi.mock("../providers/registry", async () => {
-  return await import("./helpers/mock-registry.js");
-});
-vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
-
-const AUTHORIZE_URL = "https://trakt.example/oauth/authorize";
-const TOKEN_URL = "https://api.trakt.example/oauth/token";
-
-type ListConnectionSources = NonNullable<
-  ProviderAdapter["listConnectionSources"]
->;
-
+const AUTHORIZE_URL = "https://auth.trakt.tv/oauth/authorize";
+const TOKEN_URL = "https://auth.trakt.tv/oauth/token";
 const TRAKT_SETTINGS = "https://api.trakt.tv/users/settings";
-
-function fetchUsername(accessToken: string) {
-  if (!traktProvider.oauth?.fetchUsername) {
-    throw new Error("The Trakt adapter looks up no username");
-  }
-  return traktProvider.oauth.fetchUsername(accessToken);
-}
+const TRAKT_LISTS = "https://api.trakt.tv/users/me/lists";
+const TRAKT_SMART_LISTS = "https://api.trakt.tv/users/me/smart-lists";
 
 const server = useMswServer();
+const background = useBackgroundTasks();
+const imdb = new FakeImdb();
+const storageHosts = new Set(
+  [process.env.SUPABASE_URL, process.env.R2_ENDPOINT].map(
+    (url) => new URL(url ?? "http://localhost").host,
+  ),
+);
 const requests: Request[] = [];
 server.events.on("request:start", ({ request }) => {
-  requests.push(request.clone());
+  if (!storageHosts.has(new URL(request.url).host)) {
+    requests.push(request.clone());
+  }
 });
 
 function serveToken(body: Record<string, unknown>, status = 200) {
@@ -94,20 +69,13 @@ function serveTraktUser(username: string) {
   );
 }
 
-function useOAuthProvider(overrides: Partial<OAuthConfig> = {}) {
-  useFakeProvider(
-    fakeAdapter("trakt", {
-      oauth: {
-        authorizeUrl: AUTHORIZE_URL,
-        tokenUrl: TOKEN_URL,
-        clientId: () => "client-123",
-        clientSecret: () => "secret-456",
-        scopes: ["public", "private"],
-        fetchUsername,
-        ...overrides,
-      },
-    }),
-  );
+function useOAuthProvider(prefix = "TRAKT") {
+  vi.stubEnv(`${prefix}_CLIENT_ID`, "client-123");
+  vi.stubEnv(`${prefix}_CLIENT_SECRET`, "secret-456");
+}
+
+function withoutClientId() {
+  vi.stubEnv("TRAKT_CLIENT_ID", "");
 }
 
 const oauthStateRow = z
@@ -182,10 +150,11 @@ let accountId = "";
 
 beforeEach(() => {
   db.reset();
-  r2Objects.clear();
-  background.tasks.length = 0;
+  resetR2();
+  cache.reset();
   resetRpc();
-  resetProviders();
+  imdb.reset();
+  server.use(imdb.handler, cinemetaWithoutTitles);
   useTestEncryptionKey();
   requests.length = 0;
   useTraktApp();
@@ -193,38 +162,40 @@ beforeEach(() => {
   vi.spyOn(console, "error");
 });
 
-afterEach(() => {
-  vi.unstubAllGlobals();
+afterEach(async () => {
+  await background.settle();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
 describe("startAuthorization", () => {
   it("builds a PKCE authorize URL and remembers the verifier under the state", async () => {
-    useOAuthProvider();
+    useOAuthProvider("SIMKL");
 
     const { authorizeUrl, browserKey } = await startAuthorization(
       accountId,
-      "trakt",
+      "simkl",
       "https://api.stremlist.test",
     );
     const url = new URL(authorizeUrl);
 
-    expect(`${url.origin}${url.pathname}`).toBe(AUTHORIZE_URL);
+    expect(`${url.origin}${url.pathname}`).toBe(
+      "https://simkl.com/oauth2/authorize",
+    );
     const params = Object.fromEntries(url.searchParams);
     const row = stateRow();
     expect(params).toEqual({
       response_type: "code",
       client_id: "client-123",
-      redirect_uri: "https://api.stremlist.test/oauth/trakt/callback",
+      redirect_uri: "https://api.stremlist.test/oauth/simkl/callback",
       state: row.state,
       code_challenge: createHash("sha256")
         .update(row.code_verifier)
         .digest("base64url"),
       code_challenge_method: "S256",
-      scope: "public private",
+      scope: "media:read media:write",
     });
-    expect(row).toMatchObject({ account_id: accountId, provider: "trakt" });
+    expect(row).toMatchObject({ account_id: accountId, provider: "simkl" });
     expect(row.code_verifier).toMatch(/^[A-Za-z0-9_-]{43,128}$/);
     expect(url.toString()).not.toContain(row.code_verifier);
     expect(browserKey).toMatch(/^[A-Za-z0-9_-]{43,}$/);
@@ -250,7 +221,7 @@ describe("startAuthorization", () => {
   });
 
   it("refuses a Provider without a client ID", async () => {
-    useOAuthProvider({ clientId: () => undefined });
+    withoutClientId();
 
     await expect(
       startAuthorization(accountId, "trakt", "https://api.stremlist.test"),
@@ -260,22 +231,18 @@ describe("startAuthorization", () => {
 
   it("prefers BACKEND_PUBLIC_URL for the redirect URI", async () => {
     useOAuthProvider();
-    process.env.BACKEND_PUBLIC_URL = "https://api.stremlist.com/";
-    try {
-      const res = await app.request(`/${accountId}/connections/trakt/start`, {
-        method: "POST",
-      });
-      const { authorizeUrl } = await readJson(res, startBody);
+    vi.stubEnv("BACKEND_PUBLIC_URL", "https://api.stremlist.com/");
+    const res = await app.request(`/${accountId}/connections/trakt/start`, {
+      method: "POST",
+    });
+    const { authorizeUrl } = await readJson(res, startBody);
 
-      expect(new URL(authorizeUrl).searchParams.get("redirect_uri")).toBe(
-        "https://api.stremlist.com/oauth/trakt/callback",
-      );
-      expect(redirectUri("trakt", "https://api.stremlist.com")).toBe(
-        "https://api.stremlist.com/oauth/trakt/callback",
-      );
-    } finally {
-      delete process.env.BACKEND_PUBLIC_URL;
-    }
+    expect(new URL(authorizeUrl).searchParams.get("redirect_uri")).toBe(
+      "https://api.stremlist.com/oauth/trakt/callback",
+    );
+    expect(redirectUri("trakt", "https://api.stremlist.com")).toBe(
+      "https://api.stremlist.com/oauth/trakt/callback",
+    );
   });
 });
 
@@ -320,7 +287,7 @@ describe("POST /:accountId/connections/:provider/start", () => {
   });
 
   it("says when the Provider cannot be connected yet", async () => {
-    useOAuthProvider({ clientId: () => undefined });
+    withoutClientId();
 
     const res = await app.request(`/${accountId}/connections/trakt/start`, {
       method: "POST",
@@ -331,7 +298,7 @@ describe("POST /:accountId/connections/:provider/start", () => {
 
   it("refuses a turned-off Provider", async () => {
     useOAuthProvider();
-    process.env.DISABLED_PROVIDERS = "trakt";
+    vi.stubEnv("DISABLED_PROVIDERS", "trakt");
 
     const res = await app.request(`/${accountId}/connections/trakt/start`, {
       method: "POST",
@@ -343,17 +310,12 @@ describe("POST /:accountId/connections/:provider/start", () => {
 
 describe("GET /:accountId/connections/:provider/sources", () => {
   it("lists the user's own lists through the Connection", async () => {
-    const listConnectionSources = vi.fn<ListConnectionSources>(() =>
-      Promise.resolve([
-        {
-          ref: "me/lists/42",
-          kind: "list",
-          label: "Horror",
-          defaultDisplayMode: "split",
-        },
-      ]),
+    server.use(
+      http.get(TRAKT_LISTS, () =>
+        HttpResponse.json([{ name: "Horror", ids: { trakt: 42 } }]),
+      ),
+      http.get(TRAKT_SMART_LISTS, () => HttpResponse.json([])),
     );
-    useFakeProvider(fakeAdapter("trakt", { listConnectionSources }));
     seedConnection(accountId, "trakt");
 
     const res = await app.request(`/${accountId}/connections/trakt/sources`);
@@ -365,21 +327,23 @@ describe("GET /:accountId/connections/:provider/sources", () => {
     );
 
     expect(body.sources.map((source) => source.ref)).toContain("me/lists/42");
-    expect(listConnectionSources).toHaveBeenCalledOnce();
+    expect(
+      requests.filter((request) => request.url.startsWith(TRAKT_LISTS)),
+    ).toHaveLength(1);
   });
 
   it("does not call a turned-off Provider", async () => {
-    const listConnectionSources = vi.fn<ListConnectionSources>(() =>
-      Promise.resolve([]),
+    server.use(
+      http.get(TRAKT_LISTS, () => HttpResponse.json([])),
+      http.get(TRAKT_SMART_LISTS, () => HttpResponse.json([])),
     );
-    useFakeProvider(fakeAdapter("trakt", { listConnectionSources }));
     seedConnection(accountId, "trakt");
-    process.env.DISABLED_PROVIDERS = "trakt";
+    vi.stubEnv("DISABLED_PROVIDERS", "trakt");
 
     const res = await app.request(`/${accountId}/connections/trakt/sources`);
 
     expect(res.status).toBe(200);
-    expect(listConnectionSources).not.toHaveBeenCalled();
+    expect(requests).toEqual([]);
   });
 });
 
@@ -402,7 +366,7 @@ describe("OAuth login CSRF", () => {
     const { state } = await attackerStart();
 
     const res = await callback({ code: "victim-code", state });
-    for (const task of background.tasks.splice(0)) await task();
+    await background.settle();
 
     expect(redirectParams(res).params.connected).toBeUndefined();
     expect(requests).toEqual([]);
@@ -519,7 +483,7 @@ describe("POST /connections/:provider/complete", () => {
 
       const response = await complete();
       expect(await response.json()).toMatchObject({ ok: true, accountId });
-      for (const task of background.tasks.splice(0)) await task();
+      await background.settle();
 
       expect([...r2Objects.keys()]).toEqual([key]);
       expect(r2Objects.get(key)).toBe(before);
@@ -697,7 +661,7 @@ describe("POST /connections/:provider/complete", () => {
   it("does not exchange the code when the Provider was turned off meanwhile", async () => {
     useOAuthProvider();
     seedState(accountId);
-    process.env.DISABLED_PROVIDERS = "trakt";
+    vi.stubEnv("DISABLED_PROVIDERS", "trakt");
 
     const res = await complete();
 

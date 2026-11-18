@@ -1,5 +1,13 @@
 import type { StremioManifest } from "@stremlist/shared/stremio.types";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import type { ProviderId } from "@stremlist/shared/providers";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import app from "../index.js";
 import {
   LIST_IDS,
@@ -8,20 +16,13 @@ import {
   seedLegacyAccount,
   seedList,
 } from "./helpers/account.fixture.js";
-import { cache } from "./helpers/mock-list-cache.js";
-import {
-  fakeActions,
-  fakeAdapter,
-  resetProviders,
-  useFakeProvider,
-} from "./helpers/mock-registry.js";
+import { cache } from "./helpers/list-cache.test-utils.js";
 import { db, resetRpc } from "./helpers/mock-supabase.js";
+import { useMswServer } from "./helpers/msw.test-utils.js";
+import { resetR2 } from "./helpers/r2.test-utils.js";
 import { readJson, stremioManifest } from "./helpers/json.js";
 
-vi.mock("../lib/supabase", () => import("./helpers/mock-supabase.js"));
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/resend", () => import("../test/helpers/mock-resend"));
+useMswServer();
 
 const IMDB_USER = "ur12345678";
 const META_RESOURCE = { name: "meta", types: ["movie"], idPrefixes: ["tt"] };
@@ -44,8 +45,12 @@ function catalogIds(value: StremioManifest) {
 beforeEach(() => {
   db.reset();
   resetRpc();
+  resetR2();
   cache.reset();
-  resetProviders();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("private manifest", () => {
@@ -105,15 +110,13 @@ describe("private manifest", () => {
   ])(
     "stream resource: %s",
     async (_label, actionsOn, connected, withActions, disabled, stream) => {
-      useFakeProvider(
-        fakeAdapter("trakt", withActions ? { actions: fakeActions() } : {}),
-      );
-      if (disabled) process.env.DISABLED_PROVIDERS = "trakt";
+      const provider: ProviderId = withActions ? "trakt" : "senscritique";
+      if (disabled) vi.stubEnv("DISABLED_PROVIDERS", provider);
       const account = seedAccount({
         ...(actionsOn ? { actions_enabled: true } : {}),
-        action_providers: ["trakt"],
+        action_providers: [provider],
       });
-      if (connected) seedConnection(account.id, "trakt");
+      if (connected) seedConnection(account.id, provider);
 
       expect((await manifest(account.id)).resources).toEqual([
         "catalog",
@@ -157,7 +160,6 @@ describe("legacy manifest", () => {
   });
 
   it("never has a stream resource, even with Actions on", async () => {
-    useFakeProvider(fakeAdapter("trakt", { actions: fakeActions() }));
     const legacy = seedLegacyAccount(IMDB_USER, {
       actions_enabled: true,
       action_providers: ["trakt"],

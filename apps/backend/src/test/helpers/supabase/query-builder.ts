@@ -305,20 +305,4 @@ export class MockQueryBuilder {
   run() {
     return Promise.resolve(this.execute());
   }
-
-  then(
-    onfulfilled?: ((value: unknown) => unknown) | null,
-    onrejected?: ((reason: unknown) => unknown) | null,
-  ) {
-    if (this.db.stalledTables.has(this.tableName)) {
-      return new Promise<unknown>(() => {});
-    }
-    try {
-      const result = this.execute();
-      return Promise.resolve(onfulfilled ? onfulfilled(result) : result);
-    } catch (e) {
-      if (onrejected) return Promise.resolve(onrejected(e));
-      return Promise.reject(e instanceof Error ? e : new Error(String(e)));
-    }
-  }
 }

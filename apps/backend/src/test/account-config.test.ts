@@ -1,6 +1,12 @@
 import { http, HttpResponse } from "msw";
-import { describe, it, expect, beforeEach, vi } from "vite-plus/test";
-import * as scraper from "../services/imdb-scraper";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import {
   getConfig,
   legacyAccountId,
@@ -10,48 +16,68 @@ import {
   postJson,
   resetConfigTest,
   rpcArgs,
-  runScheduledTasks,
   seedWatchlist,
   UUID_1,
   UUID_2,
 } from "./helpers/config-api.js";
 import {
+  movie,
   seedAccount,
   seedConnection,
   seedList,
 } from "./helpers/account.fixture.js";
-import {
-  fakeActions,
-  fakeAdapter,
-  useFakeProvider,
-} from "./helpers/mock-registry.js";
-import { db } from "./helpers/mock-supabase.js";
+import { useBackgroundTasks } from "./helpers/background.test-utils.js";
+import { cinemetaWithoutTitles, FakeImdb } from "./helpers/imdb.test-utils.js";
+import { FakeLetterboxd } from "./helpers/letterboxd.test-utils.js";
+import { db, rpcCalls, rpcCallsOf } from "./helpers/mock-supabase.js";
 import { configBody, errorBody, readJson } from "./helpers/json.js";
 import { useMswServer } from "./helpers/msw.test-utils.js";
-
-const { backgroundMocks, prewarmMocks, rpcMocks, supabaseMocks } =
-  await vi.hoisted(() => import("./helpers/config-api-mocks.js"));
-vi.mock("../lib/background", () => backgroundMocks);
-vi.mock("../services/list-prewarm", () => prewarmMocks);
-vi.mock("../lib/supabase", () => supabaseMocks);
-vi.mock("../services/list-cache", () => import("./helpers/mock-list-cache.js"));
-vi.mock("../providers/registry", () => import("./helpers/mock-registry.js"));
-vi.mock("../lib/r2", () => import("./helpers/mock-r2.js"));
-vi.mock("../lib/resend", () => import("./helpers/mock-resend.js"));
-
-beforeEach(resetConfigTest);
+import { FakeTrakt, useTraktApp } from "./helpers/trakt.test-utils.js";
 
 const server = useMswServer();
+const background = useBackgroundTasks();
+const imdb = new FakeImdb();
+const trakt = new FakeTrakt();
+const letterboxd = new FakeLetterboxd();
+
+let now = Date.parse("2026-11-01T12:00:00Z");
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  now += 24 * 60 * 60_000;
+  vi.setSystemTime(now);
+  useTraktApp();
+  resetConfigTest();
+  imdb.reset();
+  trakt.reset();
+  letterboxd.reset();
+  server.use(
+    imdb.handler,
+    trakt.handler,
+    ...letterboxd.handlers,
+    cinemetaWithoutTitles,
+  );
+});
+
+afterEach(async () => {
+  await background.settle();
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
+});
 
 function serveImdbProfiles(userIds: Record<string, string>) {
+  const handles: string[] = [];
   server.use(
     http.get("https://www.imdb.com/user/:handle/", ({ params }) => {
-      const userId = userIds[String(params.handle)];
+      const handle = String(params.handle);
+      handles.push(handle);
+      const userId = userIds[handle];
       return userId
         ? HttpResponse.html(`<script>{"userId":"${userId}"}</script>`)
         : new HttpResponse("Not Found", { status: 404 });
     }),
   );
+  return handles;
 }
 
 describe("List CRUD via the config API", () => {
@@ -198,12 +224,11 @@ describe("List CRUD via the config API", () => {
       expect(res.status).toBe(400);
       const data = await readJson(res, errorBody);
       expect(data.error).toBe("Each list can only be added once.");
-      expect(rpcMocks.rpc).not.toHaveBeenCalled();
-      expect(backgroundMocks.scheduleBackgroundTask).not.toHaveBeenCalled();
+      expect(rpcCalls).toEqual([]);
+      expect(background.scheduled).toBe(0);
     });
 
     it("allows the same reference on two different Providers", async () => {
-      useFakeProvider(fakeAdapter("trakt"));
       const res = await postConfig(OWNER, {
         lists: [
           {
@@ -248,7 +273,7 @@ describe("List CRUD via the config API", () => {
           lists: [{ sourceRef, sortOption: "added_at-asc" }],
         });
         expect(res.status).toBe(400);
-        expect(rpcMocks.rpc).not.toHaveBeenCalled();
+        expect(rpcCalls).toEqual([]);
       },
     );
 
@@ -297,15 +322,14 @@ describe("List CRUD via the config API", () => {
     );
 
     it("turns IMDb p. handles into user IDs before saving", async () => {
-      serveImdbProfiles({ "p.leo123": OTHER_IMDB });
-      const normalize = vi.spyOn(scraper, "normalizeImdbUserId");
+      const handles = serveImdbProfiles({ "p.leo123": OTHER_IMDB });
 
       const res = await postConfig(OWNER, {
         lists: [{ sourceRef: "p.leo123", sortOption: "added_at-asc" }],
       });
 
       expect(res.status).toBe(200);
-      expect(normalize).toHaveBeenCalledWith("p.leo123");
+      expect(handles).toEqual(["p.leo123"]);
       expect(rpcArgs().p_lists).toEqual([
         expect.objectContaining({ source_ref: OTHER_IMDB }),
       ]);
@@ -339,8 +363,8 @@ describe("List CRUD via the config API", () => {
     });
 
     it("does not ask IMDb to resolve a p. handle while IMDb is turned off", async () => {
-      const normalize = vi.spyOn(scraper, "normalizeImdbUserId");
-      process.env.DISABLED_PROVIDERS = "imdb";
+      const handles = serveImdbProfiles({ "p.leo123": OTHER_IMDB });
+      vi.stubEnv("DISABLED_PROVIDERS", "imdb");
 
       const res = await postConfig(OWNER, {
         lists: [{ sourceRef: "p.leo123", sortOption: "added_at-asc" }],
@@ -350,7 +374,7 @@ describe("List CRUD via the config API", () => {
       expect((await readJson(res, errorBody)).error).toBe(
         "IMDb is temporarily unavailable. Please try again later.",
       );
-      expect(normalize).not.toHaveBeenCalled();
+      expect(handles).toEqual([]);
     });
 
     it("does not let a Legacy alias turn Actions on", async () => {
@@ -360,7 +384,7 @@ describe("List CRUD via the config API", () => {
       });
 
       expect(res.status).toBe(400);
-      expect(rpcMocks.rpc).not.toHaveBeenCalled();
+      expect(rpcCalls).toEqual([]);
     });
 
     it("ignores Action settings that a Legacy alias sends turned off", async () => {
@@ -444,7 +468,8 @@ describe("List CRUD via the config API", () => {
 
     it("saves a Connection list once the Account has the Connection", async () => {
       const account = seedAccount();
-      seedConnection(account.id, "trakt");
+      seedConnection(account.id, "trakt", { accessToken: "token-of-account" });
+      trakt.serve("/users/me/watchlist", []);
 
       const res = await postConfig(account.id, {
         lists: [
@@ -464,27 +489,70 @@ describe("List CRUD via the config API", () => {
           source_ref: "me/watchlist",
         }),
       ]);
-      await runScheduledTasks();
-      expect(prewarmMocks.prewarmLists).toHaveBeenCalledWith(
-        account.id,
-        expect.any(Array),
-        true,
-        { posterSource: "imdb", rpdbApiKey: null },
-      );
+      await background.settle();
+      expect(
+        rpcCallsOf("request_list_prewarm").map((args) => args.p_account_id),
+      ).toEqual([account.id]);
+      expect(
+        trakt.requestsOf("/users/me/watchlist").map((request) => request.token),
+      ).toEqual(["token-of-account"]);
     });
 
+    it.each([
+      ["tmdb", ["tt0111161"]],
+      ["imdb", []],
+    ])(
+      "prewarms the posters of the %s poster source that the Account chose",
+      async (posterSource, finds) => {
+        vi.stubEnv("TMDB_API_KEY", "test-tmdb-key");
+        vi.stubEnv("TMDB_READ_ACCESS_TOKEN", "");
+        const tmdbFinds: string[] = [];
+        server.use(
+          http.get("https://api.themoviedb.org/3/find/:id", ({ params }) => {
+            tmdbFinds.push(String(params.id));
+            return HttpResponse.json({
+              movie_results: [{ poster_path: "/poster.jpg" }],
+              tv_results: [],
+            });
+          }),
+        );
+        const account = seedAccount({ poster_source: posterSource });
+        seedConnection(account.id, "trakt", {
+          accessToken: "token-of-account",
+        });
+        const title = movie("tt0111161", { name: "The Shawshank Redemption" });
+        imdb.titles.set(title.id, title);
+        trakt.serve("/users/me/watchlist", [title]);
+
+        const res = await postConfig(account.id, {
+          lists: [
+            {
+              provider: "trakt",
+              sourceRef: "me/watchlist",
+              sortOption: "added_at-asc",
+            },
+          ],
+        });
+
+        expect(res.status).toBe(200);
+        await background.settle();
+        expect(
+          rpcCallsOf("request_list_prewarm").map((args) => args.p_account_id),
+        ).toEqual([account.id]);
+        expect(tmdbFinds).toEqual(finds);
+      },
+    );
+
     it("keeps only connected Action Providers that support Actions", async () => {
-      useFakeProvider(fakeAdapter("trakt", { actions: fakeActions() }));
-      useFakeProvider(fakeAdapter("simkl"));
       const account = seedAccount();
       seedConnection(account.id, "trakt");
-      seedConnection(account.id, "simkl");
+      seedConnection(account.id, "justwatch");
 
       const res = await postConfig(account.id, {
         lists: [{ sourceRef: OWNER, sortOption: "added_at-asc" }],
         actions: {
           enabled: true,
-          providers: ["trakt", "simkl", "mdblist", "trakt"],
+          providers: ["trakt", "justwatch", "mdblist", "trakt"],
         },
       });
 

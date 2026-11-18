@@ -2,7 +2,6 @@ import { accountRpcs } from "./supabase/account-rpcs";
 import { connectionRpcs } from "./supabase/connection-rpcs";
 import { letterboxdGateRpcs } from "./supabase/letterboxd-gate-rpcs";
 import { monitorRunRpcs } from "./supabase/monitor-run-rpcs";
-import { MockQueryBuilder } from "./supabase/query-builder";
 import type { RpcCall } from "./supabase/postgrest";
 import { providerOutageRpcs } from "./supabase/provider-outage-rpcs";
 import type { RpcArgs, RpcHandler } from "./supabase/rpc";
@@ -49,8 +48,3 @@ export function callRpc(name: string, args: RpcArgs = {}) {
 export function rpcCallsOf(name: string) {
   return rpcCalls.filter((call) => call.name === name).map(({ args }) => args);
 }
-
-export const supabase = {
-  from: (table: string) => new MockQueryBuilder(db, table),
-  rpc: callRpc,
-};
