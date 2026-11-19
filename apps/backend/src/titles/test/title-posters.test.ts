@@ -1,4 +1,4 @@
-import { delay, http, HttpResponse } from "msw";
+import { http, HttpResponse } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -8,6 +8,7 @@ import {
   vi,
 } from "vite-plus/test";
 import { useBackgroundTasks } from "../../test/helpers/background.test-utils";
+import { untilSettled } from "../../test/helpers/clock.test-utils";
 import { db, resetRpc } from "../../test/helpers/mock-supabase";
 import { useMswServer } from "../../test/helpers/msw.test-utils";
 import { findPosters, resetPosterMemory } from "../title-posters";
@@ -23,11 +24,12 @@ const BOTH = {
 
 let tmdbFinds: string[] = [];
 
-function answer(body: unknown, delayMs = 0) {
+function answer(body: unknown, before?: (id: string) => Promise<void>) {
   server.use(
     http.get("https://api.themoviedb.org/3/find/:id", async ({ params }) => {
-      tmdbFinds.push(String(params.id));
-      await delay(delayMs);
+      const id = String(params.id);
+      tmdbFinds.push(id);
+      await before?.(id);
       return new HttpResponse(JSON.stringify(body), {
         headers: { "Content-Type": "application/json" },
       });
@@ -82,25 +84,42 @@ describe("findPosters on TMDB", () => {
   it("keeps its budget when the stored posters are slow to read", async () => {
     answer(BOTH);
     db.stalledTables.add("title_posters");
+    vi.useFakeTimers();
     const started = Date.now();
-    const posters = await findPosters(
-      "tmdb",
-      [{ id: "tt0000009", type: "movie" }],
-      { budgetMs: 50, size: "stremio" },
+    const posters = await untilSettled(
+      findPosters("tmdb", [{ id: "tt0000009", type: "movie" }], {
+        budgetMs: 50,
+        size: "stremio",
+      }),
     );
     expect(posters.size).toBe(0);
-    expect(Date.now() - started).toBeLessThan(1000);
+    expect(Date.now() - started).toBe(50);
     expect(tmdbFinds).toEqual([]);
   });
 
   it("asks TMDB once for a Title that concurrent requests need", async () => {
-    answer(BOTH, 20);
     const title = { id: "tt0000010", type: "movie" as const };
-    const [first, second] = await Promise.all([
-      findPosters("tmdb", [title], { budgetMs: 1000, size: "stremio" }),
-      findPosters("tmdb", [title], { budgetMs: 1000, size: "stremio" }),
-    ]);
-    expect(tmdbFinds).toEqual(["tt0000010"]);
+    const other = { id: "tt0000011", type: "movie" as const };
+    const firstAsked = Promise.withResolvers<void>();
+    const secondDecided = Promise.withResolvers<void>();
+    answer(BOTH, async (id) => {
+      if (id === other.id) secondDecided.resolve();
+      else if (tmdbFinds.length === 1) {
+        firstAsked.resolve();
+        await secondDecided.promise;
+      }
+    });
+    const firstCall = findPosters("tmdb", [title], {
+      budgetMs: 1000,
+      size: "stremio",
+    });
+    await firstAsked.promise;
+    const second = await findPosters("tmdb", [title, other], {
+      budgetMs: 1000,
+      size: "stremio",
+    });
+    const first = await firstCall;
+    expect(tmdbFinds).toEqual(["tt0000010", "tt0000011"]);
     expect(first.get(title.id)).toBe(
       "https://image.tmdb.org/t/p/w500/as-movie.jpg",
     );
@@ -108,7 +127,8 @@ describe("findPosters on TMDB", () => {
   });
 
   it("answers within its budget and stores late answers for the next call", async () => {
-    answer(BOTH, 200);
+    const late = Promise.withResolvers<void>();
+    answer(BOTH, () => late.promise);
     const title = { id: "tt0000004", type: "movie" as const };
 
     const first = await findPosters("tmdb", [title], {
@@ -116,7 +136,9 @@ describe("findPosters on TMDB", () => {
       size: "stremio",
     });
     expect(first.size).toBe(0);
+    expect(db.getTable("title_posters")).toHaveLength(0);
 
+    late.resolve();
     await background.settle();
     expect(db.getTable("title_posters")).toHaveLength(1);
     const next = await findPosters("tmdb", [title], {

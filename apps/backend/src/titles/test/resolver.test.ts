@@ -330,24 +330,31 @@ describe("resolveEntries", () => {
   });
 
   it("stops starting chunks once the time budget is spent", async () => {
-    const entries = Array.from({ length: 120 }, (_, index) => tmdb(index + 1));
-    const known = strategy("slow", knowing(entries));
-    const slow = {
-      name: "slow",
-      async resolve(batch: SourceEntry[]) {
-        await new Promise((done) => setTimeout(done, 15));
-        return known.resolve(batch);
-      },
-    };
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const entries = Array.from({ length: 120 }, (_, index) =>
+        tmdb(index + 1),
+      );
+      const known = strategy("slow", knowing(entries));
+      const slow: ResolverStrategy = {
+        name: "slow",
+        resolve(batch: SourceEntry[]) {
+          vi.setSystemTime(Date.now() + 15);
+          return known.resolve(batch);
+        },
+      };
 
-    const result = await resolveEntries(adapter([slow]), entries, {
-      budgetMs: 10,
-    });
+      const result = await resolveEntries(adapter([slow]), entries, {
+        budgetMs: 10,
+      });
 
-    expect(known.calls).toHaveLength(1);
-    expect(result.resolved).toHaveLength(50);
-    expect(result.deferred).toBe(70);
-    expect(cacheRow("51")).toBeUndefined();
+      expect(known.calls).toHaveLength(1);
+      expect(result.resolved).toHaveLength(50);
+      expect(result.deferred).toBe(70);
+      expect(cacheRow("51")).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("caches a Title that appears twice in the same Source list", async () => {
