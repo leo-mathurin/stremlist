@@ -103,6 +103,7 @@ export function newTitlesHandlers() {
     http.all(`${TRAKT_API}/*`, ({ request }) => {
       const path = new URL(request.url).pathname;
       if (
+        request.method === "GET" &&
         [...down].some(
           (key) => key.startsWith("trakt:") && path === key.slice(6),
         )

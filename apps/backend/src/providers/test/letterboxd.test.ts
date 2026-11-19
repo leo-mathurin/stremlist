@@ -1119,7 +1119,7 @@ describe("Letterboxd halt alert", () => {
       pings.push(request.url);
       return new HttpResponse("ok");
     };
-    server.use(http.all(heartbeat, ping), http.all(`${heartbeat}/fail`, ping));
+    server.use(http.get(heartbeat, ping), http.post(`${heartbeat}/fail`, ping));
   });
 
   it("reports the halt to Better Stack once, when the shared state flips", async () => {

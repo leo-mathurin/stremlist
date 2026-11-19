@@ -344,12 +344,18 @@ test(
     });
     let previews = 0;
     await page.route(`${BACKEND_URL}/lists/preview`, async (route) => {
+      if (route.request().method() !== "POST") {
+        throw new Error("A preview request is a POST");
+      }
       previews += 1;
       if (previews > 1) await held;
       await route.fulfill({ json: answer });
     });
     const pageRequests: { offset: unknown; catalog: unknown }[] = [];
     await page.route(`${BACKEND_URL}/lists/preview/titles`, async (route) => {
+      if (route.request().method() !== "POST") {
+        throw new Error("A page request is a POST");
+      }
       const body: unknown = route.request().postDataJSON();
       if (!isRecord(body)) throw new Error("A page request needs a body");
       const { offset, catalog, sourceRef } = body;

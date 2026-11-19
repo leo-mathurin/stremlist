@@ -19,14 +19,19 @@ export interface MdblistRequest {
   body: unknown;
 }
 
+type MdblistAnswer = { status: number; body?: unknown };
+
 /**
  * The MDBList API in memory. It answers each path with the JSON that a test
- * stores and keeps every request it receives. A request for another path is
- * an `unexpectedRequest` that fails the test: a test that wants an error
- * answer sets it with `fail`.
+ * stores and keeps every request it receives. A path answers GET only,
+ * unless the test gives the method of a write, for example
+ * `reply(path, body, 200, "POST")`. A request with another method or for
+ * another path is an `unexpectedRequest` that fails the test: a test that
+ * wants an error answer sets it with `fail`.
  */
 export class FakeMdblist {
-  readonly paths = new Map<string, { status: number; body?: unknown }>();
+  /** The answers by `${method} ${path}`, for example `GET /lists/leo/top`. */
+  readonly answers = new Map<string, MdblistAnswer>();
   readonly requests: MdblistRequest[] = [];
 
   /** The MSW handler of every MDBList API call. */
@@ -35,18 +40,18 @@ export class FakeMdblist {
   );
 
   reset() {
-    this.paths.clear();
+    this.answers.clear();
     this.requests.length = 0;
   }
 
-  /** Answers `path` with this JSON body and status. */
-  reply(path: string, body: unknown, status = 200) {
-    this.paths.set(path, { status, body });
+  /** Answers `method` requests to `path` with this JSON body and status. */
+  reply(path: string, body: unknown, status = 200, method = "GET") {
+    this.answers.set(`${method} ${path}`, { status, body });
   }
 
-  /** Answers `path` with this status and no body. */
-  fail(path: string, status: number) {
-    this.paths.set(path, { status });
+  /** Answers `method` requests to `path` with this status and no body. */
+  fail(path: string, status: number, method = "GET") {
+    this.answers.set(`${method} ${path}`, { status });
   }
 
   /** The requests to `path`. */
@@ -66,9 +71,12 @@ export class FakeMdblist {
         request.headers.get("Authorization")?.replace(/^Bearer /, "") ?? null,
       body,
     });
-    const answer = this.paths.get(url.pathname);
+    const answer = this.answers.get(`${request.method} ${url.pathname}`);
     if (!answer) {
-      return unexpectedRequest(request, "FakeMdblist serves no answer here");
+      return unexpectedRequest(
+        request,
+        `FakeMdblist serves no ${request.method} answer here`,
+      );
     }
     return answer.body === undefined
       ? new HttpResponse(null, { status: answer.status })

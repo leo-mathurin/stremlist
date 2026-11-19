@@ -233,7 +233,7 @@ function worldHandlers() {
       },
     ),
     imdbWorld(),
-    http.all("https://letterboxd.com/*", ({ request }) => {
+    http.get("https://letterboxd.com/*", ({ request }) => {
       tick();
       const status = statusOf(request.url);
       return status ? new HttpResponse(null, { status }) : letterboxd(request);
@@ -273,7 +273,7 @@ function worldHandlers() {
         })),
       );
     }),
-    http.all("https://api.simkl.com/*", ({ request }) => {
+    http.get("https://api.simkl.com/*", ({ request }) => {
       tick();
       return HttpResponse.json([], { status: statusOf(request.url) ?? 200 });
     }),
@@ -288,7 +288,7 @@ function worldHandlers() {
         })),
       );
     }),
-    http.all("https://api.mdblist.com/*", ({ request }) => {
+    http.get("https://api.mdblist.com/*", ({ request }) => {
       tick();
       return HttpResponse.json({}, { status: statusOf(request.url) ?? 200 });
     }),

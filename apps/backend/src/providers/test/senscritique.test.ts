@@ -61,30 +61,33 @@ let requests: RecordedRequest[] = [];
 let handlerErrors: unknown[] = [];
 let handler: (request: RecordedRequest) => unknown;
 
+async function record({ request: sent }: { request: Request }) {
+  const url = sent.url;
+  const body = await sent.text();
+  const request: RecordedRequest = {
+    url,
+    body,
+    json: url.startsWith("https://apollo.senscritique.com")
+      ? graphQLRequest.parse(JSON.parse(body))
+      : { query: "", variables: {} },
+  };
+  requests.push(request);
+  try {
+    const result = handler(request);
+    return result instanceof Response ? result : Response.json(result);
+  } catch (error) {
+    handlerErrors.push(error);
+    return new Response("The test handler failed", { status: 599 });
+  }
+}
+
 beforeEach(() => {
   useFreshLimiters();
   requests = [];
   handlerErrors = [];
   server.use(
-    http.all(/^https:\/\//, async ({ request: sent }) => {
-      const url = sent.url;
-      const body = await sent.text();
-      const request: RecordedRequest = {
-        url,
-        body,
-        json: url.startsWith("https://apollo.senscritique.com")
-          ? graphQLRequest.parse(JSON.parse(body))
-          : { query: "", variables: {} },
-      };
-      requests.push(request);
-      try {
-        const result = handler(request);
-        return result instanceof Response ? result : Response.json(result);
-      } catch (error) {
-        handlerErrors.push(error);
-        return new Response("The test handler failed", { status: 599 });
-      }
-    }),
+    http.get(/^https:\/\/api\.themoviedb\.org\//, record),
+    http.post(/^https:\/\//, record),
   );
 });
 

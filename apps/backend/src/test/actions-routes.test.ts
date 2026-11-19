@@ -32,7 +32,7 @@ const imdb = new FakeImdb();
 const trakt = new FakeTrakt();
 const simkl = new FakeSimkl();
 
-const SYNCED = { status: 201, body: { not_found: { movies: [], shows: [] } } };
+const SYNCED = { not_found: { movies: [], shows: [] } };
 
 function traktWrites() {
   return trakt.requests
@@ -124,7 +124,7 @@ beforeEach(() => {
     "/sync/ratings",
     "/sync/ratings/remove",
   ]) {
-    trakt.paths.set(path, SYNCED);
+    trakt.reply(path, SYNCED, 201, "POST");
   }
   server.use(
     imdb.handler,
@@ -307,7 +307,7 @@ describe("Action pages", () => {
   });
 
   it("says which Provider failed", async () => {
-    trakt.fail("/sync/history/remove", 502);
+    trakt.fail("/sync/history/remove", 502, undefined, "POST");
     const account = seedActionAccount();
 
     const res = await app.request(

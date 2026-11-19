@@ -32,10 +32,10 @@ export type LetterboxdAnswer =
 
 /**
  * The Letterboxd site and its boxd.it short links in memory. It serves the
- * pages that a test stores by URL (or the `serveAll` answer for other URLs),
- * and keeps every request it receives. A request for another URL is an
- * `unexpectedRequest` that fails the test: a test that wants an error answer
- * sets it with `fail`.
+ * pages that a test stores by URL (or the `serveAll` answer for other URLs)
+ * to GET requests, and keeps every request it receives. A request with
+ * another method or for another URL is an `unexpectedRequest` that fails the
+ * test: a test that wants an error answer sets it with `fail`.
  */
 export class FakeLetterboxd {
   readonly pages = new Map<string, LetterboxdAnswer>();
@@ -92,6 +92,9 @@ export class FakeLetterboxd {
       redirect: request.redirect,
       headers: request.headers,
     });
+    if (request.method !== "GET") {
+      return unexpectedRequest(request, "FakeLetterboxd serves GET only");
+    }
     const answer = this.pages.get(request.url) ?? this.fallback;
     if (answer === null) {
       return unexpectedRequest(request, "FakeLetterboxd serves no page here");

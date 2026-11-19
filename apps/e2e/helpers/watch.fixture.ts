@@ -13,6 +13,9 @@ function stremioFile() {
 }
 
 function stremio({ request, url, body }: FixtureRequest) {
+  if (request.method !== "POST") {
+    unsupported(request, "Stremio API calls are POST requests");
+  }
   const state = parseJson(
     readFileSync(stremioFile(), "utf8"),
     isFakeStremio,

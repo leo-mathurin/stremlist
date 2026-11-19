@@ -34,12 +34,17 @@ type TraktAnswer = unknown[] | { status: number; body?: unknown };
 
 /**
  * A Trakt API in memory. It serves the items that a test stores for a path,
- * page by page as Trakt does, and keeps every request it receives. A request
- * for another path is an `unexpectedRequest` that fails the test: a test
- * that wants an error answer sets it with `fail` or `failOthers`.
+ * page by page as Trakt does, and keeps every request it receives. A path
+ * answers GET only, unless the test gives the method of a write, for example
+ * `reply(path, body, 201, "POST")`. A request with another method or for
+ * another path is an `unexpectedRequest` that fails the test: a test that
+ * wants an error answer sets it with `fail` or `failOthers`.
  */
 export class FakeTrakt {
+  /** The GET answers by path. */
   readonly paths = new Map<string, TraktAnswer>();
+  /** The answers of other methods by `${method} ${path}`, for example `POST /sync/watchlist`. */
+  readonly writes = new Map<string, { status: number; body?: unknown }>();
   readonly requests: TraktRequest[] = [];
   private othersStatus: number | null = null;
 
@@ -50,6 +55,7 @@ export class FakeTrakt {
 
   reset() {
     this.paths.clear();
+    this.writes.clear();
     this.requests.length = 0;
     this.othersStatus = null;
   }
@@ -67,19 +73,31 @@ export class FakeTrakt {
     this.paths.set(path, structuredClone(items));
   }
 
-  /** Answers `path` with this JSON body (not paged), for example a sync result. */
-  reply(path: string, body: unknown, status = 200) {
-    this.paths.set(path, { status, body });
+  /**
+   * Answers `method` requests to `path` with this JSON body (not paged), for
+   * example `reply("/sync/watchlist", result, 201, "POST")` for a sync result.
+   */
+  reply(path: string, body: unknown, status = 200, method = "GET") {
+    this.set(method, path, { status, body });
   }
 
-  /** Answers `path` with this status, and optionally this JSON body. */
-  fail(path: string, status: number, body?: unknown) {
-    this.paths.set(path, { status, body });
+  /** Answers `method` requests to `path` with this status, and optionally this JSON body. */
+  fail(path: string, status: number, body?: unknown, method = "GET") {
+    this.set(method, path, { status, body });
+  }
+
+  private set(
+    method: string,
+    path: string,
+    answer: { status: number; body?: unknown },
+  ) {
+    if (method === "GET") this.paths.set(path, answer);
+    else this.writes.set(`${method} ${path}`, answer);
   }
 
   /**
-   * Answers every path that has no answer of its own with this status, for a
-   * test that reads every Trakt list on purpose.
+   * Answers every GET of a path that has no answer of its own with this
+   * status, for a test that reads every Trakt list on purpose.
    */
   failOthers(status: number) {
     this.othersStatus = status;
@@ -103,10 +121,16 @@ export class FakeTrakt {
       token,
       body,
     });
-    const answer = this.paths.get(url.pathname);
+    const answer =
+      request.method === "GET"
+        ? this.paths.get(url.pathname)
+        : this.writes.get(`${request.method} ${url.pathname}`);
     if (answer === undefined) {
-      return this.othersStatus === null
-        ? unexpectedRequest(request, "FakeTrakt serves no answer here")
+      return this.othersStatus === null || request.method !== "GET"
+        ? unexpectedRequest(
+            request,
+            `FakeTrakt serves no ${request.method} answer here`,
+          )
         : new HttpResponse(null, { status: this.othersStatus });
     }
     if (!Array.isArray(answer)) {

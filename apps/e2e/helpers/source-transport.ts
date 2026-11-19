@@ -80,7 +80,10 @@ function titleNode(id: string, state: SourceFixture) {
   };
 }
 
-function imdb({ request, body }: FixtureRequest) {
+function imdb({ request, url, body }: FixtureRequest) {
+  if (request.method !== "POST" || url.pathname !== "/") {
+    unsupported(request, "Unexpected IMDb request");
+  }
   const { operation, variables } = graphql(body, isImdbVariables);
   const state = fixture();
   if (operation === "WatchListPage") {

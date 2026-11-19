@@ -46,14 +46,17 @@ export interface SimklRequest {
 
 /**
  * Simkl in memory: the chart files of its CDN, and the API answers that a
- * test stores by path. It keeps every request it receives. A request for
- * another file or path is an `unexpectedRequest` that fails the test: a test
- * that wants an error answer sets it with `reply` or `failTrending`.
+ * test stores by method and path. It keeps every request it receives. An API
+ * path answers GET only, unless the test gives the method of a write, for
+ * example `reply("/sync/add-to-list", 201, body, "POST")`. A request with
+ * another method or for another file or path is an `unexpectedRequest` that
+ * fails the test: a test that wants an error answer sets it with `reply` or
+ * `failTrending`.
  */
 export class FakeSimkl {
   /** The Titles by file path, for example `movies/week_100.json` or `dvd/releases_100.json`. */
   readonly trending = new Map<string, StremioMeta[]>();
-  /** The API answers by path, for example `/sync/add-to-list`. */
+  /** The API answers by `${method} ${path}`, for example `POST /sync/add-to-list`. */
   readonly api = new Map<string, { status: number; body?: unknown }>();
   /** The error statuses of trending files by path, for example `movies/week_100.json`. */
   readonly trendingFailures = new Map<string, number>();
@@ -77,9 +80,9 @@ export class FakeSimkl {
     this.requests.length = 0;
   }
 
-  /** Answers the API `path` with this status, and optionally this JSON body. */
-  reply(path: string, status: number, body?: unknown) {
-    this.api.set(path, { status, body });
+  /** Answers `method` requests to the API `path` with this status, and optionally this JSON body. */
+  reply(path: string, status: number, body?: unknown, method = "GET") {
+    this.api.set(`${method} ${path}`, { status, body });
   }
 
   /** Answers the CDN file `path`, when it has no Titles, with this status and no body. */
@@ -111,9 +114,12 @@ export class FakeSimkl {
     const raw = request.method === "GET" ? "" : await request.text();
     const body: unknown = raw ? JSON.parse(raw) : null;
     const url = this.record(request, body);
-    const answer = this.api.get(url.pathname);
+    const answer = this.api.get(`${request.method} ${url.pathname}`);
     if (!answer) {
-      return unexpectedRequest(request, "FakeSimkl serves no API answer here");
+      return unexpectedRequest(
+        request,
+        `FakeSimkl serves no ${request.method} API answer here`,
+      );
     }
     return answer.body === undefined
       ? new HttpResponse(null, { status: answer.status })

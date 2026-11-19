@@ -96,6 +96,36 @@ function imdbIdOf(item: unknown) {
 const SIMKL_KNOWN = ["tt0111161", "tt0903747", "tt0068646"];
 const MDBLIST_KNOWN = ["tt0111161", "tt0903747"];
 
+const TRAKT_WRITES = new Set([
+  "/sync/watchlist",
+  "/sync/watchlist/remove",
+  "/sync/history",
+  "/sync/history/remove",
+  "/sync/ratings",
+  "/sync/ratings/remove",
+]);
+const MDBLIST_WRITES = new Set([
+  "/watchlist/items/add",
+  "/watchlist/items/remove",
+  "/sync/watched",
+  "/sync/watched/remove",
+  "/sync/ratings",
+  "/sync/ratings/remove",
+]);
+const SIMKL_WRITES = new Set([
+  "/sync/add-to-list",
+  "/sync/history",
+  "/sync/history/remove",
+  "/sync/ratings",
+  "/sync/ratings/remove",
+]);
+
+function requireMethod(request: Request, method: "GET" | "POST") {
+  if (request.method !== method) {
+    unsupported(request, `Only ${method} is supported here`);
+  }
+}
+
 function form(body: unknown) {
   return Object.fromEntries(
     Object.entries(isRecord(body) ? body : {}).filter(
@@ -151,6 +181,7 @@ function traktCalendar(name: string) {
 function trakt({ request, url, body }: FixtureRequest) {
   const path = url.pathname;
   if (url.host === "auth.trakt.tv") {
+    requireMethod(request, "POST");
     if (path === "/oauth/token") return tokenResponse(request, form(body));
     if (path === "/oauth/revoke") return json({});
     unsupported(request, "Unexpected Trakt OAuth request");
@@ -158,6 +189,7 @@ function trakt({ request, url, body }: FixtureRequest) {
   if (request.headers.get("trakt-api-key") !== "fixture-trakt-client") {
     unsupported(request, "Trakt request without the fixture client ID");
   }
+  requireMethod(request, TRAKT_WRITES.has(path) ? "POST" : "GET");
   switch (path) {
     case "/users/fixture-user":
       return json({ username: "fixture-user", ids: { slug: "fixture-user" } });
@@ -306,20 +338,17 @@ function trakt({ request, url, body }: FixtureRequest) {
 
 function mdblist({ request, url, body }: FixtureRequest) {
   const path = url.pathname;
-  if (path === "/oauth/token/") return tokenResponse(request, form(body));
-  if (path === "/oauth/revoke_token/") return json({});
-  requireToken(request);
-  if (request.method === "POST") {
-    switch (path) {
-      case "/watchlist/items/add":
-      case "/watchlist/items/remove":
-      case "/sync/watched":
-      case "/sync/watched/remove":
-      case "/sync/ratings":
-      case "/sync/ratings/remove":
-        return syncWrite(body, MDBLIST_KNOWN);
-    }
+  if (path === "/oauth/token/" || path === "/oauth/revoke_token/") {
+    requireMethod(request, "POST");
+    return path === "/oauth/token/"
+      ? tokenResponse(request, form(body))
+      : json({});
   }
+  requireToken(request);
+  if (request.method === "POST" && MDBLIST_WRITES.has(path)) {
+    return syncWrite(body, MDBLIST_KNOWN);
+  }
+  requireMethod(request, "GET");
   switch (path) {
     case "/user":
       return json({ username: "fixture-user" });
@@ -358,12 +387,21 @@ function mdblist({ request, url, body }: FixtureRequest) {
 
 function simkl({ request, url, body }: FixtureRequest) {
   const path = url.pathname;
-  if (path === "/oauth2/token") return tokenResponse(request, form(body));
-  if (path === "/oauth2/revoke") return json({});
+  if (path === "/oauth2/token" || path === "/oauth2/revoke") {
+    requireMethod(request, "POST");
+    return path === "/oauth2/token"
+      ? tokenResponse(request, form(body))
+      : json({});
+  }
   if (url.searchParams.get("client_id") !== "fixture-simkl-client") {
     unsupported(request, "Simkl request without the fixture client ID");
   }
   requireToken(request);
+  if (SIMKL_WRITES.has(path)) {
+    requireMethod(request, "POST");
+    return syncWrite(body, SIMKL_KNOWN);
+  }
+  requireMethod(request, "GET");
   switch (path) {
     case "/users/settings":
       return json({ user: { name: "fixture-user" } });
@@ -413,17 +451,12 @@ function simkl({ request, url, body }: FixtureRequest) {
           },
         },
       ]);
-    case "/sync/add-to-list":
-    case "/sync/history":
-    case "/sync/history/remove":
-    case "/sync/ratings":
-    case "/sync/ratings/remove":
-      if (request.method === "POST") return syncWrite(body, SIMKL_KNOWN);
   }
   unsupported(request, "Unexpected Simkl request");
 }
 
 function simklCdn({ request, url }: FixtureRequest) {
+  requireMethod(request, "GET");
   if (url.searchParams.get("client_id") !== "fixture-simkl-client") {
     unsupported(request, "Simkl request without the fixture client ID");
   }

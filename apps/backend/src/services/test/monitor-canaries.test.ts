@@ -141,7 +141,7 @@ beforeEach(() => {
     mdblist.handler,
     senscritique.handler,
     ...letterboxd.handlers,
-    http.all(JUSTWATCH, ({ request }) => {
+    http.post(JUSTWATCH, ({ request }) => {
       justwatchRequests.push(request.url);
       return new HttpResponse(null, { status: 503 });
     }),

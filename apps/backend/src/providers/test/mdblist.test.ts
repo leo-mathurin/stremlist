@@ -8,7 +8,10 @@ import {
   it,
   vi,
 } from "vite-plus/test";
-import { useMswServer } from "../../test/helpers/msw.test-utils";
+import {
+  unexpectedRequest,
+  useMswServer,
+} from "../../test/helpers/msw.test-utils";
 import { listMdblistUserSources, mdblistProvider } from "../mdblist";
 import type { ActionIntent, ActionTarget, ConnectionAccess } from "../types";
 import { ConnectionExpiredError, SourceUnavailableError } from "../types";
@@ -77,6 +80,7 @@ interface Call {
 
 let calls: Call[];
 let handler: (url: URL) => Response;
+let method = "GET";
 let handlerErrors: unknown[] = [];
 
 function noAnswer(url: URL): never {
@@ -127,6 +131,7 @@ beforeEach(() => {
   calls = [];
   handlerErrors = [];
   handler = noAnswer;
+  method = "GET";
   server.use(
     http.all(/^https:\/\/(?:[a-z]+\.)?mdblist\.com\//, async ({ request }) => {
       const url = new URL(request.url);
@@ -139,6 +144,9 @@ beforeEach(() => {
           body: text === "" ? undefined : text,
         },
       });
+      if (request.method !== method) {
+        return unexpectedRequest(request, `the test answers ${method} only`);
+      }
       try {
         return handler(url);
       } catch (error) {
@@ -931,6 +939,7 @@ describe("mdblistProvider.actions", () => {
       movieBody,
     ],
   ])("%s", async (_, intent, target, response, path, body) => {
+    method = "POST";
     handler = () => Response.json(response);
     await actions.perform(connection(), intent, target);
     expect(calls[0].url.pathname).toBe(path);
@@ -942,6 +951,7 @@ describe("mdblistProvider.actions", () => {
   });
 
   it("fails when MDBList does not know the Title", async () => {
+    method = "POST";
     handler = () =>
       Response.json({
         added: { movies: 0, shows: 0 },
@@ -1204,6 +1214,7 @@ describe("mdblistProvider.oauth", () => {
   it("revokes the token with the client credentials", async () => {
     vi.stubEnv("MDBLIST_CLIENT_ID", "client-id");
     vi.stubEnv("MDBLIST_CLIENT_SECRET", "client-secret");
+    method = "POST";
     handler = () => new Response("");
     await oauth.revoke?.("token");
     expect(calls[0].url.toString()).toBe(

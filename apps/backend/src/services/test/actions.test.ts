@@ -227,6 +227,7 @@ beforeEach(() => {
       path,
       { added: {}, not_found: { movies: [], shows: [], episodes: [] } },
       201,
+      "POST",
     );
   }
   server.use(trakt.handler, ...simkl.handlers);
@@ -669,7 +670,7 @@ describe("performAction", () => {
   });
 
   it("reports each Provider's outcome on its own", async () => {
-    simkl.reply("/sync/add-to-list", 500);
+    simkl.reply("/sync/add-to-list", 500, undefined, "POST");
     const account = await setup({ trakt: membership(), simkl: membership() });
 
     expect(

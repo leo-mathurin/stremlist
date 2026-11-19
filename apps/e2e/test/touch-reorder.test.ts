@@ -58,13 +58,14 @@ test(
     const saves: AccountConfigInput[] = [];
     await page.route(`${BACKEND_URL}/**`, async (route) => {
       const path = new URL(route.request().url()).pathname;
-      if (path === "/providers") {
+      const method = route.request().method();
+      if (method === "GET" && path === "/providers") {
         return route.fulfill({ json: providerStatus() });
       }
-      if (path.endsWith("/config")) {
-        if (route.request().method() === "GET") {
-          return route.fulfill({ json: config });
-        }
+      if (method === "GET" && path.endsWith("/config")) {
+        return route.fulfill({ json: config });
+      }
+      if (method === "POST" && path.endsWith("/config")) {
         const submitted: unknown = route.request().postDataJSON();
         if (!isConfigInput(submitted)) throw new Error("Invalid order save");
         saves.push(submitted);
@@ -72,17 +73,17 @@ test(
           json: { ok: true, lists: savedLists(submitted) },
         });
       }
-      if (path.endsWith("/sync-status")) {
+      if (method === "GET" && path.endsWith("/sync-status")) {
         return route.fulfill({
           json: { syncStatus: config.syncStatus, connections: [] },
         });
       }
-      if (path.endsWith("/watch-tracking")) {
+      if (method === "GET" && path.endsWith("/watch-tracking")) {
         return route.fulfill({
           json: { stremioLinked: false, stremioTrakt: false, destinations: [] },
         });
       }
-      throw new Error(`Unexpected touch fixture request: ${path}`);
+      throw new Error(`Unexpected touch fixture request: ${method} ${path}`);
     });
     await page.goto(`${FRONTEND_URL}/configure?account=${config.accountId}`);
     const handle = page.getByRole("button", {
