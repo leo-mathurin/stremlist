@@ -25,6 +25,7 @@ import {
   isPreviewRequest,
   parseBody,
   addImdbChart,
+  holdToasts,
 } from "./config.fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
@@ -298,6 +299,7 @@ test("a new list goes first: in view on a wide screen, and a toast can show it o
   browser,
   screen,
 }) => {
+  await holdToasts(browser);
   const listLink = "https://www.imdb.com/list/ls99123456/";
   await captureConfig(browser);
   await routeResolve(browser, (input) =>
