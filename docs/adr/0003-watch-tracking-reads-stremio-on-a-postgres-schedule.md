@@ -10,6 +10,18 @@ Simkl writes run in parallel with the reads, in the same cron run, each with its
 
 A Trakt Destination is off while Stremio's own Trakt integration is connected on the same Stremio account (`getUser` shows a Trakt token), so a title is never written twice. The configure page explains that Stremio's Trakt misses titles closed before the end, and that disconnecting it there lets Stremlist do the job.
 
+## Activity sharing extension, 18 November 2026
+
+Configure uses the selected compact card (variant A). Watched marks and watchlist additions have separate provider choices. First enable requires an explicit Allow action and server-side consent. Existing watched choices remain enabled on migration; enabling another action requires permission if no consent is stored. Turning every choice off removes consent and cancels queued writes.
+
+Player start, pause and stop events now store or recover one due read before acknowledging success. Repeated events for the same video keep its cycle. An event during an active read advances its generation and preserves a due read against the old worker’s finish. A different episode starts a fresh cycle. Numeric progress is validated but never marks a title watched. The existing native-state check, watched baseline, polling, sweep and uncertain Trakt-write check remain in use.
+
+Library additions are off by default. A `libraryAdd` event queues a whole-title watchlist addition only for the chosen destinations. The leased delivery queue and Simkl limiter serve both action kinds. A separate persistent receipt prevents a repeated addition from being sent again after successful delivery. Turning an action off cancels its pending rows. Changing the connected provider user drops its receipts and pending writes. Removal and unwatched events never remove provider data. Automatic Simkl additions read the current status first and preserve watched, watching, hold and dropped statuses. A failed status read leaves the addition pending.
+
+Trakt and MDBList writes run alongside native reads so a read backlog does not block library additions. Newly detected watched marks are sent again in the same run when its write budget permits.
+
+The migration `20261118190000_stremio_activity.sql` must precede the new backend. Settings changes update the linked installed addon through the existing update path; a missing install requires reinstalling it. Native-client event support is incomplete. Polling remains the fallback for watched marks; there is no polling import of library additions. Live provider scrobbling and destructive synchronization remain outside this change.
+
 ## Considered options
 
 - **A Cloudflare Worker with one Durable Object per Account**, waking itself with alarms. Precise to the second and with no shared queue. Rejected: about the same price, and it adds a second platform, a second copy of `CONNECTION_ENCRYPTION_KEY` and the Stremio keys, and state split between Supabase and the objects. Disconnecting would need both stores to agree. It stays the fallback if Supabase Free cannot hold the queue.

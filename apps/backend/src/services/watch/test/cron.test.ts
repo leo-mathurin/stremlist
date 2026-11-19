@@ -54,6 +54,34 @@ afterEach(() => {
 });
 
 describe("the Watch tracking cron", () => {
+  it("claims queued writes while native reads are still running", async () => {
+    const released = Promise.withResolvers<void>();
+    const reading = Promise.withResolvers<void>();
+    const writing = Promise.withResolvers<void>();
+    let readsPending = true;
+    let writesClaimedDuringRead = false;
+    rpcHandlers.set("claim_watch_reads", async () => {
+      reading.resolve();
+      await released.promise;
+      return { data: [], error: null };
+    });
+    rpcHandlers.set("claim_watch_writes", () => {
+      writesClaimedDuringRead = readsPending;
+      writing.resolve();
+      return { data: [], error: null };
+    });
+    const running = runWatchCron();
+    try {
+      await reading.promise;
+      await writing.promise;
+      expect(writesClaimedDuringRead).toBe(true);
+    } finally {
+      readsPending = false;
+      released.resolve();
+      await running;
+    }
+  });
+
   it("reports the message of a Supabase error to Better Stack", async () => {
     const heartbeat = "https://uptime.betterstack.com/api/v1/heartbeat/watch";
     vi.stubEnv("BETTERSTACK_HEARTBEAT_URL_WATCH", heartbeat);

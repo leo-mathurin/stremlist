@@ -49,10 +49,6 @@ function hasWatched(item: LibraryItem) {
     : Boolean(item.state?.watched);
 }
 
-async function isTracked(accountId: string) {
-  return (await watchContext(accountId)) !== null;
-}
-
 async function sendNewTitles(
   accountId: string,
   context: WatchContext,
@@ -132,11 +128,16 @@ export async function onStreamRequest(
 }
 
 /** A `pause` or `stop` of Stremio Web: read the item at the next run. */
-export async function onPlayerEvent(accountId: string, videoId: string) {
-  if (!(await isTracked(accountId))) return;
-  const { error } = await supabase.rpc("watch_read_soon", {
+export async function onPlayerEvent(
+  accountId: string,
+  videoId: string,
+  type: "movie" | "series",
+) {
+  const { error } = await supabase.rpc("watch_recover_cycle", {
     p_account_id: accountId,
     p_item_id: videoId.split(":")[0],
+    p_type: type,
+    p_video_id: videoId,
   });
   if (error) throw error;
 }

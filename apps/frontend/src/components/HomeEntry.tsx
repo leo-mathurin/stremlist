@@ -12,6 +12,7 @@ import {
   PASTE_LINK_PROMPT,
 } from "@/lib/list-sources";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 const legacyInstallLookup: LegacyInstallLookup = {
   async exists(alias) {
@@ -137,7 +138,7 @@ export default function HomeEntry() {
           {PASTE_LINK_PROMPT}
         </label>
         <div className="@container">
-          <div className="flex flex-col gap-1.5 rounded-[28px] bg-white/10 p-1.5 ring-1 ring-transparent transition-shadow focus-within:ring-brand/60 @[30rem]:flex-row @[30rem]:items-center @[30rem]:rounded-full">
+          <div className="flex flex-col gap-1.5 rounded-panel bg-white/10 p-1.5 ring-1 ring-transparent transition-shadow focus-within:ring-brand/60 @[30rem]:flex-row @[30rem]:items-center @[30rem]:rounded-full">
             <input
               id={linkId}
               value={link}
@@ -151,18 +152,14 @@ export default function HomeEntry() {
               spellCheck={false}
               className="min-w-0 flex-1 bg-transparent px-4 py-3 text-cloud outline-none placeholder:text-white/40"
             />
-            <button
-              type="submit"
-              aria-busy={checking}
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-brand px-6 py-3 font-bold text-black transition-[background-color,scale] duration-150 hover:bg-brand-dark active:scale-[0.97]"
-            >
+            <Button type="submit" size="pill-xl" aria-busy={checking}>
               {link.trim() ? "Add this list" : "Build my Stremlist"}
               {checking ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
                 <ArrowRight className="size-4" />
               )}
-            </button>
+            </Button>
           </div>
         </div>
         {found ? (
@@ -179,24 +176,25 @@ export default function HomeEntry() {
               is yours. Otherwise, start a new one.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <button
+              <Button
                 type="button"
+                size="pill-lg"
                 onClick={() => openAccount(found, { entry: "home" })}
-                className="rounded-full bg-brand px-5 py-2.5 text-sm font-bold text-black transition-[background-color,scale] duration-150 hover:bg-brand-dark active:scale-[0.97]"
               >
                 Open my Stremlist
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="outline-dark"
+                size="pill-lg"
                 onClick={startNew}
-                className="rounded-full border border-white/25 px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-white/10"
               >
                 Start a new one
-              </button>
+              </Button>
             </div>
           </div>
         ) : startError ? (
-          <p role="alert" className="mt-2 px-5.5 text-xs text-red-300">
+          <p role="alert" className="mt-2 px-5.5 text-xs text-danger-300">
             {startError}
           </p>
         ) : (
@@ -240,15 +238,12 @@ export default function HomeEntry() {
               spellCheck={false}
               className="min-w-0 flex-1 rounded-full bg-white/10 px-4 py-2.5 text-sm text-cloud outline-none ring-1 ring-transparent placeholder:text-white/40 focus:ring-brand/60"
             />
-            <button
-              type="submit"
-              className="shrink-0 rounded-full border border-white/25 px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-white/10"
-            >
+            <Button type="submit" variant="outline-dark" size="pill-lg">
               Open
-            </button>
+            </Button>
           </div>
           {addonError ? (
-            <p role="alert" className="px-1 text-xs text-red-300">
+            <p role="alert" className="px-1 text-xs text-danger-300">
               {addonError}
             </p>
           ) : (
@@ -261,13 +256,14 @@ export default function HomeEntry() {
       ) : (
         <p className="text-sm text-white/50">
           Already have a Stremlist?{" "}
-          <button
+          <Button
             type="button"
+            variant="link-dark"
+            size="inline"
             onClick={() => setShowExisting(true)}
-            className="font-semibold text-cloud underline decoration-white/30 underline-offset-4 transition-colors hover:decoration-brand"
           >
             Open it
-          </button>
+          </Button>
         </p>
       )}
     </div>

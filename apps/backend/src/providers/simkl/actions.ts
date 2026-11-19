@@ -64,11 +64,21 @@ async function buildWrite(
   const series = target.type === "series";
 
   if (intent.kind === "watchlist") {
-    if (intent.add)
+    if (intent.add) {
+      if (intent.preserveExistingStatus) {
+        await markLibraryChanged(connection.accountId);
+        const current = (await syncLibrary(connection)).items.filter(
+          (entry) => entry.imdb === target.imdbId,
+        );
+        if (current.some((entry) => entry.status !== "plantowatch"))
+          return null;
+      }
       return {
         path: "/sync/add-to-list",
         item: { ...item, to: "plantowatch" },
-      } satisfies WriteRequest;
+      };
+    }
+
     await markLibraryChanged(connection.accountId);
     const current = (await syncLibrary(connection)).items.filter(
       (entry) => entry.imdb === target.imdbId,

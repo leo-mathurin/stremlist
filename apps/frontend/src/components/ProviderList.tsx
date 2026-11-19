@@ -7,6 +7,7 @@ import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
 import type { ProviderStatus } from "@/hooks/useProviderStatus";
 import type { AccountAccess } from "@/lib/account-config";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { ProviderMark } from "./brand";
 
 function subtitle(
@@ -207,7 +208,7 @@ export default function ProviderList({
                   className={cn(
                     "truncate text-xs",
                     connection?.needsRenewalSince || outage
-                      ? "font-semibold text-amber-300"
+                      ? "font-semibold text-warning-300"
                       : "text-white/45",
                   )}
                 >
@@ -242,23 +243,25 @@ export default function ProviderList({
                     `Actions on ${info.label} stop too.`}
                 </p>
                 <div className="flex gap-2">
-                  <button
+                  <Button
                     type="button"
+                    variant="danger-dark"
+                    size="pill-xs"
                     onClick={() => {
                       setConfirming(null);
                       onDisconnect(id);
                     }}
-                    className="rounded-full bg-red-500/90 px-3 py-1 font-bold text-white transition-colors hover:bg-red-500"
                   >
                     Disconnect
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    variant="soft-dark"
+                    size="pill-xs"
                     onClick={() => setConfirming(null)}
-                    className="rounded-full bg-white/[0.12] px-3 py-1 font-bold text-cloud transition-colors hover:bg-white/20"
                   >
                     Cancel
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}

@@ -85,3 +85,13 @@ Provider specs use real adapters with fixture transports and reject unknown
 outbound destinations. Live projects depend on IMDb and web.stremio.com. Actual
 newsletter delivery, authenticated RPDB delivery, playback and desktop protocol
 handling require separate manual verification.
+
+## Activity load test
+
+Reserve and start the disposable stack from `verify-stremlist` first. The test refuses a nonempty database.
+
+```sh
+bun --no-env-file run --cwd apps/e2e stress:activity 6000 /tmp/activity-stress.json
+```
+
+It uses real HTTP handlers, Postgres, S3, leases and provider adapters. Only external HTTP transports are intercepted. The run sends duplicate library additions and start/pause/stop events, checks native watched delivery, overlaps cron requests, tests provider failure and retry, and stops sharing for every account. It checks for duplicate or lost work and removes its accounts and private test bucket. The JSON report contains phase latencies and queue counts. Simkl keeps the production limiter; the run verifies its pending backlog and then cancels it through opt-out. This is a local load result, not a production capacity figure.

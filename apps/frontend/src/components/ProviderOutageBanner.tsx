@@ -60,21 +60,24 @@ export default function ProviderOutageBanner({
         <section
           aria-labelledby="provider-outage-title"
           className={cn(
-            "flex gap-3 rounded-3xl bg-amber-50 p-4 ring-1 ring-amber-200 sm:p-5",
+            "flex gap-3 rounded-3xl bg-warning-50 p-4 ring-1 ring-warning-200 sm:p-5",
             ENTER,
           )}
         >
           <TriangleAlert
-            className="mt-0.5 size-5 shrink-0 text-amber-600"
+            className="mt-0.5 size-5 shrink-0 text-warning-600"
             aria-hidden="true"
           />
           <div className="min-w-0 space-y-1">
-            <p id="provider-outage-title" className="font-bold text-amber-950">
+            <p
+              id="provider-outage-title"
+              className="font-bold text-warning-950"
+            >
               {copy.title}
             </p>
-            <p className="text-sm text-pretty text-amber-900">{copy.body}</p>
+            <p className="text-sm text-pretty text-warning-900">{copy.body}</p>
             {since && (
-              <p className="text-xs text-amber-800/80 tabular-nums">
+              <p className="text-xs text-warning-800/80 tabular-nums">
                 Started <RelativeTime iso={since} />
               </p>
             )}
@@ -84,12 +87,12 @@ export default function ProviderOutageBanner({
       {back.length > 0 && (
         <p
           className={cn(
-            "flex items-center gap-2 rounded-3xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-900 ring-1 ring-emerald-200",
+            "flex items-center gap-2 rounded-3xl bg-success-50 px-4 py-3 text-sm font-semibold text-success-900 ring-1 ring-success-200",
             ENTER,
           )}
         >
           <CircleCheck
-            className="size-4 shrink-0 text-emerald-600"
+            className="size-4 shrink-0 text-success-600"
             aria-hidden="true"
           />
           {recoveredCopy(back)}

@@ -50,6 +50,11 @@ import { AnimatedBeam } from "@/components/ui/animated-beam";
 import { ADDON_MANAGER_URL } from "../lib/list-sources";
 import { useSEO } from "../hooks/useSEO";
 import { cn } from "@/lib/utils";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 const FIND_ICONS = { Home: House, Discover: Compass } satisfies Record<
   (typeof FIND_PLACES_CONTENT)[number][0],
@@ -107,7 +112,7 @@ function ProviderRow({
           {PROVIDERS[provider].label}
         </span>
         {soon && (
-          <span className="rounded-full bg-black/5 px-1.5 py-px text-[11px] leading-4 font-semibold text-black/45">
+          <span className="rounded-full bg-black/5 px-1.5 py-px text-2xs leading-4 font-semibold text-black/45">
             Soon
           </span>
         )}
@@ -134,12 +139,7 @@ function ProvidersDiagram() {
       <div className="relative overflow-hidden rounded-3xl bg-muted ring-1 ring-black/5">
         <div
           aria-hidden="true"
-          className="absolute inset-0 opacity-20"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle, var(--color-foreground) 1px, transparent 1px)",
-            backgroundSize: "32px 32px",
-          }}
+          className="bg-dot-grid absolute inset-0 opacity-20"
         />
         <div
           aria-hidden="true"
@@ -193,41 +193,36 @@ function TroubleshootingItem({
   const [open, setOpen] = useState(false);
   const id = useId();
   return (
-    <div className="border-b border-black/10">
-      <h3>
-        <button
-          type="button"
-          id={`${id}-button`}
-          aria-expanded={open}
-          aria-controls={`${id}-panel`}
-          onClick={() => setOpen((value) => !value)}
-          className="flex w-full cursor-pointer items-center justify-between gap-4 py-4 text-left font-semibold"
+    <Collapsible open={open} onOpenChange={setOpen} asChild>
+      <div className="border-b border-black/10">
+        <h3>
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              id={`${id}-button`}
+              aria-controls={`${id}-panel`}
+              className="flex w-full cursor-pointer items-center justify-between gap-4 py-4 text-left font-semibold"
+            >
+              {problem}
+              <Plus
+                aria-hidden="true"
+                className={cn(
+                  "size-4 shrink-0 text-black/40 transition-transform duration-200 ease-out-quint motion-reduce:transition-none",
+                  open && "rotate-45",
+                )}
+              />
+            </button>
+          </CollapsibleTrigger>
+        </h3>
+        <CollapsibleContent
+          id={`${id}-panel`}
+          role="region"
+          aria-labelledby={`${id}-button`}
         >
-          {problem}
-          <Plus
-            aria-hidden="true"
-            className={cn(
-              "size-4 shrink-0 text-black/40 transition-transform duration-200 ease-out-quint motion-reduce:transition-none",
-              open && "rotate-45",
-            )}
-          />
-        </button>
-      </h3>
-      <div
-        id={`${id}-panel`}
-        role="region"
-        aria-labelledby={`${id}-button`}
-        inert={!open}
-        className={cn(
-          "grid transition-[grid-template-rows,opacity] duration-200 ease-out-quint motion-reduce:transition-opacity",
-          open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-        )}
-      >
-        <div className="overflow-hidden">
           <p className="pr-8 pb-4 text-pretty text-black/60">{fix}</p>
-        </div>
+        </CollapsibleContent>
       </div>
-    </div>
+    </Collapsible>
   );
 }
 
@@ -257,28 +252,28 @@ function LiveCount({ count }: { count: number }) {
       </p>
       <div
         aria-hidden="true"
-        className="flex items-center gap-[0.08em] text-[2.5rem] leading-none font-bold tabular-nums sm:text-5xl xl:text-6xl"
+        className="flex items-center gap-counter text-wordmark leading-none font-bold tabular-nums sm:text-5xl xl:text-6xl"
       >
         {digits.map((digit, i) => {
           const fromEnd = digits.length - 1 - i;
           return (
             <Fragment key={i}>
               {i > 0 && fromEnd % 3 === 2 && (
-                <span className="w-[0.28em] self-end pb-[0.12em] text-center text-white/25">
+                <span className="w-[0.28em] self-end pb-counter-comma text-center text-white/25">
                   ,
                 </span>
               )}
               <span
                 className={cn(
-                  "relative h-[1.3em] w-[0.82em] overflow-hidden rounded-[0.16em] bg-white/[0.07]",
+                  "relative h-[1.3em] w-[0.82em] overflow-hidden rounded-counter bg-white/[0.07]",
                   i < leadingZeros ? "text-white/15" : "text-brand",
                 )}
               >
                 <span
-                  className="flex flex-col transition-transform duration-[1400ms] ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none"
+                  className="flex flex-col translate-y-(--roll) transition-transform delay-(--delay) duration-1400 ease-out-quint motion-reduce:transition-none"
                   style={{
-                    transform: `translateY(-${rolled ? Number(digit) * 10 : 0}%)`,
-                    transitionDelay: `${fromEnd * 70}ms`,
+                    "--roll": `-${rolled ? Number(digit) * 10 : 0}%`,
+                    "--delay": `${fromEnd * 70}ms`,
                   }}
                 >
                   {Array.from({ length: 10 }, (_, n) => (
@@ -332,7 +327,8 @@ export default function Home() {
     <div className="space-y-10">
       <Wordmark />
       <div>
-        <h1 className="text-[clamp(2.25rem,9.5vw,3.75rem)] leading-[1.1] font-bold tracking-tight text-balance lg:text-[clamp(2rem,4.4vw-0.75rem,4rem)]">
+        {}
+        <h1 className="text-hero font-bold tracking-tight text-balance lg:text-hero-wide">
           Your lists,{" "}
           <span className="whitespace-nowrap">
             all in{" "}

@@ -5,6 +5,7 @@ import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
 import { ADDON_MANAGER_URL } from "@/lib/list-sources";
 import { ACTION_PROVIDERS } from "@/lib/provider-groups";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ProviderMark } from "./brand";
 
@@ -13,9 +14,6 @@ const ACTION_LABELS: Record<ActionKind, string> = {
   watched: "watched",
   rating: "rating",
 };
-
-export const BRAND_CHECKBOX =
-  "focus-visible:border-brand focus-visible:ring-brand/40 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-black";
 
 /**
  * Actions settings (ADR 0003): off by default, then an ordered choice of the
@@ -50,7 +48,7 @@ export default function ActionsSettings({
           checked={enabled}
           disabled={!!locked}
           onCheckedChange={(next) => onEnabledChange(next === true)}
-          className={cn("mt-1", BRAND_CHECKBOX)}
+          className="mt-1"
         />
         <div className="min-w-0">
           <label htmlFor={toggleId} className="cursor-pointer font-bold">
@@ -100,7 +98,6 @@ export default function ActionsSettings({
                         onCheckedChange={(next) =>
                           onToggle(provider, next === true)
                         }
-                        className={BRAND_CHECKBOX}
                       />
                       <ProviderMark
                         provider={provider}
@@ -121,24 +118,26 @@ export default function ActionsSettings({
                         </span>
                       </label>
                       <div className="flex shrink-0 gap-0.5">
-                        <button
+                        <Button
                           type="button"
+                          variant="quiet"
+                          size="icon-round"
                           aria-label={`Move ${PROVIDERS[provider].label} up`}
                           disabled={!enabled || index === 0}
                           onClick={() => onMove(provider, -1)}
-                          className="flex size-8 items-center justify-center rounded-full text-black/45 transition-colors hover:bg-black/5 hover:text-black disabled:opacity-25"
                         >
                           <ArrowUp className="size-4" />
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
+                          variant="quiet"
+                          size="icon-round"
                           aria-label={`Move ${PROVIDERS[provider].label} down`}
                           disabled={!enabled || index === order.length - 1}
                           onClick={() => onMove(provider, 1)}
-                          className="flex size-8 items-center justify-center rounded-full text-black/45 transition-colors hover:bg-black/5 hover:text-black disabled:opacity-25"
                         >
                           <ArrowDown className="size-4" />
-                        </button>
+                        </Button>
                       </div>
                     </li>
                   );

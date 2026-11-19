@@ -74,7 +74,7 @@ export default defineConfig(({ mode, command }) => {
     ]),
     server: {
       host: true,
-      allowedHosts: ["dev-tower", ".ts.net"],
+      allowedHosts: ["dev-tower", "tour", "oracle-dev", ".ts.net"],
       proxy: backendTarget
         ? {
             "/api": {

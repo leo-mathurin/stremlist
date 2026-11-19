@@ -296,7 +296,9 @@ export default function PosterSourceSettings({
         >
           <SelectTrigger
             id={selectId}
-            className="h-11 w-full rounded-2xl bg-white"
+            size="lg"
+            variant="poster"
+            className="w-full"
           >
             <SelectValue />
           </SelectTrigger>

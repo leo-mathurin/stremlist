@@ -14,7 +14,7 @@ const BADGE_CLASSES: Record<
   enhancement: "bg-brand text-black",
   bugfix: "bg-black/[0.06] text-black/70",
   performance: "bg-ink text-cloud",
-  security: "bg-red-100 text-red-700",
+  security: "bg-danger-100 text-danger-700",
 };
 
 function versionId(version: string) {
@@ -59,7 +59,7 @@ export default function Changelog() {
               >
                 {v.version}
               </h2>
-              <ul className="mt-4 space-y-3 text-[15px] leading-relaxed text-pretty text-black/65">
+              <ul className="mt-4 space-y-3 text-md leading-relaxed text-pretty text-black/65">
                 {v.changes.map((change, i) => (
                   <li key={i}>
                     <span

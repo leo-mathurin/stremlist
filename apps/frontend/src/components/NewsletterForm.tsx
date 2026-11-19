@@ -49,10 +49,8 @@ export default function NewsletterForm() {
 
   return (
     <div className="mx-auto max-w-md rounded-3xl bg-white p-5 text-center ring-1 ring-black/5">
-      <h3 className="text-base font-semibold text-gray-800 mb-1">
-        Stay updated
-      </h3>
-      <p className="text-sm text-gray-500 mb-4">
+      <h3 className="text-base font-semibold text-ink/90 mb-1">Stay updated</h3>
+      <p className="text-sm text-muted-foreground mb-4">
         Get notified about new features and service announcements.
       </p>
       <Form {...form}>
@@ -65,23 +63,25 @@ export default function NewsletterForm() {
               control={form.control}
               name="email"
               render={({ field }) => (
-                <FormItem className="flex-1 gap-0">
+                <FormItem className="flex-1">
                   <FormControl>
                     <Input
                       {...field}
                       type="email"
                       placeholder="your@email.com"
-                      className="h-11 rounded-full bg-white px-4"
+                      shape="pill"
+                      className="h-11"
                     />
                   </FormControl>
-                  <FormMessage className="text-left mt-1" />
+                  <FormMessage className="-mt-1 text-left" />
                 </FormItem>
               )}
             />
             <Button
               type="submit"
+              size="pill-lg"
               disabled={form.formState.isSubmitting}
-              className="h-11 rounded-full bg-brand px-5 font-bold whitespace-nowrap text-black hover:bg-brand-dark"
+              className="h-11"
             >
               {form.formState.isSubmitting ? "Subscribing..." : "Subscribe"}
             </Button>

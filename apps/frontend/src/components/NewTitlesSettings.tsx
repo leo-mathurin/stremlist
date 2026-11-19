@@ -1,10 +1,9 @@
 import { useId } from "react";
 import type { NewTitlesSummary } from "@stremlist/shared/stremio.types";
 import { Sparkles } from "lucide-react";
-import { cn, formatRelativeTime } from "@/lib/utils";
+import { formatRelativeTime } from "@/lib/utils";
 import { useNow } from "@/hooks/useNow";
 import { Checkbox } from "@/components/ui/checkbox";
-import { BRAND_CHECKBOX } from "./ActionsSettings";
 
 function plural(count: number, one: string, other: string) {
   return `${count} ${count === 1 ? one : other}`;
@@ -54,7 +53,7 @@ export default function NewTitlesSettings({
           disabled={!!locked}
           aria-describedby={descriptionId}
           onCheckedChange={(next) => onEnabledChange(next === true)}
-          className={cn("mt-1", BRAND_CHECKBOX)}
+          className="mt-1"
         />
         <div className="min-w-0">
           <label htmlFor={toggleId} className="cursor-pointer font-bold">

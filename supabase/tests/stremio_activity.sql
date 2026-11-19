@@ -1,0 +1,65 @@
+BEGIN;
+INSERT INTO public.accounts (id) VALUES ('sl_activitysql000000000001');
+INSERT INTO public.stremio_connections (account_id, auth_key, email) VALUES ('sl_activitysql000000000001', 'sealed', 'fixture@example.com');
+INSERT INTO public.connections (account_id, provider, provider_username, access_token, redirect_uri)
+SELECT 'sl_activitysql000000000001', p, 'fixture', 'sealed', 'http://127.0.0.1/callback' FROM unnest(ARRAY['trakt','simkl']) p;
+INSERT INTO public.watch_tracking (account_id, sweep_slot, baseline_at) VALUES ('sl_activitysql000000000001', 1, now());
+SET LOCAL ROLE service_role;
+DO $$
+DECLARE a text := 'sl_activitysql000000000001'; lease uuid := gen_random_uuid(); w record;
+BEGIN
+  BEGIN
+    PERFORM public.configure_watch_activity(a, ARRAY['trakt'], ARRAY['simkl'], false);
+    RAISE EXCEPTION 'accepted without consent';
+  EXCEPTION WHEN raise_exception THEN
+    ASSERT SQLERRM = 'consent-required', SQLERRM;
+  END;
+  ASSERT public.queue_library_addition(a, 'tt0000001', 'movie') = 0;
+  PERFORM public.configure_watch_activity(a, ARRAY['trakt'], ARRAY['simkl'], true);
+  ASSERT (SELECT consented_at IS NOT NULL FROM public.watch_tracking WHERE account_id = a);
+  ASSERT public.watch_destination_list(a) = ARRAY['trakt'];
+  ASSERT public.queue_library_addition(a, 'tt0000001', 'movie') = 1;
+  ASSERT public.queue_library_addition(a, 'tt0000001', 'movie') = 0;
+  ASSERT public.queue_library_addition(a, 'bad-id', 'movie') = 0;
+  ASSERT (SELECT provider = 'simkl' AND kind = 'watchlist' FROM public.watch_writes WHERE account_id = a);
+  SELECT * INTO w FROM public.claim_watch_writes('simkl', false, 10, 60, lease);
+  PERFORM public.finish_watch_writes(lease, jsonb_build_array(jsonb_build_object('id', w.id, 'done', true)));
+  ASSERT public.queue_library_addition(a, 'tt0000001', 'movie') = 0, 'success must keep its receipt';
+  ASSERT (SELECT last_kind = 'watchlist' FROM public.watch_destinations WHERE account_id = a AND provider = 'simkl');
+  PERFORM public.watch_recover_cycle(a, 'tt0000002', 'movie', 'tt0000002');
+  PERFORM public.watch_recover_cycle(a, 'tt0000002', 'movie', 'tt0000002');
+  ASSERT (SELECT count(*) = 1 AND max(generation) = 1 FROM public.watch_reads WHERE account_id = a);
+  SELECT * INTO w FROM public.claim_watch_reads(10, 60, lease);
+  PERFORM public.watch_recover_cycle(a, 'tt0000002', 'movie', 'tt0000002');
+  ASSERT public.finish_watch_reads(lease, jsonb_build_array(jsonb_build_object('account_id',a,'item_id','tt0000002','generation',w.generation,'next_due_at',NULL))) = 0;
+  ASSERT (SELECT generation > w.generation AND due_at <= now() AND lease_token IS NULL FROM public.watch_reads WHERE account_id=a AND item_id='tt0000002'), 'a stop during an active read must survive a stale delete';
+  SELECT * INTO w FROM public.claim_watch_reads(10, 60, lease);
+  PERFORM public.watch_recover_cycle(a, 'tt0000002', 'movie', 'tt0000002');
+  ASSERT public.finish_watch_reads(lease, jsonb_build_array(jsonb_build_object('account_id',a,'item_id','tt0000002','generation',w.generation,'next_due_at',now()+interval '30 minutes','phase','stalled','reads',1,'failures',0))) = 0;
+  ASSERT (SELECT due_at <= now() FROM public.watch_reads WHERE account_id=a AND item_id='tt0000002'), 'an active read cannot postpone a newer stop';
+  PERFORM public.watch_recover_cycle(a, 'tt0903747', 'series', 'tt0903747:1:1');
+  UPDATE public.watch_reads SET phase='wait', expected_end_at=now()+interval '1 hour', start_state='{"bits":"old"}' WHERE account_id=a AND item_id='tt0903747';
+  PERFORM public.watch_recover_cycle(a, 'tt0903747', 'series', 'tt0903747:1:2');
+  ASSERT (SELECT video_id='tt0903747:1:2' AND generation=2 AND phase='warmup' AND expected_end_at IS NULL AND start_state='{}'::jsonb FROM public.watch_reads WHERE account_id=a AND item_id='tt0903747'), 'a different episode needs a fresh cycle';
+  PERFORM public.watch_recover_cycle(a, 'tt0903747', 'series', 'tt0903747:1:2');
+  ASSERT (SELECT generation=2 FROM public.watch_reads WHERE account_id=a AND item_id='tt0903747'), 'repeat events keep the current episode generation';
+  PERFORM public.configure_watch_activity(a, ARRAY[]::text[], ARRAY['trakt','simkl'], false);
+  ASSERT public.watch_destination_list(a) = ARRAY[]::text[];
+  ASSERT NOT EXISTS (SELECT 1 FROM public.watch_reads WHERE account_id = a);
+  PERFORM public.watch_recover_cycle(a, 'tt0000002', 'movie', 'tt0000002');
+  ASSERT NOT EXISTS (SELECT 1 FROM public.watch_reads WHERE account_id = a), 'watchlist-only has no read cycle';
+  ASSERT public.queue_watch_writes(jsonb_build_array(jsonb_build_object('account_id',a,'provider','trakt','imdb_id','tt0000003','item_type','movie','watched_at',now()))) = 0;
+  ASSERT public.queue_library_addition(a, 'tt0000003', 'movie') = 2;
+  PERFORM public.configure_watch_activity(a, ARRAY['trakt'], ARRAY['trakt','simkl'], false);
+  ASSERT public.queue_watch_writes(jsonb_build_array(jsonb_build_object('account_id',a,'provider','trakt','imdb_id','tt0000003','item_type','movie','watched_at',now()))) = 1, 'same title can have both actions';
+  ASSERT (SELECT count(*) = 3 FROM public.watch_writes WHERE account_id = a);
+  UPDATE public.connections SET provider_username = 'different-user' WHERE account_id = a AND provider = 'simkl';
+  ASSERT NOT EXISTS (SELECT 1 FROM public.watch_writes WHERE account_id = a AND provider = 'simkl');
+  ASSERT NOT EXISTS (SELECT 1 FROM public.watch_library_receipts WHERE account_id = a AND provider = 'simkl');
+  PERFORM public.configure_watch_activity(a, ARRAY[]::text[], ARRAY[]::text[], false);
+  ASSERT NOT EXISTS (SELECT 1 FROM public.watch_tracking WHERE account_id = a);
+  ASSERT NOT EXISTS (SELECT 1 FROM public.watch_writes WHERE account_id = a);
+  ASSERT NOT EXISTS (SELECT 1 FROM public.watch_library_receipts WHERE account_id = a);
+END;
+$$;
+ROLLBACK;

@@ -56,9 +56,6 @@ function chartSource(ref: string, type: SimklChartType) {
   } satisfies ConnectionSource;
 }
 
-const triggerClass =
-  "h-8 gap-1.5 rounded-full border-0 bg-black/5 px-3 text-xs font-semibold shadow-none hover:bg-black/10";
-
 /**
  * Simkl's other trending charts: today, this month, and this month by genre.
  * The week's charts have their own buttons.
@@ -95,11 +92,7 @@ export default function SimklChartPicker({
           }
         }}
       >
-        <SelectTrigger
-          size="sm"
-          aria-label="Simkl chart type"
-          className={triggerClass}
-        >
+        <SelectTrigger aria-label="Simkl chart type" variant="soft" size="pill">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -111,11 +104,7 @@ export default function SimklChartPicker({
         </SelectContent>
       </Select>
       <Select value={chart} onValueChange={setChart}>
-        <SelectTrigger
-          size="sm"
-          aria-label="Simkl chart"
-          className={triggerClass}
-        >
+        <SelectTrigger aria-label="Simkl chart" variant="soft" size="pill">
           <SelectValue />
         </SelectTrigger>
         <SelectContent className="max-h-[min(22rem,60vh)]">

@@ -79,12 +79,29 @@ export async function runWatchCron() {
   report.simklBacklogSeconds = await step("simkl backlog", simklBacklogSeconds);
   await Promise.all([
     (async () => {
-      report.reads = await step("reads", () =>
-        processReads(started + READ_BUDGET_MS),
-      );
-      report.writes = await step("writes", () =>
-        processWrites(started + WRITE_BUDGET_MS),
-      );
+      const [reads, writes] = await Promise.all([
+        step("reads", () => processReads(started + READ_BUDGET_MS)),
+        step("writes", () => processWrites(started + WRITE_BUDGET_MS)),
+      ]);
+      report.reads = reads;
+      report.writes = writes;
+
+      if (
+        reads &&
+        reads.detected > 0 &&
+        Date.now() < started + WRITE_BUDGET_MS
+      ) {
+        const fresh = await step("fresh writes", () =>
+          processWrites(started + WRITE_BUDGET_MS),
+        );
+        if (fresh)
+          report.writes = {
+            sent: (writes?.sent ?? 0) + fresh.sent,
+            failed: (writes?.failed ?? 0) + fresh.failed,
+            gaveUp: (writes?.gaveUp ?? 0) + fresh.gaveUp,
+            rateLimited: (writes?.rateLimited ?? false) || fresh.rateLimited,
+          };
+      }
       report.sweep = await step("sweep", () =>
         processSweep(started + RUN_BUDGET_MS),
       );

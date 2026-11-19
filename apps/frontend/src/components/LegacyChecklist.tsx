@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import {
@@ -20,6 +20,12 @@ import AddonInstallActions from "./AddonInstallActions";
 import { ProviderMark } from "./brand";
 import { CONNECTABLE_PROVIDERS } from "@/lib/provider-groups";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 const PUBLIC_PROVIDERS = LINK_PROVIDERS.filter(
   (id) => id !== "imdb" && PROVIDERS[id].connection !== "required",
@@ -27,12 +33,7 @@ const PUBLIC_PROVIDERS = LINK_PROVIDERS.filter(
 
 type StepId = "works" | "public" | "private";
 
-const PRESS =
-  "transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.97] motion-reduce:active:scale-100";
-const PRIMARY = cn(
-  PRESS,
-  "inline-flex h-11 w-full items-center justify-center gap-2 rounded-full px-5 text-sm font-bold disabled:opacity-60 sm:w-auto",
-);
+const PRIMARY_LAYOUT = "h-11 w-full sm:w-auto";
 
 export interface LegacyChecklistProps {
   /** The Legacy alias (IMDb ID) of this install. */
@@ -141,17 +142,16 @@ export default function LegacyChecklist({
             Your IMDb lists keep syncing. The rest is optional.
           </p>
         </div>
-        <button
+        <Button
           type="button"
+          variant="quiet"
+          size="icon-round-lg"
           onClick={onHide}
           aria-label="Hide what's new"
-          className={cn(
-            PRESS,
-            "-mt-1 -mr-2 flex size-9 shrink-0 items-center justify-center rounded-full text-black/40 hover:bg-black/5 hover:text-ink",
-          )}
+          className="-mt-1 -mr-2"
         >
           <X className="size-4" />
-        </button>
+        </Button>
       </header>
 
       <ol className="checklist-stagger px-2 pb-2">
@@ -180,23 +180,22 @@ export default function LegacyChecklist({
             {`Paste a public link from ${joinProviderLabels(PUBLIC_PROVIDERS, "or")}. It works on this install. Save, then reinstall in Stremio.`}
           </p>
           {otherProviderAdded ? (
-            <p className="checklist-rise mt-3 text-sm font-semibold text-emerald-700">
+            <p className="checklist-rise mt-3 text-sm font-semibold text-success-700">
               {unsaved
                 ? "List added. Save, then reinstall to see it."
                 : "You have a list from another site."}
             </p>
           ) : (
             !locked && (
-              <button
+              <Button
                 type="button"
+                variant="dark"
+                size="pill"
                 onClick={onPasteLink}
-                className={cn(
-                  PRESS,
-                  "mt-3 inline-flex h-9 items-center rounded-full bg-ink px-4 text-sm font-bold text-cloud hover:bg-black",
-                )}
+                className="mt-3"
               >
                 Paste a link
-              </button>
+              </Button>
             )
           )}
         </Step>
@@ -238,19 +237,14 @@ export default function LegacyChecklist({
 /** The button on the "Refreshed" line that opens the closed card again. */
 export function WhatsNewButton({ onClick }: { onClick: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        PRESS,
-        "checklist-fade-in inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-white px-3 text-sm font-semibold whitespace-nowrap ring-1 ring-black/10 hover:bg-cloud sm:px-4",
-      )}
-    >
-      <Sparkles className="size-4 text-brand-dark" />
-      <span>
-        What's new<span className="hidden sm:inline"> in 2.0</span>
-      </span>
-    </button>
+    <span className="checklist-fade-in inline-flex shrink-0">
+      <Button type="button" variant="plain" size="pill" onClick={onClick}>
+        <Sparkles className="size-4 text-brand-dark" />
+        <span>
+          What's new<span className="hidden sm:inline"> in 2.0</span>
+        </span>
+      </Button>
+    </span>
   );
 }
 
@@ -282,33 +276,40 @@ function UpgradeStep({
       setBusy(false);
     };
     return (
-      <button
+      <Button
         type="button"
+        size="pill-lg"
         onClick={() => void create()}
         disabled={busy}
-        className={cn(PRIMARY, "bg-brand text-black hover:bg-brand-dark")}
+        className={PRIMARY_LAYOUT}
       >
         {busy && <Loader2 className="size-4 animate-spin" />}
         {busy ? "Creating your URL" : "Create my private Addon URL"}
-      </button>
+      </Button>
     );
   }
 
   if (confirmed) {
     return (
       <div className="checklist-rise space-y-3">
-        <p className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
+        <p className="flex items-center gap-2 text-sm font-semibold text-success-700">
           <Check className="checklist-check size-4 shrink-0" />
           All set. Open Stremlist from the new install from now on.
         </p>
-        <Link
-          to={`/configure?account=${encodeURIComponent(upgradedTo)}`}
-          onClick={() => onOpenNew(upgradedTo)}
-          className={cn(PRIMARY, "bg-ink text-cloud hover:bg-black")}
+        <Button
+          variant="dark"
+          size="pill-lg"
+          asChild
+          className={PRIMARY_LAYOUT}
         >
-          Open my new configure page
-          <ArrowRight className="size-4" />
-        </Link>
+          <Link
+            to={`/configure?account=${encodeURIComponent(upgradedTo)}`}
+            onClick={() => onOpenNew(upgradedTo)}
+          >
+            Open my new configure page
+            <ArrowRight className="size-4" />
+          </Link>
+        </Button>
       </div>
     );
   }
@@ -321,13 +322,15 @@ function UpgradeStep({
         <KeyRound className="size-3.5 shrink-0" />
         Keep it secret. Then remove the old Stremlist from Stremio.
       </p>
-      <button
+      <Button
         type="button"
+        variant="dark"
+        size="pill-lg"
         onClick={onConfirm}
-        className={cn(PRIMARY, "bg-ink text-cloud hover:bg-black")}
+        className={PRIMARY_LAYOUT}
       >
         Done
-      </button>
+      </Button>
     </div>
   );
 }
@@ -351,51 +354,49 @@ function Step({
   trailing?: ReactNode;
   children: ReactNode;
 }) {
-  const panelId = useId();
   return (
     <li style={{ "--i": index }}>
-      <div
-        className={cn(
-          "rounded-2xl transition-colors duration-150",
-          open && "bg-black/[0.03]",
-        )}
-      >
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
-          aria-controls={panelId}
-          className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03]"
+      <Collapsible open={open} onOpenChange={onToggle} asChild>
+        <div
+          className={cn(
+            "rounded-2xl transition-colors duration-150",
+            open && "bg-black/[0.03]",
+          )}
         >
-          <CheckDot done={done} />
-          <span
-            className={cn(
-              "min-w-0 flex-1 font-semibold text-pretty",
-              done && !open && "text-black/45",
-            )}
-          >
-            {title}
-            {done && <span className="sr-only"> (completed)</span>}
-            {badge && (
-              <span className="ml-2 inline-block rounded-full bg-black/5 px-2 py-0.5 align-[1px] text-[11px] font-semibold text-black/50">
-                {badge}
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition-colors duration-150 hover:bg-black/[0.03]"
+            >
+              <CheckDot done={done} />
+              <span
+                className={cn(
+                  "min-w-0 flex-1 font-semibold text-pretty",
+                  done && !open && "text-black/45",
+                )}
+              >
+                {title}
+                {done && <span className="sr-only"> (completed)</span>}
+                {badge && (
+                  <span className="ml-2 inline-block rounded-full bg-black/5 px-2 py-0.5 align-[1px] text-2xs font-semibold text-black/50">
+                    {badge}
+                  </span>
+                )}
               </span>
-            )}
-          </span>
-          {trailing && <span className="hidden sm:block">{trailing}</span>}
-          <ChevronDown
-            className={cn(
-              "size-4 shrink-0 text-black/40 transition-transform duration-200 ease-out-quint motion-reduce:transition-none",
-              open && "rotate-180",
-            )}
-          />
-        </button>
-        {open && (
-          <div id={panelId} className="checklist-rise px-3 pb-4 pl-12">
-            {children}
-          </div>
-        )}
-      </div>
+              {trailing && <span className="hidden sm:block">{trailing}</span>}
+              <ChevronDown
+                className={cn(
+                  "size-4 shrink-0 text-black/40 transition-transform duration-200 ease-out-quint motion-reduce:transition-none",
+                  open && "rotate-180",
+                )}
+              />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="px-3 pb-4 pl-12">{children}</div>
+          </CollapsibleContent>
+        </div>
+      </Collapsible>
     </li>
   );
 }
@@ -421,7 +422,7 @@ function CheckDot({ done }: { done: boolean }) {
       className={cn(
         "flex size-6 shrink-0 items-center justify-center rounded-full ring-1 transition-colors duration-200",
         done
-          ? "bg-emerald-500 text-white ring-emerald-500"
+          ? "bg-success-500 text-white ring-success-500"
           : "bg-white ring-black/15",
       )}
     >
@@ -456,7 +457,7 @@ function ProgressRing({ done, total }: { done: number; total: number }) {
           strokeLinecap="round"
           strokeDasharray={c}
           strokeDashoffset={c * (1 - done / total)}
-          className="stroke-emerald-500 transition-[stroke-dashoffset] duration-250 ease-out-quint motion-reduce:transition-none"
+          className="stroke-success-500 transition-[stroke-dashoffset] duration-250 ease-out-quint motion-reduce:transition-none"
         />
       </svg>
       <span className="text-xs font-bold tabular-nums">

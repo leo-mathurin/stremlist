@@ -1,22 +1,32 @@
-import { useId } from "react";
-import { AlertCircle, Clock, Loader2, PauseCircle } from "lucide-react";
+import { useId, useRef, useState } from "react";
+import {
+  ChevronDown,
+  CircleCheck,
+  ListPlus,
+  Loader2,
+  ShieldCheck,
+} from "lucide-react";
 import { joinProviderLabels, PROVIDERS } from "@stremlist/shared/providers";
 import type {
+  ActivityKind,
   WatchDestinationStatus,
   WatchProviderId,
 } from "@stremlist/shared/watch-tracking";
 import { WATCH_PROVIDERS } from "@stremlist/shared/watch-tracking";
 import type { WatchChange, WatchChangeNotice } from "@/hooks/useWatchTracking";
 import { cn } from "@/lib/utils";
-import { Checkbox } from "@/components/ui/checkbox";
-import { BRAND_CHECKBOX } from "./ActionsSettings";
+import ActivityConsentDialog from "./ActivityConsentDialog";
+import { Button } from "@/components/ui/button";
+import { Toggle } from "@/components/ui/toggle";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { ProviderMark } from "./brand";
 import RelativeTime from "./RelativeTime";
-import { ENTER } from "./StremioUpdateNotice";
 
 const ALL_PROVIDERS = joinProviderLabels([...WATCH_PROVIDERS], "or");
-
-const LINK_BUTTON = "font-semibold text-stremlist hover:underline";
 
 function pad(value: number) {
   return String(value).padStart(2, "0");
@@ -34,7 +44,6 @@ function statusLine(
   destination: WatchDestinationStatus,
   change: WatchChange | null,
 ) {
-  const label = PROVIDERS[destination.provider].label;
   const { lastTitle } = destination;
   if (change?.provider === destination.provider) {
     return {
@@ -45,9 +54,9 @@ function statusLine(
         : "Saving…",
     } satisfies StatusLine;
   }
-  if (!destination.enabled)
-    return { key: "off", text: "Off" } satisfies StatusLine;
-  if (destination.paused) {
+  if (!destination.enabled && !destination.watchlistEnabled)
+    return { key: "off", text: "Off" };
+  if (destination.paused && !destination.watchlistEnabled) {
     return {
       key: "paused",
       icon: "pause",
@@ -59,20 +68,20 @@ function statusLine(
       return {
         key: "renew",
         icon: "alert",
-        text: `Connect ${label} again to send the titles waiting`,
-      } satisfies StatusLine;
+        text: "Connect this account again to send waiting updates.",
+      };
     case "gave_up":
       return {
         key: "gave-up",
         icon: "alert",
-        text: `${label} refused some titles for 3 days. They were not sent.`,
-      } satisfies StatusLine;
+        text: "Some titles could not be sent for 3 days.",
+      };
     case "not_found":
       return {
         key: "not-found",
         icon: "alert",
-        text: `${label} could not find the last title`,
-      } satisfies StatusLine;
+        text: "The last title was not found.",
+      };
     case null:
       break;
   }
@@ -95,7 +104,10 @@ function statusLine(
       key: "last",
       text: (
         <>
-          Last marked: {episode}
+          {destination.lastKind === "watchlist"
+            ? "Last added: "
+            : "Last marked: "}
+          {episode}
           <RelativeTime iso={destination.lastSuccessAt} />
         </>
       ),
@@ -103,17 +115,31 @@ function statusLine(
   }
   return {
     key: "on",
-    text: "On. Titles you finish from now on are marked.",
-  } satisfies StatusLine;
+    text: destination.enabled
+      ? "On. Titles you finish from now on are marked."
+      : "On. Library additions are sent from now on.",
+  };
 }
 
-/**
- * Automatic watched marks (ADR 0003): Stremlist marks what Stremio marks as
- * watched on the accounts the member picks. Changes apply at once, not on
- * Save.
- */
+type Intent = { provider: WatchProviderId; kind: ActivityKind };
+const ACTIONS = [
+  {
+    kind: "watched",
+    title: "Mark as watched",
+    lead: "When Stremio marks a title as watched.",
+    icon: CircleCheck,
+  },
+  {
+    kind: "watchlist",
+    title: "Add to watchlist",
+    lead: "New Stremio library additions. No removals.",
+    icon: ListPlus,
+  },
+] as const;
+
 export default function WatchTrackingSettings({
   destinations,
+  consented,
   stremioLinked,
   stremioTrakt,
   loadFailed,
@@ -121,205 +147,365 @@ export default function WatchTrackingSettings({
   notice,
   locked,
   onToggle,
+  onStop,
   onRetry,
+  onRetryWrites,
   onLinkStremio,
   onInstallAgain,
   onUpdateStremio,
 }: {
-  /** Null while the first answer is on its way. */
   destinations: WatchDestinationStatus[] | null;
+  consented: boolean;
   stremioLinked: boolean;
   stremioTrakt: boolean;
   loadFailed: boolean;
   busy: WatchChange | null;
   notice: WatchChangeNotice;
-  /** Why this cannot be used here, if it cannot. */
   locked?: string;
-  onToggle: (provider: WatchProviderId, enabled: boolean) => void;
+  onToggle: (
+    provider: WatchProviderId,
+    enabled: boolean,
+    kind: ActivityKind,
+    consent?: boolean,
+  ) => Promise<boolean>;
+  onStop: () => Promise<boolean>;
   onRetry: () => void;
+  onRetryWrites: () => void;
   onLinkStremio: () => void;
   onInstallAgain: () => void;
   onUpdateStremio: () => void;
 }) {
   const id = useId();
-  const anyOn = destinations?.some((d) => d.enabled) ?? false;
-
+  const opener = useRef<HTMLElement>(null);
+  const [intent, setIntent] = useState<Intent | null>(null);
+  const [stopping, setStopping] = useState(false);
+  const anyOn =
+    destinations?.some((d) => d.enabled || d.watchlistEnabled) ?? false;
+  const tracking = anyOn && !locked;
+  const statuses = (destinations ?? [])
+    .filter((d) => d.enabled || d.watchlistEnabled)
+    .map((destination) => ({
+      destination,
+      line: statusLine(destination, busy),
+    }));
+  const pending = (destinations ?? []).reduce((sum, d) => sum + d.pending, 0);
   let body: React.ReactNode;
-  if (locked) {
-    body = <Note>{locked}</Note>;
-  } else if (loadFailed && !destinations) {
+  if (locked) body = <Note>{locked}</Note>;
+  else if (loadFailed && !destinations)
     body = (
       <Note>
         Stremlist could not load this setting.{" "}
-        <button type="button" onClick={onRetry} className={LINK_BUTTON}>
+        <Button
+          variant="link-accent"
+          size="inline"
+          type="button"
+          onClick={onRetry}
+        >
           Try again
-        </button>
+        </Button>
       </Note>
     );
-  } else if (!destinations) {
+  else if (!destinations)
     body = (
       <p className="flex items-center gap-2 text-sm text-black/50">
-        <Loader2 className="size-4 animate-spin" /> Loading…
+        <Loader2 className="size-4 animate-spin" />
+        Loading…
       </p>
     );
-  } else if (!stremioLinked) {
+  else if (!stremioLinked)
     body = (
       <Note>
         {anyOn
-          ? "Stremio is not linked any more, so nothing is marked until you link it again."
+          ? "Stremio is not linked any more, so updates wait until you link it again."
           : "Link your Stremio account first: it is how Stremlist sees what you watch."}{" "}
-        <button type="button" onClick={onLinkStremio} className={LINK_BUTTON}>
+        <Button
+          variant="link-accent"
+          size="inline"
+          type="button"
+          onClick={onLinkStremio}
+        >
           Link Stremio
-        </button>
+        </Button>
       </Note>
     );
-  } else if (destinations.length === 0) {
+  else if (!destinations.length)
     body = <Note>{`Connect ${ALL_PROVIDERS} to use this.`}</Note>;
-  } else {
+  else
     body = (
-      <ul className="space-y-1.5">
-        {destinations.map((destination) => {
-          const rowId = `${id}-${destination.provider}`;
-          const isBusy = busy?.provider === destination.provider;
-          const line = statusLine(destination, busy);
-          return (
-            <li
-              key={destination.provider}
-              aria-busy={isBusy}
-              className="flex items-start gap-3 rounded-2xl bg-black/[0.03] px-3 py-2"
+      <>
+        <div className="mt-4 divide-y divide-black/5">
+          {ACTIONS.map((action) => (
+            <div
+              key={action.kind}
+              className="grid gap-3 py-3.5 first:pt-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
             >
-              <Checkbox
-                id={rowId}
-                aria-labelledby={`${rowId}-name`}
-                aria-describedby={`${rowId}-line`}
-                checked={destination.enabled}
-                disabled={(busy !== null && !isBusy) || loadFailed}
-                onCheckedChange={(next) =>
-                  onToggle(destination.provider, next === true)
-                }
-                className={cn("mt-2", BRAND_CHECKBOX)}
-              />
-              <ProviderMark
-                provider={destination.provider}
-                active={destination.enabled && !destination.paused}
-                className="size-7 shrink-0"
-              />
-              <label
-                htmlFor={rowId}
-                className="min-w-0 flex-1 cursor-pointer leading-tight"
-              >
-                <span
-                  id={`${rowId}-name`}
-                  className="block text-sm font-semibold"
-                >
-                  {PROVIDERS[destination.provider].label}
+              <div className="flex items-start gap-3">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-black/[0.04] text-black/60">
+                  <action.icon className="size-5" aria-hidden="true" />
                 </span>
-                <span
-                  id={`${rowId}-line`}
-                  key={line.key}
-                  className={cn(
-                    "mt-0.5 flex items-start gap-1 text-xs text-pretty",
-                    line.icon === "alert"
-                      ? "text-red-700"
-                      : line.icon === "pause"
-                        ? "text-amber-700"
-                        : "text-black/50",
-                    ENTER,
-                  )}
-                >
-                  {line.icon === "busy" && (
-                    <Loader2 className="mt-px size-3 shrink-0 animate-spin" />
-                  )}
-                  {line.icon === "pause" && (
-                    <PauseCircle className="mt-px size-3 shrink-0" />
-                  )}
-                  {line.icon === "alert" && (
-                    <AlertCircle className="mt-px size-3 shrink-0" />
-                  )}
-                  {line.icon === "wait" && (
-                    <Clock className="mt-px size-3 shrink-0" />
-                  )}
-                  <span>{line.text}</span>
+                <div>
+                  <p className="text-sm font-semibold">{action.title}</p>
+                  <p className="mt-0.5 text-xs text-black/50">{action.lead}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {destinations.map((d) => {
+                  const on =
+                    action.kind === "watched" ? d.enabled : d.watchlistEnabled;
+                  return (
+                    <Toggle
+                      key={d.provider}
+                      pressed={on}
+                      aria-label={`${action.title} on ${PROVIDERS[d.provider].label}`}
+                      disabled={!!busy || loadFailed}
+                      onClick={(event) => {
+                        opener.current = event.currentTarget;
+                      }}
+                      onPressedChange={(next) => {
+                        if (next && !consented)
+                          setIntent({
+                            provider: d.provider,
+                            kind: action.kind,
+                          });
+                        else void onToggle(d.provider, next, action.kind);
+                      }}
+                      variant="chip"
+                      size="chip"
+                    >
+                      <ProviderMark
+                        provider={d.provider}
+                        tone={on ? "dark" : "light"}
+                        className={cn("size-7", !on && "opacity-50 grayscale")}
+                      />
+                      {PROVIDERS[d.provider].label}
+                    </Toggle>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-1 border-t border-black/5 pt-3.5">
+          {tracking ? (
+            <Collapsible>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-black/55">
+                <span className="flex items-center gap-2">
+                  <span className="size-2 rounded-full bg-success-500" />
+                  {busy ? "Saving…" : "Sharing on"}
                 </span>
-              </label>
-            </li>
-          );
-        })}
-      </ul>
+                <div className="flex items-center gap-4">
+                  <CollapsibleTrigger asChild>
+                    <Button
+                      variant="link-subtle"
+                      size="inline-xs"
+                      className="group"
+                    >
+                      Details
+                      <ChevronDown
+                        className="size-3.5 transition-transform group-data-[state=open]:rotate-180"
+                        aria-hidden="true"
+                      />
+                    </Button>
+                  </CollapsibleTrigger>
+                  {!stopping && (
+                    <Button
+                      variant="link-danger"
+                      size="inline-xs"
+                      disabled={!!busy}
+                      onClick={() => setStopping(true)}
+                    >
+                      Stop sharing
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {statuses
+                .filter(({ line }) => line.icon === "alert")
+                .map(({ destination, line }) => (
+                  <p
+                    key={destination.provider}
+                    role="status"
+                    className="mt-2 text-xs text-danger-700"
+                  >
+                    <strong className="font-semibold">
+                      {PROVIDERS[destination.provider].label}:{" "}
+                    </strong>
+                    {line.text}
+                  </p>
+                ))}
+              {pending > 0 && (
+                <p className="mt-2 text-xs text-black/50">
+                  {pending}{" "}
+                  {pending === 1 ? "update waiting" : "updates waiting"}.{" "}
+                  <Button
+                    variant="link-accent"
+                    size="inline"
+                    disabled={!!busy}
+                    onClick={onRetryWrites}
+                  >
+                    Retry now
+                  </Button>
+                </p>
+              )}
+              <CollapsibleContent>
+                <div className="space-y-2 pt-3">
+                  {statuses
+                    .filter(({ line }) => line.icon !== "alert")
+                    .map(({ destination, line }) => (
+                      <p
+                        key={destination.provider}
+                        className="text-xs text-black/50"
+                      >
+                        <strong className="font-semibold">
+                          {PROVIDERS[destination.provider].label}:{" "}
+                        </strong>
+                        {line.text}
+                      </p>
+                    ))}
+                  <p className="text-xs text-pretty text-black/45">
+                    Changes apply at once. Watched marks usually arrive within 5
+                    minutes. Library additions need a Stremio app that sends
+                    activity events.
+                  </p>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          ) : (
+            <p className="flex items-start gap-2 text-xs text-pretty text-black/50">
+              <ShieldCheck className="mt-px size-4 shrink-0 text-black/35" />
+              {consented
+                ? "Sharing is off."
+                : "Only new activity is shared, with your permission."}
+            </p>
+          )}
+        </div>
+      </>
     );
-  }
-
-  const tracking = anyOn && !locked;
   return (
     <section
       aria-labelledby={`${id}-title`}
+      aria-busy={!!busy}
       className="rounded-3xl bg-white p-4 ring-1 ring-black/5 sm:p-5"
     >
       <h3 id={`${id}-title`} className="font-bold">
-        Mark as watched automatically
+        Update your accounts from Stremio
       </h3>
-      <p className="mt-0.5 mb-3 text-sm text-pretty text-black/55">
-        When Stremio marks a movie or an episode as watched, Stremlist marks it
-        on the accounts you choose, usually within 5 minutes. What you watched
-        before you turn this on is not sent. Changes here apply at once, without
-        Save.
+      <p className="mt-0.5 text-sm text-pretty text-black/55">
+        Choose an account for each update.
       </p>
-
-      {body}
-
+      <div className="mt-3">{body}</div>
+      {(anyOn || consented) &&
+        !locked &&
+        (!stremioLinked || !destinations?.length) &&
+        !stopping && (
+          <Button
+            variant="link-danger"
+            size="inline"
+            type="button"
+            disabled={!!busy}
+            onClick={() => setStopping(true)}
+            className="mt-3"
+          >
+            Stop sharing
+          </Button>
+        )}
+      {stopping && (
+        <div
+          role="group"
+          aria-label="Stop sharing"
+          className="rounded-2xl bg-danger-50 p-3 text-sm text-danger-900 ring-1 ring-danger-100"
+        >
+          <p className="font-bold">Stop sharing your Stremio activity?</p>
+          <p className="mt-0.5 text-danger-900/75">
+            Every account turns off and waiting updates are cancelled. What was
+            already sent stays on your accounts.
+          </p>
+          <div className="mt-3 flex justify-end gap-2">
+            <Button
+              variant="plain"
+              size="pill"
+              type="button"
+              disabled={!!busy}
+              onClick={() => setStopping(false)}
+            >
+              Keep sharing
+            </Button>
+            <Button
+              variant="destructive"
+              type="button"
+              disabled={!!busy}
+              onClick={() => {
+                void onStop().then((saved) => {
+                  if (saved) setStopping(false);
+                });
+              }}
+              size="pill"
+            >
+              {busy ? "Stopping…" : "Stop sharing"}
+            </Button>
+          </div>
+        </div>
+      )}
       <div role="status">
         {loadFailed && destinations && !locked && (
-          <Note className={cn("mt-3", ENTER)}>
+          <Note className="mt-3">
             Stremlist could not check this setting again, so it may be out of
             date.{" "}
-            <button type="button" onClick={onRetry} className={LINK_BUTTON}>
+            <Button
+              variant="link-accent"
+              size="inline"
+              type="button"
+              onClick={onRetry}
+            >
               Try again
-            </button>
+            </Button>
           </Note>
         )}
         {tracking && notice === "missing" && (
-          <Note className={cn("mt-3", ENTER)}>
-            Stremlist is not installed in your linked Stremio account, so titles
-            are found only every 6 hours.{" "}
-            <button
+          <Note className="mt-3">
+            Stremlist is not installed in your linked Stremio account.{" "}
+            <Button
+              variant="link-accent"
+              size="inline"
               type="button"
               onClick={onInstallAgain}
-              className={LINK_BUTTON}
             >
               Install it again
-            </button>
+            </Button>
           </Note>
         )}
         {tracking && notice === "unavailable" && (
-          <Note className={cn("mt-3", ENTER)}>
-            Stremio did not take the update, so titles are found only every 6
-            hours for now.{" "}
-            <button
+          <Note className="mt-3">
+            Stremio did not take the update.{" "}
+            <Button
+              variant="link-accent"
+              size="inline"
               type="button"
               onClick={onUpdateStremio}
-              className={LINK_BUTTON}
             >
               Try again
-            </button>
+            </Button>
           </Note>
         )}
         {tracking &&
           stremioTrakt &&
           destinations?.some((d) => d.provider === "trakt" && d.enabled) && (
-            <Note className={cn("mt-3", ENTER)}>
+            <Note className="mt-3">
               Stremio's own Trakt connection already marks what you finish, so
-              Stremlist leaves Trakt to it. It misses what you close before the
-              end: disconnect Trakt in Stremio's settings to let Stremlist do
-              it.
+              Stremlist leaves watched marks to it. Watchlist additions stay
+              separate.
             </Note>
           )}
       </div>
-      {tracking && (
-        <p className="mt-3 text-xs text-pretty text-black/45">
-          Works with every Stremio app. A play that the app could not save, for
-          example when it was force-closed, is not seen.
-        </p>
-      )}
+      <ActivityConsentDialog
+        intent={intent}
+        opener={opener}
+        onCancel={() => setIntent(null)}
+        onAllow={() => {
+          if (intent) void onToggle(intent.provider, true, intent.kind, true);
+          setIntent(null);
+        }}
+      />
     </section>
   );
 }

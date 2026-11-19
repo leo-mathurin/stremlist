@@ -633,6 +633,10 @@ test("a public Letterboxd link becomes a List without connecting an account", as
   await expect(screen.getByText("Letterboxd watchlist detected")).toBeVisible();
   await screen.getByRole("button", "Add", { exact: true }).tap();
   await expect(
+    screen.getByRole("button", "Remove Someone's watchlist"),
+  ).toBeVisible();
+  await screen.getByRole("button", "Settings for Someone's watchlist").tap();
+  await expect(
     screen.getByRole("textbox", "Catalog title").first(),
   ).toHaveValue("Someone's watchlist");
   await expect(screen.getByText(/^2 of 50 lists/)).toBeVisible();

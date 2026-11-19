@@ -4,13 +4,13 @@ import { buildAddonUrls } from "@/lib/list-sources";
 import { cn } from "@/lib/utils";
 
 const edgeBlurClassName =
-  "pointer-events-none absolute inset-y-0 w-6 opacity-0 backdrop-blur-[1px] transition-opacity duration-200 ease-out-quint";
+  "pointer-events-none absolute inset-y-0 w-6 opacity-0 backdrop-blur-3xs transition-opacity duration-200 ease-out-quint";
 
 const swapClassName =
   "transition-[opacity,scale,filter] duration-200 ease-out-quint";
 
 const swapHiddenClassName =
-  "scale-50 opacity-0 blur-[2px] motion-reduce:scale-100";
+  "scale-50 opacity-0 blur-2xs motion-reduce:scale-100";
 
 interface AddonInstallActionsProps {
   /** A private Account ID or a Legacy alias. */
@@ -115,7 +115,7 @@ export default function AddonInstallActions({
               aria-hidden
               className={cn(
                 edgeBlurClassName,
-                "left-0 mask-[linear-gradient(to_right,#000,transparent)]",
+                "left-0 mask-r-from-0%",
                 overflow.start && "opacity-100",
               )}
             />
@@ -123,7 +123,7 @@ export default function AddonInstallActions({
               aria-hidden
               className={cn(
                 edgeBlurClassName,
-                "right-0 mask-[linear-gradient(to_left,#000,transparent)]",
+                "right-0 mask-l-from-0%",
                 overflow.end && "opacity-100",
               )}
             />
@@ -165,7 +165,7 @@ export default function AddonInstallActions({
           </button>
         </div>
         {copyError && (
-          <p role="alert" className="mt-2 text-sm text-red-600">
+          <p role="alert" className="mt-2 text-sm text-danger-600">
             Could not copy the Addon URL. Select it and copy it manually.
           </p>
         )}

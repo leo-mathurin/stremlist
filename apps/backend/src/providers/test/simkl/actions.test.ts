@@ -83,6 +83,57 @@ describe("simkl actions", () => {
     });
   });
 
+  it("automatic watchlist additions preserve a completed title", async () => {
+    acceptWrites();
+    await actions.perform(
+      connection,
+      { kind: "watchlist", add: true, preserveExistingStatus: true },
+      { imdbId: "tt0068646", type: "movie" },
+    );
+    expect(calls.filter((call) => call.method === "POST")).toEqual([]);
+  });
+
+  it("a delayed automatic addition cannot replace a watched write", async () => {
+    acceptWrites();
+    await actions.perform(
+      connection,
+      { kind: "watched", add: true },
+      { imdbId: "tt1375666", type: "movie" },
+    );
+    routes.set("GET /sync/activities", () => json({ all: null }));
+    routes.set("GET /sync/all-items/movies", () =>
+      json({
+        movies: [
+          {
+            status: "completed",
+            movie: { ids: { simkl: 1234, imdb: "tt1375666" } },
+          },
+        ],
+      }),
+    );
+    clearCalls();
+    await actions.perform(
+      connection,
+      { kind: "watchlist", add: true, preserveExistingStatus: true },
+      { imdbId: "tt1375666", type: "movie" },
+    );
+    expect(calls.filter((call) => call.method === "POST")).toEqual([]);
+    expect(apiCalls()).toContain("GET /sync/activities");
+  });
+
+  it("automatic additions refuse to write when the current status cannot be read", async () => {
+    acceptWrites();
+    routes.set("GET /sync/activities", () => json({ error: "down" }, 503));
+    await expect(
+      actions.perform(
+        connection,
+        { kind: "watchlist", add: true, preserveExistingStatus: true },
+        { imdbId: "tt1375666", type: "movie" },
+      ),
+    ).rejects.toThrow();
+    expect(calls.filter((call) => call.method === "POST")).toEqual([]);
+  });
+
   it("removes a planned title, but never a watched one", async () => {
     acceptWrites();
     await actions.getMembership(connection);

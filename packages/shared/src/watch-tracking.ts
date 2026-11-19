@@ -5,6 +5,7 @@
 export const WATCH_PROVIDERS = ["trakt", "simkl", "mdblist"] as const;
 
 export type WatchProviderId = (typeof WATCH_PROVIDERS)[number];
+export type ActivityKind = "watched" | "watchlist";
 
 export function isWatchProvider(provider: string): provider is WatchProviderId {
   return (WATCH_PROVIDERS as readonly string[]).includes(provider);
@@ -24,6 +25,8 @@ export interface WatchedTitleRef {
 export interface WatchDestinationStatus {
   provider: WatchProviderId;
   enabled: boolean;
+  watchlistEnabled: boolean;
+  lastKind: ActivityKind;
   /**
    * Trakt while Stremio's own Trakt integration is connected: it gets
    * nothing, so a play is never written twice.
@@ -38,6 +41,7 @@ export interface WatchDestinationStatus {
 }
 
 export interface WatchTrackingStatus {
+  consented: boolean;
   /** Watch tracking needs a Stremio link. */
   stremioLinked: boolean;
   /** Stremio's own Trakt integration is connected on the linked account. */

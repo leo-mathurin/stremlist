@@ -33,6 +33,7 @@
         "helpers/provider.fixture.ts",
         "helpers/provider-transport.ts",
         "helpers/watch.fixture.ts",
+        "helpers/watch-stress.fixture.ts",
       ],
       // Keeps the frontend build in Turbo's dependency graph for browser tests.
       "ignoreDependencies": ["@stremlist/frontend"],

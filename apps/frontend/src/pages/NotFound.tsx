@@ -11,11 +11,11 @@ export default function NotFound() {
       <Header />
 
       <main className="py-12 text-center">
-        <h2 className="text-2xl font-bold text-gray-900">Page not found</h2>
-        <p className="mx-auto mt-3 max-w-md text-gray-600">
+        <h2 className="text-2xl font-bold text-ink">Page not found</h2>
+        <p className="mx-auto mt-3 max-w-md text-black/60">
           This address does not match a Stremlist page.
         </p>
-        <Button asChild className="mt-6 bg-imdb text-black hover:bg-imdb-dark">
+        <Button asChild className="mt-6">
           <Link to="/">Return to home</Link>
         </Button>
       </main>

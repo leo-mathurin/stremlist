@@ -400,11 +400,25 @@ test("an expired Connection uses one label at every width", async ({
 test("the Legacy install ID shows with the lists, not under Providers", async ({
   app,
   browser,
-  screen,
 }) => {
   await captureConfig(browser, legacyConfiguration, imdbUser);
   await app.open(`/configure?account=${imdbUser}`);
-  await expect(screen.getByText(imdbUser, { exact: true })).toBeVisible();
+
+  await expect
+    .poll(() =>
+      browser.evaluate((id) => {
+        const visible = [...document.querySelectorAll("span")].filter(
+          (node) =>
+            node.textContent === id &&
+            node.checkVisibility({ visibilityProperty: true }),
+        );
+        return (
+          visible.length === 1 &&
+          visible.every((node) => node.closest("main") !== null)
+        );
+      }, imdbUser),
+    )
+    .toBe(true);
   expect(
     await browser.evaluate(
       (id) =>

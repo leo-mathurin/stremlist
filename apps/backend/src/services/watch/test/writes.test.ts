@@ -21,6 +21,7 @@ function write(account: string, provider: string) {
   next += 1;
   return {
     id: next,
+    kind: "watched",
     account_id: account,
     provider,
     imdb_id: `tt${String(next).padStart(7, "0")}`,

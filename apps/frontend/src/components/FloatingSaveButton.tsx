@@ -78,7 +78,8 @@ export default function FloatingSaveButton({
         style={{ "--pill": `${labelWidth + 64}px` }}
         className={cn(
           SAVE_BUTTON_CLASS,
-          "@container pointer-events-auto h-14 w-full text-base [transition:clip-path_250ms_var(--ease-in-out-quart),background-color_150ms_ease-out,opacity_150ms_ease-out,scale_150ms_ease-out] motion-reduce:[transition:background-color_150ms_ease-out,opacity_150ms_ease-out]",
+
+          "@container pointer-events-auto h-14 w-full text-base transition-save-pill",
           docked
             ? "[clip-path:inset(0_round_9999px)]"
             : "origin-right [clip-path:inset(0_0_0_calc(100%-var(--pill))_round_9999px)]",

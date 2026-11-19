@@ -20,7 +20,8 @@ import { parseConnectAnswer } from "./lib/connections";
 function ConfigureRoute() {
   const { hash } = useLocation();
   const answer = useMemo(() => parseConnectAnswer(hash), [hash]);
-  return answer ? <ConnectReturn answer={answer} /> : <Configure />;
+  if (answer) return <ConnectReturn answer={answer} />;
+  return <Configure />;
 }
 
 const router = createBrowserRouter(
@@ -44,10 +45,10 @@ export default function App() {
         closeButton
         duration={6000}
         icons={{
-          success: <CircleCheck className="size-4 text-emerald-600" />,
-          error: <CircleX className="size-4 text-red-600" />,
-          info: <Info className="size-4 text-blue-600" />,
-          warning: <TriangleAlert className="size-4 text-amber-600" />,
+          success: <CircleCheck className="size-4 text-success-600" />,
+          error: <CircleX className="size-4 text-danger-600" />,
+          info: <Info className="size-4 text-stremlist" />,
+          warning: <TriangleAlert className="size-4 text-warning-600" />,
         }}
         toastOptions={{
           style: {

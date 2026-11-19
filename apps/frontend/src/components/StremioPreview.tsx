@@ -97,7 +97,7 @@ export default function StremioPreview() {
       ref={ref}
       role="img"
       aria-label="Stremio with three Lists from IMDb, Trakt and SensCritique, each shown as its own row"
-      className="overflow-hidden rounded-[22px] bg-[radial-gradient(120%_80%_at_70%_0%,#24214a_0%,#16152a_55%,#13121f_100%)] text-white shadow-[0_24px_60px_-24px_rgba(20,16,48,0.55)] ring-1 ring-black/10 select-none"
+      className="overflow-hidden rounded-device bg-stremio-night text-white shadow-device ring-1 ring-black/10 select-none"
     >
       <div className="pt-4 pb-5 pl-4 sm:pl-5">
         <div className="mr-4 mb-5 flex h-8 items-center justify-between rounded-full bg-white/[0.07] px-3.5 text-xs text-white/40 sm:mx-auto sm:max-w-72">
@@ -188,7 +188,7 @@ export default function StremioPreview() {
                         />
                       </div>
                       <motion.p
-                        className="mt-1.5 truncate text-center text-[11px] font-semibold text-white/85"
+                        className="mt-1.5 truncate text-center text-2xs font-semibold text-white/85"
                         initial={false}
                         animate={{ opacity: inView ? 1 : 0 }}
                         transition={{
