@@ -71,12 +71,16 @@ export function withLinkBack(
   return { ...meta, description: base ? `${base}\n\n${line}` : line };
 }
 
-function withLinkBackOf(kept: SourceMeta, dropped: SourceMeta) {
+function withDetailsOf(kept: SourceMeta, dropped: SourceMeta) {
+  const merged =
+    kept.latestEpisodeAt === undefined && dropped.latestEpisodeAt !== undefined
+      ? { ...kept, latestEpisodeAt: dropped.latestEpisodeAt }
+      : kept;
   const line = LINK_BACK.exec(dropped.description)?.[1];
-  if (!line || kept.description.includes(line)) return kept;
+  if (!line || merged.description.includes(line)) return merged;
   return {
-    ...kept,
-    description: kept.description ? `${kept.description}\n\n${line}` : line,
+    ...merged,
+    description: merged.description ? `${merged.description}\n\n${line}` : line,
   };
 }
 
@@ -111,7 +115,7 @@ export function mergeSourceCatalogs(
       byId.set(meta.id, merged.length);
       merged.push(meta);
     } else {
-      merged[index] = withLinkBackOf(merged[index], meta);
+      merged[index] = withDetailsOf(merged[index], meta);
     }
   }
   return merged;
@@ -133,11 +137,17 @@ export function mergeListCatalogs(
     : catalogs[0];
 }
 
-/** The meta as Stremio gets it: the date added stays in the cache. */
+/** The meta as Stremio gets it: the Source list's dates stay in the cache. */
 export function toStremioMeta(meta: SourceMeta) {
-  if (meta.addedAt === undefined && meta.enrichedAt === undefined) return meta;
+  if (
+    meta.addedAt === undefined &&
+    meta.latestEpisodeAt === undefined &&
+    meta.enrichedAt === undefined
+  )
+    return meta;
   const copy = { ...meta };
   delete copy.addedAt;
+  delete copy.latestEpisodeAt;
   delete copy.enrichedAt;
   return copy;
 }

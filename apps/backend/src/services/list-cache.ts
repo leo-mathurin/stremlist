@@ -40,6 +40,7 @@ const stremioMetaSchema = z.object({
   runtime: z.string().optional(),
   released: z.iso.datetime().optional(),
   addedAt: z.iso.datetime().optional(),
+  latestEpisodeAt: z.iso.datetime().optional(),
   enrichedAt: z.iso.datetime().optional(),
 });
 
@@ -49,6 +50,7 @@ const stremioMetaSchema = z.object({
  */
 export type SourceMeta = StremioMeta & {
   addedAt?: string;
+  latestEpisodeAt?: string;
   enrichedAt?: string;
 };
 

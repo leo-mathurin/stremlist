@@ -3,7 +3,7 @@ import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { shuffleArray } from "../utils";
 
 export type CatalogSort = Omit<SortOptions, "by"> & {
-  by: SortOptions["by"] | "runtime" | "released";
+  by: SortOptions["by"] | "runtime";
   /** Breaks ties of `by`. */
   tieBreak?: SortOptions;
 };
@@ -15,11 +15,13 @@ export function runtimeMinutes(runtime?: string) {
   return minutes > 0 ? minutes : null;
 }
 
-export function sortCatalog(
-  metas: StremioMeta[],
-  sort: CatalogSort,
-  generation: string,
-) {
+function releaseTime(meta: StremioMeta & { latestEpisodeAt?: string }) {
+  return Date.parse(meta.latestEpisodeAt ?? meta.released ?? "");
+}
+
+export function sortCatalog<
+  T extends StremioMeta & { latestEpisodeAt?: string },
+>(metas: T[], sort: CatalogSort, generation: string) {
   const indices = metas.map((_, index) => index);
   const ranks: number[] = [];
   if (sort.by === "random" || sort.tieBreak?.by === "random") {
@@ -33,7 +35,7 @@ export function sortCatalog(
     if (by === "added_at") return (a - b) * direction;
     if (by === "title")
       return metas[a].name.localeCompare(metas[b].name) * direction;
-    const value = (meta: StremioMeta) => {
+    const value = (meta: T) => {
       switch (by) {
         case "year":
           return Number.parseInt(meta.releaseInfo ?? "", 10) || 0;
@@ -42,7 +44,7 @@ export function sortCatalog(
         case "runtime":
           return runtimeMinutes(meta.runtime) ?? NaN;
         case "released":
-          return Date.parse(meta.released ?? "");
+          return releaseTime(meta);
       }
     };
     const left = value(metas[a]);

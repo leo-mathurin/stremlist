@@ -34,6 +34,12 @@ import { onFakeClock } from "../../../test/helpers/clock.test-utils";
 
 const server = useMswServer();
 
+const clerksShow = {
+  title: "Clerks: The Animated Series",
+  year: 2000,
+  ids: { trakt: 1915, imdb: "tt0206512" },
+};
+
 beforeEach(() => resetTraktTest(server));
 afterEach(restoreTraktTest);
 
@@ -457,6 +463,8 @@ describe("Trakt reads", () => {
   });
 
   it("reads up next as shows, oldest watched first", async () => {
+    route("GET /users/hidden/dropped", []);
+    route("GET /users/hidden/progress_watched", []);
     route(
       "GET /sync/progress/up_next",
       pages([
@@ -490,19 +498,71 @@ describe("Trakt reads", () => {
   });
 
   it("falls back to watched progress when up next is not available to the app", async () => {
+    route("GET /users/hidden/dropped", []);
+    route("GET /users/hidden/progress_watched", []);
     route("GET /sync/progress/up_next", status(403));
     route("GET /sync/progress/watched", (call) => {
       expect(call.url.searchParams.get("hide_completed")).toBe("true");
+      expect(call.url.searchParams.get("extended")).toBe("full");
       return json([
         {
-          show: pitt,
+          show: { ...pitt, last_aired: "2026-09-10T02:00:00.000Z" },
           progress: { last_watched_at: "2026-09-01T00:00:00.000Z" },
         },
       ]);
     });
+    expect(await fetchEntries("me/up-next", connection())).toMatchObject([
+      { imdbId: "tt31938062", latestEpisodeAt: "2026-09-10T02:00:00.000Z" },
+    ]);
+  });
+
+  it("leaves out of up next the shows the user dropped or hid from progress", async () => {
+    route("GET /users/hidden/dropped", (call) => {
+      expect(call.url.searchParams.get("type")).toBe("show");
+      return json([{ type: "show", show: mandalorian }]);
+    });
+    route("GET /users/hidden/progress_watched", (call) => {
+      expect(call.url.searchParams.get("type")).toBe("show");
+      return json([{ type: "show", show: clerksShow }]);
+    });
+    route(
+      "GET /sync/progress/up_next",
+      pages([
+        [
+          { show: clerksShow, progress: { last_watched_at: null } },
+          { show: mandalorian, progress: { last_watched_at: null } },
+          { show: pitt, progress: { last_watched_at: null } },
+        ],
+      ]),
+    );
     expect(
       (await fetchEntries("me/up-next", connection())).map((e) => e.imdbId),
     ).toEqual(["tt31938062"]);
+  });
+
+  it("dates each up next show by its latest aired episode", async () => {
+    route("GET /users/hidden/dropped", []);
+    route("GET /users/hidden/progress_watched", []);
+    route(
+      "GET /sync/progress/up_next",
+      pages([
+        [
+          {
+            show: { ...pitt, last_aired: "2026-11-18T02:00:00.000Z" },
+            progress: { last_watched_at: "2026-11-12T20:00:00.000Z" },
+          },
+          {
+            show: { ...mandalorian, last_aired: "2999-01-01T00:00:00.000Z" },
+            progress: { last_watched_at: "2026-11-15T20:00:00.000Z" },
+          },
+        ],
+      ]),
+    );
+    const entries = await fetchEntries("me/up-next", connection());
+    expect(entries.map((e) => [e.imdbId, e.latestEpisodeAt])).toEqual([
+      ["tt31938062", "2026-11-18T02:00:00.000Z"],
+      ["tt8111088", undefined],
+    ]);
   });
 
   it("reads Continue Watching as paused movies and the shows of paused episodes", async () => {

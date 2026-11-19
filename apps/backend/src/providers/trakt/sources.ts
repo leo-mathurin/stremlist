@@ -3,7 +3,6 @@ import { z } from "zod";
 import { HttpError } from "../http";
 import type {
   ConnectionAccess,
-  PagedRead,
   SourceSnapshot,
   SourceValidation,
 } from "../types";
@@ -351,34 +350,74 @@ async function smartListEntries(
   };
 }
 
+async function droppedShows(connection: ConnectionAccess | null) {
+  const reads = await Promise.all(
+    ["dropped", "progress_watched"].map((section) =>
+      traktGetAll(
+        `/users/hidden/${section}?type=show`,
+        traktItemSchema,
+        connection,
+        {
+          maxItems: MAX_SOURCE_ITEMS,
+        },
+      ),
+    ),
+  );
+  return new Set(
+    reads.flatMap((read) =>
+      read.items.flatMap((row) =>
+        typeof row.show?.ids?.trakt === "number" ? [row.show.ids.trakt] : [],
+      ),
+    ),
+  );
+}
+
 async function upNextEntries(connection: ConnectionAccess | null) {
-  let read: PagedRead<TraktItem>;
-  try {
-    read = await traktGetAll(
-      "/sync/progress/up_next",
-      traktItemSchema,
-      connection,
-      { maxItems: MAX_SOURCE_ITEMS },
-    );
-  } catch (error) {
-    if (
-      !(error instanceof HttpError) ||
-      ![403, 404, 405].includes(error.status)
-    ) {
-      throw error;
+  const readUpNext = async () => {
+    try {
+      return await traktGetAll(
+        "/sync/progress/up_next",
+        traktItemSchema,
+        connection,
+        { maxItems: MAX_SOURCE_ITEMS },
+      );
+    } catch (error) {
+      if (
+        !(error instanceof HttpError) ||
+        ![403, 404, 405].includes(error.status)
+      ) {
+        throw error;
+      }
+      return traktGetAll(
+        "/sync/progress/watched?hide_completed=true&extended=full",
+        traktItemSchema,
+        connection,
+        { maxItems: MAX_SOURCE_ITEMS },
+      );
     }
-    read = await traktGetAll(
-      "/sync/progress/watched?hide_completed=true",
-      traktItemSchema,
-      connection,
-      { maxItems: MAX_SOURCE_ITEMS },
-    );
-  }
+  };
+  const [read, dropped] = await Promise.all([
+    readUpNext(),
+    droppedShows(connection),
+  ]);
+  const now = Date.now();
   return {
     entries: oldestFirst(
       read.items,
       (row) => row.progress?.last_watched_at,
-    ).flatMap((row) => (row.show ? [mediaToEntry(row.show, "series")] : [])),
+    ).flatMap((row) => {
+      const show = row.show;
+      if (!show) return [];
+      const id = show.ids?.trakt;
+      if (typeof id === "number" && dropped.has(id)) return [];
+      const entry = mediaToEntry(show, "series");
+      const aired = show.last_aired;
+      return [
+        aired && Date.parse(aired) <= now
+          ? { ...entry, latestEpisodeAt: aired }
+          : entry,
+      ];
+    }),
     complete: read.complete,
   };
 }

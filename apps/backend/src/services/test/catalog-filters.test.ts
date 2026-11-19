@@ -92,3 +92,20 @@ it("intersects saved and dropdown constraints rather than overwriting either", (
     ).toEqual(ids);
   }
 });
+
+it("hides unreleased Titles: a future date, or no date and a later year", () => {
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  const year = new Date(now).getUTCFullYear();
+  const titles = [
+    movie("tt20", { released: new Date(now - day).toISOString() }),
+    movie("tt21", { released: new Date(now + day).toISOString() }),
+    movie("tt22", { releaseInfo: String(year + 1) }),
+    movie("tt23", { releaseInfo: String(year) }),
+    movie("tt24"),
+  ];
+  expect(
+    filterCatalog(titles, [{ hideUnreleased: true }]).map((meta) => meta.id),
+  ).toEqual(["tt20", "tt23", "tt24"]);
+  expect(filterCatalog(titles, [{}])).toHaveLength(5);
+});

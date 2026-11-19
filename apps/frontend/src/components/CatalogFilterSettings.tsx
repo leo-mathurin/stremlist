@@ -24,7 +24,7 @@ import {
 const ANY = "__any__";
 
 type Filter = {
-  key: CatalogFilterKey;
+  key: Exclude<CatalogFilterKey, "hideUnreleased">;
   label: string;
   empty: string;
   choices: readonly (string | number)[];
@@ -200,6 +200,35 @@ export default function CatalogFilterSettings({
                   </div>
                 );
               })}
+            </div>
+
+            <div className="mt-3 flex items-start gap-2.5">
+              <Checkbox
+                id={`${panelId}-unreleased`}
+                aria-describedby={`${panelId}-unreleased-help`}
+                checked={value.hideUnreleased === true}
+                onCheckedChange={(next) =>
+                  onChange({
+                    ...value,
+                    hideUnreleased: next === true ? true : undefined,
+                  })
+                }
+                className="mt-0.5 focus-visible:border-imdb focus-visible:ring-imdb/40 data-[state=checked]:border-imdb data-[state=checked]:bg-imdb data-[state=checked]:text-black"
+              />
+              <div>
+                <Label
+                  htmlFor={`${panelId}-unreleased`}
+                  className="cursor-pointer text-sm font-normal text-gray-800"
+                >
+                  Hide unreleased titles
+                </Label>
+                <p
+                  id={`${panelId}-unreleased-help`}
+                  className="text-[11px] leading-snug text-gray-500"
+                >
+                  Hides titles with a release date in the future.
+                </p>
+              </div>
             </div>
 
             <div className="mt-4">
