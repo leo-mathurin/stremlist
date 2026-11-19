@@ -28,6 +28,38 @@ import {
 import { isRecord } from "../helpers/json";
 
 const PASTE = "Paste a link to a watchlist or list";
+
+test("activity sharing setup focuses the account connection controls", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await baseRoutes(browser);
+  await routeConfig(browser, {
+    ...configuration,
+    stremio: { email: "sample@example.test" },
+  });
+  await browser.route(`${backend}/${accountId}/watch-tracking`, (route) =>
+    route.fulfill({
+      json: {
+        consented: true,
+        stremioLinked: true,
+        stremioTrakt: false,
+        destinations: [],
+      },
+    }),
+  );
+  await browser.route(`${backend}/${accountId}/stremio/update`, (route) =>
+    route.fulfill({ json: { result: "unchanged" } }),
+  );
+  await app.open(`/configure?account=${accountId}`);
+  await screen.getByRole("button", "Connect an account", { exact: true }).tap();
+  const accounts = screen.getByRole("group", "Provider accounts");
+  await expect(
+    accounts.getByRole("button", "Connect", { exact: true }).first(),
+  ).toBeFocused();
+  await expect(browser).toHaveURL(`/configure?account=${accountId}`);
+});
 const traktList = {
   ...row,
   id: "00000000-0000-4000-8000-000000000003",

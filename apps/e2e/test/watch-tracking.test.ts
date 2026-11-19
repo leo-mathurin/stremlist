@@ -553,9 +553,7 @@ test(
     const section = page.getByRole("region", {
       name: "Update your accounts from Stremio",
     });
-    await expect(
-      section.getByText(/Link your Stremio account first/),
-    ).toBeVisible();
+    await expect(section.getByText(/Start with Stremio/)).toBeVisible();
     await expect(
       section.getByRole("button", { name: "Link Stremio" }),
     ).toBeVisible();

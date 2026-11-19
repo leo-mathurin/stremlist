@@ -337,6 +337,7 @@ export default function Configure() {
     setUpgradeRequest((count) => count + 1);
   };
   const pasteInput = useRef<HTMLInputElement>(null);
+  const providerAccounts = useRef<HTMLDivElement>(null);
   const focusPaste = () => {
     const input = pasteInput.current;
     if (!input) return;
@@ -372,19 +373,29 @@ export default function Configure() {
             onUpgrade={scrollToUpgrade}
             inputRef={pasteInput}
           />
-          <ProviderList
-            access={access}
-            detected={detected}
-            connections={config.connections}
-            providerStatus={config.providerStatus}
-            connecting={config.connecting}
-            connectLocked={policy.editLock}
-            affectedLists={affectedLists}
-            onConnect={(provider) =>
-              policy.upgradeToConnect ? scrollToUpgrade() : connectFor(provider)
-            }
-            onDisconnect={(provider) => void config.disconnect(provider)}
-          />
+          <div
+            ref={providerAccounts}
+            role="group"
+            aria-label="Provider accounts"
+            tabIndex={-1}
+            className="rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
+          >
+            <ProviderList
+              access={access}
+              detected={detected}
+              connections={config.connections}
+              providerStatus={config.providerStatus}
+              connecting={config.connecting}
+              connectLocked={policy.editLock}
+              affectedLists={affectedLists}
+              onConnect={(provider) =>
+                policy.upgradeToConnect
+                  ? scrollToUpgrade()
+                  : connectFor(provider)
+              }
+              onDisconnect={(provider) => void config.disconnect(provider)}
+            />
+          </div>
           {policy.connectHint === "save-first" && (
             <p className="text-xs text-pretty text-white/45">
               When an account connects, Stremlist saves your setup with it and
@@ -724,6 +735,18 @@ export default function Configure() {
                 onRetryWrites={() => void watch.retryWrites()}
                 onRetry={() => void watch.retry()}
                 onLinkStremio={() => stremioStep(config.stremio.connect)}
+                onManageAccounts={() => {
+                  const section = providerAccounts.current;
+                  const target =
+                    section?.querySelector<HTMLButtonElement>(
+                      "button:not(:disabled)",
+                    ) ?? section;
+                  target?.scrollIntoView({
+                    behavior: scrollBehavior(),
+                    block: "center",
+                  });
+                  target?.focus({ preventScroll: true });
+                }}
                 onInstallAgain={() => stremioStep(config.stremio.installAgain)}
                 onUpdateStremio={() => stremioStep(config.stremio.retry)}
               />

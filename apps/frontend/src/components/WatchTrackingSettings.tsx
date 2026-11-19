@@ -1,5 +1,8 @@
 import { useId, useRef, useState } from "react";
 import {
+  ArrowRight,
+  ArrowRightLeft,
+  ArrowUpRight,
   ChevronDown,
   CircleCheck,
   ListPlus,
@@ -151,6 +154,7 @@ export default function WatchTrackingSettings({
   onRetry,
   onRetryWrites,
   onLinkStremio,
+  onManageAccounts,
   onInstallAgain,
   onUpdateStremio,
 }: {
@@ -172,6 +176,7 @@ export default function WatchTrackingSettings({
   onRetry: () => void;
   onRetryWrites: () => void;
   onLinkStremio: () => void;
+  onManageAccounts: () => void;
   onInstallAgain: () => void;
   onUpdateStremio: () => void;
 }) {
@@ -182,6 +187,10 @@ export default function WatchTrackingSettings({
   const anyOn =
     destinations?.some((d) => d.enabled || d.watchlistEnabled) ?? false;
   const tracking = anyOn && !locked;
+  const needsSetup =
+    !locked &&
+    destinations !== null &&
+    (!stremioLinked || !destinations.length);
   const statuses = (destinations ?? [])
     .filter((d) => d.enabled || d.watchlistEnabled)
     .map((destination) => ({
@@ -214,22 +223,24 @@ export default function WatchTrackingSettings({
     );
   else if (!stremioLinked)
     body = (
-      <Note>
-        {anyOn
-          ? "Stremio is not linked any more, so updates wait until you link it again."
-          : "Link your Stremio account first: it is how Stremlist sees what you watch."}{" "}
-        <Button
-          variant="link-accent"
-          size="inline"
-          type="button"
-          onClick={onLinkStremio}
-        >
-          Link Stremio
-        </Button>
-      </Note>
+      <ActivitySetup
+        action="Link Stremio"
+        onStart={onLinkStremio}
+        lead={
+          anyOn
+            ? "Link Stremio again to resume your updates."
+            : "Start with Stremio. Then choose which accounts to update."
+        }
+      />
     );
   else if (!destinations.length)
-    body = <Note>{`Connect ${ALL_PROVIDERS} to use this.`}</Note>;
+    body = (
+      <ActivitySetup
+        action="Connect an account"
+        onStart={onManageAccounts}
+        lead={`Connect ${ALL_PROVIDERS}. You choose what gets shared.`}
+      />
+    );
   else
     body = (
       <>
@@ -387,33 +398,57 @@ export default function WatchTrackingSettings({
       aria-busy={!!busy}
       className="rounded-3xl bg-white p-4 ring-1 ring-black/5 sm:p-5"
     >
-      <h3 id={`${id}-title`} className="font-bold">
-        Update your accounts from Stremio
-      </h3>
-      <p className="mt-0.5 text-sm text-pretty text-black/55">
-        Choose an account for each update.
-      </p>
-      <div className="mt-3">{body}</div>
+      <div className={cn(needsSetup && "flex items-start gap-3")}>
+        {needsSetup && (
+          <span
+            aria-hidden="true"
+            className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-ink text-brand shadow-xs"
+          >
+            <ArrowRightLeft className="size-5" />
+          </span>
+        )}
+        <div className="min-w-0">
+          <h3
+            id={`${id}-title`}
+            className={cn(
+              "font-bold",
+              needsSetup && "tracking-tight text-balance",
+            )}
+          >
+            Update your accounts from Stremio
+          </h3>
+          <p className="mt-0.5 text-sm text-pretty text-black/55">
+            {needsSetup
+              ? "Choose what to share, and where."
+              : "Choose an account for each update."}
+          </p>
+        </div>
+      </div>
+      <div className={cn("mt-3", needsSetup && "mt-4")}>{body}</div>
       {(anyOn || consented) &&
         !locked &&
         (!stremioLinked || !destinations?.length) &&
         !stopping && (
-          <Button
-            variant="link-danger"
-            size="inline"
-            type="button"
-            disabled={!!busy}
-            onClick={() => setStopping(true)}
-            className="mt-3"
-          >
-            Stop sharing
-          </Button>
+          <div className="mt-4 flex justify-end border-t border-black/5 pt-3">
+            <Button
+              variant="link-danger"
+              size="inline-xs"
+              type="button"
+              disabled={!!busy}
+              onClick={() => setStopping(true)}
+            >
+              Stop sharing
+            </Button>
+          </div>
         )}
       {stopping && (
         <div
           role="group"
           aria-label="Stop sharing"
-          className="rounded-2xl bg-danger-50 p-3 text-sm text-danger-900 ring-1 ring-danger-100"
+          className={cn(
+            "rounded-2xl bg-danger-50 p-3 text-sm text-danger-900 ring-1 ring-danger-100",
+            needsSetup && "mt-4",
+          )}
         >
           <p className="font-bold">Stop sharing your Stremio activity?</p>
           <p className="mt-0.5 text-danger-900/75">
@@ -507,6 +542,49 @@ export default function WatchTrackingSettings({
         }}
       />
     </section>
+  );
+}
+
+function ActivitySetup({
+  action,
+  lead,
+  onStart,
+}: {
+  action: string;
+  lead: string;
+  onStart: () => void;
+}) {
+  return (
+    <div className="rounded-2xl bg-brand/10 p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div aria-hidden="true" className="flex items-center gap-3">
+          <span className="flex size-12 -rotate-6 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+            <img
+              src="/stremio.png"
+              alt=""
+              width={36}
+              height={36}
+              className="size-9 rounded-xl"
+            />
+          </span>
+          <ArrowRight className="size-4 text-black/30" />
+          <div className="flex -space-x-3">
+            {WATCH_PROVIDERS.map((provider) => (
+              <ProviderMark
+                key={provider}
+                provider={provider}
+                className="size-10 border-2 border-white shadow-sm"
+              />
+            ))}
+          </div>
+        </div>
+        <Button type="button" size="pill" onClick={onStart}>
+          {action}
+          <ArrowUpRight aria-hidden="true" />
+        </Button>
+      </div>
+      <p className="mt-4 text-sm text-pretty text-black/60">{lead}</p>
+    </div>
   );
 }
 
