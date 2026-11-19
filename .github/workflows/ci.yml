@@ -169,6 +169,9 @@ jobs:
       - wait: install
 
       # Same command as the local workflow, so CI and developers cannot diverge.
+      - name: Test activity concurrency
+        run: python3 supabase/tests/stremio_activity_concurrency.py
+
       - name: Check generated Supabase types
         run: |
           bun run generate:types

@@ -11,6 +11,7 @@ import {
   seedAccount,
   seedConnection,
   seedStremioLink,
+  withHeldSimklWrite,
 } from "../helpers/db.js";
 import type { FixtureBackend } from "../helpers/fixture-backend.js";
 import { startFixtureBackend } from "../helpers/fixture-backend.js";
@@ -889,5 +890,49 @@ test(
     await expect(
       section.getByRole("button", { name: "Stop sharing", exact: true }),
     ).toHaveCount(0);
+  },
+);
+
+test(
+  "a Simkl title held by another worker waits without using a failure attempt",
+  { tag: "@local" },
+  async () => {
+    const accountId = await seedAccount();
+    await seedConnection(accountId, "simkl");
+    await seedStremioLink(accountId, AUTH_KEY);
+    writeStremio({ authKey: AUTH_KEY, trakt: false, library: [], addons: [] });
+    expect(
+      (
+        await call(`/${accountId}/watch-tracking`, {
+          method: "PUT",
+          json: {
+            consent: true,
+            destinations: [],
+            watchlistDestinations: ["simkl"],
+          },
+        })
+      ).status,
+    ).toBe(200);
+    await call(`/${accountId}/library/movie/${MOVIE}/action=libraryAdd.json`);
+    await withHeldSimklWrite(accountId, MOVIE, async () => {
+      expect((await runCron()).simkl).toMatchObject({ sent: 0, failed: 0 });
+      const pending = (await getWatchRows(accountId)).writes;
+      expect(pending).toHaveLength(1);
+      expect(pending[0]).toMatchObject({
+        kind: "watchlist",
+        attempts: 0,
+        first_failed_at: null,
+        lease_token: null,
+      });
+      expect(Date.parse(pending[0].due_at)).toBeGreaterThan(Date.now());
+      expect(watchedWrites("api.simkl.com", "/sync/add-to-list")).toEqual([]);
+    });
+    expect(
+      (await call(`/${accountId}/watch-tracking/retry`, { method: "POST" }))
+        .status,
+    ).toBe(200);
+    expect((await runCron()).simkl?.sent).toBe(1);
+    expect((await getWatchRows(accountId)).writes).toEqual([]);
+    expect(watchedWrites("api.simkl.com", "/sync/add-to-list")).toHaveLength(1);
   },
 );

@@ -134,6 +134,19 @@ describe("simkl actions", () => {
     expect(calls.filter((call) => call.method === "POST")).toEqual([]);
   });
 
+  it("does not send after the action deadline expires", async () => {
+    acceptWrites();
+    await expect(
+      actions.perform(
+        connection,
+        { kind: "watched", add: true },
+        { imdbId: "tt1375666", type: "movie" },
+        AbortSignal.abort(),
+      ),
+    ).rejects.toThrow();
+    expect(calls.filter((call) => call.method === "POST")).toEqual([]);
+  });
+
   it("removes a planned title, but never a watched one", async () => {
     acceptWrites();
     await actions.getMembership(connection);

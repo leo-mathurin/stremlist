@@ -259,6 +259,7 @@ export interface ProviderActions {
     connection: ConnectionAccess,
     intent: ActionIntent,
     target: ActionTarget,
+    signal?: AbortSignal,
   ): Promise<void>;
   /**
    * Source list refs whose content an Action of this kind changes, so their

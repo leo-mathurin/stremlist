@@ -145,12 +145,14 @@ async function perform(
   connection: ConnectionAccess,
   intent: ActionIntent,
   target: ActionTarget,
+  signal?: AbortSignal,
 ) {
   const write = await buildWrite(connection, intent, target);
   if (!write) return;
   const token = await connection.getAccessToken();
   const result = await simklRequest(write.path, z.unknown(), {
     method: "POST",
+    signal,
     token,
     body: { [bucketOf(target)]: [write.item] },
   });

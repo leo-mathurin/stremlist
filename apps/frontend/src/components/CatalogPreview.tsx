@@ -585,7 +585,7 @@ function CatalogTitlesContent({
 
   return (
     <>
-      <div className="flex items-start justify-between gap-3 border-b border-black/5 px-4 py-3 sm:px-5">
+      <div className="flex items-start justify-between gap-3 border-b border-black/5 py-3 pr-12 pl-4 sm:pr-12 sm:pl-5">
         <div className="min-w-0">
           <DialogTitle>{rowTitle(list)}</DialogTitle>
           <DialogDescription>

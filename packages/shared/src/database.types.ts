@@ -545,6 +545,39 @@ export type Database = {
         };
         Relationships: [];
       };
+      simkl_title_writes: {
+        Row: {
+          account_id: string;
+          imdb_id: string;
+          lease_token: string;
+          locked_until: string;
+          provider: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          account_id: string;
+          imdb_id: string;
+          lease_token: string;
+          locked_until: string;
+          provider?: string;
+        };
+        Update: {
+          account_id?: string;
+          imdb_id?: string;
+          lease_token?: string;
+          locked_until?: string;
+          provider?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "simkl_title_writes_account_id_provider_fkey";
+            columns: ["account_id", "provider"];
+            isOneToOne: false;
+            referencedRelation: "connections";
+            referencedColumns: ["account_id", "provider"];
+          },
+        ];
+      };
       stremio_connections: {
         Row: {
           account_id: string;
@@ -985,6 +1018,14 @@ export type Database = {
         Args: { p_interval_seconds: number; p_name: string };
         Returns: boolean;
       };
+      claim_simkl_write: {
+        Args: {
+          p_account_id: string;
+          p_imdb_id: string;
+          p_lease_token: string;
+        };
+        Returns: boolean;
+      };
       claim_stremio_update: {
         Args: {
           p_account_id: string;
@@ -1263,6 +1304,14 @@ export type Database = {
           p_provider: string;
         };
         Returns: boolean;
+      };
+      release_simkl_write: {
+        Args: {
+          p_account_id: string;
+          p_imdb_id: string;
+          p_lease_token: string;
+        };
+        Returns: undefined;
       };
       release_stremio_update: {
         Args: { p_account_id: string; p_lease_token: string };

@@ -12,7 +12,7 @@ import {
   UnknownTitleError,
 } from "../../providers/types";
 import { getAccountLists } from "../accounts";
-import { performOnConnection } from "../actions";
+import { performOnConnection, SimklWriteBusyError } from "../actions";
 import { getConnectionAccess } from "../connections";
 import { nextWriteRetry } from "./schedule";
 
@@ -229,6 +229,14 @@ async function send(writes: ClaimedWrite[], lease: string, stats: WriteStats) {
     }
     return finished(rows);
   } catch (error) {
+    if (error instanceof SimklWriteBusyError) {
+      await releaseWrites(
+        lease,
+        rows.map((row) => row.id),
+        1,
+      );
+      return [];
+    }
     stats.failed += rows.length;
     const code = errorCode(error);
     if (code === "rate_limited") stats.rateLimited = true;

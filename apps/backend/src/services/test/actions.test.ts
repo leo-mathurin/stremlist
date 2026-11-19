@@ -1,6 +1,6 @@
 import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
-import { http } from "msw";
+import { http, HttpResponse } from "msw";
 import {
   afterEach,
   beforeEach,
@@ -36,12 +36,14 @@ import type {
 } from "../../providers/types";
 import type { Account } from "../accounts";
 import { resolveAccountKey } from "../accounts";
+import { getConnectionAccess } from "../connections";
 import {
   actionProviders,
   buildActionStreams,
   currentRatings,
   parseStreamId,
   performAction,
+  performOnConnection,
 } from "../actions";
 
 const trakt = new FakeTrakt();
@@ -714,5 +716,76 @@ describe("performAction", () => {
       await act(account, intent, MOVIE_TARGET, ["trakt"], supports),
     ).toEqual([{ provider: "trakt", ok: false, error: "not_available" }]);
     expect(traktWrites()).toEqual([]);
+  });
+});
+
+describe("Simkl activity writes", () => {
+  it("keeps a concurrent watched write from being replaced by an automatic addition", async () => {
+    const account = await setup({ simkl: membership() });
+    const connection = await getConnectionAccess(account.id, "simkl");
+    if (!connection) throw new Error("Missing Simkl connection");
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let status = "plantowatch";
+    const posts: string[] = [];
+    simkl.reply("/sync/activities", 200, { all: null });
+    simkl.reply("/sync/all-items/shows", 200, { shows: [] });
+    simkl.reply("/sync/all-items/anime", 200, { anime: [] });
+    server.use(
+      http.get("https://api.simkl.com/sync/all-items/movies", () =>
+        HttpResponse.json({
+          movies: [{ status, movie: { ids: { imdb: MOVIE, simkl: 1 } } }],
+        }),
+      ),
+      http.post("https://api.simkl.com/sync/add-to-list", async () => {
+        started.resolve();
+        await release.promise;
+        posts.push("watchlist");
+        status = "plantowatch";
+        return HttpResponse.json({ added: {}, not_found: {} });
+      }),
+      http.post("https://api.simkl.com/sync/history", () => {
+        posts.push("watched");
+        status = "completed";
+        return HttpResponse.json({ added: {}, not_found: {} });
+      }),
+    );
+    const addition = performOnConnection(
+      connection,
+      { kind: "watchlist", add: true, preserveExistingStatus: true },
+      MOVIE_TARGET,
+      [],
+    );
+    try {
+      await started.promise;
+      vi.setSystemTime(Date.now() + 1000);
+      await expect(
+        performOnConnection(
+          connection,
+          { kind: "watched", add: true },
+          MOVIE_TARGET,
+          [],
+        ),
+      ).rejects.toThrow("A Simkl update for this title is already in progress");
+      expect(posts).toEqual([]);
+    } finally {
+      release.resolve();
+      await addition;
+    }
+    vi.setSystemTime(Date.now() + 1000);
+    await performOnConnection(
+      connection,
+      { kind: "watched", add: true },
+      MOVIE_TARGET,
+      [],
+    );
+    await performOnConnection(
+      connection,
+      { kind: "watchlist", add: true, preserveExistingStatus: true },
+      MOVIE_TARGET,
+      [],
+    );
+    expect(status).toBe("completed");
+    expect(posts).toEqual(["watchlist", "watched"]);
   });
 });

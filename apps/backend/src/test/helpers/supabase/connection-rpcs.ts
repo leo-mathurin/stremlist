@@ -71,6 +71,39 @@ export const connectionRpcs = {
   delete_connection: deleteConnection,
   save_connection: saveConnection,
 
+  claim_simkl_write(args) {
+    const table = db.getTable("simkl_title_writes");
+    const row = table.find(
+      (r) => r.account_id === args.p_account_id && r.imdb_id === args.p_imdb_id,
+    );
+    if (row && String(row.locked_until) > now())
+      return { data: false, error: null };
+    const fields = {
+      lease_token: args.p_lease_token,
+      locked_until: secondsFromNow(600, 1, 600),
+    };
+    if (row) Object.assign(row, fields);
+    else
+      db.insert("simkl_title_writes", {
+        account_id: args.p_account_id,
+        provider: "simkl",
+        imdb_id: args.p_imdb_id,
+        ...fields,
+      });
+    return { data: true, error: null };
+  },
+
+  release_simkl_write(args) {
+    db.delete(
+      "simkl_title_writes",
+      (row) =>
+        row.account_id === args.p_account_id &&
+        row.imdb_id === args.p_imdb_id &&
+        row.lease_token === args.p_lease_token,
+    );
+    return { data: null, error: null };
+  },
+
   claim_connection_refresh(args) {
     const row = findConnection(args);
     if (!row || String(row.refresh_locked_until) > now()) {

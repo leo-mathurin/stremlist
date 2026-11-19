@@ -27,6 +27,7 @@ export const simklLimiters = limitersByKey(() => ({
 export const simklClient = oauthClient("SIMKL");
 
 interface RequestOptions {
+  signal?: AbortSignal;
   method?: "GET" | "POST";
   token: string;
   params?: Record<string, string>;
@@ -57,6 +58,9 @@ export async function simklRequest<T>(
       new URL(path, SIMKL_API).toString(),
       {
         method,
+        signal: options.signal
+          ? AbortSignal.any([options.signal, AbortSignal.timeout(15_000)])
+          : undefined,
         query: { ...options.params, ...app },
         headers: { Accept: "application/json", "simkl-api-key": app.client_id },
         bearer: options.token,

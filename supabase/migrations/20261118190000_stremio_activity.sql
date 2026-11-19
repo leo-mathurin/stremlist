@@ -140,6 +140,9 @@ AS $$
 DECLARE
   n integer;
 BEGIN
+  PERFORM 1 FROM public.watch_tracking t
+  WHERE t.account_id IN (SELECT x.account_id FROM jsonb_to_recordset(p_rows) AS x(account_id text))
+  ORDER BY t.account_id FOR UPDATE;
   INSERT INTO public.watch_writes (
     account_id, provider, imdb_id, item_type, season, episode, watched_at
   )
@@ -248,3 +251,37 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.discard_empty_watch_activity(text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.discard_empty_watch_activity(text) TO service_role;
+
+
+CREATE TABLE public.simkl_title_writes (
+  account_id text NOT NULL,
+  provider text NOT NULL DEFAULT 'simkl' CHECK (provider = 'simkl'),
+  imdb_id text NOT NULL,
+  lease_token uuid NOT NULL,
+  locked_until timestamptz NOT NULL,
+  PRIMARY KEY (account_id, imdb_id),
+  FOREIGN KEY (account_id, provider) REFERENCES public.connections(account_id, provider) ON DELETE CASCADE
+);
+ALTER TABLE public.simkl_title_writes ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.simkl_title_writes FROM anon, authenticated;
+GRANT ALL ON public.simkl_title_writes TO service_role;
+
+CREATE FUNCTION public.claim_simkl_write(p_account_id text, p_imdb_id text, p_lease_token uuid)
+RETURNS boolean LANGUAGE sql SECURITY INVOKER SET search_path = '' AS $$
+  WITH claimed AS (
+    INSERT INTO public.simkl_title_writes AS w (account_id, imdb_id, lease_token, locked_until)
+    VALUES (p_account_id, p_imdb_id, p_lease_token, clock_timestamp() + interval '10 minutes')
+    ON CONFLICT (account_id, imdb_id) DO UPDATE
+    SET lease_token = excluded.lease_token, locked_until = excluded.locked_until
+    WHERE w.locked_until <= clock_timestamp()
+    RETURNING 1
+  ) SELECT EXISTS (SELECT 1 FROM claimed);
+$$;
+
+CREATE FUNCTION public.release_simkl_write(p_account_id text, p_imdb_id text, p_lease_token uuid)
+RETURNS void LANGUAGE sql SECURITY INVOKER SET search_path = '' AS $$
+  DELETE FROM public.simkl_title_writes
+  WHERE account_id = p_account_id AND imdb_id = p_imdb_id AND lease_token = p_lease_token;
+$$;
+REVOKE ALL ON FUNCTION public.claim_simkl_write(text,text,uuid), public.release_simkl_write(text,text,uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_simkl_write(text,text,uuid), public.release_simkl_write(text,text,uuid) TO service_role;
