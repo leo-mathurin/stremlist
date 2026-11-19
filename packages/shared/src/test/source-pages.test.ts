@@ -8,29 +8,34 @@ describe("sourcePageUrl", () => {
     );
   });
 
-  it("links a Trakt user's pages and own lists", () => {
-    expect(sourcePageUrl("trakt", "me/watchlist", "movie buff")).toBe(
-      "https://trakt.tv/users/movie%20buff/watchlist",
+  it("links a Trakt user's pages with me, not the username", () => {
+    expect(sourcePageUrl("trakt", "me/watchlist", "movie_buff")).toBe(
+      "https://app.trakt.tv/users/me/watchlist",
     );
-    expect(sourcePageUrl("trakt", "me/up-next", "moviebuff")).toBe(
-      "https://trakt.tv/users/moviebuff/progress",
+    expect(sourcePageUrl("trakt", "me/up-next", null)).toBe(
+      "https://app.trakt.tv/users/me/progress",
     );
-    expect(sourcePageUrl("trakt", "me/lists/date-night", "moviebuff")).toBe(
-      "https://trakt.tv/users/moviebuff/lists/date-night",
+    expect(sourcePageUrl("trakt", "me/continue-watching", null)).toBe(
+      "https://app.trakt.tv/users/me/progress",
+    );
+    expect(sourcePageUrl("trakt", "me/lists/date-night", null)).toBe(
+      "https://app.trakt.tv/users/me/lists/date-night",
     );
   });
 
-  it("links the Trakt pages that need no username", () => {
+  it("has no page for a Trakt collection", () => {
+    expect(
+      sourcePageUrl("trakt", "me/collection", "moviebuff"),
+    ).toBeUndefined();
+  });
+
+  it("links the Trakt pages of every user", () => {
     expect(sourcePageUrl("trakt", "me/recommendations", null)).toBe(
-      "https://trakt.tv/movies/recommendations",
+      "https://app.trakt.tv/discover/recommended",
     );
     expect(sourcePageUrl("trakt", "calendars/all/shows/new", null)).toBe(
       "https://app.trakt.tv/calendar",
     );
-  });
-
-  it("has no page for a user's lists without a username", () => {
-    expect(sourcePageUrl("trakt", "me/watchlist", null)).toBeUndefined();
   });
 
   it("links MDBList charts and own lists, not a user's watchlist", () => {

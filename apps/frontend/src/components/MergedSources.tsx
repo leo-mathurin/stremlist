@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { use, useEffect, useRef } from "react";
 import {
   MAX_SOURCES_PER_LIST,
   isMergedList,
@@ -13,6 +13,7 @@ import type { ProviderId } from "@stremlist/shared/providers";
 import { ChevronDown, ExternalLink, Merge, Split, X } from "lucide-react";
 import { rowTitle } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
+import { ConnectionsContext } from "../hooks/useCatalogPreview";
 import { describeSource } from "../lib/list-sources";
 import { ProviderMark } from "./brand";
 import { cn } from "@/lib/utils";
@@ -52,6 +53,7 @@ export default function MergedSources({
   controls: MergeControls;
 }) {
   const sources = listSources(list);
+  const connections = use(ConnectionsContext);
   const picker = useRef<HTMLButtonElement>(null);
   const heading = useRef<HTMLParagraphElement>(null);
   const keepFocus = useRef(false);
@@ -95,6 +97,7 @@ export default function MergedSources({
             const description = describeSource(
               source.provider,
               source.sourceRef,
+              connections.find((c) => c.provider === source.provider)?.username,
             );
             const label = PROVIDERS[source.provider].label;
             const name = source.label ?? description.suggestedTitle;

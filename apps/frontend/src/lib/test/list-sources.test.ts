@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { extractAccountKey } from "../list-sources.ts";
+import { describeSource, extractAccountKey } from "../list-sources.ts";
 
 const ACCOUNT = "sl_E2eFixtureAccount00001";
 const HANDLE = "p.Ab3dEf9hIjkLmn0pQrStuvWxyz";
@@ -50,4 +50,20 @@ test("IMDb pages and other links are not Addon URLs", () => {
   ]) {
     assert.equal(extractAccountKey(input), null, input);
   }
+});
+
+test("a List row links to the same Provider page as Quick add", () => {
+  assert.equal(
+    describeSource("trakt", "me/up-next", "movie_buff").url,
+    "https://app.trakt.tv/users/me/progress",
+  );
+  assert.equal(
+    describeSource("mdblist", "me/lists/101", "moviebuff").url,
+    "https://mdblist.com/lists/moviebuff",
+  );
+  assert.equal(describeSource("mdblist", "me/lists/101", null).url, null);
+  assert.equal(
+    describeSource("letterboxd", "users/leo/watchlist").url,
+    "https://letterboxd.com/leo/watchlist/",
+  );
 });
