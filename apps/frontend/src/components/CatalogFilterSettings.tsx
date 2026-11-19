@@ -206,18 +206,19 @@ export default function CatalogFilterSettings({
                     hideUnreleased: next === true ? true : undefined,
                   })
                 }
-                className="mt-0.5 focus-visible:border-imdb focus-visible:ring-imdb/40 data-[state=checked]:border-imdb data-[state=checked]:bg-imdb data-[state=checked]:text-black"
+                className="mt-0.5"
               />
               <div>
                 <Label
                   htmlFor={`${panelId}-unreleased`}
-                  className="cursor-pointer text-sm font-normal text-gray-800"
+                  variant="plain"
+                  className="cursor-pointer"
                 >
                   Hide unreleased titles
                 </Label>
                 <p
                   id={`${panelId}-unreleased-help`}
-                  className="text-[11px] leading-snug text-gray-500"
+                  className="text-2xs leading-snug text-muted-foreground"
                 >
                   Hides titles with a release date in the future.
                 </p>
