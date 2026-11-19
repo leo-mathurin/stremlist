@@ -7,6 +7,7 @@ import {
   sourceTitle,
 } from "@stremlist/shared/providers";
 import type { ParsedSourceLink, ProviderId } from "@stremlist/shared/providers";
+import { sourcePageUrl } from "@stremlist/shared/source-pages";
 import { stremioDeepLink } from "./stremio-links";
 
 /** Reorders Stremio addons, so Stremlist can sit just after Cinemeta. */
@@ -51,13 +52,19 @@ interface SourceDescription {
 /**
  * Describe a stored Source list reference for the configure page. The
  * reference formats are the ones in `@stremlist/shared/providers`.
+ * `username` is the Connection's username, for the pages of a user, as in
+ * Quick add.
  */
-export function describeSource(provider: ProviderId, ref: string) {
-  const { kind, detail, url } = describeSourceRef(provider, ref);
+export function describeSource(
+  provider: ProviderId,
+  ref: string,
+  username?: string | null,
+) {
+  const { kind, detail } = describeSourceRef(provider, ref);
   return {
     kindLabel: SOURCE_KIND_LABELS[kind],
     detail,
-    url,
+    url: sourcePageUrl(provider, ref, username) ?? null,
     suggestedTitle: sourceTitle(provider, ref),
   } satisfies SourceDescription;
 }

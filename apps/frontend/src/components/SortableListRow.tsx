@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { use, useId, useState } from "react";
 import { flushSync } from "react-dom";
 import {
   SORT_OPTIONS,
@@ -30,6 +30,7 @@ import {
 import { useSortable } from "@dnd-kit/react/sortable";
 import { MAX_CATALOG_TITLE_LENGTH, rowTitle } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
+import { ConnectionsContext } from "../hooks/useCatalogPreview";
 import { describeSource } from "../lib/list-sources";
 import { attentionTone } from "../lib/list-sync";
 import type { ListSyncState } from "../lib/list-sync";
@@ -127,7 +128,12 @@ export default function SortableListRow({
   const showId = useId();
   const chartId = useId();
 
-  const source = describeSource(list.provider, list.sourceRef);
+  const connections = use(ConnectionsContext);
+  const source = describeSource(
+    list.provider,
+    list.sourceRef,
+    connections.find((c) => c.provider === list.provider)?.username,
+  );
   const merged = isMergedList(list);
   const sources = listSources(list);
   const chartEntry = merged ? undefined : imdbChartOf(list);

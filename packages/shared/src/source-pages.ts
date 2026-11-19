@@ -1,19 +1,24 @@
 import { describeSourceRef } from "./providers";
 import type { ProviderId } from "./providers";
 
-const TRAKT_USER_PAGES = new Map([
-  ["me/watchlist", "watchlist"],
-  ["me/favorites", "favorites"],
-  ["me/ratings", "ratings"],
+const TRAKT_OWN_PAGES = new Map([
+  ["me/watchlist", "users/me/watchlist"],
+  ["me/favorites", "profile/me/favorites"],
+  ["me/ratings", "profile/me?view=activity"],
+  ["me/recommendations", "discover/recommended"],
+  ["me/up-next", "users/me/progress"],
+  ["me/continue-watching", "users/me/progress"],
+  ["me/calendar", "calendar"],
   ["me/history", "history"],
-  ["me/collection", "collection"],
-  ["me/up-next", "progress"],
-  ["me/continue-watching", "progress"],
 ]);
 
 /**
  * The Provider's own page of a Source list, to open next to Quick add, or
  * undefined when there is none we can link:
+ * - Trakt pages of the user say `me`, as Trakt's own app does: their URLs
+ *   need the user's slug, which often differs from the username ("a_b" is
+ *   "a-b").
+ * - Trakt has no page of a user's whole collection, only one per library.
  * - Simkl's library pages need a numeric user ID that Stremlist does not keep.
  * - MDBList has no public page for a user's watchlist, ratings, history, Up
  *   Next or collection.
@@ -29,15 +34,13 @@ export function sourcePageUrl(
   if (known) return known;
   const user = username ? encodeURIComponent(username) : null;
   if (provider === "trakt") {
-    if (ref === "me/recommendations")
-      return "https://trakt.tv/movies/recommendations";
-    if (ref === "me/calendar" || ref.startsWith("calendars/"))
-      return "https://app.trakt.tv/calendar";
-    if (!user) return undefined;
-    const page = TRAKT_USER_PAGES.get(ref);
-    if (page) return `https://trakt.tv/users/${user}/${page}`;
     const own = ref.match(/^me\/lists\/(.+)$/);
-    if (own) return `https://trakt.tv/users/${user}/lists/${own[1]}`;
+    const page = own
+      ? `users/me/lists/${own[1]}`
+      : ref.startsWith("calendars/")
+        ? "calendar"
+        : TRAKT_OWN_PAGES.get(ref);
+    if (page) return `https://app.trakt.tv/${page}`;
   }
   if (provider === "mdblist") {
     if (ref.startsWith("official/") || ref.startsWith("recommended/"))
