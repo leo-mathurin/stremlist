@@ -532,8 +532,8 @@ describe("saving merged Lists", () => {
       error: "Connect your Trakt account first.",
     },
     {
-      name: "more than 20 Source lists in the Account",
-      lists: Array.from({ length: 5 }, (_, list) =>
+      name: "more than 50 Source lists in the Account",
+      lists: Array.from({ length: 11 }, (_, list) =>
         listBody(
           { provider: "trakt", sourceRef: `users/u${list}/watchlist` },
           Array.from({ length: 4 }, (_, i) => ({
@@ -542,7 +542,7 @@ describe("saving merged Lists", () => {
           })),
         ),
       ),
-      error: "You can have at most 20 lists in total, merged lists included.",
+      error: "You can have at most 50 lists in total, merged lists included.",
     },
   ])("refuses $name", async ({ lists, error }) => {
     const res = await postConfig(lists);

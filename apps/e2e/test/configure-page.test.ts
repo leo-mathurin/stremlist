@@ -37,7 +37,7 @@ test(
     await expect(
       page.getByText(`IMDb · Watchlist · ${PUBLIC_USER}`),
     ).toBeVisible();
-    await expect(page.getByText("1 of 10 lists")).toBeVisible();
+    await expect(page.getByText("1 of 50 lists")).toBeVisible();
     await expect(
       page.getByRole("link", { name: "Open Stremio Web" }),
     ).toBeVisible();
@@ -144,7 +144,7 @@ test(
       sourceRef: PUBLIC_LIST,
     });
     await expect(page.getByText(`IMDb · List · ${PUBLIC_LIST}`)).toBeVisible();
-    await expect(page.getByText("2 of 10 lists")).toBeVisible();
+    await expect(page.getByText("2 of 50 lists")).toBeVisible();
 
     await saveConfigure(page);
     const { body } = await getConfig(accountId);
@@ -234,14 +234,14 @@ test("removes a List", { tag: "@local" }, async ({ page }) => {
   const { accountId } = await seedWatchlist();
   await openConfigure(page, accountId, TITLE);
   await addImdbChart(page, /^Box Office \(Weekend\)/);
-  await expect(page.getByText("2 of 10 lists")).toBeVisible();
+  await expect(page.getByText("2 of 50 lists")).toBeVisible();
   await saveConfigure(page);
   expect((await getConfig(accountId)).body.lists).toHaveLength(2);
 
   await page
     .getByRole("button", { name: "Remove Box Office (Weekend)" })
     .click();
-  await expect(page.getByText("1 of 10 lists")).toBeVisible();
+  await expect(page.getByText("1 of 50 lists")).toBeVisible();
 
   await saveConfigure(page);
   expect((await getConfig(accountId)).body.lists).toHaveLength(1);
@@ -443,7 +443,7 @@ test(
     await reminder.getByRole("button", { name: "I did it" }).click();
     await expect(reminder).toHaveCount(0);
     await page.reload();
-    await expect(page.getByText("2 of 10 lists")).toBeVisible();
+    await expect(page.getByText("2 of 50 lists")).toBeVisible();
     await expect(reminder).toHaveCount(0);
   },
 );

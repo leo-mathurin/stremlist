@@ -251,18 +251,21 @@ test(
       ],
       [
         [
-          ...[1, 2, 3, 4].map((group) => ({
-            provider: "imdb" as const,
-            sourceRef: `ls99${group}00000`,
-            sortOption: "title-asc",
-            mergedSources: [1, 2, 3, 4].map((n) => ({
+          ...Array.from({ length: 10 }, (_, index) => {
+            const group = String(index + 1).padStart(2, "0");
+            return {
               provider: "imdb" as const,
-              sourceRef: `ls99${group}0000${n}`,
-            })),
-          })),
+              sourceRef: `ls99${group}00000`,
+              sortOption: "title-asc",
+              mergedSources: [1, 2, 3, 4].map((n) => ({
+                provider: "imdb" as const,
+                sourceRef: `ls99${group}0000${n}`,
+              })),
+            };
+          }),
           { ...SECOND, sortOption: "title-asc" },
         ],
-        "You can have at most 20 lists in total, merged lists included.",
+        "You can have at most 50 lists in total, merged lists included.",
       ],
     ];
     for (const [lists, error] of cases) {

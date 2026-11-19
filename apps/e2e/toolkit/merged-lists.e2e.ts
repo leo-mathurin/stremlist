@@ -45,7 +45,7 @@ const NO_DATES =
   "Date added sorting is off: Top 250 Movies does not give the date when each title was added.";
 const ONE_TYPE = 'Top 250 Movies has only movies, so "TV shows only" is off.';
 const SOURCE_LIMIT =
-  "You can have at most 20 lists in total, merged lists included.";
+  "You can have at most 50 lists in total, merged lists included.";
 const NEEDS_REINSTALL = "These changes need a reinstall.";
 const CHANGED_ELSEWHERE =
   "Your lists changed in another window. Reload the page and try again.";
@@ -143,7 +143,7 @@ test(
     );
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(screen.getByText("2 lists · IMDb")).toBeVisible();
-    await expect(screen.getByText(/^3 of 10 lists/)).toBeVisible();
+    await expect(screen.getByText(/^3 of 50 lists/)).toBeVisible();
     expect(submissions).toHaveLength(1);
     expect(sources(submissions[0])).toEqual([
       saved(watchlist, { mergedSources: [favouritesSource] }),
@@ -314,7 +314,7 @@ test("a Source list that is in a merged List cannot be added again", async ({
   await expect(
     screen.getByText("This list is already in your Stremlist."),
   ).toBeVisible();
-  await expect(screen.getByText(/^1 of 10 lists/)).toBeVisible();
+  await expect(screen.getByText(/^1 of 50 lists/)).toBeVisible();
   await expect(screen.getByRole("alert")).toHaveCount(0);
   await screen.getByRole("button", "Show", { exact: true }).tap();
   await expect
@@ -386,51 +386,51 @@ test("merging the last other List moves focus to the Source lists", async ({
   ).toBeFocused();
 });
 
-test("an Account with 20 Source lists refuses one more, from Quick add or a link", async ({
+test("an Account with 50 Source lists refuses one more, from Quick add or a link", async ({
   app,
   screen,
   browser,
 }) => {
-  const groups = [1, 2, 3, 4].map(
-    (group) =>
-      ({
-        ...row,
-        id: `00000000-0000-4000-8000-00000000002${group}`,
-        sourceRef: `ls99${group}00000`,
-        catalogTitle: `Group ${group}`,
-        sortOption: "title-asc",
-        position: group - 1,
-        mergedSources: [1, 2, 3, 4].map((n) => ({
-          provider: "imdb" as const,
-          sourceRef: `ls99${group}0000${n}`,
-        })),
-      }) satisfies ConfigList,
-  );
+  const groups = Array.from({ length: 10 }, (_, index) => {
+    const group = String(index + 1).padStart(2, "0");
+    return {
+      ...row,
+      id: `00000000-0000-4000-8000-0000000002${group}`,
+      sourceRef: `ls99${group}00000`,
+      catalogTitle: `Group ${group}`,
+      sortOption: "title-asc",
+      position: index,
+      mergedSources: [1, 2, 3, 4].map((n) => ({
+        provider: "imdb" as const,
+        sourceRef: `ls99${group}0000${n}`,
+      })),
+    } satisfies ConfigList;
+  });
   const submissions = await captureConfig(browser, withLists(groups));
   const inputs = await routeResolve(browser, () =>
     resolved("imdb", "ls99123456", "list"),
   );
   await app.open(`/configure?account=${accountId}`);
-  await expect(screen.getByText(/^4 of 10 lists/)).toBeVisible();
+  await expect(screen.getByText(/^10 of 50 lists/)).toBeVisible();
 
   await addImdbChart(screen, /^Top 250 Movies/);
   await expect(screen.getByText(SOURCE_LIMIT)).toBeVisible();
-  await expect(screen.getByText(/^4 of 10 lists/)).toBeVisible();
+  await expect(screen.getByText(/^10 of 50 lists/)).toBeVisible();
 
   await openQuickAdd(screen, "trakt");
   await screen.getByRole("button", "Trending").tap();
   await expect(screen.getByText(SOURCE_LIMIT)).toHaveCount(1);
-  await expect(screen.getByText(/^4 of 10 lists/)).toBeVisible();
+  await expect(screen.getByText(/^10 of 50 lists/)).toBeVisible();
 
   await screen.getByLabel(PASTE).fill("https://www.imdb.com/list/ls99123456/");
   await screen.getByRole("button", "Add", { exact: true }).tap();
   await expect(screen.getByText(SOURCE_LIMIT)).toHaveCount(2);
-  await expect(screen.getByText(/^4 of 10 lists/)).toBeVisible();
+  await expect(screen.getByText(/^10 of 50 lists/)).toBeVisible();
   expect(inputs).toHaveLength(1);
   expect(submissions).toHaveLength(0);
 });
 
-test("a Source list cannot move to its own List when the Account has 10 Lists", async ({
+test("a Source list cannot move to its own List when the Account has 50 Lists", async ({
   app,
   screen,
   browser,
@@ -439,14 +439,15 @@ test("a Source list cannot move to its own List when the Account has 10 Lists", 
     ...watchlist,
     mergedSources: [favouritesSource],
   } satisfies ConfigList;
-  const others = [1, 2, 3, 4, 5, 6, 7, 8, 9].map(
-    (n) =>
+  const others = Array.from(
+    { length: 49 },
+    (_, index) =>
       ({
         ...row,
-        id: `00000000-0000-4000-8000-00000000003${n}`,
-        sourceRef: `ls9930000${n}`,
-        catalogTitle: `Other ${n}`,
-        position: n,
+        id: `00000000-0000-4000-8000-000000000${String(301 + index)}`,
+        sourceRef: `ls993000${String(index + 1).padStart(2, "0")}`,
+        catalogTitle: `Other ${String(index + 1)}`,
+        position: index + 1,
       }) satisfies ConfigList,
   );
   const submissions = await captureConfig(
@@ -454,7 +455,7 @@ test("a Source list cannot move to its own List when the Account has 10 Lists", 
     withLists([merged, ...others]),
   );
   await app.open(`/configure?account=${accountId}`);
-  await expect(screen.getByText(/^10 of 10 lists/)).toBeVisible();
+  await expect(screen.getByText(/^50 of 50 lists/)).toBeVisible();
   await openSettings(screen, "IMDb Watchlist");
   const move = screen.getByRole(
     "button",
@@ -469,14 +470,14 @@ test("a Source list cannot move to its own List when the Account has 10 Lists", 
     screen.getByRole("button", "Remove Favourite films from this list"),
   ).toBeEnabled();
 
-  await screen.getByRole("button", "Remove Other 9", { exact: true }).tap();
-  await expect(screen.getByText(/^9 of 10 lists/)).toBeVisible();
+  await screen.getByRole("button", "Remove Other 49", { exact: true }).tap();
+  await expect(screen.getByText(/^49 of 50 lists/)).toBeVisible();
   await expect(move).toBeEnabled();
   await move.tap();
   await expect(
     screen.getByRole("button", "Settings for Favourite films"),
   ).toBeVisible();
-  await expect(screen.getByText(/^10 of 10 lists/)).toBeVisible();
+  await expect(screen.getByText(/^50 of 50 lists/)).toBeVisible();
   expect(submissions).toHaveLength(0);
 });
 

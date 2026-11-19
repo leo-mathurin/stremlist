@@ -22,13 +22,13 @@ export interface MergeableList extends ListSource {
 }
 
 /** An Account has at most this many Lists. */
-export const MAX_LISTS = 10;
+export const MAX_LISTS = 50;
 
 /** A List reads at most this many Source lists, its first one included. */
 export const MAX_SOURCES_PER_LIST = 5;
 
 /** Source lists of all the Lists of one Account together. */
-export const MAX_SOURCES_PER_ACCOUNT = 20;
+export const MAX_SOURCES_PER_ACCOUNT = 50;
 
 /** Every Source list of a List, its first one first. */
 export function listSources(list: MergeableList) {

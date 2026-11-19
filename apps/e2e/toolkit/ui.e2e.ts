@@ -276,7 +276,7 @@ test("List edits reject duplicates, save values and report refresh failures", as
   await expect(
     screen.getByText("This list is already in your Stremlist."),
   ).toBeVisible();
-  await expect(screen.getByText("1 of 10 lists")).toBeVisible();
+  await expect(screen.getByText("1 of 50 lists")).toBeVisible();
   await screen.getByLabel(PASTE).fill(listLink);
   await screen.getByRole("button", "Add", { exact: true }).tap();
   await expect(screen.getByText("IMDb · List · ls99123456")).toBeVisible();
@@ -295,7 +295,7 @@ test("List edits reject duplicates, save values and report refresh failures", as
   ]);
   await expect(saveButton(screen)).toBeDisabled();
   await screen.getByRole("button", "Remove My movies").tap();
-  await expect(screen.getByText("1 of 10 lists")).toBeVisible();
+  await expect(screen.getByText("1 of 50 lists")).toBeVisible();
   await screen.getByRole("button", "Remove Test catalog").tap();
   await expect(screen.getByText("No lists yet")).toBeVisible();
   await expect(saveButton(screen)).toBeDisabled();
@@ -404,8 +404,18 @@ test(
   "built-in charts avoid duplicates and enforce the List limit",
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
+    const others = Array.from({ length: 40 }, (_, index) => ({
+      ...row,
+      id: `00000000-0000-4000-8000-000000000${String(401 + index)}`,
+      sourceRef: `ls994000${String(index + 1).padStart(2, "0")}`,
+      catalogTitle: `Other ${String(index + 1)}`,
+      position: index + 1,
+    }));
     await fitConfigurePage(browser);
-    await captureConfig(browser);
+    await captureConfig(browser, {
+      ...configuration,
+      lists: [row, ...others],
+    });
     await app.open(`/configure?account=${accountId}`);
     await agent.act("Add the built-in IMDb chart Top 250 Movies.", {
       maxModelCalls: 5,
@@ -413,7 +423,7 @@ test(
     await expect(
       screen.getByRole("button", "Remove Top 250 Movies"),
     ).toBeVisible();
-    await expect(screen.getByText(/^2 of 10 lists/)).toBeVisible();
+    await expect(screen.getByText(/^42 of 50 lists/)).toBeVisible();
     await openQuickAdd(screen, "imdb");
     await expect(screen.getByRole("button", "Top 250 Movies")).toBeDisabled();
     for (const chart of [
@@ -429,7 +439,7 @@ test(
     await openQuickAdd(screen, "trakt");
     await screen.getByRole("button", "Trending").tap();
     await screen.getByRole("button", "Popular").tap();
-    await expect(screen.getByText(/^10 of 10 lists/)).toBeVisible();
+    await expect(screen.getByText(/^50 of 50 lists/)).toBeVisible();
     await expect(
       screen.getByRole("button", "Bottom 100 Movies"),
     ).toBeDisabled();
@@ -437,10 +447,10 @@ test(
     await expect(screen.getByLabel(PASTE)).toBeDisabled();
     await expect(
       screen.getByText(
-        "You have 10 lists, the maximum. Remove one to add another.",
+        "You have 50 lists, the maximum. Remove one to add another.",
       ),
     ).toBeVisible();
-    await expect(screen.getByRole("button", /^Remove /)).toHaveCount(10);
+    await expect(screen.getByRole("button", /^Remove /)).toHaveCount(50);
   },
 );
 

@@ -246,7 +246,7 @@ test("leaving the configure page with unsaved changes asks first", async ({
   await screen.getByRole("button", "Keep editing").tap();
   await expect(dialog).toHaveCount(0);
   await expect(browser).toHaveURL(`/configure?account=${accountId}`);
-  await expect(screen.getByText(/^0 of 10 lists/)).toBeVisible();
+  await expect(screen.getByText(/^0 of 50 lists/)).toBeVisible();
 
   await screen.getByRole("link", "Terms").tap();
   await screen.getByRole("button", "Leave without saving").tap();
