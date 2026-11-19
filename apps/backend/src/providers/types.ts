@@ -51,6 +51,11 @@ export interface SourceEntry {
    */
   addedAt?: string;
   /**
+   * When the show's latest episode aired, as an ISO date (Trakt Up Next).
+   * The "Release Date" sort uses it in place of the Title's release date.
+   */
+  latestEpisodeAt?: string;
+  /**
    * Full Stremio metadata, when the Provider already gives everything (IMDb).
    * Entries with `meta` skip the shared enrichment step.
    */

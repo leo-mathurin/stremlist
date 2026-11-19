@@ -204,9 +204,14 @@ function toSourceMeta(
     enrichedAt: meta.enrichedAt ?? new Date().toISOString(),
   };
   const time = entry.addedAt ? Date.parse(entry.addedAt) : Number.NaN;
-  return Number.isFinite(time)
-    ? { ...linked, addedAt: new Date(time).toISOString() }
-    : linked;
+  if (Number.isFinite(time)) linked.addedAt = new Date(time).toISOString();
+  const aired = entry.latestEpisodeAt
+    ? Date.parse(entry.latestEpisodeAt)
+    : Number.NaN;
+  if (Number.isFinite(aired)) {
+    linked.latestEpisodeAt = new Date(aired).toISOString();
+  }
+  return linked;
 }
 
 export interface BuiltCatalog {

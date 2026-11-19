@@ -76,6 +76,13 @@ export function resolveCatalogSelection(
   };
 }
 
+function isUnreleased(meta: StremioMeta, now = Date.now()) {
+  const released = Date.parse(meta.released ?? "");
+  if (Number.isFinite(released)) return released > now;
+  const year = Number.parseInt(meta.releaseInfo ?? "", 10);
+  return year > new Date(now).getUTCFullYear();
+}
+
 function normalizeSearch(value: string) {
   return value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
 }
@@ -105,6 +112,7 @@ export function filterCatalog(
           !(Number.parseFloat(meta.imdbRating ?? "") >= settings.minRating)
         )
           return false;
+        if (settings.hideUnreleased && isUnreleased(meta)) return false;
         return true;
       }) &&
       (query === null ||

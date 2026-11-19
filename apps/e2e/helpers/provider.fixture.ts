@@ -251,6 +251,9 @@ function trakt({ request, url, body }: FixtureRequest) {
       return json([traktShow]);
     case "/sync/progress/up_next":
       return json({ error: "forbidden" }, 403);
+    case "/users/hidden/dropped":
+    case "/users/hidden/progress_watched":
+      return json([]);
     case "/users/likes/lists":
       return json([
         {

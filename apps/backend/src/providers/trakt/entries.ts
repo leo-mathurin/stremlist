@@ -13,6 +13,8 @@ export const traktMediaSchema = z.object({
   title: z.string().nullish(),
   year: z.number().nullish(),
   ids: traktIdsSchema.nullish(),
+  /** When the show's latest episode aired (shows in Up Next). */
+  last_aired: z.string().nullish(),
 });
 export type TraktMedia = z.infer<typeof traktMediaSchema>;
 

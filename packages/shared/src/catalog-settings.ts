@@ -11,6 +11,8 @@ export interface CatalogSettings {
   decade?: number;
   maxRuntime?: number;
   minRating?: number;
+  /** Hide Titles whose release date is in the future. */
+  hideUnreleased?: true;
   presets?: CatalogPreset[];
 }
 
@@ -19,6 +21,7 @@ const CATALOG_FILTER_KEYS = [
   "decade",
   "maxRuntime",
   "minRating",
+  "hideUnreleased",
 ] as const satisfies readonly (keyof CatalogSettings)[];
 
 export type CatalogFilterKey = (typeof CATALOG_FILTER_KEYS)[number];

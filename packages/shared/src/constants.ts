@@ -12,6 +12,8 @@ export const SORT_OPTIONS = [
   { value: "title-desc", label: "Title (Z-A)" },
   { value: "year-desc", label: "Release Year (Newest First)" },
   { value: "year-asc", label: "Release Year (Oldest First)" },
+  { value: "released-desc", label: "Release Date (Newest First)" },
+  { value: "released-asc", label: "Release Date (Oldest First)" },
   { value: "rating-desc", label: "IMDb Rating (Highest First)" },
   { value: "rating-asc", label: "IMDb Rating (Lowest First)" },
 ] as const;
@@ -31,7 +33,13 @@ export type DisplayMode = (typeof DISPLAY_MODE_OPTIONS)[number]["value"];
 /** The two kinds of Title, and of Catalog. */
 export type TitleType = "movie" | "series";
 
-export type SortField = "added_at" | "random" | "title" | "year" | "rating";
+export type SortField =
+  | "added_at"
+  | "random"
+  | "title"
+  | "year"
+  | "released"
+  | "rating";
 export type SortOrder = "asc" | "desc";
 export interface SortOptions {
   by: SortField;
@@ -46,6 +54,7 @@ export const DEFAULT_SORT_OPTIONS: SortOptions = {
 const VALID_SORT_FIELDS: readonly SortField[] = [
   "title",
   "year",
+  "released",
   "rating",
   "added_at",
   "random",

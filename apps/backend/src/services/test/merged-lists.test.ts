@@ -329,6 +329,21 @@ describe("mergeSourceCatalogs", () => {
     ]);
   });
 
+  it("keeps the latest episode date of a show that is also in Up Next", () => {
+    const upNext = {
+      ...dated("tt2"),
+      latestEpisodeAt: "2026-10-21T20:00:00.000Z",
+    };
+    const result = mergeSourceCatalogs(
+      [[dated("tt1"), dated("tt2")], [upNext]],
+      false,
+    );
+    expect(result.map((meta) => [meta.id, meta.latestEpisodeAt])).toEqual([
+      ["tt1", undefined],
+      ["tt2", "2026-10-21T20:00:00.000Z"],
+    ]);
+  });
+
   it("puts Titles without a date first, in their Source list order", () => {
     const result = mergeSourceCatalogs(
       [
