@@ -18,6 +18,7 @@ import { describeSource } from "../lib/list-sources";
 import { ProviderMark } from "./brand";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -111,14 +112,7 @@ export default function MergedSources({
                 <div className="min-w-0 flex-1">
                   <p className="flex min-w-0 items-center gap-2 text-sm font-semibold">
                     <span className="truncate">{name}</span>
-                    {missing && (
-                      <Badge
-                        variant="outline"
-                        className="border-amber-300 bg-amber-50 text-amber-900"
-                      >
-                        Not connected
-                      </Badge>
-                    )}
+                    {missing && <Badge variant="warning">Not connected</Badge>}
                   </p>
                   <p className="flex min-w-0 items-center gap-1 text-xs text-black/50">
                     <span className="truncate">
@@ -157,8 +151,10 @@ export default function MergedSources({
                 >
                   <Split className="size-4" />
                 </button>
-                <button
+                <Button
                   type="button"
+                  variant="ghost-danger"
+                  size="icon-round"
                   onClick={() =>
                     changeSources(() =>
                       controls.onRemoveSource(list.localId, index),
@@ -166,13 +162,9 @@ export default function MergedSources({
                   }
                   aria-label={`Remove ${name} from this list`}
                   title="Remove from this list"
-                  className={cn(
-                    ICON_BUTTON,
-                    "hover:bg-red-50 hover:text-red-600",
-                  )}
                 >
                   <X className="size-4" />
-                </button>
+                </Button>
               </li>
             );
           })}
@@ -182,18 +174,21 @@ export default function MergedSources({
       <div className="mt-2">
         {controls.others.length > 0 && (
           <DropdownMenu>
-            <DropdownMenuTrigger
-              ref={picker}
-              disabled={room <= 0}
-              className="inline-flex h-9 w-full items-center gap-2 rounded-full bg-black/5 px-3.5 text-sm font-semibold transition-[background-color,scale] duration-150 outline-none hover:bg-black/10 focus-visible:ring-[3px] focus-visible:ring-brand/50 active:scale-[0.98] disabled:opacity-50 data-[state=open]:bg-black/10 sm:w-auto"
-            >
-              <Merge className="size-4" />
-              <span className="truncate">
-                {room <= 0
-                  ? `At most ${MAX_SOURCES_PER_LIST} lists in one catalog`
-                  : "Merge another list into this one"}
-              </span>
-              <ChevronDown className="ml-auto size-4 text-black/50 sm:ml-0" />
+            <DropdownMenuTrigger ref={picker} disabled={room <= 0} asChild>
+              <Button
+                type="button"
+                variant="soft"
+                size="pill"
+                className="w-full justify-start sm:w-auto"
+              >
+                <Merge className="size-4" />
+                <span className="truncate">
+                  {room <= 0
+                    ? `At most ${MAX_SOURCES_PER_LIST} lists in one catalog`
+                    : "Merge another list into this one"}
+                </span>
+                <ChevronDown className="ml-auto size-4 text-black/50 sm:ml-0" />
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="start"

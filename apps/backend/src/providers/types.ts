@@ -231,7 +231,7 @@ export function toRating(value: unknown) {
 }
 
 export type ActionIntent =
-  | { kind: "watchlist"; add: boolean }
+  | { kind: "watchlist"; add: boolean; preserveExistingStatus?: true }
   | { kind: "watched"; add: boolean; watchedAt?: string }
   | { kind: "rating"; rating: Rating | null };
 
@@ -259,6 +259,7 @@ export interface ProviderActions {
     connection: ConnectionAccess,
     intent: ActionIntent,
     target: ActionTarget,
+    signal?: AbortSignal,
   ): Promise<void>;
   /**
    * Source list refs whose content an Action of this kind changes, so their

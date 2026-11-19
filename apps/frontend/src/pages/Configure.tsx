@@ -55,6 +55,8 @@ import { rowTitle, sourceKeys } from "../lib/list-form";
 import { attentionTone } from "../lib/list-sync";
 import { describeSource, PASTE_LINK_PROMPT } from "../lib/list-sources";
 import { cn } from "@/lib/utils";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 const PENDING_LINK_STORAGE = "stremlist:pending-link";
 
@@ -335,6 +337,7 @@ export default function Configure() {
     setUpgradeRequest((count) => count + 1);
   };
   const pasteInput = useRef<HTMLInputElement>(null);
+  const providerAccounts = useRef<HTMLDivElement>(null);
   const focusPaste = () => {
     const input = pasteInput.current;
     if (!input) return;
@@ -370,19 +373,29 @@ export default function Configure() {
             onUpgrade={scrollToUpgrade}
             inputRef={pasteInput}
           />
-          <ProviderList
-            access={access}
-            detected={detected}
-            connections={config.connections}
-            providerStatus={config.providerStatus}
-            connecting={config.connecting}
-            connectLocked={policy.editLock}
-            affectedLists={affectedLists}
-            onConnect={(provider) =>
-              policy.upgradeToConnect ? scrollToUpgrade() : connectFor(provider)
-            }
-            onDisconnect={(provider) => void config.disconnect(provider)}
-          />
+          <div
+            ref={providerAccounts}
+            role="group"
+            aria-label="Provider accounts"
+            tabIndex={-1}
+            className="rounded-2xl outline-none focus-visible:ring-2 focus-visible:ring-brand/70"
+          >
+            <ProviderList
+              access={access}
+              detected={detected}
+              connections={config.connections}
+              providerStatus={config.providerStatus}
+              connecting={config.connecting}
+              connectLocked={policy.editLock}
+              affectedLists={affectedLists}
+              onConnect={(provider) =>
+                policy.upgradeToConnect
+                  ? scrollToUpgrade()
+                  : connectFor(provider)
+              }
+              onDisconnect={(provider) => void config.disconnect(provider)}
+            />
+          </div>
           {policy.connectHint === "save-first" && (
             <p className="text-xs text-pretty text-white/45">
               When an account connects, Stremlist saves your setup with it and
@@ -392,13 +405,14 @@ export default function Configure() {
           {policy.connectHint === "upgrade" && (
             <p className="text-xs text-pretty text-white/45">
               To connect an account, you need a private Addon URL.{" "}
-              <button
+              <Button
                 type="button"
+                variant="link-brand"
+                size="inline-xs"
                 onClick={scrollToUpgrade}
-                className="font-semibold text-brand underline-offset-2 hover:underline"
               >
                 Upgrade this install
-              </button>
+              </Button>
             </p>
           )}
         </>
@@ -451,11 +465,11 @@ export default function Configure() {
                   className={cn(
                     "size-2 shrink-0 rounded-full",
                     config.refreshing
-                      ? "motion-safe:animate-pulse bg-amber-400"
+                      ? "motion-safe:animate-pulse bg-warning-400"
                       : attention > 0
-                        ? "bg-amber-500"
+                        ? "bg-warning-500"
                         : config.lastFetchedAt
-                          ? "bg-emerald-500"
+                          ? "bg-success-500"
                           : "bg-black/20",
                   )}
                   aria-hidden="true"
@@ -470,7 +484,7 @@ export default function Configure() {
                   {attention > 0 && (
                     <>
                       {" · "}
-                      <span className="font-semibold text-amber-700">
+                      <span className="font-semibold text-warning-700">
                         {attention === 1
                           ? "1 list needs attention"
                           : `${attention} lists need attention`}
@@ -505,42 +519,36 @@ export default function Configure() {
         )}
 
         {(rawKey && !keyIsValid) || status === "notFound" ? (
-          <div
-            role="alert"
-            className="space-y-3 rounded-3xl bg-white p-6 ring-1 ring-black/5"
-          >
-            <p className="font-bold">We could not find this Stremlist</p>
-            <p className="text-sm text-black/60">
+          <Alert size="card">
+            <AlertTitle>We could not find this Stremlist</AlertTitle>
+            <AlertDescription>
               Check that you opened the configure page from your Stremio
               install, or paste your Addon URL on the home page. You can also
               build a new Stremlist.
-            </p>
-            <Link
-              to="/configure"
-              className="inline-flex h-10 items-center rounded-full bg-brand px-5 text-sm font-bold text-black hover:bg-brand-dark"
-            >
-              Build a new Stremlist
-            </Link>
-          </div>
+            </AlertDescription>
+            <Button size="pill-lg" asChild>
+              <Link to="/configure">Build a new Stremlist</Link>
+            </Button>
+          </Alert>
         ) : status === "loading" ? (
           <p className="flex items-center gap-2 text-sm text-black/45">
             <Loader2 className="size-4 animate-spin" />
             Loading your Stremlist
           </p>
         ) : status === "error" ? (
-          <div
-            role="alert"
-            className="space-y-3 rounded-3xl bg-red-50 p-5 text-sm text-red-700 ring-1 ring-red-200"
-          >
-            <p>Could not load your configuration. Please try again.</p>
-            <button
+          <Alert variant="destructive" size="card">
+            <AlertDescription>
+              Could not load your configuration. Please try again.
+            </AlertDescription>
+            <Button
               type="button"
+              variant="plain"
+              size="pill"
               onClick={config.retryLoad}
-              className="rounded-full bg-white px-4 py-2 font-semibold ring-1 ring-red-200 hover:bg-red-100"
             >
               Try again
-            </button>
-          </div>
+            </Button>
+          </Alert>
         ) : (
           <>
             {justCreated && accountId && (
@@ -713,18 +721,32 @@ export default function Configure() {
               />
 
               <WatchTrackingSettings
+                key={config.accountId ?? "new"}
                 destinations={watch.status?.destinations ?? null}
+                consented={watch.status?.consented ?? false}
                 stremioLinked={watch.status?.stremioLinked ?? false}
                 stremioTrakt={watch.status?.stremioTrakt ?? false}
                 loadFailed={watch.failed}
                 busy={watch.busy}
                 notice={watch.notice}
                 locked={policy.watchLock}
-                onToggle={(provider, enabled) =>
-                  void watch.toggle(provider, enabled)
-                }
+                onToggle={watch.toggle}
+                onStop={watch.stop}
+                onRetryWrites={() => void watch.retryWrites()}
                 onRetry={() => void watch.retry()}
                 onLinkStremio={() => stremioStep(config.stremio.connect)}
+                onManageAccounts={() => {
+                  const section = providerAccounts.current;
+                  const target =
+                    section?.querySelector<HTMLButtonElement>(
+                      "button:not(:disabled)",
+                    ) ?? section;
+                  target?.scrollIntoView({
+                    behavior: scrollBehavior(),
+                    block: "center",
+                  });
+                  target?.focus({ preventScroll: true });
+                }}
                 onInstallAgain={() => stremioStep(config.stremio.installAgain)}
                 onUpdateStremio={() => stremioStep(config.stremio.retry)}
               />
@@ -738,12 +760,7 @@ export default function Configure() {
             </section>
 
             {config.validationError && (
-              <p
-                role="alert"
-                className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200"
-              >
-                {config.validationError}
-              </p>
+              <Alert variant="destructive">{config.validationError}</Alert>
             )}
 
             {accountKey && !justCreated && !policy.editLock && (

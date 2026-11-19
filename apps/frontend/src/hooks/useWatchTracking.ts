@@ -1,4 +1,5 @@
 import type {
+  ActivityKind,
   WatchProviderId,
   WatchTrackingStatus,
 } from "@stremlist/shared/watch-tracking";
@@ -12,7 +13,7 @@ export type WatchChangeNotice = "missing" | "unavailable" | null;
 
 /** The account being changed, while its request runs. */
 export interface WatchChange {
-  provider: WatchProviderId;
+  provider: WatchProviderId | null;
   /** It turns automatic marks on: the library is read first. */
   starting: boolean;
 }
@@ -27,6 +28,8 @@ type RefusalReason = Extract<ChangeAnswer, { reason: string }>["reason"];
 
 function refusal(reason: RefusalReason | undefined) {
   switch (reason) {
+    case "consent-required":
+      return "Allow activity sharing before turning this on.";
     case "stremio-not-linked":
     case "signed-out":
       return "Link your Stremio account again to mark titles as watched automatically.";
@@ -49,11 +52,16 @@ async function readStatus(accountId: string) {
   }
 }
 
-async function sendChange(accountId: string, destinations: WatchProviderId[]) {
+async function sendChange(
+  accountId: string,
+  destinations: WatchProviderId[],
+  watchlistDestinations: WatchProviderId[],
+  consent: boolean,
+) {
   try {
     const res = await watchTrackingApi.$put({
       param: { accountId },
-      json: { destinations },
+      json: { destinations, watchlistDestinations, consent },
     });
     if (res.ok) return { saved: await res.json() };
     if (res.status !== 409 && res.status !== 400 && res.status !== 502) {
@@ -84,6 +92,8 @@ export function useWatchTracking(
   const [notice, setNotice] = useState<WatchChangeNotice>(null);
   const run = useRef(0);
   const changing = useRef(false);
+  const loadedAccount = useRef(accountId);
+
   const reloadAfterChange = useRef(false);
 
   const load = useCallback(() => {
@@ -101,8 +111,17 @@ export function useWatchTracking(
   }, [accountId]);
 
   useEffect(() => {
+    if (loadedAccount.current !== accountId) {
+      loadedAccount.current = accountId;
+      run.current++;
+      changing.current = false;
+      reloadAfterChange.current = false;
+      setStatus(null);
+      setBusy(null);
+      setNotice(null);
+    }
     void load();
-  }, [load, refreshKey]);
+  }, [accountId, load, refreshKey]);
 
   useEffect(() => {
     const onVisible = () => {
@@ -112,32 +131,41 @@ export function useWatchTracking(
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [load]);
 
-  const toggle = useCallback(
-    async (provider: WatchProviderId, enabled: boolean) => {
-      if (!accountId || !status || busy) return;
-      const destinations = status.destinations
-        .filter((d) => (d.provider === provider ? enabled : d.enabled))
-        .map((d) => d.provider);
+  const save = useCallback(
+    async (
+      destinations: WatchProviderId[],
+      watchlist: WatchProviderId[],
+      change: WatchChange,
+      consent: boolean,
+    ) => {
+      if (!accountId || !status || changing.current) return false;
       const previous = status;
-      run.current++;
+      const current = ++run.current;
       changing.current = true;
-      setBusy({
-        provider,
-        starting: enabled && !status.destinations.some((d) => d.enabled),
-      });
+      setBusy(change);
       setNotice(null);
       setStatus({
         ...status,
-        destinations: status.destinations.map((d) =>
-          d.provider === provider ? { ...d, enabled } : d,
-        ),
+        destinations: status.destinations.map((d) => ({
+          ...d,
+          enabled: destinations.includes(d.provider),
+          watchlistEnabled: watchlist.includes(d.provider),
+        })),
       });
-      const answer = await sendChange(accountId, destinations);
+      const answer = await sendChange(
+        accountId,
+        destinations,
+        watchlist,
+        consent,
+      );
       const body = answer.saved;
+      if (current !== run.current) return false;
       if (body) {
         setStatus(body.status);
         if (body.stremio === "signed-out") onSignedOut();
-        if (body.status.destinations.some((d) => d.enabled)) {
+        if (
+          body.status.destinations.some((d) => d.enabled || d.watchlistEnabled)
+        ) {
           setNotice(
             body.stremio === "missing" || body.stremio === "unavailable"
               ? body.stremio
@@ -151,9 +179,8 @@ export function useWatchTracking(
         if (
           answer.reason === "signed-out" ||
           answer.reason === "stremio-not-linked"
-        ) {
+        )
           onSignedOut();
-        }
       }
       changing.current = false;
       setBusy(null);
@@ -161,11 +188,77 @@ export function useWatchTracking(
         reloadAfterChange.current = false;
         void load();
       }
+      return !!body;
     },
-    [accountId, busy, load, onSignedOut, status],
+    [accountId, load, onSignedOut, status],
   );
+  const toggle = useCallback(
+    (
+      provider: WatchProviderId,
+      enabled: boolean,
+      kind: ActivityKind = "watched",
+      consent = false,
+    ) => {
+      if (!status) return Promise.resolve(false);
+      const watched = status.destinations
+        .filter((d) =>
+          kind === "watched" && d.provider === provider ? enabled : d.enabled,
+        )
+        .map((d) => d.provider);
+      const watchlist = status.destinations
+        .filter((d) =>
+          kind === "watchlist" && d.provider === provider
+            ? enabled
+            : d.watchlistEnabled,
+        )
+        .map((d) => d.provider);
+      return save(
+        watched,
+        watchlist,
+        {
+          provider,
+          starting:
+            enabled &&
+            !status.destinations.some((d) => d.enabled || d.watchlistEnabled),
+        },
+        consent,
+      );
+    },
+    [save, status],
+  );
+  const stop = useCallback(
+    () => save([], [], { provider: null, starting: false }, false),
+    [save],
+  );
+  const retryWrites = useCallback(async () => {
+    if (!accountId || changing.current) return;
+    try {
+      const res = await watchTrackingApi.retry.$post({ param: { accountId } });
+      if (!res.ok) {
+        toast.error(
+          "Stremlist could not retry these updates. Try again.",
+          TOAST,
+        );
+        return;
+      }
+      toast.success("Waiting updates will be retried on the next run.", TOAST);
+      await load();
+    } catch {
+      toast.error("Stremlist could not retry these updates. Try again.", TOAST);
+    }
+  }, [accountId, load]);
 
   const clearNotice = useCallback(() => setNotice(null), []);
 
-  return { status, failed, busy, notice, toggle, retry: load, clearNotice };
+  return {
+    status,
+    failed,
+    busy,
+    notice,
+    toggle,
+    stop,
+    retry: load,
+    retryWrites,
+    clearNotice,
+  };
 }

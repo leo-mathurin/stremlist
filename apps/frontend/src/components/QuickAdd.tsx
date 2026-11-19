@@ -192,7 +192,7 @@ export default function QuickAdd({
               <ChevronDown
                 aria-hidden
                 className={cn(
-                  "size-4 text-black/40 transition-transform duration-200 ease-[var(--ease-out-quint)] motion-reduce:transition-none",
+                  "size-4 text-black/40 transition-transform duration-200 ease-out-quint motion-reduce:transition-none",
                   isOpen && "rotate-180",
                 )}
               />
@@ -201,9 +201,9 @@ export default function QuickAdd({
               id={panelId}
               inert={!isOpen}
               className={cn(
-                "grid transition-[grid-template-rows] ease-[var(--ease-out-quint)] motion-reduce:transition-none",
+                "grid transition-[grid-template-rows] ease-out-quint motion-reduce:transition-none",
                 isOpen
-                  ? "grid-rows-[1fr] duration-[260ms]"
+                  ? "grid-rows-[1fr] duration-250"
                   : "grid-rows-[0fr] duration-200",
               )}
             >

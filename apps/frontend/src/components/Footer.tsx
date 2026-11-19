@@ -26,13 +26,9 @@ export default function Footer() {
           {NAV_LINKS.map((link, i) => (
             <span key={link.label} className="flex items-center">
               {i !== 0 && (
-                <span className="text-gray-300 select-none mx-2">·</span>
+                <span className="text-black/20 select-none mx-2">·</span>
               )}
-              <Button
-                variant="link"
-                asChild
-                className="h-auto p-0 text-sm text-gray-500 hover:text-stremlist"
-              >
+              <Button variant="link-muted" size="inline" asChild>
                 {link.internal ? (
                   <Link to={link.to}>{link.label}</Link>
                 ) : (
@@ -54,11 +50,7 @@ export default function Footer() {
         </nav>
 
         <div className="flex flex-wrap items-center justify-center gap-3">
-          <Button
-            variant="link"
-            asChild
-            className="h-auto p-0 text-sm text-gray-500 hover:text-stremlist"
-          >
+          <Button variant="link-muted" size="inline" asChild>
             <a
               href="https://ko-fi.com/lelemathrin"
               target="_blank"
@@ -67,29 +59,25 @@ export default function Footer() {
               ❤️ Buy me a coffee
             </a>
           </Button>
-          <span className="text-gray-300 select-none">·</span>
-          <Button
-            variant="link"
-            asChild
-            className="h-auto p-0 text-sm text-gray-500 hover:text-stremlist"
-          >
+          <span className="text-black/20 select-none">·</span>
+          <Button variant="link-muted" size="inline" asChild>
             <a href={SITE.author} target="_blank" rel="noopener noreferrer">
               Built by Léo Mathurin
             </a>
           </Button>
-          <span className="text-gray-300 select-none">·</span>
-          <div className="shrink-0 overflow-hidden" style={{ width: 200 }}>
+          <span className="text-black/20 select-none">·</span>
+          <div className="w-50 shrink-0 overflow-hidden">
             <iframe
               src="https://status.stremlist.com/badge?theme=light"
               title="Stremlist Status"
               width={250}
               height={30}
-              style={{ colorScheme: "normal" }}
+              className="scheme-normal"
             />
           </div>
         </div>
 
-        <p className="text-xs text-gray-400">
+        <p className="text-xs text-black/40">
           © {COPYRIGHT_YEAR} Stremlist. Not affiliated with Stremio, IMDb or any
           other list service. Logos are trademarks of their owners. IMDb and all
           related logos are trademarks of IMDb.com, Inc. or its affiliates.

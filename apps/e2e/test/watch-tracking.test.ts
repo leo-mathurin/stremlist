@@ -11,6 +11,7 @@ import {
   seedAccount,
   seedConnection,
   seedStremioLink,
+  withHeldSimklWrite,
 } from "../helpers/db.js";
 import type { FixtureBackend } from "../helpers/fixture-backend.js";
 import { startFixtureBackend } from "../helpers/fixture-backend.js";
@@ -169,15 +170,24 @@ test.beforeAll(async () => {
   backend = await startFixtureBackend("./watch.fixture.ts", {
     CRON_SECRET,
     E2E_WATCH_STREMIO: stremioFile,
+    E2E_WATCH_SIMKL_FAILURE: join(dir, "simkl-failure"),
   });
 });
 test.afterAll(async () => {
-  await backend?.stop();
-  rmSync(dir, { recursive: true, force: true });
+  try {
+    await backend?.stop();
+  } finally {
+    try {
+      await resetDb();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
 });
 test.beforeEach(async () => {
   await resetDb();
   backend.clearRequests();
+  writeFileSync(join(dir, "simkl-failure"), "up");
 });
 
 test(
@@ -203,7 +213,7 @@ test(
 
     const on = await call(`/${accountId}/watch-tracking`, {
       method: "PUT",
-      json: { destinations: ["trakt", "simkl"] },
+      json: { consent: true, destinations: ["trakt", "simkl"] },
     });
     expect(on.status).toBe(200);
     const { status, stremio } = parsed(
@@ -287,7 +297,7 @@ test(
     });
     const on = await call(`/${accountId}/watch-tracking`, {
       method: "PUT",
-      json: { destinations: ["trakt"] },
+      json: { consent: true, destinations: ["trakt"] },
     });
     expect(on.status).toBe(200);
 
@@ -317,7 +327,7 @@ test(
     writeStremio({ ...readStremio(), trakt: true });
     const paused = await call(`/${accountId}/watch-tracking`, {
       method: "PUT",
-      json: { destinations: ["trakt"] },
+      json: { consent: true, destinations: ["trakt"] },
     });
     expect(
       parsed(paused.body, isWatchUpdate, "watch tracking update").status
@@ -326,7 +336,7 @@ test(
 
     const off = await call(`/${accountId}/watch-tracking`, {
       method: "PUT",
-      json: { destinations: [] },
+      json: { consent: true, destinations: [] },
     });
     expect(off.status).toBe(200);
     expect((await getWatchRows(accountId)).tracking).toBeNull();
@@ -348,7 +358,7 @@ test(
     });
     const on = await call(`/${accountId}/watch-tracking`, {
       method: "PUT",
-      json: { destinations: ["mdblist"] },
+      json: { destinations: ["mdblist"], consent: true },
     });
     expect(on.status).toBe(200);
 
@@ -402,7 +412,7 @@ test(
     });
     const on = await call(`/${accountId}/watch-tracking`, {
       method: "PUT",
-      json: { destinations: ["trakt"] },
+      json: { consent: true, destinations: ["trakt"] },
     });
     expect(on.status).toBe(200);
 
@@ -437,7 +447,7 @@ test(
     await seedConnection(accountId, "trakt");
     const unlinked = await call(`/${accountId}/watch-tracking`, {
       method: "PUT",
-      json: { destinations: ["trakt"] },
+      json: { consent: true, destinations: ["trakt"] },
     });
     expect(unlinked).toEqual({
       status: 409,
@@ -446,7 +456,7 @@ test(
     await seedStremioLink(accountId, AUTH_KEY);
     const missing = await call(`/${accountId}/watch-tracking`, {
       method: "PUT",
-      json: { destinations: ["simkl"] },
+      json: { consent: true, destinations: ["simkl"] },
     });
     expect(missing).toEqual({ status: 400, body: { reason: "not-connected" } });
     const cron = await call("/watch/cron");
@@ -477,20 +487,32 @@ test(
     await page.goto(configureUrl(accountId));
 
     const section = page.getByRole("region", {
-      name: "Mark as watched automatically",
+      name: "Update your accounts from Stremio",
     });
     await expect(section).toBeVisible();
-    const trakt = section.getByRole("checkbox", { name: /Trakt/ });
-    await expect(trakt).not.toBeChecked();
+    const trakt = section.getByRole("button", {
+      name: "Mark as watched on Trakt",
+      exact: true,
+    });
+    await expect(trakt).toHaveAttribute("aria-pressed", "false");
     await expect(
-      section.getByRole("checkbox", { name: /Simkl/ }),
-    ).not.toBeChecked();
+      section.getByRole("button", {
+        name: "Mark as watched on Simkl",
+        exact: true,
+      }),
+    ).toHaveAttribute("aria-pressed", "false");
 
     await trakt.click();
+    await page
+      .getByRole("button", { name: "Allow and turn on", exact: true })
+      .click();
+    await expect(
+      section.getByText("Sharing on", { exact: true }),
+    ).toBeVisible();
     await expect(
       section.getByText("On. Titles you finish from now on are marked."),
-    ).toBeVisible();
-    await expect(trakt).toBeChecked();
+    ).not.toBeVisible();
+    await expect(trakt).toHaveAttribute("aria-pressed", "true");
     expect((await getWatchRows(accountId)).tracking?.baseline_at).toBeTruthy();
 
     writeStremio({
@@ -505,10 +527,15 @@ test(
       .toBe(1);
     await runCron();
     await page.reload();
+    await section.getByRole("button", { name: "Details", exact: true }).click();
     await expect(section.getByText(/Last marked/)).toBeVisible();
 
-    await section.getByRole("checkbox", { name: /Trakt/ }).click();
-    await expect(section.getByText("Off").first()).toBeVisible();
+    await section
+      .getByRole("button", { name: "Mark as watched on Trakt", exact: true })
+      .click();
+    await expect(
+      section.getByText("Only new activity is shared, with your permission."),
+    ).toBeVisible();
     await expect
       .poll(async () => (await getWatchRows(accountId)).tracking)
       .toBeNull();
@@ -524,11 +551,9 @@ test(
     await routePageTo(page, backend.url);
     await page.goto(configureUrl(accountId));
     const section = page.getByRole("region", {
-      name: "Mark as watched automatically",
+      name: "Update your accounts from Stremio",
     });
-    await expect(
-      section.getByText(/Link your Stremio account first/),
-    ).toBeVisible();
+    await expect(section.getByText(/Start with Stremio/)).toBeVisible();
     await expect(
       section.getByRole("button", { name: "Link Stremio" }),
     ).toBeVisible();
@@ -550,15 +575,362 @@ test(
     });
     await page.goto(configureUrl(accountId));
     const section = page.getByRole("region", {
-      name: "Mark as watched automatically",
+      name: "Update your accounts from Stremio",
     });
-    const trakt = section.getByRole("checkbox", { name: "Trakt" });
+    const trakt = section.getByRole("button", {
+      name: "Mark as watched on Trakt",
+      exact: true,
+    });
     await trakt.click();
+    await page
+      .getByRole("button", { name: "Allow and turn on", exact: true })
+      .click();
     await expect(
       page.getByText("Stremlist could not read your Stremio library."),
     ).toBeVisible();
-    await expect(trakt).not.toBeChecked();
-    await expect(section.getByText("Off")).toBeVisible();
+    await expect(trakt).toHaveAttribute("aria-pressed", "false");
+
+    await expect(
+      section.getByText("Only new activity is shared, with your permission."),
+    ).toBeVisible();
     expect((await getWatchRows(accountId)).tracking).toBeNull();
+  },
+);
+
+test(
+  "player events recover a missing cycle once and still wait for native watched status",
+  { tag: "@local" },
+  async () => {
+    const accountId = await seedAccount();
+    await seedConnection(accountId, "trakt");
+    await seedStremioLink(accountId, AUTH_KEY);
+    writeStremio({
+      authKey: AUTH_KEY,
+      trakt: false,
+      library: [movie(SEEN_BEFORE, 1, LAST_WATCHED)],
+      addons: [],
+    });
+    expect(
+      (
+        await call(`/${accountId}/watch-tracking`, {
+          method: "PUT",
+          json: { destinations: ["trakt"], consent: true },
+        })
+      ).status,
+    ).toBe(200);
+    const path = `/${accountId}/player/movie/${MOVIE}`;
+    const start = await call(
+      `${path}/action=start&currentTime=0&duration=0.json`,
+    );
+    expect(start).toEqual({ status: 200, body: { success: true } });
+    await Promise.all(
+      Array.from({ length: 12 }, () =>
+        call(`${path}/action=stop&currentTime=95&duration=100.json`),
+      ),
+    );
+    const rows = await getWatchRows(accountId);
+    expect(rows.reads).toHaveLength(1);
+    expect(rows.reads[0].generation).toBe(1);
+    await runCron();
+    expect(watchedWrites("api.trakt.tv")).toEqual([]);
+    writeStremio({
+      ...readStremio(),
+      library: [
+        movie(SEEN_BEFORE, 1, LAST_WATCHED),
+        movie(MOVIE, 1, LAST_WATCHED),
+      ],
+    });
+    await call(`${path}/action=stop.json`);
+    await runCron();
+    expect(watchedWrites("api.trakt.tv")).toHaveLength(1);
+    await call(`/${accountId}/player/movie/${SEEN_BEFORE}/action=stop.json`);
+    await runCron();
+    expect(watchedWrites("api.trakt.tv")).toHaveLength(1);
+    expect(
+      (await call(`${path}/action=start&currentTime=broken.json`)).status,
+    ).toBe(400);
+    expect(
+      (await call(`/${accountId}/player/other/${MOVIE}/action=start.json`))
+        .status,
+    ).toBe(400);
+  },
+);
+
+test(
+  "consented library additions use independent durable destinations, retry and keep history",
+  { tag: "@local" },
+  async ({ page }) => {
+    const accountId = await seedAccount();
+    for (const provider of ["trakt", "simkl", "mdblist"] as const)
+      await seedConnection(accountId, provider);
+    await seedStremioLink(accountId, AUTH_KEY);
+    writeStremio({ authKey: AUTH_KEY, trakt: true, library: [], addons: [] });
+    const event = `/${accountId}/library/movie/${MOVIE}`;
+    await call(`${event}/action=libraryAdd.json`);
+    expect((await getWatchRows(accountId)).writes).toEqual([]);
+    const choices = {
+      destinations: [],
+      watchlistDestinations: ["trakt", "simkl", "mdblist"],
+    };
+    expect(
+      await call(`/${accountId}/watch-tracking`, {
+        method: "PUT",
+        json: choices,
+      }),
+    ).toEqual({ status: 409, body: { reason: "consent-required" } });
+    expect(
+      (
+        await call(`/${accountId}/watch-tracking`, {
+          method: "PUT",
+          json: { ...choices, consent: true },
+        })
+      ).status,
+    ).toBe(200);
+    await Promise.all(
+      Array.from({ length: 10 }, () => call(`${event}/action=libraryAdd.json`)),
+    );
+    expect((await getWatchRows(accountId)).writes).toHaveLength(3);
+    writeFileSync(join(dir, "simkl-failure"), "down");
+    await runCron();
+    const waiting = (await getWatchRows(accountId)).writes;
+    expect(waiting).toHaveLength(1);
+    expect(waiting[0]).toMatchObject({
+      provider: "simkl",
+      kind: "watchlist",
+      attempts: 1,
+    });
+    expect(
+      backend
+        .requests(
+          (url) =>
+            url.host === "api.trakt.tv" && url.pathname === "/sync/watchlist",
+        )
+        .filter((r) => r.method === "POST"),
+    ).toHaveLength(1);
+    expect(
+      backend
+        .requests(
+          (url) =>
+            url.host === "api.mdblist.com" &&
+            url.pathname === "/watchlist/items/add",
+        )
+        .filter((r) => r.method === "POST"),
+    ).toHaveLength(1);
+    expect(watchedWrites("api.trakt.tv")).toEqual([]);
+    await routePageTo(page, backend.url);
+    await page.goto(configureUrl(accountId));
+    const activity = page.getByRole("region", {
+      name: "Update your accounts from Stremio",
+    });
+    await expect(
+      activity.getByRole("button", { name: "Details", exact: true }),
+    ).toHaveAttribute("aria-expanded", "false");
+    await expect(activity.getByText("1 update waiting.")).toBeVisible();
+    writeFileSync(join(dir, "simkl-failure"), "up");
+    const retried = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/watch-tracking/retry") &&
+        response.request().method() === "POST",
+    );
+    await activity
+      .getByRole("button", { name: "Retry now", exact: true })
+      .click();
+    expect((await retried).status()).toBe(200);
+    await runCron();
+    expect((await getWatchRows(accountId)).writes).toEqual([]);
+    const sent = backend
+      .requests((url) => url.pathname === "/sync/add-to-list")
+      .filter((r) => r.method === "POST");
+    expect(sent.at(-1)?.body).toEqual({
+      movies: [{ ids: { imdb: MOVIE }, to: "plantowatch" }],
+    });
+    const count = backend.requests().length;
+    await call(`${event}/action=libraryAdd.json`);
+    await call(`${event}/action=libraryRemove.json`);
+    await call(`${event}/action=unwatched.json`);
+    expect((await getWatchRows(accountId)).writes).toEqual([]);
+    expect(backend.requests().length).toBe(count);
+    expect(
+      (
+        await call(`/${accountId}/watch-tracking`, {
+          method: "PUT",
+          json: { destinations: [], watchlistDestinations: [] },
+        })
+      ).status,
+    ).toBe(200);
+    expect((await getWatchRows(accountId)).tracking).toBeNull();
+    await call(`${event}/action=libraryAdd.json`);
+    expect((await getWatchRows(accountId)).writes).toEqual([]);
+  },
+);
+
+test(
+  "card A saves independent choices after explicit consent and confirms stop sharing",
+  { tag: "@local" },
+  async ({ page }, testInfo) => {
+    const accountId = await seedAccount();
+    await seedConnection(accountId, "trakt");
+    await seedConnection(accountId, "simkl");
+    await seedStremioLink(accountId, AUTH_KEY);
+    writeStremio({ authKey: AUTH_KEY, trakt: false, library: [], addons: [] });
+    await routePageTo(page, backend.url);
+    await page.goto(configureUrl(accountId));
+    const section = page.getByRole("region", {
+      name: "Update your accounts from Stremio",
+    });
+    const watched = section.getByRole("button", {
+      name: "Mark as watched on Trakt",
+      exact: true,
+    });
+    const watchlist = section.getByRole("button", {
+      name: "Add to watchlist on Simkl",
+      exact: true,
+    });
+    await watched.click();
+    await page.getByRole("button", { name: "Not now", exact: true }).click();
+    await expect(watched).toHaveAttribute("aria-pressed", "false");
+    expect((await getWatchRows(accountId)).tracking).toBeNull();
+    await watched.click();
+    await page
+      .getByRole("button", { name: "Allow and turn on", exact: true })
+      .click();
+    await expect(watched).toHaveAttribute("aria-pressed", "true");
+    await expect(watchlist).toBeEnabled();
+    await watchlist.click();
+    await expect(watchlist).toHaveAttribute("aria-pressed", "true");
+    await expect(watchlist).toBeEnabled();
+    await page.reload();
+    await expect(watched).toHaveAttribute("aria-pressed", "true");
+    await expect(watchlist).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      section.getByRole("button", {
+        name: "Mark as watched on Simkl",
+        exact: true,
+      }),
+    ).toHaveAttribute("aria-pressed", "false");
+    const saved = parsed(
+      (await call(`/${accountId}/watch-tracking`)).body,
+      isWatchStatus,
+      "saved activity",
+    );
+    expect(saved.consented).toBe(true);
+    expect(
+      saved.destinations.map((d) => [
+        d.provider,
+        d.enabled,
+        d.watchlistEnabled,
+      ]),
+    ).toEqual([
+      ["trakt", true, false],
+      ["simkl", false, true],
+    ]);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await section.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("a-phone.png") });
+    await section
+      .getByRole("button", { name: "Stop sharing", exact: true })
+      .click();
+    await expect(
+      section.getByRole("button", { name: "Keep sharing", exact: true }),
+    ).toBeVisible();
+    expect((await getWatchRows(accountId)).tracking).not.toBeNull();
+    await section
+      .getByRole("button", { name: "Stop sharing", exact: true })
+      .click();
+    await expect(watchlist).toHaveAttribute("aria-pressed", "false");
+    await expect(watched).toHaveAttribute("aria-pressed", "false");
+    await expect
+      .poll(async () => (await getWatchRows(accountId)).tracking)
+      .toBeNull();
+  },
+);
+
+test(
+  "sharing can be stopped after the Stremio link is removed",
+  { tag: "@local" },
+  async ({ page }) => {
+    const accountId = await seedAccount();
+    await seedConnection(accountId, "trakt");
+    await seedStremioLink(accountId, AUTH_KEY);
+    writeStremio({ authKey: AUTH_KEY, trakt: false, library: [], addons: [] });
+    expect(
+      (
+        await call(`/${accountId}/watch-tracking`, {
+          method: "PUT",
+          json: {
+            destinations: [],
+            watchlistDestinations: ["trakt"],
+            consent: true,
+          },
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (await call(`/${accountId}/stremio`, { method: "DELETE" })).status,
+    ).toBe(200);
+    await routePageTo(page, backend.url);
+    await page.goto(configureUrl(accountId));
+    const section = page.getByRole("region", {
+      name: "Update your accounts from Stremio",
+    });
+    await expect(
+      section.getByRole("button", { name: "Link Stremio", exact: true }),
+    ).toBeVisible();
+    await section
+      .getByRole("button", { name: "Stop sharing", exact: true })
+      .click();
+    await section
+      .getByRole("button", { name: "Stop sharing", exact: true })
+      .click();
+    await expect
+      .poll(async () => (await getWatchRows(accountId)).tracking)
+      .toBeNull();
+    await expect(
+      section.getByRole("button", { name: "Stop sharing", exact: true }),
+    ).toHaveCount(0);
+  },
+);
+
+test(
+  "a Simkl title held by another worker waits without using a failure attempt",
+  { tag: "@local" },
+  async () => {
+    const accountId = await seedAccount();
+    await seedConnection(accountId, "simkl");
+    await seedStremioLink(accountId, AUTH_KEY);
+    writeStremio({ authKey: AUTH_KEY, trakt: false, library: [], addons: [] });
+    expect(
+      (
+        await call(`/${accountId}/watch-tracking`, {
+          method: "PUT",
+          json: {
+            consent: true,
+            destinations: [],
+            watchlistDestinations: ["simkl"],
+          },
+        })
+      ).status,
+    ).toBe(200);
+    await call(`/${accountId}/library/movie/${MOVIE}/action=libraryAdd.json`);
+    await withHeldSimklWrite(accountId, MOVIE, async () => {
+      expect((await runCron()).simkl).toMatchObject({ sent: 0, failed: 0 });
+      const pending = (await getWatchRows(accountId)).writes;
+      expect(pending).toHaveLength(1);
+      expect(pending[0]).toMatchObject({
+        kind: "watchlist",
+        attempts: 0,
+        first_failed_at: null,
+        lease_token: null,
+      });
+      expect(Date.parse(pending[0].due_at)).toBeGreaterThan(Date.now());
+      expect(watchedWrites("api.simkl.com", "/sync/add-to-list")).toEqual([]);
+    });
+    expect(
+      (await call(`/${accountId}/watch-tracking/retry`, { method: "POST" }))
+        .status,
+    ).toBe(200);
+    expect((await runCron()).simkl?.sent).toBe(1);
+    expect((await getWatchRows(accountId)).writes).toEqual([]);
+    expect(watchedWrites("api.simkl.com", "/sync/add-to-list")).toHaveLength(1);
   },
 );

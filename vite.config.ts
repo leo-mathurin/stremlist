@@ -130,6 +130,7 @@ export default defineConfig({
         plugins: ["react", "jsx-a11y"],
         jsPlugins: [
           { name: "react-hooks-js", specifier: "eslint-plugin-react-hooks" },
+          "@shadcn/lint",
         ],
         env: { browser: true },
         rules: {
@@ -151,11 +152,27 @@ export default defineConfig({
             { allowConstantExport: true },
           ],
           "jsx-a11y/prefer-tag-over-role": "off",
+
+          "shadcn/no-restyle": ["error", { allow: ["layout"] }],
+          "shadcn/no-raw-colors": "error",
+          "shadcn/no-arbitrary-values": [
+            "error",
+            { allow: ["layout", "transition"] },
+          ],
+          "shadcn/no-inline-styles": "error",
+          "shadcn/require-static-classes": "error",
+          "shadcn/no-unknown-classes": "error",
         },
       },
       {
         files: ["apps/frontend/src/components/ui/**/*.tsx"],
-        rules: { "react/only-export-components": "off" },
+        rules: {
+          "react/only-export-components": "off",
+
+          "shadcn/no-restyle": "off",
+          "shadcn/no-arbitrary-values": "off",
+          "shadcn/require-static-classes": "off",
+        },
       },
       {
         /** Mirrors the awaitable Supabase query builder, which has `then`. */

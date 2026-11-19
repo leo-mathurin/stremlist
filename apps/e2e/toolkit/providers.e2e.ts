@@ -28,6 +28,108 @@ import {
 import { isRecord } from "../helpers/json";
 
 const PASTE = "Paste a link to a watchlist or list";
+
+test("stopping sharing keeps focus on a control chosen while saving", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await baseRoutes(browser);
+  await routeConnectionSources(browser, "simkl");
+  await routeConfig(browser, {
+    ...configuration,
+    connections: [connected("simkl")],
+    stremio: { email: "sample@example.test" },
+  });
+  const status = {
+    consented: true,
+    stremioLinked: true,
+    stremioTrakt: false,
+    destinations: [
+      {
+        provider: "simkl",
+        enabled: true,
+        watchlistEnabled: false,
+        paused: false,
+        pending: 0,
+        lastKind: "watched",
+        lastTitle: null,
+        lastSuccessAt: null,
+        lastError: null,
+        lastErrorAt: null,
+      },
+    ],
+  };
+  const received = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  await browser.route(`${backend}/${accountId}/stremio/update`, (route) =>
+    route.fulfill({ json: { result: "unchanged" } }),
+  );
+  await browser.route(
+    `${backend}/${accountId}/watch-tracking`,
+    async (route) => {
+      if (route.request.method === "GET")
+        return route.fulfill({ json: status });
+      received.resolve();
+      await release.promise;
+      status.consented = false;
+      status.destinations[0].enabled = false;
+      await route.fulfill({ json: { status, stremio: "unchanged" } });
+    },
+  );
+  await app.open(`/configure?account=${accountId}`);
+  const card = screen.getByRole("region", "Update your accounts from Stremio");
+  await card.getByRole("button", "Stop sharing", { exact: true }).tap();
+  const confirmation = screen.getByRole("group", "Stop sharing");
+  const nextSetting = screen.getByRole(
+    "checkbox",
+    "Show newly detected titles",
+  );
+  try {
+    await confirmation
+      .getByRole("button", "Stop sharing", { exact: true })
+      .tap();
+    await received.promise;
+    await nextSetting.tap();
+    await expect(nextSetting).toBeFocused();
+  } finally {
+    release.resolve();
+  }
+  await expect(confirmation).not.toBeVisible();
+  await expect(nextSetting).toBeFocused();
+});
+
+test("activity sharing setup focuses the account connection controls", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await baseRoutes(browser);
+  await routeConfig(browser, {
+    ...configuration,
+    stremio: { email: "sample@example.test" },
+  });
+  await browser.route(`${backend}/${accountId}/watch-tracking`, (route) =>
+    route.fulfill({
+      json: {
+        consented: true,
+        stremioLinked: true,
+        stremioTrakt: false,
+        destinations: [],
+      },
+    }),
+  );
+  await browser.route(`${backend}/${accountId}/stremio/update`, (route) =>
+    route.fulfill({ json: { result: "unchanged" } }),
+  );
+  await app.open(`/configure?account=${accountId}`);
+  await screen.getByRole("button", "Connect an account", { exact: true }).tap();
+  const accounts = screen.getByRole("group", "Provider accounts");
+  await expect(
+    accounts.getByRole("button", "Connect", { exact: true }).first(),
+  ).toBeFocused();
+  await expect(browser).toHaveURL(`/configure?account=${accountId}`);
+});
 const traktList = {
   ...row,
   id: "00000000-0000-4000-8000-000000000003",
@@ -632,6 +734,10 @@ test("a public Letterboxd link becomes a List without connecting an account", as
   await screen.getByLabel(PASTE).fill(link);
   await expect(screen.getByText("Letterboxd watchlist detected")).toBeVisible();
   await screen.getByRole("button", "Add", { exact: true }).tap();
+  await expect(
+    screen.getByRole("button", "Remove Someone's watchlist"),
+  ).toBeVisible();
+  await screen.getByRole("button", "Settings for Someone's watchlist").tap();
   await expect(
     screen.getByRole("textbox", "Catalog title").first(),
   ).toHaveValue("Someone's watchlist");

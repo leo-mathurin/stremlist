@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { supabase } from "../lib/supabase";
 import { IMDB_TITLE_ID_PATTERN } from "@stremlist/shared/constants";
 import type { ActionKind, ProviderId } from "@stremlist/shared/providers";
 import { joinProviderLabels, PROVIDERS } from "@stremlist/shared/providers";
@@ -300,6 +302,14 @@ export async function buildActionStreams(
   return streams;
 }
 
+/** Another worker is still updating this Simkl title. */
+export class SimklWriteBusyError extends Error {
+  constructor() {
+    super("A Simkl update for this title is already in progress");
+    this.name = "SimklWriteBusyError";
+  }
+}
+
 export interface ActionOutcome {
   provider: ProviderId;
   ok: boolean;
@@ -320,24 +330,48 @@ export async function performOnConnection(
   const { provider } = connection;
   const actions = getProvider(provider).actions;
   if (!actions) throw new Error(`${provider} has no Actions`);
-  await actions.perform(connection, intent, target);
+  const lease = provider === "simkl" ? randomUUID() : null;
+  const signal = lease ? AbortSignal.timeout(300_000) : undefined;
+  if (lease) {
+    const { data, error } = await supabase.rpc("claim_simkl_write", {
+      p_account_id: connection.accountId,
+      p_imdb_id: target.imdbId,
+      p_lease_token: lease,
+    });
+    if (error) throw error;
+    if (!data) throw new SimklWriteBusyError();
+  }
   try {
-    const affected = new Set(actions.affectedSources(intent));
-    await Promise.all([
-      applyMembershipAction(connection, intent, target),
-      ...lists
-        .flatMap(sourceCaches)
-        .filter(
-          ({ source }) =>
-            source.provider === provider && affected.has(source.sourceRef),
-        )
-        .map(({ cacheKey }) => markCachedListStale(cacheKey)),
-    ]);
-  } catch (error) {
-    console.error(
-      `Updating caches after an action on ${provider} failed:`,
-      error instanceof Error ? error.message : error,
-    );
+    signal?.throwIfAborted();
+    await actions.perform(connection, intent, target, signal);
+    try {
+      const affected = new Set(actions.affectedSources(intent));
+      await Promise.all([
+        applyMembershipAction(connection, intent, target),
+        ...lists
+          .flatMap(sourceCaches)
+          .filter(
+            ({ source }) =>
+              source.provider === provider && affected.has(source.sourceRef),
+          )
+          .map(({ cacheKey }) => markCachedListStale(cacheKey)),
+      ]);
+    } catch (error) {
+      console.error(
+        `Updating caches after an action on ${provider} failed:`,
+        error instanceof Error ? error.message : error,
+      );
+    }
+  } finally {
+    if (lease) {
+      const { error } = await supabase.rpc("release_simkl_write", {
+        p_account_id: connection.accountId,
+        p_imdb_id: target.imdbId,
+        p_lease_token: lease,
+      });
+      if (error)
+        console.error("Releasing the Simkl title write failed:", error);
+    }
   }
 }
 

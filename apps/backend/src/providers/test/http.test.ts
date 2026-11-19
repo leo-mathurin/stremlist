@@ -46,6 +46,26 @@ describe("providerFetch", () => {
     expect(request.url).toBe("https://api.example.test/items");
     expect(request.headers.has("Authorization")).toBe(false);
   });
+
+  it("keeps the HTTP timeout when an operation signal is also supplied", async () => {
+    const release = Promise.withResolvers<void>();
+    server.use(
+      http.get("https://api.example.test/items", async () => {
+        await release.promise;
+        return HttpResponse.json({});
+      }),
+    );
+    try {
+      await expect(
+        providerFetch("https://api.example.test/items", {
+          timeoutMs: 250,
+          signal: AbortSignal.timeout(60_000),
+        }),
+      ).rejects.toMatchObject({ name: "TimeoutError" });
+    } finally {
+      release.resolve();
+    }
+  });
 });
 
 describe("providerFetchJson", () => {

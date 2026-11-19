@@ -1,5 +1,13 @@
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { memo, useEffect, useId, useRef, useState } from "react";
-import { Clapperboard, ExternalLink, Loader2, RotateCw, X } from "lucide-react";
+import { Clapperboard, ExternalLink, Loader2, RotateCw } from "lucide-react";
 import { CATALOG_TITLES_PAGE_SIZE } from "@stremlist/shared/catalog-preview";
 import type {
   CatalogPreview as CatalogPreviewData,
@@ -187,8 +195,8 @@ function PosterPlaceholders() {
     <div className="flex gap-3 overflow-hidden" aria-hidden="true">
       {Array.from({ length: 8 }, (_, index) => (
         <div key={index} className="w-[4.5rem] shrink-0 sm:w-20">
-          <div className="aspect-[2/3] animate-pulse rounded-xl bg-black/5 motion-reduce:animate-none" />
-          <div className="mt-1.5 h-2.5 w-4/5 animate-pulse rounded bg-black/5 motion-reduce:animate-none" />
+          <Skeleton shape="poster" className="aspect-[2/3]" />
+          <Skeleton shape="text" className="mt-1.5 h-2.5 w-4/5" />
         </div>
       ))}
     </div>
@@ -212,8 +220,8 @@ function PreviewQueued({ wait }: { wait: QueueWait }) {
         className="h-1.5 overflow-hidden rounded-full bg-black/5"
       >
         <div
-          className="h-full origin-left rounded-full bg-brand transition-transform duration-1000 ease-linear motion-reduce:transition-none"
-          style={{ transform: `scaleX(${progress / 100})` }}
+          className="h-full origin-left scale-x-(--progress) rounded-full bg-brand transition-transform duration-1000 ease-linear motion-reduce:transition-none"
+          style={{ "--progress": progress / 100 }}
         />
       </div>
       <PosterPlaceholders />
@@ -236,7 +244,7 @@ function PreviewMessage({
       className={cn(
         "flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl px-4 py-2.5 text-sm ring-1",
         tone === "error"
-          ? "bg-red-50 text-red-700 ring-red-200"
+          ? "bg-danger-50 text-danger-700 ring-danger-200"
           : "bg-black/[0.03] text-black/70 ring-black/5",
       )}
     >
@@ -404,7 +412,7 @@ function CatalogRow({
                 <span className="text-sm font-bold tabular-nums">
                   +{more.toLocaleString("en")}
                 </span>
-                <span className="text-[11px] text-black/50">more</span>
+                <span className="text-2xs text-black/50">more</span>
               </button>
             </li>
           )}
@@ -491,11 +499,11 @@ function PosterTile({
           className="pointer-events-none absolute inset-0 rounded-xl outline outline-1 -outline-offset-1 outline-black/10"
         />
       </div>
-      <p className="mt-1.5 line-clamp-2 text-[11px] leading-tight font-semibold">
+      <p className="mt-1.5 line-clamp-2 text-2xs leading-tight font-semibold">
         {title.name}
       </p>
       {title.releaseInfo && (
-        <p className="text-[11px] leading-tight text-black/45 tabular-nums">
+        <p className="text-2xs leading-tight text-black/45 tabular-nums">
           {title.releaseInfo}
         </p>
       )}
@@ -504,40 +512,57 @@ function PosterTile({
 }
 
 function CatalogTitlesDialog({
+  onClose,
+  ...props
+}: Parameters<typeof CatalogTitlesContent>[0] & { onClose: () => void }) {
+  const opener = useRef<HTMLElement | null>(null);
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent
+        size="catalog"
+        flush
+        onOpenAutoFocus={() => {
+          opener.current =
+            document.activeElement instanceof HTMLElement
+              ? document.activeElement
+              : null;
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          opener.current?.focus();
+        }}
+      >
+        <CatalogTitlesContent {...props} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CatalogTitlesContent({
   list,
   accountKey,
   row,
   rpdbApiKey,
   posterSource,
-  onClose,
 }: {
   list: ListFormRow;
   accountKey: string | null;
   row: CatalogPreviewRow;
   rpdbApiKey: string;
   posterSource: PosterSource;
-  onClose: () => void;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const sentinel = useRef<HTMLDivElement>(null);
-  const titleId = useId();
   const { titles, total, status, hasMore, loadMore } = useCatalogTitles({
     list,
     accountKey,
     row,
   });
-
-  useEffect(() => {
-    const element = dialog.current;
-    if (!element) return;
-    if (!element.open) element.showModal();
-    const onClick = (event: MouseEvent) => {
-      if (event.target === element) element.close();
-    };
-    element.addEventListener("click", onClick);
-    return () => element.removeEventListener("click", onClick);
-  }, []);
 
   const placeholders =
     status === "loading"
@@ -559,33 +584,14 @@ function CatalogTitlesDialog({
   }, [hasMore, status, loadMore]);
 
   return (
-    <dialog
-      ref={dialog}
-      aria-labelledby={titleId}
-      onClose={onClose}
-      className={
-        "m-auto max-h-[min(48rem,calc(100dvh-2rem))] open:flex w-[calc(100%-2rem)] max-w-3xl flex-col overflow-hidden rounded-3xl bg-white p-0 font-rounded text-ink shadow-xl ring-1 ring-black/5 " +
-        "transition-[opacity,scale] duration-200 ease-out-quint starting:scale-[0.96] starting:opacity-0 motion-reduce:starting:scale-100 " +
-        "backdrop:bg-black/40 backdrop:transition-opacity backdrop:duration-200 starting:backdrop:opacity-0"
-      }
-    >
-      <div className="flex items-start justify-between gap-3 border-b border-black/5 px-4 py-3 sm:px-5">
+    <>
+      <div className="flex items-start justify-between gap-3 border-b border-black/5 py-3 pr-12 pl-4 sm:pr-12 sm:pl-5">
         <div className="min-w-0">
-          <h2 id={titleId} className="truncate text-base font-bold">
-            {rowTitle(list)}
-          </h2>
-          <p className="text-xs text-black/50 tabular-nums">
+          <DialogTitle>{rowTitle(list)}</DialogTitle>
+          <DialogDescription>
             {catalogLabel(row)} · {count(total, "title", "titles")}
-          </p>
+          </DialogDescription>
         </div>
-        <button
-          type="button"
-          onClick={() => dialog.current?.close()}
-          aria-label="Close"
-          className="-mr-1.5 inline-flex size-9 shrink-0 items-center justify-center rounded-full text-black/50 transition-[background-color,color,scale] duration-150 ease-out hover:bg-black/5 hover:text-ink active:scale-[0.96]"
-        >
-          <X className="size-4" aria-hidden="true" />
-        </button>
       </div>
       <div
         ref={scroller}
@@ -638,7 +644,7 @@ function CatalogTitlesDialog({
           )}
         </div>
       </div>
-    </dialog>
+    </>
   );
 }
 
@@ -687,15 +693,15 @@ function UnresolvedEntries({
   const notListed = unresolved.count - unresolved.entries.length;
 
   return (
-    <section className="space-y-2 rounded-2xl bg-amber-50 px-4 py-3 ring-1 ring-amber-200">
+    <section className="space-y-2 rounded-2xl bg-warning-50 px-4 py-3 ring-1 ring-warning-200">
       <div>
-        <h4 className="flex items-baseline gap-2 text-sm font-bold text-amber-950">
+        <h4 className="flex items-baseline gap-2 text-sm font-bold text-warning-950">
           Titles not found
-          <span className="text-xs font-semibold text-amber-900/70 tabular-nums">
+          <span className="text-xs font-semibold text-warning-900/70 tabular-nums">
             {unresolved.count.toLocaleString("en")}
           </span>
         </h4>
-        <p className="mt-0.5 text-xs text-pretty text-amber-900/80">
+        <p className="mt-0.5 text-xs text-pretty text-warning-900/80">
           Stremlist could not match{" "}
           {unresolved.count === 1 ? "this title" : "these titles"} with IMDb
           yet, so Stremio does not show {unresolved.count === 1 ? "it" : "them"}
@@ -704,26 +710,27 @@ function UnresolvedEntries({
             ` ${count(unresolved.notCheckedYet, "title is", "titles are")} not checked yet.`}
         </p>
       </div>
-      <ul id={listId} className="divide-y divide-amber-200/70">
+      <ul id={listId} className="divide-y divide-warning-200/70">
         {shown.map((entry, index) => (
           <UnresolvedRow key={index} entry={entry} />
         ))}
       </ul>
       {unresolved.entries.length > UNRESOLVED_COLLAPSED && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-          <button
+          <Button
             type="button"
+            variant="link-warning"
+            size="inline-xs"
             aria-expanded={expanded}
             aria-controls={listId}
             onClick={() => setExpanded((current) => !current)}
-            className="-mx-1 rounded px-1 font-semibold text-amber-950 underline-offset-2 hover:underline"
           >
             {expanded
               ? "Show fewer"
               : `Show all ${unresolved.entries.length.toLocaleString("en")}`}
-          </button>
+          </Button>
           {expanded && notListed > 0 && (
-            <span className="text-amber-900/70 tabular-nums">
+            <span className="text-warning-900/70 tabular-nums">
               and {notListed.toLocaleString("en")} more
             </span>
           )}
@@ -741,10 +748,10 @@ function UnresolvedRow({ entry }: { entry: PreviewUnresolvedEntry }) {
   ].filter((value) => value !== null);
 
   return (
-    <li className="flex items-baseline gap-2 py-1.5 text-sm text-amber-950">
+    <li className="flex items-baseline gap-2 py-1.5 text-sm text-warning-950">
       <span className="min-w-0 flex-1 break-words text-pretty">{name}</span>
       {details.length > 0 && (
-        <span className="shrink-0 text-xs text-amber-900/70 tabular-nums">
+        <span className="shrink-0 text-xs text-warning-900/70 tabular-nums">
           {details.join(" · ")}
         </span>
       )}
@@ -754,7 +761,7 @@ function UnresolvedRow({ entry }: { entry: PreviewUnresolvedEntry }) {
           target="_blank"
           rel="noopener noreferrer"
           aria-label={`Open ${name}`}
-          className="-m-1 shrink-0 self-center rounded p-1 text-amber-900/60 transition-colors hover:text-amber-950"
+          className="-m-1 shrink-0 self-center rounded p-1 text-warning-900/60 transition-colors hover:text-warning-950"
         >
           <ExternalLink className="size-3.5" />
         </a>

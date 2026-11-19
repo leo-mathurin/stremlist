@@ -16,18 +16,18 @@ export const ADDON_MANAGER_URL = SITE.addonManager;
 /**
  * Official Provider marks (files in public/providers). Brand rules: show
  * them unaltered (no recolor, no opacity), only to say Stremlist works with
- * the Provider. `background` fills transparent marks.
+ * the Provider. `backdrop` fills transparent marks with a theme color.
  */
 export const PROVIDER_LOGOS: Record<
   ProviderId,
-  { src: string; background?: string }
+  { src: string; backdrop?: "bg-justwatch" }
 > = {
   imdb: { src: "/providers/imdb.svg" },
   trakt: { src: "/providers/trakt.svg" },
   simkl: { src: "/providers/simkl.png" },
   mdblist: { src: "/providers/mdblist.png" },
-  /** The mark without the wordmark is a transparent 64 px icon. */
-  justwatch: { src: "/providers/justwatch.png", background: "#0a151f" },
+
+  justwatch: { src: "/providers/justwatch.png", backdrop: "bg-justwatch" },
   senscritique: { src: "/providers/senscritique.png" },
   letterboxd: { src: "/providers/letterboxd.svg" },
 };

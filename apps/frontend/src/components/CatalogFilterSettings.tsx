@@ -12,6 +12,11 @@ import type {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -82,44 +87,34 @@ export default function CatalogFilterSettings({
   const genreLocked = genres.length === 0 && value.genre === undefined;
 
   return (
-    <div className="mt-4 border-t border-gray-200 pt-2">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => setOpen((current) => !current)}
-        className="group -mx-2 flex w-[calc(100%+1rem)] items-center gap-2.5 rounded-lg px-2 py-2 text-left outline-none transition-colors duration-150 hover:bg-gray-200/50 focus-visible:ring-[3px] focus-visible:ring-imdb/40"
-      >
-        <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-white text-gray-500 shadow-xs ring-1 ring-gray-200/80 transition-colors duration-150 group-hover:text-gray-800">
-          <SlidersHorizontal className="size-3.5" />
-        </span>
-        <span className="text-sm font-semibold text-gray-800">
-          Filters &amp; extra catalogs
-        </span>
-        {activeCount > 0 && (
-          <span className="inline-flex items-center rounded-full bg-imdb/15 px-2 py-0.5 text-[11px] font-semibold text-imdb-dark tabular-nums transition-[opacity,scale] duration-150 ease-out starting:scale-90 starting:opacity-0 motion-reduce:transition-none">
-            {activeCount} active
-          </span>
-        )}
-        <ChevronDown
-          className={cn(
-            "ml-auto size-4 shrink-0 text-gray-400 transition-transform duration-200 ease-out-quint group-hover:text-gray-600 motion-reduce:transition-none",
-            open && "rotate-180",
-          )}
-        />
-      </button>
+    <Collapsible open={open} onOpenChange={setOpen} asChild>
+      <div className="mt-4 border-t border-border pt-2">
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="group -mx-2 flex w-[calc(100%+1rem)] items-center gap-2.5 rounded-lg px-2 py-2 text-left outline-none transition-colors duration-150 hover:bg-black/5 focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-white text-muted-foreground shadow-xs ring-1 ring-border/80 transition-colors duration-150 group-hover:text-ink/90">
+              <SlidersHorizontal className="size-3.5" />
+            </span>
+            <span className="text-sm font-semibold text-ink/90">
+              Filters &amp; extra catalogs
+            </span>
+            {activeCount > 0 && (
+              <span className="inline-flex items-center rounded-full bg-imdb/15 px-2 py-0.5 text-2xs font-semibold text-imdb-dark tabular-nums transition-[opacity,scale] duration-150 ease-out starting:scale-90 starting:opacity-0 motion-reduce:transition-none">
+                {activeCount} active
+              </span>
+            )}
+            <ChevronDown
+              className={cn(
+                "ml-auto size-4 shrink-0 text-black/40 transition-transform duration-200 ease-out-quint group-hover:text-black/60 motion-reduce:transition-none",
+                open && "rotate-180",
+              )}
+            />
+          </button>
+        </CollapsibleTrigger>
 
-      <div
-        id={panelId}
-        inert={!open}
-        className={cn(
-          "grid transition-[grid-template-rows] ease-out-quint motion-reduce:transition-none",
-          open
-            ? "grid-rows-[1fr] duration-250"
-            : "grid-rows-[0fr] duration-200",
-        )}
-      >
-        <div className="-mx-1 min-h-0 overflow-hidden px-1">
+        <CollapsibleContent>
           <div
             className={cn(
               "pt-2 pb-1 transition-[opacity,translate] ease-out-quint motion-reduce:transition-none",
@@ -129,17 +124,17 @@ export default function CatalogFilterSettings({
             )}
           >
             <div className="flex items-start justify-between gap-3">
-              <p className="text-xs leading-relaxed text-pretty text-gray-500">
+              <p className="text-xs leading-relaxed text-pretty text-muted-foreground">
                 All selected filters apply together, including in search. Use
                 the sort menu of this list to order the results.
               </p>
               {activeFilters > 0 && (
                 <Button
                   type="button"
-                  variant="ghost"
-                  size="sm"
+                  variant="quiet"
+                  size="xs"
                   onClick={() => onChange({ presets: value.presets })}
-                  className="-mt-1 -mr-2 h-7 shrink-0 px-2 text-xs text-gray-500 hover:text-gray-900"
+                  className="-mt-1 -mr-2 shrink-0"
                 >
                   Clear filters
                 </Button>
@@ -156,7 +151,8 @@ export default function CatalogFilterSettings({
                   <div key={filter.key} className="min-w-0">
                     <Label
                       htmlFor={triggerId}
-                      className="mb-1 text-xs font-semibold text-gray-600"
+                      variant="caption"
+                      className="mb-1"
                     >
                       {filter.label}
                     </Label>
@@ -175,10 +171,7 @@ export default function CatalogFilterSettings({
                         })
                       }
                     >
-                      <SelectTrigger
-                        id={triggerId}
-                        className="w-full bg-white focus:border-imdb focus:ring-imdb data-[state=open]:border-imdb"
-                      >
+                      <SelectTrigger id={triggerId} className="w-full">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -192,7 +185,7 @@ export default function CatalogFilterSettings({
                       </SelectContent>
                     </Select>
                     {filter.key === "genre" && genres.length === 0 && (
-                      <p className="mt-1 text-[11px] leading-snug text-gray-500">
+                      <p className="mt-1 text-2xs leading-snug text-muted-foreground">
                         Genre choices appear after saving and refreshing this
                         list.
                       </p>
@@ -213,18 +206,19 @@ export default function CatalogFilterSettings({
                     hideUnreleased: next === true ? true : undefined,
                   })
                 }
-                className="mt-0.5 focus-visible:border-imdb focus-visible:ring-imdb/40 data-[state=checked]:border-imdb data-[state=checked]:bg-imdb data-[state=checked]:text-black"
+                className="mt-0.5"
               />
               <div>
                 <Label
                   htmlFor={`${panelId}-unreleased`}
-                  className="cursor-pointer text-sm font-normal text-gray-800"
+                  variant="plain"
+                  className="cursor-pointer"
                 >
                   Hide unreleased titles
                 </Label>
                 <p
                   id={`${panelId}-unreleased-help`}
-                  className="text-[11px] leading-snug text-gray-500"
+                  className="text-2xs leading-snug text-muted-foreground"
                 >
                   Hides titles with a release date in the future.
                 </p>
@@ -232,10 +226,10 @@ export default function CatalogFilterSettings({
             </div>
 
             <div className="mt-4">
-              <p className="text-xs font-semibold text-gray-600">
+              <p className="text-xs font-semibold text-black/60">
                 Extra catalogs in Stremio
               </p>
-              <p className="mt-0.5 text-xs text-pretty text-gray-500">
+              <p className="mt-0.5 text-xs text-pretty text-muted-foreground">
                 Use the same list and filters. Reinstall after changing these
                 options.
               </p>
@@ -248,8 +242,8 @@ export default function CatalogFilterSettings({
                       className={cn(
                         "flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-sm select-none transition-[background-color,border-color,color,scale] duration-150 ease-out active:scale-[0.96] motion-reduce:active:scale-100",
                         checked
-                          ? "border-imdb bg-imdb/10 text-gray-900"
-                          : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50",
+                          ? "border-imdb bg-imdb/10 text-ink"
+                          : "border-border bg-white text-black/70 hover:border-black/20 hover:bg-black/[0.02]",
                       )}
                     >
                       <Checkbox
@@ -265,7 +259,6 @@ export default function CatalogFilterSettings({
                                   ),
                           })
                         }
-                        className="focus-visible:border-imdb focus-visible:ring-imdb/40 data-[state=checked]:border-imdb data-[state=checked]:bg-imdb data-[state=checked]:text-black"
                       />
                       {preset.label}
                     </label>
@@ -274,8 +267,8 @@ export default function CatalogFilterSettings({
               </div>
             </div>
           </div>
-        </div>
+        </CollapsibleContent>
       </div>
-    </div>
+    </Collapsible>
   );
 }

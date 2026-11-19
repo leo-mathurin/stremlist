@@ -172,6 +172,7 @@ async function allQueued(
       .from("watch_writes")
       .select("provider, imdb_id, season, episode")
       .eq("account_id", accountId)
+      .eq("kind", "watched")
       .in("imdb_id", [...new Set(titles.map((t) => t.imdbId))])
       .order("id")
       .range(from, from + QUEUE_PAGE - 1);

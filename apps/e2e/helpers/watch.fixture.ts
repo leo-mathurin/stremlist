@@ -84,18 +84,44 @@ function cinemeta({ request, url }: FixtureRequest) {
 }
 
 function provider({ request, url }: FixtureRequest) {
+  const outage = process.env.E2E_WATCH_SIMKL_FAILURE;
+  if (
+    url.host === "api.simkl.com" &&
+    outage &&
+    readFileSync(outage, "utf8") === "down"
+  )
+    return json({ error: "Fixture outage" }, 503);
   if (bearer(request) !== "fixture-access-token") {
     unsupported(request, "Request without the fixture access token");
   }
-  if (request.method === "POST" && url.pathname === "/sync/history") {
+  if (
+    request.method === "POST" &&
+    [
+      "/sync/history",
+      "/sync/watchlist",
+      "/sync/add-to-list",
+      "/watchlist/items/add",
+    ].includes(url.pathname)
+  ) {
     return json({ added: { movies: 1, episodes: 1 }, not_found: {} });
   }
   if (
     request.method === "GET" &&
-    /^\/sync\/history\/(?:movies|episodes)$/u.test(url.pathname)
-  ) {
+    url.hostname === "api.simkl.com" &&
+    url.pathname === "/sync/activities"
+  )
+    return json({ all: null });
+  if (
+    request.method === "GET" &&
+    url.hostname === "api.simkl.com" &&
+    /^\/sync\/all-items\/(movies|shows|anime)$/.test(url.pathname)
+  )
+    return json({ movies: [], shows: [], anime: [] });
+  if (
+    request.method === "GET" &&
+    /^\/sync\/history\/(movies|episodes)$/.test(url.pathname)
+  )
     return json([]);
-  }
   if (
     request.method === "GET" &&
     [
@@ -104,9 +130,8 @@ function provider({ request, url }: FixtureRequest) {
       "/users/me/lists/collaborations",
       "/users/likes/lists",
     ].includes(url.pathname)
-  ) {
+  )
     return json([]);
-  }
   unsupported(request, "Unexpected Trakt or Simkl request");
 }
 
@@ -114,8 +139,21 @@ function mdblist({ request, url }: FixtureRequest) {
   if (bearer(request) !== "fixture-access-token") {
     unsupported(request, "Request without the fixture access token");
   }
-  if (request.method === "POST" && url.pathname === "/sync/watched") {
+  if (
+    request.method === "POST" &&
+    ["/sync/watched", "/watchlist/items/add"].includes(url.pathname)
+  ) {
     return json({ added: { movies: 0, episodes: 1 }, not_found: {} });
+  }
+  if (request.method === "GET") {
+    if (["/lists/user", "/external/lists/user"].includes(url.pathname))
+      return json([]);
+    if (url.pathname === "/lists/liked")
+      return json({
+        lists: [],
+        pagination: { offset: 0, total: 0, has_more: false },
+      });
+    if (url.pathname === "/lists/recommended") return json({ sections: [] });
   }
   unsupported(request, "Unexpected MDBList request");
 }

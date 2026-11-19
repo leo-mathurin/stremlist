@@ -58,7 +58,7 @@ export default function Terms() {
                 },
               )}
             </p>
-            <div className="space-y-5 text-[15px] leading-relaxed text-pretty text-black/65">
+            <div className="space-y-5 text-md leading-relaxed text-pretty text-black/65">
               {section.clauses.map((clause) => (
                 <div key={clause.title}>
                   <h3 className="mb-1 font-bold text-ink">{clause.title}</h3>

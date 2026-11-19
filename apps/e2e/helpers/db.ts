@@ -479,3 +479,27 @@ export async function makeSweepDue(accountId: string) {
     if (result.error) throw result.error;
   }
 }
+
+/** Hold this title as a second Simkl worker for the duration of a test action. */
+export async function withHeldSimklWrite(
+  accountId: string,
+  imdbId: string,
+  action: () => Promise<void>,
+) {
+  const lease = randomUUID();
+  const args = {
+    p_account_id: accountId,
+    p_imdb_id: imdbId,
+    p_lease_token: lease,
+  };
+  const { data, error } = await db.rpc("claim_simkl_write", args);
+  if (error) throw error;
+  if (!data) throw new Error("Could not hold the Simkl title for the test");
+  const [outcome] = await Promise.allSettled([Promise.resolve().then(action)]);
+  const released = await db.rpc("release_simkl_write", args);
+  const errors: unknown[] = [];
+  if (outcome.status === "rejected") errors.push(outcome.reason);
+  if (released.error) errors.push(released.error);
+  if (errors.length > 0)
+    throw new AggregateError(errors, "The held Simkl write test failed");
+}

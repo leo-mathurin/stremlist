@@ -12,7 +12,7 @@ import {
   UnknownTitleError,
 } from "../../providers/types";
 import { getAccountLists } from "../accounts";
-import { performOnConnection } from "../actions";
+import { performOnConnection, SimklWriteBusyError } from "../actions";
 import { getConnectionAccess } from "../connections";
 import { nextWriteRetry } from "./schedule";
 
@@ -29,6 +29,7 @@ const SIMKL_SLOW_AFTER_429_SECONDS = 3600;
 
 export interface ClaimedWrite {
   id: number;
+  kind: string;
   account_id: string;
   provider: string;
   imdb_id: string;
@@ -71,12 +72,13 @@ function groupSends(writes: ClaimedWrite[]) {
   const groups = new Map<string, ClaimedWrite[][]>();
   const sends: ClaimedWrite[][] = [];
   for (const write of writes) {
-    if (!isEpisode(write)) {
+    if (!isEpisode(write) || write.kind === "watchlist") {
       sends.push([write]);
       continue;
     }
     const key = [
       write.account_id,
+      write.kind,
       write.provider,
       write.imdb_id,
       watchedAt(write),
@@ -134,7 +136,7 @@ function targetOf(writes: ClaimedWrite[]) {
   return {
     imdbId: first.imdb_id,
     type: first.item_type === "series" ? "series" : "movie",
-    ...(isEpisode(first)
+    ...(isEpisode(first) && first.kind !== "watchlist"
       ? {
           episodes: writes.map((w) => ({
             season: w.season,
@@ -199,7 +201,11 @@ async function send(writes: ClaimedWrite[], lease: string, stats: WriteStats) {
     if (rows.length === 0) return [];
     if (!connection) throw new Error(`Cannot read the ${provider} Connection`);
     let pending = rows;
-    if (provider === "trakt" && rows.some((w) => w.uncertain)) {
+    if (
+      first.kind !== "watchlist" &&
+      provider === "trakt" &&
+      rows.some((w) => w.uncertain)
+    ) {
       requested = true;
       const played = await traktPlays(
         connection,
@@ -214,13 +220,23 @@ async function send(writes: ClaimedWrite[], lease: string, stats: WriteStats) {
       requested = true;
       await performOnConnection(
         connection,
-        { kind: "watched", add: true, watchedAt: watchedAt(first) },
+        first.kind === "watchlist"
+          ? { kind: "watchlist", add: true, preserveExistingStatus: true }
+          : { kind: "watched", add: true, watchedAt: watchedAt(first) },
         targetOf(pending),
         await getAccountLists(first.account_id),
       );
     }
     return finished(rows);
   } catch (error) {
+    if (error instanceof SimklWriteBusyError) {
+      await releaseWrites(
+        lease,
+        rows.map((row) => row.id),
+        1,
+      );
+      return [];
+    }
     stats.failed += rows.length;
     const code = errorCode(error);
     if (code === "rate_limited") stats.rateLimited = true;

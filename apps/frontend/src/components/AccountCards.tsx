@@ -48,7 +48,9 @@ export function AddonUrlCard({
     <section
       className={cn(
         "space-y-4 rounded-3xl p-5 ring-1",
-        reinstallHint ? "bg-amber-50 ring-amber-200" : "bg-white ring-black/5",
+        reinstallHint
+          ? "bg-warning-50 ring-warning-200"
+          : "bg-white ring-black/5",
       )}
     >
       <div>
@@ -56,7 +58,7 @@ export function AddonUrlCard({
         <p
           className={cn(
             "mt-0.5 text-sm",
-            reinstallHint ? "text-amber-900" : "text-black/55",
+            reinstallHint ? "text-warning-900" : "text-black/55",
           )}
         >
           {body}

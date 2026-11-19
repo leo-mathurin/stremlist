@@ -31,6 +31,8 @@ import {
 import { queueLabel, queueWait, retryDelay } from "@/lib/provider-queue";
 import type { QueueWait } from "@/lib/provider-queue";
 import { cn } from "@/lib/utils";
+import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 
 export interface ResolvedLink {
   provider: ProviderId;
@@ -354,53 +356,55 @@ export default function LinkPaste({
           : (hint ?? `${joinProviderLabels(LINK_PROVIDERS)} links work.`)}
       </p>
       {problem && (
-        <div
+        <Alert
           role={problem.tone === "info" ? "status" : "alert"}
-          className={cn(
-            "mt-2 rounded-2xl px-4 py-3 text-sm ring-1",
-            problem.tone === "info"
-              ? "bg-white/10 text-cloud ring-white/15"
-              : "bg-red-500/15 text-red-100 ring-red-400/30",
-          )}
+          variant={problem.tone === "info" ? "dark" : "destructive-dark"}
+          className="mt-2"
         >
           <p>{problem.message}</p>
           {problem.showList && (
-            <button
+            <Button
               type="button"
+              variant="soft-dark"
+              size="pill-xs"
               onClick={problem.showList}
-              className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-xs font-bold text-cloud"
+              className="mt-2"
             >
               Show
-            </button>
+            </Button>
           )}
           {connectProvider && (
-            <button
+            <Button
               type="button"
+              size="pill-xs"
               onClick={() => onConnect(connectProvider, value.trim())}
-              className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1.5 text-xs font-bold text-black"
+              className="mt-2"
             >
               <Plug className="size-3.5" />
               Connect {PROVIDERS[connectProvider].label}
-            </button>
+            </Button>
           )}
           {problem.openAccount && (
-            <a
-              href={`/configure?account=${encodeURIComponent(problem.openAccount)}`}
-              className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-xs font-bold text-cloud"
-            >
-              Open that Stremlist
-            </a>
+            <Button variant="soft-dark" size="pill-xs" asChild className="mt-2">
+              <a
+                href={`/configure?account=${encodeURIComponent(problem.openAccount)}`}
+              >
+                Open that Stremlist
+              </a>
+            </Button>
           )}
           {problem.action === "upgrade" && (
-            <button
+            <Button
               type="button"
+              variant="soft-dark"
+              size="pill-xs"
               onClick={onUpgrade}
-              className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1.5 text-xs font-bold text-cloud"
+              className="mt-2"
             >
               Upgrade to a private URL
-            </button>
+            </Button>
           )}
-        </div>
+        </Alert>
       )}
     </div>
   );

@@ -1,4 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
+import { RateLimiter } from "../../http";
+import { simklLimiters } from "../../simkl/api";
 import { useMswServer } from "../../../test/helpers/msw.test-utils";
 import { simklProvider } from "../../simkl";
 import {
@@ -83,6 +92,168 @@ describe("simkl actions", () => {
     });
   });
 
+  it("automatic watchlist additions preserve a completed title", async () => {
+    acceptWrites();
+    await actions.perform(
+      connection,
+      { kind: "watchlist", add: true, preserveExistingStatus: true },
+      { imdbId: "tt0068646", type: "movie" },
+    );
+    expect(calls.filter((call) => call.method === "POST")).toEqual([]);
+  });
+
+  it("preserves a completed movie stored in Simkl's anime bucket", async () => {
+    acceptWrites();
+    routes.set("GET /sync/all-items/anime", () => ({
+      anime: [
+        {
+          status: "completed",
+          anime_type: "movie",
+          show: { ids: { simkl: 1234, imdb: "tt1375666" } },
+        },
+      ],
+    }));
+    await actions.perform(
+      connection,
+      { kind: "watchlist", add: true, preserveExistingStatus: true },
+      { imdbId: "tt1375666", type: "movie" },
+    );
+    expect(calls.filter((call) => call.method === "POST")).toEqual([]);
+  });
+
+  it("a delayed automatic addition cannot replace a watched write", async () => {
+    acceptWrites();
+    await actions.perform(
+      connection,
+      { kind: "watched", add: true },
+      { imdbId: "tt1375666", type: "movie" },
+    );
+    routes.set("GET /sync/activities", () => json({ all: null }));
+    routes.set("GET /sync/all-items/movies", () =>
+      json({
+        movies: [
+          {
+            status: "completed",
+            movie: { ids: { simkl: 1234, imdb: "tt1375666" } },
+          },
+        ],
+      }),
+    );
+    clearCalls();
+    await actions.perform(
+      connection,
+      { kind: "watchlist", add: true, preserveExistingStatus: true },
+      { imdbId: "tt1375666", type: "movie" },
+    );
+    expect(calls.filter((call) => call.method === "POST")).toEqual([]);
+    expect(apiCalls()).toContain("GET /sync/all-items/movies");
+  });
+
+  it("automatic additions refuse to write when the current status cannot be read", async () => {
+    acceptWrites();
+    routes.set("GET /sync/all-items/movies", () =>
+      json({ error: "down" }, 503),
+    );
+    await expect(
+      actions.perform(
+        connection,
+        { kind: "watchlist", add: true, preserveExistingStatus: true },
+        { imdbId: "tt1375666", type: "movie" },
+      ),
+    ).rejects.toThrow();
+    expect(calls.filter((call) => call.method === "POST")).toEqual([]);
+  });
+
+  it("does not send after the action deadline expires", async () => {
+    acceptWrites();
+    await expect(
+      actions.perform(
+        connection,
+        { kind: "watched", add: true },
+        { imdbId: "tt1375666", type: "movie" },
+        AbortSignal.abort(),
+      ),
+    ).rejects.toThrow();
+    expect(calls.filter((call) => call.method === "POST")).toEqual([]);
+  });
+
+  it("checks provider status independently of an older in-flight library read", async () => {
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let status = "plantowatch";
+    let reads = 0;
+    routes.set("GET /sync/all-items/movies", async () => {
+      const captured = status;
+      reads++;
+      if (reads === 1) {
+        started.resolve();
+        await release.promise;
+      }
+      return {
+        movies: [
+          {
+            status: captured,
+            movie: { ids: { simkl: 1234, imdb: "tt1375666" } },
+          },
+        ],
+      };
+    });
+    routes.set("POST /sync/history", () => {
+      status = "completed";
+      return json({ added: {}, not_found: {} });
+    });
+    routes.set("POST /sync/add-to-list", () => {
+      status = "plantowatch";
+      return json({ added: {}, not_found: {} });
+    });
+    const background = actions.getMembership(connection);
+    await started.promise;
+    await actions.perform(
+      connection,
+      { kind: "watched", add: true },
+      { imdbId: "tt1375666", type: "movie" },
+    );
+    const add = () =>
+      actions.perform(
+        connection,
+        { kind: "watchlist", add: true, preserveExistingStatus: true },
+        { imdbId: "tt1375666", type: "movie" },
+      );
+    const addition = add();
+    try {
+      await vi.waitFor(() => expect(reads).toBe(2));
+      await addition;
+    } finally {
+      release.resolve();
+      await Promise.all([background, addition]);
+    }
+    expect(status).toBe("completed");
+    await add();
+    expect(status).toBe("completed");
+    expect(
+      apiCalls().filter((call) => call === "POST /sync/add-to-list"),
+    ).toEqual([]);
+  });
+
+  it("starts the HTTP timeout after waiting more than 15 seconds for a POST slot", async () => {
+    acceptWrites();
+    const limits = simklLimiters(await connection.getAccessToken());
+    const previous = limits.post;
+    limits.post = new RateLimiter(1, 16_000);
+    try {
+      await limits.post.acquire();
+      await actions.perform(
+        connection,
+        { kind: "watched", add: true },
+        { imdbId: "tt1375666", type: "movie" },
+        AbortSignal.timeout(60_000),
+      );
+      expect(lastPost().path).toBe("/sync/history");
+    } finally {
+      limits.post = previous;
+    }
+  });
+
   it("removes a planned title, but never a watched one", async () => {
     acceptWrites();
     await actions.getMembership(connection);
@@ -117,14 +288,18 @@ describe("simkl actions", () => {
       { imdbId: "tt0158552", type: "series" },
     );
     expect(apiCalls()).toEqual([
-      "GET /sync/activities",
+      "GET /sync/all-items/shows",
+      "GET /sync/all-items/movies",
+      "GET /sync/all-items/anime",
       "POST /sync/history/remove",
     ]);
   });
 
   it("refuses to remove a title when the library cannot be read", async () => {
     acceptWrites();
-    routes.set("GET /sync/activities", () => json({ error: "down" }, 503));
+    routes.set("GET /sync/all-items/movies", () =>
+      json({ error: "down" }, 503),
+    );
 
     await expect(
       actions.perform(

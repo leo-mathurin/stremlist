@@ -7,7 +7,8 @@
     "test:toolkit": "e2e run",
     "test:toolkit:record": "e2e run --tag agent",
     "test:toolkit:replay": "bun toolkit-cache.ts replay",
-    "test:toolkit:check": "bun toolkit-cache.ts check"
+    "test:toolkit:check": "bun toolkit-cache.ts check",
+    "stress:activity": "bun --no-env-file watch-activity-stress.ts"
   },
   "devDependencies": {
     "@ai-sdk/openai": "^4.0.117",
@@ -21,6 +22,7 @@
     "@types/node": "^24.19.2",
     "ai": "^7.0.172",
     "e2e": "0.17.0",
-    "msw": "^2.15.0"
+    "msw": "^2.15.0",
+    "zod": "^4.6.7"
   }
 }

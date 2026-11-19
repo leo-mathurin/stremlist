@@ -41,6 +41,8 @@ import CatalogPreview from "./CatalogPreview";
 import { ListSyncLine, ListSyncNotice } from "./ListSyncStatus";
 import { ProviderMark } from "./brand";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -55,16 +57,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-
-const FIELD_FOCUS = "focus-visible:ring-brand/50 focus-visible:border-brand";
-const SELECT_FOCUS = "focus:ring-brand/50 focus:border-brand";
-
-function revealClass(open: boolean) {
-  return cn(
-    "grid transition-[grid-template-rows] ease-out-quint motion-reduce:transition-none",
-    open ? "grid-rows-[1fr] duration-250" : "grid-rows-[0fr] duration-200",
-  );
-}
 
 /** One List of the configure page: summary row, then its settings. */
 export default function SortableListRow({
@@ -156,8 +148,8 @@ export default function SortableListRow({
         "scroll-mt-5 rounded-3xl bg-white ring-1 ring-black/5 transition-shadow",
         entering &&
           "animate-in duration-200 ease-out-quint fade-in motion-safe:slide-in-from-top-2",
-        attentionTone(sync) === "warn" && "ring-amber-300",
-        attentionTone(sync) === "bad" && "ring-red-200",
+        attentionTone(sync) === "warn" && "ring-warning-300",
+        attentionTone(sync) === "bad" && "ring-danger-200",
         isDragSource && "opacity-60 shadow-lg ring-2 ring-brand/50",
       )}
     >
@@ -183,7 +175,7 @@ export default function SortableListRow({
                   className={cn("ring-2 ring-white", position > 0 && "-ml-3")}
                 />
               ))}
-              <span className="absolute -right-1.5 -bottom-1 min-w-4.5 rounded-full bg-ink px-1 text-center text-[10px] leading-4.5 font-bold text-cloud tabular-nums ring-2 ring-white">
+              <span className="absolute -right-1.5 -bottom-1 min-w-4.5 rounded-full bg-ink px-1 text-center text-3xs leading-4.5 font-bold text-cloud tabular-nums ring-2 ring-white">
                 {sources.length}
               </span>
             </span>
@@ -234,10 +226,8 @@ export default function SortableListRow({
             <SelectTrigger
               id={sortId}
               size="sm"
-              className={cn(
-                "min-w-0 flex-1 rounded-full border-0 bg-black/5 shadow-none sm:w-56 sm:flex-none",
-                SELECT_FOCUS,
-              )}
+              variant="soft"
+              className="min-w-0 flex-1 sm:w-56 sm:flex-none"
             >
               <SelectValue />
             </SelectTrigger>
@@ -268,33 +258,30 @@ export default function SortableListRow({
           ).map(([expanded, setExpanded, controls, tooltip, action, Icon]) => (
             <Tooltip key={tooltip} delayDuration={400}>
               <TooltipTrigger asChild>
-                <button
+                <Button
                   type="button"
+                  variant="disclosure"
+                  size="icon-round"
                   aria-expanded={expanded}
                   aria-controls={controls}
                   aria-label={`${action} ${title}`}
                   onClick={() => setExpanded((current) => !current)}
-                  className={cn(
-                    "flex size-8 shrink-0 items-center justify-center rounded-full transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.96]",
-                    expanded
-                      ? "bg-ink text-cloud"
-                      : "bg-black/5 hover:bg-black/10",
-                  )}
                 >
                   <Icon className="size-3.5" />
-                </button>
+                </Button>
               </TooltipTrigger>
               <TooltipContent sideOffset={6}>{tooltip}</TooltipContent>
             </Tooltip>
           ))}
-          <button
+          <Button
             type="button"
+            variant="ghost-danger"
+            size="icon-round"
             aria-label={`Remove ${title}`}
             onClick={() => onRemove(list.localId)}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full text-black/35 transition-colors hover:bg-red-50 hover:text-red-600"
           >
             <X className="size-4" />
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -315,15 +302,16 @@ export default function SortableListRow({
         </>
       )}
 
-      <div id={panelId} inert={!open} className={revealClass(open)}>
-        <div className="-mx-1 min-h-0 overflow-hidden px-1">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleContent id={panelId}>
           <div className="border-t border-black/5 px-4 pt-4 pb-4 sm:px-5">
             <div className="grid gap-3 sm:grid-cols-2">
               {isChart && (
                 <div className="sm:col-span-2">
                   <Label
                     htmlFor={chartId}
-                    className="mb-1 block text-xs font-semibold text-black/60"
+                    variant="caption"
+                    className="mb-1 block"
                   >
                     Built-in chart
                   </Label>
@@ -341,10 +329,7 @@ export default function SortableListRow({
                       }
                     }}
                   >
-                    <SelectTrigger
-                      id={chartId}
-                      className={cn("w-full bg-white", SELECT_FOCUS)}
-                    >
+                    <SelectTrigger id={chartId} className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -364,7 +349,8 @@ export default function SortableListRow({
               <div className={cn(isChart && "sm:col-span-2")}>
                 <Label
                   htmlFor={titleId}
-                  className="mb-1 block text-xs font-semibold text-black/60"
+                  variant="caption"
+                  className="mb-1 block"
                 >
                   Catalog title
                 </Label>
@@ -376,7 +362,6 @@ export default function SortableListRow({
                     onFieldChange(list.localId, "catalogTitle", e.target.value)
                   }
                   placeholder={source.suggestedTitle}
-                  className={cn("bg-white", FIELD_FOCUS)}
                 />
               </div>
 
@@ -384,7 +369,8 @@ export default function SortableListRow({
                 <div>
                   <Label
                     htmlFor={showId}
-                    className="mb-1 block text-xs font-semibold text-black/60"
+                    variant="caption"
+                    className="mb-1 block"
                   >
                     Show
                   </Label>
@@ -398,10 +384,7 @@ export default function SortableListRow({
                         onFieldChange(list.localId, "displayMode", mode);
                     }}
                   >
-                    <SelectTrigger
-                      id={showId}
-                      className={cn("w-full bg-white", SELECT_FOCUS)}
-                    >
+                    <SelectTrigger id={showId} className="w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -456,7 +439,7 @@ export default function SortableListRow({
                           }
                         : undefined
                     }
-                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-black/5 px-4 text-sm font-semibold transition-[background-color,scale] duration-150 ease-out outline-none enabled:hover:bg-black/10 enabled:active:scale-[0.97] focus-visible:ring-[3px] focus-visible:ring-brand/50 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:active:scale-100"
+                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-black/5 px-4 text-sm font-semibold transition-[background-color,scale] duration-150 ease-out outline-none enabled:hover:bg-black/10 enabled:active:scale-[0.97] focus-visible:ring-3 focus-visible:ring-brand/50 disabled:cursor-not-allowed disabled:opacity-40 motion-reduce:active:scale-100"
                   >
                     <Icon className="size-4" />
                     {label}
@@ -481,15 +464,11 @@ export default function SortableListRow({
               }
             />
           </div>
-        </div>
-      </div>
+        </CollapsibleContent>
+      </Collapsible>
 
-      <div
-        id={previewId}
-        inert={!previewOpen}
-        className={revealClass(previewOpen)}
-      >
-        <div className="min-h-0 overflow-hidden">
+      <Collapsible open={previewOpen} onOpenChange={setPreviewOpen}>
+        <CollapsibleContent id={previewId}>
           <CatalogPreview
             list={list}
             accountKey={accountKey}
@@ -497,8 +476,8 @@ export default function SortableListRow({
             posterSource={posterSource}
             open={previewOpen}
           />
-        </div>
-      </div>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   );
 }

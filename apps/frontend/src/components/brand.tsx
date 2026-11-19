@@ -51,8 +51,8 @@ export function ProviderMark({
   return (
     <span
       aria-hidden="true"
-      style={{ backgroundColor: logo.background }}
       className={cn(
+        logo.backdrop,
         "inline-flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full ring-offset-2 transition-shadow",
         active ? "ring-2 ring-brand" : "ring-0",
         tone === "dark" ? "ring-offset-ink" : "ring-offset-white",
@@ -67,7 +67,7 @@ export function ProviderMark({
         loading="lazy"
         className={cn(
           "size-full",
-          logo.background ? "object-contain p-[18%]" : "object-cover",
+          logo.backdrop ? "logo-inset object-contain" : "object-cover",
         )}
       />
     </span>

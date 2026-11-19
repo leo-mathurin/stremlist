@@ -13,8 +13,10 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
+  /* The brand yellow is the primary action and focus color. */
+  --primary: var(--color-brand);
+  --primary-hover: var(--color-brand-dark);
+  --primary-foreground: var(--color-black);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
@@ -24,7 +26,7 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --ring: var(--color-brand);
 }
 
 @theme inline {
@@ -35,6 +37,7 @@
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -72,6 +75,108 @@
   --ease-out-quint: cubic-bezier(0.23, 1, 0.32, 1);
   /* Strong ease-in-out for elements that morph in place on screen. */
   --ease-in-out-quart: cubic-bezier(0.77, 0, 0.175, 1);
+
+  /* Status colors: notices that need attention, errors and destructive
+     actions, and success. The values are Tailwind's amber, red and emerald
+     scales, so each step matches the palette color it replaces. */
+  --color-warning-50: oklch(98.7% 0.022 95.277);
+  --color-warning-100: oklch(96.2% 0.059 95.617);
+  --color-warning-200: oklch(92.4% 0.12 95.746);
+  --color-warning-300: oklch(87.9% 0.169 91.605);
+  --color-warning-400: oklch(82.8% 0.189 84.429);
+  --color-warning-500: oklch(76.9% 0.188 70.08);
+  --color-warning-600: oklch(66.6% 0.179 58.318);
+  --color-warning-700: oklch(55.5% 0.163 48.998);
+  --color-warning-800: oklch(47.3% 0.137 46.201);
+  --color-warning-900: oklch(41.4% 0.112 45.904);
+  --color-warning-950: oklch(27.9% 0.077 45.635);
+  --color-danger-50: oklch(97.1% 0.013 17.38);
+  --color-danger-100: oklch(93.6% 0.032 17.717);
+  --color-danger-200: oklch(88.5% 0.062 18.334);
+  --color-danger-300: oklch(80.8% 0.114 19.571);
+  --color-danger-400: oklch(70.4% 0.191 22.216);
+  --color-danger-500: oklch(63.7% 0.237 25.331);
+  --color-danger-600: oklch(57.7% 0.245 27.325);
+  --color-danger-700: oklch(50.5% 0.213 27.518);
+  --color-danger-800: oklch(44.4% 0.177 26.899);
+  --color-danger-900: oklch(39.6% 0.141 25.723);
+  --color-success-50: oklch(97.9% 0.021 166.113);
+  --color-success-200: oklch(90.5% 0.093 164.15);
+  --color-success-500: oklch(69.6% 0.17 162.48);
+  --color-success-600: oklch(59.6% 0.145 163.225);
+  --color-success-700: oklch(50.8% 0.118 165.612);
+  --color-success-800: oklch(43.2% 0.095 166.913);
+  --color-success-900: oklch(37.8% 0.077 168.94);
+
+  /* Small print below the Tailwind scale, and body text between sm and
+     base. Without a line height of their own they keep the inherited one. */
+  --text-3xs: 0.625rem;
+  --text-2xs: 0.6875rem;
+  --text-md: 0.9375rem;
+  /* The Home headline grows with the viewport. */
+  --text-hero: clamp(2.25rem, 9.5vw, 3.75rem);
+  --text-hero--line-height: 1.1;
+  --text-hero-wide: clamp(2rem, 4.4vw - 0.75rem, 4rem);
+  --text-hero-wide--line-height: 1.1;
+  --text-wordmark: 2.5rem;
+
+  /* The Home entry card, and the device frame of the Stremio preview. */
+  --radius-panel: 1.75rem;
+  --radius-device: 1.375rem;
+
+  /* The digits of the Home user counter scale with its font size. */
+  --spacing-counter: 0.08em;
+  --spacing-counter-comma: 0.12em;
+  --radius-counter: 0.16em;
+
+  /* A soft blur for content behind the install overlay. */
+  --blur-3xs: 1px;
+  --blur-2xs: 2px;
+
+  --shadow-device: 0 24px 60px -24px rgb(20 16 48 / 0.55);
+
+  /* Fills the transparent JustWatch mark (PROVIDER_LOGOS). */
+  --color-justwatch: #0a151f;
+}
+
+/* The dotted backdrop of the Home providers panel. */
+@utility bg-dot-grid {
+  background-image: radial-gradient(
+    circle,
+    var(--color-foreground) 1px,
+    transparent 1px
+  );
+  background-size: 32px 32px;
+}
+
+/* The night sky behind the Stremio preview on Home. */
+@utility bg-stremio-night {
+  background-image: radial-gradient(
+    120% 80% at 70% 0%,
+    #24214a 0%,
+    #16152a 55%,
+    #13121f 100%
+  );
+}
+
+/* The floating Save pill: its clip morphs in place, its color and press
+   answer at once. Reduced motion keeps only the color and the fade. */
+@utility transition-save-pill {
+  transition:
+    clip-path 250ms var(--ease-in-out-quart),
+    background-color 150ms ease-out,
+    opacity 150ms ease-out,
+    scale 150ms ease-out;
+  @media (prefers-reduced-motion: reduce) {
+    transition:
+      background-color 150ms ease-out,
+      opacity 150ms ease-out;
+  }
+}
+
+/* A transparent Provider mark keeps this margin inside its filled circle. */
+@utility logo-inset {
+  padding: 18%;
 }
 
 /* Registered so the edge fade of a scrollable field can transition its

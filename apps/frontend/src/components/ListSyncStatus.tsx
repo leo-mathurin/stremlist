@@ -10,13 +10,14 @@ import { attentionTone, syncLineTone } from "@/lib/list-sync";
 import type { ListSyncState } from "@/lib/list-sync";
 import { queueLabel } from "@/lib/provider-queue";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import RelativeTime from "./RelativeTime";
 
 const DOT: Record<ReturnType<typeof syncLineTone>, string> = {
-  ok: "bg-emerald-500",
+  ok: "bg-success-500",
   idle: "bg-black/25",
-  warn: "bg-amber-500",
-  bad: "bg-red-500",
+  warn: "bg-warning-500",
+  bad: "bg-danger-500",
 };
 
 function titles(count: number | null) {
@@ -207,24 +208,24 @@ export function ListSyncNotice({
         "mx-3 mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl px-4 py-2.5 text-sm ring-1 sm:mx-4 sm:mb-4",
         "transition-[opacity,translate] duration-200 ease-out-quint starting:-translate-y-1 starting:opacity-0 motion-reduce:starting:translate-y-0",
         severe
-          ? "bg-red-50 text-red-900 ring-red-200"
-          : "bg-amber-50 text-amber-900 ring-amber-200",
+          ? "bg-danger-50 text-danger-900 ring-danger-200"
+          : "bg-warning-50 text-warning-900 ring-warning-200",
       )}
     >
       <p className="min-w-0 flex-1 text-pretty tabular-nums">{body}</p>
       {sync.kind === "connection" && onConnect && (
-        <button
+        <Button
           type="button"
+          size="pill-sm"
           onClick={onConnect}
           aria-label={
             sync.renew
               ? `Connect again for ${title}`
               : `Connect ${label} for ${title}`
           }
-          className="inline-flex h-8 shrink-0 items-center rounded-full bg-brand px-3 text-xs font-bold text-black transition-[background-color,scale] duration-150 hover:bg-brand-dark active:scale-[0.96]"
         >
           {sync.renew ? "Connect again" : `Connect ${label}`}
-        </button>
+        </Button>
       )}
     </div>
   );

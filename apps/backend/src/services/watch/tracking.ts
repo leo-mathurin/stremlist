@@ -2,7 +2,7 @@ import type { ProviderId } from "@stremlist/shared/providers";
 import type {
   WatchDestinationError as DestinationErrorCode,
   WatchedTitleRef,
-  WatchProviderId,
+  WatchTrackingStatus,
 } from "@stremlist/shared/watch-tracking";
 import {
   isWatchProvider,
@@ -72,7 +72,7 @@ export async function getWatchTracking(accountId: string) {
         .maybeSingle(),
       supabase
         .from("watch_tracking")
-        .select("stremio_trakt")
+        .select("stremio_trakt, consented_at")
         .eq("account_id", accountId)
         .maybeSingle(),
       supabase
@@ -93,6 +93,7 @@ export async function getWatchTracking(accountId: string) {
   );
   const connected = new Set(connections.map(({ provider }) => provider));
   return {
+    consented: tracking.data?.consented_at != null,
     stremioLinked: link.data !== null,
     stremioTrakt,
     destinations: WATCH_PROVIDERS.filter(
@@ -101,8 +102,10 @@ export async function getWatchTracking(accountId: string) {
       const row = rows.get(provider);
       return {
         provider,
-        enabled: row !== undefined,
-        paused: row !== undefined && provider === "trakt" && stremioTrakt,
+        enabled: row?.watched_enabled ?? false,
+        watchlistEnabled: row?.watchlist_enabled ?? false,
+        lastKind: row?.last_kind === "watchlist" ? "watchlist" : "watched",
+        paused: !!row?.watched_enabled && provider === "trakt" && stremioTrakt,
         lastTitle: lastTitleSchema.parse(row?.last_title ?? null),
         lastSuccessAt: row?.last_success_at ?? null,
         lastError: lastErrorSchema.parse(row?.last_error ?? null),
@@ -111,7 +114,7 @@ export async function getWatchTracking(accountId: string) {
           .length,
       };
     }),
-  };
+  } satisfies WatchTrackingStatus;
 }
 
 async function stremioKey(accountId: string) {
@@ -134,77 +137,110 @@ async function stopTracking(accountId: string) {
   await deleteState(accountId);
 }
 
-/**
- * Makes `providers` the Account's Destinations. The first one reads the
- * Watched baseline: a failure there turns Watch tracking off again and
- * throws, so the member can try again.
- */
+/** First-time activity sharing needs an affirmative permission. */
+export class WatchConsentError extends Error {}
+
+/** Apply both choices after the initial watched baseline is ready. */
 export async function setWatchDestinations(
   accountId: string,
   providers: ProviderId[],
+  activity: { watchlist?: ProviderId[]; consent?: boolean } = {},
 ) {
-  forgetWatchContext(accountId);
-  const wanted = [...new Set(providers)];
-  if (wanted.length === 0) {
-    await stopTracking(accountId);
-    return;
-  }
-  const connected = new Set(
-    (await listConnections(accountId)).map(({ provider }) => provider),
-  );
-  const destinations: WatchProviderId[] = [];
+  const current = await getWatchTracking(accountId);
+  const watched = [...new Set(providers)];
+  const watchlist = [
+    ...new Set(
+      activity.watchlist ??
+        current.destinations
+          .filter((d) => d.watchlistEnabled)
+          .map((d) => d.provider),
+    ),
+  ];
+  const wanted = [...new Set([...watched, ...watchlist])];
+  const adding =
+    watched.some(
+      (p) => !current.destinations.some((d) => d.provider === p && d.enabled),
+    ) ||
+    watchlist.some(
+      (p) =>
+        !current.destinations.some(
+          (d) => d.provider === p && d.watchlistEnabled,
+        ),
+    );
+  if (adding && !current.consented && !activity.consent)
+    throw new WatchConsentError("consent-required");
   for (const provider of wanted) {
     if (
       !isWatchProvider(provider) ||
-      !connected.has(provider) ||
-      !isProviderEnabled(provider)
-    ) {
+      !current.destinations.some((d) => d.provider === provider)
+    )
       throw new WatchDestinationError(provider);
+  }
+  try {
+    if (wanted.length === 0) {
+      await stopTracking(accountId);
+      return;
     }
-    destinations.push(provider);
-  }
-  const authKey = await stremioKey(accountId);
-
-  const started = !(await isTrackedNow(accountId));
-  if (started) {
-    const { error } = await supabase.from("watch_tracking").upsert(
-      {
-        account_id: accountId,
-        sweep_slot: randomInt(360),
-        baseline_at: null,
-      },
-      { onConflict: "account_id", ignoreDuplicates: true },
-    );
-    if (error) throw error;
-  }
-  const { error: addError } = await supabase.from("watch_destinations").upsert(
-    destinations.map((provider) => ({ account_id: accountId, provider })),
-    { onConflict: "account_id,provider", ignoreDuplicates: true },
-  );
-  if (addError) throw addError;
-  const { error: removeError } = await supabase
-    .from("watch_destinations")
-    .delete()
-    .eq("account_id", accountId)
-    .not("provider", "in", `(${destinations.join(",")})`);
-  if (removeError) throw removeError;
-
-  if (!started && destinations.includes("trakt")) {
-    const { error } = await supabase
+    const authKey = await stremioKey(accountId);
+    const { error: startError } = await supabase
       .from("watch_tracking")
-      .update({ stremio_trakt: await readStremioTrakt(decryptSecret(authKey)) })
-      .eq("account_id", accountId);
-    if (error) throw error;
-  }
-  if (started) {
-    try {
+      .upsert(
+        { account_id: accountId, sweep_slot: randomInt(360) },
+        { onConflict: "account_id", ignoreDuplicates: true },
+      );
+    if (startError) throw startError;
+    const { data: tracking, error: trackingError } = await supabase
+      .from("watch_tracking")
+      .select("baseline_at")
+      .eq("account_id", accountId)
+      .single();
+    if (trackingError) throw trackingError;
+    if (
+      !tracking.baseline_at ||
+      (watched.length > 0 && !current.destinations.some((d) => d.enabled))
+    ) {
       await takeBaseline(accountId, authKey);
-    } catch (error) {
-      await stopTracking(accountId).catch((stopError: unknown) => {
-        console.error("Failed to undo Watch tracking:", stopError);
-      });
-      throw error;
+      const { data: baseline, error: baselineError } = await supabase
+        .from("watch_tracking")
+        .select("baseline_at")
+        .eq("account_id", accountId)
+        .maybeSingle();
+      if (baselineError) throw baselineError;
+
+      if (
+        !baseline?.baseline_at ||
+        baseline.baseline_at === tracking.baseline_at
+      )
+        throw new Error("Stremio library changed during setup. Try again.");
     }
+    if (watched.includes("trakt")) {
+      const { error } = await supabase
+        .from("watch_tracking")
+        .update({
+          stremio_trakt: await readStremioTrakt(decryptSecret(authKey)),
+        })
+        .eq("account_id", accountId);
+      if (error) throw error;
+    }
+    const { error } = await supabase.rpc("configure_watch_activity", {
+      p_account_id: accountId,
+      p_watched: watched,
+      p_watchlist: watchlist,
+      p_consent: activity.consent === true,
+    });
+    if (error?.message.includes("consent-required"))
+      throw new WatchConsentError("consent-required");
+    if (error) throw error;
+  } catch (error) {
+    const { error: cleanupError } = await supabase.rpc(
+      "discard_empty_watch_activity",
+      { p_account_id: accountId },
+    );
+    if (cleanupError)
+      console.error("Failed to discard empty activity setup:", cleanupError);
+    throw error;
+  } finally {
+    forgetWatchContext(accountId);
   }
 }
 

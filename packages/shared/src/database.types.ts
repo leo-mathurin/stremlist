@@ -545,6 +545,39 @@ export type Database = {
         };
         Relationships: [];
       };
+      simkl_title_writes: {
+        Row: {
+          account_id: string;
+          imdb_id: string;
+          lease_token: string;
+          locked_until: string;
+          provider: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          account_id: string;
+          imdb_id: string;
+          lease_token: string;
+          locked_until: string;
+          provider?: string;
+        };
+        Update: {
+          account_id?: string;
+          imdb_id?: string;
+          lease_token?: string;
+          locked_until?: string;
+          provider?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "simkl_title_writes_account_id_provider_fkey";
+            columns: ["account_id", "provider"];
+            isOneToOne: false;
+            referencedRelation: "connections";
+            referencedColumns: ["account_id", "provider"];
+          },
+        ];
+      };
       stremio_connections: {
         Row: {
           account_id: string;
@@ -640,9 +673,12 @@ export type Database = {
           enabled_at: string;
           last_error: string | null;
           last_error_at: string | null;
+          last_kind: string;
           last_success_at: string | null;
           last_title: Json | null;
           provider: string;
+          watched_enabled: boolean;
+          watchlist_enabled: boolean;
         };
         ComputedFields: never;
         Insert: {
@@ -650,18 +686,24 @@ export type Database = {
           enabled_at?: string;
           last_error?: string | null;
           last_error_at?: string | null;
+          last_kind?: string;
           last_success_at?: string | null;
           last_title?: Json | null;
           provider: string;
+          watched_enabled?: boolean;
+          watchlist_enabled?: boolean;
         };
         Update: {
           account_id?: string;
           enabled_at?: string;
           last_error?: string | null;
           last_error_at?: string | null;
+          last_kind?: string;
           last_success_at?: string | null;
           last_title?: Json | null;
           provider?: string;
+          watched_enabled?: boolean;
+          watchlist_enabled?: boolean;
         };
         Relationships: [
           {
@@ -676,6 +718,33 @@ export type Database = {
             columns: ["account_id", "provider"];
             isOneToOne: true;
             referencedRelation: "connections";
+            referencedColumns: ["account_id", "provider"];
+          },
+        ];
+      };
+      watch_library_receipts: {
+        Row: {
+          account_id: string;
+          imdb_id: string;
+          provider: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          account_id: string;
+          imdb_id: string;
+          provider: string;
+        };
+        Update: {
+          account_id?: string;
+          imdb_id?: string;
+          provider?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "watch_library_receipts_account_id_provider_fkey";
+            columns: ["account_id", "provider"];
+            isOneToOne: false;
+            referencedRelation: "watch_destinations";
             referencedColumns: ["account_id", "provider"];
           },
         ];
@@ -788,6 +857,7 @@ export type Database = {
         Row: {
           account_id: string;
           baseline_at: string | null;
+          consented_at: string | null;
           created_at: string;
           stremio_trakt: boolean;
           sweep_slot: number;
@@ -796,6 +866,7 @@ export type Database = {
         Insert: {
           account_id: string;
           baseline_at?: string | null;
+          consented_at?: string | null;
           created_at?: string;
           stremio_trakt?: boolean;
           sweep_slot: number;
@@ -803,6 +874,7 @@ export type Database = {
         Update: {
           account_id?: string;
           baseline_at?: string | null;
+          consented_at?: string | null;
           created_at?: string;
           stremio_trakt?: boolean;
           sweep_slot?: number;
@@ -828,6 +900,7 @@ export type Database = {
           id: number;
           imdb_id: string;
           item_type: string;
+          kind: string;
           last_error: string | null;
           lease_token: string | null;
           locked_until: string;
@@ -847,6 +920,7 @@ export type Database = {
           id?: never;
           imdb_id: string;
           item_type: string;
+          kind?: string;
           last_error?: string | null;
           lease_token?: string | null;
           locked_until?: string;
@@ -865,6 +939,7 @@ export type Database = {
           id?: never;
           imdb_id?: string;
           item_type?: string;
+          kind?: string;
           last_error?: string | null;
           lease_token?: string | null;
           locked_until?: string;
@@ -943,6 +1018,14 @@ export type Database = {
         Args: { p_interval_seconds: number; p_name: string };
         Returns: boolean;
       };
+      claim_simkl_write: {
+        Args: {
+          p_account_id: string;
+          p_imdb_id: string;
+          p_lease_token: string;
+        };
+        Returns: boolean;
+      };
       claim_stremio_update: {
         Args: {
           p_account_id: string;
@@ -1004,6 +1087,7 @@ export type Database = {
           id: number;
           imdb_id: string;
           item_type: string;
+          kind: string;
           last_error: string | null;
           lease_token: string | null;
           locked_until: string;
@@ -1018,6 +1102,15 @@ export type Database = {
           isOneToOne: false;
           isSetofReturn: true;
         };
+      };
+      configure_watch_activity: {
+        Args: {
+          p_account_id: string;
+          p_consent: boolean;
+          p_watched: string[];
+          p_watchlist: string[];
+        };
+        Returns: undefined;
       };
       create_account_with_config: {
         Args: {
@@ -1038,6 +1131,10 @@ export type Database = {
           p_provider: string;
           p_source_refs: string[];
         };
+        Returns: undefined;
+      };
+      discard_empty_watch_activity: {
+        Args: { p_account_id: string };
         Returns: undefined;
       };
       finish_list_prewarm: {
@@ -1164,6 +1261,10 @@ export type Database = {
         };
         Returns: Json;
       };
+      queue_library_addition: {
+        Args: { p_account_id: string; p_imdb_id: string; p_type: string };
+        Returns: number;
+      };
       queue_watch_writes: { Args: { p_rows: Json }; Returns: number };
       record_list_refresh: {
         Args: {
@@ -1203,6 +1304,14 @@ export type Database = {
           p_provider: string;
         };
         Returns: boolean;
+      };
+      release_simkl_write: {
+        Args: {
+          p_account_id: string;
+          p_imdb_id: string;
+          p_lease_token: string;
+        };
+        Returns: undefined;
       };
       release_stremio_update: {
         Args: { p_account_id: string; p_lease_token: string };
@@ -1278,6 +1387,15 @@ export type Database = {
       watch_read_soon: {
         Args: { p_account_id: string; p_item_id: string };
         Returns: boolean;
+      };
+      watch_recover_cycle: {
+        Args: {
+          p_account_id: string;
+          p_item_id: string;
+          p_type: string;
+          p_video_id: string;
+        };
+        Returns: undefined;
       };
       watch_restart: {
         Args: {

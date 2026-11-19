@@ -158,7 +158,8 @@ jobs:
             letterboxd_queue \
             letterboxd_request_log \
             provider_outages \
-            watch_tracking
+            watch_tracking \
+            stremio_activity
           do
             echo "::group::$test"
             docker exec -i supabase_db_stremlist psql -U postgres -v ON_ERROR_STOP=1 < "supabase/tests/$test.sql"
@@ -168,6 +169,9 @@ jobs:
       - wait: install
 
       # Same command as the local workflow, so CI and developers cannot diverge.
+      - name: Test activity concurrency
+        run: python3 supabase/tests/stremio_activity_concurrency.py
+
       - name: Check generated Supabase types
         run: |
           bun run generate:types

@@ -1,3 +1,7 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { useId, useState } from "react";
 import {
   Check,
@@ -25,16 +29,7 @@ import { cn } from "@/lib/utils";
  * Reduced motion keeps the fade only.
  */
 export const ENTER =
-  "transition-[opacity,translate] duration-200 ease-[var(--ease-out-quint)] starting:translate-y-1.5 starting:opacity-0 motion-reduce:starting:translate-y-0";
-
-const DARK_BUTTON =
-  "inline-flex h-10 items-center gap-2 rounded-full bg-ink px-5 text-sm font-bold text-cloud transition-[background-color,scale] duration-150 ease-out hover:bg-black active:scale-[0.97] motion-reduce:active:scale-100";
-
-const LIGHT_BUTTON =
-  "inline-flex h-10 items-center rounded-full bg-black/5 px-4 text-sm font-semibold text-ink transition-[background-color,scale] duration-150 ease-out hover:bg-black/10 active:scale-[0.97] motion-reduce:active:scale-100";
-
-const TEXT_BUTTON =
-  "text-sm font-semibold text-amber-900 underline-offset-2 hover:underline";
+  "transition-[opacity,translate] duration-200 ease-out-quint starting:translate-y-1.5 starting:opacity-0 motion-reduce:starting:translate-y-0";
 
 function maskEmail(email: string) {
   const [name, domain] = email.split("@");
@@ -109,7 +104,7 @@ export function StremioUpdateNotice({
     return (
       <p
         className={cn(
-          "flex gap-2.5 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-pretty text-amber-900 ring-1 ring-amber-200",
+          "flex gap-2.5 rounded-2xl bg-warning-50 px-4 py-3 text-sm text-pretty text-warning-900 ring-1 ring-warning-200",
           ENTER,
         )}
       >
@@ -148,7 +143,7 @@ export function StremioStatus({ stremio }: { stremio: StremioSync }) {
         <p
           key="updating"
           className={cn(
-            "flex items-center gap-1.5 font-semibold text-amber-700",
+            "flex items-center gap-1.5 font-semibold text-warning-700",
             ENTER,
           )}
         >
@@ -158,26 +153,33 @@ export function StremioStatus({ stremio }: { stremio: StremioSync }) {
       ) : (
         <div key={sync.kind} className={ENTER}>
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-full px-2.5 py-1.5 outline-none transition-colors duration-150 hover:bg-black/5 hover:text-ink focus-visible:ring-[3px] focus-visible:ring-brand/50 data-[state=open]:bg-black/5 data-[state=open]:text-ink pointer-coarse:min-h-11">
-              {sync.kind === "updated" ? (
-                <>
-                  <Check
-                    className="size-3.5 shrink-0 text-emerald-600"
-                    strokeWidth={3}
-                  />
-                  <span className="font-semibold text-ink">
-                    Stremio updated
-                  </span>
-                </>
-              ) : (
-                <>
-                  <MonitorPlay className="size-3.5 shrink-0" />
-                  Updates Stremio on save
-                </>
-              )}
-              <ChevronDown className="size-3.5 shrink-0" />
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="quiet"
+                size="chip"
+                className="pointer-coarse:min-h-11"
+              >
+                {sync.kind === "updated" ? (
+                  <>
+                    <Check
+                      className="size-3.5 shrink-0 text-success-600"
+                      strokeWidth={3}
+                    />
+                    <span className="font-semibold text-ink">
+                      Stremio updated
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <MonitorPlay className="size-3.5 shrink-0" />
+                    Updates Stremio on save
+                  </>
+                )}
+                <ChevronDown className="size-3.5 shrink-0" />
+              </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64 p-1.5">
+            <DropdownMenuContent align="end" className="w-64">
               <div className="px-2 py-1.5 text-sm">
                 <p className="font-bold text-ink">Stremio updates on save</p>
                 <p className="text-pretty text-black/55">
@@ -199,8 +201,8 @@ export function StremioStatus({ stremio }: { stremio: StremioSync }) {
                 )}
               </div>
               <DropdownMenuItem
+                variant="strong"
                 onSelect={() => void stremio.disconnect()}
-                className="font-semibold"
               >
                 Disconnect
               </DropdownMenuItem>
@@ -221,7 +223,7 @@ function ManualSteps({
 }) {
   return (
     <div className="space-y-3">
-      <ol className="list-decimal space-y-0.5 pl-5 text-sm text-pretty text-amber-900">
+      <ol className="list-decimal space-y-0.5 pl-5 text-sm text-pretty text-warning-900">
         <li>
           Select <strong className="font-semibold">Reinstall</strong>, then
           choose <strong className="font-semibold">Uninstall</strong> in
@@ -233,20 +235,27 @@ function ManualSteps({
         </li>
       </ol>
       <div className="flex flex-wrap items-center gap-3">
-        <a {...reinstallLinkProps(accountKey)} className={DARK_BUTTON}>
-          <Download className="size-4" />
-          Reinstall
-        </a>
-        <button type="button" onClick={onReinstalled} className={TEXT_BUTTON}>
+        <Button variant="dark" size="pill-lg" asChild>
+          <a {...reinstallLinkProps(accountKey)}>
+            <Download className="size-4" />
+            Reinstall
+          </a>
+        </Button>
+        <Button
+          type="button"
+          variant="link-warning"
+          size="inline"
+          onClick={onReinstalled}
+        >
           I did it
-        </button>
+        </Button>
       </div>
     </div>
   );
 }
 
 const CHOICE_BUTTON =
-  "flex flex-col items-start gap-1 rounded-2xl p-4 text-left ring-1 ring-amber-200 transition-[box-shadow,scale] duration-150 ease-out hover:ring-amber-400 active:scale-[0.98] motion-reduce:active:scale-100";
+  "flex flex-col items-start gap-1 rounded-2xl p-4 text-left ring-1 ring-warning-200 transition-[box-shadow,scale] duration-150 ease-out hover:ring-warning-400 active:scale-[0.98] motion-reduce:active:scale-100";
 
 function ChoiceCard({
   accountKey,
@@ -267,15 +276,15 @@ function ChoiceCard({
       role="status"
       aria-labelledby={`${id}-title`}
       className={cn(
-        "space-y-4 rounded-3xl bg-amber-50 p-4 ring-1 ring-amber-200 sm:p-5",
+        "space-y-4 rounded-3xl bg-warning-50 p-4 ring-1 ring-warning-200 sm:p-5",
         ENTER,
       )}
     >
       <div>
-        <p id={`${id}-title`} className="font-bold text-amber-950">
+        <p id={`${id}-title`} className="font-bold text-warning-950">
           Update Stremio with your changes
         </p>
-        <p className="mt-0.5 text-sm text-pretty text-amber-900">
+        <p className="mt-0.5 text-sm text-pretty text-warning-900">
           Your catalogs or Actions changed. Stremio keeps showing the old ones
           until it gets the update.
         </p>
@@ -285,25 +294,26 @@ function ChoiceCard({
         <div className={cn("space-y-3", ENTER)}>
           <ManualSteps accountKey={accountKey} onReinstalled={onReinstalled} />
           {stremio.available && (
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-amber-200 pt-3 text-sm text-amber-900">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-warning-200 pt-3 text-sm text-warning-900">
+              <Label htmlFor={`${id}-manual-preference`} variant="plain">
+                <Checkbox
+                  id={`${id}-manual-preference`}
                   checked={stremio.manualPreferred}
-                  onChange={(event) =>
-                    stremio.setManualPreferred(event.target.checked)
+                  onCheckedChange={(checked) =>
+                    stremio.setManualPreferred(checked === true)
                   }
-                  className="size-4 accent-amber-700"
+                  variant="warning"
                 />
                 Always reinstall myself
-              </label>
-              <button
+              </Label>
+              <Button
                 type="button"
+                variant="link-warning"
+                size="inline"
                 onClick={() => void stremio.connect()}
-                className={TEXT_BUTTON}
               >
                 Update it for me instead
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -317,11 +327,11 @@ function ChoiceCard({
             className={CHOICE_BUTTON}
           >
             <span className="flex flex-wrap items-center gap-2 font-bold text-ink">
-              <Zap className="size-4 text-amber-600" aria-hidden="true" />
+              <Zap className="size-4 text-warning-600" aria-hidden="true" />
               <span id={`${id}-auto`}>Update it for me</span>
               <span
                 id={`${id}-badge`}
-                className="rounded-full bg-brand px-2 py-0.5 text-[11px] font-bold text-black"
+                className="rounded-full bg-brand px-2 py-0.5 text-2xs font-bold text-black"
               >
                 Recommended
               </span>
@@ -342,7 +352,10 @@ function ChoiceCard({
             className={CHOICE_BUTTON}
           >
             <span className="flex items-center gap-2 font-bold text-ink">
-              <RefreshCw className="size-4 text-amber-700" aria-hidden="true" />
+              <RefreshCw
+                className="size-4 text-warning-700"
+                aria-hidden="true"
+              />
               <span id={`${id}-manual`}>I'll reinstall myself</span>
             </span>
             <span
@@ -372,15 +385,15 @@ function OutdatedCard({
     <section
       role="status"
       className={cn(
-        "space-y-3 rounded-3xl bg-amber-50 p-4 ring-1 ring-amber-200 sm:p-5",
+        "space-y-3 rounded-3xl bg-warning-50 p-4 ring-1 ring-warning-200 sm:p-5",
         ENTER,
       )}
     >
       <div>
-        <p className="font-bold text-amber-950">
+        <p className="font-bold text-warning-950">
           Stremio still shows your old catalogs
         </p>
-        <p className="mt-0.5 text-sm text-pretty text-amber-900">
+        <p className="mt-0.5 text-sm text-pretty text-warning-900">
           Your last save is not in Stremio yet.
         </p>
       </div>
@@ -388,20 +401,22 @@ function OutdatedCard({
         <ManualSteps accountKey={accountKey} onReinstalled={onReinstalled} />
       ) : (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <button
+          <Button
             type="button"
+            variant="dark"
+            size="pill-lg"
             onClick={() => void stremio.retry()}
-            className={DARK_BUTTON}
           >
             Update Stremio now
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="link-warning"
+            size="inline"
             onClick={() => setManualOpen(true)}
-            className={TEXT_BUTTON}
           >
             Reinstall myself
-          </button>
+          </Button>
         </div>
       )}
     </section>
@@ -428,28 +443,31 @@ function LinkCard({ stremio }: { stremio: StremioSync }) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button
+          <Button
             type="button"
+            variant="dark"
+            size="pill-lg"
             onClick={() => void stremio.connect()}
-            className={DARK_BUTTON}
           >
             Get a code
-          </button>
-          <a
-            href="https://www.stremio.com/acc-settings"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={LIGHT_BUTTON}
-          >
-            Open stremio.com
-          </a>
-          <button
+          </Button>
+          <Button variant="soft" size="pill-lg" asChild>
+            <a
+              href="https://www.stremio.com/acc-settings"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open stremio.com
+            </a>
+          </Button>
+          <Button
             type="button"
+            variant="soft"
+            size="pill-lg"
             onClick={stremio.cancelLink}
-            className={LIGHT_BUTTON}
           >
             Cancel
-          </button>
+          </Button>
         </div>
       </section>
     );
@@ -457,73 +475,69 @@ function LinkCard({ stremio }: { stremio: StremioSync }) {
 
   if (link.kind === "failed") {
     return (
-      <section
-        role="alert"
-        className={cn(
-          "space-y-3 rounded-3xl bg-white p-4 ring-1 ring-black/10 sm:p-5",
-          ENTER,
-        )}
-      >
-        <div>
-          <p className="font-bold">Stremio did not give a code</p>
-          <p className="mt-0.5 text-sm text-pretty text-black/55">
-            Stremio did not answer. Nothing changed in your Stremio account. Try
-            again in a moment.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void stremio.connect()}
-            className={DARK_BUTTON}
-          >
-            Try again
-          </button>
-          <button
-            type="button"
-            onClick={stremio.cancelLink}
-            className={LIGHT_BUTTON}
-          >
-            Cancel
-          </button>
-        </div>
-      </section>
+      <div className={ENTER}>
+        <Alert size="card">
+          <div>
+            <AlertTitle>Stremio did not give a code</AlertTitle>
+            <AlertDescription className="mt-0.5">
+              Stremio did not answer. Nothing changed in your Stremio account.
+              Try again in a moment.
+            </AlertDescription>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="dark"
+              size="pill-lg"
+              onClick={() => void stremio.connect()}
+            >
+              Try again
+            </Button>
+            <Button
+              type="button"
+              variant="soft"
+              size="pill-lg"
+              onClick={stremio.cancelLink}
+            >
+              Cancel
+            </Button>
+          </div>
+        </Alert>
+      </div>
     );
   }
 
   if (link.kind === "expired") {
     return (
-      <section
-        role="alert"
-        className={cn(
-          "space-y-3 rounded-3xl bg-white p-4 ring-1 ring-black/10 sm:p-5",
-          ENTER,
-        )}
-      >
-        <div>
-          <p className="font-bold">The Stremio code expired</p>
-          <p className="mt-0.5 text-sm text-pretty text-black/55">
-            Nothing changed in your Stremio account. Get a new code to try
-            again.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void stremio.connect()}
-            className={DARK_BUTTON}
-          >
-            Get a new code
-          </button>
-          <button
-            type="button"
-            onClick={stremio.cancelLink}
-            className={LIGHT_BUTTON}
-          >
-            Cancel
-          </button>
-        </div>
-      </section>
+      <div className={ENTER}>
+        <Alert size="card">
+          <div>
+            <AlertTitle>The Stremio code expired</AlertTitle>
+            <AlertDescription className="mt-0.5">
+              Nothing changed in your Stremio account. Get a new code to try
+              again.
+            </AlertDescription>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="dark"
+              size="pill-lg"
+              onClick={() => void stremio.connect()}
+            >
+              Get a new code
+            </Button>
+            <Button
+              type="button"
+              variant="soft"
+              size="pill-lg"
+              onClick={stremio.cancelLink}
+            >
+              Cancel
+            </Button>
+          </div>
+        </Alert>
+      </div>
     );
   }
 
@@ -555,22 +569,24 @@ function LinkCard({ stremio }: { stremio: StremioSync }) {
       </div>
       <div className="flex gap-2">
         {link.link && (
-          <a
-            href={link.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={link.opened ? LIGHT_BUTTON : DARK_BUTTON}
+          <Button
+            variant={link.opened ? "soft" : "dark"}
+            size="pill-lg"
+            asChild
           >
-            {link.opened ? "Open Stremio again" : "Open Stremio"}
-          </a>
+            <a href={link.link} target="_blank" rel="noopener noreferrer">
+              {link.opened ? "Open Stremio again" : "Open Stremio"}
+            </a>
+          </Button>
         )}
-        <button
+        <Button
           type="button"
+          variant="soft"
+          size="pill-lg"
           onClick={stremio.cancelLink}
-          className={LIGHT_BUTTON}
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </section>
   );
@@ -613,42 +629,45 @@ function FailureCard({
         : { label: "Try again", run: () => void stremio.retry() };
 
   return (
-    <section
-      role="alert"
-      className={cn(
-        "space-y-3 rounded-3xl bg-amber-50 p-4 ring-1 ring-amber-200 sm:p-5",
-        ENTER,
-      )}
-    >
-      <div>
-        <p className="font-bold text-amber-950">{copy.title}</p>
-        <p className="mt-0.5 text-sm text-pretty text-amber-900">{copy.body}</p>
-      </div>
-      {manualOpen ? (
-        <ManualSteps accountKey={accountKey} onReinstalled={onReinstalled} />
-      ) : (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <button type="button" onClick={primary.run} className={DARK_BUTTON}>
-            {primary.label}
-          </button>
-          {reason === "missing" && (
-            <button
-              type="button"
-              onClick={() => void stremio.switchAccount()}
-              className={TEXT_BUTTON}
-            >
-              Use another Stremio account
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setManualOpen(true)}
-            className={TEXT_BUTTON}
-          >
-            Reinstall myself
-          </button>
+    <div className={ENTER}>
+      <Alert variant="warning" size="card">
+        <div>
+          <AlertTitle>{copy.title}</AlertTitle>
+          <AlertDescription className="mt-0.5">{copy.body}</AlertDescription>
         </div>
-      )}
-    </section>
+        {manualOpen ? (
+          <ManualSteps accountKey={accountKey} onReinstalled={onReinstalled} />
+        ) : (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <Button
+              type="button"
+              variant="dark"
+              size="pill-lg"
+              onClick={primary.run}
+            >
+              {primary.label}
+            </Button>
+            {reason === "missing" && (
+              <Button
+                type="button"
+                variant="link-warning"
+                size="inline"
+                onClick={() => void stremio.switchAccount()}
+              >
+                Use another Stremio account
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="link-warning"
+              size="inline"
+              onClick={() => setManualOpen(true)}
+            >
+              Reinstall myself
+            </Button>
+          </div>
+        )}
+      </Alert>
+    </div>
   );
 }
