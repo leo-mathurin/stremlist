@@ -18,7 +18,7 @@
     "build": "vp pack && tsc --emitDeclarationOnly",
     "start": "bun dist/index.js",
     "test": "vp test run --exclude '**/*.stress.test.ts'",
-    "test:live": "STREMLIST_LIVE_TESTS=1 vp test run src/services/test/imdb-scraper.live.test.ts",
+    "test:live": "STREMLIST_LIVE_TESTS=1 vp test run live.test",
     "test:stress": "vp test run --testTimeout=300000 src/services/test/imdb-scraper.stress.test.ts",
     "stress:load": "bun stress/run.ts",
     "stress:letterboxd-gate": "bun stress/letterboxd-gate.ts",
