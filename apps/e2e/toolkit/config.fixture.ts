@@ -80,15 +80,25 @@ const TOAST_NOT_HELD = "/__e2e/toast-not-held";
  * observes the change. So a toast takes a held timer that was started in the
  * same task in which the toast was added or changed its type. A toast that
  * reaches `data-mounted` with no held timer of its own, or that changes to a
- * result with no new held timer, while its timer runs (the page is visible
- * and the toast is not loading, removed or expanded), means that Sonner
+ * result with no new held timer, while its timer runs, means that Sonner
  * changed its close timer: the page tells the test, which fails at its next
  * step.
+ *
+ * The timer of a toast runs while the page is visible, the toast is not
+ * loading or removed, and the toaster is not expanded (`data-expanded`, set
+ * while the pointer is over it) or pressed (between a `pointerdown` and a
+ * `pointerup` in it). Sonner starts the timer again when the toaster
+ * collapses, when the press ends, or when the page becomes visible. A
+ * collapse renders at a lower priority, so its effects can run in a later
+ * task than the change of `data-expanded`. So each toast whose timer starts
+ * again takes a held timer of the same task, or else the next held timer;
+ * when the page is next idle, a toast whose timer runs and that got no held
+ * timer also fails the test.
  */
 export async function holdToasts(browser: Browser) {
   await browser.route(`**${TOAST_NOT_HELD}`, () => {
     throw new Error(
-      "holdToasts held no close timer for a toast: Sonner's close timer no longer calls onAutoClose, or no longer starts when the toast is added. Update holdToasts.",
+      "holdToasts held no close timer for a toast: Sonner's close timer no longer calls onAutoClose, or no longer starts when the toast is added or its timer starts again. Update holdToasts.",
     );
   });
   await browser.addInitScript((notHeld: string) => {
@@ -96,6 +106,8 @@ export async function holdToasts(browser: Browser) {
     const send = window.fetch.bind(window);
     const toastSelector = "[data-sonner-toast]";
     let unclaimed: number[] = [];
+    let owed: Element[] = [];
+    let pressed = false;
     const heldOnAdd = new WeakMap<Element, boolean>();
     window.e2eHeldToasts = 0;
     Object.defineProperty(window, "setTimeout", {
@@ -108,6 +120,7 @@ export async function holdToasts(browser: Browser) {
         ) {
           window.e2eHeldToasts += 1;
           const timer = realSetTimeout(() => {}, 2 ** 31 - 1);
+          if (owed.shift() !== undefined) return timer;
           if (unclaimed.length === 0) {
             queueMicrotask(() => {
               unclaimed = [];
@@ -121,6 +134,7 @@ export async function holdToasts(browser: Browser) {
     });
     const timerRuns = (toast: Element) =>
       !document.hidden &&
+      !pressed &&
       toast.getAttribute("data-type") !== "loading" &&
       toast.getAttribute("data-removed") !== "true" &&
       toast.getAttribute("data-expanded") !== "true";
@@ -129,6 +143,53 @@ export async function holdToasts(browser: Browser) {
     const reportNotHeld = () => {
       void send(notHeld, { method: "POST" });
     };
+    const checkOwed = () => {
+      const unpaid = owed.filter(
+        (toast) => toast.isConnected && timerRuns(toast),
+      );
+      owed = [];
+      if (unpaid.length > 0) reportNotHeld();
+    };
+    const timerStartsAgain = (toast: Element) => {
+      if (claimTimer(toast)) return;
+      if (owed.length === 0) requestIdleCallback(checkOwed);
+      owed.push(toast);
+    };
+    const restartRunningTimers = () => {
+      for (const toast of document.querySelectorAll(toastSelector)) {
+        timerStartsAgain(toast);
+      }
+    };
+    const inToaster = (event: Event) =>
+      event.target instanceof Element &&
+      event.target.closest("[data-sonner-toaster]") !== null;
+    document.addEventListener(
+      "pointerdown",
+      (event) => {
+        if (
+          inToaster(event) &&
+          !(
+            event.target instanceof HTMLElement &&
+            event.target.dataset.dismissible === "false"
+          )
+        ) {
+          pressed = true;
+        }
+      },
+      true,
+    );
+    document.addEventListener(
+      "pointerup",
+      (event) => {
+        if (!pressed || !inToaster(event)) return;
+        pressed = false;
+        restartRunningTimers();
+      },
+      true,
+    );
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) restartRunningTimers();
+    });
     const addedToasts = (nodes: NodeList) =>
       Array.from(nodes).flatMap((node) =>
         node instanceof Element
@@ -161,13 +222,33 @@ export async function holdToasts(browser: Browser) {
         ) {
           reportNotHeld();
         }
+        if (
+          record.attributeName === "data-expanded" &&
+          record.oldValue === "true"
+        ) {
+          timerStartsAgain(toast);
+        }
       }
     }).observe(document, {
-      attributeFilter: ["data-mounted", "data-type"],
+      attributeFilter: ["data-expanded", "data-mounted", "data-type"],
+      attributeOldValue: true,
       childList: true,
       subtree: true,
     });
   }, TOAST_NOT_HELD);
+}
+
+/**
+ * Waits until the page is idle. Then `holdToasts` has checked each toast whose
+ * close timer started again, and a missed hold fails the next step.
+ */
+export async function waitForIdlePage(browser: Browser) {
+  await browser.evaluate(
+    () =>
+      new Promise<boolean>((resolve) => {
+        requestIdleCallback(() => resolve(true));
+      }),
+  );
 }
 
 /**

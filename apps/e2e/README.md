@@ -41,8 +41,9 @@ UI behavior and requests; Playwright verifies handlers and storage.
 - AI goals use unique accessible names. Configure-page goals call
   `fitConfigurePage` to avoid duplicate Save controls. Toast checks use
   `holdToasts`; a fake timer in the page stops only the timer that closes a
-  toast, and the test fails when a toast shows, or changes to a result, without
-  its own held close timer.
+  toast, and the test fails when a toast shows, changes to a result, or starts
+  its timer again (after the pointer leaves the toaster, a press ends or the page
+  becomes visible) without its own held close timer.
 
 ## Running locally
 
