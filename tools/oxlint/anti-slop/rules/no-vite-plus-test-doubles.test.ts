@@ -15,6 +15,13 @@ tester.run("anti-slop/no-vite-plus-test-doubles", noVitePlusTestDoublesRule, {
     'import { vi } from "vitest"; vi.mock("./lib/supabase");',
     'const vi = { mock() {}, fn() {} }; vi.mock("./x"); vi.fn(() => 1);',
     'import { describe } from "vite-plus/test"; const vi = { fn() {} }; vi.fn();',
+    'import { expect } from "vite-plus/test"; const stub = make(); stub.mockReturnValue(1);',
+    'import { expect } from "vite-plus/test"; recorder.mockImplementation(() => 1);',
+    `${header}function run(vi: { mock(path: string): void }) { vi.mock("./x"); }`,
+    `${header}{ const vi = { stubGlobal() {} }; vi.stubGlobal(); }`,
+    `${header}const spy = vi.spyOn(console, "log"); { const spy = make(); spy.mockReturnValue(1); }`,
+    `${header}const useTimers = vi.useFakeTimers; useTimers();`,
+    `${header}const { spyOn } = vi; spyOn(console, "warn");`,
   ],
   invalid: [
     { name: "vi.mock", code: `${header}vi.mock("../lib/supabase", () => ({}));`, errors: [error] },
@@ -53,6 +60,46 @@ tester.run("anti-slop/no-vite-plus-test-doubles", noVitePlusTestDoublesRule, {
       name: "namespace import",
       code: 'import * as test from "vite-plus/test"; test.vi.mock("../lib/r2");',
       errors: [error],
+    },
+    {
+      name: "alias of a vi method",
+      code: `${header}const mock = vi.mock; mock("../lib/r2");`,
+      errors: [error],
+    },
+    {
+      name: "alias of an alias",
+      code: `${header}const stub = vi.stubGlobal; const again = stub; again("fetch", null);`,
+      errors: [error],
+    },
+    {
+      name: "destructured vi method",
+      code: `${header}const { fn } = vi; const send = fn();`,
+      errors: [error],
+    },
+    {
+      name: "destructured and renamed vi method",
+      code: `${header}const { doMock: replace } = vi; replace("../lib/r2");`,
+      errors: [error],
+    },
+    {
+      name: "alias of vi",
+      code: `${header}const v = vi; v.mock("../lib/r2");`,
+      errors: [error],
+    },
+    {
+      name: "vi destructured from the namespace",
+      code: 'import * as test from "vite-plus/test"; const { vi } = test; vi.stubGlobal("fetch", null);',
+      errors: [error],
+    },
+    {
+      name: "setter on a stored spy from a destructured spyOn",
+      code: `${header}const { spyOn } = vi; const spy = spyOn(api, "get"); spy.mockReturnValue(1);`,
+      errors: [error],
+    },
+    {
+      name: "chained setters",
+      code: `${header}vi.spyOn(api, "get").mockReturnValueOnce(1).mockReturnValue(2);`,
+      errors: [error, error],
     },
     {
       name: "computed member",

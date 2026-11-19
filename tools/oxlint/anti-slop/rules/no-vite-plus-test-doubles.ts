@@ -1,5 +1,7 @@
 import { defineRule } from "vite-plus/lint/plugins";
-import type { ESTree } from "vite-plus/lint/plugins";
+import type { ESTree, SourceCode, Variable } from "vite-plus/lint/plugins";
+
+import { resolveVariable } from "../shared/scope.ts";
 
 const SOURCE = "vite-plus/test";
 
@@ -13,6 +15,8 @@ const replacingMethods = new Set([
   "mocked",
   "importMock",
 ]);
+
+const doubleFactories = new Set(["fn", "spyOn", "mocked"]);
 
 const mockSetters = new Set([
   "mockImplementation",
@@ -37,11 +41,132 @@ function propertyName(node: ESTree.MemberExpression): string | null {
   return null;
 }
 
+function keyName(node: ESTree.Node): string | null {
+  if (node.type === "Identifier") return node.name;
+  if (node.type === "Literal" && typeof node.value === "string") return node.value;
+  return null;
+}
+
+function importedName(node: ESTree.Node): string | null {
+  if (node.type !== "ImportSpecifier") return null;
+  return node.imported.type === "Identifier" ? node.imported.name : String(node.imported.value);
+}
+
+function fromVitePlusTest(parent: ESTree.Node | null) {
+  return parent?.type === "ImportDeclaration" && parent.source.value === SOURCE;
+}
+
+function declaratorOf(variable: Variable) {
+  const definition = variable.defs[0];
+  return variable.defs.length === 1 &&
+    definition?.type === "Variable" &&
+    definition.node.type === "VariableDeclarator"
+    ? definition.node
+    : null;
+}
+
+function isReference(node: ESTree.Node): node is ESTree.IdentifierReference {
+  return node.type === "Identifier";
+}
+
+/** The binding of an identifier, or null for a global or an unknown name. */
+function bindingOf(sourceCode: SourceCode, node: ESTree.Node) {
+  return isReference(node) ? resolveVariable(sourceCode, node) : null;
+}
+
+/** Whether `node` is the namespace object of `import * as x from "vite-plus/test"`. */
+function isNamespace(sourceCode: SourceCode, node: ESTree.Node) {
+  const definition = bindingOf(sourceCode, node)?.defs[0];
+  return (
+    definition?.type === "ImportBinding" &&
+    definition.node.type === "ImportNamespaceSpecifier" &&
+    fromVitePlusTest(definition.parent)
+  );
+}
+
+/** Whether `node` evaluates to the `vi` object of `vite-plus/test`. */
+function isVi(sourceCode: SourceCode, node: ESTree.Node, depth = 0): boolean {
+  if (depth > 8) return false;
+  if (node.type === "MemberExpression") {
+    return propertyName(node) === "vi" && isNamespace(sourceCode, node.object);
+  }
+  const variable = bindingOf(sourceCode, node);
+  if (!variable) return false;
+  const definition = variable.defs[0];
+  if (definition?.type === "ImportBinding") {
+    return importedName(definition.node) === "vi" && fromVitePlusTest(definition.parent);
+  }
+  const declarator = declaratorOf(variable);
+  if (!declarator?.init) return false;
+  if (declarator.id.type === "Identifier") {
+    return isVi(sourceCode, declarator.init, depth + 1);
+  }
+  if (declarator.id.type === "ObjectPattern" && isNamespace(sourceCode, declarator.init)) {
+    return declarator.id.properties.some(
+      (property) =>
+        property.type === "Property" &&
+        keyName(property.key) === "vi" &&
+        property.value.type === "Identifier" &&
+        property.value.name === variable.name,
+    );
+  }
+  return false;
+}
+
+/** The `vi` method that `node` refers to, through members, aliases and destructuring. */
+function viMethod(sourceCode: SourceCode, node: ESTree.Node, depth = 0): string | null {
+  if (depth > 8) return null;
+  if (node.type === "MemberExpression") {
+    return isVi(sourceCode, node.object) ? propertyName(node) : null;
+  }
+  const variable = bindingOf(sourceCode, node);
+  if (!variable) return null;
+  const declarator = declaratorOf(variable);
+  if (!declarator?.init) return null;
+  if (declarator.id.type === "Identifier") {
+    return viMethod(sourceCode, declarator.init, depth + 1);
+  }
+  if (declarator.id.type === "ObjectPattern" && isVi(sourceCode, declarator.init)) {
+    for (const property of declarator.id.properties) {
+      if (
+        property.type === "Property" &&
+        property.value.type === "Identifier" &&
+        property.value.name === variable.name
+      ) {
+        return keyName(property.key);
+      }
+    }
+  }
+  return null;
+}
+
+/** Whether `node` evaluates to a mock or spy that `vi` made. */
+function isViDouble(sourceCode: SourceCode, node: ESTree.Node, depth = 0): boolean {
+  if (depth > 8) return false;
+  if (node.type === "CallExpression") {
+    const { callee } = node;
+    if (callee.type === "MemberExpression" && mockSetters.has(propertyName(callee) ?? "")) {
+      return isViDouble(sourceCode, callee.object, depth + 1);
+    }
+    return doubleFactories.has(viMethod(sourceCode, callee) ?? "");
+  }
+  const variable = bindingOf(sourceCode, node);
+  const declarator = variable && declaratorOf(variable);
+  return (
+    declarator?.id.type === "Identifier" &&
+    declarator.init !== null &&
+    declarator.init !== undefined &&
+    isViDouble(sourceCode, declarator.init, depth + 1)
+  );
+}
+
 /**
  * Ban the Vitest test double APIs when `vi` comes from `vite-plus/test`.
  * Landmines `no-test-doubles` sees only `vitest` imports, so this rule closes
- * that gap. Observing spies (`vi.spyOn` without a mock setter), fake timers
- * and `vi.stubEnv` stay allowed.
+ * that gap. It follows `vi` through lexical bindings (aliases, destructuring,
+ * namespace imports) and ignores shadowing names. Observing spies
+ * (`vi.spyOn` without a mock setter), fake timers and `vi.stubEnv` stay
+ * allowed.
  */
 export const noVitePlusTestDoublesRule = defineRule({
   meta: {
@@ -56,51 +181,17 @@ export const noVitePlusTestDoublesRule = defineRule({
     },
   },
   createOnce(context) {
-    const viNames = new Set<string>();
-    const namespaces = new Set<string>();
-    let importsVitePlusTest = false;
-
-    function isVi(node: ESTree.Node): boolean {
-      if (node.type === "Identifier") return viNames.has(node.name);
-      return (
-        node.type === "MemberExpression" &&
-        node.object.type === "Identifier" &&
-        namespaces.has(node.object.name) &&
-        propertyName(node) === "vi"
-      );
-    }
-
     return {
-      Program() {
-        viNames.clear();
-        namespaces.clear();
-        importsVitePlusTest = false;
-      },
-      ImportDeclaration(node) {
-        if (node.source.value !== SOURCE) return;
-        importsVitePlusTest = true;
-        for (const specifier of node.specifiers) {
-          if (specifier.type === "ImportNamespaceSpecifier") {
-            namespaces.add(specifier.local.name);
-          } else if (
-            specifier.type === "ImportSpecifier" &&
-            (specifier.imported.type === "Identifier"
-              ? specifier.imported.name
-              : specifier.imported.value) === "vi"
-          ) {
-            viNames.add(specifier.local.name);
-          }
-        }
-      },
       CallExpression(node) {
-        if (!importsVitePlusTest || node.callee.type !== "MemberExpression") {
+        const { sourceCode } = context;
+        const method = viMethod(sourceCode, node.callee);
+        if (method !== null && replacingMethods.has(method)) {
+          context.report({ node, messageId: "replacement", data: { name: `vi.${method}` } });
           return;
         }
+        if (node.callee.type !== "MemberExpression") return;
         const name = propertyName(node.callee);
-        if (name === null) return;
-        if (replacingMethods.has(name) && isVi(node.callee.object)) {
-          context.report({ node, messageId: "replacement", data: { name: `vi.${name}` } });
-        } else if (mockSetters.has(name)) {
+        if (name !== null && mockSetters.has(name) && isViDouble(sourceCode, node.callee.object)) {
           context.report({ node, messageId: "replacement", data: { name } });
         }
       },
