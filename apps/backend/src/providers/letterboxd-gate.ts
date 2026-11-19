@@ -178,7 +178,7 @@ async function report(
   if (edges.halted)
     await heartbeat(
       edges.halt_reason === "blocked"
-        ? "Letterboxd halted: it refused a request (403 or a challenge)"
+        ? "Letterboxd halted: it refused 3 requests within 10 minutes (403 or a challenge)"
         : "Letterboxd halted: it kept answering 429 at the lowest rate",
     );
   if (edges.recovered) await heartbeat(null);

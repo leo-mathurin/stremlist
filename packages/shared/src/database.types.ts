@@ -123,6 +123,8 @@ export type Database = {
       };
       letterboxd_gate: {
         Row: {
+          blocked_count: number;
+          blocked_since: string | null;
           floor_slowdowns: number;
           floor_slowdowns_since: string | null;
           halt_reason: string | null;
@@ -144,6 +146,8 @@ export type Database = {
         };
         ComputedFields: "letterboxd_gate_store";
         Insert: {
+          blocked_count?: number;
+          blocked_since?: string | null;
           floor_slowdowns?: number;
           floor_slowdowns_since?: string | null;
           halt_reason?: string | null;
@@ -163,6 +167,8 @@ export type Database = {
           window_started_at: string;
         };
         Update: {
+          blocked_count?: number;
+          blocked_since?: string | null;
           floor_slowdowns?: number;
           floor_slowdowns_since?: string | null;
           halt_reason?: string | null;
@@ -1058,6 +1064,8 @@ export type Database = {
       letterboxd_gate_lock: {
         Args: { p_gate: string; p_target: number };
         Returns: {
+          blocked_count: number;
+          blocked_since: string | null;
           floor_slowdowns: number;
           floor_slowdowns_since: string | null;
           halt_reason: string | null;
@@ -1093,6 +1101,8 @@ export type Database = {
           t: string;
         };
         Returns: {
+          blocked_count: number;
+          blocked_since: string | null;
           floor_slowdowns: number;
           floor_slowdowns_since: string | null;
           halt_reason: string | null;
