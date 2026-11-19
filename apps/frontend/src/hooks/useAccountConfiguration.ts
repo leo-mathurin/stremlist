@@ -52,7 +52,6 @@ import { useProviderStatus } from "./useProviderStatus";
 import { useReinstallBaseline } from "./useReinstallBaseline";
 import type { InstallSetup } from "./useReinstallBaseline";
 import { STREMIO_UPDATE_TOAST, useStremioSync } from "./useStremioSync";
-import { toastDuration } from "../lib/toast-duration";
 
 type StoredLists = Pick<
   ConfigList,
@@ -499,7 +498,7 @@ export function useAccountConfiguration(
         "Saved! Reinstall Stremlist in Stremio to see your changes.",
         {
           id: "configuration-save",
-          duration: toastDuration(10_000),
+          duration: 10_000,
           action: {
             label: "Reinstall",
             onClick: () => {

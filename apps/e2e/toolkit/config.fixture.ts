@@ -48,12 +48,23 @@ export function saveButton(screen: Screen, name = "Save") {
  * Keeps toasts on screen until they are replaced or closed. Save and
  * newsletter results are toasts that close after 6 to 10 seconds, and an AI
  * goal can take longer than that to finish, so a check of the toast after the
- * goal could find it gone. The frontend keeps every toast open while the
- * session has its `stremlist:hold-toasts` flag (`lib/toast-duration.ts`).
+ * goal could find it gone. A fake timer stops only the timer that closes a
+ * toast (the Sonner timer that calls `onAutoClose`): it never fires, and
+ * `clearTimeout` still cancels it. Every other timer of the app runs on the
+ * real clock.
  */
 export async function holdToasts(browser: Browser) {
   await browser.addInitScript(() => {
-    sessionStorage.setItem("stremlist:hold-toasts", "1");
+    const realSetTimeout = window.setTimeout.bind(window);
+    Object.defineProperty(window, "setTimeout", {
+      configurable: true,
+      writable: true,
+      value: (handler: TimerHandler, timeout?: number, ...args: unknown[]) =>
+        typeof handler === "function" &&
+        handler.toString().includes("onAutoClose")
+          ? realSetTimeout(() => {}, 2 ** 31 - 1)
+          : realSetTimeout(handler, timeout, ...args),
+    });
   });
 }
 

@@ -40,7 +40,8 @@ UI behavior and requests; Playwright verifies handlers and storage.
   add `--prune` after a full replay to delete orphaned entries.
 - AI goals use unique accessible names. Configure-page goals call
   `fitConfigurePage` to avoid duplicate Save controls. Toast checks use
-  `holdToasts`; it hides the document and suppresses sync-status polling.
+  `holdToasts`; a fake timer in the page stops only the timer that closes a
+  toast.
 
 ## Running locally
 
