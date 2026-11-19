@@ -111,6 +111,7 @@ test("newsletter pending request blocks duplicate submissions", async ({
   browser,
   screen,
 }) => {
+  const started = Promise.withResolvers<void>();
   let release = () => {};
   const gate = new Promise<void>((resolve) => {
     release = resolve;
@@ -118,6 +119,7 @@ test("newsletter pending request blocks duplicate submissions", async ({
   let attempts = 0;
   await browser.route(`${backend}/newsletter/subscribe`, async (route) => {
     attempts++;
+    started.resolve();
     await gate;
     await route.fulfill({
       json: { success: true, message: "Fixture subscription saved" },
@@ -129,6 +131,7 @@ test("newsletter pending request blocks duplicate submissions", async ({
   try {
     await subscribe.tap();
     await expect(screen.getByRole("button", "Subscribing...")).toBeDisabled();
+    await started.promise;
     expect(attempts).toBe(1);
   } finally {
     release();
