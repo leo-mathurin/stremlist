@@ -73,20 +73,30 @@ const TOAST_NOT_HELD = "/__e2e/toast-not-held";
  * toast (the Sonner timer that calls `onAutoClose`): it never fires, and
  * `clearTimeout` still cancels it. Every other timer of the app runs on the
  * real clock. The page counts the held timers in `window.e2eHeldToasts`.
- * Sonner starts the close timer in the same effects that mount the toast
- * (`data-mounted`), so a toast that mounts with no held timer means that
- * Sonner changed its close timer: the page tells the test, which fails at
- * its next step.
+ *
+ * Each toast must get its own held timer. Sonner adds a toast and changes its
+ * type (for example from loading to a result) in a `flushSync` render, and
+ * starts the close timer in the effects of that render, before the page
+ * observes the change. So a toast takes a held timer that was started in the
+ * same task in which the toast was added or changed its type. A toast that
+ * reaches `data-mounted` with no held timer of its own, or that changes to a
+ * result with no new held timer, while its timer runs (the page is visible
+ * and the toast is not loading, removed or expanded), means that Sonner
+ * changed its close timer: the page tells the test, which fails at its next
+ * step.
  */
 export async function holdToasts(browser: Browser) {
   await browser.route(`**${TOAST_NOT_HELD}`, () => {
     throw new Error(
-      "holdToasts held no toast close timer: Sonner's close timer no longer calls onAutoClose. Update holdToasts.",
+      "holdToasts held no close timer for a toast: Sonner's close timer no longer calls onAutoClose, or no longer starts when the toast is added. Update holdToasts.",
     );
   });
   await browser.addInitScript((notHeld: string) => {
     const realSetTimeout = window.setTimeout.bind(window);
     const send = window.fetch.bind(window);
+    const toastSelector = "[data-sonner-toast]";
+    let unclaimed: number[] = [];
+    const heldOnAdd = new WeakMap<Element, boolean>();
     window.e2eHeldToasts = 0;
     Object.defineProperty(window, "setTimeout", {
       configurable: true,
@@ -97,34 +107,64 @@ export async function holdToasts(browser: Browser) {
           handler.toString().includes("onAutoClose")
         ) {
           window.e2eHeldToasts += 1;
-          return realSetTimeout(() => {}, 2 ** 31 - 1);
+          const timer = realSetTimeout(() => {}, 2 ** 31 - 1);
+          if (unclaimed.length === 0) {
+            queueMicrotask(() => {
+              unclaimed = [];
+            });
+          }
+          unclaimed.push(timer);
+          return timer;
         }
         return realSetTimeout(handler, timeout, ...args);
       },
     });
-    const checked = new WeakSet<Element>();
+    const timerRuns = (toast: Element) =>
+      !document.hidden &&
+      toast.getAttribute("data-type") !== "loading" &&
+      toast.getAttribute("data-removed") !== "true" &&
+      toast.getAttribute("data-expanded") !== "true";
+    const claimTimer = (toast: Element) =>
+      !timerRuns(toast) || unclaimed.shift() !== undefined;
+    const reportNotHeld = () => {
+      void send(notHeld, { method: "POST" });
+    };
+    const addedToasts = (nodes: NodeList) =>
+      Array.from(nodes).flatMap((node) =>
+        node instanceof Element
+          ? [
+              ...(node.matches(toastSelector) ? [node] : []),
+              ...node.querySelectorAll(toastSelector),
+            ]
+          : [],
+      );
     new MutationObserver((records) => {
-      for (const { target } of records) {
-        if (
-          !(target instanceof Element) ||
-          checked.has(target) ||
-          !target.matches("[data-sonner-toast]") ||
-          target.getAttribute("data-mounted") !== "true"
-        ) {
+      for (const record of records) {
+        if (record.type === "childList") {
+          for (const toast of addedToasts(record.addedNodes)) {
+            heldOnAdd.set(toast, claimTimer(toast));
+          }
           continue;
         }
-        checked.add(target);
-        const timerRuns =
-          !document.hidden &&
-          target.getAttribute("data-type") !== "loading" &&
-          target.getAttribute("data-removed") !== "true" &&
-          target.getAttribute("data-expanded") !== "true";
-        if (timerRuns && window.e2eHeldToasts === 0) {
-          void send(notHeld, { method: "POST" });
+        const toast = record.target;
+        if (!(toast instanceof Element) || !toast.matches(toastSelector)) {
+          continue;
+        }
+        if (record.attributeName === "data-type" && !claimTimer(toast)) {
+          reportNotHeld();
+        }
+        if (
+          record.attributeName === "data-mounted" &&
+          toast.getAttribute("data-mounted") === "true" &&
+          heldOnAdd.get(toast) !== true &&
+          timerRuns(toast)
+        ) {
+          reportNotHeld();
         }
       }
     }).observe(document, {
-      attributeFilter: ["data-mounted"],
+      attributeFilter: ["data-mounted", "data-type"],
+      childList: true,
       subtree: true,
     });
   }, TOAST_NOT_HELD);
