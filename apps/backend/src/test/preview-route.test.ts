@@ -260,3 +260,63 @@ describe("POST /lists/preview", () => {
     expect(badKey.status).toBe(400);
   });
 });
+
+describe("POST /lists/preview/titles", () => {
+  function titles(body: Record<string, unknown>) {
+    return app.request("/lists/preview/titles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sortOption: "added_at-asc",
+        provider: "trakt",
+        sourceRef: "users/someone/watchlist",
+        ...body,
+      }),
+    });
+  }
+
+  it("answers one page of the asked Catalog, through the Connection of a private Account", async () => {
+    const account = seedAccount();
+    seedConnection(account.id, "trakt", { accessToken: "token-of-account" });
+
+    const res = await titles({
+      accountKey: account.id,
+      sourceRef: "me/history",
+      catalog: { type: "movie", preset: null },
+      offset: 0,
+    });
+
+    expect(await res.json()).toEqual({
+      ok: true,
+      total: 1,
+      titles: [expect.objectContaining({ id: TITLE.id, name: TITLE.name })],
+    });
+    expect(trakt.requests.map(({ path, token }) => ({ path, token }))).toEqual(
+      expect.arrayContaining([
+        { path: "/users/me/watched/movies", token: "token-of-account" },
+        { path: "/users/me/watched/shows", token: "token-of-account" },
+      ]),
+    );
+    expect(trakt.requests).toHaveLength(2);
+  });
+
+  it("refuses an unknown Catalog or a negative offset", async () => {
+    const badType = await titles({
+      catalog: { type: "anime", preset: null },
+      offset: 0,
+    });
+    const badPreset = await titles({
+      catalog: { type: "movie", preset: "longest" },
+      offset: 0,
+    });
+    const badOffset = await titles({
+      catalog: { type: "movie", preset: null },
+      offset: -1,
+    });
+
+    expect(badType.status).toBe(400);
+    expect(badPreset.status).toBe(400);
+    expect(badOffset.status).toBe(400);
+    expect(trakt.requests).toEqual([]);
+  });
+});

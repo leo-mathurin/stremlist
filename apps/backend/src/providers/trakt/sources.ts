@@ -52,6 +52,15 @@ const WEEKLY_CHARTS = new Set<TraktChart>([
   "recommended",
 ]);
 
+const TRAKT_CALENDARS = [
+  "shows/new",
+  "shows/premieres",
+  "movies",
+  "dvd",
+] as const;
+type TraktCalendar = (typeof TRAKT_CALENDARS)[number];
+const CALENDAR_DAYS = 30;
+
 /**
  * A Trakt Source list reference, parsed. `user: "me"` reads through the
  * Connection.
@@ -66,6 +75,9 @@ export type TraktSource =
   | { kind: "chart"; chart: TraktChart }
   | { kind: "recommendations" }
   | { kind: "up_next" }
+  | { kind: "continue_watching" }
+  | { kind: "my_calendar" }
+  | { kind: "calendar"; calendar: TraktCalendar }
   | { kind: "history"; user: string }
   | { kind: "collection"; user: string };
 
@@ -79,6 +91,13 @@ const CHARTS: Record<TraktChart, string> = {
   collected: "Trakt Most Collected",
   favorited: "Trakt Most Favorited",
   recommended: "Trakt Most Recommended",
+};
+
+const CALENDARS: Record<TraktCalendar, string> = {
+  "shows/new": "Trakt New Shows",
+  "shows/premieres": "Trakt Season Premieres",
+  movies: "Trakt Upcoming Movies",
+  dvd: "Trakt DVD Releases",
 };
 
 const USER_SOURCES = [
@@ -109,6 +128,10 @@ export function parseTraktRef(ref: string) {
           return { kind: "recommendations" } satisfies TraktSource;
         case "up-next":
           return { kind: "up_next" } satisfies TraktSource;
+        case "continue-watching":
+          return { kind: "continue_watching" } satisfies TraktSource;
+        case "calendar":
+          return { kind: "my_calendar" } satisfies TraktSource;
       }
     }
     if (parts.length === 3 && parts[1] === "lists" && SEGMENT.test(parts[2])) {
@@ -139,6 +162,13 @@ export function parseTraktRef(ref: string) {
       } satisfies TraktSource;
     }
     return null;
+  }
+  if (parts[0] === "calendars") {
+    const name = parts.slice(1).join("/");
+    const calendar = TRAKT_CALENDARS.find((known) => known === name);
+    return calendar
+      ? ({ kind: "calendar", calendar } satisfies TraktSource)
+      : null;
   }
   if (parts.length === 2 && parts[0] === "lists" && SEGMENT.test(parts[1])) {
     return {
@@ -186,12 +216,23 @@ function sourceToRef(source: TraktSource) {
       return "me/recommendations";
     case "up_next":
       return "me/up-next";
+    case "continue_watching":
+      return "me/continue-watching";
+    case "my_calendar":
+      return "me/calendar";
+    case "calendar":
+      return `calendars/${source.calendar}`;
   }
 }
 
 export function isPersonal(source: TraktSource) {
   if ("user" in source) return source.user === "me";
-  return source.kind === "recommendations" || source.kind === "up_next";
+  return (
+    source.kind === "recommendations" ||
+    source.kind === "up_next" ||
+    source.kind === "continue_watching" ||
+    source.kind === "my_calendar"
+  );
 }
 
 function userPath(user: string) {
@@ -342,6 +383,52 @@ async function upNextEntries(connection: ConnectionAccess | null) {
   };
 }
 
+async function continueWatchingEntries(connection: ConnectionAccess | null) {
+  const { entries, complete } = await moviesAndShows(
+    "/sync/playback/movies",
+    "/sync/playback/episodes",
+    (row) => row.paused_at,
+    connection,
+    {},
+  );
+  return {
+    entries: uniqueEntries(entries.toReversed()).toReversed(),
+    complete,
+  };
+}
+
+function calendarPaths(
+  source: TraktSource & { kind: "calendar" | "my_calendar" },
+) {
+  const window = `${new Date().toISOString().slice(0, 10)}/${CALENDAR_DAYS}`;
+  return source.kind === "calendar"
+    ? [`/calendars/all/${source.calendar}/${window}`]
+    : [`/calendars/my/shows/${window}`, `/calendars/my/movies/${window}`];
+}
+
+async function calendarEntries(
+  source: TraktSource & { kind: "calendar" | "my_calendar" },
+  connection: ConnectionAccess | null,
+  options: TraktReadOptions,
+) {
+  const reads = await Promise.all(
+    calendarPaths(source).map((path) =>
+      traktGetParsed(path, z.array(traktItemSchema), connection, options),
+    ),
+  );
+  const rows = oldestFirst(
+    reads.flatMap((read) => read ?? []),
+    (row) => row.first_aired ?? row.released,
+  );
+  return {
+    entries: rows.flatMap((row) => {
+      const entry = itemToEntry(row);
+      return entry ? [entry] : [];
+    }),
+    complete: true,
+  };
+}
+
 async function moviesAndShows(
   moviesPath: string,
   showsPath: string,
@@ -456,6 +543,13 @@ export async function readSource(
       case "up_next":
         snapshot = await upNextEntries(connection);
         break;
+      case "continue_watching":
+        snapshot = await continueWatchingEntries(connection);
+        break;
+      case "calendar":
+      case "my_calendar":
+        snapshot = await calendarEntries(source, connection, options);
+        break;
       case "history":
         snapshot = await historyEntries(source.user, connection, options);
         break;
@@ -502,6 +596,8 @@ const PERSONAL_TITLES = {
   ratings: "Trakt Ratings",
   recommendations: "Trakt Recommendations",
   up_next: "Trakt Up Next",
+  continue_watching: "Trakt Continue Watching",
+  my_calendar: "Trakt Calendar",
   history: "Trakt History",
   collection: "Trakt Collection",
 } satisfies Partial<Record<TraktSource["kind"], string>>;
@@ -514,6 +610,15 @@ const USER_PROBES: Record<UserSourceKind, string> = {
   collection: "collection/movies",
 };
 
+function defaultDisplayMode(source: TraktSource) {
+  if (source.kind === "up_next") return "series";
+  if (source.kind === "chart" && source.chart === "boxoffice") return "movie";
+  if (source.kind === "calendar") {
+    return source.calendar.startsWith("shows/") ? "series" : "movie";
+  }
+  return "split";
+}
+
 /**
  * Check that a Source list exists and can be read, and normalize its ref.
  * Costs one or two small GETs.
@@ -525,12 +630,7 @@ export async function validateTraktSource(
   const source = parseTraktRef(ref);
   if (!source)
     return { ok: false, reason: "not_found" } satisfies SourceValidation;
-  const displayMode =
-    source.kind === "up_next"
-      ? "series"
-      : source.kind === "chart" && source.chart === "boxoffice"
-        ? "movie"
-        : "split";
+  const displayMode = defaultDisplayMode(source);
 
   try {
     const connection = requireConnection(source, ctx.connection);
@@ -541,6 +641,13 @@ export async function validateTraktSource(
           ok: true,
           ref: sourceToRef(source),
           suggestedTitle: CHARTS[source.chart],
+          defaultDisplayMode: displayMode,
+        } satisfies SourceValidation;
+      case "calendar":
+        return {
+          ok: true,
+          ref: sourceToRef(source),
+          suggestedTitle: CALENDARS[source.calendar],
           defaultDisplayMode: displayMode,
         } satisfies SourceValidation;
       case "watchlist":
@@ -610,6 +717,8 @@ export async function validateTraktSource(
       }
       case "recommendations":
       case "up_next":
+      case "continue_watching":
+      case "my_calendar":
         break;
     }
     await traktGetJson("/users/settings", connection);

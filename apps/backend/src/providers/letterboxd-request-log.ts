@@ -143,7 +143,8 @@ export async function recordLetterboxdRequest(
     ]);
   const entry = { ...details, ...outcome };
   const secrets = secretsOf(entry.url);
-  const keep = entry.outcome !== "ok" || random() < SUCCESS_SAMPLE;
+  const forbidden = entry.status === 403;
+  const keep = entry.outcome !== "ok" || forbidden || random() < SUCCESS_SAMPLE;
   const { error } = await supabase.rpc("letterboxd_record", {
     p_request: {
       outcome: entry.outcome,

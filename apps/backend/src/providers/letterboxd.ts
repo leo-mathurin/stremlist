@@ -17,7 +17,10 @@ import {
   withLetterboxdPermit,
 } from "./letterboxd-gate";
 import type { PermitOptions } from "./letterboxd-gate";
-import { parseLetterboxdPage } from "./letterboxd-page";
+import {
+  isLetterboxdForbiddenPage,
+  parseLetterboxdPage,
+} from "./letterboxd-page";
 import type { LetterboxdFilm } from "./letterboxd-page";
 import {
   excerpt,
@@ -25,6 +28,7 @@ import {
   noteResponse,
   requestDetails,
 } from "./letterboxd-request-log";
+import type { LetterboxdRequestDetails } from "./letterboxd-request-log";
 import { currentReadQueue } from "./read-priority";
 import type {
   ProviderAdapter,
@@ -37,6 +41,8 @@ const SOURCE =
   /^users\/([a-z0-9_]{1,40})\/(watchlist|lists\/([a-z0-9]+(?:[-_][a-z0-9]+)*))$/;
 const COLLECTION =
   /^users\/([a-z0-9_]{1,40})\/(films(?:\/rated\/\d(?:\.\d)?(?:-\d(?:\.\d)?)?)?|diary|likes\/films)$/;
+const MEMBER_PAGE =
+  /^https:\/\/letterboxd\.com\/[a-z0-9_]{1,40}\/(?:films|diary|likes\/films)\//;
 const MAX_PAGES = 100;
 const PAGE_ESTIMATE_MS = 400;
 type PageRead =
@@ -210,6 +216,20 @@ function retryAfterOf(response: Response) {
   return Math.max(0, Date.parse(retryAfter ?? "") - Date.now()) || 0;
 }
 
+const FORBIDDEN_WAIT_MS = 2000;
+
+async function isForbiddenPage(details: LetterboxdRequestDetails) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    details.pendingExcerpt,
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, FORBIDDEN_WAIT_MS);
+    }),
+  ]);
+  clearTimeout(timer);
+  return isLetterboxdForbiddenPage(details.bodyExcerpt ?? "");
+}
+
 async function readHtml(
   url: string,
   kind: "collection" | "film" = "collection",
@@ -241,6 +261,28 @@ async function readHtml(
       if (blocked || (response.status !== 200 && response.status < 500)) {
         if (blocked || response.status === 429) noteExcerpt(details, response);
         else await response.body?.cancel();
+        if (
+          kind === "collection" &&
+          response.status === 403 &&
+          details.cfMitigated === null &&
+          (await isForbiddenPage(details))
+        )
+          return {
+            value: { ok: false, reason: "private" },
+            result: "ok",
+            details,
+          };
+        if (
+          kind === "collection" &&
+          details.cfMitigated === "challenge" &&
+          MEMBER_PAGE.test(url)
+        )
+          return {
+            value: { ok: false, reason: "unavailable" },
+            result: "failed",
+            retryAfterMs,
+            details,
+          };
         const location = response.headers.get("location");
         const moved =
           kind === "collection" &&

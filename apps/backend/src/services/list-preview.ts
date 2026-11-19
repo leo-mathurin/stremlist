@@ -2,14 +2,19 @@ import type {
   CatalogPreview,
   CatalogPreviewResponse,
   CatalogPreviewRow,
+  CatalogTitlesResponse,
   PreviewSourceProblem,
+  PreviewTitle,
   PreviewUnresolvedEntry,
 } from "@stremlist/shared/catalog-preview";
+import { CATALOG_TITLES_PAGE_SIZE } from "@stremlist/shared/catalog-preview";
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { DisplayMode } from "@stremlist/shared/constants";
+import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import { listSources, sourceKey } from "@stremlist/shared/list-merge";
 import { listCatalogs } from "@stremlist/shared/manifest-catalogs";
+import type { ListCatalog } from "@stremlist/shared/manifest-catalogs";
 import { QUEUE_STATE_MIN_MS } from "@stremlist/shared/provider-queue";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDERS } from "@stremlist/shared/providers";
@@ -165,7 +170,6 @@ export function previewPoster(poster: string | null) {
   return match ? `${match[1]}._V1_QL75_UX240_.${match[2]}` : poster;
 }
 
-/** What the preview shows of an entry that has no IMDb ID. */
 export function toUnresolvedEntry(entry: SourceEntry) {
   return {
     title: entry.title ?? entry.originalTitle ?? null,
@@ -175,59 +179,76 @@ export function toUnresolvedEntry(entry: SourceEntry) {
   } satisfies PreviewUnresolvedEntry;
 }
 
-async function presentPreview(
-  request: PreviewRequest,
-  read: BuiltCatalog[],
-  sourceProblems: PreviewSourceProblem[],
-) {
-  const metas = mergeListCatalogs(
+function previewMetas(request: PreviewRequest, read: BuiltCatalog[]) {
+  return mergeListCatalogs(
     request,
     read.map((built) => built.data.metas),
   );
-  const unresolvedEntries = read.flatMap((built) => built.unresolvedEntries);
-  const generation = `preview:${listSources(request).map(sourceKey).join(",")}`;
+}
 
-  const catalogs: CatalogPreviewRow[] = listCatalogs(request).map(
-    ({ type, preset }) => {
-      const selection = resolveCatalogSelection(
-        request.sortOption,
-        request.catalogSettings,
-        null,
-        preset ?? undefined,
-      );
-      const matching = filterCatalog(
-        sortCatalog(metas, selection.sort, generation).filter(
-          (meta) => meta.type === type,
-        ),
-        selection.filters,
-      );
-      return {
-        type,
-        preset,
-        total: matching.length,
-        titles: matching.slice(0, TITLES_PER_CATALOG).map((meta) => ({
-          id: meta.id,
-          type: meta.type,
-          name: meta.name,
-          poster: previewPoster(meta.poster),
-          releaseInfo: meta.releaseInfo ?? null,
-        })),
-      };
-    },
+function catalogMetas(
+  request: PreviewRequest,
+  metas: StremioMeta[],
+  { type, preset }: ListCatalog,
+) {
+  const selection = resolveCatalogSelection(
+    request.sortOption,
+    request.catalogSettings,
+    null,
+    preset ?? undefined,
   );
-  const shown = catalogs.flatMap((row) => row.titles);
+  const generation = `preview:${listSources(request).map(sourceKey).join(",")}`;
+  return filterCatalog(
+    sortCatalog(metas, selection.sort, generation).filter(
+      (meta) => meta.type === type,
+    ),
+    selection.filters,
+  );
+}
+
+function toPreviewTitle(meta: StremioMeta) {
+  const title: PreviewTitle = {
+    id: meta.id,
+    type: meta.type,
+    name: meta.name,
+    poster: previewPoster(meta.poster),
+    releaseInfo: meta.releaseInfo ?? null,
+  };
+  return title;
+}
+
+async function addPosters(titles: PreviewTitle[]) {
   const options = {
     budgetMs: PREVIEW_POSTER_BUDGET_MS,
     size: "preview",
   } as const;
   const [tmdbPosters, tvdbPosters] = await Promise.all([
-    findPosters("tmdb", shown, options),
-    findPosters("tvdb", shown, options),
+    findPosters("tmdb", titles, options),
+    findPosters("tvdb", titles, options),
   ]);
-  for (const title of shown) {
+  for (const title of titles) {
     title.tmdbPoster = tmdbPosters.get(title.id) ?? null;
     title.tvdbPoster = tvdbPosters.get(title.id) ?? null;
   }
+}
+
+async function presentPreview(
+  request: PreviewRequest,
+  read: BuiltCatalog[],
+  sourceProblems: PreviewSourceProblem[],
+) {
+  const metas = previewMetas(request, read);
+  const unresolvedEntries = read.flatMap((built) => built.unresolvedEntries);
+
+  const catalogs: CatalogPreviewRow[] = listCatalogs(request).map((catalog) => {
+    const matching = catalogMetas(request, metas, catalog);
+    return {
+      ...catalog,
+      total: matching.length,
+      titles: matching.slice(0, TITLES_PER_CATALOG).map(toPreviewTitle),
+    };
+  });
+  await addPosters(catalogs.flatMap((row) => row.titles));
 
   return {
     ok: true,
@@ -249,17 +270,11 @@ async function presentPreview(
   } satisfies CatalogPreview;
 }
 
-/**
- * Preview a List before it is saved: read its Source lists like a catalog
- * request would, but write no Catalog cache. Expected problems (private list,
- * missing Connection, Provider turned off) come back as a reason. A merged
- * List leaves out the Source lists that cannot be read, as its Catalog does,
- * and fails only when none can be read. When a Provider's queue is long (3 s
- * or more), the answer is the queue state: ask again with its ticket to keep
- * the place. The pages read so far stay cached, so the next request goes on
- * from there.
- */
-export async function previewList(request: PreviewRequest) {
+type SourceReads =
+  | { ok: true; read: BuiltCatalog[]; problems: PreviewSourceProblem[] }
+  | { ok: false; answer: Exclude<CatalogPreviewResponse, CatalogPreview> };
+
+async function readPreviewSources(request: PreviewRequest) {
   const sources = listSources(request);
   const queue = readQueue({
     maxWaitMs: PREVIEW_WAIT_MS,
@@ -287,9 +302,12 @@ export async function previewList(request: PreviewRequest) {
       b.error.waitMs > a.error.waitMs ? b : a,
     );
     return {
-      ...queuedAnswer(longest.error, longest.provider),
-      ticket: longest.error.ticket ?? queue.ticket,
-    } satisfies CatalogPreviewResponse;
+      ok: false,
+      answer: {
+        ...queuedAnswer(longest.error, longest.provider),
+        ticket: longest.error.ticket ?? queue.ticket,
+      },
+    } satisfies SourceReads;
   }
   const read: BuiltCatalog[] = [];
   const problems: PreviewSourceProblem[] = [];
@@ -313,11 +331,51 @@ export async function previewList(request: PreviewRequest) {
     const [first] = problems;
     return {
       ok: false,
-      reason: first.reason,
-      ...(sources.length > 1
-        ? { source: { provider: first.provider, sourceRef: first.sourceRef } }
-        : {}),
-    } satisfies CatalogPreviewResponse;
+      answer: {
+        ok: false,
+        reason: first.reason,
+        ...(sources.length > 1
+          ? { source: { provider: first.provider, sourceRef: first.sourceRef } }
+          : {}),
+      },
+    } satisfies SourceReads;
   }
-  return presentPreview(request, read, problems);
+  return { ok: true, read, problems } satisfies SourceReads;
+}
+
+/**
+ * Preview a List before it is saved: read its Source lists like a catalog
+ * request would, but write no Catalog cache (see `readPreviewSources` for
+ * the answers that are not a preview).
+ */
+export async function previewList(request: PreviewRequest) {
+  const reads = await readPreviewSources(request);
+  if (!reads.ok) return reads.answer;
+  return presentPreview(request, reads.read, reads.problems);
+}
+
+/**
+ * One page of the Titles of one Catalog of a List, for the full preview of
+ * that Catalog. It reuses the recent read of the preview, so each page reads
+ * the Provider again only when that read expired.
+ */
+export async function previewCatalogTitles(
+  request: PreviewRequest & { catalog: ListCatalog; offset: number },
+) {
+  const reads = await readPreviewSources(request);
+  if (!reads.ok) return reads.answer;
+  const matching = catalogMetas(
+    request,
+    previewMetas(request, reads.read),
+    request.catalog,
+  );
+  const titles = matching
+    .slice(request.offset, request.offset + CATALOG_TITLES_PAGE_SIZE)
+    .map(toPreviewTitle);
+  await addPosters(titles);
+  return {
+    ok: true,
+    total: matching.length,
+    titles,
+  } satisfies CatalogTitlesResponse;
 }

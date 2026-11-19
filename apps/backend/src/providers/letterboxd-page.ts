@@ -33,6 +33,18 @@ function diaryDate($: ReturnType<typeof load>, card: ReturnType<typeof $>) {
 }
 
 /**
+ * Whether a 403 body is Letterboxd's own Forbidden page, which it sends for a
+ * private watchlist. A refusal of Stremlist comes from Cloudflare instead,
+ * with its own page. The markers are in the first 2 KB.
+ */
+export function isLetterboxdForbiddenPage(html: string) {
+  return (
+    /<title>\s*Letterboxd - Forbidden\s*<\/title>/i.test(html) ||
+    /analytic_params\['template'\]\s*=\s*'\/errors\/forbidden'/.test(html)
+  );
+}
+
+/**
  * Parse one Letterboxd collection page. `diary` reads diary rows and their
  * watch dates.
  */

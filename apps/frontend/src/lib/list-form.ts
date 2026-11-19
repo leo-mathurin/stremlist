@@ -30,13 +30,24 @@ export type ListFormRow = {
   sourceLabel?: string;
 };
 
+/**
+ * A random ID for a row on this page. `crypto.randomUUID` exists only in a
+ * secure context: a dev server over http:// on the tailnet has none.
+ */
+export function newLocalId(random: Pick<Crypto, "getRandomValues"> = crypto) {
+  const bytes = random.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
+
 export function createListRow(
   partial: Pick<ListFormRow, "provider" | "sourceRef"> &
     Partial<Omit<ListFormRow, "localId">>,
 ) {
   return {
     id: partial.id,
-    localId: crypto.randomUUID(),
+    localId: newLocalId(),
     provider: partial.provider,
     sourceRef: partial.sourceRef,
     catalogTitle: (partial.catalogTitle ?? "").slice(

@@ -251,6 +251,20 @@ function worldHandlers() {
       const status = statusOf(request.url);
       if (status) return new HttpResponse(null, { status });
       const path = new URL(request.url).pathname;
+      const calendar = /^\/calendars\/all\/(shows|movies|dvd)\//.exec(path);
+      if (calendar) {
+        return HttpResponse.json(
+          Array.from({ length: 30 }, (_, index) => {
+            const media = {
+              title: `Title ${index}`,
+              ids: { trakt: index + 1, imdb: `tt${5_000_000 + index}` },
+            };
+            return calendar[1] === "shows"
+              ? { first_aired: "2026-12-01T02:00:00.000Z", show: media }
+              : { released: "2026-12-01", movie: media };
+          }),
+        );
+      }
       if (!/^\/(movies|shows)\//.test(path)) return unexpectedRequest(request);
       return HttpResponse.json(
         Array.from({ length: 30 }, (_, index) => ({
@@ -263,11 +277,12 @@ function worldHandlers() {
       tick();
       return HttpResponse.json([], { status: statusOf(request.url) ?? 200 });
     }),
-    http.get("https://data.simkl.in/discover/trending/*", ({ request }) => {
+    http.get("https://data.simkl.in/discover/*", ({ request }) => {
       tick();
-      const file = new URL(request.url).pathname.split("/").slice(-2)[0];
+      const file = new URL(request.url).pathname.replace(/^\/discover\//, "");
+      const size = Number(/_(\d+)\.json$/.exec(file)?.[1] ?? 0);
       return HttpResponse.json(
-        Array.from({ length: simklTrending.get(file) ?? 60 }, (_, index) => ({
+        Array.from({ length: simklTrending.get(file) ?? size }, (_, index) => ({
           title: `Title ${index}`,
           ids: { simkl: index + 1, imdb: `tt${4_000_000 + index}` },
         })),
@@ -792,8 +807,9 @@ describe("Provider outages", () => {
             failures,
           })),
         ).toEqual([{ provider: "letterboxd", failures: 1 }]);
-        expect(letterboxdGate()?.haltedAt != null).toBe(halts);
+        expect(letterboxdGate()?.haltedAt ?? null).toBeNull();
         await monitor();
+        expect(letterboxdGate()?.haltedAt != null).toBe(halts);
         expect(await outages()).toEqual(halts ? [] : ["letterboxd"]);
       },
     );
@@ -1019,7 +1035,7 @@ describe("list checks", () => {
     vi.stubEnv("MDBLIST_CLIENT_ID", "mdblist-app");
     for (const provider of ["TRAKT", "SIMKL", "MDBLIST"])
       vi.stubEnv(`BETTERSTACK_HEARTBEAT_URL_${provider}`, APPS_BEAT);
-    simklTrending.set("tv", 0);
+    simklTrending.set("trending/tv/week_100.json", 0);
 
     await monitor();
 
@@ -1032,7 +1048,7 @@ describe("list checks", () => {
 
     endListCheckInterval();
     beats = [];
-    simklTrending.delete("tv");
+    simklTrending.delete("trending/tv/week_100.json");
     await monitor();
     expect(beats.filter((beat) => beat.url.startsWith(APPS_BEAT))).toEqual([
       { url: APPS_BEAT, method: "GET" },

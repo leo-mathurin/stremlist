@@ -18,6 +18,7 @@ import {
   SAVED,
   SAVED_REINSTALL,
   SAVED_REINSTALL_BY_HAND,
+  addImdbChart,
 } from "../helpers/configure.js";
 
 const TITLE = "My watchlist";
@@ -162,10 +163,7 @@ test(
     const accountId = present(body.accountId, "the new Account ID");
     await page.goto(configureUrl(accountId));
     await expect(page.getByText("No lists yet")).toBeVisible();
-    await page.getByRole("button", { name: "Add an IMDb chart" }).click();
-    await page
-      .getByRole("menuitem", { name: /^Box Office \(Weekend\)/ })
-      .click();
+    await addImdbChart(page, /^Box Office \(Weekend\)/);
     await saveConfigure(page, { message: SAVED_REINSTALL });
     await expect(
       page.getByRole("heading", {
@@ -182,8 +180,7 @@ test("adds a built-in chart List", { tag: "@local" }, async ({ page }) => {
   const { accountId } = await seedWatchlist();
   await openConfigure(page, accountId, TITLE);
 
-  await page.getByRole("button", { name: "Add an IMDb chart" }).click();
-  await page.getByRole("menuitem", { name: /^Top 250 Movies/ }).click();
+  await addImdbChart(page, /^Top 250 Movies/);
   await expect(page.getByText("IMDb · Chart")).toBeVisible();
 
   await saveConfigure(page);
@@ -236,8 +233,7 @@ test("saves and clears the RPDB key", { tag: "@local" }, async ({ page }) => {
 test("removes a List", { tag: "@local" }, async ({ page }) => {
   const { accountId } = await seedWatchlist();
   await openConfigure(page, accountId, TITLE);
-  await page.getByRole("button", { name: "Add an IMDb chart" }).click();
-  await page.getByRole("menuitem", { name: /^Box Office \(Weekend\)/ }).click();
+  await addImdbChart(page, /^Box Office \(Weekend\)/);
   await expect(page.getByText("2 of 10 lists")).toBeVisible();
   await saveConfigure(page);
   expect((await getConfig(accountId)).body.lists).toHaveLength(2);
@@ -258,10 +254,7 @@ test(
     const { accountId } = await seedWatchlist();
     await openConfigure(page, accountId, TITLE);
     await expect(saveButton(page)).toBeDisabled();
-    await page.getByRole("button", { name: "Add an IMDb chart" }).click();
-    await page
-      .getByRole("menuitem", { name: /^Box Office \(Weekend\)/ })
-      .click();
+    await addImdbChart(page, /^Box Office \(Weekend\)/);
     await expect(saveButton(page)).toBeEnabled();
     await page
       .getByRole("button", { name: "Remove Box Office (Weekend)" })
@@ -427,8 +420,7 @@ test(
     );
     const { accountId } = await seedWatchlist();
     await openConfigure(page, accountId, TITLE);
-    await page.getByRole("button", { name: "Add an IMDb chart" }).click();
-    await page.getByRole("menuitem", { name: /^Top 250 Movies/ }).click();
+    await addImdbChart(page, /^Top 250 Movies/);
     await saveConfigure(page, { message: SAVED_REINSTALL_BY_HAND });
 
     const toast = page

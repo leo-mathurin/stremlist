@@ -32,7 +32,7 @@ type CatalogPreviewState =
 
 const SETTINGS_DEBOUNCE_MS = 300;
 
-function previewBody(list: ListFormRow, accountKey: string | null) {
+export function previewBody(list: ListFormRow, accountKey: string | null) {
   return {
     accountKey: accountKey ?? undefined,
     provider: list.provider,

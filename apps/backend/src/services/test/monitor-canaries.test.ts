@@ -119,8 +119,12 @@ beforeEach(() => {
   imdb.fail("UserRatings");
   trakt.failOthers(404);
   for (const kind of ["movies", "tv", "anime"]) {
-    simkl.failTrending(`${kind}/week_100.json`, 404);
+    for (const period of ["week", "today", "month"]) {
+      simkl.failTrending(`${kind}/${period}_100.json`, 404);
+    }
   }
+  simkl.failTrending("dvd/releases_100.json", 404);
+  simkl.failTrending("movies/genre/horror_month_500.json", 404);
   imdb.chart = titles(1000);
   imdb.watchlists.set("ur195879360", titles(1000));
   imdb.lists.set("ls055592025", titles(1000));

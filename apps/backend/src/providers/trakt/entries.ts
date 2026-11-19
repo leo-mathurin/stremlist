@@ -20,7 +20,8 @@ export type TraktMedia = z.infer<typeof traktMediaSchema>;
  * One item of a Trakt response that carries a movie or a show: list and
  * watchlist items (`type` + object), chart rows (`watchers` + object), sync
  * rows (`last_watched_at` + object), ratings (`rated_at` + object), up next
- * rows (`show` + `progress`).
+ * rows (`show` + `progress`), playback rows (`paused_at` + movie, or episode
+ * + its show), calendar rows (`first_aired` or `released` + object).
  */
 export const traktItemSchema = z.object({
   type: z.string().optional(),
@@ -31,7 +32,19 @@ export const traktItemSchema = z.object({
   collected_at: z.string().nullish(),
   last_collected_at: z.string().nullish(),
   rated_at: z.string().nullish(),
-  progress: z.object({ last_watched_at: z.string().nullish() }).nullish(),
+  paused_at: z.string().nullish(),
+  first_aired: z.string().nullish(),
+  released: z.string().nullish(),
+  /**
+   * Up next rows give the show's progress. Playback rows give a percentage,
+   * which Stremlist does not use.
+   */
+  progress: z
+    .union([
+      z.object({ last_watched_at: z.string().nullish() }),
+      z.number().transform(() => null),
+    ])
+    .nullish(),
 });
 export type TraktItem = z.infer<typeof traktItemSchema>;
 

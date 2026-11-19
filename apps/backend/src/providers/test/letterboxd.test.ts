@@ -70,6 +70,14 @@ function gate() {
   if (!value) throw new Error("No Letterboxd request went through the gate");
   return value;
 }
+async function readRefused(count: number) {
+  for (let i = 0; i < count; i++) {
+    await expect(
+      letterboxdProvider.fetchSource(`users/reader${i}/watchlist`, context),
+    ).rejects.toMatchObject({ reason: "unavailable" });
+    await background.settle();
+  }
+}
 let testTime = Date.parse("2026-11-05T18:00:00Z");
 beforeEach(() => {
   vi.useFakeTimers();
@@ -265,16 +273,11 @@ describe("Letterboxd public reads", () => {
   });
 
   it.each([200, 503])(
-    "a challenge in an HTTP %i response stops subsequent requests",
+    "counts a challenge in an HTTP %i response as a refusal",
     async (status) => {
       letterboxd.serveAll(respond(status, "<title>Just a moment...</title>"));
-      await expect(
-        letterboxdProvider.fetchSource(ref, context),
-      ).rejects.toMatchObject({ reason: "unavailable" });
-      await expect(
-        letterboxdProvider.fetchSource("users/bob/watchlist", context),
-      ).rejects.toMatchObject({ reason: "disabled" });
-      expect(letterboxd.requests).toHaveLength(1);
+      await readRefused(1);
+      expect(gate()).toMatchObject({ haltedAt: null, blockedCount: 1 });
     },
   );
   it("shares validated pages across accounts, resolves links and keeps stable entry IDs", async () => {
@@ -338,17 +341,72 @@ describe("Letterboxd public reads", () => {
       films: [],
     });
   });
-  it("stops every instance after HTTP 403, with no retry", async () => {
+  it("stops every instance at the third HTTP 403 within 10 minutes, with no retry", async () => {
     letterboxd.serveAll(respond(403, "refused"));
-    await expect(
-      letterboxdProvider.fetchSource(ref, context),
-    ).rejects.toMatchObject({ reason: "unavailable" });
-    await background.settle();
+    await readRefused(2);
+    expect(gate().haltedAt).toBeNull();
+    await readRefused(1);
     await expect(
       letterboxdProvider.fetchSource("users/bob/watchlist", context),
     ).rejects.toMatchObject({ reason: "disabled" });
-    expect(letterboxd.requests).toHaveLength(1);
+    expect(letterboxd.requests).toHaveLength(3);
     expect(gate().haltReason).toBe("blocked");
+  });
+  it("does not halt for refusals more than 10 minutes apart", async () => {
+    letterboxd.serveAll(respond(403, "refused"));
+    await readRefused(2);
+    await vi.advanceTimersByTimeAsync(11 * 60_000);
+    await readRefused(2);
+    expect(gate()).toMatchObject({ haltedAt: null, blockedCount: 2 });
+  });
+  it("reads a 403 with Letterboxd's Forbidden page as a private watchlist, not a refusal", async () => {
+    const forbidden = `\n\n<!DOCTYPE html>\n<html>\n<head>\n\t<title>Letterboxd - Forbidden</title>\n\t<style>${" ".repeat(1200)}</style>\n\t<script>\n\t\tvar analytic_params = {};\n\t\tanalytic_params['template'] = '/errors/forbidden';\n\t</script>${" ".repeat(4000)}</head><body></body></html>`;
+    let hidden = false;
+    letterboxd.serveAll(({ url }) =>
+      hidden && url.includes("/alice/")
+        ? new HttpResponse(forbidden, {
+            status: 403,
+            headers: { server: "cloudflare", "cf-cache-status": "DYNAMIC" },
+          })
+        : new HttpResponse(page([1])),
+    );
+    await letterboxdProvider.fetchSource(ref, context);
+    hidden = true;
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(
+      untilSettled(
+        letterboxdProvider.fetchSource(ref, { ...context, forceRefresh: true }),
+      ),
+    ).rejects.toMatchObject({ reason: "private" });
+    await expect(
+      untilSettled(letterboxdProvider.fetchSource(ref, context)),
+    ).rejects.toMatchObject({ reason: "private" });
+    await expect(
+      untilSettled(letterboxdProvider.validateSource(ref, context)),
+    ).rejects.toMatchObject({ reason: "private" });
+    await untilSettled(background.settle());
+    expect(gate().haltedAt).toBeNull();
+    expect(
+      (await letterboxdProvider.fetchSource("users/bob/watchlist", context))
+        .entries,
+    ).toHaveLength(1);
+    await untilSettled(background.settle());
+    expect(db.getTable("letterboxd_requests")).toContainEqual(
+      expect.objectContaining({
+        outcome: "ok",
+        status: 403,
+        url: "https://letterboxd.com/alice/watchlist/",
+      }),
+    );
+  });
+  it("still counts a Cloudflare challenge on Letterboxd's Forbidden page as a refusal", async () => {
+    letterboxd.serveAll(
+      respond(403, "<title>Letterboxd - Forbidden</title>", {
+        "cf-mitigated": "challenge",
+      }),
+    );
+    await readRefused(1);
+    expect(gate().blockedCount).toBe(1);
   });
   it("slows every instance down after HTTP 429, for at least Retry-After", async () => {
     letterboxd.serveAll(respond(429, "slow down", { "Retry-After": "120" }));
@@ -898,6 +956,28 @@ describe("Letterboxd member collections and charts", () => {
       true,
     );
   });
+  it("fails only the list when Cloudflare challenges a member film page", async () => {
+    letterboxd.serve(
+      `${LETTERBOXD}/alice/films/`,
+      page([1], "/alice/films/page/2/"),
+    );
+    letterboxd.serve(
+      `${LETTERBOXD}/alice/films/page/2/`,
+      respond(403, "<title>Just a moment...</title>", {
+        "cf-mitigated": "challenge",
+      }),
+    );
+    letterboxd.serve(`${LETTERBOXD}/bob/watchlist/`, page([3]));
+    await expect(
+      letterboxdProvider.fetchSource("users/alice/films", context),
+    ).rejects.toMatchObject({ reason: "unavailable" });
+    await background.settle();
+    expect(gate()).toMatchObject({ haltedAt: null, windowFailures: 1 });
+    expect(
+      (await letterboxdProvider.fetchSource("users/bob/watchlist", context))
+        .entries,
+    ).toHaveLength(1);
+  });
 });
 
 describe("Letterboxd live page shapes", () => {
@@ -1044,9 +1124,7 @@ describe("Letterboxd halt alert", () => {
 
   it("reports the halt to Better Stack once, when the shared state flips", async () => {
     letterboxd.serveAll(respond(403, "refused"));
-    await expect(
-      letterboxdProvider.fetchSource(ref, context),
-    ).rejects.toMatchObject({ reason: "unavailable" });
+    await readRefused(3);
     await expect(
       letterboxdProvider.fetchSource("users/bob/watchlist", context),
     ).rejects.toMatchObject({ reason: "disabled" });
@@ -1061,9 +1139,7 @@ describe("Letterboxd halt alert", () => {
         ? new HttpResponse("refused", { status: 403 })
         : new HttpResponse(page([1])),
     );
-    await expect(
-      letterboxdProvider.fetchSource(ref, context),
-    ).rejects.toMatchObject({ reason: "unavailable" });
+    await readRefused(3);
     await vi.advanceTimersByTimeAsync(30 * 60_000);
     refuse = false;
     const read = letterboxdProvider.fetchSource("users/bob/watchlist", context);
@@ -1145,7 +1221,7 @@ describe("Letterboxd request log", () => {
     ]);
     expect(keptForBob()[0].bytes).toBeGreaterThan(0);
   });
-  it("reports a refusal to the gate at once, even when its body stalls", async () => {
+  it("reports a refusal to the gate within 2 s, even when its body stalls", async () => {
     const reported = Promise.withResolvers<void>();
     rpcHandlers.set("letterboxd_report", (args) => {
       const result = letterboxdGateRpcs.letterboxd_report(args);
@@ -1163,11 +1239,13 @@ describe("Letterboxd request log", () => {
           { status: 403 },
         ),
     );
-    await expect(
-      letterboxdProvider.fetchSource(ref, context),
-    ).rejects.toMatchObject({ reason: "unavailable" });
+    const read = letterboxdProvider
+      .fetchSource(ref, context)
+      .catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(await read).toMatchObject({ reason: "unavailable" });
     await reported.promise;
-    expect(gate().haltReason).toBe("blocked");
+    expect(gate().blockedCount).toBe(1);
     expect(kept()).toHaveLength(0);
     await vi.advanceTimersByTimeAsync(3000);
     await background.settle();

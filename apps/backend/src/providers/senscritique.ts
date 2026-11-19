@@ -23,7 +23,7 @@ const UNIVERSE_SERIES = 4;
 
 const WIKIDATA_SENSCRITIQUE_WORK = "P10100";
 
-const USER_REF = /^users\/([\w.-]+)\/([a-z]+)$/;
+const USER_REF = /^users\/([\w.-]+)\/([a-z]+)(?:\/(\d{4}))?$/;
 const LIST_REF = /^lists\/(\d+)$/;
 const POLL_REF = /^polls\/(\d+)$/;
 
@@ -32,7 +32,7 @@ type CollectionAction =
   (typeof SENSCRITIQUE_COLLECTIONS)[SensCritiqueCollection]["action"];
 
 interface Chart {
-  subtype: "TOP_111" | "TOP_100_OUT_OF_TOP_10";
+  subtype: "TOP_111" | "TOP_100_OUT_OF_TOP_10" | "TOP_111_ANIME";
   universe: Universe;
 }
 
@@ -41,6 +41,7 @@ const CHARTS = new Map<string, Chart>([
   ["top111-series", { subtype: "TOP_111", universe: "tvShow" }],
   ["top100-movies", { subtype: "TOP_100_OUT_OF_TOP_10", universe: "movie" }],
   ["top100-series", { subtype: "TOP_100_OUT_OF_TOP_10", universe: "tvShow" }],
+  ["top111-anime", { subtype: "TOP_111_ANIME", universe: "tvShow" }],
 ]);
 const CHART_LIMIT = 200;
 
@@ -54,10 +55,21 @@ function collectionReads(collection: SensCritiqueCollection) {
   return reads;
 }
 
+interface UserRef {
+  username: string;
+  collection: SensCritiqueCollection;
+  year?: number;
+}
+
 function userRef(ref: string) {
   const match = USER_REF.exec(ref);
   if (!match || !isSensCritiqueCollection(match[2])) return null;
-  const user: [string, SensCritiqueCollection] = [match[1], match[2]];
+  const [, username, collection, year] = match;
+  if (year !== undefined && collection !== "done") return null;
+  const user: UserRef =
+    year === undefined
+      ? { username, collection }
+      : { username, collection, year: Number(year) };
   return user;
 }
 
@@ -105,11 +117,11 @@ const USER_QUERY = `
 `;
 
 const COLLECTION_QUERY = `
-  query StremlistCollection($username: String!, $action: ProductAction!, $universe: String, $limit: Int, $offset: Int) {
+  query StremlistCollection($username: String!, $action: ProductAction!, $universe: String, $yearDateDone: Int, $limit: Int, $offset: Int) {
     user(username: $username) {
       username
       settings { privacyProfile }
-      collection(universe: $universe, action: $action, order: LAST_ACTION_DESC, limit: $limit, offset: $offset) {
+      collection(universe: $universe, action: $action, yearDateDone: $yearDateDone, order: LAST_ACTION_DESC, limit: $limit, offset: $offset) {
         total
         products {
           ${PRODUCT_FIELDS}
@@ -334,7 +346,7 @@ function nextPage(page: number, count: number, total: number) {
 }
 
 function fetchUniverseCollection(
-  username: string,
+  { username, year }: UserRef,
   universe: Universe,
   action: CollectionAction,
 ) {
@@ -348,6 +360,7 @@ function fetchUniverseCollection(
           username,
           action,
           universe,
+          yearDateDone: year ?? null,
           limit: PAGE_SIZE,
           offset: page * PAGE_SIZE,
         },
@@ -374,13 +387,10 @@ function fetchUniverseCollection(
   });
 }
 
-async function fetchCollection(
-  username: string,
-  collection: SensCritiqueCollection,
-) {
+async function fetchCollection(user: UserRef) {
   const reads = await Promise.all(
-    collectionReads(collection).map(([universe, action]) =>
-      fetchUniverseCollection(username, universe, action),
+    collectionReads(user.collection).map(([universe, action]) =>
+      fetchUniverseCollection(user, universe, action),
     ),
   );
   return {
@@ -453,8 +463,9 @@ export const senscritiqueWikidataStrategy = wikidataStrategy(
 
 /**
  * SensCritique: a user's collections of films and series ("Envies", "Vus",
- * "Notés", "Coups de cœur"), public lists, the public charts and the results
- * of polls, read anonymously. No Connection and no Actions: SensCritique has
+ * also for one year, "Notés", "Coups de cœur", "En cours", "Il a récemment
+ * aimé"), public lists (top 10s and poll rankings among them), the public
+ * charts and the results of polls, read anonymously. No Connection and no Actions: SensCritique has
  * no public API for them.
  */
 export const senscritiqueProvider: ProviderAdapter = {
@@ -464,10 +475,10 @@ export const senscritiqueProvider: ProviderAdapter = {
   async validateSource(ref) {
     const user = userRef(ref);
     if (user) {
-      const [name, collection] = user;
+      const { collection, year } = user;
       const data = await senscritiqueQuery(
         USER_QUERY,
-        { username: name },
+        { username: user.username },
         userDataSchema,
       );
       if (!data.user) return { ok: false, reason: "not_found" };
@@ -476,8 +487,14 @@ export const senscritiqueProvider: ProviderAdapter = {
       const { noun } = SENSCRITIQUE_COLLECTIONS[collection];
       return {
         ok: true,
-        ref: `users/${username}/${collection}`,
-        suggestedTitle: `${username}'s ${noun}`,
+        ref:
+          year === undefined
+            ? `users/${username}/${collection}`
+            : `users/${username}/${collection}/${year}`,
+        suggestedTitle:
+          year === undefined
+            ? `${username}'s ${noun}`
+            : `${username}'s ${noun} in ${year}`,
         defaultDisplayMode: "split",
       };
     }
@@ -544,7 +561,7 @@ export const senscritiqueProvider: ProviderAdapter = {
     const poll = POLL_REF.exec(ref);
     let read: PagedRead<SensCritiqueProduct>;
     if (user) {
-      read = await fetchCollection(...user);
+      read = await fetchCollection(user);
     } else if (list) {
       read = await fetchListProducts(Number(list[1]));
     } else if (chart) {

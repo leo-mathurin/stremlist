@@ -2,6 +2,16 @@
 
 Before handing off a behavior change, run the local [verify-stremlist skill](.agents/skills/verify-stremlist/SKILL.md). Use its feature map to select user journeys and its delivery criteria to report evidence and coverage gaps. A blocked or skipped check remains unverified.
 
+## Stale toolkit recordings
+
+When a change makes a toolkit recording stale (`REPLAY_STALE` or a missing recording), record it again in the same change. Do not leave it for someone else.
+
+1. Run `bun run test:toolkit:record` two times from the repository root. The second run must make zero model calls.
+2. Run `bun run test:toolkit:replay`.
+3. Commit the new `apps/e2e/.e2e/cache/*.json` files with the change. Never edit a recording by hand.
+
+The Mac, oracle-dev and tour each have the ChatGPT login for recording. If the login is missing or expired on the machine you use, run `bun run --cwd apps/e2e e2e login openai --device` and give Léo the URL and code. Read [the E2E README](apps/e2e/README.md) for the cache rules.
+
 <!-- BEGIN:turborepo-agent-rules -->
 
 # This is NOT the Turborepo you know

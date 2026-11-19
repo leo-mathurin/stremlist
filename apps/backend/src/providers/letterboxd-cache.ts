@@ -99,7 +99,8 @@ export async function letterboxdSnapshot(
     return snapshot;
   } catch (error) {
     const gone =
-      error instanceof SourceUnavailableError && error.reason === "not_found";
+      error instanceof SourceUnavailableError &&
+      (error.reason === "not_found" || error.reason === "private");
     try {
       await writeJson(
         key,

@@ -1,3 +1,4 @@
+import { sourceTitleType } from "@stremlist/shared/list-merge";
 import {
   CONNECTION_SOURCES,
   sourceTitle,
@@ -13,19 +14,27 @@ import {
   simklLimiters,
   simklRequest,
 } from "./simkl/api";
-import { LIBRARY_REFS, libraryEntries } from "./simkl/entries";
+import { airingSoonEntries, clearCalendarReads } from "./simkl/calendar";
+import {
+  AIRING_SOON_REF,
+  CONNECTION_REFS,
+  libraryEntries,
+  PLAYBACK_REF,
+} from "./simkl/entries";
 import {
   clearInFlightSyncs,
   forgetInFlightSync,
   syncLibrary,
 } from "./simkl/library";
 import { fetchCustomList, readListPage } from "./simkl/lists";
+import { fetchPlayback } from "./simkl/playback";
 import { clearMemoryState, forgetMemoryState } from "./simkl/state";
 import {
+  chartFreshness,
   clearTrendingReads,
-  isTrendingRef,
+  genreExists,
+  isChartRef,
   readTrending,
-  TRENDING_FRESHNESS_MS,
 } from "./simkl/trending";
 import type { ProviderAdapter } from "./types";
 import { SourceUnavailableError } from "./types";
@@ -41,6 +50,7 @@ export function resetSimklState() {
   clearMemoryState();
   clearInFlightSyncs();
   clearTrendingReads();
+  clearCalendarReads();
 }
 
 const LIBRARY_FRESHNESS_MS = 60 * 60_000;
@@ -51,27 +61,37 @@ const LIBRARY_FRESHNESS_MS = 60 * 60_000;
  * history and ratings, and custom lists (`me/lists/{id}`, Simkl PRO and VIP
  * only), through OAuth (AUTH V2). Reads follow Simkl's activities-first sync
  * model; the library snapshot lives in R2 under the Account's Connection.
- * The trending charts (`trending/movies`, `trending/tv`, `trending/anime`)
- * come from Simkl's CDN files, with no Connection and no user quota.
+ * "Airing soon" (`me/airing-soon`) joins the library with Simkl's airing
+ * calendar, and "Continue watching" (`me/continue-watching`) reads the
+ * paused playback sessions when activities say they changed.
+ * The charts come from Simkl's CDN files, with no Connection and no user
+ * quota: trending today, this week and this month (`trending/{type}`,
+ * `trending/{type}/today|month`), trending by genre this month
+ * (`trending/{type}/genre/{slug}`) and DVD releases (`dvd/releases`).
  */
 export const simklProvider: ProviderAdapter = {
   id: "simkl",
   freshnessMs: LIBRARY_FRESHNESS_MS,
 
   freshnessFor(ref) {
-    return isTrendingRef(ref) ? TRENDING_FRESHNESS_MS : LIBRARY_FRESHNESS_MS;
+    return chartFreshness(ref) ?? LIBRARY_FRESHNESS_MS;
   },
 
   async validateSource(ref, ctx) {
-    if (isTrendingRef(ref)) {
+    if (isChartRef(ref)) {
+      if (staticSource("simkl", ref) === null && !(await genreExists(ref))) {
+        return { ok: false, reason: "not_found" };
+      }
       return {
         ok: true,
         ref,
         suggestedTitle: sourceTitle("simkl", ref),
-        defaultDisplayMode: staticSource("simkl", ref)?.defaultDisplayMode,
+        defaultDisplayMode:
+          staticSource("simkl", ref)?.defaultDisplayMode ??
+          (sourceTitleType("simkl", ref) === "movie" ? "movie" : "series"),
       };
     }
-    const fromLibrary = LIBRARY_REFS.includes(ref);
+    const fromLibrary = CONNECTION_REFS.includes(ref);
     const listId = LIST_REF.exec(ref)?.[1];
     if (!fromLibrary && !listId) return { ok: false, reason: "not_found" };
     if (!ctx.connection) return { ok: false, reason: "needs_connection" };
@@ -98,9 +118,9 @@ export const simklProvider: ProviderAdapter = {
   },
 
   async fetchSource(ref, ctx) {
-    if (isTrendingRef(ref)) return readTrending(ref, ctx.forceRefresh);
+    if (isChartRef(ref)) return readTrending(ref, ctx.forceRefresh);
     const listId = LIST_REF.exec(ref)?.[1];
-    if (!LIBRARY_REFS.includes(ref) && !listId) {
+    if (!CONNECTION_REFS.includes(ref) && !listId) {
       throw new SourceUnavailableError(
         "not_found",
         `Unknown Simkl source ${ref}`,
@@ -114,7 +134,14 @@ export const simklProvider: ProviderAdapter = {
       );
     }
     if (listId) return fetchCustomList(connection, listId);
+    if (ref === PLAYBACK_REF) return fetchPlayback(connection);
     const library = await syncLibrary(connection);
+    if (ref === AIRING_SOON_REF) {
+      return {
+        entries: await airingSoonEntries(library.items, ctx.forceRefresh),
+        complete: true,
+      };
+    }
     return {
       entries: libraryEntries(library.items, ref),
       complete: true,

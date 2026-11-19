@@ -5,6 +5,7 @@ import { traktActions } from "./trakt/actions";
 import {
   nonEmpty,
   TRAKT_API,
+  traktGetAll,
   traktGetParsed,
   TRAKT_AUTH,
   traktClient,
@@ -17,6 +18,7 @@ import {
   smartListDisplayMode,
   validateTraktSource,
 } from "./trakt/sources";
+import type { ConnectionSource } from "@stremlist/shared/providers";
 import type { ProviderAdapter } from "./types";
 import { SourceUnavailableError } from "./types";
 
@@ -29,6 +31,41 @@ const traktOwnListSchema = z.object({
 });
 
 type TraktOwnList = z.infer<typeof traktOwnListSchema>;
+
+const traktOtherListSchema = traktOwnListSchema.extend({
+  user: z
+    .object({ ids: z.object({ slug: z.string().nullish() }).nullish() })
+    .nullish(),
+});
+type TraktOtherList = z.infer<typeof traktOtherListSchema>;
+
+const MAX_LIKED_LISTS = 500;
+
+function otherListSource(list: TraktOtherList) {
+  const owner = list.user?.ids?.slug;
+  const id = list.ids?.slug ?? list.ids?.trakt;
+  if (!owner || id === undefined) return [];
+  return [
+    {
+      ref: `users/${owner}/lists/${String(id)}`.toLowerCase(),
+      kind: "list",
+      label: list.name?.trim() ? list.name.trim() : String(id),
+      defaultDisplayMode: "split",
+    } satisfies ConnectionSource,
+  ];
+}
+
+async function optionalListing<T>(name: string, listing: Promise<T>) {
+  try {
+    return await listing;
+  } catch (error) {
+    console.error(
+      `Listing Trakt ${name} failed:`,
+      error instanceof Error ? error.message : error,
+    );
+    return null;
+  }
+}
 
 const traktSettingsSchema = z.object({
   user: z
@@ -85,27 +122,42 @@ export const traktProvider: ProviderAdapter = {
   actions: traktActions,
 
   /**
-   * The user's own lists and smart lists, so the configure page can offer
-   * them in one click.
+   * The user's own lists and smart lists, then the lists that the user
+   * likes or collaborates on, so the configure page can offer them in one
+   * click.
    */
   async listConnectionSources(connection) {
-    const [lists, smartLists] = await Promise.all([
+    const [lists, smartLists, liked, collaborations] = await Promise.all([
       traktGetParsed(
         "/users/me/lists",
         z.array(traktOwnListSchema),
         connection,
       ),
-      traktGetParsed(
-        "/users/me/smart-lists",
-        z.array(traktOwnListSchema),
-        connection,
-      ).catch((error: unknown) => {
-        console.error(
-          "Listing Trakt smart lists failed:",
-          error instanceof Error ? error.message : error,
-        );
-        return null;
-      }),
+      optionalListing(
+        "smart lists",
+        traktGetParsed(
+          "/users/me/smart-lists",
+          z.array(traktOwnListSchema),
+          connection,
+        ),
+      ),
+      optionalListing(
+        "liked lists",
+        traktGetAll(
+          "/users/likes/lists",
+          z.object({ list: traktOtherListSchema.nullish() }),
+          connection,
+          { maxItems: MAX_LIKED_LISTS },
+        ),
+      ),
+      optionalListing(
+        "collaboration lists",
+        traktGetParsed(
+          "/users/me/lists/collaborations",
+          z.array(traktOtherListSchema),
+          connection,
+        ),
+      ),
     ]);
     const toSources = (prefix: string, found: TraktOwnList[] | null) =>
       (found ?? []).flatMap((list) => {
@@ -121,9 +173,20 @@ export const traktProvider: ProviderAdapter = {
               },
             ];
       });
+    const ownIds = new Set((lists ?? []).map((list) => list.ids?.trakt));
+    const others = new Map(
+      [
+        ...(liked?.items ?? []).flatMap(({ list }) => (list ? [list] : [])),
+        ...(collaborations ?? []),
+      ]
+        .filter((list) => !ownIds.has(list.ids?.trakt))
+        .flatMap(otherListSource)
+        .map((source) => [source.ref, source]),
+    );
     return [
       ...toSources("me/lists", lists),
       ...toSources("me/smart-lists", smartLists),
+      ...others.values(),
     ];
   },
 

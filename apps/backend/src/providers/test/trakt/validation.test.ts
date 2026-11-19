@@ -203,6 +203,55 @@ describe("Trakt validateSource", () => {
     });
   });
 
+  it("accepts the public calendars without a network call", async () => {
+    await expect(
+      traktProvider.validateSource("calendars/shows/new", { connection: null }),
+    ).resolves.toEqual({
+      ok: true,
+      ref: "calendars/shows/new",
+      suggestedTitle: "Trakt New Shows",
+      defaultDisplayMode: "series",
+    });
+    await expect(
+      traktProvider.validateSource("calendars/dvd", { connection: null }),
+    ).resolves.toEqual({
+      ok: true,
+      ref: "calendars/dvd",
+      suggestedTitle: "Trakt DVD Releases",
+      defaultDisplayMode: "movie",
+    });
+    expect(calls).toHaveLength(0);
+    await expect(
+      traktProvider.validateSource("calendars/shows/finales", {
+        connection: null,
+      }),
+    ).resolves.toMatchObject({ ok: false, reason: "not_found" });
+  });
+
+  it("Continue Watching and the Calendar need a Connection", async () => {
+    for (const ref of ["me/continue-watching", "me/calendar"]) {
+      expect(
+        await unavailableReason(
+          traktProvider.validateSource(ref, { connection: null }),
+        ),
+      ).toBe("needs_connection");
+    }
+    route("GET /users/settings", { user: { username: "leo" } });
+    await expect(
+      traktProvider.validateSource("me/continue-watching", {
+        connection: connection(),
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      ref: "me/continue-watching",
+      suggestedTitle: "Trakt Continue Watching",
+      defaultDisplayMode: "split",
+    });
+    await expect(
+      traktProvider.validateSource("me/calendar", { connection: connection() }),
+    ).resolves.toMatchObject({ ok: true, suggestedTitle: "Trakt Calendar" });
+  });
+
   it("rejects refs it does not know", async () => {
     await expect(
       traktProvider.validateSource("users/sean", { connection: null }),

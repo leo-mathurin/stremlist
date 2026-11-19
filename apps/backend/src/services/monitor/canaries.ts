@@ -61,6 +61,12 @@ export const CANARIES = {
   "trakt:me/up-next": {
     none: "Up Next has only the series that the user is watching, which a monitor Account cannot keep.",
   },
+  "trakt:me/continue-watching": {
+    none: "Continue Watching has only the movies and episodes that the user paused and did not finish, which a monitor Account cannot keep.",
+  },
+  "trakt:me/calendar": {
+    none: "The Calendar has only what airs in the next 30 days for the user's shows and movies, which a monitor Account cannot keep. The public calendars check the same rows.",
+  },
   "trakt:me/history": { min: 1 },
   "trakt:me/collection": { min: 1 },
   "trakt:me/favorites": { min: 1 },
@@ -75,6 +81,14 @@ export const CANARIES = {
   "trakt:collected": { min: 50 },
   "trakt:favorited": { min: 50 },
   "trakt:recommended": { min: 50 },
+  /**
+   * Calendars of the next 30 days. On 2026-11-17 they gave 9 new shows, 35
+   * season premieres, 28 movies and 40 DVD releases; they change a lot.
+   */
+  "trakt:calendars/shows/new": { min: 3 },
+  "trakt:calendars/shows/premieres": { min: 15 },
+  "trakt:calendars/movies": { min: 10 },
+  "trakt:calendars/dvd": { min: 15 },
   /**
    * A public user's history or collection costs up to about 20 calls of
    * the app-wide quota: give a small one in MONITOR_CANARY_REFS.
@@ -97,24 +111,63 @@ export const CANARIES = {
   "simkl:me/dropped": { min: 1 },
   "simkl:me/history": { min: 1 },
   "simkl:me/ratings": { min: 1 },
-  /** Simkl's CDN files list 100 Titles each. */
+  "simkl:me/airing-soon": {
+    none: "Airing soon has only the Titles of the library that air in the next weeks, which a monitor Account cannot keep. It reads the same library as the statuses.",
+  },
+  "simkl:me/continue-watching": {
+    none: "Simkl drops a paused playback session after 7 days on a free account, so a monitor Account cannot keep one.",
+  },
+  /**
+   * Simkl's CDN files list 100 Titles each. In the anime files, seasons
+   * share the series' IMDb ID: about 80 Titles stay (2026-11-17).
+   */
+  "simkl:trending/movies/today": { min: 80 },
+  "simkl:trending/tv/today": { min: 80 },
+  "simkl:trending/anime/today": { min: 64 },
   "simkl:trending/movies": { min: 50 },
   "simkl:trending/tv": { min: 50 },
   "simkl:trending/anime": { min: 50 },
+  "simkl:trending/movies/month": { min: 80 },
+  "simkl:trending/tv/month": { min: 80 },
+  "simkl:trending/anime/month": { min: 64 },
+  "simkl:dvd/releases": { min: 80 },
   "simkl:me/lists/{id}": {
     none: "Custom lists need Simkl PRO or VIP, and they read the same library as the statuses.",
+  },
+  /** A genre's file has the 500 trending Titles of the month. */
+  "simkl:trending/{type}/genre/{slug}": {
+    ref: "trending/movies/genre/horror",
+    min: 400,
   },
 
   "mdblist:me/watchlist": { min: 1 },
   "mdblist:me/ratings": { min: 1 },
   "mdblist:me/history": { min: 1 },
-  /** MDBList reads its official charts through the Connection too. */
-  "mdblist:official/trending": { min: 20 },
-  "mdblist:official/popular": { min: 20 },
-  "mdblist:official/anticipated": { min: 20 },
-  "mdblist:official/most-watched": { min: 20 },
+  "mdblist:me/up-next": {
+    none: "Up Next has only the series that the user is watching, which a monitor Account cannot keep.",
+  },
+  "mdblist:me/collection": {
+    none: "The monitor Account keeps no Title in its MDBList collection. Add one, then give this type min: 1.",
+  },
+  /**
+   * MDBList reads its official charts and recommendations through the
+   * Connection too. Each chart gives the same count every day (100 or 200
+   * Titles; about 300 for JustWatch), so the minimums are about 80% of a
+   * read on 2026-11-17.
+   */
+  "mdblist:official/trending": { min: 160 },
+  "mdblist:official/popular": { min: 160 },
+  "mdblist:official/anticipated": { min: 80 },
+  "mdblist:official/most-watched": { min: 160 },
+  "mdblist:official/most-watched-week": { min: 80 },
+  "mdblist:official/moviemeter": { min: 160 },
+  "mdblist:official/justwatch-streaming-charts": { min: 240 },
   "mdblist:official/{slug}": {
-    none: "Another official chart reads the same endpoint as the four official charts, which have their canaries.",
+    none: "Another official chart reads the same endpoint as the official charts that have their canaries.",
+  },
+  "mdblist:recommended/rising": { min: 80 },
+  "mdblist:recommended/{section}": {
+    none: "The other sections need an MDBList supporter plan, and they read the same endpoint as recommended/rising.",
   },
   "mdblist:lists/{id}": { min: 1 },
   "mdblist:lists/{user}/{slug}": {
@@ -134,7 +187,7 @@ export const CANARIES = {
   },
   "senscritique:lists/{id}": { ref: "lists/369869", min: 35 },
   /**
-   * The same public user for the three collections. A first read resolves
+   * The same public user for the collections. A first read resolves
    * the Titles slowly, so the counts grow over the first runs.
    */
   "senscritique:users/{user}/done": { ref: "users/Plume231/done", min: 320 },
@@ -143,10 +196,24 @@ export const CANARIES = {
     ref: "users/Plume231/recommend",
     min: 100,
   },
+  /** 744 of 762 resolved on 2026-11-17. */
+  "senscritique:users/{user}/liked": { ref: "users/Plume231/liked", min: 595 },
+  /** Plume231 has nothing in progress. kYrios had 72 of 75 resolved. */
+  "senscritique:users/{user}/current": {
+    ref: "users/kYrios/current",
+    min: 55,
+  },
+  /** A past year does not change: 244 of 253 resolved. */
+  "senscritique:users/{user}/done/{year}": {
+    ref: "users/Sergent_Pepper/done/2024",
+    min: 195,
+  },
   "senscritique:top111-movies": { min: 80 },
   "senscritique:top111-series": { min: 75 },
   "senscritique:top100-movies": { min: 80 },
   "senscritique:top100-series": { min: 75 },
+  /** Anime titles resolve less well: 76 of 150 resolved. */
+  "senscritique:top111-anime": { min: 60 },
   "senscritique:polls/{id}": { ref: "polls/3996052", min: 80 },
 
   "letterboxd:share/{token}": {

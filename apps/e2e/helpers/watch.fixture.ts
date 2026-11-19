@@ -95,7 +95,12 @@ function provider({ request, url }: FixtureRequest) {
   }
   if (
     request.method === "GET" &&
-    ["/users/me/lists", "/users/me/smart-lists"].includes(url.pathname)
+    [
+      "/users/me/lists",
+      "/users/me/smart-lists",
+      "/users/me/lists/collaborations",
+      "/users/likes/lists",
+    ].includes(url.pathname)
   ) {
     return json([]);
   }

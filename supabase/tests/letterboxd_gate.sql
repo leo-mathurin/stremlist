@@ -61,6 +61,7 @@ BEGIN
   -- The rate never goes below 0.33; three slowdowns there within 15 minutes halt.
   PERFORM public.letterboxd_take_turn(10, 'first', NULL, 'test');
   UPDATE public.letterboxd_gate SET rate = 0.4 WHERE id = 'test';
+  PERFORM public.letterboxd_report(10, 'blocked', 0, false, 'test');
   -- Halving 0.4 stops at the floor; this slowdown was not at the floor yet.
   r := public.letterboxd_report(10, 'rate_limited', 0, false, 'test');
   ASSERT (SELECT rate FROM public.letterboxd_gate WHERE id = 'test') = 0.33;
@@ -72,6 +73,8 @@ BEGIN
   ASSERT NOT (r->>'halted')::boolean, r::text;
   r := public.letterboxd_report(10, 'rate_limited', 0, false, 'test');
   ASSERT (r->>'halted')::boolean AND r->>'halt_reason' = 'rate_limited', r::text;
+  -- The halt starts the refusal count again.
+  ASSERT (SELECT blocked_count FROM public.letterboxd_gate WHERE id = 'test') = 0;
   r := public.letterboxd_take_turn(10, 'first', NULL, 'test');
   ASSERT r->>'status' = 'halted', r::text;
   ASSERT (public.letterboxd_gate_status(10, 'test')->>'halted')::boolean;
@@ -124,10 +127,20 @@ BEGIN
   ASSERT g.rate = 2.5 AND g.slow_since IS NOT NULL, g::text;
   DELETE FROM public.letterboxd_gate WHERE id = 'test';
 
-  -- A 403 or a challenge halts at once, and reports the edge once.
+  -- A 403 or a challenge halts at the third within 10 minutes, and reports
+  -- the edge once.
   PERFORM public.letterboxd_take_turn(10, 'first', NULL, 'test');
   r := public.letterboxd_report(10, 'blocked', 0, false, 'test');
+  ASSERT NOT (r->>'halted')::boolean, 'One refusal does not halt';
+  UPDATE public.letterboxd_gate SET blocked_since = blocked_since - interval '11 minutes'
+  WHERE id = 'test';
+  r := public.letterboxd_report(10, 'blocked', 0, false, 'test');
+  r := public.letterboxd_report(10, 'blocked', 0, false, 'test');
+  ASSERT NOT (r->>'halted')::boolean, 'A refusal older than 10 minutes does not count';
+  r := public.letterboxd_report(10, 'blocked', 0, false, 'test');
   ASSERT (r->>'halted')::boolean AND r->>'halt_reason' = 'blocked', r::text;
+  ASSERT (SELECT window_requests FROM public.letterboxd_gate WHERE id = 'test') = 0,
+    'A refusal is not part of the failure rate';
   r := public.letterboxd_report(10, 'blocked', 0, false, 'test');
   ASSERT NOT (r->>'halted')::boolean, 'The halt is reported once';
   DELETE FROM public.letterboxd_gate WHERE id = 'test';

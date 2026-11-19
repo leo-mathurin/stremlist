@@ -8,6 +8,15 @@ import {
   IMDB_USER_ID_PATTERN,
 } from "./constants";
 import { CHART_REGISTRY, imdbChartOf, isChartId } from "./imdb-charts";
+import {
+  SIMKL_CHART_PERIODS,
+  SIMKL_CHART_TYPE_INFO,
+  SIMKL_CHART_TYPES,
+  SIMKL_GENRE_REF_PATTERN,
+  SIMKL_PERIOD_SUFFIX,
+  simklGenreChartOf,
+  simklTrendingRef,
+} from "./simkl-charts";
 
 /**
  * Providers: the external services that keep lists of Titles. See CONTEXT.md.
@@ -173,6 +182,11 @@ export interface ConnectionSource {
   titleType?: TitleType;
   /** The Source list page on its Provider, for a public one. */
   url?: string;
+  /**
+   * Quick add offers it in the Provider's chart menu, not as a button of
+   * its own.
+   */
+  menu?: boolean;
 }
 
 function toUrl(input: string) {
@@ -443,6 +457,10 @@ export const SENSCRITIQUE_COLLECTIONS = {
   done: { action: "DONE", kind: "history", noun: "watched" },
   rated: { action: "RATING", kind: "list", noun: "ratings" },
   recommend: { action: "RECOMMEND", kind: "list", noun: "favorites" },
+  /** "En cours": the series (and a few films) that the user is watching now. */
+  current: { action: "CURRENT", kind: "status", noun: "in progress" },
+  /** "Il a récemment aimé": the titles that the user rated 7 or more. */
+  liked: { action: "RECENT", kind: "list", noun: "likes" },
 } as const satisfies Record<
   string,
   { action: string; kind: SourceKind; noun: string }
@@ -473,14 +491,22 @@ const SENSCRITIQUE_COLLECTION_FILTERS = [
   "maxPeriod",
   "minPeriod",
   "releaseDate",
-  "yearDateDone",
 ];
+
+const SENSCRITIQUE_YEAR = /^(?:19|20)\d{2}$/;
+
+function sensCritiqueYearTitle(username: string, year: string) {
+  return `${username}'s watched in ${year}`;
+}
 
 const SENSCRITIQUE_FILM_SERIES_UNIVERSES = new Set(["1", "4"]);
 
 const SENSCRITIQUE_CHART_PAGES = new Map([
-  ["top111", "top111"],
-  ["top100-des-top10", "top100"],
+  ["films/top111", "top111-movies"],
+  ["series/top111", "top111-series"],
+  ["films/top100-des-top10", "top100-movies"],
+  ["series/top100-des-top10", "top100-series"],
+  ["series/top111anime", "top111-anime"],
 ]);
 
 function parseSensCritiqueLink(input: string) {
@@ -499,10 +525,17 @@ function parseSensCritiqueLink(input: string) {
       : null;
   }
   if (first === "top") {
-    const id =
-      parts[1]?.toLowerCase() === "resultats"
-        ? parts.slice(2).find((part) => /^\d+$/.test(part))
-        : undefined;
+    if (parts[1]?.toLowerCase() !== "resultats") {
+      const id = parts[2];
+      return id && /^\d+$/.test(id)
+        ? ({
+            provider: "senscritique",
+            sourceRef: `lists/${id}`,
+            kind: "list",
+          } satisfies ParsedSourceLink)
+        : null;
+    }
+    const id = parts.slice(2).find((part) => /^\d+$/.test(part));
     return id
       ? ({
           provider: "senscritique",
@@ -516,13 +549,16 @@ function parseSensCritiqueLink(input: string) {
     parts[1]?.toLowerCase() === "tops" &&
     parts.length === 3
   ) {
-    const chart = SENSCRITIQUE_CHART_PAGES.get(parts[2].toLowerCase());
-    if (!chart) return null;
-    return {
-      provider: "senscritique",
-      sourceRef: `${chart}-${first === "films" ? "movies" : "series"}`,
-      kind: "chart",
-    } satisfies ParsedSourceLink;
+    const chart = SENSCRITIQUE_CHART_PAGES.get(
+      `${first}/${parts[2].toLowerCase()}`,
+    );
+    return chart
+      ? ({
+          provider: "senscritique",
+          sourceRef: chart,
+          kind: "chart",
+        } satisfies ParsedSourceLink)
+      : null;
   }
   const reserved = new Set([
     "_next",
@@ -582,6 +618,16 @@ function parseSensCritiqueLink(input: string) {
     }
     if (SENSCRITIQUE_COLLECTION_FILTERS.some((key) => searchParams.get(key))) {
       return null;
+    }
+    const year = searchParams.get("yearDateDone");
+    if (year) {
+      if (collection !== "done" || !SENSCRITIQUE_YEAR.test(year)) return null;
+      return {
+        provider: "senscritique",
+        sourceRef: `users/${username}/done/${year}`,
+        kind: SENSCRITIQUE_COLLECTIONS.done.kind,
+        suggestedTitle: sensCritiqueYearTitle(username, year),
+      } satisfies ParsedSourceLink;
     }
   }
   const { kind, noun } = SENSCRITIQUE_COLLECTIONS[collection];
@@ -763,6 +809,18 @@ export const CONNECTION_SOURCES: Partial<
       titleType: "series",
     },
     {
+      ref: "me/continue-watching",
+      kind: "status",
+      label: "Continue Watching",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "me/calendar",
+      kind: "list",
+      label: "Calendar",
+      defaultDisplayMode: "split",
+    },
+    {
       ref: "me/history",
       kind: "history",
       label: "History",
@@ -818,12 +876,26 @@ export const CONNECTION_SOURCES: Partial<
       label: "Ratings",
       defaultDisplayMode: "split",
     },
+    {
+      ref: "me/airing-soon",
+      kind: "up_next",
+      label: "Airing Soon",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "me/continue-watching",
+      kind: "up_next",
+      label: "Continue Watching",
+      defaultDisplayMode: "split",
+    },
   ],
   /**
    * The user's own lists (`me/lists/{id}`), external lists
-   * (`me/external/{id}`) and liked lists (`lists/{id}`) depend on the
+   * (`me/external/{id}`), liked lists (`lists/{id}`) and the recommendation
+   * sections of a supporter plan (`recommended/{section}`) depend on the
    * account; the backend lists them. Every MDBList read needs the
-   * Connection, so its official charts are here too.
+   * Connection, so its official charts and its `rising` section, which
+   * every account can read, are here too.
    */
   mdblist: [
     {
@@ -842,6 +914,25 @@ export const CONNECTION_SOURCES: Partial<
       ref: "me/history",
       kind: "history",
       label: "History",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "me/up-next",
+      kind: "up_next",
+      label: "Up Next",
+      defaultDisplayMode: "series",
+      titleType: "series",
+    },
+    {
+      ref: "me/collection",
+      kind: "collection",
+      label: "Collection",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "recommended/rising",
+      kind: "chart",
+      label: "Rising Fast",
       defaultDisplayMode: "split",
     },
     {
@@ -866,6 +957,24 @@ export const CONNECTION_SOURCES: Partial<
       ref: "official/most-watched",
       kind: "chart",
       label: "Most Watched (Past Year)",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "official/most-watched-week",
+      kind: "chart",
+      label: "Most Watched (Past Week)",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "official/moviemeter",
+      kind: "chart",
+      label: "IMDb MovieMeter",
+      defaultDisplayMode: "split",
+    },
+    {
+      ref: "official/justwatch-streaming-charts",
+      kind: "chart",
+      label: "JustWatch Streaming Charts",
       defaultDisplayMode: "split",
     },
   ],
@@ -938,6 +1047,34 @@ export const PUBLIC_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>> = {
       defaultDisplayMode: "split",
       url: "https://trakt.tv/movies/recommended/weekly",
     },
+    {
+      ref: "calendars/shows/new",
+      kind: "chart",
+      label: "New Shows",
+      defaultDisplayMode: "series",
+      titleType: "series",
+    },
+    {
+      ref: "calendars/shows/premieres",
+      kind: "chart",
+      label: "Season Premieres",
+      defaultDisplayMode: "series",
+      titleType: "series",
+    },
+    {
+      ref: "calendars/movies",
+      kind: "chart",
+      label: "Upcoming Movies",
+      defaultDisplayMode: "movie",
+      titleType: "movie",
+    },
+    {
+      ref: "calendars/dvd",
+      kind: "chart",
+      label: "DVD Releases",
+      defaultDisplayMode: "movie",
+      titleType: "movie",
+    },
   ],
   senscritique: [
     {
@@ -972,34 +1109,43 @@ export const PUBLIC_SOURCES: Partial<Record<ProviderId, ConnectionSource[]>> = {
       titleType: "series",
       url: "https://www.senscritique.com/series/tops/top100-des-top10",
     },
-  ],
-  /**
-   * Simkl's trending files for the week. Simkl's API rules ask that a
-   * trending section names Simkl: the Catalogs are "Simkl Trending Movies"…
-   */
-  simkl: [
     {
-      ref: "trending/movies",
+      ref: "top111-anime",
       kind: "chart",
-      label: "Trending Movies",
-      defaultDisplayMode: "movie",
-      titleType: "movie",
-      url: "https://simkl.com/movies/best-movies/most-watched/",
-    },
-    {
-      ref: "trending/tv",
-      kind: "chart",
-      label: "Trending TV",
+      label: "Top 111 Anime",
       defaultDisplayMode: "series",
       titleType: "series",
-      url: "https://simkl.com/tv/best-shows/most-watched/",
+      url: "https://www.senscritique.com/series/tops/top111anime",
     },
+  ],
+  /**
+   * Simkl's trending and DVD files. Simkl's API rules ask that a trending
+   * section names Simkl: the Catalogs are "Simkl Trending Movies"… The
+   * week's charts have buttons; the other periods are in the chart menu.
+   */
+  simkl: [
+    ...SIMKL_CHART_PERIODS.flatMap((period) =>
+      SIMKL_CHART_TYPES.map((type) => {
+        const { noun, defaultDisplayMode, titleType, url } =
+          SIMKL_CHART_TYPE_INFO[type];
+        return {
+          ref: simklTrendingRef(type, period),
+          kind: "chart",
+          label: `Trending ${noun}${SIMKL_PERIOD_SUFFIX[period]}`,
+          defaultDisplayMode,
+          ...(titleType ? { titleType } : {}),
+          url,
+          ...(period === "week" ? {} : { menu: true }),
+        } satisfies ConnectionSource;
+      }),
+    ),
     {
-      ref: "trending/anime",
+      ref: "dvd/releases",
       kind: "chart",
-      label: "Trending Anime",
-      defaultDisplayMode: "series",
-      url: "https://simkl.com/anime/best-anime/most-watched/",
+      label: "DVD Releases",
+      defaultDisplayMode: "movie",
+      titleType: "movie",
+      url: "https://simkl.com/movies/dvd-releases/",
     },
   ],
 };
@@ -1138,7 +1284,22 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
       },
       accountListForm("me/lists/{list}"),
     ],
-    simkl: [accountListForm("me/lists/{id}")],
+    simkl: [
+      accountListForm("me/lists/{id}"),
+      {
+        pattern: SIMKL_GENRE_REF_PATTERN,
+        type: "trending/{type}/genre/{slug}",
+        describe: ([ref]) => {
+          const chart = simklGenreChartOf(ref);
+          return {
+            kind: "chart",
+            detail: null,
+            url: chart ? SIMKL_CHART_TYPE_INFO[chart.type].url : null,
+            title: chart?.title,
+          };
+        },
+      },
+    ],
     mdblist: [
       {
         pattern: /^lists\/([^/]+)$/,
@@ -1174,6 +1335,15 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
         type: "official/{slug}",
         describe: ([, slug]) => ({ kind: "chart", detail: slug, url: null }),
       },
+      {
+        pattern: /^recommended\/([^/]+)$/,
+        type: "recommended/{section}",
+        describe: ([, section]) => ({
+          kind: "recommendations",
+          detail: section,
+          url: null,
+        }),
+      },
     ],
     justwatch: [
       {
@@ -1196,6 +1366,16 @@ const STORED_REF_FORMS: Partial<Record<ProviderId, readonly StoredRefForm[]>> =
             }),
           }) satisfies StoredRefForm,
       ),
+      {
+        pattern: /^users\/([^/]+)\/done\/(\d{4})$/,
+        type: "users/{user}/done/{year}",
+        describe: ([, user, year]) => ({
+          kind: SENSCRITIQUE_COLLECTIONS.done.kind,
+          detail: `${user} ${year}`,
+          url: `https://www.senscritique.com/${user}/collection?action=DONE&yearDateDone=${year}`,
+          title: sensCritiqueYearTitle(user, year),
+        }),
+      },
       {
         pattern: /^lists\/([^/]+)$/,
         type: "lists/{id}",

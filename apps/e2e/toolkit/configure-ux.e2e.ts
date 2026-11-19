@@ -24,6 +24,7 @@ import {
   toJson,
   isPreviewRequest,
   parseBody,
+  addImdbChart,
 } from "./config.fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
@@ -177,8 +178,7 @@ test("unsaved changes ask before the page reloads, and a save clears them", asyn
     ),
   ).toBe(false);
 
-  await screen.getByRole("button", "Add an IMDb chart").tap();
-  await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
+  await addImdbChart(screen, /^Top 250 Movies/);
   await saveButton(screen).tap();
   await expect(screen.getByText(/^Saved!/)).toBeVisible();
   expect(
@@ -227,8 +227,7 @@ test("Save is off on a v1 install without changes, and on for a new setup", asyn
 
   await app.open("/configure");
   await expect(saveButton(screen, SAVE_NEW)).toBeDisabled();
-  await screen.getByRole("button", "Add an IMDb chart").tap();
-  await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
+  await addImdbChart(screen, /^Top 250 Movies/);
   await expect(saveButton(screen, SAVE_NEW)).toBeEnabled();
 });
 
@@ -320,8 +319,7 @@ test("a new list goes first: in view on a wide screen, and a toast can show it o
   await expect(screen.getByText("Added IMDb List")).toBeHidden();
 
   await browser.setViewport(PHONE);
-  await screen.getByRole("button", "Add an IMDb chart").tap();
-  await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
+  await addImdbChart(screen, /^Top 250 Movies/);
   await expect(screen.getByText("Added Top 250 Movies")).toBeVisible();
   expect(await inViewport(browser, "p", "Top 250 Movies")).toBe(false);
   await screen.getByRole("button", "Show", { exact: true }).tap();

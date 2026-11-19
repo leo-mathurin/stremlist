@@ -17,6 +17,7 @@ import {
   legacyConfiguration,
   routeConfig,
   saveButton,
+  addImdbChart,
 } from "./config.fixture";
 import { isRecord } from "../helpers/json";
 
@@ -522,8 +523,7 @@ const CATALOG_EDITS: {
   {
     name: "adding a List",
     edit: async (screen) => {
-      await screen.getByRole("button", "Add an IMDb chart").tap();
-      await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
+      await addImdbChart(screen, /^Top 250 Movies/);
     },
   },
   {

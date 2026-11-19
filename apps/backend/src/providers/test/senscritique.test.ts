@@ -143,6 +143,7 @@ function listPage(products: SensCritiqueProduct[], total: number) {
 const pageVariablesSchema = z.object({
   universe: z.string().optional(),
   action: z.string().optional(),
+  yearDateDone: z.number().nullish(),
   offset: z.number(),
   limit: z.number(),
 });
@@ -203,6 +204,8 @@ describe("SensCritique fetchSource", () => {
   it.each([
     ["rated", "RATING"],
     ["recommend", "RECOMMEND"],
+    ["current", "CURRENT"],
+    ["liked", "RECENT"],
   ])("reads the %s collection of films and series", async (name, action) => {
     handler = (request) => {
       const { universe } = pageVariables(request);
@@ -257,6 +260,59 @@ describe("SensCritique fetchSource", () => {
     ]);
   });
 
+  it("reads the done films and series of one year", async () => {
+    handler = (request) => {
+      const { action, universe } = pageVariables(request);
+      const products =
+        action === "DONE" && universe === "movie" ? [product(10)] : [];
+      return wishesPage(products, products.length);
+    };
+
+    const { entries } = await senscritiqueProvider.fetchSource(
+      "users/Sergent_Pepper/done/2024",
+      ctx,
+    );
+
+    expect(
+      requests.map((request) => {
+        const { action, universe, yearDateDone } = pageVariables(request);
+        return [action, universe, yearDateDone];
+      }),
+    ).toEqual([
+      ["DONE", "movie", 2024],
+      ["DONE", "tvShow", 2024],
+      ["RATING", "tvShow", 2024],
+    ]);
+    expect(entries.map((entry) => entry.externalIds?.senscritique)).toEqual([
+      10,
+    ]);
+  });
+
+  it("reads all the years when the reference has no year", async () => {
+    handler = () => wishesPage([], 0);
+
+    await senscritiqueProvider.fetchSource("users/Sergent_Pepper/done", ctx);
+
+    expect(
+      requests.map((request) => pageVariables(request).yearDateDone),
+    ).toEqual([null, null, null]);
+  });
+
+  it("reads the anime chart from the series universe", async () => {
+    handler = () => ({ data: { top: [product(3, { universe: 4 })] } });
+
+    const { entries } = await senscritiqueProvider.fetchSource(
+      "top111-anime",
+      ctx,
+    );
+
+    expect(requests[0].json.variables).toMatchObject({
+      subtype: "TOP_111_ANIME",
+      universe: "tvShow",
+    });
+    expect(entries).toHaveLength(1);
+  });
+
   it("reads a chart in its rank order", async () => {
     handler = () => ({
       data: {
@@ -304,7 +360,8 @@ describe("SensCritique fetchSource", () => {
     ["users/nobody/wishes", { data: { user: null } }, "not_found"],
     ["users/hidden/wishes", wishesPage([], 0, true), "private"],
     ["users/hidden/done", wishesPage([], 0, true), "private"],
-    ["users/someone/current", {}, "not_found"],
+    ["users/someone/shopping", {}, "not_found"],
+    ["users/someone/rated/2024", {}, "not_found"],
     ["lists/1", { data: { userList: null } }, "not_found"],
     ["polls/1", { data: { poll: null } }, "not_found"],
   ])("reports %s as %s", async (ref, response, reason) => {
@@ -422,6 +479,8 @@ describe("SensCritique validateSource", () => {
     ["done", "watched"],
     ["rated", "ratings"],
     ["recommend", "favorites"],
+    ["current", "in progress"],
+    ["liked", "likes"],
   ])("keeps the %s collection", async (name, noun) => {
     handler = () => ({
       data: {
@@ -440,6 +499,38 @@ describe("SensCritique validateSource", () => {
       defaultDisplayMode: "split",
     });
   });
+
+  it("keeps the year of the done collection", async () => {
+    handler = () => ({
+      data: {
+        user: {
+          username: "Sergent_Pepper",
+          settings: { privacyProfile: false },
+        },
+      },
+    });
+    await expect(
+      senscritiqueProvider.validateSource(
+        "users/sergent_pepper/done/2024",
+        ctx,
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      ref: "users/Sergent_Pepper/done/2024",
+      suggestedTitle: "Sergent_Pepper's watched in 2024",
+      defaultDisplayMode: "split",
+    });
+  });
+
+  it.each(["users/Sergent_Pepper/rated/2024", "users/Sergent_Pepper/done/24"])(
+    "refuses %s without a request",
+    async (ref) => {
+      await expect(
+        senscritiqueProvider.validateSource(ref, ctx),
+      ).resolves.toEqual({ ok: false, reason: "not_found" });
+      expect(requests).toHaveLength(0);
+    },
+  );
 
   it("accepts a chart without a request", async () => {
     await expect(
@@ -499,7 +590,7 @@ describe("SensCritique validateSource", () => {
     ["lists/3", { userList: { isPrivate: false, universe: 2 } }, "not_found"],
     ["polls/4", { poll: null }, "not_found"],
     ["polls/5", { poll: { id: 5, label: "Livres", universe: 2 } }, "not_found"],
-    ["users/someone/current", {}, "not_found"],
+    ["users/someone/shopping", {}, "not_found"],
     ["nonsense", {}, "not_found"],
   ])("rejects %s as %s", async (ref, data, reason) => {
     handler = () => ({ data });
@@ -906,7 +997,7 @@ describe("parseSourceLink for SensCritique", () => {
     "https://www.senscritique.com/serie/generation_kill/149118",
     "https://www.senscritique.com/films",
     "https://www.senscritique.com/liste/no-id",
-    "https://www.senscritique.com/Sergent_Pepper/collection?action=CURRENT",
+    "https://www.senscritique.com/Sergent_Pepper/collection?action=SHOPPING_LIST",
     "https://www.senscritique.com/",
   ])("does not parse %s as a SensCritique Source list", (link) => {
     expect(parseSourceLink(link)?.provider === "senscritique").toBe(false);

@@ -43,6 +43,9 @@ const TOKEN_URL = "https://auth.trakt.tv/oauth/token";
 const TRAKT_SETTINGS = "https://api.trakt.tv/users/settings";
 const TRAKT_LISTS = "https://api.trakt.tv/users/me/lists";
 const TRAKT_SMART_LISTS = "https://api.trakt.tv/users/me/smart-lists";
+const TRAKT_LIKED_LISTS = "https://api.trakt.tv/users/likes/lists";
+const TRAKT_COLLABORATIONS =
+  "https://api.trakt.tv/users/me/lists/collaborations";
 
 const server = useMswServer();
 const background = useBackgroundTasks();
@@ -314,6 +317,8 @@ describe("GET /:accountId/connections/:provider/sources", () => {
         HttpResponse.json([{ name: "Horror", ids: { trakt: 42 } }]),
       ),
       http.get(TRAKT_SMART_LISTS, () => HttpResponse.json([])),
+      http.get(TRAKT_LIKED_LISTS, () => HttpResponse.json([])),
+      http.get(TRAKT_COLLABORATIONS, () => HttpResponse.json([])),
     );
     seedConnection(accountId, "trakt");
 
@@ -327,7 +332,9 @@ describe("GET /:accountId/connections/:provider/sources", () => {
 
     expect(body.sources.map((source) => source.ref)).toContain("me/lists/42");
     expect(
-      requests.filter((request) => request.url.startsWith(TRAKT_LISTS)),
+      requests.filter(
+        (request) => new URL(request.url).pathname === "/users/me/lists",
+      ),
     ).toHaveLength(1);
   });
 

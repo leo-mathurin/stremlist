@@ -6,6 +6,25 @@ the database migrations and `supabase/config.toml`, then publishes the backend a
 from the same commit. Nobody deploys from a laptop, and nobody runs SQL by hand
 in the production dashboard.
 
+## Connection encryption key
+
+Vercel stores `CONNECTION_ENCRYPTION_KEY` as a Sensitive variable, so nobody
+can read it back from Vercel. Its only copy outside Vercel is
+`apps/backend/.env.production.enc` (SOPS, the same age recipients as
+`.env.enc`). The key decrypts every stored OAuth token: if it is lost, every
+user must connect Trakt, Simkl and MDBList again. The local
+`apps/backend/.env.enc` has a different key, so a local backend cannot read
+production Connections.
+
+To use it, for example to test production Connections with a local build:
+
+```bash
+sops decrypt apps/backend/.env.production.enc > apps/backend/.env.production
+```
+
+When you set or change the key in Vercel, update this file in the same pull
+request. Production and Preview use the same value.
+
 ## Release v2.0.0
 
 PR #74 contains PR #73 (this workflow and the baseline). Merge #74 only. If
@@ -16,7 +35,8 @@ The deployment reads these values when the workflow builds it:
 
 - [ ] `CONNECTION_ENCRYPTION_KEY`: 32 random bytes in base64
       (`openssl rand -base64 32`). Required: Connections fail without it.
-      Never change it later: it decrypts the stored tokens.
+      Never change it later: it decrypts the stored tokens. Keep a copy in
+      `apps/backend/.env.production.enc` (see "Connection encryption key").
 - [ ] `TRAKT_CLIENT_ID` (`TRAKT_CLIENT_SECRET` only for a Trakt app created
       before 2026-10-01), `SIMKL_CLIENT_ID`, `SIMKL_CLIENT_SECRET`,
       `MDBLIST_CLIENT_ID`, `MDBLIST_CLIENT_SECRET`.
@@ -40,7 +60,8 @@ Then:
    heartbeats.
 4. Merge `main` into `staging`, so that staging runs v2.
 5. Later, when no v1 deployment uses the database, drop the v1 shape (see
-   [After v2.0.0](#after-v200)).
+   [After v2.0.0](#after-v200)). Done in
+   `20261118193000_drop_v1_compatibility.sql`.
 
 ### v1 keeps working during the release
 
@@ -49,9 +70,7 @@ Then:
 `users` and `user_watchlists` and the three v1 RPCs (`replace_user_config`,
 `request_watchlist_prewarm`, `finish_watchlist_prewarm`) on the new tables. The
 v1 backend, and old staging and preview deployments, keep reading and writing
-until v2 is promoted. `supabase/tests/v1_compatibility.sql` runs the v1
-queries on the new schema, and the CI upgrade test migrates v1 data with
-non-`ur` Legacy IDs.
+until v2 is promoted.
 
 | Failure point                                   | Result                                                                                     |
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------ |
@@ -67,12 +86,10 @@ Previews of v2 branches that are built before the release fail: the
 
 ### After v2.0.0
 
-[`supabase/contract/drop_v1_compatibility.sql`](../supabase/contract/drop_v1_compatibility.sql)
-drops the v1 views and RPCs. It is not in `supabase/migrations`, so no deploy
-applies it. CI applies it in a rolled-back transaction to prove that it still
-runs. When v2 serves production and staging, and no one uses an older
-preview, move it to `supabase/migrations/<YYYYMMDDHHMMSS>_drop_v1_compatibility.sql`
-in a new PR. Its header lists the other files to delete.
+[`20261118193000_drop_v1_compatibility.sql`](../supabase/migrations/20261118193000_drop_v1_compatibility.sql)
+drops the v1 views and RPCs. It was released when v2 served production and
+staging and the production database had no v1 queries. Since then, a rollback
+to a v1 deployment does not work.
 
 ## Sequence
 

@@ -36,6 +36,7 @@ import type { SourceEntry } from "../../providers/types";
 import * as listCache from "../list-cache";
 import type { PreviewRequest } from "../list-preview";
 import {
+  previewCatalogTitles,
   previewList,
   previewPoster,
   resetPreviewReadings,
@@ -694,6 +695,78 @@ describe("previewList: merged Lists", () => {
         sourceRef: FAVORITES,
       },
     });
+  });
+});
+
+describe("previewCatalogTitles", () => {
+  const many = Array.from({ length: 130 }, (_, index) =>
+    movie(`tt9${String(index + 1).padStart(6, "0")}`, {
+      imdbRating: index % 2 === 0 ? "8.0" : "5.0",
+    }),
+  );
+
+  it("pages through one Catalog in the order of the preview, reading the Source list once", async () => {
+    serveTrakt(many);
+    const req = request({ displayMode: "movie" });
+
+    const preview = await previewOk(req);
+    const catalog = { type: "movie", preset: null } as const;
+    const second = await previewCatalogTitles({ ...req, catalog, offset: 12 });
+    const last = await previewCatalogTitles({ ...req, catalog, offset: 120 });
+
+    expect(reads()).toHaveLength(1);
+    if (!second.ok || !last.ok) throw new Error("Page refused");
+    expect(second.total).toBe(130);
+    expect(second.titles).toHaveLength(60);
+    expect(second.titles[0]).toEqual({
+      id: "tt9000013",
+      type: "movie",
+      name: "Movie tt9000013",
+      poster: null,
+      tmdbPoster: null,
+      tvdbPoster: null,
+      releaseInfo: null,
+    });
+    expect(
+      [...preview.catalogs[0].titles, ...second.titles].map(({ id }) => id),
+    ).toEqual(many.slice(0, 72).map(({ id }) => id));
+    expect(last.titles.map(({ id }) => id)).toEqual(
+      many.slice(120).map(({ id }) => id),
+    );
+  });
+
+  it("applies the filters and the sort of the asked preset Catalog", async () => {
+    serveTrakt(many);
+
+    const page = await previewCatalogTitles({
+      ...request({
+        displayMode: "movie",
+        catalogSettings: { minRating: 7, presets: ["rated"] },
+      }),
+      catalog: { type: "movie", preset: "rated" },
+      offset: 60,
+    });
+
+    if (!page.ok) throw new Error("Page refused");
+    expect(page.total).toBe(65);
+    expect(page.titles.map(({ id }) => id)).toEqual(
+      many
+        .filter((_, index) => index % 2 === 0)
+        .slice(60)
+        .map(({ id }) => id),
+    );
+  });
+
+  it("explains a Source list that cannot be read, like the preview", async () => {
+    trakt.fail(ITEMS, 401);
+
+    await expect(
+      previewCatalogTitles({
+        ...request(),
+        catalog: { type: "movie", preset: null },
+        offset: 12,
+      }),
+    ).resolves.toEqual({ ok: false, reason: "private" });
   });
 });
 

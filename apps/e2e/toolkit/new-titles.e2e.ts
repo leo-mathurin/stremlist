@@ -33,6 +33,7 @@ import {
   syncedStatus,
   toJson,
   routeConnectionSources,
+  addImdbChart,
 } from "./config.fixture";
 
 const TOGGLE = "Show newly detected titles";
@@ -134,8 +135,7 @@ test("a new setup sends the setting with its first save", async ({
 
   await app.open("/configure");
   await expect(screen.getByText(/new titles? detected/)).toHaveCount(0);
-  await screen.getByRole("button", "Add an IMDb chart").tap();
-  await screen.getByRole("menuitem", /^Top 250 Movies/).tap();
+  await addImdbChart(screen, /^Top 250 Movies/);
   await screen.getByRole("checkbox", TOGGLE).tap();
   await saveButton(screen, SAVE_NEW).tap();
 

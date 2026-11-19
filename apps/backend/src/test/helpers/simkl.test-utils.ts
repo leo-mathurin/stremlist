@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import { vi } from "vite-plus/test";
 import { unexpectedRequest } from "./msw.test-utils";
 
-export const SIMKL_TRENDING = "https://data.simkl.in/discover/trending";
+export const SIMKL_CDN = "https://data.simkl.in/discover";
 export const SIMKL_API = "https://api.simkl.com";
 
 /** Configures a Simkl app, so that the Simkl adapter sends its requests. */
@@ -31,6 +31,11 @@ export function simklPageOf(meta: StremioMeta, kind = "movies") {
   return `https://simkl.com/${kind}/${simkl}/title-${simkl}`;
 }
 
+function cdnPath(url: URL) {
+  const path = url.pathname.replace(/^\/discover\//, "");
+  return path.startsWith("trending/") ? path.slice("trending/".length) : path;
+}
+
 /** One request that the fake Simkl received. */
 export interface SimklRequest {
   method: string;
@@ -40,13 +45,13 @@ export interface SimklRequest {
 }
 
 /**
- * Simkl in memory: the trending files of its CDN, and the API answers that a
+ * Simkl in memory: the chart files of its CDN, and the API answers that a
  * test stores by path. It keeps every request it receives. A request for
  * another file or path is an `unexpectedRequest` that fails the test: a test
  * that wants an error answer sets it with `reply` or `failTrending`.
  */
 export class FakeSimkl {
-  /** The Titles by file path, for example `movies/week_100.json`. */
+  /** The Titles by file path, for example `movies/week_100.json` or `dvd/releases_100.json`. */
   readonly trending = new Map<string, StremioMeta[]>();
   /** The API answers by path, for example `/sync/add-to-list`. */
   readonly api = new Map<string, { status: number; body?: unknown }>();
@@ -54,13 +59,13 @@ export class FakeSimkl {
   readonly trendingFailures = new Map<string, number>();
   readonly requests: SimklRequest[] = [];
 
-  /** The MSW handlers of the trending CDN and the API. */
+  /** The MSW handlers of the chart CDN and the API. */
   readonly handlers = [
-    http.get(`${SIMKL_TRENDING}/*`, ({ request }) => this.answer(request)),
+    http.get(`${SIMKL_CDN}/*`, ({ request }) => this.answer(request)),
     http.all(`${SIMKL_API}/*`, ({ request }) => this.answerApi(request)),
   ];
 
-  /** The MSW handler of the trending CDN only. */
+  /** The MSW handler of the chart CDN only. */
   get handler() {
     return this.handlers[0];
   }
@@ -77,7 +82,7 @@ export class FakeSimkl {
     this.api.set(path, { status, body });
   }
 
-  /** Answers the trending file `path`, when it has no Titles, with this status and no body. */
+  /** Answers the CDN file `path`, when it has no Titles, with this status and no body. */
   failTrending(path: string, status: number) {
     this.trendingFailures.set(path, status);
   }
@@ -115,21 +120,22 @@ export class FakeSimkl {
       : HttpResponse.json(answer.body, { status: answer.status });
   }
 
-  /** The requests of one trending file. */
+  /** The requests of one CDN file. */
   requestsOf(path: string) {
     return this.requests.filter(
-      (request) => request.url.pathname === `/discover/trending/${path}`,
+      (request) =>
+        request.url.origin !== SIMKL_API && cdnPath(request.url) === path,
     );
   }
 
   answer(request: Request) {
     const url = this.record(request, null);
-    const path = url.pathname.replace(/^\/discover\/trending\//, "");
+    const path = cdnPath(url);
     const metas = this.trending.get(path);
     if (metas) return HttpResponse.json(metas.map(simklTrendingItem));
     const failure = this.trendingFailures.get(path);
     if (failure !== undefined)
       return new HttpResponse(null, { status: failure });
-    return unexpectedRequest(request, "FakeSimkl serves no trending file here");
+    return unexpectedRequest(request, "FakeSimkl serves no CDN file here");
   }
 }

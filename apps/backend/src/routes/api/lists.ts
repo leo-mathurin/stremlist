@@ -3,13 +3,33 @@ import {
   ACCOUNT_KEY_PATTERN,
   SOURCE_LINK_MAX_LENGTH,
 } from "@stremlist/shared/constants";
+import { CATALOG_PRESETS } from "@stremlist/shared/catalog-settings";
 import { Hono } from "hono";
 import { z } from "zod";
 import { listBody } from "../../services/account-config";
 import { resolveAccountKey } from "../../services/accounts";
-import { previewList } from "../../services/list-preview";
+import { previewCatalogTitles, previewList } from "../../services/list-preview";
 import { resolveSourceLink } from "../../services/source-links";
 import { accountKeyParam } from "./access";
+
+const previewBody = listBody
+  .pick({
+    provider: true,
+    sourceRef: true,
+    mergedSources: true,
+    sortOption: true,
+    displayMode: true,
+    catalogSettings: true,
+  })
+  .extend({
+    accountKey: accountKeyParam.shape.accountKey.optional(),
+    ticket: z.guid().optional(),
+  });
+
+async function previewConnection(accountKey: string | undefined) {
+  const access = accountKey ? await resolveAccountKey(accountKey) : null;
+  return access?.via === "private" ? access.account.id : null;
+}
 
 /** Source lists and Lists before they are saved. */
 const lists = new Hono()
@@ -36,33 +56,35 @@ const lists = new Hono()
     },
   )
 
+  .post("/lists/preview", zValidator("json", previewBody), async (c) => {
+    const { accountKey, ticket, ...list } = c.req.valid("json");
+    return c.json(
+      await previewList({
+        ...list,
+        connectionAccountId: await previewConnection(accountKey),
+        ticket: ticket ?? null,
+      }),
+    );
+  })
+
   .post(
-    "/lists/preview",
+    "/lists/preview/titles",
     zValidator(
       "json",
-      listBody
-        .pick({
-          provider: true,
-          sourceRef: true,
-          mergedSources: true,
-          sortOption: true,
-          displayMode: true,
-          catalogSettings: true,
-        })
-        .extend({
-          accountKey: accountKeyParam.shape.accountKey.optional(),
-          /** The place in the Provider's queue from a queued answer. */
-          ticket: z.guid().optional(),
+      previewBody.extend({
+        catalog: z.object({
+          type: z.enum(["movie", "series"]),
+          preset: z.enum(CATALOG_PRESETS.map((preset) => preset.id)).nullable(),
         }),
+        offset: z.number().int().min(0).max(100_000),
+      }),
     ),
     async (c) => {
-      const { accountKey, ticket, ...list } = c.req.valid("json");
-      const access = accountKey ? await resolveAccountKey(accountKey) : null;
+      const { accountKey, ticket, ...request } = c.req.valid("json");
       return c.json(
-        await previewList({
-          ...list,
-          connectionAccountId:
-            access?.via === "private" ? access.account.id : null,
+        await previewCatalogTitles({
+          ...request,
+          connectionAccountId: await previewConnection(accountKey),
           ticket: ticket ?? null,
         }),
       );

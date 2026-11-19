@@ -35,6 +35,18 @@ export const SAVED_WITH_CHANGES =
 /** The label of the Save button before the first save creates the Account. */
 export const SAVE_NEW = "Save";
 
+/** Open the Quick add row of `provider`, unless it is already open. */
+export async function openQuickAdd(screen: Screen, provider: ProviderId) {
+  const row = screen.getByTestId(`quick-add-${provider}`);
+  if ((await row.getAttribute("aria-expanded")) !== "true") await row.tap();
+}
+
+/** Add the built-in IMDb chart `name` from Quick add. */
+export async function addImdbChart(screen: Screen, name: string | RegExp) {
+  await openQuickAdd(screen, "imdb");
+  await screen.getByRole("button", name).tap();
+}
+
 /**
  * The Save button at the top of the Lists column. The floating Save button
  * at the bottom has the same name and stays in the page while it is hidden,
@@ -44,6 +56,15 @@ export function saveButton(screen: Screen, name = "Save") {
   return screen.getByRole("button", name, { exact: true }).first();
 }
 
+declare global {
+  interface Window {
+    /** The Sonner close timers that `holdToasts` held on this page. */
+    e2eHeldToasts: number;
+  }
+}
+
+const TOAST_NOT_HELD = "/__e2e/toast-not-held";
+
 /**
  * Keeps toasts on screen until they are replaced or closed. Save and
  * newsletter results are toasts that close after 6 to 10 seconds, and an AI
@@ -51,21 +72,62 @@ export function saveButton(screen: Screen, name = "Save") {
  * goal could find it gone. A fake timer stops only the timer that closes a
  * toast (the Sonner timer that calls `onAutoClose`): it never fires, and
  * `clearTimeout` still cancels it. Every other timer of the app runs on the
- * real clock.
+ * real clock. The page counts the held timers in `window.e2eHeldToasts`.
+ * Sonner starts the close timer in the same effects that mount the toast
+ * (`data-mounted`), so a toast that mounts with no held timer means that
+ * Sonner changed its close timer: the page tells the test, which fails at
+ * its next step.
  */
 export async function holdToasts(browser: Browser) {
-  await browser.addInitScript(() => {
+  await browser.route(`**${TOAST_NOT_HELD}`, () => {
+    throw new Error(
+      "holdToasts held no toast close timer: Sonner's close timer no longer calls onAutoClose. Update holdToasts.",
+    );
+  });
+  await browser.addInitScript((notHeld: string) => {
     const realSetTimeout = window.setTimeout.bind(window);
+    const send = window.fetch.bind(window);
+    window.e2eHeldToasts = 0;
     Object.defineProperty(window, "setTimeout", {
       configurable: true,
       writable: true,
-      value: (handler: TimerHandler, timeout?: number, ...args: unknown[]) =>
-        typeof handler === "function" &&
-        handler.toString().includes("onAutoClose")
-          ? realSetTimeout(() => {}, 2 ** 31 - 1)
-          : realSetTimeout(handler, timeout, ...args),
+      value: (handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+        if (
+          typeof handler === "function" &&
+          handler.toString().includes("onAutoClose")
+        ) {
+          window.e2eHeldToasts += 1;
+          return realSetTimeout(() => {}, 2 ** 31 - 1);
+        }
+        return realSetTimeout(handler, timeout, ...args);
+      },
     });
-  });
+    const checked = new WeakSet<Element>();
+    new MutationObserver((records) => {
+      for (const { target } of records) {
+        if (
+          !(target instanceof Element) ||
+          checked.has(target) ||
+          !target.matches("[data-sonner-toast]") ||
+          target.getAttribute("data-mounted") !== "true"
+        ) {
+          continue;
+        }
+        checked.add(target);
+        const timerRuns =
+          !document.hidden &&
+          target.getAttribute("data-type") !== "loading" &&
+          target.getAttribute("data-removed") !== "true" &&
+          target.getAttribute("data-expanded") !== "true";
+        if (timerRuns && window.e2eHeldToasts === 0) {
+          void send(notHeld, { method: "POST" });
+        }
+      }
+    }).observe(document, {
+      attributeFilter: ["data-mounted"],
+      subtree: true,
+    });
+  }, TOAST_NOT_HELD);
 }
 
 /**

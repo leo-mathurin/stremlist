@@ -2,7 +2,11 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { getConfig, getSyncStatus, refresh } from "../helpers/api.js";
 import { CATALOG_TITLES } from "../helpers/catalog.fixture.js";
-import { openConfigure, saveButton } from "../helpers/configure.js";
+import {
+  openConfigure,
+  saveButton,
+  addImdbChart,
+} from "../helpers/configure.js";
 import {
   clearRefreshCooldown,
   getConnectionRow,
@@ -225,8 +229,7 @@ test(
     await seedCachedCatalog(listId, CATALOG_TITLES.slice(0, 1));
     await openConfigure(page, accountId, "Cached watchlist");
 
-    await page.getByRole("button", { name: "Add an IMDb chart" }).click();
-    await page.getByRole("menuitem", { name: /^Top 250 Movies/ }).click();
+    await addImdbChart(page, /^Top 250 Movies/);
     await expectText(page, "Not saved yet");
     await saveButton(page).click();
 

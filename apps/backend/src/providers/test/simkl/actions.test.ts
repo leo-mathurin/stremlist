@@ -294,7 +294,7 @@ describe("simkl actions", () => {
     expect(apiCalls()).toEqual(["GET /sync/activities"]);
   });
 
-  it("marks every library list stale, since a title has one status", () => {
+  it("marks every Connection list stale, since a title has one status", () => {
     const all = [
       "me/watching",
       "me/plantowatch",
@@ -303,6 +303,8 @@ describe("simkl actions", () => {
       "me/dropped",
       "me/history",
       "me/ratings",
+      "me/airing-soon",
+      "me/continue-watching",
     ];
     expect(actions.kinds).toEqual(["watchlist", "watched", "rating"]);
     expect(actions.affectedSources({ kind: "watchlist", add: true })).toEqual(
