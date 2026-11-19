@@ -93,7 +93,9 @@ const TOAST_NOT_HELD = "/__e2e/toast-not-held";
  * task than the change of `data-expanded`. So each toast whose timer starts
  * again takes a held timer of the same task, or else the next held timer;
  * when the page is next idle, a toast whose timer runs and that got no held
- * timer also fails the test.
+ * timer also fails the test. A toast that is removed, or whose timer stops
+ * again, before its next held timer starts owes no held timer, so that timer
+ * goes to the next toast that still owes one.
  */
 export async function holdToasts(browser: Browser) {
   await browser.route(`**${TOAST_NOT_HELD}`, () => {
@@ -120,6 +122,7 @@ export async function holdToasts(browser: Browser) {
         ) {
           window.e2eHeldToasts += 1;
           const timer = realSetTimeout(() => {}, 2 ** 31 - 1);
+          owed = owed.filter(stillOwed);
           if (owed.shift() !== undefined) return timer;
           if (unclaimed.length === 0) {
             queueMicrotask(() => {
@@ -138,15 +141,14 @@ export async function holdToasts(browser: Browser) {
       toast.getAttribute("data-type") !== "loading" &&
       toast.getAttribute("data-removed") !== "true" &&
       toast.getAttribute("data-expanded") !== "true";
+    const stillOwed = (toast: Element) => toast.isConnected && timerRuns(toast);
     const claimTimer = (toast: Element) =>
       !timerRuns(toast) || unclaimed.shift() !== undefined;
     const reportNotHeld = () => {
       void send(notHeld, { method: "POST" });
     };
     const checkOwed = () => {
-      const unpaid = owed.filter(
-        (toast) => toast.isConnected && timerRuns(toast),
-      );
+      const unpaid = owed.filter(stillOwed);
       owed = [];
       if (unpaid.length > 0) reportNotHeld();
     };

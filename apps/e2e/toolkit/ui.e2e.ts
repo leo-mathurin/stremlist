@@ -27,6 +27,7 @@ import {
   fitConfigurePage,
   addImdbChart,
   openQuickAdd,
+  waitForIdlePage,
 } from "./config.fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
@@ -177,6 +178,36 @@ for (const state of ["private", "unknown", "offline"] as const) {
     ).not.toBeVisible();
   });
 }
+
+test("a held toast stays open after another toast closes in the expanded toaster", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await holdToasts(browser);
+  await baseRoutes(browser);
+  await routeResolve(browser, () => null);
+  await app.open("/configure");
+  await screen.getByLabel(PASTE).fill(watchlistLink);
+  const add = screen.getByRole("button", "Add", { exact: true });
+  const failed = screen.getByText(
+    "Could not check this link. Please try again in a moment.",
+  );
+  await add.tap();
+  await expect(failed).toHaveCount(1);
+  await add.tap();
+  await expect(failed).toHaveCount(2);
+  const toasts = browser.locator("[data-sonner-toast]");
+  await toasts.first().hover();
+  const expanded = browser.locator("[data-sonner-toast][data-expanded=true]");
+  await expect(expanded).toHaveCount(2);
+  await toasts.nth(1).getByRole("button", "Close toast").tap();
+  await browser.mouse.move(0, 0);
+  await expect(expanded).toHaveCount(0);
+  await expect(toasts).toHaveCount(1);
+  await waitForIdlePage(browser);
+  await expect(failed).toBeVisible();
+});
 
 test(
   "returning users can open configuration",
