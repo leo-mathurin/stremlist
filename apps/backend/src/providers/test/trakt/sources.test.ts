@@ -517,6 +517,7 @@ describe("Trakt reads", () => {
   });
 
   it("leaves out of up next the shows the user dropped or hid from progress", async () => {
+    const WATCHED = "2026-09-01T00:00:00.000Z";
     route("GET /users/hidden/dropped", (call) => {
       expect(call.url.searchParams.get("type")).toBe("show");
       return json([{ type: "show", show: mandalorian }]);
@@ -529,9 +530,41 @@ describe("Trakt reads", () => {
       "GET /sync/progress/up_next",
       pages([
         [
-          { show: clerksShow, progress: { last_watched_at: null } },
-          { show: mandalorian, progress: { last_watched_at: null } },
-          { show: pitt, progress: { last_watched_at: null } },
+          { show: clerksShow, progress: { last_watched_at: WATCHED } },
+          { show: mandalorian, progress: { last_watched_at: WATCHED } },
+          { show: pitt, progress: { last_watched_at: WATCHED } },
+        ],
+      ]),
+    );
+    expect(
+      (await fetchEntries("me/up-next", connection())).map((e) => e.imdbId),
+    ).toEqual(["tt31938062"]);
+  });
+
+  it("leaves out of up next the watchlist shows the user never started", async () => {
+    route("GET /users/hidden/dropped", []);
+    route("GET /users/hidden/progress_watched", []);
+    route(
+      "GET /sync/progress/up_next",
+      pages([
+        [
+          {
+            show: pitt,
+            progress: {
+              aired: 30,
+              completed: 3,
+              last_watched_at: "2026-09-01T00:00:00.000Z",
+            },
+          },
+          {
+            show: mandalorian,
+            progress: {
+              aired: 24,
+              completed: 0,
+              last_watched_at: null,
+              last_episode: null,
+            },
+          },
         ],
       ]),
     );

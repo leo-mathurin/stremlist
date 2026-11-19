@@ -407,7 +407,7 @@ async function upNextEntries(connection: ConnectionAccess | null) {
       (row) => row.progress?.last_watched_at,
     ).flatMap((row) => {
       const show = row.show;
-      if (!show) return [];
+      if (!show || !row.progress?.last_watched_at) return [];
       const id = show.ids?.trakt;
       if (typeof id === "number" && dropped.has(id)) return [];
       const entry = mediaToEntry(show, "series");
