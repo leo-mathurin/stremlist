@@ -29,6 +29,76 @@ import { isRecord } from "../helpers/json";
 
 const PASTE = "Paste a link to a watchlist or list";
 
+test("stopping sharing keeps focus on a control chosen while saving", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await baseRoutes(browser);
+  await routeConnectionSources(browser, "simkl");
+  await routeConfig(browser, {
+    ...configuration,
+    connections: [connected("simkl")],
+    stremio: { email: "sample@example.test" },
+  });
+  const status = {
+    consented: true,
+    stremioLinked: true,
+    stremioTrakt: false,
+    destinations: [
+      {
+        provider: "simkl",
+        enabled: true,
+        watchlistEnabled: false,
+        paused: false,
+        pending: 0,
+        lastKind: "watched",
+        lastTitle: null,
+        lastSuccessAt: null,
+        lastError: null,
+        lastErrorAt: null,
+      },
+    ],
+  };
+  const received = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  await browser.route(`${backend}/${accountId}/stremio/update`, (route) =>
+    route.fulfill({ json: { result: "unchanged" } }),
+  );
+  await browser.route(
+    `${backend}/${accountId}/watch-tracking`,
+    async (route) => {
+      if (route.request.method === "GET")
+        return route.fulfill({ json: status });
+      received.resolve();
+      await release.promise;
+      status.consented = false;
+      status.destinations[0].enabled = false;
+      await route.fulfill({ json: { status, stremio: "unchanged" } });
+    },
+  );
+  await app.open(`/configure?account=${accountId}`);
+  const card = screen.getByRole("region", "Update your accounts from Stremio");
+  await card.getByRole("button", "Stop sharing", { exact: true }).tap();
+  const confirmation = screen.getByRole("group", "Stop sharing");
+  const nextSetting = screen.getByRole(
+    "checkbox",
+    "Show newly detected titles",
+  );
+  try {
+    await confirmation
+      .getByRole("button", "Stop sharing", { exact: true })
+      .tap();
+    await received.promise;
+    await nextSetting.tap();
+    await expect(nextSetting).toBeFocused();
+  } finally {
+    release.resolve();
+  }
+  await expect(confirmation).not.toBeVisible();
+  await expect(nextSetting).toBeFocused();
+});
+
 test("activity sharing setup focuses the account connection controls", async ({
   app,
   browser,

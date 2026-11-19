@@ -171,6 +171,7 @@ export default function WatchTrackingSettings({
   const opener = useRef<HTMLElement>(null);
   const stopTrigger = useRef<HTMLButtonElement>(null);
   const keepSharing = useRef<HTMLButtonElement>(null);
+  const stopConfirmation = useRef<HTMLDivElement>(null);
   const [intent, setIntent] = useState<Intent | null>(null);
   const [stopping, setStopping] = useState(false);
   const anyOn =
@@ -436,6 +437,7 @@ export default function WatchTrackingSettings({
         !stopping && <div className="mt-3 flex justify-end">{stopLink}</div>}
       {stopping && (
         <div
+          ref={stopConfirmation}
           role="group"
           aria-label="Stop sharing"
           className="mt-3 flex flex-col gap-3 rounded-2xl bg-danger-50 p-3 ring-1 ring-danger-100 transition-[opacity,translate] duration-200 ease-out-quint starting:-translate-y-1 starting:opacity-0 motion-reduce:starting:translate-y-0 @lg:flex-row @lg:items-center @lg:gap-4 @lg:pl-4"
@@ -468,8 +470,11 @@ export default function WatchTrackingSettings({
               onClick={() => {
                 void onStop().then((saved) => {
                   if (!saved) return;
+                  const restoreFocus =
+                    document.activeElement === document.body ||
+                    stopConfirmation.current?.contains(document.activeElement);
                   flushSync(() => setStopping(false));
-                  heading.current?.focus();
+                  if (restoreFocus) heading.current?.focus();
                 });
               }}
             >
