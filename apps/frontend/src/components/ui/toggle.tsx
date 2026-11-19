@@ -12,14 +12,15 @@ const toggleVariants = cva(
         outline:
           "border border-input bg-transparent shadow-xs hover:bg-accent hover:text-accent-foreground",
 
-        chip: "rounded-full bg-black/[0.04] font-semibold text-black/60 hover:bg-black/[0.08] hover:text-black/60 data-[state=on]:bg-ink data-[state=on]:text-white data-[state=on]:hover:bg-ink/90",
+        option:
+          "rounded-xl bg-white font-semibold text-black/60 shadow-xs ring-1 ring-black/5 transition-[color,background-color,box-shadow,scale] duration-150 ease-out hover:bg-white hover:text-ink hover:ring-black/10 active:scale-[0.97] motion-reduce:active:scale-100 aria-disabled:opacity-50 aria-disabled:active:scale-100 data-[state=on]:bg-ink data-[state=on]:text-white data-[state=on]:hover:bg-black",
       },
       size: {
         default: "h-9 min-w-9 px-2",
         sm: "h-8 min-w-8 px-1.5",
         lg: "h-10 min-w-10 px-2.5",
 
-        chip: "h-9 gap-2 py-1 pr-3.5 pl-1",
+        option: "h-9 px-2.5 text-xs",
       },
     },
     defaultVariants: {

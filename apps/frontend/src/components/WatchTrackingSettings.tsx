@@ -1,14 +1,6 @@
 import { useId, useRef, useState } from "react";
-import {
-  ArrowRight,
-  ArrowRightLeft,
-  ArrowUpRight,
-  ChevronDown,
-  CircleCheck,
-  ListPlus,
-  Loader2,
-  ShieldCheck,
-} from "lucide-react";
+import { flushSync } from "react-dom";
+import { ChevronDown, Loader2, ShieldCheck } from "lucide-react";
 import { joinProviderLabels, PROVIDERS } from "@stremlist/shared/providers";
 import type {
   ActivityKind,
@@ -30,6 +22,9 @@ import { ProviderMark } from "./brand";
 import RelativeTime from "./RelativeTime";
 
 const ALL_PROVIDERS = joinProviderLabels([...WATCH_PROVIDERS], "or");
+
+const LINK_HIT_AREA =
+  "relative after:absolute after:-inset-x-2 after:-inset-y-3";
 
 function pad(value: number) {
   return String(value).padStart(2, "0");
@@ -125,19 +120,10 @@ function statusLine(
 }
 
 type Intent = { provider: WatchProviderId; kind: ActivityKind };
-const ACTIONS = [
-  {
-    kind: "watched",
-    title: "Mark as watched",
-    lead: "When Stremio marks a title as watched.",
-    icon: CircleCheck,
-  },
-  {
-    kind: "watchlist",
-    title: "Add to watchlist",
-    lead: "New Stremio library additions. No removals.",
-    icon: ListPlus,
-  },
+
+const KINDS = [
+  { kind: "watched", label: "Watched", action: "Mark as watched" },
+  { kind: "watchlist", label: "Watchlist", action: "Add to watchlist" },
 ] as const;
 
 export default function WatchTrackingSettings({
@@ -181,16 +167,15 @@ export default function WatchTrackingSettings({
   onUpdateStremio: () => void;
 }) {
   const id = useId();
+  const heading = useRef<HTMLHeadingElement>(null);
   const opener = useRef<HTMLElement>(null);
+  const stopTrigger = useRef<HTMLButtonElement>(null);
+  const keepSharing = useRef<HTMLButtonElement>(null);
   const [intent, setIntent] = useState<Intent | null>(null);
   const [stopping, setStopping] = useState(false);
   const anyOn =
     destinations?.some((d) => d.enabled || d.watchlistEnabled) ?? false;
   const tracking = anyOn && !locked;
-  const needsSetup =
-    !locked &&
-    destinations !== null &&
-    (!stremioLinked || !destinations.length);
   const statuses = (destinations ?? [])
     .filter((d) => d.enabled || d.watchlistEnabled)
     .map((destination) => ({
@@ -198,11 +183,34 @@ export default function WatchTrackingSettings({
       line: statusLine(destination, busy),
     }));
   const pending = (destinations ?? []).reduce((sum, d) => sum + d.pending, 0);
+
+  const askToStop = () => {
+    flushSync(() => setStopping(true));
+    keepSharing.current?.focus();
+  };
+  const keepOn = () => {
+    flushSync(() => setStopping(false));
+    stopTrigger.current?.focus();
+  };
+  const stopLink = (
+    <Button
+      ref={stopTrigger}
+      variant="link-danger"
+      size="inline-xs"
+      type="button"
+      className={LINK_HIT_AREA}
+      disabled={!!busy}
+      onClick={askToStop}
+    >
+      Stop sharing
+    </Button>
+  );
+
   let body: React.ReactNode;
-  if (locked) body = <Note>{locked}</Note>;
+  if (locked) body = <Note className="mt-4">{locked}</Note>;
   else if (loadFailed && !destinations)
     body = (
-      <Note>
+      <Note className="mt-4">
         Stremlist could not load this setting.{" "}
         <Button
           variant="link-accent"
@@ -216,92 +224,111 @@ export default function WatchTrackingSettings({
     );
   else if (!destinations)
     body = (
-      <p className="flex items-center gap-2 text-sm text-black/50">
-        <Loader2 className="size-4 animate-spin" />
+      <p className="mt-4 flex items-center gap-2 text-sm text-black/50">
+        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
         Loading…
       </p>
     );
   else if (!stremioLinked)
     body = (
-      <ActivitySetup
-        action="Link Stremio"
-        onStart={onLinkStremio}
+      <SetupStep
+        visual={
+          <img
+            src="/stremio.png"
+            alt=""
+            width={32}
+            height={32}
+            className="size-8"
+          />
+        }
+        title={anyOn ? "Stremio is not linked" : "Start with Stremio"}
         lead={
           anyOn
-            ? "Link Stremio again to resume your updates."
-            : "Start with Stremio. Then choose which accounts to update."
+            ? "Link it again to resume your updates."
+            : "Then choose which accounts to update."
         }
+        action="Link Stremio"
+        onStart={onLinkStremio}
       />
     );
   else if (!destinations.length)
     body = (
-      <ActivitySetup
+      <SetupStep
+        visual={
+          <span className="flex -space-x-2">
+            {WATCH_PROVIDERS.map((provider) => (
+              <ProviderMark
+                key={provider}
+                provider={provider}
+                className="size-8 border-2 border-white"
+              />
+            ))}
+          </span>
+        }
+        title={`Connect ${ALL_PROVIDERS}`}
+        lead="You choose what gets shared."
         action="Connect an account"
         onStart={onManageAccounts}
-        lead={`Connect ${ALL_PROVIDERS}. You choose what gets shared.`}
       />
     );
   else
     body = (
       <>
-        <div className="mt-4 divide-y divide-black/5">
-          {ACTIONS.map((action) => (
-            <div
-              key={action.kind}
-              className="grid gap-3 py-3.5 first:pt-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-            >
-              <div className="flex items-start gap-3">
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-black/[0.04] text-black/60">
-                  <action.icon className="size-5" aria-hidden="true" />
+        <ul className="mt-4 space-y-1.5">
+          {destinations.map((d) => {
+            const label = PROVIDERS[d.provider].label;
+            return (
+              <li
+                key={d.provider}
+                className="flex flex-wrap items-center gap-1 rounded-2xl bg-black/[0.03] p-1"
+              >
+                <span className="flex flex-1 items-center gap-2.5 py-1 pl-1">
+                  <ProviderMark
+                    provider={d.provider}
+                    active={d.enabled || d.watchlistEnabled}
+                    className="size-7"
+                  />
+                  <span className="text-sm font-semibold">{label}</span>
                 </span>
-                <div>
-                  <p className="text-sm font-semibold">{action.title}</p>
-                  <p className="mt-0.5 text-xs text-black/50">{action.lead}</p>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {destinations.map((d) => {
-                  const on =
-                    action.kind === "watched" ? d.enabled : d.watchlistEnabled;
-                  return (
+                <span className="ml-auto grid w-full grid-cols-2 gap-1 @3xs:flex @3xs:w-auto">
+                  {KINDS.map(({ kind, label: choice, action }) => (
                     <Toggle
-                      key={d.provider}
-                      pressed={on}
-                      aria-label={`${action.title} on ${PROVIDERS[d.provider].label}`}
-                      disabled={!!busy || loadFailed}
+                      key={kind}
+                      variant="option"
+                      size="option"
+                      pressed={
+                        kind === "watched" ? d.enabled : d.watchlistEnabled
+                      }
+                      aria-label={`${action} on ${label}`}
+                      disabled={loadFailed}
+                      aria-disabled={!!busy || undefined}
                       onClick={(event) => {
                         opener.current = event.currentTarget;
                       }}
                       onPressedChange={(next) => {
+                        if (busy) return;
                         if (next && !consented)
-                          setIntent({
-                            provider: d.provider,
-                            kind: action.kind,
-                          });
-                        else void onToggle(d.provider, next, action.kind);
+                          setIntent({ provider: d.provider, kind });
+                        else void onToggle(d.provider, next, kind);
                       }}
-                      variant="chip"
-                      size="chip"
                     >
-                      <ProviderMark
-                        provider={d.provider}
-                        tone={on ? "dark" : "light"}
-                        className={cn("size-7", !on && "opacity-50 grayscale")}
-                      />
-                      {PROVIDERS[d.provider].label}
+                      {choice}
                     </Toggle>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="mt-1 border-t border-black/5 pt-3.5">
+                  ))}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="mt-3">
           {tracking ? (
             <Collapsible>
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-black/55">
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-black/55">
                 <span className="flex items-center gap-2">
-                  <span className="size-2 rounded-full bg-success-500" />
+                  <span
+                    aria-hidden="true"
+                    className="size-2 rounded-full bg-success-500"
+                  />
                   {busy ? "Saving…" : "Sharing on"}
                 </span>
                 <div className="flex items-center gap-4">
@@ -309,25 +336,16 @@ export default function WatchTrackingSettings({
                     <Button
                       variant="link-subtle"
                       size="inline-xs"
-                      className="group"
+                      className={cn("group", LINK_HIT_AREA)}
                     >
                       Details
                       <ChevronDown
-                        className="size-3.5 transition-transform group-data-[state=open]:rotate-180"
+                        className="size-3.5 transition-transform duration-200 ease-out-quint group-data-[state=open]:rotate-180 motion-reduce:transition-none"
                         aria-hidden="true"
                       />
                     </Button>
                   </CollapsibleTrigger>
-                  {!stopping && (
-                    <Button
-                      variant="link-danger"
-                      size="inline-xs"
-                      disabled={!!busy}
-                      onClick={() => setStopping(true)}
-                    >
-                      Stop sharing
-                    </Button>
-                  )}
+                  {!stopping && stopLink}
                 </div>
               </div>
               {statuses
@@ -336,7 +354,7 @@ export default function WatchTrackingSettings({
                   <p
                     key={destination.provider}
                     role="status"
-                    className="mt-2 text-xs text-danger-700"
+                    className="mt-2 text-xs text-pretty text-danger-700"
                   >
                     <strong className="font-semibold">
                       {PROVIDERS[destination.provider].label}:{" "}
@@ -345,12 +363,12 @@ export default function WatchTrackingSettings({
                   </p>
                 ))}
               {pending > 0 && (
-                <p className="mt-2 text-xs text-black/50">
+                <p className="mt-2 text-xs text-black/50 tabular-nums">
                   {pending}{" "}
                   {pending === 1 ? "update waiting" : "updates waiting"}.{" "}
                   <Button
                     variant="link-accent"
-                    size="inline"
+                    size="inline-xs"
                     disabled={!!busy}
                     onClick={onRetryWrites}
                   >
@@ -359,31 +377,31 @@ export default function WatchTrackingSettings({
                 </p>
               )}
               <CollapsibleContent>
-                <div className="space-y-2 pt-3">
+                <div className="space-y-1.5 pt-3 text-xs text-pretty text-black/50">
                   {statuses
                     .filter(({ line }) => line.icon !== "alert")
                     .map(({ destination, line }) => (
-                      <p
-                        key={destination.provider}
-                        className="text-xs text-black/50"
-                      >
-                        <strong className="font-semibold">
+                      <p key={destination.provider}>
+                        <strong className="font-semibold text-black/60">
                           {PROVIDERS[destination.provider].label}:{" "}
                         </strong>
                         {line.text}
                       </p>
                     ))}
-                  <p className="text-xs text-pretty text-black/45">
-                    Changes apply at once. Watched marks usually arrive within 5
-                    minutes. Library additions need a Stremio app that sends
-                    activity events.
+                  <p className="text-black/45">
+                    Watched marks usually arrive within 5 minutes. Library
+                    additions need a Stremio app that sends activity events.
+                    Removals are not sent.
                   </p>
                 </div>
               </CollapsibleContent>
             </Collapsible>
           ) : (
             <p className="flex items-start gap-2 text-xs text-pretty text-black/50">
-              <ShieldCheck className="mt-px size-4 shrink-0 text-black/35" />
+              <ShieldCheck
+                className="size-4 shrink-0 text-black/35"
+                aria-hidden="true"
+              />
               {consented
                 ? "Sharing is off."
                 : "Only new activity is shared, with your permission."}
@@ -392,89 +410,68 @@ export default function WatchTrackingSettings({
         </div>
       </>
     );
+
   return (
     <section
       aria-labelledby={`${id}-title`}
       aria-busy={!!busy}
-      className="rounded-3xl bg-white p-4 ring-1 ring-black/5 sm:p-5"
+      className="@container rounded-3xl bg-white p-4 ring-1 ring-black/5 sm:p-5"
     >
-      <div className={cn(needsSetup && "flex items-start gap-3")}>
-        {needsSetup && (
-          <span
-            aria-hidden="true"
-            className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-ink text-brand shadow-xs"
-          >
-            <ArrowRightLeft className="size-5" />
-          </span>
-        )}
-        <div className="min-w-0">
-          <h3
-            id={`${id}-title`}
-            className={cn(
-              "font-bold",
-              needsSetup && "tracking-tight text-balance",
-            )}
-          >
-            Update your accounts from Stremio
-          </h3>
-          <p className="mt-0.5 text-sm text-pretty text-black/55">
-            {needsSetup
-              ? "Choose what to share, and where."
-              : "Choose an account for each update."}
-          </p>
-        </div>
-      </div>
-      <div className={cn("mt-3", needsSetup && "mt-4")}>{body}</div>
+      <h3
+        ref={heading}
+        id={`${id}-title`}
+        tabIndex={-1}
+        className="font-bold text-balance outline-none"
+      >
+        Update your accounts from Stremio
+      </h3>
+      <p className="mt-0.5 text-sm text-pretty text-black/55">
+        Mark titles you finish as watched and add new library titles to your
+        watchlist.
+      </p>
+      {body}
       {(anyOn || consented) &&
         !locked &&
         (!stremioLinked || !destinations?.length) &&
-        !stopping && (
-          <div className="mt-4 flex justify-end border-t border-black/5 pt-3">
-            <Button
-              variant="link-danger"
-              size="inline-xs"
-              type="button"
-              disabled={!!busy}
-              onClick={() => setStopping(true)}
-            >
-              Stop sharing
-            </Button>
-          </div>
-        )}
+        !stopping && <div className="mt-3 flex justify-end">{stopLink}</div>}
       {stopping && (
         <div
           role="group"
           aria-label="Stop sharing"
-          className={cn(
-            "rounded-2xl bg-danger-50 p-3 text-sm text-danger-900 ring-1 ring-danger-100",
-            needsSetup && "mt-4",
-          )}
+          className="mt-3 flex flex-col gap-3 rounded-2xl bg-danger-50 p-3 ring-1 ring-danger-100 transition-[opacity,translate] duration-200 ease-out-quint starting:-translate-y-1 starting:opacity-0 motion-reduce:starting:translate-y-0 @lg:flex-row @lg:items-center @lg:gap-4 @lg:pl-4"
         >
-          <p className="font-bold">Stop sharing your Stremio activity?</p>
-          <p className="mt-0.5 text-danger-900/75">
-            Every account turns off and waiting updates are cancelled. What was
-            already sent stays on your accounts.
-          </p>
-          <div className="mt-3 flex justify-end gap-2">
+          <div className="min-w-0 flex-1 text-danger-900">
+            <p className="text-sm font-semibold">
+              Stop sharing your Stremio activity?
+            </p>
+            <p className="mt-0.5 text-xs text-pretty text-danger-900/75">
+              Every account turns off and waiting updates are cancelled. What
+              was already sent stays on your accounts.
+            </p>
+          </div>
+          <div className="grid shrink-0 grid-cols-2 gap-2 @lg:flex">
             <Button
+              ref={keepSharing}
               variant="plain"
               size="pill"
               type="button"
               disabled={!!busy}
-              onClick={() => setStopping(false)}
+              onClick={keepOn}
             >
               Keep sharing
             </Button>
             <Button
               variant="destructive"
+              size="pill"
               type="button"
               disabled={!!busy}
               onClick={() => {
                 void onStop().then((saved) => {
-                  if (saved) setStopping(false);
+                  if (!saved) return;
+                  flushSync(() => setStopping(false));
+                  heading.current?.focus();
                 });
               }}
-              size="pill"
             >
               {busy ? "Stopping…" : "Stop sharing"}
             </Button>
@@ -545,45 +542,39 @@ export default function WatchTrackingSettings({
   );
 }
 
-function ActivitySetup({
-  action,
+function SetupStep({
+  visual,
+  title,
   lead,
+  action,
   onStart,
 }: {
-  action: string;
+  visual: React.ReactNode;
+  title: string;
   lead: string;
+  action: string;
   onStart: () => void;
 }) {
   return (
-    <div className="rounded-2xl bg-brand/10 p-4 sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div aria-hidden="true" className="flex items-center gap-3">
-          <span className="flex size-12 -rotate-6 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
-            <img
-              src="/stremio.png"
-              alt=""
-              width={36}
-              height={36}
-              className="size-9 rounded-xl"
-            />
-          </span>
-          <ArrowRight className="size-4 text-black/30" />
-          <div className="flex -space-x-3">
-            {WATCH_PROVIDERS.map((provider) => (
-              <ProviderMark
-                key={provider}
-                provider={provider}
-                className="size-10 border-2 border-white shadow-sm"
-              />
-            ))}
-          </div>
+    <div className="mt-4 flex flex-col gap-3 rounded-2xl bg-black/[0.03] p-3 @md:flex-row @md:items-center @md:gap-4 @md:pl-4">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <span aria-hidden="true" className="flex shrink-0">
+          {visual}
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-pretty">{title}</p>
+          <p className="mt-0.5 text-xs text-pretty text-black/50">{lead}</p>
         </div>
-        <Button type="button" size="pill" onClick={onStart}>
-          {action}
-          <ArrowUpRight aria-hidden="true" />
-        </Button>
       </div>
-      <p className="mt-4 text-sm text-pretty text-black/60">{lead}</p>
+      <Button
+        type="button"
+        variant="dark"
+        size="pill"
+        className="w-full @md:w-auto"
+        onClick={onStart}
+      >
+        {action}
+      </Button>
     </div>
   );
 }
