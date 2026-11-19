@@ -7,7 +7,7 @@ import {
   configuration,
   captureConfig,
   saveButton,
-} from "./config-fixture";
+} from "./config.fixture";
 
 for (const failure of ["http", "network"] as const) {
   test(`refresh recovers from ${failure} failure without discarding unsaved edits`, async ({
@@ -84,7 +84,6 @@ test("server throttle starts a cooldown and expiry enables a later refresh", asy
   await screen.getByRole("button", "Refresh now").tap();
   await expect(screen.getByRole("button", /Refresh in \d+s/)).toBeDisabled();
   expect(attempts).toBe(1);
-  // Poll the visible state; no fixed sleep or synthetic Date patch.
   await expect(screen.getByRole("button", "Refresh now")).toBeEnabled();
   await screen.getByRole("button", "Refresh now").tap();
   await expect(screen.getByRole("button", /Refresh in \d+s/)).toBeDisabled();

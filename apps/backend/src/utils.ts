@@ -1,4 +1,4 @@
-function hashSeed(value: string): number {
+function hashSeed(value: string) {
   let hash = 0x811c9dc5;
   for (let index = 0; index < value.length; index += 1) {
     hash ^= value.charCodeAt(index);
@@ -7,7 +7,7 @@ function hashSeed(value: string): number {
   return hash >>> 0;
 }
 
-function seededRandom(seed: string): () => number {
+function seededRandom(seed: string) {
   let state = hashSeed(seed);
   return () => {
     state += 0x6d2b79f5;
@@ -18,7 +18,7 @@ function seededRandom(seed: string): () => number {
   };
 }
 
-export function shuffleArray<T>(items: T[], seed?: string): T[] {
+export function shuffleArray<T>(items: T[], seed?: string) {
   const random = seed ? seededRandom(seed) : Math.random;
   for (let i = items.length - 1; i > 0; i -= 1) {
     const j = Math.floor(random() * (i + 1));

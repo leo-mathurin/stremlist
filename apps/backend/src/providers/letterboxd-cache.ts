@@ -35,7 +35,6 @@ async function readState<T>(key: string, schema: z.ZodType<T>, initial: T) {
   };
 }
 
-/** Wait at least this long for a page that another read holds. */
 const LEASE_WAIT_MS = 10_000;
 
 /**
@@ -99,10 +98,6 @@ export async function letterboxdSnapshot(
     );
     return snapshot;
   } catch (error) {
-    // A 404 or a private watchlist is definitive: the list is gone, turned
-    // private, or its Share link was revoked. Drop the snapshot so its Titles
-    // cannot be served again. Any other failure is transient and keeps the
-    // last good snapshot.
     const gone =
       error instanceof SourceUnavailableError &&
       (error.reason === "not_found" || error.reason === "private");
@@ -117,9 +112,7 @@ export async function letterboxdSnapshot(
         },
         { etag: state.etag },
       );
-    } catch {
-      /* The lease expires if storage is unavailable or another writer owns it. */
-    }
+    } catch {}
     throw error;
   }
 }

@@ -2,7 +2,7 @@ import { test } from "@e2e-dev/web";
 import type { Browser } from "@e2e-dev/web";
 import { expect } from "e2e";
 import type { Screen } from "e2e";
-import type { PreviewRequest } from "./config-fixture";
+import type { PreviewRequest } from "./config.fixture";
 import {
   SAVED,
   accountId,
@@ -11,13 +11,7 @@ import {
   previewOf,
   routePreview,
   saveButton,
-} from "./config-fixture";
-
-// The poster source of an Account (STR-106): one choice between IMDb (the
-// default), TMDB, TheTVDB and RPDB, with the RPDB key field for RPDB only. The preview
-// gives both IMDb and TMDB posters of each Title, so the page switches
-// source without a new preview. The backend answers are intercepted;
-// tests/poster-source.spec.ts covers the real handlers.
+} from "./config.fixture";
 
 const IMDB_POSTER = "https://posters.e2e.test/imdb/shawshank.svg";
 const TMDB_POSTER = "https://posters.e2e.test/tmdb/shawshank.svg";
@@ -29,7 +23,6 @@ const NO_KEY = "Until you add a key, Stremlist shows IMDb posters.";
 const IMAGE =
   '<svg xmlns="http://www.w3.org/2000/svg" width="2" height="3"><rect width="2" height="3"/></svg>';
 
-/** Shawshank has both posters, The Godfather only the IMDb one. */
 function previewWithPosters(request: PreviewRequest) {
   const preview = previewOf(request);
   for (const row of preview.catalogs) {
@@ -43,7 +36,6 @@ function previewWithPosters(request: PreviewRequest) {
   return preview;
 }
 
-/** Answer every poster image, so no tile falls back after a load error. */
 async function routePosterImages(browser: Browser) {
   for (const pattern of [
     "https://posters.e2e.test/**",
@@ -58,7 +50,6 @@ async function routePosterImages(browser: Browser) {
   }
 }
 
-/** The poster URL that the first two tiles of the List preview show. */
 function tilePosters(browser: Browser) {
   return browser.evaluate(() =>
     Array.from(
@@ -71,7 +62,6 @@ function tilePosters(browser: Browser) {
   );
 }
 
-/** The hosts of the example posters that show. */
 function exampleHosts(browser: Browser) {
   return browser.evaluate(() =>
     Array.from(
@@ -84,10 +74,6 @@ function exampleHosts(browser: Browser) {
 
 const EXAMPLE_COUNT = 10;
 
-/**
- * How the example posters lie out: the number of rows they take, how many
- * show whole, and how far the page scrolls sideways.
- */
 function exampleLayout(browser: Browser) {
   return browser.evaluate(() => {
     const strip = document.querySelector('ul[aria-label="Example posters"]');
@@ -122,7 +108,6 @@ test("each poster source changes the preview at once, RPDB with its key", async 
   await routePosterImages(browser);
   await app.open(`/configure?account=${accountId}`);
 
-  // Existing Accounts keep IMDb posters, and no key field shows.
   await expect(screen.getByRole("combobox", "Posters")).toHaveText(/IMDb/);
   await expect(screen.getByLabel(/^RPDB API key/)).not.toBeVisible();
   await screen.getByRole("button", "Preview Test catalog").tap();
@@ -133,13 +118,11 @@ test("each poster source changes the preview at once, RPDB with its key", async 
     .poll(() => tilePosters(browser))
     .toEqual([IMDB_POSTER, GODFATHER]);
 
-  // TMDB: the Title without a TMDB poster keeps its IMDb poster.
   await choose(screen, /^TMDB/);
   await expect
     .poll(() => tilePosters(browser))
     .toEqual([TMDB_POSTER, GODFATHER]);
 
-  // TheTVDB, with the attribution that its API terms ask for.
   await choose(screen, /^TheTVDB/);
   await expect
     .poll(() => tilePosters(browser))
@@ -148,7 +131,6 @@ test("each poster source changes the preview at once, RPDB with its key", async 
     screen.getByRole("link", "TheTVDB", { exact: true }),
   ).toBeVisible();
 
-  // RPDB without a key shows IMDb posters until the key is added.
   await choose(screen, /^RPDB/);
   await expect(screen.getByText(NO_KEY, { exact: false })).toBeVisible();
   await expect
@@ -158,7 +140,6 @@ test("each poster source changes the preview at once, RPDB with its key", async 
   await expect
     .poll(async () => (await tilePosters(browser))[0])
     .toBe(RPDB_POSTER);
-  // The choice is a page setting: no new preview, no reinstall.
   expect(requests).toHaveLength(1);
   await expect(
     screen.getByText("These changes need a reinstall."),
@@ -186,14 +167,12 @@ test("another source keeps the saved RPDB key", async ({
   await app.open(`/configure?account=${accountId}`);
   await expect(screen.getByRole("combobox", "Posters")).toHaveText(/TMDB/);
   await expect(screen.getByLabel(/^RPDB API key/)).not.toBeVisible();
-  // The loaded choice is not an edit.
   await expect(saveButton(screen)).toHaveAttribute(
     "title",
     "No changes to save",
   );
 
   await choose(screen, /^RPDB/);
-  // The field hides the key: show it to read it.
   await screen.getByRole("button", "Show RPDB API key").tap();
   await expect(screen.getByLabel(/^RPDB API key/)).toHaveValue("kept-key");
   await choose(screen, /^IMDb/);
@@ -216,7 +195,6 @@ test("example posters open on request and follow the chosen source", async ({
 
   const examples = screen.getByRole("button", "Examples");
   await expect(examples).toHaveAttribute("aria-expanded", "false");
-  // Closed, no example image loads.
   expect(await exampleHosts(browser)).toEqual([]);
 
   await examples.tap();
@@ -260,14 +238,12 @@ for (const viewport of [
     const layout = await exampleLayout(browser);
     expect(layout?.rows).toBe(1);
     expect(layout?.sideways).toBe(0);
-    // Some posters are past the edge; the row scrolls to them.
     expect(layout?.whole).toBeLessThan(EXAMPLE_COUNT);
     await browser.evaluate(() => {
       const strip = document.querySelector('ul[aria-label="Example posters"]');
       strip?.scrollTo({ left: strip.scrollWidth });
       return null;
     });
-    // The last poster shows whole at the end of the row.
     await expect
       .poll(() =>
         browser.evaluate(() => {
@@ -285,10 +261,7 @@ for (const viewport of [
   });
 }
 
-/** Drag the example posters with the mouse by `distance` px to the left. */
 async function dragExamples(browser: Browser, distance: number) {
-  // The point to press, once the row gets the mouse there: while the
-  // panel opens, the row is still clipped.
   const point = () =>
     browser.evaluate(() => {
       const element = document.querySelector(
@@ -314,7 +287,6 @@ async function dragExamples(browser: Browser, distance: number) {
   await browser.mouse.up();
 }
 
-/** Where the example row rests after a drag. */
 function exampleRest(browser: Browser) {
   return browser.evaluate(() => {
     const element = document.querySelector<HTMLElement>(
@@ -359,8 +331,6 @@ test("a mouse drags the example posters, which stop on a poster", async ({
 }) => {
   await openExamples(app, browser, screen, 1280);
   await dragExamples(browser, 130);
-  // The row followed the mouse, then glided until a poster lines up with
-  // its start, and snaps again.
   await expect
     .poll(() => exampleRest(browser))
     .toEqual({ scrolled: true, aligned: true, atEnd: false, snaps: true });
@@ -372,11 +342,8 @@ test("at 390 px, a drag past the end leaves the last poster whole", async ({
   screen,
 }) => {
   await openExamples(app, browser, screen, 390);
-  // Two drags: the mouse stays on the page, and the second one starts
-  // while the row may still glide after the first.
   await dragExamples(browser, 320);
   await dragExamples(browser, 320);
-  // The last posters cannot line up with the start: the row stays at its end.
   await expect
     .poll(() => exampleRest(browser))
     .toMatchObject({ scrolled: true, atEnd: true, snaps: true });

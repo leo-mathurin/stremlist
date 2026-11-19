@@ -1,17 +1,6 @@
-// Picks the commit a production deploy releases, and refuses a stale one.
-//
-//   node .github/scripts/release-sha.mjs resolve <tested-sha>
-//   node .github/scripts/release-sha.mjs assert <release-sha>
-//
-// `resolve` writes `sha=<release>` to $GITHUB_OUTPUT. `assert` fails when
-// main no longer points at the release, so a run that a newer merge has
-// overtaken never writes to production.
 import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 
-// CI's version-bump job pushes one "chore(release)" commit on top of the
-// merge. It carries [skip ci], so no workflow runs for it, but production
-// must serve it: it holds the version the addon manifest reports.
 const VERSION_FILES = ["package.json", "packages/shared/src/constants.ts"];
 const VERSION_SUBJECT = /^chore\(release\): v\d+\.\d+\.\d+ \[skip ci\]$/;
 

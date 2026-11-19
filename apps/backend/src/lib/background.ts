@@ -2,7 +2,7 @@ import { waitUntil } from "@vercel/functions";
 
 type BackgroundTask = () => Promise<unknown>;
 
-export function scheduleBackgroundTask(task: BackgroundTask): void {
+export function scheduleBackgroundTask(task: BackgroundTask) {
   const promise = Promise.resolve()
     .then(task)
     .catch((error: unknown) => {

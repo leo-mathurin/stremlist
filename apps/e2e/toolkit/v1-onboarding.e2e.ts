@@ -11,11 +11,7 @@ import {
   routeConfig,
   routeCreateAccount,
   routeResolve,
-} from "./config-fixture";
-
-// The Stremlist 2.0 card of a v1 install (a Legacy alias) on the configure
-// page: what is new, and the optional private Addon URL. Every API answer is
-// intercepted.
+} from "./config.fixture";
 
 const TITLE = "Stremlist 2.0 is here. Your install still works.";
 const HOME_TITLE = "Found your install. It still works.";
@@ -23,7 +19,6 @@ const PASTE = "Paste a link to a watchlist or list";
 const LETTERBOXD = "https://letterboxd.com/someone/watchlist/";
 const PRIVATE_STEP = /^Get a private Addon URL/;
 
-/** The height of the "Refreshed" line above the Lists. */
 function refreshedLineHeight(browser: Browser) {
   return browser.evaluate(() => {
     const status = [...document.querySelectorAll("p")].find((p) =>
@@ -73,7 +68,6 @@ test("a v1 install opened from Home says that Home found it", async ({
   await expect(browser).toHaveURL(`/configure?account=${imdbUser}`);
   await expect(screen.getByRole("heading", HOME_TITLE)).toBeVisible();
 
-  // Only the visit from Home: the same page opened again says what is new.
   await app.open(`/configure?account=${imdbUser}`);
   await expect(screen.getByRole("heading", TITLE)).toBeVisible();
   await expect(screen.getByRole("heading", HOME_TITLE)).toHaveCount(0);
@@ -103,7 +97,6 @@ test("a Letterboxd list added on a v1 install completes the second step", async 
   await expect(step).toHaveAccessibleName(
     "Add a list from another site (completed)",
   );
-  // The next step opens.
   await expect(screen.getByRole("button", PRIVATE_STEP)).toBeExpanded();
   await step.tap();
   await expect(
@@ -168,7 +161,6 @@ test("a closed Stremlist 2.0 card stays closed until What's new opens it", async
   await screen.getByRole("button", "Hide what's new").tap();
   await expect(screen.getByRole("heading", TITLE)).toHaveCount(0);
 
-  // This browser remembers it for this install.
   await app.open(`/configure?account=${imdbUser}`);
   await expect(screen.getByText("Test catalog")).toBeVisible();
   await expect(screen.getByRole("heading", TITLE)).toHaveCount(0);

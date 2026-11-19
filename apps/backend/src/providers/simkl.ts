@@ -36,7 +36,7 @@ import {
   isChartRef,
   readTrending,
 } from "./simkl/trending";
-import type { ProviderAdapter, SourceValidation } from "./types";
+import type { ProviderAdapter } from "./types";
 import { SourceUnavailableError } from "./types";
 
 const LIST_REF = /^me\/lists\/(\d+)$/;
@@ -46,7 +46,7 @@ const simklSettingsSchema = z.object({
 });
 
 /** Test hook: forget the in-memory fallback state. */
-export function resetSimklState(): void {
+export function resetSimklState() {
   clearMemoryState();
   clearInFlightSyncs();
   clearTrendingReads();
@@ -77,9 +77,8 @@ export const simklProvider: ProviderAdapter = {
     return chartFreshness(ref) ?? LIBRARY_FRESHNESS_MS;
   },
 
-  async validateSource(ref, ctx): Promise<SourceValidation> {
+  async validateSource(ref, ctx) {
     if (isChartRef(ref)) {
-      // A genre chart exists while Simkl's genre index lists it.
       if (staticSource("simkl", ref) === null && !(await genreExists(ref))) {
         return { ok: false, reason: "not_found" };
       }
@@ -145,7 +144,6 @@ export const simklProvider: ProviderAdapter = {
     }
     return {
       entries: libraryEntries(library.items, ref),
-      // The library sync has no page cap: it is the whole library.
       complete: true,
     };
   },
@@ -155,7 +153,7 @@ export const simklProvider: ProviderAdapter = {
     return simkl ? { namespace: "simkl", externalId: String(simkl) } : null;
   },
 
-  // Anime often have no IMDb ID on Simkl, but many have a TMDB ID.
+  /** Anime often have no IMDb ID on Simkl, but many have a TMDB ID. */
   resolverStrategies: [tmdbExternalIdsStrategy],
 
   actions: simklActions,
@@ -169,7 +167,7 @@ export const simklProvider: ProviderAdapter = {
     authorizeUrl: "https://simkl.com/oauth2/authorize",
     tokenUrl: `${SIMKL_API}/oauth2/token`,
     ...simklClient,
-    // Without media:write (exact spelling), Simkl silently grants read-only.
+    /** Without media:write (exact spelling), Simkl silently grants read-only. */
     scopes: ["media:read", "media:write"],
 
     revoke: (token) =>

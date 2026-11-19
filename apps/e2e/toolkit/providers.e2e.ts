@@ -24,14 +24,8 @@ import {
   routeConfig,
   routeConnectionSources,
   parseBody,
-} from "./config-fixture";
+} from "./config.fixture";
 import { isRecord } from "../helpers/json";
-
-// Provider journeys of the configure page: links of every available Provider
-// including public Letterboxd links, the kill switch,
-// Connections and their OAuth round trip,
-// disconnect, Actions settings and the Legacy alias upgrade. The API is
-// intercepted; the tests/provider-*.spec.ts files run the real backend.
 
 const PASTE = "Paste a link to a watchlist or list";
 const traktList = {
@@ -43,14 +37,6 @@ const traktList = {
   position: 1,
 } as const;
 
-/**
- * Start the `provider` Connection on `authorizeUrl`, whose OAuth page sends
- * the browser straight back the way the backend callback does, with the
- * Provider's `answer` in the fragment (`code=…` or `oauth_error=…`). The page
- * then completes the connect with its browser key; `onComplete` runs then.
- * `key` is the Account that connects, or null for a new setup. Returns the
- * start request methods, the authorize page URLs and the completions.
- */
 async function routeOAuth(
   browser: Browser,
   provider: string,
@@ -166,7 +152,6 @@ test("pasted links of every available Provider become Lists of a new setup", asy
   await saveButton(screen, SAVE_NEW).tap();
   await expect(browser).toHaveURL(`/configure?account=${accountId}`);
   expect(inputs.map((entry) => entry.input)).toEqual(Object.values(links));
-  // Each new List goes first: the last link pasted is the first row.
   expect(created[0].lists).toMatchObject([
     { provider: "imdb", sourceRef: "ls99123456", position: 0 },
     {
@@ -274,7 +259,6 @@ test("a link that needs a Connection saves the setup, connects, then adds the li
     screen.getByText("MDBList is connected. You can now add its lists."),
   ).toBeVisible();
   await expect(browser).toHaveURL(`/configure?account=${accountId}`);
-  // The link waited during the round trip and is added with the Connection.
   await expect(screen.getByText("Weekend")).toBeVisible();
   await expect(screen.getByText("@someone")).toBeVisible();
   await expect(screen.getByTestId("quick-add-mdblist")).toHaveAttribute(
@@ -282,7 +266,6 @@ test("a link that needs a Connection saves the setup, connects, then adds the li
     "true",
   );
   await expect(screen.getByRole("button", "Horror nights")).toBeVisible();
-  // The Account is created only once the connection succeeds, with the setup.
   expect(created).toEqual([]);
   expect(completions).toEqual([
     {
@@ -319,11 +302,9 @@ test(
       "https://simkl.com/oauth/authorize?client_id=fixture&state=fixture-state",
       "code=fixture-code",
       () => {
-        // The user agrees on Simkl: the page that opens next is connected.
         state.config = { ...configuration, connections: [connected("simkl")] };
       },
     );
-    // Simkl has no public lists: its Source lists come from the Connection.
     await routeConnectionSources(browser, "simkl", CONNECTION_SOURCES.simkl);
 
     await app.open(`/configure?account=${accountId}`);
@@ -378,7 +359,6 @@ for (const [error, message] of [
     );
     await expect(screen.getByText(message)).toBeVisible();
     await expect(browser).toHaveURL(`/configure?account=${accountId}`);
-    // The message is a toast with a close button.
     await screen.getByRole("button", "Close toast").tap();
     await expect(screen.getByText(message)).not.toBeVisible();
   });
@@ -490,7 +470,6 @@ test("Actions settings save the chosen Providers in their order", async ({
   await screen.getByRole("checkbox", /^Trakt/).tap();
   await expect(screen.getByRole("checkbox", /^Trakt/)).not.toBeChecked();
   await saveButton(screen).tap();
-  // Actions add a stream resource that Stremio reads only at install time.
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(submissions.at(-1)?.actions).toEqual({
     enabled: true,
@@ -506,7 +485,6 @@ test(
     await captureConfig(browser, legacyConfiguration, imdbUser);
     const newId = "sl_E2eFixtureAccount00003";
     const upgrades: string[] = [];
-    // The private copy is a new Account made from what the page shows.
     await browser.route(`${backend}/accounts`, async (route) => {
       upgrades.push(route.request.method);
       await route.fulfill({
@@ -522,7 +500,6 @@ test(
       await route.fulfill({ status: 404, json: { error: "Addon not found." } });
     });
     await app.open(`/configure?account=${imdbUser}`);
-    // Connections need a private Addon URL: Connect only points to the upgrade.
     await screen.getByRole("button", "Connect").first().tap();
     expect(starts).toEqual([]);
     await expect(
@@ -550,7 +527,6 @@ test("a Provider turned off is unavailable to connect, link or add", async ({
   browser,
   screen,
 }) => {
-  // The kill switch (DISABLED_PROVIDERS) reports Trakt as off.
   await baseRoutes(browser, providerStatus({ trakt: { enabled: false } }));
   await browser.route(`${backend}/${accountId}/config`, (route) =>
     route.fulfill({ json: toJson(configuration) }),
@@ -568,7 +544,6 @@ test("a Provider turned off is unavailable to connect, link or add", async ({
     .filter({ hasText: "Temporarily unavailable" });
   await expect(off).toHaveCount(1);
   await expect(off.getByText("Trakt", { exact: true })).toBeVisible();
-  // Simkl and MDBList can still connect; Trakt cannot.
   await expect(screen.getByRole("button", "Connect")).toHaveCount(2);
   await expect(screen.getByTestId("quick-add-trakt")).toHaveCount(0);
   await expect(screen.getByRole("button", "Trending")).toHaveCount(0);
@@ -610,10 +585,8 @@ test("a banner names every Provider with an outage and says when they work again
     .getByRole("listitem")
     .filter({ hasText: "Having problems" });
   await expect(rows).toHaveCount(2);
-  // An outage is not unavailability: Trakt and Simkl can still connect.
   await expect(screen.getByRole("button", "Connect")).toHaveCount(3);
 
-  // Simkl comes back; Trakt is still down.
   providers = providerStatus({ trakt: { outageSince: since } });
   await browser.evaluate(() =>
     document.dispatchEvent(new Event("visibilitychange")),
@@ -622,7 +595,6 @@ test("a banner names every Provider with an outage and says when they work again
   await expect(screen.getByText("Simkl is working again.")).toBeVisible();
   await expect(rows).toHaveCount(1);
 
-  // A failed status request neither shows nor ends an outage.
   await browser.route(`${backend}/providers`, (route) =>
     route.fulfill({ status: 500, json: { error: "Internal Server Error" } }),
   );
@@ -631,14 +603,12 @@ test("a banner names every Provider with an outage and says when they work again
   );
   await expect(screen.getByText("Trakt is having problems")).toBeVisible();
 
-  // Trakt comes back: no banner is left.
   await browser.route(`${backend}/providers`, (route) =>
     route.fulfill({ json: providerStatus() }),
   );
   await browser.evaluate(() =>
     document.dispatchEvent(new Event("visibilitychange")),
   );
-  // The live region announces it; the note shows the same words.
   await expect(
     screen.getByRole("status").filter({ hasText: "Trakt is working again." }),
   ).toHaveCount(1);

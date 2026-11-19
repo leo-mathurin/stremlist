@@ -1,7 +1,3 @@
-/**
- * What Watch tracking reads from a library item (ADR 0003): when it turned
- * watched, which episodes are watched, and the episode list of a series.
- */
 import { z } from "zod";
 import { LruCache } from "../../lib/lru";
 import { providerFetch, RateLimiter } from "../../providers/http";
@@ -33,18 +29,13 @@ const cinemetaMetaSchema = z.object({
     .nullish(),
 });
 
-/** The episodes of a series in Stremio's order, from Cinemeta. */
-async function seriesVideos(
-  imdbId: string,
-  fresh = false,
-): Promise<SeriesVideo[]> {
+async function seriesVideos(imdbId: string, fresh = false) {
   const cached = fresh ? undefined : videoLists.get(imdbId);
   if (cached) return cached;
   const response = await providerFetch(
     `${CINEMETA}/meta/series/${encodeURIComponent(imdbId)}.json`,
     { limiter: cinemetaLimiter },
   );
-  // Cinemeta does not know the series: it has no episode list to compare.
   if (response.status === 404) return [];
   if (!response.ok) throw new Error(`Cinemeta answered ${response.status}`);
   const body = cinemetaMetaSchema.parse(await response.json());
@@ -82,8 +73,8 @@ export const UNLISTED = "unlisted";
 export async function watchedEpisodes(
   imdbId: string,
   field: string | undefined,
-): Promise<Set<string> | null | typeof UNLISTED> {
-  if (!field) return new Set();
+) {
+  if (!field) return new Set<string>();
   const decode = (videos: SeriesVideo[]) => {
     const ids = watchedVideos(field, videos);
     return {
@@ -103,7 +94,7 @@ export async function watchedEpisodes(
   return result.anchored ? result.keys : null;
 }
 
-export function mtimeOf(item: LibraryItem): number {
+export function mtimeOf(item: LibraryItem) {
   const value = item._mtime;
   if (typeof value === "number") return value;
   const time = value ? Date.parse(value) : Number.NaN;
@@ -111,7 +102,7 @@ export function mtimeOf(item: LibraryItem): number {
 }
 
 /** A movie counts as watched once Stremio counted one watch. */
-export function movieWatched(item: LibraryItem | undefined): boolean {
+export function movieWatched(item: LibraryItem | undefined) {
   return (item?.state?.timesWatched ?? 0) > 0;
 }
 
@@ -124,27 +115,27 @@ export interface WatchedTitle {
   watchedAt: string;
 }
 
-function watchedAt(item: LibraryItem): string {
+function watchedAt(item: LibraryItem) {
   const last = item.state?.lastWatched;
   if (last && !Number.isNaN(Date.parse(last))) return last;
   return new Date(mtimeOf(item) || Date.now()).toISOString();
 }
 
 /** The movie, when it turned watched since `before`. */
-export function newMovie(
-  item: LibraryItem,
-  watchedBefore: boolean,
-): WatchedTitle[] {
+export function newMovie(item: LibraryItem, watchedBefore: boolean) {
   return !watchedBefore && movieWatched(item)
-    ? [{ imdbId: item._id, type: "movie", watchedAt: watchedAt(item) }]
+    ? [
+        {
+          imdbId: item._id,
+          type: "movie",
+          watchedAt: watchedAt(item),
+        } satisfies WatchedTitle,
+      ]
     : [];
 }
 
 /** The titles of these episodes ("season:episode") of a series item. */
-export function episodeTitles(
-  item: LibraryItem,
-  episodes: Iterable<string>,
-): WatchedTitle[] {
+export function episodeTitles(item: LibraryItem, episodes: Iterable<string>) {
   const at = watchedAt(item);
   return [...episodes].map((key) => {
     const [season, episode] = key.split(":").map(Number);
@@ -161,7 +152,7 @@ export function episodeTitles(
 export async function isEpisodeWatched(
   item: LibraryItem | undefined,
   videoId: string,
-): Promise<boolean> {
+) {
   if (!item?.state?.watched) return false;
   const [, season, episode] = videoId.split(":");
   const watched = await watchedEpisodes(item._id, item.state.watched);

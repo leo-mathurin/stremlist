@@ -42,8 +42,6 @@ const REFRESH_COOLDOWN_MS =
     ? Number(process.env.REFRESH_COOLDOWN_SECONDS)
     : 60) * 1000;
 
-// Report the first schema problem with the same `{ error }` string as other
-// configuration failures, not as a raw Zod issue object.
 function firstIssueAsError(
   result: { success: true } | { success: false; error: z.core.$ZodError },
   c: Context,
@@ -53,7 +51,6 @@ function firstIssueAsError(
   }
 }
 
-/** The normalized Lists, or the 400 answer to return. */
 async function normalizeOrReject(
   c: Context,
   ...args: Parameters<typeof normalizeLists>
@@ -84,9 +81,6 @@ const accounts = new Hono()
     return c.json({ activeUsers: count ?? 0 });
   })
 
-  // Create an Account with its first Lists. Returns the private Account ID.
-  // A Legacy alias install upgrades this way too (ADR 0001): its configure
-  // page sends the setup it shows, and the legacy install stays as it is.
   .post(
     "/accounts",
     zValidator("json", createBody, firstIssueAsError),
@@ -94,8 +88,6 @@ const accounts = new Hono()
       const body = c.req.valid("json");
       const { rpdbApiKey, lists, newTitles } = body;
       const posterSource = savedPosterSource(body);
-      // A new Account has no saved Lists: IDs of another Account's Lists,
-      // such as those of a legacy install, do not apply.
       const fresh = lists.map((list) => ({ ...list, id: undefined }));
       const normalized = await normalizeOrReject(c, fresh, {
         via: "private",
@@ -166,8 +158,6 @@ const accounts = new Hono()
     },
   )
 
-  // The sync status of every List and Connection, polled by the configure
-  // page while a refresh it started is still running.
   .get(
     "/:accountKey/sync-status",
     zValidator("param", accountKeyParam),
@@ -250,7 +240,6 @@ const accounts = new Hono()
         );
       }
 
-      // Queue every saved List; the cache-first path skips warm entries.
       scheduleBackgroundTask(() =>
         prewarmLists(access.account.id, saved, access.via === "private", {
           posterSource: posterSource ?? access.account.posterSource,
@@ -258,7 +247,6 @@ const accounts = new Hono()
         }),
       );
 
-      // The saved Lists change what the summary counts.
       const [savedWithGenres, summary] = await Promise.all([
         withAvailableGenres(saved),
         getNewTitlesSummary(access, saved),
@@ -279,7 +267,6 @@ const accounts = new Hono()
       if (access instanceof Response) return access;
       const { account } = access;
 
-      // Server-side cooldown protects Providers from rapid manual refreshes.
       if (
         Date.now() - new Date(account.lastFetchedAt).getTime() <
         REFRESH_COOLDOWN_MS
@@ -299,7 +286,6 @@ const accounts = new Hono()
       const refreshedAt = new Date();
       const results = await Promise.allSettled(
         visible.map((list) =>
-          // A failed read counts as failed, not masked by a stale cache.
           getListCatalog(list, {
             accountId: account.id,
             sort: parseSortOption(list.sortOption),

@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { z } from "zod";
 import type { ConfigList } from "@stremlist/shared/stremio.types";
 import { reinstallState, requiresReinstall } from "../lib/reinstall";
-import type { InstallBaseline, ReinstallState } from "../lib/reinstall";
+import type { InstallBaseline } from "../lib/reinstall";
 import {
   getListReinstallSignature,
   learnSourceGenres,
@@ -17,10 +17,6 @@ const UNKNOWN_BASELINE: InstallBaseline = {
   actionsLive: null,
 };
 
-/**
- * What Stremio read at the last install, kept per Account while a reinstall
- * is pending, so the reminder survives a reload.
- */
 function installedStorageKey(accountKey: string) {
   return `stremlist:installed:${accountKey}`;
 }
@@ -30,7 +26,7 @@ const storedBaseline = z.object({
   actionsLive: z.boolean(),
 });
 
-function readInstalled(accountKey: string): InstallBaseline | null {
+function readInstalled(accountKey: string) {
   try {
     const raw = localStorage.getItem(installedStorageKey(accountKey));
     if (!raw) return null;
@@ -51,9 +47,7 @@ function writeInstalled(accountKey: string, value: InstallBaseline | null) {
     } else {
       localStorage.removeItem(installedStorageKey(accountKey));
     }
-  } catch {
-    // Private mode: the reminder lasts until the page closes.
-  }
+  } catch {}
 }
 
 /** A setup as far as Stremio reads it at install time. */
@@ -73,7 +67,6 @@ function baselineOf(setup: InstallSetup, genres: KnownSourceGenres | null) {
   };
 }
 
-/** The Lists of a server answer, with the genres of their Source lists. */
 type AnswerLists = Pick<
   ConfigList,
   "provider" | "sourceRef" | "mergedSources" | "sourceGenres"
@@ -89,18 +82,15 @@ type AnswerLists = Pick<
 export function useReinstallBaseline(accountKey: string | null) {
   const [installed, setInstalled] = useState<InstallBaseline>(UNKNOWN_BASELINE);
   const [saved, setSaved] = useState<InstallBaseline>(UNKNOWN_BASELINE);
-  // Null until an answer gives genres by Source list (see learnSourceGenres).
   const [knownGenres, setKnownGenres] = useState<KnownSourceGenres | null>(
     null,
   );
 
-  /** Forget the baselines while another configuration loads. */
   const reset = useCallback(() => {
     setInstalled(UNKNOWN_BASELINE);
     setSaved(UNKNOWN_BASELINE);
   }, []);
 
-  /** The configuration loaded: it is what the last save serves. */
   const onLoaded = useCallback(
     (key: string, lists: AnswerLists, setup: InstallSetup) => {
       const genres = learnSourceGenres(null, lists);
@@ -112,11 +102,6 @@ export function useReinstallBaseline(accountKey: string | null) {
     [],
   );
 
-  /**
-   * A save stored `setup`. Returns whether Stremio must reinstall to read
-   * it: compared with what Stremio read at install time, not with the last
-   * save, since a reinstall stays needed until the user does it.
-   */
   const onSaved = (key: string, lists: AnswerLists, setup: InstallSetup) => {
     const genres = learnSourceGenres(knownGenres, lists);
     setKnownGenres(genres);
@@ -127,14 +112,12 @@ export function useReinstallBaseline(accountKey: string | null) {
     return { needsReinstall };
   };
 
-  /** The user reinstalled: Stremio now reads the saved setup. */
   const markReinstalled = () => {
     setInstalled(saved);
     if (accountKey) writeInstalled(accountKey, null);
   };
 
-  /** Whether the current setup asks for a reinstall, now or once saved. */
-  const stateFor = (current: InstallSetup): ReinstallState =>
+  const stateFor = (current: InstallSetup) =>
     reinstallState(installed, saved, baselineOf(current, knownGenres));
 
   return { reset, onLoaded, onSaved, markReinstalled, stateFor };

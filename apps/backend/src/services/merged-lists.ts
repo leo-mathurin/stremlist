@@ -1,4 +1,4 @@
-import type { ListSource, MergeableList } from "@stremlist/shared/list-merge";
+import type { MergeableList } from "@stremlist/shared/list-merge";
 import {
   isMergedList,
   listSources,
@@ -18,9 +18,7 @@ import type { SourceMeta } from "./list-cache";
  * key, derived from the Source list, so reordering or removing one does not
  * mix up the caches of the others.
  */
-export function sourceCaches(
-  list: MergeableList & { id: string },
-): { source: ListSource; cacheKey: string }[] {
+export function sourceCaches(list: MergeableList & { id: string }) {
   const sources = listSources(list);
   if (sources.length === 1) {
     return [{ source: sources[0], cacheKey: list.id }];
@@ -41,7 +39,7 @@ export function sourceCaches(
 export function unusedSourceCaches(
   before: (MergeableList & { id: string })[],
   after: (MergeableList & { id: string })[],
-): string[] {
+) {
   const kept = new Set(
     after
       .flatMap(sourceCaches)
@@ -55,7 +53,6 @@ export function unusedSourceCaches(
     .map(({ cacheKey }) => cacheKey);
 }
 
-/** The "More on {Provider}: {url}" line at the end of a description. */
 const LINK_BACK = /(?:^|\n\n)(More on [^\n:]+: \S+)$/u;
 
 /**
@@ -67,18 +64,14 @@ export function withLinkBack(
   meta: StremioMeta,
   provider: ProviderId,
   sourceUrl: string | undefined,
-): StremioMeta {
+) {
   if (!sourceUrl) return meta;
   const base = meta.description.replace(LINK_BACK, "");
   const line = `More on ${PROVIDERS[provider].label}: ${sourceUrl}`;
   return { ...meta, description: base ? `${base}\n\n${line}` : line };
 }
 
-/**
- * Keep the "More on {Provider}" line of a duplicate that is dropped: Simkl's
- * terms ask for a link back on every item that comes from Simkl.
- */
-function withLinkBackOf(kept: SourceMeta, dropped: SourceMeta): SourceMeta {
+function withLinkBackOf(kept: SourceMeta, dropped: SourceMeta) {
   const line = LINK_BACK.exec(dropped.description)?.[1];
   if (!line || kept.description.includes(line)) return kept;
   return {
@@ -87,9 +80,8 @@ function withLinkBackOf(kept: SourceMeta, dropped: SourceMeta): SourceMeta {
   };
 }
 
-function addedTime(meta: SourceMeta): number {
+function addedTime(meta: SourceMeta) {
   const time = meta.addedAt ? Date.parse(meta.addedAt) : Number.NaN;
-  // Like the Providers' own orders: entries without a date come first.
   return Number.isFinite(time) ? time : Number.NEGATIVE_INFINITY;
 }
 
@@ -102,7 +94,7 @@ function addedTime(meta: SourceMeta): number {
 export function mergeSourceCatalogs(
   catalogs: SourceMeta[][],
   byAddedDate: boolean,
-): SourceMeta[] {
+) {
   const entries = catalogs.flat();
   const ordered = byAddedDate
     ? entries
@@ -135,14 +127,14 @@ export function mergeSourceCatalogs(
 export function mergeListCatalogs(
   list: MergeableList,
   catalogs: SourceMeta[][],
-): SourceMeta[] {
+) {
   return isMergedList(list)
     ? mergeSourceCatalogs(catalogs, sourcesWithoutDates(list).length === 0)
     : catalogs[0];
 }
 
 /** The meta as Stremio gets it: the date added stays in the cache. */
-export function toStremioMeta(meta: SourceMeta): StremioMeta {
+export function toStremioMeta(meta: SourceMeta) {
   if (meta.addedAt === undefined && meta.enrichedAt === undefined) return meta;
   const copy = { ...meta };
   delete copy.addedAt;

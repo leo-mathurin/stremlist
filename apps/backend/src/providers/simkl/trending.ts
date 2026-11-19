@@ -8,7 +8,7 @@ import {
 import type { SimklChartType } from "@stremlist/shared/simkl-charts";
 import { z } from "zod";
 import { providerFetchJson, RateLimiter, sourceErrorFromHttp } from "../http";
-import type { SourceEntry, SourceSnapshot } from "../types";
+import type { SourceEntry } from "../types";
 import { SourceUnavailableError } from "../types";
 import { simklAppQuery } from "./api";
 import { toEntry } from "./entries";
@@ -24,33 +24,30 @@ const KIND_OF_TYPE: Record<SimklChartType, SimklKind> = {
   anime: "anime",
 };
 
-/**
- * Simkl makes the files of today every hour, and the other files once a
- * day. Its CDN keeps a file for an hour.
- */
 const HOURLY_FRESHNESS_MS = 60 * 60_000;
 const DAILY_FRESHNESS_MS = 6 * 60 * 60_000;
 const CDN_MAX_AGE_MS = 60 * 60_000;
 
 interface ChartFile {
-  /** The path under DISCOVER_URL. */
   path: string;
   kind: SimklKind;
   freshnessMs: number;
 }
 
-/** The fixed charts, by Source list reference: each file has 100 Titles. */
 const CHART_FILES = new Map<string, ChartFile>([
   ...SIMKL_CHART_TYPES.flatMap((type) =>
-    SIMKL_CHART_PERIODS.map((period): [string, ChartFile] => [
-      simklTrendingRef(type, period),
-      {
-        path: `trending/${type}/${period}_100.json`,
-        kind: KIND_OF_TYPE[type],
-        freshnessMs:
-          period === "today" ? HOURLY_FRESHNESS_MS : DAILY_FRESHNESS_MS,
-      },
-    ]),
+    SIMKL_CHART_PERIODS.map(
+      (period) =>
+        [
+          simklTrendingRef(type, period),
+          {
+            path: `trending/${type}/${period}_100.json`,
+            kind: KIND_OF_TYPE[type],
+            freshnessMs:
+              period === "today" ? HOURLY_FRESHNESS_MS : DAILY_FRESHNESS_MS,
+          },
+        ] satisfies [string, ChartFile],
+    ),
   ),
   [
     "dvd/releases",
@@ -62,35 +59,33 @@ const CHART_FILES = new Map<string, ChartFile>([
   ],
 ]);
 
-/** The file of a chart: a fixed one or a genre's (500 Titles of the month). */
-function chartFile(ref: string): ChartFile | null {
+function chartFile(ref: string) {
   const fixed = CHART_FILES.get(ref);
   if (fixed) return fixed;
   const genre = simklGenreChartOf(ref);
   if (!genre || SIMKL_ADULT_GENRES.has(genre.slug)) return null;
-  return {
+  const file: ChartFile = {
     path: `trending/${genre.type}/genre/${genre.slug}_month_500.json`,
     kind: KIND_OF_TYPE[genre.type],
     freshnessMs: DAILY_FRESHNESS_MS,
   };
+  return file;
 }
 
 /** Whether a reference is one of Simkl's CDN charts. */
-export function isChartRef(ref: string): boolean {
+export function isChartRef(ref: string) {
   return chartFile(ref) !== null;
 }
 
 /** How long a Catalog of the chart stays fresh. */
-export function chartFreshness(ref: string): number | undefined {
+export function chartFreshness(ref: string) {
   return chartFile(ref)?.freshnessMs;
 }
 
-// The files are free and need no user token, so one limiter serves the app.
 const cdnLimiter = new RateLimiter(4, 1000);
 
 const trendingItemSchema = z.object({
   title: z.string().nullish(),
-  /** "MM/DD/YYYY". */
   release_date: z.string().nullish(),
   anime_type: z.string().nullish(),
   ids: rawIdsSchema.nullish(),
@@ -99,7 +94,7 @@ const trendingItemSchema = z.object({
 function toTrendingEntry(
   item: z.infer<typeof trendingItemSchema>,
   kind: SimklKind,
-): SourceEntry | null {
+) {
   const { simkl, ...ids } = parseIds(item.ids ?? {});
   if (!simkl) return null;
   return toEntry({
@@ -113,7 +108,7 @@ function toTrendingEntry(
 }
 
 /** A file of Simkl's CDN, with the parameters that Simkl wants on each call. */
-export async function readCdnFile(url: string): Promise<unknown> {
+export async function readCdnFile(url: string) {
   const { data } = await providerFetchJson(url, {
     query: simklAppQuery(),
     headers: { Accept: "application/json" },
@@ -122,12 +117,11 @@ export async function readCdnFile(url: string): Promise<unknown> {
   return data;
 }
 
-async function readFile(file: ChartFile): Promise<SourceEntry[]> {
+async function readFile(file: ChartFile) {
   let data: unknown;
   try {
     data = await readCdnFile(`${DISCOVER_URL}/${file.path}`);
   } catch (error) {
-    // A genre that Simkl dropped has no file any more.
     throw sourceErrorFromHttp(
       error,
       { 404: "not_found" },
@@ -139,7 +133,6 @@ async function readFile(file: ChartFile): Promise<SourceEntry[]> {
   for (const item of z.array(trendingItemSchema).parse(data)) {
     const entry = toTrendingEntry(item, file.kind);
     if (!entry) continue;
-    // Seasons of an anime share the series' IMDb ID: keep the best ranked.
     if (entry.imdbId) {
       if (seen.has(entry.imdbId)) continue;
       seen.add(entry.imdbId);
@@ -164,7 +157,7 @@ export function sharedRead<T>(
   key: string,
   read: () => Promise<T>,
   { forceRefresh = false, maxAgeMs = CDN_MAX_AGE_MS } = {},
-): Promise<T> {
+) {
   const previous = reads.get(key);
   if (previous && !forceRefresh && Date.now() - previous.at < maxAgeMs) {
     return previous.value;
@@ -177,14 +170,12 @@ export function sharedRead<T>(
   return current.value;
 }
 
-/** Reads of each file in this instance. */
 const reads = new Map<string, SharedRead<SourceEntry[]>>();
 
-/** Reads of the genre index of each type in this instance. */
 const genreIndexes = new Map<string, SharedRead<Set<string>>>();
 
 /** Test hook: forget the shared reads. */
-export function clearTrendingReads(): void {
+export function clearTrendingReads() {
   reads.clear();
   genreIndexes.clear();
 }
@@ -192,7 +183,7 @@ export function clearTrendingReads(): void {
 const genreIndexSchema = z.array(z.object({ slug: z.string() }));
 
 /** Whether Simkl has a trending file for this genre now. */
-export async function genreExists(ref: string): Promise<boolean> {
+export async function genreExists(ref: string) {
   const genre = simklGenreChartOf(ref);
   if (!genre || SIMKL_ADULT_GENRES.has(genre.slug)) return false;
   const slugs = await sharedRead(genreIndexes, genre.type, async () => {
@@ -205,10 +196,7 @@ export async function genreExists(ref: string): Promise<boolean> {
 }
 
 /** A chart in Simkl's rank order, from Simkl's CDN, with no token. */
-export async function readTrending(
-  ref: string,
-  forceRefresh = false,
-): Promise<SourceSnapshot> {
+export async function readTrending(ref: string, forceRefresh = false) {
   const file = chartFile(ref);
   if (!file) {
     throw new SourceUnavailableError("not_found", `Unknown Simkl chart ${ref}`);
@@ -216,6 +204,5 @@ export async function readTrending(
   const entries = await sharedRead(reads, file.path, () => readFile(file), {
     forceRefresh,
   });
-  // Each reader gets its own copy: the shared pipeline may change entries.
   return { entries: structuredClone(entries), complete: true };
 }

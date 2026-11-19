@@ -1,4 +1,3 @@
-// node --test ".github/scripts/*.test.mjs"
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -31,10 +30,6 @@ test("ignores extensions in comments", () => {
   );
 });
 
-// A push applies each file in its own transaction. pg_cron is the only
-// extension v2 needs, and it must be installed before the rename of users,
-// so that a database that cannot install it stops the release before any
-// table changes.
 test("pg_cron is created before the accounts rename", () => {
   const migrations = localMigrations();
   const rename = migrations.findIndex(

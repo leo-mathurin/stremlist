@@ -23,7 +23,7 @@ import {
   holdToasts,
   fitConfigurePage,
   openFilters,
-} from "./config-fixture";
+} from "./config.fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
 
@@ -34,7 +34,6 @@ test("a canonical duplicate offers to show the existing list and keeps the link"
 }) => {
   await browser.setViewport({ width: 390, height: 844 });
   const submissions = await captureConfig(browser);
-  // The backend turns the p. handle into the ur… ID of the existing List.
   const inputs = await routeResolve(browser, (input) =>
     input === "https://www.imdb.com/user/p.sameaccount/"
       ? resolved("imdb", imdbUser, "watchlist")
@@ -58,7 +57,6 @@ test("a canonical duplicate offers to show the existing list and keeps the link"
   expect(
     await browser.evaluate(
       () =>
-        // A missing row reads as NaN, which fails every comparison.
         (document.querySelector("[data-list-row]")?.getBoundingClientRect()
           .top ?? Number.NaN) > window.innerHeight,
     ),
@@ -84,7 +82,6 @@ test("a canonical duplicate offers to show the existing list and keeps the link"
     accountId,
     accountId,
   ]);
-  // The new List goes first.
   expect(submissions[0].lists.map((list) => list.sourceRef)).toEqual([
     "ls99887766",
     imdbUser,
@@ -111,7 +108,6 @@ for (const failure of ["private", "unknown", "offline"] as const) {
             },
     );
     const created = await routeCreateAccount(browser);
-    // The new Account loads the Lists that its creation stored.
     await browser.route(`${backend}/${accountId}/config`, async (route) => {
       await route.fulfill({
         json: toJson({ ...configuration, lists: savedLists(created[0]) }),
@@ -144,7 +140,6 @@ for (const failure of ["private", "unknown", "offline"] as const) {
     await expect(added).toBeVisible();
     await saveButton(screen, SAVE_NEW).tap();
     await expect(browser).toHaveURL(`/configure?account=${accountId}`);
-    // The saved List stays on screen while the Account loads.
     await expect(screen.getByText("Not refreshed yet")).toBeVisible();
     await expect(added).toBeVisible();
     await expect(screen.getByText("Not saved yet")).toHaveCount(0);
@@ -186,8 +181,6 @@ test(
         maxModelCalls: 9,
       },
     );
-    // The first List of an Account saved without Lists adds Catalogs, so
-    // Stremio needs a reinstall.
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     await expect(screen.getByText("IMDb · List · ls99123456")).toBeVisible();
     expect(submissions).toHaveLength(1);
@@ -233,10 +226,7 @@ test("a normalized handle becomes the saved source and the next save stays clean
   await saveButton(screen).tap();
   await expect(screen.getByText("IMDb · Watchlist · ur99887766")).toBeVisible();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
-  // The stored handle leaves nothing to save.
   await expect(saveButton(screen)).toBeDisabled();
-  // The next save sends the stored handle. Stremio still needs the
-  // reinstall, so the message stays.
   await screen.getByLabel("Catalog title").fill("Handle catalog 2");
   await saveButton(screen).tap();
   await expect.poll(() => requests).toBe(2);

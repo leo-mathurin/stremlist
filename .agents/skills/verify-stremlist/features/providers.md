@@ -18,10 +18,10 @@ Paste a Provider link on Home or Configure. Use Quick add or the Providers panel
 Preconditions: toolkit fixtures advertise available Providers and Connections. Integration Provider specs start isolated fixture backends with dummy OAuth applications and intercepted Provider transports.
 
 - Run `bun run test:toolkit:replay`. `toolkit/providers.e2e.ts`, `connect-security.e2e.ts` and `sync-status.e2e.ts` check the pasted-link, Quick add, Providers-panel, and List-recovery entry points. Require the selected Provider, resumed List, confirmation before disconnect, and saved Actions order.
-- Run `CI=1 bun run --filter @stremlist/e2e test:e2e --project=local tests/provider-links.spec.ts tests/provider-connections.spec.ts tests/provider-actions.spec.ts tests/provider-contract.spec.ts --trace on`. Require persisted Connection state, permitted outbound requests, Action receipts, and failure behavior asserted by those specs.
+- Run `CI=1 bun run --filter @stremlist/e2e test:e2e --project=local test/provider-links.test.ts test/provider-connections.test.ts test/provider-actions.test.ts test/provider-contract.test.ts --trace on`. Require persisted Connection state, permitted outbound requests, Action receipts, and failure behavior asserted by those specs.
 
 ## Gotchas
 
 - Fixtures exercise real adapters but do not log in to real Trakt, Simkl, or MDBList consent screens. Do not claim live OAuth from this pass.
 - Provider Actions can mutate real accounts outside fixtures. Keep the controlled fixture transport for routine verification.
-- Letterboxd reads public watchlists and lists without a Connection. `provider-links.spec.ts` verifies stored configuration, movie/series Catalogs, and a shared upstream read across Accounts. Private lists and Actions remain unsupported.
+- Letterboxd reads public watchlists and lists without a Connection. `provider-links.test.ts` verifies stored configuration, movie/series Catalogs, and a shared upstream read across Accounts. Private lists and Actions remain unsupported.

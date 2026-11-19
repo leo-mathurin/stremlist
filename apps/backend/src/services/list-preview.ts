@@ -33,32 +33,13 @@ import { buildCatalog, providerContext, sourceProblemReason } from "./lists";
 import { mergeListCatalogs } from "./merged-lists";
 import { queuedAnswer } from "./source-links";
 
-/**
- * How long one read of a Source list serves previews. Changing the sort or
- * the filters of a List asks for a new preview each time: it must not read
- * the Provider again.
- */
 const READING_TTL_MS = 5 * 60_000;
-/** A read that left entries unchecked is read again sooner. */
 const UNFINISHED_READING_TTL_MS = 30_000;
 const MAX_READINGS = 50;
-/**
- * Most total weight of the reads, about their JSON length. A read of a
- * 10,000-Title list weighs ~9 MB (heap is about two to three times that): one
- * of the largest fits, or many usual ones.
- */
 const MAX_READINGS_WEIGHT = 16 * 1024 * 1024;
-/** Most Titles that a preview shows for each Catalog. */
 const TITLES_PER_CATALOG = 12;
-/** Most Unresolved entries that a preview lists. */
 const UNRESOLVED_LIMIT = 50;
-/** A preview request waits this long at most in a Provider's queue. */
 const PREVIEW_WAIT_MS = 10_000;
-/**
- * How long a preview waits for TMDB and TheTVDB posters that are not cached
- * (both sources at once). The others show their IMDb poster until the next
- * preview.
- */
 const PREVIEW_POSTER_BUDGET_MS = 3_000;
 
 export interface PreviewRequest {
@@ -89,8 +70,7 @@ const readings = new LruCache<string, Reading>({
   maxWeight: MAX_READINGS_WEIGHT,
 });
 
-/** About the JSON length of a read, without serializing it. */
-function readingWeight(built: BuiltCatalog): number {
+function readingWeight(built: BuiltCatalog) {
   let weight = built.snapshot.entries.length * 200;
   for (const meta of built.data.metas) {
     weight +=
@@ -103,15 +83,11 @@ function readingWeight(built: BuiltCatalog): number {
 }
 
 /** Forget every cached read (tests). */
-export function resetPreviewReadings(): void {
+export function resetPreviewReadings() {
   readings.clear();
 }
 
-/**
- * Identifies one authorization of a Connection: connecting again (maybe as
- * another Provider user) or a token refresh gives a new one.
- */
-async function connectionScope(connection: ConnectionAccess): Promise<string> {
+async function connectionScope(connection: ConnectionAccess) {
   const token = await connection.getAccessToken();
   const fingerprint = createHash("sha256")
     .update(token)
@@ -120,16 +96,10 @@ async function connectionScope(connection: ConnectionAccess): Promise<string> {
   return `account:${connection.accountId}:${fingerprint}`;
 }
 
-/**
- * Read one Source list of a List, or reuse a recent read. A read through a
- * Connection can hold private Titles, so it is keyed by Account and by the
- * Connection's current authorization: it never serves another Account, a
- * request without the Connection, or a later Connection of the same Account.
- */
 async function readSource(
   request: ListSource & { connectionAccountId: string | null },
   queue: ReadQueue,
-): Promise<BuiltCatalog> {
+) {
   if (PROVIDERS[request.provider].availability !== "available") {
     throw new SourceUnavailableError(
       "coming_soon",
@@ -161,8 +131,6 @@ async function readSource(
   built.then(
     (result) => {
       if (readings.get(key) !== reading) return;
-      // Now that its size is known, weigh the read (a read too large for
-      // the budget is dropped).
       if (result.deferred > 0) {
         reading.expiresAt = Math.min(
           reading.expiresAt,
@@ -181,8 +149,7 @@ async function readSource(
   return built;
 }
 
-/** A page where the user can check an Unresolved entry, when one is known. */
-function entryUrl(entry: SourceEntry): string | null {
+function entryUrl(entry: SourceEntry) {
   if (entry.sourceUrl) return entry.sourceUrl;
   const ids = entry.externalIds;
   if (ids?.justwatchPath)
@@ -197,49 +164,39 @@ const IMDB_IMAGE =
   /^(https:\/\/m\.media-amazon\.com\/images\/M\/[^.]+)\._V1_[^/]*\.(jpg|png)$/u;
 
 /** A poster small enough for a preview tile (IMDb images resize by URL). */
-export function previewPoster(poster: string | null): string | null {
+export function previewPoster(poster: string | null) {
   if (!poster) return null;
   const match = IMDB_IMAGE.exec(poster);
   return match ? `${match[1]}._V1_QL75_UX240_.${match[2]}` : poster;
 }
 
-function toUnresolvedEntry(entry: SourceEntry): PreviewUnresolvedEntry {
+export function toUnresolvedEntry(entry: SourceEntry) {
   return {
     title: entry.title ?? entry.originalTitle ?? null,
     year: entry.year ?? null,
     type: entry.type ?? entry.externalIds?.tmdb?.type ?? null,
     url: entryUrl(entry),
-  };
+  } satisfies PreviewUnresolvedEntry;
 }
 
-/** The Titles of all the Source lists read, each once, like the Catalog. */
-function previewMetas(
-  request: PreviewRequest,
-  read: BuiltCatalog[],
-): StremioMeta[] {
+function previewMetas(request: PreviewRequest, read: BuiltCatalog[]) {
   return mergeListCatalogs(
     request,
     read.map((built) => built.data.metas),
   );
 }
 
-/**
- * The Titles of one Catalog of the List, in the order that Stremio shows
- * them. Uses the same sort and filters as the catalog route.
- */
 function catalogMetas(
   request: PreviewRequest,
   metas: StremioMeta[],
   { type, preset }: ListCatalog,
-): StremioMeta[] {
+) {
   const selection = resolveCatalogSelection(
     request.sortOption,
     request.catalogSettings,
     null,
     preset ?? undefined,
   );
-  // The real Catalog seeds Shuffle with its cache generation; a preview has
-  // none, so it uses a stable seed of its own.
   const generation = `preview:${listSources(request).map(sourceKey).join(",")}`;
   return filterCatalog(
     sortCatalog(metas, selection.sort, generation).filter(
@@ -249,21 +206,18 @@ function catalogMetas(
   );
 }
 
-function toPreviewTitle(meta: StremioMeta): PreviewTitle {
-  return {
+function toPreviewTitle(meta: StremioMeta) {
+  const title: PreviewTitle = {
     id: meta.id,
     type: meta.type,
     name: meta.name,
     poster: previewPoster(meta.poster),
     releaseInfo: meta.releaseInfo ?? null,
   };
+  return title;
 }
 
-/**
- * Add the TMDB and TheTVDB posters of the Titles: the configure page applies
- * its current poster source and RPDB key, which may not be saved yet.
- */
-async function addPosters(titles: PreviewTitle[]): Promise<void> {
+async function addPosters(titles: PreviewTitle[]) {
   const options = {
     budgetMs: PREVIEW_POSTER_BUDGET_MS,
     size: "preview",
@@ -278,22 +232,15 @@ async function addPosters(titles: PreviewTitle[]): Promise<void> {
   }
 }
 
-/**
- * The Catalogs that a List adds to Stremio, each with its first Titles. Uses
- * the same Catalogs, sort and filters as the manifest and the catalog route,
- * so the preview matches what Stremio shows. Each Title has its IMDb, TMDB
- * and TheTVDB posters. A merged List shows the Titles of the Source lists it
- * could read once each, like its Catalog.
- */
 async function presentPreview(
   request: PreviewRequest,
   read: BuiltCatalog[],
   sourceProblems: PreviewSourceProblem[],
-): Promise<CatalogPreview> {
+) {
   const metas = previewMetas(request, read);
   const unresolvedEntries = read.flatMap((built) => built.unresolvedEntries);
 
-  const catalogs = listCatalogs(request).map((catalog): CatalogPreviewRow => {
+  const catalogs: CatalogPreviewRow[] = listCatalogs(request).map((catalog) => {
     const matching = catalogMetas(request, metas, catalog);
     return {
       ...catalog,
@@ -320,27 +267,15 @@ async function presentPreview(
     },
     withoutDetails: read.reduce((sum, built) => sum + built.withoutMetadata, 0),
     ...(sourceProblems.length > 0 ? { sourceProblems } : {}),
-  };
+  } satisfies CatalogPreview;
 }
 
 type SourceReads =
   | { ok: true; read: BuiltCatalog[]; problems: PreviewSourceProblem[] }
   | { ok: false; answer: Exclude<CatalogPreviewResponse, CatalogPreview> };
 
-/**
- * Read the Source lists of a List for a preview. Expected problems (private
- * list, missing Connection, Provider turned off) come back as a reason. A
- * merged List leaves out the Source lists that cannot be read, as its Catalog
- * does, and fails only when none can be read. When a Provider's queue is
- * long (3 s or more), the answer is the queue state: ask again with its
- * ticket to keep the place. The pages read so far stay cached, so the next
- * request goes on from there.
- */
-async function readPreviewSources(
-  request: PreviewRequest,
-): Promise<SourceReads> {
+async function readPreviewSources(request: PreviewRequest) {
   const sources = listSources(request);
-  // One place in the queue for all the Source lists of the preview.
   const queue = readQueue({
     maxWaitMs: PREVIEW_WAIT_MS,
     answerAtMs: QUEUE_STATE_MIN_MS,
@@ -372,7 +307,7 @@ async function readPreviewSources(
         ...queuedAnswer(longest.error, longest.provider),
         ticket: longest.error.ticket ?? queue.ticket,
       },
-    };
+    } satisfies SourceReads;
   }
   const read: BuiltCatalog[] = [];
   const problems: PreviewSourceProblem[] = [];
@@ -403,9 +338,9 @@ async function readPreviewSources(
           ? { source: { provider: first.provider, sourceRef: first.sourceRef } }
           : {}),
       },
-    };
+    } satisfies SourceReads;
   }
-  return { ok: true, read, problems };
+  return { ok: true, read, problems } satisfies SourceReads;
 }
 
 /**
@@ -413,9 +348,7 @@ async function readPreviewSources(
  * request would, but write no Catalog cache (see `readPreviewSources` for
  * the answers that are not a preview).
  */
-export async function previewList(
-  request: PreviewRequest,
-): Promise<CatalogPreviewResponse> {
+export async function previewList(request: PreviewRequest) {
   const reads = await readPreviewSources(request);
   if (!reads.ok) return reads.answer;
   return presentPreview(request, reads.read, reads.problems);
@@ -428,7 +361,7 @@ export async function previewList(
  */
 export async function previewCatalogTitles(
   request: PreviewRequest & { catalog: ListCatalog; offset: number },
-): Promise<CatalogTitlesResponse> {
+) {
   const reads = await readPreviewSources(request);
   if (!reads.ok) return reads.answer;
   const matching = catalogMetas(
@@ -440,5 +373,9 @@ export async function previewCatalogTitles(
     .slice(request.offset, request.offset + CATALOG_TITLES_PAGE_SIZE)
     .map(toPreviewTitle);
   await addPosters(titles);
-  return { ok: true, total: matching.length, titles };
+  return {
+    ok: true,
+    total: matching.length,
+    titles,
+  } satisfies CatalogTitlesResponse;
 }

@@ -70,10 +70,12 @@ export interface FixtureBackend {
 export async function startFixtureBackend(
   preload: string,
   extraEnv: Record<string, string> = {},
-): Promise<FixtureBackend> {
+) {
   const logDir = mkdtempSync(join(tmpdir(), "stremlist-provider-log-"));
   const logFile = join(logDir, "requests.jsonl");
+  const unexpectedFile = join(logDir, "unexpected.jsonl");
   writeFileSync(logFile, "");
+  writeFileSync(unexpectedFile, "");
   const child = await startProviderBackend(preload, {
     SUPABASE_URL,
     SUPABASE_SERVICE_ROLE_KEY,
@@ -84,14 +86,12 @@ export async function startFixtureBackend(
     R2_SECRET_ACCESS_KEY,
     R2_BUCKET,
     CONNECTION_ENCRYPTION_KEY,
-    // The Resend SDK throws at import time without a key; no mail is sent.
     RESEND_API_KEY: "re_e2e_dummy_key",
-    // Dummy OAuth apps: helpers/provider-fixtures.ts expects these client IDs.
-    // No TMDB key, so the ID resolver uses Wikidata only.
     TRAKT_CLIENT_ID: "fixture-trakt-client",
     SIMKL_CLIENT_ID: "fixture-simkl-client",
     MDBLIST_CLIENT_ID: "fixture-mdblist-client",
     E2E_PROVIDER_LOG: logFile,
+    E2E_UNEXPECTED_REQUEST_LOG: unexpectedFile,
     ...extraEnv,
   }).catch((error: unknown) => {
     rmSync(logDir, { recursive: true, force: true });
@@ -135,11 +135,20 @@ export async function startFixtureBackend(
       };
     },
     async stop() {
+      let unexpected: string[] = [];
       try {
         await child.stop();
+        unexpected = readFileSync(unexpectedFile, "utf8")
+          .split("\n")
+          .filter(Boolean);
       } finally {
         rmSync(logDir, { recursive: true, force: true });
       }
+      if (unexpected.length > 0) {
+        throw new Error(
+          `The fixture backend got requests that no handler covers:\n${unexpected.join("\n")}`,
+        );
+      }
     },
-  };
+  } satisfies FixtureBackend;
 }

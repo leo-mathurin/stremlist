@@ -22,7 +22,7 @@ const RELATIVE_TIME_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
 export function formatRelativeTime(
   iso: string | null | undefined,
   now = Date.now(),
-): string {
+) {
   if (!iso) return "never";
 
   const then = new Date(iso).getTime();

@@ -18,7 +18,7 @@ export class EncryptionKeyError extends Error {
   }
 }
 
-function encryptionKey(): Buffer {
+function encryptionKey() {
   const encoded = process.env.CONNECTION_ENCRYPTION_KEY;
   if (!encoded) {
     throw new EncryptionKeyError(
@@ -38,7 +38,7 @@ function encryptionKey(): Buffer {
  * Encrypt a Connection secret (OAuth token) for storage. AES-256-GCM with a
  * random IV; the output is "v1:" + base64(iv | tag | ciphertext).
  */
-export function encryptSecret(plaintext: string): string {
+export function encryptSecret(plaintext: string) {
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
   const ciphertext = Buffer.concat([
@@ -55,7 +55,7 @@ export function encryptSecret(plaintext: string): string {
  * plaintext with HMAC, so equal plaintexts share an IV and distinct ones do not,
  * which keeps AES-256-GCM safe. Same output shape as `encryptSecret`.
  */
-export function encryptStable(plaintext: string): string {
+export function encryptStable(plaintext: string) {
   const iv = createHmac("sha256", encryptionKey())
     .update(plaintext, "utf8")
     .digest()
@@ -68,7 +68,7 @@ export function encryptStable(plaintext: string): string {
   return `${VERSION}:${Buffer.concat([iv, cipher.getAuthTag(), ciphertext]).toString("base64")}`;
 }
 
-export function decryptSecret(stored: string): string {
+export function decryptSecret(stored: string) {
   const [version, payload] = stored.split(":", 2);
   if (version !== VERSION || !payload) {
     throw new Error("Unknown secret format");
@@ -90,7 +90,7 @@ export function decryptSecret(stored: string): string {
  * A URL-safe HMAC of `value`, for tokens that the backend hands out and
  * checks later. `purpose` keeps the tokens of one use invalid for another.
  */
-export function signValue(purpose: string, value: string): string {
+export function signValue(purpose: string, value: string) {
   return createHmac("sha256", encryptionKey())
     .update(`${purpose}\n${value}`, "utf8")
     .digest("base64url");
@@ -100,13 +100,13 @@ export function hasValidSignature(
   purpose: string,
   value: string,
   signature: string,
-): boolean {
+) {
   const expected = Buffer.from(signValue(purpose, value));
   const given = Buffer.from(signature);
   return expected.length === given.length && timingSafeEqual(expected, given);
 }
 
 /** URL-safe random string, for OAuth `state` and PKCE verifiers. */
-export function randomToken(bytes = 32): string {
+export function randomToken(bytes = 32) {
   return randomBytes(bytes).toString("base64url");
 }

@@ -14,12 +14,8 @@ import {
   routeResolve,
   saveButton,
   parseBody,
-} from "./config-fixture";
+} from "./config.fixture";
 import { isRecord } from "../helpers/json";
-
-// The security rules of Connect and of the Legacy alias upgrade, from the
-// configure page. The API is intercepted: tests/provider-*.spec.ts and
-// tests/addon-api.spec.ts run the real backend.
 
 const PASTE = "Paste a link to a watchlist or list";
 
@@ -41,8 +37,6 @@ test("a cancelled connect of a new setup creates no Account", async ({
       },
     });
   });
-  // The user cancels on Simkl, which sends the browser back through the
-  // backend callback.
   await browser.route("https://simkl.com/oauth/**", async (route) => {
     await route.fulfill({
       contentType: "text/html",
@@ -62,7 +56,6 @@ test("a cancelled connect of a new setup creates no Account", async ({
   ).toBeVisible();
   await expect(browser).toHaveURL("/configure");
   expect(starts).toEqual(["POST"]);
-  // Nothing installable was made for the cancelled connect.
   expect(created).toEqual([]);
 });
 
@@ -157,7 +150,6 @@ test("a consent answer that this browser did not start connects nothing", async 
     await route.fulfill({ json: { ok: true, accountId, created: false } });
   });
 
-  // Someone else started this connect and sent the consent link.
   await app.open("/configure#oauth=trakt&state=foreign-state&code=victim-code");
 
   await expect(
@@ -189,13 +181,11 @@ test("the upgrade keeps unsaved edits and locks the old page", async ({
   await screen.getByRole("button", "Create my private Addon URL").tap();
 
   await expect(screen.getByText("Install your new URL:")).toBeVisible();
-  // The private copy is made from what the page shows, edits included.
   expect(upgrades).toEqual([]);
   expect(created).toHaveLength(1);
   expect(created[0].lists).toMatchObject([
     { sourceRef: imdbUser, catalogTitle: "Edited before the upgrade" },
   ]);
-  // The old page cannot keep saving into the install that the user leaves.
   await expect(screen.getByLabel(PASTE)).toBeDisabled();
   await expect(saveButton(screen)).toBeDisabled();
   expect(saves).toEqual([]);

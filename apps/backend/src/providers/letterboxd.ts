@@ -34,31 +34,24 @@ import type {
   ProviderAdapter,
   ProviderContext,
   ResolverStrategy,
-  SourceSnapshot,
 } from "./types";
 import { SourceUnavailableError } from "./types";
 
 const SOURCE =
   /^users\/([a-z0-9_]{1,40})\/(watchlist|lists\/([a-z0-9]+(?:[-_][a-z0-9]+)*))$/;
-// Public member collections: watched films, rating-filtered films, diary, likes.
 const COLLECTION =
   /^users\/([a-z0-9_]{1,40})\/(films(?:\/rated\/\d(?:\.\d)?(?:-\d(?:\.\d)?)?)?|diary|likes\/films)$/;
-/** A member film page (films, rated films, diary, likes), any page. */
 const MEMBER_PAGE =
   /^https:\/\/letterboxd\.com\/[a-z0-9_]{1,40}\/(?:films|diary|likes\/films)\//;
 const MAX_PAGES = 100;
-/** About how long one more page of a read takes, for the queue estimate. */
 const PAGE_ESTIMATE_MS = 400;
 type PageRead =
   | { ok: true; html: string }
   | {
       ok: false;
       reason: SourceProblemReason;
-      /** HTTP 429: the Retry-After, in ms (0 when absent). */
       rateLimitedMs?: number;
-      /** A redirect: where Letterboxd sends the read instead. */
       movedTo?: string;
-      /** The Provider's own failure: a 5xx answer or a failed request. */
       cause?: unknown;
     };
 
@@ -66,11 +59,6 @@ const SHARE_PREFIX = "share/";
 const PROVISIONAL_SHARE_PREFIX = "lbxshare/";
 const SHORT_PREFIX = "lbxshort/";
 
-/**
- * Letterboxd moved a Source list to a new address (HTTP 301): its member or
- * the list was renamed. `ref` is the parsed reference of the new address,
- * not yet resolved. Where nothing follows it, it is a temporary failure.
- */
 class LetterboxdMovedError extends SourceUnavailableError {
   constructor(readonly ref: string) {
     super("unavailable", "Letterboxd moved this list");
@@ -78,12 +66,7 @@ class LetterboxdMovedError extends SourceUnavailableError {
   }
 }
 
-/**
- * The Source list behind a redirect from the first page of a Source list, or
- * null when it is not the same kind of Source list at another address. Pages
- * after the first, film pages and boxd.it links are never followed.
- */
-function movedRef(from: string, location: string): string | null {
+function movedRef(from: string, location: string) {
   let href: string;
   try {
     href = new URL(location, from).href;
@@ -103,10 +86,6 @@ function movedRef(from: string, location: string): string | null {
   return after.sourceRef;
 }
 
-/**
- * Letterboxd writes a rating range without trailing zeros (4.0-5.0 is 4-5) in
- * its pagination links, so the page path must use the same form.
- */
 function canonicalRating(path: string) {
   return path.replace(/(?<=\/rated\/)[\d.-]+$/, (range) =>
     range
@@ -116,12 +95,7 @@ function canonicalRating(path: string) {
   );
 }
 
-/** The letterboxd.com path for a stored Source list reference. */
 function sourcePath(ref: string) {
-  // A stored Share link: the token is encrypted; decrypt it to the real path.
-  // Provisional references (lbxshare/, lbxshort/) are never read directly: they
-  // are resolved and encrypted in validateSource before storage, so a plaintext
-  // token can never reach a Catalog read.
   if (ref.startsWith(SHARE_PREFIX)) {
     return `/${decryptSecret(ref.slice(SHARE_PREFIX.length))}/`;
   }
@@ -136,24 +110,17 @@ function sourcePath(ref: string) {
   return `/${match[1]}/${match[3] ? `list/${match[3]}/` : "watchlist/"}`;
 }
 
-/** A diary reference carries per-entry watch dates. */
 function isDiaryPath(base: string) {
   return base.endsWith("/diary/");
 }
 
-/**
- * The catalog title to suggest. A watchlist and a list (or shared list) are
- * named by the page itself; a member's films, diary or likes are better named
- * by the pasted-link suggestion, so leave those to the caller.
- */
-function suggestTitle(ref: string, pageTitle: string): string | undefined {
+function suggestTitle(ref: string, pageTitle: string) {
   if (ref.endsWith("/watchlist")) return `${SOURCE.exec(ref)?.[1]}'s watchlist`;
   if (ref.startsWith(SHARE_PREFIX) || ref.includes("/lists/")) return pageTitle;
   return undefined;
 }
 
-/** Follow a boxd.it short link once and return the parsed Source reference. */
-async function resolveShortLink(code: string): Promise<string> {
+async function resolveShortLink(code: string) {
   if (!isProviderEnabled("letterboxd"))
     throw new SourceUnavailableError("disabled", "Letterboxd is turned off");
   const read = await withLetterboxdPermit<
@@ -226,45 +193,31 @@ async function resolveShortLink(code: string): Promise<string> {
   return parsed.sourceRef;
 }
 
-/**
- * Normalize a reference into the one that gets stored and read: resolve a
- * boxd.it short link, and encrypt a Share link token so it never rests in
- * plaintext. Public references pass through.
- */
-async function resolveRef(ref: string): Promise<string> {
+async function resolveRef(ref: string) {
   if (ref.startsWith(SHORT_PREFIX)) {
     return resolveRef(await resolveShortLink(ref.slice(SHORT_PREFIX.length)));
   }
   if (ref.startsWith(PROVISIONAL_SHARE_PREFIX)) {
-    // Stable encryption: the same share link always yields the same stored
-    // reference, so adding it twice is caught as a duplicate.
     return `${SHARE_PREFIX}${encryptStable(ref.slice(PROVISIONAL_SHARE_PREFIX.length))}`;
   }
   return ref;
 }
 
-function errorText(error: unknown): string {
+function errorText(error: unknown) {
   return error instanceof Error
     ? `${error.name}: ${error.message}`
     : String(error);
 }
 
-/** Retry-After in milliseconds, from seconds or an HTTP date; 0 when absent. */
-function retryAfterOf(response: Response): number {
+function retryAfterOf(response: Response) {
   const retryAfter = response.headers.get("retry-after");
   if (retryAfter && /^\d+$/.test(retryAfter))
     return Math.min(Number(retryAfter) * 1000, 24 * 60 * 60_000);
   return Math.max(0, Date.parse(retryAfter ?? "") - Date.now()) || 0;
 }
 
-/** How long a 403 waits for the first bytes of its body before it counts as a refusal. */
 const FORBIDDEN_WAIT_MS = 2000;
 
-/**
- * Whether a 403 is Letterboxd's own Forbidden page (a private watchlist), not
- * a refusal of Stremlist. The status alone cannot tell them apart. A body that
- * does not arrive in time counts as a refusal.
- */
 async function isForbiddenPage(details: LetterboxdRequestDetails) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   await Promise.race([
@@ -289,7 +242,6 @@ async function readHtml(
   const read = await withLetterboxdPermit<PageRead>(async () => {
     let blocked = false;
     let retryAfterMs = 0;
-    // A 5xx answer is Letterboxd's own failure, whatever its body says.
     let serverError: HttpError | undefined;
     const details = requestDetails(kind, url);
     try {
@@ -320,9 +272,6 @@ async function readHtml(
             result: "ok",
             details,
           };
-        // Letterboxd's Cloudflare challenges member film pages by itself, at
-        // any rate, while lists still read. Only that list fails; the gate
-        // counts a failed read, like a timeout, instead of halting at once.
         if (
           kind === "collection" &&
           details.cfMitigated === "challenge" &&
@@ -374,7 +323,6 @@ async function readHtml(
           chunks.push(part.value);
         }
       } finally {
-        // Kept even when the read stops early: the first bytes explain why.
         details.bytes = bytes;
         details.bodyExcerpt = excerpt(Buffer.concat(chunks).toString("utf8"));
         await reader.cancel();
@@ -405,7 +353,6 @@ async function readHtml(
       };
     } catch (error) {
       details.error = errorText(error);
-      // A body timeout after HTTP 200 is still a failed read, never valid empty content.
       return {
         value: {
           ok: false,
@@ -435,10 +382,6 @@ function pagePath(base: string, page: number) {
   return page === 1 ? base : `${base}page/${page}/`;
 }
 
-/**
- * One page of a Source list, from the shared cache or Letterboxd. `restMs`
- * estimates the rest of the read after this page.
- */
 async function readPage(
   base: string,
   page: number,
@@ -473,10 +416,6 @@ async function readPage(
   );
 }
 
-/**
- * The first page of a Source list. When its member or the list was renamed
- * (HTTP 301), it follows the new address once and returns its reference.
- */
 async function readFirstPage(ref: string, forceRefresh = false) {
   try {
     return { ref, page: await readPage(sourcePath(ref), 1, forceRefresh) };
@@ -490,10 +429,7 @@ async function readFirstPage(ref: string, forceRefresh = false) {
   }
 }
 
-async function fetchSource(
-  ref: string,
-  ctx: ProviderContext,
-): Promise<SourceSnapshot> {
+async function fetchSource(ref: string, ctx: ProviderContext) {
   await assertLetterboxdNotHalted();
   let base = sourcePath(ref);
   const diary = isDiaryPath(base);
@@ -501,7 +437,6 @@ async function fetchSource(
   const signatures = new Set<string>();
   let complete = false;
   let interrupted = false;
-  // Known from the pagination after the first page, for the queue estimate.
   let pages: number | null = null;
   for (let page = 1; page <= MAX_PAGES; page++) {
     const rest =
@@ -509,7 +444,6 @@ async function fetchSource(
     let result: Awaited<ReturnType<typeof readPage>>;
     try {
       if (page === 1) {
-        // A renamed member or list keeps its Catalog: read the new address.
         const first = await readFirstPage(ref, ctx.forceRefresh);
         base = sourcePath(first.ref);
         result = first.page;
@@ -521,8 +455,6 @@ async function fetchSource(
           rest * PAGE_ESTIMATE_MS,
         );
     } catch (error) {
-      // The queue is long: keep the pages read so far when the caller can
-      // serve them. The next read resumes from the cached pages.
       if (
         page > 1 &&
         error instanceof LetterboxdBusyError &&
@@ -534,8 +466,6 @@ async function fetchSource(
       throw error;
     }
     pages ??= result.pages ?? null;
-    // A diary repeats a film on each viewing, so two pages can list the same
-    // films; their watch dates still tell the pages apart.
     const signature = result.films
       .map((film) => (diary ? `${film.uid}@${film.watchedAt ?? ""}` : film.uid))
       .join(",");
@@ -546,8 +476,6 @@ async function fetchSource(
       );
     signatures.add(signature);
     for (const film of result.films) {
-      // A diary lists one row per viewing; keep each Title once, with its most
-      // recent watch date.
       const previous = films.get(film.uid);
       if (
         diary &&
@@ -604,9 +532,7 @@ const filmLinksStrategy: ResolverStrategy = {
           );
           if (["imdb.com", "www.imdb.com"].includes(url.hostname) && match)
             ids.add(match[1]);
-        } catch {
-          /* Relative links do not identify an IMDb title. */
-        }
+        } catch {}
       });
       if (ids.size === 1) {
         const imdbId = ids.values().next().value;
@@ -623,7 +549,6 @@ export const letterboxdProvider: ProviderAdapter = {
   queuedReads: true,
   async validateSource(ref) {
     await assertLetterboxdNotHalted();
-    // A renamed member or list is stored at its new address.
     const { ref: resolved, page } = await readFirstPage(await resolveRef(ref));
     return {
       ok: true,

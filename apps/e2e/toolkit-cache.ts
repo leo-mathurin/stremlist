@@ -1,17 +1,3 @@
-// The replay cache of the toolkit (README.md, "Cache rules").
-//
-//   bun toolkit-cache.ts replay [e2e run arguments]
-//     Strict replay (CI=1, no credentials, --strict-cache), then `check`.
-//   bun toolkit-cache.ts check [--prune]
-//     Check the last run (.e2e/report.json) against .e2e/cache:
-//     - every AI goal replayed its recording with zero model calls;
-//     - no step always calls a model (agent.assert, waitFor, extract);
-//     - every test with an AI goal has the `agent` tag, which
-//       `test:toolkit:record` selects;
-//     - every cache file is a valid recording for a test of this suite;
-//     - after a run of the whole suite, no cache file is left unused
-//       (`--prune` deletes those orphans);
-//     - recordings hold no credential and only the toolkit app origins.
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
@@ -21,7 +7,6 @@ import { isRecord, isString, parseJson } from "./helpers/json.js";
 const root = import.meta.dirname;
 const cacheDir = join(root, ".e2e/cache");
 const reportPath = join(root, ".e2e/report.json");
-/** The toolkit app and its intercepted API (e2e.config.ts, config-fixture.ts). */
 const ORIGINS = new Set(["http://127.0.0.1:4311", "http://127.0.0.1:4314"]);
 const SECRET =
   /\b(?:sk-[\w-]{20,}|eyJ[\w-]{10,}\.[\w-]{10,}|gh[pousr]_\w{20,}|re_[A-Za-z0-9]{20,})|Bearer [\w.-]{20,}/;
@@ -45,7 +30,6 @@ interface Report {
     results: Result[];
   };
 }
-/** A trace-1 recording with its test and goal. */
 interface Recording {
   schemaVersion: "trace-1";
   payload: {
@@ -102,8 +86,7 @@ function isReport(value: unknown): value is Report {
   );
 }
 
-/** The digest the e2e cache key uses for a goal (normalized template text). */
-function instructionDigest(instruction: string): string {
+function instructionDigest(instruction: string) {
   const text = instruction.replace(/\r\n?/gu, "\n").normalize("NFC").trim();
   return createHash("sha256").update(text).digest("hex");
 }
@@ -111,8 +94,7 @@ function instructionDigest(instruction: string): string {
 const keyOf = (testId: string, digest: string, callIndex: number) =>
   `${testId}\n${digest}\n${String(callIndex)}`;
 
-/** A route of a recording: relative, or on one of the toolkit origins. */
-function onToolkitOrigin(path: unknown): boolean {
+function onToolkitOrigin(path: unknown) {
   if (!path) return true;
   if (!isString(path)) return false;
   if (path.startsWith("/")) return true;
@@ -123,7 +105,7 @@ function onToolkitOrigin(path: unknown): boolean {
   }
 }
 
-function tracked(): Set<string> | null {
+function tracked() {
   try {
     const out = execFileSync("git", ["ls-files", "--", ".e2e/cache"], {
       cwd: root,
@@ -135,11 +117,10 @@ function tracked(): Set<string> | null {
   }
 }
 
-function check(prune: boolean): boolean {
+function check(prune: boolean) {
   const problems: string[] = [];
   const notes: string[] = [];
 
-  // The recordings.
   const files = new Map<string, string>();
   const names = existsSync(cacheDir)
     ? readdirSync(cacheDir).filter((name) => !name.startsWith("."))
@@ -181,7 +162,6 @@ function check(prune: boolean): boolean {
     );
   }
 
-  // The last run.
   if (!existsSync(reportPath)) {
     problems.push("no .e2e/report.json: run the toolkit first");
     return report(problems, notes);
@@ -240,7 +220,6 @@ function check(prune: boolean): boolean {
     );
   }
 
-  // Recordings of no current test, and, after a whole run, unused ones.
   const whole =
     run.results.every((result) => result.selected) &&
     run.summary.executed === run.summary.discovered;
@@ -280,7 +259,7 @@ function check(prune: boolean): boolean {
   return report(problems, notes);
 }
 
-function report(problems: string[], notes: string[]): boolean {
+function report(problems: string[], notes: string[]) {
   for (const note of notes) console.log(`toolkit cache: ${note}`);
   for (const problem of problems) console.error(`toolkit cache: ${problem}`);
   if (problems.length === 0) console.log("toolkit cache: OK");

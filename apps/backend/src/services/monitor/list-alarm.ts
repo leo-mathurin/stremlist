@@ -2,12 +2,7 @@ import type { ProviderId } from "@stremlist/shared/providers";
 import { isProviderId, listTypeOf } from "@stremlist/shared/providers";
 import { supabase } from "../../lib/supabase";
 
-/**
- * A list type alarms when at least this many of its Source lists fail as
- * "unavailable"…
- */
 const ALARM_MIN_FAILING = 3;
-/** …or when at least this many fail and they are at least ALARM_MIN_SHARE of the type. */
 const ALARM_MIN_FAILING_IN_SHARE = 2;
 const ALARM_MIN_SHARE = 0.5;
 /**
@@ -16,7 +11,6 @@ const ALARM_MIN_SHARE = 0.5;
  */
 export const ALARM_ACTIVE_MS = 24 * 60 * 60_000;
 
-/** Rows read per request: PostgREST answers at most 1,000. */
 const PAGE_SIZE = 1000;
 
 /** The sync status of one Source list of one List. */
@@ -42,7 +36,7 @@ export type ListAlarm = {
  * Connection…) are the user's, and never alarm. One or two failing Source
  * lists are often one broken list, so the rule asks for more.
  */
-export function listAlarms(rows: readonly StatusRow[]): ListAlarm[] {
+export function listAlarms(rows: readonly StatusRow[]) {
   const byType = new Map<string, ListAlarm>();
   for (const row of rows) {
     if (!isProviderId(row.provider)) continue;
@@ -65,8 +59,7 @@ export function listAlarms(rows: readonly StatusRow[]): ListAlarm[] {
   );
 }
 
-/** The sync status of every Source list refreshed recently. */
-async function recentStatusRows(now: number): Promise<StatusRow[]> {
+async function recentStatusRows(now: number) {
   const since = new Date(now - ALARM_ACTIVE_MS).toISOString();
   const rows: StatusRow[] = [];
   for (let from = 0; ; from += PAGE_SIZE) {
@@ -84,15 +77,19 @@ async function recentStatusRows(now: number): Promise<StatusRow[]> {
   }
 }
 
+type ListAlarmRead = { alarms: ListAlarm[] } | { error: string };
+
 /** The list types to alarm on now, or the reason they cannot be read. */
-export async function readListAlarms(
-  now = Date.now(),
-): Promise<{ alarms: ListAlarm[] } | { error: string }> {
+export async function readListAlarms(now = Date.now()) {
   try {
-    return { alarms: listAlarms(await recentStatusRows(now)) };
+    const read: ListAlarmRead = {
+      alarms: listAlarms(await recentStatusRows(now)),
+    };
+    return read;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Could not read the sync statuses for the alarm:", message);
-    return { error: message };
+    const read: ListAlarmRead = { error: message };
+    return read;
   }
 }

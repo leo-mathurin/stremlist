@@ -29,13 +29,12 @@ const destinationsBody = z.object({
   destinations: z.array(z.enum(WATCH_PROVIDERS)).max(WATCH_PROVIDERS.length),
 });
 
-/** What happened to the installed Stremlist after the change. */
 type StremioUpdate = UpdateResult | "signed-out" | "unavailable";
 
-async function updateInstalled(
+const updateInstalled: (
   c: Context,
   accountId: string,
-): Promise<StremioUpdate> {
+) => Promise<StremioUpdate> = async (c, accountId) => {
   try {
     return await updateStremio(
       accountId,
@@ -53,7 +52,7 @@ async function updateInstalled(
     }
     return "unavailable";
   }
-}
+};
 
 /**
  * Watch tracking of an Account (ADR 0003). Private Account IDs only: it
@@ -71,8 +70,6 @@ const watchTracking = new Hono()
     },
   )
 
-  // Replaces the Destinations. Stremio's installed Stremlist is updated in
-  // the same request: it must declare the resources that carry the trigger.
   .put(
     "/:accountId/watch-tracking",
     zValidator("param", accountParam),

@@ -29,17 +29,15 @@ export interface LetterboxdRequestDetails {
 }
 
 const EXCERPT_BYTES = 2048;
-/** How long the log waits for a background excerpt. */
 const EXCERPT_WAIT_MS = 3000;
 const REDACTED = "[redacted]";
-/** Share of successful requests logged in full, to compare with failures. */
 const SUCCESS_SAMPLE = 0.01;
 
 export function requestDetails(
   kind: LetterboxdRequestDetails["kind"],
   url: string,
-): LetterboxdRequestDetails {
-  return {
+) {
+  const details: LetterboxdRequestDetails = {
     kind,
     url,
     status: null,
@@ -52,6 +50,7 @@ export function requestDetails(
     server: null,
     bodyExcerpt: null,
   };
+  return details;
 }
 
 /** Copy the status and the headers that explain a refusal. */
@@ -93,17 +92,15 @@ async function readExcerpt(
       if (part.done) break;
       chunks.push(part.value);
       bytes += part.value.byteLength;
-      // Kept as it arrives: a body that stalls still shows its first bytes.
       details.bodyExcerpt = excerpt(Buffer.concat(chunks).toString("utf8"));
     }
   } catch {
-    /* The excerpt is best effort. */
   } finally {
     await reader.cancel().catch(() => undefined);
   }
 }
 
-export function excerpt(text: string): string {
+export function excerpt(text: string) {
   return Buffer.from(text, "utf8")
     .subarray(0, EXCERPT_BYTES)
     .toString("utf8")
@@ -119,18 +116,13 @@ export interface LetterboxdRequestOutcome {
   probe: boolean;
 }
 
-/**
- * The secrets in a Letterboxd URL: a Share link token, or a boxd.it code
- * (a short link to a Share link carries its token). Stored references keep
- * them encrypted, so the log must not keep them in plaintext.
- */
-function secretsOf(url: string): string[] {
+function secretsOf(url: string) {
   const share = /\/share\/([^/?#]+)/.exec(url)?.[1];
   const short = /^https:\/\/boxd\.it\/([^/?#]+)/.exec(url)?.[1];
   return [share, short].filter((value): value is string => Boolean(value));
 }
 
-function redact(text: string | null, secrets: string[]): string | null {
+function redact(text: string | null, secrets: string[]) {
   if (text === null) return null;
   return secrets.reduce(
     (result, secret) => result.split(secret).join(REDACTED),
@@ -142,6 +134,7 @@ function redact(text: string | null, secrets: string[]): string | null {
 export async function recordLetterboxdRequest(
   details: LetterboxdRequestDetails,
   outcome: LetterboxdRequestOutcome,
+  random: () => number = Math.random,
 ) {
   if (details.pendingExcerpt)
     await Promise.race([
@@ -150,11 +143,8 @@ export async function recordLetterboxdRequest(
     ]);
   const entry = { ...details, ...outcome };
   const secrets = secretsOf(entry.url);
-  // A private watchlist answers 403 with outcome "ok". Always keep its row,
-  // so the log shows each 403 that did not halt the gate.
   const forbidden = entry.status === 403;
-  const keep =
-    entry.outcome !== "ok" || forbidden || Math.random() < SUCCESS_SAMPLE;
+  const keep = entry.outcome !== "ok" || forbidden || random() < SUCCESS_SAMPLE;
   const { error } = await supabase.rpc("letterboxd_record", {
     p_request: {
       outcome: entry.outcome,

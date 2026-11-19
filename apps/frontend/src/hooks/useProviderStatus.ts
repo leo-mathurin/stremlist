@@ -10,20 +10,18 @@ export type ProviderStatus = {
   outageSince: string | null;
 };
 
-/** How often the page asks again, so an outage shows and clears by itself. */
 const REFRESH_MS = 2 * 60_000;
 
-function defaultStatus(id: ProviderId): ProviderStatus {
+function defaultStatus(id: ProviderId) {
   return {
     enabled: true,
     connectable: PROVIDERS[id].connection !== "none",
     outageSince: null,
-  };
+  } satisfies ProviderStatus;
 }
 
-/** Lists every Provider by name: a new Provider fails the type check here. */
-function defaultProviderStatus(): Record<ProviderId, ProviderStatus> {
-  return {
+function defaultProviderStatus() {
+  const statuses: Record<ProviderId, ProviderStatus> = {
     imdb: defaultStatus("imdb"),
     trakt: defaultStatus("trakt"),
     simkl: defaultStatus("simkl"),
@@ -32,6 +30,7 @@ function defaultProviderStatus(): Record<ProviderId, ProviderStatus> {
     senscritique: defaultStatus("senscritique"),
     letterboxd: defaultStatus("letterboxd"),
   };
+  return statuses;
 }
 
 /**
@@ -42,7 +41,7 @@ function defaultProviderStatus(): Record<ProviderId, ProviderStatus> {
  * connectable. When a later request fails, the last answer stays: a failed
  * request never shows or clears an outage by itself.
  */
-export function useProviderStatus(): Record<ProviderId, ProviderStatus> {
+export function useProviderStatus() {
   const [providerStatus, setProviderStatus] = useState(defaultProviderStatus);
 
   useEffect(() => {
@@ -62,16 +61,13 @@ export function useProviderStatus(): Record<ProviderId, ProviderStatus> {
               next[provider.id] = {
                 enabled: provider.enabled,
                 connectable: provider.connectable,
-                // A backend from before outages sends none: no outage.
                 outageSince: provider.outageSince ?? null,
               };
             }
             return next;
           });
         })
-        .catch(() => {
-          // Keep the last answer.
-        });
+        .catch(() => {});
     };
     load();
     const timer = window.setInterval(() => {

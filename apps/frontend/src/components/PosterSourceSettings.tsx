@@ -30,7 +30,6 @@ const SOURCES: { value: PosterSource; label: string; hint: string }[] = [
   },
 ];
 
-/** The same Titles from IMDb, TMDB and TheTVDB, to compare them. */
 const EXAMPLES = [
   {
     id: "tt1190634",
@@ -105,24 +104,16 @@ const EXAMPLES = [
 ];
 
 interface RowDrag {
-  /** The drag in progress: where the mouse and the row started. */
   start: { x: number; left: number } | null;
-  /** Stops the glide after the last drag, so it cannot snap a new drag. */
   stopGlide: (() => void) | null;
 }
 
-/**
- * End a mouse drag of the example row: glide to the nearest poster, then
- * snap again.
- */
 function endDrag(strip: HTMLElement, drag: RowDrag) {
   if (!drag.start) return;
   drag.start = null;
   const box = strip.getBoundingClientRect();
   const padding = Number.parseFloat(getComputedStyle(strip).scrollPaddingLeft);
   const max = strip.scrollWidth - strip.clientWidth;
-  // Where the row stops for each poster, within the range it can scroll:
-  // the last posters cannot reach the start, so they stop at the end.
   const stops = Array.from(strip.children, (item) =>
     Math.min(
       Math.max(
@@ -161,25 +152,17 @@ function endDrag(strip: HTMLElement, drag: RowDrag) {
     snap();
   };
   strip.addEventListener("scrollend", done, { once: true });
-  // For a browser without `scrollend`.
   const timer = setTimeout(done, 600);
   drag.stopGlide = stop;
 }
 
-/** The widest fade on an edge of the example row. */
 const FADE_PX = 20;
-/** A smoothstep ramp of alpha, so the fade shows no band where it ends. */
 const RAMP = [0, 1, 2, 3, 4, 5, 6].map((step) => {
   const t = step / 6;
   return { t, alpha: t * t * (3 - 2 * t) };
 });
 
-/**
- * The mask that fades an edge of the row where more posters are past it.
- * Each fade grows with the distance scrolled from its edge, so it comes in
- * with the movement of the row and never shows all at once.
- */
-function fadeMask(strip: HTMLElement): string {
+function fadeMask(strip: HTMLElement) {
   const max = Math.max(strip.scrollWidth - strip.clientWidth, 0);
   const start = Math.min(Math.max(strip.scrollLeft, 0), FADE_PX);
   const end = Math.min(Math.max(max - strip.scrollLeft, 0), FADE_PX);
@@ -196,10 +179,6 @@ function fadeMask(strip: HTMLElement): string {
   return `linear-gradient(to right, ${stops.join(", ")})`;
 }
 
-/**
- * Example posters of `source`, in one row that scrolls sideways at any
- * width. A mouse can drag it. RPDB examples need the key.
- */
 function Examples({
   source,
   rpdbApiKey,
@@ -207,11 +186,9 @@ function Examples({
   source: PosterSource;
   rpdbApiKey: string;
 }) {
-  // Set on the element, not through React: it changes on every scroll.
   const paint = useCallback((strip: HTMLElement) => {
     strip.style.maskImage = fadeMask(strip);
   }, []);
-  // The width changes with the window, so the fades can change too.
   const measure = useCallback(
     (strip: HTMLUListElement | null) => {
       if (!strip) return;
@@ -222,7 +199,6 @@ function Examples({
     },
     [paint],
   );
-  // A mouse drags the row; touch and trackpads scroll it natively.
   const drag = useRef<RowDrag>({ start: null, stopGlide: null }).current;
 
   if (source === "rpdb" && !rpdbApiKey.trim()) {
@@ -241,14 +217,11 @@ function Examples({
         if (event.pointerType !== "mouse" || event.button !== 0) return;
         const strip = event.currentTarget;
         if (drag.stopGlide) {
-          // Stop the glide where it is, so the row does not move under the
-          // new drag before the mouse does.
           drag.stopGlide();
           strip.scrollTo({ left: strip.scrollLeft, behavior: "instant" });
         }
         drag.start = { x: event.clientX, left: strip.scrollLeft };
         strip.setPointerCapture(event.pointerId);
-        // Snapping would hold the row in place while it follows the mouse.
         strip.style.scrollSnapType = "none";
       }}
       onPointerMove={(event) => {
@@ -300,7 +273,6 @@ export default function PosterSourceSettings({
   const selectId = useId();
   const examplesId = useId();
   const [examplesOpen, setExamplesOpen] = useState(false);
-  // Images load on the first open only; after it, closing animates too.
   const [examplesShown, setExamplesShown] = useState(false);
   const [keyShown, setKeyShown] = useState(false);
   const current = SOURCES.find((source) => source.value === value);
@@ -331,7 +303,6 @@ export default function PosterSourceSettings({
           <SelectContent>
             {SOURCES.map((source) => (
               <SelectItem key={source.value} value={source.value}>
-                {/* One inline element, so the name keeps its space. */}
                 <span>
                   {source.label}
                   {source.value === "imdb" && (
@@ -349,7 +320,6 @@ export default function PosterSourceSettings({
           <p className="text-xs text-pretty text-black/55">
             {current?.hint}
             {value === "tvdb" && (
-              // TheTVDB's API terms ask for this attribution, with a link.
               <>
                 {" "}
                 Metadata provided by{" "}

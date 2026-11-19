@@ -27,7 +27,6 @@ export function useCatalogTitles({
 }) {
   const [titles, setTitles] = useState<PreviewTitle[]>(row.titles);
   const [total, setTotal] = useState(row.total);
-  /** Where the next page starts in the Catalog. */
   const [next, setNext] = useState(row.titles.length);
   const [status, setStatus] = useState<LoadStatus>("idle");
   const [body] = useState(() => previewBody(list, accountKey));
@@ -51,8 +50,6 @@ export function useCatalogTitles({
     setStatus("loading");
     const offset = next;
     const catalog = { type: row.type, preset: row.preset };
-    // A queued answer keeps the place in the queue: ask again with its
-    // ticket when the queue says so.
     const ask = (ticket?: string) => {
       api.lists.preview.titles
         .$post({ json: { ...body, ticket, catalog, offset } })
@@ -70,8 +67,6 @@ export function useCatalogTitles({
           if (!page.ok) throw new Error(page.reason);
           loading.current = false;
           setTitles((current) => {
-            // The Source list may have changed since the last page: show
-            // each Title once.
             const known = new Set(current.map((title) => title.id));
             return [
               ...current,
@@ -79,7 +74,6 @@ export function useCatalogTitles({
             ];
           });
           setNext(offset + page.titles.length);
-          // An empty page ends the list, even when the count says more.
           setTotal(page.titles.length === 0 ? offset : page.total);
           setStatus("idle");
         })

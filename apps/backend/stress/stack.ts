@@ -1,6 +1,3 @@
-// The local stack started by `bun run dev:local`: Supabase containers and
-// the R2-compatible container. Names and ports are derived the same way as
-// scripts/dev-local.mjs, from the per-worktree project ID.
 import {
   CreateBucketCommand,
   DeleteBucketCommand,
@@ -21,8 +18,6 @@ export const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 export const backendDir = fileURLToPath(new URL("../", import.meta.url));
 export const STRESS_BUCKET = "stremlist-stress";
 
-// The public local-development service-role key of the Supabase CLI, also
-// used by dev-local.mjs when Auth is excluded.
 const SERVICE_ROLE_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU";
 
@@ -40,12 +35,12 @@ export interface Stack {
   r2SecretAccessKey: string;
 }
 
-async function docker(args: string[]): Promise<string> {
+async function docker(args: string[]) {
   const { stdout } = await run("docker", args, { maxBuffer: 64 << 20 });
   return stdout;
 }
 
-async function hostPort(container: string, port: string): Promise<string> {
+async function hostPort(container: string, port: string) {
   const output = await docker(["port", container, port]).catch(() => "");
   const match = /:(\d+)\s*$/m.exec(output.split("\n")[0] ?? "");
   if (!match?.[1]) {
@@ -55,7 +50,7 @@ async function hostPort(container: string, port: string): Promise<string> {
 }
 
 /** Find the running local stack, or throw a StackError that says what to do. */
-export async function findStack(): Promise<Stack> {
+export async function findStack() {
   const configPath = `${repoRoot}.dev.local/supabase/config.toml`;
   if (!existsSync(configPath)) {
     throw new StackError(`No local stack config at ${configPath}.`);
@@ -124,7 +119,7 @@ export async function psql(
   stack: Stack,
   sql: string,
   variables: Record<string, string | number> = {},
-): Promise<string> {
+) {
   const args = ["exec", "-i", stack.dbContainer, "psql", "-U", "postgres"];
   args.push("-d", "postgres", "-X", "-q", "-A", "-t", "-1");
   args.push("-v", "ON_ERROR_STOP=1");
@@ -132,7 +127,7 @@ export async function psql(
     args.push("-v", `${name}=${String(value)}`);
   }
   args.push("-f", "-");
-  return new Promise((resolve, reject) => {
+  return new Promise<string>((resolve, reject) => {
     const child = spawn("docker", args, { stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
@@ -152,7 +147,7 @@ export async function psql(
 }
 
 /** Rows of a query as arrays of strings (tab separated psql output). */
-export async function query(stack: Stack, sql: string): Promise<string[][]> {
+export async function query(stack: Stack, sql: string) {
   const output = await docker([
     "exec",
     stack.dbContainer,
@@ -173,9 +168,7 @@ export async function query(stack: Stack, sql: string): Promise<string[][]> {
     .map((line) => line.split("\t"));
 }
 
-export async function dockerCpu(
-  containers: string[],
-): Promise<Record<string, number>> {
+export async function dockerCpu(containers: string[]) {
   const output = await docker([
     "stats",
     "--no-stream",
@@ -191,7 +184,7 @@ export async function dockerCpu(
   return cpu;
 }
 
-function s3Client(stack: Stack): S3Client {
+function s3Client(stack: Stack) {
   return new S3Client({
     endpoint: stack.r2Endpoint,
     region: "auto",
@@ -207,7 +200,7 @@ const awsErrorSchema = z.object({
   $metadata: z.object({ httpStatusCode: z.number().optional() }).optional(),
 });
 
-async function bucketExists(s3: S3Client): Promise<boolean> {
+async function bucketExists(s3: S3Client) {
   try {
     await s3.send(new HeadBucketCommand({ Bucket: STRESS_BUCKET }));
     return true;
@@ -220,10 +213,7 @@ async function bucketExists(s3: S3Client): Promise<boolean> {
   }
 }
 
-/** Every object of the stress bucket, page by page. */
-async function* listObjects(
-  s3: S3Client,
-): AsyncGenerator<{ key: string; size: number }> {
+async function* listObjects(s3: S3Client) {
   let token: string | undefined;
   do {
     const page = await s3.send(
@@ -239,8 +229,7 @@ async function* listObjects(
   } while (token);
 }
 
-async function emptyBucket(s3: S3Client): Promise<void> {
-  // Delete in a second pass: deleting while listing skips keys.
+async function emptyBucket(s3: S3Client) {
   const keys: { Key: string }[] = [];
   for await (const { key } of listObjects(s3)) keys.push({ Key: key });
   for (let start = 0; start < keys.length; start += 1000) {
@@ -254,7 +243,7 @@ async function emptyBucket(s3: S3Client): Promise<void> {
 }
 
 /** A fresh, empty stress bucket (a crashed run may have left one). */
-export async function createBucket(stack: Stack): Promise<void> {
+export async function createBucket(stack: Stack) {
   const s3 = s3Client(stack);
   try {
     if (await bucketExists(s3)) await emptyBucket(s3);
@@ -264,7 +253,7 @@ export async function createBucket(stack: Stack): Promise<void> {
   }
 }
 
-export async function removeBucket(stack: Stack): Promise<void> {
+export async function removeBucket(stack: Stack) {
   const s3 = s3Client(stack);
   try {
     if (!(await bucketExists(s3))) return;
@@ -280,7 +269,7 @@ export type BucketUsage = Partial<
 >;
 
 /** Object count and bytes per top-level prefix ("history/", …). */
-export async function bucketUsage(stack: Stack): Promise<BucketUsage> {
+export async function bucketUsage(stack: Stack) {
   const s3 = s3Client(stack);
   const usage: BucketUsage = {};
   try {

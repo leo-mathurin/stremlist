@@ -17,7 +17,6 @@ export default function LeaveDialog({ blocker }: { blocker: Blocker }) {
     if (!element) return;
     if (blocked && !element.open) {
       element.showModal();
-      // The safe choice takes focus, so Enter does not drop the changes.
       keepEditing.current?.focus();
     }
     if (!blocked && element.open) element.close();
@@ -27,8 +26,6 @@ export default function LeaveDialog({ blocker }: { blocker: Blocker }) {
     if (blocker.state === "blocked") blocker.reset();
   };
 
-  // A click on the backdrop lands on the dialog element itself. It is a
-  // pointer shortcut only: Escape and "Keep editing" do the same.
   useEffect(() => {
     const element = dialog.current;
     if (!element) return;
@@ -51,8 +48,6 @@ export default function LeaveDialog({ blocker }: { blocker: Blocker }) {
       }}
       className={
         "m-auto w-[calc(100%-2rem)] max-w-sm rounded-3xl bg-white p-6 font-rounded text-ink shadow-xl ring-1 ring-black/5 " +
-        // Enter: fade and a small scale from the center. No movement when
-        // the user prefers reduced motion.
         "transition-[opacity,scale] duration-200 ease-out-quint starting:scale-[0.96] starting:opacity-0 motion-reduce:starting:scale-100 " +
         "backdrop:bg-black/40 backdrop:transition-opacity backdrop:duration-200 starting:backdrop:opacity-0"
       }

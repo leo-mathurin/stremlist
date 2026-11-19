@@ -14,7 +14,6 @@ const NAV_LINKS = [
   { label: "Contact", to: `mailto:${SITE.contact}`, internal: false },
 ];
 
-/** Read once when the app loads: a render must not read the clock. */
 const COPYRIGHT_YEAR = new Date().getFullYear();
 
 export default function Footer() {

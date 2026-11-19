@@ -23,51 +23,39 @@ const previewBody = listBody
   })
   .extend({
     accountKey: accountKeyParam.shape.accountKey.optional(),
-    // The place in the Provider's queue from a queued answer.
     ticket: z.guid().optional(),
   });
 
-/**
- * The Account whose Connection a preview may read through. Like
- * `/links/resolve`, an unknown key previews public lists only. A Legacy alias
- * can be guessed: it never reads through a Connection.
- */
-async function previewConnection(
-  accountKey: string | undefined,
-): Promise<string | null> {
+async function previewConnection(accountKey: string | undefined) {
   const access = accountKey ? await resolveAccountKey(accountKey) : null;
   return access?.via === "private" ? access.account.id : null;
 }
 
 /** Source lists and Lists before they are saved. */
 const lists = new Hono()
-  // Detect the Provider behind a pasted link and check that it can be read.
   .post(
     "/links/resolve",
     zValidator(
       "json",
       z.object({
-        // A longer link is refused in the answer ("too_long"), not here.
+        /** A longer link is refused in the answer ("too_long"), not here. */
         input: z
           .string()
           .trim()
           .min(1)
           .max(SOURCE_LINK_MAX_LENGTH * 4),
         accountKey: z.string().regex(ACCOUNT_KEY_PATTERN).optional(),
-        // The place in the Provider's queue from a queued answer.
+        /** The place in the Provider's queue from a queued answer. */
         ticket: z.guid().optional(),
       }),
     ),
     async (c) => {
       const { input, accountKey, ticket } = c.req.valid("json");
-      // An unknown key resolves public Source lists only.
       const access = accountKey ? await resolveAccountKey(accountKey) : null;
       return c.json(await resolveSourceLink(input, access, ticket ?? null));
     },
   )
 
-  // Preview the Catalogs of a List, saved or not: a sample of Titles for each
-  // Catalog and the Unresolved entries of its Source lists. Writes nothing.
   .post("/lists/preview", zValidator("json", previewBody), async (c) => {
     const { accountKey, ticket, ...list } = c.req.valid("json");
     return c.json(
@@ -79,8 +67,6 @@ const lists = new Hono()
     );
   })
 
-  // One page of the Titles of one Catalog of a List, from an offset, for the
-  // full preview of that Catalog. Writes nothing.
   .post(
     "/lists/preview/titles",
     zValidator(

@@ -19,7 +19,7 @@ const DOT: Record<ReturnType<typeof syncLineTone>, string> = {
   bad: "bg-red-500",
 };
 
-function titles(count: number | null): string | null {
+function titles(count: number | null) {
   if (count === null) return null;
   if (count === 0) return "no titles";
   return count === 1 ? "1 title" : `${count.toLocaleString("en")} titles`;
@@ -33,7 +33,6 @@ function Time({ iso }: { iso: string }) {
   );
 }
 
-/** The queue state of a waiting List, while its wait is 3 s or more. */
 function QueueText({
   queue,
   otherwise,
@@ -206,8 +205,6 @@ export function ListSyncNotice({
       role="status"
       className={cn(
         "mx-3 mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl px-4 py-2.5 text-sm ring-1 sm:mx-4 sm:mb-4",
-        // Appears when a refresh reports a problem; no movement when the
-        // user prefers reduced motion.
         "transition-[opacity,translate] duration-200 ease-out-quint starting:-translate-y-1 starting:opacity-0 motion-reduce:starting:translate-y-0",
         severe
           ? "bg-red-50 text-red-900 ring-red-200"
@@ -216,8 +213,6 @@ export function ListSyncNotice({
     >
       <p className="min-w-0 flex-1 text-pretty tabular-nums">{body}</p>
       {sync.kind === "connection" && onConnect && (
-        // "Connect again" only for a connection that existed and expired;
-        // a Provider that is not connected gets a plain "Connect".
         <button
           type="button"
           onClick={onConnect}

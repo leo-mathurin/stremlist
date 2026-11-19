@@ -16,7 +16,7 @@ export interface InstallBaseline {
 export function requiresReinstall(
   baseline: InstallBaseline,
   current: { signature: string; actionsLive: boolean },
-): boolean {
+) {
   return (
     (baseline.signature !== null && current.signature !== baseline.signature) ||
     (baseline.actionsLive !== null &&
@@ -35,7 +35,7 @@ export function reinstallState(
   installed: InstallBaseline,
   saved: InstallBaseline,
   current: { signature: string; actionsLive: boolean },
-): ReinstallState {
+) {
   if (
     saved.signature !== null &&
     saved.actionsLive !== null &&
@@ -44,10 +44,11 @@ export function reinstallState(
       actionsLive: saved.actionsLive,
     })
   ) {
-    return "required";
+    return "required" as const;
   }
-  return requiresReinstall(installed, current) &&
-    requiresReinstall(saved, current)
-    ? "after-save"
-    : "none";
+  const state: ReinstallState =
+    requiresReinstall(installed, current) && requiresReinstall(saved, current)
+      ? "after-save"
+      : "none";
+  return state;
 }

@@ -18,7 +18,7 @@ const ALL_PROVIDERS = joinProviderLabels([...WATCH_PROVIDERS], "or");
 
 const LINK_BUTTON = "font-semibold text-stremlist hover:underline";
 
-function pad(value: number): string {
+function pad(value: number) {
   return String(value).padStart(2, "0");
 }
 
@@ -30,11 +30,10 @@ interface StatusLine {
   text: React.ReactNode;
 }
 
-/** What an account shows under its name. */
 function statusLine(
   destination: WatchDestinationStatus,
   change: WatchChange | null,
-): StatusLine {
+) {
   const label = PROVIDERS[destination.provider].label;
   const { lastTitle } = destination;
   if (change?.provider === destination.provider) {
@@ -44,15 +43,16 @@ function statusLine(
       text: change.starting
         ? "Reading what you watched in Stremio…"
         : "Saving…",
-    };
+    } satisfies StatusLine;
   }
-  if (!destination.enabled) return { key: "off", text: "Off" };
+  if (!destination.enabled)
+    return { key: "off", text: "Off" } satisfies StatusLine;
   if (destination.paused) {
     return {
       key: "paused",
       icon: "pause",
       text: "Paused while Stremio's own Trakt is connected",
-    };
+    } satisfies StatusLine;
   }
   switch (destination.lastError) {
     case "needs_renewal":
@@ -60,19 +60,19 @@ function statusLine(
         key: "renew",
         icon: "alert",
         text: `Connect ${label} again to send the titles waiting`,
-      };
+      } satisfies StatusLine;
     case "gave_up":
       return {
         key: "gave-up",
         icon: "alert",
         text: `${label} refused some titles for 3 days. They were not sent.`,
-      };
+      } satisfies StatusLine;
     case "not_found":
       return {
         key: "not-found",
         icon: "alert",
         text: `${label} could not find the last title`,
-      };
+      } satisfies StatusLine;
     case null:
       break;
   }
@@ -84,7 +84,7 @@ function statusLine(
         destination.pending === 1
           ? "1 title on its way"
           : `${destination.pending} titles on their way`,
-    };
+    } satisfies StatusLine;
   }
   if (destination.lastSuccessAt && lastTitle) {
     const episode =
@@ -99,9 +99,12 @@ function statusLine(
           <RelativeTime iso={destination.lastSuccessAt} />
         </>
       ),
-    };
+    } satisfies StatusLine;
   }
-  return { key: "on", text: "On. Titles you finish from now on are marked." };
+  return {
+    key: "on",
+    text: "On. Titles you finish from now on are marked.",
+  } satisfies StatusLine;
 }
 
 /**
@@ -190,8 +193,6 @@ export default function WatchTrackingSettings({
                 aria-labelledby={`${rowId}-name`}
                 aria-describedby={`${rowId}-line`}
                 checked={destination.enabled}
-                // The row being saved keeps focus; the hook ignores clicks
-                // until its answer comes.
                 disabled={(busy !== null && !isBusy) || loadFailed}
                 onCheckedChange={(next) =>
                   onToggle(destination.provider, next === true)
@@ -266,7 +267,6 @@ export default function WatchTrackingSettings({
 
       {body}
 
-      {/* One stable region, so screen readers hear each notice. */}
       <div role="status">
         {loadFailed && destinations && !locked && (
           <Note className={cn("mt-3", ENTER)}>

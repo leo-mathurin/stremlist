@@ -58,7 +58,6 @@ import {
 const FIELD_FOCUS = "focus-visible:ring-brand/50 focus-visible:border-brand";
 const SELECT_FOCUS = "focus:ring-brand/50 focus:border-brand";
 
-/** A panel under the row that opens to its own height. */
 function revealClass(open: boolean) {
   return cn(
     "grid transition-[grid-template-rows] ease-out-quint motion-reduce:transition-none",
@@ -119,10 +118,7 @@ export default function SortableListRow({
     index,
   });
   const [open, setOpen] = useState(false);
-  // Ease in once: a drag must not play it again.
   const [entering, setEntering] = useState(justAdded);
-  // A List added in this visit opens its preview, so the user sees what it
-  // adds to Stremio before saving.
   const [previewOpen, setPreviewOpen] = useState(!list.id);
   const panelId = useId();
   const previewId = useId();
@@ -134,8 +130,6 @@ export default function SortableListRow({
   const source = describeSource(list.provider, list.sourceRef);
   const merged = isMergedList(list);
   const sources = listSources(list);
-  // A merged List shows its own settings, not the chart picker of its first
-  // Source list.
   const chartEntry = merged ? undefined : imdbChartOf(list);
   const isChart = !!chartEntry;
   const title = rowTitle(list);
@@ -154,7 +148,6 @@ export default function SortableListRow({
       }}
       className={cn(
         "scroll-mt-5 rounded-3xl bg-white ring-1 ring-black/5 transition-shadow",
-        // Opacity and a short slide down; only the fade with reduced motion.
         entering &&
           "animate-in duration-200 ease-out-quint fade-in motion-safe:slide-in-from-top-2",
         attentionTone(sync) === "warn" && "ring-amber-300",
@@ -247,7 +240,6 @@ export default function SortableListRow({
                 <SelectItem
                   key={opt.value}
                   value={opt.value}
-                  // Explained under Source lists, in the settings.
                   disabled={!isSortAllowed(list, opt.value)}
                 >
                   {opt.label}
@@ -302,8 +294,6 @@ export default function SortableListRow({
 
       {sync && (
         <>
-          {/* Under the name column, but as wide as the row, so the status
-              never truncates behind the sort control. */}
           <div className="-mt-2 flex gap-3 px-3 pb-3 sm:-mt-3 sm:gap-4 sm:px-4 sm:pb-4">
             <span aria-hidden="true" className="-ml-1 w-6 shrink-0" />
             <span aria-hidden="true" className="w-8 shrink-0" />
@@ -335,9 +325,6 @@ export default function SortableListRow({
                     value={list.sourceRef}
                     onValueChange={(value) => {
                       onFieldChange(list.localId, "sourceRef", value);
-                      // Charts have one Title type, so the display mode
-                      // follows the chart; otherwise a TV chart could keep
-                      // "Movies only" and show an empty catalog.
                       const next = CHART_BY_ID.get(value);
                       if (next) {
                         onFieldChange(
@@ -387,8 +374,6 @@ export default function SortableListRow({
                 />
               </div>
 
-              {/* Charts have a single Title type, so "Show" would only offer
-                  an empty choice there. */}
               {!isChart && (
                 <div>
                   <Label
@@ -451,7 +436,6 @@ export default function SortableListRow({
                             const top =
                               currentTarget.getBoundingClientRect().top;
                             flushSync(onMove);
-                            // Keep the pressed control under the pointer as its row moves.
                             window.scrollBy({
                               top:
                                 currentTarget.getBoundingClientRect().top - top,

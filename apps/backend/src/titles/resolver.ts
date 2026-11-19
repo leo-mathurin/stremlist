@@ -7,12 +7,7 @@ import type {
   SourceEntry,
 } from "../providers/types";
 
-/** How long an entry that no strategy could resolve waits before a retry. */
 const UNRESOLVED_RETRY_MS = 24 * 60 * 60_000;
-/**
- * Most entries a single refresh sends through the strategies. A big cold list
- * resolves over a few refreshes instead of blocking one catalog request.
- */
 const MAX_STRATEGY_ENTRIES_PER_REFRESH = 300;
 const CACHE_QUERY_CHUNK = 200;
 const STRATEGY_CHUNK = 50;
@@ -30,14 +25,8 @@ interface ResolvedEntry {
 }
 
 interface ResolutionResult {
-  /** Resolved entries, in Source list order. */
   resolved: ResolvedEntry[];
-  /** Entries without an IMDb ID yet (Unresolved entries, see CONTEXT.md). */
   unresolvedEntries: SourceEntry[];
-  /**
-   * Unresolved entries that no strategy tried yet (cap or time budget). The
-   * caller should refresh soon instead of waiting for the usual freshness.
-   */
   deferred: number;
 }
 
@@ -48,13 +37,11 @@ interface CacheRow {
   retry_after: string | null;
 }
 
-function cacheKey(key: ResolutionKey): string {
+function cacheKey(key: ResolutionKey) {
   return `${key.namespace}\u0000${key.externalId}`;
 }
 
-async function readCache(
-  keys: ResolutionKey[],
-): Promise<Map<string, CacheRow>> {
+async function readCache(keys: ResolutionKey[]) {
   const rows = new Map<string, CacheRow>();
   const byNamespace = new Map<string, string[]>();
   for (const key of keys) {
@@ -90,10 +77,8 @@ async function writeCache(
     imdbId: string | null;
     strategy: string | null;
   }[],
-): Promise<void> {
+) {
   if (rows.length === 0) return;
-  // A Source list can hold the same entry twice, and Postgres rejects an
-  // upsert that touches one row twice: the whole batch would be lost.
   const unique = new Map<string, (typeof rows)[number]>();
   for (const row of rows) {
     const key = cacheKey(row.key);
@@ -128,7 +113,7 @@ export async function resolveEntries(
   adapter: ProviderAdapter,
   entries: SourceEntry[],
   options: ResolveOptions = { budgetMs: DEFAULT_RESOLVE_BUDGET_MS },
-): Promise<ResolutionResult> {
+) {
   const imdbIds: (string | null)[] = entries.map((entry) =>
     entry.imdbId && IMDB_TITLE_ID_PATTERN.test(entry.imdbId)
       ? entry.imdbId
@@ -159,8 +144,6 @@ export async function resolveEntries(
 
   const startedAt = Date.now();
   const capped = toResolve.slice(0, MAX_STRATEGY_ENTRIES_PER_REFRESH);
-  // Chunks let a slow strategy (one search per entry) stop at the time
-  // budget; entries not reached keep no cache row and are tried next time.
   let attempted = 0;
   for (let start = 0; start < capped.length; start += STRATEGY_CHUNK) {
     if (start > 0 && Date.now() - startedAt > options.budgetMs) break;
@@ -188,7 +171,6 @@ export async function resolveEntries(
             chunk.map(({ index }) => entries[index]),
           );
           for (const [position, imdbId] of found) {
-            // A strategy may answer a position that is not in the batch.
             const item = position >= 0 ? chunk.at(position) : undefined;
             if (item && IMDB_TITLE_ID_PATTERN.test(imdbId)) {
               results.set(item.index, { imdbId, strategy: strategy.name });
@@ -229,5 +211,5 @@ export async function resolveEntries(
     if (imdbId) resolved.push({ imdbId, entry });
     else unresolvedEntries.push(entry);
   });
-  return { resolved, unresolvedEntries, deferred };
+  return { resolved, unresolvedEntries, deferred } satisfies ResolutionResult;
 }

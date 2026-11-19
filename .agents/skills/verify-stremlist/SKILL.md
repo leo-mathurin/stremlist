@@ -94,7 +94,7 @@ For integration, run one mapped feature first, then the affected specs. `CI=1` r
 ```sh
 CI=1 .agents/skills/verify-stremlist/scripts/run-check.sh "$VERIFY_EVIDENCE/playwright-run" 600 7301,7302 \
 	bun --no-env-file run --filter @stremlist/e2e test:e2e --project=local \
-	tests/merged-lists.spec.ts --grep 'merging two Lists on the configure page saves and survives a reload' --trace on
+	test/merged-lists.test.ts --grep 'merging two Lists on the configure page saves and survives a reload' --trace on
 ```
 
 The complete local integration pass uses `CI=1 bun run --filter @stremlist/e2e test:e2e --project=local --trace on`, inside the same helper. Local specs include fixture transports and some real IMDb reads, including save-triggered chart prewarming. This project is not an offline suite. Live projects also require public IMDb and hosted Stremio Web. Run `--project=live-smoke` and `--project=live-regression` separately when those paths change. Keep their outcomes separate from fixture-backed specs.

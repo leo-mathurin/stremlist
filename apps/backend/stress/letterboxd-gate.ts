@@ -1,23 +1,3 @@
-/**
- * Stress test of the shared Letterboxd gate and its queue
- * (public.letterboxd_take_turn/report).
- *
- * Simulates users who each add one Letterboxd list at an interactive
- * priority, against a fake Letterboxd that answers every page in 200 ms. The
- * first page of each list asks as a first page, the later pages as later
- * pages, and each read keeps its ticket across retries and pages, like the
- * backend. It checks that the gate never admits more than its rate allows
- * and measures the gate's call latency, the time to the first page and the
- * time to the whole list.
- *
- *   bun stress/letterboxd-gate.ts --target pg   # STRESS_GATE_DATABASE_URL
- *   bun stress/letterboxd-gate.ts --target rest # SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
- *
- * Options: --users 5000 --arrival-minutes 10 --drain-minutes 20 --rate 10
- * --schema public --out <file.json>. --target rest calls the RPCs through
- * PostgREST like the backend; --schema names another schema that holds a
- * copy of the gate (the RPCs are then called as <schema>_letterboxd_*).
- */
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { writeFileSync } from "node:fs";
@@ -52,7 +32,7 @@ interface Gate {
   close(): Promise<void>;
 }
 
-function pgGate(): Gate {
+function pgGate() {
   const url = process.env.STRESS_GATE_DATABASE_URL;
   if (!url) throw new Error("Set STRESS_GATE_DATABASE_URL");
   const sql = new Bun.SQL(url, { max: 20 });
@@ -60,9 +40,6 @@ function pgGate(): Gate {
   return {
     async call(name, args) {
       const fn = `${schema}.letterboxd_${name}`;
-      // The take also returns the database clock, so a granted slot can be
-      // placed on the gate's own timeline instead of the client's.
-      // Postgres numeric values may arrive as strings.
       const rows: { result: Json; now_ms?: number | string }[] =
         name === "take_turn"
           ? await sql.unsafe(
@@ -96,10 +73,10 @@ function pgGate(): Gate {
       );
       await sql.close();
     },
-  };
+  } satisfies Gate;
 }
 
-function restGate(): Gate {
+function restGate() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key)
@@ -117,7 +94,6 @@ function restGate(): Gate {
       return z.record(z.string(), z.unknown()).parse(data);
     },
     async close() {
-      // A copy of the gate in another schema goes away with that schema.
       if (values.schema !== "public") return;
       const { error } = (await client
         .from("letterboxd_gate")
@@ -125,7 +101,7 @@ function restGate(): Gate {
         .eq("id", GATE)) as { error: { message: string } | null };
       if (error) throw new Error(`Deleting ${GATE}: ${error.message}`);
     },
-  };
+  } satisfies Gate;
 }
 
 const gate = values.target === "rest" ? restGate() : pgGate();
@@ -146,8 +122,7 @@ async function call(name: GateCall, args: Json) {
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
-/** Deterministic list sizes (lab model), plus 1% of 100-page lists. */
-function pagesFor(index: number): number {
+function pagesFor(index: number) {
   const bucket = (index * 7919) % 100;
   const films =
     bucket < 5
@@ -168,25 +143,17 @@ interface UserResult {
   pages: number;
   firstPageMs: number | null;
   totalMs: number | null;
-  /** The first page waited 3 s or more: the configure page shows the queue. */
   queueState: boolean;
   longestEstimateMs: number;
-  /** How far the first estimate of the first page was from its real wait. */
   firstEstimateErrorMs: number | null;
 }
-/** When each page was sent, on the client's clock. */
 const sends: number[] = [];
-/**
- * When the gate scheduled each sent page: the database clock plus the wait it
- * gave (pg target only). Client timers fire late under load, so this is the
- * timeline that shows what the gate admitted.
- */
 const slots: number[] = [];
 const reports: Promise<unknown>[] = [];
 const start = performance.now();
 const elapsed = () => performance.now() - start;
 
-async function user(index: number): Promise<UserResult> {
+async function user(index: number) {
   await sleep((index / USERS) * ARRIVAL_MS);
   const pages = pagesFor(index);
   const began = elapsed();
@@ -198,7 +165,6 @@ async function user(index: number): Promise<UserResult> {
     longestEstimateMs: 0,
     firstEstimateErrorMs: null,
   };
-  // The read's place in the queue, kept across retries and pages.
   let ticket: string | null = null;
   let firstEstimate: number | null = null;
   for (let page = 0; page < pages; page++) {
@@ -324,8 +290,6 @@ const report = {
     ),
   ),
   totalMs: summary(finished.map((item) => item.totalMs ?? 0)),
-  // Real wait of the first page minus its first estimate (positive: later
-  // than estimated).
   firstEstimateErrorMs: summary(
     users.flatMap((item) =>
       item.firstEstimateErrorMs === null ? [] : [item.firstEstimateErrorMs],

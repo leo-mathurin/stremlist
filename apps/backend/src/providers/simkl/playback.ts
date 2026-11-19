@@ -1,15 +1,10 @@
 import { z } from "zod";
-import type { ConnectionAccess, SourceEntry, SourceSnapshot } from "../types";
+import type { ConnectionAccess, SourceEntry } from "../types";
 import { simklRequest } from "./api";
 import { toEntry } from "./entries";
-import type { SimklKind } from "./library";
 import { parseIds, rawIdsSchema, syncLibrary, toInt } from "./library";
 import { playbackKey, readState, STATE_VERSION, writeState } from "./state";
 
-/**
- * Sessions age out after 7 days (Simkl free), 30 (PRO) or 90 (VIP) without
- * a change in /sync/activities: read them again at least once a day.
- */
 const PLAYBACK_MAX_AGE_MS = 24 * 60 * 60_000;
 
 const rawTitleSchema = z.object({
@@ -19,7 +14,6 @@ const rawTitleSchema = z.object({
   ids: rawIdsSchema.nullish(),
 });
 
-/** The shape of GET /sync/playback in Simkl's OpenAPI (PlaybackSession). */
 const rawSessionSchema = z.object({
   paused_at: z.string().nullish(),
   type: z.string().nullish(),
@@ -48,26 +42,19 @@ const playbackEntrySchema = z.object({
 
 const playbackSnapshotSchema = z.object({
   version: z.number(),
-  /** The authorization that read the sessions (`ConnectionAccess`). */
   authorization: z.string(),
-  /** The /sync/activities timestamps that the read matches. */
   gate: z.string(),
   fetchedAt: z.number(),
   entries: z.array(playbackEntrySchema),
 });
 type PlaybackSnapshot = z.infer<typeof playbackSnapshotSchema>;
 
-function sessionKind(session: RawSession): SimklKind {
+function sessionKind(session: RawSession) {
   if (session.anime) return "anime";
   return session.show ? "shows" : "movies";
 }
 
-/**
- * One entry per title, the oldest pause first (the canonical order of a
- * dated Source list). Several paused episodes of one series are one entry,
- * dated by the newest pause.
- */
-function playbackEntries(sessions: RawSession[]): SourceEntry[] {
+function playbackEntries(sessions: RawSession[]) {
   const newest = new Map<number, { entry: SourceEntry; pausedAt: string }>();
   for (const session of sessions) {
     const media = session.anime ?? session.show ?? session.movie;
@@ -102,9 +89,7 @@ function playbackEntries(sessions: RawSession[]): SourceEntry[] {
  * /sync/activities moved (a pause, or a watched mark that hides a session)
  * or once a day.
  */
-export async function fetchPlayback(
-  connection: ConnectionAccess,
-): Promise<SourceSnapshot> {
+export async function fetchPlayback(connection: ConnectionAccess) {
   const { activities } = await syncLibrary(connection);
   const gate = JSON.stringify([
     activities.all ?? null,

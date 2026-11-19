@@ -1,0 +1,141 @@
+import { expect, test } from "@playwright/test";
+import { addonManifestUrl } from "../env.js";
+import {
+  getCatalog,
+  getConfig,
+  listInput,
+  postConfig,
+} from "../helpers/api.js";
+import { resetDb, seedImdbAccount } from "../helpers/db.js";
+import { present } from "../helpers/json.js";
+import {
+  discoverItemTitles,
+  discoverUrl,
+  installAddon,
+  uninstallAddon,
+} from "../helpers/stremio.js";
+import {
+  PRIVATE_USER,
+  PUBLIC_USER,
+  UNKNOWN_USER,
+} from "../helpers/test-data.js";
+
+test.beforeEach(resetDb);
+
+test(
+  "watchlist catalog renders in Discover, in catalog order",
+  { tag: "@live-smoke" },
+  async ({ page }) => {
+    const { accountId, listId } = await seedImdbAccount();
+    const manifestUrl = addonManifestUrl(accountId);
+    const catalogId = `wl-${listId}-movie`;
+    const { metas } = await getCatalog(accountId, "movie", catalogId);
+    expect(metas.length).toBeGreaterThan(0);
+
+    await installAddon(page, manifestUrl);
+    await page.goto(discoverUrl(manifestUrl, "movie", catalogId));
+
+    const rendered = await discoverItemTitles(page);
+    expect(rendered.length).toBeGreaterThan(0);
+    const expected = metas.map((meta) => meta.name);
+    expect(rendered.slice(0, Math.min(5, expected.length))).toEqual(
+      expected.slice(0, Math.min(5, rendered.length)),
+    );
+  },
+);
+
+test(
+  "sort option changes reorder the catalog without reinstalling",
+  { tag: "@live-regression" },
+  async ({ page }) => {
+    const { accountId, listId } = await seedImdbAccount();
+    const manifestUrl = addonManifestUrl(accountId);
+    const catalogId = `wl-${listId}-movie`;
+    await getCatalog(accountId, "movie", catalogId);
+    await installAddon(page, manifestUrl);
+
+    await postConfig(accountId, [
+      listInput("imdb", PUBLIC_USER, { id: listId, sortOption: "title-asc" }),
+    ]);
+    const { metas } = await getCatalog(accountId, "movie", catalogId);
+    const expected = metas.map((meta) => meta.name);
+    expect(expected).toEqual([...expected].sort((a, b) => a.localeCompare(b)));
+
+    await page.goto(discoverUrl(manifestUrl, "movie", catalogId));
+    const rendered = await discoverItemTitles(page);
+    expect(rendered.slice(0, Math.min(5, expected.length))).toEqual(
+      expected.slice(0, Math.min(5, rendered.length)),
+    );
+  },
+);
+
+test(
+  "built-in chart catalog renders after a reinstall",
+  { tag: "@live-regression" },
+  async ({ page }) => {
+    const { accountId, listId } = await seedImdbAccount();
+    const manifestUrl = addonManifestUrl(accountId);
+    await installAddon(page, manifestUrl);
+
+    await postConfig(accountId, [
+      listInput("imdb", PUBLIC_USER, { id: listId }),
+      listInput("imdb", "imdb:box-office", { displayMode: "movie" }),
+    ]);
+    const { body } = await getConfig(accountId);
+    const chart = body.lists.find(
+      (list) => list.sourceRef === "imdb:box-office",
+    );
+    expect(chart).toBeDefined();
+    const catalogId = `wl-${present(chart, "the chart List").id}-movie`;
+    const { metas } = await getCatalog(accountId, "movie", catalogId);
+    expect(metas.length).toBeGreaterThan(0);
+
+    await uninstallAddon(page, manifestUrl);
+    await installAddon(page, manifestUrl);
+    await page.goto(discoverUrl(manifestUrl, "movie", catalogId));
+
+    const rendered = await discoverItemTitles(page);
+    expect(rendered.length).toBeGreaterThan(0);
+    expect(rendered[0]).toBe(metas[0].name);
+  },
+);
+
+test(
+  "catalog rows appear on the Board",
+  { tag: "@live-regression" },
+  async ({ page }) => {
+    const { accountId, listId } = await seedImdbAccount();
+    const manifestUrl = addonManifestUrl(accountId);
+    await postConfig(accountId, [
+      listInput("imdb", PUBLIC_USER, { id: listId, catalogTitle: "E2E QA" }),
+    ]);
+    await getCatalog(accountId, "movie", `wl-${listId}-movie`);
+
+    await installAddon(page, manifestUrl);
+    await page.goto("https://web.stremio.com/#/");
+    await expect(
+      page.getByText("Stremlist E2E QA", { exact: false }).first(),
+    ).toBeAttached({ timeout: 30_000 });
+  },
+);
+
+for (const [title, sourceRef, card] of [
+  [
+    "broken watchlist shows the informational card in Stremio",
+    UNKNOWN_USER,
+    "IMDb could not find this watchlist",
+  ],
+  [
+    "private watchlist shows the private card in Stremio",
+    PRIVATE_USER,
+    "This IMDb watchlist is private",
+  ],
+] as const) {
+  test(title, { tag: "@live-regression" }, async ({ page }) => {
+    const { accountId, listId } = await seedImdbAccount(sourceRef);
+    const manifestUrl = addonManifestUrl(accountId);
+    await installAddon(page, manifestUrl);
+    await page.goto(discoverUrl(manifestUrl, "movie", `wl-${listId}-movie`));
+    await expect(page.getByText(card, { exact: false }).first()).toBeVisible();
+  });
+}

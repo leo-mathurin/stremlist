@@ -11,7 +11,8 @@ import {
   routeConfig,
   row,
   secondAccountId,
-} from "./config-fixture";
+  waitForIdlePage,
+} from "./config.fixture";
 
 test(
   "returning home and opening another Addon URL replaces the previous form",
@@ -41,7 +42,6 @@ test(
     const title = screen.getByLabel("Catalog title");
     await title.fill("Discarded draft");
     await screen.getByRole("link", "Stremlist home").tap();
-    // The draft is not saved: the page asks first.
     await screen.getByRole("button", "Leave without saving").tap();
     await expect(browser).toHaveURL("/");
     await agent.act(
@@ -136,4 +136,28 @@ test("newsletter pending request blocks duplicate submissions", async ({
   await expect(screen.getByText("Fixture subscription saved")).toBeVisible();
   await expect(subscribe).toBeEnabled();
   expect(attempts).toBe(1);
+});
+
+test("a held toast stays open after the pointer leaves the toaster", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await holdToasts(browser);
+  await browser.route(`${backend}/newsletter/subscribe`, async (route) => {
+    await route.fulfill({
+      json: { success: true, message: "Fixture subscription saved" },
+    });
+  });
+  await app.open("/");
+  await screen.getByPlaceholder("your@email.com").fill("hover@example.test");
+  await screen.getByRole("button", "Subscribe", { exact: true }).tap();
+  const toast = screen.getByText("Fixture subscription saved");
+  await toast.hover();
+  const expanded = browser.locator("[data-sonner-toast][data-expanded=true]");
+  await expect(expanded).toBeVisible();
+  await browser.mouse.move(0, 0);
+  await expect(expanded).not.toBeVisible();
+  await waitForIdlePage(browser);
+  await expect(toast).toBeVisible();
 });

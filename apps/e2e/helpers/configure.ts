@@ -28,7 +28,7 @@ export function saveButton(page: Page, name = "Save") {
 }
 
 /** The configure page of an Account ID or a Legacy alias. */
-export function configureUrl(accountKey: string): string {
+export function configureUrl(accountKey: string) {
   return `${FRONTEND_URL}/configure?account=${accountKey}`;
 }
 
@@ -37,7 +37,7 @@ export async function openConfigure(
   page: Page,
   accountKey: string,
   title: string,
-): Promise<void> {
+) {
   await page.goto(configureUrl(accountKey));
   await expect(page.getByText(title, { exact: true })).toBeVisible();
 }
@@ -50,7 +50,7 @@ export async function openConfigure(
 export async function saveConfigure(
   page: Page,
   options: { message?: string; button?: Locator } = {},
-): Promise<void> {
+) {
   const response = page.waitForResponse(
     (res) => res.url().endsWith("/config") && res.request().method() === "POST",
   );
@@ -63,7 +63,7 @@ export async function saveConfigure(
  * Type `key` in the RPDB API key field. The field shows for RPDB posters
  * only: pick RPDB first when another source is chosen.
  */
-export async function fillRpdbKey(page: Page, key: string): Promise<void> {
+export async function fillRpdbKey(page: Page, key: string) {
   const field = page.locator("#rpdb-api-key");
   if (!(await field.isVisible())) {
     await page.getByRole("combobox", { name: "Posters" }).click();
@@ -72,7 +72,6 @@ export async function fillRpdbKey(page: Page, key: string): Promise<void> {
   await field.fill(key);
 }
 
-/** Open the Quick add row of `provider`, unless it is already open. */
 async function openQuickAdd(page: Page, provider: ProviderId) {
   const row = page.getByTestId(`quick-add-${provider}`);
   if ((await row.getAttribute("aria-expanded")) !== "true") await row.click();

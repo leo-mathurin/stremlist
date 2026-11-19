@@ -56,7 +56,7 @@ export const SIMKL_PERIOD_SUFFIX: Record<SimklChartPeriod, string> = {
 export function simklTrendingRef(
   type: SimklChartType,
   period: SimklChartPeriod,
-): string {
+) {
   return period === "week" ? `trending/${type}` : `trending/${type}/${period}`;
 }
 
@@ -187,7 +187,7 @@ export const SIMKL_ADULT_GENRES: ReadonlySet<string> = new Set([
 export const SIMKL_GENRE_REF_PATTERN =
   /^trending\/(movies|tv|anime)\/genre\/([a-z0-9]+(?:-[a-z0-9]+)*)$/;
 
-export function simklGenreRef(type: SimklChartType, slug: string): string {
+export function simklGenreRef(type: SimklChartType, slug: string) {
   return `trending/${type}/genre/${slug}`;
 }
 
@@ -207,7 +207,7 @@ export function isSimklChartPeriod(value: string): value is SimklChartPeriod {
 }
 
 /** The genre chart behind a stored reference, or null. */
-export function simklGenreChartOf(ref: string): SimklGenreChart | null {
+export function simklGenreChartOf(ref: string) {
   const match = SIMKL_GENRE_REF_PATTERN.exec(ref);
   const [, type, slug] = match ?? [];
   if (!type || !slug || !isSimklChartType(type)) return null;
@@ -221,5 +221,5 @@ export function simklGenreChartOf(ref: string): SimklGenreChart | null {
     type,
     slug,
     title: `Simkl Trending ${name} ${SIMKL_CHART_TYPE_INFO[type].noun}`,
-  };
+  } satisfies SimklGenreChart;
 }

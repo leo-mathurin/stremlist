@@ -56,7 +56,6 @@ import { attentionTone } from "../lib/list-sync";
 import { describeSource, PASTE_LINK_PROMPT } from "../lib/list-sources";
 import { cn } from "@/lib/utils";
 
-/** A link that waited for a Connection, added again after the OAuth return. */
 const PENDING_LINK_STORAGE = "stremlist:pending-link";
 
 const catalogSensors = [
@@ -76,7 +75,7 @@ const catalogSensors = [
 
 type Notice = { type: "success" | "error"; message: string };
 
-function readStorage(key: string): string | null {
+function readStorage(key: string) {
   try {
     return sessionStorage.getItem(key);
   } catch {
@@ -88,21 +87,19 @@ function writeStorage(key: string, value: string | null) {
   try {
     if (value === null) sessionStorage.removeItem(key);
     else sessionStorage.setItem(key, value);
-  } catch {
-    // Private mode: the page still works, only the hand-off is lost.
-  }
+  } catch {}
 }
 
 function connectionNotice(
   connected: string | null,
   error: string | null,
   providerParam: string | null,
-): Notice | null {
+) {
   if (connected && isProviderId(connected)) {
     return {
       type: "success",
       message: `${PROVIDERS[connected].label} is connected. You can now add its lists.`,
-    };
+    } satisfies Notice;
   }
   if (error === null) return null;
   const label =
@@ -129,10 +126,9 @@ function connectionNotice(
     type: "error",
     message:
       messages.get(error) ?? `Could not connect ${label}. Please try again.`,
-  };
+  } satisfies Notice;
 }
 
-/** What Home passes in the navigation state. Other values are ignored. */
 const homeState = z
   .object({ link: z.unknown().optional(), entry: z.unknown().optional() })
   .partial();
@@ -154,12 +150,9 @@ export default function Configure() {
     writeStorage(PENDING_LINK_STORAGE, null);
     return searchParams.get("connected") ? stored : null;
   });
-  /** Home found this v1 install for the user ("Open my Stremlist"). */
   const [fromHome] = useState(
     () => homeState.safeParse(location.state).data?.entry === "home",
   );
-  // The link from Home is consumed once; drop it so a reload does not add
-  // it again.
   useEffect(() => {
     if (location.state) {
       void navigate(
@@ -179,7 +172,6 @@ export default function Configure() {
     if (notice) {
       toast[notice.type](notice.message, { id: `connection-${location.key}` });
     }
-    // Consume the OAuth result so reloading does not show the toast again.
     const next = new URLSearchParams(searchParams);
     for (const key of cleanup) next.delete(key);
     if (rawKey) next.set("account", rawKey);
@@ -189,15 +181,12 @@ export default function Configure() {
   const [createdId, setCreatedId] = useState(() =>
     readStorage(NEW_ACCOUNT_STORAGE),
   );
-  /** Set when an Account is created here, until its install step is shown. */
   const revealInstall = useRef(false);
-  /** Show the install step of an Account created in this tab. */
   const rememberCreated = (id: string) => {
     revealInstall.current = true;
     writeStorage(NEW_ACCOUNT_STORAGE, id);
     setCreatedId(id);
   };
-  /** Open an Account created by the first save; it replaces the entry. */
   const openCreated = (id: string) => {
     rememberCreated(id);
     void navigate(`/configure?account=${encodeURIComponent(id)}`, {
@@ -214,13 +203,11 @@ export default function Configure() {
   const ready = status === "ready" && (!rawKey || keyIsValid);
   const justCreated = !!accountId && createdId === accountId;
   const policy = accountEditPolicy(access, config.upgradedTo);
-  // A Connection or the Stremio link changes what Watch tracking can use.
   const watch = useWatchTracking(
     access === "private" ? accountId : null,
     [
       config.stremio.connection?.email ?? "",
       String(!!config.stremio.connection),
-      // A link to the same account again changes neither of these.
       config.stremio.link.kind,
       ...config.connections.map(
         (c) => `${c.provider}:${c.needsRenewalSince ?? ""}`,
@@ -230,18 +217,12 @@ export default function Configure() {
   );
   const rows = lists.map((list) => config.rowModel(list));
   const attention = rows.filter((row) => attentionTone(row.sync)).length;
-  // Leaving for a Provider keeps the edits (a draft), so Connect is not held.
   const leaveBlocker = useLeaveGuard(
     config.dirty && config.connecting === null,
   );
 
-  // After the first save, bring the install step into view: on a phone it
-  // is far above the Save button that the user pressed.
   const installCard = useRef<HTMLDivElement>(null);
-  // The Stremio card is in the page header: below the Providers panel on a
-  // phone, so "the top" of the document is not where it shows.
   const stremioHeader = useRef<HTMLDivElement>(null);
-  /** Clears the card's notice, starts a Stremio step, and shows its card. */
   const stremioStep = (step: () => Promise<unknown>) => {
     watch.clearNotice();
     void step();
@@ -258,9 +239,6 @@ export default function Configure() {
     card.focus({ preventScroll: true });
   }, [justCreated]);
 
-  // A new List is the first row. When that row is out of view (on a phone,
-  // the lists are below the Providers panel; from Quick add, they are above
-  // it), a toast says so and can show the row.
   const { lastAdded } = config;
   useEffect(() => {
     if (!lastAdded) return;
@@ -285,17 +263,15 @@ export default function Configure() {
     }
   }
 
-  const describeAddProblem = (
-    problem: AddListProblem | null,
-  ): LinkProblem | null => {
+  const describeAddProblem = (problem: AddListProblem | null) => {
     if (!problem) return null;
     return problem.kind === "duplicate"
-      ? {
+      ? ({
           message: "This list is already in your Stremlist.",
           tone: "info",
           showList: () => showListRow(problem.localId),
-        }
-      : { message: problem.message };
+        } satisfies LinkProblem)
+      : ({ message: problem.message } satisfies LinkProblem);
   };
 
   const notifyAddProblem = (problem: AddListProblem | null) => {
@@ -309,7 +285,7 @@ export default function Configure() {
     } else toast.error(notice.message, { id: "list-add" });
   };
 
-  const addResolved = (link: ResolvedLink): LinkProblem | null =>
+  const addResolved = (link: ResolvedLink) =>
     describeAddProblem(
       config.addList({
         provider: link.provider,
@@ -326,8 +302,6 @@ export default function Configure() {
     void config.connect(provider);
   };
 
-  // The header Save button; the floating Save button shows once it scrolls
-  // away.
   const [headerSave, setHeaderSave] = useState<HTMLButtonElement | null>(null);
   const [headerSaveVisible, setHeaderSaveVisible] = useState(true);
   useEffect(() => {
@@ -340,11 +314,6 @@ export default function Configure() {
   }, [headerSave]);
   const canSave = !policy.editLock && lists.length > 0;
   const showSaveBar = ready && canSave && !!headerSave && !headerSaveVisible;
-  // `handleSave` ignores clicks while a save runs, so the button stays
-  // enabled: dimming it for a fast save would flash. With nothing to save
-  // (no edits since the last save or load), it is off. A new setup, a
-  // restored draft and edits made during a save all differ from the saved
-  // form, so they keep it on.
   const nothingToSave = !config.saveNeeded;
   const saveDisabled = !canSave || !!config.validationError || nothingToSave;
   const saveHint = canSave && nothingToSave ? "No changes to save" : undefined;
@@ -356,7 +325,6 @@ export default function Configure() {
     </>
   );
 
-  // The Stremlist 2.0 card of a v1 install, with the private URL upgrade.
   const legacyKey = access === "legacy" ? accountKey : null;
   const legacy = !!legacyKey;
   const [checklistHidden, setChecklistHidden] = useChecklistHidden(legacyKey);
@@ -472,9 +440,6 @@ export default function Configure() {
             )}
           </div>
           {accountKey && ready && (
-            // On a v1 install, one line as tall as its buttons, so "What's
-            // new" can come and go without moving the page. Phones then show
-            // the time and the refresh icon only.
             <div
               className={cn(
                 "flex min-h-9 items-center gap-3",
@@ -712,8 +677,6 @@ export default function Configure() {
                   const error = config.addList({
                     provider,
                     sourceRef: source.ref,
-                    // Static sources get "Trakt Watchlist"; the account's
-                    // own lists keep their real name.
                     catalogTitle: staticSource(provider, source.ref)
                       ? describeSource(provider, source.ref).suggestedTitle
                       : source.label,
@@ -722,8 +685,6 @@ export default function Configure() {
                   notifyAddProblem(error);
                 }}
                 onAddChart={(chartId) => {
-                  // The chart menu is off only when the List limit is
-                  // reached; the Source list limit is checked here.
                   const error = config.addChartList(chartId);
                   notifyAddProblem(error);
                 }}
@@ -815,15 +776,19 @@ export default function Configure() {
   );
 }
 
-/** Smooth scrolling, unless the user prefers reduced motion. */
-function scrollBehavior(): ScrollBehavior {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+function scrollBehavior() {
+  const behavior: ScrollBehavior = window.matchMedia(
+    "(prefers-reduced-motion: reduce)",
+  ).matches
     ? "auto"
     : "smooth";
+  return behavior;
 }
 
-function listRowElement(localId: string): HTMLElement | null {
-  return document.querySelector(`[data-list-row="${CSS.escape(localId)}"]`);
+function listRowElement(localId: string) {
+  return document.querySelector<HTMLElement>(
+    `[data-list-row="${CSS.escape(localId)}"]`,
+  );
 }
 
 function showListRow(localId: string) {
@@ -833,20 +798,17 @@ function showListRow(localId: string) {
   });
 }
 
-/** Whether the top of `element` shows in the viewport. */
-function isInView(element: HTMLElement): boolean {
+function isInView(element: HTMLElement) {
   const rect = element.getBoundingClientRect();
   return rect.top >= 0 && rect.top + 48 <= window.innerHeight;
 }
 
-/** "Refresh now", with a live countdown while it waits for the cooldown. */
 function RefreshButton({
   compact,
   refreshing,
   nextRefreshAt,
   onRefresh,
 }: {
-  /** Below `sm`, show the icon only. */
   compact: boolean;
   refreshing: boolean;
   nextRefreshAt: number;

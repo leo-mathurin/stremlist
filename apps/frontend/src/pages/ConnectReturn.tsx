@@ -21,12 +21,7 @@ function configureUrl(
   return `/configure?${search.toString()}`;
 }
 
-/**
- * Complete the connect that this browser started, and answer the configure
- * page to show next. An answer that this browser did not start (a consent
- * link that someone else sent) connects nothing.
- */
-async function finishConnect(answer: ConnectAnswer): Promise<string> {
+async function finishConnect(answer: ConnectAnswer) {
   const { provider } = answer;
   const start = takeConnectStart();
   if (!start || start.provider !== provider) {
@@ -40,7 +35,6 @@ async function finishConnect(answer: ConnectAnswer): Promise<string> {
   if (answer.error || !answer.code) {
     return back({ connection_error: answer.error ?? "failed" });
   }
-  // A new setup gets its Account now, with the setup it had.
   const draft = start.accountId ? null : readDraft(null);
   try {
     const res = await api.connections[":provider"].complete.$post({
@@ -62,9 +56,7 @@ async function finishConnect(answer: ConnectAnswer): Promise<string> {
       dropDraft();
       try {
         sessionStorage.setItem(NEW_ACCOUNT_STORAGE, body.accountId);
-      } catch {
-        // The Addon URL card shows without the "just created" warning.
-      }
+      } catch {}
     }
     return configureUrl(body.accountId, { connected: provider });
   } catch {
@@ -75,7 +67,6 @@ async function finishConnect(answer: ConnectAnswer): Promise<string> {
 /** The configure page while it completes a connect after the Provider. */
 export default function ConnectReturn({ answer }: { answer: ConnectAnswer }) {
   const navigate = useNavigate();
-  // Once per answer, also when React runs the effect twice.
   const finishing = useRef<Promise<string> | null>(null);
   useEffect(() => {
     let cancelled = false;

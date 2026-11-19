@@ -1,7 +1,6 @@
 import { describeSourceRef } from "./providers";
 import type { ProviderId } from "./providers";
 
-/** Trakt pages under trakt.tv/users/<username>/, by Source ref. */
 const TRAKT_USER_PAGES = new Map([
   ["me/watchlist", "watchlist"],
   ["me/favorites", "favorites"],
@@ -25,14 +24,13 @@ export function sourcePageUrl(
   provider: ProviderId,
   ref: string,
   username: string | null | undefined,
-): string | undefined {
+) {
   const known = describeSourceRef(provider, ref).url;
   if (known) return known;
   const user = username ? encodeURIComponent(username) : null;
   if (provider === "trakt") {
     if (ref === "me/recommendations")
       return "https://trakt.tv/movies/recommendations";
-    // The old trakt.tv/calendars pages answer 404; the new app has one page.
     if (ref === "me/calendar" || ref.startsWith("calendars/"))
       return "https://app.trakt.tv/calendar";
     if (!user) return undefined;

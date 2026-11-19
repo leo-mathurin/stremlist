@@ -12,7 +12,7 @@ import { ProviderMark } from "./brand";
 function subtitle(
   provider: ProviderId,
   connection: ConnectionSummary | undefined,
-): string {
+) {
   if (connection?.needsRenewalSince) return "Connection expired";
   if (connection) {
     return connection.username ? `@${connection.username}` : "Connected";
@@ -21,7 +21,6 @@ function subtitle(
     case "none":
       return "Paste a link";
     case "optional":
-      // Simkl has no links, only charts in Quick add.
       return PROVIDERS[provider].linkExample
         ? "Paste a link, or connect"
         : "Add a chart, or connect";
@@ -73,7 +72,6 @@ export default function ProviderList({
           status.enabled &&
           !soon;
         const busy = connecting === id;
-        // The Provider is down: the banner explains; the row names it.
         const outage = !soon && status.enabled && status.outageSince !== null;
 
         let trailing: ReactNode;
@@ -98,8 +96,6 @@ export default function ProviderList({
         } else if (connection) {
           trailing = connection.needsRenewalSince ? (
             <span className="flex items-center gap-1">
-              {/* The Provider refuses the Connection: connecting again
-                    renews it. */}
               {canConnect && (
                 <button
                   type="button"

@@ -15,20 +15,16 @@ import {
   mergedListSyncState,
   statusOfSource,
 } from "../lib/list-sync";
-import type { ListConnectionState, ListSyncState } from "../lib/list-sync";
+import type { ListConnectionState } from "../lib/list-sync";
 
-/** How often the page asks for the sync status while a refresh runs. */
 const SYNC_POLL_MS = 4000;
-/** Stop asking after this many polls (two minutes). */
 const SYNC_POLL_LIMIT = 30;
 
-/** The saved Source lists of each saved List. */
 type SavedList = Pick<
   ConfigList,
   "id" | "provider" | "sourceRef" | "mergedSources"
 >;
 
-/** A config or refresh answer: the sync status, Connections and saved Lists. */
 interface SyncAnswer {
   syncStatus: ListSyncStatuses;
   connections: ConnectionSummary[];
@@ -38,7 +34,7 @@ interface SyncAnswer {
 
 type ReadQueue = NonNullable<AccountSyncSnapshot["readQueue"]>;
 
-function sourcesOf(lists: SavedList[]): Record<string, string> {
+function sourcesOf(lists: SavedList[]) {
   return Object.fromEntries(
     lists.map((list) => [list.id, listSourcesKey(list)]),
   );
@@ -57,17 +53,10 @@ export function useListSyncStatus(
 ) {
   const [connections, setConnections] = useState<ConnectionSummary[]>([]);
   const [syncStatus, setSyncStatus] = useState<ListSyncStatuses>({});
-  // The Lists whose read waits in a Provider's queue.
   const [readQueue, setReadQueue] = useState<ReadQueue>({});
-  // The saved Source lists by List ID. A row whose Source lists differ (a
-  // changed chart, a merge) is not saved yet, so it has no status to wait
-  // for.
   const [savedSources, setSavedSources] = useState<Record<string, string>>({});
-  // Bumped by every update that does not come from a poll, so a poll that
-  // started before it cannot bring older values back.
   const epoch = useRef(0);
 
-  /** Take the statuses and Connections of a config or refresh answer. */
   const applySync = useCallback((answer: SyncAnswer) => {
     epoch.current += 1;
     setConnections(answer.connections);
@@ -76,15 +65,12 @@ export function useListSyncStatus(
     setSavedSources(sourcesOf(answer.lists));
   }, []);
 
-  /** Take the Lists that a save stored. */
   const rememberSaved = (lists: SavedList[]) =>
     setSavedSources(sourcesOf(lists));
 
-  /** True when the row is a saved List with its saved Source lists. */
   const isSaved = (row: ListFormRow) =>
     !!row.id && savedSources[row.id] === listSourcesKey(row);
 
-  /** Forget a Connection that the user removed. */
   const dropConnection = (provider: ProviderId) => {
     epoch.current += 1;
     setConnections((current) =>
@@ -92,16 +78,8 @@ export function useListSyncStatus(
     );
   };
 
-  /**
-   * What a List row shows about its refreshes, from the state of each of its
-   * Source lists. Null on a new setup. A row that is not saved, or whose
-   * Source lists changed since the save, has no status yet.
-   */
-  const syncStateOf = (row: ListFormRow): ListSyncState | null => {
+  const syncStateOf = (row: ListFormRow) => {
     if (!saved) return null;
-    // A saved row reads its saved Source lists, in the order of the
-    // statuses. Right after a save, the statuses can still be about the
-    // Source lists from before it.
     const statuses = row.id && isSaved(row) ? syncStatus[row.id] : undefined;
     const state = mergedListSyncState(
       listSources(row).map((source, index) => {
@@ -131,16 +109,12 @@ export function useListSyncStatus(
     (row) => isSaved(row) && syncStateOf(row)?.kind === "waiting",
   );
   const waitingKey = waiting.map((row) => row.id).join(",");
-  // A List in a Provider's queue can wait longer than two minutes: polls do
-  // not count while one waits there.
   const queued = waiting.some((row) => row.id && readQueue[row.id]);
   useEffect(() => {
     if (!accountKey || !waitingKey) return;
     let cancelled = false;
     let polls = 0;
     const poll = () => {
-      // A hidden tab does not ask (and does not use up the polls); it asks
-      // again as soon as it is visible.
       if (document.hidden || polls >= SYNC_POLL_LIMIT) return;
       if (!queued) polls += 1;
       const started = epoch.current;
@@ -159,9 +133,7 @@ export function useListSyncStatus(
               : body.connections,
           );
         })
-        .catch(() => {
-          // Try again at the next tick.
-        });
+        .catch(() => {});
     };
     const id = setInterval(poll, SYNC_POLL_MS);
     document.addEventListener("visibilitychange", poll);

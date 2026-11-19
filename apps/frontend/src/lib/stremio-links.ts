@@ -4,7 +4,7 @@
  * `https://host/path`: it always uses HTTPS and drops any port, so a local
  * `http://localhost:5173` Addon URL has no deep link.
  */
-export function stremioDeepLink(addonUrl: string): string | null {
+export function stremioDeepLink(addonUrl: string) {
   const url = new URL(addonUrl);
   if (url.protocol !== "https:" || url.port !== "") return null;
   return `stremio://${url.host}${url.pathname}${url.search}`;

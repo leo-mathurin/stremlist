@@ -4,14 +4,8 @@ import type { ConnectionAccess } from "../types";
 import { isMaxItemsError, simklRequest } from "./api";
 import { LIBRARY_VERSION, libraryKey, readState, writeState } from "./state";
 
-/**
- * Each user has a small daily request allowance (500 on a free plan), shared
- * with every other app they connected. Reads that arrive within this window
- * reuse the last snapshot without even asking Simkl whether it changed.
- */
 const SYNC_GATE_MS = 2 * 60_000;
 
-/** Simkl's media types, in the order the full library is read. */
 const KINDS = ["shows", "movies", "anime"] as const;
 export type SimklKind = (typeof KINDS)[number];
 
@@ -70,7 +64,6 @@ type RawLibrary = z.infer<typeof rawLibrarySchema>;
 
 const activityBlockSchema = z.record(z.string(), z.string().nullish());
 
-// The whole response is kept in the snapshot, so its other keys stay.
 const simklActivitiesSchema = z
   .object({
     all: z.string().nullish(),
@@ -88,7 +81,6 @@ const simklActivitiesSchema = z
 type SimklActivities = z.infer<typeof simklActivitiesSchema>;
 
 const ACTIVITY_BLOCKS = ["tv_shows", "anime", "movies"] as const;
-/** Activity keys that do not change which items sit in which status. */
 const NON_STATUS_ACTIVITIES = new Set([
   "all",
   "rated_at",
@@ -96,15 +88,14 @@ const NON_STATUS_ACTIVITIES = new Set([
   "removed_from_list",
 ]);
 
-export function toInt(value: unknown): number | undefined {
+export function toInt(value: unknown) {
   const number = typeof value === "string" ? Number(value) : value;
   return typeof number === "number" && Number.isInteger(number) && number > 0
     ? number
     : undefined;
 }
 
-/** The IDs that Simkl gives for a title, wherever the title comes from. */
-export interface SimklIds {
+interface SimklIds {
   simkl?: number;
   slug?: string;
   imdb?: string;
@@ -112,7 +103,7 @@ export interface SimklIds {
 }
 
 /** Library rows carry `simkl`, custom list items `simkl_id`. */
-export function parseIds(raw: RawIds): SimklIds {
+export function parseIds(raw: RawIds) {
   return {
     simkl: toInt(raw.simkl) ?? toInt(raw.simkl_id),
     slug: typeof raw.slug === "string" ? raw.slug : undefined,
@@ -143,43 +134,30 @@ const libraryItemSchema = z.object({
   addedAt: z.string().optional(),
   lastWatchedAt: z.string().optional(),
   rating: z.number().optional(),
-  /** When the user gave `rating`. */
   ratedAt: z.string().optional(),
   watchedEpisodes: z.number(),
-  /**
-   * Watched episodes as "season:episode" (TVDB numbering for anime), or
-   * undefined when the read did not load episodes.
-   */
   episodes: z.array(z.string()).optional(),
 });
 export type LibraryItem = z.infer<typeof libraryItemSchema>;
 
 const librarySnapshotSchema = z.object({
   version: z.number(),
-  /**
-   * The authorization that read the snapshot (`ConnectionAccess`). A
-   * reconnect, maybe to another Simkl user, never uses it.
-   */
   authorization: z.string(),
-  /** The whole /sync/activities response read before the snapshot's data. */
   activities: simklActivitiesSchema,
-  /** When activities were last checked; 0 forces a check on the next read. */
   checkedAt: z.number(),
   items: z.array(libraryItemSchema),
 });
 export type LibrarySnapshot = z.infer<typeof librarySnapshotSchema>;
 
-function normalizeStatus(value: string | undefined): SimklStatus | null {
-  // Older client IDs see "notinteresting" where newer ones see "dropped".
+function normalizeStatus(value: string | undefined) {
   if (value === "notinteresting") return "dropped";
   return STATUSES.find((status) => status === value) ?? null;
 }
 
-function parseEpisodes(entry: RawEntry): string[] {
+function parseEpisodes(entry: RawEntry) {
   const episodes = new Set<string>();
   for (const season of entry.seasons ?? []) {
     for (const episode of season.episodes ?? []) {
-      // Anime use AniDB numbering; the TVDB mapping matches IMDb seasons.
       const mappedSeason = episode.tvdb ? Number(episode.tvdb.season) : NaN;
       const mappedEpisode = episode.tvdb ? Number(episode.tvdb.episode) : NaN;
       const s = Number.isInteger(mappedSeason)
@@ -194,11 +172,7 @@ function parseEpisodes(entry: RawEntry): string[] {
   return [...episodes];
 }
 
-function parseEntry(
-  kind: SimklKind,
-  entry: RawEntry,
-  episodesLoaded: boolean,
-): LibraryItem | null {
+function parseEntry(kind: SimklKind, entry: RawEntry, episodesLoaded: boolean) {
   const media = entry.movie ?? entry.show;
   const { simkl, ...ids } = parseIds(media?.ids ?? {});
   const status = normalizeStatus(entry.status ?? undefined);
@@ -226,7 +200,7 @@ function parseEntry(
   };
 }
 
-function parseLibrary(raw: RawLibrary, episodesLoaded: boolean): LibraryItem[] {
+function parseLibrary(raw: RawLibrary, episodesLoaded: boolean) {
   const items: LibraryItem[] = [];
   for (const kind of KINDS) {
     for (const entry of raw[kind] ?? []) {
@@ -237,9 +211,6 @@ function parseLibrary(raw: RawLibrary, episodesLoaded: boolean): LibraryItem[] {
   return items;
 }
 
-// Episode rows let Actions show which episodes are watched. A very large
-// library can exceed what Simkl builds in one response (400 max_items), so
-// fall back to lighter reads instead of failing.
 const READ_VARIANTS: { params: Record<string, string>; episodes: boolean }[] = [
   {
     params: { extended: "full_anime_seasons", include_all_episodes: "yes" },
@@ -259,7 +230,7 @@ async function readItems(
   path: string,
   token: string,
   params: Record<string, string> = {},
-): Promise<LibraryItem[]> {
+) {
   for (let index = 0; ; index++) {
     const variant = READ_VARIANTS[index];
     try {
@@ -275,8 +246,7 @@ async function readItems(
   }
 }
 
-/** Phase 1 of Simkl's sync model: the whole library, one type at a time. */
-async function fullRead(token: string): Promise<LibraryItem[]> {
+async function fullRead(token: string) {
   const items: LibraryItem[] = [];
   for (const kind of KINDS) {
     items.push(...(await readItems(`/sync/all-items/${kind}`, token)));
@@ -288,7 +258,7 @@ function bucketsMoved(
   previous: SimklActivities,
   next: SimklActivities,
   matches: (key: string) => boolean,
-): boolean {
+) {
   return ACTIVITY_BLOCKS.some((block) => {
     const before = previous[block] ?? {};
     const after = next[block] ?? {};
@@ -297,12 +267,11 @@ function bucketsMoved(
   });
 }
 
-/** Phase 2: only what moved since the previous snapshot's `all`. */
 async function applyChanges(
   token: string,
   previous: LibrarySnapshot,
   activities: SimklActivities,
-): Promise<LibraryItem[]> {
+) {
   const dateFrom = previous.activities.all ?? "";
   const items = new Map(previous.items.map((item) => [item.simkl, item]));
 
@@ -320,7 +289,6 @@ async function applyChanges(
     }
   }
 
-  // date_from never returns removed items: diff the current IDs instead.
   if (
     bucketsMoved(
       previous.activities,
@@ -344,7 +312,6 @@ async function applyChanges(
     }
   }
 
-  // A rating change never shows up in the all-items delta.
   if (
     bucketsMoved(previous.activities, activities, (key) => key === "rated_at")
   ) {
@@ -369,23 +336,22 @@ async function applyChanges(
 function usableSnapshot(
   snapshot: LibrarySnapshot | null,
   connection: ConnectionAccess,
-): LibrarySnapshot | null {
+) {
   return snapshot?.version === LIBRARY_VERSION &&
     snapshot.authorization === connection.authorization
     ? snapshot
     : null;
 }
 
-/** Syncs in flight by Account, then by authorization. */
 const inFlightSyncs = new Map<string, Map<string, Promise<LibrarySnapshot>>>();
 
 /** Test hook: forget the syncs in flight. */
-export function clearInFlightSyncs(): void {
+export function clearInFlightSyncs() {
   inFlightSyncs.clear();
 }
 
 /** After a disconnect: a later read must not join a sync of the old tokens. */
-export function forgetInFlightSync(accountId: string): void {
+export function forgetInFlightSync(accountId: string) {
   inFlightSyncs.delete(accountId);
 }
 
@@ -395,11 +361,8 @@ export function forgetInFlightSync(accountId: string): void {
  * otherwise fetch only the delta. The full library is read once per
  * Connection (and again only if the snapshot is lost).
  */
-export function syncLibrary(
-  connection: ConnectionAccess,
-): Promise<LibrarySnapshot> {
+export function syncLibrary(connection: ConnectionAccess) {
   const { accountId, authorization } = connection;
-  // A read after a reconnect never joins a sync of the previous tokens.
   const syncs =
     inFlightSyncs.get(accountId) ?? new Map<string, Promise<LibrarySnapshot>>();
   const existing = syncs.get(authorization);
@@ -418,7 +381,7 @@ export function syncLibrary(
   return sync;
 }
 
-async function runSync(connection: ConnectionAccess): Promise<LibrarySnapshot> {
+async function runSync(connection: ConnectionAccess) {
   const key = libraryKey(connection.accountId);
   const previous = usableSnapshot(
     await readState(key, librarySnapshotSchema),
@@ -428,8 +391,6 @@ async function runSync(connection: ConnectionAccess): Promise<LibrarySnapshot> {
     return previous;
 
   const token = await connection.getAccessToken();
-  // Read before the data it anchors, so a change made during the read is
-  // newer than the saved timestamp and comes back in the next delta.
   const activities = await simklRequest(
     "/sync/activities",
     simklActivitiesSchema,
@@ -457,10 +418,7 @@ async function runSync(connection: ConnectionAccess): Promise<LibrarySnapshot> {
 }
 
 /** The library items of one Title, from the last snapshot of `connection`. */
-export async function knownItems(
-  connection: ConnectionAccess,
-  imdbId: string,
-): Promise<LibraryItem[]> {
+export async function knownItems(connection: ConnectionAccess, imdbId: string) {
   const snapshot = usableSnapshot(
     await readState(libraryKey(connection.accountId), librarySnapshotSchema),
     connection,
@@ -469,7 +427,7 @@ export async function knownItems(
 }
 
 /** After an Action, the next read checks activities instead of the gate. */
-export async function markLibraryChanged(accountId: string): Promise<void> {
+export async function markLibraryChanged(accountId: string) {
   const key = libraryKey(accountId);
   const snapshot = await readState(key, librarySnapshotSchema);
   if (snapshot) await writeState(key, { ...snapshot, checkedAt: 0 });

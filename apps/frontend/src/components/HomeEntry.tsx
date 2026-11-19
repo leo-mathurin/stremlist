@@ -14,7 +14,6 @@ import {
 import { cn } from "@/lib/utils";
 
 const legacyInstallLookup: LegacyInstallLookup = {
-  // The same answer as the public configure page of that key.
   async exists(alias) {
     const res = await api[":accountKey"].config.$get({
       param: { accountKey: alias },
@@ -35,14 +34,7 @@ const legacyInstallLookup: LegacyInstallLookup = {
   },
 };
 
-/**
- * The v1 install that answers to a pasted link, or `failed` when the check
- * could not tell.
- */
-async function checkLegacyInstall(
-  input: string,
-  detected: ParsedSourceLink,
-): Promise<{ install: string | null } | "failed"> {
+async function checkLegacyInstall(input: string, detected: ParsedSourceLink) {
   try {
     return {
       install: await findLegacyInstall(input, detected, legacyInstallLookup),
@@ -68,11 +60,9 @@ export default function HomeEntry() {
   const [addonError, setAddonError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
-  /** A v1 install that answers to the pasted link, until the user chooses. */
   const [found, setFound] = useState<string | null>(null);
   const addonInput = useRef<HTMLInputElement>(null);
 
-  // The Addon URL field shows after a click on "Open it": it takes focus.
   useEffect(() => {
     if (showExisting) addonInput.current?.focus();
   }, [showExisting]);
@@ -86,7 +76,6 @@ export default function HomeEntry() {
     return detectedLinkHint(detected);
   })();
 
-  /** `state.entry` tells the configure page that Home found this install. */
   const openAccount = (key: string, state?: { entry: "home" }) => {
     void navigate(`/configure?account=${encodeURIComponent(key)}`, { state });
   };
@@ -104,7 +93,6 @@ export default function HomeEntry() {
       const check = await checkLegacyInstall(trimmed, detected);
       setChecking(false);
       if (check === "failed") {
-        // Not knowing is not "no install": a new setup could duplicate it.
         setStartError(
           "Could not check for your existing Stremlist. Please try again.",
         );
@@ -148,7 +136,6 @@ export default function HomeEntry() {
         <label htmlFor={linkId} className="sr-only">
           {PASTE_LINK_PROMPT}
         </label>
-        {/* Side by side only when the field still fits its whole prompt. */}
         <div className="@container">
           <div className="flex flex-col gap-1.5 rounded-[28px] bg-white/10 p-1.5 ring-1 ring-transparent transition-shadow focus-within:ring-brand/60 @[30rem]:flex-row @[30rem]:items-center @[30rem]:rounded-full">
             <input

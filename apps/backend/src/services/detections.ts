@@ -7,11 +7,7 @@ import {
   sourceRequiresConnection,
 } from "@stremlist/shared/providers";
 import { storedSourceNoun } from "@stremlist/shared/source-problems";
-import type {
-  ConfigList,
-  NewTitlesSummary,
-  StremioMeta,
-} from "@stremlist/shared/stremio.types";
+import type { ConfigList, StremioMeta } from "@stremlist/shared/stremio.types";
 import type { ProviderAdapter, SourceEntry } from "../providers/types";
 import type { AccountAccess } from "./accounts";
 import { getVisibleLists, visibleLists } from "./accounts";
@@ -27,20 +23,13 @@ import {
   recordHistory,
 } from "./title-history";
 
-/** One Title of the "New titles" catalog, with its first detection. */
 interface Detection {
   imdbId: string;
   detectedAt: Date;
-  /** The List whose Source list had the earliest detection. */
   list: ConfigList;
-  /** That Source list: one of the List's own (several in a merged List). */
   source: ListSource;
 }
 
-/**
- * Most Titles read for one catalog request, newest first. Older detections
- * drop out of the catalog, which only shows what is new.
- */
 const MAX_DETECTIONS = 1000;
 
 const DATE_FORMAT = new Intl.DateTimeFormat("en-GB", {
@@ -50,13 +39,7 @@ const DATE_FORMAT = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC",
 });
 
-/**
- * Every Source list of the Lists, with its List. A Source list is in one List
- * of an Account at most, so the key finds the List back.
- */
-function sourcesOf(
-  lists: ConfigList[],
-): Map<string, { list: ConfigList; source: ListSource }> {
+function sourcesOf(lists: ConfigList[]) {
   return new Map(
     lists.flatMap((list) =>
       listSources(list).map(
@@ -66,7 +49,7 @@ function sourcesOf(
   );
 }
 
-function normalizeTitle(title: string): string {
+function normalizeTitle(title: string) {
   return title
     .normalize("NFKD")
     .replace(/\p{M}/gu, "")
@@ -81,10 +64,7 @@ function normalizeTitle(title: string): string {
  * title and year for Providers that give no ID for the entry. Null when the
  * entry has none of these: it cannot be followed between synchronizations.
  */
-export function entryKey(
-  adapter: ProviderAdapter,
-  entry: SourceEntry,
-): string | null {
+export function entryKey(adapter: ProviderAdapter, entry: SourceEntry) {
   const key = adapter.resolutionKey?.(entry);
   if (key) return `${key.namespace}:${key.externalId}`;
   if (entry.imdbId) return `imdb:${entry.imdbId}`;
@@ -115,15 +95,12 @@ export async function recordSynchronization(
     /** The Connection user the read went through, if any. */
     connectionUser: string | null;
   },
-): Promise<void> {
+) {
   const keyed = entries.flatMap((entry) => {
     const key = entryKey(adapter, entry);
     return key ? [{ key, imdbId: imdbIds.get(entry) ?? null }] : [];
   });
   try {
-    // History of a Source list that only a Connection can read belongs to
-    // that Connection's Provider user: nothing is written when that
-    // Connection is gone or replaced (a disconnect during the read).
     let connection: HistoryConnection | null = null;
     if (sourceRequiresConnection(source.provider, source.sourceRef)) {
       const current = (await listConnections(source.accountId)).find(
@@ -151,28 +128,18 @@ export async function recordSynchronization(
 }
 
 interface LoadedHistories {
-  /** The histories that still apply (see `historyApplies`), by `sourceKey`. */
   histories: Map<string, SourceHistory>;
-  /** Source lists whose history could not be read now. */
   unreadable: number;
 }
 
-function logReadError(what: string, error: unknown): void {
+function logReadError(what: string, error: unknown) {
   console.error(
     `Failed to read ${what}:`,
     error instanceof Error ? error.message : error,
   );
 }
 
-/**
- * The histories of these Source lists. A Source list without one has no
- * Baseline yet. A read that fails counts as unreadable instead of failing
- * the others: one storage error must not empty the whole catalog.
- */
-async function loadHistories(
-  accountId: string,
-  sources: ListSource[],
-): Promise<LoadedHistories> {
+async function loadHistories(accountId: string, sources: ListSource[]) {
   const needsConnection = sources.some((source) =>
     sourceRequiresConnection(source.provider, source.sourceRef),
   );
@@ -186,7 +153,6 @@ async function loadHistories(
         ]),
       );
     } catch (error) {
-      // Connection-only histories cannot be checked: the others still can.
       logReadError(`the Connections of account ${accountId}`, error);
       connections = null;
     }
@@ -222,18 +188,13 @@ async function loadHistories(
       }
     }),
   );
-  return { histories, unreadable };
+  return { histories, unreadable } satisfies LoadedHistories;
 }
 
-/**
- * Detected Titles that the Lists still contain, newest first, one per Title:
- * a Title that several Source lists have (in one merged List or in several
- * Lists) keeps its earliest detection. The rules live in `listNewTitles`.
- */
 function toDetections(
   lists: ConfigList[],
   histories: Map<string, SourceHistory>,
-): Detection[] {
+) {
   const sources = sourcesOf(lists);
   const titles = listNewTitles(
     [...sources.values()].flatMap(({ source }) => {
@@ -256,19 +217,13 @@ function toDetections(
   });
 }
 
-/** The List's name as the user sees it, for the detection line. */
-function listName({ list, source }: Detection): string {
+function listName({ list, source }: Detection) {
   const title = list.catalogTitle.trim();
-  // v1 saved positions ("1", "2") as default titles, which say nothing on
-  // their own: name the Source list that detected the Title instead.
   if (title && !/^\d+$/u.test(title)) return title;
   return `your ${PROVIDERS[source.provider].label} ${storedSourceNoun(source.provider, source.sourceRef)}`;
 }
 
-function withDetectionLine(
-  meta: StremioMeta,
-  detection: Detection,
-): StremioMeta {
+function withDetectionLine(meta: StremioMeta, detection: Detection) {
   const line = `Detected by Stremlist on ${DATE_FORMAT.format(detection.detectedAt)} in ${listName(detection)}.`;
   return {
     ...meta,
@@ -286,11 +241,10 @@ function withDetectionLine(
 export async function getNewTitlesCatalog(
   access: AccountAccess,
   type: TitleType,
-): Promise<StremioMeta[]> {
+) {
   const lists = await getVisibleLists(access);
   const sources = [...sourcesOf(lists).values()].map(({ source }) => source);
   if (sources.length === 0) return [];
-  // Unreadable Source lists are left out until the next request.
   const { histories } = await loadHistories(access.account.id, sources);
   const detections = toDetections(lists, histories);
   if (detections.length === 0) return [];
@@ -309,8 +263,6 @@ export async function getNewTitlesCatalog(
   const metasBySource = new Map(cached);
 
   return detections.flatMap((detection) => {
-    // Prefer the Source list that detected the Title: its metadata carries
-    // the link back to that Provider.
     const meta =
       metasBySource.get(sourceKey(detection.source))?.get(detection.imdbId) ??
       [...metasBySource.values()]
@@ -328,7 +280,7 @@ export async function getNewTitlesCatalog(
 export async function getNewTitlesSummary(
   access: AccountAccess,
   allLists: ConfigList[],
-): Promise<NewTitlesSummary | null> {
+) {
   const lists = visibleLists(access, allLists);
   if (lists.length === 0) {
     return { detected: 0, latestDetectedAt: null, waitingLists: 0 };
@@ -337,13 +289,11 @@ export async function getNewTitlesSummary(
     access.account.id,
     [...sourcesOf(lists).values()].map(({ source }) => source),
   );
-  // Counts without some Source lists would be wrong: show only the setting.
   if (unreadable > 0) return null;
   const detections = toDetections(lists, histories);
   return {
     detected: detections.length,
     latestDetectedAt: detections[0]?.detectedAt.toISOString() ?? null,
-    // A merged List waits while one of its Source lists has no Baseline.
     waitingLists: lists.filter((list) =>
       listSources(list).some((source) => !histories.has(sourceKey(source))),
     ).length,

@@ -5,12 +5,6 @@ import { PROVIDERS, sourceRequiresConnection, staticSource } from "./providers";
 import { storedSourceNoun } from "./source-problems";
 import { SIMKL_CHART_TYPE_INFO, simklGenreChartOf } from "./simkl-charts";
 
-/**
- * Merged Lists: one List that reads several Source lists and shows their
- * Titles once each, in the same Catalogs. See CONTEXT.md and ADR 0006.
- * Pure, so the configure page and the backend check the same rules.
- */
-
 /** One Source list of a List. */
 export interface ListSource extends SourceId {
   /**
@@ -37,7 +31,7 @@ export const MAX_SOURCES_PER_LIST = 5;
 export const MAX_SOURCES_PER_ACCOUNT = 20;
 
 /** Every Source list of a List, its first one first. */
-export function listSources(list: MergeableList): ListSource[] {
+export function listSources(list: MergeableList) {
   return [
     {
       provider: list.provider,
@@ -49,7 +43,7 @@ export function listSources(list: MergeableList): ListSource[] {
 }
 
 /** Source lists are unique by Provider and reference. */
-export function sourceKey(source: ListSource): string {
+export function sourceKey(source: ListSource) {
   return `${source.provider}:${source.sourceRef}`;
 }
 
@@ -57,16 +51,16 @@ export function sourceKey(source: ListSource): string {
  * Every Source list of a List, in order, as one string: equal for two Lists
  * that read the same Source lists in the same order.
  */
-export function listSourcesKey(list: MergeableList): string {
+export function listSourcesKey(list: MergeableList) {
   return listSources(list).map(sourceKey).join(",");
 }
 
-export function isMergedList(list: MergeableList): boolean {
+export function isMergedList(list: MergeableList) {
   return (list.mergedSources?.length ?? 0) > 0;
 }
 
 /** The Providers whose Connection one of the List's Source lists needs. */
-export function connectionProviders(list: MergeableList): ProviderId[] {
+export function connectionProviders(list: MergeableList) {
   return [
     ...new Set(
       listSources(list)
@@ -79,7 +73,7 @@ export function connectionProviders(list: MergeableList): ProviderId[] {
 }
 
 /** A List needs a Connection when one of its Source lists does. */
-export function listRequiresConnection(list: MergeableList): boolean {
+export function listRequiresConnection(list: MergeableList) {
   return connectionProviders(list).length > 0;
 }
 
@@ -87,10 +81,7 @@ export function listRequiresConnection(list: MergeableList): boolean {
  * The only Title type that a Source list can contain, or null when it can
  * contain movies and series.
  */
-export function sourceTitleType(
-  provider: ProviderId,
-  ref: string,
-): TitleType | null {
+export function sourceTitleType(provider: ProviderId, ref: string) {
   const mode = imdbChartOf({ provider, sourceRef: ref })?.defaultDisplayMode;
   if (mode === "movie" || mode === "series") return mode;
   const genre = provider === "simkl" ? simklGenreChartOf(ref) : null;
@@ -108,10 +99,7 @@ const SIMKL_DATED =
  * list (added, watched, collected or paused). Charts, calendars,
  * recommendations and lists in the owner's order have no date.
  */
-export function sourceHasAddedDates(
-  provider: ProviderId,
-  ref: string,
-): boolean {
+export function sourceHasAddedDates(provider: ProviderId, ref: string) {
   switch (provider) {
     case "imdb":
       return !CHART_BY_ID.has(ref);
@@ -122,7 +110,6 @@ export function sourceHasAddedDates(
     case "mdblist":
       return /^me\/(?:watchlist|ratings|history|collection)$/.test(ref);
     case "letterboxd":
-      // Only the diary carries per-entry dates (the watch date).
       return /^users\/[^/]+\/diary$/.test(ref);
     case "justwatch":
     case "senscritique":
@@ -130,11 +117,7 @@ export function sourceHasAddedDates(
   }
 }
 
-/**
- * A short name for a Source list inside a sentence, such as "Top 250 Movies",
- * "Trakt Trending" or "the SensCritique list".
- */
-function sourceName(source: ListSource): string {
+function sourceName(source: ListSource) {
   const chart = imdbChartOf(source);
   if (chart) return chart.label;
   const label = PROVIDERS[source.provider].label;
@@ -148,7 +131,7 @@ export function sourcesWithVerb(
   sources: ListSource[],
   singular: string,
   plural: string,
-): string {
+) {
   const names = sources.map(sourceName);
   const last = names.pop();
   return names.length > 0
@@ -156,17 +139,11 @@ export function sourcesWithVerb(
     : `${last} ${singular}`;
 }
 
-function capitalize(text: string): string {
+function capitalize(text: string) {
   return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 }
 
-/**
- * The Source lists of a merged List that contain only movies or only
- * series. Empty for a List with one Source list: it shows what it has.
- */
-function singleTypeSources(
-  list: MergeableList,
-): Record<TitleType, ListSource[]> {
+function singleTypeSources(list: MergeableList) {
   const sources = isMergedList(list) ? listSources(list) : [];
   const ofType = (type: TitleType) =>
     sources.filter(
@@ -182,7 +159,7 @@ function singleTypeSources(
 export function singleTypeReason(
   list: MergeableList,
   outcome: Record<"both" | TitleType, string>,
-): string | null {
+) {
   const { movie, series } = singleTypeSources(list);
   const parts = (
     [
@@ -204,7 +181,7 @@ export function singleTypeReason(
  * The display modes that keep every Title type of a merged List: a Source
  * list with only movies rules out "TV shows only", and the reverse.
  */
-export function allowedDisplayModes(list: MergeableList): DisplayMode[] {
+export function allowedDisplayModes(list: MergeableList) {
   const { movie, series } = singleTypeSources(list);
   return (["split", "movie", "series"] as const).filter(
     (mode) =>
@@ -217,7 +194,7 @@ export function allowedDisplayModes(list: MergeableList): DisplayMode[] {
  * The Source lists that stop a merged List from sorting by date added. A
  * List with one Source list keeps its Provider's order and never has any.
  */
-export function sourcesWithoutDates(list: MergeableList): ListSource[] {
+export function sourcesWithoutDates(list: MergeableList) {
   if (!isMergedList(list)) return [];
   return listSources(list).filter(
     (source) => !sourceHasAddedDates(source.provider, source.sourceRef),
@@ -225,19 +202,14 @@ export function sourcesWithoutDates(list: MergeableList): ListSource[] {
 }
 
 /** Whether a List can sort by this option: "Date added" needs dates. */
-export function isSortAllowed(
-  list: MergeableList,
-  sortOption: string,
-): boolean {
+export function isSortAllowed(list: MergeableList, sortOption: string) {
   return (
     !sortOption.startsWith("added_at") || sourcesWithoutDates(list).length === 0
   );
 }
 
-/** Why the Lists of one Account cannot be saved together. */
 interface AccountListsProblem {
   reason: "too_many_lists" | "duplicate_source" | "too_many_sources";
-  /** The message for the user. */
   message: string;
 }
 
@@ -246,27 +218,25 @@ interface AccountListsProblem {
  * at most MAX_LISTS Lists, each Source list in only one of them, and at
  * most MAX_SOURCES_PER_ACCOUNT Source lists in all.
  */
-export function accountListsProblem(
-  lists: readonly MergeableList[],
-): AccountListsProblem | null {
+export function accountListsProblem(lists: readonly MergeableList[]) {
   if (lists.length > MAX_LISTS) {
     return {
       reason: "too_many_lists",
       message: `You can have at most ${MAX_LISTS} lists.`,
-    };
+    } satisfies AccountListsProblem;
   }
   const keys = lists.flatMap((list) => listSources(list).map(sourceKey));
   if (new Set(keys).size !== keys.length) {
     return {
       reason: "duplicate_source",
       message: "Each list can only be added once.",
-    };
+    } satisfies AccountListsProblem;
   }
   if (keys.length > MAX_SOURCES_PER_ACCOUNT) {
     return {
       reason: "too_many_sources",
       message: `You can have at most ${MAX_SOURCES_PER_ACCOUNT} lists in total, merged lists included.`,
-    };
+    } satisfies AccountListsProblem;
   }
   return null;
 }
@@ -279,7 +249,7 @@ export function accountListsProblem(
  */
 export function listMergeProblem(
   list: MergeableList & { displayMode: DisplayMode; sortOption: string },
-): string | null {
+) {
   const sources = listSources(list);
   if (sources.length > MAX_SOURCES_PER_LIST) {
     return `A catalog can merge at most ${MAX_SOURCES_PER_LIST} lists.`;

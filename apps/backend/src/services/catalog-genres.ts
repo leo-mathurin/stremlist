@@ -8,12 +8,9 @@ import { sourceCaches } from "./merged-lists";
  * its Source lists (`sourceGenres`, so the configure page can tell which
  * genres a Source list brings).
  */
-export async function withAvailableGenres(
-  lists: ConfigList[],
-): Promise<ConfigList[]> {
+export async function withAvailableGenres(lists: ConfigList[]) {
   return Promise.all(
     lists.map(async (list) => {
-      // A merged List offers the genres of all its Source lists.
       const summaries = await Promise.all(
         sourceCaches(list).map(({ source, cacheKey }) =>
           getCachedListSummary(cacheKey, source),

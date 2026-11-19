@@ -15,8 +15,8 @@ import {
 } from "./env.js";
 
 export default defineConfig({
-  testDir: "./tests",
-  // Every project shares one backend and database, so tests run serially.
+  testDir: "./test",
+  /** Every project shares one backend and database, so tests run serially. */
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
@@ -29,16 +29,13 @@ export default defineConfig({
   use: {
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
-    // stremio-web registers a service worker; blocking it keeps network
-    // behavior deterministic across fresh contexts.
+    /**
+     * stremio-web registers a service worker; blocking it keeps network
+     * behavior deterministic across fresh contexts.
+     */
     serviceWorkers: "block",
     launchOptions: {
       args: [
-        // Chrome blocks fetches from public HTTPS pages (web.stremio.com) to
-        // loopback addresses behind the Local Network Access permission, which
-        // headless runs can never grant. Older Chromium versions gate the same
-        // thing behind Private Network Access preflights. Disable both so the
-        // hosted Stremio Web app can talk to the local addon under test.
         "--disable-features=LocalNetworkAccessChecks,BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults",
       ],
     },
@@ -62,8 +59,10 @@ export default defineConfig({
   ],
   webServer: [
     {
-      // --no-env-file keeps a local apps/backend/.env (real secrets) out of the
-      // test backend; every variable it needs is set explicitly below.
+      /**
+       * --no-env-file keeps a local apps/backend/.env (real secrets) out of the
+       * test backend; every variable it needs is set explicitly below.
+       */
       command: "bun --no-env-file src/dev.ts",
       cwd: "../backend",
       url: `${BACKEND_URL}/health`,
@@ -80,9 +79,11 @@ export default defineConfig({
         R2_SECRET_ACCESS_KEY,
         R2_BUCKET,
         CONNECTION_ENCRYPTION_KEY,
-        // The Resend SDK throws at import time without a key. Newsletter
-        // delivery is deliberately out of E2E scope (it would email real
-        // people), so a dummy key is enough to boot the app.
+        /**
+         * The Resend SDK throws at import time without a key. Newsletter
+         * delivery is deliberately out of E2E scope (it would email real
+         * people), so a dummy key is enough to boot the app.
+         */
         RESEND_API_KEY: "re_e2e_dummy_key",
       },
     },

@@ -151,11 +151,6 @@ export class SourceBusyError extends SourceUnavailableError {
   }
 }
 
-/**
- * The Connection cannot give a token any more (refresh refused or revoked):
- * the user must connect the Provider again. Adapters let it through; the
- * services and routes read it as a "needs_connection" Source list.
- */
 /** The Provider does not know the Title of an Action. */
 export class UnknownTitleError extends Error {
   constructor(provider: ProviderId, imdbId: string) {
@@ -223,22 +218,16 @@ export interface Membership {
 
 const RATINGS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
-/** A rating from 1 to 10, the scale of every Provider with ratings. */
-export type Rating = (typeof RATINGS)[number];
+type Rating = (typeof RATINGS)[number];
 
 /** The value as a Rating, or null when it is not an integer from 1 to 10. */
-export function toRating(value: unknown): Rating | null {
+export function toRating(value: unknown) {
   return RATINGS.find((rating) => rating === value) ?? null;
 }
 
 export type ActionIntent =
   | { kind: "watchlist"; add: boolean }
-  /**
-   * `watchedAt` (ISO time) dates the play on the Provider; without it the
-   * Provider uses the time of the write.
-   */
   | { kind: "watched"; add: boolean; watchedAt?: string }
-  /** Null removes the rating. */
   | { kind: "rating"; rating: Rating | null };
 
 export interface ActionTarget {
@@ -254,9 +243,7 @@ export interface ActionTarget {
 }
 
 /** The episodes that an Action names, if any. */
-export function targetEpisodes(
-  target: ActionTarget,
-): { season: number; episode: number }[] {
+export function targetEpisodes(target: ActionTarget) {
   return target.episodes ?? (target.episode ? [target.episode] : []);
 }
 

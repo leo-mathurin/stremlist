@@ -5,18 +5,9 @@ import { api } from "@/lib/api";
 
 export type StremioLinkState =
   | { kind: "idle" }
-  /**
-   * Waiting for the member to confirm the code on stremio.com. `opened`:
-   * the Stremio tab opened. In-app browsers can refuse it.
-   */
   | { kind: "waiting"; link: string | null; opened: boolean }
   | { kind: "expired" }
-  /** Stremio gave no code. */
   | { kind: "failed" }
-  /**
-   * Before linking another account: a code links the account signed in on
-   * stremio.com, so the member changes it there first.
-   */
   | { kind: "switching" };
 
 /** unavailable: retry; signed-out: link again; missing: not installed. */
@@ -28,7 +19,6 @@ export type StremioSyncState =
   | { kind: "updated" }
   | { kind: "failed"; reason: StremioFailure };
 
-/** How to see an update. Stremio reads an addon again only when it starts. */
 /**
  * The toast of a Stremio update. The save toast that starts an update uses
  * it too, so the result replaces it.
@@ -39,11 +29,10 @@ export const RELOAD_HINT =
   "Reload Stremio Web or restart the app to see your changes.";
 
 const MANUAL_KEY = "stremlist:stremio-manual";
-/** How long the member has to confirm a code before it counts as expired. */
 const LINK_TIMEOUT_MS = 5 * 60_000;
 const LINK_POLL_MS = 2_000;
 
-function readManual(): boolean {
+function readManual() {
   try {
     return localStorage.getItem(MANUAL_KEY) === "1";
   } catch {
@@ -55,15 +44,9 @@ function writeManual(value: boolean) {
   try {
     if (value) localStorage.setItem(MANUAL_KEY, "1");
     else localStorage.removeItem(MANUAL_KEY);
-  } catch {
-    // Private mode: the choice lasts until the page closes.
-  }
+  } catch {}
 }
 
-/**
- * Waits `ms`, or less when the member comes back to this tab: a phone
- * pauses background tabs, and the code may be confirmed by then.
- */
 const wait = (ms: number) =>
   new Promise<void>((resolve) => {
     const done = () => {
@@ -78,8 +61,7 @@ const wait = (ms: number) =>
     document.addEventListener("visibilitychange", onVisible);
   });
 
-/** Why a Stremio request failed, from the backend's answer. */
-function failureOf(res: Response): Exclude<StremioFailure, "missing"> {
+function failureOf(res: Response) {
   return res.status === 409 ? "signed-out" : "unavailable";
 }
 
@@ -96,7 +78,6 @@ export function useStremioSync(
   loaded: StremioLink | null,
   onUpToDate: () => void,
 ) {
-  // What this page linked or disconnected since the configuration loaded.
   const [changed, setConnection] = useState<StremioLink | null | undefined>(
     undefined,
   );
@@ -110,7 +91,6 @@ export function useStremioSync(
     onUpToDateRef.current = onUpToDate;
   });
 
-  /** Stremio has the saved setup. */
   const updated = useCallback(() => {
     setSync({ kind: "updated" });
     toast.success(`Stremio updated. ${RELOAD_HINT}`, {
@@ -119,10 +99,8 @@ export function useStremioSync(
   }, []);
 
   const fail = useCallback((reason: StremioFailure, quiet: boolean) => {
-    // The failure card replaces "Saved! Stremlist is updating Stremio."
     toast.dismiss(STREMIO_UPDATE_TOAST);
     if (reason === "signed-out") setConnection(null);
-    // An outage during the check on load is not worth a card.
     setSync(
       quiet && reason === "unavailable"
         ? { kind: "idle" }
@@ -130,7 +108,6 @@ export function useStremioSync(
     );
   }, []);
 
-  /** One update request. See `update`. */
   const requestUpdate = useCallback(
     async (quiet: boolean) => {
       if (!accountId) return;
@@ -161,17 +138,10 @@ export function useStremioSync(
   );
 
   const running = useRef<Promise<void> | null>(null);
-  /** The update asked for while one runs: quiet only if every ask was. */
   const queued = useRef<boolean | null>(null);
 
-  /**
-   * Gives Stremio the saved catalogs. A quiet check (on load) stays silent
-   * when nothing changed or Stremio does not answer. One update runs at a
-   * time; asks made meanwhile become one more update after it, which the
-   * backend builds from the last save.
-   */
   const update = useCallback(
-    (quiet = false): Promise<void> => {
+    (quiet = false) => {
       if (!accountId) return Promise.resolve();
       if (running.current) {
         if (!quiet) setSync({ kind: "updating" });
@@ -194,10 +164,6 @@ export function useStremioSync(
     [accountId, requestUpdate],
   );
 
-  /**
-   * Links a Stremio account. Opens the Stremio tab at once, inside the click,
-   * so a popup blocker lets it through, then points it at the code page.
-   */
   const connect = useCallback(async () => {
     if (!accountId) return;
     const run = ++linkRun.current;
@@ -210,9 +176,7 @@ export function useStremioSync(
         param: { accountId },
       });
       if (res.ok) code = await res.json();
-    } catch {
-      // Handled below, as a refused code.
-    }
+    } catch {}
     if (!code || run !== linkRun.current) {
       tab?.close();
       if (run === linkRun.current) setLink({ kind: "failed" });
@@ -234,21 +198,17 @@ export function useStremioSync(
           param: { accountId },
           json: { token: code.token },
         });
-        // The token is too old: no answer can link it any more.
         if (res.status === 410) break;
         if (res.ok) {
           ({ stremio: linked } = await res.json());
         }
-      } catch {
-        // A missed answer is not a refusal: ask again.
-      }
+      } catch {}
       if (run !== linkRun.current) return;
       if (linked) {
         writeManual(false);
         setConnection(linked);
         setManualPreferredState(false);
         setLink({ kind: "idle" });
-        // The save toast still says how to update Stremio by hand.
         toast.dismiss("configuration-save");
         await update();
         return;
@@ -262,10 +222,6 @@ export function useStremioSync(
     setLink({ kind: "idle" });
   }, []);
 
-  /**
-   * Forgets the key on the server. Stremio stays signed in elsewhere: a
-   * Stremio logout would also sign the member out of stremio.com.
-   */
   const forget = useCallback(async () => {
     if (!accountId) return false;
     let disconnected = false;
@@ -274,9 +230,7 @@ export function useStremioSync(
         param: { accountId },
       });
       disconnected = res.ok;
-    } catch {
-      // Handled below, as a refused disconnect.
-    }
+    } catch {}
     if (!disconnected) {
       toast.error("Could not disconnect Stremio. Please try again.");
       return false;
@@ -292,7 +246,6 @@ export function useStremioSync(
     await forget();
   }, [forget]);
 
-  /** The linked account is the wrong one: forget it, then link another. */
   const switchAccount = useCallback(async () => {
     linkRun.current++;
     if (await forget()) setLink({ kind: "switching" });
@@ -300,7 +253,6 @@ export function useStremioSync(
 
   const retry = useCallback(() => update(), [update]);
 
-  /** The member asked to add Stremlist back to the linked account. */
   const installAgain = useCallback(async () => {
     if (!accountId) return;
     setSync({ kind: "updating" });
@@ -320,7 +272,6 @@ export function useStremioSync(
     updated();
   }, [accountId, fail, updated]);
 
-  /** The member reinstalled by hand: the last failure no longer applies. */
   const clearStatus = useCallback(() => setSync({ kind: "idle" }), []);
 
   const setManualPreferred = useCallback((value: boolean) => {
@@ -328,8 +279,6 @@ export function useStremioSync(
     setManualPreferredState(value);
   }, []);
 
-  // A Stremio app left open can write its older copy of the addon back, so
-  // the install is checked once each time the page opens.
   const checked = useRef<string | null>(null);
   useEffect(() => {
     if (!accountId || !loaded || checked.current === accountId) return;
@@ -337,7 +286,6 @@ export function useStremioSync(
     void update(true);
   }, [accountId, loaded, update]);
 
-  // Stop asking for a code once the page goes away.
   useEffect(
     () => () => {
       linkRun.current++;
@@ -346,7 +294,6 @@ export function useStremioSync(
   );
 
   return {
-    /** Null for a Legacy alias or a new setup: only the reinstall works. */
     available: accountId !== null,
     connection,
     manualPreferred,
@@ -357,7 +304,6 @@ export function useStremioSync(
     cancelLink,
     disconnect,
     switchAccount,
-    /** Updates Stremio after a save. */
     update: () => update(),
     retry,
     installAgain,

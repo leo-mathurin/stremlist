@@ -22,21 +22,8 @@ import { getConnectionAccess } from "./connections";
 
 /** Membership older than this is refreshed in the background. */
 export const MEMBERSHIP_FRESH_MS = 15 * 60_000;
-/**
- * How long this instance trusts its copy of a membership (or of its absence)
- * before it reads R2 again and sees what other instances wrote.
- */
 const MEMORY_MEMBERSHIP_TTL_MS = 60_000;
-/**
- * A large membership (10,000 Titles and 20,000 episodes) is ~0.5 MB of JSON,
- * a usual one a few KB. 8 MB (~30 MB of heap for these short strings) keeps
- * thousands of usual users.
- */
 const MEMORY_MEMBERSHIP_MAX_WEIGHT = 8 * 1024 * 1024;
-/**
- * After a failed refresh, stream requests wait this long before they ask for
- * another: a Provider outage must not turn each request into a full read.
- */
 const REFRESH_COOLDOWN_MS = 5 * 60_000;
 
 export const EMPTY_MEMBERSHIP: Membership = {
@@ -49,7 +36,6 @@ export const EMPTY_MEMBERSHIP: Membership = {
 const storedMembershipSchema = z.object({
   fetchedAt: z.string(),
   revision: z.string().optional(),
-  /** The authorization that read it. Older snapshots have only `username`. */
   authorization: z.string().optional(),
   username: z.string().nullable().optional(),
   membership: z.object({
@@ -61,19 +47,17 @@ const storedMembershipSchema = z.object({
 });
 type StoredMembership = z.infer<typeof storedMembershipSchema>;
 
-function membershipKey(accountId: string, provider: ProviderId): string {
+function membershipKey(accountId: string, provider: ProviderId) {
   return `${connectionPrefix(accountId, provider)}membership.json`;
 }
 
-/** Copies of R2's membership objects; null when R2 has none. */
 const memoryMembership = new LruCache<string, StoredMembership | null>({
   maxEntries: 10_000,
   maxWeight: MEMORY_MEMBERSHIP_MAX_WEIGHT,
   ttlMs: MEMORY_MEMBERSHIP_TTL_MS,
 });
 
-/** About the JSON length of a stored membership, without serializing it. */
-function membershipWeight(stored: StoredMembership | null): number {
+function membershipWeight(stored: StoredMembership | null) {
   if (!stored) return 100;
   const { watchlist, watched, watchedEpisodes, ratings } = stored.membership;
   return (
@@ -84,10 +68,7 @@ function membershipWeight(stored: StoredMembership | null): number {
   );
 }
 
-function rememberMembership(
-  key: string,
-  stored: StoredMembership | null,
-): void {
+function rememberMembership(key: string, stored: StoredMembership | null) {
   memoryMembership.set(key, stored, { weight: membershipWeight(stored) });
 }
 
@@ -97,10 +78,6 @@ interface MembershipOwner {
   authorization: string;
 }
 
-/**
- * Whether a snapshot belongs to this authorization. A reconnect, even to a
- * Provider user without a username, gets a new authorization.
- */
 function ownedBy(
   stored: StoredMembership | null | undefined,
   owner: MembershipOwner,
@@ -116,7 +93,7 @@ export async function readMembership(
   accountId: string,
   provider: ProviderId,
   owner: MembershipOwner,
-): Promise<StoredMembership | null> {
+) {
   const key = membershipKey(accountId, provider);
   let stored = memoryMembership.get(key);
   if (stored === undefined) {
@@ -124,8 +101,6 @@ export async function readMembership(
       stored = await readJson(key, storedMembershipSchema);
       rememberMembership(key, stored);
     } catch {
-      // R2 is unreachable: use this instance's copy, and do not ask R2
-      // again on every request until the copy expires.
       stored = memoryMembership.get(key);
       if (stored === undefined) {
         stored = null;
@@ -136,7 +111,6 @@ export async function readMembership(
   return ownedBy(stored, owner) ? stored : null;
 }
 
-/** Missing and existing snapshots both have an explicit write precondition. */
 async function membershipVersion(key: string) {
   const version = await readJsonVersion(key);
   if (version && !version.etag) throw new Error("Membership has no ETag");
@@ -151,7 +125,7 @@ export async function applyMembershipAction(
   connection: ConnectionAccess,
   intent: ActionIntent,
   target: ActionTarget,
-): Promise<void> {
+) {
   const key = membershipKey(connection.accountId, connection.provider);
   try {
     for (let attempt = 0; attempt < 8; attempt++) {
@@ -160,9 +134,7 @@ export async function applyMembershipAction(
         ? version.stored
         : null;
       const stored: StoredMembership = {
-        // An Action changes one entry, not the age of the complete snapshot.
         fetchedAt: previous?.fetchedAt ?? new Date(0).toISOString(),
-        // Even an idempotent Action invalidates an older full Provider read.
         revision: randomUUID(),
         authorization: connection.authorization,
         username: connection.username,
@@ -174,8 +146,6 @@ export async function applyMembershipAction(
       };
       try {
         await writeJson(key, stored, { etag: version.etag });
-        // Write responses can finish out of order. Read the winning R2 state
-        // on the next display instead of installing this writer's snapshot.
         memoryMembership.delete(key);
         return;
       } catch (error) {
@@ -189,18 +159,13 @@ export async function applyMembershipAction(
   }
 }
 
-export function forgetMembership(
-  accountId: string,
-  provider: ProviderId,
-): void {
+export function forgetMembership(accountId: string, provider: ProviderId) {
   const key = membershipKey(accountId, provider);
   memoryMembership.delete(key);
   failedRefreshes.delete(key);
 }
 
-/** Membership keys with a refresh in flight on this instance. */
 const refreshesInFlight = new Set<string>();
-/** Membership keys whose last refresh failed, until the cooldown ends. */
 const failedRefreshes = new LruCache<string, true>({
   maxEntries: 10_000,
   ttlMs: REFRESH_COOLDOWN_MS,
@@ -215,7 +180,7 @@ const failedRefreshes = new LruCache<string, true>({
 export function scheduleMembershipRefresh(
   accountId: string,
   provider: ProviderId,
-): void {
+) {
   const key = membershipKey(accountId, provider);
   if (refreshesInFlight.has(key) || failedRefreshes.has(key)) return;
   refreshesInFlight.add(key);
@@ -227,8 +192,6 @@ export function scheduleMembershipRefresh(
         failedRefreshes.set(key, true);
         return;
       }
-      // Capture the version before the Provider read. A newer Action or
-      // refresh wins; replaying this whole snapshot would erase its changes.
       const version = await membershipVersion(key);
       const membership = await actions.getMembership(connection);
       const stored: StoredMembership = {
@@ -242,8 +205,6 @@ export function scheduleMembershipRefresh(
       } catch (error) {
         if (!isPreconditionFailed(error)) throw error;
       } finally {
-        // Write responses can finish out of order. Read the winning R2 state
-        // on the next display instead of installing this writer's snapshot.
         memoryMembership.delete(key);
       }
     } catch (error) {
@@ -262,7 +223,7 @@ function applyToMembership(
   membership: Membership,
   intent: ActionIntent,
   target: ActionTarget,
-): Membership {
+) {
   const next = structuredClone(membership);
   const toggle = (values: string[], value: string, add: boolean) => {
     const without = values.filter((v) => v !== value);

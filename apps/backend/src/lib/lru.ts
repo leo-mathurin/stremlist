@@ -20,7 +20,6 @@ export interface LruSetOptions {
   ttlMs?: number;
 }
 
-/** The sweep for expired entries scans every entry: not more than this often. */
 const SWEEP_INTERVAL_MS = 1000;
 
 interface Slot<V> {
@@ -44,17 +43,17 @@ export class LruCache<K, V> {
     this.options = options;
   }
 
-  get size(): number {
+  get size() {
     return this.slots.size;
   }
 
   /** The total weight of the entries kept now. */
-  get weight(): number {
+  get weight() {
     return this.totalWeight;
   }
 
   /** The value, or undefined when it is missing or expired. */
-  get(key: K): V | undefined {
+  get(key: K) {
     const slot = this.live(key);
     if (!slot) return undefined;
     this.slots.delete(key);
@@ -63,11 +62,11 @@ export class LruCache<K, V> {
   }
 
   /** Whether a live entry exists. Does not count as a use. */
-  has(key: K): boolean {
+  has(key: K) {
     return this.live(key) !== undefined;
   }
 
-  set(key: K, value: V, options: LruSetOptions = {}): void {
+  set(key: K, value: V, options: LruSetOptions = {}) {
     this.delete(key);
     const weight = options.weight ?? 0;
     const { maxWeight } = this.options;
@@ -78,7 +77,7 @@ export class LruCache<K, V> {
     this.prune();
   }
 
-  delete(key: K): boolean {
+  delete(key: K) {
     const slot = this.slots.get(key);
     if (!slot) return false;
     this.slots.delete(key);
@@ -86,17 +85,17 @@ export class LruCache<K, V> {
     return true;
   }
 
-  clear(): void {
+  clear() {
     this.slots.clear();
     this.totalWeight = 0;
   }
 
   /** The keys of every entry, live or not, least recently used first. */
-  keys(): K[] {
+  keys() {
     return [...this.slots.keys()];
   }
 
-  private live(key: K): Slot<V> | undefined {
+  private live(key: K) {
     const slot = this.slots.get(key);
     if (!slot) return undefined;
     if (slot.expiresAt <= Date.now()) {
@@ -106,7 +105,7 @@ export class LruCache<K, V> {
     return slot;
   }
 
-  private prune(): void {
+  private prune() {
     const now = Date.now();
     if (now >= this.nextSweepAt) {
       this.nextSweepAt = now + SWEEP_INTERVAL_MS;

@@ -2,7 +2,7 @@ import { S3Client } from "@aws-sdk/client-s3";
 
 let client: S3Client | null = null;
 
-function requiredEnv(name: string): string {
+function requiredEnv(name: string) {
   const value = process.env[name];
   if (!value) {
     throw new Error(`Missing ${name} environment variable`);
@@ -10,7 +10,7 @@ function requiredEnv(name: string): string {
   return value;
 }
 
-export function getR2Client(): S3Client {
+export function getR2Client() {
   if (client) return client;
 
   const endpoint = process.env.R2_ENDPOINT?.trim();
@@ -18,8 +18,6 @@ export function getR2Client(): S3Client {
   client = new S3Client({
     region: "auto",
     endpoint: endpoint ?? `https://${accountId}.r2.cloudflarestorage.com`,
-    // Cloudflare supports virtual-hosted bucket URLs. Local S3-compatible
-    // servers normally expose buckets as path segments instead.
     forcePathStyle: !!endpoint,
     credentials: {
       accessKeyId: requiredEnv("R2_ACCESS_KEY_ID"),
@@ -30,6 +28,6 @@ export function getR2Client(): S3Client {
   return client;
 }
 
-export function getR2Bucket(): string {
+export function getR2Bucket() {
   return requiredEnv("R2_BUCKET");
 }

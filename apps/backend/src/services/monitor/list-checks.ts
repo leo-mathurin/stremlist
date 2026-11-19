@@ -1,4 +1,3 @@
-import type { Json } from "@stremlist/shared/database";
 import type { ProviderId } from "@stremlist/shared/providers";
 import { PROVIDER_IDS } from "@stremlist/shared/providers";
 import { supabase } from "../../lib/supabase";
@@ -7,25 +6,15 @@ import { runCanaries } from "./canaries";
 import type { ListAlarm } from "./list-alarm";
 import { readListAlarms } from "./list-alarm";
 
-/**
- * The list checks (canaries and the alarm) run at most once in this time,
- * whatever the number of /monitor calls: Better Stack calls from several
- * regions, and each call would read every canary again.
- */
 const LIST_CHECK_INTERVAL_SECONDS = 600;
 const RUN_NAME = "list-checks";
 
-/** An environment variable, with an empty value read as unset. */
-function env(name: string): string | undefined {
+function env(name: string) {
   const value = process.env[name]?.trim();
   return value === "" ? undefined : value;
 }
 
-/**
- * The Better Stack heartbeat of a Provider. Several Providers can share one.
- * BETTERSTACK_HEARTBEAT_URL is the original IMDb heartbeat.
- */
-function heartbeatUrl(provider: ProviderId): string | undefined {
+function heartbeatUrl(provider: ProviderId) {
   return (
     env(`BETTERSTACK_HEARTBEAT_URL_${provider.toUpperCase()}`) ??
     (provider === "imdb" ? env("BETTERSTACK_HEARTBEAT_URL") : undefined)
@@ -50,7 +39,7 @@ function reportsOf(
   probes: readonly ProbeOutcome[],
   canaries: readonly CanaryResult[],
   alarms: readonly ListAlarm[],
-): ProviderReport[] {
+) {
   return PROVIDER_IDS.map((provider) => {
     const probe = probes.find((result) => result.provider === provider);
     const mine = canaries.filter((result) => result.provider === provider);
@@ -92,7 +81,7 @@ export interface HeartbeatPing {
 export function heartbeatPings(
   reports: readonly ProviderReport[],
   urlOf: (provider: ProviderId) => string | undefined = heartbeatUrl,
-): HeartbeatPing[] {
+) {
   const pings = new Map<string, HeartbeatPing & { checked: boolean }>();
   for (const { provider, checked, failures } of reports) {
     const url = urlOf(provider);
@@ -107,14 +96,12 @@ export function heartbeatPings(
     .map(({ url, failures }) => ({ url, failures }));
 }
 
-async function sendHeartbeat({ url, failures }: HeartbeatPing): Promise<void> {
+async function sendHeartbeat({ url, failures }: HeartbeatPing) {
   try {
     await (failures.length === 0
       ? fetch(url)
       : fetch(`${url}/fail`, { method: "POST", body: failures.join("\n") }));
-  } catch {
-    /* Better Stack also alerts when the heartbeat stops arriving. */
-  }
+  } catch {}
 }
 
 /**
@@ -122,7 +109,7 @@ async function sendHeartbeat({ url, failures }: HeartbeatPing): Promise<void> {
  * does. When the claim cannot be read, no call does: the heartbeats then
  * stop, and Better Stack alerts.
  */
-export async function claimListChecks(): Promise<boolean> {
+export async function claimListChecks() {
   const { data, error } = await supabase.rpc("claim_monitor_run", {
     p_name: RUN_NAME,
     p_interval_seconds: LIST_CHECK_INTERVAL_SECONDS,
@@ -134,14 +121,11 @@ export async function claimListChecks(): Promise<boolean> {
   return data;
 }
 
-/** What one run of the list checks found. */
-// A type, not an interface, so that it fits the Json column.
-export type ListCheckSummary = {
+// WARNING: Keep this a type alias. An interface does not fit the Json column.
+type ListCheckSummary = {
   canaries: CanaryResult[];
   alarms: ListAlarm[];
-  /** Why the sync statuses could not be read for the alarm, if they could not. */
   alarmError?: string;
-  /** The failures that the run reported, per Provider. */
   failures: Partial<Record<ProviderId, string[]>>;
 };
 
@@ -152,9 +136,10 @@ export type ListCheckSummary = {
  */
 export async function runListChecks(
   probes: readonly ProbeOutcome[],
-): Promise<ListCheckSummary> {
+  readCanaries = runCanaries,
+) {
   const [canaries, alarmRead] = await Promise.all([
-    runCanaries(),
+    readCanaries(),
     readListAlarms(),
   ]);
   const alarms = "alarms" in alarmRead ? alarmRead.alarms : [];
@@ -182,11 +167,7 @@ export async function runListChecks(
 }
 
 /** The last run of the list checks that completed, or null. */
-export async function lastListChecks(): Promise<{
-  startedAt: string;
-  finishedAt: string | null;
-  summary: Json | null;
-} | null> {
+export async function lastListChecks() {
   const { data, error } = await supabase
     .from("monitor_runs")
     .select("started_at, finished_at, summary")

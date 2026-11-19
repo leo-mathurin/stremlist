@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { SyncWrite } from "../sync-payload";
 import {
   bucketOf,
   countNotFound,
@@ -7,6 +6,7 @@ import {
   syncIds,
   watchedAtOf,
 } from "../sync-payload";
+import type { SyncWrite } from "../sync-payload";
 import type {
   ActionIntent,
   ActionTarget,
@@ -19,7 +19,6 @@ import { traktGetAll, traktPost } from "./api";
 import type { TraktItem } from "./entries";
 import { imdbIdOf, traktItemSchema } from "./entries";
 
-/** Membership is bigger than one Source list for heavy users. */
 const MAX_MEMBERSHIP_ITEMS = 20_000;
 
 const watchedShowSchema = traktItemSchema.extend({
@@ -39,11 +38,9 @@ const ratedItemSchema = traktItemSchema.extend({
 });
 type RatedItem = z.infer<typeof ratedItemSchema>;
 
-function watchlistIds(items: TraktItem[]): string[] {
+function watchlistIds(items: TraktItem[]) {
   const ids = new Set<string>();
   for (const item of items) {
-    // Only the Title itself: a season or an episode on the watchlist does
-    // not put the show on it.
     const media =
       item.type === "movie"
         ? item.movie
@@ -56,11 +53,7 @@ function watchlistIds(items: TraktItem[]): string[] {
   return [...ids];
 }
 
-/** Watched movies, shows with at least one watched episode, and episodes. */
-function parseWatched(
-  movies: TraktItem[],
-  shows: WatchedShow[],
-): Pick<Membership, "watched" | "watchedEpisodes"> {
+function parseWatched(movies: TraktItem[], shows: WatchedShow[]) {
   const watched = new Set<string>();
   const watchedEpisodes: string[] = [];
   for (const row of movies) {
@@ -82,7 +75,7 @@ function parseWatched(
   return { watched: [...watched], watchedEpisodes };
 }
 
-function parseRatings(rows: RatedItem[]): Membership["ratings"] {
+function parseRatings(rows: RatedItem[]) {
   const ratings: Membership["ratings"] = {};
   for (const row of rows) {
     const media = row.type === "show" ? row.show : (row.movie ?? row.show);
@@ -92,9 +85,7 @@ function parseRatings(rows: RatedItem[]): Membership["ratings"] {
   return ratings;
 }
 
-async function getMembership(
-  connection: ConnectionAccess,
-): Promise<Membership> {
+async function getMembership(connection: ConnectionAccess) {
   const all = async <T>(path: string, schema: z.ZodType<T>) =>
     (
       await traktGetAll(path, schema, connection, {
@@ -104,7 +95,6 @@ async function getMembership(
   const [watchlist, watchedMovies, watchedShows, movieRatings, showRatings] =
     await Promise.all([
       all("/users/me/watchlist", traktItemSchema),
-      // Trakt pages these 100 at a time when no limit is given.
       all("/sync/watched/movies", traktItemSchema),
       all("/sync/watched/shows", watchedShowSchema),
       all("/sync/ratings/movies", ratedItemSchema),
@@ -117,8 +107,7 @@ async function getMembership(
   };
 }
 
-/** The /sync body for one Title, keyed by IMDb ID. */
-function syncBody(intent: ActionIntent, target: ActionTarget): SyncWrite {
+function syncBody(intent: ActionIntent, target: ActionTarget) {
   const ids = syncIds(target);
   const key = bucketOf(target);
   switch (intent.kind) {
@@ -126,7 +115,7 @@ function syncBody(intent: ActionIntent, target: ActionTarget): SyncWrite {
       return {
         path: intent.add ? "/sync/watchlist" : "/sync/watchlist/remove",
         body: { [key]: [{ ids }] },
-      };
+      } satisfies SyncWrite;
     case "watched": {
       const path = intent.add ? "/sync/history" : "/sync/history/remove";
       const at = watchedAtOf(intent);
@@ -135,18 +124,20 @@ function syncBody(intent: ActionIntent, target: ActionTarget): SyncWrite {
         return {
           path,
           body: { shows: [episodeItem(target, episodes, at.watched_at)] },
-        };
+        } satisfies SyncWrite;
       }
-      // A show alone marks (or unmarks) every episode.
-      return { path, body: { [key]: [{ ids, ...at }] } };
+      return { path, body: { [key]: [{ ids, ...at }] } } satisfies SyncWrite;
     }
     case "rating":
       return intent.rating === null
-        ? { path: "/sync/ratings/remove", body: { [key]: [{ ids }] } }
-        : {
+        ? ({
+            path: "/sync/ratings/remove",
+            body: { [key]: [{ ids }] },
+          } satisfies SyncWrite)
+        : ({
             path: "/sync/ratings",
             body: { [key]: [{ ids, rating: intent.rating }] },
-          };
+          } satisfies SyncWrite);
   }
 }
 
@@ -154,7 +145,7 @@ async function perform(
   connection: ConnectionAccess,
   intent: ActionIntent,
   target: ActionTarget,
-): Promise<void> {
+) {
   const { path, body } = syncBody(intent, target);
   const result = await traktPost(path, connection, body);
   if (countNotFound(result, ["movies", "shows", "episodes"]) > 0) {
@@ -185,10 +176,9 @@ export async function traktPlays(
   connection: ConnectionAccess,
   target: ActionTarget,
   watchedAt: string,
-): Promise<Set<string>> {
+) {
   const at = Date.parse(watchedAt);
   const kind = target.type === "movie" ? "movies" : "episodes";
-  // A whole series marked at once shares one time: read every page.
   const { items: rows } = await traktGetAll(
     `/sync/history/${kind}`,
     historyRowSchema,

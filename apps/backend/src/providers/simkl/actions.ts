@@ -10,7 +10,6 @@ import type {
   ActionIntent,
   ActionTarget,
   ConnectionAccess,
-  Membership,
   ProviderActions,
 } from "../types";
 import { targetEpisodes, UnknownTitleError } from "../types";
@@ -19,7 +18,7 @@ import { CONNECTION_REFS, titleType } from "./entries";
 import type { LibraryItem } from "./library";
 import { knownItems, markLibraryChanged, syncLibrary } from "./library";
 
-function membershipFrom(items: LibraryItem[]): Membership {
+function membershipFrom(items: LibraryItem[]) {
   const watchlist = new Set<string>();
   const watched = new Set<string>();
   const watchedEpisodes = new Set<string>();
@@ -60,7 +59,7 @@ async function buildWrite(
   connection: ConnectionAccess,
   intent: ActionIntent,
   target: ActionTarget,
-): Promise<WriteRequest | null> {
+) {
   const item = { ids: syncIds(target) };
   const series = target.type === "series";
 
@@ -69,10 +68,7 @@ async function buildWrite(
       return {
         path: "/sync/add-to-list",
         item: { ...item, to: "plantowatch" },
-      };
-    // Removing a title from Simkl also deletes its watch history and rating,
-    // so only remove a title that is planned now, never one the user watched
-    // since the last read. A failed read refuses the removal.
+      } satisfies WriteRequest;
     await markLibraryChanged(connection.accountId);
     const current = (await syncLibrary(connection)).items.filter(
       (entry) => entry.imdb === target.imdbId,
@@ -82,7 +78,7 @@ async function buildWrite(
       current.some((entry) => entry.status !== "plantowatch")
     )
       return null;
-    return { path: "/sync/history/remove", item };
+    return { path: "/sync/history/remove", item } satisfies WriteRequest;
   }
 
   if (intent.kind === "watched") {
@@ -93,11 +89,9 @@ async function buildWrite(
         path,
         item: {
           ...episodeItem(target, episodes, watchedAtOf(intent).watched_at),
-          // Stremio uses IMDb seasons; this maps them onto Simkl's anime
-          // entries and is a no-op for other shows.
           use_tvdb_anime_seasons: true,
         },
-      };
+      } satisfies WriteRequest;
     }
     if (intent.add) {
       return {
@@ -105,12 +99,9 @@ async function buildWrite(
         item: series
           ? { ...item, status: "completed" }
           : { ...item, ...watchedAtOf(intent) },
-      };
+      } satisfies WriteRequest;
     }
     if (series) {
-      // Unmark the watched seasons and keep the show in the library. Without
-      // known episodes, fall back to removing the show, as Simkl's own
-      // "Remove from list" does.
       const seasons = new Set<number>();
       for (const known of await knownItems(connection, target.imdbId)) {
         for (const episode of known.episodes ?? [])
@@ -126,25 +117,28 @@ async function buildWrite(
               .sort((a, b) => a - b)
               .map((number) => ({ number })),
           },
-        };
+        } satisfies WriteRequest;
       }
     }
-    return { path, item };
+    return { path, item } satisfies WriteRequest;
   }
 
-  if (intent.rating === null) return { path: "/sync/ratings/remove", item };
-  return { path: "/sync/ratings", item: { ...item, rating: intent.rating } };
+  if (intent.rating === null)
+    return { path: "/sync/ratings/remove", item } satisfies WriteRequest;
+  return {
+    path: "/sync/ratings",
+    item: { ...item, rating: intent.rating },
+  } satisfies WriteRequest;
 }
 
 async function perform(
   connection: ConnectionAccess,
   intent: ActionIntent,
   target: ActionTarget,
-): Promise<void> {
+) {
   const write = await buildWrite(connection, intent, target);
   if (!write) return;
   const token = await connection.getAccessToken();
-  // Anime go under "shows" on every Simkl write endpoint.
   const result = await simklRequest(write.path, z.unknown(), {
     method: "POST",
     token,
@@ -164,11 +158,13 @@ export const simklActions: ProviderActions = {
 
   perform,
 
-  // A Simkl title sits in exactly one status, so adding, watching or rating
-  // it (rating files an unlisted title) can move it between all of them.
-  // Removing a title also clears its rating, so every kind touches Ratings.
-  // Airing soon follows the statuses, and a watched mark can end a paused
-  // playback session.
+  /**
+   * A Simkl title sits in exactly one status, so adding, watching or rating
+   * it (rating files an unlisted title) can move it between all of them.
+   * Removing a title also clears its rating, so every kind touches Ratings.
+   * Airing soon follows the statuses, and a watched mark can end a paused
+   * playback session.
+   */
   affectedSources() {
     return CONNECTION_REFS;
   },

@@ -34,8 +34,8 @@ export type ListFormRow = {
  * A random ID for a row on this page. `crypto.randomUUID` exists only in a
  * secure context: a dev server over http:// on the tailnet has none.
  */
-function newLocalId(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
+export function newLocalId(random: Pick<Crypto, "getRandomValues"> = crypto) {
+  const bytes = random.getRandomValues(new Uint8Array(16));
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
     "",
   );
@@ -44,10 +44,11 @@ function newLocalId(): string {
 export function createListRow(
   partial: Pick<ListFormRow, "provider" | "sourceRef"> &
     Partial<Omit<ListFormRow, "localId">>,
-): ListFormRow {
+  random: Pick<Crypto, "getRandomValues"> = crypto,
+) {
   return {
     id: partial.id,
-    localId: newLocalId(),
+    localId: newLocalId(random),
     provider: partial.provider,
     sourceRef: partial.sourceRef,
     catalogTitle: (partial.catalogTitle ?? "").slice(
@@ -64,7 +65,7 @@ export function createListRow(
 }
 
 /** The rows of saved Lists. */
-export function rowsFromLists(lists: ConfigList[]): ListFormRow[] {
+export function rowsFromLists(lists: ConfigList[]) {
   return lists.map((list) => createListRow(list));
 }
 
@@ -88,7 +89,7 @@ export function listPayload(rows: ListFormRow[]) {
  * The title that a row shows: its own, or the name of its Source list. The
  * manifest names the List's Catalogs in Stremio with the same title.
  */
-export function rowTitle(row: ListFormRow): string {
+export function rowTitle(row: ListFormRow) {
   return listTitle(row);
 }
 
@@ -96,6 +97,6 @@ export function rowTitle(row: ListFormRow): string {
  * The keys of every Source list in the rows, merged ones included: a Source
  * list may be in only one List.
  */
-export function sourceKeys(rows: ListFormRow[]): string[] {
+export function sourceKeys(rows: ListFormRow[]) {
   return rows.flatMap((row) => listSources(row).map(sourceKey));
 }

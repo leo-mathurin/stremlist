@@ -1,11 +1,6 @@
-// Loaded only by the isolated backend of `new-titles.spec.ts`. The real
-// adapters, ID resolver, enrichment, database and R2 code run; only the
-// Provider transport is replaced by Source lists that the test controls
-// through a JSON file. Loopback requests (Supabase) use the real fetch. Every
-// other destination is refused, so no real Provider is ever called.
 import { readFileSync } from "node:fs";
-import type { FixtureRequest } from "./fetch-fixture.js";
-import { graphql, installFetchFixture } from "./fetch-fixture.js";
+import type { FixtureRequest } from "./fetch.fixture.js";
+import { graphql, installFetchFixture, unsupported } from "./fetch.fixture.js";
 import { isRecord, isString, optional, parseJson } from "./json.js";
 
 /** The Source lists that the test writes to E2E_SOURCE_FIXTURE_FILE. */
@@ -31,7 +26,7 @@ export interface SourceFixture {
   >;
 }
 
-function fixturePath(): string {
+function fixturePath() {
   const file = process.env.E2E_SOURCE_FIXTURE_FILE;
   if (!file) throw new Error("E2E_SOURCE_FIXTURE_FILE is not set");
   return file;
@@ -47,7 +42,7 @@ function isSourceFixture(value: unknown): value is SourceFixture {
   );
 }
 
-function fixture(): SourceFixture {
+function fixture() {
   return parseJson(
     readFileSync(fixtureFile, "utf8"),
     isSourceFixture,
@@ -85,7 +80,10 @@ function titleNode(id: string, state: SourceFixture) {
   };
 }
 
-function imdb({ body }: FixtureRequest): Response {
+function imdb({ request, url, body }: FixtureRequest) {
+  if (request.method !== "POST" || url.pathname !== "/") {
+    unsupported(request, "Unexpected IMDb request");
+  }
   const { operation, variables } = graphql(body, isImdbVariables);
   const state = fixture();
   if (operation === "WatchListPage") {
@@ -121,12 +119,15 @@ function imdb({ body }: FixtureRequest): Response {
       },
     });
   }
-  throw new Error(`Unexpected IMDb operation ${operation}`);
+  unsupported(request, `Unexpected IMDb operation ${operation}`);
 }
 
-function trakt({ url }: FixtureRequest): Response {
+function trakt({ request, url }: FixtureRequest) {
   const user = /^\/users\/([^/]+)\/watchlist$/.exec(url.pathname)?.[1];
-  const list = user ? fixture().trakt[user] : undefined;
+  if (request.method !== "GET" || !user) {
+    unsupported(request, "Unexpected Trakt request");
+  }
+  const list = fixture().trakt[user];
   if (!list) return Response.json({ error: "not found" }, { status: 404 });
   if (list.fail) return new Response("Fixture outage", { status: 503 });
   return Response.json(
@@ -142,12 +143,25 @@ function trakt({ url }: FixtureRequest): Response {
   );
 }
 
+function cinemetaWithoutTitles({ request, url }: FixtureRequest) {
+  if (
+    request.method !== "GET" ||
+    !/^\/meta\/(?:movie|series)\/tt\d+\.json$/u.test(url.pathname)
+  ) {
+    unsupported(request, "Unexpected Cinemeta request");
+  }
+  return new Response("Not found", { status: 404 });
+}
+
 installFetchFixture({
   log: process.env.E2E_PROVIDER_LOG,
   hosts: {
     "api.graphql.imdb.com": imdb,
     "api.trakt.tv": trakt,
-    // Enrichment falls back to Cinemeta for Titles IMDb did not answer.
-    "v3-cinemeta.strem.io": () => new Response("Not found", { status: 404 }),
+    "v3-cinemeta.strem.io": cinemetaWithoutTitles,
+    "auth.trakt.tv": ({ request, url }) =>
+      request.method === "POST" && url.pathname === "/oauth/revoke"
+        ? Response.json({})
+        : unsupported(request, "Unexpected Trakt OAuth request"),
   },
 });

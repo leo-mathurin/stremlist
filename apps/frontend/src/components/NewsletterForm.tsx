@@ -34,7 +34,6 @@ export default function NewsletterForm() {
         toast.success(body.message, { id: "newsletter-subscription" });
         form.reset();
       } else {
-        // A refused email comes back as a Zod result, not a message.
         const message =
           typeof body.error === "string"
             ? body.error

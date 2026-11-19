@@ -52,16 +52,12 @@ export default function MergedSources({
   controls: MergeControls;
 }) {
   const sources = listSources(list);
-  // The buttons and the picker that the user pressed go away when the
-  // Source lists change, so keyboard focus moves to the new picker.
   const picker = useRef<HTMLButtonElement>(null);
   const heading = useRef<HTMLParagraphElement>(null);
   const keepFocus = useRef(false);
   useEffect(() => {
     if (!keepFocus.current) return;
     keepFocus.current = false;
-    // Without other Lists there is no menu: focus the section instead.
-    // A full List disables the menu, which then cannot take focus either.
     const menu = picker.current;
     (menu && !menu.disabled ? menu : heading.current)?.focus();
   }, [sources.length]);

@@ -9,7 +9,7 @@ import {
 } from "../src/lib/md/http";
 import { getMarkdownPage, listMarkdownRoutes } from "../src/lib/md/registry";
 
-function attribute(value: string): string {
+function attribute(value: string) {
   return value
     .replace(/&/g, "&amp;")
     .replace(/"/g, "&quot;")
@@ -17,7 +17,7 @@ function attribute(value: string): string {
     .replace(/>/g, "&gt;");
 }
 
-export function pageHtml(html: string, path: string): string {
+export function pageHtml(html: string, path: string) {
   const page = getMarkdownPage(path);
   const tags = headTags(path)
     .filter(
@@ -46,14 +46,14 @@ async function sendAiResponse(
   request: Request,
   backendUrl: string,
   res: ServerResponse,
-): Promise<void> {
+) {
   const response = await handleAiRequest(request, backendUrl);
   res.statusCode = response.status;
   response.headers.forEach((value, key) => res.setHeader(key, value));
   res.end(Buffer.from(await response.arrayBuffer()));
 }
 
-export function aiPages(backendUrl: string): Plugin {
+export function aiPages(backendUrl: string) {
   const configure = (
     server: Pick<ViteDevServer, "middlewares">,
     built = false,
@@ -126,5 +126,5 @@ export function aiPages(backendUrl: string): Plugin {
         });
       },
     },
-  };
+  } satisfies Plugin;
 }

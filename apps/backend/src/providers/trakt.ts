@@ -24,7 +24,6 @@ import { SourceUnavailableError } from "./types";
 
 const traktOwnListSchema = z.object({
   name: z.string().optional(),
-  // Smart lists only: "movies", "shows" or "media".
   media_type: z.string().nullish(),
   ids: z
     .object({ slug: z.string().optional(), trakt: z.number().optional() })
@@ -33,7 +32,6 @@ const traktOwnListSchema = z.object({
 
 type TraktOwnList = z.infer<typeof traktOwnListSchema>;
 
-/** A list of another Trakt user: a liked list or a collaboration list. */
 const traktOtherListSchema = traktOwnListSchema.extend({
   user: z
     .object({ ids: z.object({ slug: z.string().nullish() }).nullish() })
@@ -41,14 +39,9 @@ const traktOtherListSchema = traktOwnListSchema.extend({
 });
 type TraktOtherList = z.infer<typeof traktOtherListSchema>;
 
-/** Most liked lists that the configure page offers. */
 const MAX_LIKED_LISTS = 500;
 
-/**
- * A list of another user as a Source list. It reads at its owner's
- * profile, through the Connection, so a private collaboration list works.
- */
-function otherListSource(list: TraktOtherList): ConnectionSource[] {
+function otherListSource(list: TraktOtherList) {
   const owner = list.user?.ids?.slug;
   const id = list.ids?.slug ?? list.ids?.trakt;
   if (!owner || id === undefined) return [];
@@ -58,15 +51,11 @@ function otherListSource(list: TraktOtherList): ConnectionSource[] {
       kind: "list",
       label: list.name?.trim() ? list.name.trim() : String(id),
       defaultDisplayMode: "split",
-    },
+    } satisfies ConnectionSource,
   ];
 }
 
-/** An extra listing: when it fails, the configure page still offers the rest. */
-async function optionalListing<T>(
-  name: string,
-  listing: Promise<T>,
-): Promise<T | null> {
+async function optionalListing<T>(name: string, listing: Promise<T>) {
   try {
     return await listing;
   } catch (error) {
@@ -87,7 +76,6 @@ const traktSettingsSchema = z.object({
     .optional(),
 });
 
-/** Public Source lists share the app's quota of 500 GETs per 5 minutes. */
 const PUBLIC_FRESHNESS_MS = 6 * 60 * 60_000;
 const PERSONAL_FRESHNESS_MS = 30 * 60_000;
 
@@ -133,9 +121,11 @@ export const traktProvider: ProviderAdapter = {
 
   actions: traktActions,
 
-  // The user's own lists and smart lists, then the lists that the user
-  // likes or collaborates on, so the configure page can offer them in one
-  // click.
+  /**
+   * The user's own lists and smart lists, then the lists that the user
+   * likes or collaborates on, so the configure page can offer them in one
+   * click.
+   */
   async listConnectionSources(connection) {
     const [lists, smartLists, liked, collaborations] = await Promise.all([
       traktGetParsed(
@@ -178,14 +168,11 @@ export const traktProvider: ProviderAdapter = {
               {
                 ref: `${prefix}/${String(id).toLowerCase()}`,
                 kind: "list" as const,
-                // An empty name falls back to the slug.
                 label: list.name?.trim() ? list.name.trim() : String(id),
                 defaultDisplayMode: smartListDisplayMode(list.media_type),
               },
             ];
       });
-    // A user can like their own list: it is offered once, as their own. A
-    // list that the user both likes and collaborates on is offered once.
     const ownIds = new Set((lists ?? []).map((list) => list.ids?.trakt));
     const others = new Map(
       [
@@ -204,10 +191,9 @@ export const traktProvider: ProviderAdapter = {
   },
 
   oauth: {
-    // Trakt wants every OAuth call on its auth host, not the API host.
+    /** Trakt wants every OAuth call on its auth host, not the API host. */
     authorizeUrl: `${TRAKT_AUTH}/oauth/authorize`,
     tokenUrl: `${TRAKT_AUTH}/oauth/token`,
-    // A public PKCE client needs no secret; send it only when one is set.
     ...traktClient,
     async revoke(accessToken) {
       const secret = traktClient.clientSecret();

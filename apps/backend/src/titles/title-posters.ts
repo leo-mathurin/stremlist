@@ -8,14 +8,10 @@ import { supabase } from "../lib/supabase";
 import { findTmdbPosterPath, isTmdbConfigured, isTmdbPosterPath } from "./tmdb";
 import { findTvdbPosterUrl, isTvdbConfigured, tvdbThumbnailUrl } from "./tvdb";
 
-/** A stored poster is checked again after this long. */
 const FOUND_TTL_MS = 30 * 24 * 60 * 60_000;
-/** A Title without a poster is checked again sooner: the source may add one. */
 const MISSING_TTL_MS = 7 * 24 * 60 * 60_000;
 const MEMORY_TTL_MS = 6 * 60 * 60_000;
-/** After a failed request, no lookup on that source for this long. */
 const FAILURE_PAUSE_MS = 60_000;
-/** Most lookups that one call starts: one Stremio catalog page. */
 const MAX_LOOKUPS = 100;
 const CONCURRENCY = 6;
 const DB_CHUNK = 200;
@@ -35,15 +31,12 @@ export interface PosterTitle {
 interface SourceSpec {
   name: string;
   configured(): boolean;
-  /** What to store for the Title's poster, null when none; throws on failure. */
   lookUp(title: PosterTitle): Promise<string | null>;
-  /** Whether a stored value is safe to use. */
   valid(stored: string): boolean;
   url(stored: string, size: PosterSize): string;
 }
 
 const SOURCES: Record<LookupSource, SourceSpec> = {
-  // Stores the TMDB image path.
   tmdb: {
     name: "TMDB",
     configured: isTmdbConfigured,
@@ -52,7 +45,6 @@ const SOURCES: Record<LookupSource, SourceSpec> = {
     url: (path, size) =>
       `${TMDB_IMAGES}/${size === "preview" ? "w342" : "w500"}${path}`,
   },
-  // Stores the TheTVDB artwork URL.
   tvdb: {
     name: "TheTVDB",
     configured: isTvdbConfigured,
@@ -62,21 +54,11 @@ const SOURCES: Record<LookupSource, SourceSpec> = {
   },
 };
 
-/**
- * The stored poster of each source and Title (IMDb ID), or null when the
- * source has none. A poster does not depend on the Account that asks, so
- * every Account shares this cache; only the choice to show it is per Account.
- */
 const memory = new LruCache<string, string | null>({
   maxEntries: 40_000,
   ttlMs: MEMORY_TTL_MS,
 });
 const pausedUntil: Record<LookupSource, number> = { tmdb: 0, tvdb: 0 };
-/**
- * The lookups that run now, by source and IMDb ID: concurrent requests
- * (Stremio asks for every Catalog at once) wait for them instead of asking
- * again.
- */
 const running = new Map<string, Promise<void>>();
 
 const memoryKey = (source: LookupSource, id: string) => `${source}:${id}`;
@@ -87,11 +69,7 @@ const storedRowSchema = z.object({
   checked_at: z.string(),
 });
 
-/** The stored posters that are still fresh. A failed read finds none. */
-async function readStored(
-  source: LookupSource,
-  ids: string[],
-): Promise<Map<string, string | null>> {
+async function readStored(source: LookupSource, ids: string[]) {
   const found = new Map<string, string | null>();
   for (let start = 0; start < ids.length; start += DB_CHUNK) {
     const { data, error } = await supabase
@@ -115,11 +93,7 @@ async function readStored(
   return found;
 }
 
-/** Look up each Title on the source, then store what it answered. */
-async function lookUpAll(
-  source: LookupSource,
-  titles: PosterTitle[],
-): Promise<void> {
+async function lookUpAll(source: LookupSource, titles: PosterTitle[]) {
   const spec = SOURCES[source];
   const answered: { imdb_id: string; poster: string | null }[] = [];
   await mapWithConcurrency(titles, CONCURRENCY, async (title) => {
@@ -131,8 +105,6 @@ async function lookUpAll(
       });
       answered.push({ imdb_id: title.id, poster });
     } catch (error) {
-      // An outage or a rate limit: stop asking for a while. Nothing is
-      // stored, so the Title is looked up again after the pause.
       if (Date.now() >= pausedUntil[source]) {
         console.warn(
           `${spec.name} poster lookup failed, showing IMDb posters for now:`,
@@ -164,7 +136,7 @@ export async function findPosters(
   source: LookupSource,
   titles: PosterTitle[],
   { budgetMs, size }: { budgetMs: number; size: PosterSize },
-): Promise<Map<string, string>> {
+) {
   const spec = SOURCES[source];
   const unique = new Map<string, PosterTitle>();
   for (const title of titles) {
@@ -172,13 +144,12 @@ export async function findPosters(
       unique.set(title.id, title);
     }
   }
-  if (unique.size === 0 || !spec.configured()) return new Map();
+  if (unique.size === 0 || !spec.configured()) return new Map<string, string>();
 
   const unknown = [...unique.values()].filter(
     ({ id }) => !memory.has(memoryKey(source, id)),
   );
   if (unknown.length > 0) {
-    // One deadline for the stored posters and the new lookups.
     const work = (async () => {
       const stored = await readStored(
         source,
@@ -187,7 +158,6 @@ export async function findPosters(
       for (const [id, poster] of stored) {
         memory.set(memoryKey(source, id), poster);
       }
-      // Another request may have looked a Title up during the read.
       const missing = unknown
         .filter(
           ({ id }) => !stored.has(id) && !memory.has(memoryKey(source, id)),
@@ -214,7 +184,6 @@ export async function findPosters(
         ),
       ]);
     })().catch((error: unknown) => {
-      // Posters never fail a request: the Titles keep their IMDb posters.
       console.error(
         `${spec.name} poster lookup failed:`,
         error instanceof Error ? error.message : error,
@@ -244,7 +213,7 @@ export async function findPosters(
 }
 
 /** For tests: forget the in-memory cache and any pause after a failure. */
-export function resetPosterMemory(): void {
+export function resetPosterMemory() {
   memory.clear();
   running.clear();
   pausedUntil.tmdb = 0;

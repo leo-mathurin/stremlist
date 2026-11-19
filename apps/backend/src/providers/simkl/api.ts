@@ -12,11 +12,13 @@ import { SourceUnavailableError } from "../types";
 export const SIMKL_API = "https://api.simkl.com";
 const APP_NAME = "stremlist";
 
-// With AUTH V2, Simkl allows 10 GET and 1 POST per second for each user and
-// has no app-wide cap. Every call carries the user's token, so the limiters
-// go by token (a refresh gives a new one about once a week): one user's
-// backlog never delays another user's reads. A POST over the limit gets the
-// token blocked for a while, so writes are never retried.
+/**
+ * With AUTH V2, Simkl allows 10 GET and 1 POST per second for each user and
+ * has no app-wide cap. Every call carries the user's token, so the limiters
+ * go by token (a refresh gives a new one about once a week): one user's
+ * backlog never delays another user's reads. A POST over the limit gets the
+ * token blocked for a while, so writes are never retried.
+ */
 export const simklLimiters = limitersByKey(() => ({
   get: new RateLimiter(10, 1000),
   post: new RateLimiter(1, 1000),
@@ -47,7 +49,7 @@ export async function simklRequest<T>(
   path: string,
   schema: z.ZodType<T>,
   options: RequestOptions,
-): Promise<T> {
+) {
   const app = simklAppQuery();
   const method = options.method ?? "GET";
   try {
@@ -68,7 +70,6 @@ export async function simklRequest<T>(
     return schema.parse(data);
   } catch (error) {
     if (error instanceof HttpError && error.status === 401) {
-      // Expired or revoked grant: the user has to connect Simkl again.
       throw new SourceUnavailableError(
         "needs_connection",
         "Simkl rejected the access token",
@@ -78,7 +79,7 @@ export async function simklRequest<T>(
   }
 }
 
-export function isMaxItemsError(error: unknown): boolean {
+export function isMaxItemsError(error: unknown) {
   return (
     error instanceof HttpError &&
     error.status === 400 &&

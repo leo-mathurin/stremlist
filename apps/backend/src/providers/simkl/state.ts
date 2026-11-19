@@ -17,25 +17,18 @@ export const STATE_VERSION = 2;
  */
 export const LIBRARY_VERSION = 3;
 
-export function libraryKey(accountId: string): string {
+export function libraryKey(accountId: string) {
   return `${connectionPrefix(accountId, "simkl")}library.json`;
 }
 
-export function playbackKey(accountId: string): string {
+export function playbackKey(accountId: string) {
   return `${connectionPrefix(accountId, "simkl")}playback.json`;
 }
 
-export function listKey(accountId: string, listId: string): string {
+export function listKey(accountId: string, listId: string) {
   return `${connectionPrefix(accountId, "simkl")}lists/${listId}.json`;
 }
 
-// Only a fallback when R2 is unreachable: R2 is the shared truth, so an
-// instance never trusts an older copy than another instance wrote. It keeps
-// what this instance wrote: a sync result that R2 refused is not lost, and an
-// outage does not make the instance read a whole library again. Copies read
-// from R2 are not kept: they would only duplicate R2, at up to ~1.6 MB each.
-// 8 MB holds about five of the largest libraries and many more usual ones;
-// after 30 minutes a copy is dropped, and the next sync writes a new one.
 const memoryState = new LruCache<string, unknown>({
   maxEntries: 500,
   maxWeight: 8 * 1024 * 1024,
@@ -46,10 +39,7 @@ const memoryState = new LruCache<string, unknown>({
  * Per-Connection state in R2, next to the Action membership. State that does
  * not match `schema` (an older version) is null: it is read again.
  */
-export async function readState<T>(
-  key: string,
-  schema: z.ZodType<T>,
-): Promise<T | null> {
+export async function readState<T>(key: string, schema: z.ZodType<T>) {
   let stored: unknown;
   try {
     stored = (await readJsonVersion(key))?.value;
@@ -61,7 +51,7 @@ export async function readState<T>(
   return parsed.success ? parsed.data : null;
 }
 
-export async function writeState(key: string, value: unknown): Promise<void> {
+export async function writeState(key: string, value: unknown) {
   memoryState.set(key, value, { weight: JSON.stringify(value).length });
   try {
     await writeJson(key, value);
@@ -74,7 +64,7 @@ export async function writeState(key: string, value: unknown): Promise<void> {
 }
 
 /** After a disconnect: forget the fallback copies of one Account's state. */
-export function forgetMemoryState(accountId: string): void {
+export function forgetMemoryState(accountId: string) {
   const prefix = connectionPrefix(accountId, "simkl");
   for (const key of memoryState.keys()) {
     if (key.startsWith(prefix)) memoryState.delete(key);
@@ -82,6 +72,6 @@ export function forgetMemoryState(accountId: string): void {
 }
 
 /** Test hook: forget the in-memory fallback state. */
-export function clearMemoryState(): void {
+export function clearMemoryState() {
   memoryState.clear();
 }

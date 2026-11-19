@@ -20,11 +20,11 @@ const ADAPTERS: Record<ProviderId, ProviderAdapter> = {
   letterboxd: letterboxdProvider,
 };
 
-export function getProvider(id: ProviderId): ProviderAdapter {
+export function getProvider(id: ProviderId) {
   return ADAPTERS[id];
 }
 
 /** Whether the Provider supports this kind of Action. */
-export function supportsAction(id: ProviderId, kind: ActionKind): boolean {
+export function supportsAction(id: ProviderId, kind: ActionKind) {
   return getProvider(id).actions?.kinds.includes(kind) ?? false;
 }

@@ -26,7 +26,6 @@ const root = fileURLToPath(new URL("../../../", import.meta.url));
 const workdir = `${root}.dev.local`;
 const configPath = `${workdir}/supabase/config.toml`;
 
-/** @param {string} command @param {string[]} args */
 function run(command, args, { capture = false } = {}) {
   const result = spawnSync(command, args, {
     cwd: root,
@@ -42,7 +41,6 @@ run("docker", ["info", "--format", "{{.ServerVersion}}"], { capture: true });
 mkdirSync(`${workdir}/supabase`, { recursive: true });
 if (!existsSync(configPath)) {
   const id = createHash("sha256").update(root).digest("hex").slice(0, 8);
-  // Separate worktrees use distinct container names and port ranges.
   const basePort = 56000 + (parseInt(id, 16) % 500) * 10;
   const config = readFileSync(`${root}supabase/config.toml`, "utf8")
     .replace(/^project_id = .*$/m, `project_id = "stremlist-dev-${id}"`)
@@ -61,7 +59,6 @@ cpSync(`${root}supabase/migrations`, `${workdir}/supabase/migrations`, {
 });
 
 console.log("Starting local Supabase and applying pending migrations…");
-// Supabase prints credentials in its startup summary; keep that stdout private.
 runSupabase(
   ["start", "--workdir", workdir, "-x", excludedServices],
   supabaseOptions,
@@ -87,8 +84,6 @@ const api = new URL(status.API_URL);
 if (!["localhost", "127.0.0.1", "[::1]"].includes(api.hostname)) {
   throw new Error("Local Supabase did not return a loopback API URL");
 }
-// The CLI omits keys from status when Auth is excluded. This is its public
-// local-development service-role key, also used by the E2E stack.
 const serviceKey =
   status.SERVICE_ROLE_KEY ??
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU";

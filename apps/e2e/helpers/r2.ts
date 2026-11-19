@@ -32,7 +32,7 @@ const r2 = new S3Client({
   },
 });
 
-function isNotFound(error: unknown): boolean {
+function isNotFound(error: unknown) {
   if (!error || typeof error !== "object") return false;
   const candidate = error as {
     name?: string;
@@ -45,7 +45,7 @@ function isNotFound(error: unknown): boolean {
   );
 }
 
-export async function ensureR2Bucket(): Promise<void> {
+export async function ensureR2Bucket() {
   try {
     await r2.send(new HeadBucketCommand({ Bucket: R2_BUCKET }));
   } catch (error) {
@@ -54,7 +54,7 @@ export async function ensureR2Bucket(): Promise<void> {
   }
 }
 
-async function listKeys(prefix: string): Promise<string[]> {
+async function listKeys(prefix: string) {
   const keys: string[] = [];
   let continuationToken: string | undefined;
 
@@ -79,8 +79,7 @@ async function listKeys(prefix: string): Promise<string[]> {
   return keys;
 }
 
-/** The short digest by which the backend names a Source list's objects. */
-function sourceDigest(source: ListSource): string {
+function sourceDigest(source: ListSource) {
   return createHash("sha256")
     .update(sourceKey(source))
     .digest("hex")
@@ -92,33 +91,33 @@ function sourceDigest(source: ListSource): string {
  * it (apps/backend/src/services/merged-lists.ts). A List with one Source list
  * uses its List ID instead.
  */
-export function sourceCacheKey(listId: string, source: ListSource): string {
+export function sourceCacheKey(listId: string, source: ListSource) {
   return `${listId}/sources/${sourceDigest(source)}`;
 }
 
-export async function countCacheObjects(listId: string): Promise<number> {
+export async function countCacheObjects(listId: string) {
   return (await getCacheObjectKeys(listId)).length;
 }
 
-// R2 keys keep the historical "watchlists/" prefix for List caches.
-export async function getCacheObjectKeys(listId: string): Promise<string[]> {
+/** R2 keys keep the historical "watchlists/" prefix for List caches. */
+export async function getCacheObjectKeys(listId: string) {
   return listKeys(`watchlists/${listId}/`);
 }
 
-/** The JSON object at `Key`; `what` names it in the error without a body. */
-async function readJson(Key: string, what: string): Promise<unknown> {
+async function readJson(Key: string, what: string) {
   const response = await r2.send(
     new GetObjectCommand({ Bucket: R2_BUCKET, Key }),
   );
   if (!response.Body) throw new Error(`R2 ${what} has no body`);
-  return JSON.parse(await response.Body.transformToString());
+  const json: unknown = JSON.parse(await response.Body.transformToString());
+  return json;
 }
 
-export async function getCacheManifest(listId: string): Promise<unknown> {
+export async function getCacheManifest(listId: string) {
   return readJson(`watchlists/${listId}/manifest.json`, "cache manifest");
 }
 
-async function deletePrefixes(prefixes: string[]): Promise<void> {
+async function deletePrefixes(prefixes: string[]) {
   const keys = (
     await Promise.all([...new Set(prefixes)].map((prefix) => listKeys(prefix)))
   ).flat();
@@ -137,7 +136,7 @@ async function deletePrefixes(prefixes: string[]): Promise<void> {
 }
 
 /** Remove every cached Catalog generation of these Lists. */
-export async function deleteCacheObjects(listIds: string[]): Promise<void> {
+export async function deleteCacheObjects(listIds: string[]) {
   await deletePrefixes(listIds.map((listId) => `watchlists/${listId}/`));
 }
 
@@ -145,9 +144,7 @@ export async function deleteCacheObjects(listIds: string[]): Promise<void> {
  * Remove what these Accounts' Connections stored (Actions, Provider state,
  * Connection-only detection history) and their other detection history.
  */
-export async function deleteConnectionObjects(
-  accountIds: string[],
-): Promise<void> {
+export async function deleteConnectionObjects(accountIds: string[]) {
   await deletePrefixes(
     accountIds.flatMap((accountId) => [
       `connections/${accountId}/`,
@@ -183,17 +180,14 @@ function isStoredHistory(value: unknown): value is StoredHistory {
 export function historyObjectKey(
   accountId: string,
   source: { provider: ProviderId; sourceRef: string },
-): string {
+) {
   const digest = sourceDigest(source);
   return sourceRequiresConnection(source.provider, source.sourceRef)
     ? `connections/${accountId}/${source.provider}/history/${digest}.json`
     : `history/${accountId}/${digest}.json`;
 }
 
-export async function writeHistoryObject(
-  key: string,
-  history: StoredHistory,
-): Promise<void> {
+export async function writeHistoryObject(key: string, history: StoredHistory) {
   await r2.send(
     new PutObjectCommand({
       Bucket: R2_BUCKET,
@@ -205,9 +199,7 @@ export async function writeHistoryObject(
 }
 
 /** Every stored detection history of an Account. */
-export async function readHistoryObjects(
-  accountId: string,
-): Promise<StoredHistory[]> {
+export async function readHistoryObjects(accountId: string) {
   const keys = (
     await Promise.all([
       listKeys(`history/${accountId}/`),
@@ -236,7 +228,7 @@ export async function seedCachedCatalog(
     provider: ProviderId;
     authorization: string;
   },
-): Promise<void> {
+) {
   const generation = randomUUID();
   const catalogKey = `watchlists/${id}/generations/${generation}.json.gz`;
   const genres = (type: StremioMeta["type"]) =>

@@ -23,10 +23,10 @@ const OPTIONS = new Map<string, Selection>([
     ["IMDb Rating (Highest)", "rating-desc"],
     ["IMDb Rating (Lowest)", "rating-asc"],
     ["Shuffle", "random"],
-  ].map(([label, sort]): [string, Selection] => [
-    label,
-    { sort: parseSortOption(sort) },
-  ]),
+  ].map(
+    ([label, sort]) =>
+      [label, { sort: parseSortOption(sort) }] satisfies [string, Selection],
+  ),
   ["Shortest", { sort: { by: "runtime", order: "asc" } }],
   ["Longest", { sort: { by: "runtime", order: "desc" } }],
   ["90 min or less", { filters: { maxRuntime: 90 } }],
@@ -35,10 +35,13 @@ const OPTIONS = new Map<string, Selection>([
   ["IMDb Rating 8+", { filters: { minRating: 8 } }],
   ["Release Date (Newest)", { sort: { by: "released", order: "desc" } }],
   ["Release Date (Oldest)", { sort: { by: "released", order: "asc" } }],
-  ...CATALOG_DECADES.map((decade): [string, Selection] => [
-    decade,
-    { filters: { decade: Number.parseInt(decade, 10) } },
-  ]),
+  ...CATALOG_DECADES.map(
+    (decade) =>
+      [decade, { filters: { decade: Number.parseInt(decade, 10) } }] satisfies [
+        string,
+        Selection,
+      ],
+  ),
 ]);
 const PRESETS = {
   short: { filters: { maxRuntime: 90 } },
@@ -46,7 +49,7 @@ const PRESETS = {
   shuffle: { sort: parseSortOption("random") },
 } satisfies Record<CatalogPreset, Selection>;
 
-// Stremio exposes one genre dropdown for either a filter or a sort.
+/** Stremio exposes one genre dropdown for either a filter or a sort. */
 export const CATALOG_FILTER_OPTIONS = [...OPTIONS.keys()];
 
 export function resolveCatalogSelection(
@@ -65,7 +68,6 @@ export function resolveCatalogSelection(
   const baseSort = defaults.sort ?? parseSortOption(savedSort);
   const sort = selected.sort ?? baseSort;
   return {
-    // Runtime/date ties retain the saved or preset order, including seeded shuffle.
     sort:
       sort.by === "runtime" || sort.by === "released"
         ? { ...sort, tieBreak: baseSort }
@@ -74,7 +76,7 @@ export function resolveCatalogSelection(
   };
 }
 
-function normalizeSearch(value: string): string {
+function normalizeSearch(value: string) {
   return value.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
 }
 
@@ -82,7 +84,7 @@ export function filterCatalog(
   metas: StremioMeta[],
   filters: CatalogSettings[],
   search?: string | null,
-): StremioMeta[] {
+) {
   const query = search == null ? null : normalizeSearch(search);
   return metas.filter(
     (meta) =>

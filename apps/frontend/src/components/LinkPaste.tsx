@@ -50,40 +50,39 @@ export type LinkProblem = {
   showList?: () => void;
 };
 
-/** The answer to a pasted Addon URL: it is an install, not a list. */
-function addonUrlProblem(key: string, accountKey: string | null): LinkProblem {
+function addonUrlProblem(key: string, accountKey: string | null) {
   const fix = `It is not a list. ${PASTE_LINK_PROMPT}.`;
   return key === accountKey
-    ? { message: `This is the Addon URL of this Stremlist. ${fix}` }
-    : {
+    ? ({
+        message: `This is the Addon URL of this Stremlist. ${fix}`,
+      } satisfies LinkProblem)
+    : ({
         message: `This is the Addon URL of a different Stremlist. ${fix}`,
         openAccount: key,
-      };
+      } satisfies LinkProblem);
 }
 
 type LinkProblemReason = SourceProblemReason | "unrecognized" | "too_long";
 
 type ResolveAnswer = InferResponseType<typeof api.links.resolve.$post, 200>;
 
-/** An answer that is not a place in the Provider's queue. */
 type SettledAnswer = Exclude<ResolveAnswer, { reason: "queued" }>;
 
-/** Turn a `/links/resolve` refusal into a message and a next step. */
 function describeLinkProblem(
   reason: LinkProblemReason,
   provider: ProviderId | undefined,
   access: AccountAccess,
   source: { noun: SourceNoun; sourceRef?: string },
-): LinkProblem {
+) {
   if (reason === "too_long") {
     return {
       message: `This link is too long. Paste a link of at most ${SOURCE_LINK_MAX_LENGTH} characters.`,
-    };
+    } satisfies LinkProblem;
   }
   if (reason === "unrecognized" || !provider) {
     return {
       message: `We do not recognize this link. ${PASTE_LINK_PROMPT} on ${joinProviderLabels(LINK_PROVIDERS, "or")}.`,
-    };
+    } satisfies LinkProblem;
   }
   const label = PROVIDERS[provider].label;
   const { title, fix } = sourceProblemCopy(
@@ -94,46 +93,42 @@ function describeLinkProblem(
   );
   switch (reason) {
     case "coming_soon":
-      return { provider, tone: "info", message: `${title}. ${fix}` };
+      return {
+        provider,
+        tone: "info",
+        message: `${title}. ${fix}`,
+      } satisfies LinkProblem;
     case "needs_connection":
-      // On this page the fix is a button, not a sentence.
       return access === "legacy"
-        ? {
+        ? ({
             provider,
             action: "upgrade",
             message: `${title}. To connect an account, you need a private Addon URL. Upgrade this install first.`,
-          }
-        : {
+          } satisfies LinkProblem)
+        : ({
             provider,
             action: "connect",
             message:
               access === "new"
                 ? `${title}. Connect ${label} to add it. When it connects, Stremlist saves your setup and gives you a private Addon URL.`
                 : `${title}. Connect ${label} to add it.`,
-          };
+          } satisfies LinkProblem);
     case "private":
     case "not_found":
     case "disabled":
     case "premium_only":
     case "unavailable":
-      return { provider, message: `${title}. ${fix}` };
+      return { provider, message: `${title}. ${fix}` } satisfies LinkProblem;
   }
-  // A reason from a newer backend than this page.
-  return { provider, message: `${title}. ${fix}` };
+  return { provider, message: `${title}. ${fix}` } satisfies LinkProblem;
 }
 
-/**
- * Asks `POST /links/resolve` about a link. A queued answer keeps the place
- * in the queue: it asks again with its ticket when the queue says so, and
- * tells `onQueue` where it waits. `gone` when the field went away meanwhile,
- * `failed` when the check got no answer.
- */
 async function resolveLink(
   input: string,
   accountKey: string | null,
   onQueue: (wait: QueueWait) => void,
   isMounted: () => boolean,
-): Promise<SettledAnswer | "gone" | "failed"> {
+) {
   let ticket: string | undefined;
   let wait: QueueWait | null = null;
   try {
@@ -143,7 +138,10 @@ async function resolveLink(
       });
       if (!res.ok) return "failed";
       const body = await res.json();
-      if (body.ok || body.reason !== "queued") return body;
+      if (body.ok || body.reason !== "queued") {
+        const settled: SettledAnswer = body;
+        return settled;
+      }
       wait = queueWait(body, Date.now(), wait);
       onQueue(wait);
       ticket = body.ticket ?? undefined;
@@ -193,7 +191,6 @@ export default function LinkPaste({
   const [value, setValue] = useState(initialValue ?? "");
   const [resolving, setResolving] = useState(false);
   const [problem, setProblem] = useState<LinkProblem | null>(null);
-  // Set while the check waits in the Provider's queue (Letterboxd).
   const [queue, setQueue] = useState<QueueWait | null>(null);
   const autoSubmitted = useRef(false);
   const mounted = useRef(true);
@@ -216,7 +213,6 @@ export default function LinkPaste({
     if (!trimmed || resolving || disabled) return;
     setProblem(null);
 
-    // Answer the obvious cases without a round trip.
     if (trimmed.length > SOURCE_LINK_MAX_LENGTH) {
       setProblem(
         describeLinkProblem("too_long", undefined, access, { noun: "list" }),
@@ -287,7 +283,6 @@ export default function LinkPaste({
     onInitialValueUsed();
     void submit(link);
   });
-  // A link carried over from Home or an OAuth round trip is added at once.
   useEffect(() => {
     if (!initialValue || autoSubmitted.current) return;
     autoSubmitted.current = true;
@@ -340,7 +335,6 @@ export default function LinkPaste({
           disabled={disabled || resolving || !value.trim()}
           className={cn(
             "inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-black transition-[opacity,scale] duration-150 active:scale-[0.97]",
-            // A check in progress stays readable: it can show the queue state.
             resolving ? "disabled:opacity-80" : "disabled:opacity-30",
           )}
         >
@@ -412,7 +406,6 @@ export default function LinkPaste({
   );
 }
 
-/** "Checking", or the queue state while the check waits its turn. */
 function CheckingLabel({ queue }: { queue: QueueWait | null }) {
   const now = useNow();
   return (

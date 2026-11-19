@@ -2,9 +2,7 @@ import type { ProviderId, SourceId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
 import { supabase } from "../lib/supabase";
 
-/** Write the estimate of a waiting read at most this often. */
 const WRITE_EVERY_MS = 5_000;
-/** An estimate that its read did not write again for this long is over. */
 const STALE_AFTER_MS = 30_000;
 
 /**
@@ -28,7 +26,6 @@ export function listReadQueueMark(source: SourceId & { listId: string }) {
       );
   };
   return {
-    /** The read waits: it should end in about `waitMs`. */
     queued(waitMs: number) {
       const at = Date.now();
       if (at - writtenAt < WRITE_EVERY_MS) return;
@@ -47,7 +44,6 @@ export function listReadQueueMark(source: SourceId & { listId: string }) {
         logged("record")(error);
       })();
     },
-    /** The read ended: forget its estimate. */
     async done() {
       if (!write) return;
       await write;
@@ -68,9 +64,7 @@ export function listReadQueueMark(source: SourceId & { listId: string }) {
  * Lists that wait for nothing are left out, also when the estimates cannot
  * be read.
  */
-export async function getListReadQueue(
-  listIds: string[],
-): Promise<Record<string, { provider: ProviderId; readyAt: string }>> {
+export async function getListReadQueue(listIds: string[]) {
   if (listIds.length === 0) return {};
   const { data, error } = await supabase
     .from("list_read_queue")

@@ -2,10 +2,9 @@ import { ADDON_VERSION } from "@stremlist/shared/constants";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { z } from "zod";
 import { LruCache } from "../lib/lru";
-import type { ConnectionAccess } from "./types";
 import { SourceUnavailableError } from "./types";
+import type { ConnectionAccess } from "./types";
 
-/** Identifying User-Agent for Provider APIs (Trakt and Simkl require one). */
 const STREMLIST_USER_AGENT = `Stremlist/${ADDON_VERSION} (+https://stremlist.com)`;
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -39,7 +38,7 @@ export class RateLimiter {
     this.windowMs = windowMs;
   }
 
-  acquire(): Promise<void> {
+  acquire() {
     const next = this.queue.then(async () => {
       for (;;) {
         const now = Date.now();
@@ -61,7 +60,7 @@ export class RateLimiter {
   }
 }
 
-function sleep(ms: number): Promise<void> {
+function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -69,12 +68,9 @@ function sleep(ms: number): Promise<void> {
  * Limiters for each key (a user, a token): one key's backlog never delays
  * another key's calls. Past `maxKeys`, the least recently used are dropped.
  */
-export function limitersByKey<T>(
-  create: () => T,
-  maxKeys = 1000,
-): (key: string) => T {
+export function limitersByKey<T>(create: () => T, maxKeys = 1000) {
   const byKey = new LruCache<string, T>({ maxEntries: maxKeys });
-  return (key) => {
+  return (key: string) => {
     let limiters = byKey.get(key);
     if (!limiters) {
       limiters = create();
@@ -89,12 +85,9 @@ export function limitersByKey<T>(
  * user. They are keyed by the Provider username, or by the Account when the
  * username is unknown, so such users never share one.
  */
-export function limitersPerUser<T>(
-  create: () => T,
-  maxUsers = 1000,
-): (connection: Pick<ConnectionAccess, "accountId" | "username">) => T {
+export function limitersPerUser<T>(create: () => T, maxUsers = 1000) {
   const forKey = limitersByKey(create, maxUsers);
-  return (connection) =>
+  return (connection: Pick<ConnectionAccess, "accountId" | "username">) =>
     forKey(
       connection.username
         ? `user:${connection.username.toLowerCase()}`
@@ -115,8 +108,7 @@ export interface ProviderFetchOptions extends RequestInit {
   bearer?: string;
 }
 
-/** The URL with `query` set on it. */
-function withQuery(url: string, query: Record<string, string> = {}): string {
+function withQuery(url: string, query: Record<string, string> = {}) {
   const entries = Object.entries(query);
   if (entries.length === 0) return url;
   const target = new URL(url);
@@ -131,7 +123,7 @@ function withQuery(url: string, query: Record<string, string> = {}): string {
 export async function providerFetch(
   url: string,
   options: ProviderFetchOptions = {},
-): Promise<Response> {
+) {
   const {
     limiter,
     timeoutMs = DEFAULT_TIMEOUT_MS,
@@ -173,10 +165,7 @@ export async function providerFetch(
 }
 
 /** The response when it is 2xx; otherwise an HttpError with its body. */
-export async function ensureOk(
-  response: Response,
-  url: string,
-): Promise<Response> {
+export async function ensureOk(response: Response, url: string) {
   if (!response.ok) {
     throw new HttpError(
       response.status,
@@ -198,7 +187,7 @@ export function sourceErrorFromHttp(
     _reason,
     httpError,
   ) => httpError.message,
-): unknown {
+) {
   if (!(error instanceof HttpError)) return error;
   const reason = reasons[error.status];
   return reason
@@ -213,20 +202,13 @@ export function sourceErrorFromHttp(
 export async function providerFetchJson(
   url: string,
   options: ProviderFetchOptions = {},
-): Promise<{ data: unknown; response: Response }> {
+) {
   const response = await ensureOk(await providerFetch(url, options), url);
   const data: unknown = await response.json();
   return { data, response };
 }
 
-export interface GraphQLResponse<T> {
-  data?: T | null;
-  errors?: { message: string; extensions?: { code?: string } }[];
-}
-
-function graphqlResponseSchema<T>(
-  data: z.ZodType<T>,
-): z.ZodType<GraphQLResponse<T>> {
+function graphqlResponseSchema<T>(data: z.ZodType<T>) {
   return z.object({
     data: data.nullish(),
     errors: z
@@ -251,7 +233,7 @@ export async function graphqlRequest<T>(
   variables: Record<string, unknown>,
   schema: z.ZodType<T>,
   options: ProviderFetchOptions = {},
-): Promise<GraphQLResponse<T>> {
+) {
   const headers = new Headers(options.headers);
   headers.set("Accept", "application/json");
   const { data } = await providerFetchJson(url, {

@@ -21,26 +21,21 @@ type Chip = {
   label: string;
   added: boolean;
   onAdd: () => void;
-  /** The list's own page on the Provider. */
   url?: string;
-  /** A longer description, shown on hover. */
   hint?: string;
 };
 type Section = {
   title: string;
   chips: Chip[];
-  /** The Simkl chart menu, for the charts that are not chips. */
   simklMenu?: boolean;
 };
 type ProviderEntry = {
   provider: ProviderId;
-  /** "@moviebuff, 28 lists" or "13 charts". */
   summary: string;
   added: number;
   sections: Section[];
 };
 
-/** The IMDb charts in "Popular now"; the others sort by rating. */
 const IMDB_POPULAR = new Set([
   "imdb:most-popular-movies",
   "imdb:most-popular-tv",
@@ -49,7 +44,6 @@ const IMDB_POPULAR = new Set([
   "imdb:coming-soon-tv",
 ]);
 
-/** A list the user made, imported or follows, not one the Provider makes. */
 function isOwnList(ref: string) {
   return /^(me\/(lists|smart-lists|external)\/|users\/|lists\/)/.test(ref);
 }
@@ -88,20 +82,21 @@ export default function QuickAdd({
     const mine = (connection && connectionSources[provider]) || [];
     const charts = [
       ...mine.filter((source) => source.kind === "chart"),
-      // The other charts are in the Provider's chart menu.
       ...(PUBLIC_SOURCES[provider] ?? []).filter((source) => !source.menu),
     ].filter(
       (source, index, all) =>
         all.findIndex((other) => other.ref === source.ref) === index,
     );
-    const chip = (source: ConnectionSource): Chip => ({
-      key: source.ref,
-      label: source.label,
-      added: isAdded(provider, source.ref),
-      onAdd: () => onAdd(provider, source),
-      url:
-        source.url ?? sourcePageUrl(provider, source.ref, connection?.username),
-    });
+    const chip = (source: ConnectionSource) =>
+      ({
+        key: source.ref,
+        label: source.label,
+        added: isAdded(provider, source.ref),
+        onAdd: () => onAdd(provider, source),
+        url:
+          source.url ??
+          sourcePageUrl(provider, source.ref, connection?.username),
+      }) satisfies Chip;
     const sections = [
       {
         title: "Follow what you watch",
@@ -159,9 +154,6 @@ export default function QuickAdd({
     ],
   });
 
-  // Until the user picks a row, open the newest Connection's Provider, so
-  // its lists show right after it connects. The lists of a Connection load
-  // after the first render, so this default is read again on each render.
   const [picked, setPicked] = useState<ProviderId | null>();
   const newest = connections
     .filter((c) => entries.some((entry) => entry.provider === c.provider))
@@ -256,10 +248,6 @@ export default function QuickAdd({
   );
 }
 
-/**
- * A chip in two parts in one pill: the label adds the list, and the small
- * arrow opens the list's own page in a new tab.
- */
 function SourceChip({
   chip: { label, added, onAdd, url, hint },
   full,

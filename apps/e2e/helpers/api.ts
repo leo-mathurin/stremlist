@@ -18,13 +18,6 @@ import { hcWithType } from "@stremlist/backend/client";
 import { BACKEND_URL } from "../env.js";
 import { type Guard, isRecord, isString, optional, parsed } from "./json.js";
 
-// Thin typed wrappers over the backend HTTP API. Tests use these both to
-// arrange state (through real code paths) and to assert the addon protocol
-// contract that Stremio clients consume. An "account key" is what an Addon
-// URL contains: a generated Account ID (`sl_…`) or a Legacy alias (`ur…`).
-// `apiAt(url)` talks to one backend; `api` and the named exports below talk
-// to the Playwright backend (BACKEND_URL), and a fixture backend has its own.
-
 export type CatalogMeta = StremioMeta;
 
 interface ApiResponse<T> {
@@ -56,7 +49,6 @@ export interface PreviewInput {
   mergedSources?: ListSource[];
 }
 
-/** Stremio catalog extras: `/search=…` and `/skip=…` path segments. */
 interface CatalogExtra {
   search?: string;
   skip?: number;
@@ -67,13 +59,18 @@ export function listInput(
   provider: ProviderId,
   sourceRef: string,
   extra: Partial<ConfigListInput> = {},
-): ConfigListInput {
-  return { provider, sourceRef, sortOption: "added_at-asc", ...extra };
+) {
+  return {
+    provider,
+    sourceRef,
+    sortOption: "added_at-asc",
+    ...extra,
+  } satisfies ConfigListInput;
 }
 
 /** The Lists of a saved configuration as a save payload (same IDs). */
-export function asInput(lists: ConfigList[]): ConfigListInput[] {
-  return lists.map((list) => ({
+export function asInput(lists: ConfigList[]) {
+  const inputs: ConfigListInput[] = lists.map((list) => ({
     id: list.id,
     provider: list.provider,
     sourceRef: list.sourceRef,
@@ -83,10 +80,11 @@ export function asInput(lists: ConfigList[]): ConfigListInput[] {
     catalogSettings: list.catalogSettings,
     mergedSources: list.mergedSources,
   }));
+  return inputs;
 }
 
 /** The body of a 200 answer; any other status fails the test. */
-export function ok<T>(response: ApiResponse<T>): T {
+export function ok<T>(response: ApiResponse<T>) {
   if (response.status !== 200) {
     throw new Error(
       `Expected HTTP 200, got ${response.status}: ${JSON.stringify(response.body)}`,
@@ -95,14 +93,8 @@ export function ok<T>(response: ApiResponse<T>): T {
   return response.body;
 }
 
-/** An answer of a backend route that the shapes below do not detail. */
 type AnyBody = Record<string, unknown>;
 
-/**
- * An error answer: `{ error }`, `{ reason }`, or the validator's issues. The
- * readers below pass it on with the type of the success answer, so a test
- * reads it through `status` and `toEqual` only.
- */
 function isErrorBody(value: unknown): value is AnyBody {
   return isRecord(value) && ("error" in value || "reason" in value);
 }
@@ -169,7 +161,6 @@ function isProviders(
   return isRecord(value) && Array.isArray(value.providers);
 }
 
-/** A preview, a Problem of its Source list, or a queued read. */
 function isPreview(value: unknown): value is CatalogPreviewResponse {
   return isRecord(value);
 }
@@ -222,11 +213,10 @@ export function isRefreshResult(value: unknown): value is RefreshResult {
   );
 }
 
-/** The status and JSON body of a typed client answer. */
 async function answer<T>(
   response: { status: number; json(): Promise<unknown> },
   is: Guard<T>,
-): Promise<ApiResponse<T>> {
+) {
   return {
     status: response.status,
     body: parsed(await response.json(), is, `body (${response.status})`),
@@ -237,12 +227,11 @@ async function answer<T>(
 export function apiAt(baseUrl: string) {
   const client = hcWithType(baseUrl);
 
-  /** A request that does not follow redirects; an empty body is null. */
   async function send<T>(
     path: string,
     is: Guard<T>,
     init: { method?: string; json?: unknown } = {},
-  ): Promise<ApiResponse<T>> {
+  ) {
     const response = await fetch(`${baseUrl}${path}`, {
       method: init.method ?? (init.json === undefined ? "GET" : "POST"),
       headers:
@@ -261,13 +250,11 @@ export function apiAt(baseUrl: string) {
     };
   }
 
-  async function getManifest(accountKey: string): Promise<StremioManifest> {
+  async function getManifest(accountKey: string) {
     return (await send(`/${accountKey}/manifest.json`, isManifest)).body;
   }
 
-  async function getConfig(
-    accountKey: string,
-  ): Promise<ApiResponse<AccountConfigResponse>> {
+  async function getConfig(accountKey: string) {
     return answer(
       await client[":accountKey"].config.$get({ param: { accountKey } }),
       isConfig,
@@ -279,7 +266,7 @@ export function apiAt(baseUrl: string) {
     type: string,
     catalogId: string,
     extra: CatalogExtra = {},
-  ): Promise<{ status: number; metas: CatalogMeta[] }> {
+  ) {
     const segments = [
       ...(extra.search !== undefined
         ? [`search=${encodeURIComponent(extra.search)}`]
@@ -295,17 +282,14 @@ export function apiAt(baseUrl: string) {
   }
 
   return {
-    async getBaseManifest(): Promise<StremioManifest> {
+    async getBaseManifest() {
       return (await send("/manifest.json", isManifest)).body;
     },
 
     getManifest,
     getConfig,
 
-    /** The sync status of an Account's Lists and its Connections (STR-58). */
-    async getSyncStatus(
-      accountKey: string,
-    ): Promise<ApiResponse<AccountSyncSnapshot>> {
+    async getSyncStatus(accountKey: string) {
       return answer(
         await client[":accountKey"]["sync-status"].$get({
           param: { accountKey },
@@ -318,7 +302,7 @@ export function apiAt(baseUrl: string) {
       accountKey: string,
       lists: ConfigListInput[],
       options: ConfigOptions = {},
-    ): Promise<ApiResponse<AnyBody>> {
+    ) {
       return answer(
         await client[":accountKey"].config.$post({
           param: { accountKey },
@@ -328,13 +312,7 @@ export function apiAt(baseUrl: string) {
       );
     },
 
-    /** Create an Account the way the configure page does on its first save. */
-    async createAccount(
-      lists: ConfigListInput[],
-      rpdbApiKey?: string,
-    ): Promise<
-      ApiResponse<{ accountId?: string; lists?: ConfigList[]; error?: string }>
-    > {
+    async createAccount(lists: ConfigListInput[], rpdbApiKey?: string) {
       return answer(
         await client.accounts.$post({ json: { lists, rpdbApiKey } }),
         isAccountAnswer,
@@ -343,12 +321,7 @@ export function apiAt(baseUrl: string) {
 
     getCatalog,
 
-    /** The names in the Catalog of `type` of one List; fails unless 200. */
-    async listCatalogNames(
-      accountKey: string,
-      listId: string,
-      type: string,
-    ): Promise<string[]> {
+    async listCatalogNames(accountKey: string, listId: string, type: string) {
       const { status, metas } = await getCatalog(
         accountKey,
         type,
@@ -360,11 +333,7 @@ export function apiAt(baseUrl: string) {
       return metas.map((meta) => meta.name);
     },
 
-    async getMeta(
-      accountKey: string,
-      type: string,
-      id: string,
-    ): Promise<{ status: number; meta: CatalogMeta | null }> {
+    async getMeta(accountKey: string, type: string, id: string) {
       const { status, body } = await send(
         `/${accountKey}/meta/${type}/${id}.json`,
         isMetaAnswer,
@@ -372,43 +341,26 @@ export function apiAt(baseUrl: string) {
       return { status, meta: body.meta };
     },
 
-    /** The Action entries that Stremio shows for a Title. */
-    async getStreams(
-      accountKey: string,
-      type: string,
-      id: string,
-    ): Promise<
-      ApiResponse<{ streams: StremioStream[]; cacheMaxAge?: number }>
-    > {
+    async getStreams(accountKey: string, type: string, id: string) {
       return send(`/${accountKey}/stream/${type}/${id}.json`, isStreams);
     },
 
-    async refresh(accountKey: string): Promise<ApiResponse<AnyBody>> {
+    async refresh(accountKey: string) {
       return answer(
         await client[":accountKey"].refresh.$post({ param: { accountKey } }),
         isRecord,
       );
     },
 
-    /** What the configure page asks when the user adds a pasted link. */
-    async resolveLink(
-      input: string,
-      accountKey?: string,
-    ): Promise<Record<string, unknown>> {
+    async resolveLink(input: string, accountKey?: string) {
       const response = await client.links.resolve.$post({
         json: { input, accountKey },
       });
-      return await response.json();
+      const body: Record<string, unknown> = await response.json();
+      return body;
     },
 
-    /**
-     * Give a Legacy alias install a private Addon URL the way its configure
-     * page does: a new Account from the setup that the page shows. Nothing
-     * of the legacy install changes.
-     */
-    async upgrade(
-      accountKey: string,
-    ): Promise<ApiResponse<{ accountId?: string; error?: string }>> {
+    async upgrade(accountKey: string) {
       const { body: shown } = await getConfig(accountKey);
       return answer(
         await client.accounts.$post({
@@ -422,12 +374,7 @@ export function apiAt(baseUrl: string) {
       );
     },
 
-    /**
-     * Bootstrap a Legacy alias install exactly the way an old Stremio install
-     * does: the first manifest fetch creates the legacy Account and its
-     * default IMDb watchlist List. Returns the configuration.
-     */
-    async bootstrapLegacy(imdbUserId: string): Promise<AccountConfigResponse> {
+    async bootstrapLegacy(imdbUserId: string) {
       await getManifest(imdbUserId);
       const { status, body } = await getConfig(imdbUserId);
       if (status !== 200) {
@@ -436,35 +383,19 @@ export function apiAt(baseUrl: string) {
       return body;
     },
 
-    async getProviders(): Promise<
-      ApiResponse<{ providers: { id: ProviderId; enabled: boolean }[] }>
-    > {
+    async getProviders() {
       return send("/providers", isProviders);
     },
 
-    async previewList(
-      input: PreviewInput,
-    ): Promise<ApiResponse<CatalogPreviewResponse>> {
+    async previewList(input: PreviewInput) {
       return send("/lists/preview", isPreview, { json: input });
     },
 
-    /** The Source lists that a Connection offers (Quick add). */
-    async getConnectionSources(
-      accountKey: string,
-      provider: ProviderId,
-    ): Promise<ApiResponse<{ sources: { ref: string; label: string }[] }>> {
+    async getConnectionSources(accountKey: string, provider: ProviderId) {
       return send(`/${accountKey}/connections/${provider}/sources`, isSources);
     },
 
-    /**
-     * Start an OAuth authorization, as the Connect button does: for an
-     * Account, or for a new setup when `accountKey` is null. The browser key
-     * stays with the browser that completes the authorization.
-     */
-    async startConnection(
-      accountKey: string | null,
-      provider: ProviderId,
-    ): Promise<ApiResponse<{ authorizeUrl: string; browserKey: string }>> {
+    async startConnection(accountKey: string | null, provider: ProviderId) {
       return send(
         accountKey
           ? `/${accountKey}/connections/${provider}/start`
@@ -474,7 +405,6 @@ export function apiAt(baseUrl: string) {
       );
     },
 
-    /** What the configure page sends after the Provider's consent page. */
     async completeConnection(
       provider: ProviderId,
       json: {
@@ -483,36 +413,22 @@ export function apiAt(baseUrl: string) {
         browserKey: string;
         setup?: { lists: ConfigListInput[] };
       },
-    ): Promise<
-      ApiResponse<{
-        ok?: true;
-        accountId?: string;
-        created?: boolean;
-        reason?: string;
-      }>
-    > {
+    ) {
       return send(`/connections/${provider}/complete`, isCompletion, {
         json,
       });
     },
 
-    async disconnect(
-      accountKey: string,
-      provider: ProviderId,
-    ): Promise<ApiResponse<AnyBody>> {
+    async disconnect(accountKey: string, provider: ProviderId) {
       return send(`/${accountKey}/connections/${provider}`, isRecord, {
         method: "DELETE",
       });
     },
 
-    /**
-     * The OAuth callback that the Provider redirects to, with `params` in the
-     * query. Returns its status and the redirect target.
-     */
     async oauthCallback(
       provider: ProviderId,
       params: Record<string, string> = {},
-    ): Promise<{ status: number; location: string | null }> {
+    ) {
       const query = new URLSearchParams(params).toString();
       const response = await fetch(
         `${baseUrl}/oauth/${provider}/callback${query ? `?${query}` : ""}`,

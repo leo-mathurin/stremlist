@@ -4,10 +4,6 @@ import { supabase } from "../lib/supabase";
 import { HttpError } from "./http";
 import { SourceBusyError, SourceUnavailableError } from "./types";
 
-/**
- * Failed probes in a row before a Provider has an outage. One failure is
- * often a single slow request; two in a row are not.
- */
 const OUTAGE_THRESHOLD = 2;
 
 /**
@@ -25,17 +21,16 @@ export const OUTAGE_STALE_MS = 60 * 60_000;
  * Stremlist's problems or the monitor's, and the user must not read them as
  * a Provider outage.
  */
-export function isOutageFailure(error: unknown): boolean {
-  if (error instanceof SourceBusyError) return false;
-  // "unavailable" alone also covers Stremlist's own failures (an unreadable
-  // gate or cache, a page it cannot parse, a missing client ID).
-  if (error instanceof SourceUnavailableError)
-    return error.reason === "unavailable" && isOutageFailure(error.cause);
+export function isOutageFailure(failure: unknown) {
+  let error = failure;
+  while (error instanceof SourceUnavailableError) {
+    if (error instanceof SourceBusyError || error.reason !== "unavailable") {
+      return false;
+    }
+    error = error.cause;
+  }
   if (error instanceof HttpError) return error.status >= 500;
   if (!(error instanceof Error)) return false;
-  // AbortSignal.timeout() rejects with a TimeoutError. fetch() rejects with a
-  // TypeError that carries a code (Bun: ECONNREFUSED, ENOTFOUND…) or a cause
-  // (Node) when the connection fails; a TypeError without either is a bug.
   if (error.name === "TimeoutError" || error.name === "AbortError") return true;
   return error instanceof TypeError && ("code" in error || "cause" in error);
 }
@@ -48,7 +43,7 @@ export function isOutageFailure(error: unknown): boolean {
 export async function recordProviderProbe(
   provider: ProviderId,
   result: { ok: true } | { ok: false; error: string; immediate?: boolean },
-): Promise<void> {
+) {
   try {
     const { error } = await supabase.rpc("record_provider_probe", {
       p_provider: provider,
@@ -74,9 +69,7 @@ function isProviderId(value: string): value is ProviderId {
  * one. When the outages cannot be read, none is reported: the configure page
  * must never claim an outage that it cannot confirm.
  */
-export async function currentProviderOutages(
-  now = Date.now(),
-): Promise<Partial<Record<ProviderId, string>>> {
+export async function currentProviderOutages(now = Date.now()) {
   try {
     const { data, error } = await supabase
       .from("provider_outages")

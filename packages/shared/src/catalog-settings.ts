@@ -14,7 +14,6 @@ export interface CatalogSettings {
   presets?: CatalogPreset[];
 }
 
-/** The settings that filter a Catalog (presets add Catalogs instead). */
 const CATALOG_FILTER_KEYS = [
   "genre",
   "decade",
@@ -24,7 +23,7 @@ const CATALOG_FILTER_KEYS = [
 
 export type CatalogFilterKey = (typeof CATALOG_FILTER_KEYS)[number];
 
-export function countCatalogFilters(settings: CatalogSettings): number {
+export function countCatalogFilters(settings: CatalogSettings) {
   return CATALOG_FILTER_KEYS.filter((key) => settings[key] !== undefined)
     .length;
 }

@@ -6,10 +6,7 @@ import {
   routeResolve,
   saveButton,
   SAVE_NEW,
-} from "./config-fixture";
-
-// What the link check says about a Letterboxd link it cannot add. The backend
-// answers are intercepted; the backend tests cover how each answer is made.
+} from "./config.fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
 

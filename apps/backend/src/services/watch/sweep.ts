@@ -1,9 +1,3 @@
-/**
- * The slow sweep (ADR 0003): every Account once every 6 hours, in its own
- * minute of the cycle. It lists the library with `datastoreMeta`, reads the
- * items changed since the last sweep, and sends what the trigger missed.
- * It also takes the Watched baseline of an Account that has none yet.
- */
 import type { ProviderId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
 import { mapWithConcurrency } from "../../lib/concurrency";
@@ -28,10 +22,7 @@ export interface SweepStats {
   postponed: number;
 }
 
-async function readItems(
-  authKey: string,
-  ids: string[],
-): Promise<LibraryItem[]> {
+async function readItems(authKey: string, ids: string[]) {
   const items: LibraryItem[] = [];
   for (let i = 0; i < ids.length; i += IDS_PER_GET) {
     items.push(
@@ -46,10 +37,7 @@ async function readItems(
  * whether Stremio's own Trakt is connected. The Account is tracked from
  * then on.
  */
-export async function takeBaseline(
-  accountId: string,
-  sealedKey: string,
-): Promise<void> {
+export async function takeBaseline(accountId: string, sealedKey: string) {
   const authKey = decryptSecret(sealedKey);
   const meta = await readLibraryMeta(authKey);
   const items = await readItems(
@@ -57,10 +45,6 @@ export async function takeBaseline(
     meta.map(([id]) => id),
   );
   const newest = Math.max(0, ...meta.map(([, mtime]) => mtime));
-  // A baseline read with an older link's key must not replace the current
-  // one: the member linked another Stremio account meanwhile. The state is
-  // read before the key check and written only over that version, so a
-  // newer baseline saved in between is never replaced.
   const before = await readState(accountId);
   const { data: link, error: linkError } = await supabase
     .from("stremio_connections")
@@ -81,7 +65,6 @@ export async function takeBaseline(
     withItems(empty, items, newest) || empty,
     before.etag,
   );
-  // Another baseline landed first: it sets the tracking row.
   if (!saved) return;
   const stremioTrakt = await readStremioTrakt(authKey);
   const { error } = await supabase
@@ -106,7 +89,7 @@ export async function destinationsNow(
   authKey: string,
   destinations: ProviderId[],
   cached?: boolean,
-): Promise<ProviderId[]> {
+) {
   if (!destinations.includes("trakt")) return destinations;
   const connected = await readStremioTrakt(authKey);
   if (connected !== cached) {
@@ -130,12 +113,11 @@ async function sweepAccount(
     destinations: ProviderId[];
   },
   stats: SweepStats,
-): Promise<void> {
+) {
   const authKey = decryptSecret(account.auth_key);
   const version = account.baseline_at
     ? await readState(account.account_id)
     : null;
-  // No state, or one from another Stremio link: read the baseline again.
   if (version?.state?.link !== linkOf(account.auth_key)) {
     await takeBaseline(account.account_id, account.auth_key);
     stats.baselines += 1;
@@ -153,7 +135,6 @@ async function sweepAccount(
       .eq("account_id", account.account_id);
     if (error) throw error;
   }
-  // Stremio's Trakt connected since the last sweep: Trakt gets nothing more.
   const destinations = stremioTrakt
     ? account.destinations.filter((provider) => provider !== "trakt")
     : account.destinations;
@@ -175,7 +156,7 @@ async function sweepAccount(
  * Sweeps the Accounts of the minutes due now, and catches up missed ones,
  * until `deadline`: an Account not swept by then waits for its next turn.
  */
-export async function processSweep(deadline: number): Promise<SweepStats> {
+export async function processSweep(deadline: number) {
   const stats: SweepStats = {
     slots: 0,
     accounts: 0,
@@ -184,7 +165,6 @@ export async function processSweep(deadline: number): Promise<SweepStats> {
     failed: 0,
     postponed: 0,
   };
-  // Out of time: the minutes stay unclaimed, for the next run to catch up.
   if (Date.now() >= deadline) return stats;
   const { data: slots, error } = await supabase.rpc("claim_sweep_slots", {
     p_now: new Date().toISOString(),
@@ -218,8 +198,6 @@ export async function processSweep(deadline: number): Promise<SweepStats> {
       );
     } catch (error) {
       stats.failed += 1;
-      // A signed-out key stays until the member links Stremio again; the
-      // configure page shows it when an update fails.
       if (!(error instanceof StremioSessionError)) {
         console.error(
           `Watch tracking sweep of ${row.account_id} failed:`,

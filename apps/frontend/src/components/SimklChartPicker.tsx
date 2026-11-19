@@ -35,17 +35,15 @@ const PERIOD_LABELS: Record<SimklChartPeriod, string> = {
   month: "This month",
 };
 
-/** A chart value: a period, or `genre:{slug}`. */
 const GENRE_PREFIX = "genre:";
 
-function chartRef(type: SimklChartType, chart: string): string {
+function chartRef(type: SimklChartType, chart: string) {
   return isSimklChartPeriod(chart)
     ? simklTrendingRef(type, chart)
     : simklGenreRef(type, chart.slice(GENRE_PREFIX.length));
 }
 
-/** The Source list to add: a fixed chart, or a genre chart. */
-function chartSource(ref: string, type: SimklChartType): ConnectionSource {
+function chartSource(ref: string, type: SimklChartType) {
   const known = staticSource("simkl", ref);
   if (known) return known;
   const { defaultDisplayMode, titleType } = SIMKL_CHART_TYPE_INFO[type];
@@ -55,7 +53,7 @@ function chartSource(ref: string, type: SimklChartType): ConnectionSource {
     label: sourceTitle("simkl", ref),
     defaultDisplayMode,
     ...(titleType ? { titleType } : {}),
-  };
+  } satisfies ConnectionSource;
 }
 
 const triggerClass =
@@ -89,7 +87,6 @@ export default function SimklChartPicker({
         onValueChange={(next) => {
           if (!isSimklChartType(next)) return;
           setType(next);
-          // Each type has its own genres.
           const slug = chart.startsWith(GENRE_PREFIX)
             ? chart.slice(GENRE_PREFIX.length)
             : null;

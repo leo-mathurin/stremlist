@@ -30,7 +30,7 @@ export const CONFIGURE_SEO = {
   robots: "noindex, nofollow",
 };
 
-export function absoluteUrl(path: string): string {
+export function absoluteUrl(path: string) {
   return new URL(path, `${SITE.url}/`).href;
 }
 

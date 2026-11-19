@@ -23,7 +23,7 @@ e2e-chatgpt-session bun run test:toolkit:record
 
 The toolkit starts Vite on `127.0.0.1:4311`; requests to `127.0.0.1:4314`
 are intercepted. Configuration lives in `e2e.config.ts`, journeys in `toolkit/`,
-and shared routes/fixtures in `toolkit/config-fixture.ts`. Interception verifies
+and shared routes/fixtures in `toolkit/config.fixture.ts`. Interception verifies
 UI behavior and requests; Playwright verifies handlers and storage.
 
 ### Cache rules
@@ -40,7 +40,10 @@ UI behavior and requests; Playwright verifies handlers and storage.
   add `--prune` after a full replay to delete orphaned entries.
 - AI goals use unique accessible names. Configure-page goals call
   `fitConfigurePage` to avoid duplicate Save controls. Toast checks use
-  `holdToasts`; it hides the document and suppresses sync-status polling.
+  `holdToasts`; a fake timer in the page stops only the timer that closes a
+  toast, and the test fails when a toast shows, changes to a result, or starts
+  its timer again (after the pointer leaves the toaster, a press ends or the page
+  becomes visible) without its own held close timer.
 
 ## Running locally
 
@@ -77,7 +80,7 @@ Supabase URLs are rejected unless explicitly enabled below.
 | `E2E_IMDB_USER_ID` / `E2E_IMDB_USER_ID_2` / `E2E_IMDB_LIST_ID` | Public live fixtures                                             |
 | `E2E_PRIVATE_IMDB_USER_ID` / `E2E_PRIVATE_IMDB_LIST_ID`        | Private fixtures (the list ID enables the private-list case)     |
 
-`playwright.config.ts` defines projects; `tests/` contains coverage and assertions.
+`playwright.config.ts` defines projects; `test/` contains coverage and assertions.
 Provider specs use real adapters with fixture transports and reject unknown
 outbound destinations. Live projects depend on IMDb and web.stremio.com. Actual
 newsletter delivery, authenticated RPDB delivery, playback and desktop protocol

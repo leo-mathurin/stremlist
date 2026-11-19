@@ -26,17 +26,11 @@ import {
   toJson,
   routeConnectionSources,
   routePreview,
-} from "./config-fixture";
-
-// The Catalog preview of a List (STR-57): what the List adds to Stremio and
-// its Unresolved entries, before the user saves. The backend answer is
-// intercepted; `tests/catalog-preview.spec.ts` covers the real handler.
+} from "./config.fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
-/** The notice of unsaved edits that change the Catalogs of Stremio. */
 const NEEDS_REINSTALL = "These changes need a reinstall.";
 const LIST_LINK = "https://www.imdb.com/list/ls99887766/";
-/** The request of an IMDb List preview with the default List settings. */
 const IMDB_REQUEST = {
   provider: "imdb",
   sortOption: "added_at-asc",
@@ -54,7 +48,6 @@ test("a pasted List opens its preview at once, a saved List only on request", as
   const requests = await routePreview(browser, (request) => previewOf(request));
   await app.open(`/configure?account=${accountId}`);
   await expect(screen.getByText("Test catalog")).toBeVisible();
-  // The saved List keeps its preview closed: nothing is read.
   await expect(
     screen.getByRole("button", "Preview Test catalog"),
   ).toHaveAttribute("aria-expanded", "false");
@@ -81,11 +74,12 @@ test("a pasted List opens its preview at once, a saved List only on request", as
     { ...IMDB_REQUEST, accountKey: accountId, sourceRef: "ls99887766" },
   ]);
 
-  // The saved List opens on request, and closes again.
   const toggle = screen.getByRole("button", "Preview Test catalog");
+  const preview = browser.waitForResponse(`${backend}/lists/preview`);
   await toggle.tap();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
-  await expect.poll(() => requests.length).toBe(2);
+  await preview;
+  expect(requests).toHaveLength(2);
   expect(requests[1]).toMatchObject({ provider: "imdb", sourceRef: imdbUser });
   await toggle.tap();
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -103,13 +97,11 @@ test("the preview follows the sort and Show of the List", async ({
   await app.open(`/configure?account=${accountId}`);
   await screen.getByRole("button", "Preview Test catalog").tap();
   await expect(screen.getByText("5 titles")).toBeVisible();
-  // Opening a preview changes nothing that Stremio reads at install time.
   await expect(screen.getByText(NEEDS_REINSTALL)).not.toBeVisible();
 
   await screen.getByRole("combobox", "Sort order").tap();
   await screen.getByRole("option", "IMDb Rating (Highest First)").tap();
   await expect.poll(() => requests.at(-1)?.sortOption).toBe("rating-desc");
-  // A sort applies without a reinstall, even though the preview changed.
   await expect(screen.getByText(NEEDS_REINSTALL)).not.toBeVisible();
 
   await screen.getByRole("button", "Settings for Test catalog").tap();
@@ -122,9 +114,7 @@ test("the preview follows the sort and Show of the List", async ({
     ),
   ).toBeVisible();
   await expect(screen.getByRole("heading", /^TV shows/)).not.toBeVisible();
-  // Show removes a Catalog, so the save will need a reinstall.
   await expect(screen.getByText(NEEDS_REINSTALL)).toBeVisible();
-  // The preview reads; it does not save.
   expect(submissions).toHaveLength(0);
 });
 
@@ -218,7 +208,6 @@ test("a new setup previews its first List without an Account key", async ({
 }) => {
   await baseRoutes(browser);
   await routeResolve(browser, () => resolved("imdb", "ls99887766", "list"));
-  // baseRoutes fails the test if the page creates an Account.
   const requests = await routePreview(browser, (request) => previewOf(request));
   await app.open("/configure");
   await screen.getByLabel(PASTE).fill(LIST_LINK);
@@ -247,7 +236,6 @@ test("disconnecting the Provider reads the open preview again", async ({
   };
   await baseRoutes(browser);
   let disconnected = false;
-  // After the disconnect, the page reads the configuration again.
   await browser.route(`${backend}/${accountId}/config`, (route) =>
     route.fulfill({
       json: toJson(
@@ -294,15 +282,10 @@ test("disconnecting the Provider reads the open preview again", async ({
 const LOADING = "Reading the list on IMDb. A big list can take a few seconds.";
 const MOVIES = previewOf({ displayMode: "movie" }).catalogs[0].titles;
 
-/**
- * One Catalog row per type of `request` and per preset, like the manifest.
- * `rows` gives the Titles and the total of each `type:preset` row; rows that
- * it does not name are empty.
- */
 function catalogsOf(
   request: PreviewRequest,
   rows: Record<string, { total: number; titles: PreviewTitle[] }>,
-): CatalogPreviewRow[] {
+) {
   const types: CatalogPreviewRow["type"][] =
     request.displayMode === "split"
       ? ["movie", "series"]
@@ -332,7 +315,6 @@ test("the preview shows a loading state, then every Catalog with its empty hints
     const request = parseBody(route, isPreviewRequest);
     requests.push(request);
     if (requests.length === 1) await firstAnswer;
-    // The decade filter leaves no movie; the Top rated Catalog has none.
     const filtered = request.catalogSettings?.decade !== undefined;
     await route.fulfill({
       json: toJson(
@@ -351,14 +333,12 @@ test("the preview shows a loading state, then every Catalog with its empty hints
   await app.open(`/configure?account=${accountId}`);
   await screen.getByRole("button", "Preview Test catalog").tap();
   await expect(screen.getByText(LOADING)).toBeVisible();
-  // Nothing shows as ready while the read runs.
   await expect(screen.getByText("The Godfather")).not.toBeVisible();
   release();
 
   await expect(
     screen.getByRole("heading", /^Movies\s*30 titles$/),
   ).toBeVisible();
-  // Twelve Titles at most come back; the rest is a count.
   await expect(screen.getByText("+28")).toBeVisible();
   await expect(
     screen.getByText(
@@ -384,14 +364,12 @@ test("the preview shows a loading state, then every Catalog with its empty hints
   await expect
     .poll(() => requests.at(-1)?.catalogSettings)
     .toEqual({ presets: ["rated"], decade: 1990 });
-  // The filters apply to the main Catalog and to the Top rated one.
   await expect(
     screen.getByText(
       "No movie of this list matches its filters, so this catalog stays empty in Stremio.",
     ),
   ).toHaveCount(2);
   await expect(screen.getByText("The Godfather")).not.toBeVisible();
-  // A settings change keeps the preview on screen: it does not load again.
   await expect(screen.getByText(LOADING)).not.toBeVisible();
   expect(submissions).toHaveLength(0);
 });
@@ -487,9 +465,7 @@ test(
       "Open the preview of Test catalog. Its TV shows catalog stays empty: do what the preview says to remove that catalog, then save.",
       { maxModelCalls: 9 },
     );
-    // Removing a Catalog changes what Stremio read at install time.
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
-    // The reminder stays until the user says they reinstalled.
     await expect(
       screen.getByText("Update Stremio with your changes"),
     ).toBeVisible();
@@ -497,7 +473,6 @@ test(
       sourceRef: imdbUser,
       displayMode: "movie",
     });
-    // The preview asks again 300 ms after the last settings change.
     await expect.poll(() => requests.at(-1)?.displayMode).toBe("movie");
     await expect(screen.getByRole("heading", /^TV shows/)).not.toBeVisible();
   },

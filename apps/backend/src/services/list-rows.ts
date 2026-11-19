@@ -1,4 +1,3 @@
-import type { DisplayMode } from "@stremlist/shared/constants";
 import {
   DEFAULT_DISPLAY_MODE,
   DISPLAY_MODE_OPTIONS,
@@ -6,15 +5,9 @@ import {
 import type { Tables } from "@stremlist/shared/database";
 import type { ListSource } from "@stremlist/shared/list-merge";
 import { isProviderId } from "@stremlist/shared/providers";
-import type { ConfigList } from "@stremlist/shared/stremio.types";
 import { z } from "zod";
 import { catalogSettingsSchema } from "./catalog-settings";
 import { sourceCaches } from "./merged-lists";
-
-/*
- * The stored form of a List (`lists` rows), without a database client, so
- * scripts that bring their own client can use it too.
- */
 
 type ListRow = Tables<"lists">;
 
@@ -35,8 +28,7 @@ export function toStoredSources(sources: readonly ListSource[]) {
   }));
 }
 
-/** The merged Source lists of a row; unknown Providers are left out. */
-function mapMergedSources(value: unknown): ListSource[] {
+function mapMergedSources(value: unknown) {
   const parsed = storedSourcesSchema.safeParse(value);
   if (!parsed.success) return [];
   return parsed.data.flatMap(({ provider, source_ref, label }) =>
@@ -46,8 +38,7 @@ function mapMergedSources(value: unknown): ListSource[] {
   );
 }
 
-/** A check constraint allows only the known display modes. */
-function displayModeOf(value: string): DisplayMode {
+function displayModeOf(value: string) {
   return (
     DISPLAY_MODE_OPTIONS.find((option) => option.value === value)?.value ??
     DEFAULT_DISPLAY_MODE
@@ -69,7 +60,7 @@ export const listRowSchema = z.object({
 });
 
 /** A List row as the app reads it; null for a Provider it does not know. */
-export function mapList(row: z.infer<typeof listRowSchema>): ConfigList | null {
+export function mapList(row: z.infer<typeof listRowSchema>) {
   if (!isProviderId(row.provider)) return null;
   const settings = catalogSettingsSchema.safeParse(row.catalog_settings);
   const mergedSources = mapMergedSources(row.merged_sources);
@@ -94,7 +85,7 @@ export function mapList(row: z.infer<typeof listRowSchema>): ConfigList | null {
  * Source list, and one key per Source list for a merged List (ADR 0006). A
  * row of a Provider the app does not know keeps the List ID.
  */
-export function listRowCacheKeys(rows: ListRow[]): string[] {
+export function listRowCacheKeys(rows: ListRow[]) {
   return rows.flatMap((row) => {
     const list = mapList(row);
     return list ? sourceCaches(list).map(({ cacheKey }) => cacheKey) : [row.id];

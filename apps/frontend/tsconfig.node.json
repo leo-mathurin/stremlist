@@ -22,5 +22,11 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["vite.config.ts", "middleware.ts", "api/*.ts", "scripts/*.ts"]
+  "include": [
+    "vite.config.ts",
+    "middleware.ts",
+    "api/*.ts",
+    "scripts/*.ts",
+    "src/lib/test/*.ts"
+  ]
 }

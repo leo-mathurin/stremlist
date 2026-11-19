@@ -23,10 +23,9 @@ export async function findLegacyInstall(
   input: string,
   parsed: ParsedSourceLink | null,
   lookup: LegacyInstallLookup,
-): Promise<string | null> {
+) {
   if (parsed?.provider !== "imdb") return null;
   const alias = parsed.sourceRef;
-  // A public list is shared: its install is not the person's who pastes it.
   if (alias.startsWith("ls") || !LEGACY_ALIAS_PATTERN.test(alias)) return null;
   if (await lookup.exists(alias)) return alias;
   if (!alias.startsWith("p.")) return null;

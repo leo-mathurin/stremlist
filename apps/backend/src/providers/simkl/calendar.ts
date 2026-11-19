@@ -1,16 +1,10 @@
 import { z } from "zod";
-import type { SourceEntry } from "../types";
 import { titleType, toEntry } from "./entries";
 import type { LibraryItem, SimklKind } from "./library";
 import { parseIds, rawIdsSchema } from "./library";
 import type { SharedRead } from "./trending";
 import { CDN_URL, readCdnFile, sharedRead } from "./trending";
 
-/**
- * Simkl's airing calendar: a free CDN file per kind, with the airings from
- * yesterday through the next 33 days. Simkl makes the files every 6 hours,
- * and its CDN keeps a file for 5 hours.
- */
 const CALENDAR_FILES: Record<SimklKind, string> = {
   shows: "tv.json",
   anime: "anime.json",
@@ -21,7 +15,6 @@ const calendarSchema = z.object({
   calendar: z.array(
     z.object({ simkl_id: z.number(), date: z.string().nullish() }),
   ),
-  /** One record per title, by Simkl ID as a string. */
   metadata: z.record(
     z.string(),
     z.object({ ids: rawIdsSchema.nullish() }).loose(),
@@ -29,14 +22,11 @@ const calendarSchema = z.object({
 });
 
 interface Airings {
-  /** The airing times of each title, oldest first, as epoch milliseconds. */
   times: Map<number, number[]>;
-  /** The IDs that the calendar gives for each title. */
   ids: Map<number, { imdb?: string; tmdb?: number }>;
 }
 
-/** Keep only what the join needs: the TV file is about 2.4 MB of JSON. */
-function parseCalendar(data: unknown): Airings {
+function parseCalendar(data: unknown) {
   const { calendar, metadata } = calendarSchema.parse(data);
   const times = new Map<number, number[]>();
   for (const { simkl_id: simkl, date } of calendar) {
@@ -55,21 +45,19 @@ function parseCalendar(data: unknown): Airings {
   return { times, ids };
 }
 
-/** Reads of each calendar file in this instance. */
 const reads = new Map<string, SharedRead<Airings>>();
-function readCalendar(kind: SimklKind): Promise<Airings> {
+function readCalendar(kind: SimklKind) {
   return readCdnFile(`${CDN_URL}/calendar/v2/${CALENDAR_FILES[kind]}`).then(
     parseCalendar,
   );
 }
 
 /** Test hook: forget the shared reads. */
-export function clearCalendarReads(): void {
+export function clearCalendarReads() {
   reads.clear();
 }
 
-/** The series in Watching and the movies in Plan to watch. */
-function wantsAirings(item: LibraryItem): boolean {
+function wantsAirings(item: LibraryItem) {
   return titleType(item.kind, item.animeType) === "movie"
     ? item.status === "plantowatch"
     : item.status === "watching";
@@ -84,7 +72,7 @@ function wantsAirings(item: LibraryItem): boolean {
 export async function airingSoonEntries(
   items: LibraryItem[],
   forceRefresh = false,
-): Promise<SourceEntry[]> {
+) {
   const wanted = items.filter(wantsAirings);
   const kinds = [...new Set(wanted.map((item) => item.kind))];
   const calendars = new Map(

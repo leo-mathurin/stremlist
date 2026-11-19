@@ -15,3 +15,7 @@ The policy is in the root `vite.config.ts`. These upstream rules are intentional
 - `require-safety-comment-for-type-assertion` and `require-readable-spacing`: Oxfmt owns whitespace, and comments explain why, not what.
 
 To update, stage a new upstream revision separately, compare it with this revision, keep the local policy, copy the matching tests and license, and update this file. Run `bun run test:tooling` after the update.
+
+## Local rules
+
+`rules/no-vite-plus-test-doubles.ts` is not from upstream. It reports `vi.mock`, `vi.doMock`, `vi.unmock`, `vi.doUnmock`, `vi.stubGlobal`, `vi.fn`, `vi.mocked`, `vi.mockObject`, `vi.importMock`, the other module and property replacement APIs that Landmines `no-test-doubles` lists, and the mock setters (`mockImplementation`, `mockReturnValue`, `mockResolvedValue`, `mockRejectedValue` and the others) when `vi` comes from `vite-plus/test`. It follows `vi` through lexical bindings (aliases, destructuring and namespace imports), ignores names that shadow it, and reports a mock setter only on a mock or spy that `vi` made. Landmines `no-test-doubles` recognizes only `vitest` imports, so without this rule those test doubles pass lint. Keep it when you update the upstream rules.

@@ -60,9 +60,7 @@ function isSortOrder(value: string | undefined): value is SortOrder {
   return VALID_SORT_ORDERS.some((order) => order === value);
 }
 
-export function parseSortOption(
-  sortOption: string | null | undefined,
-): SortOptions {
+export function parseSortOption(sortOption: string | null | undefined) {
   if (!sortOption) return DEFAULT_SORT_OPTIONS;
 
   const [by, order] = sortOption.split("-");
@@ -70,16 +68,12 @@ export function parseSortOption(
     return DEFAULT_SORT_OPTIONS;
   }
   if (!isSortOrder(order)) {
-    return { by, order: "asc" };
+    return { by, order: "asc" } satisfies SortOptions;
   }
 
-  return { by, order };
+  return { by, order } satisfies SortOptions;
 }
 
-/**
- * A generated Account ID (ADR 0001): `sl_` and 22 base62 characters. It is the
- * secret part of the Addon URL.
- */
 const ACCOUNT_ID_SOURCE = String.raw`sl_[0-9A-Za-z]{22}`;
 export const ACCOUNT_ID_PATTERN = new RegExp(`^${ACCOUNT_ID_SOURCE}$`);
 
@@ -93,7 +87,7 @@ const IMDB_TITLE_ID_SOURCE = String.raw`tt\d+`;
 export const IMDB_TITLE_ID_PATTERN = new RegExp(`^${IMDB_TITLE_ID_SOURCE}$`);
 
 /** The value when it is a Title's IMDb ID (`tt…`), else undefined. */
-export function asImdbId(value: unknown): string | undefined {
+export function asImdbId(value: unknown) {
   return typeof value === "string" && IMDB_TITLE_ID_PATTERN.test(value)
     ? value
     : undefined;
@@ -114,13 +108,6 @@ export const IMDB_RATINGS_REF_PATTERN = new RegExp(
   `^(${IMDB_UR_ID_SOURCE}|${IMDB_P_HANDLE_SOURCE})/ratings$`,
 );
 
-/**
- * A Legacy alias: the key of a v1 install, kept as `legacy_imdb_user_id`.
- * v1 served any key until 2026-09-01, then `ur` + 4 or more digits and `p.`
- * handles. The installs that still exist use an IMDb user ID (some short, some
- * with letters), a `p.` handle or an IMDb list ID. Other stored keys cannot
- * be a URL path segment that any install uses, so they stay unreachable.
- */
 const LEGACY_ALIAS_SOURCE = String.raw`ur[0-9A-Za-z]+|${IMDB_P_HANDLE_SOURCE}|${IMDB_LS_ID_SOURCE}`;
 export const LEGACY_ALIAS_PATTERN = new RegExp(`^(?:${LEGACY_ALIAS_SOURCE})$`);
 

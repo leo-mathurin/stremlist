@@ -1,11 +1,3 @@
-// Compares supabase/migrations with the production history table.
-//
-//   node .github/scripts/supabase-migrations.mjs plan
-//     Lists the migrations the deploy will apply. Fails when production has a
-//     migration the repo does not know, so a push never runs on a history it
-//     cannot explain.
-//   node .github/scripts/supabase-migrations.mjs verify
-//     Run after `supabase db push`: fails unless the history matches the repo.
 import {
   availableExtensions,
   compareCodeUnits,
@@ -39,9 +31,6 @@ const blocking = [
 ];
 
 if (mode === "plan") {
-  // Every extension a pending migration creates must be installable before
-  // the push starts: a failure later in the push leaves the files before it
-  // applied.
   const extensionsByMigration = pending.map((m) => ({
     migration: `${m.version}_${m.name}`,
     extensions: createdExtensions(migrationSql(m)),

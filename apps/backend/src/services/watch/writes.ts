@@ -1,22 +1,12 @@
-/**
- * The Destination writes of a cron run (ADR 0003). Trakt and MDBList go at
- * once. Simkl goes through one global limiter, in parallel with the rest of
- * the run: 1 POST a second, 3 while its oldest waiting write is more than 10
- * minutes old, and 1 again for an hour after a 429.
- *
- * The queue keeps one row per title and Destination. A series marked at once
- * goes out as one /sync request per Destination: the rows of one Account,
- * series and play time are sent together.
- */
 import type { ProviderId } from "@stremlist/shared/providers";
 import { isProviderId } from "@stremlist/shared/providers";
 import { randomUUID } from "node:crypto";
 import { mapWithConcurrency } from "../../lib/concurrency";
 import { supabase } from "../../lib/supabase";
 import { HttpError } from "../../providers/http";
+import type { ActionTarget } from "../../providers/types";
 import { isProviderEnabled } from "../../providers/registry";
 import { traktPlays } from "../../providers/trakt/actions";
-import type { ActionTarget } from "../../providers/types";
 import {
   ConnectionExpiredError,
   UnknownTitleError,
@@ -29,12 +19,7 @@ import { nextWriteRetry } from "./schedule";
 const CONCURRENCY = 10;
 const OTHERS_BATCH = 300;
 const LEASE_SECONDS = 90;
-/** Most episodes in one /sync request. */
 const EPISODES_PER_SEND = 100;
-/**
- * Most requests to one Destination in one claim. Providers pace each user
- * (about one write a second), so more would wait past the claim's lease.
- */
 const SENDS_PER_DESTINATION = 20;
 const SIMKL_SLOW_RATE = 1;
 const SIMKL_FAST_RATE = 3;
@@ -56,7 +41,6 @@ export interface ClaimedWrite {
   uncertain: boolean;
 }
 
-// A type alias, not an interface, so that it is assignable to the RPC's Json.
 type WriteResult = {
   id: number;
   done: boolean;
@@ -72,23 +56,18 @@ export interface WriteStats {
   rateLimited: boolean;
 }
 
-function newStats(): WriteStats {
+function newStats() {
   return { sent: 0, failed: 0, gaveUp: 0, rateLimited: false };
 }
 
-/** Stremio's time of the play, in the ISO form the Providers document. */
-function watchedAt(write: ClaimedWrite): string {
+function watchedAt(write: ClaimedWrite) {
   return new Date(write.watched_at).toISOString();
 }
 
 const isEpisode = (write: ClaimedWrite) => write.item_type === "series";
 const episodeKey = (write: ClaimedWrite) => `${write.season}:${write.episode}`;
 
-/**
- * The claimed rows in sends: the episodes of one Account, Provider, series
- * and play time together (up to EPISODES_PER_SEND), every other row alone.
- */
-function groupSends(writes: ClaimedWrite[]): ClaimedWrite[][] {
+function groupSends(writes: ClaimedWrite[]) {
   const groups = new Map<string, ClaimedWrite[][]>();
   const sends: ClaimedWrite[][] = [];
   for (const write of writes) {
@@ -117,7 +96,6 @@ function groupSends(writes: ClaimedWrite[]): ClaimedWrite[][] {
 
 interface CappedSends {
   kept: ClaimedWrite[][];
-  /** Write IDs by the minutes they wait. */
   later: Map<number, number[]>;
 }
 
@@ -127,7 +105,7 @@ interface CappedSends {
  * by minutes), so one bulk mark never holds back everyone else's writes. A
  * Provider turned off (kill switch) gets nothing: its rows wait 15 minutes.
  */
-export function capPerDestination(sends: ClaimedWrite[][]): CappedSends {
+export function capPerDestination(sends: ClaimedWrite[][]) {
   const count = new Map<string, number>();
   const kept: ClaimedWrite[][] = [];
   const later = new Map<number, number[]>();
@@ -148,10 +126,10 @@ export function capPerDestination(sends: ClaimedWrite[][]): CappedSends {
     if (n < SENDS_PER_DESTINATION) kept.push(group);
     else wait(Math.floor(n / SENDS_PER_DESTINATION), group);
   }
-  return { kept, later };
+  return { kept, later } satisfies CappedSends;
 }
 
-function targetOf(writes: ClaimedWrite[]): ActionTarget {
+function targetOf(writes: ClaimedWrite[]) {
   const [first] = writes;
   return {
     imdbId: first.imdb_id,
@@ -164,32 +142,25 @@ function targetOf(writes: ClaimedWrite[]): ActionTarget {
           })),
         }
       : {}),
-  };
+  } satisfies ActionTarget;
 }
 
-/** Whether the Provider may have applied a write that got no answer. */
-function isUncertain(error: unknown): boolean {
+function isUncertain(error: unknown) {
   if (error instanceof HttpError) return error.status >= 500;
-  // A timeout or a network error after the request left.
   return !(
     error instanceof ConnectionExpiredError ||
     error instanceof UnknownTitleError
   );
 }
 
-/** The failure code shown on the configure page, or a retry reason. */
-function errorCode(error: unknown): string {
+function errorCode(error: unknown) {
   if (error instanceof ConnectionExpiredError) return "needs_renewal";
   if (error instanceof UnknownTitleError) return "not_found";
   if (error instanceof HttpError && error.status === 429) return "rate_limited";
   return "provider_error";
 }
 
-/** Which of `ids` this run still holds, just before it sends them. */
-async function stillClaimed(
-  ids: number[],
-  lease: string,
-): Promise<Set<number>> {
+async function stillClaimed(ids: number[], lease: string) {
   const { data, error } = await supabase
     .from("watch_writes")
     .select("id")
@@ -199,14 +170,9 @@ async function stillClaimed(
   return new Set(data.map((row) => row.id));
 }
 
-/** Sends one group; one result per row it still holds. */
-async function send(
-  writes: ClaimedWrite[],
-  lease: string,
-  stats: WriteStats,
-): Promise<WriteResult[]> {
+async function send(writes: ClaimedWrite[], lease: string, stats: WriteStats) {
   const [first] = writes;
-  const finished = (rows: ClaimedWrite[]): WriteResult[] => {
+  const finished = (rows: ClaimedWrite[]) => {
     stats.sent += rows.length;
     return rows.map((w) => ({
       id: w.id,
@@ -219,27 +185,21 @@ async function send(
   if (!isProviderId(first.provider)) return finished(writes);
   const provider: ProviderId = first.provider;
   let rows = writes;
-  /** Set once a request may have reached the Provider. */
   let requested = false;
   try {
-    // A Provider turned off (kill switch) gets no request: try again later.
     if (!isProviderEnabled(provider)) {
       throw new Error(`${provider} is turned off`);
     }
     const connection = await getConnectionAccess(first.account_id, provider);
-    // Checked after the Connection read: a Connection deleted or given to
-    // another Provider user meanwhile has deleted these rows.
     const held = await stillClaimed(
       writes.map((w) => w.id),
       lease,
     );
     rows = writes.filter((w) => held.has(w.id));
     if (rows.length === 0) return [];
-    // The rows are still held, so the Connection exists: a failed read.
     if (!connection) throw new Error(`Cannot read the ${provider} Connection`);
     let pending = rows;
     if (provider === "trakt" && rows.some((w) => w.uncertain)) {
-      // The last attempt may have reached Trakt, which adds a play per write.
       requested = true;
       const played = await traktPlays(
         connection,
@@ -270,7 +230,6 @@ async function send(
     );
     const now = Date.now();
     return rows.map((write) => {
-      // A title the Provider does not know will not be known later.
       const next =
         code === "not_found"
           ? null
@@ -285,8 +244,6 @@ async function send(
         done: false,
         next_due_at: next === null ? null : new Date(next).toISOString(),
         error: code,
-        // Still uncertain when the history check itself failed; a failure
-        // before any request leaves it as it was.
         uncertain: write.uncertain || (requested && isUncertain(error)),
       };
     });
@@ -298,7 +255,7 @@ async function claimWrites(
   exclude: boolean,
   limit: number,
   lease: string,
-): Promise<ClaimedWrite[]> {
+) {
   if (limit <= 0) return [];
   const { data, error } = await supabase.rpc("claim_watch_writes", {
     p_provider: provider,
@@ -311,10 +268,7 @@ async function claimWrites(
   return data;
 }
 
-async function finishWrites(
-  lease: string,
-  results: WriteResult[],
-): Promise<void> {
+async function finishWrites(lease: string, results: WriteResult[]) {
   if (results.length === 0) return;
   const { error } = await supabase.rpc("finish_watch_writes", {
     p_lease_token: lease,
@@ -323,15 +277,7 @@ async function finishWrites(
   if (error) throw error;
 }
 
-/**
- * Gives back claimed rows that this run did not start, no attempt counted,
- * due again in `delayMinutes`.
- */
-async function releaseWrites(
-  lease: string,
-  ids: number[],
-  delayMinutes = 0,
-): Promise<void> {
+async function releaseWrites(lease: string, ids: number[], delayMinutes = 0) {
   if (ids.length === 0) return;
   const { error } = await supabase.rpc("release_watch_writes", {
     p_lease_token: lease,
@@ -341,18 +287,10 @@ async function releaseWrites(
   if (error) throw error;
 }
 
-async function releaseLater(
-  lease: string,
-  later: Map<number, number[]>,
-): Promise<void> {
+async function releaseLater(lease: string, later: Map<number, number[]>) {
   for (const [minutes, ids] of later) await releaseWrites(lease, ids, minutes);
 }
 
-/**
- * Sends the groups of one claim until `deadline`, then stores every result
- * and gives back what was not started, whatever fails on the way. Returns
- * how many groups were not started.
- */
 async function sendAll(
   groups: ClaimedWrite[][],
   lease: string,
@@ -363,7 +301,7 @@ async function sendAll(
     index: number,
     go: () => Promise<WriteResult[]>,
   ) => Promise<WriteResult[] | null>,
-): Promise<number> {
+) {
   const results: WriteResult[] = [];
   const unsent: number[] = [];
   let unsentGroups = 0;
@@ -388,7 +326,6 @@ async function sendAll(
     });
   } finally {
     await finishWrites(lease, results);
-    // Rows neither finished nor dropped by the database go back.
     const answered = new Set(results.map((r) => r.id));
     await releaseWrites(
       lease,
@@ -399,14 +336,12 @@ async function sendAll(
 }
 
 /** Trakt and MDBList writes that are due, until `deadline`. */
-export async function processWrites(deadline: number): Promise<WriteStats> {
+export async function processWrites(deadline: number) {
   const stats = newStats();
   const lease = randomUUID();
   while (Date.now() < deadline) {
     const writes = await claimWrites("simkl", true, OTHERS_BATCH, lease);
     if (writes.length === 0) break;
-    // Groups wait for a free slot (and a Provider's own pace per user): one
-    // not started by the deadline goes back, so none outlives its lease.
     const { kept, later } = capPerDestination(groupSends(writes));
     await releaseLater(lease, later);
     const unsent = await sendAll(
@@ -425,7 +360,7 @@ const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** The age of the oldest Simkl write never tried yet, in seconds. */
-export async function simklBacklogSeconds(): Promise<number> {
+export async function simklBacklogSeconds() {
   const { data, error } = await supabase.rpc("watch_simkl_backlog");
   if (error) throw error;
   return data;
@@ -439,7 +374,7 @@ export async function simklBacklogSeconds(): Promise<number> {
 export async function processSimklWrites(
   deadline: number,
   backlogSeconds: number,
-): Promise<WriteStats> {
+) {
   const stats = newStats();
   const windowSeconds = (deadline - Date.now()) / 1000 - 2;
   if (windowSeconds <= 1) return stats;
@@ -459,7 +394,6 @@ export async function processSimklWrites(
   const first = Date.parse(gate.first_slot_at);
   let unused = gate.granted;
   try {
-    // One slot per /sync request: claim rows until the slots are used.
     const writes = await claimWrites(
       "simkl",
       false,
@@ -483,7 +417,6 @@ export async function processSimklWrites(
         await sleep(
           Math.max(0, first + (index * 1000) / gate.rate - Date.now()),
         );
-        // Simkl refused one: the rest wait for a later run.
         if (stats.rateLimited) return null;
         return go();
       },

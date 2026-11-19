@@ -9,13 +9,13 @@ export interface ProviderBackend {
 
 /**
  * Start a separate backend on an OS-assigned loopback port, with a test-only
- * preload that replaces the outbound Provider transport. Only the variables
+ * preload that answers the outbound Provider requests. Only the variables
  * in `env` (and PATH) reach the process: no `.env` file is read.
  */
 export async function startProviderBackend(
   preload: string,
   env: Record<string, string>,
-): Promise<ProviderBackend> {
+) {
   const child: ChildProcess = spawn(
     "bun",
     [
@@ -59,10 +59,8 @@ export async function startProviderBackend(
       clearTimeout(timeout);
       reject(new Error(`Provider backend exited (${code})`));
     });
-    // Drain diagnostics without exposing headers, API keys or request contents.
     child.stderr?.resume();
   });
-  // Keep reading stdout so the pipe never fills up.
   child.stdout?.resume();
 
   const stop = async () => {
@@ -81,5 +79,5 @@ export async function startProviderBackend(
       child.kill("SIGTERM");
     });
   };
-  return { url, stop };
+  return { url, stop } satisfies ProviderBackend;
 }

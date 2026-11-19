@@ -17,14 +17,12 @@ const BADGE_CLASSES: Record<
   security: "bg-red-100 text-red-700",
 };
 
-/** An anchor for a version, such as "v1-10-0". */
 function versionId(version: string) {
   return version.replaceAll(".", "-");
 }
 
 export default function Changelog() {
   useSEO({ path: "/changelog" });
-  // A link from another page of the app opens a version ("#v2-0-0").
   const { hash } = useLocation();
   useEffect(() => {
     if (hash) document.getElementById(hash.slice(1))?.scrollIntoView();

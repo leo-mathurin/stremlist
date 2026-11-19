@@ -8,12 +8,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 
 /** What the last change left the installed Stremlist with, if it matters. */
-export type WatchChangeNotice =
-  /** The linked Stremio account has no Stremlist installed. */
-  | "missing"
-  /** Stremio did not answer the update. */
-  | "unavailable"
-  | null;
+export type WatchChangeNotice = "missing" | "unavailable" | null;
 
 /** The account being changed, while its request runs. */
 export interface WatchChange {
@@ -28,11 +23,9 @@ const watchTrackingApi = api[":accountId"]["watch-tracking"];
 
 type ChangeAnswer = InferResponseType<typeof watchTrackingApi.$put>;
 
-/** Why the backend refused a change, when it says. */
 type RefusalReason = Extract<ChangeAnswer, { reason: string }>["reason"];
 
-/** What a refused change tells the member. */
-function refusal(reason: RefusalReason | undefined): string {
+function refusal(reason: RefusalReason | undefined) {
   switch (reason) {
     case "stremio-not-linked":
     case "signed-out":
@@ -44,11 +37,9 @@ function refusal(reason: RefusalReason | undefined): string {
     case undefined:
       return "Stremlist could not save this change. Try again.";
   }
-  // A reason from a newer backend than this page.
   return "Stremlist could not save this change. Try again.";
 }
 
-/** The Watch tracking status of an Account, or null when it cannot be read. */
 async function readStatus(accountId: string) {
   try {
     const res = await watchTrackingApi.$get({ param: { accountId } });
@@ -58,17 +49,7 @@ async function readStatus(accountId: string) {
   }
 }
 
-/**
- * Sends a change. A refusal comes with its reason when the backend gives
- * one; `reason` is undefined when Stremlist did not answer.
- */
-async function sendChange(
-  accountId: string,
-  destinations: WatchProviderId[],
-): Promise<
-  | { saved: Extract<ChangeAnswer, { status: unknown }> }
-  | { saved: null; reason: RefusalReason | undefined }
-> {
+async function sendChange(accountId: string, destinations: WatchProviderId[]) {
   try {
     const res = await watchTrackingApi.$put({
       param: { accountId },
@@ -95,7 +76,6 @@ async function sendChange(
 export function useWatchTracking(
   accountId: string | null,
   refreshKey: string,
-  /** Stremio refused or forgot the key: let the Stremio card find it out. */
   onSignedOut: () => void,
 ) {
   const [status, setStatus] = useState<WatchTrackingStatus | null>(null);
@@ -104,10 +84,9 @@ export function useWatchTracking(
   const [notice, setNotice] = useState<WatchChangeNotice>(null);
   const run = useRef(0);
   const changing = useRef(false);
-  /** A refresh asked for during a change, done once the change settles. */
   const reloadAfterChange = useRef(false);
 
-  const load = useCallback((): Promise<void> => {
+  const load = useCallback(() => {
     if (!accountId) return Promise.resolve();
     if (changing.current) {
       reloadAfterChange.current = true;
@@ -125,7 +104,6 @@ export function useWatchTracking(
     void load();
   }, [load, refreshKey]);
 
-  // A tab left open shows fresh counts and last titles when it comes back.
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === "visible") void load();
@@ -141,7 +119,6 @@ export function useWatchTracking(
         .filter((d) => (d.provider === provider ? enabled : d.enabled))
         .map((d) => d.provider);
       const previous = status;
-      // A refresh in flight is older than this change: its answer is dropped.
       run.current++;
       changing.current = true;
       setBusy({
@@ -149,7 +126,6 @@ export function useWatchTracking(
         starting: enabled && !status.destinations.some((d) => d.enabled),
       });
       setNotice(null);
-      // The checkbox follows the click at once; a failure puts it back.
       setStatus({
         ...status,
         destinations: status.destinations.map((d) =>
@@ -160,10 +136,8 @@ export function useWatchTracking(
       const body = answer.saved;
       if (body) {
         setStatus(body.status);
-        // The update found the sign-out: the Stremio card shows it too.
         if (body.stremio === "signed-out") onSignedOut();
         if (body.status.destinations.some((d) => d.enabled)) {
-          // A sign-out also forgets the link: the card asks for a new one.
           setNotice(
             body.stremio === "missing" || body.stremio === "unavailable"
               ? body.stremio
@@ -172,7 +146,6 @@ export function useWatchTracking(
         }
       } else {
         setStatus(previous);
-        // A refused change may still have saved part of it: read it back.
         reloadAfterChange.current = true;
         toast.error(refusal(answer.reason), TOAST);
         if (

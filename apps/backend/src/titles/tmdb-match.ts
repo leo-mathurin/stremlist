@@ -5,7 +5,6 @@ import type { ResolverStrategy, SourceEntry } from "../providers/types";
 import { isTmdbConfigured, tmdbGet } from "./tmdb";
 
 const CONCURRENCY = 6;
-/** Search results checked per query, in TMDB relevance order. */
 const CANDIDATES_PER_QUERY = 2;
 const YEAR_TOLERANCE = 1;
 const SERIES_EARLIER_YEARS = 10;
@@ -52,8 +51,7 @@ interface Candidate {
   runtimes: number[];
 }
 
-/** Lowercase, without accents, spaces or punctuation. */
-function normalizeText(value: string): string {
+function normalizeText(value: string) {
   return value
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
@@ -62,7 +60,7 @@ function normalizeText(value: string): string {
     .replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
-function editDistance(a: string, b: string): number {
+function editDistance(a: string, b: string) {
   let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
   for (let i = 1; i <= a.length; i++) {
     const current = [i];
@@ -78,12 +76,7 @@ function editDistance(a: string, b: string): number {
   return previous[b.length];
 }
 
-/**
- * Spellings of one person name to compare: the name itself, without an alias
- * in parentheses ("Pernilla August (Pernilla Östergren)"), the alias alone,
- * and each of them with its words sorted ("Lee Sang-il", "Sang-il Lee").
- */
-function nameKeys(name: string): string[] {
+function nameKeys(name: string) {
   const alias = /\(([^)]*)\)/.exec(name)?.[1];
   const forms = [name, name.replace(/\([^)]*\)/g, " "), alias ?? ""];
   const keys = new Set<string>();
@@ -104,7 +97,7 @@ function nameKeys(name: string): string[] {
  * are allowed for long names, because transliterations differ between
  * services ("Andreï Tarkovski" on SensCritique, "Andrei Tarkovsky" on TMDB).
  */
-export function samePerson(a: string, b: string): boolean {
+export function samePerson(a: string, b: string) {
   const left = nameKeys(a);
   const right = nameKeys(b);
   return left.some((x) =>
@@ -116,34 +109,25 @@ export function samePerson(a: string, b: string): boolean {
   );
 }
 
-function yearOf(date: string | undefined): number | undefined {
+function yearOf(date: string | undefined) {
   const year = Number(date?.slice(0, 4));
   return Number.isInteger(year) && year > 0 ? year : undefined;
 }
 
-/**
- * Candidate year minus entry year, 0 when the entry has no year (the other
- * checks then decide alone), null when only the candidate has none.
- */
-function gapOf(entry: SourceEntry, result: TmdbSearchResult): number | null {
+function gapOf(entry: SourceEntry, result: TmdbSearchResult) {
   if (entry.year === undefined) return 0;
   const candidateYear = yearOf(result.release_date ?? result.first_air_date);
   if (candidateYear === undefined) return null;
   return candidateYear - entry.year;
 }
 
-function yearAllowed(type: "movie" | "series", gap: number | null): boolean {
+function yearAllowed(type: "movie" | "series", gap: number | null) {
   if (gap === null) return false;
-  // Series dates on SensCritique are often the French broadcast, years after
-  // the original run (Parks and Recreation: 2015 for 2009).
   const earliest = type === "series" ? -SERIES_EARLIER_YEARS : -YEAR_TOLERANCE;
   return gap >= earliest && gap <= YEAR_TOLERANCE;
 }
 
-async function loadCandidate(
-  id: number,
-  type: "movie" | "series",
-): Promise<Candidate | null> {
+async function loadCandidate(id: number, type: "movie" | "series") {
   if (type === "movie") {
     const movie = await tmdbGet(`/movie/${id}`, tmdbMovieDetailsSchema, {
       append_to_response: "credits",
@@ -189,7 +173,7 @@ export function candidateMatches(
     /** Candidate year minus entry year. */
     yearGap: number;
   },
-): boolean {
+) {
   const directors = entry.directors?.filter(Boolean) ?? [];
   const people = candidate.people.filter(Boolean);
   if (directors.length > 0 && people.length > 0) {
@@ -197,8 +181,6 @@ export function candidateMatches(
       people.some((person) => samePerson(director, person)),
     );
   }
-  // Without people to compare, the runtime must agree, the title must be the
-  // same (not only similar enough for TMDB's search) and the year close.
   const runtime = entry.runtimeMinutes;
   const runtimeAgrees =
     !!runtime &&
@@ -225,7 +207,7 @@ async function searchTmdb(
   type: "movie" | "series",
   query: string,
   year?: number,
-): Promise<TmdbSearchResult[]> {
+) {
   const search = await tmdbGet(
     type === "movie" ? "/search/movie" : "/search/tv",
     tmdbSearchSchema,
@@ -244,7 +226,7 @@ async function searchTmdb(
  * (SensCritique products have no external ID). Returns null when no
  * candidate passes candidateMatches().
  */
-export async function matchOnTmdb(entry: SourceEntry): Promise<string | null> {
+export async function matchOnTmdb(entry: SourceEntry) {
   const type = entry.type;
   if (!type) return null;
   const queries = [
@@ -258,8 +240,6 @@ export async function matchOnTmdb(entry: SourceEntry): Promise<string | null> {
 
   for (const query of queries) {
     let results = await searchTmdb(type, query);
-    // A common title ("Escape", 1948) can push the Title off the first page:
-    // search again within its year. Series years are too loose for that.
     if (
       type === "movie" &&
       entry.year !== undefined &&
@@ -268,9 +248,6 @@ export async function matchOnTmdb(entry: SourceEntry): Promise<string | null> {
       results = await searchTmdb(type, query, entry.year);
     }
 
-    // The closest year first: a sequel or a remake by the same director a
-    // few years later must not win over the Title itself (Police Story,
-    // 1985, and Police Story 2, 1988).
     const candidates = results
       .map((result, rank) => ({ result, rank, gap: gapOf(entry, result) }))
       .filter(
@@ -320,8 +297,6 @@ export const tmdbSearchMatchStrategy: ResolverStrategy = {
         lastError = error;
       }
     });
-    // One failed entry must not discard the others' results; a full outage
-    // still surfaces as a strategy failure.
     if (failures > 0 && failures === entries.length) {
       throw lastError;
     }

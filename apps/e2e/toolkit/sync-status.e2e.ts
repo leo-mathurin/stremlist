@@ -31,13 +31,8 @@ import {
   routeConnectStart,
   routeConnectionSources,
   addImdbChart,
-} from "./config-fixture";
-import type { PreviewRequest } from "./config-fixture";
-
-// The sync status of each List (STR-58): what each row says about its last
-// refresh, and the Connections that need to be renewed. The API is
-// intercepted; the Playwright spec `sync-status.spec.ts` checks the real
-// recording.
+} from "./config.fixture";
+import type { PreviewRequest } from "./config.fixture";
 
 const ids = {
   synced: row.id,
@@ -52,7 +47,6 @@ const ids = {
   empty: "00000000-0000-4000-8000-00000000000a",
 };
 
-/** Wait without a condition: proves that something does not happen. */
 const pause = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
 function list(
@@ -72,17 +66,13 @@ const traktWatchlist = list(
 );
 const traktConnection = connected("trakt");
 
-/**
- * A refresh of `sourceRef` that fails with `problem` since `failingSince`,
- * with no Titles unless `changes` gives the last success.
- */
 function failing(
   provider: ListSyncStatus["provider"],
   sourceRef: string,
   problem: ListSyncStatus["problem"],
   failingSince: string,
   changes: Partial<ListSyncStatus> = {},
-): ListSyncStatus {
+) {
   return {
     provider,
     sourceRef,
@@ -95,9 +85,8 @@ function failing(
   };
 }
 
-/** `statuses`, and from the second poll the first refresh of Box office. */
 function boxOfficeFromSecondPoll(statuses: AccountSyncSnapshot["syncStatus"]) {
-  return (poll: number): AccountSyncSnapshot => ({
+  return (poll: number) => ({
     syncStatus:
       poll < 2
         ? statuses
@@ -109,17 +98,12 @@ function boxOfficeFromSecondPoll(statuses: AccountSyncSnapshot["syncStatus"]) {
   });
 }
 
-/** Expects each of `texts`, in order, to show exactly. */
 async function expectTexts(screen: Screen, texts: string[]) {
   for (const text of texts) {
     await expect(screen.getByText(text, { exact: true })).toBeVisible();
   }
 }
 
-/**
- * Answer `/sync-status` of `key` with `answer(poll)`; returns how often it
- * was asked.
- */
 async function routeSyncStatus(
   browser: Browser,
   answer: (poll: number) => AccountSyncSnapshot,
@@ -186,7 +170,6 @@ test("each List shows its last refresh or why it failed, and a new List is polle
     "Not showing in Stremio",
     "IMDb could not find this watchlist. Check the link. The list may have been deleted. This problem started 2 days ago.",
     "2 lists need attention",
-    // The List without a status waits, and the page asks again until it has one.
     "Not refreshed yet",
   ]);
   await expect(
@@ -196,7 +179,6 @@ test("each List shows its last refresh or why it failed, and a new List is polle
     screen.getByText("Not refreshed yet", { exact: true }),
   ).toBeHidden();
   expect(polls.length).toBeGreaterThanOrEqual(2);
-  // Nothing waits any more, so the page stops asking (one poll is 4 s).
   const asked = polls.length;
   await pause(5_000);
   expect(polls).toHaveLength(asked);
@@ -208,7 +190,6 @@ test("a List added and saved waits for its first refresh, then shows it", async 
   screen,
 }) => {
   const submissions = await captureConfig(browser);
-  // The new List is first, so the save gives it the first new ID.
   const saved = "00000000-0000-4000-8000-000000000100";
   await routeSyncStatus(browser, () => ({
     syncStatus: {
@@ -308,7 +289,6 @@ test(
       "Trakt connection expired",
       "Your Trakt connection expired, so this list does not show in Stremio. Connect Trakt again to fix it.",
     ]);
-    // One in the Providers panel, one in the List's notice.
     await expect(
       screen.getByRole("button", "Connect again", { exact: true }),
     ).toBeVisible();
@@ -366,7 +346,6 @@ test("a Connection that works again clears the renewal state after a poll", asyn
       json: toJson({
         ...configuration,
         lists: [row, traktWatchlist],
-        // The read after the new authorization has not ended yet.
         syncStatus: {
           ...configuration.syncStatus,
           [ids.trakt]: [
@@ -409,7 +388,6 @@ test("a refused Connection noticed elsewhere does not claim its cached List is g
     lists: [row, traktWatchlist],
     syncStatus: {
       ...configuration.syncStatus,
-      // The last read of the List worked; an Action then found the token refused.
       [ids.trakt]: [
         syncedStatus("me/watchlist", 30, ago(10 * MINUTE), "trakt"),
       ],
@@ -449,7 +427,6 @@ test("each failure reason says what to do, next to Lists that refresh fine", asy
     syncStatus: {
       [row.id]: [syncedStatus(row.sourceRef, 1, ago(2 * 60 * MINUTE))],
       [ids.empty]: [syncedStatus("imdb:box-office", 0, ago(30 * MINUTE))],
-      // A public Trakt list that Trakt refused without an account.
       [ids.history]: [
         failing(
           "trakt",
@@ -491,12 +468,10 @@ test("each failure reason says what to do, next to Lists that refresh fine", asy
     "Refresh failed · titles from 3 days ago",
     "This list needs a paid MDBList plan. MDBList only shares it with paid accounts. This problem started 3 hours ago.",
   ]);
-  // The Trakt and MDBList Lists show nothing in Stremio; JustWatch shows older titles.
   await expect(
     screen.getByText("Not showing in Stremio", { exact: true }),
   ).toHaveCount(2);
   await expectTexts(screen, ["3 lists need attention"]);
-  // A public List does not offer to connect a Provider.
   await expect(screen.getByRole("button", /^Connect .* for /)).toHaveCount(0);
 });
 
@@ -616,7 +591,6 @@ test("a saved List whose chart changes is not saved yet, and is polled only afte
   await expect(
     screen.getByText("Not refreshed yet", { exact: true }),
   ).toHaveCount(0);
-  // Another chart is another Catalog: Stremio needs a reinstall to show it.
   await expectTexts(screen, ["These changes need a reinstall."]);
   await pause(5_000);
   expect(polls).toHaveLength(0);
@@ -626,7 +600,6 @@ test("a saved List whose chart changes is not saved yet, and is polled only afte
   await expect(
     screen.getByText("Updated just now · 250 titles", { exact: true }),
   ).toBeVisible({ timeout: 15_000 });
-  // The new status does not end the reminder: only the user can.
   await expect(
     screen.getByText("Update Stremio with your changes"),
   ).toBeVisible();
@@ -641,7 +614,6 @@ test("an open preview is read again when a refresh finds its Connection refused"
   browser,
   screen,
 }) => {
-  // The Trakt Watchlist was just saved: the page polls for its first refresh.
   await captureConfig(browser, {
     ...configuration,
     lists: [row, traktWatchlist],
@@ -681,7 +653,6 @@ test("an open preview is read again when a refresh finds its Connection refused"
   await expect(
     screen.getByText("Trakt connection expired", { exact: true }),
   ).toBeVisible({ timeout: 15_000 });
-  // The preview does not keep Titles that the refused Connection cannot read.
   await expectTexts(screen, [
     "This watchlist needs your Trakt account. Connect Trakt on the Stremlist configure page.",
   ]);

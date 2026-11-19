@@ -3,13 +3,7 @@ import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import type { ListSyncStatus } from "@stremlist/shared/sync-status";
 
 /** The Account's Connection with the List's Provider, as far as a List cares. */
-export type ListConnectionState =
-  /** No Connection with this Provider. */
-  | "none"
-  /** Connected, and the Provider accepts the Connection. */
-  | "ok"
-  /** Connected, but the Provider refused the Connection: connect again. */
-  | "renew";
+export type ListConnectionState = "none" | "ok" | "renew";
 
 /**
  * In a merged List, the Source list that a problem is about, and whether
@@ -23,23 +17,12 @@ interface MergedSourcePart {
 
 /** What the configure page shows for one saved List. */
 export type ListSyncState =
-  /**
-   * Not read yet, or (`reconnected`) failed for want of a Connection that the
-   * Account has again: the next read decides. `queue` is set while the read
-   * waits in its Provider's queue (Letterboxd).
-   */
   | {
       kind: "waiting";
       reconnected: boolean;
       queue?: { provider: ProviderId; readyAt: string };
     }
-  /** `titleCount` is null when unknown, such as for a merged List. */
   | { kind: "synced"; at: string; titleCount: number | null }
-  /**
-   * The List reads through a Connection that is missing or refused.
-   * `stillShown`: Stremio still serves the cached Titles until the next
-   * refresh (a refused Connection noticed elsewhere, such as by an Action).
-   */
   | ({
       kind: "connection";
       renew: boolean;
@@ -56,11 +39,7 @@ export type ListSyncState =
       olderTitlesFrom: string | null;
     } & MergedSourcePart);
 
-/**
- * When the Titles that Stremio still serves for this List were refreshed, or
- * null. A List that lost its Connection stops serving its cached Titles.
- */
-function servedSince(status: ListSyncStatus | undefined): string | null {
+function servedSince(status: ListSyncStatus | undefined) {
   if (!status || status.problem === "needs_connection") return null;
   return (status.titleCount ?? 0) > 0 ? status.lastSuccessAt : null;
 }
@@ -75,7 +54,7 @@ export function statusOfSource(
   statuses: readonly (ListSyncStatus | null)[] | undefined,
   index: number,
   source: SourceId,
-): ListSyncStatus | undefined {
+) {
   const status = statuses?.[index];
   return status?.provider === source.provider &&
     status.sourceRef === source.sourceRef
@@ -94,42 +73,43 @@ export function listSyncState(
   status: ListSyncStatus | undefined,
   connection: ListConnectionState,
   requiresConnection: boolean,
-): ListSyncState {
+) {
   const refused = status?.problem === "needs_connection";
   if (connection === "renew" && (requiresConnection || refused)) {
     return {
       kind: "connection",
       renew: true,
       stillShown: servedSince(status) !== null,
-    };
+    } satisfies ListSyncState;
   }
-  // A disconnect drops the cached Catalogs of these Lists.
   if (connection === "none" && requiresConnection) {
-    return { kind: "connection", renew: false, stillShown: false };
+    return {
+      kind: "connection",
+      renew: false,
+      stillShown: false,
+    } satisfies ListSyncState;
   }
-  if (!status) return { kind: "waiting", reconnected: false };
+  if (!status)
+    return { kind: "waiting", reconnected: false } satisfies ListSyncState;
   if (status.problem === null) {
     return {
       kind: "synced",
       at: status.lastSuccessAt ?? status.lastAttemptAt,
       titleCount: status.titleCount,
-    };
+    } satisfies ListSyncState;
   }
-  // The Provider asked for a Connection that the Account has (again) and
-  // that is not refused: the read after the new authorization decides.
   if (refused && connection === "ok") {
-    return { kind: "waiting", reconnected: true };
+    return { kind: "waiting", reconnected: true } satisfies ListSyncState;
   }
   return {
     kind: "failing",
     problem: status.problem,
     since: status.failingSince ?? status.lastAttemptAt,
     olderTitlesFrom: servedSince(status),
-  };
+  } satisfies ListSyncState;
 }
 
-/** Whether Stremio shows Titles of a Source list in this state. */
-function isShown(state: ListSyncState): boolean {
+function isShown(state: ListSyncState) {
   switch (state.kind) {
     case "synced":
       return true;
@@ -156,7 +136,7 @@ export function mergedListSyncState(
     source: SourceId;
     state: ListSyncState;
   }[],
-): ListSyncState {
+) {
   if (parts.length === 1) return parts[0].state;
   const problem =
     parts.find(({ state }) => state.kind === "connection") ??
@@ -174,7 +154,7 @@ export function mergedListSyncState(
       othersShown: parts.some(
         (part) => part !== problem && isShown(part.state),
       ),
-    };
+    } satisfies ListSyncState;
   }
   const waiting = parts.flatMap(({ state }) =>
     state.kind === "waiting" ? [state] : [],
@@ -183,7 +163,7 @@ export function mergedListSyncState(
     return {
       kind: "waiting",
       reconnected: waiting.some((state) => state.reconnected),
-    };
+    } satisfies ListSyncState;
   }
   const times = parts.flatMap(({ state }) =>
     state.kind === "synced" ? [state.at] : [],
@@ -191,7 +171,11 @@ export function mergedListSyncState(
   const oldest = times.reduce((first, at) =>
     Date.parse(at) < Date.parse(first) ? at : first,
   );
-  return { kind: "synced", at: oldest, titleCount: null };
+  return {
+    kind: "synced",
+    at: oldest,
+    titleCount: null,
+  } satisfies ListSyncState;
 }
 
 /**
@@ -199,9 +183,7 @@ export function mergedListSyncState(
  * "warn" when Stremio shows older Titles, only some of its Source lists, or
  * a Connection is missing, null when nothing is wrong.
  */
-export function attentionTone(
-  sync: ListSyncState | null,
-): "warn" | "bad" | null {
+export function attentionTone(sync: ListSyncState | null) {
   if (sync?.kind === "connection") {
     return sync.renew && !sync.stillShown && !sync.othersShown ? "bad" : "warn";
   }
@@ -215,10 +197,7 @@ export function attentionTone(
  * The color of the dot on a List's sync line: its attention tone when it
  * needs the user, else "ok" once a saved List refreshed, else "idle".
  */
-export function syncLineTone(
-  sync: ListSyncState,
-  saved: boolean,
-): "ok" | "idle" | "warn" | "bad" {
+export function syncLineTone(sync: ListSyncState, saved: boolean) {
   return (
     attentionTone(sync) ?? (saved && sync.kind === "synced" ? "ok" : "idle")
   );

@@ -30,7 +30,7 @@ export type KnownSourceGenres = Record<string, TitleGenres>;
 export function learnSourceGenres(
   known: KnownSourceGenres | null,
   lists: (ListSource & Pick<ConfigList, "mergedSources" | "sourceGenres">)[],
-): KnownSourceGenres | null {
+) {
   if (!lists.some((list) => list.sourceGenres)) return known;
   const next = { ...known };
   for (const list of lists) {
@@ -42,8 +42,7 @@ export function learnSourceGenres(
   return next;
 }
 
-/** The genres that a List's Catalogs offer, as the backend computes them. */
-function listGenres(row: SignatureRow, known: KnownSourceGenres): string[] {
+function listGenres(row: SignatureRow, known: KnownSourceGenres) {
   return listSources(row).flatMap((source) => {
     const genres = known[sourceKey(source)];
     if (!genres) return [];
@@ -69,7 +68,7 @@ export function getListReinstallSignature(
   rows: SignatureRow[],
   known: KnownSourceGenres | null,
   options: { newTitles: boolean } = { newTitles: false },
-): string {
+) {
   return JSON.stringify(
     addonCatalogEntries(
       rows.map((row) => ({

@@ -17,7 +17,6 @@ export type AddListProblem =
 /** The List rows of the configure page, their edits and what is wrong. */
 export function useListEditor() {
   const [lists, setLists] = useState<ListFormRow[]>([]);
-  /** The row that the user added last in this visit, for feedback. */
   const [lastAdded, setLastAdded] = useState<ListFormRow | null>(null);
 
   const setListField = <K extends keyof ListFormRow>(
@@ -31,30 +30,30 @@ export function useListEditor() {
       ),
     );
 
-  /**
-   * Add a List as the first row, so the user sees it right away; it also
-   * becomes the first catalog row in Stremio. A duplicate identifies the
-   * existing row so the caller can offer to show it.
-   */
-  const addList = (
-    partial: Parameters<typeof createListRow>[0],
-  ): AddListProblem | null => {
+  const addList = (partial: Parameters<typeof createListRow>[0]) => {
     const existing = lists.find((list) =>
       listSources(list).some(
         (source) => sourceKey(source) === sourceKey(partial),
       ),
     );
-    if (existing) return { kind: "duplicate", localId: existing.localId };
+    if (existing)
+      return {
+        kind: "duplicate",
+        localId: existing.localId,
+      } satisfies AddListProblem;
     const problem = accountListsProblem([partial, ...lists]);
-    if (problem) return { kind: "error", message: problem.message };
+    if (problem)
+      return {
+        kind: "error",
+        message: problem.message,
+      } satisfies AddListProblem;
     const row = createListRow(partial);
     setLists((rows) => [row, ...rows]);
     setLastAdded(row);
     return null;
   };
 
-  /** Add a built-in IMDb chart, with the same feedback as `addList`. */
-  const addChartList = (chartId: string): AddListProblem | null => {
+  const addChartList = (chartId: string) => {
     const entry = CHART_BY_ID.get(chartId);
     if (!entry) return null;
     return addList({
@@ -74,8 +73,6 @@ export function useListEditor() {
       const reordered = [...items];
       const [removed] = reordered.splice(initialIndex, 1);
       reordered.splice(index, 0, removed);
-      // Numbered default titles (v1 saved positions) follow the position,
-      // so drop them: an untitled List is named after its Source list.
       return allDefaultTitles
         ? reordered.map((list) => ({ ...list, catalogTitle: "" }))
         : reordered;

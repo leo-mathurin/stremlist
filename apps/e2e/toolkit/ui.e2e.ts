@@ -27,7 +27,8 @@ import {
   fitConfigurePage,
   addImdbChart,
   openQuickAdd,
-} from "./config-fixture";
+  waitForIdlePage,
+} from "./config.fixture";
 
 const PASTE = "Paste a link to a watchlist or list";
 const addonUrl = (key: string) => `${backend}/${key}/manifest.json`;
@@ -42,7 +43,6 @@ const twoLists = { ...configuration, lists: [row, second] };
 const watchlistLink = `https://www.imdb.com/user/${imdbUser}/watchlist`;
 const listLink = "https://www.imdb.com/list/ls99123456/";
 
-/** Resolve the two fixture IMDb links like the backend does. */
 async function resolveFixtureLinks(browser: Browser) {
   return routeResolve(browser, (input) =>
     input === watchlistLink
@@ -95,7 +95,6 @@ test("Home detects the Provider of a link and clearing it resets the entry", asy
   await expect(screen.getByText("Letterboxd watchlist detected")).toBeVisible();
   await field.fill("");
   await expect(screen.getByRole("button", "Build my Stremlist")).toBeVisible();
-  // An empty field shows no hint.
   await expect(screen.getByText("Letterboxd watchlist detected")).toBeHidden();
   await expect(
     screen.getByText("No supported site recognized yet."),
@@ -130,15 +129,12 @@ test(
     await expect(
       screen.getByRole("heading", "Your Stremlist is ready"),
     ).toBeVisible();
-    // Stremio opens `stremio://` links over HTTPS without a port, so the
-    // local http://127.0.0.1:4314 Addon URL has no app install link.
     await expect(screen.getByRole("link", "Install in Stremio")).toHaveCount(0);
     await expect(screen.getByRole("link", "Open Stremio Web")).toHaveAttribute(
       "href",
       `https://web.stremio.com/#/addons?addon=${encodeURIComponent(addonUrl(accountId))}`,
     );
     await expect(browser).toHaveURL(`/configure?account=${accountId}`);
-    // Home checks the canonical ID for a v1 install, then Configure adds it.
     expect(inputs).toEqual([{ input: profile }, { input: profile }]);
     expect(created).toHaveLength(1);
     expect(created[0].lists).toMatchObject([
@@ -183,6 +179,36 @@ for (const state of ["private", "unknown", "offline"] as const) {
   });
 }
 
+test("a held toast stays open after another toast closes in the expanded toaster", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await holdToasts(browser);
+  await baseRoutes(browser);
+  await routeResolve(browser, () => null);
+  await app.open("/configure");
+  await screen.getByLabel(PASTE).fill(watchlistLink);
+  const add = screen.getByRole("button", "Add", { exact: true });
+  const failed = screen.getByText(
+    "Could not check this link. Please try again in a moment.",
+  );
+  await add.tap();
+  await expect(failed).toHaveCount(1);
+  await add.tap();
+  await expect(failed).toHaveCount(2);
+  const toasts = browser.locator("[data-sonner-toast]");
+  await toasts.first().hover();
+  const expanded = browser.locator("[data-sonner-toast][data-expanded=true]");
+  await expect(expanded).toHaveCount(2);
+  await toasts.nth(1).getByRole("button", "Close toast").tap();
+  await browser.mouse.move(0, 0);
+  await expect(expanded).toHaveCount(0);
+  await expect(toasts).toHaveCount(1);
+  await waitForIdlePage(browser);
+  await expect(failed).toBeVisible();
+});
+
 test(
   "returning users can open configuration",
   { tags: ["agent"] },
@@ -208,7 +234,6 @@ test("configuration handles missing Accounts and load retry", async ({
   browser,
 }) => {
   await baseRoutes(browser);
-  // Development builds load twice, so the state is a flag, not a count.
   let unavailable = true;
   await browser.route(`${backend}/${accountId}/config`, (route) =>
     route.fulfill({ status: unavailable ? 503 : 404, json: { error: "test" } }),
@@ -246,7 +271,6 @@ test("List edits reject duplicates, save values and report refresh failures", as
   );
   await app.open(`/configure?account=${accountId}`);
   await expect(screen.getByText("Test catalog")).toBeVisible();
-  // The watchlist of the existing List, pasted again.
   await screen.getByLabel(PASTE).fill(watchlistLink);
   await screen.getByRole("button", "Add", { exact: true }).tap();
   await expect(
@@ -256,8 +280,6 @@ test("List edits reject duplicates, save values and report refresh failures", as
   await screen.getByLabel(PASTE).fill(listLink);
   await screen.getByRole("button", "Add", { exact: true }).tap();
   await expect(screen.getByText("IMDb · List · ls99123456")).toBeVisible();
-  // A new List goes first, so it shows right away and becomes the first
-  // catalog row in Stremio.
   await screen.getByRole("button", "Settings for IMDb List").tap();
   await screen.getByLabel("Catalog title").first().fill("My movies");
   await saveButton(screen).tap();
@@ -271,11 +293,9 @@ test("List edits reject duplicates, save values and report refresh failures", as
     },
     { provider: "imdb", sourceRef: imdbUser, position: 1 },
   ]);
-  // Nothing changed since: Save is off.
   await expect(saveButton(screen)).toBeDisabled();
   await screen.getByRole("button", "Remove My movies").tap();
   await expect(screen.getByText("1 of 10 lists")).toBeVisible();
-  // An Account keeps at least one List: without one, Save is off.
   await screen.getByRole("button", "Remove Test catalog").tap();
   await expect(screen.getByText("No lists yet")).toBeVisible();
   await expect(saveButton(screen)).toBeDisabled();
@@ -364,14 +384,12 @@ for (const entry of ["typed", "query"] as const) {
       await screen.getByLabel("Your Addon URL").fill(addonUrl(key));
       await screen.getByRole("button", "Open", { exact: true }).tap();
     } else {
-      // Old links sent returning users to /?userId=ur…
       await app.open(`/?userId=${key}`);
     }
     await expect(
       screen.getByText("Could not load your configuration. Please try again."),
     ).toBeVisible();
     expect(configRequests).toBeGreaterThan(0);
-    // A failed lookup must not turn an existing install into a new setup.
     await expect(saveButton(screen, SAVE_NEW)).not.toBeVisible();
     await expect(
       screen.getByRole("link", "Open Stremio Web"),
@@ -488,7 +506,6 @@ test(
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
     await fitConfigurePage(browser);
-    // The key field shows for RPDB posters only.
     await captureConfig(browser, { ...configuration, posterSource: "rpdb" });
     await app.open(`/configure?account=${accountId}`);
     await expect(screen.getByRole("button", "Show RPDB API key")).toBeVisible();
@@ -573,9 +590,11 @@ test(
       "Clear this catalog's filters while keeping the Top rated extra catalog enabled, then save.",
       { maxModelCalls: 6 },
     );
-    // The first save added the Top rated catalog, and Stremio still needs
-    // the reinstall, so the second save keeps the reinstall message.
-    await expect.poll(() => submissions.length).toBe(2);
+    await expect(saveButton(screen)).toHaveAttribute(
+      "title",
+      "No changes to save",
+    );
+    expect(submissions).toHaveLength(2);
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
     expect(submissions.at(-1)?.lists[0].catalogSettings).toEqual({
       presets: ["rated"],
@@ -614,7 +633,6 @@ test("edits made while saving remain available for the next save", async ({
   });
   expect(submissions[1]).toMatchObject({
     rpdbApiKey: "e2e-synthetic-rpdb",
-    // The List added during the save goes first.
     lists: [
       { sourceRef: "ls99123456", position: 0 },
       { sourceRef: imdbUser, catalogTitle: "New unsaved title", position: 1 },
@@ -689,7 +707,6 @@ test("an old ?userId link opens the Legacy alias install with a fresh form", asy
       "Actions need a private Addon URL. Upgrade this install first.",
     ),
   ).toBeVisible();
-  // Not locked: Save is off only while nothing changed.
   await expect(saveButton(screen)).toHaveAttribute(
     "title",
     "No changes to save",

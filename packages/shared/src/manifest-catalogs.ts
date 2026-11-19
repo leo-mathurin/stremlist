@@ -5,13 +5,6 @@ import type { MergeableList } from "./list-merge";
 import { isMergedList } from "./list-merge";
 import { describeSourceRef, sourceTitle } from "./providers";
 
-/**
- * The Catalogs that Lists add to the addon manifest. Stremio reads them only
- * when the user installs the addon, so the backend builds the manifest from
- * these entries and the configure page compares them to know when a change
- * needs a reinstall. Pure, so both use the same rules.
- */
-
 /** One Catalog that a List adds to Stremio. */
 export interface ListCatalog {
   type: TitleType;
@@ -26,7 +19,7 @@ export interface ListCatalog {
 export function listCatalogs(list: {
   displayMode?: DisplayMode;
   catalogSettings?: CatalogSettings;
-}): ListCatalog[] {
+}) {
   const types: TitleType[] =
     list.displayMode === "movie" || list.displayMode === "series"
       ? [list.displayMode]
@@ -48,7 +41,7 @@ type TitledList = MergeableList & { catalogTitle: string };
  * List's Catalogs with it, so both agree. It never depends on the position
  * of the List, so adding or moving Lists renames no other List.
  */
-export function listTitle(list: TitledList): string {
+export function listTitle(list: TitledList) {
   return list.catalogTitle.trim() || sourceTitle(list.provider, list.sourceRef);
 }
 
@@ -61,25 +54,14 @@ interface ManifestList extends TitledList {
   availableGenres?: string[];
 }
 
-/**
- * What the manifest says about one Catalog. The backend adds the Catalog ID
- * prefix and the filter options, which are the same for every Catalog.
- */
 interface ManifestCatalogEntry extends ListCatalog {
   listId: string;
   name: string;
-  /** Whether the Catalog offers search (main Catalogs only). */
   search: boolean;
-  /** Genre options, after the filter options. */
   genres: string[];
 }
 
-/**
- * A v1 install: one IMDb watchlist without a title, the only setup that v1
- * saved without a title. v1 named its Catalogs "Stremlist", and they keep
- * that name while the List is alone.
- */
-function isV1Setup(lists: TitledList[]): boolean {
+function isV1Setup(lists: TitledList[]) {
   if (lists.length !== 1) return false;
   const [list] = lists;
   return (
@@ -90,8 +72,7 @@ function isV1Setup(lists: TitledList[]): boolean {
   );
 }
 
-/** The manifest Catalogs of the Lists, in order (see addonCatalogEntries). */
-function manifestCatalogEntries(lists: ManifestList[]): ManifestCatalogEntry[] {
+function manifestCatalogEntries(lists: ManifestList[]) {
   const v1 = isV1Setup(lists);
   return lists.flatMap((list) => {
     const name = v1 ? "Stremlist" : `Stremlist ${listTitle(list)}`;
@@ -110,28 +91,31 @@ function manifestCatalogEntries(lists: ManifestList[]): ManifestCatalogEntry[] {
         name: label ? `${name} · ${label}` : name,
         search: !preset,
         genres,
-      };
+      } satisfies ManifestCatalogEntry;
     });
   });
 }
 
-/** What the manifest says about one "New titles" Catalog (ADR 0007). */
 interface NewTitlesCatalogEntry {
   newTitles: true;
   type: TitleType;
   name: string;
 }
 
-/** One "New titles" Catalog per type that the Lists show. */
-function newTitlesCatalogEntries(
-  lists: ManifestList[],
-): NewTitlesCatalogEntry[] {
+function newTitlesCatalogEntries(lists: ManifestList[]) {
   const types = new Set(
     lists.flatMap((list) => listCatalogs(list).map((catalog) => catalog.type)),
   );
   return (["movie", "series"] as const)
     .filter((type) => types.has(type))
-    .map((type) => ({ newTitles: true, type, name: "Stremlist New titles" }));
+    .map(
+      (type) =>
+        ({
+          newTitles: true,
+          type,
+          name: "Stremlist New titles",
+        }) satisfies NewTitlesCatalogEntry,
+    );
 }
 
 /**
@@ -142,9 +126,10 @@ function newTitlesCatalogEntries(
 export function addonCatalogEntries(
   lists: ManifestList[],
   options: { newTitles: boolean },
-): (NewTitlesCatalogEntry | ManifestCatalogEntry)[] {
-  return [
+) {
+  const entries: (NewTitlesCatalogEntry | ManifestCatalogEntry)[] = [
     ...(options.newTitles ? newTitlesCatalogEntries(lists) : []),
     ...manifestCatalogEntries(lists),
   ];
+  return entries;
 }

@@ -1,17 +1,3 @@
-// Builds and publishes the production backend and frontend at one commit.
-//
-//   node .github/scripts/vercel-release.mjs build <sha>
-//     Creates a production deployment of each project from the GitHub commit,
-//     without custom domains, and waits until both are READY. Writes
-//     `backend=<id>` and `frontend=<id>` to $GITHUB_OUTPUT.
-//   node .github/scripts/vercel-release.mjs publish <sha> <backend-id> <frontend-id>
-//     Run after the migrations: smoke-tests the backend deployment on its own
-//     URL, then promotes the backend and the frontend to their domains and
-//     checks that the domains serve them.
-//
-// Vercel's Git integration does not build main (vercel.json sets
-// git.deploymentEnabled.main to false), so these deployments are the only
-// way a commit reaches production.
 import { execFileSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { publishSummary } from "./supabase-api.mjs";
@@ -71,8 +57,6 @@ async function poll(read, ready, attempts, timeoutMessage) {
   throw new Error(timeoutMessage);
 }
 
-// Refuses to deploy when the project no longer matches what this script
-// was reviewed against (wrong repo, branch or folder).
 async function checkProject(app) {
   const project = await vercel(`/v9/projects/${app.project}`);
   const link = project.link ?? {};
@@ -116,8 +100,6 @@ async function build(sha) {
           name: app.name,
           project: app.project,
           target: "production",
-          // ref must be the branch: the projects' ignored build step only
-          // builds main and staging.
           gitSource: { type: "github", ...REPO, ref: "main", sha },
           autoAssignCustomDomains: false,
         },
@@ -163,8 +145,6 @@ async function getJson(url) {
   }
 }
 
-// /health reads the database, so on the new deployment it proves that the
-// new code works with the migrated schema.
 async function smokeBackend(base) {
   const health = await getJson(`${base}/health`);
   if (health.status !== "ok" || health.database !== "up") {

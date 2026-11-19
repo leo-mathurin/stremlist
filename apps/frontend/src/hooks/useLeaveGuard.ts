@@ -12,7 +12,6 @@ export function useLeaveGuard(active: boolean) {
     if (!active) return;
     const ask = (event: BeforeUnloadEvent) => {
       event.preventDefault();
-      // Older browsers need `returnValue` to show the prompt.
       event.returnValue = "";
     };
     window.addEventListener("beforeunload", ask);

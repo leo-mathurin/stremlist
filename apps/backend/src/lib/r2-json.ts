@@ -8,7 +8,7 @@ import type { ProviderId } from "@stremlist/shared/providers";
 import type { z } from "zod";
 import { getR2Bucket, getR2Client } from "./r2";
 
-function isR2Error(error: unknown, name: string, status: number): boolean {
+function isR2Error(error: unknown, name: string, status: number) {
   if (!error || typeof error !== "object") return false;
   const candidate = error as {
     name?: string;
@@ -20,12 +20,12 @@ function isR2Error(error: unknown, name: string, status: number): boolean {
 }
 
 /** Whether an R2 error means that the object does not exist. */
-export function isNotFound(error: unknown): boolean {
+export function isNotFound(error: unknown) {
   return isR2Error(error, "NoSuchKey", 404);
 }
 
 /** Whether an R2 error means that a conditional write lost a race. */
-export function isPreconditionFailed(error: unknown): boolean {
+export function isPreconditionFailed(error: unknown) {
   return isR2Error(error, "PreconditionFailed", 412);
 }
 
@@ -33,10 +33,7 @@ export function isPreconditionFailed(error: unknown): boolean {
  * Where a Connection keeps its objects (Action membership, Provider sync
  * state). A disconnect deletes everything under it.
  */
-export function connectionPrefix(
-  accountId: string,
-  provider: ProviderId,
-): string {
+export function connectionPrefix(accountId: string, provider: ProviderId) {
   return `connections/${accountId}/${provider}/`;
 }
 
@@ -44,9 +41,7 @@ export function connectionPrefix(
  * A JSON object with its ETag, for a conditional write later (see
  * `writeJson`). Null when it does not exist. Other errors throw.
  */
-export async function readJsonVersion(
-  key: string,
-): Promise<{ value: unknown; etag: string | undefined } | null> {
+export async function readJsonVersion(key: string) {
   try {
     const response = await getR2Client().send(
       new GetObjectCommand({ Bucket: getR2Bucket(), Key: key }),
@@ -66,10 +61,7 @@ export async function readJsonVersion(
  * A JSON object parsed with `schema`, or null when it does not exist. Other
  * errors throw.
  */
-export async function readJson<T>(
-  key: string,
-  schema: z.ZodType<T>,
-): Promise<T | null> {
+export async function readJson<T>(key: string, schema: z.ZodType<T>) {
   const value = (await readJsonVersion(key))?.value;
   return value == null ? null : schema.parse(value);
 }
@@ -84,7 +76,7 @@ export async function writeJson(
   key: string,
   value: unknown,
   expected?: { etag: string | null },
-): Promise<void> {
+) {
   await getR2Client().send(
     new PutObjectCommand({
       Bucket: getR2Bucket(),
@@ -102,10 +94,7 @@ export async function writeJson(
 }
 
 /** Delete a prefix page by page, optionally retaining a nested prefix. */
-export async function deletePrefix(
-  prefix: string,
-  retainedPrefix?: string,
-): Promise<void> {
+export async function deletePrefix(prefix: string, retainedPrefix?: string) {
   const client = getR2Client();
   const bucket = getR2Bucket();
   let continuationToken: string | undefined;
@@ -122,7 +111,6 @@ export async function deletePrefix(
         ? [{ Key: object.Key }]
         : [],
     );
-    // A list page holds at most 1,000 keys, the most one delete accepts.
     if (keys.length > 0) {
       const result = await client.send(
         new DeleteObjectsCommand({
@@ -130,7 +118,6 @@ export async function deletePrefix(
           Delete: { Objects: keys, Quiet: true },
         }),
       );
-      // A bulk delete succeeds even when some objects stay; it lists them.
       if (result.Errors?.length) {
         throw new Error(
           `Could not delete ${result.Errors.length} objects under ${prefix}`,

@@ -23,11 +23,7 @@ import {
   PROVIDERS,
   sourceRequiresConnection,
 } from "@stremlist/shared/providers";
-import type {
-  AccountSyncSnapshot,
-  AddonAccess,
-  ConfigList,
-} from "@stremlist/shared/stremio.types";
+import type { AddonAccess, ConfigList } from "@stremlist/shared/stremio.types";
 import { z } from "zod";
 import { isProviderEnabled } from "../providers/registry";
 import type { AccountAccess, ListInput } from "./accounts";
@@ -42,7 +38,6 @@ import { getListSyncStatuses } from "./sync-status";
 export const providerParam = z.enum(PROVIDER_IDS);
 
 const [firstSortOption, ...otherSortOptions] = SORT_OPTIONS;
-// Typed as strings: clients keep the sort option in a string.
 const sortOptionValues: [string, ...string[]] = [
   firstSortOption.value,
   ...otherSortOptions.map((o) => o.value),
@@ -90,7 +85,7 @@ const actionsBody = z.object({
 /** A saved configuration: Lists and settings. */
 export const configBody = z.object({
   rpdbApiKey: z.string().trim().optional(),
-  // Omitted by older clients: the saved source stays.
+  /** Omitted by older clients: the saved source stays. */
   posterSource: z.enum(POSTER_SOURCES).optional(),
   lists: z.array(listBody).min(1).max(MAX_LISTS),
   actions: actionsBody.optional(),
@@ -113,7 +108,7 @@ export class ConfigError extends Error {
 }
 
 /** The stored RPDB key: an empty one is no key. */
-export function rpdbKey(value: string | undefined): string | null {
+export function rpdbKey(value: string | undefined) {
   return value && value.length > 0 ? value : null;
 }
 
@@ -125,16 +120,10 @@ export function rpdbKey(value: string | undefined): string | null {
 export function savedPosterSource(body: {
   posterSource?: PosterSource;
   rpdbApiKey?: string;
-}): PosterSource | undefined {
+}) {
   return body.posterSource ?? (rpdbKey(body.rpdbApiKey) ? "rpdb" : undefined);
 }
 
-/**
- * Check and normalize one Source list of a submitted List. IMDb `p.`
- * handles are turned into `ur…` IDs. A Source list that is already saved
- * may stay without its Connection (after a disconnect, it shows again once
- * the user connects), so the user can still save the other settings.
- */
 async function normalizeSource(
   source: ListSource,
   access: {
@@ -142,14 +131,13 @@ async function normalizeSource(
     connected: Set<ProviderId>;
     savedSources: Set<string>;
   },
-): Promise<ListSource> {
+) {
   const info = PROVIDERS[source.provider];
   if (info.availability !== "available") {
     throw new ConfigError(`${info.label} is not available yet.`);
   }
   let sourceRef = source.sourceRef;
   if (source.provider === "imdb") {
-    // Resolving a `p.` handle asks IMDb, which the kill switch may turn off.
     if (sourceRef.startsWith("p.") && !isProviderEnabled("imdb")) {
       throw new ConfigError(
         "IMDb is temporarily unavailable. Please try again later.",
@@ -162,8 +150,6 @@ async function normalizeSource(
         `Could not resolve the IMDb handle "${source.sourceRef}". Please check it and try again.`,
       );
     }
-    // The IMDb adapter treats any other ref as a watchlist user ID, so a
-    // malformed one would be saved and fail on every catalog request.
     if (
       !IMDB_WATCHLIST_SOURCE_ID_PATTERN.test(sourceRef) &&
       !IMDB_RATINGS_REF_PATTERN.test(sourceRef) &&
@@ -173,9 +159,6 @@ async function normalizeSource(
     }
   }
   if (source.provider === "letterboxd") {
-    // A Share link or boxd.it reference must be resolved and its token encrypted
-    // through /links/resolve first. Never store a provisional, plaintext-token
-    // reference.
     if (
       sourceRef.startsWith("lbxshare/") ||
       sourceRef.startsWith("lbxshort/")
@@ -199,22 +182,12 @@ async function normalizeSource(
   return { ...source, sourceRef };
 }
 
-/**
- * The Source lists of a submitted List, its first one first. An omitted
- * `mergedSources` or `sourceLabel` keeps the saved one, so older clients do
- * not split a merged List or erase its label; the transaction then checks
- * that the kept Source lists did not change since this read (`kept`).
- */
 interface SubmittedSources {
   sources: ListSource[];
-  /** The saved Source lists were kept: the transaction checks them. */
   kept: boolean;
 }
 
-function submittedSources(
-  list: ListBody,
-  saved: ConfigList | undefined,
-): SubmittedSources {
+function submittedSources(list: ListBody, saved: ConfigList | undefined) {
   const sameFirst =
     saved?.provider === list.provider && saved.sourceRef === list.sourceRef;
   return {
@@ -227,7 +200,7 @@ function submittedSources(
       ...(list.mergedSources ?? saved?.mergedSources ?? []),
     ],
     kept: !list.mergedSources && !!list.id,
-  };
+  } satisfies SubmittedSources;
 }
 
 /**
@@ -245,7 +218,7 @@ export async function normalizeLists(
     /** Saved Lists, for the merged Source lists that a client omits. */
     saved: ConfigList[];
   },
-): Promise<ListInput[]> {
+) {
   const normalized: ListInput[] = [];
   const saved = new Map(access.saved.map((list) => [list.id, list]));
   const savedSources = new Set(
@@ -265,8 +238,6 @@ export async function normalizeLists(
       id: list.id,
       provider: first.provider,
       sourceRef: first.sourceRef,
-      // An untitled List stays untitled: the manifest names it after its
-      // Source list (`listTitle`), so its name never depends on its position.
       catalogTitle: list.catalogTitle ?? "",
       sortOption: list.sortOption,
       displayMode: list.displayMode ?? "split",
@@ -287,20 +258,15 @@ export async function normalizeLists(
 }
 
 /** The Providers that the Account has a Connection with. */
-export async function connectedProviders(
-  access: AccountAccess,
-): Promise<Set<ProviderId>> {
-  if (access.via !== "private") return new Set();
+export async function connectedProviders(access: AccountAccess) {
+  if (access.via !== "private") return new Set<ProviderId>();
   return new Set(
     (await listConnections(access.account.id)).map((c) => c.provider),
   );
 }
 
 /** The sync status of these Lists and the Account's Connections. */
-export async function syncSnapshot(
-  access: AccountAccess,
-  lists: ConfigList[],
-): Promise<AccountSyncSnapshot> {
+export async function syncSnapshot(access: AccountAccess, lists: ConfigList[]) {
   const [statuses, connections, readQueue] = await Promise.all([
     getListSyncStatuses(lists),
     access.via === "private" ? listConnections(access.account.id) : [],

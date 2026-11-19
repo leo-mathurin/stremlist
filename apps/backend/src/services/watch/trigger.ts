@@ -1,11 +1,3 @@
-/**
- * What a member's Stremio app tells Stremlist (ADR 0003):
- *
- * - a `/stream` request, sent before every play: read the item at once, send
- *   what it shows as newly watched, and start its read cycle;
- * - a Stremio Web `pause` or `stop` player event: read it at the next run;
- * - a Stremio Web `library` event for a manual mark: read it at once.
- */
 import { isProviderId } from "@stremlist/shared/providers";
 import { decryptSecret } from "../../lib/crypto";
 import { LruCache } from "../../lib/lru";
@@ -23,14 +15,12 @@ interface WatchContext {
   hasBaseline: boolean;
 }
 
-/** Most /stream requests come from Accounts that are not tracked. */
 const contexts = new LruCache<string, WatchContext | null>({
   maxEntries: 5000,
   ttlMs: 60_000,
 });
 
-/** The Stremio key of a tracked Account, or null. */
-async function watchContext(accountId: string): Promise<WatchContext | null> {
+async function watchContext(accountId: string) {
   const cached = contexts.get(accountId);
   if (cached !== undefined) return cached;
   const { data, error } = await supabase.rpc("watch_context", {
@@ -49,31 +39,25 @@ async function watchContext(accountId: string): Promise<WatchContext | null> {
 }
 
 /** Forget the cached context after a change of the Account's tracking. */
-export function forgetWatchContext(accountId: string): void {
+export function forgetWatchContext(accountId: string) {
   contexts.delete(accountId);
 }
 
-/** Whether Stremio shows anything of the item as watched. */
-function hasWatched(item: LibraryItem): boolean {
+function hasWatched(item: LibraryItem) {
   return item.type === "movie"
     ? movieWatched(item)
     : Boolean(item.state?.watched);
 }
 
-async function isTracked(accountId: string): Promise<boolean> {
+async function isTracked(accountId: string) {
   return (await watchContext(accountId)) !== null;
 }
 
-/**
- * Sends what `item` shows as newly watched against the Account's watch
- * state. The caller checks that the Account has its Watched baseline. Most
- * reads show nothing new: the Destinations are read only when needed.
- */
 async function sendNewTitles(
   accountId: string,
   context: WatchContext,
   item: LibraryItem,
-): Promise<void> {
+) {
   await recordItems(
     accountId,
     async () => {
@@ -105,7 +89,7 @@ export async function onStreamRequest(
   accountId: string,
   type: "movie" | "series",
   videoId: string,
-): Promise<void> {
+) {
   const context = await watchContext(accountId);
   if (!context) return;
   const itemId = videoId.split(":")[0];
@@ -120,7 +104,6 @@ export async function onStreamRequest(
     try {
       await sendNewTitles(accountId, context, item);
     } catch (error) {
-      // The cycle still starts; the sweep sends what this missed.
       console.error(
         `Watch tracking send on /stream failed for ${accountId}:`,
         error instanceof Error ? error.message : error,
@@ -130,9 +113,7 @@ export async function onStreamRequest(
   if (watched) return;
   const now = Date.now();
   const row = newCycle(type, videoId, item, now);
-  // A resume shows the play at once; a new play shows it after it starts.
   const plan = planAfterRead(row, item, false, now);
-  // Unset arguments are null in the database.
   const iso = (value: number | null) =>
     value === null ? undefined : new Date(value).toISOString();
   const { error } = await supabase.rpc("watch_restart", {
@@ -151,10 +132,7 @@ export async function onStreamRequest(
 }
 
 /** A `pause` or `stop` of Stremio Web: read the item at the next run. */
-export async function onPlayerEvent(
-  accountId: string,
-  videoId: string,
-): Promise<void> {
+export async function onPlayerEvent(accountId: string, videoId: string) {
   if (!(await isTracked(accountId))) return;
   const { error } = await supabase.rpc("watch_read_soon", {
     p_account_id: accountId,
@@ -165,17 +143,13 @@ export async function onPlayerEvent(
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
-/** The event and the cloud write leave the app at the same moment. */
 const EVENT_SETTLE_MS = 3000;
 
 /**
  * A manual mark in Stremio Web: read the item a few seconds later and send
  * what is new against the Account's watch state.
  */
-export async function onLibraryWatchedEvent(
-  accountId: string,
-  itemId: string,
-): Promise<void> {
+export async function onLibraryWatchedEvent(accountId: string, itemId: string) {
   const context = await watchContext(accountId);
   if (!context?.hasBaseline) return;
   await sleep(EVENT_SETTLE_MS);

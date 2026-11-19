@@ -33,9 +33,7 @@ import { previewQueueMessage, queueProgress } from "@/lib/provider-queue";
 import type { QueueWait } from "@/lib/provider-queue";
 import { cn } from "@/lib/utils";
 
-/** Unresolved entries shown before "Show all". */
 const UNRESOLVED_COLLAPSED = 5;
-/** Titles in one block of the dialog grid (see `CatalogTitlesDialog`). */
 const DIALOG_CHUNK = 60;
 
 const TYPE_LABELS = { movie: "Movies", series: "TV shows" } as const;
@@ -45,18 +43,17 @@ const TYPE_NOUNS = {
 } as const;
 const OTHER_TYPE = { movie: "series", series: "movie" } as const;
 
-function count(value: number, one: string, other: string): string {
+function count(value: number, one: string, other: string) {
   return `${value.toLocaleString("en")} ${value === 1 ? one : other}`;
 }
 
-/** The label of the Show option that keeps only `type`. */
-function showOnlyLabel(type: TitleType): string {
+function showOnlyLabel(type: TitleType) {
   const option = DISPLAY_MODE_OPTIONS.find((entry) => entry.value === type);
   if (!option) throw new Error(`No Show option for ${type}.`);
   return option.label;
 }
 
-function catalogLabel(row: CatalogPreviewRow): string {
+function catalogLabel(row: CatalogPreviewRow) {
   const preset = CATALOG_PRESETS.find((entry) => entry.id === row.preset);
   return preset
     ? `${TYPE_LABELS[row.type]} · ${preset.label}`
@@ -86,7 +83,6 @@ export default function CatalogPreview({
     accountKey,
     enabled: open,
   });
-  /** The Catalog whose Titles the dialog shows, if any. */
   const [allTitlesOf, setAllTitlesOf] = useState<CatalogPreviewRow | null>(
     null,
   );
@@ -140,8 +136,6 @@ export default function CatalogPreview({
             settings={list.catalogSettings}
             rpdbApiKey={rpdbApiKey}
             posterSource={posterSource}
-            // The rows on screen are from the last settings until the new
-            // preview comes: their pages would not follow on.
             onShowAll={state.updating ? null : setAllTitlesOf}
           />
         </div>
@@ -161,7 +155,7 @@ export default function CatalogPreview({
   );
 }
 
-function problemMessage(source: SourceId, reason: SourceProblemReason): string {
+function problemMessage(source: SourceId, reason: SourceProblemReason) {
   const { title, fix } = sourceProblemCopy(
     source.provider,
     reason,
@@ -201,10 +195,6 @@ function PosterPlaceholders() {
   );
 }
 
-/**
- * The List waits in its Provider's queue: the time left, and a bar that
- * fills with the time instead of the spinner.
- */
 function PreviewQueued({ wait }: { wait: QueueWait }) {
   const now = useNow();
   const progress = Math.round(queueProgress(wait, now) * 100);
@@ -278,7 +268,6 @@ function PreviewBody({
   settings: CatalogSettings;
   rpdbApiKey: string;
   posterSource: PosterSource;
-  /** Null while the preview updates. */
   onShowAll: ((row: CatalogPreviewRow) => void) | null;
 }) {
   const shownType = displayMode === "split" ? null : displayMode;
@@ -300,7 +289,6 @@ function PreviewBody({
         />
       ))}
 
-      {/* An empty single-type Catalog already says which Show option to pick. */}
       {shownType &&
         hiddenType &&
         hiddenCount > 0 &&
@@ -384,8 +372,6 @@ function CatalogRow({
               : "This catalog stays empty in Stremio."}
         </p>
       ) : (
-        // A new order mounts a new strip: Chrome would otherwise re-snap to
-        // the Title that was first and leave the strip scrolled.
         <ul
           key={row.titles.map((title) => title.id).join(",")}
           className="-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 sm:-mx-5 sm:scroll-px-5 sm:px-5"
@@ -428,18 +414,13 @@ function CatalogRow({
   );
 }
 
-/**
- * The posters of a Title, in the order to try: what Stremio shows, then what
- * shows when an image fails: the chosen source without RPDB, then the IMDb
- * poster.
- */
 function posterCandidates(
   title: PreviewTitle,
   {
     posterSource,
     rpdbApiKey,
   }: { posterSource: PosterSource; rpdbApiKey: string },
-): string[] {
+) {
   const posters = {
     imdb: title.poster,
     tmdb: title.tmdbPoster,
@@ -460,9 +441,7 @@ function PosterTile({
   fill = false,
 }: {
   title: PreviewTitle;
-  /** The poster to show, then the ones to try when an image fails. */
   posters: string[];
-  /** Take the width of its grid cell instead of a fixed width. */
   fill?: boolean;
 }) {
   const [attempt, setAttempt] = useState(0);
@@ -524,11 +503,6 @@ function PosterTile({
   );
 }
 
-/**
- * Every Title of one Catalog, in a grid that loads the next page when the
- * user scrolls near its end. Escape, the close button and a click outside
- * close it.
- */
 function CatalogTitlesDialog({
   list,
   accountKey,
@@ -558,8 +532,6 @@ function CatalogTitlesDialog({
     const element = dialog.current;
     if (!element) return;
     if (!element.open) element.showModal();
-    // A click on the backdrop lands on the dialog element itself. It is a
-    // pointer shortcut only: Escape and the close button do the same.
     const onClick = (event: MouseEvent) => {
       if (event.target === element) element.close();
     };
@@ -567,16 +539,12 @@ function CatalogTitlesDialog({
     return () => element.removeEventListener("click", onClick);
   }, []);
 
-  // Placeholder tiles stand for the page that loads, so the grid keeps its
-  // shape: on a tall screen the first page loads as the dialog opens.
   const placeholders =
     status === "loading"
       ? Math.max(0, Math.min(CATALOG_TITLES_PAGE_SIZE, total - titles.length))
       : 0;
   const shown = titles.length + placeholders;
 
-  // Load the next page when the end of the grid comes near. A failed page
-  // waits for "Try again" instead.
   useEffect(() => {
     const target = sentinel.current;
     if (!target || !hasMore || status !== "idle") return;
@@ -627,11 +595,6 @@ function CatalogTitlesDialog({
           {Array.from(
             { length: Math.ceil(shown / DIALOG_CHUNK) },
             (_, chunk) => (
-              // The browser skips the blocks far from view, so a list of
-              // thousands of titles stays fast. The dialog has at most six
-              // columns, and each column count divides a block: the rows of
-              // the blocks line up. The padding keeps the focus ring of an edge
-              // tile inside the block, which clips what it paints.
               <ul
                 key={chunk}
                 className="-m-0.5 grid grid-cols-[repeat(auto-fill,minmax(5.25rem,1fr))] gap-x-3 gap-y-4 [contain-intrinsic-block-size:auto_130rem] p-0.5 [content-visibility:auto] sm:grid-cols-[repeat(auto-fill,minmax(6.5rem,1fr))]"
@@ -679,7 +642,6 @@ function CatalogTitlesDialog({
   );
 }
 
-/** One Title of the dialog. A new page leaves the shown Titles as they are. */
 const DialogTile = memo(function DialogTile({
   title,
   posterSource,
@@ -702,7 +664,6 @@ const DialogTile = memo(function DialogTile({
   );
 });
 
-/** A tile of the dialog while its Title loads. */
 function DialogTilePlaceholder() {
   return (
     <li aria-hidden="true">
@@ -748,7 +709,6 @@ function UnresolvedEntries({
           <UnresolvedRow key={index} entry={entry} />
         ))}
       </ul>
-      {/* Entries go unlisted only past the limit, so "Show all" is there. */}
       {unresolved.entries.length > UNRESOLVED_COLLAPSED && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           <button

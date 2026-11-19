@@ -30,8 +30,6 @@ export default function FloatingSaveButton({
 }) {
   const [bar, setBar] = useState<HTMLDivElement | null>(null);
   const [docked, setDocked] = useState(false);
-  // Width of the label, so the clip shows a pill around it while the button
-  // floats.
   const [label, setLabel] = useState<HTMLSpanElement | null>(null);
   const [labelWidth, setLabelWidth] = useState(0);
   useEffect(() => {
@@ -80,9 +78,6 @@ export default function FloatingSaveButton({
         style={{ "--pill": `${labelWidth + 64}px` }}
         className={cn(
           SAVE_BUTTON_CLASS,
-          // Always full width; while floating, the clip shows only a pill at
-          // the right. At the end of the page the clip opens and the label
-          // slides to the center.
           "@container pointer-events-auto h-14 w-full text-base [transition:clip-path_250ms_var(--ease-in-out-quart),background-color_150ms_ease-out,opacity_150ms_ease-out,scale_150ms_ease-out] motion-reduce:[transition:background-color_150ms_ease-out,opacity_150ms_ease-out]",
           docked
             ? "[clip-path:inset(0_round_9999px)]"

@@ -19,7 +19,7 @@ const providerLabels = PROVIDER_IDS.filter(
   (id) => PROVIDERS[id].availability === "available",
 ).map((id) => PROVIDERS[id].label);
 
-function legalText(sectionId: string): string {
+function legalText(sectionId: string) {
   const section = LEGAL_SECTIONS.find((item) => item.id === sectionId);
   assert.ok(section, sectionId);
   return section.clauses

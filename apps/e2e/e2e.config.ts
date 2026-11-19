@@ -3,8 +3,6 @@ import { chatgpt } from "e2e/oauth/chatgpt";
 import { web } from "@e2e-dev/web";
 import { replayOnlyModel } from "./replay-only-model";
 
-// CI and `test:toolkit:replay` only replay committed recordings: the cache is
-// read-only and strict, and no model can answer (replay-only-model.ts).
 const replayOnly = !!process.env.CI;
 
 export default {
