@@ -22,6 +22,9 @@ tester.run("anti-slop/no-vite-plus-test-doubles", noVitePlusTestDoublesRule, {
     `${header}const spy = vi.spyOn(console, "log"); { const spy = make(); spy.mockReturnValue(1); }`,
     `${header}const useTimers = vi.useFakeTimers; useTimers();`,
     `${header}const { spyOn } = vi; spyOn(console, "warn");`,
+    `${header}const { mockReturnValue } = make(); mockReturnValue(1);`,
+    `${header}const set = other.mockReturnValue; set(1);`,
+    `${header}const spy = vi.spyOn(dep, "read"); { const mockReturnValue = make; mockReturnValue(1); }`,
   ],
   invalid: [
     { name: "vi.mock", code: `${header}vi.mock("../lib/supabase", () => ({}));`, errors: [error] },
@@ -114,6 +117,26 @@ tester.run("anti-slop/no-vite-plus-test-doubles", noVitePlusTestDoublesRule, {
     {
       name: "vi.mockObject through an alias of vi",
       code: `${header}const v = vi; const replace = v.mockObject; replace({});`,
+      errors: [error],
+    },
+    {
+      name: "destructured setter of a spy",
+      code: `${header}const spy = vi.spyOn(dep, "read"); const { mockReturnValue } = spy; mockReturnValue(1);`,
+      errors: [error],
+    },
+    {
+      name: "renamed destructured setter",
+      code: `${header}const { mockImplementation: replace } = vi.spyOn(dep, "read"); replace(() => 1);`,
+      errors: [error],
+    },
+    {
+      name: "aliased setter",
+      code: `${header}const spy = vi.spyOn(dep, "read"); const set = spy.mockReturnValue; set(1);`,
+      errors: [error],
+    },
+    {
+      name: "alias of an aliased setter",
+      code: `${header}const set = vi.spyOn(dep, "read").mockResolvedValue; const again = set; again(1);`,
       errors: [error],
     },
     {

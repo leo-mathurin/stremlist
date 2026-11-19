@@ -170,6 +170,44 @@ function isViDouble(sourceCode: SourceCode, node: ESTree.Node, depth = 0): boole
 }
 
 /**
+ * The mock setter that `node` refers to on a mock or spy that `vi` made:
+ * a member (`spy.mockReturnValue`), an alias (`const set =
+ * spy.mockReturnValue`) or a destructured name (`const { mockReturnValue } =
+ * spy`). Null otherwise.
+ */
+function viSetter(sourceCode: SourceCode, node: ESTree.Node, depth = 0): string | null {
+  if (depth > 8) return null;
+  if (node.type === "MemberExpression") {
+    const name = propertyName(node);
+    return name !== null && mockSetters.has(name) && isViDouble(sourceCode, node.object)
+      ? name
+      : null;
+  }
+  const variable = bindingOf(sourceCode, node);
+  if (!variable) return null;
+  const declarator = declaratorOf(variable);
+  if (!declarator?.init) return null;
+  if (declarator.id.type === "Identifier") {
+    return viSetter(sourceCode, declarator.init, depth + 1);
+  }
+  if (declarator.id.type === "ObjectPattern" && isViDouble(sourceCode, declarator.init)) {
+    for (const property of declarator.id.properties) {
+      const name = property.type === "Property" ? keyName(property.key) : null;
+      if (
+        property.type === "Property" &&
+        property.value.type === "Identifier" &&
+        property.value.name === variable.name &&
+        name !== null &&
+        mockSetters.has(name)
+      ) {
+        return name;
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Ban the Vitest test double APIs when `vi` comes from `vite-plus/test`.
  * Landmines `no-test-doubles` sees only `vitest` imports, so this rule closes
  * that gap. It follows `vi` through lexical bindings (aliases, destructuring,
@@ -198,10 +236,9 @@ export const noVitePlusTestDoublesRule = defineRule({
           context.report({ node, messageId: "replacement", data: { name: `vi.${method}` } });
           return;
         }
-        if (node.callee.type !== "MemberExpression") return;
-        const name = propertyName(node.callee);
-        if (name !== null && mockSetters.has(name) && isViDouble(sourceCode, node.callee.object)) {
-          context.report({ node, messageId: "replacement", data: { name } });
+        const setter = viSetter(sourceCode, node.callee);
+        if (setter !== null) {
+          context.report({ node, messageId: "replacement", data: { name: setter } });
         }
       },
     };
