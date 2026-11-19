@@ -95,11 +95,18 @@ async function busyLetterboxd() {
       }
     }),
   );
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    vi.setSystemTime(Date.now() + 10_000);
+    turn.resolve();
+  };
   return {
     turnsBefore: rpcCallsOf("letterboxd_take_turn").length,
+    release,
     async nextTurn() {
-      vi.setSystemTime(Date.now() + 10_000);
-      turn.resolve();
+      release();
       await background.settle();
     },
   };
@@ -162,18 +169,23 @@ describe("a Stremio request for a busy Letterboxd", () => {
     serveWatchlist([1]);
     const queue = await busyLetterboxd();
 
-    const { res, body } = await catalog();
+    let ticket: string | undefined;
+    try {
+      const { res, body } = await catalog();
 
-    expect(res.status).toBe(200);
-    expect(body.metas).toEqual([
-      expect.objectContaining({
-        id: "stremlist:queued:letterboxd",
-        name: "Your Letterboxd list is on its way",
-        description:
-          "Letterboxd is busy right now. Stremlist is reading your list and it will show here in a few minutes.",
-      }),
-    ]);
-    const [ticket] = letterboxdWaiters().map((waiter) => waiter.id);
+      expect(res.status).toBe(200);
+      expect(body.metas).toEqual([
+        expect.objectContaining({
+          id: "stremlist:queued:letterboxd",
+          name: "Your Letterboxd list is on its way",
+          description:
+            "Letterboxd is busy right now. Stremlist is reading your list and it will show here in a few minutes.",
+        }),
+      ]);
+      [ticket] = letterboxdWaiters().map((waiter) => waiter.id);
+    } finally {
+      queue.release();
+    }
     await queue.nextTurn();
     expect(cache.get(LIST_ID)?.data.metas.map((meta) => meta.id)).toEqual([
       "tt0000001",
@@ -191,10 +203,14 @@ describe("a Stremio request for a busy Letterboxd", () => {
     serveWatchlist([1]);
     const queue = await busyLetterboxd();
 
-    const { res, body } = await catalog("/search=alien.json");
+    try {
+      const { res, body } = await catalog("/search=alien.json");
 
-    expect(res.status).toBe(200);
-    expect(body.metas).toEqual([]);
+      expect(res.status).toBe(200);
+      expect(body.metas).toEqual([]);
+    } finally {
+      queue.release();
+    }
     await queue.nextTurn();
   });
 
@@ -211,17 +227,20 @@ describe("a Stremio request for a busy Letterboxd", () => {
     };
 
     const pending = catalog();
-    await page.arrived;
-    await vi.advanceTimersByTimeAsync(9_900);
-    let answered = false;
-    void pending.then(() => (answered = true));
-    await vi.advanceTimersByTimeAsync(0);
-    expect(answered).toBe(false);
-    await vi.advanceTimersByTimeAsync(200);
-    const { body } = await pending;
-    expect(ids(body)).toEqual(["stremlist:queued:letterboxd"]);
+    try {
+      await page.arrived;
+      await vi.advanceTimersByTimeAsync(9_900);
+      let answered = false;
+      void pending.then(() => (answered = true));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(answered).toBe(false);
+      await vi.advanceTimersByTimeAsync(200);
+      const { body } = await pending;
+      expect(ids(body)).toEqual(["stremlist:queued:letterboxd"]);
+    } finally {
+      page.release();
+    }
 
-    page.release();
     await written.promise;
     await background.settle();
     expect(cache.get(LIST_ID)?.data.metas.map((meta) => meta.id)).toEqual([
@@ -234,15 +253,18 @@ describe("a Stremio request for a busy Letterboxd", () => {
     const queue = await busyLetterboxd();
     vi.setSystemTime(Date.now() + 10_000);
 
-    const { body } = await catalog();
+    try {
+      const { body } = await catalog();
 
-    expect(ids(body)).toEqual(["tt0000001"]);
-    const cached = cache.get(LIST_ID);
-    expect(cached).not.toBeNull();
-    const age = Date.now() - (cached?.cachedAt.getTime() ?? 0);
-    expect(age).toBeGreaterThan(FRESHNESS_MS - 2 * 60_000 - 1_000);
-    expect(age).toBeLessThan(FRESHNESS_MS);
-
+      expect(ids(body)).toEqual(["tt0000001"]);
+      const cached = cache.get(LIST_ID);
+      expect(cached).not.toBeNull();
+      const age = Date.now() - (cached?.cachedAt.getTime() ?? 0);
+      expect(age).toBeGreaterThan(FRESHNESS_MS - 2 * 60_000 - 1_000);
+      expect(age).toBeLessThan(FRESHNESS_MS);
+    } finally {
+      queue.release();
+    }
     await queue.nextTurn();
     expect(cache.get(LIST_ID)?.data.metas).toHaveLength(2);
     expect(letterboxd.urls.filter((url) => url.startsWith(WATCHLIST))).toEqual([
@@ -256,17 +278,20 @@ describe("a Stremio request for a busy Letterboxd", () => {
     const page = holdPage(WATCHLIST, [10]);
     const turnsBefore = rpcCallsOf("letterboxd_take_turn").length;
 
-    const { res, body } = await catalog();
+    try {
+      const { res, body } = await catalog();
 
-    expect(res.status).toBe(200);
-    expect(ids(body)).toEqual(["tt0000009"]);
-    await page.arrived;
-    expect(
-      rpcCallsOf("letterboxd_take_turn")
-        .slice(turnsBefore)
-        .map((args) => args.p_priority),
-    ).toEqual(["background"]);
-    page.release();
+      expect(res.status).toBe(200);
+      expect(ids(body)).toEqual(["tt0000009"]);
+      await page.arrived;
+      expect(
+        rpcCallsOf("letterboxd_take_turn")
+          .slice(turnsBefore)
+          .map((args) => args.p_priority),
+      ).toEqual(["background"]);
+    } finally {
+      page.release();
+    }
     await background.settle();
     expect(cache.get(LIST_ID)?.data.metas.map((meta) => meta.id)).toEqual([
       "tt0000010",

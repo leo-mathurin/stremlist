@@ -266,9 +266,12 @@ describe("getListCatalog", () => {
     const first = readList(config());
     const second = readList(config());
 
-    await requested.promise;
-    expect(listCache.getCachedList).toHaveBeenCalledTimes(2);
-    release.resolve();
+    try {
+      await requested.promise;
+      expect(listCache.getCachedList).toHaveBeenCalledTimes(2);
+    } finally {
+      release.resolve();
+    }
 
     await expect(Promise.all([first, second])).resolves.toEqual([
       { metas: [MOVIE] },
@@ -708,9 +711,12 @@ it("rejects a read that finishes after its Connection was disconnected", async (
   });
   const pending = readList(read);
   pending.catch(() => {});
-  await began.promise;
-  await disconnectProvider(account.id, "trakt");
-  finish.resolve();
+  try {
+    await began.promise;
+    await disconnectProvider(account.id, "trakt");
+  } finally {
+    finish.resolve();
+  }
   await expect(pending).rejects.toMatchObject({
     reason: "needs_connection",
   });

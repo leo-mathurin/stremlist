@@ -278,13 +278,17 @@ describe("simkl reconnect", () => {
     const old = simklProvider.fetchSource("me/plantowatch", {
       connection: authorization("auth-1", "old_token"),
     });
-    await oldRequest.promise;
-    expect(calls).toHaveLength(1);
     const current = authorization("auth-2", "new_token");
-    const reading = simklProvider.fetchSource("me/plantowatch", {
-      connection: current,
-    });
-    release();
+    let reading: ReturnType<typeof simklProvider.fetchSource>;
+    try {
+      await oldRequest.promise;
+      expect(calls).toHaveLength(1);
+      reading = simklProvider.fetchSource("me/plantowatch", {
+        connection: current,
+      });
+    } finally {
+      release();
+    }
     await old;
     const fresh = await reading;
     const next = await simklProvider.fetchSource("me/plantowatch", {

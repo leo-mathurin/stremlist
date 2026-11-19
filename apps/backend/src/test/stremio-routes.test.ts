@@ -331,12 +331,16 @@ describe("updating the installed Stremlist", () => {
 
     await rename("First");
     const first = update();
-    await stremio.held.promise;
-    await rename("Second");
-    const refused = refusedUpdateClaim();
-    const second = update();
-    expect(await refused).toBe("busy");
-    release();
+    let second: ReturnType<typeof update>;
+    try {
+      await stremio.held.promise;
+      await rename("Second");
+      const refused = refusedUpdateClaim();
+      second = update();
+      expect(await refused).toBe("busy");
+    } finally {
+      release();
+    }
 
     const results = await Promise.all(
       (await Promise.all([first, second])).map((res) => res.json()),
@@ -355,14 +359,18 @@ describe("updating the installed Stremlist", () => {
       release = resolve;
     });
     const first = update();
-    await stremio.held.promise;
-    const refused = refusedUpdateClaim();
-    const second = update();
-    expect(await refused).toBe("busy");
-    for (const row of db.getTable("accounts")) {
-      if (row.id === accountId) row.new_titles_catalog = true;
+    let second: ReturnType<typeof update>;
+    try {
+      await stremio.held.promise;
+      const refused = refusedUpdateClaim();
+      second = update();
+      expect(await refused).toBe("busy");
+      for (const row of db.getTable("accounts")) {
+        if (row.id === accountId) row.new_titles_catalog = true;
+      }
+    } finally {
+      release();
     }
-    release();
 
     await Promise.all([first, second]);
     expect(stremio.collection).toEqual([cinemeta, await installed()]);
@@ -378,14 +386,18 @@ describe("updating the installed Stremlist", () => {
       release = resolve;
     });
     const running = update();
-    await stremio.held.promise;
-    const refused = refusedUpdateClaim();
-    const disconnect = app.request(`/${accountId}/stremio`, {
-      method: "DELETE",
-    });
-    expect(await refused).toBe("busy");
-    expect(db.getTable("stremio_connections")).toHaveLength(1);
-    release();
+    let disconnect: ReturnType<typeof app.request>;
+    try {
+      await stremio.held.promise;
+      const refused = refusedUpdateClaim();
+      disconnect = app.request(`/${accountId}/stremio`, {
+        method: "DELETE",
+      });
+      expect(await refused).toBe("busy");
+      expect(db.getTable("stremio_connections")).toHaveLength(1);
+    } finally {
+      release();
+    }
 
     expect((await disconnect).status).toBe(200);
     expect((await running).status).toBe(200);

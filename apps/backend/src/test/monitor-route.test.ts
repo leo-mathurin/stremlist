@@ -71,11 +71,15 @@ function listCheckHold() {
 
 async function monitor(secret = SECRET) {
   answered = Promise.withResolvers<void>();
-  const res = await app.request("/monitor", {
-    headers: { Authorization: `Bearer ${secret}` },
-  });
-  await readJson(res.clone(), monitorAnswer);
-  answered.resolve();
+  let res: Response;
+  try {
+    res = await app.request("/monitor", {
+      headers: { Authorization: `Bearer ${secret}` },
+    });
+    await readJson(res.clone(), monitorAnswer);
+  } finally {
+    answered.resolve();
+  }
   await background.settle();
   return res;
 }

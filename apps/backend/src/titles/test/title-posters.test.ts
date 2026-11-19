@@ -59,7 +59,7 @@ describe("findPosters on TMDB", () => {
         { id: "tt0000001", type: "movie" },
         { id: "tt0000002", type: "series" },
       ],
-      { budgetMs: 1000, size: "preview" },
+      { budgetMs: Infinity, size: "preview" },
     );
     expect(Object.fromEntries(posters)).toEqual({
       tt0000001: "https://image.tmdb.org/t/p/w342/as-movie.jpg",
@@ -75,7 +75,7 @@ describe("findPosters on TMDB", () => {
         { id: "stremlist:unavailable:private", type: "movie" },
         { id: "tt0000003", type: "movie" },
       ],
-      { budgetMs: 1000, size: "stremio" },
+      { budgetMs: Infinity, size: "stremio" },
     );
     expect(posters.size).toBe(0);
     expect(tmdbFinds).toEqual(["tt0000003"]);
@@ -109,37 +109,52 @@ describe("findPosters on TMDB", () => {
         await secondDecided.promise;
       }
     });
-    const firstCall = findPosters("tmdb", [title], {
-      budgetMs: 1000,
-      size: "stremio",
-    });
-    await firstAsked.promise;
-    const second = await findPosters("tmdb", [title, other], {
-      budgetMs: 1000,
-      size: "stremio",
-    });
-    const first = await firstCall;
-    expect(tmdbFinds).toEqual(["tt0000010", "tt0000011"]);
-    expect(first.get(title.id)).toBe(
-      "https://image.tmdb.org/t/p/w500/as-movie.jpg",
-    );
-    expect(second.get(title.id)).toBe(first.get(title.id));
+    try {
+      const firstCall = findPosters("tmdb", [title], {
+        budgetMs: Infinity,
+        size: "stremio",
+      });
+      await firstAsked.promise;
+      const second = await findPosters("tmdb", [title, other], {
+        budgetMs: Infinity,
+        size: "stremio",
+      });
+      const first = await firstCall;
+      expect(tmdbFinds).toEqual(["tt0000010", "tt0000011"]);
+      expect(first.get(title.id)).toBe(
+        "https://image.tmdb.org/t/p/w500/as-movie.jpg",
+      );
+      expect(second.get(title.id)).toBe(first.get(title.id));
+    } finally {
+      secondDecided.resolve();
+    }
   });
 
   it("answers within its budget and stores late answers for the next call", async () => {
+    const asked = Promise.withResolvers<void>();
     const late = Promise.withResolvers<void>();
-    answer(BOTH, () => late.promise);
-    const title = { id: "tt0000004", type: "movie" as const };
-
-    const first = await findPosters("tmdb", [title], {
-      budgetMs: 10,
-      size: "stremio",
+    answer(BOTH, () => {
+      asked.resolve();
+      return late.promise;
     });
-    expect(first.size).toBe(0);
-    expect(db.getTable("title_posters")).toHaveLength(0);
+    const title = { id: "tt0000004", type: "movie" as const };
+    vi.useFakeTimers();
 
-    late.resolve();
-    await background.settle();
+    try {
+      const firstCall = findPosters("tmdb", [title], {
+        budgetMs: 10,
+        size: "stremio",
+      });
+      await asked.promise;
+      await vi.advanceTimersByTimeAsync(10);
+      const first = await firstCall;
+      expect(first.size).toBe(0);
+      expect(db.getTable("title_posters")).toHaveLength(0);
+    } finally {
+      late.resolve();
+    }
+
+    await untilSettled(background.settle());
     expect(db.getTable("title_posters")).toHaveLength(1);
     const next = await findPosters("tmdb", [title], {
       budgetMs: 10,

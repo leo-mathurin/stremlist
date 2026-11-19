@@ -392,14 +392,17 @@ describe("the read after a new authorization", () => {
       }),
     );
     const older = read({ listId: watchlistId, ...WATCHLIST_READ });
-    await started.promise;
-
-    await rereadConnectionLists(accountId, "trakt");
-
-    expect(reads).toBe(3);
     const expected = { problem: null, titleCount: 1 };
-    expect(await statusOf(watchlistId)).toMatchObject(expected);
-    first.resolve();
+    try {
+      await started.promise;
+
+      await rereadConnectionLists(accountId, "trakt");
+
+      expect(reads).toBe(3);
+      expect(await statusOf(watchlistId)).toMatchObject(expected);
+    } finally {
+      first.resolve();
+    }
     await older;
     expect(await statusOf(watchlistId)).toMatchObject(expected);
     expect(cache.get(watchlistId)?.data.metas).toHaveLength(1);
@@ -425,10 +428,13 @@ describe("the read after a new authorization", () => {
       ),
     );
     const older = tryRead();
-    await started.promise;
+    try {
+      await started.promise;
 
-    await rereadConnectionLists(accountId, "trakt");
-    first.resolve();
+      await rereadConnectionLists(accountId, "trakt");
+    } finally {
+      first.resolve();
+    }
     await older;
 
     expect(await statusOf()).toMatchObject({ problem: null, titleCount: 1 });

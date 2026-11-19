@@ -54,11 +54,15 @@ interface HeldRead {
 
 function holdReads() {
   const reads: HeldRead[] = [];
-  const read = (index: number) =>
-    (reads[index] ??= {
+  let releasedAll = false;
+  const read = (index: number) => {
+    const held = (reads[index] ??= {
       arrived: Promise.withResolvers<void>(),
       release: Promise.withResolvers<void>(),
     });
+    if (releasedAll) held.release.resolve();
+    return held;
+  };
   let count = 0;
   server.use(
     http.post(IMDB_GRAPHQL, async ({ request }) => {
@@ -73,6 +77,10 @@ function holdReads() {
     arrived: (index: number) => read(index).arrived.promise,
     finish: (index: number) => {
       read(index).release.resolve();
+    },
+    finishAll: () => {
+      releasedAll = true;
+      for (const held of reads) held.release.resolve();
     },
   };
 }
@@ -266,13 +274,17 @@ describe("prewarmLists", () => {
       true,
     );
 
-    await Promise.all([reads.arrived(0), reads.arrived(1)]);
-    expect(getListCatalog).toHaveBeenCalledTimes(2);
-    reads.finish(0);
-    await reads.arrived(2);
-    expect(getListCatalog).toHaveBeenCalledTimes(3);
-    reads.finish(1);
-    reads.finish(2);
+    try {
+      await Promise.all([reads.arrived(0), reads.arrived(1)]);
+      expect(getListCatalog).toHaveBeenCalledTimes(2);
+      reads.finish(0);
+      await reads.arrived(2);
+      expect(getListCatalog).toHaveBeenCalledTimes(3);
+      reads.finish(1);
+      reads.finish(2);
+    } finally {
+      reads.finishAll();
+    }
     await batch;
   });
 
@@ -281,17 +293,21 @@ describe("prewarmLists", () => {
     const changedLists = [...SAVED_LISTS, savedList(1)];
 
     const first = prewarmLists(ACCOUNT_ID, SAVED_LISTS, true);
-    await reads.arrived(0);
-    expect(getListCatalog).toHaveBeenCalledOnce();
-    saveLists([savedList(1)]);
-    await prewarmLists(ACCOUNT_ID, changedLists, true);
+    try {
+      await reads.arrived(0);
+      expect(getListCatalog).toHaveBeenCalledOnce();
+      saveLists([savedList(1)]);
+      await prewarmLists(ACCOUNT_ID, changedLists, true);
 
-    expect(getListCatalog).toHaveBeenCalledOnce();
-    reads.finish(0);
-    await Promise.all([reads.arrived(1), reads.arrived(2)]);
-    expect(getListCatalog).toHaveBeenCalledTimes(3);
-    reads.finish(1);
-    reads.finish(2);
+      expect(getListCatalog).toHaveBeenCalledOnce();
+      reads.finish(0);
+      await Promise.all([reads.arrived(1), reads.arrived(2)]);
+      expect(getListCatalog).toHaveBeenCalledTimes(3);
+      reads.finish(1);
+      reads.finish(2);
+    } finally {
+      reads.finishAll();
+    }
     await first;
     expect(readListIds()).toEqual([LIST_IDS[0], LIST_IDS[0], LIST_IDS[1]]);
   });

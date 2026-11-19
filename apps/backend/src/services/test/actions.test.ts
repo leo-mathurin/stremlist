@@ -427,11 +427,14 @@ describe("buildActionStreams", () => {
     const refresh = holdTraktMembership();
     const account = await staleAccount();
 
-    expect((await open(account))[0].title).toBe("🔖 Add to Trakt watchlist");
-    expect(background.scheduled).toBe(1);
+    try {
+      expect((await open(account))[0].title).toBe("🔖 Add to Trakt watchlist");
+      expect(background.scheduled).toBe(1);
 
-    await refresh.started;
-    refresh.release();
+      await refresh.started;
+    } finally {
+      refresh.release();
+    }
     await background.settle();
     expect(traktMembershipReads()).toHaveLength(1);
     expect(storedMembership(account.id, "trakt")?.watchlist).toEqual([MOVIE]);
@@ -463,8 +466,11 @@ describe("buildActionStreams", () => {
     });
     const account = await accountOf(row.id);
 
-    await open(account);
-    refresh.release();
+    try {
+      await open(account);
+    } finally {
+      refresh.release();
+    }
     await background.settle();
     expect(traktMembershipReads()).toHaveLength(1);
 
@@ -485,14 +491,16 @@ describe("background membership refresh", () => {
     const refresh = holdTraktMembership();
     const account = await staleAccount();
 
-    await Promise.all(Array.from({ length: 20 }, () => open(account)));
-    expect(background.scheduled).toBe(1);
+    try {
+      await Promise.all(Array.from({ length: 20 }, () => open(account)));
+      expect(background.scheduled).toBe(1);
 
-    await refresh.started;
-    await Promise.all(Array.from({ length: 5 }, () => open(account)));
-    expect(background.scheduled).toBe(1);
-
-    refresh.release();
+      await refresh.started;
+      await Promise.all(Array.from({ length: 5 }, () => open(account)));
+      expect(background.scheduled).toBe(1);
+    } finally {
+      refresh.release();
+    }
     await background.settle();
     expect(traktMembershipReads()).toHaveLength(1);
     expect(storedMembership(account.id, "trakt")?.watchlist).toEqual([MOVIE]);
@@ -503,10 +511,13 @@ describe("background membership refresh", () => {
     async ({ watchlist }) => {
       const refresh = holdTraktMembership();
       const account = await staleAccount(membership({ watchlist }));
-      await open(account);
-      await refresh.started;
-      await act(account, ADD_TO_WATCHLIST);
-      refresh.release();
+      try {
+        await open(account);
+        await refresh.started;
+        await act(account, ADD_TO_WATCHLIST);
+      } finally {
+        refresh.release();
+      }
       await background.settle();
       expect(storedMembership(account.id, "trakt")?.watchlist).toEqual([MOVIE]);
       expect((await open(account))[0].title).toContain(
