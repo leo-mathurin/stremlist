@@ -10,10 +10,17 @@ const replacingMethods = new Set([
   "doMock",
   "unmock",
   "doUnmock",
+  "unstable_mockModule",
   "stubGlobal",
   "fn",
   "mocked",
+  "mockObject",
   "importMock",
+  "createMockFromModule",
+  "genMockFromModule",
+  "setMock",
+  "replaceProperty",
+  "enableAutomock",
 ]);
 
 const doubleFactories = new Set(["fn", "spyOn", "mocked"]);
@@ -29,6 +36,8 @@ const mockSetters = new Set([
   "mockRejectedValueOnce",
   "mockReturnThis",
   "withImplementation",
+  "mockStepResult",
+  "mockStepError",
 ]);
 
 function propertyName(node: ESTree.MemberExpression): string | null {

@@ -102,6 +102,21 @@ tester.run("anti-slop/no-vite-plus-test-doubles", noVitePlusTestDoublesRule, {
       errors: [error, error],
     },
     {
+      name: "vi.mockObject",
+      code: `${header}const api = vi.mockObject({ get: () => 1 });`,
+      errors: [error],
+    },
+    {
+      name: "aliased vi.mockObject",
+      code: `${header}const { mockObject } = vi; const api = mockObject({ get: () => 1 });`,
+      errors: [error],
+    },
+    {
+      name: "vi.mockObject through an alias of vi",
+      code: `${header}const v = vi; const replace = v.mockObject; replace({});`,
+      errors: [error],
+    },
+    {
       name: "computed member",
       code: `${header}vi["mock"]("../lib/r2");`,
       errors: [error],
