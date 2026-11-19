@@ -4,6 +4,7 @@ const realFetch = globalThis.fetch;
 const BASE_LATENCY = Number(process.env.MOCK_BASE_MS ?? 300);
 const PER_ITEM = Number(process.env.MOCK_PER_ITEM_MS ?? 0.3);
 const DRIFT = process.env.MOCK_DRIFT === "1";
+const FIXED_SIZE = Number(process.env.MOCK_LIST_SIZE ?? 0);
 const POOL = 30_000;
 const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
@@ -29,6 +30,7 @@ function hash(value: string) {
 }
 
 function watchlistSize(id: string) {
+  if (FIXED_SIZE > 0) return FIXED_SIZE;
   const h = hash(id);
   const bucket = h % 100;
   const spread = (h >>> 8) % 1000;
@@ -39,6 +41,7 @@ function watchlistSize(id: string) {
 }
 
 function isPrivate(id: string) {
+  if (FIXED_SIZE > 0) return false;
   return hash(`p${id}`) % 100 < 3;
 }
 

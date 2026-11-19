@@ -21,6 +21,7 @@
     "test:live": "STREMLIST_LIVE_TESTS=1 vp test run live.test",
     "test:stress": "vp test run --testTimeout=300000 src/services/test/imdb-scraper.stress.test.ts",
     "stress:load": "bun stress/run.ts",
+    "stress:prewarm": "bun stress/prewarm.ts",
     "stress:letterboxd-gate": "bun stress/letterboxd-gate.ts",
     "cleanup:invalid-users": "bun src/scripts/cleanup-invalid-users.ts",
     "dev:app": "bun --watch --env-file=.env src/dev.ts",

@@ -257,8 +257,8 @@ describe("List CRUD via the config API", () => {
         [{ provider: "netflix", sourceRef: OWNER, sortOption: "added_at-asc" }],
       ],
       [
-        "more than 10 lists",
-        Array.from({ length: 11 }, (_, i) => ({
+        "more than 50 lists",
+        Array.from({ length: 51 }, (_, i) => ({
           sourceRef: `ur${String(10000000 + i)}`,
           sortOption: "added_at-asc",
         })),

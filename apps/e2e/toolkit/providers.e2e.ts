@@ -148,7 +148,7 @@ test("pasted links of every available Provider become Lists of a new setup", asy
     await expect(screen.getByText(row)).toBeVisible();
     await expect(field).toHaveValue("");
   }
-  await expect(screen.getByText(/^4 of 10 lists/)).toBeVisible();
+  await expect(screen.getByText(/^4 of 50 lists/)).toBeVisible();
   await saveButton(screen, SAVE_NEW).tap();
   await expect(browser).toHaveURL(`/configure?account=${accountId}`);
   expect(inputs.map((entry) => entry.input)).toEqual(Object.values(links));
@@ -553,7 +553,7 @@ test("a Provider turned off is unavailable to connect, link or add", async ({
   await expect(screen.getByRole("alert")).toHaveText(
     "Trakt is temporarily unavailable. Please try again later.",
   );
-  await expect(screen.getByText(/^1 of 10 lists/)).toBeVisible();
+  await expect(screen.getByText(/^1 of 50 lists/)).toBeVisible();
   expect(inputs).toEqual([{ input: link, accountKey: accountId }]);
 });
 
@@ -635,7 +635,7 @@ test("a public Letterboxd link becomes a List without connecting an account", as
   await expect(
     screen.getByRole("textbox", "Catalog title").first(),
   ).toHaveValue("Someone's watchlist");
-  await expect(screen.getByText(/^2 of 10 lists/)).toBeVisible();
+  await expect(screen.getByText(/^2 of 50 lists/)).toBeVisible();
   expect(inputs).toEqual([{ input: link, accountKey: accountId }]);
   await app.screenshot("Letterboxd public watchlist added");
 });

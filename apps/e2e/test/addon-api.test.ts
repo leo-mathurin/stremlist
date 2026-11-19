@@ -479,7 +479,7 @@ test.describe("config API", () => {
       (await postConfig(accountId, lists)).status;
 
     expect(await status([])).toBe(400);
-    expect(await status(Array.from({ length: 11 }, () => valid))).toBe(400);
+    expect(await status(Array.from({ length: 51 }, () => valid))).toBe(400);
     expect(await status([{ ...valid, catalogTitle: "x".repeat(61) }])).toBe(
       400,
     );

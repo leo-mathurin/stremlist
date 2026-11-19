@@ -47,7 +47,7 @@ test("a canonical duplicate offers to show the existing list and keeps the link"
     screen.getByText("This list is already in your Stremlist."),
   ).toBeVisible();
   await expect(field).toHaveValue("https://www.imdb.com/user/p.sameaccount/");
-  await expect(screen.getByText("1 of 10 lists")).toBeVisible();
+  await expect(screen.getByText("1 of 50 lists")).toBeVisible();
   await expect(
     screen
       .getByRole("status")

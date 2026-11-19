@@ -86,13 +86,13 @@ describe("account List rules", () => {
   });
 
   it(`allows at most ${MAX_SOURCES_PER_ACCOUNT} Source lists in all`, () => {
-    const lists = Array.from({ length: 5 }, (_, i) =>
+    const lists = Array.from({ length: 11 }, (_, i) =>
       merged(
         imdbList(i * 5 + 1),
         [2, 3, 4, 5].map((n) => imdbList(i * 5 + n)),
       ),
     );
-    expect(accountListsProblem(lists.slice(0, 4))).toBeNull();
+    expect(accountListsProblem(lists.slice(0, 10))).toBeNull();
     expect(accountListsProblem(lists)).toEqual({
       reason: "too_many_sources",
       message: `You can have at most ${MAX_SOURCES_PER_ACCOUNT} lists in total, merged lists included.`,
