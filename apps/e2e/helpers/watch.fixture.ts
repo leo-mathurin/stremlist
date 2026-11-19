@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import type { FixtureRequest } from "./fetch.fixture.js";
-import { bearer, installFetchFixture } from "./fetch.fixture.js";
+import { bearer, installFetchFixture, unsupported } from "./fetch.fixture.js";
 import { isFakeStremio } from "./fake-stremio.js";
 import { parseJson } from "./json.js";
 
@@ -12,19 +12,19 @@ function stremioFile() {
   return file;
 }
 
-function stremio({ url, body }: FixtureRequest) {
+function stremio({ request, url, body }: FixtureRequest) {
   const state = parseJson(
     readFileSync(stremioFile(), "utf8"),
     isFakeStremio,
     "fake Stremio",
   );
-  const request = (body ?? {}) as {
+  const call = (body ?? {}) as {
     authKey?: string;
     ids?: string[];
     addons?: Record<string, unknown>[];
   };
-  if (request.authKey !== state.authKey) {
-    return json({ error: { code: 1, message: "Session does not exist" } });
+  if (call.authKey !== state.authKey) {
+    unsupported(request, "Stremio request without the fixture session");
   }
   const mtime = (item: Record<string, unknown>) =>
     Date.parse(String(item._mtime));
@@ -41,7 +41,7 @@ function stremio({ url, body }: FixtureRequest) {
     case "/api/datastoreGet":
       return json({
         result: state.library.filter((item) =>
-          (request.ids ?? []).includes(String(item._id)),
+          (call.ids ?? []).includes(String(item._id)),
         ),
       });
     case "/api/addonCollectionGet":
@@ -49,15 +49,21 @@ function stremio({ url, body }: FixtureRequest) {
     case "/api/addonCollectionSet":
       writeFileSync(
         stremioFile(),
-        JSON.stringify({ ...state, addons: request.addons ?? [] }),
+        JSON.stringify({ ...state, addons: call.addons ?? [] }),
       );
       return json({ result: { success: true } });
     default:
-      return json({ error: { code: 0, message: "Unknown method" } }, 404);
+      unsupported(request, "Unexpected Stremio request");
   }
 }
 
-function cinemeta({ url }: FixtureRequest) {
+function cinemeta({ request, url }: FixtureRequest) {
+  if (
+    request.method !== "GET" ||
+    !/^\/meta\/(?:movie|series)\/tt\d+\.json$/u.test(url.pathname)
+  ) {
+    unsupported(request, "Unexpected Cinemeta request");
+  }
   if (url.pathname !== "/meta/series/tt0903747.json") {
     return json({ meta: null });
   }
@@ -76,23 +82,34 @@ function cinemeta({ url }: FixtureRequest) {
 
 function provider({ request, url }: FixtureRequest) {
   if (bearer(request) !== "fixture-access-token") {
-    return json({ error: "invalid_token" }, 401);
+    unsupported(request, "Request without the fixture access token");
   }
   if (request.method === "POST" && url.pathname === "/sync/history") {
     return json({ added: { movies: 1, episodes: 1 }, not_found: {} });
   }
-  if (url.pathname.startsWith("/sync/history/")) return json([]);
-  return json({ error: "not found" }, 404);
+  if (
+    request.method === "GET" &&
+    /^\/sync\/history\/(?:movies|episodes)$/u.test(url.pathname)
+  ) {
+    return json([]);
+  }
+  if (
+    request.method === "GET" &&
+    ["/users/me/lists", "/users/me/smart-lists"].includes(url.pathname)
+  ) {
+    return json([]);
+  }
+  unsupported(request, "Unexpected Trakt or Simkl request");
 }
 
 function mdblist({ request, url }: FixtureRequest) {
   if (bearer(request) !== "fixture-access-token") {
-    return json({ error: "Invalid OAuth token" }, 403);
+    unsupported(request, "Request without the fixture access token");
   }
   if (request.method === "POST" && url.pathname === "/sync/watched") {
     return json({ added: { movies: 0, episodes: 1 }, not_found: {} });
   }
-  return json({ error: "not found" }, 404);
+  unsupported(request, "Unexpected MDBList request");
 }
 
 installFetchFixture({

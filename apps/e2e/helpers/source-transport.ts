@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { FixtureRequest } from "./fetch.fixture.js";
-import { graphql, installFetchFixture } from "./fetch.fixture.js";
+import { graphql, installFetchFixture, unsupported } from "./fetch.fixture.js";
 import { isRecord, isString, optional, parseJson } from "./json.js";
 
 /** The Source lists that the test writes to E2E_SOURCE_FIXTURE_FILE. */
@@ -80,7 +80,7 @@ function titleNode(id: string, state: SourceFixture) {
   };
 }
 
-function imdb({ body }: FixtureRequest) {
+function imdb({ request, body }: FixtureRequest) {
   const { operation, variables } = graphql(body, isImdbVariables);
   const state = fixture();
   if (operation === "WatchListPage") {
@@ -116,12 +116,15 @@ function imdb({ body }: FixtureRequest) {
       },
     });
   }
-  throw new Error(`Unexpected IMDb operation ${operation}`);
+  unsupported(request, `Unexpected IMDb operation ${operation}`);
 }
 
-function trakt({ url }: FixtureRequest) {
+function trakt({ request, url }: FixtureRequest) {
   const user = /^\/users\/([^/]+)\/watchlist$/.exec(url.pathname)?.[1];
-  const list = user ? fixture().trakt[user] : undefined;
+  if (request.method !== "GET" || !user) {
+    unsupported(request, "Unexpected Trakt request");
+  }
+  const list = fixture().trakt[user];
   if (!list) return Response.json({ error: "not found" }, { status: 404 });
   if (list.fail) return new Response("Fixture outage", { status: 503 });
   return Response.json(
@@ -137,15 +140,25 @@ function trakt({ url }: FixtureRequest) {
   );
 }
 
+function cinemetaWithoutTitles({ request, url }: FixtureRequest) {
+  if (
+    request.method !== "GET" ||
+    !/^\/meta\/(?:movie|series)\/tt\d+\.json$/u.test(url.pathname)
+  ) {
+    unsupported(request, "Unexpected Cinemeta request");
+  }
+  return new Response("Not found", { status: 404 });
+}
+
 installFetchFixture({
   log: process.env.E2E_PROVIDER_LOG,
   hosts: {
     "api.graphql.imdb.com": imdb,
     "api.trakt.tv": trakt,
-    "v3-cinemeta.strem.io": () => new Response("Not found", { status: 404 }),
+    "v3-cinemeta.strem.io": cinemetaWithoutTitles,
     "auth.trakt.tv": ({ request, url }) =>
       request.method === "POST" && url.pathname === "/oauth/revoke"
         ? Response.json({})
-        : new Response("Not found", { status: 404 }),
+        : unsupported(request, "Unexpected Trakt OAuth request"),
   },
 });

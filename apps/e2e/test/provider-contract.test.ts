@@ -35,14 +35,16 @@ test.beforeAll(async () => {
     E2E_UNEXPECTED_REQUEST_LOG: unexpectedRequests,
   });
 });
-test.afterEach(() => {
+function expectNoUnexpectedRequests() {
   const refused = readFileSync(unexpectedRequests, "utf8");
   writeFileSync(unexpectedRequests, "");
   expect(refused.split("\n").filter(Boolean)).toEqual([]);
-});
+}
+test.afterEach(expectNoUnexpectedRequests);
 test.afterAll(async () => {
   try {
     await backend?.stop();
+    expectNoUnexpectedRequests();
   } finally {
     rmSync(logDir, { recursive: true, force: true });
   }

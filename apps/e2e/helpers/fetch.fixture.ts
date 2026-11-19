@@ -48,6 +48,24 @@ function logRequest(
   );
 }
 
+function refuse(request: Request, reason: string) {
+  const entry = `${JSON.stringify({ method: request.method, url: request.url, reason })}\n`;
+  const file = process.env.E2E_UNEXPECTED_REQUEST_LOG;
+  if (file) appendFileSync(file, entry);
+  else console.error(`Unexpected fixture request: ${entry}`);
+  return HttpResponse.error();
+}
+
+/**
+ * Refuse a request that the fixture does not support. The host handler
+ * records it as an unexpected request and answers it with a network error.
+ */
+export function unsupported(request: Request, reason: string): never {
+  throw new Error(
+    `${reason}: ${request.method} ${new URL(request.url).pathname}`,
+  );
+}
+
 function hostPattern(host: string) {
   return new RegExp(`^https?://${host.replaceAll(".", String.raw`\.`)}(?:/|$)`);
 }
@@ -58,9 +76,12 @@ function hostPattern(host: string) {
  * (a test that runs with a real key). Loopback requests always pass through,
  * and a request to any other host fails: a final catch-all handler answers
  * it with a network error and appends its method and URL to the
- * `E2E_UNEXPECTED_REQUEST_LOG` file, so the suite can fail on it. MSW's own
- * "error" strategy lets some file types (.json, .html) through, so it alone
- * cannot keep a fixture off the real network. With `log`, each request to a
+ * `E2E_UNEXPECTED_REQUEST_LOG` file, so the suite can fail on it. A host
+ * handler that throws (see `unsupported`) gets the same treatment, with the
+ * error message as the reason, so a request that no fixture supports never
+ * looks like a Provider failure that a test expects. MSW's own "error"
+ * strategy lets some file types (.json, .html) through, so it alone cannot
+ * keep a fixture off the real network. With `log`, each request to a
  * non-loopback host is appended to that file as one JSON line: method, URL,
  * bearer token and body; requests that pass through log only their method and
  * URL, never their credentials.
@@ -83,26 +104,29 @@ export function installFetchFixture(options: {
     ),
     ...Object.entries(options.hosts).map(([host, handler]) =>
       http.all(hostPattern(host), async ({ request }) => {
-        const url = new URL(request.url);
-        const text = request.method === "GET" ? "" : await request.text();
-        const body = text
-          ? parseBody(text, request.headers.get("content-type"))
-          : null;
-        logRequest(options.log, {
-          request,
-          authorization: bearer(request),
-          body,
-        });
-        return handler({ request, url, body });
+        try {
+          const url = new URL(request.url);
+          const text = request.method === "GET" ? "" : await request.text();
+          const body = text
+            ? parseBody(text, request.headers.get("content-type"))
+            : null;
+          logRequest(options.log, {
+            request,
+            authorization: bearer(request),
+            body,
+          });
+          return await handler({ request, url, body });
+        } catch (error) {
+          return refuse(
+            request,
+            error instanceof Error ? error.message : String(error),
+          );
+        }
       }),
     ),
-    http.all("*", ({ request }) => {
-      const entry = `${JSON.stringify({ method: request.method, url: request.url })}\n`;
-      const file = process.env.E2E_UNEXPECTED_REQUEST_LOG;
-      if (file) appendFileSync(file, entry);
-      else console.error(`Unexpected fixture request: ${entry}`);
-      return HttpResponse.error();
-    }),
+    http.all("*", ({ request }) =>
+      refuse(request, "No fixture answers this host"),
+    ),
   );
   server.listen({ onUnhandledRequest: "error" });
   return server;

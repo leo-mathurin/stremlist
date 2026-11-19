@@ -1,5 +1,10 @@
 import type { FixtureRequest } from "./fetch.fixture.js";
-import { bearer, graphql, installFetchFixture } from "./fetch.fixture.js";
+import {
+  bearer,
+  graphql,
+  installFetchFixture,
+  unsupported,
+} from "./fetch.fixture.js";
 import { isNumber, isRecord, isString, optional, present } from "./json.js";
 import {
   PREVIEW_PRIVATE_LIST,
@@ -101,21 +106,22 @@ function form(body: unknown) {
 
 function requireToken(request: Request) {
   const token = bearer(request);
-  return token && VALID_TOKENS.has(token)
-    ? null
-    : json({ error: "invalid_token" }, 401);
+  if (!token || !VALID_TOKENS.has(token)) {
+    unsupported(request, "Request without a fixture access token");
+  }
 }
 
-function tokenResponse(body: Record<string, string>) {
+function tokenResponse(request: Request, body: Record<string, string>) {
   if (body.grant_type === "authorization_code") {
-    return body.code === "fixture-code" && body.code_verifier
-      ? json({
-          access_token: "fresh-access",
-          refresh_token: "fresh-refresh",
-          expires_in: 7_776_000,
-          scope: "public",
-        })
-      : json({ error: "invalid_grant" }, 400);
+    if (body.code !== "fixture-code" || !body.code_verifier) {
+      unsupported(request, "Code exchange without the fixture code");
+    }
+    return json({
+      access_token: "fresh-access",
+      refresh_token: "fresh-refresh",
+      expires_in: 7_776_000,
+      scope: "public",
+    });
   }
   if (body.grant_type === "refresh_token") {
     return body.refresh_token === "rejected-refresh"
@@ -126,17 +132,18 @@ function tokenResponse(body: Record<string, string>) {
           expires_in: 7_776_000,
         });
   }
-  return json({ error: "unsupported_grant_type" }, 400);
+  unsupported(request, `Unexpected grant type ${body.grant_type}`);
 }
 
 function trakt({ request, url, body }: FixtureRequest) {
   const path = url.pathname;
   if (url.host === "auth.trakt.tv") {
-    if (path === "/oauth/token") return tokenResponse(form(body));
+    if (path === "/oauth/token") return tokenResponse(request, form(body));
     if (path === "/oauth/revoke") return json({});
+    unsupported(request, "Unexpected Trakt OAuth request");
   }
   if (request.headers.get("trakt-api-key") !== "fixture-trakt-client") {
-    return json({ error: "missing client id" }, 403);
+    unsupported(request, "Trakt request without the fixture client ID");
   }
   switch (path) {
     case "/users/fixture-user":
@@ -164,8 +171,7 @@ function trakt({ request, url, body }: FixtureRequest) {
     case "/shows/watched/weekly":
       return json([{ watcher_count: 7, play_count: 7, show: traktShow }]);
   }
-  const refused = requireToken(request);
-  if (refused) return refused;
+  requireToken(request);
   switch (path) {
     case "/users/settings":
       return json({
@@ -238,15 +244,14 @@ function trakt({ request, url, body }: FixtureRequest) {
         201,
       );
   }
-  throw new Error(`Unexpected Trakt request ${request.method} ${path}`);
+  unsupported(request, "Unexpected Trakt request");
 }
 
 function mdblist({ request, url, body }: FixtureRequest) {
   const path = url.pathname;
-  if (path === "/oauth/token/") return tokenResponse(form(body));
+  if (path === "/oauth/token/") return tokenResponse(request, form(body));
   if (path === "/oauth/revoke_token/") return json({});
-  const refused = requireToken(request);
-  if (refused) return refused;
+  requireToken(request);
   if (request.method === "POST") {
     switch (path) {
       case "/watchlist/items/add":
@@ -281,18 +286,17 @@ function mdblist({ request, url, body }: FixtureRequest) {
     case "/external/lists/user":
       return json([]);
   }
-  throw new Error(`Unexpected MDBList request ${request.method} ${path}`);
+  unsupported(request, "Unexpected MDBList request");
 }
 
 function simkl({ request, url, body }: FixtureRequest) {
   const path = url.pathname;
-  if (path === "/oauth2/token") return tokenResponse(form(body));
+  if (path === "/oauth2/token") return tokenResponse(request, form(body));
   if (path === "/oauth2/revoke") return json({});
   if (url.searchParams.get("client_id") !== "fixture-simkl-client") {
-    return json({ error: "missing client id" }, 403);
+    unsupported(request, "Simkl request without the fixture client ID");
   }
-  const refused = requireToken(request);
-  if (refused) return refused;
+  requireToken(request);
   switch (path) {
     case "/users/settings":
       return json({ user: { name: "fixture-user" } });
@@ -335,12 +339,12 @@ function simkl({ request, url, body }: FixtureRequest) {
     case "/sync/ratings/remove":
       if (request.method === "POST") return syncWrite(body, SIMKL_KNOWN);
   }
-  throw new Error(`Unexpected Simkl request ${request.method} ${path}`);
+  unsupported(request, "Unexpected Simkl request");
 }
 
 function simklCdn({ request, url }: FixtureRequest) {
   if (url.searchParams.get("client_id") !== "fixture-simkl-client") {
-    return json({ error: "missing client id" }, 403);
+    unsupported(request, "Simkl request without the fixture client ID");
   }
   const ids = (simkl: number, imdb: string) => ({ simkl_id: simkl, imdb });
   switch (url.pathname) {
@@ -354,22 +358,29 @@ function simklCdn({ request, url }: FixtureRequest) {
         { title: "Season 1", anime_type: "tv", ids: ids(4, "tt0903747") },
       ]);
   }
-  throw new Error(
-    `Unexpected Simkl CDN request ${request.method} ${url.pathname}`,
-  );
+  unsupported(request, "Unexpected Simkl CDN request");
 }
 
-function justwatch({ body }: FixtureRequest) {
+const JUSTWATCH_LIST = "tl-us-11111111-2222-4333-8444-555555555555";
+const JUSTWATCH_MISSING_LIST = "tl-us-99999999-2222-4333-8444-555555555555";
+
+function justwatch({ request, url, body }: FixtureRequest) {
+  if (request.method !== "POST" || url.pathname !== "/graphql") {
+    unsupported(request, "Unexpected JustWatch request");
+  }
   const { operation, variables } = graphql(
     body,
     (value): value is { id?: string } =>
       isRecord(value) && optional(value.id, isString),
   );
   if (operation !== "StremlistJustwatchList") {
-    throw new Error(`Unexpected JustWatch operation ${operation}`);
+    unsupported(request, `Unexpected JustWatch operation ${operation}`);
   }
-  if (variables.id !== "tl-us-11111111-2222-4333-8444-555555555555") {
+  if (variables.id === JUSTWATCH_MISSING_LIST) {
     return json({ data: { node: null } });
+  }
+  if (variables.id !== JUSTWATCH_LIST) {
+    unsupported(request, `Unexpected JustWatch list ${variables.id}`);
   }
   return json({
     data: {
@@ -413,14 +424,17 @@ function justwatch({ body }: FixtureRequest) {
   });
 }
 
-function senscritiqueList(variables: { id?: number; offset?: number }) {
+function senscritiqueList(
+  request: Request,
+  variables: { id?: number; offset?: number },
+) {
   const { offset = 0 } = variables;
   const id = present(variables.id, "the ID of the SensCritique list");
   if (id === PREVIEW_PRIVATE_LIST) {
     return json({ data: { userList: { id, isPrivate: true } } });
   }
   if (id < PREVIEW_PUBLIC_LIST || id >= PREVIEW_PUBLIC_LIST + 1000) {
-    throw new Error(`Unexpected SensCritique list ${id}`);
+    unsupported(request, `Unexpected SensCritique list ${id}`);
   }
   const items =
     offset === 0
@@ -468,9 +482,14 @@ function isSensCritiqueVariables(value: unknown): value is {
   );
 }
 
-function senscritique({ body }: FixtureRequest) {
+function senscritique({ request, url, body }: FixtureRequest) {
+  if (request.method !== "POST" || url.pathname !== "/") {
+    unsupported(request, "Unexpected SensCritique request");
+  }
   const { operation, variables } = graphql(body, isSensCritiqueVariables);
-  if (operation === "StremlistList") return senscritiqueList(variables);
+  if (operation === "StremlistList") {
+    return senscritiqueList(request, variables);
+  }
   if (variables.username === "private-user") {
     return json({
       data: {
@@ -478,20 +497,21 @@ function senscritique({ body }: FixtureRequest) {
       },
     });
   }
-  if (variables.username !== "fixture-user")
-    return json({ data: { user: null } });
+  if (variables.username !== "fixture-user") {
+    unsupported(request, `Unexpected SensCritique user ${variables.username}`);
+  }
   const user = {
     username: "fixture-user",
     settings: { privacyProfile: false },
   };
   if (operation === "StremlistUser") return json({ data: { user } });
   if (operation !== "StremlistCollection") {
-    throw new Error(`Unexpected SensCritique operation ${operation}`);
+    unsupported(request, `Unexpected SensCritique operation ${operation}`);
   }
   if (
     !["WISH", "DONE", "RATING", "RECOMMEND"].includes(variables.action ?? "")
   ) {
-    throw new Error(`Unexpected SensCritique action ${variables.action}`);
+    unsupported(request, `Unexpected SensCritique action ${variables.action}`);
   }
   const products =
     variables.universe === "movie"
@@ -532,13 +552,15 @@ function letterboxd({ request, url }: FixtureRequest) {
     request.method !== "GET" ||
     request.headers.has("cookie") ||
     request.headers.has("authorization")
-  )
-    throw new Error("Letterboxd reads must be anonymous GETs");
+  ) {
+    unsupported(request, "Letterboxd reads must be anonymous GETs");
+  }
   if (
     url.pathname !== "/fixture_user/watchlist/" &&
     url.pathname !== "/fixture_user/list/weekend/"
-  )
-    return new Response("Not found", { status: 404 });
+  ) {
+    unsupported(request, "Unexpected Letterboxd page");
+  }
   const films = [
     [101, "The Shawshank Redemption", 1994],
     [202, "Breaking Bad", 2008],
@@ -548,7 +570,10 @@ function letterboxd({ request, url }: FixtureRequest) {
   );
 }
 
-function wikidata({ body }: FixtureRequest) {
+function wikidata({ request, url, body }: FixtureRequest) {
+  if (request.method !== "POST" || url.pathname !== "/sparql") {
+    unsupported(request, "Unexpected Wikidata request");
+  }
   const query = form(body).query ?? "";
   const known = {
     "101": "tt0111161",
@@ -570,14 +595,17 @@ function wikidata({ body }: FixtureRequest) {
   return json({ results: { bindings } });
 }
 
-function imdb({ body }: FixtureRequest) {
+function imdb({ request, url, body }: FixtureRequest) {
+  if (request.method !== "POST" || url.pathname !== "/") {
+    unsupported(request, "Unexpected IMDb request");
+  }
   const { operation, variables } = graphql(
     body,
     (value): value is { ids: string[] } =>
       isRecord(value) && Array.isArray(value.ids) && value.ids.every(isString),
   );
   if (operation !== "TitlesById") {
-    throw new Error(`Unexpected IMDb operation ${operation}`);
+    unsupported(request, `Unexpected IMDb operation ${operation}`);
   }
   return json({
     data: {
@@ -608,19 +636,33 @@ function imdbPosterOf(imdbId: string) {
 
 const TMDB_POSTER_PATHS = new Map([["tt0111161", "/fixture-shawshank.jpg"]]);
 
-function tmdb({ url }: FixtureRequest) {
+function tmdb({ request, url }: FixtureRequest) {
+  const found = /^\/3\/find\/(tt\d+)$/u.exec(url.pathname);
+  if (
+    request.method !== "GET" ||
+    !found ||
+    url.searchParams.get("external_source") !== "imdb_id"
+  ) {
+    unsupported(request, "Unexpected TMDB request");
+  }
   const status = Number(process.env.E2E_TMDB_STATUS);
   if (status) return json({ status_message: "fixture outage" }, status);
-  const found = /^\/3\/find\/(tt\d+)$/u.exec(url.pathname);
-  if (!found || url.searchParams.get("external_source") !== "imdb_id") {
-    return json({ status_message: "not found" }, 404);
-  }
   const path = TMDB_POSTER_PATHS.get(found[1]);
   return json({
     movie_results: path ? [{ id: 278, poster_path: path }] : [],
     tv_results:
       found[1] === "tt0903747" ? [{ id: 1396, poster_path: null }] : [],
   });
+}
+
+function cinemetaWithoutTitles({ request, url }: FixtureRequest) {
+  if (
+    request.method !== "GET" ||
+    !/^\/meta\/(?:movie|series)\/tt\d+\.json$/u.test(url.pathname)
+  ) {
+    unsupported(request, "Unexpected Cinemeta request");
+  }
+  return new Response("Not found", { status: 404 });
 }
 
 installFetchFixture({
@@ -638,6 +680,6 @@ installFetchFixture({
     "query.wikidata.org": wikidata,
     "api.graphql.imdb.com": imdb,
     "api.themoviedb.org": tmdb,
-    "v3-cinemeta.strem.io": () => new Response("Not found", { status: 404 }),
+    "v3-cinemeta.strem.io": cinemetaWithoutTitles,
   },
 });
