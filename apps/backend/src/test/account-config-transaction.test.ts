@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import type { CatalogSettings } from "@stremlist/shared/catalog-settings";
 import type { Tables } from "@stremlist/shared/database";
-import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
+import { beforeEach, describe, expect, it } from "vite-plus/test";
 import {
   legacyAccountId,
   OTHER_IMDB,
@@ -29,10 +29,6 @@ beforeEach(() => {
   resetConfigTest();
   imdb.reset();
   server.use(imdb.handler, cinemetaWithoutTitles);
-});
-
-afterEach(async () => {
-  await background.settle();
 });
 
 const SAVED_TITLE = movie("tt0000001", { name: "Saved title" });
@@ -302,6 +298,7 @@ describe("List CRUD via the config API", () => {
     });
 
     it("drops the cache of a List that now reads another Source list", async () => {
+      imdb.fail("ChartTitles");
       seedWatchlist({ id: UUID_1, sourceRef: "imdb:top-rated-movies" });
       seedWatchlist({ id: UUID_2, sourceRef: OTHER_IMDB, position: 1 });
       cache.seed(UUID_1, []);

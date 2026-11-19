@@ -162,8 +162,7 @@ beforeEach(() => {
   vi.spyOn(console, "error");
 });
 
-afterEach(async () => {
-  await background.settle();
+afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });

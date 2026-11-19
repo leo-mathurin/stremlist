@@ -25,7 +25,7 @@ import { resetR2 } from "./helpers/r2.test-utils.js";
 import { FakeTrakt, useTraktApp } from "./helpers/trakt.test-utils.js";
 
 const server = useMswServer();
-const background = useBackgroundTasks();
+useBackgroundTasks();
 const imdb = new FakeImdb();
 const trakt = new FakeTrakt();
 
@@ -76,9 +76,7 @@ beforeEach(() => {
   trakt.serve("/users/me/watched/shows", []);
 });
 
-afterEach(async () => {
-  await background.settle();
-  vi.useRealTimers();
+afterEach(() => {
   vi.unstubAllEnvs();
 });
 

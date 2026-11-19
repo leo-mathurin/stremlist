@@ -1,6 +1,7 @@
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { http, HttpResponse } from "msw";
 import { vi } from "vite-plus/test";
+import { unexpectedRequest } from "./msw.test-utils";
 
 export const TRAKT_API = "https://api.trakt.tv";
 
@@ -33,12 +34,14 @@ type TraktAnswer = unknown[] | { status: number; body?: unknown };
 
 /**
  * A Trakt API in memory. It serves the items that a test stores for a path,
- * page by page as Trakt does, answers 404 for other paths, and keeps every
- * request it receives.
+ * page by page as Trakt does, and keeps every request it receives. A request
+ * for another path is an `unexpectedRequest` that fails the test: a test
+ * that wants an error answer sets it with `fail` or `failOthers`.
  */
 export class FakeTrakt {
   readonly paths = new Map<string, TraktAnswer>();
   readonly requests: TraktRequest[] = [];
+  private othersStatus: number | null = null;
 
   /** The MSW handler of every Trakt API call. */
   readonly handler = http.all(`${TRAKT_API}/*`, ({ request }) =>
@@ -48,6 +51,7 @@ export class FakeTrakt {
   reset() {
     this.paths.clear();
     this.requests.length = 0;
+    this.othersStatus = null;
   }
 
   /** Serves these Titles as the items of `path`, for example `/users/leo/watchlist`. */
@@ -73,6 +77,14 @@ export class FakeTrakt {
     this.paths.set(path, { status, body });
   }
 
+  /**
+   * Answers every path that has no answer of its own with this status, for a
+   * test that reads every Trakt list on purpose.
+   */
+  failOthers(status: number) {
+    this.othersStatus = status;
+  }
+
   /** The requests to `path`. */
   requestsOf(path: string) {
     return this.requests.filter((request) => request.path === path);
@@ -92,7 +104,11 @@ export class FakeTrakt {
       body,
     });
     const answer = this.paths.get(url.pathname);
-    if (answer === undefined) return new HttpResponse(null, { status: 404 });
+    if (answer === undefined) {
+      return this.othersStatus === null
+        ? unexpectedRequest(request, "FakeTrakt serves no answer here")
+        : new HttpResponse(null, { status: this.othersStatus });
+    }
     if (!Array.isArray(answer)) {
       return answer.body === undefined
         ? new HttpResponse(null, { status: answer.status })

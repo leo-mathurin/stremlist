@@ -66,8 +66,7 @@ beforeEach(() => {
   );
 });
 
-afterEach(async () => {
-  await background.settle();
+afterEach(() => {
   vi.unstubAllEnvs();
 });
 
@@ -110,6 +109,7 @@ function disconnect(accountId: string, provider: string) {
 describe("List CRUD via the config API", () => {
   describe("POST /accounts", () => {
     it("creates an Account with a private ID and its first Lists", async () => {
+      imdb.fail("ChartTitles");
       const prewarm = watchPrewarm();
       const res = await createAccount({
         rpdbApiKey: "rpdb",

@@ -9,6 +9,7 @@ import {
 } from "vite-plus/test";
 import { z } from "zod";
 import { useBackgroundTasks } from "../../test/helpers/background.test-utils";
+import { untilSettled } from "../../test/helpers/clock.test-utils";
 import {
   FakeLetterboxd,
   LETTERBOXD,
@@ -69,15 +70,6 @@ function gate() {
   if (!value) throw new Error("No Letterboxd request went through the gate");
   return value;
 }
-async function withTimers(operation: Promise<unknown>) {
-  let settled = false;
-  operation.then(
-    () => (settled = true),
-    () => (settled = true),
-  );
-  while (!settled) await vi.advanceTimersToNextTimerAsync();
-}
-
 let testTime = Date.parse("2026-11-05T18:00:00Z");
 beforeEach(() => {
   vi.useFakeTimers();
@@ -91,7 +83,6 @@ beforeEach(() => {
   server.use(...letterboxd.handlers, wikidata.handler);
 });
 afterEach(() => {
-  vi.useRealTimers();
   vi.unstubAllEnvs();
 });
 
@@ -110,8 +101,7 @@ describe("Letterboxd public reads", () => {
       ),
     );
     const pending = resolveEntries(letterboxdProvider, entries);
-    await withTimers(pending);
-    const result = await pending;
+    const result = await untilSettled(pending);
     expect(result.resolved).toHaveLength(50);
     expect(result.deferred).toBe(0);
     expect(wikidata.queries).toHaveLength(2);
@@ -137,8 +127,7 @@ describe("Letterboxd public reads", () => {
         return new HttpResponse(letterboxdFilmPage(`tt${id}`));
       });
       const pending = resolveEntries(letterboxdProvider, entries);
-      await withTimers(pending);
-      const result = await pending;
+      const result = await untilSettled(pending);
       expect(result.resolved).toHaveLength(failedAt);
       expect(result.deferred).toBe(3 - failedAt);
       expect(db.getTable("title_id_map")).toHaveLength(failedAt);
@@ -151,8 +140,7 @@ describe("Letterboxd public reads", () => {
       fail = false;
       await vi.advanceTimersByTimeAsync(15 * 60_000 + 1);
       const retry = resolveEntries(letterboxdProvider, entries);
-      await withTimers(retry);
-      expect((await retry).resolved).toHaveLength(3);
+      expect((await untilSettled(retry)).resolved).toHaveLength(3);
       expect(db.getTable("title_id_map")).toHaveLength(3);
     },
   );
@@ -237,8 +225,7 @@ describe("Letterboxd public reads", () => {
       "users/alice/lists/capped",
       context,
     );
-    await withTimers(pending);
-    expect((await pending).complete).toBe(false);
+    expect((await untilSettled(pending)).complete).toBe(false);
     expect((await pending).entries).toHaveLength(100);
   });
   it("a manual refresh revalidates shared pages instead of waiting six hours", async () => {
@@ -324,8 +311,7 @@ describe("Letterboxd public reads", () => {
       "users/alice/lists/favorites",
       context,
     );
-    await withTimers(pending);
-    const result = await pending;
+    const result = await untilSettled(pending);
     expect(result.complete).toBe(true);
     expect(result.entries.map((entry) => entry.title)).toEqual([
       "Film 1",
@@ -479,8 +465,7 @@ describe("shared Letterboxd coordination", () => {
       }),
     );
     const pending = Promise.all(requests);
-    await withTimers(pending);
-    await pending;
+    await untilSettled(pending);
     sent.sort((a, b) => a - b);
     expect(sent.filter((at) => at === 0)).toHaveLength(10);
     expect(sent[29]).toBeGreaterThanOrEqual(1900);
@@ -511,8 +496,7 @@ describe("shared Letterboxd coordination", () => {
     await expect(busy).rejects.toMatchObject({ waitMs: 10_100 });
     expect(read.calls).toBe(0);
     const pending = Promise.all(reserved);
-    await withTimers(pending);
-    await pending;
+    await untilSettled(pending);
   });
   it("does not send a request reserved over 1 s ahead when a slowdown started meanwhile", async () => {
     for (let index = 0; index < 10; index++) await withLetterboxdPermit(ok);
@@ -527,8 +511,7 @@ describe("shared Letterboxd coordination", () => {
       p_retry_after_ms: 0,
       p_probe: false,
     });
-    await withTimers(pending);
-    const results = await pending;
+    const results = await untilSettled(pending);
     expect(reserved.slice(10).every((read) => read.calls === 0)).toBe(true);
     expect(
       results.slice(10).every((result) => result.status === "rejected"),
@@ -561,8 +544,7 @@ describe("shared Letterboxd coordination", () => {
     const pending = Promise.all(
       Array.from({ length: 8 }, () => letterboxdSnapshot("shared-page", read)),
     );
-    await withTimers(pending);
-    expect(await pending).toHaveLength(8);
+    expect(await untilSettled(pending)).toHaveLength(8);
     expect(reads).toBe(1);
     await vi.advanceTimersByTimeAsync(6 * 60 * 60_000 + 1);
     await expect(
@@ -597,8 +579,7 @@ describe("the Letterboxd queue", () => {
     await vi.advanceTimersByTimeAsync(10);
     const first = withLetterboxdPermit(send("first"), { first: true });
     const pending = Promise.all([...later, first]);
-    await withTimers(pending);
-    await pending;
+    await untilSettled(pending);
     expect(sent.indexOf("first")).toBeLessThanOrEqual(2);
     expect(sent.filter((name) => name !== "first")).toEqual(
       later.map((_, index) => `later ${index}`),
@@ -631,8 +612,7 @@ describe("the Letterboxd queue", () => {
       }),
     );
     const pending = Promise.all([older, ...newer]);
-    await withTimers(pending);
-    await pending;
+    await untilSettled(pending);
     expect(sent.indexOf("older 2")).toBe(0);
     expect(sent.indexOf("older 3")).toBeLessThanOrEqual(12);
     expect(queue.ticket).not.toBeNull();
@@ -661,8 +641,7 @@ describe("the Letterboxd queue", () => {
     expect(letterboxdWaiters().some((w) => w.id === error.ticket)).toBe(true);
     expect(read.calls).toBe(0);
     const pending = Promise.all(waiting);
-    await withTimers(pending);
-    await pending;
+    await untilSettled(pending);
   });
 
   it("serves the pages read so far when a later page waits too long, and the next read resumes from them", async () => {
@@ -680,8 +659,10 @@ describe("the Letterboxd queue", () => {
       () => letterboxdProvider.fetchSource("users/alice/lists/big", context),
       readQueue({ maxWaitMs: 2_000, partial: true }),
     );
-    await withTimers(first);
-    expect(await first).toMatchObject({ complete: false, interrupted: true });
+    expect(await untilSettled(first)).toMatchObject({
+      complete: false,
+      interrupted: true,
+    });
     expect((await first).entries).toHaveLength(2);
     expect(letterboxd.urls).toEqual(["https://letterboxd.com/alice/list/big/"]);
 
@@ -690,8 +671,7 @@ describe("the Letterboxd queue", () => {
       "users/alice/lists/big",
       context,
     );
-    await withTimers(next);
-    const result = await next;
+    const result = await untilSettled(next);
     expect(result.complete).toBe(true);
     expect(result.interrupted).toBeUndefined();
     expect(result.entries).toHaveLength(3);
@@ -734,7 +714,7 @@ describe("the Letterboxd queue", () => {
       }),
     );
     await vi.advanceTimersByTimeAsync(65_000);
-    await withTimers(waiting);
+    await untilSettled(waiting);
     expect(estimates.length).toBeGreaterThanOrEqual(6);
     expect(estimates[0]).toBeGreaterThan(59_000);
     expect(estimates.at(-1)).toBeLessThan(11_000);
@@ -837,16 +817,18 @@ describe("Letterboxd share links", () => {
       forceRefresh: true,
     });
     revoked.catch(() => {});
-    await withTimers(revoked);
-    await expect(revoked).rejects.toMatchObject({ reason: "not_found" });
+    await expect(untilSettled(revoked)).rejects.toMatchObject({
+      reason: "not_found",
+    });
 
     await vi.advanceTimersByTimeAsync(3001);
     letterboxd.reset();
     letterboxd.serveAll(gone);
     const second = letterboxdProvider.fetchSource(validated.ref, context);
     second.catch(() => {});
-    await withTimers(second);
-    await expect(second).rejects.toMatchObject({ reason: "not_found" });
+    await expect(untilSettled(second)).rejects.toMatchObject({
+      reason: "not_found",
+    });
     expect(letterboxd.requests.length).toBeGreaterThan(0);
   });
 
@@ -858,8 +840,7 @@ describe("Letterboxd share links", () => {
       "lbxshort/YtpP8$2OS5xaC1fJOBBvGv",
       context,
     );
-    await withTimers(pending);
-    const validated = await pending;
+    const validated = await untilSettled(pending);
     if (!validated.ok) throw new Error("expected ok");
     expect(validated.ref.startsWith("share/v1:")).toBe(true);
     const result = await letterboxdProvider.fetchSource(validated.ref, context);
@@ -875,8 +856,7 @@ describe("Letterboxd share links", () => {
       "lbxshort/YtpP8",
       context,
     );
-    await withTimers(pending);
-    const validated = await pending;
+    const validated = await untilSettled(pending);
     if (!validated.ok) throw new Error("expected ok");
     expect(validated.ref).toBe("users/leom/lists/best-of-2026");
     expect(new Set(letterboxd.urls)).toEqual(
@@ -951,8 +931,7 @@ describe("Letterboxd live page shapes", () => {
       "users/alice/films/rated/4.0-5.0",
       context,
     );
-    await withTimers(pending);
-    const result = await pending;
+    const result = await untilSettled(pending);
     expect(result.complete).toBe(true);
     expect(letterboxd.urls).toEqual([
       "https://letterboxd.com/alice/films/rated/4-5/",
@@ -1018,8 +997,7 @@ describe("Letterboxd diary", () => {
       "users/alice/diary",
       context,
     );
-    await withTimers(pending);
-    const result = await pending;
+    const result = await untilSettled(pending);
     expect(result.complete).toBe(true);
     expect(result.entries.map((entry) => entry.addedAt)).toEqual([
       "2026-05-19T00:00:00.000Z",
@@ -1089,8 +1067,7 @@ describe("Letterboxd halt alert", () => {
     await vi.advanceTimersByTimeAsync(30 * 60_000);
     refuse = false;
     const read = letterboxdProvider.fetchSource("users/bob/watchlist", context);
-    await withTimers(read);
-    expect((await read).entries).toHaveLength(1);
+    expect((await untilSettled(read)).entries).toHaveLength(1);
     await background.settle();
     expect(pings).toEqual([`${heartbeat}/fail`, heartbeat]);
     expect(gate()).toMatchObject({ haltedAt: null, rate: 0.33 });

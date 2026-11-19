@@ -233,9 +233,7 @@ beforeEach(() => {
   vi.spyOn(console, "error");
 });
 
-afterEach(async () => {
-  await background.settle();
-  vi.useRealTimers();
+afterEach(() => {
   vi.unstubAllEnvs();
 });
 

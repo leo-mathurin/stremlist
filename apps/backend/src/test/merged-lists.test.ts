@@ -40,7 +40,7 @@ import {
 } from "./helpers/json.js";
 
 const server = useMswServer();
-const background = useBackgroundTasks();
+useBackgroundTasks();
 const imdb = new FakeImdb();
 const trakt = new FakeTrakt();
 const justwatch = new FakeJustWatch();
@@ -196,9 +196,7 @@ beforeEach(() => {
   accountId = seedAccount().id;
 });
 
-afterEach(async () => {
-  await background.settle();
-  vi.useRealTimers();
+afterEach(() => {
   vi.unstubAllEnvs();
 });
 
@@ -367,6 +365,13 @@ describe("merged Catalog", () => {
 });
 
 describe("saving merged Lists", () => {
+  beforeEach(() => {
+    traktSources({
+      [TRAKT_WATCHLIST.sourceRef]: 404,
+      [TRAKT_LIST.sourceRef]: 404,
+    });
+  });
+
   it("saves the merged Source lists and returns them", async () => {
     const res = await postConfig([
       listBody(TRAKT_WATCHLIST, [
@@ -549,6 +554,8 @@ describe("saving merged Lists", () => {
 
   it("accepts a Connection Source list once the Provider is connected", async () => {
     seedConnection(accountId, "trakt");
+    trakt.fail("/users/me/watched/movies", 404);
+    trakt.fail("/users/me/watched/shows", 404);
 
     const res = await postConfig([
       listBody(

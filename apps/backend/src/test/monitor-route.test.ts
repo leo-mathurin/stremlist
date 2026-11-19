@@ -23,7 +23,7 @@ import {
 import { readJson } from "./helpers/json.js";
 import { letterboxdPage } from "./helpers/letterboxd.test-utils.js";
 import { callRpc, db } from "./helpers/mock-supabase.js";
-import { useMswServer } from "./helpers/msw.test-utils.js";
+import { unexpectedRequest, useMswServer } from "./helpers/msw.test-utils.js";
 import {
   haltLetterboxdGate,
   letterboxdGate,
@@ -156,7 +156,7 @@ const healthyLetterboxd: Answer = (request) =>
     ? new HttpResponse(
         letterboxdPage(Array.from({ length: 450 }, (_, index) => index + 1)),
       )
-    : new HttpResponse(null, { status: 404 });
+    : unexpectedRequest(request);
 
 function justwatchList(titles: number) {
   return HttpResponse.json({
@@ -221,11 +221,15 @@ function worldHandlers() {
         const page = [...pages].find(([prefix]) =>
           request.url.startsWith(prefix),
         );
-        return page
-          ? new HttpResponse(JSON.stringify(page[1]), {
-              headers: { "Content-Type": "application/json" },
-            })
-          : new HttpResponse("", { status: 503 });
+        if (page) {
+          return new HttpResponse(JSON.stringify(page[1]), {
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        const status = statusOf(request.url);
+        return status
+          ? new HttpResponse("", { status })
+          : unexpectedRequest(request);
       },
     ),
     imdbWorld(),
@@ -247,9 +251,7 @@ function worldHandlers() {
       const status = statusOf(request.url);
       if (status) return new HttpResponse(null, { status });
       const path = new URL(request.url).pathname;
-      if (!/^\/(movies|shows)\//.test(path)) {
-        return new HttpResponse(null, { status: 404 });
-      }
+      if (!/^\/(movies|shows)\//.test(path)) return unexpectedRequest(request);
       return HttpResponse.json(
         Array.from({ length: 30 }, (_, index) => ({
           title: `Title ${index}`,
@@ -277,6 +279,13 @@ function worldHandlers() {
     }),
   ];
 }
+
+const STATUS_PAGES = [
+  "https://status.trakt.tv/",
+  "https://status.simkl.com/",
+  "https://status.mdblist.com/",
+  "https://senscritique.instatus.com/",
+];
 
 const NO_PAGES = {
   trakt: null,
@@ -318,7 +327,7 @@ beforeEach(() => {
   vi.stubEnv("CRON_SECRET", SECRET);
   beats = [];
   failBodies = new Map();
-  statuses = new Map();
+  statuses = new Map(STATUS_PAGES.map((page) => [page, 503]));
   pages = new Map();
   requests = [];
   letterboxd = healthyLetterboxd;
@@ -339,13 +348,11 @@ beforeEach(() => {
       movie(`tt${String(6_000_000 + index)}`),
     ),
   );
-  server.events.removeAllListeners();
+  server.events.removeAllListeners("request:start");
   server.use(listCheckHold(), ...worldHandlers());
   vi.spyOn(console, "error");
 });
-afterEach(async () => {
-  await background.settle();
-  vi.useRealTimers();
+afterEach(() => {
   vi.unstubAllEnvs();
 });
 
@@ -1037,7 +1044,7 @@ describe("list checks", () => {
     letterboxd = (request) =>
       request.url === OFFICIAL_LIST
         ? new HttpResponse(letterboxdPage([1, 2, 3]))
-        : new HttpResponse(null, { status: 404 });
+        : unexpectedRequest(request);
 
     for (let run = 0; run < 3; run++) {
       endListCheckInterval();

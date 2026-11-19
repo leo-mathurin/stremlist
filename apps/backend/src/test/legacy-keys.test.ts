@@ -60,7 +60,7 @@ beforeEach(() => {
   resetRpc();
   resetR2();
   cache.reset();
-  server.events.removeAllListeners();
+  server.events.removeAllListeners("request:start");
 });
 
 function seedInstall(key: string) {

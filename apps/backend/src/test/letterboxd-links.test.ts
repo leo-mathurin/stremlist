@@ -20,11 +20,11 @@ import {
 } from "./helpers/config-api.js";
 import { useBackgroundTasks } from "./helpers/background.test-utils.js";
 import { readJson } from "./helpers/json.js";
-import { useMswServer } from "./helpers/msw.test-utils.js";
+import { unexpectedRequest, useMswServer } from "./helpers/msw.test-utils.js";
 import { z } from "zod";
 
 const server = useMswServer();
-const background = useBackgroundTasks();
+useBackgroundTasks();
 
 function outsideRequests() {
   const urls: string[] = [];
@@ -42,14 +42,10 @@ function outsideRequests() {
 function serveLetterboxd(answer: (url: string) => Response | undefined) {
   server.use(
     http.get("https://letterboxd.com/*", ({ request }) => {
-      return (
-        answer(request.url) ?? new HttpResponse("Not found", { status: 404 })
-      );
+      return answer(request.url) ?? unexpectedRequest(request);
     }),
     http.get("https://boxd.it/*", ({ request }) => {
-      return (
-        answer(request.url) ?? new HttpResponse("Not found", { status: 404 })
-      );
+      return answer(request.url) ?? unexpectedRequest(request);
     }),
     http.post("https://query.wikidata.org/sparql", () =>
       HttpResponse.json({ results: { bindings: [] } }),
@@ -79,11 +75,10 @@ function resolve(input: string, ticket?: string) {
 
 beforeEach(() => {
   resetConfigTest();
-  server.events.removeAllListeners();
+  server.events.removeAllListeners("request:start");
   vi.stubEnv("CONNECTION_ENCRYPTION_KEY", key);
 });
-afterEach(async () => {
-  await background.settle();
+afterEach(() => {
   vi.unstubAllEnvs();
 });
 

@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import { unexpectedRequest } from "./msw.test-utils";
 
 export const LETTERBOXD = "https://letterboxd.com";
 export const BOXD_IT = "https://boxd.it";
@@ -31,8 +32,10 @@ export type LetterboxdAnswer =
 
 /**
  * The Letterboxd site and its boxd.it short links in memory. It serves the
- * pages that a test stores by URL, answers 404 for other URLs (or the
- * `serveAll` answer), and keeps every request it receives.
+ * pages that a test stores by URL (or the `serveAll` answer for other URLs),
+ * and keeps every request it receives. A request for another URL is an
+ * `unexpectedRequest` that fails the test: a test that wants an error answer
+ * sets it with `fail`.
  */
 export class FakeLetterboxd {
   readonly pages = new Map<string, LetterboxdAnswer>();
@@ -61,6 +64,14 @@ export class FakeLetterboxd {
     this.fallback = answer;
   }
 
+  /**
+   * Answers this URL with this status and no body. A body on an error
+   * answer keeps the adapter's `response.body.cancel()` waiting under MSW.
+   */
+  fail(url: string, status: number) {
+    this.serve(url, () => new HttpResponse(null, { status }));
+  }
+
   /** Answers this short link with a redirect to `location`. */
   redirect(url: string, location: string) {
     this.serve(
@@ -82,7 +93,9 @@ export class FakeLetterboxd {
       headers: request.headers,
     });
     const answer = this.pages.get(request.url) ?? this.fallback;
-    if (answer === null) return new HttpResponse(null, { status: 404 });
+    if (answer === null) {
+      return unexpectedRequest(request, "FakeLetterboxd serves no page here");
+    }
     if (typeof answer === "string") return new HttpResponse(answer);
     return answer(request);
   }

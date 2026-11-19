@@ -6,6 +6,7 @@ import {
   it,
   vi,
 } from "vite-plus/test";
+import { untilSettled } from "../../../test/helpers/clock.test-utils";
 import { useMswServer } from "../../../test/helpers/msw.test-utils";
 import { traktGetJson, traktPost } from "../../trakt/api";
 import {
@@ -35,16 +36,6 @@ function user(username: string, accountId = `sl_${username}`) {
   return { ...connection(), username, accountId };
 }
 
-async function driveTimers(operation: Promise<unknown>) {
-  let settled = false;
-  void operation.then(
-    () => (settled = true),
-    () => (settled = true),
-  );
-  while (!settled) await vi.advanceTimersToNextTimerAsync();
-  return operation;
-}
-
 function tracked(promise: Promise<unknown>) {
   const state = { settled: false };
   void promise.then(
@@ -71,7 +62,7 @@ describe("Trakt limiters per user", () => {
     expect(calls).toHaveLength(451);
     expect(waiting.settled).toBe(false);
 
-    await driveTimers(Promise.all(backlog));
+    await untilSettled(Promise.all(backlog));
     expect(Date.now()).toBeGreaterThanOrEqual(start + 5 * 60_000);
     expect(calls).toHaveLength(461);
   });
@@ -89,7 +80,7 @@ describe("Trakt limiters per user", () => {
     ]);
     expect(calls).toHaveLength(451);
 
-    await driveTimers(Promise.all(backlog));
+    await untilSettled(Promise.all(backlog));
     expect(calls).toHaveLength(461);
   });
 
@@ -104,7 +95,7 @@ describe("Trakt limiters per user", () => {
     await traktPost("/sync/watchlist", b, {});
     expect(waiting.settled).toBe(false);
 
-    await driveTimers(second);
+    await untilSettled(second);
     expect(Date.now()).toBeGreaterThanOrEqual(start + 1000);
   });
 });

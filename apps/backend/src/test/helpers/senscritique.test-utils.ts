@@ -1,6 +1,7 @@
 import { http, HttpResponse } from "msw";
 import { z } from "zod";
 import type { SensCritiqueProduct } from "../../providers/senscritique";
+import { unexpectedRequest } from "./msw.test-utils";
 
 export const SENSCRITIQUE_GRAPHQL = "https://apollo.senscritique.com/";
 
@@ -58,7 +59,8 @@ function page(
 /**
  * The SensCritique GraphQL API in memory. It serves the lists, user
  * collections, charts and polls that a test stores, and keeps every request
- * it receives. `error` makes every request answer that GraphQL error.
+ * it receives. `error` makes every request answer that GraphQL error. An
+ * unknown operation is an `unexpectedRequest` that fails the test.
  */
 export class FakeSensCritique {
   /** The products of `lists/{id}`, or "private". */
@@ -179,10 +181,10 @@ export class FakeSensCritique {
     }
     const data = this.data(operation, variables);
     if (data === null) {
-      return HttpResponse.json({
-        data: null,
-        errors: [{ message: `Unknown operation ${operation}` }],
-      });
+      return unexpectedRequest(
+        request,
+        `FakeSensCritique serves no operation ${operation}`,
+      );
     }
     return HttpResponse.json({ data });
   }

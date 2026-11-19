@@ -57,7 +57,7 @@ const imdb = new FakeImdb();
 const trakt = new FakeTrakt();
 const letterboxd = new FakeLetterboxd();
 const server = useMswServer();
-const background = useBackgroundTasks();
+useBackgroundTasks();
 const mdblist = new FakeMdblist();
 
 const queuedBody = z.object({
@@ -92,9 +92,7 @@ beforeEach(() => {
   );
 });
 
-afterEach(async () => {
-  await background.settle();
-  vi.useRealTimers();
+afterEach(() => {
   vi.unstubAllEnvs();
 });
 

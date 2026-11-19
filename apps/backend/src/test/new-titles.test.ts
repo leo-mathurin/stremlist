@@ -43,14 +43,13 @@ import {
 } from "./helpers/new-titles.js";
 
 const server = useMswServer();
-const background = useBackgroundTasks();
+useBackgroundTasks();
 
 beforeEach(() => {
   resetNewTitlesTest();
   server.use(...newTitlesHandlers());
 });
-afterEach(async () => {
-  await background.settle();
+afterEach(() => {
   restoreNewTitlesTest();
 });
 

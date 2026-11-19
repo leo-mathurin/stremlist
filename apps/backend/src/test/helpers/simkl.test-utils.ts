@@ -1,6 +1,7 @@
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { http, HttpResponse } from "msw";
 import { vi } from "vite-plus/test";
+import { unexpectedRequest } from "./msw.test-utils";
 
 export const SIMKL_TRENDING = "https://data.simkl.in/discover/trending";
 export const SIMKL_API = "https://api.simkl.com";
@@ -40,14 +41,17 @@ export interface SimklRequest {
 
 /**
  * Simkl in memory: the trending files of its CDN, and the API answers that a
- * test stores by path. Other paths answer 404. It keeps every request it
- * receives.
+ * test stores by path. It keeps every request it receives. A request for
+ * another file or path is an `unexpectedRequest` that fails the test: a test
+ * that wants an error answer sets it with `reply` or `failTrending`.
  */
 export class FakeSimkl {
   /** The Titles by file path, for example `movies/week_100.json`. */
   readonly trending = new Map<string, StremioMeta[]>();
   /** The API answers by path, for example `/sync/add-to-list`. */
   readonly api = new Map<string, { status: number; body?: unknown }>();
+  /** The error statuses of trending files by path, for example `movies/week_100.json`. */
+  readonly trendingFailures = new Map<string, number>();
   readonly requests: SimklRequest[] = [];
 
   /** The MSW handlers of the trending CDN and the API. */
@@ -64,12 +68,18 @@ export class FakeSimkl {
   reset() {
     this.trending.clear();
     this.api.clear();
+    this.trendingFailures.clear();
     this.requests.length = 0;
   }
 
   /** Answers the API `path` with this status, and optionally this JSON body. */
   reply(path: string, status: number, body?: unknown) {
     this.api.set(path, { status, body });
+  }
+
+  /** Answers the trending file `path`, when it has no Titles, with this status and no body. */
+  failTrending(path: string, status: number) {
+    this.trendingFailures.set(path, status);
   }
 
   /** The API requests to `path`. */
@@ -97,7 +107,9 @@ export class FakeSimkl {
     const body: unknown = raw ? JSON.parse(raw) : null;
     const url = this.record(request, body);
     const answer = this.api.get(url.pathname);
-    if (!answer) return new HttpResponse(null, { status: 404 });
+    if (!answer) {
+      return unexpectedRequest(request, "FakeSimkl serves no API answer here");
+    }
     return answer.body === undefined
       ? new HttpResponse(null, { status: answer.status })
       : HttpResponse.json(answer.body, { status: answer.status });
@@ -114,7 +126,10 @@ export class FakeSimkl {
     const url = this.record(request, null);
     const path = url.pathname.replace(/^\/discover\/trending\//, "");
     const metas = this.trending.get(path);
-    if (!metas) return new HttpResponse(null, { status: 404 });
-    return HttpResponse.json(metas.map(simklTrendingItem));
+    if (metas) return HttpResponse.json(metas.map(simklTrendingItem));
+    const failure = this.trendingFailures.get(path);
+    if (failure !== undefined)
+      return new HttpResponse(null, { status: failure });
+    return unexpectedRequest(request, "FakeSimkl serves no trending file here");
   }
 }

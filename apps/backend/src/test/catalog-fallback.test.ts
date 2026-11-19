@@ -49,7 +49,7 @@ function seedWatchlist(sortOption = "added_at-asc") {
 const imdb = new FakeImdb();
 const trakt = new FakeTrakt();
 const server = useMswServer();
-const background = useBackgroundTasks();
+useBackgroundTasks();
 
 function privateWatchlist() {
   imdb.watchlists.set(OWNER, "private");
@@ -97,8 +97,7 @@ beforeEach(() => {
   server.use(imdb.handler, trakt.handler, cinemetaWithoutTitles);
 });
 
-afterEach(async () => {
-  await background.settle();
+afterEach(() => {
   vi.unstubAllEnvs();
 });
 

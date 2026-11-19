@@ -27,7 +27,7 @@ const MOVIE = "tt0111161";
 const SERIES = "tt0903747";
 
 const server = useMswServer();
-const background = useBackgroundTasks();
+useBackgroundTasks();
 const imdb = new FakeImdb();
 const trakt = new FakeTrakt();
 const simkl = new FakeSimkl();
@@ -135,14 +135,24 @@ beforeEach(() => {
   vi.spyOn(console, "error");
 });
 
-afterEach(async () => {
-  await background.settle();
-  vi.useRealTimers();
+afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
 describe("GET /:accountKey/stream/:type/:id.json", () => {
+  beforeEach(() => {
+    for (const path of [
+      "/users/me/watchlist",
+      "/sync/watched/movies",
+      "/sync/watched/shows",
+      "/sync/ratings/movies",
+      "/sync/ratings/shows",
+    ]) {
+      trakt.serve(path, []);
+    }
+  });
+
   it("returns Action entries that open Stremlist pages, never cached", async () => {
     const account = seedActionAccount();
 

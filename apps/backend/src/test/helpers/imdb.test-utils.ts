@@ -1,6 +1,7 @@
 import type { StremioMeta } from "@stremlist/shared/stremio.types";
 import { http, HttpResponse } from "msw";
 import { z } from "zod";
+import { unexpectedRequest } from "./msw.test-utils";
 
 export const IMDB_GRAPHQL = "https://api.graphql.imdb.com/";
 
@@ -72,13 +73,17 @@ function listOf(id: string, source: ImdbSource | undefined) {
 
 /**
  * An IMDb GraphQL API in memory. It serves the watchlists, lists and titles
- * that a test stores, and keeps every request it receives.
+ * that a test stores, and keeps every request it receives. A watchlist or
+ * list that the test did not store does not exist, as IMDb answers it. An
+ * unknown operation is an `unexpectedRequest` that fails the test.
  */
 export class FakeImdb {
   readonly watchlists = new Map<string, ImdbSource>();
   readonly lists = new Map<string, ImdbSource>();
   readonly titles = new Map<string, StremioMeta>();
   readonly requests: ImdbRequest[] = [];
+  /** The GraphQL error messages by operation name, for operations that fail. */
+  readonly failures = new Map<string, string>();
 
   /** The MSW handler of the IMDb GraphQL endpoint. */
   readonly handler = http.post(IMDB_GRAPHQL, ({ request }) =>
@@ -90,6 +95,12 @@ export class FakeImdb {
     this.lists.clear();
     this.titles.clear();
     this.requests.length = 0;
+    this.failures.clear();
+  }
+
+  /** Answers every request of this operation, for example `ChartTitles`, with a GraphQL error. */
+  fail(operationName: string, message = `${operationName} is unavailable`) {
+    this.failures.set(operationName, message);
   }
 
   /** The requests with this operation name, for example `ListPage`. */
@@ -105,6 +116,10 @@ export class FakeImdb {
       await request.json(),
     );
     this.requests.push({ operationName, variables });
+    const failure = this.failures.get(operationName);
+    if (failure !== undefined) {
+      return HttpResponse.json({ errors: [{ message: failure }] });
+    }
     switch (operationName) {
       case "ValidateWatchlist":
       case "WatchListPage": {
@@ -132,9 +147,10 @@ export class FakeImdb {
         });
       }
       default:
-        return HttpResponse.json({
-          errors: [{ message: `Unknown operation ${operationName}` }],
-        });
+        return unexpectedRequest(
+          request,
+          `FakeImdb serves no operation ${operationName}`,
+        );
     }
   }
 }

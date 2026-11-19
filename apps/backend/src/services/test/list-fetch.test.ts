@@ -140,6 +140,7 @@ function config(overrides: Partial<TestRead> = {}) {
 }
 
 function revokedLetterboxdShare(path: string) {
+  letterboxd.fail(`${LETTERBOXD}/${path}/`, 404);
   return `share/${encryptSecret(path)}`;
 }
 

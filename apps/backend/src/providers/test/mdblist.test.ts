@@ -73,6 +73,10 @@ let calls: Call[];
 let handler: (url: URL) => Response;
 let handlerErrors: unknown[] = [];
 
+function noAnswer(url: URL): never {
+  throw new Error(`The test sets no MDBList answer for ${url.href}`);
+}
+
 function itemsPage(items: unknown[], nextCursor?: string) {
   return Response.json(items, {
     headers: nextCursor
@@ -116,7 +120,7 @@ const server = useMswServer();
 beforeEach(() => {
   calls = [];
   handlerErrors = [];
-  handler = () => Response.json({ error: "unexpected" }, { status: 500 });
+  handler = noAnswer;
   server.use(
     http.all(/^https:\/\/(?:[a-z]+\.)?mdblist\.com\//, async ({ request }) => {
       const url = new URL(request.url);
@@ -802,7 +806,7 @@ describe("mdblistProvider.actions", () => {
           shows: [{ rating: 9, show: { ids: { imdb: "tt0903747" } } }],
         });
       }
-      return Response.json({ error: "unexpected" }, { status: 500 });
+      return noAnswer(url);
     };
 
     const membership = await actions.getMembership(connection());

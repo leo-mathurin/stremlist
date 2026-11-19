@@ -45,14 +45,13 @@ import {
 import { metasBody, readJson, stremioManifest } from "./helpers/json.js";
 
 const server = useMswServer();
-const background = useBackgroundTasks();
+useBackgroundTasks();
 
 beforeEach(() => {
   resetNewTitlesTest();
   server.use(...newTitlesHandlers());
 });
-afterEach(async () => {
-  await background.settle();
+afterEach(() => {
   restoreNewTitlesTest();
 });
 

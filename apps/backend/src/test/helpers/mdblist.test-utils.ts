@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { vi } from "vite-plus/test";
+import { unexpectedRequest } from "./msw.test-utils";
 
 export const MDBLIST_API = "https://api.mdblist.com";
 
@@ -20,7 +21,9 @@ export interface MdblistRequest {
 
 /**
  * The MDBList API in memory. It answers each path with the JSON that a test
- * stores, answers 404 for other paths, and keeps every request it receives.
+ * stores and keeps every request it receives. A request for another path is
+ * an `unexpectedRequest` that fails the test: a test that wants an error
+ * answer sets it with `fail`.
  */
 export class FakeMdblist {
   readonly paths = new Map<string, { status: number; body?: unknown }>();
@@ -64,7 +67,9 @@ export class FakeMdblist {
       body,
     });
     const answer = this.paths.get(url.pathname);
-    if (!answer) return new HttpResponse(null, { status: 404 });
+    if (!answer) {
+      return unexpectedRequest(request, "FakeMdblist serves no answer here");
+    }
     return answer.body === undefined
       ? new HttpResponse(null, { status: answer.status })
       : HttpResponse.json(answer.body, { status: answer.status });

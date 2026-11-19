@@ -28,10 +28,14 @@ import {
 } from "./helpers/account.fixture.js";
 import { useBackgroundTasks } from "./helpers/background.test-utils.js";
 import { cinemetaWithoutTitles, FakeImdb } from "./helpers/imdb.test-utils.js";
-import { FakeLetterboxd } from "./helpers/letterboxd.test-utils.js";
+import {
+  FakeLetterboxd,
+  LETTERBOXD,
+  letterboxdPage,
+} from "./helpers/letterboxd.test-utils.js";
 import { db, rpcCalls, rpcCallsOf } from "./helpers/mock-supabase.js";
 import { configBody, errorBody, readJson } from "./helpers/json.js";
-import { useMswServer } from "./helpers/msw.test-utils.js";
+import { unexpectedRequest, useMswServer } from "./helpers/msw.test-utils.js";
 import { FakeTrakt, useTraktApp } from "./helpers/trakt.test-utils.js";
 
 const server = useMswServer();
@@ -59,18 +63,17 @@ beforeEach(() => {
   );
 });
 
-afterEach(async () => {
-  await background.settle();
-  vi.useRealTimers();
+afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-function serveImdbProfiles(userIds: Record<string, string>) {
+function serveImdbProfiles(userIds: Record<string, string | null>) {
   const handles: string[] = [];
   server.use(
-    http.get("https://www.imdb.com/user/:handle/", ({ params }) => {
+    http.get("https://www.imdb.com/user/:handle/", ({ params, request }) => {
       const handle = String(params.handle);
       handles.push(handle);
+      if (!Object.hasOwn(userIds, handle)) return unexpectedRequest(request);
       const userId = userIds[handle];
       return userId
         ? HttpResponse.html(`<script>{"userId":"${userId}"}</script>`)
@@ -229,6 +232,7 @@ describe("List CRUD via the config API", () => {
     });
 
     it("allows the same reference on two different Providers", async () => {
+      trakt.serve("/lists/123/items", []);
       const res = await postConfig(OWNER, {
         lists: [
           {
@@ -280,6 +284,7 @@ describe("List CRUD via the config API", () => {
     it.each(["ls123456789", "imdb:top-rated-movies"])(
       "accepts the IMDb reference %j",
       async (sourceRef) => {
+        imdb.fail("ChartTitles");
         const res = await postConfig(OWNER, {
           lists: [{ sourceRef, sortOption: "added_at-asc" }],
         });
@@ -291,6 +296,7 @@ describe("List CRUD via the config API", () => {
     );
 
     it("accepts a public Letterboxd Source list", async () => {
+      letterboxd.serve(`${LETTERBOXD}/leo/watchlist/`, letterboxdPage([]));
       const res = await postConfig(OWNER, {
         lists: [
           {
@@ -352,7 +358,7 @@ describe("List CRUD via the config API", () => {
     });
 
     it("rejects a p. handle that IMDb cannot resolve", async () => {
-      serveImdbProfiles({});
+      serveImdbProfiles({ "p.nobody": null });
 
       const res = await postConfig(OWNER, {
         lists: [{ sourceRef: "p.nobody", sortOption: "added_at-asc" }],

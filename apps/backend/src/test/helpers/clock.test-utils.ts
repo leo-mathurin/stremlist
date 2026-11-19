@@ -6,28 +6,46 @@ export function oneSecondLater() {
 }
 
 const MAX_TIMER_JUMPS = 10_000;
+const realSetTimeout = globalThis.setTimeout;
+const realSetImmediate = globalThis.setImmediate;
+
+/** Whether the test faked the timer functions, not only `Date`. */
+export function timersAreFake() {
+  return globalThis.setTimeout !== realSetTimeout;
+}
 
 /**
- * Runs `operation` on a fake clock that moves from timer to timer until the
- * operation settles, so that rate limiter waits take no real time. It fails
- * with an error when the operation still runs after a fixed number of timer
- * jumps, for example because a handler never answers.
+ * Waits for `promise` on the fake clock that the test installed, moving from
+ * timer to timer, so that timer waits take no real time. It fails with an
+ * error when the promise still runs after a fixed number of timer jumps, for
+ * example because a handler never answers.
  */
-export async function onFakeClock<T>(operation: () => Promise<T>) {
-  vi.useFakeTimers({ now: Date.now() });
-  const result = operation();
+export async function untilSettled<T>(promise: Promise<T>) {
+  if (!timersAreFake()) {
+    throw new Error("untilSettled needs the fake timers of the test");
+  }
   let settled = false;
-  result.then(
+  promise.then(
     () => (settled = true),
     () => (settled = true),
   );
   for (let jump = 0; !settled; jump++) {
     if (jump >= MAX_TIMER_JUMPS) {
       throw new Error(
-        `onFakeClock: the operation did not settle after ${MAX_TIMER_JUMPS} timer jumps`,
+        `untilSettled: the operation did not settle after ${MAX_TIMER_JUMPS} timer jumps`,
       );
     }
-    await vi.advanceTimersToNextTimerAsync();
+    if (vi.getTimerCount() > 0) await vi.advanceTimersToNextTimerAsync();
+    else await new Promise((resolve) => realSetImmediate(resolve));
   }
-  return result;
+  return promise;
+}
+
+/**
+ * Runs `operation` on a new fake clock (see `untilSettled`), so that rate
+ * limiter waits take no real time.
+ */
+export function onFakeClock<T>(operation: () => Promise<T>) {
+  vi.useFakeTimers({ now: Date.now() });
+  return untilSettled(operation());
 }

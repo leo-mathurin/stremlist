@@ -153,9 +153,7 @@ beforeEach(() => {
   accountId = seedAccount().id;
   seedList(accountId, { id: LIST_ID, provider: "letterboxd", source_ref: REF });
 });
-afterEach(async () => {
-  await background.settle();
-  vi.useRealTimers();
+afterEach(() => {
   vi.unstubAllEnvs();
 });
 
@@ -292,6 +290,7 @@ describe("a Stremio request for a busy Letterboxd", () => {
 
 describe("a stale Catalog of a revoked Letterboxd list", () => {
   it("is dropped when the background read finds the list gone", async () => {
+    letterboxd.fail(WATCHLIST, 404);
     seedStaleCatalog();
 
     expect(ids((await catalog()).body)).toEqual(["tt0000009"]);

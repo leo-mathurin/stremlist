@@ -114,6 +114,13 @@ beforeEach(() => {
   for (const fake of [imdb, trakt, simkl, mdblist, senscritique, letterboxd]) {
     fake.reset();
   }
+  imdb.fail("BoxOffice");
+  imdb.fail("ComingSoon");
+  imdb.fail("UserRatings");
+  trakt.failOthers(404);
+  for (const kind of ["movies", "tv", "anime"]) {
+    simkl.failTrending(`${kind}/week_100.json`, 404);
+  }
   imdb.chart = titles(1000);
   imdb.watchlists.set("ur195879360", titles(1000));
   imdb.lists.set("ls055592025", titles(1000));

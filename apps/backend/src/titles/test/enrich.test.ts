@@ -9,7 +9,10 @@ import {
   vi,
 } from "vite-plus/test";
 import { FakeImdb, IMDB_GRAPHQL } from "../../test/helpers/imdb.test-utils";
-import { useMswServer } from "../../test/helpers/msw.test-utils";
+import {
+  unexpectedRequest,
+  useMswServer,
+} from "../../test/helpers/msw.test-utils";
 import { enrichTitles } from "../enrich";
 
 let nextId = 1000000;
@@ -48,11 +51,11 @@ function cinemetaUrl(type: string, id: string) {
   return `https://v3-cinemeta.strem.io/meta/${type}/${id}.json`;
 }
 
-function serveCinemeta(respond: (url: string) => Response) {
+function serveCinemeta(respond: (url: string, request: Request) => Response) {
   server.use(
     http.get("https://v3-cinemeta.strem.io/meta/:type/:id", ({ request }) => {
       cinemetaRequests.push(request);
-      return respond(request.url);
+      return respond(request.url, request);
     }),
   );
 }
@@ -163,7 +166,7 @@ describe("enrichTitles", () => {
   it("falls back to Cinemeta when IMDb throws", async () => {
     const id = freshId();
     imdbDown();
-    serveCinemeta((url) =>
+    serveCinemeta((url, request) =>
       url === cinemetaUrl("series", id)
         ? HttpResponse.json({
             meta: {
@@ -179,7 +182,7 @@ describe("enrichTitles", () => {
               cast: ["A", "B", "C", "D", "E", "F"],
             },
           })
-        : new HttpResponse("not found", { status: 404 }),
+        : unexpectedRequest(request),
     );
 
     const result = await enrichTitles([{ imdbId: id, type: "series" }]);

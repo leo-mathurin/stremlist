@@ -1,5 +1,6 @@
 import { http, HttpResponse } from "msw";
 import { z } from "zod";
+import { unexpectedRequest } from "./msw.test-utils";
 
 export const JUSTWATCH_GRAPHQL = "https://apis.justwatch.com/graphql";
 
@@ -67,6 +68,7 @@ const NOT_FOUND = {
  * The JustWatch GraphQL API in memory. It serves the lists and titles that
  * a test stores, page by page with base64 offset cursors as JustWatch does,
  * resolves title paths and node IDs to IMDb IDs, and keeps every request.
+ * An unknown operation is an `unexpectedRequest` that fails the test.
  */
 export class FakeJustWatch {
   readonly lists = new Map<string, JustWatchList>();
@@ -165,9 +167,10 @@ export class FakeJustWatch {
         });
       }
       default:
-        return HttpResponse.json({
-          errors: [{ message: `Unknown operation ${operation}` }],
-        });
+        return unexpectedRequest(
+          request,
+          `FakeJustWatch serves no operation ${operation}`,
+        );
     }
   }
 }

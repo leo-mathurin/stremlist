@@ -21,6 +21,7 @@ import {
   rpcCallsOf,
   rpcHandlers,
 } from "../../test/helpers/mock-supabase";
+import { oneSecondLater } from "../../test/helpers/clock.test-utils";
 import { connectionRpcs } from "../../test/helpers/supabase/connection-rpcs";
 import { useMswServer } from "../../test/helpers/msw.test-utils";
 import { decryptSecret, encryptSecret } from "../../lib/crypto";
@@ -401,10 +402,25 @@ describe("getConnectionAccess", () => {
     const first = await getConnectionAccess(accountId, "trakt");
     const second = await getConnectionAccess(accountId, "trakt");
     const firstToken = first?.getAccessToken();
-    await requested.promise;
-    const secondToken = second?.getAccessToken();
-    await denied.promise;
-    refreshed.resolve();
+    let secondToken: Promise<string> | undefined;
+    try {
+      await requested.promise;
+      secondToken = second?.getAccessToken();
+      const deniedFirst = await Promise.race([
+        denied.promise.then(() => true),
+        Promise.resolve(secondToken).then(
+          () => false,
+          () => false,
+        ),
+      ]);
+      if (!deniedFirst) {
+        throw new Error(
+          "The second caller settled before its claim was denied",
+        );
+      }
+    } finally {
+      refreshed.resolve();
+    }
 
     await expect(firstToken).resolves.toBe("new");
     await expect(secondToken).resolves.toBe("new");
@@ -498,12 +514,13 @@ describe("Connections that need renewal", () => {
   });
 
   it("keeps the first time the Provider refused the Connection", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
     seedConnection(accountId, "trakt");
     const access = await getConnectionAccess(accountId, "trakt");
     await access?.reportRefused();
     const first = connectionRow().needs_renewal_since;
 
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    oneSecondLater();
     await access?.reportRefused();
 
     expect(connectionRow().needs_renewal_since).toBe(first);

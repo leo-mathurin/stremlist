@@ -17,6 +17,7 @@ import { useMswServer } from "./helpers/msw.test-utils.js";
 import {
   accountId,
   detectionRows,
+  imdb,
   newTitles,
   newTitlesHandlers,
   resetNewTitlesTest,
@@ -38,12 +39,15 @@ beforeEach(() => {
   resetNewTitlesTest();
   server.use(...newTitlesHandlers());
 });
-afterEach(async () => {
-  await background.settle();
+afterEach(() => {
   restoreNewTitlesTest();
 });
 
 describe("settings", () => {
+  beforeEach(() => {
+    imdb.fail("ChartTitles");
+  });
+
   const LIST = {
     provider: "imdb",
     sourceRef: "imdb:top-rated-movies",

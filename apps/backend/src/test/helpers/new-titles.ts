@@ -398,7 +398,6 @@ export function resetNewTitlesTest() {
 
 export function restoreNewTitlesTest() {
   lastTime = Math.max(lastTime, Date.now());
-  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
 }

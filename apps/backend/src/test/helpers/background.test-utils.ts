@@ -1,4 +1,5 @@
-import { afterEach, beforeEach } from "vite-plus/test";
+import { afterEach, beforeEach, vi } from "vite-plus/test";
+import { timersAreFake, untilSettled } from "./clock.test-utils";
 import { db } from "./mock-supabase";
 
 const REQUEST_CONTEXT = Symbol.for("@vercel/request-context");
@@ -7,10 +8,14 @@ const REQUEST_CONTEXT = Symbol.for("@vercel/request-context");
  * Runs the calling test file like a Vercel Function: the real
  * `scheduleBackgroundTask` hands each task to the request context's
  * `waitUntil`, as the Vercel runtime provides it. The test can then wait for
- * the work that its requests scheduled. After each test, it ends stalled
- * database queries and waits for the tasks that are still running, before
- * the next test resets the stores, and
- * puts back the request context and `VERCEL` value that were there before.
+ * the work that its requests scheduled.
+ *
+ * It owns the teardown of each test, in this order: end stalled database
+ * queries, wait for the running tasks (moving the fake timers when the test
+ * installed them), restore real timers, and put back the request context and
+ * `VERCEL` value that were there before. Call it right after `useMswServer()`,
+ * so that this teardown runs before the MSW reset, and do not wait for the
+ * tasks or restore the timers in the test file's own `afterEach`.
  */
 export function useBackgroundTasks() {
   const pending: Promise<unknown>[] = [];
@@ -49,8 +54,9 @@ export function useBackgroundTasks() {
   afterEach(async () => {
     db.releaseStalls();
     try {
-      await settle();
+      await (timersAreFake() ? untilSettled(settle()) : settle());
     } finally {
+      vi.useRealTimers();
       if (previousContext === undefined) {
         Reflect.deleteProperty(globalThis, REQUEST_CONTEXT);
       } else {

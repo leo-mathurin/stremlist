@@ -1,12 +1,5 @@
 import { http, HttpResponse } from "msw";
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vite-plus/test";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { z } from "zod";
 import app from "../index.js";
 import { decryptSecret, encryptSecret } from "../lib/crypto";
@@ -36,7 +29,7 @@ import {
 } from "./helpers/json.js";
 
 const server = useMswServer();
-const background = useBackgroundTasks();
+useBackgroundTasks();
 const imdb = new FakeImdb();
 
 const SESSION = "stremio-session-key";
@@ -196,7 +189,7 @@ async function seedStremioLink() {
 beforeEach(() => {
   resetConfigTest();
   imdb.reset();
-  server.events.removeAllListeners();
+  server.events.removeAllListeners("response:mocked");
   server.use(imdb.handler, cinemetaWithoutTitles);
   useTestEncryptionKey();
   accountId = seedAccount().id;
@@ -205,11 +198,6 @@ beforeEach(() => {
     source_ref: OWNER,
     catalog_title: "Watchlist",
   });
-});
-
-afterEach(async () => {
-  await background.settle();
-  vi.useRealTimers();
 });
 
 describe("linking a Stremio account", () => {
