@@ -1,7 +1,7 @@
 import { parseSortOption } from "@stremlist/shared/constants";
+import { listSources } from "@stremlist/shared/list-merge";
 import type { ConfigList } from "@stremlist/shared/stremio.types";
 import { randomUUID } from "node:crypto";
-import { mapWithConcurrency } from "../lib/concurrency";
 import { supabase } from "../lib/supabase";
 import { findPosters } from "../titles/title-posters";
 import { getAccountLists } from "./accounts";
@@ -9,7 +9,7 @@ import { getListCatalog } from "./lists";
 import type { PosterSettings } from "./posters";
 import { lookupSourceOf } from "./posters";
 
-const PREWARM_CONCURRENCY = 2;
+const PREWARM_SOURCES = 10;
 const PREWARM_QUEUE_MS = 200_000;
 const PREWARM_POSTERS_PER_CATALOG = 100;
 const leaseSeconds = Number(process.env.PREWARM_LEASE_SECONDS);
@@ -56,8 +56,15 @@ async function runPrewarmBatch(
   const startedAt = performance.now();
   const queueDeadline = Date.now() + PREWARM_QUEUE_MS;
   let prewarmed = 0;
+  let free = PREWARM_SOURCES;
+  let waiting: (() => void)[] = [];
 
-  await mapWithConcurrency(lists, PREWARM_CONCURRENCY, async (list) => {
+  const prewarmList = async (list: ConfigList) => {
+    const sources = Math.min(listSources(list).length, PREWARM_SOURCES);
+    while (free < sources) {
+      await new Promise<void>((resolve) => waiting.push(resolve));
+    }
+    free -= sources;
     try {
       const { metas } = await getListCatalog(list, {
         accountId,
@@ -85,8 +92,14 @@ async function runPrewarmBatch(
       }
     } catch (error) {
       console.error(`Failed to prewarm list ${list.id}:`, error);
+    } finally {
+      free += sources;
+      const woken = waiting;
+      waiting = [];
+      for (const wake of woken) wake();
     }
-  });
+  };
+  await Promise.all(lists.map(prewarmList));
 
   console.log(
     `Prewarmed ${prewarmed}/${lists.length} lists in ${Math.round(performance.now() - startedAt)}ms`,

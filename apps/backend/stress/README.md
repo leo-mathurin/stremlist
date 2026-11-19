@@ -36,6 +36,26 @@ One machine hosts the database, storage, backend and k6; one backend process
 serves all requests. Use results to compare changes, not as production capacity
 figures. Only IMDb has realistic fixture data; other Providers are outage cases.
 
+## Prewarm
+
+`stress:prewarm` times the real `prewarmLists` for one Account with N IMDb
+Lists, with every cache cold and IMDb faked by `mock-fetch.ts`. Each List count
+runs in its own process, so the memory peak of one run does not carry over. It
+uses the local stack and the `stremlist-stress` bucket, so do not run it at the
+same time as `stress:load`.
+
+```sh
+cd apps/backend
+bun run stress:prewarm                        # 10, 20, 30 and 50 Lists, 3 runs each
+bun run stress:prewarm --lists 10,100 --runs 1
+bun run stress:prewarm --size 15000           # every List at IMDb's maximum
+```
+
+The table gives the median and longest prewarm, the fewest Lists read (about 3%
+of the size model's Lists are private), the memory peak of the process and the
+most fake IMDb calls in flight at once. `--size 0` uses the size model of
+`mock-fetch.ts`, which is larger than production Lists.
+
 ## Letterboxd gate
 
 `stress/letterboxd-gate.ts` loads the shared Letterboxd gate and its queue

@@ -105,6 +105,23 @@ function savedList(position: number, overrides: Partial<ConfigList> = {}) {
 
 const SAVED_LISTS = [savedList(0)];
 
+function benchList(index: number, merged: number) {
+  const ref = (source: number) =>
+    `ur9${String(index).padStart(2, "0")}${String(source)}0000`;
+  for (let source = 0; source <= merged; source++) {
+    imdb.watchlists.set(ref(source), []);
+  }
+  return savedList(0, {
+    id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+    sourceRef: ref(0),
+    position: index,
+    mergedSources: Array.from({ length: merged }, (_, source) => ({
+      provider: "imdb" as const,
+      sourceRef: ref(source + 1),
+    })),
+  });
+}
+
 function saveLists(lists: ConfigList[]) {
   for (const list of lists) {
     seedList(ACCOUNT_ID, {
@@ -265,27 +282,40 @@ describe("prewarmLists", () => {
     );
   });
 
-  it("runs at most two prewarms concurrently", async () => {
+  it("reads at most ten Source lists at once", async () => {
     const reads = holdReads();
+    const lists = Array.from({ length: 11 }, (_, index) => benchList(index, 0));
 
-    const batch = prewarmLists(
-      ACCOUNT_ID,
-      [0, 1, 2].map((position) => savedList(position)),
-      true,
-    );
+    const batch = prewarmLists(ACCOUNT_ID, lists, true);
 
     try {
-      await Promise.all([reads.arrived(0), reads.arrived(1)]);
-      expect(getListCatalog).toHaveBeenCalledTimes(2);
-      reads.finish(0);
-      await reads.arrived(2);
-      expect(getListCatalog).toHaveBeenCalledTimes(3);
-      reads.finish(1);
-      reads.finish(2);
+      await Promise.all(
+        Array.from({ length: 10 }, (_, index) => reads.arrived(index)),
+      );
+      expect(getListCatalog).toHaveBeenCalledTimes(10);
     } finally {
       reads.finishAll();
     }
     await batch;
+    expect(getListCatalog).toHaveBeenCalledTimes(11);
+  });
+
+  it("counts each Source list of a merged List against the limit", async () => {
+    const reads = holdReads();
+    const lists = Array.from({ length: 3 }, (_, index) => benchList(index, 4));
+
+    const batch = prewarmLists(ACCOUNT_ID, lists, true);
+
+    try {
+      await Promise.all(
+        Array.from({ length: 10 }, (_, index) => reads.arrived(index)),
+      );
+      expect(getListCatalog).toHaveBeenCalledTimes(2);
+    } finally {
+      reads.finishAll();
+    }
+    await batch;
+    expect(getListCatalog).toHaveBeenCalledTimes(3);
   });
 
   it("picks up a cross-instance request after the active batch", async () => {
