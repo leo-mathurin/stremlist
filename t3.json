@@ -1,0 +1,40 @@
+{
+  "$schema": "https://t3.codes/schema/t3.json",
+  "scripts": [
+    {
+      "name": "Setup",
+      "command": "(set -e; if [ -n \"${T3CODE_PROJECT_ROOT:-}\" ]; then for file in .env .env.local apps/backend/.env apps/frontend/.env apps/frontend/.env.local; do if [ -f \"$T3CODE_PROJECT_ROOT/$file\" ] && [ ! -e \"$file\" ] && [ ! -L \"$file\" ]; then (umask 077; cp \"$T3CODE_PROJECT_ROOT/$file\" \"$file\"); fi; done; fi; bun install --frozen-lockfile)",
+      "icon": "configure",
+      "runOnWorktreeCreate": true,
+      "async": false
+    },
+    {
+      "name": "Dev backend",
+      "command": "PORTLESS_LAN=0 bun run dev:backend",
+      "icon": "play",
+      "stopOnSettle": true
+    },
+    {
+      "name": "Dev frontend",
+      "command": "PORTLESS_LAN=0 bun run dev:frontend",
+      "icon": "play",
+      "stopOnSettle": true
+    },
+    {
+      "name": "Test",
+      "command": "bun run test",
+      "icon": "test"
+    },
+    {
+      "name": "Lint",
+      "command": "bun run lint",
+      "icon": "lint"
+    },
+    {
+      "name": "Archive · Build output",
+      "command": "if [ -f .git ]; then git clean -fdX -- apps/backend/dist/ apps/frontend/dist/ packages/shared/dist/; fi",
+      "icon": "configure",
+      "runOnSettle": true
+    }
+  ]
+}
