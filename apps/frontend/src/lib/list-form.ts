@@ -44,10 +44,11 @@ export function newLocalId(random: Pick<Crypto, "getRandomValues"> = crypto) {
 export function createListRow(
   partial: Pick<ListFormRow, "provider" | "sourceRef"> &
     Partial<Omit<ListFormRow, "localId">>,
+  random: Pick<Crypto, "getRandomValues"> = crypto,
 ) {
   return {
     id: partial.id,
-    localId: newLocalId(),
+    localId: newLocalId(random),
     provider: partial.provider,
     sourceRef: partial.sourceRef,
     catalogTitle: (partial.catalogTitle ?? "").slice(
