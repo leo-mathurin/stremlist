@@ -58,9 +58,7 @@ export async function simklRequest<T>(
       new URL(path, SIMKL_API).toString(),
       {
         method,
-        signal: options.signal
-          ? AbortSignal.any([options.signal, AbortSignal.timeout(15_000)])
-          : undefined,
+        signal: options.signal,
         query: { ...options.params, ...app },
         headers: { Accept: "application/json", "simkl-api-key": app.client_id },
         bearer: options.token,

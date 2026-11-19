@@ -254,6 +254,15 @@ async function fullRead(token: string) {
   return items;
 }
 
+/** Mutation guards must neither join an earlier sync nor trust its cached result. */
+export async function readCurrentItems(
+  connection: ConnectionAccess,
+  imdbId: string,
+) {
+  const items = await fullRead(await connection.getAccessToken());
+  return items.filter((item) => item.imdb === imdbId);
+}
+
 function bucketsMoved(
   previous: SimklActivities,
   next: SimklActivities,

@@ -16,7 +16,12 @@ import { targetEpisodes, UnknownTitleError } from "../types";
 import { simklRequest } from "./api";
 import { CONNECTION_REFS, titleType } from "./entries";
 import type { LibraryItem } from "./library";
-import { knownItems, markLibraryChanged, syncLibrary } from "./library";
+import {
+  knownItems,
+  markLibraryChanged,
+  readCurrentItems,
+  syncLibrary,
+} from "./library";
 
 function membershipFrom(items: LibraryItem[]) {
   const watchlist = new Set<string>();
@@ -66,10 +71,7 @@ async function buildWrite(
   if (intent.kind === "watchlist") {
     if (intent.add) {
       if (intent.preserveExistingStatus) {
-        await markLibraryChanged(connection.accountId);
-        const current = (await syncLibrary(connection)).items.filter(
-          (entry) => entry.imdb === target.imdbId,
-        );
+        const current = await readCurrentItems(connection, target.imdbId);
         if (current.some((entry) => entry.status !== "plantowatch"))
           return null;
       }
@@ -79,10 +81,7 @@ async function buildWrite(
       };
     }
 
-    await markLibraryChanged(connection.accountId);
-    const current = (await syncLibrary(connection)).items.filter(
-      (entry) => entry.imdb === target.imdbId,
-    );
+    const current = await readCurrentItems(connection, target.imdbId);
     if (
       current.length === 0 ||
       current.some((entry) => entry.status !== "plantowatch")

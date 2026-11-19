@@ -151,7 +151,9 @@ export async function providerFetch(
     const response = await fetch(target, {
       ...init,
       headers,
-      signal: init.signal ?? AbortSignal.timeout(timeoutMs),
+      signal: init.signal
+        ? AbortSignal.any([init.signal, AbortSignal.timeout(timeoutMs)])
+        : AbortSignal.timeout(timeoutMs),
     });
     if (response.status !== 429 || !retryOn429 || attempt > 0) {
       return response;
