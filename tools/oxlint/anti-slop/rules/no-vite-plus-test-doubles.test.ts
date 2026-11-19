@@ -23,6 +23,8 @@ tester.run("anti-slop/no-vite-plus-test-doubles", noVitePlusTestDoublesRule, {
     `${header}const useTimers = vi.useFakeTimers; useTimers();`,
     `${header}const { spyOn } = vi; spyOn(console, "warn");`,
     `${header}const { mockReturnValue } = make(); mockReturnValue(1);`,
+    `${header}const spy = vi.spyOn(dep, "read"); const mockReturnValue = "getMockName"; const { [mockReturnValue]: readName } = spy; readName();`,
+    `${header}const fn = "spyOn"; const { [fn]: watch } = vi; watch(console, "log");`,
     `${header}const set = other.mockReturnValue; set(1);`,
     `${header}const spy = vi.spyOn(dep, "read"); { const mockReturnValue = make; mockReturnValue(1); }`,
   ],
@@ -127,6 +129,16 @@ tester.run("anti-slop/no-vite-plus-test-doubles", noVitePlusTestDoublesRule, {
     {
       name: "renamed destructured setter",
       code: `${header}const { mockImplementation: replace } = vi.spyOn(dep, "read"); replace(() => 1);`,
+      errors: [error],
+    },
+    {
+      name: "computed string literal setter",
+      code: `${header}const spy = vi.spyOn(dep, "read"); const { ["mockReturnValue"]: set } = spy; set(1);`,
+      errors: [error],
+    },
+    {
+      name: "computed string literal vi method",
+      code: `${header}const { ["stubGlobal"]: stub } = vi; stub("fetch", null);`,
       errors: [error],
     },
     {

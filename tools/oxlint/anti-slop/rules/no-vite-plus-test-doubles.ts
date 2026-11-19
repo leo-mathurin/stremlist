@@ -50,10 +50,16 @@ function propertyName(node: ESTree.MemberExpression): string | null {
   return null;
 }
 
-function keyName(node: ESTree.Node): string | null {
-  if (node.type === "Identifier") return node.name;
-  if (node.type === "Literal" && typeof node.value === "string") return node.value;
-  return null;
+/**
+ * The static name of a destructured property: an identifier key, or a
+ * string literal key, also when it is computed. A computed key that is not a
+ * literal (`{ [name]: value }`) has no static name.
+ */
+function keyName(property: ESTree.Node): string | null {
+  if (property.type !== "Property") return null;
+  const { key } = property;
+  if (key.type === "Literal" && typeof key.value === "string") return key.value;
+  return !property.computed && key.type === "Identifier" ? key.name : null;
 }
 
 function importedName(node: ESTree.Node): string | null {
@@ -114,7 +120,7 @@ function isVi(sourceCode: SourceCode, node: ESTree.Node, depth = 0): boolean {
     return declarator.id.properties.some(
       (property) =>
         property.type === "Property" &&
-        keyName(property.key) === "vi" &&
+        keyName(property) === "vi" &&
         property.value.type === "Identifier" &&
         property.value.name === variable.name,
     );
@@ -142,7 +148,7 @@ function viMethod(sourceCode: SourceCode, node: ESTree.Node, depth = 0): string 
         property.value.type === "Identifier" &&
         property.value.name === variable.name
       ) {
-        return keyName(property.key);
+        return keyName(property);
       }
     }
   }
@@ -192,7 +198,7 @@ function viSetter(sourceCode: SourceCode, node: ESTree.Node, depth = 0): string 
   }
   if (declarator.id.type === "ObjectPattern" && isViDouble(sourceCode, declarator.init)) {
     for (const property of declarator.id.properties) {
-      const name = property.type === "Property" ? keyName(property.key) : null;
+      const name = keyName(property);
       if (
         property.type === "Property" &&
         property.value.type === "Identifier" &&
