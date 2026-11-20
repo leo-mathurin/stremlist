@@ -5,7 +5,7 @@ An Account previews Titles before saving and installs an Addon URL so Stremio ca
 ## Sub-features
 
 - `catalogs.preview` previews new or saved Lists, sort settings, genres, and Unresolved entries without changing saved Catalogs.
-- `catalogs.new` configures the New titles Catalog and shows its summary.
+- `catalogs.new` adds the built-in New titles List, previews its detection and release orders, applies filters, and saves its position and settings. Accounts that enabled the old checkbox open with the List already added.
 - `catalogs.api` serves manifest, Catalog, pagination, and metadata responses for private URLs and Legacy aliases.
 - `catalogs.install` copies the Addon URL, handles clipboard denial, and opens Stremio Web installation.
 - `catalogs.providers` serves the manifest, Catalogs, meta, and streams of a List of every Provider, and renders them in Stremio Web.
@@ -14,7 +14,7 @@ An Account previews Titles before saving and installs an Addon URL so Stremio ca
 
 ## How to get to it (user POV)
 
-Paste a new List on Configure or choose `Preview Test catalog` for a saved List. Edit `Sort order` and the New titles setting. After Save, use `Open Stremio Web` or copy the Addon URL. Stremio reads `/{account}/manifest.json` and the manifest's Catalog and metadata URLs.
+Paste a new List on Configure or choose `Preview Test catalog` for a saved List. Choose `Add New titles` in Quick add, then edit `Sort order` or open Settings to filter and move the List. After Save, use `Open Stremio Web` or copy the Addon URL. Stremio reads `/{account}/manifest.json` and the manifest's Catalog and metadata URLs.
 
 ## Driving it with toolkit and Playwright
 

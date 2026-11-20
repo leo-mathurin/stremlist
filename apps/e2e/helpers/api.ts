@@ -367,7 +367,10 @@ export function apiAt(baseUrl: string) {
           json: {
             rpdbApiKey: shown.rpdbApiKey ?? undefined,
             lists: shown.lists,
-            newTitles: { enabled: shown.newTitles.enabled },
+            newTitles: {
+              enabled: shown.newTitles.enabled,
+              settings: shown.newTitles.settings,
+            },
           },
         }),
         isAccountAnswer,

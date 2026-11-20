@@ -1,9 +1,26 @@
 import { CATALOG_PRESETS } from "./catalog-settings";
 import type { CatalogPreset, CatalogSettings } from "./catalog-settings";
+import { SORT_OPTIONS } from "./constants";
 import type { DisplayMode, TitleType } from "./constants";
 import type { MergeableList } from "./list-merge";
 import { isMergedList } from "./list-merge";
 import { describeSourceRef, sourceTitle } from "./providers";
+import type { NewTitlesSettings } from "./stremio.types";
+
+export const DEFAULT_NEW_TITLES_SETTINGS: NewTitlesSettings = {
+  catalogTitle: "Stremlist New titles",
+  sortOption: "detected_at-desc",
+  displayMode: "split",
+  position: 0,
+};
+
+export const NEW_TITLES_SORT_OPTIONS = [
+  { value: "detected_at-desc", label: "Recently detected" },
+  { value: "detected_at-asc", label: "Oldest detected first" },
+  ...SORT_OPTIONS.filter(({ value }) => !value.startsWith("added_at-")),
+] as const;
+
+export type NewTitlesSort = (typeof NEW_TITLES_SORT_OPTIONS)[number]["value"];
 
 /** One Catalog that a List adds to Stremio. */
 export interface ListCatalog {
@@ -100,36 +117,60 @@ interface NewTitlesCatalogEntry {
   newTitles: true;
   type: TitleType;
   name: string;
+  preset?: CatalogPreset;
 }
 
-function newTitlesCatalogEntries(lists: ManifestList[]) {
-  const types = new Set(
-    lists.flatMap((list) => listCatalogs(list).map((catalog) => catalog.type)),
-  );
-  return (["movie", "series"] as const)
-    .filter((type) => types.has(type))
-    .map(
-      (type) =>
-        ({
-          newTitles: true,
-          type,
-          name: "Stremlist New titles",
-        }) satisfies NewTitlesCatalogEntry,
-    );
+export interface NewTitlesCatalogOptions {
+  newTitles: boolean;
+  newTitlesSettings?: NewTitlesSettings;
 }
 
-/**
- * Every Catalog of the addon manifest, in order. The "New titles" Catalogs,
- * when the Account has them on, come first: they sum up what changed in
- * every List below.
- */
+/** Keep the pre-existing visible types until the account saves list settings. */
+export function defaultNewTitlesSettings(
+  lists: Pick<ManifestList, "displayMode">[],
+) {
+  const [mode] = lists;
+  return {
+    ...DEFAULT_NEW_TITLES_SETTINGS,
+    displayMode: lists.every((list) => list.displayMode === mode?.displayMode)
+      ? (mode?.displayMode ?? "split")
+      : "split",
+  } satisfies NewTitlesSettings;
+}
+
+function newTitlesCatalogEntries(settings: NewTitlesSettings) {
+  const name =
+    settings.catalogTitle.trim() || DEFAULT_NEW_TITLES_SETTINGS.catalogTitle;
+  return listCatalogs(settings).map(({ type, preset }) => {
+    const label = CATALOG_PRESETS.find((entry) => entry.id === preset)?.label;
+    return {
+      newTitles: true,
+      type,
+      name: label ? `${name} · ${label}` : name,
+      ...(preset ? { preset } : {}),
+    } satisfies NewTitlesCatalogEntry;
+  });
+}
+
+/** Every Catalog of the addon manifest, in the configured List order. */
 export function addonCatalogEntries(
   lists: ManifestList[],
-  options: { newTitles: boolean },
+  options: NewTitlesCatalogOptions,
 ) {
-  const entries: (NewTitlesCatalogEntry | ManifestCatalogEntry)[] = [
-    ...(options.newTitles ? newTitlesCatalogEntries(lists) : []),
-    ...manifestCatalogEntries(lists),
+  const entries = manifestCatalogEntries(lists);
+  if (
+    !options.newTitles ||
+    (!options.newTitlesSettings && lists.length === 0)
+  ) {
+    return entries;
+  }
+  const settings = options.newTitlesSettings ?? defaultNewTitlesSettings(lists);
+  const before = lists
+    .slice(0, settings.position)
+    .reduce((count, list) => count + listCatalogs(list).length, 0);
+  return [
+    ...entries.slice(0, before),
+    ...newTitlesCatalogEntries(settings),
+    ...entries.slice(before),
   ];
-  return entries;
 }

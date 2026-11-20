@@ -124,7 +124,15 @@ describe("configBody", () => {
     posterSource: "tmdb",
     actionsEnabled: true,
     actions: { order: ["simkl", "trakt"], selected: ["trakt", "simkl"] },
-    newTitlesEnabled: true,
+    newTitles: {
+      enabled: true,
+      settings: {
+        catalogTitle: " Fresh ",
+        sortOption: "released-desc",
+        displayMode: "movie",
+        position: 1,
+      },
+    },
   };
 
   test("sends the Actions Providers that are on, in the chosen order", () => {
@@ -143,7 +151,15 @@ describe("configBody", () => {
     const body = configBody(form, "private");
     assert.equal(body.rpdbApiKey, "key");
     assert.equal(body.posterSource, "tmdb");
-    assert.deepEqual(body.newTitles, { enabled: true });
+    assert.deepEqual(body.newTitles, {
+      enabled: true,
+      settings: {
+        catalogTitle: "Fresh",
+        sortOption: "released-desc",
+        displayMode: "movie",
+        position: 1,
+      },
+    });
     assert.equal(body.lists[0].sourceRef, "ur1000001");
     assert.equal(body.lists[0].catalogTitle, "Watchlist");
     assert.equal(body.lists[0].position, 0);

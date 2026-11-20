@@ -7,7 +7,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { memo, useEffect, useId, useRef, useState } from "react";
-import { Clapperboard, ExternalLink, Loader2, RotateCw } from "lucide-react";
+import {
+  Clapperboard,
+  ExternalLink,
+  Loader2,
+  RotateCw,
+  Sparkles,
+} from "lucide-react";
 import { CATALOG_TITLES_PAGE_SIZE } from "@stremlist/shared/catalog-preview";
 import type {
   CatalogPreview as CatalogPreviewData,
@@ -33,10 +39,9 @@ import {
 } from "@stremlist/shared/source-problems";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
 import { useCatalogPreview } from "@/hooks/useCatalogPreview";
+import type { PreviewSubject } from "@/hooks/useCatalogPreview";
 import { useCatalogTitles } from "@/hooks/useCatalogTitles";
 import { useNow } from "@/hooks/useNow";
-import { rowTitle } from "@/lib/list-form";
-import type { ListFormRow } from "@/lib/list-form";
 import { previewQueueMessage, queueProgress } from "@/lib/provider-queue";
 import type { QueueWait } from "@/lib/provider-queue";
 import { cn } from "@/lib/utils";
@@ -68,32 +73,51 @@ function catalogLabel(row: CatalogPreviewRow) {
     : TYPE_LABELS[row.type];
 }
 
+function subjectCatalog(subject: PreviewSubject) {
+  return subject.kind === "list"
+    ? {
+        displayMode: subject.list.displayMode,
+        settings: subject.list.catalogSettings,
+      }
+    : {
+        displayMode: subject.settings.displayMode,
+        settings: subject.settings.catalogSettings ?? {},
+      };
+}
+
 /**
- * What a List adds to Stremio, before it is saved: the first Titles of each
- * Catalog, and the Unresolved entries that Stremio will not show.
+ * What a List, or "New titles", adds to Stremio, before it is saved: the
+ * first Titles of each Catalog, and the Unresolved entries that Stremio
+ * will not show.
  */
 export default function CatalogPreview({
-  list,
+  subject,
+  title,
   accountKey,
   rpdbApiKey,
   posterSource,
   open,
 }: {
-  list: ListFormRow;
+  subject: PreviewSubject;
+  /** The title of the row, for the "Show all" dialog. */
+  title: string;
+  /** Null for a new setup that is not saved yet. */
   accountKey: string | null;
   rpdbApiKey: string;
   posterSource: PosterSource;
   /** The panel is visible: only then the preview is read. */
   open: boolean;
 }) {
+  const unsavedNewTitles = subject.kind === "new-titles" && !accountKey;
   const { state, retry } = useCatalogPreview({
-    list,
+    subject,
     accountKey,
-    enabled: open,
+    enabled: open && !unsavedNewTitles,
   });
   const [allTitlesOf, setAllTitlesOf] = useState<CatalogPreviewRow | null>(
     null,
   );
+  const { displayMode, settings } = subjectCatalog(subject);
 
   return (
     <div className="space-y-4 border-t border-black/5 px-4 pt-4 pb-4 sm:px-5">
@@ -116,8 +140,13 @@ export default function CatalogPreview({
         </p>
       </div>
 
-      {state.status === "loading" ? (
-        <PreviewLoading list={list} />
+      {unsavedNewTitles ? (
+        <NewTitlesEmpty>
+          Stremlist starts to look for new titles after you save. Titles already
+          in your lists then do not count as new.
+        </NewTitlesEmpty>
+      ) : state.status === "loading" ? (
+        <PreviewLoading subject={subject} />
       ) : state.status === "queued" ? (
         <PreviewQueued wait={state.wait} />
       ) : state.status === "problem" ? (
@@ -125,7 +154,11 @@ export default function CatalogPreview({
           tone={state.reason === "unavailable" ? "error" : "info"}
           onRetry={state.reason === "unavailable" ? retry : undefined}
         >
-          {problemMessage(state.source ?? list, state.reason)}
+          {state.source
+            ? problemMessage(state.source, state.reason)
+            : subject.kind === "list"
+              ? problemMessage(subject.list, state.reason)
+              : "Could not read the new titles right now. Please try again later."}
         </PreviewMessage>
       ) : state.status === "error" ? (
         <PreviewMessage tone="error" onRetry={retry}>
@@ -140,8 +173,9 @@ export default function CatalogPreview({
         >
           <PreviewBody
             preview={state.preview}
-            displayMode={list.displayMode}
-            settings={list.catalogSettings}
+            newTitles={subject.kind === "new-titles"}
+            displayMode={displayMode}
+            settings={settings}
             rpdbApiKey={rpdbApiKey}
             posterSource={posterSource}
             onShowAll={state.updating ? null : setAllTitlesOf}
@@ -151,7 +185,8 @@ export default function CatalogPreview({
 
       {allTitlesOf && (
         <CatalogTitlesDialog
-          list={list}
+          subject={subject}
+          title={title}
           accountKey={accountKey}
           row={allTitlesOf}
           rpdbApiKey={rpdbApiKey}
@@ -173,17 +208,25 @@ function problemMessage(source: SourceId, reason: SourceProblemReason) {
   return `${title}. ${fix}`;
 }
 
-function PreviewLoading({ list }: { list: ListFormRow }) {
+function loadingMessage(subject: PreviewSubject) {
+  if (subject.kind === "new-titles") {
+    return "Reading the titles that Stremlist detected in your lists.";
+  }
+  const { list } = subject;
   const on = joinProviderLabels([
     ...new Set(listSources(list).map((source) => source.provider)),
   ]);
+  return isMergedList(list)
+    ? `Reading the merged lists on ${on}. Big lists can take a few seconds.`
+    : `Reading the list on ${on}. A big list can take a few seconds.`;
+}
+
+function PreviewLoading({ subject }: { subject: PreviewSubject }) {
   return (
     <div className="space-y-2" role="status">
       <p className="flex items-center gap-2 text-xs text-black/50">
         <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-        {isMergedList(list)
-          ? `Reading the merged lists on ${on}. Big lists can take a few seconds.`
-          : `Reading the list on ${on}. A big list can take a few seconds.`}
+        {loadingMessage(subject)}
       </p>
       <PosterPlaceholders />
     </div>
@@ -263,8 +306,24 @@ function PreviewMessage({
   );
 }
 
+function NewTitlesEmpty({ children }: { children: string }) {
+  return (
+    <div
+      role="status"
+      className="flex flex-col items-center gap-1 rounded-2xl border-2 border-dashed border-black/10 px-4 py-6 text-center"
+    >
+      <span className="mb-1 inline-flex size-9 items-center justify-center rounded-full bg-brand/20">
+        <Sparkles className="size-4 text-black/60" aria-hidden="true" />
+      </span>
+      <p className="text-sm font-bold">No new titles yet</p>
+      <p className="max-w-sm text-sm text-pretty text-black/55">{children}</p>
+    </div>
+  );
+}
+
 function PreviewBody({
   preview,
+  newTitles,
   displayMode,
   settings,
   rpdbApiKey,
@@ -272,6 +331,7 @@ function PreviewBody({
   onShowAll,
 }: {
   preview: CatalogPreviewData;
+  newTitles: boolean;
   displayMode: DisplayMode;
   settings: CatalogSettings;
   rpdbApiKey: string;
@@ -283,12 +343,26 @@ function PreviewBody({
   const hiddenCount = hiddenType ? preview.typeCounts[hiddenType] : 0;
   const filtered = countCatalogFilters(settings) > 0;
 
+  if (
+    newTitles &&
+    preview.typeCounts.movie + preview.typeCounts.series === 0 &&
+    preview.unresolved.count === 0
+  ) {
+    return (
+      <NewTitlesEmpty>
+        When a title appears in one of your other lists, Stremlist adds it here.
+        Titles that were there when Stremlist first read a list do not count.
+      </NewTitlesEmpty>
+    );
+  }
+
   return (
     <>
       {preview.catalogs.map((row) => (
         <CatalogRow
           key={`${row.type}:${row.preset ?? "main"}`}
           row={row}
+          newTitles={newTitles}
           typeCounts={preview.typeCounts}
           filtered={filtered}
           rpdbApiKey={rpdbApiKey}
@@ -307,8 +381,9 @@ function PreviewBody({
               TYPE_NOUNS[hiddenType].one,
               TYPE_NOUNS[hiddenType].other,
             )}{" "}
-            of this list {hiddenCount === 1 ? "does" : "do"} not show, because
-            Show is set to {showOnlyLabel(shownType)}.
+            {newTitles ? "detected" : "of this list"}{" "}
+            {hiddenCount === 1 ? "does" : "do"} not show, because Show is set to{" "}
+            {showOnlyLabel(shownType)}.
           </p>
         )}
 
@@ -339,6 +414,7 @@ function PreviewBody({
 
 function CatalogRow({
   row,
+  newTitles,
   typeCounts,
   filtered,
   rpdbApiKey,
@@ -346,6 +422,7 @@ function CatalogRow({
   onShowAll,
 }: {
   row: CatalogPreviewRow;
+  newTitles: boolean;
   typeCounts: CatalogPreviewData["typeCounts"];
   filtered: boolean;
   rpdbApiKey: string;
@@ -369,15 +446,21 @@ function CatalogRow({
       </h4>
       {row.titles.length === 0 ? (
         <p className="rounded-2xl border-2 border-dashed border-black/10 px-4 py-3 text-sm text-pretty text-black/55">
-          {typeCounts[row.type] === 0
-            ? `This list has no ${nouns.other}, so this catalog stays empty in Stremio.${
-                typeCounts[OTHER_TYPE[row.type]] > 0
-                  ? ` Set Show to ${showOnlyLabel(OTHER_TYPE[row.type])} in Settings to remove it.`
-                  : ""
-              }`
-            : filtered
-              ? `No ${nouns.one} of this list matches its filters, so this catalog stays empty in Stremio.`
-              : "This catalog stays empty in Stremio."}
+          {newTitles
+            ? typeCounts[row.type] === 0
+              ? `No new ${nouns.other} detected yet, so this catalog stays empty in Stremio for now.`
+              : filtered
+                ? `No new ${nouns.one} matches the filters, so this catalog stays empty in Stremio.`
+                : "This catalog stays empty in Stremio."
+            : typeCounts[row.type] === 0
+              ? `This list has no ${nouns.other}, so this catalog stays empty in Stremio.${
+                  typeCounts[OTHER_TYPE[row.type]] > 0
+                    ? ` Set Show to ${showOnlyLabel(OTHER_TYPE[row.type])} in Settings to remove it.`
+                    : ""
+                }`
+              : filtered
+                ? `No ${nouns.one} of this list matches its filters, so this catalog stays empty in Stremio.`
+                : "This catalog stays empty in Stremio."}
         </p>
       ) : (
         <ul
@@ -544,13 +627,15 @@ function CatalogTitlesDialog({
 }
 
 function CatalogTitlesContent({
-  list,
+  subject,
+  title,
   accountKey,
   row,
   rpdbApiKey,
   posterSource,
 }: {
-  list: ListFormRow;
+  subject: PreviewSubject;
+  title: string;
   accountKey: string | null;
   row: CatalogPreviewRow;
   rpdbApiKey: string;
@@ -559,7 +644,7 @@ function CatalogTitlesContent({
   const scroller = useRef<HTMLDivElement>(null);
   const sentinel = useRef<HTMLDivElement>(null);
   const { titles, total, status, hasMore, loadMore } = useCatalogTitles({
-    list,
+    subject,
     accountKey,
     row,
   });
@@ -587,7 +672,7 @@ function CatalogTitlesContent({
     <>
       <div className="flex items-start justify-between gap-3 border-b border-black/5 py-3 pr-12 pl-4 sm:pr-12 sm:pl-5">
         <div className="min-w-0">
-          <DialogTitle>{rowTitle(list)}</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
             {catalogLabel(row)} · {count(total, "title", "titles")}
           </DialogDescription>

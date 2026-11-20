@@ -23,7 +23,7 @@ interface ListCatalogId {
 
 type ParsedCatalogId =
   | ({ kind: "list" } & ListCatalogId)
-  | { kind: "new-titles"; type: TitleType };
+  | { kind: "new-titles"; type: TitleType; preset?: CatalogPreset };
 
 function parseListCatalogId(catalogId: string) {
   const separator = catalogId.indexOf("--");
@@ -59,16 +59,22 @@ function parseBaseListCatalogId(catalogId: string) {
 
 const NEW_TITLES_PREFIX = "new-titles-";
 
-export function buildNewTitlesCatalogId(type: TitleType) {
-  return `${NEW_TITLES_PREFIX}${type}`;
+export function buildNewTitlesCatalogId(
+  type: TitleType,
+  preset?: CatalogPreset,
+) {
+  return `${NEW_TITLES_PREFIX}${type}${preset ? `--${preset}` : ""}`;
 }
 
 export function parseCatalogId(catalogId: string) {
   if (catalogId.startsWith(NEW_TITLES_PREFIX)) {
-    const type = catalogId.slice(NEW_TITLES_PREFIX.length);
-    return type === "movie" || type === "series"
-      ? ({ kind: "new-titles", type } satisfies ParsedCatalogId)
-      : null;
+    const [type, suffix, ...rest] = catalogId
+      .slice(NEW_TITLES_PREFIX.length)
+      .split("--");
+    if ((type !== "movie" && type !== "series") || rest.length > 0) return null;
+    const preset = CATALOG_PRESETS.find((option) => option.id === suffix)?.id;
+    if (suffix !== undefined && !preset) return null;
+    return { kind: "new-titles", type, preset } satisfies ParsedCatalogId;
   }
   const list = parseListCatalogId(catalogId);
   return list && ({ kind: "list", ...list } satisfies ParsedCatalogId);

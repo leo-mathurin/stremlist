@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import type { SetStateAction } from "react";
 import { CHART_BY_ID } from "@stremlist/shared/imdb-charts";
 import {
   accountListsProblem,
@@ -9,15 +10,110 @@ import {
 import { createListRow, rowTitle } from "../lib/list-form";
 import type { ListFormRow } from "../lib/list-form";
 import { mergeRows, removeRowSource, splitRowSource } from "../lib/merged-rows";
+import {
+  addedNewTitles,
+  followListChange,
+  moveCatalogRow,
+  NEW_TITLES_OFF,
+  NEW_TITLES_ROW_ID,
+  newTitlesTitle,
+} from "../lib/new-titles";
+import type { NewTitlesForm } from "../lib/new-titles";
 
 export type AddListProblem =
   | { kind: "duplicate"; localId: string }
   | { kind: "error"; message: string };
 
-/** The List rows of the configure page, their edits and what is wrong. */
+/** The row that the user added last, so the page can show it. */
+export interface AddedRow {
+  localId: string;
+  title: string;
+}
+
+interface EditorRows {
+  lists: ListFormRow[];
+  newTitles: NewTitlesForm;
+}
+
+function renumberedLists(before: ListFormRow[], after: ListFormRow[]) {
+  if (before.every((list, index) => list === after[index])) return before;
+  const allDefaultTitles = before.every((list, i) => {
+    const title = list.catalogTitle.trim();
+    return title === "" || title === String(i + 1);
+  });
+  return allDefaultTitles
+    ? after.map((list) => ({ ...list, catalogTitle: "" }))
+    : after;
+}
+
+/**
+ * The rows of "Your lists" on the configure page: the Lists, and the
+ * built-in "New titles" catalog among them. Their edits and what is wrong.
+ */
 export function useListEditor() {
-  const [lists, setLists] = useState<ListFormRow[]>([]);
-  const [lastAdded, setLastAdded] = useState<ListFormRow | null>(null);
+  const [rows, setRows] = useState<EditorRows>({
+    lists: [],
+    newTitles: NEW_TITLES_OFF,
+  });
+  const { lists, newTitles } = rows;
+  const [lastAdded, setLastAdded] = useState<AddedRow | null>(null);
+
+  const setLists = useCallback(
+    (update: SetStateAction<ListFormRow[]>) =>
+      setRows((current) => {
+        const next =
+          typeof update === "function" ? update(current.lists) : update;
+        if (next === current.lists) return current;
+        return {
+          lists: next,
+          newTitles: {
+            ...current.newTitles,
+            settings: {
+              ...current.newTitles.settings,
+              position: followListChange(
+                current.newTitles.settings.position,
+                current.lists,
+                next,
+              ),
+            },
+          },
+        };
+      }),
+    [],
+  );
+
+  const resetRows = useCallback(
+    (nextLists: ListFormRow[], nextNewTitles: NewTitlesForm) =>
+      setRows({ lists: nextLists, newTitles: nextNewTitles }),
+    [],
+  );
+
+  const setNewTitlesField = <K extends keyof NewTitlesForm["settings"]>(
+    key: K,
+    value: NewTitlesForm["settings"][K],
+  ) =>
+    setRows((current) => ({
+      ...current,
+      newTitles: {
+        ...current.newTitles,
+        settings: { ...current.newTitles.settings, [key]: value },
+      },
+    }));
+
+  const addNewTitles = () => {
+    const added = addedNewTitles();
+    setRows((current) => ({ ...current, newTitles: added }));
+    setLastAdded({
+      localId: NEW_TITLES_ROW_ID,
+      title: newTitlesTitle(added.settings),
+    });
+  };
+
+  const removeNewTitles = () =>
+    setRows((current) => ({
+      ...current,
+      newTitles: { ...current.newTitles, enabled: false },
+    }));
 
   const setListField = <K extends keyof ListFormRow>(
     localId: string,
@@ -48,8 +144,8 @@ export function useListEditor() {
         message: problem.message,
       } satisfies AddListProblem;
     const row = createListRow(partial);
-    setLists((rows) => [row, ...rows]);
-    setLastAdded(row);
+    setLists((current) => [row, ...current]);
+    setLastAdded({ localId: row.localId, title: rowTitle(row) });
     return null;
   };
 
@@ -64,18 +160,21 @@ export function useListEditor() {
     });
   };
 
-  const reorderLists = (initialIndex: number, index: number) =>
-    setLists((items) => {
-      const allDefaultTitles = items.every((list, i) => {
-        const title = list.catalogTitle.trim();
-        return title === "" || title === String(i + 1);
-      });
-      const reordered = [...items];
-      const [removed] = reordered.splice(initialIndex, 1);
-      reordered.splice(index, 0, removed);
-      return allDefaultTitles
-        ? reordered.map((list) => ({ ...list, catalogTitle: "" }))
-        : reordered;
+  const reorderRows = (initialIndex: number, index: number) =>
+    setRows((current) => {
+      const moved = moveCatalogRow(
+        current.lists,
+        current.newTitles,
+        initialIndex,
+        index,
+      );
+      return {
+        lists: renumberedLists(current.lists, moved.lists),
+        newTitles: {
+          ...current.newTitles,
+          settings: { ...current.newTitles.settings, position: moved.position },
+        },
+      };
     });
 
   const validationError = (() => {
@@ -91,6 +190,11 @@ export function useListEditor() {
   return {
     lists,
     setLists,
+    resetRows,
+    newTitles,
+    setNewTitlesField,
+    addNewTitles,
+    removeNewTitles,
     lastAdded,
     setListField,
     addList,
@@ -103,7 +207,7 @@ export function useListEditor() {
       setLists((rows) => removeRowSource(rows, localId, index)),
     splitSource: (localId: string, index: number) =>
       setLists((rows) => splitRowSource(rows, localId, index)),
-    reorderLists,
+    reorderRows,
     validationError,
   };
 }

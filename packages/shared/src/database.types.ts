@@ -20,6 +20,7 @@ export type Database = {
           last_fetched_at: string;
           legacy_imdb_user_id: string | null;
           new_titles_catalog: boolean;
+          new_titles_settings: Json | null;
           poster_source: string;
           prewarm_lease_token: string | null;
           prewarm_locked_until: string;
@@ -37,6 +38,7 @@ export type Database = {
           last_fetched_at?: string;
           legacy_imdb_user_id?: string | null;
           new_titles_catalog?: boolean;
+          new_titles_settings?: Json | null;
           poster_source?: string;
           prewarm_lease_token?: string | null;
           prewarm_locked_until?: string;
@@ -53,6 +55,7 @@ export type Database = {
           last_fetched_at?: string;
           legacy_imdb_user_id?: string | null;
           new_titles_catalog?: boolean;
+          new_titles_settings?: Json | null;
           poster_source?: string;
           prewarm_lease_token?: string | null;
           prewarm_locked_until?: string;
@@ -1116,6 +1119,7 @@ export type Database = {
         Args: {
           p_lists: Json;
           p_new_titles_catalog?: boolean;
+          p_new_titles_settings?: Json;
           p_poster_source?: string;
           p_rpdb_api_key: string;
         };
@@ -1332,6 +1336,7 @@ export type Database = {
           p_actions_enabled: boolean;
           p_lists: Json;
           p_new_titles_catalog?: boolean;
+          p_new_titles_settings?: Json;
           p_poster_source?: string;
           p_rpdb_api_key: string;
         };

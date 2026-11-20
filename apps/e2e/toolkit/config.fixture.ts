@@ -464,6 +464,11 @@ export function previewOf(
   return preview;
 }
 
+export const emptyDetectionPreview = previewOf(
+  { displayMode: "split" },
+  { titleCount: 0, typeCounts: { movie: 0, series: 0 }, catalogs: [] },
+);
+
 /**
  * Register first: answers the requests every page makes (`/providers`,
  * `/stats`, the `/sync-status` poll, Watch tracking), and the Catalog preview that an added
@@ -502,11 +507,16 @@ export async function baseRoutes(
         status: 404,
         json: { error: "Addon not found. Install it first." },
       });
-    else if (pathname === "/lists/preview" && route.request.method === "POST")
+    else if (pathname === "/lists/preview" && route.request.method === "POST") {
+      const request = parseBody(route, isRecord);
       await route.fulfill({
-        json: toJson(previewOf(parseBody(route, isPreviewRequest))),
+        json: toJson(
+          request.kind === "new-titles"
+            ? emptyDetectionPreview
+            : previewOf(parseBody(route, isPreviewRequest)),
+        ),
       });
-    else
+    } else
       throw new Error(
         `Unexpected test API request: ${route.request.method} ${pathname}`,
       );

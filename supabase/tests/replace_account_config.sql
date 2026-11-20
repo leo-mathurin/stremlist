@@ -20,6 +20,7 @@ DECLARE
   ]';
   before_rows jsonb;
   before_rows_of_account jsonb;
+  new_titles jsonb := '{"catalogTitle":"Fresh picks","sortOption":"year-desc","displayMode":"movie","position":1,"catalogSettings":{"minRating":8}}';
   result record;
 BEGIN
   SELECT jsonb_agg(to_jsonb(l) ORDER BY id) INTO before_rows FROM public.lists l;
@@ -94,12 +95,14 @@ BEGIN
 
   -- The New titles setting is saved in the same transaction; NULL keeps it.
   PERFORM public.replace_account_config('sl_configtransactiontest00', NULL,
-    result.lists, NULL, NULL, true);
+    result.lists, NULL, NULL, true, NULL, new_titles);
   ASSERT (SELECT new_titles_catalog FROM public.accounts WHERE id = 'sl_configtransactiontest00');
   PERFORM public.replace_account_config('sl_configtransactiontest00', NULL,
     result.lists, NULL, NULL);
   ASSERT (SELECT new_titles_catalog FROM public.accounts WHERE id = 'sl_configtransactiontest00'),
     'An omitted New titles setting keeps the stored value';
+  ASSERT (SELECT new_titles_settings FROM public.accounts WHERE id = 'sl_configtransactiontest00') = new_titles,
+    'An older client does not clear the detection list settings';
   BEGIN
     PERFORM public.replace_account_config('sl_configtransactiontest00', NULL,
       jsonb_set(result.lists, '{0,id}', '"44444444-4444-4444-8444-444444444444"'), NULL, NULL, false);
@@ -112,9 +115,9 @@ BEGIN
 
   ASSERT public.generate_account_id() ~ '^sl_[0-9A-Za-z]{22}$';
 
-  ASSERT NOT has_function_privilege('anon', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text)', 'EXECUTE');
-  ASSERT NOT has_function_privilege('authenticated', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text)', 'EXECUTE');
-  ASSERT has_function_privilege('service_role', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text)', 'EXECUTE');
+  ASSERT NOT has_function_privilege('anon', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text,jsonb)', 'EXECUTE');
+  ASSERT NOT has_function_privilege('authenticated', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text,jsonb)', 'EXECUTE');
+  ASSERT has_function_privilege('service_role', 'public.replace_account_config(text,text,jsonb,boolean,text[],boolean,text,jsonb)', 'EXECUTE');
   ASSERT NOT has_function_privilege('anon', 'public.claim_connection_refresh(text,text,integer,uuid)', 'EXECUTE');
 END;
 $$;

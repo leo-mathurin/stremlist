@@ -51,7 +51,9 @@ test("a busy Letterboxd shows the wait on the link check and the preview, then t
     });
   });
   const previews = await routePreview(browser, (request, index) =>
-    index < 2 ? queued(40_000, 1_500) : previewOf(request, { titleCount: 2 }),
+    index < 2
+      ? queued(40_000, index === 0 ? 1_500 : 4_000)
+      : previewOf(request, { titleCount: 2 }),
   );
   await app.open(`/configure?account=${accountId}`);
   await expect(screen.getByText("Test catalog")).toBeVisible();

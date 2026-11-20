@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { z } from "zod";
 import type { ConfigList } from "@stremlist/shared/stremio.types";
+import type { NewTitlesForm } from "../lib/new-titles";
 import { reinstallState, requiresReinstall } from "../lib/reinstall";
 import type { InstallBaseline } from "../lib/reinstall";
 import {
@@ -53,7 +54,7 @@ function writeInstalled(accountKey: string, value: InstallBaseline | null) {
 /** A setup as far as Stremio reads it at install time. */
 export interface InstallSetup {
   rows: SignatureRow[];
-  newTitles: boolean;
+  newTitles: NewTitlesForm;
   /** Actions add a `stream` resource to the manifest. */
   actionsLive: boolean;
 }
@@ -61,7 +62,8 @@ export interface InstallSetup {
 function baselineOf(setup: InstallSetup, genres: KnownSourceGenres | null) {
   return {
     signature: getListReinstallSignature(setup.rows, genres, {
-      newTitles: setup.newTitles,
+      newTitles: setup.newTitles.enabled,
+      newTitlesSettings: setup.newTitles.settings,
     }),
     actionsLive: setup.actionsLive,
   };

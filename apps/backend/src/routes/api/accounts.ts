@@ -1,5 +1,6 @@
 import { zValidator } from "@hono/zod-validator";
 import { parseSortOption } from "@stremlist/shared/constants";
+import { defaultNewTitlesSettings } from "@stremlist/shared/manifest-catalogs";
 import { DEFAULT_POSTER_SOURCE } from "@stremlist/shared/poster";
 import type {
   AccountConfigResponse,
@@ -100,7 +101,7 @@ const accounts = new Hono()
         const { accountId, lists: saved } = await createAccountWithConfig(
           normalized,
           rpdbKey(rpdbApiKey),
-          { newTitlesCatalog: newTitles?.enabled, posterSource },
+          { newTitles, posterSource },
         );
         scheduleBackgroundTask(() =>
           prewarmLists(accountId, saved, true, {
@@ -149,7 +150,12 @@ const accounts = new Hono()
           enabled: account.actionsEnabled,
           providers: account.actionProviders,
         },
-        newTitles: { enabled: account.newTitlesCatalog, summary },
+        newTitles: {
+          enabled: account.newTitlesCatalog,
+          summary,
+          settings:
+            account.newTitlesSettings ?? defaultNewTitlesSettings(lists),
+        },
         lastFetchedAt: account.lastFetchedAt,
         cooldownSeconds: REFRESH_COOLDOWN_MS / 1000,
         stremio,
@@ -217,7 +223,7 @@ const accounts = new Hono()
                     ),
                   }
                 : undefined,
-            newTitlesCatalog: newTitles?.enabled,
+            newTitles,
             posterSource,
           },
         );

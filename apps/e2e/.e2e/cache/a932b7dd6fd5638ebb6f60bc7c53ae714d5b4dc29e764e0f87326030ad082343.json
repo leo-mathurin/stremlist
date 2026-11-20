@@ -1,16 +1,17 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-11-10T14:14:07.478Z",
+  "createdAt": "2026-11-20T15:13:06.365Z",
   "payload": {
     "actions": [
       {
-        "name": "check",
-        "summary": "check checkbox \"Show newly detected titles\"",
+        "name": "tap",
+        "summary": "tap button \"Add New titles\"",
         "target": {
-          "role": "checkbox",
-          "name": "Show newly detected titles"
-        },
-        "checked": true
+          "role": "button",
+          "name": "Add New titles",
+          "text": "Add",
+          "testId": "quick-add-new-titles"
+        }
       },
       {
         "name": "tap",
@@ -26,20 +27,24 @@
       "version": "2"
     },
     "recordedFor": {
-      "testId": "toolkit/new-titles.e2e.ts::turning%20on%20the%20New%20titles%20catalog%20saves%20it%20and%20asks%20for%20a%20reinstall",
+      "testId": "toolkit/new-titles.e2e.ts::adding%20the%20New%20titles%20list%20saves%20it%20and%20asks%20for%20a%20reinstall",
       "targetId": "chromium",
-      "instructionDigest": "07788afe636e1105eb3e21d2e6d41fe51c8e33da8c171bfb2729f0245aef021a",
+      "instructionDigest": "6bc4b90cb7860579f7d80b1b1904beb8d749f66e0fb6c5257c98ea46049364ad",
       "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "The newly detected titles option is checked, Save is disabled, and the page confirms “Saved! Reinstall Stremlist in Stremio to see your changes.” The setting was successfully saved.",
+    "summary": "Used Quick add’s Add New titles button and saved the configuration. The New titles catalog was added, and the app confirmed “Saved! Choose how Stremio gets your changes.”",
     "startPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endPath": "/configure?account=sl_E2eFixtureAccount00001",
     "endAnchors": [
       {
         "role": "status",
         "name": "Update Stremio with your changes"
+      },
+      {
+        "role": "status",
+        "name": "No new titles yet When a title appears in one of your other lists, Stremlist adds it here. Titles that were there when Stremlist first read a list do not count."
       },
       {
         "text": "Update Stremio with your changes"
@@ -58,18 +63,23 @@
       },
       {
         "text": "I'll reinstall myself"
-      },
-      {
-        "text": "No account needed. Two steps in Stremio after each change."
       }
     ],
     "goneAnchors": [
       {
-        "role": "checkbox",
-        "name": "Show newly detected titles"
+        "text": "1 of 50 lists"
       },
       {
-        "text": "No new titles detected yet."
+        "text": "New titles"
+      },
+      {
+        "text": "Titles that appear in your other lists, newest first"
+      },
+      {
+        "role": "button",
+        "name": "Add New titles",
+        "text": "Add",
+        "testId": "quick-add-new-titles"
       },
       {
         "role": "heading",
@@ -79,6 +89,6 @@
         "text": "Use these links anytime to open or reinstall your Addon URL in Stremio."
       }
     ],
-    "endWaitMs": 55724
+    "endWaitMs": 12526
   }
 }

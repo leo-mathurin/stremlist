@@ -17,6 +17,7 @@ import {
   captureConfig,
   configuration,
   connected,
+  emptyDetectionPreview,
   fitConfigurePage,
   gatedSaves,
   holdToasts,
@@ -25,6 +26,7 @@ import {
   MINUTE,
   parseBody,
   isConfigInput,
+  previewOf,
   providerStatus,
   routeCreateAccount,
   row,
@@ -36,11 +38,11 @@ import {
   addImdbChart,
 } from "./config.fixture";
 
-const TOGGLE = "Show newly detected titles";
+const ADD = "Add New titles";
+const BUILT_IN_TITLE = "Stremlist New titles";
 const MOVED_HINT =
   "This install has a private URL now. Make changes from the configure page of your new install.";
-const NONE_YET_ONE_WAITING =
-  "No new titles detected yet. Stremlist could not read 1 list in full yet, so it cannot compare it.";
+const NONE_YET = "Nothing detected yet";
 const ONE_WAITING = { detected: 0, latestDetectedAt: null, waitingLists: 1 };
 
 function withNewTitles(summary: AccountConfigResponse["newTitles"]["summary"]) {
@@ -52,28 +54,32 @@ function withNewTitles(summary: AccountConfigResponse["newTitles"]["summary"]) {
 }
 
 test(
-  "turning on the New titles catalog saves it and asks for a reinstall",
+  "adding the New titles list saves it and asks for a reinstall",
   { tags: ["agent"] },
   async ({ app, agent, screen, browser }) => {
     await fitConfigurePage(browser);
     await holdToasts(browser);
     const submissions = await captureConfig(browser);
     await app.open(`/configure?account=${accountId}`);
-    await expect(screen.getByRole("checkbox", TOGGLE)).not.toBeChecked();
-    await expect(screen.getByText("No new titles detected yet.")).toBeVisible();
+    await expect(screen.getByRole("button", ADD)).toBeVisible();
 
     await agent.act(
-      "Turn on the catalog of newly detected titles, then save.",
+      "Use the Add New titles button in Quick add, then save the configuration.",
       { maxModelCalls: 5 },
     );
 
     await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
-    await expect(screen.getByRole("checkbox", TOGGLE)).toBeChecked();
+    await expect(
+      screen.getByRole("button", `Preview ${BUILT_IN_TITLE}`),
+    ).toBeVisible();
     await expect(
       screen.getByText("Update Stremio with your changes"),
     ).toBeVisible();
     expect(submissions).toHaveLength(1);
-    expect(submissions[0].newTitles).toEqual({ enabled: true });
+    expect(submissions[0].newTitles).toMatchObject({
+      enabled: true,
+      settings: { sortOption: "detected_at-desc" },
+    });
     expect(submissions[0].lists).toMatchObject([{ id: row.id }]);
   },
 );
@@ -92,15 +98,16 @@ test("the summary says what was detected and which Lists still wait", async ({
     }),
   );
   await app.open(`/configure?account=${accountId}`);
-  await expect(screen.getByRole("checkbox", TOGGLE)).toBeChecked();
   await expect(
-    screen.getByText(
-      "3 new titles detected, the latest 2 days ago. Stremlist could not read 1 list in full yet, so it cannot compare it.",
-    ),
+    screen.getByRole("button", `Preview ${BUILT_IN_TITLE}`),
   ).toBeVisible();
   await expect(
+    screen.getByText("3 titles detected, the latest 2 days ago"),
+  ).toBeVisible();
+  await screen.getByRole("button", `Settings for ${BUILT_IN_TITLE}`).tap();
+  await expect(
     screen.getByText(
-      "Dates show when Stremlist detected a title, which can be later than when you added it.",
+      /Dates show when Stremlist detected a title.*could not read 1 list in full/,
     ),
   ).toBeVisible();
 });
@@ -112,14 +119,19 @@ test("an unreadable history hides the summary, and a save that keeps the catalog
 }) => {
   const submissions = await captureConfig(browser, withNewTitles(null));
   await app.open(`/configure?account=${accountId}`);
-  await expect(screen.getByRole("checkbox", TOGGLE)).toBeChecked();
-  await expect(screen.getByText(/new titles? detected/)).toHaveCount(0);
+  await expect(
+    screen.getByRole("button", `Preview ${BUILT_IN_TITLE}`),
+  ).toBeVisible();
+  await expect(screen.getByText(/titles? detected,/)).toHaveCount(0);
 
   await chooseRpdb(screen);
   await screen.getByLabel(/^RPDB API key/).fill("e2e-synthetic-rpdb");
   await saveButton(screen).tap();
   await expect(screen.getByText(SAVED)).toBeVisible();
-  expect(submissions[0].newTitles).toEqual({ enabled: true });
+  expect(submissions[0].newTitles).toMatchObject({
+    enabled: true,
+    settings: { sortOption: "detected_at-desc" },
+  });
 });
 
 test("a new setup sends the setting with its first save", async ({
@@ -134,15 +146,18 @@ test("a new setup sends the setting with its first save", async ({
   });
 
   await app.open("/configure");
-  await expect(screen.getByText(/new titles? detected/)).toHaveCount(0);
+  await expect(screen.getByText(/titles? detected,/)).toHaveCount(0);
   await addImdbChart(screen, /^Top 250 Movies/);
-  await screen.getByRole("checkbox", TOGGLE).tap();
+  await screen.getByRole("button", ADD).tap();
   await saveButton(screen, SAVE_NEW).tap();
 
   await expect(browser).toHaveURL(`/configure?account=${accountId}`);
-  await expect(screen.getByText(NONE_YET_ONE_WAITING)).toBeVisible();
+  await expect(screen.getByText(NONE_YET)).toBeVisible();
   expect(created).toHaveLength(1);
-  expect(created[0].newTitles).toEqual({ enabled: true });
+  expect(created[0].newTitles).toMatchObject({
+    enabled: true,
+    settings: { sortOption: "detected_at-desc" },
+  });
   expect(created[0].lists).toMatchObject([
     { provider: "imdb", sourceRef: "imdb:top-rated-movies" },
   ]);
@@ -153,13 +168,33 @@ test("a Legacy alias install that just upgraded cannot change the setting", asyn
   screen,
   browser,
 }) => {
-  await captureConfig(browser, legacyConfiguration, imdbUser);
+  await captureConfig(
+    browser,
+    {
+      ...legacyConfiguration,
+      newTitles: { enabled: true, summary: ONE_WAITING },
+    },
+    imdbUser,
+  );
   await routeCreateAccount(browser);
   await app.open(`/configure?account=${imdbUser}`);
   await screen.getByRole("button", /^Get a private Addon URL/).tap();
   await screen.getByRole("button", "Create my private Addon URL").tap();
   await expect(screen.getByText("Install your new URL:")).toBeVisible();
-  await expect(screen.getByRole("checkbox", TOGGLE)).toBeDisabled();
+  const lockedRow = screen.getByTestId("new-titles-row");
+  await expect(lockedRow.getByRole("combobox", "Sort order")).toBeDisabled();
+  await expect(
+    lockedRow.getByRole("button", `Settings for ${BUILT_IN_TITLE}`),
+  ).toBeDisabled();
+  await expect(
+    lockedRow.getByRole("button", `Remove ${BUILT_IN_TITLE}`),
+  ).toBeDisabled();
+  await expect(
+    lockedRow.getByRole("button", `Drag to reorder ${BUILT_IN_TITLE}`),
+  ).toBeDisabled();
+  await expect(
+    lockedRow.getByRole("button", `Preview ${BUILT_IN_TITLE}`),
+  ).toBeEnabled();
   await expect(screen.getByText(MOVED_HINT).first()).toBeVisible();
 });
 
@@ -175,16 +210,18 @@ test("changing the setting while a save runs keeps it as an unsaved change", asy
   await screen.getByLabel(/^RPDB API key/).fill("e2e-synthetic-rpdb");
   await saveButton(screen).tap();
   await expect(saveButton(screen, "Saving")).toBeVisible();
-  await screen.getByRole("checkbox", TOGGLE).tap();
-  await expect(screen.getByRole("checkbox", TOGGLE)).toBeChecked();
+  await screen.getByRole("button", ADD).tap();
+  await expect(
+    screen.getByRole("button", `Preview ${BUILT_IN_TITLE}`),
+  ).toBeVisible();
   release();
 
   await expect(screen.getByText(SAVED_WITH_CHANGES)).toBeVisible();
   await saveButton(screen).tap();
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
-  expect(submissions.map((submitted) => submitted.newTitles)).toEqual([
-    { enabled: false },
-    { enabled: true },
+  expect(submissions.map((submitted) => submitted.newTitles?.enabled)).toEqual([
+    false,
+    true,
   ]);
 });
 
@@ -195,6 +232,17 @@ test("a refresh updates the summary, and a throttled refresh keeps it", async ({
 }) => {
   await captureConfig(browser, withNewTitles(ONE_WAITING));
   let attempts = 0;
+  let previews = 0;
+  await browser.route(`${backend}/lists/preview`, async (route) => {
+    previews += 1;
+    await route.fulfill({
+      json: toJson(
+        previews === 1
+          ? emptyDetectionPreview
+          : previewOf({ displayMode: "split" }),
+      ),
+    });
+  });
   await browser.route(`${backend}/${accountId}/refresh`, async (route) => {
     attempts += 1;
     const now = Date.now();
@@ -223,17 +271,21 @@ test("a refresh updates the summary, and a throttled refresh keeps it", async ({
   });
 
   await app.open(`/configure?account=${accountId}`);
-  await expect(screen.getByText(NONE_YET_ONE_WAITING)).toBeVisible();
+  await expect(screen.getByText(NONE_YET)).toBeVisible();
+  await screen.getByRole("button", `Preview ${BUILT_IN_TITLE}`).tap();
+  await expect(
+    screen.getByText("No new titles yet", { exact: true }),
+  ).toBeVisible();
   await screen.getByRole("button", "Refresh now").tap();
-  const updated = screen.getByText(
-    "1 new title detected, the latest 3 hours ago.",
-  );
+  const updated = screen.getByText("1 title detected, the latest 3 hours ago");
   await expect(updated).toBeVisible();
+  await expect(screen.getByText("The Shawshank Redemption")).toBeVisible();
 
   await expect(screen.getByRole("button", "Refresh now")).toBeEnabled();
   await screen.getByRole("button", "Refresh now").tap();
   await expect(screen.getByRole("button", /Refresh in \d+s/)).toBeDisabled();
   expect(attempts).toBe(2);
+  expect(previews).toBe(2);
   await expect(updated).toBeVisible();
 });
 
@@ -320,7 +372,7 @@ test("a save and a disconnect show the summary of what is left", async ({
 
   await app.open(`/configure?account=${accountId}`);
   await expect(
-    screen.getByText("2 new titles detected, the latest 2 days ago."),
+    screen.getByText("2 titles detected, the latest 2 days ago"),
   ).toBeVisible();
 
   await screen.getByRole("button", "Remove Test catalog").tap();
@@ -328,7 +380,7 @@ test("a save and a disconnect show the summary of what is left", async ({
   await expect(screen.getByText(SAVED_REINSTALL)).toBeVisible();
   expect(submissions[0].lists).toMatchObject([{ id: historyList.id }]);
   await expect(
-    screen.getByText("1 new title detected, the latest 2 days ago."),
+    screen.getByText("1 title detected, the latest 2 days ago"),
   ).toBeVisible();
 
   await screen.getByRole("button", "Connected to Trakt. Disconnect").tap();
@@ -336,7 +388,7 @@ test("a save and a disconnect show the summary of what is left", async ({
     .getByRole("group", "Disconnect Trakt?")
     .getByRole("button", "Disconnect")
     .tap();
-  await expect(screen.getByText(NONE_YET_ONE_WAITING)).toBeVisible();
+  await expect(screen.getByText(NONE_YET)).toBeVisible();
   expect(deletes).toEqual(["DELETE"]);
 });
 
@@ -350,13 +402,13 @@ test("the reinstall notice follows the New titles setting before a save", async 
   const notice = screen.getByText("These changes need a reinstall.", {
     exact: true,
   });
-  await expect(screen.getByRole("checkbox", TOGGLE)).not.toBeChecked();
+  await expect(screen.getByRole("button", ADD)).toBeVisible();
   await expect(notice).toBeHidden();
 
-  await screen.getByRole("checkbox", TOGGLE).tap();
+  await screen.getByRole("button", ADD).tap();
   await expect(notice).toBeVisible();
 
-  await screen.getByRole("checkbox", TOGGLE).tap();
+  await screen.getByRole("button", `Remove ${BUILT_IN_TITLE}`).tap();
   await expect(notice).toBeHidden();
   await expect(saveButton(screen)).toBeDisabled();
   await expect(screen.getByRole("button", "I did it")).toHaveCount(0);

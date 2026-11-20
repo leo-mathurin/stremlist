@@ -4,9 +4,13 @@ import type { CatalogPreview } from "@stremlist/shared/catalog-preview";
 import { listSourcesKey } from "@stremlist/shared/list-merge";
 import type { SourceId } from "@stremlist/shared/providers";
 import type { SourceProblemReason } from "@stremlist/shared/source-problems";
-import type { ConnectionSummary } from "@stremlist/shared/stremio.types";
+import type {
+  ConnectionSummary,
+  NewTitlesSettings,
+} from "@stremlist/shared/stremio.types";
 import { api } from "@/lib/api";
 import { previewConnectionKey } from "@/lib/connections";
+import { newTitlesSort } from "@/lib/new-titles";
 import type { ListFormRow } from "@/lib/list-form";
 import { queueWait, retryDelay } from "@/lib/provider-queue";
 import type { QueueWait } from "@/lib/provider-queue";
@@ -18,6 +22,14 @@ import type { QueueWait } from "@/lib/provider-queue";
 export const ConnectionsContext = createContext<ConnectionSummary[]>([]);
 
 type PreviewBody = InferRequestType<typeof api.lists.preview.$post>["json"];
+
+/**
+ * What a preview shows: one List of the rows, or the built-in "New titles"
+ * catalog, which reads the Titles detected in the other Lists.
+ */
+export type PreviewSubject =
+  | { kind: "list"; list: ListFormRow }
+  | { kind: "new-titles"; settings: NewTitlesSettings; sources: SourceId[] };
 
 type CatalogPreviewState =
   | { status: "loading" }
@@ -32,7 +44,22 @@ type CatalogPreviewState =
 
 const SETTINGS_DEBOUNCE_MS = 300;
 
-export function previewBody(list: ListFormRow, accountKey: string | null) {
+export function previewBody(
+  subject: PreviewSubject,
+  accountKey: string | null,
+) {
+  if (subject.kind === "new-titles") {
+    const { sortOption, displayMode, catalogSettings } = subject.settings;
+    return {
+      kind: "new-titles",
+      accountKey: accountKey ?? undefined,
+      sortOption: newTitlesSort(sortOption),
+      displayMode,
+      catalogSettings,
+      sources: subject.sources,
+    } satisfies PreviewBody;
+  }
+  const { list } = subject;
   return {
     accountKey: accountKey ?? undefined,
     provider: list.provider,
@@ -50,19 +77,23 @@ export function previewBody(list: ListFormRow, accountKey: string | null) {
   } satisfies PreviewBody;
 }
 
+function subjectSource(subject: PreviewSubject) {
+  return subject.kind === "list" ? listSourcesKey(subject.list) : "new-titles";
+}
+
 /**
- * The preview of a List while `enabled`. A change of sort or filters keeps
+ * The preview of a List, or of "New titles", while `enabled`. A change of sort or filters keeps
  * the current preview on screen (marked `updating`) until the new one comes;
  * a change of Source lists starts again from the loading state. A change of
  * the Account's Connection to a Provider of the List (see
  * `previewConnectionKey`) reads the preview again.
  */
 export function useCatalogPreview({
-  list,
+  subject,
   accountKey,
   enabled,
 }: {
-  list: ListFormRow;
+  subject: PreviewSubject;
   accountKey: string | null;
   enabled: boolean;
 }) {
@@ -70,10 +101,14 @@ export function useCatalogPreview({
     status: "loading",
   });
   const [attempt, setAttempt] = useState(0);
-  const source = listSourcesKey(list);
+  const source = subjectSource(subject);
   const shownSource = useRef<string | null>(null);
-  const connectionKey = previewConnectionKey(list, use(ConnectionsContext));
-  const nextBody = previewBody(list, accountKey);
+  const connections = use(ConnectionsContext);
+  const connectionKey =
+    subject.kind === "list"
+      ? previewConnectionKey(subject.list, connections)
+      : "";
+  const nextBody = previewBody(subject, accountKey);
   const bodyKey = JSON.stringify(nextBody);
   const [shown, setShown] = useState({ key: bodyKey, body: nextBody });
   if (shown.key !== bodyKey) setShown({ key: bodyKey, body: nextBody });

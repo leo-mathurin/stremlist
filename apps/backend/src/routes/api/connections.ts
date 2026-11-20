@@ -180,7 +180,7 @@ const connections = new Hono()
             newSetup,
             rpdbKey(setup?.rpdbApiKey),
             {
-              newTitlesCatalog: setup?.newTitles?.enabled,
+              newTitles: setup?.newTitles,
               posterSource: setup && savedPosterSource(setup),
             },
           );
