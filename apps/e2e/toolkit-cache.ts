@@ -1,6 +1,14 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, unlinkSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+} from "node:fs";
 import { join } from "node:path";
 import { isRecord, isString, parseJson } from "./helpers/json.js";
 
@@ -20,12 +28,14 @@ interface Step {
 interface Result {
   testId: string;
   selected: boolean;
+  status: string;
   tags?: string[];
   attempts: { steps: Step[] }[];
 }
 interface Report {
   run: {
-    summary: { discovered: number; selected: number; executed: number };
+    status: string;
+    summary: { discovered: number };
     usage?: { modelTokens?: number };
     results: Result[];
   };
@@ -66,6 +76,7 @@ function isResult(value: unknown): value is Result {
     isRecord(value) &&
     isString(value.testId) &&
     typeof value.selected === "boolean" &&
+    isString(value.status) &&
     Array.isArray(value.attempts) &&
     value.attempts.every(
       (attempt) =>
@@ -80,7 +91,9 @@ function isReport(value: unknown): value is Report {
   return (
     isRecord(value) &&
     isRecord(value.run) &&
+    isString(value.run.status) &&
     isRecord(value.run.summary) &&
+    typeof value.run.summary.discovered === "number" &&
     Array.isArray(value.run.results) &&
     value.run.results.every(isResult)
   );
@@ -117,7 +130,7 @@ function tracked() {
   }
 }
 
-function check(prune: boolean) {
+function check(reportFile: string, mode: "partial" | "full" | "prune") {
   const problems: string[] = [];
   const notes: string[] = [];
 
@@ -162,15 +175,28 @@ function check(prune: boolean) {
     );
   }
 
-  if (!existsSync(reportPath)) {
+  if (!existsSync(reportFile)) {
     problems.push("no .e2e/report.json: run the toolkit first");
     return report(problems, notes);
   }
   const { run } = parseJson(
-    readFileSync(reportPath, "utf8"),
+    readFileSync(reportFile, "utf8"),
     isReport,
-    ".e2e/report.json",
+    reportFile,
   );
+  const allPassed =
+    run.status === "passed" &&
+    run.summary.discovered > 0 &&
+    run.results.length === run.summary.discovered &&
+    run.results.every(
+      (result) => result.selected && result.status === "passed",
+    );
+  if (mode === "prune" && !allPassed) {
+    problems.push(
+      "Run the complete toolkit successfully before pruning recordings",
+    );
+    return report(problems, notes);
+  }
   const used = new Set<string>();
   const testIds = new Set(run.results.map((result) => result.testId));
   let goals = 0;
@@ -220,22 +246,23 @@ function check(prune: boolean) {
     );
   }
 
-  const whole =
-    run.results.every((result) => result.selected) &&
-    run.summary.executed === run.summary.discovered;
+  const replayedTests = new Set(
+    run.results
+      .filter((result) => result.status === "passed")
+      .map((result) => result.testId),
+  );
   const orphans = [...files]
     .filter(([key, name]) => {
       const testId = key.split("\n")[0];
-      return whole ? !used.has(name) : !testIds.has(testId);
+      return (
+        (mode !== "partial" && allPassed && !testIds.has(testId)) ||
+        (replayedTests.has(testId) && !used.has(name))
+      );
     })
     .map(([, name]) => name);
-  if (!whole) {
-    notes.push(
-      "the last run did not select every test: only recordings of unknown tests count as orphans",
-    );
-  }
+  if (mode === "prune" && problems.length > 0) return report(problems, notes);
   for (const name of orphans) {
-    if (prune) {
+    if (mode === "prune") {
       unlinkSync(join(cacheDir, name));
       notes.push(`deleted the orphan recording .e2e/cache/${name}`);
     } else {
@@ -266,22 +293,51 @@ function report(problems: string[], notes: string[]) {
   return problems.length === 0;
 }
 
-const [command, ...rest] = process.argv.slice(2);
-if (command === "replay") {
+function strictReplay(args: string[]) {
   const replay = spawnSync(
     join(root, "node_modules/.bin/e2e"),
-    ["run", "--strict-cache", ...rest],
+    ["run", "--strict-cache", ...args],
     {
       cwd: root,
       stdio: "inherit",
       env: { ...process.env, CI: "1", E2E_OAUTH_CREDENTIALS: "{}" },
     },
   );
-  const cacheOk = check(false);
-  const status = replay.status ?? 1;
-  process.exit(status !== 0 ? status : cacheOk ? 0 : 1);
-} else if (command === "check") {
-  process.exit(check(rest.includes("--prune")) ? 0 : 1);
+  return replay.status ?? 1;
+}
+
+function pruneAfterReplay() {
+  const outputRoot = join(root, ".e2e");
+  mkdirSync(outputRoot, { recursive: true });
+  const output = mkdtempSync(join(outputRoot, "prune-"));
+  try {
+    const status = strictReplay([
+      "--config",
+      "e2e.config.ts",
+      "--output",
+      output,
+    ]);
+    if (status !== 0) return status;
+    return check(join(output, "report.json"), "prune") ? 0 : 1;
+  } finally {
+    rmSync(output, { recursive: true, force: true });
+  }
+}
+
+const [command, ...rest] = process.argv.slice(2);
+if (command === "replay") {
+  const status = strictReplay(rest);
+  process.exit(
+    status !== 0
+      ? status
+      : check(reportPath, rest.length ? "partial" : "full")
+        ? 0
+        : 1,
+  );
+} else if (command === "check" && rest.length === 0) {
+  process.exit(check(reportPath, "partial") ? 0 : 1);
+} else if (command === "check" && rest.length === 1 && rest[0] === "--prune") {
+  process.exit(pruneAfterReplay());
 } else {
   console.error(
     "Usage: bun toolkit-cache.ts replay [e2e run arguments] | check [--prune]",

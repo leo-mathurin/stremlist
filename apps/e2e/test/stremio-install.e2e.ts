@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
 import { addonManifestUrl } from "../env.js";
 import { bootstrapLegacy } from "../helpers/api.js";
 import { configureUrl } from "../helpers/configure.js";
@@ -14,7 +15,7 @@ test.beforeEach(resetDb);
 
 test(
   "installs and uninstalls the addon through Stremio Web",
-  { tag: "@live-smoke" },
+  { tags: ["live-smoke"] },
   async ({ page }) => {
     const manifestUrl = addonManifestUrl((await seedImdbAccount()).accountId);
 
@@ -38,7 +39,7 @@ test(
 
 test(
   "configure page links straight into Stremio Web's install dialog",
-  { tag: "@live-regression" },
+  { tags: ["live-regression"] },
   async ({ page, context }) => {
     const { accountId } = await seedImdbAccount();
     await page.goto(configureUrl(accountId));
@@ -57,7 +58,7 @@ test(
 
 test(
   "a Legacy alias Addon URL still installs in Stremio Web",
-  { tag: "@live-regression" },
+  { tags: ["live-regression"] },
   async ({ page }) => {
     await bootstrapLegacy(PUBLIC_USER);
     const manifestUrl = addonManifestUrl(PUBLIC_USER);

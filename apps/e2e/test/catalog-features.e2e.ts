@@ -1,5 +1,6 @@
-import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
+import type { Page } from "../integration-browser.js";
 import type { ConfigListInput } from "@stremlist/shared/stremio.types";
 import { BACKEND_URL, addonManifestUrl } from "../env.js";
 import {
@@ -69,12 +70,11 @@ async function saveList(accountId: string, list: Partial<ConfigListInput>) {
   expect((await postConfig(accountId, lists)).status).toBe(200);
 }
 
-test.use({ actionTimeout: 20_000 });
 test.beforeEach(resetDb);
 
 test(
   "combined filters persist through reload and clear without disabling presets",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { accountId, catalogId } = await seedCatalog();
     await openFilters(page, accountId);
@@ -117,7 +117,7 @@ test(
 
 test(
   "search combines saved filters with accents and literal URL characters",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ request }) => {
     const { accountId, id, catalogId } = await seedCatalog();
     await saveList(accountId, {
@@ -143,7 +143,7 @@ test(
 
 test(
   "shuffle pagination is stable, complete and contains no duplicate titles",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ request }) => {
     const metas = Array.from({ length: 215 }, (_, index) => ({
       ...CATALOG_TITLES[0],
@@ -172,16 +172,20 @@ test(
 
 test(
   "series catalogs remain available while episode metadata is delegated",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { accountId, id } = await seedCatalog();
     await saveList(accountId, { id, displayMode: "split" });
     const manifest = await getManifest(accountId);
-    expect(manifest.resources).toContainEqual({
-      name: "meta",
-      types: ["movie"],
-      idPrefixes: ["tt"],
-    });
+    expect(manifest.resources).toEqual(
+      expect.arrayContaining([
+        {
+          name: "meta",
+          types: ["movie"],
+          idPrefixes: ["tt"],
+        },
+      ]),
+    );
     expect(
       (await getCatalog(accountId, "series", `wl-${id}-series`)).metas.map(
         (meta) => meta.name,
@@ -196,7 +200,7 @@ test(
 
 test(
   "saved filters and the new runtime/date dropdown sorts render in Stremio",
-  { tag: "@live-regression" },
+  { tags: ["live-regression"] },
   async ({ page }) => {
     const { accountId, id, catalogId } = await seedCatalog();
     await saveList(accountId, {
@@ -232,7 +236,7 @@ test(
 
 test(
   "all three preset catalogs appear after reinstall and serve their expected titles",
-  { tag: "@live-regression" },
+  { tags: ["live-regression"] },
   async ({ page }) => {
     const { accountId, catalogId } = await seedCatalog();
     const presets = ["90 min or less", "Top rated", "Shuffle"];
@@ -286,7 +290,7 @@ test(
 
 test(
   "Stremio search sends accented-title queries and respects saved filters",
-  { tag: "@live-regression" },
+  { tags: ["live-regression"] },
   async ({ page }) => {
     const { accountId, id, catalogId } = await seedCatalog();
     await saveList(accountId, {
@@ -319,11 +323,9 @@ test(
       );
       await Promise.race([
         response,
-        expect(async () => {
-          await page
-            .getByText("Stremlist Release QA - Movie", { exact: true })
-            .scrollIntoViewIfNeeded({ timeout: 1_000 });
-        }).toPass({ timeout: 20_000 }),
+        page
+          .getByText("Stremlist Release QA - Movie", { exact: true })
+          .scrollIntoViewIfNeeded({ timeout: 20_000 }),
       ]);
       const result = await response;
       expect(result.status()).toBe(200);

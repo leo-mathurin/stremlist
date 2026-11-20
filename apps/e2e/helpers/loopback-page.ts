@@ -1,6 +1,6 @@
 import { once } from "node:events";
 import { createServer } from "node:http";
-import type { Page } from "@playwright/test";
+import type { Page } from "../integration-browser.js";
 
 /**
  * Answer the requests of `page` that match `pattern` from a loopback server

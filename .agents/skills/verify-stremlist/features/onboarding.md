@@ -5,7 +5,7 @@ A visitor builds a new install from a Provider link or returns to an existing Ac
 ## Sub-features
 
 - `onboarding.new` detects a Provider, validates the link, and creates a private Account on Save.
-- `onboarding.return` opens an Addon URL or an old `?userId` link without creating a replacement Account. An IMDb ID, watchlist link or `p.` handle pasted on Home opens the v1 install that answers to it. Every v1 key form (`ur…`, `p.…`, `ls…`) serves the addon API (`test/legacy-installs.test.ts`).
+- `onboarding.return` opens an Addon URL or an old `?userId` link without creating a replacement Account. An IMDb ID, watchlist link or `p.` handle pasted on Home opens the v1 install that answers to it. Every v1 key form (`ur…`, `p.…`, `ls…`) serves the addon API (`test/legacy-installs.e2e.ts`).
 - `onboarding.errors` preserves invalid input and offers recovery from a failed configuration lookup.
 - `onboarding.providers` takes a public Trakt, JustWatch, SensCritique, or Letterboxd link from Home to a saved Account.
 - `onboarding.phone` runs the main journey at 390 x 844: Home, add a List, Save, install controls, reload.
@@ -15,14 +15,14 @@ A visitor builds a new install from a Provider link or returns to an existing Ac
 
 Open `/`. Paste into `Paste a link to a watchlist or list`, or choose `Build my Stremlist`. Returning users choose `Open it` and fill `Your Addon URL`. Existing links can open `/configure?account=...` or `/?userId=...` directly. Footer links reach public pages and the newsletter field is `your@email.com`.
 
-## Driving it with toolkit and Playwright
+## Driving it with toolkit and e2e integration
 
 Preconditions: use the skill's UI replay fixtures or the disposable integration stack. Live validation requires the public fixtures from `apps/e2e/helpers/test-data.ts`.
 
 - Run `bun run test:toolkit:replay`. `toolkit/home.e2e.ts`, `ui.e2e.ts`, `configuration-recovery.e2e.ts`, and `account-newsletter.e2e.ts` drive these entry points. Require the Account URL, installation choices, captured create request, and errors asserted by the specs.
-- For real onboarding storage and validation, run `CI=1 bun run --filter @stremlist/e2e test:e2e --project=live-smoke test/home-onboarding.test.ts --trace on`. Require `Your Stremlist is ready`, a generated `sl_` Account ID, and the second configuration read matching the pasted List.
-- For `onboarding.providers` and `onboarding.phone`, run `CI=1 bun run --filter @stremlist/e2e test:e2e --project=local test/provider-stremio.test.ts test/phone-journey.test.ts --trace on`. The page talks to a fixture backend that shares the database. Require the created Account, the saved List read back through the API, and the List after a reload. The phone test also requires no sideways scroll, and the Addon URL and `Open Stremio Web` in view. `toolkit/phone.e2e.ts` checks the same journey with intercepted answers.
-- For invalid input and returning users, run `CI=1 bun run --filter @stremlist/e2e test:e2e --project=local test/home-onboarding.test.ts --trace on`. Require no resolution request for garbage and the existing configuration for a Legacy alias.
+- For real onboarding storage and validation, run `CI=1 bun run --filter @stremlist/e2e test:e2e --tag live-smoke test/home-onboarding.e2e.ts --trace on`. Require `Your Stremlist is ready`, a generated `sl_` Account ID, and the second configuration read matching the pasted List.
+- For `onboarding.providers` and `onboarding.phone`, run `CI=1 bun run --filter @stremlist/e2e test:e2e --tag local test/provider-stremio.e2e.ts test/phone-journey.e2e.ts --trace on`. The page talks to a fixture backend that shares the database. Require the created Account, the saved List read back through the API, and the List after a reload. The phone test also requires no sideways scroll, and the Addon URL and `Open Stremio Web` in view. `toolkit/phone.e2e.ts` checks the same journey with intercepted answers.
+- For invalid input and returning users, run `CI=1 bun run --filter @stremlist/e2e test:e2e --tag local test/home-onboarding.e2e.ts --trace on`. Require no resolution request for garbage and the existing configuration for a Legacy alias.
 
 ## Gotchas
 

@@ -1,9 +1,9 @@
-import type { Page } from "@playwright/test";
+import type { Page } from "../integration-browser.js";
 import { BACKEND_URL } from "../env.js";
 
 /**
  * Send every API request of the page to the backend at `url` (a fixture
- * backend) instead of the Playwright backend. Both use the same database,
+ * backend) instead of the integration backend. Both use the same database,
  * so Accounts that the page creates exist on both.
  */
 export async function routePageTo(page: Page, url: string) {

@@ -1,6 +1,6 @@
 ---
 name: verify-stremlist
-description: Verify Stremlist's configuration web UI and Stremio addon API with the existing toolkit replay, Playwright, unit tests, and SQL checks. Use before handing off behavior changes or checking a release.
+description: Verify Stremlist's configuration web UI and Stremio addon API with the existing toolkit replay, e2e integration, unit tests, and SQL checks. Use before handing off behavior changes or checking a release.
 ---
 
 # Verify Stremlist
@@ -19,7 +19,7 @@ bun run --cwd apps/e2e e2e-web install chromium
 Choose one mode. Never run both modes or two copies of a mode against shared state.
 
 - **UI replay** needs no database, Provider credentials, or model login. `bun run test:toolkit:replay` launches Vite on `127.0.0.1:4311`. Each test seeds its own API responses at the existing HTTP boundary, `127.0.0.1:4314`. Nothing listens on 4314. A test's first visible-state assertion proves readiness and fixture loading. Browser contexts and the frontend stop when the runner exits.
-- **Integration** uses the real backend, database, and S3-compatible store. Follow [the E2E setup](../../../apps/e2e/README.md). On a host reserved for this run, start the stack below. Supabase applies `supabase/migrations` to a fresh database. Require successful startup, then run preflight. Tests seed their own data. Playwright owns backend port 7301 and frontend port 7302.
+- **Integration** uses the real backend, database, and S3-compatible store. Follow [the E2E setup](../../../apps/e2e/README.md). On a host reserved for this run, start the stack below. Supabase applies `supabase/migrations` to a fresh database. Require successful startup, then run preflight. Tests seed their own data. e2e integration owns backend port 7301 and frontend port 7302.
 
 Before integration setup, use a shell with no E2E dotenv files in `apps/e2e`. Clear inherited target overrides and disable Provider clients on the main backend. Keep this environment for preflight and every integration command. Reapply the block in each fresh terminal or tool call, as exports from an earlier shell do not persist.
 
@@ -48,7 +48,7 @@ docker run --rm -d --name stremlist-e2e-r2 \
 	-e RUSTFS_ACCESS_KEY=stremlist-e2e \
 	-e RUSTFS_SECRET_KEY=stremlist-e2e-secret \
 	rustfs/rustfs:1.0.1 /data
-bun --no-env-file run --cwd apps/e2e playwright install chromium
+bun --no-env-file run --cwd apps/e2e e2e-web install chromium
 bun --no-env-file run --cwd apps/e2e preflight.ts
 ```
 
@@ -92,14 +92,14 @@ Require `toolkit-run/exit` to contain 0, all selected tests passed, and `toolkit
 For integration, run one mapped feature first, then the affected specs. `CI=1` rejects an occupied frontend or backend port instead of reusing another instance. Traces stay enabled on successful runs too.
 
 ```sh
-CI=1 .agents/skills/verify-stremlist/scripts/run-check.sh "$VERIFY_EVIDENCE/playwright-run" 600 7301,7302 \
-	bun --no-env-file run --filter @stremlist/e2e test:e2e --project=local \
-	test/merged-lists.test.ts --grep 'merging two Lists on the configure page saves and survives a reload' --trace on
+CI=1 .agents/skills/verify-stremlist/scripts/run-check.sh "$VERIFY_EVIDENCE/integration-run" 600 7301,7302 \
+	bun --no-env-file run --filter @stremlist/e2e test:e2e --tag local \
+	test/merged-lists.e2e.ts --grep 'merging two Lists on the configure page saves and survives a reload' --trace on
 ```
 
-The complete local integration pass uses `CI=1 bun run --filter @stremlist/e2e test:e2e --project=local --trace on`, inside the same helper. Local specs include fixture transports and some real IMDb reads, including save-triggered chart prewarming. This project is not an offline suite. Live projects also require public IMDb and hosted Stremio Web. Run `--project=live-smoke` and `--project=live-regression` separately when those paths change. Keep their outcomes separate from fixture-backed specs.
+The complete local integration pass uses `CI=1 bun run --filter @stremlist/e2e test:e2e --tag local --trace on`, inside the same helper. Local specs include fixture transports and some real IMDb reads, including save-triggered chart prewarming. This project is not an offline suite. Live projects also require public IMDb and hosted Stremio Web. Run `--tag live-smoke` and `--tag live-regression` separately when those paths change. Keep their outcomes separate from fixture-backed specs.
 
-Projects select tags, not whole files. Check the selected tests with the existing Playwright `--list` option when narrowing a run. Zero selected tests is not a pass.
+Tags select tests within files. Check the selected and passed counts in the e2e report after narrowing a run.
 
 For an interactive preview of an owned running app, use `~/.local/bin/agent-browser`. Set `VERIFY_BROWSER_SESSION="stremlist-verify-$(date -u +%Y%m%dT%H%M%SZ)-$$"`. Read its `--help` with that `--session`, then keep the session on every call. Open the local frontend, run `snapshot -i`, then use snapshot references with `fill` and `click`. Save snapshots and screenshots before and after the action. The toolkit's API interception belongs to its browser context. A separate browser does not inherit its seeded Account or responses.
 
@@ -111,19 +111,18 @@ Copy runner artifacts before another run overwrites them.
 
 ```sh
 test ! -d apps/e2e/.e2e || cp -R apps/e2e/.e2e "$VERIFY_EVIDENCE/toolkit"
-test ! -d apps/e2e/playwright-report || cp -R apps/e2e/playwright-report "$VERIFY_EVIDENCE/playwright-report"
-test ! -d apps/e2e/test-results || cp -R apps/e2e/test-results "$VERIFY_EVIDENCE/playwright-results"
+test ! -d apps/e2e/test-results || cp -R apps/e2e/test-results "$VERIFY_EVIDENCE/integration-results"
 ```
 
-The toolkit report and recorded steps prove UI requests and responses. They do not prove persistence or Provider authorization. Playwright traces include actions, DOM snapshots, and network exchanges. Keep Account URLs and credentials out of shared artifacts. Use only disposable fixtures in published proofs.
+The toolkit report and recorded steps prove UI requests and responses. They do not prove persistence or Provider authorization. e2e integration traces include actions, DOM snapshots, and network exchanges. Keep Account URLs and credentials out of shared artifacts. Use only disposable fixtures in published proofs.
 
 ## Cleanup
 
 Let test runners finish normally so their browser, frontend, backend, and fixture teardown runs. The helper terminates its recorded process group and gives it ten seconds to stop before forced termination. This covers a fixture backend whose startup fails before its `stop` callback becomes available. Read `cleanup`, `forced-kill`, and `processes-after-cleanup` in each run directory. Require a passed check, no forced kill, and no live group members.
 
-The helper traps SIGHUP, SIGINT, and SIGTERM and sends SIGTERM to its group. Toolkit supports SIGTERM, but Playwright's graceful spec teardown uses SIGINT. A timeout or a trapped interruption therefore leaves runner teardown unverified, even when the group and ports are empty. The helper reports blocked cleanup for exits 124, 129, 130, 137, and 143. It records forced termination from its own kill, timeout's kill diagnostic, or exit 137. After an interrupted integration run, discard the run-owned disposable database and storage before another run. Do not treat `forced-kill=no` as proof that spec cleanup ran.
+The helper traps SIGHUP, SIGINT, and SIGTERM and sends SIGTERM to its group. Toolkit supports SIGTERM, but the integration app handles SIGINT and SIGTERM. A timeout or a trapped interruption therefore leaves runner teardown unverified, even when the group and ports are empty. The helper reports blocked cleanup for exits 124, 129, 130, 137, and 143. It records forced termination from its own kill, timeout's kill diagnostic, or exit 137. After an interrupted integration run, discard the run-owned disposable database and storage before another run. Do not treat `forced-kill=no` as proof that spec cleanup ran.
 
-Both runners start detached processes. Toolkit Vite and Playwright webServers and Chromium can leave the recorded group. The helper refuses occupied server ports before launch and reports blocked cleanup if the selected ports still listen afterward. Require `server-listeners-after-cleanup` to be empty. `listeners-after-cleanup` also captures dynamic fixture ports. A group pass alone does not prove detached-server or browser teardown. Inspect any remaining run-owned detached browser and verify its exit separately before claiming cleanup. If ownership or exit cannot be established, report cleanup as blocked. Never kill by process name or free a port by killing an unknown owner.
+Both runners start detached processes. Toolkit Vite and the integration servers and Chromium can leave the recorded group. The helper refuses occupied server ports before launch and reports blocked cleanup if the selected ports still listen afterward. Require `server-listeners-after-cleanup` to be empty. `listeners-after-cleanup` also captures dynamic fixture ports. A group pass alone does not prove detached-server or browser teardown. Inspect any remaining run-owned detached browser and verify its exit separately before claiming cleanup. If ownership or exit cannot be established, report cleanup as blocked. Never kill by process name or free a port by killing an unknown owner.
 
 If this run created the disposable RustFS container, stop that exact container with `docker stop stremlist-e2e-r2`. If this run created the reserved Supabase stack, use `supabase stop --no-backup` from the repository root. This discards disposable verification state. Do not stop a pre-existing stack. Stop fixture backends before deleting their temporary directories.
 
@@ -133,7 +132,7 @@ Close an interactive browser with `~/.local/bin/agent-browser --session "$VERIFY
 
 Use executable `scripts/run-check.sh NEW_EVIDENCE_DIR TIMEOUT_SECONDS SERVER_PORTS_OR_DASH COMMAND [ARGS...]` for each long-running command. Supply the mode's server ports as a comma-separated list. Use `-` only for commands with no servers. Do not include the disposable database or storage ports, which stay up until container cleanup. The parent evidence directory must already exist. The child directory must be new. The helper uses Bash, `setsid`, GNU `timeout`, `env`, `ps`, and `ss` on this Linux host. A run that detaches into another session needs its own explicit teardown and cannot be claimed covered by group cleanup. For a different host, establish equivalent ownership before driving the app.
 
-Reuse `apps/e2e/toolkit-cache.ts` through `bun run test:toolkit:replay`, `apps/e2e/preflight.ts`, and the existing Playwright config and fixtures. The helper supervises these runners and does not replace them. For implementation checks, SQL commands, and delivery gates, read [coverage and delivery criteria](references/coverage.md).
+Reuse `apps/e2e/toolkit-cache.ts` through `bun run test:toolkit:replay`, `apps/e2e/preflight.ts`, and the existing e2e integration config and fixtures. The helper supervises these runners and does not replace them. For implementation checks, SQL commands, and delivery gates, read [coverage and delivery criteria](references/coverage.md).
 
 When changing the command supervisor or its fixtures, run `python3 .agents/skills/verify-stremlist/tests/run-check.py`. The committed [helper tests](tests/run-check.py) use Python 3's standard library and the same Linux tools as the helper. Each run keeps its reports under a unique `test-results/verify-stremlist-helper/` directory. It needs no application dependencies or running services.
 

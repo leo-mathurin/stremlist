@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
+import type { Page } from "../integration-browser.js";
 import { BACKEND_URL, FRONTEND_URL } from "../env.js";
 import { listInput } from "../helpers/api.js";
 import {
@@ -44,7 +45,7 @@ const movieCatalog = async (accountKey: string, listId: string) =>
 
 test(
   "Trakt OAuth start and callback store an encrypted Connection",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { api } = backend;
     const accountId = present(
@@ -212,7 +213,7 @@ test(
 
 test(
   "disconnecting revokes the token and private Lists ask to connect again",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { api } = backend;
     const accountId = await seedAccount();
@@ -256,7 +257,7 @@ test(
 
 test(
   "an expired Connection refreshes, or asks to connect again when refused",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { api } = backend;
     const past = new Date(Date.now() - 60_000);
@@ -308,7 +309,7 @@ test(
 
 test(
   "a Legacy alias install never reads through a Connection",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { api } = backend;
     const alias = LEGACY_CONNECTION_USER;
@@ -380,7 +381,7 @@ test(
 
 test(
   "a v1 legacy install keeps serving Stremio after its upgrade, and the private URL serves the same Lists",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { api } = backend;
     const alias = LEGACY_CONNECTION_USER;
@@ -431,7 +432,7 @@ test(
 
 test(
   "Simkl and MDBList OAuth round trips store their Connection",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { api } = backend;
     const accountId = present(
@@ -546,7 +547,7 @@ async function seedTraktAccount() {
 
 test(
   "unsaved edits come back after the Connect round trip and save",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { api } = backend;
     const accountId = await seedTraktAccount();
@@ -603,7 +604,7 @@ test(
 
 test(
   "the Connect round trip without unsaved edits brings back no draft",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const accountId = await seedTraktAccount();
     await routePageTo(page, backend.url);
@@ -628,7 +629,7 @@ test(
 
 test(
   "a Provider turned off during the authorization says so and keeps the edits",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { api } = backend;
     const accountId = await seedTraktAccount();

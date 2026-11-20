@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:e2e": "bun preflight.ts && playwright test",
+    "test:e2e": "bun --no-env-file preflight.ts && e2e run --config integration.config.ts",
     "test:toolkit": "e2e run",
     "test:toolkit:record": "e2e run --tag agent",
     "test:toolkit:replay": "bun toolkit-cache.ts replay",
@@ -14,7 +14,6 @@
     "@ai-sdk/openai": "^4.0.117",
     "@aws-sdk/client-s3": "^3.1168.0",
     "@e2e-dev/web": "0.12.0",
-    "@playwright/test": "^1.65.0",
     "@stremlist/backend": "workspace:*",
     "@stremlist/frontend": "workspace:*",
     "@stremlist/shared": "workspace:*",

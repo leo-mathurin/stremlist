@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
 import { addonManifestUrl } from "../env.js";
 import { getCatalog } from "../helpers/api.js";
 import { resetDb, seedImdbAccount } from "../helpers/db.js";
@@ -8,7 +9,7 @@ test.beforeEach(resetDb);
 
 test(
   "catalog items open their detail page",
-  { tag: "@live-regression" },
+  { tags: ["live-regression"] },
   async ({ page }) => {
     const { accountId, listId } = await seedImdbAccount();
     const catalogId = `wl-${listId}-movie`;

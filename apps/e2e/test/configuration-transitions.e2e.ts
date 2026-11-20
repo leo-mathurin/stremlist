@@ -1,5 +1,6 @@
-import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
+import type { Page } from "../integration-browser.js";
 import type { ConfigListInput } from "@stremlist/shared/stremio.types";
 import {
   getCatalog,
@@ -55,7 +56,7 @@ test.beforeEach(resetDb);
 
 test(
   "an overlong title is rejected atomically and a corrected title persists",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { accountId, id } = await seedCatalog();
     const rejected = await postConfig(accountId, [
@@ -92,7 +93,7 @@ test(
 
 test(
   "switching a built-in movie chart to TV persists its locked content type",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { accountId } = await seedCatalog();
     await openConfigure(page, accountId, "Release QA");
@@ -134,7 +135,7 @@ test(
 
 test(
   "disabling presets persists, removes manifest rows and retires their old URLs",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { accountId, id, catalogId } = await seedCatalog();
     const presetLabels = ["Top rated", "90 min or less", "Shuffle"];
@@ -188,7 +189,7 @@ test(
 
 test(
   "saved List removal survives reload and its old catalog URL is empty",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { accountId, id, catalogId } = await seedCatalog();
     const kept = await seedList(accountId, {
@@ -224,7 +225,7 @@ test(
 
 test(
   "an untitled List keeps its Stremio name when Lists are added before it",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const accountId = await seedAccount();
     const id = await seedList(accountId, {
@@ -246,8 +247,8 @@ test(
         `wl-${id}-movie`,
         "Stremlist IMDb Watchlist",
       ]);
-      expect(names.map(([, name]) => name)).not.toContainEqual(
-        expect.stringMatching(/^Stremlist \d+$/),
+      expect(names.some(([, name]) => /^Stremlist \d+$/.test(name))).toBe(
+        false,
       );
     }
     const lists = (await getConfig(accountId)).body.lists;
@@ -265,7 +266,7 @@ test(
 
 test(
   "numbered v1 titles give way to Source list names after a saved reorder",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { accountId, id } = await seedCatalog();
     const second = await seedList(accountId, {
@@ -337,7 +338,7 @@ test(
 
 test(
   "empty filtered catalog recovers when one restrictive filter is removed",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { accountId, catalogId } = await seedCatalog();
     await openConfigure(page, accountId, "Release QA");

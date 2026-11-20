@@ -1,4 +1,6 @@
-import { expect, test } from "@playwright/test";
+import { randomUUID } from "node:crypto";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
 import { listInput } from "../helpers/api.js";
 import {
   clearResolverCache,
@@ -37,7 +39,7 @@ test.beforeEach(async () => {
 
 test(
   "public links of Trakt, JustWatch and SensCritique become Catalogs",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { api } = backend;
     const links = {
@@ -109,7 +111,7 @@ test(
 
 test(
   "MDBList and Simkl Source lists read through a Connection",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { api } = backend;
     const accountId = await seedAccount();
@@ -198,7 +200,7 @@ test(
 
 test(
   "Simkl trending, genre and DVD charts become Catalogs with no Connection",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { api } = backend;
     const created = await api.createAccount([
@@ -241,7 +243,7 @@ test(
 
 test(
   "Trakt charts and the Source lists of a Trakt Connection become Catalogs",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { api } = backend;
 
@@ -353,23 +355,25 @@ test(
 
 test(
   "public Letterboxd watchlists persist and share upstream reads between Accounts",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const { api } = backend;
     const first = await seedAccount();
     const second = await seedAccount();
     backend.clearRequests();
-    const input = "https://letterboxd.com/fixture_user/watchlist/";
+    const username = `fixture_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
+    const input = `https://letterboxd.com/${username}/watchlist/`;
+    const sourceRef = `users/${username}/watchlist`;
     const resolved = await api.resolveLink(input, first);
     expect(resolved).toMatchObject({
       ok: true,
       provider: "letterboxd",
-      sourceRef: "users/fixture_user/watchlist",
+      sourceRef,
       requiresConnection: false,
     });
     for (const account of [first, second]) {
       const saved = await api.postConfig(account, [
-        listInput("letterboxd", "users/fixture_user/watchlist", {
+        listInput("letterboxd", sourceRef, {
           ...SPLIT,
           catalogTitle: "Letterboxd Watchlist",
         }),
@@ -378,7 +382,7 @@ test(
       const config = await api.getConfig(account);
       expect(config.body.lists[0]).toMatchObject({
         provider: "letterboxd",
-        sourceRef: "users/fixture_user/watchlist",
+        sourceRef,
       });
       expect(await catalogs(account, config.body.lists[0].id)).toEqual(BOTH);
     }

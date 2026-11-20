@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
 import { addonManifestUrl, FRONTEND_URL } from "../env.js";
 import { bootstrapLegacy, createAccount, getConfig } from "../helpers/api.js";
 import { resetDb, seedImdbAccount } from "../helpers/db.js";
@@ -29,7 +30,7 @@ test.beforeEach(resetDb);
 
 test(
   "loads the existing configuration",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { accountId } = await seedWatchlist();
     await openConfigure(page, accountId, TITLE);
@@ -49,7 +50,7 @@ test(
 
 test(
   "Addon URL copy works through an accessible control",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ context, page }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"], {
       origin: FRONTEND_URL,
@@ -71,7 +72,7 @@ test(
 
 test(
   "clipboard denial explains how to copy the Addon URL manually",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ context, page }) => {
     const cdp = await context.newCDPSession(page);
     const { targetInfo } = await cdp.send("Target.getTargetInfo");
@@ -95,7 +96,7 @@ test(
 
 test(
   "failed configuration loads cannot overwrite saved settings and can retry",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { accountId } = await seedWatchlist();
     let failing = true;
@@ -125,7 +126,7 @@ test(
 
 test(
   "adds an IMDb list from a pasted link and saves",
-  { tag: "@live-regression" },
+  { tags: ["live-regression"] },
   async ({ page }) => {
     const { accountId } = await seedWatchlist();
     await openConfigure(page, accountId, TITLE);
@@ -157,7 +158,7 @@ test(
 
 test(
   "the first List of an Account saved without Lists asks for a reinstall",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { body } = await createAccount([]);
     const accountId = present(body.accountId, "the new Account ID");
@@ -176,7 +177,7 @@ test(
   },
 );
 
-test("adds a built-in chart List", { tag: "@local" }, async ({ page }) => {
+test("adds a built-in chart List", { tags: ["local"] }, async ({ page }) => {
   const { accountId } = await seedWatchlist();
   await openConfigure(page, accountId, TITLE);
 
@@ -195,7 +196,7 @@ test("adds a built-in chart List", { tag: "@local" }, async ({ page }) => {
 
 test(
   "changes sort order and content filter",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { accountId } = await seedWatchlist();
     await openConfigure(page, accountId, TITLE);
@@ -217,7 +218,7 @@ test(
   },
 );
 
-test("saves and clears the RPDB key", { tag: "@local" }, async ({ page }) => {
+test("saves and clears the RPDB key", { tags: ["local"] }, async ({ page }) => {
   const { accountId } = await seedWatchlist();
   await openConfigure(page, accountId, TITLE);
 
@@ -230,7 +231,7 @@ test("saves and clears the RPDB key", { tag: "@local" }, async ({ page }) => {
   expect((await getConfig(accountId)).body.rpdbApiKey).toBeNull();
 });
 
-test("removes a List", { tag: "@local" }, async ({ page }) => {
+test("removes a List", { tags: ["local"] }, async ({ page }) => {
   const { accountId } = await seedWatchlist();
   await openConfigure(page, accountId, TITLE);
   await addImdbChart(page, /^Box Office \(Weekend\)/);
@@ -249,7 +250,7 @@ test("removes a List", { tag: "@local" }, async ({ page }) => {
 
 test(
   "adding and removing an unsaved List leaves nothing to save",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { accountId } = await seedWatchlist();
     await openConfigure(page, accountId, TITLE);
@@ -270,7 +271,7 @@ test(
 
 test(
   "manual refresh hits the backend and starts the cooldown",
-  { tag: "@live-regression" },
+  { tags: ["live-regression"] },
   async ({ page }) => {
     const { accountId } = await seedWatchlist();
     await openConfigure(page, accountId, TITLE);
@@ -290,7 +291,7 @@ test(
 
 test(
   "unknown Addon URLs are told to build a new Stremlist",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     for (const key of ["sl_0000000000000000000000", UNKNOWN_USER]) {
       await page.goto(configureUrl(key));
@@ -306,7 +307,7 @@ test(
 
 test(
   "pasting an Addon URL on Home loads its configuration",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { accountId } = await seedWatchlist();
     await bootstrapLegacy(PUBLIC_USER);
@@ -335,7 +336,7 @@ test(
 
 test(
   "a catalog change asks for a reinstall until it is done, a sort change does not",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { accountId } = await seedWatchlist();
     await openConfigure(page, accountId, TITLE);
@@ -407,7 +408,7 @@ test(
 
 test(
   "for a member who reinstalls by hand, the Reinstall action of the save toast opens Stremio Web and keeps the reminder",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page, context }) => {
     await context.route("https://web.stremio.com/**", (route) =>
       route.fulfill({
@@ -450,7 +451,7 @@ test(
 
 test(
   "the floating Save button shows once the header Save scrolls away",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { accountId } = await seedWatchlist();
     await openConfigure(page, accountId, TITLE);

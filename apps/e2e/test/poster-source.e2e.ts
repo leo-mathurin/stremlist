@@ -1,5 +1,6 @@
-import { expect, test } from "@playwright/test";
-import type { Page } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
+import type { Page } from "../integration-browser.js";
 import type { Api } from "../helpers/api.js";
 import { listInput, ok } from "../helpers/api.js";
 import {
@@ -97,7 +98,7 @@ const tmdbRequests = () =>
 
 test(
   "a TMDB choice saves, survives a reload and reaches Stremio for this Account only",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     const { accountId, listId } = await seedWatchlistAccount(backend.api);
     expect(await getPosterSource(accountId)).toBe("imdb");
@@ -189,7 +190,7 @@ test(
 
 test(
   "while TMDB fails, Stremio keeps the IMDb posters and nothing is stored",
-  { tag: "@local" },
+  { tags: ["local"] },
   async () => {
     const down = await startFixtureBackend("./provider.fixture.ts", {
       TMDB_API_KEY: "fixture-tmdb-key",
@@ -221,7 +222,7 @@ const TVDB_ARTWORK =
 
 test(
   "TheTVDB posters, with the real API, save and reach Stremio",
-  { tag: "@local" },
+  { tags: ["local"] },
   async ({ page }) => {
     test.skip(!LIVE_TVDB_KEY, "Needs TVDB_LIVE_API_KEY (a real TheTVDB key)");
     const live = await startFixtureBackend("./provider.fixture.ts", {

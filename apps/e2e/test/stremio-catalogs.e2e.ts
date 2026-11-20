@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "../integration-expect.js";
+import { test } from "../integration-browser.js";
 import { addonManifestUrl } from "../env.js";
 import {
   getCatalog,
@@ -24,7 +25,7 @@ test.beforeEach(resetDb);
 
 test(
   "watchlist catalog renders in Discover, in catalog order",
-  { tag: "@live-smoke" },
+  { tags: ["live-smoke"] },
   async ({ page }) => {
     const { accountId, listId } = await seedImdbAccount();
     const manifestUrl = addonManifestUrl(accountId);
@@ -46,7 +47,7 @@ test(
 
 test(
   "sort option changes reorder the catalog without reinstalling",
-  { tag: "@live-regression" },
+  { tags: ["live-regression"] },
   async ({ page }) => {
     const { accountId, listId } = await seedImdbAccount();
     const manifestUrl = addonManifestUrl(accountId);
@@ -71,7 +72,7 @@ test(
 
 test(
   "built-in chart catalog renders after a reinstall",
-  { tag: "@live-regression" },
+  { tags: ["live-regression"] },
   async ({ page }) => {
     const { accountId, listId } = await seedImdbAccount();
     const manifestUrl = addonManifestUrl(accountId);
@@ -102,7 +103,7 @@ test(
 
 test(
   "catalog rows appear on the Board",
-  { tag: "@live-regression" },
+  { tags: ["live-regression"] },
   async ({ page }) => {
     const { accountId, listId } = await seedImdbAccount();
     const manifestUrl = addonManifestUrl(accountId);
@@ -131,7 +132,7 @@ for (const [title, sourceRef, card] of [
     "This IMDb watchlist is private",
   ],
 ] as const) {
-  test(title, { tag: "@live-regression" }, async ({ page }) => {
+  test(title, { tags: ["live-regression"] }, async ({ page }) => {
     const { accountId, listId } = await seedImdbAccount(sourceRef);
     const manifestUrl = addonManifestUrl(accountId);
     await installAddon(page, manifestUrl);
