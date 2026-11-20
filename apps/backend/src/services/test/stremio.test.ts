@@ -57,6 +57,8 @@ const stremioAddon = z
 const stremioRequest = z.object({
   authKey: z.string(),
   addons: z.array(stremioAddon).optional(),
+  profileId: z.string().optional(),
+  addAddon: stremioAddon.optional(),
 });
 
 const server = useMswServer();
@@ -64,14 +66,25 @@ const server = useMswServer();
 function fakeStremio(
   collection: StremioAddon[],
   answer: Record<string, () => JsonBodyType> = {},
+  profiles?: Record<string, { addons: StremioAddon[] }>,
 ) {
-  const state = { collection: structuredClone(collection), writes: 0 };
+  const state = {
+    collection: structuredClone(collection),
+    profiles: structuredClone(profiles ?? {}),
+    writes: 0,
+    profileWrites: new Array<string>(),
+  };
   const respond = async (request: Request) => {
     const method = request.url.split("/api/")[1];
     const override = answer[method] as (() => JsonBodyType) | undefined;
     if (override) return HttpResponse.json(override());
     const body = stremioRequest.parse(await request.json());
     assert.equal(body.authKey, KEY);
+    if (method === "getUser") {
+      return HttpResponse.json({
+        result: profiles ? { features: { profiles: 6 } } : {},
+      });
+    }
     if (method === "addonCollectionGet") {
       return HttpResponse.json({ result: { addons: state.collection } });
     }
@@ -80,11 +93,25 @@ function fakeStremio(
       state.collection = structuredClone(body.addons ?? []);
       return HttpResponse.json({ result: { success: true } });
     }
+    if (method === "premiumPrefs/getProfilesAddons" && profiles) {
+      return HttpResponse.json({ result: { profiles: state.profiles } });
+    }
+    if (method === "premiumPrefs/setProfileAddons" && profiles) {
+      assert.ok(body.profileId);
+      const { addAddon } = body;
+      assert.ok(addAddon);
+      const profile = state.profiles[body.profileId];
+      const index = profile.addons.findIndex(
+        (addon) => addon.transportUrl === addAddon.transportUrl,
+      );
+      assert.notEqual(index, -1);
+      profile.addons[index] = addAddon;
+      state.profileWrites.push(body.profileId);
+      return HttpResponse.json({ result: { success: true } });
+    }
     throw new Error(`unexpected request ${request.url}`);
   };
-  server.use(
-    http.post(`${STREMIO_API}/:method`, ({ request }) => respond(request)),
-  );
+  server.use(http.post(`${STREMIO_API}/*`, ({ request }) => respond(request)));
   return { state, respond };
 }
 
@@ -152,6 +179,164 @@ describe("updating the installed Stremlist", () => {
     );
     assert.equal(state.writes, 0);
     assert.deepEqual(state.collection, [cinemeta, torrentio]);
+  });
+
+  test("updates only profiles with this configuration and preserves addon order", async () => {
+    const otherStremlist = {
+      ...stremlist("Their list"),
+      transportUrl: "https://api.stremlist.com/sl_Account0002/manifest.json",
+    };
+    const { state } = fakeStremio(
+      [stremlist("Renamed")],
+      {},
+      {
+        stale: { addons: [torrentio, stremlist("Old"), cinemeta] },
+        current: { addons: [stremlist("Renamed")] },
+        different: { addons: [otherStremlist] },
+        absent: { addons: [cinemeta] },
+      },
+    );
+
+    assert.equal(
+      await updateInstalledStremlist(KEY, ADDON_URL, manifest("Renamed")),
+      "updated",
+    );
+    assert.equal(state.writes, 0);
+    assert.deepEqual(state.profileWrites, ["stale"]);
+    assert.deepEqual(state.profiles, {
+      stale: { addons: [torrentio, stremlist("Renamed"), cinemeta] },
+      current: { addons: [stremlist("Renamed")] },
+      different: { addons: [otherStremlist] },
+      absent: { addons: [cinemeta] },
+    });
+    assert.equal(
+      await updateInstalledStremlist(KEY, ADDON_URL, manifest("Renamed")),
+      "unchanged",
+    );
+    assert.deepEqual(state.profileWrites, ["stale"]);
+  });
+
+  test("updates an installation that exists only on a secondary profile", async () => {
+    const { state } = fakeStremio(
+      [cinemeta],
+      {},
+      {
+        secondary: { addons: [stremlist("Old")] },
+      },
+    );
+    assert.equal(
+      await updateInstalledStremlist(KEY, ADDON_URL, manifest("Renamed")),
+      "updated",
+    );
+    assert.deepEqual(state.collection, [cinemeta]);
+    assert.deepEqual(state.profiles.secondary.addons, [stremlist("Renamed")]);
+  });
+
+  test("concurrent configurations preserve both updates on the same profile", async () => {
+    const otherUrl = "https://api.stremlist.com/sl_Account0002/manifest.json";
+    const otherManifest = {
+      ...manifest("Their list"),
+      id: "com.stremlist.sl_Account0002",
+    };
+    const otherBefore = {
+      ...stremlist("Old"),
+      transportUrl: otherUrl,
+      manifest: otherManifest,
+    };
+    const { state, respond } = fakeStremio(
+      [cinemeta],
+      {},
+      {
+        secondary: { addons: [stremlist("Old"), torrentio, otherBefore] },
+      },
+    );
+    const bothWriting = Promise.withResolvers<void>();
+    let pendingWrites = 0;
+    server.use(
+      http.post(
+        `${STREMIO_API}/premiumPrefs/setProfileAddons`,
+        async ({ request }) => {
+          pendingWrites++;
+          if (pendingWrites === 2) bothWriting.resolve();
+          await bothWriting.promise;
+          return respond(request);
+        },
+      ),
+    );
+    const otherAfter = { ...otherManifest, version: "2.1.0" };
+
+    assert.deepEqual(
+      await Promise.all([
+        updateInstalledStremlist(KEY, ADDON_URL, manifest("Renamed")),
+        updateInstalledStremlist(KEY, otherUrl, otherAfter),
+      ]),
+      ["updated", "updated"],
+    );
+    assert.deepEqual(state.profiles.secondary.addons, [
+      stremlist("Renamed"),
+      torrentio,
+      { ...otherBefore, manifest: otherAfter },
+    ]);
+  });
+
+  test.each(["getUser", "premiumPrefs/getProfilesAddons"])(
+    "updates the linked collection while %s is pending and asks for a retry on failure",
+    async (method) => {
+      const { state, respond } = fakeStremio(
+        [stremlist("Old")],
+        {},
+        { secondary: { addons: [stremlist("Old")] } },
+      );
+      const linkedWrite = Promise.withResolvers<void>();
+      server.use(
+        http.post(`${STREMIO_API}/${method}`, async () => {
+          await linkedWrite.promise;
+          return HttpResponse.json({ error: { code: 500 } });
+        }),
+        http.post(`${STREMIO_API}/addonCollectionSet`, async ({ request }) => {
+          const response = await respond(request);
+          linkedWrite.resolve();
+          return response;
+        }),
+      );
+      await assert.rejects(
+        updateInstalledStremlist(KEY, ADDON_URL, manifest("Renamed")),
+        StremioUnavailableError,
+      );
+      assert.deepEqual(state.collection, [stremlist("Renamed")]);
+      assert.deepEqual(state.profileWrites, []);
+    },
+  );
+
+  test("updates only the linked collection when the session belongs to a secondary profile", async () => {
+    const { state } = fakeStremio([stremlist("Old")], {
+      getUser: () => ({
+        result: { parent_id: "admin", features: { profiles: 6 } },
+      }),
+    });
+    assert.equal(
+      await updateInstalledStremlist(KEY, ADDON_URL, manifest("Renamed")),
+      "updated",
+    );
+    assert.deepEqual(state.collection, [stremlist("Renamed")]);
+  });
+
+  test("reports a profile write that Stremio did not keep", async () => {
+    const { state } = fakeStremio(
+      [stremlist("Old")],
+      {
+        "premiumPrefs/setProfileAddons": () => ({ result: { success: true } }),
+      },
+      {
+        secondary: { addons: [stremlist("Old")] },
+      },
+    );
+    await assert.rejects(
+      updateInstalledStremlist(KEY, ADDON_URL, manifest("Renamed")),
+      StremioUnavailableError,
+    );
+    assert.deepEqual(state.collection, [stremlist("Renamed")]);
+    assert.deepEqual(state.profiles.secondary.addons, [stremlist("Old")]);
   });
 
   test("tells a signed-out session apart from an outage", async () => {

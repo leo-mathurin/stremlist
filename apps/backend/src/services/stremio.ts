@@ -20,11 +20,6 @@ export class StremioUnavailableError extends Error {
   }
 }
 
-interface CollectionManifest {
-  id: string;
-  [key: string]: unknown;
-}
-
 const stremioAddonSchema = z
   .object({
     transportUrl: z.string(),
@@ -34,6 +29,7 @@ const stremioAddonSchema = z
   })
   .loose();
 export type StremioAddon = z.infer<typeof stremioAddonSchema>;
+const addonCollectionSchema = z.object({ addons: z.array(stremioAddonSchema) });
 
 /** A manifest that Stremlist builds: any object with an ID. */
 type BuiltManifest = object & { id: string };
@@ -149,9 +145,7 @@ export async function getStremioEmail(
   const user = z
     .object({ email: z.unknown().optional() })
     .catch({})
-    .parse(
-      await callStremio("getUser", { type: "GetUser", authKey }, fetchImpl),
-    );
+    .parse(await getUser(authKey, fetchImpl));
   return typeof user.email === "string" ? user.email : null;
 }
 
@@ -169,9 +163,7 @@ export async function hasStremioTrakt(
       trakt: z.object({ access_token: z.unknown().optional() }).nullish(),
     })
     .catch({})
-    .parse(
-      await callStremio("getUser", { type: "GetUser", authKey }, fetchImpl),
-    );
+    .parse(await getUser(authKey, fetchImpl));
   return typeof user.trakt?.access_token === "string";
 }
 
@@ -236,14 +228,28 @@ export async function getLibraryMeta(
   return parseResult(meta, z.array(z.tuple([z.string(), z.number()])));
 }
 
+function getUser(authKey: string, fetchImpl: Fetch) {
+  return callStremio("getUser", { type: "GetUser", authKey }, fetchImpl);
+}
+
+async function isProfilesAdmin(authKey: string, fetchImpl: Fetch) {
+  const user = parseResult(
+    await getUser(authKey, fetchImpl),
+    z.object({
+      parent_id: z.string().nullish(),
+      features: z.object({ profiles: z.number().nullish() }).nullish(),
+    }),
+  );
+  return !user.parent_id && (user.features?.profiles ?? 0) > 1;
+}
+
 async function getCollection(authKey: string, fetchImpl: Fetch) {
   const result = await callStremio(
     "addonCollectionGet",
     { type: "AddonCollectionGet", authKey, update: true },
     fetchImpl,
   );
-  return parseResult(result, z.object({ addons: z.array(stremioAddonSchema) }))
-    .addons;
+  return parseResult(result, addonCollectionSchema).addons;
 }
 
 async function setCollection(
@@ -254,6 +260,31 @@ async function setCollection(
   await callStremio(
     "addonCollectionSet",
     { type: "AddonCollectionSet", authKey, addons },
+    fetchImpl,
+  );
+}
+
+async function getProfileCollections(authKey: string, fetchImpl: Fetch) {
+  const result = await callStremio(
+    "premiumPrefs/getProfilesAddons",
+    { type: "GetProfilesAddons", authKey },
+    fetchImpl,
+  );
+  return parseResult(
+    result,
+    z.object({ profiles: z.record(z.string(), addonCollectionSchema) }),
+  ).profiles;
+}
+
+async function setProfileAddon(
+  authKey: string,
+  profileId: string,
+  addon: StremioAddon,
+  fetchImpl: Fetch,
+) {
+  await callStremio(
+    "premiumPrefs/setProfileAddons",
+    { type: "SetProfileAddons", authKey, profileId, addAddon: addon },
     fetchImpl,
   );
 }
@@ -294,49 +325,139 @@ function sameJson(a: unknown, b: unknown) {
 
 export type UpdateResult = "updated" | "unchanged" | "missing";
 
+type CollectionUpdate =
+  | { kind: "missing" | "unchanged" }
+  | { kind: "updated"; index: number; addon: StremioAddon };
+
+const planManifestUpdate: (
+  collection: StremioAddon[],
+  addonUrl: string,
+  manifest: BuiltManifest,
+) => CollectionUpdate = (collection, addonUrl, manifest) => {
+  const index = collection.findIndex((addon) =>
+    isThisStremlist(addon, addonUrl),
+  );
+  if (index < 0) return { kind: "missing" };
+  if (sameJson(collection[index].manifest, manifest)) {
+    return { kind: "unchanged" };
+  }
+  return {
+    kind: "updated",
+    index,
+    addon: { ...collection[index], manifest },
+  };
+};
+
+async function readIfAvailable<T>(read: Promise<T>) {
+  try {
+    return await read;
+  } catch (error) {
+    if (error instanceof StremioUnavailableError) return null;
+    throw error;
+  }
+}
+
+async function updateLinkedCollection(
+  authKey: string,
+  addonUrl: string,
+  manifest: BuiltManifest,
+  fetchImpl: Fetch,
+) {
+  const collection = await getCollection(authKey, fetchImpl);
+  const plan = planManifestUpdate(collection, addonUrl, manifest);
+  if (plan.kind !== "updated") return plan.kind;
+  await setCollection(
+    authKey,
+    collection.map((addon, index) =>
+      index === plan.index ? plan.addon : addon,
+    ),
+    fetchImpl,
+  );
+  const written = await readIfAvailable(getCollection(authKey, fetchImpl));
+  if (
+    written &&
+    planManifestUpdate(written, addonUrl, manifest).kind !== "unchanged"
+  ) {
+    throw new StremioUnavailableError("Stremio did not keep the update.");
+  }
+  return "updated" satisfies UpdateResult;
+}
+
+async function updateSecondaryCollections(
+  authKey: string,
+  addonUrl: string,
+  manifest: BuiltManifest,
+  fetchImpl: Fetch,
+) {
+  if (!(await isProfilesAdmin(authKey, fetchImpl))) {
+    return "missing" satisfies UpdateResult;
+  }
+
+  const profiles = await getProfileCollections(authKey, fetchImpl);
+  const plans = Object.entries(profiles).map(([profileId, { addons }]) => ({
+    profileId,
+    ...planManifestUpdate(addons, addonUrl, manifest),
+  }));
+  const changes = plans.filter((plan) => plan.kind === "updated");
+  if (changes.length === 0) {
+    return plans.some((plan) => plan.kind === "unchanged")
+      ? "unchanged"
+      : "missing";
+  }
+
+  const outcomes = await Promise.allSettled(
+    changes.map(({ profileId, addon }) =>
+      setProfileAddon(authKey, profileId, addon, fetchImpl),
+    ),
+  );
+  for (const outcome of outcomes) {
+    if (outcome.status === "rejected") throw outcome.reason;
+  }
+
+  const written = await readIfAvailable(
+    getProfileCollections(authKey, fetchImpl),
+  );
+  if (
+    written &&
+    changes.some(
+      ({ profileId }) =>
+        planManifestUpdate(written[profileId]?.addons ?? [], addonUrl, manifest)
+          .kind !== "unchanged",
+    )
+  ) {
+    throw new StremioUnavailableError("Stremio did not keep the update.");
+  }
+  return "updated" satisfies UpdateResult;
+}
+
 /**
- * Gives the installed Stremlist `manifest`, built from the last save. Reads
- * the collection just before the write and checks it after. The caller runs
- * one update at a time per Account (`stremio-link.ts`). Another Stremio app
- * that writes the collection between the read and the write can still lose
- * its change: Stremio has no conditional write (ADR 0002).
+ * Updates the linked collection while discovering and updating matching
+ * Supporter profiles. Each secondary write replaces one addon in place.
+ * The account lease covers both paths, including when either path fails.
  */
 export const updateInstalledStremlist: (
   authKey: string,
   addonUrl: string,
-  built: BuiltManifest,
+  manifest: BuiltManifest,
   fetchImpl?: Fetch,
 ) => Promise<UpdateResult> = async (
   authKey,
   addonUrl,
-  built,
+  manifest,
   fetchImpl = fetch,
 ) => {
-  const manifest = built as CollectionManifest;
-  const collection = await getCollection(authKey, fetchImpl);
-  const index = collection.findIndex((addon) =>
-    isThisStremlist(addon, addonUrl),
-  );
-  if (index < 0) return "missing";
-  if (sameJson(collection[index].manifest, manifest)) return "unchanged";
+  const [linked, secondary] = await Promise.allSettled([
+    updateLinkedCollection(authKey, addonUrl, manifest, fetchImpl),
+    updateSecondaryCollections(authKey, addonUrl, manifest, fetchImpl),
+  ]);
+  if (linked.status === "rejected") throw linked.reason;
+  if (secondary.status === "rejected") throw secondary.reason;
 
-  const next = collection.map((addon, position) =>
-    position === index ? { ...addon, manifest } : addon,
-  );
-  await setCollection(authKey, next, fetchImpl);
-
-  const written = await getCollection(authKey, fetchImpl).catch(
-    (error: unknown) => {
-      if (error instanceof StremioUnavailableError) return null;
-      throw error;
-    },
-  );
-  if (!written) return "updated";
-  const entry = written.find((addon) => isThisStremlist(addon, addonUrl));
-  if (!entry || !sameJson(entry.manifest, manifest)) {
-    throw new StremioUnavailableError("Stremio did not keep the update.");
-  }
-  return "updated";
+  if (linked.value === "updated" || secondary.value === "updated")
+    return "updated";
+  return linked.value === "unchanged" || secondary.value === "unchanged"
+    ? "unchanged"
+    : "missing";
 };
 
 /**
@@ -349,14 +470,18 @@ export async function installStremlist(
   built: BuiltManifest,
   fetchImpl: Fetch = fetch,
 ) {
-  const manifest = built as CollectionManifest;
   const collection = await getCollection(authKey, fetchImpl);
   if (collection.some((addon) => isThisStremlist(addon, addonUrl))) return;
   await setCollection(
     authKey,
     [
       ...collection,
-      { transportUrl: addonUrl, transportName: "http", manifest, flags: {} },
+      {
+        transportUrl: addonUrl,
+        transportName: "http",
+        manifest: built,
+        flags: {},
+      },
     ],
     fetchImpl,
   );
